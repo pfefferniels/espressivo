@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "67b407e",
+  "lastGreenCommit": "431d944",
   "phase": 2,
-  "currentItem": "T4",
-  "counters": { "completed": 3, "blocked": 0, "reverted": 0 },
+  "currentItem": "T5",
+  "counters": { "completed": 4, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -44,14 +44,14 @@
     {
       "id": "T4",
       "phase": 2,
-      "status": "in_progress",
+      "status": "done",
       "title": "Local idioms: supplementary/ (KeyValue, RandomNumberProvider)",
       "details": "Idiomatic TS within same public behavior. KeyValue likely becomes a readonly tuple or minimal class kept for API compat (full replacement is T16's call). RandomNumberProvider: field initializers, private #/private, remove Java-isms. Unit tests adapted."
     },
     {
       "id": "T5",
       "phase": 2,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Local idioms: xml/XomTypes.ts",
       "details": "Internal cleanup only — the XOM-emulation API surface stays (it is load-bearing for serialization equivalence). Idiomatic internals, doc comment explaining the layer's purpose and byte-compat constraints. Deeper redesign is T17."
     },
