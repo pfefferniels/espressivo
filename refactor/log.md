@@ -4466,3 +4466,208 @@ Advancing to Phase 3. First item: T20b (user-approved movement-fix mirror +
 ground-truth regeneration — invariant 2 is suspended FOR THE REGENERATED REFERENCE
 DIRS ONLY, per the user's 'yes, regenerate'; the hand-authored mei/*.mei inputs
 remain immutable). T12 architect follows.
+
+## [T20b] worker — mirror the Java movement fixes + regenerate ground truth (2026-08-08)
+
+Unique item: charter invariant 2 is suspended for the three **generated** reference dirs
+only (user's "yes, regenerate", 2026-08-08). `tests/integration/fixtures/mei/*.mei` were
+not touched (still 16 files, all unmodified); `tests/integration/*.test.ts` were not
+touched either — **not even mechanically**. The new ground truth is what changed, and the
+existing equivalence tests were left to judge it unaided.
+
+### Manifest — 31 M, 0 A, 0 D, 0 untracked (`--untracked-files=all` clean)
+
+- `src/mpm/elements/maps/MovementMap.ts`, `src/mpm/elements/maps/data/MovementData.ts`
+- `tests/mpm/elements/MovementMap.test.ts`
+- 26 regenerated fixtures: 20 in `all-maps-reference/`, 2 in `performance-reference/`,
+  4 in `reference/`
+- `refactor/lint-debt.md`, `refactor/log.md` (bookkeeping)
+
+### 1. The five Java changes, mirrored — with line citations
+
+The Java fork carries these as **uncommitted working-tree edits** on top of `450193e4`
+(`git status` in `/Users/nielspfeffer/Projects/meico`: `M MovementMap.java`,
+`M MovementData.java`, `M GenerateAllMapsReference.java`). I read the Java source, not the
+brief's summary, and diffed it against its own HEAD to be sure the brief was complete.
+
+**(a) `MovementData` XML ctor — MovementData.java:64-66.** Java replaced
+`xml.getAttribute("controller", XML_NS) → this.xmlId` with
+`xml.getAttribute("controller") → this.controller`. Mirrored exactly, same position in the
+ctor (after the `xml:id` read). Two bugs in one line were being ported: the wrong namespace
+*and* the wrong target field. Because the namespaced lookup never matched, `xmlId` was
+never actually clobbered — so the fix is a pure gain of the `controller` value, with no
+`xmlId` regression to worry about, and the ctor's null-handling shape (`if (att != null)`,
+leave the default otherwise) is unchanged.
+
+**(b) `addMovement(MovementData)` serializes `controller` — MovementMap.java:120-121.**
+Inserted **after protraction, before `xml:id`**, matching Java's statement order, because
+`XomTypes.Element.addAttribute` appends and the serialized attribute order is byte-visible.
+Java guards `if (data.controller != null)`; the TS field is `controller = 'sustain'`, i.e.
+non-nullable by type, so the guard would be dead code — the attribute is written
+unconditionally and the divergence is noted at the site. This is equivalent for every
+TS-typed caller; it could only differ for a `null` that the type system forbids.
+
+**(c) `getMovementDataOf` parses curvature/protraction/controller — MovementMap.java:182-192.**
+Three `Helper.getAttribute` reads appended after the `transition.to` read, same order as
+Java. This is the fix with real teeth: `addMovement(MovementData)` had *always* serialized
+curvature and protraction, and `getMovementDataOf` had *never* read them back, so every
+rendered movement silently used the defaults (0.4 / 0.0) no matter what the MPM said.
+
+**(d) `static movementSampleMaxStep = 0.1` — MovementMap.java:252**, used by
+`generateMovement` in place of the literal. Default behaviour is byte-identical; proven by
+the whole integration suite, which never sets it.
+
+- ⚠ **Charter tension, flagged for T12, not resolved here.** "No shared mutable
+  statics/singletons in the target architecture" — this is exactly one of those, and it is
+  process-global: mutating it changes rendering for every `MovementMap` in the process. It
+  exists because the Java fork has it and mirroring the fork is this item's job. The
+  architecture item should decide where a per-render sampling setting really belongs
+  (rendering options threaded through `perform`, most likely). I did **not** copy Java's
+  doc comment for it: that comment says "larger values (e.g. 0.03 …) drastically reduce
+  event counts", but 0.03 is *smaller* than the 0.1 default and would *increase* them. The
+  TS comment states the actual monotonicity instead.
+
+**(e) T7's site comments updated.** T7 documented (a) as a deliberately ported Java bug,
+under the charter's "behaviour parity beats correctness" rule. That comment is now false,
+so it is replaced by one describing the fixed behaviour and citing the fixed Java lines.
+Same for the two new sites in `MovementMap.ts`. **`getPreviousPosition`'s PARITY NOTE
+stays** — Java still has `j > 0` (MovementMap.java:200), that bug was *not* fixed — but its
+citation was updated 185 → 200, since my own edits are what shifted the Java line numbers.
+Nothing in `CHARTER.md`'s "Known parity subtleties" listed the movement bugs, so nothing
+there needed retracting.
+
+### 2. Tests — +9, adapted from mpmify's `MovementFixTest`
+
+`/Users/nielspfeffer/Projects/mpmify/ml/java/MovementFixTest.java` is a `main()` that
+prints `MOVEMENT_FIX_TEST_PASS`; its three assertions became six vitest tests plus three
+unit-level ones, all in the existing `tests/mpm/elements/MovementMap.test.ts` (47 → 56
+tests in that file; suite **2115 → 2124**, invariant 7c: an increase, journaled).
+
+Ported faithfully, including the fixture shape: 8 quarter-notes at ppq 720, tempo 120, a
+movement `position 0.2 → transition.to 0.9` with `curvature 0.8, protraction 0.5,
+controller "soft"`, plus **two** terminating instructions (the last entry of a movementMap
+is never rendered, so one terminator would leave nothing to compare).
+
+- `renders identically in memory and after a serialize/re-parse round-trip` — `toEqual` on
+  the full `[date, value]` list, i.e. bit-identical, not `toBeCloseTo`. This is Java's
+  `maxDiff == 0.0` assertion.
+- `preserves the controller through the serialize/re-parse round-trip` — `"soft"` on both
+  sides. **This is the only test in the repo that can fail if (a) or (b) regresses**: see
+  the coverage note below.
+- `curvature and protraction actually take effect` — shaped vs defaults render must differ.
+  Both sides go through serialize→re-parse, so this pins (c) specifically.
+- Four unit tests for the parse/serialize sites directly (controller read from the
+  no-namespace attribute *without* clobbering `xmlId`; `"sustain"` default when absent;
+  attribute order protraction < controller < xml:id, asserted on the serialized string
+  because that ordering is byte-visible; curvature/protraction/controller round-tripping
+  through `getMovementDataOf`, and falling back to the defaults when absent).
+- One test for (d): default is 0.1, raising it to 0.5 yields strictly fewer events, and the
+  default is restored in a `finally` (this static is process-global — see the tension note).
+
+⚠ **Why the unit tests matter more than usual here.** The regenerated fixtures do **not**
+discriminate the controller fix: `GenerateAllMapsReference` only ever uses
+`controller="sustain"`, which is also `MovementData`'s default, so a TS that still ignored
+the attribute would produce identical output and the integration suite would stay green.
+Same for curvature/protraction — the generator leaves both at their defaults. The
+integration suite proves the *sampling* change end-to-end; only these unit tests prove the
+parse/serialize changes. Do not delete them as "redundant with the fixtures".
+
+### 3. Regeneration — and the classpath gotcha, confirmed real
+
+`out/production/meico` did contain shadowing `Generate*.class` copies. All three tools were
+recompiled into it first (`javac -cp "out/production/meico:externals/*" -d
+out/production/meico src/tools/<Tool>.java`), then run with
+`-cp "out/production/meico:out/production/tools:externals/*"`. The fork's meico classes
+were verified current before use — `MovementMap.class` (21:38:24) postdates
+`MovementMap.java` (21:38:01), and `javap` confirms `public static double
+movementSampleMaxStep` is really in the compiled class.
+
+### 4. Fixture diff — 26 files, every one categorized
+
+```
+ all-maps-reference/            20 files   (18 text, 2 binary)
+ performance-reference/          2 files
+ reference/                      4 files
+ 26 files changed, 24 insertions(+), 24 deletions(-)   # fixtures are single-line XML
+```
+
+Classified by canonicalizing generated IDs in first-occurrence order and token-diffing the
+rest (script: `scratchpad/t20b_classify.py`):
+
+| category | files | what moved |
+|---|---|---|
+| **UUID-only noise** | 18 | 6 differ only in `meico_<uuid>` values; 12 only in the bare `xml:id` UUID on the `<msm>` root. Zero other tokens. |
+| **Imprecision nondeterminism** | 2 | `imprecision_timing_augmented.msm` (one note's `milliseconds.date`, 502.6626 → 502.3570) and `imprecision_timing_expressive.mid` (197 → 196 bytes). Charter-exempt from byte comparison. |
+| **Movement semantics** | 4 | see below |
+
+The four movement files, and nothing else, changed for movement reasons:
+
+- `movement.mpm` — both `<movement>`s: `position/transition.to` `127.0` → `1.0` (the
+  generator's 0..1 normalization, approved change (e)), and `controller="sustain"` now
+  present (change (b), the generator builds these via `addMovement(MovementData)`).
+- `all_maps.mpm` — same two edits on its single `<movement>`.
+- `movement_augmented.msm` — **1625 → 17 `<position>` events**. This is the whole point of
+  the normalization: sampling subdivides until consecutive values differ by ≤ 0.1, and it
+  was being fed a 0..127 range, so it split ~1270 times to satisfy a threshold meant for
+  0..1. Values now top out at `127.0` instead of `16129.0` (= 127 × 127 — the segment
+  scales by 127 on the way out, so the old fixture was double-scaled).
+- `movement_expressive.mid` — 5074 → 254 bytes, the same 1625-vs-17 events as CC messages.
+
+`all_maps_augmented.msm` shows **only** the root-UUID change, which looks like an omission
+and is not: `all_maps` has a single `<movement>`, and `renderMovementToMap` never renders
+the last entry, so its `<positionMap>` is empty (0 `<position>` elements before and after).
+
+**No file changed for any reason outside these three categories** — the fork has not
+drifted beyond the approved five. Two things in the diff that could look like drift but are
+not: the `ornamentation_*` fixtures moved (root UUID only), and
+`GenerateAllMapsReference.java`'s working-tree diff also adds a `generateOrnamentationTest`
+case — but those five fixtures already exist at HEAD and are already discovered by the
+suite, so that generator change was consumed by an earlier session and is a no-op here.
+
+### 5. Verification
+
+- **`npm run verify` green: 44 files, 2124/2124**, exit 0. `movement` is in
+  `all-maps-equivalence.test.ts`'s `deterministicFixtures` *and* in
+  `midi-byte-equivalence.test.ts`'s `deterministicMaps`, so the TS mirror is checked
+  attribute-by-attribute against the new augmented MSM and event-by-event against the new
+  254-byte MIDI. The 1625 → 17 change is a genuine end-to-end proof, not a fixture rewrite
+  that hid a divergence.
+- **Coverage, invariant 7:** functions **94.2227%** ≥ 94.0 floor PASS; uncovered scoped
+  statements **2230**, down from 2255, well under the 2318 budget PASS; test count 2124 =
+  2115 + 9, an increase PASS. Indicators: statements 85.26 (was 85.09), branch 85.69.
+- **Lint: 1292 errors / 5 warnings** (baseline 1294/5), `git archive` of HEAD +
+  symlinked `node_modules` vs working tree. The −2 is incidental: `Element` and `Attribute`
+  were imported-but-unused in `MovementMap.test.ts` and the new tests use them, taking that
+  file 2 → 0 and "files affected" 74 → 73. Only `no-unused-vars` moves in the rule
+  histogram; only that one file moves per-file. `lint-debt.md` updated (new column + tests
+  bucket 88 → 86).
+- **No new suppressions**: zero `eslint-disable` / `@ts-ignore` / `@ts-expect-error` /
+  `@ts-nocheck` / type assertions added. Prettier clean on all three edited source files.
+- **Untouched**: `tests/integration/**/*.test.ts`, `tests/integration/fixtures/mei/**`,
+  `vitest.config.ts`, `tsconfig*.json`, `eslint.config.js`, `package.json`. No commit made.
+
+### HANDOFF
+
+- ⚠ **The Java fork's fixes are UNCOMMITTED.** `/Users/nielspfeffer/Projects/meico` carries
+  them as working-tree modifications on `450193e4`. A `git checkout`/`git stash` there
+  silently destroys the provenance of the ground truth now committed here, and the next
+  regeneration would quietly undo this item. Someone with write access to that repo should
+  commit them. (Invariant 8 forbids me from doing it.)
+- **DISCOVERED (out of scope, not done):** `MovementData` and `DynamicsData` still carry
+  duplicate Bézier machinery (T7 flagged it for T16); the `controller` fix does not change
+  that. And `MovementData.getMovementSegment`'s 127× scaling means "position" means 0..1 on
+  the way in and 0..127 on the way out — the double-scaled 16129 values in the old fixture
+  were a direct consequence. A typed unit for it belongs in the T13 facade discussion.
+- **For T12:** `MovementMap.movementSampleMaxStep` is a new process-global mutable static,
+  added deliberately to mirror the fork and flagged above as a charter tension to resolve.
+
+## [T20b] conductor — ground-truth provenance record (2026-08-08)
+
+The regenerated reference fixtures derive from the Java fork at commit 450193e4 PLUS
+the five movement fixes, which exist there as uncommitted working-tree edits. Durable
+snapshot (mpmify session): /Users/nielspfeffer/Projects/mpmify/ml/patches/
+meico-movement-fixes-on-450193e4.patch (applies cleanly on 450193e4),
+sha256 3c5fc1b22b5f0312b649bd33e0ac85d31bc36d43759fd005ed287c81ac9704f5.
+`git apply` of that patch on 450193e4 reconstructs the generator state bit-for-bit.
+A fork commit is on the user's pending-decisions list; when it lands, re-point this
+note at the SHA.
