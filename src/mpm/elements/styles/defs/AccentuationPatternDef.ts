@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
-import { Helper } from '../../../../mei/Helper.js';
+import { allChildElements, attribute } from '../../../../xml/tree.js';
 import { Mpm } from '../../../../mpm/Mpm.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { AbstractDef } from './AbstractDef.js';
@@ -32,26 +32,26 @@ export class AccentuationPatternDef extends AbstractDef {
   private parseDataInternal(xml: Element): void {
     super.parseData(xml);
 
-    let lengthAttr = Helper.getAttribute('length', xml);
+    let lengthAttr = attribute('length', xml);
     if (lengthAttr === null) {
       lengthAttr = new Attribute('length', String(this.length));
       xml.addAttribute(lengthAttr);
     }
     this.length = parseFloat(lengthAttr.getValue());
 
-    for (const ac of Helper.getAllChildElements('accentuation', xml) ?? []) {
-      const att = Helper.getAttribute('beat', ac);
+    for (const ac of allChildElements(xml, 'accentuation')) {
+      const att = attribute('beat', ac);
       if (att === null) continue;
       const accentuation = [parseFloat(att.getValue()), 0.0, 0.0, 0.0];
 
-      const valAtt = Helper.getAttribute('value', ac);
+      const valAtt = attribute('value', ac);
       if (valAtt !== null) accentuation[1] = parseFloat(valAtt.getValue());
 
-      const tfAtt = Helper.getAttribute('transition.from', ac);
+      const tfAtt = attribute('transition.from', ac);
       if (tfAtt !== null) accentuation[2] = parseFloat(tfAtt.getValue());
       else accentuation[2] = accentuation[1];
 
-      const ttAtt = Helper.getAttribute('transition.to', ac);
+      const ttAtt = attribute('transition.to', ac);
       if (ttAtt !== null) accentuation[3] = parseFloat(ttAtt.getValue());
       else accentuation[3] = accentuation[2];
 

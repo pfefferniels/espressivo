@@ -1,6 +1,6 @@
 import { Attribute, Element, Text } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
-import { Helper } from '../../../mei/Helper.js';
+import { attribute } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 
 /**
@@ -56,7 +56,7 @@ export class Comment extends AbstractXmlSubtree {
     } else {
       this.text = xml.getChild(0) as Text;
     }
-    this.id = Helper.getAttribute('id', xml);
+    this.id = attribute('id', xml);
   }
 
   setText(text: string): void {

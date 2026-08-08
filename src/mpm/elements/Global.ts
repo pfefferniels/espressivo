@@ -1,6 +1,6 @@
 import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
-import { Helper } from '../../mei/Helper.js';
+import { firstChildElement } from '../../xml/tree.js';
 import { Mpm } from '../../mpm/Mpm.js';
 import { Header } from './Header.js';
 import { Dated } from './Dated.js';
@@ -53,7 +53,7 @@ export class Global extends AbstractXmlSubtree {
     if (xml === null) throw new Error('Cannot generate Global object. XML Element is null.');
     this.setXml(xml);
 
-    const headerElt = Helper.getFirstChildElement('header', this.getXml()!);
+    const headerElt = firstChildElement('header', this.getXml()!);
     if (headerElt === null) {
       this.header = Header.createHeader()!;
       this.getXml()!.appendChild(this.header.getXml()!);
@@ -61,7 +61,7 @@ export class Global extends AbstractXmlSubtree {
       this.header = Header.createHeader(headerElt);
     }
 
-    const datedElt = Helper.getFirstChildElement('dated', this.getXml()!);
+    const datedElt = firstChildElement('dated', this.getXml()!);
     if (datedElt === null) {
       this.dated = Dated.createDated()!;
       this.getXml()!.appendChild(this.dated.getXml()!);

@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { Helper } from '../../../mei/Helper.js';
+import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
@@ -106,21 +106,21 @@ export class DynamicsMap extends GenericMap {
     dd.startDate = this.elements[i].getKey();
     dd.endDate = this.getEndDate(i);
     dd.xml = e;
-    const att = Helper.getAttribute('id', e);
+    const att = attribute('id', e);
     if (att !== null) dd.xmlId = att.getValue();
     for (let j = i; j >= 0; --j) {
       const s = this.elements[j].getValue();
       if (s.getLocalName() === 'style') {
-        dd.styleName = Helper.getAttributeValue('name.ref', s);
+        dd.styleName = getAttributeValue('name.ref', s);
         break;
       }
     }
     dd.style = this.getStyle(Mpm.DYNAMICS_STYLE, dd.styleName) as DynamicsStyle | null;
-    const volAtt = Helper.getAttribute('volume', e);
+    const volAtt = attribute('volume', e);
     if (volAtt === null) return null;
     dd.volumeString = volAtt.getValue();
     dd.volume = DynamicsStyle.getNumericValueStatic(dd.volumeString, dd.style);
-    const ttAtt = Helper.getAttribute('transition.to', e);
+    const ttAtt = attribute('transition.to', e);
     if (ttAtt !== null) {
       dd.transitionToString = ttAtt.getValue();
       dd.transitionTo = DynamicsStyle.getNumericValueStatic(dd.transitionToString, dd.style);
@@ -130,7 +130,7 @@ export class DynamicsMap extends GenericMap {
       dd.curvature = 0.0;
       dd.protraction = 0.0;
     }
-    const sndAtt = Helper.getAttribute('subNoteDynamics', e);
+    const sndAtt = attribute('subNoteDynamics', e);
     if (sndAtt !== null) dd.subNoteDynamics = sndAtt.getValue() === 'true';
     return dd;
   }
@@ -186,7 +186,7 @@ export class DynamicsMap extends GenericMap {
         // non-sub-note dynamics: add a volume=100 entry to channelVolumeMap
         if (
           chanVolMap.isEmpty() ||
-          Helper.getAttributeValue('value', chanVolMap.getLastElement()!) !== '100.0'
+          getAttributeValue('value', chanVolMap.getLastElement()!) !== '100.0'
         ) {
           const volE = new Element('volume', chanVolMap.getXml()!.getNamespaceURI());
           volE.addAttribute(new Attribute('date', String(dd.startDate)));

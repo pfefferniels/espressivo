@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
-import { Helper } from '../../mei/Helper.js';
+import { allChildElements, attribute } from '../../xml/tree.js';
 import { Mpm } from '../../mpm/Mpm.js';
 import { GenericStyle } from './styles/GenericStyle.js';
 import { ArticulationStyle } from './styles/ArticulationStyle.js';
@@ -92,37 +92,35 @@ export class Header extends AbstractXmlSubtree {
     const type = xml.getLocalName();
     if (this.styleDefs.get(type) !== undefined) this.removeStyleType(type);
 
-    const styleDefElements = Helper.getAllChildElements('styleDef', xml);
+    const styleDefElements = allChildElements(xml, 'styleDef');
     const styleDefsMap = new Map<string, GenericStyle>();
 
-    if (styleDefElements) {
-      for (const styleDef of styleDefElements) {
-        let sd: GenericStyle | null;
-        switch (type) {
-          case Mpm.ARTICULATION_STYLE:
-            sd = ArticulationStyle.createArticulationStyle(styleDef);
-            break;
-          case Mpm.TEMPO_STYLE:
-            sd = TempoStyle.createTempoStyle(styleDef);
-            break;
-          case Mpm.DYNAMICS_STYLE:
-            sd = DynamicsStyle.createDynamicsStyle(styleDef);
-            break;
-          case Mpm.METRICAL_ACCENTUATION_STYLE:
-            sd = MetricalAccentuationStyle.createMetricalAccentuationStyle(styleDef);
-            break;
-          case Mpm.RUBATO_STYLE:
-            sd = RubatoStyle.createRubatoStyle(styleDef);
-            break;
-          case Mpm.ORNAMENTATION_STYLE:
-            sd = OrnamentationStyle.createOrnamentationStyle(styleDef);
-            break;
-          default:
-            sd = GenericStyle.createGenericStyle(styleDef);
-        }
-        if (sd === null) continue;
-        styleDefsMap.set(sd.getName(), sd);
+    for (const styleDef of styleDefElements) {
+      let sd: GenericStyle | null;
+      switch (type) {
+        case Mpm.ARTICULATION_STYLE:
+          sd = ArticulationStyle.createArticulationStyle(styleDef);
+          break;
+        case Mpm.TEMPO_STYLE:
+          sd = TempoStyle.createTempoStyle(styleDef);
+          break;
+        case Mpm.DYNAMICS_STYLE:
+          sd = DynamicsStyle.createDynamicsStyle(styleDef);
+          break;
+        case Mpm.METRICAL_ACCENTUATION_STYLE:
+          sd = MetricalAccentuationStyle.createMetricalAccentuationStyle(styleDef);
+          break;
+        case Mpm.RUBATO_STYLE:
+          sd = RubatoStyle.createRubatoStyle(styleDef);
+          break;
+        case Mpm.ORNAMENTATION_STYLE:
+          sd = OrnamentationStyle.createOrnamentationStyle(styleDef);
+          break;
+        default:
+          sd = GenericStyle.createGenericStyle(styleDef);
       }
+      if (sd === null) continue;
+      styleDefsMap.set(sd.getName(), sd);
     }
 
     const parent = xml.getParent();
@@ -240,7 +238,7 @@ export class Header extends AbstractXmlSubtree {
       return null;
     }
     allStyleDefs.delete(newName);
-    Helper.getAttribute('name', styleDef.getXml()!)!.setValue(newName);
+    attribute('name', styleDef.getXml()!)!.setValue(newName);
     allStyleDefs.delete(currentName);
     allStyleDefs.set(newName, styleDef);
     return styleDef;

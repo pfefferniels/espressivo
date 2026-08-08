@@ -5788,3 +5788,365 @@ frozen. The watchdog's stated caveat is real and worth carrying forward: it coun
 replace it, do not delete it. The `tests/midi/Midi.test.ts` prettier failure the worker
 flagged as DISCOVERED is confirmed pre-existing: it fails identically on a pristine HEAD tree,
 while both files TD1 touched pass `prettier --check` clean.
+
+## [T14] worker
+
+**Split `src/mei/Helper.ts` (45 statics, 1661 lines) into nine modules per ARCHITECTURE.md
+§8.2's move table, and `src/Meico.ts` into `src/version.ts` per RULE M6.** All 45 members
+moved; **none deleted** (§8.2: "T14 moves all 45 and deletes none", §8.10 owns every deletion
+decision). 663 call sites across 35 `src/` files rewritten mechanically.
+
+### What landed
+
+| destination | members | notes |
+|---|---|---|
+| `src/xml/tree.ts` | 13 + 3 `require*` siblings | navigation; `firstChildElement`, `allChildElements`, `attribute`, `parentElement` renamed per RULE N2a |
+| `src/xml/ids.ts` | `addUUID`, `copyId`, `copyIdNoNs`, `copyIdNs` (module-private), `addToListAttribute` | |
+| `src/xml/prettyPrint.ts` | `prettyXml` | |
+| `src/xml/errors.ts` | `MeicoError`, `MissingNodeError` | **new, judgment call — see below** |
+| `src/msm/dateMap.ts` | `addToMap` | |
+| `src/music/pitch.ts` | 8 public + `getMidiOctave` (module-private) | |
+| `src/music/duration.ts` | 4 public + `durationRemainder2UnicodeDots` (module-private) | |
+| `src/music/text.ts` | `extractAllIntegersFromString`, `getFilenameWithoutExtension`, `repeatString` | **judgment call — see below** |
+| `src/mei/mpmNoteIds.ts` | `updateMpmNoteidsAfterResolvingRepetitions` | |
+| `src/compat/unsupported.ts` | the 7 XSLT/schema/file-write stubs | grouped so T21's decision is a whole-file one |
+| `src/version.ts` | `export const VERSION = '0.11.2'` | RULE M6 |
+
+`index.ts` keeps a `Helper` object delegating all 41 public statics (§8.2) and a
+`Meico = { version: VERSION }` object, so the published API does not break; `tests/
+HelperShim.test.ts` pins both, member by member. **RULE M2's purpose is achieved: `mpm → mei`
+runtime import edges 33 → 0** (measured by grep on both trees).
+
+### Evidence
+
+- **Pipeline byte-probe: identical.** `t11-pipe.mjs` (5 deterministic all-maps fixtures + all
+  16 MEI fixtures → MSM/MPM/augmented-MSM/raw-MIDI/expressive-MIDI, UUID-canonicalised) on two
+  clean out-of-tree builds. Both sides `entries=24 threw=0 nonVacuous=21`, transcript sha
+  `169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e`, JSON `diff` clean. Same
+  sha TD1's verifier recorded, so the chain is unbroken.
+- **`npm run verify` green: 53 files / 2143 tests** (baseline 44 / 2130, measured on a pristine
+  `git archive HEAD` tree). +13 net, **no test removed and none weakened** — see the
+  test-split accounting below.
+- **Dependency direction: no new cycles.** `madge --circular` **35 → 35**, and the *cycle set*
+  diffs clean line for line (not just the count). Every one of the 35 is the pre-existing
+  `Mpm ⇄ GenericStyle`/maps family that T18 owns. The one new cross-directory edge is
+  `xml/prettyPrint.ts → music/text.ts`, L1→L1, acyclic (`music/text.ts` imports nothing).
+- **Emitted-JS classification** (the moves change file layout, so this replaces a hunk diff).
+  Inventory: 236 → 272 files; the delta is exactly `Helper.*`/`Meico.*` (−8) and the eleven new
+  modules' four artifacts each (+44). Of 57 shared `.js` files, **21 are byte-identical** and
+  **36 changed** — precisely the 35 rewritten files plus `index.js`.
+  - *Per-member:* all **45** moved members compared body-to-body against `dist-base/mei/
+    Helper.js` (dedented, `static X` → `function X`, renames applied). **40 byte-identical
+    outright**; 2 more (`decimalDuration2HtmlUnicode`, `firstChildElement`) identical once
+    `//` comments and whitespace are stripped — the first is a prettier reflow that a shorter
+    callee name allowed, the second is comment text naming the function. **The only 3 with
+    real executable changes are the N2b family**: `allChildElements` and the two
+    `getAllDescendants*` guards it makes dead.
+  - *Per-file:* applying the inverse rename to the 36 changed `.js` files reduces **22 of them
+    to byte-identical**. The 14 with residue are `index.js` (new barrel + shim, by design) and
+    exactly the 13 N2b/M5a sites listed below. No other executable hunk exists anywhere.
+- **Coverage.** Functions **94.2227 % → 94.2348 %** (floor 94.0 ✓, and it went *up*).
+  Uncovered scoped statements **2224 → 2217 (−7)** — a decrease, so charter 7b's budget is
+  untouched. Total scoped statements 15134 → 15104 (−30); accounted for: +9 from the new
+  modules over `Helper.ts`+`Meico.ts`, −39 from prettier reflowing calls that a shorter callee
+  name lets fit on one line (charter 7d's line-derived rebasing; verified by reading
+  `ArticulationMap.ts`'s diff, which is rename-only and still lost 6).
+- **Lint: 1292 → 1246 errors, 5 → 5 warnings.** Full per-rule and per-file accounting is in
+  `refactor/lint-debt.md`'s new `### T14` section; the headline is `eqeqeq` 44 → **0** (RULE
+  N5, config-only) and `no-extraneous-class` 3 → **1** (only `EventMaker` left, T20's).
+
+### Negative controls — three, and one of them found a real hole
+
+A gate that never fails is not a gate, so I broke three things this item could plausibly get
+wrong, on separate clean trees, and re-ran the probe:
+
+| # | injected defect | probe |
+|---|---|---|
+| NC-A | drop the name filter at one flipped `allChildElements` call site (`Performance.ts`) — the degenerate form of an argument-order slip | **RED**, 16/24 entries differ |
+| NC-C | reverse `addToMap`'s backward scan (the stable-insertion invariant) | **RED**, 16/24 entries differ |
+| NC-B | reverse `attribute()`'s three-namespace lookup order | **GREEN — the probe is blind to it** |
+
+NC-B is worth reading twice. The lookup order ("an element carrying both gets the unnamespaced
+one") is documented as load-bearing, and **neither the byte-probe nor the full 2142-test suite
+noticed when I reversed it.** That is a pre-existing hole in the test corpus, not something
+T14 introduced — the identical hole existed for `Helper.getAttribute` — but this item's own
+gate is what exposed it, so I closed it: `tests/xml/tree.test.ts` now has *should prefer the
+unnamespaced attribute when the element carries both*, and re-running the NC-B tree against it
+fails on exactly that test and no other. NC-B is now a live gate. (The evidence that
+`attribute()` itself is safe is not the probe but its byte-identical emitted body, above.)
+
+### Judgment calls, journalled because the doc left them open
+
+1. **`repeatString` → `music/text.ts`, exported.** The move table sends it there and annotates
+   it `(private)`; those two cannot both hold, because its only caller `prettyXml` goes to
+   `xml/prettyPrint.ts`. I followed the **destination** (the table's primary content) and
+   exported it, treating `(private)` as descriptive of `Helper` rather than prescriptive —
+   which is how the table's three other `(private)` annotations read, and those three do
+   land module-private next to their callers. Cost: one L1→L1 cross-directory edge, which
+   §1.2's "sideways within the same directory" sentence discourages though RULE M1's explicit
+   prohibitions (only *higher* layers) permit. It creates no cycle, which is this item's
+   stated gate. The alternative — `repeatString` module-private in `prettyPrint.ts` — honours
+   §1.2 and `(private)` but contradicts the move table; I judged the table to be the more
+   specific instruction. Cheap to reverse if T18 disagrees.
+2. **`MissingNodeError` lives in `src/xml/errors.ts`, not `src/api/errors.ts`.** RULE E2 puts
+   it in the facade module, but RULE N2a has `xml/tree.ts` (L1) *throw* it, and L1 may not
+   import from L6. So it cannot live where E2 says while N2a holds. I created a leaf
+   `src/xml/errors.ts` carrying **both** `MeicoError` and `MissingNodeError` so the hierarchy
+   E2 specifies stays intact. **T13 must re-export these two from `src/api/errors.ts`, not
+   redeclare them** — a second `MeicoError` would be invisible to `instanceof`. Noted in the
+   module's own doc comment as well as here.
+3. **Overload sets preserved; no signatures collapsed.** N2a's code block shows
+   `firstChildElement(parent, name?)`, a single signature. Taking that literally would merge
+   `getFirstChildElement`'s `(name, ofThis)` walking implementation with its `(ofThis, name)`
+   XPath one — two implementations that `Helper.ts`'s own comment says "agree on the result
+   but not on the cost", and that differ on an empty name. §9's M2a row says merging
+   navigation implementations is **forbidden in T14**. So I read N2a's parameter list as
+   illustrative and its *names* as normative: the four functions are renamed, the require*
+   siblings added, and every overload and argument order is preserved byte-for-byte. This is
+   also why the rename was safe at scale — a preserved argument order cannot be silently
+   swapped. `allChildElements` is the one exception, because N2b mandates its new signature
+   explicitly; see below.
+4. **Only the four functions N2a names were renamed.** `getAttributeValue` sits next to
+   `attribute` and `getClosest` next to `parentElement`, which reads inconsistently. Renaming
+   the rest is unmandated churn across 663 call sites; the doc names exactly four. T16 can
+   finish the job if it wants a consistent convention.
+5. **N2a's `require*` siblings are exported but no call site was converted.** The EQ-RISK
+   block requires a per-site unreachability argument for each conversion and says explicitly
+   that sites where it cannot be argued keep their `!`, and "do not convert a site to satisfy
+   a lint count". With ~1079 `!` sites remaining, converting them is a different item's work.
+   T14 therefore *applies N2a to the functions it moves* — it gives them their throwing
+   siblings, with tests and a forced-throw check — and leaves conversion to T16/T21.
+6. **`requireAllChildElements` deliberately does not exist.** N2a lists `allChildElements` in
+   its pair list but qualifies it "(see N2b)". After N2b the function cannot return null, so
+   a throwing sibling would have nothing to throw on.
+
+### RULE N2b — the narrowing, and every guard it killed
+
+`allChildElements(parent: Element, name?: string): Element[]`. Both guards deleted
+(`ofThis == null`, `name === ''`). Unreachability re-verified on this tree, as the rule
+requires: **16 call sites, all passing a live element and either a string literal or no name**
+— 3 in `Mei2MsmMpmConverter.ts` (683, 3986, 3995), 2 former self-calls now inside `tree.ts`,
+and the 11 in `src/mpm/` §8.2 enumerates. The empty-name case is unreachable in practice; the
+null-parent case is now excluded by the parameter type.
+
+The argument-order flip this forced was **fully type-checked**: `tsc` reported exactly 13
+errors after the mechanical rewrite, one per name-first call site, and nothing else. That is
+the whole safety story for the reorder — the compiler enumerated the sites for me.
+
+**RULE M5a's 13 dead guards, deleted individually as the rule requires** (11 in `src/mpm/`,
+which T14 is explicitly permitted to touch and nothing else in that tree, plus 2 in `mei/`):
+
+- **eight `?? []`** — `DynamicsStyle.ts:39`, `OrnamentationStyle.ts:42`, `RubatoStyle.ts:39`,
+  `TempoStyle.ts:39`, `ArticulationStyle.ts:42`, `MetricalAccentuationStyle.ts:45`,
+  `AccentuationPatternDef.ts:42`, `OrnamentDef.ts:374`.
+- **three `if (x)` guards, each requiring the body to be re-indented** — `Header.ts:95`
+  (27-line body), `Performance.ts:121` (6 lines), `Metadata.ts:143` (4 lines). These are the
+  three §8.2 flags for close review; their emitted-JS hunks are in the classification above
+  and are pure de-indentation plus the removed `if`.
+- **two more in `mei/`**, not on M5a's list but in T14's own file scope:
+  `Mei2MsmMpmConverter.ts:3986,3995` (`?? []`), plus one `!` at `:683` that the narrowing
+  made false — the single `no-non-null-assertion` this item cleared.
+
+Per the EQ-RISK(N2b) gate: the guarded values are pinned by two new tests in
+`tests/xml/tree.test.ts` (a null parent now throws where it returned null; an empty name now
+searches for a literally-empty local-name and yields `[]` — measured, not assumed). Those two
+replace the single test that asserted the old null returns, which is the one test of removed
+behaviour in this item (charter invariant 4).
+
+### Test split — every assertion accounted for
+
+`tests/mei/Helper.test.ts` (1256 lines, 38 top-level `describe`s, 154 `it`s) was split along
+the same module boundaries as the source, blocks moved verbatim with only callee names
+rewritten. Destinations: `tests/xml/{tree,ids,prettyPrint}.test.ts`,
+`tests/music/{pitch,duration,text}.test.ts`, `tests/msm/dateMap.test.ts`,
+`tests/mei/mpmNoteIds.test.ts`, `tests/compat/unsupported.test.ts`.
+
+I did not take the split on trust: I extracted the `describe > it` name set from both trees and
+diffed them. **154 → 155.** Every difference is either a describe-name rename following the
+four renamed functions, or the single N2b guard test becoming two. Nothing else moved, and
+nothing was dropped. Net suite change +13 = +1 (N2b split) +5 (`require*`) +6 (`HelperShim`)
++1 (the NC-B lookup-order test).
+
+`tests/mei/Mei.test.ts` needed one import and one call site (`getAttributeValue`).
+`tests/integration/**` and `tests/integration/fixtures/**` untouched.
+
+`vitest.config.ts`'s coverage include list took the mechanical path update the task authorised:
+`src/Meico.ts` → `src/version.ts`, `src/mei/Helper.ts` → `src/mei/mpmNoteIds.ts`, plus
+`src/music/**` and `src/compat/**`. `src/xml/**` and `src/msm/**` already globbed their share.
+Same code in scope before and after — which is what makes the coverage delta above meaningful.
+`src/index.ts` is deliberately **not** added: it was not in scope before, and adding the barrel
+would change the denominator for reasons unrelated to this item.
+
+### Out of scope, deliberately
+
+- **`src/msm/Msm.ts`'s eight module-local navigation helpers and `src/mpm/Mpm.ts`'s two are
+  untouched**, per RULE M2a. Neither file appears in the manifest.
+- The T18 cycle is untouched: the lazy `require` in `Mei.ts` stays, `GenericStyle`/`Mpm`
+  unmodified.
+- `tests/midi/Midi.test.ts`: my blanket `prettier --write` fixed the stray blank line TD1
+  flagged as `DISCOVERED`. I **reverted it** — it is a real pre-existing failure but not
+  T14's, and an unexplained file in the manifest costs more than the one-line fix is worth.
+
+**DISCOVERED:** `src/msm/Msm.ts:20,155` and `src/mpm/Mpm.ts:30` carry comments pointing at
+`src/mei/Helper.ts`, which no longer exists. They are accurate about the *history* and about
+Java, but the path is now stale. Left alone because RULE M2a freezes those two files and
+because touching them would break the "21 emitted `.js` files byte-identical" evidence above.
+**T16b owns those files and should refresh the three references** to name `src/xml/tree.ts`
+and `src/xml/ids.ts` instead.
+
+**DISCOVERED:** the `no-unused-vars` and `no-require-imports` debt that moved into
+`src/compat/unsupported.ts` (21 of the 26 non-`eqeqeq` errors `Helper.ts` carried) is now
+concentrated in one file that §8.10 rules T21 deletes wholesale. Whoever runs T18's
+`no-require-imports` cleanup should check whether that file is still worth touching first.
+
+**Handoff to T18.** The `mpm → mei` edge is gone, so T18's `import/no-cycle` and
+`no-restricted-paths` work starts from a tree where RULE M1's `src/mpm/** ↛ src/mei/**` clause
+already holds. The 35 remaining cycles are all `Mpm ⇄ GenericStyle`/maps, exactly as §1.1
+predicted, and RULE M3's `src/mpm/names.ts` is what removes them.
+
+## [T14] verifier
+
+**PASS.** Baseline confirmed src-identical to the last green: `f6b9afe` touches only
+`refactor/state.json` against `757948e`. Two clean out-of-tree builds (`t14verify/base`,
+`t14verify/work`), work tree byte-confirmed equal to the repo for `src/`, `tests/` and every
+config file before anything was measured. Nothing in `src/` was touched by me.
+
+### 1. All 45 moves are body-pure — checked per member, by AST, not by eye
+
+`bodycmp.mjs` parses baseline `dist/mei/Helper.js` and the eleven destination modules with the
+TypeScript compiler API and canonicalises each function body to a `SyntaxKind`+text stream, so
+comments, whitespace and prettier reflow are structurally absent rather than filtered out. Only
+the four RULE N2a renames are applied, plus collapsing the `Helper.` qualifier on self-calls.
+
+**45 statics in, 45 accounted for: 42 bodies AST-identical, 3 differing, 0 missing, 0
+duplicated across modules.** This is a stronger result than the worker's own "40 byte-identical
++ 2 comment-only" — the AST comparison absorbs the two prettier/comment cases outright.
+
+The 3 differing are exactly the declared N2b family, and each residue is the sanctioned edit and
+nothing else:
+
+- `getAllDescendantsByName` and `getAllDescendantsWithAttribute` — each loses precisely
+  `if (allChildren == null) return children;` (9 AST tokens). No other node changes.
+- `allChildElements` — RULE N2b's mandated signature. Both `query` branches are token-identical
+  to baseline; the dispatch moves from `typeof arg1 === 'string'` to `name !== undefined`, and
+  the two guards go. That is the whole diff.
+
+The only functions in the destination modules that did not come from `Helper` are N2a's three
+`require*` siblings. `requireAllChildElements` correctly does not exist. RULE M6: `VERSION`
+is `'0.11.2'`, unchanged and **not** synced to `package.json`'s `0.8.8`.
+
+### 2. Call sites — censused exhaustively, not sampled
+
+The task asked for ≥60 of the rewritten sites; an AST census of *all* of them was cheaper than
+a defensible sample, so `callsites.mjs` compares the per-`(file, member, argument-stream)`
+multiset across both trees, import-aware so that `Msm.ts`/`Mpm.ts`'s module-local namesakes
+(RULE M2a) cannot be miscounted as rewrites.
+
+**All 389 baseline `Helper.X(` call sites match their rewritten counterparts argument-for-
+argument and position-for-position**, including **all 16 `allChildElements` sites with the
+order flip applied to the base side**. Work-side has +5, every one accounted: three `require*`
+internal delegations and two in the `index.ts` shim. Zero `Helper.` calls remain in `src/`
+(the 43 surviving `Helper` mentions are doc comments, the deliberate shim, and error-message
+strings preserved verbatim — those are output-visible and correctly untouched). Zero duplicate
+imports anywhere.
+
+### 3. Pipeline byte-probe — identical
+
+T8's independently-written `t11-pipe.mjs` on both dists: `entries=24 threw=0 nonVacuous=21`,
+transcript sha `169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` on both
+sides, JSON `diff` clean. Same sha as TD1's verifier — chain unbroken.
+
+### 4. Emitted JS — 21/36 reproduced, and all 36 classified
+
+Inventory 236 → 272 reconciles exactly (−8 `Helper.*`/`Meico.*`, +44 for eleven new modules ×4
+artifacts). Of 57 shared `.js`, **21 byte-identical and 36 changed** — the worker's figure,
+reproduced, and the 36 are precisely the 35 rewritten files plus `index.js`.
+
+Classifying all 36 by the same AST canonicalisation: **23 reduce to pure rename/import moves,
+13 carry residue**, and every residue hunk is a sanctioned deletion:
+
+- eight × `QuestionQuestionToken ArrayLiteralExpression` removed plus the arg flip (M5a's `?? []`);
+- three × `IfStatement`+`Block` removed plus the arg flip (M5a's re-indented guards — an empty
+  array is truthy, so the un-guarded body is semantically identical wherever the old guard passed);
+- `Mei2MsmMpmConverter.js`: two `Meico.version` → `VERSION`, one arg reorder, two `tupletSpan`
+  `?? []`. **Nothing else in 30,404 tokens.**
+- `index.js`: the new barrel + shim, by design.
+
+*Correction to the worker's count, not to its set:* the log says 22 pure / 14 residue; by AST it
+is **23 / 13**. M5a's 13 *sites* live in 12 *files* (`Mei2MsmMpmConverter` holds three of them),
+plus `index.js`. The discrepancy is the worker's textual inverse-rename leaving reflow residue
+in one file that is in fact pure; the set of affected files is identical.
+
+### 5. Cycles, layering, ids
+
+`madge --circular`: **35 → 35, and the cycle set diffs clean line for line.** None involves
+`mei/` or any new module. `mpm → mei` import edges **33 → 0** (RULE M2 achieved); `msm →
+mpm/mei` non-type 0, `midi → *` 0 (RULE M1 holds). `msm/Msm.js` and `mpm/Mpm.js` are
+**byte-identical** in dist — RULE M2a's module-locals genuinely untouched.
+
+Id order: all `xml/ids.ts` bodies AST-identical, `copyId` 22→22 and `addToListAttribute` 14→14
+with identical arguments, `copyIdNs`'s single self-call relocated, `addUUID` 0→0 in `src/`. With
+`Msm.js` byte-identical and the probe's first-occurrence canonicalisation unchanged, generation
+order is preserved.
+
+### 6. Tests, config, standard gates
+
+`vitest.config.ts` is mechanical only and **preserves scope exactly** — all 45 members remain in
+the include list via the new paths; `src/index.ts` correctly not added, so the coverage
+denominator stays comparable. `tests/mei/Mei.test.ts` is one import, one call site, one comment.
+`tests/integration/**` and the fixtures are untouched.
+
+Test split by AST: **151 of 154 baseline `it`s are body-identical** after the move. Of the three,
+two changed only by the arg flip and a dropped `!` (assertions bit-identical), and one — the
+old null-return test — is replaced by two that pin the new behaviour, measured not assumed. That
+is the single test of removed behaviour, journaled, charter invariant 4 satisfied. `expect()`
+calls **334 → 371**.
+
+- Manifest: **17 `??` / 3 `D` / 41 `M`**, exactly as declared (the 17 porcelain entries expand to
+  21 files: 11 `src/` + 10 `tests/`).
+- Independent `npm run verify`: **green, exit 0, 53 files / 2143 tests**, both `tsc` stages.
+  Baseline measured on the same harness: 44 / 2130. +13, no test removed.
+- No new suppressions: `eslint-disable` 1→1, `@ts-ignore`/`@ts-expect-error` 0→0, `as any` 0→0.
+- `log.md` append-only: 215 insertions, **0 deletions**.
+- Lint **1292 → 1246 errors, 5 → 5 warnings**, reproduced. Per-rule deltas match `lint-debt.md`
+  exactly: `eqeqeq` 44→0 (RULE N5, config verbatim as specified, not one comparison edited),
+  `no-extraneous-class` 3→1, `no-non-null-assertion` 1080→1079, `unified-signatures` 40→41.
+  `Helper.ts`'s 70 errors are fully traced: 26 relocated (21+2+2+1) + 44 config-cleared.
+- Coverage: functions **94.2227 → 94.2348** (floor 94.0 ✓, and up); uncovered scoped statements
+  **2224 → 2217**, far inside the 2318 budget; test count up. Charter 7 satisfied on every clause.
+- Public API: **nothing removed**; `MeicoError`, `MissingNodeError`, `VERSION` added. The shim
+  carries exactly 41 public statics, and its `helperGetAllChildElements` wrapper faithfully
+  reproduces the pre-N2b contract (both guards, name-first overload, `| null`), so the narrowing
+  is not an API break.
+
+### 7. Negative controls — one reproduced, one new, and the new one found a gap in the *evidence*
+
+**NC-B reproduced.** Reversing `attribute()`'s three-namespace lookup order fails the worker's
+new test and **only** that test (1 failed / 53 passed). The hole it closed is real and the gate
+is live.
+
+**New NC, at a site the worker did not probe.** I dropped the name filter at `Header.ts:95` —
+`allChildElements(xml, 'styleDef')` → `allChildElements(xml)`, the argument-*drop* failure mode.
+The pipeline byte-probe stayed **GREEN**, and so did the **full 2143-test suite**. Both are blind
+there.
+
+This does not impugn the change — that site is proven correct by the exhaustive argument-stream
+census in §2 — but it does correct the worker's stated safety story. The log says the reorder's
+"whole safety story" is that `tsc` enumerated exactly 13 errors. The compiler catches an argument
+*swap* (`string` vs `Element` are incompatible); it does **not** catch an argument *drop*, which
+type-checks cleanly and silently widens the query from "children named X" to "all children". The
+worker's NC-A demonstrated the probe catches that class at `Performance.ts`; it does not catch it
+at `Header.ts`. What actually closes the gap for all 16 sites is the per-site argument comparison,
+so that census — not the compiler — is the load-bearing evidence for the reorder.
+
+**DISCOVERED (corpus, pre-existing):** no fixture exercises an MPM `<header>` carrying children
+other than `styleDef`, so `Header.ts:95`'s name filter is unpinned. The identical hole existed
+before T14 for `Helper.getAllChildElements('styleDef', xml)`. T16b/T18 should add such a fixture.
+
+**Log bookkeeping nits, non-blocking:** "663 call sites" does not reconcile with any measurement
+— `src/` holds **390** `Helper.X(` occurrences (694 including `tests/`). The companion "35 `src/`
+files" *is* right (36 files carry call sites, minus the deleted `Helper.ts`). See also the
+23/13-vs-22/14 correction in §4.
+
+**Verdict: PASS T14.** Equivalence is anchored by an identical byte-probe, and every module-level
+move is proven pure at the AST level rather than argued.

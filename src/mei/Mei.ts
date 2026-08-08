@@ -1,7 +1,9 @@
 import { XmlBase } from '../xml/XmlBase.js';
 import { Document, Element, Attribute, Nodes } from '../xml/XomTypes.js';
 import { KeyValue } from '../supplementary/KeyValue.js';
-import { Helper } from './Helper.js';
+import { duration2decimal } from '../music/duration.js';
+import { getFilenameWithoutExtension } from '../music/text.js';
+import { attribute, firstChildElement, getAttributeValue } from '../xml/tree.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { Msm } from '../msm/Msm.js';
 import type { Mpm } from '../mpm/Mpm.js';
@@ -128,7 +130,7 @@ export class Mei extends XmlBase {
    *
    * **The two fallback paths below are unreachable, in this port and in Java alike.** They
    * are written as `catch (NullPointerException)` handlers around
-   * `Helper.getFirstChildElement(name, ofThis)` — but that method returns null for a null
+   * `firstChildElement(name, ofThis)` — but that method returns null for a null
    * `ofThis` in both languages (`Helper.java:…getFirstChildElement(String, Element)`
    * opens with `if (ofThis == null) return null;`), so no exception is ever thrown and
    * control never leaves the first block. The effective behaviour is therefore: read
@@ -144,24 +146,24 @@ export class Mei extends XmlBase {
     let title: Element | null;
 
     try {
-      title = Helper.getFirstChildElement('fileDesc', this.getMeiHead()!);
-      title = Helper.getFirstChildElement('titleStmt', title!);
-      title = Helper.getFirstChildElement('title', title!);
+      title = firstChildElement('fileDesc', this.getMeiHead()!);
+      title = firstChildElement('titleStmt', title!);
+      title = firstChildElement('title', title!);
     } catch {
       try {
-        title = Helper.getFirstChildElement('workDesc', this.getMeiHead()!);
-        title = Helper.getFirstChildElement('work', title!);
-        title = Helper.getFirstChildElement('titleStmt', title!);
-        title = Helper.getFirstChildElement('title', title!);
+        title = firstChildElement('workDesc', this.getMeiHead()!);
+        title = firstChildElement('work', title!);
+        title = firstChildElement('titleStmt', title!);
+        title = firstChildElement('title', title!);
       } catch {
         try {
-          title = Helper.getFirstChildElement('workList', this.getMeiHead()!);
-          title = Helper.getFirstChildElement('work', title!);
-          title = Helper.getFirstChildElement('title', title!);
+          title = firstChildElement('workList', this.getMeiHead()!);
+          title = firstChildElement('work', title!);
+          title = firstChildElement('title', title!);
         } catch {
           return this.getFile() === null
             ? ''
-            : Helper.getFilenameWithoutExtension(Mei.fileBasename(this.getFile()!));
+            : getFilenameWithoutExtension(Mei.fileBasename(this.getFile()!));
         }
       }
     }
@@ -169,7 +171,7 @@ export class Mei extends XmlBase {
       ? title.getValue()
       : this.getFile() === null
         ? ''
-        : Helper.getFilenameWithoutExtension(Mei.fileBasename(this.getFile()!));
+        : getFilenameWithoutExtension(Mei.fileBasename(this.getFile()!));
   }
 
   /**
@@ -298,7 +300,7 @@ export class Mei extends XmlBase {
    * this MEI as a whole number of ticks.
    *
    * `dur` attributes are note *values* (`4` = quarter), converted to fractions of a whole
-   * note by {@link Helper.duration2decimal}; each dot halves the value again. The smallest
+   * note by {@link duration2decimal}; each dot halves the value again. The smallest
    * such fraction `dur` divided into a quarter note (`0.25 / dur`) is how many ticks a
    * quarter must be worth. Results below 1 clamp to 1 and non-integers round *up* — never
    * down, or the shortest note would not fit.
@@ -315,9 +317,7 @@ export class Mei extends XmlBase {
     for (let i = durs.size() - 1; i >= 0; --i) {
       const elem = durs.get(i) as unknown as Element;
       let d =
-        elem.getAttribute('dur') !== null
-          ? Helper.duration2decimal(elem.getAttributeValue('dur')!)
-          : 4.0;
+        elem.getAttribute('dur') !== null ? duration2decimal(elem.getAttributeValue('dur')!) : 4.0;
       let dots = elem.getAttribute('dots') !== null ? parseInt(elem.getAttributeValue('dots')!) : 0;
       for (; dots > 0; --dots) d /= 2;
       if (dur > d) dur = d;
@@ -550,7 +550,7 @@ export class Mei extends XmlBase {
    */
   private _resolveExpansions(root: Element): Element {
     const regularizedRoot = root.copy();
-    const expansion = Helper.getFirstChildElement('expansion', regularizedRoot);
+    const expansion = firstChildElement('expansion', regularizedRoot);
     let plist: string[] | null = null;
 
     if (expansion !== null) {
@@ -574,7 +574,7 @@ export class Mei extends XmlBase {
       const child = children.get(i);
 
       if (plist !== null) {
-        const childId = Helper.getAttribute('id', child);
+        const childId = attribute('id', child);
         if (childId === null || !plist.includes(childId.getValue())) {
           regularizedRoot.removeChild(child);
           continue;
@@ -588,12 +588,12 @@ export class Mei extends XmlBase {
     if (plist !== null) {
       const childHash = new Map<string, Element>();
 
-      let child = Helper.getFirstChildElement(regularizedRoot);
+      let child = firstChildElement(regularizedRoot);
       while (child !== null) {
         child.detach();
-        const id = Helper.getAttributeValue('id', child);
+        const id = getAttributeValue('id', child);
         if (id !== null) childHash.set(id, child);
-        child = Helper.getFirstChildElement(regularizedRoot);
+        child = firstChildElement(regularizedRoot);
       }
 
       for (const plistEntry of plist) {
@@ -610,7 +610,7 @@ export class Mei extends XmlBase {
           const cs = copy.query('descendant-or-self::*[@xml:id or @id]');
           for (let i = 0; i < cs.size(); ++i) {
             const ce = cs.get(i) as unknown as Element;
-            const idAttr = Helper.getAttribute('id', ce);
+            const idAttr = attribute('id', ce);
             if (idAttr) {
               const newId = `meico_expansion_of_${idAttr.getValue()}_${uuidv4()}`;
               idOldAndNew.set(`#${idAttr.getValue()}`, `#${newId}`);

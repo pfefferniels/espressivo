@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { Helper } from '../../../mei/Helper.js';
+import { allChildElements } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { GenericStyle } from './GenericStyle.js';
 import { ArticulationDef } from './defs/ArticulationDef.js';
@@ -39,7 +39,7 @@ export class ArticulationStyle extends GenericStyle<ArticulationDef> {
   /** Defs that fail to parse are skipped, so one malformed child cannot lose the style. */
   protected parseData(xml: Element): void {
     super.parseData(xml);
-    for (const articDef of Helper.getAllChildElements('articulationDef', xml) ?? []) {
+    for (const articDef of allChildElements(xml, 'articulationDef')) {
       const ad = ArticulationDef.createArticulationDef(articDef);
       if (ad === null) continue;
       this.defs.set(ad.getName(), ad);

@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { Helper } from '../../../mei/Helper.js';
+import { attribute } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
@@ -104,22 +104,22 @@ export class MovementMap extends GenericMap {
     md.startDate = this.elements[i].getKey();
     md.endDate = this.getEndDate(i);
     md.xml = e;
-    const att = Helper.getAttribute('id', e);
+    const att = attribute('id', e);
     if (att !== null) md.xmlId = att.getValue();
-    const posAtt = Helper.getAttribute('position', e);
+    const posAtt = attribute('position', e);
     if (posAtt === null) md.position = this.getPreviousPosition(i);
     else md.position = parseFloat(posAtt.getValue());
-    const ttAtt = Helper.getAttribute('transition.to', e);
+    const ttAtt = attribute('transition.to', e);
     if (ttAtt !== null) md.transitionTo = parseFloat(ttAtt.getValue());
     // Parsed since 2026-08-08 (MovementMap.java:182-192). Previously the shape and the
     // target controller written into a `<movement>` were ignored on the way back out, so
     // every rendered movement used the MovementData defaults (curvature 0.4, protraction
     // 0, controller "sustain") regardless of the XML.
-    const curvatureAtt = Helper.getAttribute('curvature', e);
+    const curvatureAtt = attribute('curvature', e);
     if (curvatureAtt !== null) md.curvature = parseFloat(curvatureAtt.getValue());
-    const protractionAtt = Helper.getAttribute('protraction', e);
+    const protractionAtt = attribute('protraction', e);
     if (protractionAtt !== null) md.protraction = parseFloat(protractionAtt.getValue());
-    const controllerAtt = Helper.getAttribute('controller', e);
+    const controllerAtt = attribute('controller', e);
     if (controllerAtt !== null) md.controller = controllerAtt.getValue();
     return md;
   }

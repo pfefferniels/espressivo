@@ -1,6 +1,11 @@
 import { Attribute, Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
-import { Helper } from '../../mei/Helper.js';
+import {
+  allChildElements,
+  attribute,
+  firstChildElement,
+  getAttributeValue,
+} from '../../xml/tree.js';
 import { Mpm } from '../../mpm/Mpm.js';
 import { KeyValue } from '../../supplementary/KeyValue.js';
 import { Global } from './Global.js';
@@ -94,14 +99,14 @@ export class Performance extends AbstractXmlSubtree {
    */
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate Performance object. XML Element is null.');
-    const name = Helper.getAttribute('name', xml);
+    const name = attribute('name', xml);
     if (name === null || name.getValue() === '')
       throw new Error('Cannot generate Performance object. Attribute name is missing or empty.');
     this.setXml(xml);
-    this.nameAttr = Helper.getAttribute('name', this.getXml()!);
-    this.id = Helper.getAttribute('id', this.getXml()!);
+    this.nameAttr = attribute('name', this.getXml()!);
+    this.id = attribute('id', this.getXml()!);
 
-    let ppqAtt = Helper.getAttribute('pulsesPerQuarter', this.getXml()!);
+    let ppqAtt = attribute('pulsesPerQuarter', this.getXml()!);
     if (ppqAtt === null) {
       ppqAtt = new Attribute('pulsesPerQuarter', '720');
       this.getXml()!.addAttribute(ppqAtt);
@@ -110,7 +115,7 @@ export class Performance extends AbstractXmlSubtree {
       this.pulsesPerQuarter = parseInt(ppqAtt.getValue());
     }
 
-    const globalElt = Helper.getFirstChildElement('global', this.getXml()!);
+    const globalElt = firstChildElement('global', this.getXml()!);
     if (globalElt === null) {
       this.global = Global.createGlobal()!;
       this.getXml()!.appendChild(this.global.getXml()!);
@@ -118,14 +123,12 @@ export class Performance extends AbstractXmlSubtree {
       this.global = Global.createGlobal(globalElt);
     }
 
-    const parts = Helper.getAllChildElements('part', this.getXml()!);
-    if (parts) {
-      for (const element of parts) {
-        const part = Part.createPart(element);
-        if (part === null) continue;
-        part.setGlobal(this.global);
-        this.parts.push(part);
-      }
+    const parts = allChildElements(this.getXml()!, 'part');
+    for (const element of parts) {
+      const part = Part.createPart(element);
+      if (part === null) continue;
+      part.setGlobal(this.global);
+      this.parts.push(part);
     }
   }
 
@@ -213,7 +216,7 @@ export class Performance extends AbstractXmlSubtree {
   }
   setPulsesPerQuarter(ppq: number): void {
     this.pulsesPerQuarter = ppq;
-    Helper.getAttribute('pulsesPerQuarter', this.getXml()!)!.setValue(String(ppq));
+    attribute('pulsesPerQuarter', this.getXml()!)!.setValue(String(ppq));
   }
   setPPQ(ppq: number): void {
     this.setPulsesPerQuarter(ppq);
@@ -221,9 +224,9 @@ export class Performance extends AbstractXmlSubtree {
 
   getCorrespondingPart(msmPart: Element | null): Part | null {
     if (msmPart === null) return null;
-    let mpmPart = this.getPart(parseInt(Helper.getAttributeValue('number', msmPart)));
+    let mpmPart = this.getPart(parseInt(getAttributeValue('number', msmPart)));
     if (mpmPart === null) {
-      mpmPart = this.getPart(Helper.getAttributeValue('name', msmPart));
+      mpmPart = this.getPart(getAttributeValue('name', msmPart));
     }
     return mpmPart;
   }
@@ -243,7 +246,7 @@ export class Performance extends AbstractXmlSubtree {
     list: GenericMap[],
   ): GenericMap | null {
     if (msmDated === null) return null;
-    const e = Helper.getFirstChildElement(mapName, msmDated);
+    const e = firstChildElement(mapName, msmDated);
     if (e !== null) {
       const m = GenericMap.createGenericMap(e);
       if (m !== null) {
@@ -266,12 +269,12 @@ export class Performance extends AbstractXmlSubtree {
     if (map === null || map.isEmpty()) return;
     for (const e of map.getAllElements()) {
       e.getValue().addAttribute(
-        new Attribute('date.perf', Helper.getAttributeValue('date', e.getValue())),
+        new Attribute('date.perf', getAttributeValue('date', e.getValue())),
       );
-      const duration = Helper.getAttribute('duration', e.getValue());
+      const duration = attribute('duration', e.getValue());
       if (duration !== null)
         e.getValue().addAttribute(new Attribute('duration.perf', duration.getValue()));
-      const dateEnd = Helper.getAttribute('date.end', e.getValue());
+      const dateEnd = attribute('date.end', e.getValue());
       if (dateEnd !== null)
         e.getValue().addAttribute(new Attribute('date.end.perf', dateEnd.getValue()));
     }
@@ -381,7 +384,7 @@ export class Performance extends AbstractXmlSubtree {
 
     // process global data
     console.log('Processing global data.');
-    const globalDated = Helper.getFirstChildElement('dated', clone.getGlobal()!);
+    const globalDated = firstChildElement('dated', clone.getGlobal()!);
     Performance.addMsmMapToList('keySignatureMap', globalDated, maps);
     const globalTimeSignatureMap = Performance.addMsmMapToList(
       'timeSignatureMap',
@@ -412,9 +415,9 @@ export class Performance extends AbstractXmlSubtree {
       const affectedParts = this.getAllMsmPartsAffectedByGlobalMap(clone, Mpm.ORNAMENTATION_MAP);
       const mapsToOrnament: GenericMap[] = [];
       for (const part of affectedParts) {
-        const s = Helper.getFirstChildElement('dated', part);
+        const s = firstChildElement('dated', part);
         if (s !== null) {
-          const scoreElt = Helper.getFirstChildElement('score', s);
+          const scoreElt = firstChildElement('score', s);
           if (scoreElt !== null) {
             const m = GenericMap.createGenericMap(scoreElt);
             if (m !== null) mapsToOrnament.push(m);
@@ -439,11 +442,11 @@ export class Performance extends AbstractXmlSubtree {
       const mpmPart = this.getCorrespondingPart(msmPart);
       if (mpmPart === null)
         console.error(
-          `No MPM part found that corresponds to MSM part ${Helper.getAttributeValue('number', msmPart)} "${Helper.getAttributeValue('name', msmPart)}"`,
+          `No MPM part found that corresponds to MSM part ${getAttributeValue('number', msmPart)} "${getAttributeValue('name', msmPart)}"`,
         );
       else console.log(`Performing part ${mpmPart.getNumber()}: ${mpmPart.getName()}`);
 
-      const dated = Helper.getFirstChildElement('dated', msmPart);
+      const dated = firstChildElement('dated', msmPart);
       if (dated === null) continue;
       maps = [];
       const score = Performance.addMsmMapToList('score', dated, maps);
@@ -636,13 +639,13 @@ export class Performance extends AbstractXmlSubtree {
     if (map === null) return;
     for (let i = 0; i < map.size(); ++i) {
       const e = map.getElement(i)!;
-      const dateAtt = Helper.getAttribute('date.perf', e);
+      const dateAtt = attribute('date.perf', e);
       if (dateAtt !== null) e.addAttribute(new Attribute('milliseconds.date', dateAtt.getValue()));
-      const endAtt = Helper.getAttribute('date.end.perf', e);
+      const endAtt = attribute('date.end.perf', e);
       if (endAtt !== null)
         e.addAttribute(new Attribute('milliseconds.date.end', endAtt.getValue()));
       else {
-        const durAtt = Helper.getAttribute('duration.perf', e);
+        const durAtt = attribute('duration.perf', e);
         if (durAtt !== null && dateAtt !== null) {
           const dateEnd = parseFloat(dateAtt.getValue()) + parseFloat(durAtt.getValue());
           e.addAttribute(new Attribute('date.end.perf', String(dateEnd)));
@@ -687,24 +690,18 @@ export class Performance extends AbstractXmlSubtree {
     if (ornamentationMap === null || map === null) return;
     for (const e of map.getAllElementsOfType('note')) {
       const note = e.getValue();
-      const millisecondsDateAtt = Helper.getAttribute('milliseconds.date', note);
+      const millisecondsDateAtt = attribute('milliseconds.date', note);
       if (millisecondsDateAtt === null) continue;
       const millisecondsDate = parseFloat(millisecondsDateAtt.getValue());
-      const ornamentMillisecondsDateAtt = Helper.getAttribute(
-        'ornament.milliseconds.date.offset',
-        note,
-      );
+      const ornamentMillisecondsDateAtt = attribute('ornament.milliseconds.date.offset', note);
       let ornamentMillisecondsDateOffset = 0.0;
       if (ornamentMillisecondsDateAtt !== null) {
         ornamentMillisecondsDateOffset = parseFloat(ornamentMillisecondsDateAtt.getValue());
         millisecondsDateAtt.setValue(String(millisecondsDate + ornamentMillisecondsDateOffset));
       }
 
-      const millisecondsDateEndAtt = Helper.getAttribute('milliseconds.date.end', note);
-      const ornamentMillisecondsDurationAtt = Helper.getAttribute(
-        'ornament.milliseconds.duration',
-        note,
-      ); // does the ornament set an absolute duration?
+      const millisecondsDateEndAtt = attribute('milliseconds.date.end', note);
+      const ornamentMillisecondsDurationAtt = attribute('ornament.milliseconds.duration', note); // does the ornament set an absolute duration?
       if (ornamentMillisecondsDurationAtt !== null) {
         // apply it to milliseconds.date.end
         const millisecondsDateEnd = String(
@@ -716,7 +713,7 @@ export class Performance extends AbstractXmlSubtree {
         else note.addAttribute(new Attribute('milliseconds.date.end', millisecondsDateEnd));
       } else {
         // act according to noteoff.shift
-        const ornamentNoteoffShiftAtt = Helper.getAttribute('ornament.noteoff.shift', note);
+        const ornamentNoteoffShiftAtt = attribute('ornament.noteoff.shift', note);
         if (ornamentNoteoffShiftAtt !== null) {
           // this attribute is only created when its value is "true", so we need to update milliseconds.date.end; thus, the duration stays the same
           if (millisecondsDateEndAtt !== null)

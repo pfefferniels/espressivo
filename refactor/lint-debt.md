@@ -636,12 +636,36 @@ keywords appear only in the `.d.ts`.
 > counted messages got 9, whoever filtered by `ruleId` got 8. Filter by `ruleId`.
 
 ### T13 — facade — 1
-`no-extraneous-class` 1 — `src/Meico.ts`.
+`no-extraneous-class` 1 — `src/Meico.ts`. **Cleared by T14**: RULE M6 turned `Meico` into
+`src/version.ts`'s `export const VERSION`, so this row is at **0** and T13 inherits nothing.
+
+### T14 — Helper dissolved — repo 1292 → **1246** errors (warnings unchanged at 5)
+`src/mei/Helper.ts` (70 errors) and `src/Meico.ts` (1) no longer exist; their debt either
+cleared or moved to the nine modules §8.2 split them into. Full accounting, so nothing is
+lost track of:
+
+| rule | 1292-tree | now | what happened |
+|---|---|---|---|
+| `eqeqeq` | 44 | **0** | RULE N5. All 44 were the `x == null` idiom and all 44 were in `Helper.ts`. **Not one comparison was edited** — the rule was relaxed to `['error', 'always', { null: 'ignore' }]`, which is the ruling T12 owed the config comment that had parked this on T12 by name. The idiom is now blessed wherever it lives. |
+| `no-extraneous-class` | 3 | **1** | `Helper` and `Meico` were two of RULE C2's three static-only classes. The survivor is `EventMaker`, which is **T20's**. |
+| `no-non-null-assertion` | 1080 | **1079** | One `!` deleted, at `Mei2MsmMpmConverter.ts:683` — the narrowing (RULE N2b) made `allChildElements(...)!` a lie. The other 1079 are untouched; T16/T21 own them. |
+| `unified-signatures` | 40 | **41** | **+1, and it is new code, not drift**: `requireFirstChildElement` (RULE N2a) carries the same three-overload set as `firstChildElement`, so it earns the same entry. The pre-existing 40 moved with their functions and are still T16's per `Helper.ts`'s standing note. |
+
+Where `Helper.ts`'s 26 non-`eqeqeq` errors went: `src/compat/unsupported.ts` **21**
+(`no-unused-vars` on the deliberately-unread stub parameters, plus the 2 `no-require-imports`
+in `writeStringToFile` — T18 closes those, T21 deletes the file), `src/xml/tree.ts` **2**
+(`unified-signatures`), `src/msm/dateMap.ts` **2** (`no-non-null-assertion`),
+`src/mei/mpmNoteIds.ts` **1**. 21+2+2+1 = 26; 26+44 = 70. Nothing vanished unexplained.
+
+In `tests/`, `tests/mei/Helper.test.ts`'s 7 `no-empty-function` moved with their describe
+blocks: **5** to `tests/compat/unsupported.test.ts`, **2** to `tests/music/pitch.test.ts`.
+Repo test-side total is unchanged.
 
 ### tests — 86
 `no-empty-function` 54, `no-unused-vars` 18, `no-explicit-any` 12,
 `no-unsafe-function-type` 2. Concentrated in `tests/mei/Mei.test.ts` (24),
-`tests/mpm/Mpm.test.ts` (10), `tests/mei/Helper.test.ts` (7).
+`tests/mpm/Mpm.test.ts` (10), `tests/mei/Helper.test.ts` (7 — split by T14 into
+`tests/compat/unsupported.test.ts` 5 and `tests/music/pitch.test.ts` 2).
 (88 → 86 in T20b: the two unused-import errors in `tests/mpm/elements/MovementMap.test.ts`
 went away because the new round-trip tests actually use `Element` and `Attribute`.)
 (93 → 88 in T3: the 4 removed stub tests took 5 `vi.spyOn(...).mockImplementation(() => {})`

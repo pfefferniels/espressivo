@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
-import { Helper } from '../../../mei/Helper.js';
+import { attribute } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 
 /**
@@ -48,12 +48,12 @@ export class RelatedResource extends AbstractXmlSubtree {
     if (xml === null)
       throw new Error('Cannot generate RelatedResource object. XML Element is null.');
     this.setXml(xml);
-    this.uri = Helper.getAttribute('uri', xml);
+    this.uri = attribute('uri', xml);
     if (this.uri === null) {
       this.uri = new Attribute('uri', '');
       this.getXml()!.addAttribute(this.uri);
     }
-    this.type = Helper.getAttribute('type', xml);
+    this.type = attribute('type', xml);
     if (this.type === null) {
       this.type = new Attribute('type', '');
       this.getXml()!.addAttribute(this.type);

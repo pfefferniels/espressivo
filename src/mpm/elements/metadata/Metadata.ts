@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
-import { Helper } from '../../../mei/Helper.js';
+import { allChildElements, firstChildElement } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { Author } from './Author.js';
 import { Comment } from './Comment.js';
@@ -140,12 +140,10 @@ export class Metadata extends AbstractXmlSubtree {
           break;
         }
         case 'relatedResources': {
-          const resources = Helper.getAllChildElements('resource', child);
-          if (resources) {
-            for (const resource of resources) {
-              const r = RelatedResource.createRelatedResource(resource);
-              if (r !== null) this.relatedResources.push(r);
-            }
+          const resources = allChildElements(child, 'resource');
+          for (const resource of resources) {
+            const r = RelatedResource.createRelatedResource(resource);
+            if (r !== null) this.relatedResources.push(r);
           }
           break;
         }
@@ -218,7 +216,7 @@ export class Metadata extends AbstractXmlSubtree {
    */
   addRelatedResource(relatedResource: RelatedResource): number {
     if (relatedResource === null) return -1;
-    let rrElt = Helper.getFirstChildElement('relatedResources', this.getXml()!);
+    let rrElt = firstChildElement('relatedResources', this.getXml()!);
     if (rrElt === null) {
       rrElt = new Element('relatedResources', Mpm.MPM_NAMESPACE);
       this.getXml()!.appendChild(rrElt);
@@ -238,7 +236,7 @@ export class Metadata extends AbstractXmlSubtree {
   }
   removeRelatedResource(relatedResource: RelatedResource | null): void {
     if (relatedResource === null) return;
-    const rrElt = Helper.getFirstChildElement('relatedResources', this.getXml()!);
+    const rrElt = firstChildElement('relatedResources', this.getXml()!);
     if (rrElt === null) return;
     rrElt.removeChild(relatedResource.getXml()!);
     const idx = this.relatedResources.indexOf(relatedResource);

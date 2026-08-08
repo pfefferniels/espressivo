@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { Helper } from '../../../mei/Helper.js';
+import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { RandomNumberProvider } from '../../../supplementary/RandomNumberProvider.js';
@@ -369,7 +369,7 @@ export class ImprecisionMap extends GenericMap {
 
         if (mapEntry.getKey() >= dd.endDate!) break;
 
-        const msDateAtt = Helper.getAttribute('milliseconds.date', mapEntry.getValue());
+        const msDateAtt = attribute('milliseconds.date', mapEntry.getValue());
         if (msDateAtt === null) continue;
 
         let msDate: number;
@@ -382,12 +382,12 @@ export class ImprecisionMap extends GenericMap {
             index = msDate / dd.millisecondsTimingBasis;
             offset = new KeyValue(random.getValue(index), msDateAtt);
 
-            const msEndAtt = Helper.getAttribute('milliseconds.date.end', mapEntry.getValue());
+            const msEndAtt = attribute('milliseconds.date.end', mapEntry.getValue());
             if (msEndAtt !== null) {
               const msDateEnd = parseFloat(msEndAtt.getValue());
               pendingDurations.push({
                 endDate: parseFloat(
-                  Helper.getAttributeValue('milliseconds.date.end', mapEntry.getValue()),
+                  getAttributeValue('milliseconds.date.end', mapEntry.getValue()),
                 ),
                 msDateEnd: msDateEnd,
                 attribute: msEndAtt,
@@ -396,7 +396,7 @@ export class ImprecisionMap extends GenericMap {
             break;
           }
           case ImprecisionMap.TONEDURATION: {
-            const msEndAtt = Helper.getAttribute('milliseconds.date.end', mapEntry.getValue());
+            const msEndAtt = attribute('milliseconds.date.end', mapEntry.getValue());
             if (msEndAtt !== null) {
               msDate = parseFloat(msEndAtt.getValue());
               index = msDate / dd.millisecondsTimingBasis;
@@ -407,7 +407,7 @@ export class ImprecisionMap extends GenericMap {
             break;
           }
           case ImprecisionMap.DYNAMICS: {
-            const velAtt = Helper.getAttribute('velocity', mapEntry.getValue());
+            const velAtt = attribute('velocity', mapEntry.getValue());
             if (velAtt === null) continue;
             msDate = parseFloat(msDateAtt.getValue());
             index = msDate / dd.millisecondsTimingBasis;
@@ -417,7 +417,7 @@ export class ImprecisionMap extends GenericMap {
           case ImprecisionMap.TUNING: {
             msDate = parseFloat(msDateAtt.getValue());
             index = msDate / dd.millisecondsTimingBasis;
-            let tuneAtt = Helper.getAttribute('tuning.offset', mapEntry.getValue());
+            let tuneAtt = attribute('tuning.offset', mapEntry.getValue());
             if (tuneAtt === null) {
               tuneAtt = new Attribute('tuning.offset', '0.0');
               mapEntry.getValue().addAttribute(tuneAtt);
@@ -488,7 +488,7 @@ export class ImprecisionMap extends GenericMap {
   ): number | null {
     if (ddPrev === null || randomPrev === null) return null;
 
-    const ddMsDateEndAtt = Helper.getAttribute('milliseconds.date', ddNext.xml);
+    const ddMsDateEndAtt = attribute('milliseconds.date', ddNext.xml);
     if (ddMsDateEndAtt === null) return null;
 
     const ddMsDateEnd = parseFloat(ddMsDateEndAtt.getValue());
@@ -540,7 +540,7 @@ export class ImprecisionMap extends GenericMap {
       const keeper = entries[keepOffset];
       const keeperParent = keeper.getValue().getParent();
       if (keeperParent !== null) {
-        const pitchAtt = Helper.getAttribute('midi.pitch', keeperParent);
+        const pitchAtt = attribute('midi.pitch', keeperParent);
         if (pitchAtt !== null) {
           const pitch = parseFloat(pitchAtt.getValue());
           pitchOffsetTuplet.set(pitch, keeper.getKey());
@@ -556,7 +556,7 @@ export class ImprecisionMap extends GenericMap {
         const entryParent = entry.getValue().getParent();
         let pitchAtt: Attribute | null = null;
         if (entryParent !== null) {
-          pitchAtt = Helper.getAttribute('midi.pitch', entryParent);
+          pitchAtt = attribute('midi.pitch', entryParent);
           if (pitchAtt !== null) {
             const pitch = parseFloat(pitchAtt.getValue());
             const existingOffset = pitchOffsetTuplet.get(pitch);

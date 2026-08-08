@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { Helper } from '../../../mei/Helper.js';
+import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
@@ -62,26 +62,26 @@ export class MetricalAccentuationMap extends GenericMap {
     const e = this.elements[i].getValue();
     if (e.getLocalName() !== 'accentuationPattern') return null;
     const md = new MetricalAccentuationData();
-    const nameRefAtt = Helper.getAttribute('name.ref', e);
+    const nameRefAtt = attribute('name.ref', e);
     if (nameRefAtt === null) return null;
     md.accentuationPatternDefName = nameRefAtt.getValue();
-    const scaleAtt = Helper.getAttribute('scale', e);
+    const scaleAtt = attribute('scale', e);
     if (scaleAtt === null) return null;
     md.scale = parseFloat(scaleAtt.getValue());
     md.startDate = this.elements[i].getKey();
     md.endDate = this.getEndDate(i);
     md.xml = e;
-    const att = Helper.getAttribute('id', e);
+    const att = attribute('id', e);
     if (att !== null) md.xmlId = att.getValue();
-    const loopAtt = Helper.getAttribute('loop', e);
+    const loopAtt = attribute('loop', e);
     if (loopAtt !== null) md.loop = loopAtt.getValue() === 'true';
-    const stmAtt = Helper.getAttribute('stickToMeasures', e);
+    const stmAtt = attribute('stickToMeasures', e);
     if (stmAtt !== null) md.stickToMeasures = stmAtt.getValue() === 'true';
     md.styleName = '';
     for (let j = i; j >= 0; --j) {
       const s = this.elements[j].getValue();
       if (s.getLocalName() === 'style') {
-        md.styleName = Helper.getAttributeValue('name.ref', s);
+        md.styleName = getAttributeValue('name.ref', s);
         break;
       }
     }
@@ -143,7 +143,7 @@ export class MetricalAccentuationMap extends GenericMap {
       for (; mapIndex < map.size(); ++mapIndex) {
         const mapEntry = map.elements[mapIndex];
         if (mapEntry.getKey() < md.startDate) continue;
-        const velocityAtt = Helper.getAttribute('velocity', mapEntry.getValue());
+        const velocityAtt = attribute('velocity', mapEntry.getValue());
         if (velocityAtt === null) continue;
         if (timeSignatureMap !== null) {
           let update = false;
@@ -155,8 +155,8 @@ export class MetricalAccentuationMap extends GenericMap {
           if (update) {
             const timeSign = timeSignatureMap.getAllElements()[timeSignIndex];
             tsDate = timeSign.getKey();
-            tsNumerator = parseFloat(Helper.getAttributeValue('numerator', timeSign.getValue()));
-            tsDenominator = parseInt(Helper.getAttributeValue('denominator', timeSign.getValue()));
+            tsNumerator = parseFloat(getAttributeValue('numerator', timeSign.getValue()));
+            tsDenominator = parseInt(getAttributeValue('denominator', timeSign.getValue()));
             ticksPerBeat = ppq4 / tsDenominator;
             tickLengthOfOneMeasure = ticksPerBeat * tsNumerator;
             patternLengthTicks = (md.accentuationPatternDef!.getLength() * ppq4) / tsDenominator;

@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { Helper } from '../../../mei/Helper.js';
+import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
@@ -107,36 +107,36 @@ export class RubatoMap extends GenericMap {
     rd.startDate = this.elements[i].getKey();
     rd.endDate = this.getEndDate(i);
     rd.xml = e;
-    const att = Helper.getAttribute('id', e);
+    const att = attribute('id', e);
     if (att !== null) rd.xmlId = att.getValue();
     for (let j = i; j >= 0; --j) {
       const s = this.elements[j].getValue();
       if (s.getLocalName() === 'style') {
-        rd.styleName = Helper.getAttributeValue('name.ref', s);
+        rd.styleName = getAttributeValue('name.ref', s);
         break;
       }
     }
     rd.style = this.getStyle(Mpm.RUBATO_STYLE, rd.styleName) as RubatoStyle | null;
     if (rd.style !== null) {
-      const nrAtt = Helper.getAttribute('name.ref', e);
+      const nrAtt = attribute('name.ref', e);
       if (nrAtt !== null) {
         rd.rubatoDefString = nrAtt.getValue();
         rd.rubatoDef = rd.style.getDef(rd.rubatoDefString) ?? null;
       }
     }
-    const flAtt = Helper.getAttribute('frameLength', e);
+    const flAtt = attribute('frameLength', e);
     if (flAtt !== null) rd.frameLength = parseFloat(flAtt.getValue());
     else if (rd.rubatoDef !== null) rd.frameLength = rd.rubatoDef.getFrameLength();
     else return null;
-    const loopAtt = Helper.getAttribute('loop', e);
+    const loopAtt = attribute('loop', e);
     if (loopAtt !== null) rd.loop = loopAtt.getValue() === 'true';
-    const intAtt = Helper.getAttribute('intensity', e);
+    const intAtt = attribute('intensity', e);
     if (intAtt !== null) rd.intensity = parseFloat(intAtt.getValue());
     else if (rd.rubatoDef !== null) rd.intensity = rd.rubatoDef.getIntensity();
-    const lsAtt = Helper.getAttribute('lateStart', e);
+    const lsAtt = attribute('lateStart', e);
     if (lsAtt !== null) rd.lateStart = parseFloat(lsAtt.getValue());
     else if (rd.rubatoDef !== null) rd.lateStart = rd.rubatoDef.getLateStart();
-    const eeAtt = Helper.getAttribute('earlyEnd', e);
+    const eeAtt = attribute('earlyEnd', e);
     if (eeAtt !== null) rd.earlyEnd = parseFloat(eeAtt.getValue());
     else if (rd.rubatoDef !== null) rd.earlyEnd = rd.rubatoDef.getEarlyEnd();
     // ensure boundaries
@@ -209,19 +209,19 @@ export class RubatoMap extends GenericMap {
         )
           break;
 
-        const dateAtt = Helper.getAttribute('date.perf', mapEntry.getValue());
+        const dateAtt = attribute('date.perf', mapEntry.getValue());
         if (dateAtt !== null)
           dateAtt.setValue(
             String(RubatoMap.computeRubatoTransformation(parseFloat(dateAtt.getValue()), rd)),
           );
 
-        let dateEndAtt = Helper.getAttribute('date.end.perf', mapEntry.getValue());
+        let dateEndAtt = attribute('date.end.perf', mapEntry.getValue());
         if (dateEndAtt !== null) {
           const endDate = parseFloat(dateEndAtt.getValue());
           pendingDurations.push(new KeyValue(endDate, dateEndAtt));
           continue;
         }
-        const durAtt = Helper.getAttribute('duration.perf', mapEntry.getValue());
+        const durAtt = attribute('duration.perf', mapEntry.getValue());
         if (durAtt !== null) {
           const endDate = mapEntry.getKey() + parseFloat(durAtt.getValue());
           dateEndAtt = new Attribute('date.end.perf', String(endDate));

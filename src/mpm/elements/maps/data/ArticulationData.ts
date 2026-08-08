@@ -1,5 +1,6 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
-import { Helper } from '../../../../mei/Helper.js';
+import { addToListAttribute } from '../../../../xml/ids.js';
+import { attribute } from '../../../../xml/tree.js';
 import type { ArticulationStyle } from '../../styles/ArticulationStyle.js';
 import type { ArticulationDef } from '../../styles/defs/ArticulationDef.js';
 
@@ -157,37 +158,37 @@ export class ArticulationData {
     let dateChanged = false;
     if (this.articulationDef !== null) dateChanged = this.articulationDef.articulateNote(note);
 
-    const dateAtt = Helper.getAttribute('date.perf', note);
+    const dateAtt = attribute('date.perf', note);
     if (dateAtt !== null) {
       if (this.absoluteDelay !== 0.0) {
         dateAtt.setValue(String(parseFloat(dateAtt.getValue()) + this.absoluteDelay));
-        Helper.addToListAttribute(note, 'modified', this.xmlId);
+        addToListAttribute(note, 'modified', this.xmlId);
         dateChanged = true;
       }
       if (this.absoluteDelayMs !== 0.0) {
         note.addAttribute(
           new Attribute('articulation.absoluteDelayMs', String(this.absoluteDelayMs)),
         );
-        Helper.addToListAttribute(note, 'modified', this.xmlId);
+        addToListAttribute(note, 'modified', this.xmlId);
       }
     }
 
-    const durationAtt = Helper.getAttribute('duration.perf', note);
+    const durationAtt = attribute('duration.perf', note);
     if (durationAtt !== null) {
       const duration = parseFloat(durationAtt.getValue());
       if (this.absoluteDurationMs !== null) {
         note.addAttribute(
           new Attribute('articulation.absoluteDurationMs', String(this.absoluteDurationMs)),
         );
-        Helper.addToListAttribute(note, 'modified', this.xmlId);
+        addToListAttribute(note, 'modified', this.xmlId);
       } else {
         if (this.absoluteDuration !== null) {
           durationAtt.setValue(String(this.absoluteDuration));
-          Helper.addToListAttribute(note, 'modified', this.xmlId);
+          addToListAttribute(note, 'modified', this.xmlId);
         }
         if (this.relativeDuration !== 1.0) {
           durationAtt.setValue(String(duration * this.relativeDuration));
-          Helper.addToListAttribute(note, 'modified', this.xmlId);
+          addToListAttribute(note, 'modified', this.xmlId);
         }
         // DELIBERATE DIVERGENCE #1 — refactor item TD1; ARCHITECTURE.md §6.3 row P3, §8.0.
         // Java writes this loop as `for (double reduce = 2.0; durNew >= 0.0; reduce *= 2.0)`
@@ -214,7 +215,7 @@ export class ArticulationData {
             for (let reduce = 2.0; durNew <= 0.0; reduce *= 2.0)
               durNew = duration + this.absoluteDurationChange / reduce;
             durationAtt.setValue(String(durNew));
-            Helper.addToListAttribute(note, 'modified', this.xmlId);
+            addToListAttribute(note, 'modified', this.xmlId);
           }
         }
       }
@@ -225,35 +226,35 @@ export class ArticulationData {
             String(this.absoluteDurationChangeMs),
           ),
         );
-        Helper.addToListAttribute(note, 'modified', this.xmlId);
+        addToListAttribute(note, 'modified', this.xmlId);
       }
     }
 
-    const velocityAtt = Helper.getAttribute('velocity', note);
+    const velocityAtt = attribute('velocity', note);
     if (velocityAtt !== null) {
       if (this.absoluteVelocity !== null) {
         velocityAtt.setValue(String(this.absoluteVelocity));
-        Helper.addToListAttribute(note, 'modified', this.xmlId);
+        addToListAttribute(note, 'modified', this.xmlId);
       }
       if (this.relativeVelocity !== 1.0) {
         velocityAtt.setValue(String(parseFloat(velocityAtt.getValue()) * this.relativeVelocity));
-        Helper.addToListAttribute(note, 'modified', this.xmlId);
+        addToListAttribute(note, 'modified', this.xmlId);
       }
       if (this.absoluteVelocityChange !== 0.0) {
         velocityAtt.setValue(
           String(parseFloat(velocityAtt.getValue()) + this.absoluteVelocityChange),
         );
-        Helper.addToListAttribute(note, 'modified', this.xmlId);
+        addToListAttribute(note, 'modified', this.xmlId);
       }
     }
 
     if (this.detuneCents !== 0.0) {
       note.addAttribute(new Attribute('detuneCents', String(this.detuneCents)));
-      Helper.addToListAttribute(note, 'modified', this.xmlId);
+      addToListAttribute(note, 'modified', this.xmlId);
     }
     if (this.detuneHz !== 0.0) {
       note.addAttribute(new Attribute('detuneHz', String(this.detuneHz)));
-      Helper.addToListAttribute(note, 'modified', this.xmlId);
+      addToListAttribute(note, 'modified', this.xmlId);
     }
 
     return dateChanged;

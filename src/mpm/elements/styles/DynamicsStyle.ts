@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { Helper } from '../../../mei/Helper.js';
+import { allChildElements } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { GenericStyle } from './GenericStyle.js';
 import { DynamicsDef } from './defs/DynamicsDef.js';
@@ -36,7 +36,7 @@ export class DynamicsStyle extends GenericStyle<DynamicsDef> {
   /** Defs that fail to parse are skipped, so one malformed child cannot lose the style. */
   protected parseData(xml: Element): void {
     super.parseData(xml);
-    for (const def of Helper.getAllChildElements('dynamicsDef', xml) ?? []) {
+    for (const def of allChildElements(xml, 'dynamicsDef')) {
       const dd = DynamicsDef.createDynamicsDef(def);
       if (dd === null) continue;
       this.defs.set(dd.getName(), dd);

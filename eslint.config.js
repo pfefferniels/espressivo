@@ -39,11 +39,13 @@ export default tseslint.config(
     rules: {
       // --- Style decisions codified for the refactor (see refactor/state.json T2) ---
 
-      // `===` everywhere. No `null: 'ignore'` exemption yet: the `x == null`
-      // idiom is fine in isolation, but every loose comparison in this port has to
-      // be read against T12's null-vs-undefined policy before it is blessed or
-      // rewritten, so they all stay visible in the debt report until then.
-      eqeqeq: 'error',
+      // `===` everywhere, except `x == null`. T12 settled the null-vs-undefined policy
+      // (ARCHITECTURE.md RULE N5) and blessed that one idiom: in TypeScript it is the
+      // correct test for "null or undefined", and it is load-bearing here because the XOM
+      // layer returns `null` on some paths and `undefined` on others. Rewriting any of
+      // these to `=== null` introduces a bug. T14 applied the relaxation and edited not one
+      // comparison.
+      eqeqeq: ['error', 'always', { null: 'ignore' }],
 
       'no-var': 'error',
       'prefer-const': 'error',

@@ -1,5 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { Helper } from '../../../mei/Helper.js';
+import { addToListAttribute } from '../../../xml/ids.js';
+import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
@@ -41,7 +42,7 @@ export class AsynchronyMap extends GenericMap {
     if (i < 0) return 0.0;
     while (!this.elements[i].getValue().getLocalName().includes('asynchrony'))
       if (--i < 0) return 0.0;
-    return parseFloat(Helper.getAttributeValue('milliseconds.offset', this.elements[i].getValue()));
+    return parseFloat(getAttributeValue('milliseconds.offset', this.elements[i].getValue()));
   }
 
   /**
@@ -65,24 +66,24 @@ export class AsynchronyMap extends GenericMap {
     const done: KeyValue<number, Element>[] = [];
     for (let asynIndex = 0; asynIndex < this.size(); ++asynIndex) {
       const asynElement = this.getElement(asynIndex)!;
-      const xmlId = Helper.getAttributeValue('xml:id', asynElement);
+      const xmlId = getAttributeValue('xml:id', asynElement);
       const asynEndDate =
         asynIndex < this.elements.length - 1
           ? this.elements[asynIndex + 1].getKey()
           : Number.MAX_VALUE;
-      const offset = parseFloat(Helper.getAttributeValue('milliseconds.offset', asynElement));
+      const offset = parseFloat(getAttributeValue('milliseconds.offset', asynElement));
       for (const mapEntry of mapEntries) {
         if (mapEntry.getKey() >= asynEndDate) break;
         let startDateMs = 0.0;
         if (mapEntry.getKey() >= this.elements[asynIndex].getKey()) {
-          const att = Helper.getAttribute('milliseconds.date', mapEntry.getValue());
+          const att = attribute('milliseconds.date', mapEntry.getValue());
           if (att !== null) {
             startDateMs = Math.max(0.0, parseFloat(att.getValue()) + offset);
             att.setValue(String(startDateMs));
-            Helper.addToListAttribute(mapEntry.getValue(), 'modified', xmlId);
+            addToListAttribute(mapEntry.getValue(), 'modified', xmlId);
           }
         }
-        const dur = Helper.getAttribute('duration', mapEntry.getValue());
+        const dur = attribute('duration', mapEntry.getValue());
         if (dur === null) {
           done.push(mapEntry);
           continue;
@@ -90,11 +91,11 @@ export class AsynchronyMap extends GenericMap {
         const end = parseFloat(dur.getValue()) + mapEntry.getKey();
         if (end >= asynEndDate) continue;
         if (end >= this.elements[asynIndex].getKey()) {
-          const att = Helper.getAttribute('milliseconds.date.end', mapEntry.getValue());
+          const att = attribute('milliseconds.date.end', mapEntry.getValue());
           if (att !== null) {
             const ms = parseFloat(att.getValue()) + offset;
             att.setValue(String(Math.max(ms, startDateMs + 1)));
-            Helper.addToListAttribute(mapEntry.getValue(), 'modified', xmlId);
+            addToListAttribute(mapEntry.getValue(), 'modified', xmlId);
           }
         }
         done.push(mapEntry);

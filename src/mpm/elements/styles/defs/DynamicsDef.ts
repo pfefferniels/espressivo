@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
-import { Helper } from '../../../../mei/Helper.js';
+import { attribute } from '../../../../xml/tree.js';
 import { Mpm } from '../../../../mpm/Mpm.js';
 import { AbstractDef } from './AbstractDef.js';
 
@@ -32,7 +32,7 @@ export class DynamicsDef extends AbstractDef {
 
   private parseDataInternal(xml: Element): void {
     super.parseData(xml);
-    const valueAttr = Helper.getAttribute('value', xml);
+    const valueAttr = attribute('value', xml);
     if (valueAttr === null)
       throw new Error('Cannot generate DynamicsDef object. Missing value attribute.');
     this.value = parseFloat(valueAttr.getValue());

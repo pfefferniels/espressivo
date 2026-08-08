@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Mei } from '../../src/mei/Mei.js';
-import { Helper } from '../../src/mei/Helper.js';
+import { getAttributeValue } from '../../src/xml/tree.js';
 import { Document, Element, Attribute, Builder } from '../../src/xml/XomTypes.js';
 
 /** put the given markup into a minimal but complete MEI score, inside measure 1 / staff 1 / layer 1 */
@@ -167,7 +167,7 @@ describe('Mei – getTitle', () => {
 
   it('should not reach the workList fallback, because the lookup never throws', () => {
     // Java guards the fileDesc lookup with catch(NullPointerException), but
-    // Helper.getFirstChildElement returns null for a null parent instead of
+    // firstChildElement returns null for a null parent instead of
     // throwing (Helper.java:83-84), so the workDesc/workList branches are
     // unreachable there as well and the file name fallback wins.
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -683,7 +683,7 @@ describe('Mei – resolveExpansions', () => {
     const order: string[] = [];
     const children = top.getChildElements();
     for (let i = 0; i < children.size(); ++i) {
-      order.push(Helper.getAttributeValue('id', children.get(i)));
+      order.push(getAttributeValue('id', children.get(i)));
     }
     return order;
   };

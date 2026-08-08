@@ -8,10 +8,14 @@ export default defineConfig({
       // Scope: this port exists for MEI / MSM+MPM => MIDI rendering.
       // Format conversions (MusicXML, MIDI->MSM, MEI->MusicXML), audio,
       // playback, chroma/pitches and SVG are explicitly out of scope.
+      // T14 mechanical path update: `Meico.ts` became `version.ts` (RULE M6) and
+      // `mei/Helper.ts` dissolved into `xml/`, `music/`, `msm/dateMap.ts`,
+      // `mei/mpmNoteIds.ts` and `compat/` (§8.2). Same code, same scope — the `xml/**`
+      // and `msm/**` globs already cover their share.
       include: [
-        'src/Meico.ts',
+        'src/version.ts',
         'src/mei/Mei.ts',
-        'src/mei/Helper.ts',
+        'src/mei/mpmNoteIds.ts',
         'src/mei/Mei2MsmMpmConverter.ts',
         'src/msm/**/*.ts',
         'src/mpm/**/*.ts',
@@ -20,6 +24,8 @@ export default defineConfig({
         'src/midi/EventMaker.ts',
         'src/midi/InstrumentsDictionary.ts',
         'src/xml/**/*.ts',
+        'src/music/**/*.ts',
+        'src/compat/**/*.ts',
         'src/supplementary/KeyValue.ts',
         'src/supplementary/RandomNumberProvider.ts',
       ],

@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
-import { Helper } from '../../../../mei/Helper.js';
+import { attribute } from '../../../../xml/tree.js';
 
 /**
  * Common base of every MPM `*Def` element (tempoDef, dynamicsDef, articulationDef, …).
@@ -21,13 +21,13 @@ export abstract class AbstractDef extends AbstractXmlSubtree {
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate AbstractDef object. XML Element is null.');
 
-    const name = Helper.getAttribute('name', xml);
+    const name = attribute('name', xml);
     if (name === null)
       throw new Error('Cannot generate AbstractDef object. Missing name attribute.');
     this.name = name;
 
     this.setXml(xml);
-    this.id = Helper.getAttribute('id', xml);
+    this.id = attribute('id', xml);
   }
 
   getName(): string {

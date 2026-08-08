@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
-import { Helper } from '../../../../mei/Helper.js';
+import { attribute } from '../../../../xml/tree.js';
 import { Mpm } from '../../../../mpm/Mpm.js';
 import { AbstractDef } from './AbstractDef.js';
 
@@ -48,7 +48,7 @@ export class ArticulationDef extends AbstractDef {
 
     // null = attribute absent, so the field keeps its default; NaN = present but unparsable
     const numeric = (name: string): number | null => {
-      const a = Helper.getAttribute(name, xml);
+      const a = attribute(name, xml);
       return a === null ? null : parseFloat(a.getValue());
     };
 
@@ -106,7 +106,7 @@ export class ArticulationDef extends AbstractDef {
    * programmatically without touching the XML.
    */
   resetAttribute(name: string): void {
-    const a = Helper.getAttribute(name, this.getXml()!);
+    const a = attribute(name, this.getXml()!);
     if (a === null) return;
     this.getXml()!.removeAttribute(a);
     switch (name) {
@@ -342,7 +342,7 @@ export class ArticulationDef extends AbstractDef {
     if (note === null) return false;
     let dateChanged = false;
 
-    const durationAtt = Helper.getAttribute('duration.perf', note);
+    const durationAtt = attribute('duration.perf', note);
     if (durationAtt !== null) {
       if (this.absoluteDurationMs !== null) {
         note.addAttribute(
@@ -371,7 +371,7 @@ export class ArticulationDef extends AbstractDef {
         );
     }
 
-    const dateAtt = Helper.getAttribute('date.perf', note);
+    const dateAtt = attribute('date.perf', note);
     if (dateAtt !== null) {
       if (this.absoluteDelay !== 0.0) {
         dateAtt.setValue(String(parseFloat(dateAtt.getValue()) + this.absoluteDelay));
@@ -383,7 +383,7 @@ export class ArticulationDef extends AbstractDef {
         );
     }
 
-    const velocityAtt = Helper.getAttribute('velocity', note);
+    const velocityAtt = attribute('velocity', note);
     if (velocityAtt !== null) {
       if (this.absoluteVelocity !== null) velocityAtt.setValue(String(this.absoluteVelocity));
       if (this.relativeVelocity !== 1.0)

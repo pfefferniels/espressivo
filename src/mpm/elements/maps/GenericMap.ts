@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
-import { Helper } from '../../../mei/Helper.js';
+import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { Header } from '../Header.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericStyle } from '../styles/GenericStyle.js';
@@ -142,9 +142,9 @@ export class GenericMap extends AbstractXmlSubtree {
     const es = this.getXml()!.getChildElements();
     for (let i = 0; i < es.size(); ++i) {
       const e = es.get(i);
-      const d = Helper.getAttribute('date', e);
+      const d = attribute('date', e);
       if (d === null) continue;
-      if (e.getLocalName() === 'style' && Helper.getAttribute('name.ref', e) === null) continue;
+      if (e.getLocalName() === 'style' && attribute('name.ref', e) === null) continue;
       const date = parseFloat(d.getValue());
       let index = 0;
       for (let j = this.elements.length - 1; j >= 0; --j) {
@@ -156,7 +156,7 @@ export class GenericMap extends AbstractXmlSubtree {
       this.elements.splice(index, 0, new KeyValue(date, e));
     }
     this.sortXml();
-    this.id = Helper.getAttribute('id', this.getXml()!);
+    this.id = attribute('id', this.getXml()!);
   }
 
   /**
@@ -187,7 +187,7 @@ export class GenericMap extends AbstractXmlSubtree {
    */
   sort(): void {
     for (const e of this.elements) {
-      const date = parseFloat(Helper.getAttributeValue('date', e.getValue()));
+      const date = parseFloat(getAttributeValue('date', e.getValue()));
       if (e.getKey() !== date) e.setKey(date);
     }
     for (let i = 1; i < this.size(); ++i) {
@@ -286,7 +286,7 @@ export class GenericMap extends AbstractXmlSubtree {
   }
   getElementIndexByID(id: string): number {
     for (let i = 0; i < this.size(); ++i) {
-      const a = Helper.getAttribute('id', this.elements[i].getValue());
+      const a = attribute('id', this.elements[i].getValue());
       if (a !== null && a.getValue() === id) return i;
     }
     return -1;
@@ -466,7 +466,7 @@ export class GenericMap extends AbstractXmlSubtree {
   getStyleNameAt(date: number): string | null {
     const list = this.getAllElementsOfType('style');
     for (let i = list.length - 1; i >= 0; --i) {
-      if (list[i].getKey() <= date) return Helper.getAttributeValue('name.ref', list[i].getValue());
+      if (list[i].getKey() <= date) return getAttributeValue('name.ref', list[i].getValue());
     }
     return null;
   }
@@ -497,7 +497,7 @@ export class GenericMap extends AbstractXmlSubtree {
 
   updateAttributeValues(attributeName: string, valueMappings: Map<string, string>): void {
     for (const e of this.elements) {
-      const a = Helper.getAttribute(attributeName, e.getValue());
+      const a = attribute(attributeName, e.getValue());
       if (a === null) continue;
       const newValue = valueMappings.get(a.getValue());
       if (newValue !== undefined) a.setValue(newValue);

@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { Helper } from '../../../mei/Helper.js';
+import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
@@ -108,12 +108,12 @@ export class ArticulationMap extends GenericMap {
     const ad = new ArticulationData();
     ad.xml = e;
     ad.date = this.elements[i].getKey();
-    const att = Helper.getAttribute('xml:id', e);
+    const att = attribute('xml:id', e);
     if (att !== null) ad.xmlId = att.getValue();
-    const nidAtt = Helper.getAttribute('noteid', e);
+    const nidAtt = attribute('noteid', e);
     if (nidAtt !== null) ad.noteid = nidAtt.getValue().substring(1);
     this.findStyle(i, ad);
-    const nrAtt = Helper.getAttribute('name.ref', e);
+    const nrAtt = attribute('name.ref', e);
     if (nrAtt !== null) {
       ad.articulationDefName = nrAtt.getValue();
       if (ad.style !== null) ad.articulationDef = ad.style.getDef(ad.articulationDefName) ?? null;
@@ -125,9 +125,9 @@ export class ArticulationMap extends GenericMap {
     for (let j = index; j >= 0; --j) {
       const s = this.elements[j].getValue();
       if (s.getLocalName() === 'style') {
-        ad.styleName = Helper.getAttributeValue('name.ref', s);
+        ad.styleName = getAttributeValue('name.ref', s);
         ad.style = this.getStyle(Mpm.ARTICULATION_STYLE, ad.styleName) as ArticulationStyle | null;
-        const att = Helper.getAttribute('defaultArticulation', s);
+        const att = attribute('defaultArticulation', s);
         if (att !== null) {
           ad.defaultArticulation = att.getValue();
           if (ad.style !== null)
@@ -202,14 +202,11 @@ export class ArticulationMap extends GenericMap {
     for (const styleEntry of styleSwitchList) {
       const aStyle = this.getStyle(
         Mpm.ARTICULATION_STYLE,
-        Helper.getAttributeValue('name.ref', styleEntry.getValue()),
+        getAttributeValue('name.ref', styleEntry.getValue()),
       ) as ArticulationStyle | null;
       if (aStyle === null) continue;
 
-      const defaultArticulationAtt = Helper.getAttribute(
-        'defaultArticulation',
-        styleEntry.getValue(),
-      );
+      const defaultArticulationAtt = attribute('defaultArticulation', styleEntry.getValue());
       if (defaultArticulationAtt === null) {
         defaultArticulations.push(
           new KeyValue<number, ArticulationDef | null>(styleEntry.getKey(), null),
@@ -220,7 +217,7 @@ export class ArticulationMap extends GenericMap {
       const aDef = aStyle.getDef(defaultArticulationAtt.getValue()) ?? null;
       if (aDef === null)
         console.error(
-          `Warning: attribute ${Helper.getAttribute('defaultArticulation', styleEntry.getValue())!.toXML()} in style element refers to an unknown articulationDef.`,
+          `Warning: attribute ${attribute('defaultArticulation', styleEntry.getValue())!.toXML()} in style element refers to an unknown articulationDef.`,
         );
       defaultArticulations.push(
         new KeyValue<number, ArticulationDef | null>(styleEntry.getKey(), aDef),
@@ -283,26 +280,23 @@ export class ArticulationMap extends GenericMap {
   renderArticulationToMap_millisecondModifiers(map: GenericMap | null): void {
     if (map === null) return;
     for (const entry of map.elements) {
-      const dateAtt = Helper.getAttribute('milliseconds.date', entry.getValue());
+      const dateAtt = attribute('milliseconds.date', entry.getValue());
       if (dateAtt === null) continue;
       const date = parseFloat(dateAtt.getValue());
       let dateNew = date;
-      const endAtt = Helper.getAttribute('milliseconds.date.end', entry.getValue());
+      const endAtt = attribute('milliseconds.date.end', entry.getValue());
       let endNew = endAtt !== null ? parseFloat(endAtt.getValue()) : null;
-      const absoluteDelayMs = Helper.getAttribute('articulation.absoluteDelayMs', entry.getValue());
+      const absoluteDelayMs = attribute('articulation.absoluteDelayMs', entry.getValue());
       if (absoluteDelayMs !== null) {
         dateNew += parseFloat(absoluteDelayMs.getValue());
         entry.getValue().removeAttribute(absoluteDelayMs);
       }
-      const absoluteDurationMs = Helper.getAttribute(
-        'articulation.absoluteDurationMs',
-        entry.getValue(),
-      );
+      const absoluteDurationMs = attribute('articulation.absoluteDurationMs', entry.getValue());
       if (absoluteDurationMs !== null) {
         if (endNew !== null) endNew = dateNew + parseFloat(absoluteDurationMs.getValue());
         entry.getValue().removeAttribute(absoluteDurationMs);
       }
-      const absoluteDurationChangeMs = Helper.getAttribute(
+      const absoluteDurationChangeMs = attribute(
         'articulation.absoluteDurationChangeMs',
         entry.getValue(),
       );

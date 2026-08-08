@@ -4,6 +4,54 @@
 // MIDI->MSM, MEI->MusicXML), audio, playback, chroma/pitches and SVG were
 // removed in T3 as out of scope; see refactor/log.md.
 
+import type { Element } from './xml/XomTypes.js';
+import {
+  allChildElements,
+  attribute,
+  cloneElement,
+  firstChildElement,
+  getAllDescendantsByName,
+  getAllDescendantsWithAttribute,
+  getAllPreviousSiblingElements,
+  getAttributeValue,
+  getClosest,
+  getClosestByAttr,
+  getNextSiblingElement,
+  getPreviousSiblingElement,
+  parentElement,
+} from './xml/tree.js';
+import { addToListAttribute, addUUID, copyId, copyIdNoNs } from './xml/ids.js';
+import { prettyXml } from './xml/prettyPrint.js';
+import {
+  accidDecimal2String,
+  accidDecimal2unicodeString,
+  accidString2decimal,
+  accidString2word,
+  midi2PnameAccidOct,
+  midi2PnameAndAccid,
+  midi2pname,
+  pname2midi,
+} from './music/pitch.js';
+import {
+  decimalDuration2HtmlUnicode,
+  duration2decimal,
+  duration2word,
+  pulseDuration2decimal,
+} from './music/duration.js';
+import { extractAllIntegersFromString, getFilenameWithoutExtension } from './music/text.js';
+import { addToMap } from './msm/dateMap.js';
+import { updateMpmNoteidsAfterResolvingRepetitions } from './mei/mpmNoteIds.js';
+import {
+  makeXslt30Transformer,
+  makeXsltTransformer,
+  validateAgainstSchema,
+  validateAgainstSchemaString,
+  writeStringToFile,
+  xslTransformToDocument,
+  xslTransformToString,
+} from './compat/unsupported.js';
+import { VERSION } from './version.js';
+
 // Core XML types
 export {
   Element,
@@ -18,10 +66,22 @@ export {
 } from './xml/XomTypes.js';
 export { XmlBase } from './xml/XmlBase.js';
 export { AbstractXmlSubtree } from './xml/AbstractXmlSubtree.js';
+export { MeicoError, MissingNodeError } from './xml/errors.js';
+
+// The modules T14 split `mei/Helper` into (ARCHITECTURE.md §8.2). These are the API;
+// the `Helper` object at the bottom of this file is the compatibility shim.
+export * from './xml/tree.js';
+export * from './xml/ids.js';
+export * from './xml/prettyPrint.js';
+export * from './music/pitch.js';
+export * from './music/duration.js';
+export * from './music/text.js';
+export * from './msm/dateMap.js';
+export * from './mei/mpmNoteIds.js';
+export * from './compat/unsupported.js';
 
 // MEI
 export { Mei } from './mei/Mei.js';
-export { Helper } from './mei/Helper.js';
 export { Mei2MsmMpmConverter } from './mei/Mei2MsmMpmConverter.js';
 
 // MSM
@@ -40,4 +100,96 @@ export { InstrumentsDictionary } from './midi/InstrumentsDictionary.js';
 // Supplementary
 export { KeyValue } from './supplementary/KeyValue.js';
 export { RandomNumberProvider } from './supplementary/RandomNumberProvider.js';
-export { Meico } from './Meico.js';
+
+// Version. `Meico` was a class carrying a single static; RULE M6 turned it into the constant
+// `VERSION` and keeps this object so `Meico.version` still resolves for existing callers.
+export { VERSION } from './version.js';
+export const Meico = { version: VERSION } as const;
+
+/**
+ * `Helper.getAllChildElements` as it was before RULE N2b narrowed the module function:
+ * name-first overload, `Element[] | null` return, both guards. The narrowing is real and
+ * deliberate — this wrapper exists so it is not also an API break for callers of the
+ * {@link Helper} shim.
+ */
+function helperGetAllChildElements(name: string, ofThis: Element): Element[] | null;
+function helperGetAllChildElements(ofThis: Element): Element[] | null;
+function helperGetAllChildElements(
+  arg1: string | Element | null,
+  arg2?: Element | null,
+): Element[] | null {
+  if (arg1 === null || arg1 === undefined) return null;
+
+  if (typeof arg1 === 'string') {
+    const ofThis = arg2 as Element | null;
+    if (ofThis == null || arg1 === '') return null;
+    return allChildElements(ofThis, arg1);
+  }
+  return allChildElements(arg1);
+}
+
+/**
+ * Compatibility shim for the dissolved `mei/Helper` class (ARCHITECTURE.md RULE M2, §8.2).
+ *
+ * Every one of `Helper`'s 41 public statics is here under its original name, delegating to
+ * the module function it moved to, so code written against the published API keeps working.
+ * New code should import from `xml/tree.js`, `xml/ids.js`, `music/*.js` and friends directly
+ * — T22 marks this object deprecated.
+ *
+ * Four members changed shape in the move and the shim absorbs the difference:
+ * `getFirstChildElement`, `getAttribute` and `getParentElement` were renamed
+ * (`firstChildElement`, `attribute`, `parentElement`), and `getAllChildElements` was narrowed
+ * by RULE N2b — see {@link helperGetAllChildElements}.
+ */
+export const Helper = {
+  // xml/tree.js
+  getFirstChildElement: firstChildElement,
+  getAllChildElements: helperGetAllChildElements,
+  getAllDescendantsByName,
+  getAllDescendantsWithAttribute,
+  getNextSiblingElement,
+  getPreviousSiblingElement,
+  getAllPreviousSiblingElements,
+  cloneElement,
+  getAttribute: attribute,
+  getAttributeValue,
+  getParentElement: parentElement,
+  getClosest,
+  getClosestByAttr,
+  // xml/ids.js
+  addUUID,
+  copyId,
+  copyIdNoNs,
+  addToListAttribute,
+  // xml/prettyPrint.js
+  prettyXml,
+  // msm/dateMap.js
+  addToMap,
+  // music/text.js
+  extractAllIntegersFromString,
+  getFilenameWithoutExtension,
+  // music/duration.js
+  duration2decimal,
+  duration2word,
+  pulseDuration2decimal,
+  decimalDuration2HtmlUnicode,
+  // music/pitch.js
+  accidString2decimal,
+  accidDecimal2String,
+  accidString2word,
+  accidDecimal2unicodeString,
+  pname2midi,
+  midi2pname,
+  midi2PnameAndAccid,
+  midi2PnameAccidOct,
+  // mei/mpmNoteIds.js
+  updateMpmNoteidsAfterResolvingRepetitions,
+  // compat/unsupported.js
+  validateAgainstSchema,
+  validateAgainstSchemaString,
+  writeStringToFile,
+  xslTransformToDocument,
+  xslTransformToString,
+  makeXsltTransformer,
+  makeXslt30Transformer,
+} as const;

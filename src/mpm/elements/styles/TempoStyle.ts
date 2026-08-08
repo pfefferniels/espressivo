@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { Helper } from '../../../mei/Helper.js';
+import { allChildElements } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { GenericStyle } from './GenericStyle.js';
 import { TempoDef } from './defs/TempoDef.js';
@@ -36,7 +36,7 @@ export class TempoStyle extends GenericStyle<TempoDef> {
   /** Defs that fail to parse are skipped, so one malformed child cannot lose the style. */
   protected parseData(xml: Element): void {
     super.parseData(xml);
-    for (const def of Helper.getAllChildElements('tempoDef', xml) ?? []) {
+    for (const def of allChildElements(xml, 'tempoDef')) {
       const td = TempoDef.createTempoDef(def);
       if (td === null) continue;
       this.defs.set(td.getName(), td);

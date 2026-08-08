@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
-import { Helper } from '../../mei/Helper.js';
+import { attribute, firstChildElement } from '../../xml/tree.js';
 import { Mpm } from '../../mpm/Mpm.js';
 import { Header } from './Header.js';
 import { Dated } from './Dated.js';
@@ -90,18 +90,18 @@ export class Part extends AbstractXmlSubtree {
    */
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate Part object. XML Element is null.');
-    this.nameAttr = Helper.getAttribute('name', xml);
+    this.nameAttr = attribute('name', xml);
     if (this.nameAttr === null) {
       this.nameAttr = new Attribute('name', '');
       xml.addAttribute(this.nameAttr);
     }
-    const numberAttr = Helper.getAttribute('number', xml);
+    const numberAttr = attribute('number', xml);
     if (numberAttr === null || numberAttr.getValue() === '')
       throw new Error('Cannot generate Part object. Attribute number is missing or empty.');
-    const midiChannelAtt = Helper.getAttribute('midi.channel', xml);
+    const midiChannelAtt = attribute('midi.channel', xml);
     if (midiChannelAtt === null || midiChannelAtt.getValue() === '')
       throw new Error('Cannot generate Part object. Attribute midi.channel is missing or empty.');
-    const midiPortAtt = Helper.getAttribute('midi.port', xml);
+    const midiPortAtt = attribute('midi.port', xml);
     if (midiPortAtt === null || midiPortAtt.getValue() === '')
       throw new Error('Cannot generate Part object. Attribute midi.port is missing or empty.');
 
@@ -109,9 +109,9 @@ export class Part extends AbstractXmlSubtree {
     this.number = parseInt(numberAttr.getValue());
     this.midiChannel = parseInt(midiChannelAtt.getValue());
     this.midiPort = parseInt(midiPortAtt.getValue());
-    this.id = Helper.getAttribute('id', this.getXml()!);
+    this.id = attribute('id', this.getXml()!);
 
-    const headerElt = Helper.getFirstChildElement('header', this.getXml()!);
+    const headerElt = firstChildElement('header', this.getXml()!);
     if (headerElt === null) {
       this.header = Header.createHeader()!;
       this.getXml()!.appendChild(this.header.getXml()!);
@@ -119,7 +119,7 @@ export class Part extends AbstractXmlSubtree {
       this.header = Header.createHeader(headerElt);
     }
 
-    const datedElt = Helper.getFirstChildElement('dated', this.getXml()!);
+    const datedElt = firstChildElement('dated', this.getXml()!);
     if (datedElt === null) {
       this.dated = Dated.createDated()!;
       this.getXml()!.appendChild(this.dated.getXml()!);
@@ -149,21 +149,21 @@ export class Part extends AbstractXmlSubtree {
   }
   setNumber(number: number): void {
     this.number = number;
-    Helper.getAttribute('number', this.getXml()!)!.setValue(String(this.number));
+    attribute('number', this.getXml()!)!.setValue(String(this.number));
   }
   getMidiChannel(): number {
     return this.midiChannel;
   }
   setMidiChannel(midiChannel: number): void {
     this.midiChannel = midiChannel;
-    Helper.getAttribute('midi.channel', this.getXml()!)!.setValue(String(this.midiChannel));
+    attribute('midi.channel', this.getXml()!)!.setValue(String(this.midiChannel));
   }
   getMidiPort(): number {
     return this.midiPort;
   }
   setMidiPort(midiPort: number): void {
     this.midiPort = midiPort;
-    Helper.getAttribute('midi.port', this.getXml()!)!.setValue(String(this.midiPort));
+    attribute('midi.port', this.getXml()!)!.setValue(String(this.midiPort));
   }
   setGlobal(global: Global | null): void {
     this.global = global;

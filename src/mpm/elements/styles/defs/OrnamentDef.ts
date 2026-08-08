@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
-import { Helper } from '../../../../mei/Helper.js';
+import { allChildElements, attribute, firstChildElement } from '../../../../xml/tree.js';
 import { Mpm } from '../../../../mpm/Mpm.js';
 import { AbstractDef } from './AbstractDef.js';
 
@@ -38,16 +38,16 @@ export class TemporalSpread {
   constructor(xml?: Element) {
     if (xml === undefined) return;
     this.xml = xml;
-    const domain = Helper.getAttribute('time.unit', xml);
+    const domain = attribute('time.unit', xml);
     if (domain !== null && domain.getValue() === 'milliseconds')
       this.frameDomain = FrameDomain.Milliseconds;
-    const start = Helper.getAttribute('frame.start', xml);
+    const start = attribute('frame.start', xml);
     if (start !== null) this.frameStart = parseFloat(start.getValue());
-    const length = Helper.getAttribute('frameLength', xml);
+    const length = attribute('frameLength', xml);
     if (length !== null) this.setFrameLength(parseFloat(length.getValue()));
-    const intensityAtt = Helper.getAttribute('intensity', xml);
+    const intensityAtt = attribute('intensity', xml);
     if (intensityAtt !== null) this.intensity = parseFloat(intensityAtt.getValue());
-    const noteoffAtt = Helper.getAttribute('noteoff.shift', xml);
+    const noteoffAtt = attribute('noteoff.shift', xml);
     if (noteoffAtt !== null) {
       switch (noteoffAtt.getValue()) {
         case 'true':
@@ -58,7 +58,7 @@ export class TemporalSpread {
           break;
       }
     }
-    const idAtt = Helper.getAttribute('id', xml);
+    const idAtt = attribute('id', xml);
     if (idAtt !== null) this.id = idAtt.getValue();
   }
 
@@ -125,7 +125,7 @@ export class TemporalSpread {
         return null;
     }
     for (const note of chord) {
-      const ornamentDateAtt = Helper.getAttribute(dateAttName, note);
+      const ornamentDateAtt = attribute(dateAttName, note);
       if (ornamentDateAtt !== null)
         ornamentDateAtt.setValue(String(dateOffset + parseFloat(ornamentDateAtt.getValue())));
       else note.addAttribute(new Attribute(dateAttName, String(dateOffset)));
@@ -140,9 +140,9 @@ export class TemporalSpread {
       case NoteOffShift.Monophonic:
         if (previous !== null) {
           for (const prev of previous) {
-            const prevDateOffsetAtt = Helper.getAttribute(dateAttName, prev);
+            const prevDateOffsetAtt = attribute(dateAttName, prev);
             if (prevDateOffsetAtt === null) continue;
-            const ornamentDurationAtt = Helper.getAttribute(durAttName, prev);
+            const ornamentDurationAtt = attribute(durAttName, prev);
             if (ornamentDurationAtt !== null)
               ornamentDurationAtt.setValue(
                 String(dateOffset - parseFloat(prevDateOffsetAtt.getValue())),
@@ -209,7 +209,7 @@ export class TemporalSpread {
    * element as a side effect.
    */
   setId(id: string | null): void {
-    let idAtt = Helper.getAttribute('id', this.getXml());
+    let idAtt = attribute('id', this.getXml());
     if (id === null) {
       if (idAtt !== null) {
         idAtt.detach();
@@ -246,12 +246,12 @@ export class DynamicsGradient {
   constructor(xml?: Element) {
     if (xml === undefined) return;
     this.xml = xml;
-    const att = Helper.getAttribute('transition.from', xml);
+    const att = attribute('transition.from', xml);
     if (att !== null) this.transitionFrom = parseFloat(att.getValue());
-    const att2 = Helper.getAttribute('transition.to', xml);
+    const att2 = attribute('transition.to', xml);
     if (att2 === null) this.transitionTo = this.transitionFrom;
     else this.transitionTo = parseFloat(att2.getValue());
-    const idAtt = Helper.getAttribute('id', xml);
+    const idAtt = attribute('id', xml);
     if (idAtt !== null) this.id = idAtt.getValue();
   }
 
@@ -278,7 +278,7 @@ export class DynamicsGradient {
 
   private setOrnamentDynamicsAtt(ornamentDynamics: number, chord: Element[]): void {
     for (const note of chord) {
-      const ornamentDynamicsAtt = Helper.getAttribute('ornament.dynamics', note);
+      const ornamentDynamicsAtt = attribute('ornament.dynamics', note);
       if (ornamentDynamicsAtt !== null) {
         const val = ornamentDynamics + parseFloat(ornamentDynamicsAtt.getValue());
         ornamentDynamicsAtt.setValue(String(val));
@@ -329,7 +329,7 @@ export class DynamicsGradient {
    * element as a side effect.
    */
   setId(id: string | null): void {
-    let idAtt = Helper.getAttribute('id', this.getXml());
+    let idAtt = attribute('id', this.getXml());
     if (id === null) {
       if (idAtt !== null) {
         idAtt.detach();
@@ -371,7 +371,7 @@ export class OrnamentDef extends AbstractDef {
    */
   private parseDataInternal(xml: Element): void {
     super.parseData(xml);
-    for (const transformer of Helper.getAllChildElements(xml) ?? []) {
+    for (const transformer of allChildElements(xml)) {
       switch (transformer.getLocalName()) {
         case 'dynamicsGradient':
           this.dynamicsGradient = new DynamicsGradient(transformer);
@@ -421,10 +421,10 @@ export class OrnamentDef extends AbstractDef {
    */
   setTemporalSpread(ts: TemporalSpread | null): void {
     this.temporalSpread = ts;
-    let old = Helper.getFirstChildElement('temporalSpread', this.getXml()!);
+    let old = firstChildElement('temporalSpread', this.getXml()!);
     while (old !== null) {
       this.getXml()!.removeChild(old);
-      old = Helper.getFirstChildElement('temporalSpread', this.getXml()!);
+      old = firstChildElement('temporalSpread', this.getXml()!);
     }
     if (ts !== null) this.getXml()!.appendChild(ts.generateXML());
   }
@@ -452,10 +452,10 @@ export class OrnamentDef extends AbstractDef {
   /** Replace the gradient, in the object and in the element; see {@link setTemporalSpread}. */
   setDynamicsGradient(dg: DynamicsGradient | null): void {
     this.dynamicsGradient = dg;
-    let old = Helper.getFirstChildElement('dynamicsGradient', this.getXml()!);
+    let old = firstChildElement('dynamicsGradient', this.getXml()!);
     while (old !== null) {
       this.getXml()!.removeChild(old);
-      old = Helper.getFirstChildElement('dynamicsGradient', this.getXml()!);
+      old = firstChildElement('dynamicsGradient', this.getXml()!);
     }
     if (dg !== null) this.getXml()!.appendChild(dg.generateXML());
   }

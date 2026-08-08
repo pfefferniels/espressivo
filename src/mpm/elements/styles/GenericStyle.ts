@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
-import { Helper } from '../../../mei/Helper.js';
+import { attribute } from '../../../xml/tree.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 import { AbstractDef } from './defs/AbstractDef.js';
 
@@ -36,12 +36,12 @@ export class GenericStyle<E extends AbstractDef = AbstractDef> extends AbstractX
   protected parseData(xml: Element): void {
     if (xml === null)
       throw new Error('Cannot generate GenericStyleDef object. XML Element is null.');
-    const nameAttr = Helper.getAttribute('name', xml);
+    const nameAttr = attribute('name', xml);
     if (nameAttr === null)
       throw new Error('Cannot generate GenericStyleDef object. Missing name attribute.');
     this.nameAttr = nameAttr;
     this.setXml(xml);
-    this.id = Helper.getAttribute('id', xml);
+    this.id = attribute('id', xml);
     this.defs = new Map();
   }
 

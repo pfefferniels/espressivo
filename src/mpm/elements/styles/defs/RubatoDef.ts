@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
-import { Helper } from '../../../../mei/Helper.js';
+import { attribute } from '../../../../xml/tree.js';
 import { Mpm } from '../../../../mpm/Mpm.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { AbstractDef } from './AbstractDef.js';
@@ -33,11 +33,11 @@ export class RubatoDef extends AbstractDef {
   private parseDataInternal(xml: Element): void {
     super.parseData(xml);
 
-    const frameLengthAttr = Helper.getAttribute('frameLength', xml);
+    const frameLengthAttr = attribute('frameLength', xml);
     if (frameLengthAttr === null)
       throw new Error('Cannot generate RubatoDef object. Missing attribute frameLength.');
 
-    let intensityAttr = Helper.getAttribute('intensity', xml);
+    let intensityAttr = attribute('intensity', xml);
     if (intensityAttr === null) {
       intensityAttr = new Attribute('intensity', String(this.intensity));
       xml.addAttribute(intensityAttr);
@@ -47,12 +47,12 @@ export class RubatoDef extends AbstractDef {
       );
     }
 
-    let lateStartAttr = Helper.getAttribute('lateStart', xml);
+    let lateStartAttr = attribute('lateStart', xml);
     if (lateStartAttr === null) {
       lateStartAttr = new Attribute('lateStart', String(this.lateStart));
       xml.addAttribute(lateStartAttr);
     }
-    let earlyEndAttr = Helper.getAttribute('earlyEnd', xml);
+    let earlyEndAttr = attribute('earlyEnd', xml);
     if (earlyEndAttr === null) {
       earlyEndAttr = new Attribute('earlyEnd', String(this.earlyEnd));
       xml.addAttribute(earlyEndAttr);
