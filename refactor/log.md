@@ -757,3 +757,127 @@ Decisions:
 5. Phase-1 audit verdict unchanged (worker's re-measured numbers still pass all
    gates, old and new); its journaled numbers were stale — superseded by the [T3]
    correction entry and this one.
+
+## [T3b] verifier — PASS (2026-08-08)
+
+Retroactive delta review of the unreviewed portion of `67b407e`: removal of
+`Midi.exportMsm`, `Msm.exportChroma`, `Msm.exportPitches` + their 4 unit tests.
+Everything verifier-T3 already PASSed was not re-reviewed. **Verdict: PASS — the
+delta is clean, and `67b407e` now stands fully reviewed.** No revert needed.
+
+All measurement done on a `git archive 67b407e` scratch tree with symlinked
+node_modules (worker-T4 is live on the working tree; it was never touched — the
+only file I modified is this log).
+
+### 1. The delta is deletion-only, and it is exactly the three stubs
+
+`git show 67b407e --numstat` for the four files: **0 insertions, 116 deletions**
+(Midi.ts 0/49, Msm.ts 0/22, Midi.test.ts 0/33, Msm.test.ts 0/12). Not one line
+was added or modified anywhere in the unreviewed delta.
+
+All three removed methods were **unconditionally dead** — confirmed by reading the
+removed bodies:
+
+- `Midi.exportMsm()` — logs, computes `ppq` and `midiFileFormat` into locals that
+  are never used for anything but a `console.log`, then `console.warn(...)` and
+  `return null`. It could never return an Msm.
+- `Msm.exportChroma()` / `Msm.exportPitches(_key?)` — `console.error(...)` +
+  `return null`. Nothing else.
+
+### 2. Adversarial: nothing hides among the removals (comment-free proof)
+
+Line diffs cannot distinguish a comment edit from a logic edit, so I transpiled
+both revisions of each src file with `removeComments: true` (TS 5.7
+`transpileModule`) and diffed the comment-free JS. Both diffs are **pure `d`
+operations — no additions, no modifications, no reordering**:
+
+- `Midi.ts`: 490 → 474 comment-free lines; the entire diff is the `exportMsm` body.
+- `Msm.ts`: 966 → 958; the entire diff is the two stub bodies.
+
+This settles the import question too. The delta removes an 8-line block at the top
+of `Midi.ts`, but every line of it was **already commented out** (`// import { Msm }
+…`, `// import { Midi2MsmConverter } …` — forward-declarations for modules T3 had
+just deleted). It is invisible in the comment-free output, i.e. **zero live imports
+were removed, added, or reordered**. The `GenericStyle`/`Mpm` circular-import hazard
+(charter, Known parity subtleties) is untouched.
+
+### 3. No dangling references
+
+Tree-wide grep for the three names across `src/`, `tests/` and configs: zero live
+references. Two decoys checked and dismissed — `Mei.exportMsm` (`src/mei/Mei.ts:169`)
+is a **different, live, tested** method on a different class, still exported and
+covered by `tests/mei/Mei.test.ts:794`; and `src/msm/Msm.ts:528` mentions
+`mei.exportMsm()` in a doc comment, which still resolves.
+
+### 4. Removed tests were tests of removed behavior only (invariant 4 clean)
+
+Two `describe` blocks, 4 tests, all asserting only against the removed methods.
+The one that needed real scrutiny is `'should fall back to 360 pulses per quarter
+for a SMPTE sequence'`: it asserted `errSpy` saw `'Assuming MIDI time resolution of
+360 pulses per quarter.'`, which is `exportMsm`'s **own** catch handler (removed
+code) — but it *incidentally* exercised two **kept** methods. Both are still
+directly asserted elsewhere, so no kept behavior lost coverage:
+
+- `getPPQ()` throws on SMPTE → `tests/midi/Midi.test.ts:382` (SMPTE_25,
+  `toThrow(/SMPTE/)`) and `:437` (SMPTE_30 via `convertPPQ`).
+- `getMidiFileFormat()` → asserted at `:109`, `:113`, `:117`, `:391`.
+
+Test count 2112 → 2108 is therefore a **justified** decrease under invariant 7c
+(tests of removed behavior; no kept-behavior test weakened).
+
+### 5. Verify on the scratch tree of 67b407e — green
+
+`npm run verify` exit 0, all three stages ran: `tsc` clean, `tsc -p
+tsconfig.tests.json` clean, `vitest run` **44 files, 2108/2108 passed** (3.77s).
+
+### 6. Coverage — phase2Start CONFIRMED, adopt as final
+
+Exact counts via `--coverage.reporter=json-summary` (the text reporter rounds):
+
+| metric | measured | state.json provisional | |
+|---|---|---|---|
+| covered statements | **13001** | 13001 | ✓ |
+| total statements | **15294** | 15294 | ✓ |
+| uncovered statements | **2293** | 2293 | ✓ |
+| functions | **907/964 = 94.0871%** | 94.0871 | ✓ |
+| test count | **2108** | 2108 | ✓ |
+
+**The provisional `phase2Start` block stands exactly as recorded — the conductor can
+drop the `provisional` flag.** Uncovered-statement budget for the phase-2 audit is
+therefore 2293 + 25 = **2318**; functions floor 94.0%.
+
+One discrepancy, immaterial: I measure branches **4014/4683 = 85.7143%**, the [T3]
+correction reports 4016/4685 = 85.7204%. The *total* moved, not just the covered
+count, which is V8 block-coverage nondeterminism rather than a code difference —
+exactly the run-noise invariant 7d designates branch as indicator-only for. Every
+gated metric (statements, functions, tests) is bit-stable and reproduced exactly.
+
+### 7. Public-API judgment: the narrowing is correct
+
+The three were public methods on `Midi`/`Msm` (both still exported); no `index.ts`
+export was removed for them — I diffed `index.ts` at `67b407e^` vs `67b407e` and
+its deletions are all the already-reviewed module excisions.
+
+**No in-scope consumer story survives their removal, because the machinery they
+would have needed was deleted in the *reviewed* part of the same commit:**
+`Midi2MsmConverter` (for `exportMsm`) and `Pitches`/`Key`/`FeatureVector` (for
+chroma/pitches) are among the 13 D that verifier-T3 signed off. Keeping the three
+would have left a published API surface that can only ever log and return `null` —
+strictly worse than absent, since `null` is indistinguishable from a real failure.
+Both directions are out of the declared scope (MEI/MSM+MPM ⇒ MIDI): `exportMsm` is
+the inverse MIDI→MSM direction, chroma/pitches is feature extraction. Nothing under
+`tests/integration/**` ever referenced them.
+
+### 8. Commit-level integrity
+
+Full manifest of `67b407e` is **13 D + 9 M**, reconciling exactly with the
+conductor's reconstruction: verifier-T3's 7 M (`src/index.ts`, `src/mei/Mei.ts`,
+`src/midi/Midi.ts`, `src/msm/Msm.ts`, `tests/mei/Mei.test.ts` + `refactor/lint-debt.md`,
+`refactor/log.md`) plus the 2 test files it never saw. **There is no tenth modified
+file** — nothing else hid in the commit. `git log 62c125f..67b407e --
+tests/integration/fixtures` is empty: invariant 2 holds.
+
+### Handoff
+
+`67b407e` is fully reviewed; the process failure it came from was real but the code
+that landed is sound. Nothing to revert, nothing for the conductor to schedule.

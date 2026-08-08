@@ -15,7 +15,7 @@
       "uncoveredStatements": 2293,
       "functionsPct": 94.0871,
       "testCount": 2108,
-      "provisional": "worker-T3-measured on clean archive of 67b407e; pending verifier-T3b confirmation"
+      "confirmed": "verifier-T3b reproduced all gated metrics bit-exactly on a scratch archive of 67b407e (2026-08-08); phase-2 uncovered budget = 2318"
     },
     "history": "86.69 stmts pre-format basis -> 85.03 post-prettier (units change) -> 85.0072 after T3+stub removal; ratio floor retired in favor of uncovered-count budget"
   },
