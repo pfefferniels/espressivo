@@ -401,20 +401,25 @@ export class Msm extends AbstractMsm {
 
   /**
    * computes the minimal integer timing resolution necessary for a rhythmically reasonably accurate representation of the score data in this MSM
-   * @returns
+   * @returns the number of subdivisions per quarter note the score needs, a power of two
    *
-   * For each note it finds the coarsest power-of-two subdivision that still divides the
-   * note's duration and its date exactly, and keeps the finest such value over all notes.
-   * Both inner loops start at the running `maxSubdivisions` rather than at 1, so the
-   * `Math.max` can never actually raise anything — the value only ever grows. Kept as
-   * Java writes it (`Msm.java:254`).
+   * For each note it walks powers of two upwards until one divides the note's duration —
+   * then its date — exactly, and keeps the finest value found over all notes.
    *
-   * **Known divergence from Java, do not silently "fix".** Java's `ppq / subdivs` is
-   * integer division; here it is floating point. The two agree while `subdivs` divides
-   * `ppq` and part company after that: at ppq 720 a note of duration 22 gives 32 in Java
-   * (22 % 22) and 1 here (22 % 22.5). Nothing in `src/` calls this method — Java's only
-   * caller is `exportPitches`, which this port does not have — so the divergence is
-   * latent. Changing it is a behaviour change and needs its own item, not a style pass.
+   * Three details are Java's (`Msm.java:254-279`) and all three are load-bearing:
+   * 1. `ppq / subdivs` is **integer** division there (`Msm.java:262` and `:270`, both
+   *    operands `int`), hence `Math.trunc` here. Float division would agree only while
+   *    `subdivs` divides `ppq`.
+   * 2. Both inner loops start at the running `maxSubdivisions`, not at 1 — so
+   *    `Math.max` can never actually raise anything, the value only ever grows.
+   * 3. Consequently the result is order-dependent and can exceed what any single note
+   *    needs: at ppq 720 a duration of 22 matches at `subdivs` 32 (720/32 truncates to
+   *    22), and a whole-quarter note coming after it then matches only at 128 (720/128
+   *    truncates to 5) — so dates/durations `[22, 720]` yield 128 where `[720, 22]` yield
+   *    32. Verified by running the Java arithmetic, not merely reasoned about.
+   *
+   * Nothing in `src/` calls this method — Java's only caller is `exportPitches`, which
+   * this port does not have — so the unit tests are the only exercise it gets.
    */
   getMinimalPPQ(): number {
     const ppq = this.getPPQ();
@@ -433,7 +438,7 @@ export class Msm extends AbstractMsm {
         const note = notes.get(j);
         const dur = Math.round(parseFloat(note.getAttributeValue('duration')!)); // get the note's duration
         for (let subdivs = maxSubdivisions; subdivs <= ppq; subdivs *= 2) {
-          if (dur % (ppq / subdivs) === 0) {
+          if (dur % Math.trunc(ppq / subdivs) === 0) {
             maxSubdivisions = Math.max(maxSubdivisions, subdivs);
             break;
           }
@@ -441,7 +446,7 @@ export class Msm extends AbstractMsm {
 
         const date = Math.round(parseFloat(note.getAttributeValue('date')!)); // get the note's date
         for (let subdivs = maxSubdivisions; subdivs <= ppq; subdivs *= 2) {
-          if (date % (ppq / subdivs) === 0) {
+          if (date % Math.trunc(ppq / subdivs) === 0) {
             maxSubdivisions = Math.max(maxSubdivisions, subdivs);
             break;
           }

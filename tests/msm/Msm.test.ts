@@ -509,6 +509,62 @@ describe('Msm', () => {
     it('should return 1 for an MSM without parts', () => {
       expect(Msm.createMsm('Test', null, 720).getMinimalPPQ()).toBe(1);
     });
+
+    // The cases above all divide 720 exactly, where integer and float division agree.
+    // The ones below do not, and pin Java's INTEGER `ppq / subdivs` (Msm.java:262, :270).
+    // Every expected value was produced by running that arithmetic in Java, not by
+    // observing what this implementation does.
+
+    it('should truncate the divisor like Java: duration 22 at ppq 720 gives 32', () => {
+      // 720/32 truncates to 22 and 22 % 22 === 0; float division would test 22 % 22.5
+      // and find no match at all, leaving 1.
+      expect(msmWithNotes(720, [[0, 22, 60]]).getMinimalPPQ()).toBe(32);
+    });
+
+    it('should truncate the divisor like Java: duration 11 at ppq 720 gives 64', () => {
+      // 720/64 truncates to 11
+      expect(msmWithNotes(720, [[0, 11, 60]]).getMinimalPPQ()).toBe(64);
+    });
+
+    it('should truncate the divisor like Java at other resolutions: duration 7 at ppq 480 gives 64', () => {
+      // 480/64 truncates to 7
+      expect(msmWithNotes(480, [[0, 7, 60]]).getMinimalPPQ()).toBe(64);
+    });
+
+    it('should truncate the divisor like Java at a ppq that is not a multiple of 4: duration 24 at ppq 100 gives 8', () => {
+      // 100/8 truncates to 12 and 24 % 12 === 0; no coarser subdivision divides 24
+      expect(msmWithNotes(100, [[0, 24, 60]]).getMinimalPPQ()).toBe(8);
+    });
+
+    it('should apply the same truncated division to the date', () => {
+      // duration 720 settles at 1, then date 22 raises it to 32 through 720/32 -> 22
+      expect(msmWithNotes(720, [[22, 720, 60]]).getMinimalPPQ()).toBe(32);
+    });
+
+    it('should round durations before dividing, as Java does', () => {
+      // Math.round(22.4) === 22, so this behaves exactly like the duration-22 case
+      expect(msmWithNotes(720, [[0, 22.4, 60]]).getMinimalPPQ()).toBe(32);
+    });
+
+    it('should be order-dependent, because each loop resumes at the running maximum', () => {
+      // Fine note first: it sets 32, and the whole-quarter note that follows cannot match
+      // until 128, where 720/128 truncates to 5 and 720 % 5 === 0.
+      expect(
+        msmWithNotes(720, [
+          [0, 22, 60],
+          [0, 720, 62],
+        ]).getMinimalPPQ(),
+      ).toBe(128);
+
+      // Same two notes the other way round: the whole-quarter note matches at 1, so the
+      // fine note only has to climb to 32.
+      expect(
+        msmWithNotes(720, [
+          [0, 720, 60],
+          [0, 22, 62],
+        ]).getMinimalPPQ(),
+      ).toBe(32);
+    });
   });
 
   // ---------------------------------------------------------------
@@ -1128,5 +1184,4 @@ describe('Msm', () => {
       expect((soft!.getMessage() as ShortMessage).getData2()).toBe(64);
     });
   });
-
 });

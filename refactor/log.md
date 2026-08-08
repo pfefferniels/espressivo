@@ -4251,3 +4251,204 @@ documented trailing-whitespace divergence); `EventMaker.java`'s `byteArrayToInt`
 > long-dead botched brace expansion, predates the whole swarm, and is unrelated to T11.
 > Flagging it only so the next agent that runs `diff -r` against a `git archive` baseline
 > does not mistake it for an untracked artifact.
+
+---
+
+## [T9b] worker — fix Msm.getMinimalPPQ integer-division divergence (2026-08-08)
+
+**Scope:** `src/msm/Msm.ts` (one method + its doc comment) and `tests/msm/Msm.test.ts`
+(seven added tests). Nothing else in the working tree — `git status --porcelain` is
+exactly these two paths.
+
+### The Java semantics, read from the source
+
+`meico/src/meico/msm/Msm.java:254-279`. Both `ppq` and `subdivs` are declared `int`
+(`:255`, `:261`, `:269`), so **`ppq / subdivs` at `:262` and `:270` is integer division**,
+truncating toward zero. `dur` and `date` are `(int) Math.round(Double.parseDouble(...))`
+(`:260`, `:268`). The port had float division at both sites, which agrees with Java only
+while `subdivs` divides `ppq` evenly — exactly the region the five existing unit tests
+lived in.
+
+**Fix:** `Math.trunc(ppq / subdivs)` at both sites, matching the `Math.trunc` idiom already
+used for Java `int` division at `src/midi/Midi.ts:398`. The loop structure, the
+`Math.max`, the `Math.round`s and the iteration order are untouched — Java's shape is
+preserved, only the divisor semantics change.
+
+### Behaviour change — deliberate, and this is the justification
+
+This item **intentionally changes behaviour**, which a style pass may not do but a
+parity-bug fix must. The mission's guarantee is equivalence with the Java reference; the
+float division was a port bug that violated it. It is safe to fix here because the method
+is **unreachable from the pipeline**: `grep -rn "getMinimalPPQ()" src/` returns exactly
+one line, the definition at `src/msm/Msm.ts:424`, and zero call sites. (`src/midi/Midi.ts`
+has its own unrelated two-argument `Midi.getMinimalPPQ(sequence, onlyNotes)`; different
+symbol, different class.) Java's only caller is `exportPitches`, which T3 removed. **No
+pipeline probe was run and none is needed** — no fixture path can reach code with no
+callers, and the emitted-JS diff below confirms the change is confined to this method.
+
+### Test count 2108 → 2115 — justification (charter invariant 7c)
+
+Seven tests added, none removed, none weakened. Invariant 7c gates *decreases*; this is an
+increase, and it is the point of the item: the method's non-exact-division region had **no
+coverage at all**, which is why a 78%-wrong implementation survived eleven items. The new
+tests pin that region. All five pre-existing tests are unchanged and still pass.
+
+**Every expected value was produced by running the Java arithmetic, not by observing the
+TypeScript.** `scratchpad/t9bwork/MinPPQ.java` is a standalone replica of `Msm.java:254-279`
+(loop bodies verbatim), compiled and run with `javac`/`java`:
+
+| case (ppq; date,duration…) | Java |
+|---|---|
+| `720; 0,22` | **32** |
+| `720; 0,11` | **64** |
+| `480; 0,7` | **64** |
+| `100; 0,24` | **8** |
+| `720; 22,720` (date drives) | **32** |
+| `720; 0,22.4` (rounding) | **32** |
+| `720; 0,22 ; 0,720` | **128** |
+| `720; 0,720 ; 0,22` | **32** |
+| the four existing exact cases | 1 / 2 / 4 / 4 — unchanged |
+
+### A Java quirk the fix exposes, now pinned and documented
+
+Integer truncation plus "each inner loop resumes at the running `maxSubdivisions`" makes
+the result **order-dependent, and able to exceed what any single note needs**: after a
+duration-22 note has raised the running value to 32, a following whole-quarter note no
+longer matches at 32 (`720 % 22 == 16`) and climbs to 128, where `720/128` truncates to 5.
+So `[22, 720]` yields 128 while `[720, 22]` yields 32. This is Java's behaviour, confirmed
+by running it — not an artefact of the port — and it is now both asserted in a test and
+written down in the method's doc comment. A future "clean-up" that starts either loop at 1
+would silently break parity; the test will catch it.
+
+### Evidence
+
+- **`npm run verify` green**: 44 files, **2115/2115** (2108 + 7). Both tsc stages inside
+  the script pass.
+- **Randomised 4012-case parity sweep, Java vs TypeScript.** `scratchpad/t9bwork/gen.py`
+  emits 4000 random `(ppq, notes)` cases (ppq drawn from 1/2/7/15/24/100/240/360/384/480/
+  720/960/1000/1024, 1-3 notes, integer *and* fractional dates and durations) plus the 12
+  tabulated cases; `Sweep.java` runs the Java arithmetic over them and `sweep.mjs` runs the
+  built `dist` over the identical file. **Fixed TS vs Java: 0 mismatches in 4012.**
+  Pre-fix TS (built from a `git archive` of HEAD) **vs Java: 3125 mismatches, 77.9%** —
+  the bug was not a corner case, it was the common case.
+- **Emitted-JS diff is confined to the method.** `dist/msm/Msm.js` base vs work differs in
+  exactly the doc comment and the two `Math.trunc` insertions; `Msm.d.ts` differs in the
+  doc comment only; no other emitted file differs. (`dist/` also holds stale artefacts of
+  T3-deleted modules — `audio/`, `musicxml/`, `pitches/`, `Mei2MusicXmlConverter`,
+  `Midi2MsmConverter`, `ColorCoding` — because `dist` is gitignored and never cleaned.
+  Pre-existing, unrelated, flagged so the next `diff -r` does not trip on it.)
+- **Lint is bit-identical**, base (`git archive` of HEAD + symlinked `node_modules`) vs
+  work: errors **1294 → 1294**, warnings **5 → 5**, 103 files linted, 74 with ≥1 error, and
+  the **by-rule histogram differs in nothing**. Per-file: `src/msm/Msm.ts` 105 → 105,
+  `tests/msm/Msm.test.ts` 1 → 1. `refactor/lint-debt.md` therefore needs no update.
+- **No new escapes**: zero `eslint-disable` / `@ts-ignore` / `@ts-expect-error` /
+  `@ts-nocheck` / type assertions added. (A grep for `as <Word>` hits one added line — the
+  English test name "…as Java does". Prose, not a cast.)
+- **Coverage, gated metrics all hold**: functions **94.2166%** (floor 94.0, unchanged from
+  post-T11 to four decimals), uncovered scoped statements **2255** (phase-2 budget 2318,
+  unchanged — the method was already statement-covered by the old tests; what was missing
+  was assertion power in the non-exact region, not reachability). Statements 85.0899%
+  (unchanged), branches 85.6223 vs 85.6069 — within the documented ±run-noise.
+- **Untouched**: `tests/integration/**`, all fixtures, `vitest.config.ts`, `tsconfig*.json`,
+  `eslint.config.js`, `package.json`. No commit made.
+
+### One incidental formatting hunk, disclosed
+
+`npx prettier --write tests/msm/Msm.test.ts` also removed a **stray blank line before the
+file's final `});`** (diff hunk `@@ -1128,5 +1184,4`). That violation is **pre-existing and
+predates the swarm** — it is present in the baseline commit `62c125f`, so `prettier --check`
+was already failing on this file before T9b touched it. Kept rather than reverted, so the
+file is now prettier-clean; called out here so the verifier's manifest reconciliation does
+not read it as an unexplained hunk.
+
+### DISCOVERED
+
+- **DISCOVERED (dead code, T16/T21):** `Msm.getMinimalPPQ` now matches Java exactly but
+  still has **zero `src/` callers** — its Java caller `exportPitches` was removed in T3.
+  It is correct dead code, kept because it is part of the ported `Msm` surface. If a later
+  item prunes the public surface, this is a candidate; the tests added here are the record
+  of what it does if it stays.
+
+---
+
+## [T9b] verifier — PASS (2026-08-08)
+
+Verdict: **PASS**. Every claim in the worker entry reproduced independently; nothing
+found to fail it on.
+
+### 1. `Math.trunc` is semantically exact here, not merely usually-right
+
+Read `meico/src/meico/msm/Msm.java:254-279` directly. `ppq` (`:255`), `maxSubdivisions`
+(`:256`) and both `subdivs` (`:261`, `:269`) are `int`, so `ppq / subdivs` at `:262` and
+`:270` is integer division truncating toward zero. The worker's reading is correct. The
+fix is exact for *every* reachable input, for four separate reasons:
+
+- **Sign.** Inside either inner loop the guard `subdivs <= ppq` plus `subdivs >= 1`
+  (it starts at `maxSubdivisions >= 1` and only doubles) forces `ppq >= subdivs >= 1`.
+  The quotient is therefore a positive rational `>= 1`, where truncate-toward-zero,
+  `Math.floor` and Java's `/` all coincide. Negative operands are unreachable in the
+  divisor position: if `ppq <= 0` (and `getPPQ` returns `0` for a missing attribute,
+  `Msm.ts:330` / `Msm.java:187`) the loop body never executes — in *either* language.
+- **No divide-by-zero.** Same guard gives quotient `>= 1`, so the `%` divisor is never 0.
+  (Java would throw; JS would yield `NaN !== 0` and keep looping — divergent in
+  principle, unreachable in fact.)
+- **Negative dividends** (a negative `dur`/`date`) are untouched by this change, and
+  Java's `%` and JS's `%` both take the sign of the dividend, so that half already
+  matched and still does.
+- **Float precision.** `getPPQ` is `parseInt` (`Msm.ts:331`), mirroring Java's `int`
+  return, so the numerator is an integer `< 2^31`. IEEE-754 double division only risks
+  rounding a non-integer quotient *onto* an integer boundary (which would make `trunc`
+  overshoot by 1) once the numerator approaches `2^53`. Nowhere near.
+
+### 2. The seven expected values, derived from Java independently
+
+Hand-computed all seven from the Java loop before looking at any TS output, then
+machine-checked with my **own** standalone replica (`scratchpad/t9bverify/Vrf.java`,
+loop bodies copied from `Msm.java:254-279`, written without reference to the worker's
+`MinPPQ.java`). Both agree with all seven assertions **and** with the four pre-existing
+exact-division cases:
+
+`720;0,22 → 32` · `720;0,11 → 64` · `480;0,7 → 64` · `100;0,24 → 8` ·
+`720;22,720 → 32` · `720;0,22.4 → 32` · `720;[0,22],[0,720] → 128` ·
+`720;[0,720],[0,22] → 32` — and existing `1 / 2 / 4 / 4 / 1` unchanged.
+
+Worked example for the one the conductor named: at ppq 720, `subdivs` 1,2,4,8,16 give
+divisors 720,360,180,90,45 and `22 % d == 22`; `subdivs` 32 gives `720/32 = 22.5` → **22**,
+and `22 % 22 == 0`, so 32. The date loop resumes at 32 with `0 % 22 == 0` and holds. The
+log entry does show Java-derived derivations, so the non-circularity claim is sound.
+
+### 3. Non-vacuity proved by mutation, not by assertion
+
+Copied the **new** test file into a `git archive` baseline of HEAD (pre-fix, float
+division) and ran it there: **all 7 new tests fail** (every one returning `1`), **all 5
+pre-existing tests still pass, unmodified**. So the new tests genuinely pin the fix and
+the old tests are untouched in outcome as well as in text.
+
+### 4. Reach, manifest, gates
+
+- **Zero `src/` callers.** `grep -rn getMinimalPPQ src/` → the definition at
+  `src/msm/Msm.ts:424` plus `src/midi/Midi.ts` 378/412/413/429, which is the unrelated
+  two-arg `Midi.getMinimalPPQ`. No pipeline path reaches the changed code; no probe needed.
+- **Manifest exactly 3 M**: `src/msm/Msm.ts`, `tests/msm/Msm.test.ts`, `refactor/log.md`.
+  No untracked files (`--untracked-files=all` clean). `tests/integration/**`, fixtures,
+  `vitest.config.ts`, `tsconfig*.json`, `eslint.config.js`, `package.json` untouched.
+- **`npm run verify` green, exit 0: 44 files, 2115/2115** = 2108 (post-T11) + 7. `tsc`
+  and `tsc -p tsconfig.tests.json` also each pass standalone, zero diagnostics.
+- **Lint headline unmoved: 1294 errors / 5 warnings**, identical on a `git archive`
+  baseline of HEAD and on the working tree. NOTE for the conductor: the dispatch brief
+  quoted **1347 / 20** as the expected headline — that figure is **stale**, and it was
+  already stale at HEAD (the baseline tree, which T9b never touched, lints at 1294/5).
+  Nothing for T9b to answer for; the brief's number needs updating.
+- **No new suppressions**: no `eslint-disable` / `@ts-*` / `as any` added.
+- **Prettier**: working-tree `src/msm/Msm.ts` and `tests/msm/Msm.test.ts` are both clean;
+  HEAD's version of the test file is **not** — confirming the worker's disclosure that the
+  removed trailing blank line is a pre-existing violation now incidentally fixed, not a
+  smuggled change.
+- **log.md append-only**: `git diff --numstat` = `117 0`, zero deleted lines.
+
+### 5. Justifications journaled
+
+Both required justifications are present in the worker entry and adequate: the
+**intentional behaviour change** (parity-bug fix, argued from mission + unreachability)
+under "Behaviour change — deliberate", and the **test-count increase 2108 → 2115** under
+its own heading, correctly noting invariant 7c gates *decreases* only.
