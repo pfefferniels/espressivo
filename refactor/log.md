@@ -4998,3 +4998,260 @@ Rulings on ARCHITECTURE.md §10:
   -> T20 -> T21.
 - Triples decision reaffirmed under the confirmed authority: declined for now,
   revisit post-T13 (rationale in the earlier entry stands).
+
+## [T12] verifier — ARCHITECTURE.md design review (2026-08-08)
+
+**FAIL T12.** The architecture itself is sound and I am not asking for a redesign: the layer
+map, the EQ-RISK/GATE discipline, the T15 dispatch census, and every large structural
+measurement hold up under independent re-derivation. But three rulings would make the *next*
+items do wrong work, and the citation layer is unreliable enough that a fresh-context worker
+following `file:line` lands on the wrong code repeatedly. Revise and resubmit; no section
+needs rewriting.
+
+Tree state: `npm run verify` green independently (44 files / 2124 tests), `git status
+--porcelain` empty. No `src/`, `tests/`, or fixture changes by me; my only write is this
+entry. Probes live in `<scratch>/t12verify/` (`f2probe.mjs`, `roundtrip.mjs`,
+`unitstest/`).
+
+### BLOCKERS
+
+**B1 — §6.3 and §10 Q2 forbid TD1, which is the next item dispatched, and §8 has no TD1
+entry.** §6.3 says "All four stay frozen in Phase 3" and P3 "needs its own item and the
+user's sign-off"; RULE E1 says "Do not add throws, do not add guards, do not 'fix' a
+malformed-input path". The conductor has since approved TD1 as DELIBERATE DIVERGENCE #1 under
+governance authority (no user sign-off), running immediately after T12. A TD1 worker following
+the worker protocol reads a design doc telling it not to do its item.
+*Fix:* rewrite §6.3's P3 row to "APPROVED as TD1 (conductor, 2026-08-08, governance
+authority)"; add a §8.0 for TD1; amend RULE E1 with "except where §6.3 records an approved
+divergence".
+
+**B2 — the TD1 fix as specified does not remove the hang, and the specified gate cannot
+detect that.** The claim is that `>=` → `<=` matches "ArticulationDef's spelling of the same
+logic". It does not. Both spellings verified:
+- `ArticulationData.articulateNote` (src/mpm/elements/maps/data/ArticulationData.ts:203-208):
+  `let durNew = duration + this.absoluteDurationChange;` then
+  `for (let reduce = 2.0; durNew >= 0.0; reduce *= 2.0)` — **no guard**.
+- `ArticulationDef.articulateNote` (src/mpm/elements/styles/defs/ArticulationDef.ts:355-363):
+  `const dur = ...; if (dur > 0.0) { let durNew = dur + ...; for (let reduce = 2.0; durNew
+  <= 0.0; reduce *= 2.0) ... }` — **guard plus** the flipped comparison.
+- Java agrees: `ArticulationData.java:197` is `for (double reduce = 2.0; durNew >= 0.0; ...)`
+  carrying the comment "as long as the duration change causes the duration to become 0.0 or
+  negative" (so the architect's comment-intent claim is correct);
+  `ArticulationDef.java:420-423` has `if (dur > 0.0)` *and* `durNew <= 0.0`.
+
+Simulated (node, `<scratch>/t12verify`): with `<=` and **no** guard, `duration.perf <= 0` plus
+a negative `absoluteDurationChange` still never terminates — `durNew` converges to `duration`
+≤ 0 and the condition stays true. `duration.perf="0.0"` is not hypothetical: it occurs in
+tests/integration/fixtures/performance-reference/composite_advanced_augmented.msm. TD1's
+requirement (4) negative control passes either way, so the gate would sign off a fix that
+still hangs.
+*Fix:* TD1 applies **both** changes (the `dur > 0.0` guard and `<=`), mirroring
+ArticulationDef/Java verbatim; the pinning tests must include (duration ≤ 0, negative change)
+under a timeout, and TD1 must journal that guarding also suppresses the
+`Helper.addToListAttribute(note, 'modified', …)` write on that path.
+*Confirmed for TD1 requirement (1):* **no** fixture contains `absoluteDurationChange` —
+`grep -rl` over tests/integration/fixtures returns 0 files. The branch is unreached.
+
+**B3 — §7 (branded units) has no owner in §8 and its gate is unexecutable as written.**
+§1.2 hedges "(NEW, T13/T19a)"; no §8 subsection assigns U1–U4. The conductor had to improvise,
+folding it into T19a — whose §8.1 spec says "**No other file changes**" and whose RenderOptions
+half emits by design. Worse, I compiled §7's `units.ts` verbatim under this tsconfig: it emits
+a **new file** `dist/units.js` containing exactly `export {};` (11 bytes). So `diff -r dist/`
+is non-empty by construction, and the gate ("If `diff -r dist/` is non-empty after a branding
+change, a runtime construct crept in; revert it") instructs the worker to revert correct work.
+*Fix:* restate as "zero-line diff over every pre-existing `dist/` file; the only permitted new
+file is `dist/units.js` with content exactly `export {};`"; and either give brands their own
+item or split T19a's evidence into two measurements (units-only tree, then RenderOptions).
+
+### HIGH
+
+**H1 — RULE N2b is a guard *deletion* with no EQ-RISK block and no §9 row.** N2a (gated) turns
+a `TypeError` into a typed throw. N2b deletes `if (ofThis == null || name === '') return
+null;`, turning "returns null → the caller's `if (x)` / `?? []` skips the work → execution
+continues" into a `TypeError`. That is a strictly worse failure mode than the one N2a's gate
+was written for, and it is ungated.
+Also, N2b's named instance violates N2b's own precondition: the rule says "do not apply it
+anywhere the guard tests a *value* rather than the parameter's nullness", then names
+`getAllChildElements`, whose guard includes `name === ''` — a value test that `name?: string`
+does not exclude. (Safe in fact: all 16 call sites pass a string literal or omit the name. But
+the doc must say that, not leave a worker to reconcile a rule with its own counterexample.)
+*Fix:* give N2b N2a's gate — per-site unreachability argument + byte-probe + forced-throw
+negative control — and state the empty-name finding.
+
+**H2 — §8.4 requires no round-trip evidence, although RULE F2 makes the facade re-parse its own
+output at every stage boundary.** I ran the missing gate (`<scratch>/t12verify/f2probe.mjs`):
+across all 16 MEI fixtures, `convert → serialize → re-parse → perform` is byte-identical (after
+UUID canonicalization) to `convert → perform` on the in-memory objects — **0 divergences** —
+and `perform()` provably does not mutate its input MSM (RULE I1 boundary 3 / I3a confirmed
+empirically). A separate probe shows parse→serialize reaches a fixed point at n=1. **F2 is
+therefore de-risked**, but the doc should *require* this as T13's gate rather than leave it
+unstated, and §2 must pin **which** serializer produces facade text: `Document.toXML()` emits
+an XML declaration, `getRootElement().toXML()` does not, and the equivalence suite compares the
+latter. "XML strings" is not a specification.
+
+**H3 — §2.4's seed plumbing misses the one call site that matters.** `Performance.perform` has
+exactly **one** `src/` caller: `Msm.ts:1023`, inside
+`Msm.exportExpressiveMidi(performance?, generateProgramChanges?)`, which hardcodes
+`renderMidi(83.33, genPC, true)`. So the facade's `renderExpressiveMidi` cannot honour `seed`
+or `movementSampleMaxStep` unless `RenderOptions` also threads through
+`Msm.exportExpressiveMidi` — an `msm → mpm` edge RULE M1 allows only as `import type` (fine for
+the interface, not for `DEFAULT_MOVEMENT_SAMPLE_MAX_STEP`, which must therefore not be needed
+there). §2.4 names only `Performance.perform` and the two `render*ToMap` entry points.
+Also undefined: `deriveSeed`'s initial `h` and the fold order over its three inputs, and
+`impIndex` (verified it must be the index within the per-distribution loop that owns
+`if (dd.seed !== null) random.setSeed(dd.seed)` at ImprecisionMap.ts:336 — `random` is
+constructed per distribution). Two workers would write two different `deriveSeed`s.
+
+**H4 — RULE U3(b) contradicts RULE I4, RULE I6 and U4's own threshold.** U3(b) mandates
+`getMovementSegment(maxStepSize: Normalized): readonly (readonly [Ticks, Midi7Bit])[]`. The
+implementation returns its mutable working array: `series` is `splice`d and `unshift`ed during
+sampling and then mutated in place (`for (const tuple of series) tuple[1] *= 127;`,
+MovementData.ts:190-208) — exactly the state I4 says must not be `readonly` and exactly the
+loop I6 forbids reallocating. Separately, branding `position`/`transitionTo` forces `as` casts
+at ≥8 sites (MovementData.ts:38,43,150,165,197,201; MovementMap.ts:110,111,113), above U4's own
+"more than ~5 `as` casts ⇒ do not apply it".
+*Fix:* brand the parameter and the two field declarations; drop `readonly`/tuple from the
+return type, or exempt it explicitly with one documented cast at the `return`.
+
+### MEDIUM
+
+**M1 — brands on facade *inputs* are hostile to the consumer the facade exists for**, and §2
+and §7 disagree about whether they are there at all: U3(a) brands
+`PerformOptions.movementSampleMaxStep` as `Normalized`; §2.2's signature block types it plain
+`number`. Since U2 forbids converter functions, a downstream caller must write
+`0.05 as Normalized`. Recommend: brands on facade **outputs** only (free for readers), plain
+`number` on facade **inputs**, and make §2.2 normative.
+
+**M2 — the type-aware-lint decision is parked on T12 and T12 does not make it.**
+`eslint.config.js:8-13`: type-aware linting "is deliberately deferred: … entangled with the
+null-vs-undefined policy that item T12 has to settle first." §3 settles the policy and never
+rules on the tooling. Consequence: §8.10 gives T21 an audit "`prefer-readonly` = 0" for a rule
+that **is not enabled** — I measured 0 findings because it never runs. A gate that cannot fail
+is not a gate (the doc's own preamble). Same for `no-unnecessary-condition`, which is precisely
+what would flag the `?? []` guards N2b makes dead.
+
+**M3 — RULE I1's "exhaustive" list omits the object §2.4 introduces.**
+`RenderContext.streamOrdinal` is mutable and outlives the expression ("Mutable by design") but
+is not one of the five boundaries. Add a sixth, or fold it into boundary 3.
+
+**M4 — I5 tells T19a to record its divergence "in the parity ledger (§6.3)" and §6.3 has no row
+for it** (P1–P4 only). Also unmentioned: `tests/mpm/elements/MovementMap.test.ts:815-827` reads
+*and writes* the static I5 deletes, so T19a will touch a unit test; per charter invariant 4 it
+must be migrated to the `RenderOptions` path with both assertions preserved (the 0.1 default
+*and* the density effect), not dropped.
+
+**M5 — T14's real file scope is larger than §8.2 implies.** N2b is assigned to T14, but 11 of
+`getAllChildElements`'s 16 call sites are in `src/mpm/elements/**` (7 styles, plus Header,
+Performance, Metadata, OrnamentDef) — T16's cluster — each carrying a `?? []` or `if (x)` that
+N2b makes dead. Say whether T14 may touch them.
+
+**M6 — §8.6's "one shared base or mixin" collides with RULE N3.** `TemporalSpread.getXml()` and
+`DynamicsGradient.getXml()` (OrnamentDef.ts:173, 299) are **not** pure reads — they lazily
+generate and cache the element (`if (this.xml === null) return this.generateXML();`), which is
+why they sit outside the `AbstractXmlSubtree` hierarchy. If a worker reads §8.6's shared-base
+suggestion as "put them under `AbstractXmlSubtree`", the narrowed `getXml(): Element` (a plain
+field read) silently replaces generate-on-demand and serialization of programmatically built
+ornaments changes. State that the shared base covers id/name only.
+
+### LOW — factual corrections (each would send a fresh worker to the wrong code)
+
+- **L1** `Helper` has **45** statics / **41** public, not 44 / 40. The §8.2 destination table
+  itself accounts for all 45, so nothing is unassigned — only the prose counts are wrong.
+- **L2** **19 of 41** public statics have zero `src/` callers, not 17. The two the list omits
+  are **`copyIdNoNs`** and **`pulseDuration2decimal`** (verified: absent from `src/` outside
+  their own declarations). §8.10's per-candidate table — advertised in the handoff as complete
+  — therefore has no ruling for either. Both are small working utilities; "keep" by §8.10's own
+  stated rule.
+- **L3** N2b cites `Helper.ts:123,129` for `getAllChildElements`'s null returns; those lines are
+  inside **`getFirstChildElement`**. The real returns are `Helper.ts:160` and `Helper.ts:166`.
+- **L4** N2b's "all 8 call sites in the mei cluster": there are **16** total — 5 in `mei/`
+  (Mei2MsmMpmConverter.ts:683,3986,3995 + 2 self-calls in Helper.ts) and **11 in `mpm/`**.
+- **L5** N3's "~211 `this.getXml()!` sites that T6 (61) and T7 (150) deferred": the tree has
+  **154**, all under `src/mpm/` (41 `styles/`, 17 `maps/`, 30 `metadata/`, rest in `elements/`);
+  173 `getXml()` calls in total. The conclusion — biggest single lever — survives; the number
+  does not.
+- **L6** C6's line numbers are all stale. The **count of 8 is correct** (and matches
+  `KeyValue.ts`'s own class comment). Actual sites: `GenericMap.ts:191`,
+  `ImprecisionMap.ts:527,564,570`, `RubatoDef.ts:210,218` (`setKey`) and `RubatoDef.ts:214,219`
+  (`setValue`). The cited `GenericMap.ts:136` is a `throw`; `RubatoDef.ts:181,189` are
+  `Attribute.setValue`. The companion claim "`.setValue(` has 124 hits, all but two are
+  `Attribute.setValue`" is **correct**.
+- **L7** I2: `no-param-reassign` is at **3** warnings, not 5 (OrnamentationMap, DynamicsData,
+  MovementData — one each).
+- **L8** I4's "`prefer-readonly` ~17 repo-wide" is unmeasurable today — see M2.
+- **L9** I5's audit command false-positives: run verbatim it returns
+  `src/msm/Msm.ts:508: static override makePart(`, because the `(`-filter misses a signature
+  whose parameters wrap to the next line. Use a multiline-aware check.
+- **L10** F1 permits "`Uint8Array` … **No class instances**" in the same sentence. F3 resolves
+  it; say so inline.
+- **L11** N4's mechanical audit (grep `src/api/types.ts` for `?:`) misses the inline input
+  objects declared in `pipeline.ts` (`{ readonly msm; readonly mpm? }`).
+
+### Verified correct — do not re-derive
+
+- **§1.1 import edge table: every row.** `mpm → mei` 33, and all 33 are `import { Helper }`
+  with no other edge; `mei → mpm` 22 runtime (+1 type-only); `mei → msm` 2 (+1 type-only);
+  `mpm → msm` 1 (+1 type-only, Performance→Msm); `msm → mpm` 0 runtime / 1 type-only;
+  `msm → midi` 3; `mei → root` 1.
+- **RULE M2's seven counts, exactly**: `getAttribute` 150, `getAttributeValue` 27,
+  `getFirstChildElement` 18, `addToListAttribute` 14, `getAllChildElements` 11,
+  `getFilenameWithoutExtension` 1, `addUUID` 1 — all inside mpm/msm/midi. `addToMap`'s "42 mei
+  call sites" is right when the Helper.ts self-call is counted (41 + 1), which is also the
+  methodology behind the zero-caller list.
+- **M2a**: Msm.ts's eight module-locals at 25, 45, 51, 63, 81, 134, 144, 163 — inside 25-175.
+- **M6**: Mei2MsmMpmConverter.ts:646,653; `VERSION 0.11.2` vs package.json `0.8.8`.
+- **§2.3 field mapping, checked against ground truth**: `<note xml:id date midi.pitch duration
+  velocity milliseconds.date milliseconds.date.end>`, `<part name number midi.channel
+  midi.port>`, `<volume date value … milliseconds.date>`, `<position date value controller …
+  milliseconds.date>`; `Msm.ts:1432-1441`; `CC_Channel_Volume=7`, `CC_Damper_Pedal=64`,
+  `CC_Soft_Pedal=67`. Fixture coverage exists for both streams: 10 fixtures carry
+  `channelVolumeMap`, 2 carry `positionMap` (movement_augmented has exactly the 17
+  `<position>` elements I5 cites).
+- **N3's global check**: 0 `setXml(null)` in `src/` or `tests/`. I went further and confirmed
+  every `parseData` assigns `setXml` **before** any `getXml()` read (ImprecisionMap.parseData
+  reads at :63 only after `super.parseData(xml)` at :62). Recommend N3's gate say "no
+  `getXml()` read precedes the assignment" — "assigns before returning" would pass even if a
+  read preceded it, and `xml` is initialized to `null`.
+- 1080 `no-non-null-assertion`; 44 `eqeqeq` all in Helper.ts; exactly three
+  `no-extraneous-class` (Meico, Helper, EventMaker); three `no-require-imports`;
+  `MovementMap.movementSampleMaxStep` is the only non-`readonly` static field in `src/`;
+  the three per-node `DOMParser` sites (XomTypes.ts:133, 223, 304); zero callers for
+  `EventMaker.byteToShort`, `XmlBase.fixDuplicateIds`, `Msm.getMinimalPPQ`,
+  `Element.setNamespaceURI`.
+- **`Midi.exportMidi(): Uint8Array | null` exists (Midi.ts:714)** — RULE F3 is implementable
+  with no file I/O and no new byte-writing code.
+
+### Contract check (charter facade criteria + state.json T13)
+
+Satisfied by §2: plain-data outputs with `structuredClone`/`postMessage` proof (F1), no
+XomTypes in signatures (F1), no file I/O (F4), per-note `{id, pitch, date, duration, velocity,
+milliseconds:{date,end}}` with the conductor's Q1 nesting ruling, CC streams for movement
+(`positionMap`) and sub-note dynamics (`channelVolumeMap`), a single-parse batch path
+(`performMsmToData`), and an exposable seed (`PerformOptions.seed`, F7).
+Gaps: the seed is not actually reachable on the `renderExpressiveMidi` path as specified (H3);
+the recorded contract says "MSM+MPM-as-objects/JSON" while F2 sends **text** — defensible and
+well argued, but §2 should say so explicitly since T13's verifier will check against
+state.json; and `PerformedNote.date`/`.duration` are **symbolic** ticks, so no field carries
+`duration.perf` (an articulation ratio is not derivable except through the tempo-warped
+millisecond fields). Either add `datePerf`/`durationPerf` or state the omission deliberately.
+
+### Implementability by fresh context (dimension 5)
+
+I attempted worker briefs for the two items I judge most underspecified. **T19a** is not
+writable from the doc alone: its scope is contradicted between §8.1 ("No other file changes")
+and state.json (which adds `units.ts`), `deriveSeed` and `impIndex` are undefined (H3), the
+`Msm.exportExpressiveMidi` hop is unnamed (H3), its emitted-JS gate cannot pass (B3), and it
+silently owns a unit-test migration (M4). **T13** is writable except for the serializer choice
+and round-trip gate (H2), the input-brand question (M1), and three unstated behaviours:
+`MovementDocuments.title`/`.index` provenance, what `renderExpressiveMidi` does when `mpm` is
+omitted, and exactly which interior state `ConvertOptions.sourceName` sets (it feeds both the
+MPM `RelatedResource` **and** the generated `<comment>` text at Mei2MsmMpmConverter.ts:643-654).
+
+### Verdict
+
+**FAIL T12** on B1, B2, B3, plus H1/H3/H4 and the citation defects L1–L6. Nothing here asks for
+a redesign — §§1, 4, 5, 8.5, 8.7, 8.9, 8.10 stand as written, and §8.5's dispatch census is the
+best gate in the document. What is needed is: correct the rulings that contradict the queue
+(B1) or their own evidence (B2, H1, H4), give §7 an owner and an executable gate (B3), name the
+missing plumbing hop (H3), and re-measure the numbers flagged in L1–L8 against the tree at
+`304e90a` rather than against earlier items' log prose.
