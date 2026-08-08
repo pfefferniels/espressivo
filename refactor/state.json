@@ -2,25 +2,25 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "62c125f",
+  "lastGreenCommit": "4d02cb3",
   "phase": 1,
-  "currentItem": "T1",
-  "counters": { "completed": 0, "blocked": 0, "reverted": 0 },
+  "currentItem": "T2",
+  "counters": { "completed": 1, "blocked": 0, "reverted": 0 },
   "coverageBaseline": { "statements": 86.69, "branches": 85.73, "functions": 94.11 },
   "queue": [
     {
       "id": "T1",
       "phase": 1,
-      "status": "in_progress",
+      "status": "done",
       "title": "Add verify script + record baseline metrics",
       "details": "Add `verify` npm script (build then vitest run). Record baseline in log.md: test count, suite runtime, tsc runtime, scoped coverage numbers (npm run test:coverage). No src changes."
     },
     {
       "id": "T2",
       "phase": 1,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Tooling baseline: ESLint (typescript-eslint strict+stylistic) + Prettier",
-      "details": "Flat eslint config + prettier, npm run lint / lint:fix / format. Apply auto-fixes and a one-time prettier format as a PURE formatting commit (no logic). Document remaining (non-auto-fixable) violations per file in refactor/lint-debt.md as input for Phase 2 items. Style decisions to codify: no getX()/setX() Java accessors (prefer properties/accessors), prefer for..of & array methods, template literals, ===, no var, prefer const, explicit return types on exported API."
+      "details": "Flat eslint config + prettier, npm run lint / lint:fix / format. Apply auto-fixes and a one-time prettier format as a PURE formatting commit (no logic). Document remaining (non-auto-fixable) violations per file in refactor/lint-debt.md as input for Phase 2 items. Style decisions to codify: no getX()/setX() Java accessors (prefer properties/accessors), prefer for..of & array methods, template literals, ===, no var, prefer const, explicit return types on exported API. ALSO (T1 verifier finding): tests are not typechecked by the build (tsconfig excludes *.test.ts) — close that hole, e.g. tsconfig.tests.json + extend the verify script with a no-emit typecheck over tests/, so type breakage in adapted tests surfaces at the gate, not just as vitest runtime failures."
     },
     {
       "id": "T3",
@@ -90,7 +90,7 @@
       "phase": 3,
       "status": "pending",
       "title": "Architecture design doc",
-      "details": "Architect agent produces refactor/ARCHITECTURE.md: target module map, public API design (clean facade for MEI->MSM+MPM->MIDI), layering rules, null-vs-undefined policy, class-vs-function policy, error handling policy, what stays class-based for parity reasons. Verifier reviews it for equivalence risk. No code changes."
+      "details": "Architect agent produces refactor/ARCHITECTURE.md: target module map, public API design (clean facade for MEI->MSM+MPM->MIDI), layering rules, null-vs-undefined policy, class-vs-function policy, error handling policy, what stays class-based for parity reasons, AND the immutability policy per the charter's 'immutable-friendly' section (where mutation is confined, what is readonly, immutable public API contract). Verifier reviews it for equivalence risk. No code changes."
     },
     {
       "id": "T13",
@@ -118,7 +118,7 @@
       "phase": 3,
       "status": "pending",
       "title": "Model layer: composition & types (msm/mpm)",
-      "details": "Per ARCHITECTURE.md: reduce inheritance depth, KeyValue->tuples if decided, typed attribute access helpers, GenericMap/GenericStyle generics cleaned. Behavior-identical."
+      "details": "Per ARCHITECTURE.md: reduce inheritance depth, KeyValue->tuples if decided, typed attribute access helpers, GenericMap/GenericStyle generics cleaned, immutable-friendly model surface (readonly properties, no input mutation outside declared boundaries). Behavior-identical."
     },
     {
       "id": "T17",

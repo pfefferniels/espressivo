@@ -48,6 +48,39 @@ through files in `refactor/` + git history — never through agent memory.
 - XML serialization must stay byte-identical after the tests' normalization. The
   XomTypes layer's attribute ordering and namespace handling are load-bearing.
 
+## Design direction: immutable-friendly (user directive, 2026-08-08)
+
+The refactored codebase should be friendly to immutable usage patterns. Pragmatic
+reading — equivalence still beats purity:
+
+- **Type-level immutability everywhere it's free**: `readonly` fields/properties,
+  `readonly T[]` / `ReadonlyMap` in signatures that don't mutate, `as const` for
+  static data tables (e.g. InstrumentsDictionary), tuples over mutable pairs.
+  These are zero-runtime-risk and belong in Phase 2 items already.
+- **Don't mutate inputs**: functions must not modify their arguments unless
+  mutation IS their documented purpose (e.g. rendering maps into an MSM). Public
+  API (T13 facade): inputs treated as immutable, outputs freshly created, no
+  internal mutable state leaked.
+- **No shared mutable statics/singletons** in the target architecture.
+- **Explicit mutation boundaries**: the XML document tree (XomTypes) is inherently
+  mutable and load-bearing for parity — do NOT force persistent data structures on
+  it. Instead, ARCHITECTURE.md (T12) must define WHERE mutation is allowed (the
+  conversion/rendering core) and keep everything outside those boundaries
+  immutable-friendly.
+- **No allocation-heavy immutability in hot rendering loops** if it risks behavior
+  or serious perf drift; note such spots in log.md instead.
+- **Facade outputs are plain data — this is the acceptance criterion, not just
+  `readonly`.** The T13 facade's model surface (notes, maps, instructions —
+  whatever downstream apps consume) must be plain, JSON-serializable,
+  structured-clone-safe values. The two concrete tests: (a) a facade return value
+  survives `postMessage` to a Web Worker; (b) change produces a new value, so
+  React-style referential-equality memoization works. A `readonly` wrapper around
+  a live XomTypes/XML node fails both and does NOT satisfy this directive. XML is
+  an interior representation, entered and exited only at parse/serialize
+  boundaries; XomTypes types must never appear in a facade signature. (Why: the
+  downstream plan is to migrate mpm-desk off mpm-ts onto this facade — that only
+  works if the model layer is plain data.)
+
 ## Roles
 
 - **Conductor** (main session): advances the state machine in `state.json`,
@@ -95,8 +128,11 @@ item re-dispatched fresh — the disk state makes that lossless.
 1. Read state.json. Check running agents (ListAgents / task notifications).
 2. If a worker finished READY → dispatch verifier. If BLOCKED → revert tree, mark
    item blocked, dispatch next item's worker.
-3. If a verifier said PASS → commit (`refactor(<id>): ...`), update state.json
-   (status done, lastGreenCommit), dispatch next item's worker.
+3. If a verifier said PASS → commit (`refactor(<id>): ...`), push
+   (`git push origin ts-idiomatic`), update state.json (status done,
+   lastGreenCommit), dispatch next item's worker. Push only after a verified
+   commit — never push an unverified working tree, never force-push. If the
+   push fails (offline, auth), log it and continue; retry on the next cycle.
 4. If FAIL → one fix round: SendMessage the worker with the reasons (its context is
    resumable). Second FAIL → revert, mark blocked, move on.
 5. If queue empty in current phase → phase-end audit (coverage vs floor, log review),
@@ -109,6 +145,9 @@ item re-dispatched fresh — the disk state makes that lossless.
 
 ## Commands
 
+- Remote: `origin` → github.com/pfefferniels/espressivo. Push `ts-idiomatic`
+  after every verified commit (conductor cycle step 3). Only the conductor
+  pushes — workers and verifiers never do.
 - Verify: `npm run verify` (added in T1; until then `npm run build && npx vitest run`)
 - Coverage: `npm run test:coverage` (scoped; see vitest.config.ts include list)
 - Reference regeneration: NOT needed for refactoring (fixtures are fixed). Commands
