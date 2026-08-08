@@ -21,12 +21,12 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 |---|---|---|
 | Violations before T2 | 2104 | |
 | Auto-fixed in T2 (semantics-preserving only) | 345 | |
-| **Remaining debt (errors)** | **1759** | **1451** |
+| **Remaining debt (errors)** | **1759** | **1437** |
 | `no-param-reassign` warnings (separate, see below) | 40 | 35 |
 | Files affected (≥1 error) | 90 of 118 | 81 of 105 |
 | Still auto-fixable | 0 | 0 |
 
-T2 predicted "306 sit in modules T3 deletes, real Phase 2 debt ~1453". T3 removed **308**
+T2 predicted "306 sit in modules T3 deletes, real Phase 2 debt ~1453". T3 removed **322**
 errors and **5** warnings; the delta reconciles exactly:
 
 | n | source |
@@ -34,7 +34,14 @@ errors and **5** warnings; the delta reconciles exactly:
 | 306 | the 8 deleted modules listed in the T3 table below |
 | 1 | `src/supplementary/InputStream2StringConverter.ts` — booked under T4, also deleted |
 | 1 | `src/mei/Mei.ts` — `no-require-imports`, the `require()` in the removed `exportMusicXml()` |
+| 14 | the three dead out-of-scope stubs removed late in T3 (`Midi.exportMsm`, `Msm.exportChroma`, `Msm.exportPitches`) and their 4 unit tests |
 | 5 warnings | all `src/mei/Mei2MusicXmlConverter.ts` |
+
+> **Correction (see the `[T3] worker — correction` entry in log.md).** An earlier revision of
+> this file reported **1451** errors. That figure was measured *before* the three dead stubs
+> above were removed, and it is the number that got committed in `67b407e` — it understated
+> the improvement by 14. The table now reflects the tree as actually committed, re-measured
+> with `eslint -f json` on a clean `git archive` of HEAD.
 
 ## By rule
 
@@ -44,12 +51,12 @@ Counts are post-T3; the T2 column shows what the deletions absorbed.
 |---|---|---|---|
 | 1104 | 1333 | `no-non-null-assertion` | The dominant Java-ism. See below — do not bulk-fix. |
 | 94 | 106 | `unified-signatures` | Java-style overload sets that collapse to one optional/union signature. |
-| 76 | 104 | `no-unused-vars` | Mostly unused params in ported signatures + a few dead locals. |
-| 59 | 59 | `no-empty-function` | Almost entirely test stubs. |
+| 72 | 104 | `no-unused-vars` | Mostly unused params in ported signatures + a few dead locals. |
+| 54 | 59 | `no-empty-function` | Almost entirely test stubs. |
 | 44 | 44 | `eqeqeq` | All 44 are the `== null` idiom, all in `Helper.ts`. See below. |
-| 38 | 64 | `no-explicit-any` | 22 of these are hidden behind two file-level suppressions (see below). |
-| 11 | 11 | `explicit-module-boundary-types` | Exported members with inferred return types. |
+| 34 | 64 | `no-explicit-any` | 22 of these are hidden behind two file-level suppressions (see below). |
 | 11 | 12 | `prefer-for-of` | Index loops that never use the index. |
+| 10 | 11 | `explicit-module-boundary-types` | Exported members with inferred return types. |
 | 5 | 15 | `no-extraneous-class` | Static-only "utility" classes → plain module functions. Feeds T14. |
 | 3 | 4 | `no-require-imports` | `require()` survivals in `src/mei/` — the remaining 3 are the `Mei2MsmMpmConverter` lazy import (T18's cycle) and 2 in `Helper.ts`. |
 | 3 | 3 | `no-fallthrough` | `Performance.ts` switch cases — **verify each is intentional before touching**. |
@@ -170,10 +177,10 @@ The 3 `no-fallthrough` in `Performance.ts` are the only violations in this whole
 that could be reporting a **real bug** rather than a style issue. Check them against the
 Java source before changing anything — deliberate fallthrough is likely, but confirm.
 
-### T9 — msm — 137
-`no-non-null-assertion` 114, `unified-signatures` 12, `no-unused-vars` 6,
-`no-explicit-any` 3, `no-extraneous-class` 1, `explicit-module-boundary-types` 1 —
-`Msm.ts` 121, `Goto.ts` 9, `AbstractMsm.ts` 7.
+### T9 — msm — 132
+`Msm.ts` 116, `Goto.ts` 9, `AbstractMsm.ts` 7. (137 → 132 in T3: `Msm.ts` lost the
+`exportChroma`/`exportPitches` dead stubs, which carried `no-explicit-any` and
+`explicit-module-boundary-types` violations.)
 
 ### T10 — mei — 682 (the big one)
 `no-non-null-assertion` 577, `eqeqeq` 44, `no-unused-vars` 29, `no-explicit-any` 12,
@@ -189,18 +196,20 @@ ESM, see the note in `tests/mei/Mei.test.ts`.)
 `Mei2MsmMpmConverter.ts` alone is 38% of the entire remaining debt. T10's own note about
 splitting into ≤3 sub-rounds looks right.
 
-### T11 — midi — 37
-`no-non-null-assertion` 14, `unified-signatures` 10, `prefer-for-of` 6, `no-unused-vars` 5,
-`no-extraneous-class` 1, `no-explicit-any` 1 — `Midi.ts` 27, `MidiTypes.ts` 6,
-`EventMaker.ts` 3, `InstrumentsDictionary.ts` 1.
+### T11 — midi — 33
+`Midi.ts` 23, `MidiTypes.ts` 6, `EventMaker.ts` 3, `InstrumentsDictionary.ts` 1.
+(37 → 33 in T3: `Midi.ts` lost the `exportMsm` dead stub, which carried `no-explicit-any`,
+`explicit-module-boundary-types` and 2 `no-unused-vars` for its two ignored parameters.)
 
 ### T13 — facade — 1
 `no-extraneous-class` 1 — `src/Meico.ts`.
 
-### tests — 93
-`no-empty-function` 59, `no-unused-vars` 20, `no-explicit-any` 12,
+### tests — 88
+`no-empty-function` 54, `no-unused-vars` 20, `no-explicit-any` 12,
 `no-unsafe-function-type` 2. Concentrated in `tests/mei/Mei.test.ts` (24),
-`tests/mpm/Mpm.test.ts` (10), `tests/midi/Midi.test.ts` (8), `tests/mei/Helper.test.ts` (7).
+`tests/mpm/Mpm.test.ts` (10), `tests/mei/Helper.test.ts` (7).
+(93 → 88 in T3: the 4 removed stub tests took 5 `vi.spyOn(...).mockImplementation(() => {})`
+`no-empty-function` sites with them, all in `tests/midi/Midi.test.ts`.)
 Adapt alongside the source item that owns each area. `no-non-null-assertion` and
 `explicit-module-boundary-types` are already off for `tests/**`.
 
