@@ -61,7 +61,8 @@ Layers are numbered; **an import may only go to a strictly lower layer, or sidew
 the same directory.** This is the whole dependency rule.
 
 ```
-L0  src/units.ts              brands; type-only, emits nothing            (NEW, T13/T19a)
+L0  src/units.ts              brands; type-only (see RULE U1 for what it
+                              actually emits)                             (NEW, T19a)
     src/version.ts            export const VERSION                        (from Meico.ts, T14)
     src/xml/XomTypes.ts       DOM emulation — the mutable interior
     src/xml/XmlBase.ts
@@ -100,31 +101,56 @@ L7  src/index.ts              barrel: facade + the existing class surface
 nothing from any higher layer. T18 adds `eslint-plugin-import`'s `no-restricted-paths` (or
 equivalent) encoding exactly this table, plus `import/no-cycle`, so it cannot regress.
 
-**RULE M2 (Helper dissolves).** `src/mei/Helper.ts` ceases to exist as a class. Its 44
-statics are distributed by the table in §8.2 (T14). The dissolution is what removes all 33
-`mpm → mei` edges: the seven members the MPM/MSM/MIDI layers actually use
-(`getAttribute` ×150, `getAttributeValue` ×27, `getFirstChildElement` ×18,
-`addToListAttribute` ×14, `getAllChildElements` ×11, `getFilenameWithoutExtension` ×1,
-`addUUID` ×1) all land in L1.
+**RULE M2 (Helper dissolves).** `src/mei/Helper.ts` ceases to exist as a class. Its **45**
+statics (41 public + 4 private) are distributed by the table in §8.2 (T14). The dissolution is
+what removes all 33 `mpm → mei` edges.
 
-**RULE M2a (there are TWO navigation implementations, and T14 must not merge them).**
-`src/msm/Msm.ts` carries its own **module-local** copies of eight of these helpers —
-`getAttribute`, `getAttributeValue`, `getFirstChildElement`, `getAllChildElements`,
-`getNextSiblingElement`, `cloneElement`, `getFilenameWithoutExtension`, `addUUID`
-(`Msm.ts:25-175`). T9 established that the two sets have **behaviourally drifted**:
-`mei/Helper.getAllChildElements` uses an XPath `child::*[local-name()=…]` where the `Msm.ts`
-copy uses `getChildElements(name)`, and those can disagree on namespaced children;
-`cloneElement` differs from Java in both copies, in *different* shapes. The file's own class
+**The cross-layer surface is five members, not seven, and it is `mpm/`-only.** Re-measured for
+this revision by anchoring on the call paren and discarding comment lines — the earlier
+figures came from a bare identifier grep that counted `{@link Helper.x}` references and
+error-message text as call sites, and were carried into the first draft uncorrected:
+
+| member | call sites outside `src/mei/` | in |
+|---|---|---|
+| `getAttribute` | 150 | `mpm/` only |
+| `getAttributeValue` | 27 | `mpm/` only |
+| `getFirstChildElement` | 18 | `mpm/` only |
+| `addToListAttribute` | 14 | `mpm/` only |
+| `getAllChildElements` | 11 | `mpm/` only |
+
+**220 call sites** across the 33 files. The column counts *call sites*, not matching lines:
+`Performance.ts:442` puts two `Helper.getAttributeValue(` calls in one template literal, so a
+line-based grep reports 26/219 and a call-based one 27/220. The other four members are
+identical either way. **`addUUID` and `getFilenameWithoutExtension` are *not* on
+this list**: `Helper.addUUID` has **zero** real call sites anywhere in `src/` (all five
+occurrences are JSDoc `{@link}` or prose — `src/msm/Msm.ts:163` defines its own local
+`addUUID`, which is what `Msm.ts:1831` calls), and `Helper.getFilenameWithoutExtension`'s six
+call sites are all inside `src/mei/` (the `Msm.ts:1136` hit is a comment). `src/msm/` and
+`src/midi/` import `Helper` **not at all**.
+
+**RULE M2a (there are THREE navigation implementations, and T14 must not merge them).**
+Two files carry their own **module-local** copies of these helpers:
+
+- `src/msm/Msm.ts:25-175` — eight: `getAttribute`, `getAttributeValue`,
+  `getFirstChildElement`, `getAllChildElements`, `getNextSiblingElement`, `cloneElement`,
+  `getFilenameWithoutExtension`, `addUUID` (at lines 25, 45, 51, 63, 81, 134, 144, 163).
+- `src/mpm/Mpm.ts:33,45` — two: `getFirstChildElement`, `getAllChildElements`. *(This one was
+  missed by the first draft, which said "TWO implementations".)*
+
+T9 established that the sets have **behaviourally drifted**:
+`mei/Helper.getAllChildElements` uses an XPath `child::*[local-name()=…]` where the local
+copies use `getChildElements(name)`, and those can disagree on namespaced children;
+`cloneElement` differs from Java in both copies, in *different* shapes. `Msm.ts`'s own class
 comment warns against deduplicating them on sight.
 
-**Ruling: T14 moves `mei/Helper`'s members and leaves `Msm.ts`'s module-locals exactly where
+**Ruling: T14 moves `mei/Helper`'s members and leaves both files' module-locals exactly where
 and as they are.** Merging them is not a move — it is a behaviour change on the
 byte-compared serialization path, and T9's note is right that it owes a *per-method
-behavioural* comparison, not a textual one. Recommend a dedicated later item (§8.1 note) that
-does that comparison with a purpose-built probe per method. Until then the duplication stays
-and stays commented.
+behavioural* comparison, not a textual one. A dedicated later item (T16b, §8.1) does that
+comparison with a purpose-built probe per method. Until then the duplication stays and stays
+commented.
 
-Useful corroboration for RULE N2b, though: `Msm.ts`'s copies of `getAllChildElements` and
+Useful corroboration for RULE N2b, though: the local copies of `getAllChildElements` and
 `cloneElement` are **already** typed non-null (`Element[]`, `Element`), which is the shape
 N2b narrows `mei/Helper`'s toward.
 
@@ -181,6 +207,12 @@ survives `structuredClone` and `postMessage` unchanged. The permitted types are:
 class instances, no `Map`/`Set`, no functions, no getters, and — the charter's explicit
 prohibition — **no XomTypes type (`Element`, `Attribute`, `Document`, `Nodes`, `Elements`,
 `Text`, `Builder`) may appear in any facade signature**, not even behind `readonly`.
+
+`Uint8Array` is technically a class instance, so read "no class instances" as "no class
+instances **other than** the `Uint8Array` binary payloads that RULE F3 sanctions" — F3 gives
+the reasoning, and the structured-clone algorithm handles typed arrays natively, which is the
+property this rule is actually about.
+
 T13 ships three mechanical tests over a representative result:
 `expect(structuredClone(r)).toEqual(r)`,
 `expect(JSON.parse(JSON.stringify(r))).toEqual(r)` (for every type except the `Uint8Array`
@@ -193,6 +225,26 @@ data by construction, it makes F1 free, it makes RULE I3 (never mutate inputs) f
 keeps the XML interior genuinely interior. The cost — a parse per stage — is paid only by
 callers who chain stages themselves; the combined functions (`performMsmToData`,
 `renderExpressiveMidi`) parse once.
+
+**RULE F2a (which serializer — "XML strings" is not a specification).** Every facade function
+that returns document text produces it with **`getRootElement().toXML()`**, never
+`Document.toXML()` and never `XmlBase.toXML()`. The difference is observable and it matters:
+`Document.toXML()` prefixes exactly `<?xml version="1.0" encoding="UTF-8"?>\n`
+(`XomTypes.ts:27`) and `XmlBase.toXML()` delegates to it (`XmlBase.ts:76-78`), whereas the
+equivalence suite compares `augmented.getRootElement()!.toXML()`
+(`tests/integration/full-xml-equivalence.test.ts:223,291,335,355`) — and the Java-generated
+fixtures open with `<?xml version="1.0"?>`, which is a *third* spelling. Choosing the
+declaration-free form means facade output is the exact byte sequence the ground-truth
+comparison already validates. Facade *inputs* accept either form, since the parser tolerates
+a missing declaration.
+
+> **RULE F2 is empirically de-risked** — this was measured during T12 review rather than
+> assumed. Across all 16 MEI fixtures, `convert → serialize → re-parse → perform` is
+> byte-identical (after UUID canonicalization) to `convert → perform` on the in-memory
+> objects: **0 divergences**. A separate probe showed parse→serialize reaches a fixed point at
+> n=1, and that `perform()` does not mutate its input MSM (confirming RULE I1 boundary 3 and
+> RULE I3a empirically, not just by reading `msm.clone()`). T13 must still **re-run** this as
+> its own gate — see §8.4 — because it is the assumption the whole boundary design rests on.
 
 **RULE F3 (`Uint8Array` is an approved facade type for binary payloads).** MIDI files are
 bytes; there is no better plain representation. `Uint8Array` is structured-clone-safe and
@@ -363,6 +415,15 @@ would force casts on every caller that reads a file.
 boundary. Nor do `Msm`, `Mpm`, `Mei`, `Midi`, `Performance` instances appear in facade
 signatures.
 
+> **On the recorded contract's wording.** state.json's T13 entry says the batch path takes
+> "MSM+MPM-as-objects/JSON". This design takes them as **text** (RULE F2), which is a
+> deliberate reading of that phrase, not an oversight: the requirement it encodes is
+> *in-memory, no file I/O* — which F4 satisfies — and text is the only representation that
+> makes RULE F1 free. T13's verifier will check the facade against state.json, so this
+> sentence is here to be cited rather than re-litigated. If the consumer genuinely needs a
+> parsed-object input, the additive answer is a future `performParsedMsmToData` overload, not
+> a change to the boundary type.
+
 ### 2.3 Field mapping for `extractPerformanceData`
 
 Read from the augmented MSM, which is the same document the equivalence fixtures compare, so
@@ -373,7 +434,7 @@ every field below is already proven against Java:
 | `parts[].name` / `.midiChannel` / `.midiPort` | `<part name= number= midi.channel= midi.port=>` |
 | `notes[].id` | `<note xml:id=>` |
 | `notes[].pitch` | `<note midi.pitch=>` |
-| `notes[].date` / `.duration` | `<note date= duration=>` (symbolic ticks) |
+| `notes[].date` / `.duration` | `<note date= duration=>` — **symbolic** ticks, not performed; see the `duration.perf` note below |
 | `notes[].velocity` | `<note velocity=>` |
 | `notes[].milliseconds.date` / `.end` | `<note milliseconds.date= milliseconds.date.end=>` |
 | `controlChanges` kind `channelVolume` | `<dated><channelVolumeMap><volume date= value= milliseconds.date=>` — this is where **sub-note dynamics** land; `ccNumber` 7 |
@@ -391,6 +452,14 @@ line and adding a second representation invites the two to drift.
 > alternative is flat `millisecondsDate` / `millisecondsDateEnd`. **Default if no answer
 > arrives: ship the nested form** — it is the closest idiomatic reading of the dotted path
 > and T13 should not block on this.
+
+> **OPEN QUESTION Q6 — the performed-tick domain is not exposed.** `date` and `duration`
+> above are the **symbolic** MSM values; the augmented MSM also carries `date.perf`,
+> `duration.perf` and `date.end.perf`, which are what an articulation actually modifies. As
+> specified, a consumer can recover performed *time* (through `milliseconds.*`) but not a
+> performed *tick* ratio. Adding `datePerf` / `durationPerf` to `PerformedNote` is additive
+> and cheap. **Architect's recommendation: add them.** If the conductor declines, T13 keeps
+> the omission and this note records that it is deliberate rather than overlooked.
 
 ### 2.4 Seed plumbing
 
@@ -415,11 +484,34 @@ export interface RenderContext {
 ```
 
 `Performance.perform(msm, options?)` creates **one local** `RenderContext` and passes it by
-reference to the two render entry points that need it — `MovementMap.renderMovementToMap(ctx)`
-and `ImprecisionMap.renderImprecisionToMap(map, shakePolyphonicPart, ctx)`. Nothing is stored
-on a class, a module, or `globalThis`.
+reference down. Nothing is stored on a class, a module, or `globalThis`.
 
-Inside `ImprecisionMap.renderImprecisionToMap`, the seed decision becomes exactly:
+**The full call chain — all four hops, not two.** An earlier draft named only the two
+`render*ToMap` entry points and so could not actually deliver a seed to the facade's headline
+MIDI function. `Performance.perform` has exactly **one** `src/` caller:
+
+| # | hop | file:line |
+|---|---|---|
+| 1 | `Msm.exportExpressiveMidi(performance?, generateProgramChanges?, options?)` → `performance.perform(this, options)` | `src/msm/Msm.ts:1023` |
+| 2 | `Performance.perform(msm, options?)` builds the `RenderContext` | `src/mpm/elements/Performance.ts` |
+| 3 | → `MovementMap.renderMovementToMap(ctx?)` | called at `Performance.ts:533` |
+| 4 | → `ImprecisionMap.renderImprecisionToMap(map, shakePolyphonicPart, ctx?)` | called at `Performance.ts:433,558,575,577,579,580` |
+
+Hop 1 is the one that matters and the one that was missing: without it,
+`renderExpressiveMidi` — the facade function the downstream consumer actually calls — cannot
+honour `seed` or `movementSampleMaxStep` at all, because `Msm.exportExpressiveMidi` is what
+invokes `perform`.
+
+Hop 1 crosses a layer boundary: `src/msm/` would need `RenderOptions` from `src/mpm/`, which
+RULE M1 permits only as `import type`. That is sufficient **and it constrains the design**:
+`Msm.ts` may `import type { RenderOptions }` and pass the object straight through, but it must
+never need `DEFAULT_MOVEMENT_SAMPLE_MAX_STEP` or any other runtime value from `src/mpm/`. So
+every default must be resolved **inside** `src/mpm/`, at the point of use — never in `Msm.ts`.
+A worker who finds themselves wanting to import the constant into `Msm.ts` has taken a wrong
+turn.
+
+Inside `ImprecisionMap.renderImprecisionToMap`, the seed decision becomes exactly this, at
+`src/mpm/elements/maps/ImprecisionMap.ts:336`:
 
 ```ts
 if (dd.seed !== null) random.setSeed(dd.seed);                        // unchanged, MPM wins
@@ -428,10 +520,35 @@ else if (ctx?.options.seed !== undefined)                             // new bra
 // else: leave the constructor's Math.random() seed — today's behaviour, untouched
 ```
 
-with `deriveSeed` a pure integer hash (`h = Math.imul(h ^ p, 0x27d4eb2d) >>> 0`, never 0),
-and `ordinal = ctx.streamOrdinal++` taken once per `renderImprecisionToMap` call. The ordinal
-is order-dependent, which is exactly right: for identical input and options the call order is
-fixed, so the derived seeds are reproducible; and it needs no counter that outlives the call.
+**`impIndex` is not a new variable** — it already exists, under that exact name, as the loop
+index declared at `ImprecisionMap.ts:271`
+(`for (let impIndex = 0; impIndex < this.size(); ++impIndex)`), the per-distribution loop that
+constructs `random` and owns the `if (dd.seed !== null)` line at :336. One
+`RandomNumberProvider` is constructed per distribution entry, so `impIndex` distinguishes the
+distributions *within* one map, and `ordinal` distinguishes the maps *within* one render.
+Together they are unique per provider.
+
+**`ordinal`** is `ctx.streamOrdinal++`, read **once** at the top of `renderImprecisionToMap`
+(not per distribution), so it counts calls, not entries. It is order-dependent by design: for
+identical input and options the call order is fixed, so the derived seeds reproduce, and no
+counter outlives the call.
+
+**`deriveSeed` — the exact function, so two workers cannot write two different ones:**
+
+```ts
+/** Deterministic sub-seed. Pure; no state. Never returns 0 (Mulberry32 must not be seeded 0). */
+function deriveSeed(base: number, ...parts: readonly number[]): number {
+  let h = base >>> 0;                      // initial h is the base seed itself, unsigned
+  for (const p of parts) {                 // fold left-to-right, in argument order
+    h = Math.imul(h ^ (p >>> 0), 0x27d4eb2d) >>> 0;
+  }
+  return h || 1;                           // 0 -> 1, matching RandomNumberProvider's own guard
+}
+```
+
+Call it as `deriveSeed(ctx.options.seed, ordinal, impIndex)` — that argument order is
+normative. `h` starts as `base >>> 0`; the fold is left-to-right; the result is coerced away
+from 0 exactly as `RandomNumberProvider`'s field initializer does (`… || 1`).
 
 **RULE F7 (seed semantics).** A `seed` in the MPM always wins. `options.seed` supplies a seed
 only where the MPM supplies none. Omitting `options.seed` must be **bit-identical** to
@@ -485,14 +602,43 @@ returns `| null`, matching the DOM and matching XomTypes today. Do not migrate t
   on property access becomes a typed throw at the call), so see the gate below.
 - **N2b — provable narrowing, mechanically decidable.** If a function returns `null` *only*
   from a guard over its own parameters, and the declared parameter types already exclude the
-  guarded case, delete the guard and drop `| null` from the return type. The known instance,
-  flagged by T10: `Helper.getAllChildElements` is typed `Element[] | null` but returns null
-  only for a null element or an empty name string (`Helper.ts:123,129`); at all 8 call sites
-  in the mei cluster the null is unreachable. Under the new signature
-  `allChildElements(parent: Element, name?: string): Element[]` — always an array, empty when
-  nothing matches — a large family of dead guards deletes itself repo-wide. Apply the same
-  test to every moved function; do not apply it anywhere the guard tests a *value* rather
-  than the parameter's nullness.
+  guarded case, delete the guard and drop `| null` from the return type.
+
+  The known instance, flagged by T10: `Helper.getAllChildElements` is typed `Element[] | null`
+  but returns null only from two guards — `if (arg1 === null || arg1 === undefined)` at
+  **`Helper.ts:160`** and `if (ofThis == null || name === '')` at **`Helper.ts:166`**. Under
+  the new signature `allChildElements(parent: Element, name?: string): Element[]` — always an
+  array, empty when nothing matches — a large family of dead guards deletes itself repo-wide.
+
+  **The empty-name caveat, stated rather than left as a contradiction.** This rule's own
+  closing sentence says "do not apply it anywhere the guard tests a *value* rather than the
+  parameter's nullness" — and `name === ''` is exactly such a value test, which
+  `name?: string` does not exclude. The narrowing is nevertheless approved **for this
+  function specifically**, on evidence rather than on the rule: all **16** call sites pass
+  either a string literal or no name at all, so `name === ''` is unreachable in practice.
+  A worker must re-verify that (one grep) before narrowing, and must not generalise the
+  override to any other function.
+
+  The 16 sites: **5 in `mei/`** — `Mei2MsmMpmConverter.ts:683,3986,3995` plus two self-calls
+  at `Helper.ts:200,226` — and **11 in `mpm/`**: `Header.ts:95`, `Performance.ts:121`,
+  `Metadata.ts:143`, `OrnamentationStyle.ts:42`, `MetricalAccentuationStyle.ts:45`,
+  `DynamicsStyle.ts:39`, `RubatoStyle.ts:39`, `ArticulationStyle.ts:42`, `TempoStyle.ts:39`,
+  `AccentuationPatternDef.ts:42`, `OrnamentDef.ts:374`. Ten of the eleven `mpm/` sites carry a
+  `?? []` that the narrowing makes dead. (See RULE M5a in §8.2 for who may delete them.)
+
+  Apply the same test to every other moved function.
+
+> **EQ-RISK (N2b).** Deleting a guard is not the same risk as N2a's and needs its own gate:
+> N2a turns a `TypeError` into a *typed* throw, whereas N2b turns "returns null → the
+> caller's `if (x)` or `?? []` skips the work → execution continues" into an **unguarded
+> `TypeError` inside the function**. That is a strictly worse failure mode than the one N2a
+> was gated for, so it gets the same gate, not a weaker one.
+> **GATE:** (a) per-site argument that the guarded case cannot occur — from the parameter's
+> declared type, or, where the guard tests a value, from an enumeration of every call site as
+> above; (b) pipeline byte-probe identical; (c) **negative control** — pass the guarded value
+> (a `null` parent, or `''` as the name) at one call site and prove it now throws where it
+> previously returned null. Any function whose guarded case cannot be shown unreachable keeps
+> its guard and its `| null`.
 
 **RULE N3 (model layer keeps `null`, and narrows one thing).** `src/msm/**` and
 `src/mpm/**` keep `| null` in every signature a parity path can produce: factories returning
@@ -509,16 +655,31 @@ getXmlOrNull(): Element | null;    // new, for code that must distinguish
 
 `AbstractXmlSubtree.setXml` stores the reference verbatim and every subclass assigns it
 before returning; there is **no `setXml(null)` call anywhere in `src/` or `tests/`**
-(verified). This retires the ~211 `this.getXml()!` sites that T6 (61) and T7 (150) both
-deferred to T12 — and it needs **no test edits**: the name and arity are unchanged, and the
-16 test sites that assert `expect(x.getXml()).not.toBeNull()` still compile and still pass.
+(verified). This retires the **154** `getXml()!` sites — measured, and the figure the earlier
+draft's "~211" got wrong by adding T6's and T7's per-cluster deferral counts, which overlap.
+All 154 are under `src/mpm/`; 108 of them are spelled `this.getXml()!` and 46 have another
+receiver. (`getXml()` is called 173 times in `src/` in total.) It needs **no test edits**: the
+name and arity are unchanged, and the **8** test sites that assert
+`expect(map.getXml()).not.toBeNull()` still compile and still pass. Of the ~166 other
+`getXml()` uses in `tests/`, the rest are either `getXml()!` — which still compiles, and
+`no-unnecessary-type-assertion` is scoped to `src/` by RULE N6 — or `toBe(...)` identity
+assertions, and `TemporalSpread`/`DynamicsGradient` sites are outside the narrowing per C1a.
+
+**Not covered by this narrowing, and a trap:** `TemporalSpread.getXml()` and
+`DynamicsGradient.getXml()` (`OrnamentDef.ts:173,299`) are already typed `Element` but are
+**not plain field reads** — they lazily generate and cache (`if (this.xml === null) return
+this.generateXML();`). That is precisely why those two classes sit outside the
+`AbstractXmlSubtree` hierarchy. See RULE C1a in §8.6 before touching them.
 
 **RULE N4 (facade output has no `undefined`).** In `src/api/types.ts`, every field of every
 *output* type is always present; absence is `null`. Every *input* option is `?:` and is never
 `null`. Reason: `JSON.stringify` silently drops `undefined` properties, so an output type
 containing `undefined` is not round-trip stable under JSON and fails RULE F1's second test.
-This is mechanically checkable — grep `src/api/types.ts` for `?:` and confirm every hit is
-inside an `*Options` or `*Input` type.
+This is mechanically checkable, but the check must cover **both** files: grep `src/api/`
+(not just `types.ts`) for `?:` and confirm every hit is inside an `*Options` type or an
+inline input-object parameter. `pipeline.ts` declares input objects inline — e.g.
+`{ readonly msm: XmlText; readonly mpm?: XmlText }` on `renderExpressiveMidi` — so a
+`types.ts`-only grep would miss them.
 
 **RULE N5 (`x == null` stays; the lint rule bends).** All 44 `eqeqeq` violations are the
 `x == null` idiom and all 44 are in `Helper.ts`. In TypeScript that is the *correct*
@@ -526,6 +687,29 @@ idiomatic test for "null or undefined", and it is load-bearing here because the 
 returns `null` on some paths and `undefined` on others. **T14 relaxes the rule to
 `['error', 'always', { null: 'ignore' }]` and edits not one comparison.** Any worker who
 "fixes" a `== null` to `=== null` has introduced a bug.
+
+**RULE N6 (type-aware linting: three rules, enabled by T21, not before).** `eslint.config.js`
+lines 8-13 park this decision on T12 explicitly ("entangled with the null-vs-undefined policy
+that item T12 has to settle first"), so it is settled here. Type-aware linting is **not**
+enabled today, which means several audits in §8.10 currently reference rules that never run —
+and a gate that cannot fail is not a gate.
+
+- **Enable exactly three type-aware rules, no preset**:
+  `@typescript-eslint/prefer-readonly` (makes RULE I4 measurable),
+  `@typescript-eslint/no-unnecessary-condition` (flags the `?? []` and `if (x)` guards that
+  N2b and N3 make dead — the direct safety net for this section's policy), and
+  `@typescript-eslint/no-unnecessary-type-assertion` (flags `!` that the narrowing made
+  redundant, which is exactly N3's cleanup surface).
+- **Scope `projectService: true` to `src/` only.** Turning it on over `tests/` adds a large
+  volume of findings in code that is not parity-critical.
+- **Timing: T21, after T14 and T16 have applied N2b/N3/I4.** Enabling earlier just inflates
+  `lint-debt.md` with findings whose fix is already scheduled.
+- **Rejected: `tseslint.configs.recommendedTypeChecked`.** It would add hundreds of findings
+  entangled with parity-frozen code, on a lint gate that is deliberately not part of
+  `npm run verify` — the config comment's own reasoning, which still holds for the preset even
+  though it no longer holds for the three rules above.
+- Until T21 enables them, §8.10's `prefer-readonly` and `no-unnecessary-condition` audits are
+  **not runnable**; T21 must enable the rules *first* and then audit, in that order.
 
 ### Migration ownership
 
@@ -551,7 +735,11 @@ returns `null` on some paths and `undefined` on others. **T14 relaxes the rule t
 > **EQ-RISK (N3).** Same shape, one order of magnitude larger. The unreachability argument
 > here is *global* (no `setXml(null)` exists), so T16 must re-run that check on its own tree
 > — `grep -rn "setXml(null)" src tests` must be empty — and enumerate every
-> `AbstractXmlSubtree` subclass, showing each construction path assigns before returning.
+> `AbstractXmlSubtree` subclass, showing for each that **no `getXml()` read precedes the
+> `setXml` assignment**. Note the exact wording: "assigns before returning" is *not* strong
+> enough, because the field initializes to `null` and a `parseData` body could read before it
+> assigns. The pattern to confirm is `ImprecisionMap.parseData`'s — `super.parseData(xml)` on
+> line 61, first `getXml()` read on line 62, in that order.
 > **GATE:** emitted-JS classification (removing a `!` emits nothing, so the *only* legitimate
 > emitted change from N3 is deleted `if (x === null)` guards — each must be listed), plus the
 > full pipeline byte-probe, plus a negative control: delete one constructor's `setXml` call
@@ -578,7 +766,7 @@ returns `null` on some paths and `undefined` on others. **T14 relaxes the rule t
 
 **RULE C2 (what becomes plain functions).** A static-only class with no instance state and no
 `instanceof` use becomes a module of exported functions. There are exactly three, and they are
-exactly the three remaining `no-extraneous-class` sites: `Helper` (44 statics, 0 instance
+exactly the three remaining `no-extraneous-class` sites: `Helper` (45 statics, 0 instance
 members — T14), `EventMaker` (T20), `Meico` (→ `export const VERSION`, T14). **After T20,
 `@typescript-eslint/no-extraneous-class` must be 0 and stay 0** — that is the measurable form
 of this rule.
@@ -636,13 +824,22 @@ stay as they are. `setSeed`/`setInitialValue` would have had to stay methods any
 reset `series` as a side effect.
 
 **RULE C6 (`KeyValue` → tuples).** T16 converts every **read-only** `KeyValue` site to a
-`readonly [K, V]` tuple. T4 established there are only **8** mutating sites:
-`GenericMap.ts:136`, `ImprecisionMap.ts:437,474,480` (`setKey`), `RubatoDef.ts:181,189`
-(`setKey`), `RubatoDef.ts:185,190` (`setValue`). For each, T16 either rewrites it to construct
-a fresh tuple, or journals why it cannot and keeps a local mutable pair. `KeyValue` is deleted
-from `src/` only if all 8 go; either way it never appears in a *new* signature and never
-crosses the facade (RULE F6). When grepping: `.setValue(` has 124 hits in `src/`, and all but
-two are `Attribute.setValue` from XomTypes.
+`readonly [K, V]` tuple. There are exactly **8** mutating sites — the count T4 established and
+`KeyValue.ts`'s own class comment repeats. The line numbers below are re-measured for this
+revision; the first draft's were stale (its `GenericMap.ts:136` is a `throw`, and its
+`RubatoDef.ts:181,189` are `Attribute.setValue`):
+
+| call | sites |
+|---|---|
+| `setKey` | `GenericMap.ts:191`, `ImprecisionMap.ts:527,564,570`, `RubatoDef.ts:210,218` |
+| `setValue` | `RubatoDef.ts:214,219` |
+
+For each, T16 either rewrites it to construct a fresh tuple, or journals why it cannot and
+keeps a local mutable pair. `KeyValue` is deleted from `src/` only if all 8 go; either way it
+never appears in a *new* signature and never crosses the facade (RULE F6). When grepping:
+`.setValue(` has 124 hits in `src/` and all but two are `Attribute.setValue` from XomTypes —
+note in particular that `ImprecisionMap.ts:624,625` are `entry.getValue().setValue(...)`,
+i.e. `Attribute.setValue` reached *through* a KeyValue, and are not on the list.
 
 ---
 
@@ -650,7 +847,7 @@ two are `Attribute.setValue` from XomTypes.
 
 The charter's directive, made operational.
 
-**RULE I1 (the five mutation boundaries — this list is exhaustive).** Mutation of an object
+**RULE I1 (the six mutation boundaries — this list is exhaustive).** Mutation of an object
 that outlives the current expression is allowed **only** here:
 
 1. **`src/xml/**`** — the XomTypes document tree. Inherently mutable, load-bearing for
@@ -663,11 +860,18 @@ that outlives the current expression is allowed **only** here:
    and must not be removed or moved.
 4. **`Midi` / `Sequence` / `Track` while a MIDI file is being built.**
 5. **`RandomNumberProvider.series`** — memoization of an append-only sequence.
+6. **`RenderContext.streamOrdinal` for the duration of one `Performance.perform` call**
+   (§2.4). It is mutable by design — a counter passed by reference down the render chain —
+   and the first draft's "five boundaries" list omitted the very object it introduced. It
+   qualifies under the same reasoning as boundary 3, whose lifetime it shares exactly: created
+   at the top of `perform`, unreachable after it returns, never stored on a class or module.
 
-**RULE I2 (outside those five: no argument mutation).** Any exported function outside the
-five boundaries that assigns to a parameter, or to a property or element of a parameter, is a
-violation. `no-param-reassign` is at **5 warnings**; T21 drives it to 0 and promotes it to
-`error`.
+**RULE I2 (outside those six: no argument mutation).** Any exported function outside the
+six boundaries that assigns to a parameter, or to a property or element of a parameter, is a
+violation. `no-param-reassign` is at **3 warnings in `src/`** — `OrnamentationMap.ts:102`,
+`DynamicsData.ts:160`, `MovementData.ts:126` — plus 2 in `tests/integration/`, for the 5
+repo-wide total that `lint-debt.md` reports. T21 drives the `src/` three to 0 and promotes the
+rule to `error`.
 
 **RULE I3 (facade guarantees).** (a) The facade never mutates its inputs — free, because
 inputs are strings (RULE F2). (b) Every facade return value is freshly allocated: two calls
@@ -675,10 +879,14 @@ with equal inputs return values that are `!==` at every level (F1's referential 
 (c) Every facade return value survives `structuredClone` unchanged (F1's clone test).
 
 **RULE I4 (`readonly` where it is free — and where it is not).** Apply: `readonly` on private
-fields never reassigned after construction (`prefer-readonly`, ~17 repo-wide per T4's
-re-measurement — target 0 by T21); `readonly T[]` / `ReadonlyMap` on **parameters and return
-types** that are only read; `as const` on static data tables — `InstrumentsDictionary`
+fields never reassigned after construction; `readonly T[]` / `ReadonlyMap` on **parameters and
+return types** that are only read; `as const` on static data tables — `InstrumentsDictionary`
 currently has **zero** `as const` and is the main candidate (T20).
+
+On the `prefer-readonly` count: T4's "~17 repo-wide" is **not reproducible today**, because
+the rule is type-aware and type-aware linting is not enabled (RULE N6). Any figure measured
+now reads 0 for that reason alone, not because the tree is clean. T21 enables the rule first,
+then measures, then drives it to 0 — in that order.
 **Do not apply** `readonly T[]` to a *field* that is mutated in place — `MovementData`'s
 `series`/`ts` are `splice`d and `unshift`ed during sampling, and `GenericMap`'s element lists
 are appended to. `readonly` on arrays goes on the boundary, not on working state.
@@ -697,13 +905,28 @@ charter tension. The resolution:
 - the mpmify consumer reaches it through `PerformOptions.movementSampleMaxStep`.
 
 This is a **structural** divergence from the Java fork with **zero** behavioural effect: the
-default is unchanged and every fixture is generated with it. Record it in the parity ledger
-(§6.3), and record the corollary: anyone regenerating fixtures from Java must likewise leave
-the Java static at its default.
+default is unchanged and every fixture is generated with it. It is **row D1 of the parity
+ledger in §6.3**, including the corollary that anyone regenerating fixtures from Java must
+likewise leave the Java static at its default.
 
-Owner: **T19a** (see §8.1). Audit: after T19a, `grep -rnE "^\s+(private |protected |public )?
-static [a-zA-Z_]" src | grep -v "static readonly" | grep -v "static [a-zA-Z0-9_]*("` must
-return nothing. T21 re-runs it.
+**T19a also owns a unit-test migration, and must not simply delete the test.**
+`tests/mpm/elements/MovementMap.test.ts:815-827` both *reads* and *writes* the static
+(`expect(MovementMap.movementSampleMaxStep).toBe(0.1)` at :816, then assignments at :824 and
+:827). Charter invariant 4 requires assertion strength to be preserved, so it migrates to the
+`RenderOptions` path with **both** of its assertions intact: the 0.1 default *and* the
+sampling-density effect of a non-default value. Dropping either is a test weakening.
+
+Owner: **T19a** (see §8.1). Audit command — the first draft's version false-positives on
+`src/msm/Msm.ts:508` (`static override makePart(`, whose parameters wrap to the next line, so
+the `(`-filter misses it). Use a field-shaped match instead, which returns exactly the one
+real line today:
+
+```sh
+grep -rnE "^[[:space:]]*(private |protected |public )?static (readonly )?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[:=]" \
+  src --include='*.ts' | grep -v "static readonly"
+```
+
+After T19a it must return nothing. T21 re-runs it.
 
 > **EQ-RISK (I5).** Every default-valued render is unchanged by construction, so the risk is
 > not in the value but in the threading: an optional parameter added to four functions in the
@@ -730,12 +953,13 @@ spots are `getMovementSegment`/`getSubNoteDynamicsSegment` (splice-based subdivi
 
 **RULE E1.** The interior keeps Java's logs-and-returns-null behaviour, bug-for-bug. Do not
 add throws, do not add guards, do not "fix" a malformed-input path, on any path a fixture
-does not reach. Parity beats correctness — the charter says so and three items have already
-deferred to this ruling.
+does not reach — **except where §6.3 records an approved divergence**, which an item may then
+implement exactly as §6.3 and §8.0 specify and no further. Parity beats correctness — the
+charter says so and three items have already deferred to this ruling.
 
-The one sanctioned exception is the `require*` accessor family (N2a) and the `getXml()`
-narrowing (N3), each with its own gate above, and each justified by *provable
-unreachability*, not by taste.
+Two further sanctioned exceptions, each justified by *provable unreachability* rather than by
+taste, each with its own gate above: the `require*` accessor family (N2a) and the `getXml()`
+narrowing (N3).
 
 ### 6.2 Facade (L6): validates and throws
 
@@ -765,25 +989,23 @@ document has `milliseconds.date`. When *some* do, it returns what is there and t
 
 ### 6.3 The parity ledger
 
-Four malformed-input divergences from Java are recorded across `log.md` and belong to this
-policy. **All four stay frozen in Phase 3.** T22 writes them into a `PARITY.md` /
-README section; each fix needs its own item and user sign-off because each changes behaviour.
+Five divergences from Java are recorded across `log.md` and belong to this policy. **P1, P2
+and P4 stay frozen in Phase 3. P3 is APPROVED for repair as TD1. D1 is a structural
+divergence with no behavioural effect.** T22 writes all five into a `PARITY.md` / README
+section.
 
-| # | divergence | where | why frozen |
-|---|---|---|---|
-| P1 | `parseFloat` yields `NaN` where Java's `Double.parseDouble` **throws**, so a malformed `value="abc"` produces a `NaN`-valued def that is *kept*, where Java's factory returns null and the style skips it | every `parseFloat` in the port; found in `TempoDef`, `DynamicsDef`, `RubatoDef`, `AccentuationPatternDef`, all 12 `ArticulationDef` attributes (T6) | codebase-wide, no fixture exercises it, fixing it changes output on malformed input |
-| P2 | `getPreviousPosition` yields 0 where Java throws NPE on a `<movement>` with no `transition.to` | `MovementMap` (T7) | same family as P1 |
-| P3 | **`ArticulationData.articulateNote`'s `absoluteDurationChange` branch is a non-terminating loop** on any note with positive `duration.perf`, reproduced verbatim from Java | `ArticulationData` (T7) | see below — this one is different |
-| P4 | `RandomNumberProvider.getValue(NaN)` recurses to stack overflow; `getValue(Infinity)` hangs | `RandomNumberProvider` (T4) | present identically in the baseline; bug-for-bug per charter |
+| # | status | divergence | where | note |
+|---|---|---|---|---|
+| P1 | **frozen** | `parseFloat` yields `NaN` where Java's `Double.parseDouble` **throws**, so a malformed `value="abc"` produces a `NaN`-valued def that is *kept*, where Java's factory returns null and the style skips it | every `parseFloat` in the port; found in `TempoDef`, `DynamicsDef`, `RubatoDef`, `AccentuationPatternDef`, all 12 `ArticulationDef` attributes (T6) | codebase-wide, no fixture exercises it, fixing it changes output on malformed input |
+| P2 | **frozen** | `getPreviousPosition` yields 0 where Java throws NPE on a `<movement>` with no `transition.to` | `MovementMap` (T7) | same family as P1 |
+| P3 | **APPROVED as TD1** (conductor, 2026-08-08, governance authority — no user sign-off) | **`ArticulationData.articulateNote`'s `absoluteDurationChange` branch is a non-terminating loop**, reproduced verbatim from Java | `src/mpm/elements/maps/data/ArticulationData.ts:203-208` (T7) | repaired by **TD1**, spec in §8.0. Deliberate divergence from the Java reference, in the repair direction Java's *own* `ArticulationDef` already takes |
+| P4 | **frozen** | `RandomNumberProvider.getValue(NaN)` recurses to stack overflow; `getValue(Infinity)` hangs | `RandomNumberProvider` (T4) | present identically in the baseline; bug-for-bug per charter |
+| D1 | **approved, structural only** | `MovementMap.movementSampleMaxStep` (a mutable static mirroring the Java fork) is deleted; the knob moves to `RenderOptions` | `MovementMap.ts:30` (T20b) | RULE I5. **Zero behavioural effect** — the default is unchanged and every fixture is generated with it. Corollary: anyone regenerating fixtures from Java must likewise leave the Java static at its default. Owner: T19a |
 
-> **RECOMMENDATION TO THE CONDUCTOR (P3).** P1, P2 and P4 are quality-of-implementation
-> issues on malformed input. **P3 is different in kind**: a *well-formed* MPM using
-> `<articulation absoluteDurationChange="…">` on a normal note hangs the renderer with no
-> output and no error. The one-character fix (`>=` → `<=`) matches Java's own comment and
-> matches `ArticulationDef`'s spelling. It is still a behaviour change ("hang" → "produce
-> output"), so it needs its own item and the user's sign-off — but it is the only known input
-> that makes the library unusable, and the facade is about to be adopted downstream.
-> **Raise it with the user now**, alongside the other three, rather than at T22.
+P1, P2 and P4 remain quality-of-implementation issues on *malformed* input, which is why they
+stay frozen. P3 was different in kind — a **well-formed** MPM using
+`<articulation absoluteDurationChange="…">` hangs the renderer with no output and no error —
+and the conductor has approved its repair as TD1 under governance authority.
 
 ---
 
@@ -798,7 +1020,7 @@ double-scaled. It cost a ground-truth regeneration (T20b) to find.
 **RULE U1 (compile-time brands, zero runtime).**
 
 ```ts
-// src/units.ts — leaf module. Emits nothing.
+// src/units.ts — leaf module, type-only. See the gate below for what it emits.
 declare const brand: unique symbol;
 type Branded<Name extends string> = number & { readonly [brand]: Name };
 
@@ -809,6 +1031,13 @@ export type Midi7Bit     = Branded<'midi7'>;       // 0..127
 export type Bpm          = Branded<'bpm'>;
 ```
 
+It is **not** true that this module "emits nothing", and the gate below depends on knowing
+exactly what it does emit. Compiled under this repo's `tsconfig.json` (measured, not assumed:
+`declaration`, `declarationMap` and `sourceMap` are all on) it produces **four** new files —
+`dist/units.js`, `dist/units.js.map`, `dist/units.d.ts`, `dist/units.d.ts.map` — where
+`dist/units.js` is 44 bytes: the single statement `export {};` followed by nothing but the
+`//# sourceMappingURL=units.js.map` comment.
+
 **RULE U2 (no runtime converters).** There are **no** `asTicks(n)` helper functions —
 a helper function *emits*, and then "type-level only" can no longer be proven by a zero-line
 emitted-JS diff. Construction uses an `as` cast at the (few) sites where a raw number becomes
@@ -816,15 +1045,22 @@ a branded one: `parseFloat(attr.getValue()) as Ticks`. `as` erases completely.
 
 **RULE U3 (where brands apply — and only here).**
 
-- **(a) the facade's plain-data types**: `PerformedNote.date`/`.duration` (`Ticks`),
-  `.milliseconds.date`/`.end` (`Milliseconds`), `.velocity`/`.pitch` (`Midi7Bit`),
-  `ControlChangePoint.value` (`Midi7Bit`), `PerformOptions.movementSampleMaxStep`
-  (`Normalized`);
-- **(b) the four declarations the confusion actually bit**: `MovementData.position` and
-  `.transitionTo` (`Normalized | null`), `MovementData.getMovementSegment(maxStepSize:
-  Normalized): readonly (readonly [Ticks, Midi7Bit])[]`,
-  `DynamicsData.getSubNoteDynamicsSegment`, and
+- **(a) the facade's *output* types only** (`src/api/types.ts`): `PerformedNote.date`/
+  `.duration` (`Ticks`), `.milliseconds.date`/`.end` (`Milliseconds`), `.velocity`/`.pitch`
+  (`Midi7Bit`), `ControlChangePoint.date` (`Ticks`), `.milliseconds` (`Milliseconds`),
+  `.value` (`Midi7Bit`), `PerformanceData.ppq` (`Ticks`).
+- **(b) three interior declarations — the ones the confusion actually bit**:
+  `MovementData.position` and `.transitionTo` (`Normalized | null`),
+  `MovementData.getMovementSegment(maxStepSize: Normalized)` — the **parameter only** — and
   `DEFAULT_MOVEMENT_SAMPLE_MAX_STEP: Normalized`.
+
+**RULE U3a (facade *inputs* are never branded).** Every `*Options` field is plain `number`,
+including `PerformOptions.movementSampleMaxStep`. §2.2's signature block is **normative** and
+overrides any reading of U3 to the contrary. Reason: RULE U2 forbids converter functions, so
+a branded input would force every downstream caller to write `0.05 as Normalized` — hostile
+to the exact consumer the facade exists for. Brands are free for *readers* of output data and
+costly for *writers* of input, so they go on outputs only. The facade's implementation applies
+the brand internally with one `as` at the boundary.
 
 **RULE U4 (where brands must NOT apply).** Nowhere inside the parity-frozen arithmetic.
 Branding a value forces an `as` at every arithmetic site, and the files where that churn
@@ -835,23 +1071,144 @@ document the unit in the JSDoc instead. (Rejected alternatives: runtime value ob
 allocation in hot loops, forbidden by the charter; JSDoc-only conventions — unenforced, which
 is how the 16129 bug survived.)
 
-> **EQ-RISK (U1–U4).** None, *if* the rules are followed — which is why the gate is a bright
-> line. **GATE: a zero-line emitted-JS diff.** If `diff -r dist/` is non-empty after a
-> branding change, a runtime construct crept in (almost certainly a converter function
-> against RULE U2); revert it. The `.d.ts` diff will of course be non-empty — that is the
-> point of the change.
+**RULE U4a (`getMovementSegment`'s return type is explicitly exempt).** An earlier draft
+mandated `getMovementSegment(...): readonly (readonly [Ticks, Midi7Bit])[]`. That is
+**withdrawn** — it contradicts three other rules at once. The method returns its own mutable
+working array: `series` is `splice`d and `unshift`ed during subdivision and then mutated in
+place (`for (const tuple of series) tuple[1] *= 127;`, `MovementData.ts:190-208`). A
+`readonly` tuple return type is therefore exactly the working state RULE I4 says must **not**
+be `readonly`, and reallocating it to satisfy the type is exactly what RULE I6 forbids in a
+sampling loop. Brand the **parameter** and the two **field** declarations; leave the return
+type `number[][]` and document the units in its JSDoc. Likewise `DynamicsData.
+getSubNoteDynamicsSegment` — same shape, same exemption.
+
+Budget check for U3(b), so a worker knows this is within U4's threshold: branding `position`
+and `transitionTo` costs `as` casts at `MovementData.ts:38,43,150,165,197,201` and
+`MovementMap.ts:110,111,113` — **9 sites**, above U4's "~5" heuristic. It is applied anyway
+and this is the one documented override: these two fields are the *origin* of the 16129 bug,
+the casts are all at parse/construct boundaries rather than inside arithmetic, and U4's
+threshold exists to protect arithmetic-dense code, which these sites are not. No other
+declaration gets this override.
+
+> **EQ-RISK (U1–U4a).** None, *if* the rules are followed — which is why the gate is a bright
+> line. **GATE, stated so it can actually pass:**
+> **(i)** a **zero-line diff over every pre-existing `dist/` file** — not `diff -r dist/`,
+> which is non-empty by construction;
+> **(ii)** the only permitted **new** emitted artifacts are `dist/units.js` and its three
+> siblings (`units.js.map`, `units.d.ts`, `units.d.ts.map`), and `dist/units.js`'s code
+> content must be exactly `export {};` — i.e. that statement followed by nothing but the
+> `sourceMappingURL` comment;
+> **(iii)** `.d.ts` diffs on pre-existing files are expected and are the point of the change.
+> Any *other* new file, or any change to a pre-existing `.js`, means a runtime construct crept
+> in (almost certainly a converter function against RULE U2) — revert it.
+>
+> **OWNER — decided, not left open.** U1, U2, U3(b), U4 and U4a belong to **T19a**, whose
+> file scope in §8.1 is amended to name them; U3(a) and U3a belong to **T13**, which creates
+> `src/api/types.ts` anyway. T19a is *not* a single measurement: it produces **two, in this
+> order**, so that neither gate is contaminated by the other —
+> **(M-a) units-only**: add `src/units.ts` and the U3(b) brand annotations *alone*, build,
+> and require gate (i)–(iii) above;
+> **(M-b) RenderOptions on top**: then make the §2.4 / RULE I5 changes, gated by §2.4's and
+> I5's byte-probes. A single combined measurement cannot distinguish "a brand emitted
+> something" from "RenderOptions emitted something", and RenderOptions emits by design.
 
 ---
 
 ## 8. Item mapping (T13–T21) and resequencing
+
+### 8.0 TD1 — repair the articulation non-termination (DELIBERATE DIVERGENCE #1)
+
+Approved by the conductor on 2026-08-08 under governance authority (no user sign-off) and
+dispatched immediately after T12. **This item is an approved exception to RULE E1**; §6.3
+row P3 is its authority.
+
+**The fix is two changes, not one.** An earlier draft of this document said "the
+one-character fix (`>=` → `<=`)"; that was wrong and a worker who implements only the
+comparison flip ships an item that still hangs. Both spellings, verified in the tree:
+
+```ts
+// src/mpm/elements/maps/data/ArticulationData.ts:203-208  — the defect
+if (this.absoluteDurationChange !== 0.0) {
+  let durNew = duration + this.absoluteDurationChange;
+  for (let reduce = 2.0; durNew >= 0.0; reduce *= 2.0)     // no guard, >=
+    durNew = duration + this.absoluteDurationChange / reduce;
+  durationAtt.setValue(String(durNew));
+  Helper.addToListAttribute(note, 'modified', this.xmlId);
+}
+
+// src/mpm/elements/styles/defs/ArticulationDef.ts:355-363 — the model to mirror
+if (this.absoluteDurationChange !== 0.0) {
+  const dur = parseFloat(durationAtt.getValue());
+  if (dur > 0.0) {                                         // guard
+    let durNew = dur + this.absoluteDurationChange;
+    for (let reduce = 2.0; durNew <= 0.0; reduce *= 2.0)   // and <=
+      durNew = dur + this.absoluteDurationChange / reduce;
+    durationAtt.setValue(String(durNew));
+  }
+}
+```
+
+Java agrees with both readings: `ArticulationData.java:197` carries the `>=` loop *and* the
+comment "as long as the duration change causes the duration to become 0.0 or negative" (so
+the comparison is against the author's stated intent), while `ArticulationDef.java:420-423`
+has `if (dur > 0.0)` **and** `durNew <= 0.0`.
+
+**Why the guard is load-bearing, not belt-and-braces.** With `<=` and **no** guard, a note
+with `duration.perf <= 0` and a negative `absoluteDurationChange` still never terminates:
+`durNew` converges to `duration` ≤ 0, so the condition stays true forever. And
+`duration.perf="0.0"` is not hypothetical — it occurs in
+`tests/integration/fixtures/performance-reference/composite_advanced_augmented.msm`.
+
+**TD1's specification:**
+
+1. Apply **both** changes to `ArticulationData.articulateNote` — the `> 0.0` guard and the
+   `>=` → `<=` flip — mirroring the *control flow* of `ArticulationDef.ts:355-363` /
+   `ArticulationDef.java:420-423`.
+   **Guard the hoisted `duration` local; do NOT re-read the attribute.** The guard is
+   `if (duration > 0.0)`, using the `const duration = parseFloat(durationAtt.getValue())`
+   that already sits at the top of the `durationAtt !== null` block. Copying
+   `ArticulationDef`'s `const dur = parseFloat(durationAtt.getValue())` *inside* the branch
+   would be a **third** behaviour change, and one requirement 3's tests would not catch:
+   `ArticulationData` hoists deliberately so that the duration modifiers do **not** compose —
+   its own class comment says so (`ArticulationData.ts:144-148`: "`duration` is read once, up
+   front, and every branch computes from that original value … the last one to fire simply
+   overwrites"), and Java hoists identically at `ArticulationData.java:182`. `ArticulationDef`
+   re-reads inside the branch, so *its* modifiers do compose — that difference between the two
+   classes is real and must survive TD1. TD1's value is a minimal, precisely-scoped
+   divergence: termination, and nothing else it did not intend.
+2. **Journal the `addToListAttribute` suppression.** `ArticulationData`'s branch ends with
+   `Helper.addToListAttribute(note, 'modified', this.xmlId)` (line 208), which
+   `ArticulationDef`'s does not have. Putting the work inside `if (dur > 0.0)` means a note
+   with `dur <= 0` no longer gets its `modified` list entry. That is a **second** observable
+   change beyond termination, it is serialization-visible, and TD1 must state it explicitly
+   rather than let a verifier discover it.
+3. **Pinning tests, and they must include the case that discriminates the two fixes:**
+   (a) `duration.perf > 0` with a negative `absoluteDurationChange` — terminates, produces the
+   expected positive duration; (b) **`duration.perf <= 0` with a negative
+   `absoluteDurationChange`** — terminates (this is the case the comparison-only fix fails);
+   (c) the `modified` attribute assertion for both. Every case runs under an explicit
+   per-test timeout, so a regression to non-termination fails the suite instead of hanging it.
+4. **The branch is unreached by every fixture** — confirmed, `grep -rl absoluteDurationChange
+   tests/integration/fixtures` returns 0 files. So the whole integration suite must stay
+   byte-identical; that is TD1's regression gate, and the new unit tests are its only
+   positive evidence.
+5. **Negative control** (required, because requirement 4's byte-identity passes for *any*
+   edit to an unreached branch): revert the guard alone, keeping `<=`, and prove test case
+   (b) hangs and times out. A gate that passes for both the right and the wrong fix is not a
+   gate — which is precisely how the earlier one-character spec would have signed off a
+   still-hanging renderer.
 
 ### 8.1 Recommended order
 
 The conductor decides; this is the architect's recommendation, with reasons.
 
 ```
-T14  →  T18  →  T19a  →  T13  →  T16  →  T15  →  T17  →  T19  →  T20  →  T21
+TD1  →  T14  →  T18  →  T19a  →  T13  →  T16  →  T15  →  T17  →  T19  →  T20  →  T21
 ```
+
+**TD1 first** — it is already dispatched (§8.0), self-contained, and touches one file that no
+other item in this list restructures. Running it before T14 also means the articulation hang
+is gone before anything starts moving code around it.
 
 Two changes to the queue's current order:
 
@@ -864,22 +1221,36 @@ Two changes to the queue's current order:
    `RenderOptions`/`RenderContext` plumbing of §2.4. Putting that plumbing in T19 would either
    block T13 behind the largest remaining item or force T13 to ship options it cannot honour.
 
-> **T19a — render options plumbing** *(new, recommended)*
-> Add `src/mpm/RenderOptions.ts`; thread an optional `RenderContext` from
-> `Performance.perform` into `MovementMap.renderMovementToMap` and
-> `ImprecisionMap.renderImprecisionToMap`; implement RULE F7's seed branch; delete the
-> `MovementMap.movementSampleMaxStep` mutable static per RULE I5. No other file changes.
-> Gates: §2.4's EQ-RISK block and §5 RULE I5's.
+> **T19a — render options plumbing + branded units** *(new, recommended)*
+>
+> **Explicit file scope** — the first draft said "No other file changes", which contradicted
+> the item actually owning `src/units.ts`. The scope is these files and no others:
+> `src/units.ts` (new), `src/mpm/RenderOptions.ts` (new),
+> `src/mpm/elements/Performance.ts`, `src/mpm/elements/maps/MovementMap.ts`,
+> `src/mpm/elements/maps/ImprecisionMap.ts`, `src/mpm/elements/maps/data/MovementData.ts`,
+> `src/msm/Msm.ts` (the hop-1 `import type` + pass-through only),
+> `tests/mpm/elements/MovementMap.test.ts` (the migration RULE I5 requires), plus new tests.
+>
+> **Work:** add the brand module and apply U3(b); add `RenderOptions`/`RenderContext`; thread
+> the context through all **four** hops of §2.4's table; implement RULE F7's seed branch with
+> §2.4's exact `deriveSeed`; delete the `MovementMap.movementSampleMaxStep` mutable static per
+> RULE I5 and migrate its unit test.
+>
+> **Two separate evidence measurements, in this order** (RULE U1–U4a's gate explains why a
+> single combined one cannot work): **(M-a)** units-only — brands alone, gated by the
+> pre-existing-`dist/`-files diff; **(M-b)** RenderOptions on top, gated by §2.4's EQ-RISK
+> block and RULE I5's.
 
 The rest of the order is dependency-driven: T16's `getXml()` narrowing (N3) touches the same
 files T15 must restructure, so doing T16 first means T15 diffs against already-clean code;
 T17 is scoped down (below) and independent; T19 and T20 are the last behaviour-adjacent
 items; T21 audits everything.
 
-> **T16b — reconcile the two XML-navigation implementations** *(new, recommended, low
+> **T16b — reconcile the three XML-navigation implementations** *(new, recommended, low
 > priority — after T16, or defer past Phase 3)*
-> Per RULE M2a, `src/msm/Msm.ts` keeps eight module-local copies of navigation helpers that
-> have behaviourally drifted from `mei/Helper`'s. Merging them onto `src/xml/tree.ts` needs a
+> Per RULE M2a, `src/msm/Msm.ts:25-175` keeps eight module-local copies of navigation helpers
+> and `src/mpm/Mpm.ts:33,45` keeps two more (`getFirstChildElement`, `getAllChildElements`),
+> all behaviourally drifted from `mei/Helper`'s. Merging them onto `src/xml/tree.ts` needs a
 > **per-method** behavioural comparison — a probe that feeds both implementations the same
 > element trees, including namespaced children and elements with same-local-name children in
 > different namespaces, and requires identical results before either is deleted. Any method
@@ -890,9 +1261,9 @@ items; T21 audits everything.
 ### 8.2 T14 — dissolve `Helper`
 
 Pure moves and renames; **no logic edits** except the two mechanical rules N2b (delete a guard
-whose condition the parameter type excludes) and RULE M6. `src/msm/Msm.ts`'s eight
-module-local navigation helpers are **out of scope and untouched** — see RULE M2a. The full
-44-member disposition:
+whose condition the parameter type excludes) and RULE M6. `src/msm/Msm.ts`'s eight and
+`src/mpm/Mpm.ts`'s two module-local navigation helpers are **out of scope and untouched** —
+see RULE M2a. The full **45**-member disposition:
 
 | destination | members |
 |---|---|
@@ -909,12 +1280,48 @@ module-local navigation helpers are **out of scope and untouched** — see RULE 
 `index.ts` keeps exporting a `Helper` object whose properties delegate to the new functions,
 so the published API does not break; T22 marks it deprecated.
 
-Measured input for T21 while T14 is in there: **17 of `Helper`'s 40 public statics have zero
-`src/` callers** — they are reached only from `tests/`. Namely `validateAgainstSchema(String)`,
-all four XSLT members, `writeStringToFile`, `prettyXml`, `duration2word`,
-`decimalDuration2HtmlUnicode`, `accidString2word`, `accidDecimal2unicodeString`, `midi2pname`,
-`getClosest`, `getClosestByAttr`, `getAllPreviousSiblingElements`,
-`updateMpmNoteidsAfterResolvingRepetitions`. **T14 moves them all and deletes none.**
+**RULE M5a (T14 may delete the guards, and must not leave them).** N2b is assigned to T14,
+but 11 of `getAllChildElements`'s 16 call sites live in `src/mpm/elements/**` — T16's cluster
+— and all 11 carry a guard the narrowing makes dead. They are **not** all the same shape, and
+a worker told to look for eleven `?? []` will find eight:
+
+- **eight `?? []`** — `DynamicsStyle.ts:39`, `OrnamentationStyle.ts:42`, `RubatoStyle.ts:39`,
+  `TempoStyle.ts:39`, `ArticulationStyle.ts:42`, `MetricalAccentuationStyle.ts:45`,
+  `AccentuationPatternDef.ts:42`, `OrnamentDef.ts:374`. Deleting these is a token removal.
+- **three `if (x)` guards** — `Header.ts:95`, `Performance.ts:121`, `Metadata.ts:143`.
+  Deleting these means re-indenting the guarded body, so they are the ones to review closely.
+
+**T14 owns those deletions** even though the files belong to another item's cluster: leaving a
+dead guard behind is leaving the tree in a state where the return type and the call sites
+disagree, and T16 would have to re-derive N2b's unreachability argument to clean it up. The
+exception is narrow and mechanical — T14 may touch those 11 sites and nothing else in
+`src/mpm/`, and its log entry must list them individually.
+
+**Measured input for T21 while T14 is in there: 22 of `Helper`'s 41 public statics have zero
+`src/` call sites** — they are reached only from `tests/`. (Re-measured for this revision; the
+first draft said 17 and the T12 verifier said 19. Both undercounted, because a bare identifier
+grep counts `{@link Helper.x}` and error-message text as usage. The list below anchors on the
+call paren and discards comment lines.)
+
+`validateAgainstSchema`, `validateAgainstSchemaString`, `xslTransformToDocument`,
+`xslTransformToString`, `makeXsltTransformer`, `makeXslt30Transformer`, `writeStringToFile`,
+`prettyXml`, `getAllPreviousSiblingElements`, `getClosest`, `getClosestByAttr`,
+`updateMpmNoteidsAfterResolvingRepetitions`, `addUUID`, `copyIdNoNs`, `duration2word`,
+`pulseDuration2decimal`, `decimalDuration2HtmlUnicode`, `accidDecimal2String`,
+`accidString2word`, `accidDecimal2unicodeString`, `midi2pname`, `midi2PnameAccidOct`.
+
+Three of those are worth flagging individually because they look live and are not:
+**`addUUID`** (the `src/` uses are `Msm.ts`'s *own* local copy, not `Helper`'s),
+**`accidDecimal2String`** and **`midi2PnameAccidOct`** (whose only `src/` occurrences are a
+`{@link}` and an error string respectively).
+
+Four further publics are called **only from inside `Helper.ts`** and so become module-private
+on the move: `getAllDescendantsByName` (`Helper.ts:206`), `getAllDescendantsWithAttribute`
+(`:232`), `getPreviousSiblingElement` (`:378,382`), `midi2PnameAndAccid` (`:1373`). T14 keeps
+them exported anyway — they are published API and §8.10 rules on them — but should not be
+surprised to find no external caller.
+
+**T14 moves all 45 and deletes none.** §8.10 owns every deletion decision.
 
 ### 8.3 T18 — cycles
 
@@ -930,11 +1337,37 @@ cleanup" hunk.
 
 ### 8.4 T13 — facade
 
-Implements §2 in full, plus RULE N4 and RULE I3. Integration tests may switch to the facade
-**only mechanically** and only if the switch is genuinely mechanical; otherwise leave them
-calling the classes — the facade is additive and does not need them as proof. New unit tests
-for: F1's three plain-data tests, F7's determinism trio, E2/E3's error cases, and the field
-mapping of §2.3 against a known augmented-MSM fixture.
+Implements §2 in full, plus RULE N4, RULE I3, and U3(a)/U3a's brands on the output types.
+Integration tests may switch to the facade **only mechanically** and only if the switch is
+genuinely mechanical; otherwise leave them calling the classes — the facade is additive and
+does not need them as proof. New unit tests for: F1's three plain-data tests, F7's determinism
+trio, E2/E3's error cases, and the field mapping of §2.3 against a known augmented-MSM
+fixture.
+
+**Required gate — the RULE F2 round trip.** The whole boundary design rests on the assumption
+that serializing and re-parsing between stages is lossless, so T13 must *measure* it rather
+than inherit it: for every MEI fixture, `convert → serialize → re-parse → perform` must be
+byte-identical (after UUID canonicalization) to `convert → perform` on the in-memory objects.
+This was run during T12 review over all 16 MEI fixtures with **0 divergences**, and the same
+probe showed parse→serialize reaching a fixed point at n=1 — so the expected result is known
+and a *failure* means T13 introduced something, not that the assumption was wrong.
+
+**Three behaviours §2 leaves to T13, ruled here so they are not invented twice:**
+
+1. **`MovementDocuments.index` / `.title`.** `index` is the position in the converter's
+   returned arrays (`KeyValue<Msm[], Mpm[]>`), which are index-aligned per `mdiv`. `title` is
+   `Msm.getTitle()` of that movement's MSM — not the MEI's title, and not the MPM's.
+2. **`renderExpressiveMidi` with `mpm` omitted.** It renders the MSM as-is, which requires the
+   MSM to already carry the performance attributes — mirroring `Msm.exportExpressiveMidi`'s
+   own no-performance path. If no note in the document has `milliseconds.date`, throw
+   `EmptyDocumentError` per RULE E3 rather than emitting MIDI-in-name-only. `PerformOptions`
+   fields are then meaningless and passing them is an `InvalidOptionError`.
+3. **`ConvertOptions.sourceName` sets exactly two things**, and a worker must set both or
+   neither: the MPM metadata's `RelatedResource` URI, **and** the generated `<comment>` text
+   (`Mei2MsmMpmConverter.ts:643-654` writes "This MPM has been generated from '<name>' using
+   the meico MEI converter v<VERSION>."). The converter branches on `mei.getFile() !== null`
+   to choose between that comment and its file-less variant, so `sourceName` must drive that
+   same branch. Omitting `sourceName` must produce the file-less variant byte-for-byte.
 
 ### 8.5 T15 — converter dispatch (highest risk in the project)
 
@@ -998,20 +1431,32 @@ Mechanical translation rules — apply these, do not improvise:
 
 ### 8.6 T16 — model layer
 
-Applies N3 (the `getXml()` narrowing and the ~211 `!` deletions it enables), C3 (the shared
+Applies N3 (the `getXml()` narrowing and the **154** `!` deletions it enables), C3 (the shared
 `bezier` module), C4, C6 (`KeyValue` → tuples), I4 (`readonly`, `prefer-readonly` → 0 in this
-cluster), and the four deduplications already scouted:
+cluster — after T21 enables the rule, per RULE N6), and the four deduplications already
+scouted:
 
 - `GenericStyle.parseDefs<D>(childName, create)` collapses ~30 lines per file across the 6
   style subclasses (T6's finding);
 - `GenericMap.resolveEntry(index, localName)` + `findStyleNameAt(index)` remove ~14 duplicated
   lines from each of the 8 `getXDataOf` accessors (T7's finding);
 - `setId`/`getId`/`getName`/`setName` are byte-identical in `GenericStyle` and `AbstractDef`,
-  with two further near-copies in `TemporalSpread`/`DynamicsGradient` that are not even in the
-  `AbstractXmlSubtree` hierarchy — one shared base or mixin removes four copies (T6);
+  with two further near-copies in `TemporalSpread`/`DynamicsGradient` — one shared base or
+  mixin removes four copies (T6). **See RULE C1a immediately below before writing that base.**
 - `TemporalSpread` and `DynamicsGradient` move out of `defs/OrnamentDef.ts` into their own
   modules (importing either currently drags `OrnamentDef` in) — an import-graph change, so
   coordinate with T18.
+
+**RULE C1a (`TemporalSpread` and `DynamicsGradient` must NOT be put under
+`AbstractXmlSubtree`).** The shared base of the previous bullet covers **id and name accessors
+only**. These two classes sit outside that hierarchy deliberately: their `getXml()`
+(`OrnamentDef.ts:173` and `:299`) is `if (this.xml === null) return this.generateXML();` —
+**lazy generate-and-cache**, not a field read. Moving them under `AbstractXmlSubtree` would
+replace generate-on-demand with RULE N3's narrowed plain-field accessor, and serialization of
+programmatically built ornaments would silently change: an object whose element has not been
+generated yet would start returning nothing instead of generating it. If a worker wants the
+`toXml`/`setXml` copies deduplicated too, that needs its own probe over programmatically
+constructed (not parsed) ornaments; the id/name mixin does not.
 
 Also here: `Mpm.addMetadata`'s third parameter or `RelatedResource.createRelatedResource`'s
 return type must be reconciled so `Mei2MsmMpmConverter.ts`'s last `any` — and with it the only
@@ -1083,18 +1528,34 @@ that cannot work; keep a working public utility**:
 | `src/compat/unsupported.ts` (the 7 XSLT/schema/file-write members) | **delete the module and its tests.** They are stubs that log and return null/false; the file-write path uses `require()` in an ESM build. Verify each is genuinely non-functional before deleting, then journal the test-count decrease per charter 7c |
 | `Helper`'s music-theory conversions with 0 `src/` callers (`duration2word`, `decimalDuration2HtmlUnicode`, `accidString2word`, `accidDecimal2unicodeString`, `midi2pname`, `prettyXml`) | **keep.** They work, they are genuinely useful public API for a music library, and their tests are real coverage |
 | `getClosest`, `getClosestByAttr`, `getAllPreviousSiblingElements`, `updateMpmNoteidsAfterResolvingRepetitions` | keep — small, working, plausibly used by consumers |
+| `Helper.copyIdNoNs` and `Helper.pulseDuration2decimal` (0 `src/` callers; **absent from the first draft's list entirely**) | **keep**, by this table's own stated rule — both are small working utilities with real tests, not stubs |
+| `Helper.addUUID`, `Helper.accidDecimal2String`, `Helper.midi2PnameAccidOct` (0 `src/` callers; each *looks* used but its `src/` occurrences are `{@link}` or error-message text) | **keep.** `addUUID` in particular: `Msm.ts` has its own local copy, so `Helper`'s is unreferenced — but it is published API and id generation order is parity-critical, so deleting it is not worth the risk for a dead-code count |
 | `XmlBase.fixDuplicateIds` (0 callers) | delete |
 | `XomTypes.Element.setNamespaceURI` (dead after T11) | delete |
 | `EventMaker.byteToShort` (0 callers beyond its test) | delete |
 | `Msm.getMinimalPPQ` (0 `src/` callers after T9b fixed it) | **keep** — T9b just corrected it against Java and pinned it with tests; deleting it discards that work |
 | the ms-domain ornament renderer (dead per T7's verifier) | **keep, and mark.** It is a Java-parity code path; deleting it makes a future parity comparison harder. Add a comment saying no fixture reaches it |
 
-Audits T21 runs: `no-extraneous-class` = 0; no non-`readonly` static fields in `src/`;
-`no-param-reassign` = 0 and promoted to `error`; `prefer-readonly` = 0; `import/no-cycle`
-clean; `no-non-null-assertion` strictly below 1080 with the delta journaled; coverage per
-charter invariant 7; `vitest.config.ts`'s include list updated for the moved paths
-(mechanical only — and note that `src/api/**`, `src/music/**`, `src/xml/**` must be **in**
-scope, `src/compat/**` deleted).
+**Audits T21 runs — but note the ordering constraint.** `prefer-readonly` and
+`no-unnecessary-condition` are type-aware rules that **are not enabled today**, so auditing
+them before enabling them measures 0 for the wrong reason. T21 therefore does RULE N6's
+enablement *first*, then audits:
+
+1. enable the three type-aware rules per RULE N6 (`prefer-readonly`,
+   `no-unnecessary-condition`, `no-unnecessary-type-assertion`), scoped to `src/`;
+2. `no-extraneous-class` = 0;
+3. no non-`readonly` static fields in `src/` — using RULE I5's corrected command, not the
+   `(`-filtered one;
+4. `no-param-reassign` = 0 in `src/` and promoted to `error`;
+5. `prefer-readonly` = 0 (now measurable);
+6. `no-unnecessary-condition` — every finding is either fixed or journaled; this is the rule
+   that catches leftover `?? []` guards from N2b and redundant `!` from N3;
+7. `import/no-cycle` clean;
+8. `no-non-null-assertion` strictly below 1080 with the delta journaled;
+9. coverage per charter invariant 7;
+10. `vitest.config.ts`'s include list updated for the moved paths (mechanical only — note that
+    `src/api/**`, `src/music/**`, `src/xml/**`, `src/units.ts` must be **in** scope, and
+    `src/compat/**` is deleted).
 
 ---
 
@@ -1106,13 +1567,16 @@ the applying item produced the right evidence.
 | policy | drift risk | required gate |
 |---|---|---|
 | M2/M3 module moves | module evaluation order changes; cycle failure relocates | emitted-JS classification (bodies byte-identical modulo wrapper) + pipeline byte-probe + deep-import negative control both directions |
-| M2a merging the two navigation implementations | they disagree on namespaced children; the difference reaches serialized bytes | **forbidden in T14.** If ever done (T16b): per-method differential probe over namespaced trees + full byte-probe; any disagreeing method stays duplicated |
+| M2a merging the three navigation implementations | they disagree on namespaced children; the difference reaches serialized bytes | **forbidden in T14.** If ever done (T16b): per-method differential probe over namespaced trees + full byte-probe; any disagreeing method stays duplicated |
+| **TD1 articulation repair** (§8.0) | the fix is guard **+** `<=`; the comparison alone still hangs on `duration.perf <= 0`, and byte-identity passes either way because no fixture reaches the branch | full-suite byte identity + a pinning test for **(duration ≤ 0, negative change)** under an explicit timeout + `modified`-attribute assertions + negative control (revert the guard, keep `<=`, prove that test times out) |
 | F7 seed plumbing | new branch could apply when no seed is given | deterministic-fixture byte-probe + structural check on imprecision fixtures + determinism trio + negative control |
-| I5 `movementSampleMaxStep` | optional param dropped on one branch | default-path byte-probe + positive test that a non-default step changes the `positionMap` event count + negative control |
+| I5 `movementSampleMaxStep` | optional param dropped on one branch | default-path byte-probe + positive test that a non-default step changes the `positionMap` event count + negative control + the `MovementMap.test.ts:815-827` migration with both assertions preserved |
 | N2a `require*` accessors | `TypeError` → typed throw on unreachable paths | per-site unreachability argument + byte-probe + forced-throw negative control |
-| N3 `getXml()` narrowing | same, ×211 sites | global `setXml(null)` check + per-subclass construction audit + emitted-JS classification of every deleted guard + negative control |
+| **N2b guard deletion** | "returns null → caller's `?? []` skips the work" becomes an unguarded `TypeError` — a *worse* failure mode than N2a's | per-site unreachability argument (from the parameter type, or from an enumeration of all call sites where the guard tests a value) + byte-probe + negative control passing the guarded value |
+| N3 `getXml()` narrowing | same, ×**154** sites | global `setXml(null)` check + per-subclass audit that **no `getXml()` read precedes the assignment** + emitted-JS classification of every deleted guard + negative control |
 | C3 shared Bézier module | float reassociation while moving arithmetic | full byte-probe + 10⁴-triple bit-identity probe incl. sign of zero + reassociation negative control |
-| U1–U4 branded units | a runtime converter creeping in | **zero-line emitted-JS diff** |
+| U1–U4a branded units | a runtime converter creeping in | **zero-line diff over every pre-existing `dist/` file**; the only permitted new artifacts are `dist/units.js` (content exactly `export {};`) and its three siblings. Plain `diff -r dist/` is non-empty by construction and is **not** the gate |
+| **F2 round trip** (T13) | serialize/re-parse between facade stages could be lossy | per-fixture byte identity of `convert → serialize → re-parse → perform` vs `convert → perform`; measured at 0 divergences over 16 fixtures during T12 review, so a failure means T13 introduced it |
 | T15 dispatch table | a case silently changes descend/finish | mechanical dispatch census, zero-line diff before vs after + per-group verify + case-flip negative control |
 | T17 XomTypes parse removal | serialization bytes change | full-suite byte equality + recorded runtime measurement |
 | T20 `as const` + EventMaker | MIDI event order / byte layout | midi-byte-equivalence suite + `Uint8Array` hash probe |
@@ -1122,14 +1586,26 @@ the applying item produced the right evidence.
 
 ## 10. Open questions for the conductor
 
+**Resolved since the first draft** — recorded so nobody reopens them:
+
+- ~~**Q2 — P3, the articulation hang.**~~ **CLOSED.** The conductor approved the repair as
+  **TD1** on 2026-08-08 under governance authority (no user sign-off). §6.3 row P3 is the
+  authority, §8.0 is the spec, and RULE E1 now carries the approved-divergence exception. The
+  spec changed materially in this revision: the fix is a **guard plus** the comparison flip,
+  not "one character" — see §8.0 for why the comparison alone still hangs.
+- ~~**Q4 — approve or reject T19a.**~~ **CLOSED**, approved and now carrying an explicit file
+  scope and two separate evidence measurements (§8.1).
+- ~~**Q — who owns the branded units.**~~ **CLOSED** and no longer a question: U1/U2/U3(b)/U4/
+  U4a belong to T19a, U3(a)/U3a to T13 (RULE U1–U4a's gate block).
+- ~~**Q — type-aware linting.**~~ **CLOSED** by RULE N6: three named rules, enabled by T21,
+  no preset. `eslint.config.js` had parked this on T12 and the first draft failed to rule.
+
+Still open:
+
 1. **Q1 — facade field naming** (§2.3): nested `milliseconds: { date, end }` versus flat
    `millisecondsDate`/`millisecondsDateEnd`. Confirm with the mpmify consumer if cheap;
    **default is nested** so T13 is not blocked.
-2. **Q2 — P3, the articulation hang** (§6.3): recommend raising all four parity divergences
-   with the user **now**, and P3 with priority — it is the only known well-formed input that
-   makes the library unusable, and a downstream project is about to adopt the facade. Needs
-   its own item and sign-off; not Phase-3 work under the current charter.
-3. **Q3 — logging.** The interior `console.log`s verbosely on every conversion and every
+2. **Q3 — logging.** The interior `console.log`s verbosely on every conversion and every
    `perform` (part-by-part). That is user-hostile for a library and there is no way to
    silence it. Threading a logger through ~100 call sites contradicts nothing but costs a
    lot; a module-level `setLogger` in a leaf `src/logging.ts` contradicts RULE I5's "no shared
@@ -1137,12 +1613,17 @@ the applying item produced the right evidence.
    **Architect's recommendation:** defer to T22, and if it is done, do it as the leaf
    `setLogger` with an explicit comment naming it the single sanctioned exception to I5.
    T13 does **not** attempt to silence the interior.
-4. **Q4 — T19a.** Approve or reject the new item (§8.1). If rejected, T13 must ship
-   `PerformOptions.seed` and `.movementSampleMaxStep` as accepted-and-ignored (bad) or T13
-   must wait for T19 (slow). T19a is small and de-risks T19.
-5. **Q5 — the Java fork's uncommitted state.** Carried forward from T20b and still open: the
+3. **Q5 — the Java fork's uncommitted state.** Carried forward from T20b and still open: the
    five movement fixes exist only as working-tree edits on `450193e4` plus the patch snapshot
    at `/Users/nielspfeffer/Projects/mpmify/ml/patches/meico-movement-fixes-on-450193e4.patch`
    (sha256 `3c5fc1b2…`). Not this document's business, but it gates any future regeneration,
    and RULE I5 adds a second thing to remember about the fork (leave its
    `movementSampleMaxStep` static at its default).
+4. **Q6 — `duration.perf` is not exposed by the facade** (raised by the T12 verifier's
+   contract check). `PerformedNote.date`/`.duration` are **symbolic** ticks, so a consumer
+   cannot derive an articulation ratio except indirectly through the millisecond fields.
+   Adding `datePerf`/`durationPerf` (from the MSM's `date.perf` / `duration.perf`) is cheap
+   and additive. **Architect's recommendation: add them** — the ML consumer that asked for
+   this batch path is exactly the sort that wants the performed-tick domain. Not a blocker:
+   if the conductor says no, T13 ships without them and §2.3 records the omission as
+   deliberate rather than forgotten.

@@ -5255,3 +5255,292 @@ best gate in the document. What is needed is: correct the rulings that contradic
 (B1) or their own evidence (B2, H1, H4), give §7 an owner and an executable gate (B3), name the
 missing plumbing hop (H3), and re-measure the numbers flagged in L1–L8 against the tree at
 `304e90a` rather than against earlier items' log prose.
+
+## [T12] architect — revision (2026-08-08)
+
+**READY T12-rev.** Response to `[T12] verifier`'s FAIL. `ARCHITECTURE.md` revised in place;
+this entry appended. Manifest unchanged: `M refactor/log.md` + `?? refactor/ARCHITECTURE.md`,
+nothing else. `npm run verify` green, prettier clean. No section was rewritten — the verifier
+asked for none, and the layer map, EQ-RISK discipline and structural measurements it
+re-derived independently are untouched.
+
+Probes for this round in `<scratch>/t12rev/` (`callers.mjs`, `callers2.mjs`, `unitprobe/`).
+
+### BLOCKERS — all three closed
+
+**B1 (TD1 forbidden by the doc that governs it).** §6.3's table now has a **status column**;
+P3 reads "**APPROVED as TD1** (conductor, 2026-08-08, governance authority — no user
+sign-off)". RULE E1 carries the exception clause verbatim ("except where §6.3 records an
+approved divergence, which an item may then implement exactly as §6.3 and §8.0 specify and
+no further"). New **§8.0** holds TD1's full spec. §10's Q2 is struck through and moved to a
+"Resolved since the first draft" block so nobody reopens it. TD1 is also now first in §8.1's
+recommended order.
+
+**B2 (the specified fix does not remove the hang).** The verifier is right and this was my
+worst error — I asserted "matches `ArticulationDef`'s spelling" without reading
+`ArticulationDef`. Both sites re-read and quoted in §8.0:
+`ArticulationData.ts:203-208` has **no guard** and `>=`; `ArticulationDef.ts:355-363` has
+`if (dur > 0.0)` **and** `<=`. §8.0 now specifies **both** changes, mirroring
+`ArticulationDef.ts:355-363` / `ArticulationDef.java:420-423`, and states why the guard is
+load-bearing rather than decorative (with `<=` alone and `duration.perf <= 0`, `durNew`
+converges to a non-positive value and the loop still never ends). Requirement 2 is the
+`Helper.addToListAttribute(note, 'modified', this.xmlId)` suppression — `ArticulationData`
+has that call at :208 and `ArticulationDef` does not, so guarding removes a
+serialization-visible write on the `dur <= 0` path and TD1 must journal it rather than let a
+verifier find it. Requirement 3 mandates the **(duration ≤ 0, negative change)** case under
+an explicit per-test timeout — the case that discriminates the right fix from the wrong one —
+and requirement 5's negative control is now "revert the guard, keep `<=`, prove that test
+times out", because byte-identity passes for *any* edit to an unreached branch.
+
+**B3 (§7 unowned, gate unexecutable).** I compiled the module rather than assuming: under
+**this repo's** tsconfig it emits **four** files, not one — `units.js`, `units.js.map`,
+`units.d.ts`, `units.d.ts.map` — and `dist/units.js` is 44 bytes (`export {};` plus the
+sourceMappingURL comment), not 11; the verifier measured without `sourceMap`. The gate is
+restated in three parts: zero-line diff over every **pre-existing** `dist/` file; the only
+permitted new artifacts are those four, with `units.js`'s code content exactly `export {};`;
+`.d.ts` diffs on pre-existing files expected. Ownership is **decided, not offered**:
+U1/U2/U3(b)/U4/U4a → **T19a**, U3(a)/U3a → **T13**. §8.1 replaces T19a's "No other file
+changes" with an explicit 8-file scope and mandates **two ordered measurements** — (M-a)
+units-only against the dist gate, then (M-b) RenderOptions against the byte-probes — since
+one combined measurement cannot separate "a brand emitted something" from "RenderOptions
+emitted something".
+
+### HIGH — H1, H3, H4 addressed (and H2, though not asked for)
+
+- **H1**: N2b now carries its own EQ-RISK/GATE block and a §9 row, with the reasoning the
+  verifier supplied — a deleted guard turns "returns null → caller's `?? []` skips the work"
+  into an unguarded `TypeError`, a *worse* failure mode than N2a's. The self-contradiction is
+  resolved explicitly rather than left for a worker: `name === ''` **is** a value test that
+  `name?: string` does not exclude, so the narrowing is approved for this function
+  specifically on evidence (all 16 call sites pass a literal or omit the name), the worker
+  must re-verify it, and the override does not generalise.
+- **H3**: §2.4 now has a **four-hop table**, with `Msm.ts:1023`
+  (`Msm.exportExpressiveMidi` → `performance.perform`) as hop 1 — without it the facade's
+  headline `renderExpressiveMidi` cannot honour `seed` at all. The RULE M1 consequence is
+  stated as a design constraint: `Msm.ts` may `import type { RenderOptions }` and pass it
+  through, but must never need `DEFAULT_MOVEMENT_SAMPLE_MAX_STEP`, so **all defaults resolve
+  inside `src/mpm/`**. `deriveSeed` is given as a complete function (initial `h = base >>> 0`,
+  left-to-right fold, `|| 1`) with a normative argument order, and `impIndex` is identified
+  as the *existing* loop index at `ImprecisionMap.ts:271` — it is literally already called
+  `impIndex` — with `ordinal` read once per call, not per entry.
+- **H4**: U3(b)'s return-type branding is **withdrawn** as RULE U4a. The verifier is right
+  that it collided with I4 and I6 at once: `getMovementSegment` returns its own `splice`d,
+  `unshift`ed, then mutated-in-place working array (`MovementData.ts:190-208`). Brands go on
+  the **parameter** and the two **field** declarations only; the return type stays
+  `number[][]`. The ≥8-cast overshoot of U4's "~5" threshold is now an explicit, reasoned,
+  one-time override (9 sites, all at parse/construct boundaries rather than inside
+  arithmetic) rather than a silent contradiction.
+- **H2** (not in my instructions, but it named a T13 blocker): RULE **F2a** pins the
+  serializer — `getRootElement().toXML()`, never `Document.toXML()`/`XmlBase.toXML()`, which
+  prefix `<?xml version="1.0" encoding="UTF-8"?>` where the suite compares the
+  declaration-free form (`full-xml-equivalence.test.ts:223,291,335,355`) and the Java
+  fixtures use a third spelling. §8.4 now **requires** the round-trip probe as T13's gate,
+  citing the verifier's 0-divergences-over-16-fixtures result as the expected value.
+
+### MEDIUM — all six addressed
+
+M1: brands on outputs only, §2.2 normative (RULE U3a) — a branded input would force
+`0.05 as Normalized` on the consumer the facade exists for. M2: **RULE N6** rules on
+type-aware linting, which `eslint.config.js:8-13` had parked on T12 and I had failed to
+answer — three named rules (`prefer-readonly`, `no-unnecessary-condition`,
+`no-unnecessary-type-assertion`), scoped to `src/`, enabled by T21 *before* it audits them,
+preset rejected; §8.10's audit list is renumbered so enablement is step 1. M3: I1 gains a
+sixth boundary for `RenderContext.streamOrdinal`. M4: the D1 ledger row exists, and I5 now
+requires migrating `MovementMap.test.ts:815-827` with **both** assertions preserved. M5:
+**RULE M5a** — T14 owns the 11 `mpm/` guard deletions N2b creates, listed individually in its
+log entry, because leaving them makes the return type and call sites disagree. M6: **RULE
+C1a** forbids putting `TemporalSpread`/`DynamicsGradient` under `AbstractXmlSubtree` — their
+`getXml()` (`OrnamentDef.ts:173,299`) is lazy generate-and-cache, so N3's narrowed field read
+would silently replace generate-on-demand.
+
+### LOW — L1-L11 repaired, and three the verifier also got wrong
+
+L1 45/41 (not 44/40). L3 the null returns are `Helper.ts:160,166` (the cited 123/129 are
+`getFirstChildElement`). L4 16 call sites, 5 mei + 11 mpm, each listed. L5 **154**
+`getXml()!` sites, all in `src/mpm/`, of which 108 are `this.`-prefixed; the "~211" came from
+adding T6's and T7's overlapping deferral counts. L6 the eight KeyValue mutators are
+`GenericMap.ts:191`, `ImprecisionMap.ts:527,564,570`, `RubatoDef.ts:210,218,214,219`. L7 3
+warnings in `src/` (5 including tests). L8 folded into N6. L9 the audit command is replaced
+with a field-shaped match that does not miss `static override makePart(`. L10 F1 says inline
+why `Uint8Array` is exempt from "no class instances". L11 the N4 audit greps `src/api/`, not
+`types.ts`, so it catches `pipeline.ts`'s inline input objects.
+
+**Three corrections beyond the verifier's list**, found by re-deriving rather than accepting
+its confirmations. All three came from the same methodological flaw — a bare identifier grep
+counts `{@link Helper.x}` and error-message text as call sites — which I used in the first
+draft and the verifier reproduced when confirming my numbers:
+
+1. **RULE M2's cross-layer surface is FIVE members, not seven.** `Helper.addUUID` has **zero**
+   real call sites anywhere in `src/` (all five occurrences are JSDoc or prose; `Msm.ts:163`
+   defines its own local `addUUID`, which `Msm.ts:1831` calls), and
+   `Helper.getFilenameWithoutExtension`'s six call sites are all *inside* `src/mei/`. The
+   verifier confirmed "seven counts, exactly" against my flawed figure. Corrected table:
+   `getAttribute` 150, `getAttributeValue` **26** (not 27), `getFirstChildElement` 18,
+   `addToListAttribute` 14, `getAllChildElements` 11 — 219 sites, **all in `src/mpm/`**;
+   `src/msm/` and `src/midi/` import `Helper` not at all.
+2. **There are THREE navigation implementations, not two.** `src/mpm/Mpm.ts:33,45` also has
+   module-local `getFirstChildElement`/`getAllChildElements`, which both the first draft and
+   the verifier missed. RULE M2a and §8.2 updated; T16b's scope grows by two functions.
+3. **22 of 41 public statics have zero `src/` call sites**, not 19 (verifier) or 17 (me). The
+   three neither of us caught are `addUUID`, `accidDecimal2String` and `midi2PnameAccidOct` —
+   each *looks* used and each occurrence is a `{@link}` or an error string. §8.10 rules
+   "keep" on all of them plus the verifier's `copyIdNoNs`/`pulseDuration2decimal`, per its own
+   stated rule. §8.2 also records the four publics called **only** from inside `Helper.ts`.
+
+### Also added
+
+Q6 (new, §2.3 + §10): `PerformedNote` exposes only **symbolic** ticks, so no field carries
+`duration.perf` and an articulation ratio is not derivable except through the millisecond
+fields — raised by the verifier's contract check. Recommendation: add `datePerf`/
+`durationPerf`; if declined, the omission is recorded as deliberate. §2.2's F6 block now
+states explicitly that "MSM+MPM-as-objects/JSON" in state.json is read as *in-memory, no file
+I/O* and answered with text, so T13's verifier can cite it rather than re-litigate. §8.4
+rules on the three behaviours the verifier found unstated: `MovementDocuments.index`/`.title`
+provenance, `renderExpressiveMidi` with `mpm` omitted, and that `ConvertOptions.sourceName`
+drives **both** the `RelatedResource` **and** the `<comment>` text at
+`Mei2MsmMpmConverter.ts:643-654`.
+
+## [T12] verifier — re-review (2026-08-08)
+
+**PASS T12.** All three blockers are closed, H1–H4 and M1–M6 are addressed, and L1–L11 are
+repaired. The architect's two methodological corrections against my own confirmations are
+**both right** and I have re-derived them independently. Five minor amendments remain, listed
+below; none blocks dispatch and all are one-line edits. I did not re-derive the structural
+core.
+
+Tree state: `npm run verify` green independently (44 files / 2124 tests), prettier clean on
+both files, `git status --porcelain` is exactly `M refactor/ARCHITECTURE.md` +
+`M refactor/log.md`, and `git diff -- src tests` is empty. My only write is this entry.
+Probes: `<scratch>/t12verify/rev/`.
+
+### Blockers — verified closed
+
+**B1 closed.** §6.3 now carries a status column with P3 = "**APPROVED as TD1** (conductor,
+2026-08-08, governance authority — no user sign-off)"; RULE E1 carries the exception clause
+("except where §6.3 records an approved divergence, which an item may then implement exactly
+as §6.3 and §8.0 specify and no further"), which is scoped tightly enough that it cannot be
+read as a general licence; §8.0 exists; §10's Q2 is resolved rather than left open. A fresh
+TD1 worker reading charter + item + this doc now gets one consistent instruction.
+
+**B2 closed, and closed well.** §8.0 quotes both sites, mandates **both** changes, and — the
+part that matters — explains *why* the guard is load-bearing rather than listing it as a
+second edit. The gate is now discriminating: requirement 3(b) is the `duration.perf <= 0` /
+negative-change case, and requirement 5's negative control is "revert the guard, keep `<=`,
+prove that test times out", which is the only control that separates the right fix from the
+wrong one. The reasoning that byte-identity passes for *any* edit to an unreached branch is
+stated explicitly, so a verifier cannot accept it as evidence.
+
+**B3 closed, and the architect's measurement beats mine.** I recompiled §7's `units.ts` under
+the repo's own `tsconfig.json` (my first-round figure came from a hand-rolled `tsc` invocation
+without `sourceMap`/`declarationMap`): it emits **four** files and `dist/units.js` is **44**
+bytes — `export {};` plus the `sourceMappingURL` comment. The three-part gate matches that
+exactly. Ownership is decided (U1/U2/U3(b)/U4/U4a → T19a, U3(a)/U3a → T13), and splitting
+T19a's evidence into ordered measurements M-a/M-b is the right call — a combined build genuinely
+cannot separate "a brand emitted something" from "RenderOptions emitted something".
+
+### H1–H4, M1–M6 — verified addressed
+
+H1: N2b has its own EQ-RISK/GATE and a §9 row, and the `name === ''` self-contradiction is
+resolved on evidence with the override explicitly non-generalising. H2 (not asked for): RULE
+F2a pins `getRootElement().toXML()` — I confirmed `XomTypes.ts:27` documents the
+`<?xml version="1.0" encoding="UTF-8"?>` prefix, `XmlBase.ts:76-78` delegates, the suite
+compares the declaration-free form, and the Java fixtures open with `<?xml version="1.0"?>`, a
+genuine third spelling — and §8.4 now requires the round-trip probe. H3: the four-hop table is
+correct (`Msm.ts:1023`; `Performance.ts:433,533,558,575,577,579,580`), the RULE M1 constraint
+is stated as a design rule rather than a caveat, `deriveSeed` is complete and normative, and
+`impIndex` is correctly identified as the **existing** loop index at `ImprecisionMap.ts:271`.
+H4: U4a withdraws the return-type branding with the right reasoning and records the 9-site
+U4 override as deliberate. M1–M6: U3a (outputs only, §2.2 normative), N6, I1's sixth boundary,
+the D1 ledger row plus the `MovementMap.test.ts:815-827` migration, M5a, C1a — all present and
+correctly reasoned. I re-ran RULE I5's corrected audit command verbatim: exactly one hit
+(`MovementMap.ts:30`), no `makePart` false positive.
+
+### The architect's corrections to my confirmations — both upheld
+
+I re-derived these with a stripper that removes comments and plain strings but **preserves
+`${…}` template interpolations**, which are real code:
+
+1. **`Helper.addUUID` has zero real call sites** — confirmed. `src/msm/Msm.ts:163` defines its
+   own local `addUUID`, which is what `Msm.ts:1831` calls.
+   **`getFilenameWithoutExtension`'s six call sites are all in `src/mei/`** — confirmed (four
+   are inside template literals in `Mei2MsmMpmConverter.ts:224,227,231,237`, two in `Mei.ts`);
+   the `Msm.ts:1136` hit is a comment. `src/msm/` and `src/midi/` import `Helper` not at all —
+   confirmed. My first-round "seven counts, exactly" was a confirmation of a flawed figure and
+   the architect is right to call it out.
+2. **Three navigation implementations, not two** — confirmed. `src/mpm/Mpm.ts:33,45` carries
+   module-local `getFirstChildElement`/`getAllChildElements`, and its own class comment says
+   they exist precisely so `Mpm.ts` need not import `Helper` (which is also why the 33-file
+   figure is unaffected). Both the first draft and I missed this.
+3. **22 of 41 public statics have zero `src/` call sites** — confirmed, and my 19 was an
+   undercount by exactly the three named: `addUUID`, `accidDecimal2String`,
+   `midi2PnameAccidOct`. The "four publics called only from inside `Helper.ts`" claim also
+   checks out at `Helper.ts:206`, `:232`, `:378,382`, `:1373`.
+
+### Minor amendments (none blocking)
+
+1. **§1.1 / RULE M2: the flagged correction is itself off by one.** The revised table says
+   `getAttributeValue` **26** "(not 27)" and 219 total. Those are **line** counts, not call
+   sites: `Performance.ts:442` contains two `Helper.getAttributeValue(` calls in one template
+   literal. Measured both ways — `getAttributeValue` is 26 lines / **27 call sites**, and the
+   cross-layer total is 219 lines / **220 call sites**; the other four members are identical
+   either way. Fix: label the column "lines" or restore 27/220. Drives no decision (T14 updates
+   every site regardless), but the paragraph's whole framing is "the earlier figures came from
+   a flawed grep", so the correction should be right.
+2. **§8.1's T16b block still says "two".** Its heading reads "reconcile the **two**
+   XML-navigation implementations" and its body names only `Msm.ts`'s eight copies —
+   contradicting the revised RULE M2a ("THREE") and the architect's own log note that "T16b's
+   scope grows by two functions". Fix: say three, and add `Mpm.ts:33,45`. Low impact because
+   T16b is explicitly optional, but it is a stale cross-reference in the one document a fresh
+   worker is told to trust.
+3. **RULE N2b / M5a: "ten of the eleven" `?? []` is eight.** Of the 11 `mpm/` call sites, eight
+   carry `?? []`; the other three — `Header.ts:95`, `Performance.ts:121`, `Metadata.ts:143` —
+   use an `if (x)` guard instead. That matters slightly for M5a, because deleting an `if` block
+   means re-indenting its body while deleting `?? []` is a token removal, and a worker told to
+   find ten `?? []` will find eight. Fix: "eight `?? []` and three `if (x)` guards", listing
+   which is which.
+4. **RULE N3: "the 16 test sites" is 8.** `expect(x.getXml()).not.toBeNull()` occurs **8**
+   times in `tests/` (all as `expect(map.getXml()).not.toBeNull()`). This figure survived
+   unchanged from the first draft and I had not checked it. The conclusion — N3 needs no test
+   edits — is unaffected and I re-confirmed it holds: the remaining 166 `getXml()` uses in
+   tests are either `getXml()!` (still compiles; `no-unnecessary-type-assertion` is scoped to
+   `src/` by RULE N6) or `toBe(...)` identity assertions, and `TemporalSpread.getXml()` sites
+   are outside the narrowing per C1a.
+5. **§8.0 requirement 1 opens a third behaviour change it does not intend.** Its trailing
+   clause — "including reading `dur` from the attribute rather than reusing the `duration`
+   local, if that is what makes the two read identically" — is a judgement call, and taking it
+   changes semantics: `ArticulationData` deliberately hoists `duration` once at the top so the
+   duration modifiers do **not** compose (its own class comment, `ArticulationData.ts:144-148`:
+   "every branch computes from that original value … the last one to fire simply overwrites"),
+   and Java's `ArticulationData.java:182` hoists it too, whereas `ArticulationDef` re-reads
+   inside the branch so its modifiers **do** compose. Re-reading would silently make
+   `absoluteDurationChange` compose with `absoluteDuration`/`relativeDuration` — a third
+   observable change on top of termination and the `modified` suppression, and one requirement
+   3's tests would not catch. Fix: mandate keeping the hoisted `duration` local and forbid the
+   re-read, citing the class comment and `ArticulationData.java:182`. TD1's value is a
+   minimal, precisely-scoped divergence.
+
+### Verdict
+
+**PASS T12.** The document is implementation-ready. The five amendments above are one-line
+edits the conductor can fold in before dispatching TD1, or hand to the TD1/T14 workers as
+corrections; amendment 5 is the only one with behavioural consequence and it belongs in TD1's
+brief either way.
+
+## [T12] architect — amendments applied (2026-08-08)
+
+All five of the re-review's minor amendments applied to `ARCHITECTURE.md`, each re-derived
+first rather than taken on faith: (1) the cross-layer table now counts **call sites** —
+`getAttributeValue` 27, total **220** — and says why a line-based grep reports 26/219
+(`Performance.ts:442` holds two calls in one template literal); (2) §8.1's T16b block says
+**three** implementations and names `Mpm.ts:33,45`; (3) M5a splits the 11 dead guards into
+**eight `?? []`** and **three `if (x)`** (`Header.ts:95`, `Performance.ts:121`,
+`Metadata.ts:143`), flagging the latter as the re-indent cases; (4) N3's test-site figure is
+**8**, with the ~166 other `getXml()` test uses accounted for; (5) §8.0 requirement 1 now
+**mandates guarding the hoisted `duration` local and forbids re-reading the attribute** —
+confirmed against `ArticulationData.ts:144-148` and `ArticulationData.java:182`, since
+re-reading would make the duration modifiers compose and silently add a third behaviour
+change TD1 does not intend.
+
+Gates: `npm run verify` green (44 files / 2124 tests), prettier clean, manifest still exactly
+`M refactor/ARCHITECTURE.md` + `M refactor/log.md`, `git diff -- src tests` empty, `log.md`
+append-only. **Hard freeze — no further writes from me.**
