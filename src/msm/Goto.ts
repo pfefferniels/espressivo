@@ -5,15 +5,49 @@ import { Element, Attribute, Nodes } from '../xml/XomTypes.js';
  * It is used to represent goto elements from msm sequencingMaps, used in methods Msm.applySequencingMapToMap() and Mei.processEnding().
  * Port of meico.msm.Goto
  * @author Axel Berndt.
+ *
+ * One jump in a `<sequencingMap>`: "on reaching {@link date}, continue at
+ * {@link targetDate}". That is how MSM encodes a repeat sign, a `dacapo`, or a numbered
+ * ending, without writing the music out twice —
+ * `Msm.applySequencingMapToMap` is what later turns it into literal, linear time.
+ *
+ * ## Marker wiring
+ *
+ * A goto names its destination twice over: `target.date` is the date to jump to and
+ * `target.id` references the `xml:id` of a `<marker>` in the markerMap. The reference is
+ * written MEI-style with a leading `#`, which is stripped on the way in, and the marker
+ * element itself is resolved eagerly in the constructor (see {@link target}). Either one
+ * suffices: with no `target.date` the date is read off the resolved marker instead, and
+ * a goto with neither is rejected.
+ *
+ * The two can disagree — nothing checks that `target.date` equals the marker's own
+ * `date`, and when both are present the attribute wins and the marker is never consulted.
+ *
+ * ## Activity
+ *
+ * {@link activity} is a string of `1`s and `0`s read left to right, one character per
+ * pass: `"1"` is a plain jump taken once, `"10"` a repeat taken the first time and
+ * ignored the second, `"110"` a repeat taken twice. Past the end of the string the goto is
+ * inactive forever, which is what makes expansion terminate. {@link counter} is the
+ * cursor into it and is advanced by {@link isActive}, so *asking* whether a goto is active
+ * is what consumes a pass — calling it twice per encounter would silently skip a
+ * repetition.
  */
 export class Goto {
-  public date = 0.0; // the date attribute
-  public targetDate = 0.0; // the target.date attribute
-  public targetId = ''; // the target.id attribute
+  /** the date attribute — where playback jumps *from* */
+  public date = 0.0;
+  /** the target.date attribute — where playback jumps *to* */
+  public targetDate = 0.0;
+  /** the target.id attribute, with any leading `#` removed */
+  public targetId = '';
+  /** the marker element `targetId` resolves to, if it was found; never re-resolved */
   public target: Element | null = null;
-  public source: Element | null = null; // the source element in the msm document
-  public activity = '1'; // this indicates when the goto is processed and when it is ignored
-  public counter = 0; // this counter is used to keep track of how often the goto is passed (typically a repetition is ignored at the second time)
+  /** the goto element this was read from; null when built from parameters */
+  public source: Element | null = null;
+  /** per-pass on/off pattern of `1`/`0` characters; see the class comment */
+  public activity = '1';
+  /** how many passes have been consumed — the cursor into {@link activity} */
+  public counter = 0;
 
   /**
    * constructor from individual parameters, better use Goto.fromElement(gt) as constructor, it is safer and more convenient
@@ -22,6 +56,18 @@ export class Goto {
    * @param targetId
    * @param activity
    * @param source
+   *
+   * **Ported bug — do not "fix".** The `#` stripping here is `substring(1, length - 1)`,
+   * which drops the *last* character as well as the first, where the element constructor
+   * gets it right with `substring(1, length)`. Java has exactly this asymmetry
+   * (`Goto.java:40` vs `Goto.java:57`), so correcting it would diverge from the reference.
+   *
+   * It is latent at the only production call site:
+   * `Mei2MsmMpmConverter.processEnding` passes an `endingMarker_…` id, which never starts
+   * with `#`. Note the round trip is still lossy in principle — {@link toElement} *writes*
+   * `target.id` with a leading `#`, so feeding that value back through this constructor
+   * would lose a character while feeding it back through the element constructor would
+   * not.
    */
   constructor(
     date: number,
@@ -63,6 +109,26 @@ export class Goto {
   /**
    * Initialize from an XML element
    * @param gt the goto element
+   * @throws when the element cannot describe a jump: no `date`, or neither a usable
+   *   `target.date` nor a resolvable `target.id`
+   *
+   * Throwing is the documented contract, not a failure mode — `applySequencingMapToMap`
+   * builds its Goto list inside a `try` and logs and skips the ones that throw, so a
+   * malformed `<goto>` costs its own jump and nothing else.
+   *
+   * Two adaptations of Java's control flow, both preserving behaviour:
+   *
+   * - Java gets its rejections from `Double.parseDouble` throwing on malformed input;
+   *   `parseFloat` returns `NaN` instead, so each parse is followed by an explicit
+   *   `Number.isNaN` check that raises the same error at the same point.
+   * - the `parent !== null` guard has no counterpart in Java, which would throw a
+   *   `NullPointerException` on a parentless `<goto>`. Here such an element yields
+   *   `target = null` and then fails on the missing `target.date` instead — the same
+   *   outcome for the caller, reached without a different exception type.
+   *
+   * The target search is `descendant::` from the goto's **parent**, i.e. the marker must
+   * live in the same sequencingMap; a marker elsewhere in the document is not found. If
+   * several elements share the id, the first in document order wins.
    */
   private initFromElement(gt: Element): void {
     let a = gt.getAttribute('date'); // get its date attribute
@@ -118,6 +184,11 @@ export class Goto {
   /**
    * creates and returns an XML element of the goto
    * @returns
+   *
+   * Writes all four attributes unconditionally, in this order — `date`, `activity`,
+   * `target.date`, `target.id` — and the order is the serialised attribute order. The `#`
+   * is put back on `target.id` here; see the note on the parameter constructor about the
+   * asymmetric round trip.
    */
   toElement(): Element {
     const gt = new Element('goto'); // make a goto element
@@ -132,6 +203,11 @@ export class Goto {
    * call this method when you come across the goto during the processing of sequencingMaps,
    * it will increase the counter and return whether it is active (true) or passive (false)
    * @returns
+   *
+   * **Not a predicate — it mutates.** Every call advances {@link counter} by one, whether
+   * the answer was true or false, so it must be called exactly once per encounter.
+   * `applySequencingMapToMap` relies on that: the counter running off the end of
+   * {@link activity} is what makes its restarting goto search terminate.
    */
   isActive(): boolean {
     let active = false;

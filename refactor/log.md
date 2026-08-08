@@ -2882,3 +2882,493 @@ T9–T11. `ro.config.mjs` is a working one-rule type-aware `prefer-readonly` con
 `tseslint.configs.base` is **not** iterable in this version — use an explicit plugin/parser
 block). Trap for coverage work: `eslint`/coverage totals mix errors and warnings — split by
 `severity` before comparing against any figure in `lint-debt.md`.
+
+## [T9] worker — msm local idioms (Msm, AbstractMsm, Goto) (2026-08-08)
+
+**READY.** Baseline `fb31d34` (`src/` identical to the last green `b09e096`; the
+intervening commit is `refactor/` bookkeeping only). `npm run verify` green — both tsc
+stages standalone, **2108/2108 across 44 files**. Prettier clean over the cluster and both
+`refactor/` files.
+
+### Manifest — 5 files, all in scope
+
+`src/msm/Msm.ts`, `src/msm/AbstractMsm.ts`, `src/msm/Goto.ts`, plus
+`refactor/lint-debt.md` and this file. **No test file, no fixture, no config** —
+`git diff --name-only -- tests/ vitest.config.ts tsconfig*.json eslint.config.js
+package.json` is empty, and `git status --porcelain` is exactly those 5 `M` lines with 0
+untracked.
+
+**Import blocks are byte-identical in all three files** — not one line added, removed or
+reordered (9 / 2 / 1 lines). Stricter than [T8], which had to append three `import type`
+lines; nothing here needed a new type.
+
+### Headline: two files are comments-only, and the third has 5 classified code changes
+
+`AbstractMsm.ts` and `Goto.ts` changed **only** in doc comments, proven two independent
+ways: their emitted `.js` is **byte-identical** between builds, and the JSDoc-pruned token
+stream ([T8] verifier's `toks2.mjs`) has a **0-line diff** over 656 and 717 code tokens.
+Their `.d.ts` files are unchanged too.
+
+### What changed in `Msm.ts`
+
+**1. Doc comments — the bulk of the diff and the point of the item.** The three files
+opened with a 3-line class comment apiece and nothing on any method. What is now written
+down, all of it checked against the Java before being asserted:
+
+- **`Msm` as a pipeline stage**: what MSM is between `Mei2MsmMpmConverter` and MIDI, the
+  document shape, and that `exportMidi` and `exportExpressiveMidi` are the score *as
+  written* vs *as performed* — the second reading `milliseconds.*`/`velocity` where the
+  first reads `date`/`duration`.
+- **`applySequencingMapToMap` — the sequencing semantics, ~40 lines and not one character
+  of code.** What a `<goto>` encodes; `currentDate`/`dateOffset`; why `i = -1` restarts the
+  goto search (a jump can land *before* gotos already passed) **and why the loop still
+  terminates** (a jump costs a `1` from an activity string, every test advances that
+  string's cursor, so the total number of jumps is bounded); why the tail loop has no
+  `else` adding a fresh `repetitionCounter`; and that `repetitionIDs` is a *chain*
+  (`base → rep1 → rep2`), which is what the small backwards `for (let r = reps - 1; …)`
+  walks. Also recorded: the counter is written on the **original**, so the first copy of an
+  element carries none and every later copy carries a stale one — which is why the cleanup
+  sweeps `newMap` as well as `map`.
+- **`resolveSequencingMaps` — the scoping rule stated properly**: a part with its own
+  `<sequencingMap>` ignores the global one *even when its own is empty*, which is how a
+  part opts out; that is why only the fallback path tests for an empty map. Plus why the
+  sequencingMaps are deleted last.
+- **`Goto` — the marker wiring.** `target.id` references a `<marker>`'s `xml:id` MEI-style
+  with a leading `#`; either `target.date` or a resolvable `target.id` suffices; when both
+  are present **the attribute wins and the marker is never consulted**, and nothing checks
+  that the two agree. The activity string documented character by character, and
+  `isActive` marked as what it is: **not a predicate — it mutates**, exactly once per
+  encounter.
+- **`renderMidi` as a pipeline**, with the three order dependencies that are enforced by
+  nothing but call order: `parseProgramChangeMap` runs before `processPartName` and its
+  return value suppresses the name-derived program change; the volume/position maps run
+  before the score; and the two expressive preliminaries
+  (`makeMillisecondTickTempo`, `fitVelocities`) must precede any event built from the
+  values they set. `makeMillisecondTickTempo`'s trick is spelled out — at `60000 / ppq`
+  bpm one tick is one millisecond, which is why nothing downstream converts units.
+- `parseChannelVolumeMap`'s **backwards** iteration is what implements
+  `CONTROL_CHANGE_DENSITY` (the *last* of a cluster survives); `parsePositionMap` iterates
+  backwards too but is **not** thinned, and an unknown `controller` falls through to
+  controller 0 rather than being skipped.
+
+**2. The module-local `Helper` class → 8 module functions ([T8]'s `Mpm.ts` precedent),
+with two dead constructs deleted.** The class was never exported, so external references
+are zero by construction.
+
+- `getFirstChildElement`'s `Element`-form branch was **dead** — all four call sites pass a
+  name — and the coverage data confirms it: those 6 statements were **uncovered in the
+  baseline**. Its surviving body is now byte-identical to `Mpm.ts`'s copy.
+- `cloneElement` carried 14 lines of abandoned porting: an unused `clone` local, an
+  **empty** `for (let i = e.getAttributeCount() - 1; i >= 0; --i) {}`, five comments
+  narrating a workaround, and a delegation to a private `cloneElementImpl` that repeated
+  the same dead prologue. All of it removed; the surviving body is the old
+  `cloneElementImpl`'s live half. Every deleted expression reads a pure field
+  (`getLocalName`, `getNamespaceURI`, `getAttributeCount` are one-line returns in
+  `XomTypes`) or mutates a discarded local.
+
+**3. Four unused `catch` bindings → optional catch binding**, one inline duplicate of
+`getFilenameWithoutExtension` in `renderMidi` replaced by a call to it (exhaustively
+equivalent over the three cases of `lastIndexOf`, and it restores Java's own call —
+`Msm.java:777`), and `fitVelocities`'s parameter swap rewritten as two ternaries.
+
+**4. Two redundant `as Element | null` assertions removed** — `getNextSiblingElement`
+already returns that type. Real type assertions in the cluster, counted as `AsKeyword`
+tokens rather than by grepping (the new prose contains the English word "as"): **15 → 13**,
+none added. `as any` 0 → 0, `as unknown` 6 → 6, `eslint-disable` 1 → 1 (still only
+`Mei2MsmMpmConverter.ts`, T10's), `@ts-ignore`/`@ts-expect-error`/`@ts-nocheck` 0 → 0.
+
+**5. Zero arithmetic touched.** No expression reordered, no numeric literal edited, no
+`parseFloat`/`parseInt`/`Number` changed, no loop direction changed, no statement moved
+inside `applySequencingMapToMap`, `computePartwiseCompression`,
+`computeSemicircleCompression`, `getEndDate`, `getMinimalPPQ` or `convertPPQ`.
+
+### Three Java-parity findings, documented at the site, none "fixed"
+
+1. **`parseKeySignatureMap` never counts sharps.** The thresholds are `value > 1.0` /
+   `value < 1.0` where `value` is a semitone offset, and `Mei2MsmMpmConverter` writes
+   exactly `1.0` for a sharp and `-1.0` for a flat (`Mei2MsmMpmConverter.ts:1735`; the
+   reference fixtures contain nothing else). So a sharp falls between the thresholds and a
+   sharp key signature reaches MIDI as **zero** accidentals, while flats count correctly.
+   `Msm.java:1148-1157` is identical, the reference MIDI was generated with it, and
+   "fixing" it would break byte equivalence. Negative control m7 ("correct" it to `> 0` /
+   `< 0`) flips **37 API checks and 4 real MEI fixtures**, including `keys_accidentals`.
+2. **`Goto`'s parameter constructor truncates.** Its `#` stripping is
+   `substring(1, length - 1)`, dropping the last character too, where the element
+   constructor gets it right — and `Goto.java:40` vs `:57` has the same asymmetry. Latent
+   at the only production call site (`processEnding` passes an `endingMarker_…` id), but
+   the round trip is lossy in principle, since `toElement` writes the `#` back. Control m6
+   ("fix" it) flips 3 checks.
+3. **`Helper.cloneElement` diverges from Java, benignly.** Java rebuilds each attribute as
+   `new Attribute(localName, value)`, dropping its namespace; this port copies and strips
+   children, preserving it. Observable only on a map element carrying a namespaced
+   attribute; no fixture produces one, and the probe covers the case explicitly
+   (`seq/mapWithXmlIdAttribute`). Documented rather than changed — and note the same
+   deep-copy-then-strip shape sits in `src/mei/Helper.ts:400`, wreckage comments and all.
+
+### Evidence
+
+**A. Emitted JS, whole project, every hunk classified.** Both trees built with
+`tsc --removeComments --declaration false --declarationMap false --sourceMap false` into
+scratch outDirs created in a prior step, absolute `-p` paths per tree. **Exactly 1 of 59
+emitted files differs** — `msm/Msm.js` — in 5 hunk families, zero unclassified:
+
+| hunk | classification |
+|---|---|
+| `class Helper` → 8 module functions | kept bodies byte-identical apart from the two deletions below; the class was never exported |
+| dead `getFirstChildElement` branch + dead `cloneElement` prologue + `cloneElementImpl` | provably dead (call sites enumerable; deleted expressions pure) and **uncovered in the baseline coverage data** |
+| ~35 call sites lose the `Helper.` prefix | same callee, same args |
+| 4 × `catch (x)` → `catch` | no binding was read |
+| filename inline → `getFilenameWithoutExtension` call; `fitVelocities` swap → 2 ternaries | exhaustively equivalent; conditions side-effect-free |
+
+`AbstractMsm.js` and `Goto.js` are byte-identical, and nothing outside `src/msm/` differs
+anywhere in the compiled project. After the two late doc corrections (below) the tree was
+rebuilt and diffed against this classified build: **no emitted difference**, so the
+corrections are provably comment-only.
+
+**B. Public surface (`.d.ts`, JSDoc stripped).** Exactly one file differs, `msm/Msm.d.ts`,
+with exactly the two intended overload collapses: 6 declarations out, 2 in, every one
+strictly wider. Declared lines project-wide 1900 → 1896; nothing else added or removed.
+Whole-project **and** tests `tsc` green, which is what proves the existing call sites —
+`exportMidi(false)`, `exportMidi(90.0)`, `exportMidi(90.0, false)`,
+`exportExpressiveMidi(perf, true)` are all exercised by the suite.
+
+**C. Pipeline probe — byte-identical.** [T8] verifier's `pipe.mjs` (5 deterministic
+all-maps fixtures + all 16 MEI fixtures → MSM, MPM, augmented MSM, raw and expressive MIDI,
+uuid-canonicalised; imprecision excluded) run against both builds: **24 entries, 0 threw,
+21 non-vacuous, identical sha `e960dd16…`** — the same value the [T8] verifier recorded,
+so the pipeline has not drifted since.
+
+**D. Behavioural probe — 155 checks, transcripts byte-identical** (`21597425…` for base and
+work; 0 mismatches, 6 THREW — all six the intended `Goto` rejection paths with their exact
+messages — 103 distinct values, and the 114 captured `console.error` lines identical).
+Floats recorded as raw IEEE-754 bits. Written because **the fixture pipeline never reaches
+this cluster's core**: `Mei2MsmMpmConverter` *writes* sequencingMaps and leaves them
+unexpanded (the reference `.msm` files contain `<goto>` elements), and nothing in `src/`
+calls `resolveSequencingMaps` or `Msm.addIds` at all. Coverage: 14
+`applySequencingMapToMap` scenarios (single/double/triple repetition, inactive and empty
+activity strings, nested and forward jumps, `date.end`, id-less elements, malformed gotos,
+namespaced map attributes, target date resolved from the marker), 6 `resolveSequencingMaps`
+scopings, 22 `Goto` constructions across both constructors, 30 `AbstractMsm` lookups, the
+whole `Msm` document surface, and 45 MIDI exports in both modes covering every map kind,
+all four `exportMidi` arities, 8 velocity-compression cases and 8 filename spellings.
+
+**E. Negative controls — 14 mutations of the *new* src in a scratch tree (`src/` never
+touched), each rebuilt and re-probed. The unmutated control flips 0, run twice.**
+
+| control | api | pipe |
+|---|---|---|
+| unmutated (sanity, ×2) | **0** | **0** |
+| `cloneElement` keeps the children | 16 | 0 |
+| `getFirstChildElement` ignores the name (the deleted branch's behaviour) | 8 | **21** |
+| `getFilenameWithoutExtension` treats a leading dot as a separator | 2 | 0 |
+| `fitVelocities` swaps its limits unconditionally | 17 | **21** |
+| `applySequencingMapToMap` drops the `i = -1` restart | 3 | 0 |
+| "fix" `Goto`'s truncating `substring` | 3 | 0 |
+| "fix" the key-signature accidental thresholds | 37 | **4** |
+| `parseChannelVolumeMap` iterates forwards | 1 | 0 |
+| `exportExpressiveMidi` honours `genPC` with no performance | 1 | 0 |
+| `addIds` walks the node list backwards | **0** | 0 |
+| `parseProgramChangeMap` always reports an initial PC | 1 | 0 |
+| `getElementBeforeAtByName` scans forwards | 6 | 0 |
+| `addIds` stops giving ids to rests | 1 | 0 |
+| `createMsm` reorders the global maps | 14 | 0 |
+
+**A blind spot I found and closed.** The `getFilenameWithoutExtension` control first
+flipped **0**: `'/tmp/.hidden'` does *not* reach `lastIndexOf('.') === 0`, because the
+directory separator puts the dot at index 5. Only a bare `'.hidden'` or `'.'` does. Added
+both, after which it flips 2.
+
+**A control that correctly flips 0, and why that is the right answer.** Reversing `addIds`'
+loop changes nothing observable: it permutes a set of opaque UUIDs among the same elements,
+and the tests' first-occurrence canonicalisation quotients exactly that away. I had
+written the opposite in the doc comment before running it. **Both that comment and
+`addUUID`'s were corrected** — this copy of `addUUID` is reached only from `Msm.addIds`,
+which nothing in `src/` calls, so it contributes no ids to the reference fixtures at all
+(`mei/Helper.addUUID` is the one that does). The corrected comments say what *is* pinned
+(the element set — control m13 flips it) and note that the order-invariance argument
+expires the moment a second generator runs against the same document, which is
+`Mei2MsmMpmConverter`'s situation. Two `uuid` call sites in this file, unchanged in number
+and position: `addUUID` and `createMsm`'s null-id branch — the latter producing a **bare**
+UUID with no `meico_` prefix (as Java does), so it is not canonicalised and the pipeline
+never takes it.
+
+**F. Coverage (invariant 7)**, measured on my own byte-verified `git archive` of `fb31d34`
+with `node_modules` symlinked.
+
+- **Functions 898/952 = 94.3277% → 897/951 = 94.3218%**, above the 94.0 floor (7a).
+- **Uncovered statements 2273 → 2263** (7b) — shrank; phase-2 budget is 2318.
+- **Uncovered functions 54 → 54.** Tests **2108 → 2108** (7c).
+- Statements 85.0115 → 85.0479, branches 85.5732 → 85.6007 (7d, indicators, both up).
+
+**The deltas reconcile per file with nothing unattributed.** `Msm.ts` is the only file with
+statement or function movement: −30 statements (−20 covered, **−10 uncovered**) and −1
+function. The removed function is exactly `cloneElementImpl`, and it was *covered* — which
+is why covered functions drop by one while the uncovered count holds at 54. The −10
+uncovered statements are precisely the two dead constructs: the 6-statement `Element`
+branch of `getFirstChildElement` and the 4-statement `min > max` swap in `fitVelocities`
+(never taken — the sole caller passes `0, 127`). Three further files show ±1–2 **branch**
+movement with zero statement and zero function movement (`mpm/elements/Header`,
+`maps/ArticulationMap`, `maps/GenericMap`), all byte-identical between trees: the v8
+run-noise 7d anticipates and the [T8] verifier proved is not reproducible file-for-file.
+
+### Function-floor headroom, recomputed
+
+897/951. **3 new *uncovered* functions are still affordable** (897/954 = 94.0252%); the
+**4th breaches** (897/955 = 93.9267%). **51 *covered*-function removals are affordable**
+(846/900 = 94.0000% exactly); the **52nd breaches**. T8 handed over a 3-function allowance
+and T9 spent none of it, but it also spent one of the covered-removal budget, so the
+numbers moved by one each. Unchanged advice: the uncovered-function allowance across T10
+and T11 combined is three.
+
+### Lint
+
+Cluster **132 → 121 (−11)** errors and **2 → 0** warnings, repo-wide **1347 → 1336** and
+**20 → 18**, measured per file with `eslint -f json` on both trees. Per rule:
+`unified-signatures` −6, `no-unused-vars` −4, `no-extraneous-class` −1 (and
+`no-param-reassign` −2 in the warning column). **No lint movement anywhere outside
+`src/msm/Msm.ts`** — the whole-repo per-file comparison shows exactly one file moving.
+`prefer-readonly` in this cluster is **0 sites**; `src/` total measured 9 → 9.
+`refactor/lint-debt.md` gains T8 and T9 columns in the headline table, which had stopped at
+T7 while the prose already carried T8's numbers.
+
+### Deliberately left alone
+
+- **All 114 `no-non-null-assertion`.** T12's null policy owns them; 101 are in `Msm.ts`,
+  mostly in the rendering methods where a guard is a behaviour change in disguise.
+- **The two 3-way constructors** (`Msm`, `AbstractMsm`) — distinct construction modes, per
+  the [T6]/[T7]/[T8] precedent, now documented at both sites.
+- **`exportMidi(generateProgramChanges: boolean)` kept separate** from
+  `exportMidi(bpm?, genPC?)`: collapsing them onto `number | boolean` would erase the one
+  place the API says the single argument means two different things.
+- **`computeSemicircleCompression`**, unused here and in Java. Kept so the trees stay
+  comparable, documented with Java's own reason for rejecting it. A dead-code sweep (T21)
+  can take it — it is 5 uncovered statements.
+- **Every numeric literal, every `parseFloat`/`parseInt`, every loop direction.**
+- `Msm`'s unreachable constructor `else` branch — unreachable from TypeScript, reachable
+  from plain JS, where deleting it would leave `super()` unrun. Kept and documented, as
+  [T8] did for `Mpm`.
+
+### DISCOVERED
+
+- **DISCOVERED (real divergence from Java, latent, T11/T21):** `Msm.getMinimalPPQ` uses
+  floating-point division where Java uses **integer** division (`ppq / subdivs`). They
+  agree while `subdivs` divides `ppq` and part company after: at ppq 720 a note of duration
+  22 gives **32 in Java and 1 here** (`22 % 22` vs `22 % 22.5`); duration 11 gives 64 vs 1.
+  Verified numerically against both formulations. Latent because **nothing in `src/` calls
+  the method** — Java's only caller is `exportPitches`, which T3 removed — and the four unit
+  tests only reach `subdivs ≤ 4`, where 720 divides exactly. Documented at the site. This
+  is a behaviour change to fix and needs its own item; a style pass must not make it.
+- **DISCOVERED (T14/T18, the two `Helper`s have drifted):** `Msm.ts`'s local `Helper` said
+  it existed "to avoid circular dependency issues", but `src/mei/Helper.ts` imports only
+  `XomTypes` and `uuid` today — importing it would create no cycle. The real reasons to
+  keep the copies are weight and **behavioural drift**: `cloneElement` differs from Java in
+  both copies but in different shapes, and `mei/Helper.getAllChildElements` uses an XPath
+  `child::*[local-name()=…]` where the msm/mpm copies use `getChildElements(name)`, which
+  can disagree on namespaced children. Whoever merges them owes a per-method behavioural
+  comparison, not a textual one. The comment now says this instead of the cycle story.
+- **DISCOVERED (T10, same wreckage in its file):** `src/mei/Helper.ts:400`'s `cloneElement`
+  has the identical abandoned port — an unused `clone`, a loop whose body calls
+  `e.getAttribute(i.toString())` and discards it, five narrating comments — before
+  delegating to `copy()` + `removeChildren()`. T9 cleaned the msm copy; T10 can clean that
+  one the same way, and the emitted-JS diff is the proof to use.
+- **DISCOVERED (T2/T16, ESLint config — now two sites):** `Msm.writeMsmString`'s
+  `_filename` joins `Mpm.writeMpmString`'s in costing a `no-unused-vars` that
+  `argsIgnorePattern: '^_'` would retire properly. [T8] raised this with one site; there
+  are two now, and both are API-compatibility parameters that will not go away.
+- **DISCOVERED (test gap, not a defect):** the expansion cluster is reached by **no
+  fixture** — `tests/msm/MsmSequencing.test.ts` is its only coverage, and `Msm.addIds`,
+  `resolveSequencingMaps` and `getMinimalPPQ` have no caller in `src/` at all. The [T9]
+  probe covers them (`scratchpad/t9probe/api.mjs`), the suite covers them well, but no
+  end-to-end comparison against the Java reference does. If sequencing expansion is ever
+  put on the pipeline path, it needs fixtures of its own first.
+
+### Handoff
+
+Probes at `scratchpad/t9probe/{api,pipe}.mjs` — both take `<distDir> <out.json>` and import
+`Mpm` first (the circular-import hazard). `api.mjs` builds every document programmatically
+on purpose: a pretty-printed map puts whitespace text nodes between entries and
+`getNextSiblingElement` walks raw children, so an indented fixture silently truncates every
+traversal. Transcripts beside them as `{api,pipe}-{base,work}.json`. Negative controls in
+`scratchpad/t9nc/` with `run.sh <name> [mutator.py]` (it re-copies pristine `src` each time
+— use it rather than hand-mutating) and mutators `mut/m1.py`–`m14.py`; it diffs both probes
+at once and prints the first three flipped check names, which is what makes a zero-flip
+result quickly explainable instead of merely suspicious. `scratchpad/t9base/` holds the
+byte-verified `git archive` of `fb31d34` with `node_modules` symlinked and its coverage run
+in `t9base/coverage/`.
+
+Traps inherited and confirmed still live: create scratch outDirs in a **prior** step, use
+absolute `-p` paths per tree, symlink `node_modules` into any tree built outside the repo,
+pass `--declarationMap false` alongside `--declaration false`, and use `awk` rather than
+`sed` when stripping paths off `shasum` output. Two new ones: **(a)** a dist tree built
+into the scratchpad needs its own `package.json` containing `{"type":"module"}` or every
+`import` in it is parsed as CommonJS and the probe dies before the first check; **(b)** do
+not count type assertions with `grep -o " as [A-Za-z]"` once a file has real prose in it —
+the English word "as" inflated this cluster's count from 15 to 56. Count `AsKeyword` in the
+`toks2.mjs` stream instead.
+
+## [T9] verifier — PASS (2026-08-08)
+
+**PASS T9.** Everything reproduced from scratch against my own byte-verified baseline; every
+numeric claim in the worker entry matches my independent measurement exactly. One manifest
+note for the conductor (below) — not a worker fault.
+
+### Baseline trust
+
+Re-verified the worker's `t9base/` rather than assuming it: **all 59 `src/` files and all
+185 `tests/` + config files byte-identical to `git show fb31d34:<path>`**, no extra or
+missing files. `fb31d34`'s `src/` is identical to the last green `b09e096` (bookkeeping-only
+commit in between), confirmed by `git diff b09e096 fb31d34 -- src/` being empty.
+
+### 1. UUID / marker call order — PASS
+
+- **Call-site diff, whole `src/`, both revisions.** Raw `uuid` grep moves 39 → 41, which is
+  a trap: both new lines are *doc comments* containing the word. Real generator invocations
+  (`uuidv4()`, comment lines excluded) are **26 → 26 — same files, same text, same order**;
+  only `Msm.ts` line numbers shift (150→164, 205→267). Nothing added, removed or reordered.
+- **The off-pipeline claim is correct.** `Msm.addIds` has **zero callers in `src/`** (the
+  `src/mei/Mei.ts:439` hit is `Mei`'s own unrelated method); the module-local `addUUID`'s
+  only call site is inside `Msm.addIds` itself (`Msm.ts:1826`), so it is transitively
+  unreachable; `resolveSequencingMaps` likewise has zero callers. `Msm.getMinimalPPQ` too
+  (the `midi/Midi.ts` hits are a different class's method).
+- **Pipeline probe, both builds: identical.** 24 entries, 0 threw, 21 non-vacuous, sha
+  `e960dd16…` on base and work, and the JSON transcripts are **byte-identical**. Covers the
+  goto/marker-heavy fixtures asked for — `repeats_endings` and `composite_advanced` both
+  emit real content (2323 / 4034-byte MSM), not vacuous passes.
+
+### 2. Comments-only (Goto.ts, AbstractMsm.ts) — PASS, both ways, tool validated
+
+Emitted `.js` **byte-identical** for both files (my own build of both trees), and the
+JSDoc-pruned token stream gives a **0-line diff over 717 and 656 tokens** — the worker's
+counts to the token. I did not trust `toks2.mjs` on its word: negative controls show a pure
+comment/JSDoc insertion → **0** diff and a single-token code edit
+(`substring(1, len-1)` → `substring(1, len)`) → **2** diff lines. *(My first control flipped
+0 because I had mutated a line inside a doc comment — worth recording, since a control that
+silently mutates nothing is indistinguishable from a passing one.)*
+
+### 3. `Msm.js` hunk classification — PASS, zero unclassified
+
+Whole-project emitted-JS diff: **exactly 1 of 59 files differs**, `msm/Msm.js`, 23 raw
+hunks. Canonicalising the `Helper.` prefix and the unused catch bindings collapses it to
+**4 real hunks**, all inside the worker's 5 families. *(My canonicalisation initially showed
+5 — the extra was my own over-eager `sed` rewriting `catch (e)` in
+`applySequencingMapToMap`, where the binding **is** used by `console.error(e)` and the
+worker correctly kept it. 4 unused bindings dropped, 1 used binding kept.)*
+
+Method-by-method, after prefix canonicalisation: `applySequencingMapToMap` (**91 lines**),
+`resolveSequencingMaps` (63), `computePartwiseCompression` (44), `getMinimalPPQ` (32),
+`convertPPQ`, `getEndDate`, `computeSemicircleCompression`, `addIds`, `exportMidi`,
+`exportExpressiveMidi` — **all byte-identical**. `fitVelocities` differs only in the ternary
+rewrite, with **every** use of `min`/`max` consistently renamed (no leftover); the `min`/
+`max` surviving in `computeSemicircleCompression` are that function's own parameters.
+Sequencing/expansion loops are **not** restructured; the `i = -1` restart survives verbatim.
+
+**The one semantic subtlety, chased to the ground.** The surviving `getFirstChildElement`
+drops the old `ofThis === undefined` guard (it now reads `ofThis === null || name.length
+=== 0`). Safe, and provably so: the **4** module-level call sites are exhaustive and pass
+either a `!`-asserted `part.getFirstChildElement('dated')` — `XomTypes` returns
+`Element | null`, **never `undefined`** — or a local already narrowed by
+`if (dated === null) continue`; the retained `=== null` test preserves the null path
+identically; and the new body is **byte-identical to `Mpm.ts`'s already-shipped copy**.
+Negative control m2-equivalent (make it ignore the name, i.e. the deleted branch's
+behaviour) flips **21** pipeline entries — so the branch that survived is demonstrably the
+one the pipeline depends on.
+
+### 4. `getMinimalPPQ` DISCOVERED — confirmed on all three counts
+
+- **(a) Real.** `Msm.java:254-279`; `ppq / subdivs` at `:262` and `:270` with both operands
+  `int` — integer division. Reproduced numerically: ppq 720, duration **22 → Java 32, TS 1**;
+  duration **11 → Java 64, TS 1**; durations 180/360/720 agree.
+- **(b) Genuinely latent.** Zero `src/` callers (Java's only caller, `exportPitches`, is
+  absent from this port). The 5 unit tests (`tests/msm/Msm.test.ts:471-512`) use ppq 720
+  with durations/dates 720/360/180/900 — all `subdivs ≤ 4`, where 720 divides exactly and
+  the two formulations cannot disagree.
+- **(c) Untouched this item.** Emitted JS for the method is **32 lines byte-identical**; the
+  site is doc-comment-only. Correctly deferred rather than fixed in a style pass.
+
+### 5. Standard checks — PASS
+
+- **`npm run verify` green, independently**: 44 files, **2108/2108**. Both tsc stages also
+  run **standalone**: `tsc --noEmit` exit 0, `tsc -p tsconfig.tests.json` exit 0. Prettier
+  clean over the cluster + both `refactor/` files.
+- **Tests / fixtures / configs untouched** — `git diff` over `tests/ vitest.config.ts
+  tsconfig*.json eslint.config.js package.json` is empty, and the 185-file baseline
+  comparison above independently confirms nothing under `tests/integration/fixtures/**` moved.
+- **No new escapes**: `eslint-disable` 1 → 1 (still only `Mei2MsmMpmConverter.ts`, T10's),
+  `@ts-ignore`/`@ts-expect-error`/`@ts-nocheck` 0 → 0. Type assertions counted as
+  `AsKeyword` tokens: **15 → 13** (Msm 11→9, Goto 2→2, AbstractMsm 2→2), none added;
+  `as any` 0 → 0, `as unknown` 6 → 6.
+- **`log.md` append-only**: 323 insertions, **0 deletions**, one hunk at `@@ -2884,0
+  +2885,323 @@` — the old EOF.
+- **Lint reconciles.** Cluster **132 → 121 errors, 2 → 0 warnings**; per rule
+  `unified-signatures` −6, `no-unused-vars` −4, `no-extraneous-class` −1,
+  `no-param-reassign` −2 (warnings), summing to exactly −11 / −2. Whole-repo per-file
+  comparison: movement in **exactly one** tracked file, `src/msm/Msm.ts` (116+2w → 105+0w).
+  `no-non-null-assertion` 114 → 114 as declared. `lint-debt.md`'s table sums check out
+  arithmetically (post-T9 rows sum to 1336; pre-T9 to 1347).
+  *Caveat on my own run:* base repo-wide first read **1348**, not 1347 — the extra error is a
+  stray untracked `ro.config.mjs` sitting **inside the `t9base/` directory**, which is not in
+  `fb31d34` and not in the working tree. Excluding it, 1347 → 1336 as claimed. Anyone
+  linting a scratch tree should expect this.
+- **Coverage — my own runs on both trees, not the worker's numbers.** Functions
+  **898/952 = 94.3277% → 897/951 = 94.3218%** (≥ 94.0, 7a). Uncovered statements
+  **2273 → 2263** (7b — shrank; budget 2318). Uncovered functions 54 → 54. Tests
+  **2108 → 2108** (7c). Statements 85.0115 → 85.0479, branches 85.57 → 85.60 (7d).
+  **Per-file: `msm/Msm.ts` is the ONLY file with any function or statement movement**
+  (fn_tot −1, fn_cov −1, st_tot −30, st_cov −20, st_uncov −10); all 58 files present in both.
+  The −10 reconciles exactly against the baseline coverage data: `getFirstChildElement`'s
+  `Element` branch is **6 uncovered statements** (baseline lines 54-59) and `fitVelocities`'
+  swap is **4 uncovered** (1243-1246) — 6 + 4 = 10. `cloneElementImpl` was **covered**
+  (29 hits), which is precisely why covered functions drop by one while uncovered holds at 54.
+- **Public surface.** Only `msm/Msm.d.ts` differs: 6 declarations out, 2 in, net −4 lines.
+  Both new signatures are **strictly wider** — `exportMidi(bpm?, genPC?)` subsumes the `()`,
+  `(bpm)`, `(bpm, genPC)` forms while the boolean-first `exportMidi(genPC)` overload is kept
+  separate, and `exportExpressiveMidi(performance?, genPC?)` subsumes its three. No narrowing,
+  so no call site can break; tests-tsc green confirms it.
+
+### 6. Full pipeline over all deterministic fixtures — PASS
+
+Covered by the run in pt. 1: all **16** MEI fixtures end-to-end plus the 5 deterministic
+all-maps fixtures (MSM, MPM, augmented MSM, raw + expressive MIDI), byte-identical between
+builds. The sha also matches the value the [T8] verifier recorded, so the pipeline has not
+drifted across two items.
+
+### Probe validation (I ran controls rather than trusting green)
+
+The probes measure something, proven, not assumed — and both reproduce the worker's own
+negative-control numbers **exactly**, which independently corroborates that table:
+
+| my control (applied to the *work* dist) | pipeline entries flipped | worker's claim |
+|---|---|---|
+| key-signature threshold `1.0` → `0.0` | **4** (incl. `keys_accidentals`) | m7: 4 |
+| `getFirstChildElement` ignores the name | **21** | m2: 21 |
+
+### Manifest note for the conductor
+
+`git status --porcelain` is **6** modified, not the worker's declared 5: the extra is
+**`refactor/state.json`**, which adds a `T9b` queue item (the `getMinimalPPQ` fix) and
+rewrites `T13`'s details with downstream requests from a separate mpmify session. That is
+conductor bookkeeping, not worker output — no `src/` or test content — and the charter's
+step-3 reconciliation excepts `refactor/` bookkeeping. Flagging it only so the manifest
+delta is explained in writing before the commit rather than discovered during it. Zero
+untracked files; `coverage/` is gitignored, so my two coverage runs left the tree clean.
+
+### Traps re-confirmed (both bit me this session)
+
+- The scratchpad redirect race is **live**: my very first `npm run verify` wrote to a
+  not-yet-created `t9verify/`, died instantly, and reported through a wrapper that made it
+  look like it had run. Create the directory in a **prior** step, and check the log is
+  non-empty before believing a fast green.
+- **A failing extractor reports "IDENTICAL".** My `awk` method-extraction died on regex
+  escaping (`(` unescaped) and printed three confident `IDENTICAL [1 lines]` results. Any
+  comparison harness must print the size of what it compared — `[1 lines]` was the only tell.
+  Rewrote it in Python with an explicit "PREFIX NOT FOUND" failure. Reusable at
+  `scratchpad/t9verify/extract.py <file.js> "<exact line prefix>"`.
+
+### Handoff
+
+My artefacts in `scratchpad/t9verify/`: `dist-{base,work}/` (comment-stripped builds, each
+with the `{"type":"module"}` package.json and a `node_modules` symlink the probes need),
+`dts-{base,work}/`, `mut-a/` + `mut-b/` (the two validated pipeline mutants),
+`{Msm,Goto,AbstractMsm}.{base,work}.tok`, `canon.diff`, `cov.py` + `{base,work}-per.json`
+(per-file function/statement counts — the tool that makes the coverage reconciliation a
+one-liner), `lint-{base,work}.json`, and `extract.py`.

@@ -98,6 +98,13 @@
       "details": "Midi, MidiTypes, EventMaker, InstrumentsDictionary. InstrumentsDictionary's big data tables may become const data structures. Byte-identical MIDI output required (suite proves it)."
     },
     {
+      "id": "T9b",
+      "phase": 2,
+      "status": "pending",
+      "title": "Fix Msm.getMinimalPPQ integer-division divergence from Java",
+      "details": "Discovered in T9: getMinimalPPQ uses float division where Java Msm.java uses integer division (ppq 720, duration 22 -> Java 32, TS 1). Latent (zero src/ callers; unit tests only reach exact-division subdivisions). Fix TOWARD Java parity, add unit tests pinning the non-exact-division cases against hand-computed Java semantics (verify against the Java source, cite lines). Small item — one method + tests."
+    },
+    {
       "id": "T12",
       "phase": 3,
       "status": "pending",
@@ -109,7 +116,7 @@
       "phase": 3,
       "status": "pending",
       "title": "Public facade + index exports",
-      "details": "Implement the ARCHITECTURE.md facade (e.g. parseMei/convertToMsmMpm/perform/renderMidi) as additive API; index.ts exports curated; old entry points kept working. Integration tests may switch to facade only mechanically. ACCEPTANCE (charter, facade-plain-data bullet): facade outputs are plain JSON-serializable/structured-clone-safe data — survives postMessage, supports referential-equality memoization; XomTypes/XML types never appear in facade signatures."
+      "details": "Implement the ARCHITECTURE.md facade (e.g. parseMei/convertToMsmMpm/perform/renderMidi) as additive API; index.ts exports curated; old entry points kept working. Integration tests may switch to facade only mechanically. ACCEPTANCE (charter, facade-plain-data bullet): facade outputs are plain JSON-serializable/structured-clone-safe data — survives postMessage, supports referential-equality memoization; XomTypes/XML types never appear in facade signatures. DOWNSTREAM CONSUMER REQUESTS (mpmify ML session, 2026-08-08): (a) batch path MSM+MPM-as-objects/JSON -> per-note {id, date, duration, milliseconds.date, milliseconds.date.end, velocity} + CC streams (movement/sub-note dynamics), no file I/O; (b) expose the imprecision RNG seed so synthetic datasets are reproducible."
     },
     {
       "id": "T14",

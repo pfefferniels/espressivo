@@ -1,6 +1,6 @@
-# Lint debt (as of T7)
+# Lint debt (as of T9)
 
-> Updated after **T7** (mpm maps + data). Counts below are the *current*
+> Updated after **T9** (msm cluster). Counts below are the *current*
 > `npm run lint` output; the T2 baseline is kept in the headline table for comparison.
 
 Snapshot of every ESLint violation left in the tree after T2's safe auto-fixes, grouped by
@@ -17,14 +17,26 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 
 ## Headline numbers
 
-| | count | after T3 | after T4 | after T5 | after T6 | after T7 |
-|---|---|---|---|---|---|---|
-| Violations before T2 | 2104 | | | | | |
-| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | | |
-| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** | **1368** |
-| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** | **20** |
-| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 | 75 of 105 |
-| Still auto-fixable | 0 | 0 | 0 | 0 | 0 | 0 |
+| | count | after T3 | after T4 | after T5 | after T6 | after T7 | after T8 | after T9 |
+|---|---|---|---|---|---|---|---|---|
+| Violations before T2 | 2104 | | | | | | | |
+| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | | | | |
+| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** | **1368** | **1347** | **1336** |
+| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** | **20** | 20 | **18** |
+| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 |
+| Still auto-fixable | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+> The T8 and T9 columns were added in T9; before that the table stopped at T7 while the
+> prose below already carried the T8 numbers. Both columns are measured with
+> `eslint -f json` over `src/**` + `tests/**` on a `git archive` of the respective tree,
+> splitting errors from warnings (they are reported together, which has misled two
+> earlier entries).
+
+T9 cleared 11 of the msm cluster's 132 errors (132 → 121) and both of its warnings.
+Measured: **1354 problems (1336 errors, 18 warnings)**. It reconciles exactly — errors
+−11, warnings −2, and the per-file comparison over the whole repo shows movement in
+**exactly one file**, `src/msm/Msm.ts` (116+2w → 105+0w). No file reached zero, so the
+"files affected" row is flat at 75. See the T9 section below.
 
 T4 touched only `src/supplementary/**`, which carried **zero errors** going in, so the error
 column is flat by construction. What it cleared is the warning column: all 5
@@ -109,6 +121,15 @@ working tree: `no-non-null-assertion` 1079, `no-unused-vars` 72, `no-empty-funct
 8, `prefer-for-of` 7, `no-extraneous-class` 4, `no-require-imports` 3,
 `no-unsafe-function-type` 2, `no-fallthrough` 0, `no-this-alias` 0, plus 20
 `no-param-reassign` warnings. (These sum to **1347** errors.)
+
+T9's −11 came out as: `unified-signatures` 50 → **44** (−6), `no-unused-vars` 72 → **68**
+(−4), `no-extraneous-class` 4 → **3** (−1), plus `no-param-reassign` 20 → **18** in the
+warning column. No other row moved. Post-T9 totals, measured repo-wide with
+`eslint -f json` on the working tree: `no-non-null-assertion` 1079, `no-unused-vars` 68,
+`no-empty-function` 54, `eqeqeq` 44, `unified-signatures` 44, `no-explicit-any` 24,
+`explicit-module-boundary-types` 8, `prefer-for-of` 7, `no-extraneous-class` 3,
+`no-require-imports` 3, `no-unsafe-function-type` 2, `no-fallthrough` 0, `no-this-alias` 0,
+plus 18 `no-param-reassign` warnings. (These sum to **1336** errors.)
 
 T6's −42 came out as: `no-non-null-assertion` 1104 → **1079** (−25), `unified-signatures`
 94 → **77** (−17). *(Befores corrected by conductor per verifier-T6's re-measurement; the
@@ -348,7 +369,16 @@ two sites were resolved without being logged. T8 took the one site in its scope
 (`Dated.maps`, only ever `.set`/`.delete`/`.clear`-ed, never reassigned), leaving
 **9 → 8**. Nothing else in this cluster is free: every other private field is assigned in
 `parseData` or a setter rather than in the constructor, which `readonly` forbids.
-**T9–T11 budget against 8, and should re-measure rather than trust either figure.**
+~~**T9–T11 budget against 8, and should re-measure rather than trust either figure.**~~
+
+> **[T9] re-measurement: the post-T8 tree reads 9, not 8** — same one-rule config, run on a
+> byte-verified `git archive` of `fb31d34`. The whole difference is
+> `mei/Mei2MsmMpmConverter.ts`, which T8 counted as 2 and T9 counts as 3;
+> `mpm/elements/Dated.ts` is indeed cleared in both readings. T9 itself takes none (no
+> qualifying field in the msm cluster), so the figure is **9 → 9**. This is now the third
+> entry in a row where the absolute disagrees with its predecessor while the *delta* is
+> solid, which is about as clear a signal as this file can give: **measure, never
+> inherit.** T10–T11 budget against 9.
 
 ### T8 — mpm core — 212 → **191, DONE**
 Before: `no-non-null-assertion` 169, `unified-signatures` 21, `no-explicit-any` 9,
@@ -402,10 +432,49 @@ negative controls confirm the probe catches a real break at those sites.
 | 14 | `unified-signatures` | Genuinely distinct modes, per the [T6]/[T7] precedent, each documented at the site: `Mpm`'s 3-way constructor (`()` / `Document` / XML `string`), `Mpm.getPerformance` and `removePerformance` (`number \| string` / `Performance \| string`), `Header.addStyleType` (`string \| Element`), `Performance.getPart` (by number / by name / by channel+port — `getPart(1)` and `getPart(1, 0)` ask different questions), and the 6 from `Metadata.createMetadata`, which dispatches on the argument's **shape** (duck-typed `getName`+`getNumber` vs `getText`), so the overloads are the only place that behaviour is stated. **T16**'s call. |
 | 8 | `no-unused-vars` | 6 are unused *specifiers* inside import statements T8 was required to keep byte-identical (`Nodes`/`Elements` in `Mpm.ts`, `Header` in `Dated.ts`, `Attribute` in `Header.ts`/`Metadata.ts`, `KeyValue` in `Performance.ts` — the last mirrors Java, where `KeyValue` is used only in a commented-out cleanup loop, `Performance.java:549`). 1 is `Mpm.writeMpmString`'s `_filename`, kept for API compatibility and needing an `argsIgnorePattern: '^_'` in the ESLint config, which belongs to whoever owns the config, not here. **This row grew by 1**: deleting the dead `Helper.getAttribute` orphaned the `Attribute` specifier in `Mpm.ts`, and the import freeze forbids pruning it. Clearing all 6 is free whenever the freeze lifts — tsc already elides every one of them, so `dist/mpm/Mpm.js` opens with `import { Element, Document } from '../xml/XomTypes.js';` in **both** builds. Verify with an emitted-JS diff. |
 
-### T9 — msm — 132
-`Msm.ts` 116, `Goto.ts` 9, `AbstractMsm.ts` 7. (137 → 132 in T3: `Msm.ts` lost the
-`exportChroma`/`exportPitches` dead stubs, which carried `no-explicit-any` and
-`explicit-module-boundary-types` violations.)
+### T9 — msm — 132 → **121, DONE (partially paid down)**
+
+Going in: `no-non-null-assertion` 114, `unified-signatures` 12, `no-unused-vars` 5,
+`no-extraneous-class` 1, plus 2 `no-param-reassign` warnings — 134 problems in total.
+(137 → 132 in T3: `Msm.ts` lost the `exportChroma`/`exportPitches` dead stubs, which
+carried `no-explicit-any` and `explicit-module-boundary-types` violations.)
+
+Coming out: **121 errors, 0 warnings.** Per file:
+
+| before | after | file |
+|---|---|---|
+| 116 (+2 warn) | 105 | `src/msm/Msm.ts` |
+| 9 | 9 | `src/msm/Goto.ts` |
+| 7 | 7 | `src/msm/AbstractMsm.ts` |
+
+**Cleared (11 errors + 2 warnings):**
+
+| n | rule | how |
+|---|---|---|
+| 6 | `unified-signatures` | The `exportMidi` and `exportExpressiveMidi` overload sets. `exportExpressiveMidi`'s three (`()` / `(perf)` / `(perf, genPC)`) collapse onto one optional-parameter signature; `exportMidi`'s four collapse to **two** — `(generateProgramChanges: boolean)` is kept separate because its single argument means something else than `exportMidi(90)` does, exactly the distinction [T6] preserved for `string \| Element`. Overload signatures emit nothing: `dist/msm/Msm.js` is unaffected by this change, and the `.d.ts` diff shows each set becoming one strictly wider signature. `exportMidi(false)`, `exportMidi(90.0)` and `exportMidi(90.0, false)` are all exercised by `tests/msm/Msm.test.ts` and all still typecheck. |
+| 4 | `no-unused-vars` | Four unused `catch` bindings (`catch (ex)` ×2 in `getTitle`/`getPPQ`, `catch (e)` in `makeInitialTempo`, `catch (error)` in `parseMarkerMap`) → optional catch binding, `catch {`. None of the four was read; ES2022 is the emit target, so the binding simply disappears. |
+| 1 | `no-extraneous-class` | `Msm.ts`'s module-local `Helper` class (9 static methods, never exported) became module functions, the same conversion [T8] did in `Mpm.ts`. `getFirstChildElement`'s `Element`-form branch was **dead** — all four call sites pass a name — and `cloneElementImpl` was a private half of `cloneElement`; both went, which is where the function and statement counts move. |
+| 2 warn | `no-param-reassign` | `fitVelocities`'s `min`/`max` swap, rewritten as two ternaries on the same side-effect-free condition and a consistent rename through the body, exactly as [T4]/[T6]/[T7] did elsewhere. Not `Math.min`/`Math.max`: those disagree with a swap on `-0`, the trap [T6] recorded. |
+
+**Deferred (121), by reason:**
+
+| n | rule | why it stayed |
+|---|---|---|
+| 114 | `no-non-null-assertion` | The story every entry since [T5] records: the fix is narrowing return types under **T12**'s null policy, not adding guards. `Msm.ts` holds 101 of them, most in the MIDI rendering methods, where a guard would be a behaviour change disguised as style. |
+| 6 | `unified-signatures` | The two 3-way constructors — `Msm()` / `(Document)` / `(xml: string)` and the identical set on `AbstractMsm`. Kept and documented at both sites for the reason [T8] kept `Mpm`'s: three distinct things to start from, not one optional parameter. **T16**'s call. |
+| 1 | `no-unused-vars` | `Msm.writeMsmString`'s `_filename`, kept for API compatibility with Java's `writeMsm(String)`. Needs `argsIgnorePattern: '^_'` in `eslint.config.js`, which belongs to whoever owns the config — the same site [T8] flagged for `Mpm.writeMpmString`. Two of these now; worth doing. |
+
+`prefer-readonly` in this cluster: **0 sites, nothing to take.** Measured with the [T8]
+verifier's one-rule config over both trees: `src/` total **9 → 9**
+(`midi/MidiTypes.ts` 5, `mei/Mei2MsmMpmConverter.ts` 3, `midi/InstrumentsDictionary.ts` 1).
+`Msm.CONTROL_CHANGE_DENSITY` is already `private static readonly`; `Goto`'s fields are all
+public and genuinely mutated (`counter` by `isActive`), and `AbstractMsm` has no fields.
+
+> ⚠ That 9 is one more than the **8** [T8] recorded for the *same tree state*, and the
+> difference is entirely `mei/Mei2MsmMpmConverter.ts` (3 here, 2 there). Consistent with
+> this file's standing warning that `prefer-readonly` absolutes drift between measurement
+> runs — compare deltas within one config, and re-measure rather than inherit. **T10–T11
+> budget against a measured 9, and note 3 of them are T10's own file.**
 
 ### T10 — mei — 682 (the big one)
 `no-non-null-assertion` 577, `eqeqeq` 44, `no-unused-vars` 29, `no-explicit-any` 12,
@@ -500,10 +569,13 @@ its own.
 | ~~5~~ | ~~`src/supplementary/RandomNumberProvider.ts`~~ — cleared in T4, the full −5 |
 | 3 | `src/midi/Midi.ts`, 3 `src/midi/MidiTypes.ts` |
 | ~~2~~ | ~~`src/mpm/elements/maps/ImprecisionMap.ts`~~ — cleared in T7, the full −2 |
-| 2 | `src/mpm/elements/styles/defs/RubatoDef.ts` (cleared in T6), `src/msm/Msm.ts` |
+| ~~2~~ | ~~`src/mpm/elements/styles/defs/RubatoDef.ts`~~ (cleared in T6), ~~`src/msm/Msm.ts`~~ — cleared in T9, the full −2 (`fitVelocities`'s `min`/`max` swap) |
 | 1 | 9 further map/data files — **6 of them cleared in T7**, 3 remain (both `getTForDate`s and `OrnamentationMap`); 2 integration tests |
 
-> **Post-T7 warning total is 20**, all outside this cluster except the 3 named above.
+> **Post-T9 warning total is 18** (was 20 after T7/T8), measured per file: `src/midi/**`
+> 13 (`EventMaker.ts` 7, `Midi.ts` 3, `MidiTypes.ts` 3 — **T11**'s), `src/mpm/**` 3 (the
+> two `getTForDate` Bézier inversions and `OrnamentationMap`, all three deliberately left
+> by [T7]), integration tests 2. **`src/msm/**` is at zero.**
 
 It is `warn` and not `error` on purpose: the charter grants the conversion/rendering core
 an **explicit mutation boundary**, so a share of these are legitimate and only T12 can draw
