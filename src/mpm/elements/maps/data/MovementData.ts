@@ -1,6 +1,14 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 
 /**
+ * All data needed to compute a continuous controller movement (pedal, and anything
+ * else addressed by `controller`) over one span of the timeline — a single MPM
+ * `<movement>` element plus the `endDate` only {@link MovementMap} knows.
+ *
+ * Shares its Bézier machinery with {@link DynamicsData}: `position` → `transitionTo`
+ * shaped by `curvature`/`protraction`, with `x1`/`x2` computed lazily. The difference
+ * is the output range — {@link getMovementSegment} scales to MIDI's 0-127 at the end.
+ *
  * Port of meico.mpm.elements.maps.data.MovementData
  */
 export class MovementData {
@@ -19,8 +27,6 @@ export class MovementData {
   private x1: number | null = null;
   private x2: number | null = null;
 
-  constructor();
-  constructor(xml: Element);
   constructor(xml?: Element) {
     if (xml === undefined) return;
 
@@ -46,6 +52,15 @@ export class MovementData {
     const id = xml.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
     if (id !== null) this.xmlId = id.getValue();
 
+    // PARITY NOTE — this is a bug, and it is a bug in the Java reference, so it stays.
+    // MovementData.java:64-66 reads the `controller` attribute and assigns it to
+    // `this.xmlId`, not to `this.controller`; it also looks the attribute up in the
+    // xml: namespace, where `controller` never lives. Both mistakes are reproduced
+    // verbatim. The visible consequences: `controller` keeps its "sustain" default no
+    // matter what the XML says, and (because the lookup never matches) `xmlId` is not
+    // actually clobbered either. Populating `controller` correctly would change which
+    // MIDI controller every rendered movement targets. See CHARTER.md, "Known parity
+    // subtleties" — behaviour parity beats correctness.
     const controllerAttr = xml.getAttribute('controller', 'http://www.w3.org/XML/1998/namespace');
     if (controllerAttr !== null) this.xmlId = controllerAttr.getValue();
   }
@@ -69,6 +84,13 @@ export class MovementData {
     return this.transitionTo === null;
   }
 
+  /**
+   * Byte-for-byte the same computation as
+   * {@link DynamicsData.computeInnerControlPointsXPositions}, including the in-place
+   * defaulting of null `curvature`/`protraction` to 0.0. Kept duplicated rather than
+   * shared because the two classes are independent ports; unifying them is a
+   * model-layer decision (T16), not a local idiom.
+   */
   private computeInnerControlPointsXPositions(): void {
     if (this.curvature === null) this.curvature = 0.0;
     if (this.protraction === null) this.protraction = 0.0;
@@ -92,6 +114,12 @@ export class MovementData {
         this.protraction;
   }
 
+  /**
+   * Invert the Bézier's x-component to find the curve parameter `t` for `date`.
+   * Identical in form and in floating-point behaviour to
+   * {@link DynamicsData.getTForDate} — see the note there. RENDERING MATH: Horner's
+   * scheme, evaluation order load-bearing, do not expand or reassociate.
+   */
   private getTForDate(date: number): number {
     if (date === this.startDate) return 0.0;
     if (date === this.endDate) return 1.0;
@@ -142,6 +170,17 @@ export class MovementData {
     return result;
   }
 
+  /**
+   * Sample the movement as `[date, value]` pairs, subdividing adaptively until no two
+   * consecutive samples differ by more than `maxStepSize` (same lockstep splice as
+   * {@link DynamicsData.getSubNoteDynamicsSegment}).
+   *
+   * Two things happen only here. The start point is **unshifted onto the front and the
+   * end point pushed onto the back after** the subdivision, so the series deliberately
+   * begins and ends with an exact, unsampled endpoint — and the first pair is therefore
+   * duplicated whenever the sampled t=0 point coincides with it. Then every value is
+   * scaled by 127 into the MIDI controller range, mutating the tuples in place.
+   */
   getMovementSegment(maxStepSize: number): number[][] {
     if (this.x1 === null) this.computeInnerControlPointsXPositions();
 

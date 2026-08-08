@@ -2,7 +2,22 @@ import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
 
 /**
- * This class is used to collect all relevant data to compute imprecision.
+ * All data needed to drive one imprecision distribution over a span of the timeline —
+ * a single MPM `distribution.*` element plus the `endDate` only {@link ImprecisionMap}
+ * knows.
+ *
+ * One class covers all six distribution kinds, discriminated at runtime by {@link type}
+ * against the string constants below (which are also the elements' local names). Each
+ * kind reads its own subset of the numeric fields and leaves the rest null —
+ * `standardDeviation` is Gaussian-only, `mode`/`lowerClip`/`upperClip` are for the
+ * triangular kinds, `maxStepWidth` and `degreeOfCorrelation` for the correlated ones,
+ * and `distributionList` for the explicit list. Every field is parsed unconditionally
+ * regardless of type, so a mis-typed element simply yields nulls rather than an error.
+ *
+ * `millisecondsTimingBasis` is the sampling grid: it converts a note's milliseconds date
+ * into the index handed to the random number provider, which is what makes correlated
+ * distributions reproducible along the timeline.
+ *
  * Port of meico.mpm.elements.maps.data.DistributionData
  */
 export class DistributionData {
@@ -32,8 +47,6 @@ export class DistributionData {
   millisecondsTimingBasis: number | null = null;
   distributionList: number[] = [];
 
-  constructor();
-  constructor(xml: Element);
   constructor(xml?: Element) {
     if (xml === undefined) return;
 

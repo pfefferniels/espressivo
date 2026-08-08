@@ -6,13 +6,25 @@ import { GenericMap } from './GenericMap.js';
 import { DynamicsData } from './data/DynamicsData.js';
 import { DynamicsStyle } from '../styles/DynamicsStyle.js';
 
+/**
+ * An MPM `dynamicsMap`: loudness over the timeline, as constant levels and as
+ * crescendo/diminuendo transitions.
+ *
+ * Rendering has two modes and they use different MIDI mechanisms. Ordinarily each note
+ * simply gets the `velocity` its date calls for. But a `<dynamics>` marked
+ * `subNoteDynamics` needs loudness to change *while a note sounds*, which velocity
+ * cannot express — so those spans instead pin every note to velocity 100 and emit the
+ * shape as a channel-volume curve. That is why
+ * {@link DynamicsMap.renderDynamicsToMap} returns a second map: the `channelVolumeMap`
+ * the MIDI export turns into CC 7 events.
+ *
+ * Port of meico.mpm.elements.maps.DynamicsMap
+ */
 export class DynamicsMap extends GenericMap {
   private constructor(typeOrXml: string | Element) {
     super(typeOrXml);
   }
 
-  static createDynamicsMap(): DynamicsMap | null;
-  static createDynamicsMap(xml: Element): DynamicsMap | null;
   static createDynamicsMap(xml?: Element): DynamicsMap | null {
     try {
       return xml !== undefined ? new DynamicsMap(xml) : new DynamicsMap('dynamicsMap');
@@ -20,10 +32,6 @@ export class DynamicsMap extends GenericMap {
       console.error(e);
       return null;
     }
-  }
-
-  protected parseData(xml: Element): void {
-    super.parseData(xml);
   }
 
   addDynamics(
@@ -78,18 +86,29 @@ export class DynamicsMap extends GenericMap {
     return null;
   }
 
+  /**
+   * Read the dynamics instruction at `index` into a {@link DynamicsData}, resolving
+   * style-relative names such as `"forte"` through the style in scope (found by scanning
+   * backwards for the nearest preceding `<style>`). Returns null if the entry is not a
+   * usable `<dynamics>`.
+   *
+   * When there is no `transition.to`, the instruction is made explicitly constant —
+   * `transitionTo` is set equal to `volume` and both curve parameters are zeroed —
+   * rather than left null. That keeps {@link DynamicsData.getDynamicsAt} on a single
+   * code path instead of having it branch on null.
+   */
   getDynamicsDataOf(index: number): DynamicsData | null {
     if (this.elements.length === 0 || index < 0) return null;
-    if (index >= this.elements.length) index = this.elements.length - 1;
-    const e = this.elements[index].getValue();
+    const i = index >= this.elements.length ? this.elements.length - 1 : index;
+    const e = this.elements[i].getValue();
     if (e.getLocalName() !== 'dynamics') return null;
     const dd = new DynamicsData();
-    dd.startDate = this.elements[index].getKey();
-    dd.endDate = this.getEndDate(index);
+    dd.startDate = this.elements[i].getKey();
+    dd.endDate = this.getEndDate(i);
     dd.xml = e;
     const att = Helper.getAttribute('id', e);
     if (att !== null) dd.xmlId = att.getValue();
-    for (let j = index; j >= 0; --j) {
+    for (let j = i; j >= 0; --j) {
       const s = this.elements[j].getValue();
       if (s.getLocalName() === 'style') {
         dd.styleName = Helper.getAttributeValue('name.ref', s);
@@ -124,6 +143,25 @@ export class DynamicsMap extends GenericMap {
     return Number.MAX_VALUE;
   }
 
+  /**
+   * Write a `velocity` onto every note of `map` and return the `channelVolumeMap`
+   * needed for the sub-note spans (see the class doc), or null if there is nothing to
+   * do.
+   *
+   * As in {@link TempoMap.renderTempoToMap}, `mapIndex` lives outside the instruction
+   * loop and is never rewound, so the two maps are walked once in lockstep.
+   *
+   * The channel volume is pinned back to 100.0 at the start of every non-sub-note span,
+   * but only when it is not already there — otherwise a run of ordinary instructions
+   * would emit a redundant CC 7 event apiece. Those entries carry `mandatory="true"`,
+   * which stops the MIDI export from optimising them away; without it, the reset after
+   * a sub-note curve could be dropped and the curve's final volume would leak into the
+   * following notes.
+   *
+   * Note the asymmetry in the two inner loops: notes *before* the current instruction
+   * get a flat 100.0 (nothing has defined their dynamics yet), while a sub-note span
+   * skips them instead — its notes are handled by the volume curve, not by velocity.
+   */
   renderDynamicsToMap(map: GenericMap | null): GenericMap | null {
     if (map === null || this.elements.length === 0) return null;
     const chanVolMap = GenericMap.createGenericMap('channelVolumeMap');

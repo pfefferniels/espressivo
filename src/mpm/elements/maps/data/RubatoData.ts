@@ -3,6 +3,18 @@ import type { RubatoStyle } from '../../styles/RubatoStyle.js';
 import type { RubatoDef } from '../../styles/defs/RubatoDef.js';
 
 /**
+ * All data needed to compute rubato over one span of the timeline — a single MPM
+ * `<rubato>` element plus the `endDate` only {@link RubatoMap} knows.
+ *
+ * Rubato is defined over a repeating *frame* of `frameLength` ticks. Within each frame
+ * the timing is warped by a power curve of exponent `intensity`, and the warp is
+ * confined to the window between `lateStart` and `earlyEnd` (both fractions of the
+ * frame). `loop` decides whether the frame repeats until `endDate` or applies once.
+ *
+ * Every numeric field is nullable because a `<rubato>` may name a `rubatoDef` instead
+ * of spelling the values out; {@link RubatoMap.getRubatoDataOf} fills the gaps from
+ * the def and then clamps the window into a valid range.
+ *
  * Port of meico.mpm.elements.maps.data.RubatoData
  */
 export class RubatoData {
@@ -24,8 +36,6 @@ export class RubatoData {
 
   loop = false;
 
-  constructor();
-  constructor(xml: Element);
   constructor(xml?: Element) {
     if (xml === undefined) return;
 
@@ -35,6 +45,12 @@ export class RubatoData {
     const nameRef = xml.getAttribute('name.ref');
     if (nameRef !== null) this.rubatoDefString = nameRef.getValue();
 
+    // Note the asymmetry with the field initializers above: those give intensity/
+    // lateStart/earlyEnd the MPM defaults (1.0/0.0/1.0), but parsing an element
+    // *overwrites them with null* when the attribute is absent rather than leaving the
+    // default in place. That is intentional — a missing attribute here means "inherit
+    // from the rubatoDef", and RubatoMap.getRubatoDataOf distinguishes the two cases by
+    // the null. Changing these to `?? default` would silently defeat def inheritance.
     const frameLengthAtt = xml.getAttribute('frameLength');
     this.frameLength = frameLengthAtt !== null ? parseFloat(frameLengthAtt.getValue()) : null;
 

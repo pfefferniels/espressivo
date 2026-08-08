@@ -5,13 +5,22 @@ import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { MovementData } from './data/MovementData.js';
 
+/**
+ * An MPM `movementMap`: continuous controller movement, most commonly the sustain
+ * pedal, expressed as smooth transitions between positions.
+ *
+ * Rendering does not modify the score. Instead
+ * {@link MovementMap.renderMovementToMap} builds and returns a *new* `positionMap`
+ * whose `<position>` elements are the sampled curve, which the MIDI export then turns
+ * into controller events. Each `<movement>` runs until the next one.
+ *
+ * Port of meico.mpm.elements.maps.MovementMap
+ */
 export class MovementMap extends GenericMap {
   private constructor(typeOrXml: string | Element) {
     super(typeOrXml);
   }
 
-  static createMovementMap(): MovementMap | null;
-  static createMovementMap(xml: Element): MovementMap | null;
   static createMovementMap(xml?: Element): MovementMap | null {
     try {
       return xml !== undefined ? new MovementMap(xml) : new MovementMap('movementMap');
@@ -19,10 +28,6 @@ export class MovementMap extends GenericMap {
       console.error(e);
       return null;
     }
-  }
-
-  protected parseData(xml: Element): void {
-    super.parseData(xml);
   }
 
   addMovement(
@@ -65,25 +70,43 @@ export class MovementMap extends GenericMap {
     return this.insertElement(new KeyValue(date, e), false);
   }
 
+  /**
+   * Read the movement at `index` into a {@link MovementData}, or null if that entry is
+   * not a `<movement>`. An out-of-range index is clamped to the last entry rather than
+   * rejected, matching the reference.
+   *
+   * A `<movement>` without a `position` inherits where the previous one ended, so that
+   * a chain of movements is continuous by default.
+   */
   getMovementDataOf(index: number): MovementData | null {
     if (this.elements.length === 0 || index < 0) return null;
-    if (index >= this.elements.length) index = this.elements.length - 1;
-    const e = this.elements[index].getValue();
+    const i = index >= this.elements.length ? this.elements.length - 1 : index;
+    const e = this.elements[i].getValue();
     if (e.getLocalName() !== 'movement') return null;
     const md = new MovementData();
-    md.startDate = this.elements[index].getKey();
-    md.endDate = this.getEndDate(index);
+    md.startDate = this.elements[i].getKey();
+    md.endDate = this.getEndDate(i);
     md.xml = e;
     const att = Helper.getAttribute('id', e);
     if (att !== null) md.xmlId = att.getValue();
     const posAtt = Helper.getAttribute('position', e);
-    if (posAtt === null) md.position = this.getPreviousPosition(index);
+    if (posAtt === null) md.position = this.getPreviousPosition(i);
     else md.position = parseFloat(posAtt.getValue());
     const ttAtt = Helper.getAttribute('transition.to', e);
     if (ttAtt !== null) md.transitionTo = parseFloat(ttAtt.getValue());
     return md;
   }
 
+  /**
+   * The end position of the nearest preceding `<movement>`, or 0 if there is none.
+   *
+   * PARITY NOTE — the loop condition is `j > 0`, not `j >= 0`, so **entry 0 is never
+   * examined**: a movement that inherits its position from the very first entry in the
+   * map gets 0 instead of that entry's `transition.to`. This is faithful to the Java
+   * reference (MovementMap.java:185). Also unlike the reference, a preceding movement
+   * with no `transition.to` leaves `finalPosition` at 0 here, where Java throws a
+   * NullPointerException — a difference confined to the malformed-input path.
+   */
   private getPreviousPosition(index: number): number {
     let finalPosition = 0;
     for (let j = index - 1; j > 0; --j) {
@@ -104,6 +127,14 @@ export class MovementMap extends GenericMap {
     return Number.MAX_VALUE;
   }
 
+  /**
+   * Sample every movement into a fresh `positionMap` of `<position>` elements.
+   *
+   * The **last** movement in the map is deliberately not rendered
+   * (`movementIndex < this.size() - 1`): a movement is a transition *towards* the next
+   * one, so the final entry has no span to cover and only serves as the target the
+   * previous transition aims at. Movements at a negative date are skipped as well.
+   */
   renderMovementToMap(): GenericMap | null {
     const movementMap = GenericMap.createGenericMap('positionMap');
     for (let movementIndex = 0; movementIndex < this.size(); ++movementIndex) {

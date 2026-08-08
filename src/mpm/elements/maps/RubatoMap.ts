@@ -6,13 +6,23 @@ import { GenericMap } from './GenericMap.js';
 import { RubatoData } from './data/RubatoData.js';
 import { RubatoStyle } from '../styles/RubatoStyle.js';
 
+/**
+ * An MPM `rubatoMap`: expressive push and pull of the timing, applied as a repeating
+ * warp of the symbolic dates.
+ *
+ * Rubato works in the **tick** domain, before the tempo map converts to milliseconds —
+ * it moves `date.perf` and `date.end.perf`, and the resulting timestamps fall out of the
+ * tempo conversion later. A rubato is defined over a frame of `frameLength` ticks; with
+ * `loop` the frame repeats until the next instruction, without it the rubato applies to
+ * one frame only and the rest of the span is left unwarped.
+ *
+ * Port of meico.mpm.elements.maps.RubatoMap
+ */
 export class RubatoMap extends GenericMap {
   private constructor(typeOrXml: string | Element) {
     super(typeOrXml);
   }
 
-  static createRubatoMap(): RubatoMap | null;
-  static createRubatoMap(xml: Element): RubatoMap | null;
   static createRubatoMap(xml?: Element): RubatoMap | null {
     try {
       return xml !== undefined ? new RubatoMap(xml) : new RubatoMap('rubatoMap');
@@ -20,10 +30,6 @@ export class RubatoMap extends GenericMap {
       console.error(e);
       return null;
     }
-  }
-
-  protected parseData(xml: Element): void {
-    super.parseData(xml);
   }
 
   addRubato(
@@ -78,18 +84,32 @@ export class RubatoMap extends GenericMap {
     return this.insertElement(new KeyValue(date, e), false);
   }
 
+  /**
+   * Read the rubato instruction at `index` into a {@link RubatoData}. Returns null if
+   * the entry is not a `<rubato>`, or if no `frameLength` can be determined — without a
+   * frame there is nothing to warp, so that case is a hard reject rather than a default.
+   *
+   * Each of `frameLength`, `intensity`, `lateStart` and `earlyEnd` is taken from the
+   * element if present and otherwise inherited from the referenced `rubatoDef`; see the
+   * note in {@link RubatoData}'s constructor on why the parsed nulls are load-bearing.
+   *
+   * The final clamps keep the warp window valid: `lateStart` is floored at 0,
+   * `earlyEnd` capped at 1, and a window that is inverted or empty
+   * (`lateStart >= earlyEnd`) is reset to the full frame rather than producing a
+   * degenerate transformation.
+   */
   getRubatoDataOf(index: number): RubatoData | null {
     if (this.elements.length === 0 || index < 0) return null;
-    if (index >= this.elements.length) index = this.elements.length - 1;
-    const e = this.elements[index].getValue();
+    const i = index >= this.elements.length ? this.elements.length - 1 : index;
+    const e = this.elements[i].getValue();
     if (e.getLocalName() !== 'rubato') return null;
     const rd = new RubatoData();
-    rd.startDate = this.elements[index].getKey();
-    rd.endDate = this.getEndDate(index);
+    rd.startDate = this.elements[i].getKey();
+    rd.endDate = this.getEndDate(i);
     rd.xml = e;
     const att = Helper.getAttribute('id', e);
     if (att !== null) rd.xmlId = att.getValue();
-    for (let j = index; j >= 0; --j) {
+    for (let j = i; j >= 0; --j) {
       const s = this.elements[j].getValue();
       if (s.getLocalName() === 'style') {
         rd.styleName = Helper.getAttributeValue('name.ref', s);
@@ -136,6 +156,20 @@ export class RubatoMap extends GenericMap {
     return Number.MAX_VALUE;
   }
 
+  /**
+   * Warp one date through the rubato curve.
+   *
+   * `localDate` is the position within the current frame (the `%` is what makes the
+   * frame repeat); the power curve of exponent `intensity` remaps it into the window
+   * between `lateStart` and `earlyEnd`; and `date + d - localDate` puts the warped
+   * offset back onto the frame's absolute start. An `intensity` of 1 is the identity
+   * over the full window, above 1 delays, below 1 rushes.
+   *
+   * RENDERING MATH — evaluation order is load-bearing. In particular
+   * `Math.pow(localDate / rd.frameLength, rd.intensity)` must not become `**`, and the
+   * final `date + d - localDate` must not be regrouped: every performed onset in the
+   * output depends on the exact bits this returns.
+   */
   private static computeRubatoTransformation(date: number, rd: RubatoData): number {
     const localDate = (date - rd.startDate) % rd.frameLength!;
     const d =
@@ -145,6 +179,20 @@ export class RubatoMap extends GenericMap {
     return date + d - localDate;
   }
 
+  /**
+   * Warp `date.perf` (and the corresponding end dates) of every entry of `map` that
+   * falls under a rubato instruction. Mutates the map in place; nothing is returned.
+   *
+   * `pendingDurations` collects end dates whose notes started inside the span, so that a
+   * note's end is warped by the same rubato as its start even though it is reached
+   * later. It holds the {@link Attribute} objects themselves rather than indices, which
+   * is what lets the deferred pass write straight back without a second lookup. Notes
+   * that have a `duration.perf` but no `date.end.perf` get one synthesised here.
+   *
+   * Both loops `break` rather than `continue` when they run past the end of the span or
+   * past the single frame of a non-looping rubato — the entries are date-ordered, so the
+   * first one out of range means all the rest are too.
+   */
   renderRubatoToMap(map: GenericMap | null): void {
     if (map === null || this.elements.length === 0) return;
     const pendingDurations: KeyValue<number, Attribute>[] = [];

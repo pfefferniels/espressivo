@@ -1,6 +1,6 @@
-# Lint debt (as of T6)
+# Lint debt (as of T7)
 
-> Updated after **T6** (mpm styles + defs). Counts below are the *current*
+> Updated after **T7** (mpm maps + data). Counts below are the *current*
 > `npm run lint` output; the T2 baseline is kept in the headline table for comparison.
 
 Snapshot of every ESLint violation left in the tree after T2's safe auto-fixes, grouped by
@@ -17,14 +17,14 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 
 ## Headline numbers
 
-| | count | after T3 | after T4 | after T5 | after T6 |
-|---|---|---|---|---|---|
-| Violations before T2 | 2104 | | | | |
-| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | |
-| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** |
-| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** |
-| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 |
-| Still auto-fixable | 0 | 0 | 0 | 0 | 0 |
+| | count | after T3 | after T4 | after T5 | after T6 | after T7 |
+|---|---|---|---|---|---|---|
+| Violations before T2 | 2104 | | | | | |
+| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | | |
+| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** | **1368** |
+| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** | **20** |
+| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 | 75 of 105 |
+| Still auto-fixable | 0 | 0 | 0 | 0 | 0 | 0 |
 
 T4 touched only `src/supplementary/**`, which carried **zero errors** going in, so the error
 column is flat by construction. What it cleared is the warning column: all 5
@@ -35,6 +35,14 @@ T5 cleared 6 of the xml cluster's 15 errors (15 → 9, see the T5 section below)
 warning column untouched. Measured: `npm run lint` → `1461 problems (1431 errors, 30
 warnings)`; `eslint -f json` confirms 81 files still carry ≥1 error, because both xml files
 retain deferred violations rather than reaching zero.
+
+T7 cleared 21 of the maps cluster's 171 errors (171 → 150) and 8 of its 11 warnings (11 → 3).
+Measured: `npm run lint` → `1388 problems (1368 errors, 20 warnings)`. It reconciles exactly —
+errors −21, warnings −8, and nothing moved outside the cluster (verified by comparing per-file
+`eslint -f json` output over the whole repo on both trees). No file reached zero, so the
+"files affected" row is flat at 75; every maps file still carries either a non-null assertion
+or the unused `Attribute` import. See the T7 section below for what was cleared and what was
+deliberately not.
 
 T6 cleared 42 of the styles cluster's 103 errors (103 → 61) and both of its warnings.
 Measured: `npm run lint` → `1417 problems (1389 errors, 28 warnings)`. It reconciles exactly
@@ -83,6 +91,14 @@ Counts are post-T3; the T2 column shows what the deletions absorbed.
 T5's −6 came out of this table as: `prefer-for-of` 11 → 8, `no-unused-vars` 72 → 71,
 `no-explicit-any` 34 → 33, `no-this-alias` 1 → **0** (the rule now has no site left in the
 tree). The other rows are unchanged.
+
+T7's −21 came out as: `unified-signatures` 77 → **57** (−20) and `prefer-for-of` 8 → **7** (−1),
+plus `no-param-reassign` 28 → **20** in the warning column. No other row moved. Current
+per-rule totals, measured repo-wide with `eslint -f json` on the post-T7 tree:
+`no-non-null-assertion` 1079, `no-unused-vars` 71, `unified-signatures` 57, `no-empty-function`
+54, `eqeqeq` 44, `no-explicit-any` 33, `explicit-module-boundary-types` 10, `prefer-for-of` 7,
+`no-extraneous-class` 5, `no-require-imports` 3, `no-fallthrough` 3, `no-unsafe-function-type`
+2, `no-this-alias` 0, plus 20 `no-param-reassign` warnings. (These sum to 1368 errors.)
 
 T6's −42 came out as: `no-non-null-assertion` 1104 → **1079** (−25), `unified-signatures`
 94 → **77** (−17). *(Befores corrected by conductor per verifier-T6's re-measurement; the
@@ -250,19 +266,59 @@ the 7 styles it would additionally make `createXStyle(element, 'id')` typecheck 
 implementation silently ignores the id. That is a real loss of type safety in exchange for a
 lint number. **T16**'s call when it redesigns the factory surface.
 
-### T7 — mpm maps + data — 171
-`no-non-null-assertion` 140, `unified-signatures` 23, `no-unused-vars` 7, `prefer-for-of` 1
+### T7 — mpm maps + data — 171 → 150 (DONE, partially paid down)
 
-| n | file |
-|---|---|
-| 32 | `src/mpm/elements/maps/ImprecisionMap.ts` |
-| 24 | `src/mpm/elements/maps/data/MovementData.ts` |
-| 22 | `src/mpm/elements/maps/data/DynamicsData.ts` |
-| 17 | `src/mpm/elements/maps/GenericMap.ts` |
-| 17 | `src/mpm/elements/maps/TempoMap.ts` |
-| 12 | `src/mpm/elements/maps/RubatoMap.ts` |
-| 7 | `src/mpm/elements/maps/DynamicsMap.ts` |
-| ≤6 | `data/OrnamentData`, `MetricalAccentuationMap`, `MovementMap`, `OrnamentationMap`, `data/MetricalAccentuationData`, `data/TempoData`, `ArticulationMap`, `AsynchronyMap`, `data/RubatoData`, `data/ArticulationData`, `data/DistributionData` |
+Going in: `no-non-null-assertion` 140, `unified-signatures` 23, `no-unused-vars` 7,
+`prefer-for-of` 1, plus 11 `no-param-reassign` warnings — 182 problems in total.
+
+Coming out: **150 errors + 3 warnings.** Per file (errors, warnings):
+
+| before | after | file |
+|---|---|---|
+| 32 (+2 warn) | 32 | `src/mpm/elements/maps/ImprecisionMap.ts` |
+| 24 (+1 warn) | 23 (+1 warn) | `src/mpm/elements/maps/data/MovementData.ts` |
+| 22 (+1 warn) | 21 (+1 warn) | `src/mpm/elements/maps/data/DynamicsData.ts` |
+| 17 | 14 | `src/mpm/elements/maps/GenericMap.ts` |
+| 17 (+1 warn) | 15 | `src/mpm/elements/maps/TempoMap.ts` |
+| 12 (+1 warn) | 11 | `src/mpm/elements/maps/RubatoMap.ts` |
+| 7 (+1 warn) | 6 | `src/mpm/elements/maps/DynamicsMap.ts` |
+| 6 | 5 | `src/mpm/elements/maps/data/OrnamentData.ts` |
+| 5 (+1 warn) | 4 | `src/mpm/elements/maps/MetricalAccentuationMap.ts` |
+| 4 (+1 warn) | 3 | `src/mpm/elements/maps/MovementMap.ts` |
+| 4 (+1 warn) | 3 (+1 warn) | `src/mpm/elements/maps/OrnamentationMap.ts` |
+| 4 | 3 | `src/mpm/elements/maps/data/MetricalAccentuationData.ts` |
+| 4 | 3 | `src/mpm/elements/maps/data/TempoData.ts` |
+| 3 (+1 warn) | 2 | `src/mpm/elements/maps/ArticulationMap.ts` |
+| 3 | 1 | `src/mpm/elements/maps/AsynchronyMap.ts` |
+| 3 | 2 | `src/mpm/elements/maps/data/RubatoData.ts` |
+| 2 | 1 | `src/mpm/elements/maps/data/ArticulationData.ts` |
+| 2 | 1 | `src/mpm/elements/maps/data/DistributionData.ts` |
+
+(The "after" errors column sums to 150 and the warnings to 3 — checked, not asserted.)
+
+**Cleared (21 errors + 8 warnings):**
+
+| n | rule | how |
+|---|---|---|
+| 20 | `unified-signatures` | 8 `createXMap()` / `(xml: Element)` factory pairs and 8 data-class `constructor()` / `constructor(xml)` pairs collapsed onto an optional parameter, plus `TempoMap.addTempo`'s 5-arg/6-arg pair, plus `GenericMap`'s two redundant `protected constructor` overloads (a third overload already declared the full `string \| Element` union, so the first two were pure duplication). Emits **nothing** — all 8 `data/*.js` are byte-identical between the two builds, which is the proof. |
+| 1 | `prefer-for-of` | `AsynchronyMap.renderAsynchronyToMap`'s inner loop. The index was used only to index the array, and `mapEntries` is not mutated inside the loop (the `done` removal pass runs after it), so iteration order is identical. |
+| 8 warn | `no-param-reassign` | The 7 `getXDataOf(index)` clamps (`if (index >= n) index = n - 1` → `const i = … ? … : index`, then a consistent rename through each body) and `ImprecisionMap.setDetuneUnit`. The `if`→ternary is provably equivalent: the condition has no side effects. |
+
+**Deferred (150 errors + 3 warnings), by reason:**
+
+| n | rule | why it stayed |
+|---|---|---|
+| 140 | `no-non-null-assertion` | Same story [T5] and [T6] already recorded and this file prescribes: the fix is narrowing return types under **T12**'s null policy, not adding guards. Adding guards inside rendering code would be a behaviour change smuggled into a style item, and this is the cluster where that is least acceptable. |
+| 7 | `no-unused-vars` | All 7 are `'Attribute' is defined but never used` — an unused *specifier* in an otherwise-used import statement, one in each `data/` file. **T7 was instructed to keep import statements byte-identical** (the maps' import order is load-bearing for the circular-import hazard and for map-factory registration), so not one import line was touched. Whoever lifts that freeze can clear all 7 mechanically; verify with an emitted-JS diff, since tsc's elision of unused specifiers is what makes it safe. |
+| 3 | `unified-signatures` | `GenericMap.createGenericMap` and `ImprecisionMap.createImprecisionMap` (`string \| Element`) and `GenericMap.removeElement` (`number \| Element`). All three are the kind [T6] deliberately preserved: genuinely distinct construction/removal modes, where the signature is the only place that says so. **T16**'s call. |
+| 2 warn | `no-param-reassign` | `DynamicsData.getTForDate` and `MovementData.getTForDate` reassign `date` inside the Bézier inversion. Untouched on purpose — that is floating-point rendering math under a hard bit-identity requirement, and the reward is one lint warning. |
+| 1 warn | `no-param-reassign` | `OrnamentationMap.getOrnamentDataOf`'s index clamp, the one site of the 8 not converted. Deliberate: T7's brief froze OrnamentationMap's method bodies after this session's hard-won parity fixes, and the emitted-JS diff confirms that file's only change is the `parseData` removal. |
+
+`prefer-readonly` in this cluster: **0 of the 11 remaining `src/` sites are here** — measured with
+the same one-rule config over both trees (`prefer-readonly` alone, `projectService: true`,
+`src/` only): src-total **11 → 11**. Every private field in the cluster is genuinely reassigned
+(`x1`/`x2` are lazy caches, `id`/`globalHeader`/`localHeader` are set after construction), so
+there was nothing free to take. **T8–T11 still budget against 11.**
 
 ### T8 — mpm core — 212
 `no-non-null-assertion` 169, `unified-signatures` 21, `no-explicit-any` 9,
@@ -381,8 +437,11 @@ its own.
 | ~~5~~ | ~~`src/mei/Mei2MusicXmlConverter.ts`~~ — deleted in T3, the full −5 |
 | ~~5~~ | ~~`src/supplementary/RandomNumberProvider.ts`~~ — cleared in T4, the full −5 |
 | 3 | `src/midi/Midi.ts`, 3 `src/midi/MidiTypes.ts` |
-| 2 | `src/mpm/elements/maps/ImprecisionMap.ts`, `src/mpm/elements/styles/defs/RubatoDef.ts`, `src/msm/Msm.ts` |
-| 1 | 9 further map/data files, 2 integration tests |
+| ~~2~~ | ~~`src/mpm/elements/maps/ImprecisionMap.ts`~~ — cleared in T7, the full −2 |
+| 2 | `src/mpm/elements/styles/defs/RubatoDef.ts` (cleared in T6), `src/msm/Msm.ts` |
+| 1 | 9 further map/data files — **6 of them cleared in T7**, 3 remain (both `getTForDate`s and `OrnamentationMap`); 2 integration tests |
+
+> **Post-T7 warning total is 20**, all outside this cluster except the 3 named above.
 
 It is `warn` and not `error` on purpose: the charter grants the conversion/rendering core
 an **explicit mutation boundary**, so a share of these are legitimate and only T12 can draw

@@ -3,7 +3,18 @@ import type { DynamicsStyle } from '../../styles/DynamicsStyle.js';
 import type { DynamicsDef } from '../../styles/defs/DynamicsDef.js';
 
 /**
- * This class is used to collect all relevant data to compute dynamics.
+ * All data needed to compute the dynamics over one span of the timeline — a single
+ * MPM `<dynamics>` element plus the context only {@link DynamicsMap} knows (`endDate`,
+ * the style in scope).
+ *
+ * A dynamics instruction is either **constant** (`volume` alone) or a **transition**
+ * from `volume` to `transitionTo`. A transition is shaped by a cubic Bézier whose two
+ * inner control points are derived from `curvature` and `protraction`; `x1`/`x2` cache
+ * their x-positions and are computed lazily on first use.
+ *
+ * Like {@link TempoData}, `volume`/`transitionTo` exist as both a string (what the XML
+ * said, possibly a style-relative name such as `"forte"`) and a resolved number.
+ *
  * Port of meico.mpm.elements.maps.data.DynamicsData
  */
 export class DynamicsData {
@@ -31,8 +42,6 @@ export class DynamicsData {
   private x1: number | null = null;
   private x2: number | null = null;
 
-  constructor();
-  constructor(xml: Element);
   constructor(xml?: Element) {
     if (xml === undefined) return;
 
@@ -99,6 +108,15 @@ export class DynamicsData {
     return this.transitionTo === null || this.volume === null || this.transitionTo === this.volume;
   }
 
+  /**
+   * Derive the x-positions of the Bézier's two inner control points from `curvature`
+   * and `protraction`, caching them in `x1`/`x2`.
+   *
+   * Not a pure read: it also **defaults `curvature`/`protraction` to 0.0 in place** if
+   * they were still null, so calling it changes what a later `clone()` copies. The
+   * `protraction === 0.0` early return is not just an optimisation — the general
+   * formula divides by `protraction`.
+   */
   private computeInnerControlPointsXPositions(): void {
     if (this.curvature === null) this.curvature = 0.0;
     if (this.protraction === null) this.protraction = 0.0;
@@ -122,6 +140,17 @@ export class DynamicsData {
         this.protraction;
   }
 
+  /**
+   * Invert the Bézier's x-component: find the curve parameter `t` whose x lands on
+   * `date`. There is no closed form, so this is a binary search that halves its step
+   * (`tt`) each round and stops once x is within 1 tick of the target.
+   *
+   * RENDERING MATH — every operation and its order is load-bearing. The nested form
+   * `((u * t + v) * t + w) * t * s` is Horner's scheme and must not be expanded; in
+   * floating point it does not equal the expanded polynomial. The loop's exit
+   * condition depends bit-for-bit on those results, so a "simplification" here can
+   * change the iteration count and shift every rendered dynamics value.
+   */
   private getTForDate(date: number): number {
     if (date === this.startDate) return 0.0;
     if (date === this.endDate) return 1.0;
@@ -162,6 +191,16 @@ export class DynamicsData {
     return result;
   }
 
+  /**
+   * Sample the transition densely enough that no two consecutive samples differ in
+   * volume by more than `maxStepSize`, and return the samples as `[date, volume]` pairs.
+   *
+   * The subdivision is adaptive: the `while` inserts a midpoint between `i` and `i+1`
+   * and re-tests the *same* pair, so a single gap is halved repeatedly until it is
+   * small enough. Both `ts` and `series` are spliced in lockstep, and the outer loop's
+   * `ts.length - 1` bound is re-read every iteration — it must stay a plain indexed
+   * `for`, because the collection grows underneath it.
+   */
   getSubNoteDynamicsSegment(maxStepSize: number): number[][] {
     if (this.x1 === null) this.computeInnerControlPointsXPositions();
 

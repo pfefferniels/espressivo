@@ -3,6 +3,15 @@ import type { MetricalAccentuationStyle } from '../../styles/MetricalAccentuatio
 import type { AccentuationPatternDef } from '../../styles/defs/AccentuationPatternDef.js';
 
 /**
+ * All data needed to apply a metrical accentuation pattern over one span of the
+ * timeline — a single MPM `<accentuationPattern>` element plus the `endDate` only
+ * {@link MetricalAccentuationMap} knows.
+ *
+ * The pattern itself lives in an `accentuationPatternDef`, referenced by name; this
+ * class carries only the placement of that pattern: from when, scaled by how much,
+ * whether it `loop`s past its own length, and whether its beats are counted from each
+ * measure start (`stickToMeasures`, the default) or from the instruction's own date.
+ *
  * Port of meico.mpm.elements.maps.data.MetricalAccentuationData
  */
 export class MetricalAccentuationData {
@@ -21,8 +30,6 @@ export class MetricalAccentuationData {
   loop = false;
   stickToMeasures = true;
 
-  constructor();
-  constructor(xml: Element);
   constructor(xml?: Element) {
     if (xml === undefined) return;
 

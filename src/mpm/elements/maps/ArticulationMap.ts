@@ -7,13 +7,30 @@ import { ArticulationData } from './data/ArticulationData.js';
 import { ArticulationStyle } from '../styles/ArticulationStyle.js';
 import { ArticulationDef } from '../styles/defs/ArticulationDef.js';
 
+/**
+ * An MPM `articulationMap`: staccato, accent, tenuto and the rest — per-note changes to
+ * duration, velocity, onset and tuning.
+ *
+ * This map renders in **two passes**, and the split is not optional. Tick-domain
+ * modifiers are applied by
+ * {@link ArticulationMap.renderArticulationToMap_noMillisecondModifiers} before the
+ * tempo map runs; millisecond-domain modifiers cannot be, because milliseconds do not
+ * exist yet, so they are parked on the notes as `articulation.*Ms` attributes and
+ * consumed afterwards by
+ * {@link ArticulationMap.renderArticulationToMap_millisecondModifiers}. See
+ * {@link ArticulationData} for the field-by-field division.
+ *
+ * An `<articulation>` either names a single note through `noteid` or, with no `noteid`,
+ * applies to every note at its date. Notes matched by neither fall back to the
+ * `defaultArticulation` of the style in force, if it declares one.
+ *
+ * Port of meico.mpm.elements.maps.ArticulationMap
+ */
 export class ArticulationMap extends GenericMap {
   private constructor(typeOrXml: string | Element) {
     super(typeOrXml);
   }
 
-  static createArticulationMap(): ArticulationMap | null;
-  static createArticulationMap(xml: Element): ArticulationMap | null;
   static createArticulationMap(xml?: Element): ArticulationMap | null {
     try {
       return xml !== undefined ? new ArticulationMap(xml) : new ArticulationMap('articulationMap');
@@ -21,10 +38,6 @@ export class ArticulationMap extends GenericMap {
       console.error(e);
       return null;
     }
-  }
-
-  protected parseData(xml: Element): void {
-    super.parseData(xml);
   }
 
   addArticulation(
@@ -76,19 +89,30 @@ export class ArticulationMap extends GenericMap {
     return this.insertElement(new KeyValue(date, e), true);
   }
 
+  /**
+   * Read the articulation at `index` into an {@link ArticulationData}, or null if that
+   * entry is not an `<articulation>`.
+   *
+   * Only the identifying fields are read here; the numeric modifiers are not. They live
+   * on the referenced `articulationDef` and are applied straight from it by
+   * {@link ArticulationData.articulateNote}.
+   *
+   * `noteid` has its first character stripped — the attribute holds an XML reference
+   * (`#note123`) while the map is keyed by bare IDs.
+   */
   getArticulationDataOf(index: number): ArticulationData | null {
     if (this.elements.length === 0 || index < 0) return null;
-    if (index >= this.elements.length) index = this.elements.length - 1;
-    const e = this.getElement(index);
+    const i = index >= this.elements.length ? this.elements.length - 1 : index;
+    const e = this.getElement(i);
     if (!e || e.getLocalName() !== 'articulation') return null;
     const ad = new ArticulationData();
     ad.xml = e;
-    ad.date = this.elements[index].getKey();
+    ad.date = this.elements[i].getKey();
     const att = Helper.getAttribute('xml:id', e);
     if (att !== null) ad.xmlId = att.getValue();
     const nidAtt = Helper.getAttribute('noteid', e);
     if (nidAtt !== null) ad.noteid = nidAtt.getValue().substring(1);
-    this.findStyle(index, ad);
+    this.findStyle(i, ad);
     const nrAtt = Helper.getAttribute('name.ref', e);
     if (nrAtt !== null) {
       ad.articulationDefName = nrAtt.getValue();
@@ -114,6 +138,23 @@ export class ArticulationMap extends GenericMap {
     }
   }
 
+  /**
+   * Pass one of two: apply every tick-domain articulation to `map`, and park the
+   * millisecond ones for later (see the class doc).
+   *
+   * Built in three stages. First the explicit articulations are indexed by the note
+   * element they target, since one note can collect several. Then the style switches are
+   * resolved into a date-ordered list of default articulation defs. Finally the map is
+   * walked once: a note with explicit articulations gets those and *only* those — the
+   * default is deliberately not also applied — and every other note gets whichever
+   * default is current, tracked by a forward-only `defaultArticulationIndex`.
+   *
+   * The `mapTimingChanged` accumulator is why `map.sort()` runs at the end. Articulation
+   * can move a note's onset, which can reorder the map; leaving it unsorted would break
+   * every later pass, all of which assume date order. Note the `||` operands' order:
+   * `articulateNote` must be called for its side effects on every note, so it has to come
+   * first and cannot be short-circuited away.
+   */
   renderArticulationToMap_noMillisecondModifiers(map: GenericMap | null): void {
     if (map === null) return;
 
@@ -229,6 +270,16 @@ export class ArticulationMap extends GenericMap {
       articulationMap.renderArticulationToMap_noMillisecondModifiers(map);
   }
 
+  /**
+   * Pass two of two: consume the `articulation.*Ms` attributes that pass one parked on
+   * the notes, now that the tempo map has produced real millisecond dates.
+   *
+   * Each attribute is removed as it is applied, so the markers do not survive into the
+   * serialized output. The guard at the end is what keeps the result playable: the new
+   * values are committed **only** if the note still ends after it starts. A millisecond
+   * modifier that would invert or zero a note's duration is dropped wholesale — start
+   * and end both keep their old values rather than half the change landing.
+   */
   renderArticulationToMap_millisecondModifiers(map: GenericMap | null): void {
     if (map === null) return;
     for (const entry of map.elements) {

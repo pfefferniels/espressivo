@@ -6,13 +6,22 @@ import { GenericMap } from './GenericMap.js';
 import { MetricalAccentuationData } from './data/MetricalAccentuationData.js';
 import { MetricalAccentuationStyle } from '../styles/MetricalAccentuationStyle.js';
 
+/**
+ * An MPM `metricalAccentuationMap`: the emphasis pattern of the metre — the reason a
+ * downbeat sounds stronger than an offbeat.
+ *
+ * Each `<accentuationPattern>` points at an `accentuationPatternDef` holding the actual
+ * per-beat accentuation values, and this map only places that pattern on the timeline.
+ * Rendering adds `accentuation * scale` to each note's existing `velocity`, so it must
+ * run *after* the dynamics map has established one.
+ *
+ * Port of meico.mpm.elements.maps.MetricalAccentuationMap
+ */
 export class MetricalAccentuationMap extends GenericMap {
   private constructor(typeOrXml: string | Element) {
     super(typeOrXml);
   }
 
-  static createMetricalAccentuationMap(): MetricalAccentuationMap | null;
-  static createMetricalAccentuationMap(xml: Element): MetricalAccentuationMap | null;
   static createMetricalAccentuationMap(xml?: Element): MetricalAccentuationMap | null {
     try {
       return xml !== undefined
@@ -22,10 +31,6 @@ export class MetricalAccentuationMap extends GenericMap {
       console.error(e);
       return null;
     }
-  }
-
-  protected parseData(xml: Element): void {
-    super.parseData(xml);
   }
 
   addAccentuationPattern(
@@ -45,10 +50,16 @@ export class MetricalAccentuationMap extends GenericMap {
     return this.insertElement(new KeyValue(date, e), false);
   }
 
+  /**
+   * Read the accentuation instruction at `index` into a
+   * {@link MetricalAccentuationData}. Returns null unless everything needed to render is
+   * present: a `<accentuationPattern>` entry with both `name.ref` and `scale`, a style
+   * in scope, and — implicitly — a def that the style can resolve.
+   */
   getMetricalAccentuationDataOf(index: number): MetricalAccentuationData | null {
     if (this.elements.length === 0 || index < 0) return null;
-    if (index >= this.elements.length) index = this.elements.length - 1;
-    const e = this.elements[index].getValue();
+    const i = index >= this.elements.length ? this.elements.length - 1 : index;
+    const e = this.elements[i].getValue();
     if (e.getLocalName() !== 'accentuationPattern') return null;
     const md = new MetricalAccentuationData();
     const nameRefAtt = Helper.getAttribute('name.ref', e);
@@ -57,8 +68,8 @@ export class MetricalAccentuationMap extends GenericMap {
     const scaleAtt = Helper.getAttribute('scale', e);
     if (scaleAtt === null) return null;
     md.scale = parseFloat(scaleAtt.getValue());
-    md.startDate = this.elements[index].getKey();
-    md.endDate = this.getEndDate(index);
+    md.startDate = this.elements[i].getKey();
+    md.endDate = this.getEndDate(i);
     md.xml = e;
     const att = Helper.getAttribute('id', e);
     if (att !== null) md.xmlId = att.getValue();
@@ -67,7 +78,7 @@ export class MetricalAccentuationMap extends GenericMap {
     const stmAtt = Helper.getAttribute('stickToMeasures', e);
     if (stmAtt !== null) md.stickToMeasures = stmAtt.getValue() === 'true';
     md.styleName = '';
-    for (let j = index; j >= 0; --j) {
+    for (let j = i; j >= 0; --j) {
       const s = this.elements[j].getValue();
       if (s.getLocalName() === 'style') {
         md.styleName = Helper.getAttributeValue('name.ref', s);
@@ -94,6 +105,23 @@ export class MetricalAccentuationMap extends GenericMap {
     return Number.MAX_VALUE;
   }
 
+  /**
+   * Add each note's metrical accentuation to its `velocity`, in place.
+   *
+   * The work is in locating the note's beat. That needs the time signature in force,
+   * which is tracked incrementally: `timeSignIndex` only ever moves forward as the map
+   * is walked, and whenever it does, the derived quantities are all recomputed together
+   * — `ticksPerBeat`, the measure length, and the pattern length, which depends on the
+   * denominator too. The initial values (4/4, one beat per quarter) are what applies
+   * when there is no time signature map at all.
+   *
+   * `stickToMeasures` picks what the beat count is relative to: the current measure (the
+   * default, so the pattern re-aligns at every barline) or the pattern's own length,
+   * letting it float free of the metre. Beats are 1-based, hence the `1.0 +`.
+   *
+   * RENDERING MATH — `velocity + accentuation * md.scale` and the two beat formulas must
+   * keep their exact form and order.
+   */
   renderMetricalAccentuationToMap(
     map: GenericMap | null,
     timeSignatureMap: GenericMap | null,

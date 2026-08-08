@@ -1944,3 +1944,465 @@ it: **all 252 tracked files byte-match `git show dbc63eb:<path>`, zero mismatche
 sound archive, not just the 3 spot checks asked for. Trap worth inheriting beyond the worker's
 two: `npm run verify > scratch/newdir/log` **races** a `mkdir` issued in the same parallel
 batch and silently runs nothing while reporting exit 0 — create the directory first.
+
+## [T7] worker — mpm maps + data local idioms (2026-08-08)
+
+**READY.** Baseline `3d0479d` (src identical to `75da1e9`; the intervening commit is
+state.json only). `npm run verify` green — both tsc stages run standalone, **2108/2108
+across 44 files**. Prettier clean over the cluster and both refactor/ files.
+
+### Manifest — 18 files, all in `src/mpm/elements/maps/**`
+
+The 10 maps (`GenericMap`, `TempoMap`, `DynamicsMap`, `RubatoMap`, `AsynchronyMap`,
+`ArticulationMap`, `MetricalAccentuationMap`, `MovementMap`, `OrnamentationMap`,
+`ImprecisionMap`) and the 8 `data/` classes, plus `refactor/lint-debt.md` and this file.
+**No test file changed, no fixture, no config** — `git diff --name-only 3d0479d -- tests/`
+is empty. Every public member kept its name (member-identifier sets across the whole
+project: 1165 vs 1165, identical).
+
+### What changed
+
+**1. Doc comments — the bulk of the diff, and the point of the item.** The cluster had
+almost none: 15 of 18 files opened with a bare "Port of meico.…" line or nothing. Each
+class now says what its MPM element *is*, where it sits in the rendering pipeline, and
+every trap I had to reconstruct from the Java is written down at the site. The ones worth
+knowing about:
+
+- **`ArticulationData.articulateNote` — an infinite loop, faithfully ported, now
+  documented in full.** The `absoluteDurationChange` branch reads
+  `for (double reduce = 2.0; durNew >= 0.0; reduce *= 2.0)` in the Java reference
+  (ArticulationData.java:197) whose own comment describes the *inverse* condition
+  ("as long as the duration change causes the duration to become 0.0 or negative", i.e.
+  `<= 0.0`). For a note with positive `duration.perf`, any `absoluteDurationChange` that
+  leaves the duration non-negative spins forever: `reduce` doubles to Infinity, `durNew`
+  converges to the unchanged `duration`, and `>= 0.0` stays true. Only a change big
+  enough to drive the duration negative exits — by never entering. `ArticulationDef.
+  articulateNote` (T6's file) has the intended `<= 0.0` form, so both spellings sit in
+  the same codebase. **Not one character changed**; see DISCOVERED.
+- **`MovementData` constructor — a second ported Java bug.** MovementData.java:64-66
+  reads the `controller` attribute and assigns it to `this.xmlId`, and looks it up in the
+  xml: namespace where `controller` never lives. Both mistakes reproduced verbatim; net
+  effect is that `controller` keeps its `"sustain"` default and `xmlId` is not actually
+  clobbered either.
+- `MovementMap.getPreviousPosition`: the loop is `j > 0`, not `j >= 0`, so entry 0 is
+  never examined (MovementMap.java:185).
+- `TempoMap.getTempoDataAt`: loops down to `-1`, one wasted call (TempoMap.java:181).
+- `TempoData.clone`: deliberately does not copy `startDateMilliseconds` — the Java clone
+  omits it too; it is per-pass scratch space.
+- `OrnamentData.apply`: **always returns an empty array**, in Java too (a TODO marks the
+  spot). It is the seam for note-generating ornaments, which makes the
+  `for (const chord of od.apply(...))` loop in `OrnamentationMap.apply` dead by
+  construction. Documented so nobody "simplifies" the contract away.
+- `RubatoData`'s constructor overwrites the MPM defaults with `null` when an attribute is
+  absent — load-bearing, because that null is how `RubatoMap` distinguishes "not
+  specified" from "specified as the default" and drives rubatoDef inheritance.
+- `GenericMap`'s four `getElementIndex{BeforeAt,Before,After,AtAfter}` searches: near
+  identical, **not** interchangeable, not duplication to factor out.
+- Two `PARITY NOTE` stubs where Java calls `Element.setLocalName()` and XomTypes cannot
+  (`GenericMap.setType`, `ImprecisionMap.setDomain`).
+- `ImprecisionMap` gained a **RANDOMNESS CONTRACT** section: the number and order of
+  `RandomNumberProvider.getValue` calls is part of the output, the test suite cannot
+  catch a desync (the map is charter-exempt from byte comparison), so reason it through.
+
+**2. Eight dead `parseData` overrides removed.** `AsynchronyMap`, `MovementMap`,
+`TempoMap`, `DynamicsMap`, `RubatoMap`, `MetricalAccentuationMap`, `OrnamentationMap` and
+`ArticulationMap` each declared `protected parseData(xml) { super.parseData(xml); }` —
+pure delegation, provably equivalent to not declaring it. `ImprecisionMap`'s override is
+**kept**: it adds a local-name validation.
+
+**3. 20 `unified-signatures` collapsed** — 8 `createXMap()`/`(xml)` factory pairs, 8
+data-class `constructor()`/`(xml)` pairs, `TempoMap.addTempo`'s 5-arg/6-arg pair, and
+`GenericMap`'s two redundant `protected constructor` overloads (a third already declared
+the full `string | Element` union, so the first two were pure duplication). **Emits
+nothing** — proven by the 8 `data/*.js` being byte-identical.
+
+**4. Eight `no-param-reassign` warnings cleared.** The 7 `getXDataOf(index)` clamps
+(`if (index >= n) index = n - 1` → `const i = … ? … : index` plus a consistent rename)
+and `ImprecisionMap.setDetuneUnit`. The `if`→ternary is provably equivalent: the
+condition has no side effects.
+
+**5. Two provably-dead constructs removed.** `GenericMap.createGenericMap`'s `if/else`
+had **textually identical branches** (`new GenericMap(nameOrXml)` twice), and
+`AsynchronyMap.renderAsynchronyToMap`'s inner index loop became `for-of` — the index was
+used only to index the array, and `mapEntries` is not mutated inside that loop (the
+`done` removal pass runs after it).
+
+**6. Zero rendering arithmetic touched.** No expression reordered, no `x*x`→`**`, no
+`parseFloat`/`parseInt` change, no numeric literal edited. `OrnamentationMap`'s method
+bodies are **byte-identical** — that file's only emitted-JS hunk is the `parseData`
+removal.
+
+### Evidence
+
+**A. Emitted-JS diff, whole project, every hunk classified.** Both trees built with
+`tsc --removeComments --declaration false --declarationMap false --sourceMap false` into
+scratch outDirs, absolute `-p` paths per tree. **Exactly 10 files differ, all mine; the 8
+`data/*.js` are byte-identical**, and nothing outside `mpm/elements/maps/**` differs
+anywhere in the compiled project. 21 hunks, five kinds, zero unclassified: 8× `parseData`
+removal, 7× index clamp, 1× `for-of`, 1× dead-branch removal, 1× `setDetuneUnit`.
+
+**B. Public surface (`.d.ts`), comments stripped with a real non-greedy block regex.**
+Only the 17 cluster declarations differ, with exactly the intended changes: 8 constructor
+pairs, 8 factory pairs and 1 `addTempo` pair collapsed onto an optional parameter; 8
+`protected parseData` re-declarations and 2 redundant `protected constructor` overloads
+removed. **Member-identifier sets across the whole project: 1165 vs 1165, zero added,
+zero removed.** Every change either strictly widens what typechecks or drops a
+re-declaration of an inherited member, so no call site anywhere can break.
+
+**C. Behavioural probe, both builds side by side — 387 checks, transcripts byte-identical**
+(`sha256 6803cd74ea69f8c32de9fff9d3c6fd5e66ec8757f171d1d7e43c381ec5c4ba30` for base and
+work; **0 per-check mismatches, 0 THREW**). Numbers recorded as raw IEEE-754 bits, and
+`console.error` output captured and compared (11 lines). Coverage: the 5 deterministic
+all-maps fixtures end-to-end (`perform()` → augmented MSM, expressive MIDI, raw MIDI);
+**all 16 MEI fixtures** through `Mei.fromXml` → `Mei2MsmMpmConverter(720,true,false,true)`
+with uuid-canonicalised MSM/MPM and both MIDI event dumps; **131 `getXDataOf` calls at
+every in-range and out-of-range index** across all 8 accessors over every reference MPM
+(87 of them return real data, so it is not a null-fest) — this targets the clamp rewrite
+directly; 32 factory calls in all four forms including explicit `undefined`; 12
+`createTypedMap` dispatches; 8 parse round-trips over deliberately out-of-order,
+undated and unref'd children; 15 `renderAsynchronyToMap` scenarios; the Bézier samplers
+over a 9-point curvature×protraction grid; TempoMap's millisecond math over 7
+`meanTempoAt` values including the degenerate ones; and the OrnamentationMap ms/non-ms
+modifier passes over 9 attribute combinations. Imprecision *rendering* is excluded per
+charter (nondeterministic by design); its parsing and accessors are covered.
+
+**D. Negative controls — the probe is not vacuous.** Seven mutations of the *new* src in
+a scratch tree (`src/` never touched), each rebuilt and re-probed. The unmutated control
+flips 0.
+
+| control | flipped |
+|---|---|
+| unmutated (sanity) | **0** |
+| clamp off-by-one (`n` instead of `n - 1`) on the exact line I rewrote | 25 |
+| `for-of` skips the first entry | 6, incl. the real `pipeline.asynchrony` fixture |
+| `setDetuneUnit` drops the Hertz normalisation | 1 |
+| `createGenericMap`'s string path altered | 16, incl. 3 pipelines + a real MEI fixture |
+| a `parseData` override that does **not** call super | 49 |
+| tempo constant `600.0` → `600.1` | 3 |
+| OrnamentationMap ms-domain drops the offset term | 1 |
+
+The `parseData` control is the one that matters most: it shows that if the eight removed
+overrides had done anything at all, 49 checks would move.
+
+**E. Coverage (invariant 7), measured on my own archive of `3d0479d` with `node_modules`
+symlinked, not taken from state.json.**
+
+- **Uncovered statements 2292 → 2292, exactly flat** (7b; budget 2318) — and flat in
+  **every single file**, not just in total.
+- **Uncovered functions 57 → 57, flat**, likewise per file.
+- **Functions 94.0810% → 94.0314%**, above the 94.0 floor (7a). See the warning below.
+- **Tests 2108 → 2108** (7c).
+- Statements 84.93 → 84.91, branches 85.58 → 85.57 (7d, indicators). Totals shrank:
+  statements 15216 → 15190 (−26), functions 963 → 955 (−8), branches 4669 → 4664 (−5),
+  with uncovered flat throughout — pure shrinkage, the case invariant 7 was rewritten for.
+
+**The −26 statements reconcile exactly**, attributed by mapping istanbul's statementMap
+into its fnMap rather than by eyeballing: each removed `parseData` costs **3** (2 inside
+the method plus 1 in the class body), 8 × 3 = 24; the `for-of` costs 1; the dead-branch
+removal costs 1. Total 26. The index clamps and `setDetuneUnit` are statement-**neutral**
+under istanbul's mapping (`if (c) x = y;` and `const i = c ? y : x;` both map the same
+way), which is why those seven files show −3 and not −4.
+
+**Branch-count noise, named rather than shrugged at:** six files I never touched show ±1
+or ±2 branch movement (`mei/Helper.ts`, `mpm/elements/Header.ts`, `styles/ArticulationStyle
+.ts`, `styles/DynamicsStyle.ts`, `msm/Msm.ts`, `supplementary/RandomNumberProvider.ts`).
+Their statement and function counts are unchanged at 0 delta, and these are exactly the
+files on the imprecision path — this is the ±0.02 RNG run-noise the charter's 7d already
+anticipates, not a signal.
+
+### ⚠ HANDOFF WARNING — the function floor is now tight (T8–T11 read this)
+
+Removing eight *covered* functions lowered the ratio without removing any test power
+(uncovered functions stayed at 57). The margin is now **898/955 = 94.0314%**, and
+invariant 7a's floor is 94.0%. Computed exactly:
+
+- **6 more covered-function removals breaches it** (892/949 = 93.9937%). Five is the
+  last safe one (893/950 = 94.0000%).
+- **A single new *uncovered* function breaches it immediately** (898/956 = 93.9331%).
+
+So any later item that deletes a handful of exercised helpers, or adds an untested one,
+trips 7a even though nothing got worse in substance. T6 raised this number by adding a
+covered helper; T7 lowered it by deleting eight. If the conductor agrees the metric is
+being distorted by honest deletions in the same way the statement *ratio* was (see the
+[T3] verifier's rationale for retiring that floor), invariant 7a may want the same
+treatment — an uncovered-function **budget** rather than a percentage. Flagging, not
+deciding: I did not touch the charter.
+
+### Deliberately left alone
+
+- **All 140 `no-non-null-assertion`.** T12's null policy owns them; adding guards inside
+  rendering code is a behaviour change smuggled into a style item.
+- **All 7 `no-unused-vars`** — every one is the unused `Attribute` specifier in a `data/`
+  file's import. T7's brief froze import statements byte-identically, and I honoured that
+  to the letter: `git show HEAD:<f> | grep '^import'` is **identical, line number for line
+  number, in all 18 files**.
+- **`OrnamentationMap.getOrnamentDataOf`'s index clamp** — the one site of 8 not
+  converted, so that file's method bodies stay byte-identical after this session's parity
+  fixes. Costs 1 warning; worth it.
+- **Both `getTForDate` `date` reassignments** (DynamicsData, MovementData) — inside the
+  Bézier inversion, i.e. bit-identity-critical floating-point.
+- **The 3 `string|Element` / `number|Element` overload pairs** — distinct construction
+  modes, per T6's precedent. T16.
+- Every numeric literal, every `parseFloat`/`parseInt`, every Java-style `0.0`/`2.0`, and
+  all serialization-visible string building.
+
+### DISCOVERED
+
+- **DISCOVERED (parity divergence, needs a decision, do NOT fix silently — the strongest
+  one so far):** `ArticulationData.articulateNote`'s `absoluteDurationChange` branch is a
+  **non-terminating loop** on any note with a positive `duration.perf`, reproduced
+  verbatim from Java (details in point 1 above and in the doc comment at the site). No
+  fixture reaches it, which is why the suite is green — but an MPM in the wild with
+  `<articulation absoluteDurationChange="…">` on a normal note **hangs the renderer**.
+  The one-character fix (`>=` → `<=`) matches the Java's own comment and matches
+  `ArticulationDef`'s spelling, but it changes behaviour from "hang" to "produce output",
+  so it is a reference divergence and belongs to the parity ledger, not to a local-idiom
+  pass. **Recommend a dedicated item.**
+- **DISCOVERED (T16, `getXDataOf` duplication):** seven of the eight accessors share an
+  identical 6-line preamble (bounds check, clamp, local-name check, `new XData`,
+  startDate/endDate/xml, xml:id) and an identical backwards style scan. A protected
+  helper on `GenericMap` — `protected resolveEntry(index, localName)` returning the
+  clamped index plus element, and `protected findStyleNameAt(index)` — would remove ~14
+  duplicated lines per file. Not done here: it adds protected members to the `.d.ts` and
+  rewrites eight rendering files' emitted JS.
+- **DISCOVERED (T16, `MovementData`/`DynamicsData` Bézier duplication):**
+  `computeInnerControlPointsXPositions` and `getTForDate` are byte-identical between the
+  two classes, and `getSubNoteDynamicsSegment`/`getMovementSegment` differ only in their
+  endpoint handling and the ×127 scale. A shared `BezierTransition` would remove ~60
+  duplicated lines — but it moves bit-identity-critical arithmetic across a call
+  boundary, so it needs the same probe-plus-negative-control treatment this item used.
+- **DISCOVERED (T8/T19, `Performance.perform` call order):** the two-pass structure of
+  ArticulationMap and the three-pass structure of OrnamentationMap are only enforced by
+  the order of calls in `Performance.perform`. Nothing in the maps themselves prevents a
+  caller from running the millisecond pass before the tempo map. Now documented in the
+  class docs; making it structural is T19's pipeline redesign.
+- **DISCOVERED (T11/T12, `getPreviousPosition` null handling):** where Java would throw a
+  NullPointerException on a `<movement>` with no `transition.to`, the port silently
+  yields 0. Same family as [T6]'s `parseFloat` vs `Double.parseDouble` finding — a
+  malformed-input-path divergence, codebase-wide, T12's error policy.
+
+### Handoff
+
+Probe kept at `scratchpad/t7work/probe.mjs` — takes `<distDir> <out.json>`, imports `Mpm`
+first (the circular-import hazard), and asserts non-vacuity in the two pipeline sections
+so a broken harness cannot masquerade as a pass. Both transcripts sit beside it as
+`out-base.json`/`out-work.json`, the 7 negative-control transcripts in `scratchpad/t7nc/`
+with the `run.sh` that produced them (it restores from `src-pristine` between runs — use
+it rather than hand-mutating). `scratchpad/t7base/` holds a `git archive` of `3d0479d`
+verified byte-exact against `git show` for **every** tracked file under `src/` and
+`tests/`, with `node_modules` symlinked, ready for coverage or build comparisons.
+
+Traps inherited and confirmed still live: create scratch outDirs in a **prior** step
+(the mkdir race), use absolute `-p` paths per tree (the `cd` trap), and give any dist
+tree built outside the repo its own `node_modules` symlink. One new one: a bare
+`tsc --declaration false` still trips `TS5069` on this tsconfig's `declarationMap` and
+emits anyway — pass `--declarationMap false` too, or you will diff a tree that reported
+an error.
+
+## [T7] verifier — PASS (2026-08-08)
+
+**PASS.** Every claim in the worker's entry reproduced independently from my own
+`git archive` of `3d0479d` (byte-verified against `git show` for all **239** tracked files
+under `src/` and `tests/`). Scratch in `t7verify/`. I did not use the worker's probe,
+baseline tree or transcripts for any load-bearing conclusion.
+
+### 1. Rendering arithmetic — bit-identity, with zero unclassified residue
+
+Both trees built with `tsc --removeComments --declaration false --declarationMap false
+--sourceMap false` into separate outDirs, absolute `-p` per tree. Across the whole
+compiled project (59 files) **exactly 10 differ, all in `mpm/elements/maps/`; the 8
+`data/*.js` are byte-identical**. 21 hunks, five kinds — 8× `parseData` removal, 7× index
+clamp, 1× `for-of`, 1× dead-branch, 1× `setDetuneUnit`.
+
+Rather than eyeball the hunks I closed it mechanically, in two directions:
+
+- **Rename canonicalisation.** Extract each of the 7 clamp method bodies by brace
+  matching, rewrite `\bi\b` → `index` in the work copy, diff. Result for all seven: the
+  **only** differing line is the clamp itself (`if (index >= n) index = n - 1;` vs
+  `const i = index >= n ? n - 1 : index;`). Every other line — every arithmetic
+  expression, every `parseFloat`, every literal — is byte-identical.
+- **The inverse check**, because the rename alone could mask a *leftover* unclamped
+  `index`. In each of the 7 work bodies the token `index` survives exactly three times:
+  the parameter, the `index < 0` guard (which precedes the clamp in both versions), and
+  the clamp line. Every later use is `i`. So the clamp cannot be bypassed.
+- **Residue proof.** For each of the 10 files, excise the classified regions from base
+  and work and byte-compare the remainders: **10/10 IDENTICAL, files with unclassified
+  residue = 0**. Nothing changed outside the five classified kinds.
+
+`if (c) x = y;` → `const i = c ? y : x;` is equivalent here because the condition is
+side-effect free and `index` is a plain parameter with no closure capture. The `for-of` is
+safe because `mapEntries` is spliced only in the *outer* loop, after the inner one has
+finished (`done` is drained at the end of each `asynIndex` iteration), and `mapIndex` had
+no use other than indexing. `createGenericMap`'s two branches were textually identical in
+the emitted base JS. **Zero float expressions reordered or refolded; no `x*x`↔`Math.pow`;
+no `parseFloat`/`Number` change; no numeric literal touched.**
+
+### 2. Pipeline probe — my own, 109 checks, 3 runs per build
+
+`t7verify/pipeprobe.mjs` (imports `Mpm` first). All 8 all-maps fixtures → augmented MSM +
+expressive MIDI + raw MIDI; all 16 MEI fixtures → `Mei.fromXml` →
+`Mei2MsmMpmConverter(720,true,false,true)` → MSM + MPM + augmented MSM + both MIDI dumps.
+MIDI dumps are full per-event field dumps (tick, command, channel, data1, data2, meta
+type/bytes) with raw unrounded numbers; XML uuid-canonicalised. Non-vacuity asserted in
+the harness (`mapsNonEmpty=8`, `meiNonEmpty=16`, `threw=0`).
+
+Ran base ×3 and work ×3. **108 of 109 labels are stable across all six runs and byte-identical
+between builds.** The single unstable label is `maps/imprecision_timing#augmented`, which
+yields **3 distinct values in 3 runs of *each* build** — pre-existing nondeterminism, the
+charter-exempt imprecision path. Characterised: two runs in one process differ in exactly
+one `milliseconds.date` attribute, identically in base and work. Not a T7 effect.
+
+**Negative controls** (mutate the *new* src in a scratch copy, rebuild, re-probe; real
+`src/` never touched; each mutation asserted to have actually applied):
+
+| control | flipped /108 |
+|---|---|
+| unmutated (sanity) | **0** |
+| `parseData` override that does not call super | 2 |
+| `for-of` skips the first entry | 2 |
+| tempo index clamp off by one | 7 |
+| `setDetuneUnit` drops the Hertz normalisation | 0 — see below |
+| OrnamentationMap ms-domain drops the offset term | 0 — see below |
+
+Both zero-flip controls are **blind spots of my probe, not vacuous mutations** (I verified
+the substitutions landed). `setDetuneUnit` has no caller in `src/` and no fixture sets
+`detuneUnit` — it is reached only by `tests/mpm/elements/ImprecisionMap.test.ts`, which
+exercises **both** branches ('cents' and 'Hertz') and passes. The second one is a real
+finding; see DISCOVERED.
+
+### 3. OrnamentationMap
+
+Stronger than "comments/renames at most": `OrnamentationMap.js` base **minus the exact
+3-line `parseData` block equals** `OrnamentationMap.js` work, byte for byte (checked by
+string surgery, not by diff reading). No renames, no reflow, nothing.
+
+Both rendering paths read line by line against the Java. Tick domain
+(`OrnamentationMap.java:419`) and millisecond domain (`:477-509`) agree with the port
+including addition order: offset shifts the onset; `ornament.milliseconds.duration` sets
+an absolute end as `millisecondsDate + offset + duration` (setting the attribute if
+present, adding it if not); `ornament.noteoff.shift` is written only when true, so its
+presence alone shifts the end by the offset and preserves duration; otherwise the end is
+unaltered — and in the tick domain that "otherwise" additionally subtracts the offset from
+`duration.perf`, which is what the worker's doc means by "duration absorbs the shift".
+Accurate.
+
+### 4. ImprecisionMap → RandomNumberProvider
+
+Scoped to actual RNG receivers (`RandomNumberProvider.` / `random.` / `randomPrev.` /
+`rand.`), whole compiled project, line numbers dropped and file order preserved:
+**22 calls, identical in count, order and receiver** (5 `random.getValue`, 1
+`randomPrev.getValue`, 2 `setInitialValue`, 1 `setSeed`, 2 `getLowerLimit`/`getUpperLimit`,
+2 `rand.nextRandom`, 7 factory calls). Independently implied by the residue proof:
+`ImprecisionMap.js` differs only inside `setDetuneUnit` and `getDistributionDataOf`,
+neither of which touches the RNG. No desync possible.
+
+### 5. Imports
+
+Extracted with a comment-stripping parser (so comment text cannot masquerade as an
+import), then compared **raw, including line numbers**: identical in all 18 files. Zero
+multi-line imports in the cluster, so no normalisation is hiding a reflow.
+
+### 6. ArticulationData.articulateNote
+
+Read `/Users/nielspfeffer/Projects/meico/…/data/ArticulationData.java:197`. It is
+`for (double reduce = 2.0; durNew >= 0.0; reduce *= 2.0)` carrying a comment describing the
+*inverse* condition. The port reads `for (let reduce = 2.0; durNew >= 0.0; reduce *= 2.0)`
+— **unchanged, character for character**, and `ArticulationData.js` is byte-identical
+between builds. The worker's non-termination analysis is correct: with `duration.perf > 0`,
+`reduce` diverges, `durNew` converges to `duration`, and `>= 0.0` never fails; the branch
+terminates only by never being entered. Documentation only. The file's sole code change is
+the removal of the two `constructor()` / `constructor(xml: Element)` overload declarations.
+
+### 7. Manifest, gate, invariants
+
+20 modified (18 src + `lint-debt.md` + `log.md`), **0 untracked** — matches the worker's
+manifest exactly. Independent `npm run verify` **green: 2108/2108 across 44 files**, and
+both tsc stages re-run standalone (`tsc -p tsconfig.json`, `tsc -p tsconfig.tests.json`)
+exit 0. `git diff 3d0479d -- tests/` empty; fixtures 0 files; configs 0 files. No new
+suppressions (`eslint-disable`/`@ts-ignore`/`@ts-expect-error`/`@ts-nocheck` all 0 → 0);
+type assertions 17 → 17. `log.md` append-only: 254 insertions, **0 deletions**, starting at
+the old EOF (1946). Prettier clean over the cluster and both `refactor/` files.
+
+**Public surface**, comment-stripped `.d.ts` over all 59 files: only the 17 cluster
+declarations differ. Every change either strictly widens (8 `createXMap` pairs, 8 data
+constructor pairs and `addTempo`'s 5/6-arg pair collapsed onto an optional parameter — the
+optional form accepts everything both overloads did, plus explicit `undefined`) or drops a
+re-declaration of an inherited member (8 `protected parseData`, and GenericMap's two
+narrow constructor overloads whose remaining `string | Element` signature is their union).
+`GenericMap.d.ts` still declares both `parseData` and the union constructor, so nothing
+left the type. Member-identifier sets across the project: **962 vs 962, zero added, zero
+removed** (my own extraction; the worker's 1165 is a different regex, same conclusion).
+
+### 8. Lint reconciliation — every number re-measured
+
+`npm run lint` on my base archive: **1417 problems (1389 errors, 28 warnings)**; on the
+work tree: **1388 problems (1368 errors, 20 warnings)**. Deltas −21 / −8 as claimed.
+Cluster via `eslint -f json` over `src/mpm/elements/maps`: **errors 171 → 150, warnings
+11 → 3**. Per-rule, cluster: `unified-signatures` 23 → 3 (−20), `prefer-for-of` 1 → 0 (−1),
+`no-param-reassign` 11 → 3 (−8) — and repo-wide **exactly the same three deltas and no
+others**, which is what proves nothing moved outside the cluster.
+
+Checking the bookkeeping the way [T6] had to: **all 18 per-file rows in `lint-debt.md`
+match my measurements exactly**, warnings included. The "after" error column sums to 150
+and the warning column to 3, as the file asserts. The repo-wide per-rule list
+(`no-non-null-assertion` 1079, `no-unused-vars` 71, `unified-signatures` 57,
+`no-empty-function` 54, `eqeqeq` 44, `no-explicit-any` 33,
+`explicit-module-boundary-types` 10, `prefer-for-of` 7, `no-extraneous-class` 5,
+`no-require-imports` 3, `no-fallthrough` 3, `no-unsafe-function-type` 2) verified
+value-by-value and sums to 1368. "Files affected" flat at **75** in both trees. No
+arithmetic errors this time.
+
+### 9. Coverage
+
+Measured on both trees from `coverage-final.json`, not from the printed summary:
+
+| | base | work |
+|---|---|---|
+| functions | 906/963 = **94.0810%** | 898/955 = **94.0314%** |
+| uncovered functions | 57 | **57** |
+| uncovered statements | 2292 | **2292** |
+| tests | 2108 | **2108** |
+
+Invariant **7a PASS** (94.0314 ≥ 94.0), **7b PASS** (uncovered statements exactly flat,
+far inside the +25 budget), **7c PASS** (test count unchanged). Totals shrank by −26
+statements / −8 functions with uncovered flat throughout — honest shrinkage. The worker's
+handoff margin arithmetic checks out: 892/949 = 93.9937%, 893/950 = 94.0000%,
+898/956 = 93.9331%. **The function-floor warning to T8–T11 is real and should be heeded.**
+
+One immaterial discrepancy: the worker reports base branches 4669, I measure 4668 (work
+4664 in both). Branch maps under `coverage-v8` are derived from execution ranges and move
+±1 between runs; 7d makes branch a reported indicator only.
+
+### DISCOVERED (verifier) — the ms-domain ornament renderer is dead code
+
+`OrnamentationMap.renderMillisecondsModifiersToMap` is **unreachable from
+`Performance.perform`**. `Performance.ts:453` calls `Performance.
+renderMillisecondsModifiersToMap`, a **private static copy** living at
+`Performance.ts:526`, whose own comment says it was "inlined because this file only
+type-imports the map classes" — i.e. a circular-import workaround (the charter's T18
+hazard). The two bodies are currently **token-identical** (only the `private` modifier
+differs), so there is no behavioural divergence today, but two copies of bit-identity-critical
+float arithmetic sit in the tree with nothing keeping them in step. This is what my
+`orn-ms-no-offset` control was really detecting: mutating the OrnamentationMap copy changes
+nothing because the pipeline never runs it. Pass 2 (tick domain) *is* live — `Performance.
+ts:431` → `ornamentationMap.renderOrnamentationToMap(score)` → `renderAllNonmillisecondsModifiersToMap`.
+
+**Pre-existing, not caused by T7**: `Performance.ts` is outside the item's 18 files and its
+emitted JS is byte-identical between the two builds. Not grounds to fail. Two consequences
+worth carrying forward:
+
+1. The new OrnamentationMap class doc presents pass 3 as *the* live pipeline stage. It
+   describes the method accurately but overstates its role; a one-line qualifier ("the
+   pipeline currently runs a private copy in `Performance`, see T18") would make it true.
+   Left for whoever next edits the file — not worth reopening a verified tree.
+2. **T16/T18/T19**: de-duplicating this belongs with the circular-import fix, and it needs
+   the probe-plus-negative-control treatment, since collapsing the copies moves rendering
+   arithmetic across a call boundary. Note also that no fixture currently distinguishes the
+   two copies, so the suite will **not** catch a drift between them.
+
+### Verdict
+
+**PASS T7.** Zero behaviour drift (proved at the emitted-JS level with no unclassified
+residue, and corroborated by 108 byte-identical pipeline checks over both builds), zero
+test weakening, no invariant violated, and every reported number — lint, coverage,
+manifest — reproduced independently.

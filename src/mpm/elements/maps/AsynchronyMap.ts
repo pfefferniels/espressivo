@@ -4,13 +4,22 @@ import { Mpm } from '../../../mpm/Mpm.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 
+/**
+ * An MPM `asynchronyMap`: how far ahead of or behind the beat a part plays, in
+ * milliseconds.
+ *
+ * Unlike every other map here this one works purely in the millisecond domain, so it
+ * has to run *after* the tempo map has assigned `milliseconds.date` — it shifts those
+ * attributes rather than the symbolic dates. An `<asynchrony>` stays in force until the
+ * next one, and a part with no asynchrony at all is simply left alone.
+ *
+ * Port of meico.mpm.elements.maps.AsynchronyMap
+ */
 export class AsynchronyMap extends GenericMap {
   private constructor(typeOrXml: string | Element) {
     super(typeOrXml);
   }
 
-  static createAsynchronyMap(): AsynchronyMap | null;
-  static createAsynchronyMap(xml: Element): AsynchronyMap | null;
   static createAsynchronyMap(xml?: Element): AsynchronyMap | null {
     try {
       return xml !== undefined ? new AsynchronyMap(xml) : new AsynchronyMap('asynchronyMap');
@@ -18,10 +27,6 @@ export class AsynchronyMap extends GenericMap {
       console.error(e);
       return null;
     }
-  }
-
-  protected parseData(xml: Element): void {
-    super.parseData(xml);
   }
 
   addAsynchrony(date: number, millisecondsOffset: number): number {
@@ -39,6 +44,21 @@ export class AsynchronyMap extends GenericMap {
     return parseFloat(Helper.getAttributeValue('milliseconds.offset', this.elements[i].getValue()));
   }
 
+  /**
+   * Shift every `milliseconds.date` (and, where the note ends inside the same
+   * asynchrony, `milliseconds.date.end`) of `map` by the offset in force at that date.
+   *
+   * `mapEntries` is a working copy that shrinks as entries are finished: each pass
+   * collects the entries it has dealt with in `done` and removes them afterwards, so a
+   * later asynchrony never revisits a note an earlier one already moved. The removal
+   * happens after the inner loop rather than during it, because splicing mid-iteration
+   * would skip entries.
+   *
+   * Two clamps are deliberate. A shifted start is floored at 0 — a negative asynchrony
+   * on the very first note must not produce a negative timestamp. A shifted end is
+   * floored at `startDateMs + 1`, guaranteeing every note keeps a duration of at least
+   * one millisecond, since zero-length notes vanish from the MIDI output.
+   */
   renderAsynchronyToMap(map: GenericMap | null): void {
     if (map === null || this.elements.length === 0) return;
     const mapEntries = [...map.getAllElements()];
@@ -51,8 +71,7 @@ export class AsynchronyMap extends GenericMap {
           ? this.elements[asynIndex + 1].getKey()
           : Number.MAX_VALUE;
       const offset = parseFloat(Helper.getAttributeValue('milliseconds.offset', asynElement));
-      for (let mapIndex = 0; mapIndex < mapEntries.length; ++mapIndex) {
-        const mapEntry = mapEntries[mapIndex];
+      for (const mapEntry of mapEntries) {
         if (mapEntry.getKey() >= asynEndDate) break;
         let startDateMs = 0.0;
         if (mapEntry.getKey() >= this.elements[asynIndex].getKey()) {

@@ -41,6 +41,24 @@ const MPM_NAMES = new Set([
 ]);
 
 /**
+ * Base class for every MPM map: a date-ordered sequence of instruction elements living
+ * under a `<dated>`, plus the lookup and rendering machinery its subclasses share.
+ *
+ * A map keeps the same data twice, and keeping the two in step is this class's whole
+ * job. {@link elements} is a sorted array of `(date, element)` pairs used for all
+ * lookups; the XML element returned by `getXml()` is the serialized form. Every mutator
+ * here — {@link addElement}, {@link insertElement}, {@link removeElement},
+ * {@link sort} — updates both, in that order. Writing to one alone corrupts the map:
+ * lookups would disagree with the document that gets serialized.
+ *
+ * Subclasses are registered rather than switched on. Each map module ends with a
+ * `GenericMap.registerMapFactory(localName, factory)` call, and
+ * {@link createTypedMap} dispatches on the element's local name, falling back to a
+ * plain GenericMap for unknown ones. That is what lets `Dated` parse a map it has
+ * never heard of without a central dependency on all the subclasses — but it also means
+ * **importing a map module is what registers it**, so the import side effects in the
+ * MPM barrel are load-bearing.
+ *
  * Port of meico.mpm.elements.maps.GenericMap
  */
 export class GenericMap extends AbstractXmlSubtree {
@@ -61,9 +79,6 @@ export class GenericMap extends AbstractXmlSubtree {
   private localHeader: Header | null = null;
   protected id: Attribute | null = null;
 
-  protected constructor(type: string);
-  protected constructor(xml: Element);
-  protected constructor(typeOrXml: string | Element);
   protected constructor(typeOrXml: string | Element) {
     super();
     if (typeof typeOrXml === 'string') {
@@ -79,18 +94,41 @@ export class GenericMap extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * Create a map either from a local name (a fresh, empty map) or from an existing
+   * element (parsed). The two overloads are kept separate rather than merged into
+   * `string | Element` because they are genuinely different construction modes, and the
+   * signature is the only place that says so.
+   *
+   * Returns null instead of throwing when the input is not a valid map — the whole MPM
+   * parse is best-effort, and a malformed map must not abort the surrounding document.
+   */
   static createGenericMap(name: string): GenericMap | null;
   static createGenericMap(xml: Element): GenericMap | null;
   static createGenericMap(nameOrXml: string | Element): GenericMap | null {
     try {
-      if (typeof nameOrXml === 'string') return new GenericMap(nameOrXml);
-      else return new GenericMap(nameOrXml);
+      return new GenericMap(nameOrXml);
     } catch (e) {
       console.error(e);
       return null;
     }
   }
 
+  /**
+   * Build the {@link elements} index from the XML children, then bring the XML back
+   * into that order.
+   *
+   * Two kinds of child are skipped: anything without a `date` (there is nowhere to put
+   * it on the timeline) and `<style>` elements without a `name.ref` (they reference
+   * nothing). Skipped children stay in the document but are invisible to every lookup —
+   * and, because {@link sortXml} only reorders the elements it knows about, they drift
+   * to the end of the serialized map.
+   *
+   * The insertion is a backwards linear scan rather than an append, so children that
+   * were already out of order in the source document are indexed in date order. It
+   * finds the *last* position whose date is `<=` the new one, which makes the pass
+   * stable: same-dated children keep their document order.
+   */
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate GenericMap object. XML Element is null.');
     if (!xml.getLocalName().includes('Map') && xml.getLocalName() !== 'score')
@@ -121,6 +159,12 @@ export class GenericMap extends AbstractXmlSubtree {
     this.id = Helper.getAttribute('id', this.getXml()!);
   }
 
+  /**
+   * Rewrite the XML children into the order {@link elements} is already in, by removing
+   * and re-inserting each one at its index. Detach-then-insert is required: the element
+   * is already a child, and inserting it a second time without removing it first would
+   * be rejected by the XOM emulation.
+   */
   private sortXml(): void {
     const xml = this.getXml()!;
     for (let i = 0; i < this.elements.length; ++i) {
@@ -130,6 +174,17 @@ export class GenericMap extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * Re-sort the map after its elements' `date` attributes have been edited underneath
+   * it — which is exactly what happens when articulation or rubato shifts a note's
+   * timing. The cached keys are refreshed from the XML first, then an insertion sort
+   * runs over the array, and finally the XML children are brought back in line.
+   *
+   * The insertion sort is deliberate and must not become `Array.prototype.sort`: it is
+   * stable, and it is near-linear on the almost-sorted input this always receives,
+   * whereas swapping in a different algorithm would reorder equal-date elements and
+   * change which of several simultaneous instructions wins.
+   */
   sort(): void {
     for (const e of this.elements) {
       const date = parseFloat(Helper.getAttributeValue('date', e.getValue()));
@@ -151,13 +206,21 @@ export class GenericMap extends AbstractXmlSubtree {
   getType(): string {
     return this.getXml()!.getLocalName();
   }
+  /**
+   * PARITY NOTE — a stub. Java's `GenericMap.setType` calls `Element.setLocalName()`,
+   * which the XomTypes layer does not implement (xmldom nodes cannot be renamed in
+   * place). So the validation still runs and still logs, but the rename that is the
+   * point of the method does not happen.
+   *
+   * Harmless as things stand: a map's type is fixed at construction and nothing in the
+   * MEI/MSM ⇒ MIDI pipeline calls this. Kept so the surface matches the reference, and
+   * so that a future caller finds this note rather than silent nothing.
+   */
   protected setType(type: string): void {
     if (!type.includes('Map')) {
       console.error(`Cannot set the specified map type. "${type}" must contain "Map".`);
       return;
     }
-    // XOM Element doesn't have setLocalName in our port, but since we always create fresh elements,
-    // we need a workaround. We'll just note this - in practice, types are set at construction time.
   }
 
   getId(): string | null {
@@ -238,6 +301,21 @@ export class GenericMap extends AbstractXmlSubtree {
     return i < 0 ? null : this.elements[i].getValue();
   }
 
+  /**
+   * The four `getElementIndex{BeforeAt,Before,After,AtAfter}` searches below are
+   * near-identical binary searches that differ only in which comparisons are strict.
+   * They are **not** interchangeable and they are not duplication to be factored out:
+   * picking "the last element at or before this date" versus "strictly before it"
+   * decides whether an instruction dated exactly on a note applies to that note, and
+   * different callers need different answers. Each returns -1 for "no such element".
+   *
+   * Reading them: the two guards at the top handle the out-of-range cases so the loop
+   * can assume a hit exists, and the loop then probes `mid` and `mid + 1` together,
+   * which is what lets it return a boundary rather than an exact match. `mid + 1` is
+   * safe precisely because the guards excluded the case where the answer is the last
+   * element. Every comparison here is load-bearing; verify against the unit tests
+   * before touching any of them.
+   */
   getElementIndexBeforeAt(date: number): number {
     if (this.elements.length === 0 || this.elements[0].getKey() > date) return -1;
     if (this.elements[this.elements.length - 1].getKey() <= date) return this.elements.length - 1;
@@ -325,6 +403,15 @@ export class GenericMap extends AbstractXmlSubtree {
     return this.insertElement(new KeyValue(date, xml), false);
   }
 
+  /**
+   * Insert into both the array and the XML at the same index, keeping them in step.
+   *
+   * `firstAtDate` picks which side of an existing group of same-dated elements the new
+   * one lands on: false (the default) scans backwards and appends *after* the last
+   * element at that date, true scans forwards and inserts *before* the first. Style
+   * switches use true so that a style takes effect for instructions sharing its date;
+   * ordinary instructions use false so they queue up in insertion order.
+   */
   protected insertElement(element: KeyValue<number, Element>, firstAtDate = false): number {
     if (firstAtDate) {
       for (let i = 0; i < this.elements.length; ++i) {

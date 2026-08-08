@@ -4,6 +4,20 @@ import type { ArticulationStyle } from '../../styles/ArticulationStyle.js';
 import type { ArticulationDef } from '../../styles/defs/ArticulationDef.js';
 
 /**
+ * All data needed to articulate one note — a single MPM `<articulation>` element plus
+ * the style context only {@link ArticulationMap} knows.
+ *
+ * The modifier fields come in two flavours that must not be mixed up. The **tick**
+ * modifiers (`absoluteDuration`, `relativeDuration`, `absoluteDelay`, the velocity and
+ * detune fields) are applied here and now, in {@link articulateNote}. The **ms**
+ * modifiers (`absoluteDurationMs`, `absoluteDurationChangeMs`, `absoluteDelayMs`) can
+ * not be: milliseconds do not exist yet at articulation time, because the tempo map has
+ * not run. So `articulateNote` only *parks* them on the note as
+ * `articulation.absoluteXMs` attributes, and
+ * {@link ArticulationMap.renderArticulationToMap_millisecondModifiers} consumes and
+ * removes them in a later pass. This two-phase split is why the pipeline calls
+ * ArticulationMap twice.
+ *
  * Port of meico.mpm.elements.maps.data.ArticulationData
  */
 export class ArticulationData {
@@ -33,8 +47,6 @@ export class ArticulationData {
   detuneCents = 0.0;
   detuneHz = 0.0;
 
-  constructor();
-  constructor(xml: Element);
   constructor(xml?: Element) {
     if (xml === undefined) return;
 
@@ -123,6 +135,33 @@ export class ArticulationData {
     return c;
   }
 
+  /**
+   * Apply this articulation to `note`, in place. Returns whether the note's date moved,
+   * which the caller needs because a moved note may have to be re-sorted into the map.
+   *
+   * The referenced `articulationDef` is applied **first**, then these local modifiers on
+   * top, so a local value always wins over the def's. Within the duration block the
+   * write order is load-bearing: `duration` is read once, up front, and every branch
+   * computes from that original value rather than from what the previous branch wrote —
+   * so `absoluteDuration`, `relativeDuration` and `absoluteDurationChange` do not
+   * compose, the last one to fire simply overwrites. `absoluteDurationMs` short-circuits
+   * the entire tick-domain branch (see the class doc on the two-phase split).
+   *
+   * PARITY NOTE — the `absoluteDurationChange` loop does not terminate, and it does not
+   * terminate in the Java reference either (ArticulationData.java:197). Its own comment
+   * there says "as long as the duration change causes the duration to become 0.0 or
+   * negative", which describes `durNew <= 0.0`; the code says `durNew >= 0.0`, the exact
+   * inverse. {@link ArticulationDef.articulateNote} has the intended `<= 0.0` form, so
+   * the two spellings sit side by side in the same codebase. Consequence, for a note
+   * whose `duration.perf` is positive: any `absoluteDurationChange` that keeps the
+   * duration non-negative spins forever, because `reduce` doubles until it reaches
+   * Infinity and `durNew` then converges to the unchanged `duration`, which still
+   * satisfies `>= 0.0`. Only a change large enough to drive the duration negative exits
+   * — by never entering. No fixture reaches this branch, which is why the suite is green.
+   * It is reproduced verbatim under CHARTER.md's bug-for-bug rule; correcting it is a
+   * behaviour change and belongs to whoever owns the parity-divergence ledger, not to a
+   * local-idiom pass. See the DISCOVERED entry for [T7] in log.md.
+   */
   articulateNote(note: Element | null): boolean {
     if (note === null) return false;
 

@@ -6,13 +6,29 @@ import { GenericMap } from './GenericMap.js';
 import { TempoData } from './data/TempoData.js';
 import { TempoStyle } from '../styles/TempoStyle.js';
 
+/**
+ * An MPM `tempoMap`: the tempo in force across the timeline, and the map that converts
+ * symbolic ticks into milliseconds for everything downstream.
+ *
+ * This is the pivot of the whole rendering pipeline. Maps that run before it work in
+ * ticks; maps that run after it (asynchrony, imprecision, the millisecond half of
+ * articulation) work in milliseconds and depend on the `milliseconds.date` /
+ * `milliseconds.date.end` attributes written here. Nothing may reorder that.
+ *
+ * A `<tempo>` is either constant or a transition from `bpm` to `transition.to`, bent by
+ * `meanTempoAt` — the fraction of the span at which the mean tempo is reached, which
+ * becomes the exponent of a power curve. Converting a transition to milliseconds has no
+ * closed form (the duration is the integral of 1/tempo), so
+ * {@link computeMillisecondsForTempoTransition} integrates numerically with Simpson's
+ * rule.
+ *
+ * Port of meico.mpm.elements.maps.TempoMap
+ */
 export class TempoMap extends GenericMap {
   private constructor(typeOrXml: string | Element) {
     super(typeOrXml);
   }
 
-  static createTempoMap(): TempoMap | null;
-  static createTempoMap(xml: Element): TempoMap | null;
   static createTempoMap(xml?: Element): TempoMap | null {
     try {
       return xml !== undefined ? new TempoMap(xml) : new TempoMap('tempoMap');
@@ -22,10 +38,6 @@ export class TempoMap extends GenericMap {
     }
   }
 
-  protected parseData(xml: Element): void {
-    super.parseData(xml);
-  }
-
   addTempo(date: number, bpm: string, beatLength: number): number;
   addTempo(
     date: number,
@@ -33,14 +45,7 @@ export class TempoMap extends GenericMap {
     transitionTo: string,
     beatLength: number,
     meanTempoAt: number,
-  ): number;
-  addTempo(
-    date: number,
-    bpm: string,
-    transitionTo: string,
-    beatLength: number,
-    meanTempoAt: number,
-    id: string,
+    id?: string,
   ): number;
   addTempo(data: TempoData): number;
   addTempo(
@@ -88,23 +93,40 @@ export class TempoMap extends GenericMap {
     return this.insertElement(new KeyValue(date, e), false);
   }
 
+  /**
+   * Read the tempo instruction at `index` into a {@link TempoData}, resolving its
+   * style-relative names and normalising away the transitions that are not really
+   * transitions. Returns null if the entry is not a usable `<tempo>`.
+   *
+   * The style in scope is found by scanning *backwards* from `index` for the nearest
+   * preceding `<style>` — style switches are ordinary dated entries in the same map.
+   *
+   * Three normalisations collapse a declared transition back to a constant tempo, and
+   * they matter because {@link TempoData.isConstantTempo} then selects a completely
+   * different (and much cheaper) millisecond computation: a `transition.to` equal to
+   * `bpm`; a `meanTempoAt` of 0 or less, which additionally promotes `transition.to` to
+   * be the tempo; and a `meanTempoAt` of 1 or more. Only a `meanTempoAt` strictly
+   * between them yields a real transition, and it is turned into the power-curve
+   * exponent right here. A transition with no `meanTempoAt` at all defaults to a linear
+   * ramp (0.5 / exponent 1.0).
+   */
   getTempoDataOf(index: number): TempoData | null {
     if (this.elements.length === 0 || index < 0) return null;
-    if (index >= this.elements.length) index = this.elements.length - 1;
-    const e = this.elements[index].getValue();
+    const i = index >= this.elements.length ? this.elements.length - 1 : index;
+    const e = this.elements[i].getValue();
     if (e.getLocalName() === 'tempo') {
       const td = new TempoData();
       const bpmAtt = Helper.getAttribute('bpm', e);
       if (bpmAtt === null) return null;
       const beatLengthAtt = Helper.getAttribute('beatLength', e);
       if (beatLengthAtt === null) return null;
-      td.startDate = this.elements[index].getKey();
-      td.endDate = this.getEndDate(index);
+      td.startDate = this.elements[i].getKey();
+      td.endDate = this.getEndDate(i);
       td.xml = e;
       td.beatLength = parseFloat(beatLengthAtt.getValue());
       const att = Helper.getAttribute('id', e);
       if (att !== null) td.xmlId = att.getValue();
-      for (let j = index; j >= 0; --j) {
+      for (let j = i; j >= 0; --j) {
         const s = this.elements[j].getValue();
         if (s.getLocalName() === 'style') {
           td.styleName = Helper.getAttributeValue('name.ref', s);
@@ -168,6 +190,14 @@ export class TempoMap extends GenericMap {
     return TempoMap.getTempoAtStatic(date, td);
   }
 
+  /**
+   * The tempo governing `date`: the nearest preceding entry that yields usable tempo
+   * data, skipping style switches and malformed entries.
+   *
+   * PARITY NOTE — the loop runs down to `-1`, not to `0` (TempoMap.java:181). The extra
+   * round calls {@link getTempoDataOf} with -1, which returns null immediately, so it is
+   * one wasted call rather than a bug. Kept as-is for parity.
+   */
   private getTempoDataAt(date: number): TempoData | null {
     for (let i = this.getElementIndexBefore(date); i >= -1; --i) {
       const td = this.getTempoDataOf(i);
@@ -176,6 +206,17 @@ export class TempoMap extends GenericMap {
     return null;
   }
 
+  /**
+   * The instantaneous tempo in bpm at `date`, given the tempo instruction covering it.
+   * With no tempo data at all the answer is 100.0 bpm, MPM's default.
+   *
+   * RENDERING MATH — do not reorder. The position within the span is raised to
+   * `exponent` and the result interpolates between `bpm` and `transitionTo`; the
+   * `result * (to - bpm) + bpm` form is not interchangeable with the algebraically equal
+   * `bpm * (1 - result) + to * result` in floating point. The lazy `exponent` fill-in
+   * mutates the passed {@link TempoData}, which is intentional: this is called once per
+   * Simpson sample point and recomputing a logarithm each time would be wasteful.
+   */
   private static getTempoAtStatic(date: number, tempoData: TempoData | null): number {
     if (tempoData === null) return 100.0;
     if (tempoData.isConstantTempo()) return tempoData.bpm!;
@@ -188,6 +229,27 @@ export class TempoMap extends GenericMap {
     return result * (tempoData.transitionTo! - tempoData.bpm!) + tempoData.bpm!;
   }
 
+  /**
+   * Write `milliseconds.date` and `milliseconds.date.end` onto every entry of `map`.
+   * This is the tick ⇒ millisecond conversion the rest of the pipeline builds on.
+   *
+   * With no tempo instructions at all, everything is timed at MPM's default 100 bpm via
+   * {@link computeMillisecondsForNoTempo} and the method returns early.
+   *
+   * Otherwise both the tempo map and the target map are walked **once**, together:
+   * `mapIndex` is declared outside the tempo loop and never rewound, so each map entry
+   * is timed by exactly one tempo instruction. Milliseconds accumulate — a tempo
+   * instruction's own start is the previous instruction's start plus the elapsed
+   * duration of that previous span (`computeDiffTiming` returns a *difference*, hence
+   * the name), so the running sum in `startDateMilliseconds` is what keeps successive
+   * tempi continuous. Do not restructure this into two independent passes.
+   *
+   * `pendingDurations` exists because a note can start under one tempo and end under a
+   * later one. Such notes are parked and retried against each subsequent instruction;
+   * entries are removed as they resolve, which is why that loop decrements `i` after
+   * splicing. The `continue` for an end date beyond the current span leaves the entry
+   * pending for the next round.
+   */
   renderTempoToMap(map: GenericMap | null, ppq: number): void {
     if (map === null) return;
 
@@ -318,6 +380,23 @@ export class TempoMap extends GenericMap {
   ): number {
     return (15000.0 * (date - tempoData.startDate)) / (tempoData.bpm! * tempoData.beatLength * ppq);
   }
+  /**
+   * The elapsed milliseconds from the start of a *transitioning* tempo instruction to
+   * `date`, by numerical integration of 1/tempo — there is no closed form.
+   *
+   * This is Simpson's rule: `N` sub-intervals chosen from the span (one per sixteenth
+   * note, floored to an even count, minimum 2), the two endpoints weighted 1, the
+   * interior even-indexed points weighted 2, the odd-indexed points weighted 4, and the
+   * whole sum scaled by `resultConst`.
+   *
+   * RENDERING MATH — the most order-sensitive code in the cluster, and every millisecond
+   * date in the output flows through it. `resultSum` is accumulated in a fixed sequence
+   * of `+=` steps; floating-point addition is not associative, so merging the two loops,
+   * reversing either, hoisting `2 * k * x`, or replacing the running sum with a
+   * `reduce` will silently change the low bits of every timestamp downstream. The `N`
+   * computation likewise: `2.0 * Math.floor(... / (ppq / 4))` must keep its exact
+   * grouping. Leave all of it alone.
+   */
   private static computeMillisecondsForTempoTransition(
     date: number,
     ppq: number,
