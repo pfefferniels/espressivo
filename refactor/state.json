@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "c719022",
+  "lastGreenCommit": "6d1678c",
   "phase": 2,
-  "currentItem": "T10",
-  "counters": { "completed": 9, "blocked": 0, "reverted": 0 },
+  "currentItem": "T11",
+  "counters": { "completed": 10, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -86,14 +86,14 @@
     {
       "id": "T10",
       "phase": 2,
-      "status": "in_progress",
+      "status": "done",
       "title": "Local idioms: mei/ cluster (Mei, Helper, Mei2MsmMpmConverter)",
       "details": "Local idioms only — no structural break-up yet (that is T14/T15). These are the biggest files; keep diffs reviewable by splitting into ≤3 sub-rounds if needed (still one commit)."
     },
     {
       "id": "T11",
       "phase": 2,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Local idioms: midi/ cluster",
       "details": "Midi, MidiTypes, EventMaker, InstrumentsDictionary. InstrumentsDictionary's big data tables may become const data structures. Byte-identical MIDI output required (suite proves it)."
     },
