@@ -3,6 +3,14 @@ import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { Helper } from '../../../mei/Helper.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 
+/**
+ * An MPM `<comment>` element inside {@link Metadata} — free prose about the performance.
+ * Port of meico.mpm.elements.metadata.Comment
+ *
+ * As with {@link Author}, the content is the element's **text node**, cached here and
+ * written through by {@link setText}; `xml:id` is an optional attribute that
+ * {@link setId}`(null)` detaches rather than blanks.
+ */
 export class Comment extends AbstractXmlSubtree {
   private text: Text | null = null;
   private id: Attribute | null = null;
@@ -33,6 +41,12 @@ export class Comment extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * After this has run, {@link getXml} returns the very element passed in — `setXml` stores
+   * it verbatim rather than copying. A `<comment/>` whose first child is not a text node
+   * gets an empty one appended, so {@link getText} always has something to read; see
+   * {@link Author.parseData} for the same rule and its one sharp edge.
+   */
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate Comment object. XML Element is null.');
     this.setXml(xml);

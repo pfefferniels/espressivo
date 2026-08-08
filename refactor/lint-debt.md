@@ -84,7 +84,7 @@ Counts are post-T3; the T2 column shows what the deletions absorbed.
 | 10 | 11 | `explicit-module-boundary-types` | Exported members with inferred return types. |
 | 5 | 15 | `no-extraneous-class` | Static-only "utility" classes → plain module functions. Feeds T14. |
 | 3 | 4 | `no-require-imports` | `require()` survivals in `src/mei/` — the remaining 3 are the `Mei2MsmMpmConverter` lazy import (T18's cycle) and 2 in `Helper.ts`. |
-| 3 | 3 | `no-fallthrough` | `Performance.ts` switch cases — **verify each is intentional before touching**. |
+| 3 | **0, DONE (T8)** | `no-fallthrough` | ~~`Performance.ts`~~ — **misattributed; all 3 were in `Mpm.isInNamespace`** (`Performance.ts` has no `switch` at all). Verified intentional against `Mpm.java:193-255` and cleared with documenting comments, not `break`s. See the [T8] entry. |
 | 2 | 2 | `no-unsafe-function-type` | Bare `Function` type in tests. |
 | 1 | 1 | `no-this-alias` | (`no-case-declarations` is gone — its only site was a deleted module.) |
 
@@ -99,6 +99,16 @@ per-rule totals, measured repo-wide with `eslint -f json` on the post-T7 tree:
 54, `eqeqeq` 44, `no-explicit-any` 33, `explicit-module-boundary-types` 10, `prefer-for-of` 7,
 `no-extraneous-class` 5, `no-require-imports` 3, `no-fallthrough` 3, `no-unsafe-function-type`
 2, `no-this-alias` 0, plus 20 `no-param-reassign` warnings. (These sum to 1368 errors.)
+
+T8's −21 came out as: `no-explicit-any` 33 → **24** (−9), `unified-signatures` 57 → **50**
+(−7), `no-fallthrough` 3 → **0** (−3), `explicit-module-boundary-types` 10 → **8** (−2),
+`no-extraneous-class` 5 → **4** (−1), and `no-unused-vars` 71 → **72** (**+1**, explained in
+the [T8] section below). Post-T8 totals, measured repo-wide with `eslint -f json` on the
+working tree: `no-non-null-assertion` 1079, `no-unused-vars` 72, `no-empty-function` 54,
+`unified-signatures` 50, `eqeqeq` 44, `no-explicit-any` 24, `explicit-module-boundary-types`
+8, `prefer-for-of` 7, `no-extraneous-class` 4, `no-require-imports` 3,
+`no-unsafe-function-type` 2, `no-fallthrough` 0, `no-this-alias` 0, plus 20
+`no-param-reassign` warnings. (These sum to **1347** errors.)
 
 T6's −42 came out as: `no-non-null-assertion` 1104 → **1079** (−25), `unified-signatures`
 94 → **77** (−17). *(Befores corrected by conductor per verifier-T6's re-measurement; the
@@ -131,8 +141,8 @@ auto-fix them either — its `eqeqeq` fixer refuses when either operand may be n
 the likely outcome is relaxing the rule to `['error', 'always', { null: 'ignore' }]` rather
 than editing 44 correct comparisons.
 
-**3. Two file-level suppressions are hiding 22 `no-explicit-any` violations**, in
-`src/mei/Mei2MsmMpmConverter.ts` (19) and `src/mpm/Mpm.ts` (3):
+**3. ~~Two~~ ONE file-level suppression is hiding 19 `no-explicit-any` violations**, in
+`src/mei/Mei2MsmMpmConverter.ts`:
 
 ```
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -141,8 +151,18 @@ than editing 44 correct comparisons.
 They predate this ESLint config, so they never actually suppressed anything until now.
 T2's scoped `--fix` pass removed them as "unused directives" and they were **deliberately
 restored**, because dropping a suppression changes what the lint gate reports and that is
-not a formatting change. T8 and T10 should delete them and type the `any`s properly. Real
-`no-explicit-any` count once they go: **86**.
+not a formatting change.
+
+**T8 discharged its half**: the `src/mpm/Mpm.ts` suppression is gone, and its 3 `any`s are
+now real types (`addMetadata(author: Author | null, comment: Comment | null,
+relatedResources: RelatedResource[] | null)`, matching Java's signature). `src/mei/
+Mei2MsmMpmConverter.ts` is **T10's** and is the only `eslint-disable` left anywhere in
+`src/` — `grep -rn "eslint-disable" src/` returns exactly one line.
+
+Real `no-explicit-any` count, measured with `eslint --no-inline-config` rather than
+estimated: **55 → 43** across T8 (the 9 visible ones it fixed plus Mpm.ts's 3 suppressed).
+Of the 43, 19 are still behind that one directive. (The old "86" figure predates T3's
+module deletions and was never re-measured; ignore it.)
 
 ## By owning item
 
@@ -318,27 +338,69 @@ Coming out: **150 errors + 3 warnings.** Per file (errors, warnings):
 the same one-rule config over both trees (`prefer-readonly` alone, `projectService: true`,
 `src/` only): src-total **11 → 11**. Every private field in the cluster is genuinely reassigned
 (`x1`/`x2` are lazy caches, `id`/`globalHeader`/`localHeader` are set after construction), so
-there was nothing free to take. **T8–T11 still budget against 11.**
+there was nothing free to take. ~~**T8–T11 still budget against 11.**~~
 
-### T8 — mpm core — 212
-`no-non-null-assertion` 169, `unified-signatures` 21, `no-explicit-any` 9,
+**[T8] re-measurement: the `src/` total is 9, not 11.** Running the same one-rule config
+over T8's `git archive` of the pre-T8 tree gives **9** (`midi/MidiTypes.ts` 5,
+`mei/Mei2MsmMpmConverter.ts` 2, `midi/InstrumentsDictionary.ts` 1,
+`mpm/elements/Dated.ts` 1) — so either the "11" was measured on a different tree state or
+two sites were resolved without being logged. T8 took the one site in its scope
+(`Dated.maps`, only ever `.set`/`.delete`/`.clear`-ed, never reassigned), leaving
+**9 → 8**. Nothing else in this cluster is free: every other private field is assigned in
+`parseData` or a setter rather than in the constructor, which `readonly` forbids.
+**T9–T11 budget against 8, and should re-measure rather than trust either figure.**
+
+### T8 — mpm core — 212 → **191, DONE**
+Before: `no-non-null-assertion` 169, `unified-signatures` 21, `no-explicit-any` 9,
 `no-unused-vars` 7, `no-fallthrough` 3, `explicit-module-boundary-types` 2,
-`no-extraneous-class` 1
+`no-extraneous-class` 1.
+After: `no-non-null-assertion` 169, `unified-signatures` 14, `no-unused-vars` 8.
 
-| n | file |
-|---|---|
-| 74 | `src/mpm/elements/Performance.ts` (incl. all 3 `no-fallthrough`) |
-| 36 | `src/mpm/elements/metadata/Metadata.ts` |
-| 26 | `src/mpm/Mpm.ts` (+3 suppressed `any`) |
-| 20 | `src/mpm/elements/Part.ts` |
-| 17 | `src/mpm/elements/Dated.ts` |
-| 17 | `src/mpm/elements/Header.ts` |
-| 9 | `src/mpm/elements/Global.ts` |
-| ≤6 | `metadata/RelatedResource`, `metadata/Author`, `metadata/Comment` |
+| before | after | file |
+|---|---|---|
+| 74 | 70 | `src/mpm/elements/Performance.ts` |
+| 36 | 32 | `src/mpm/elements/metadata/Metadata.ts` |
+| 26 | 21 | `src/mpm/Mpm.ts` (~~+3 suppressed `any`~~ — suppression removed) |
+| 20 | 19 | `src/mpm/elements/Part.ts` |
+| 17 | 12 | `src/mpm/elements/Dated.ts` |
+| 17 | 16 | `src/mpm/elements/Header.ts` |
+| 9 | 8 | `src/mpm/elements/Global.ts` |
+| 6 | 6 | `src/mpm/elements/metadata/RelatedResource.ts` |
+| 4 | 4 | `src/mpm/elements/metadata/Author.ts` |
+| 3 | 3 | `src/mpm/elements/metadata/Comment.ts` |
 
-The 3 `no-fallthrough` in `Performance.ts` are the only violations in this whole report
-that could be reporting a **real bug** rather than a style issue. Check them against the
-Java source before changing anything — deliberate fallthrough is likely, but confirm.
+**⚠ CORRECTION — the 3 `no-fallthrough` were never in `Performance.ts`.** That file
+contains no `switch` statement at all. All three are in `Mpm.isInNamespace`
+(`src/mpm/Mpm.ts`), at the three blank-line group boundaries of its case table. Whoever
+wrote the original row guessed; anyone re-deriving a per-file count from this document
+should re-measure rather than trust it.
+
+They are **not** a bug. `Mpm.java:193-255` has the identical table, in the identical
+order, with the identical blank-line grouping: every case is empty and falls through to a
+single `return true`, so the switch is a membership test, not a dispatch. (ESLint flags
+only the three cases that follow a blank line; adjacent empty cases it accepts silently.)
+Cleared with `// falls through — <group>` comments naming each group, never a `break`.
+The whole 54-name table plus 13 near-miss negatives is now probed name by name; two
+negative controls confirm the probe catches a real break at those sites.
+
+**Cleared (21 errors), and 3 suppressed `any` on top of that:**
+
+| n | rule | how |
+|---|---|---|
+| 9 | `no-explicit-any` | 4 in `Dated` (`(this.global as any).getHeader()` ×2, `(this.part as any).getHeader()` ×2 — the assertions were vestigial; `Global`/`Part` are `import type`d and expose `getHeader()` publicly), 4 in `Metadata.createMetadata`'s duck-type guards (`'getNumber' in (arg1 as any)` → `'getNumber' in arg1`; the union narrows on its own after the null guard), 1 in `Performance.perform` (`(globalOrnamentationMap as any).renderGlobalOrnamentationMap(...)` — that method is public on `OrnamentationMap`). All are type assertions, which erase: proven by `Performance.js` and `Global.js` being byte-identical between builds, and `Dated.js`/`Metadata.js` differing only in the two unrelated hunks below. |
+| 7 | `unified-signatures` | 5 factory overload pairs collapsed onto an optional parameter — `createHeader`, `createDated`, `createGlobal` (`()`/`(xml)`), `createPart` (4-arg/5-arg), `createPerformance` (1/2/3-arg, which cleared 3 at once because the remaining `(xml: Element)` overload no longer unifies with it either). Overload signatures emit nothing; the `.d.ts` diff shows each pair becoming one strictly-wider signature, and the project-wide declared-member set is unchanged at 1154. |
+| 3 | `no-fallthrough` | Documenting comments, as above. |
+| 2 | `explicit-module-boundary-types` | `Mpm.addMetadata`'s `author`/`comment` parameters, typed from `any` to `Author \| null` / `Comment \| null`. |
+| 1 | `no-extraneous-class` | `Mpm.ts`'s module-local `Helper` class (5 static methods, never exported) became module functions. Three of the five — `getAttribute`, `getAttributeValue`, `getFilenameWithoutExtension` — were **dead**: `getAttribute` had exactly one caller, `getAttributeValue`, which had none. Java's `Mpm.java` likewise calls only the two survivors (`Mpm.java:160,165`). Deleted, which is also why the function count fell by 3 (all 3 uncovered). |
+| +3 | *(suppressed)* `no-explicit-any` | The file-level `eslint-disable` in `Mpm.ts` and the 3 `any`s it hid. Never counted in the 212, so they do not appear in the −21. |
+
+**Deferred (191 errors), by reason:**
+
+| n | rule | why it stayed |
+|---|---|---|
+| 169 | `no-non-null-assertion` | Same story every entry since [T5] records: the fix is narrowing return types under **T12**'s null policy, not adding guards. `Performance.perform` alone holds a large share of them, and adding guards inside the rendering pipeline is exactly the behaviour-change-disguised-as-style this item must not make. |
+| 14 | `unified-signatures` | Genuinely distinct modes, per the [T6]/[T7] precedent, each documented at the site: `Mpm`'s 3-way constructor (`()` / `Document` / XML `string`), `Mpm.getPerformance` and `removePerformance` (`number \| string` / `Performance \| string`), `Header.addStyleType` (`string \| Element`), `Performance.getPart` (by number / by name / by channel+port — `getPart(1)` and `getPart(1, 0)` ask different questions), and the 6 from `Metadata.createMetadata`, which dispatches on the argument's **shape** (duck-typed `getName`+`getNumber` vs `getText`), so the overloads are the only place that behaviour is stated. **T16**'s call. |
+| 8 | `no-unused-vars` | 6 are unused *specifiers* inside import statements T8 was required to keep byte-identical (`Nodes`/`Elements` in `Mpm.ts`, `Header` in `Dated.ts`, `Attribute` in `Header.ts`/`Metadata.ts`, `KeyValue` in `Performance.ts` — the last mirrors Java, where `KeyValue` is used only in a commented-out cleanup loop, `Performance.java:549`). 1 is `Mpm.writeMpmString`'s `_filename`, kept for API compatibility and needing an `argsIgnorePattern: '^_'` in the ESLint config, which belongs to whoever owns the config, not here. **This row grew by 1**: deleting the dead `Helper.getAttribute` orphaned the `Attribute` specifier in `Mpm.ts`, and the import freeze forbids pruning it. Clearing all 6 is free whenever the freeze lifts — tsc already elides every one of them, so `dist/mpm/Mpm.js` opens with `import { Element, Document } from '../xml/XomTypes.js';` in **both** builds. Verify with an emitted-JS diff. |
 
 ### T9 — msm — 132
 `Msm.ts` 116, `Goto.ts` 9, `AbstractMsm.ts` 7. (137 → 132 in T3: `Msm.ts` lost the

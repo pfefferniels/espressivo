@@ -6,6 +6,18 @@ import { Header } from './Header.js';
 import { Dated } from './Dated.js';
 import type { Global } from './Global.js';
 
+/**
+ * An MPM `<part>` element: the performance information for one part of the score.
+ * Port of meico.mpm.elements.Part
+ *
+ * Like {@link Global} it owns a {@link Header} and a {@link Dated}, but it also carries the
+ * identity used to match it against an MSM part: `number`, `name`, `midi.channel` and
+ * `midi.port`. {@link Performance.getCorrespondingPart} matches by number first, then by
+ * name, so the two documents need not agree on both.
+ *
+ * `number`, `midi.channel` and `midi.port` are required — {@link parseData} throws without
+ * them — while a missing `name` is filled in as empty rather than rejected.
+ */
 export class Part extends AbstractXmlSubtree {
   private global: Global | null = null;
   private header: Header | null = null;
@@ -20,18 +32,18 @@ export class Part extends AbstractXmlSubtree {
     super();
   }
 
+  /**
+   * Create a part from its identifying values (optionally with an `xml:id`), or by parsing
+   * an existing `<part>` element. Returns null — after logging — instead of throwing, as
+   * every factory in this cluster does; the from-scratch form cannot actually fail, since
+   * it writes the three required attributes itself.
+   */
   static createPart(
     name: string,
     number: number,
     midiChannel: number,
     midiPort: number,
-  ): Part | null;
-  static createPart(
-    name: string,
-    number: number,
-    midiChannel: number,
-    midiPort: number,
-    id: string,
+    id?: string,
   ): Part | null;
   static createPart(xml: Element): Part | null;
   static createPart(
@@ -61,6 +73,21 @@ export class Part extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * After this has run, {@link getXml} returns the very element passed in — `setXml` stores
+   * it verbatim rather than copying, so {@link nameAttr} and {@link id} stay live views onto
+   * that element and the setters write through to the document.
+   *
+   * Note the ordering: the three required attributes are validated *before* `setXml`, so a
+   * `<part>` that fails validation leaves this object without an XML element rather than
+   * half-initialised. Missing `<header>`/`<dated>` children are created and appended, as in
+   * {@link Global.parseData}.
+   *
+   * The closing `setEnvironment(this.global, this)` runs while {@link global} is still null
+   * — a part parsed on its own has no performance yet — so the maps get a local header but
+   * no global one. {@link setGlobal} repeats the call once the part is attached to a
+   * {@link Performance}, and that is when the global header arrives.
+   */
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate Part object. XML Element is null.');
     this.nameAttr = Helper.getAttribute('name', xml);

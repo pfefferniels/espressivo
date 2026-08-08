@@ -12,68 +12,59 @@ import './elements/maps/ImprecisionMap.js';
 import './elements/maps/MetricalAccentuationMap.js';
 import './elements/maps/OrnamentationMap.js';
 import './elements/maps/MovementMap.js';
+// Type-only imports: erased at compile time, so they add no module edge to the
+// import cycle the value imports above are carefully ordered around.
+import type { Author } from './elements/metadata/Author.js';
+import type { Comment } from './elements/metadata/Comment.js';
+import type { RelatedResource } from './elements/metadata/RelatedResource.js';
 
 /**
- * Helper functions that replicate meico.mei.Helper static methods used in Mpm.
+ * `mei/Helper` in miniature, private to this module.
+ *
+ * `Mpm` deliberately does **not** import `mei/Helper`: that module pulls in the MEI half
+ * of the port, and `Mpm` is the hub every mpm element imports (see the IMPORT-ORDER
+ * HAZARD note on `GenericStyle`). These two local copies keep that edge from existing.
+ * They behave exactly like their `mei/Helper` namesakes — do not "deduplicate" them
+ * until the cycle is broken (item T18).
+ *
+ * Java's `Mpm.java` calls exactly these two Helper methods and no others
+ * (Mpm.java:160,165).
  */
-class Helper {
-  static getAttribute(name: string, ofThis: Element): Attribute | null {
-    if (ofThis === null) return null;
+function getFirstChildElement(name: string, ofThis: Element): Element | null {
+  if (ofThis === null || name.length === 0) return null;
 
-    let a = ofThis.getAttribute(name);
-    if (a !== null) return a;
-
-    a = ofThis.getAttribute(name, ofThis.getNamespaceURI());
-    if (a !== null) return a;
-
-    a = ofThis.getAttribute(name, 'http://www.w3.org/XML/1998/namespace');
-    if (a !== null) return a;
-
-    return null;
-  }
-
-  static getAttributeValue(name: string, ofThis: Element): string {
-    const a = Helper.getAttribute(name, ofThis);
-    if (a === null) return '';
-    return a.getValue();
-  }
-
-  static getFirstChildElement(name: string, ofThis: Element): Element | null {
-    if (ofThis === null || name.length === 0) return null;
-
-    const es = ofThis.getChildElements();
-    for (let i = 0; i < es.size(); ++i) {
-      if (es.get(i).getLocalName() === name) {
-        return es.get(i);
-      }
+  const es = ofThis.getChildElements();
+  for (let i = 0; i < es.size(); ++i) {
+    if (es.get(i).getLocalName() === name) {
+      return es.get(i);
     }
-    return null;
   }
-
-  static getAllChildElements(name: string, ofThis: Element): Element[] {
-    if (ofThis === null || name.length === 0) return [];
-    const es = ofThis.getChildElements(name);
-    const result: Element[] = [];
-    for (let i = 0; i < es.size(); ++i) {
-      result.push(es.get(i));
-    }
-    return result;
-  }
-
-  static getFilenameWithoutExtension(filename: string): string {
-    const i = filename.lastIndexOf('.');
-    if (i === 0) return filename;
-    if (i === -1) return filename;
-    return filename.substring(0, i);
-  }
+  return null;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+function getAllChildElements(name: string, ofThis: Element): Element[] {
+  if (ofThis === null || name.length === 0) return [];
+  const es = ofThis.getChildElements(name);
+  const result: Element[] = [];
+  for (let i = 0; i < es.size(); ++i) {
+    result.push(es.get(i));
+  }
+  return result;
+}
 
 /**
  * This class holds data in mpm format (Music Performance Markup).
  * Port of meico.mpm.Mpm
  * @author Axel Berndt.
+ *
+ * An MPM document is `<mpm>` → optional `<metadata>` plus one or more `<performance>`
+ * elements. A performance is the unit that gets *rendered*: {@link Performance.perform}
+ * turns a symbolic MSM into a millisecond-timed, expressive one. This class is only the
+ * document shell around them — parsing, lookup and add/remove.
+ *
+ * As everywhere in this port, the XML tree is the single source of truth (see
+ * {@link AbstractXmlSubtree}); {@link metadata} and {@link performances} are lookup
+ * indices kept in step by the add/remove methods, never written to directly.
  */
 export class Mpm extends AbstractMsm {
   static readonly MPM_NAMESPACE: string = 'http://www.cemfi.de/mpm/ns/1.0';
@@ -129,6 +120,9 @@ export class Mpm extends AbstractMsm {
       super(arg);
       this.parseData();
     } else {
+      // Unreachable from TypeScript — `arg` is exhausted above. Kept as the defensive
+      // fallback for untyped (plain-JS) callers, who would otherwise reach `super()`
+      // uninitialised. Deleting it would change behaviour for `new Mpm(<anything else>)`.
       super();
       this.init();
     }
@@ -147,11 +141,11 @@ export class Mpm extends AbstractMsm {
    */
   private parseData(): void {
     // parse the metadata
-    const metadataElement = Helper.getFirstChildElement('metadata', this.getRootElement()!);
+    const metadataElement = getFirstChildElement('metadata', this.getRootElement()!);
     if (metadataElement !== null) this.metadata = Metadata.createMetadata(metadataElement);
 
     // parse the performances
-    const perfs: Element[] = Helper.getAllChildElements('performance', this.getRootElement()!);
+    const perfs: Element[] = getAllChildElements('performance', this.getRootElement()!);
 
     for (const perf of perfs) {
       // go through all performance elements
@@ -175,17 +169,28 @@ export class Mpm extends AbstractMsm {
    * check whether the given name is in the Mpm namespace
    * @param elementName
    * @returns
+   *
+   * Every case is empty and falls through to the single `return true` — the switch is a
+   * membership table, not a dispatch, and the blank-line groups below (document /
+   * metadata / header / dated environment) are the only structure it has. This mirrors
+   * `Mpm.java:193-255` case for case, in the same order, **including two typos that are
+   * part of the vocabulary as shipped**: `'accentuation '` carries a trailing space
+   * (Mpm.java:214) and `'dynamcisGradient'` misspells `dynamicsGradient`
+   * (Mpm.java:218). Both are reproduced verbatim: correcting either would accept a name
+   * the reference rejects, and reject one it accepts.
    */
   isInNamespace(elementName: string): boolean {
     switch (elementName) {
       case 'mpm':
 
+      // falls through — metadata environment
       case 'metadata':
       case 'author':
       case 'comment':
       case 'relatedResources':
       case 'resource':
 
+      // falls through — performance, global/part and header environment
       case 'performance':
       case 'global':
       case 'part':
@@ -207,6 +212,7 @@ export class Mpm extends AbstractMsm {
       case Mpm.TEMPO_STYLE:
       case 'tempoDef':
 
+      // falls through — dated environment
       case 'dated':
       case 'style':
       case Mpm.ARTICULATION_MAP:
@@ -246,8 +252,16 @@ export class Mpm extends AbstractMsm {
    * @param comment a Comment object or null
    * @param relatedResources a collection of RelatedResource objects or null
    * @returns success
+   *
+   * Two distinct paths: if a `<metadata>` element already exists the arguments are
+   * *appended* to it and the result is always `true`; otherwise a fresh `Metadata` is
+   * built and hung off the root, and the result reports whether that succeeded.
    */
-  addMetadata(author: any, comment: any, relatedResources: any[] | null): boolean {
+  addMetadata(
+    author: Author | null,
+    comment: Comment | null,
+    relatedResources: RelatedResource[] | null,
+  ): boolean {
     if (this.metadata !== null) {
       if (author !== null) this.metadata.addAuthor(author);
       if (comment !== null) this.metadata.addComment(comment);

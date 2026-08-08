@@ -2406,3 +2406,479 @@ worth carrying forward:
 residue, and corroborated by 108 byte-identical pipeline checks over both builds), zero
 test weakening, no invariant violated, and every reported number — lint, coverage,
 manifest — reproduced independently.
+
+## [T8] worker — mpm core local idioms (Mpm, Performance, Header, Dated, Global, Part, metadata) (2026-08-08)
+
+**READY.** Baseline `b858cb9` (src identical to `b6b3b58`; the intervening commit is
+state.json only). `npm run verify` green — both tsc stages standalone, **2108/2108 across
+44 files**. Prettier clean over the cluster and both `refactor/` files.
+
+### Manifest — 10 files, all in scope
+
+`src/mpm/Mpm.ts`, `src/mpm/elements/{Performance,Header,Dated,Global,Part}.ts`,
+`src/mpm/elements/metadata/{Metadata,Author,Comment,RelatedResource}.ts`, plus
+`refactor/lint-debt.md` and this file. **No test file, no fixture, no config** —
+`git diff --name-only -- tests/ vitest.config.ts tsconfig.json eslint.config.js
+package.json` is empty. Declared members across the whole project: **1154 vs 1154**,
+none added, none removed.
+
+### The item's headline finding: the 3 `no-fallthrough` are not where the debt report says
+
+`refactor/lint-debt.md` attributed all 3 to `Performance.ts`, and my brief repeated it.
+**`Performance.ts` contains no `switch` statement at all.** All three are in
+`Mpm.isInNamespace`, at the three blank-line group boundaries of its case table. ESLint
+flags only cases preceded by a blank line; adjacent empty cases it accepts silently, which
+is why exactly 3 of ~54 cases are reported.
+
+Checked against `Mpm.java:193-255` before touching anything: the Java has the identical
+table, in the identical order, with the identical blank-line grouping, every case empty and
+falling through to one `return true`. It is a membership table, not a dispatch. Cleared
+with `// falls through — <group>` comments naming each group. **No `break`, no `return`,
+no reordering.** `no-fallthrough` is now **0 repo-wide**. lint-debt.md carries the
+correction with a warning not to trust its other per-file attributions unmeasured.
+
+While reading that table I also found **two Java typos that are load-bearing**:
+`'accentuation '` has a trailing space (Mpm.java:214) and `'dynamcisGradient'` misspells
+`dynamicsGradient` (Mpm.java:218). Both are reproduced verbatim in the port and are now
+documented at the site, because "fixing" either would accept a name the reference rejects
+and reject one it accepts. The probe asserts both spellings positive **and** both
+corrections negative.
+
+### What changed
+
+**1. Doc comments — the bulk of the diff, and the point of the item.** Nine of the ten
+files opened with no class comment whatsoever. The ones worth knowing about:
+
+- **`Performance.perform` now documents the pipeline as a pipeline.** ~40 lines naming
+  each of the ~15 stages, what it mutates, and *why it sits where it sits*: dynamics first
+  because it reads symbolic dates that later passes move; metrical accentuation before
+  rubato because rubato shifts the dates the pattern is measured against; articulation and
+  ornamentation each **split in half**, with their millisecond halves deferred until after
+  the tempo pass creates milliseconds at all; `channelVolumeMap` and `positionMap`
+  deliberately skipping rubato so its wobble stays out of the dynamics and position curves.
+  This is the structure [T7] flagged as enforced by nothing but call order (its
+  `DISCOVERED (T8/T19)` item); it is now written down at the site for T19.
+- **`renderMillisecondsModifiersToMap` got a full case-by-case comment and not one
+  character of code.** All four cases spelled out, including that `millisecondsDate` holds
+  the value read *before* the offset write and that every branch uses that pre-shift value,
+  that case 2 adds the attribute when absent, and that case 3's `ornament.noteoff.shift` is
+  only ever created with the value `"true"` so its presence is the signal. Also recorded:
+  the single `millisecondsDateEnd` local is the expression Java evaluates twice, same
+  operand order, so the sum is bit-identical either way.
+- **`Part.parseData` documents a wiring subtlety**: it closes with
+  `setEnvironment(this.global, this)` while `global` is still null, so a freshly parsed
+  part's maps have a local header but no global one; `setGlobal` repeats the call when the
+  part joins a `Performance`, and *that* is when the global header arrives. Probed
+  directly (`part.globalHeaderArrivesWithSetGlobal`).
+- **`Header.renameStyleDef` has a real gotcha**: renaming onto an occupied name drops the
+  loser from the index only — its element stays in the XML. Documented; probed.
+- `Header.parseData`/`Dated.parseData` discover children by **name shape**
+  (`contains(local-name(), 'Styles')` / `'Map'` or `score`), not an allow-list, which is
+  why both fall back to a generic type instead of rejecting unknown ones.
+- `Metadata.createMetadata` dispatches its single-argument forms by **duck typing**
+  (`getName`+`getNumber` → Author, `getText` → Comment), which is why its 6
+  `unified-signatures` cannot be collapsed and why adding a `getText` to `Author` would
+  silently re-route callers.
+- `Mpm`'s module-local helpers now say why they exist (avoiding a `mei/Helper` import edge
+  into the cycle) and that Java calls exactly the same two.
+
+**2. `Mpm.ts`'s module-local `Helper` class → module functions, 3 dead methods deleted.**
+`getAttribute` had exactly one caller — `getAttributeValue` — which had none;
+`getFilenameWithoutExtension` had none. `Mpm.java` likewise calls only
+`getFirstChildElement` and `getAllChildElements` (Mpm.java:160,165). The class was never
+exported, so external references are zero by construction. Clears `no-extraneous-class`.
+
+**3. The `Mpm.ts` file-level `eslint-disable` is gone** and its 3 hidden `any`s are real
+types: `addMetadata(author: Author | null, comment: Comment | null, relatedResources:
+RelatedResource[] | null)`, matching `Mpm.java:263`. This is the half of lint-debt's
+"two file-level suppressions" note that belongs to T8; `Mei2MsmMpmConverter.ts` is T10's
+and is now the **only** `eslint-disable` left in `src/`.
+
+**4. Nine `as any` deleted, none replaced.** 4 in `Dated` (`(this.global as any)
+.getHeader()` etc. — vestigial; `Global`/`Part` are `import type`d and `getHeader()` is
+public), 4 in `Metadata`'s duck-type guards (the union narrows on its own after the null
+guard), 1 in `Performance.perform`. No new assertion, `@ts-ignore` or `eslint-disable`
+anywhere.
+
+**5. Two provably-dead constructs removed.** `Metadata.createMetadata`'s `author` local
+was a three-armed ternary whose arms were **all `arg1`** — only the asserted type differed,
+and assertions erase (the same shape [T7] found in `createGenericMap`). And
+`Dated.addMapFromXml`'s `let m = null; m = f(...)` became `const m = f(...)`; the discarded
+`null` was never read.
+
+**6. Five overload pairs collapsed onto optional parameters** — `createHeader`,
+`createDated`, `createGlobal` (`()`/`(xml)`), `createPart` (4/5-arg), `createPerformance`
+(1/2/3-arg). Overload signatures emit nothing. 14 `unified-signatures` **kept** and each
+documented at the site as a genuinely distinct mode, per the [T6]/[T7] precedent.
+
+**7. One `readonly`** (`Dated.maps` — only ever `.set`/`.delete`/`.clear`-ed).
+
+**8. Zero rendering arithmetic touched.** No expression reordered, no numeric literal
+edited, no `parseFloat`/`parseInt` changed, no `perform` stage moved.
+
+### Import freeze — honoured to the letter, with one documented addition
+
+`git show HEAD:<f> | grep '^import'` is **identical, line number for line number, in all
+10 files**. The only change to any import block is **3 appended `import type` lines** in
+`Mpm.ts` (Author, Comment, RelatedResource), without which typing `addMetadata` is
+impossible. They are erased at compile time and add no module edge: `dist/mpm/Mpm.js`
+opens with `import { Element, Document } from '../xml/XomTypes.js';` in **both** builds,
+and its whole emitted import block is unchanged.
+
+The cost is honest and reported: deleting the dead `Helper.getAttribute` orphaned the
+`Attribute` specifier in `Mpm.ts`, which the freeze forbids pruning, so `no-unused-vars`
+in this cluster goes **7 → 8**. All 6 unused specifiers are free to clear whenever the
+freeze lifts — tsc already elides every one, which the emitted import line proves.
+
+### Evidence
+
+**A. Emitted-JS diff, whole project, every hunk classified.** Both trees built with
+`tsc --removeComments --declaration false --declarationMap false --sourceMap false` into
+scratch outDirs, absolute `-p` paths per tree. **Exactly 3 of 59 emitted files differ,
+all mine**, in 4 hunks, zero unclassified:
+
+| file | hunks | what |
+|---|---|---|
+| `mpm/Mpm.js` | 2 | `class Helper` (5 static methods) → 2 module functions with byte-identical bodies + 3 dead methods gone; the 2 call sites lose the `Helper.` prefix. |
+| `mpm/elements/Dated.js` | 1 | `let m = null; m = f()` → `const m = f()`. |
+| `mpm/elements/metadata/Metadata.js` | 1 | the 3-armed ternary → `arg1`. Every condition it drops (`!== null`, `!== undefined`, two `in` tests, `arg2 === undefined`) is side-effect-free. |
+
+**`Performance.js` is byte-identical between the two builds** — the parity-critical file
+emitted not one different character, which is a complete proof for the
+`renderMillisecondsModifiersToMap` and `perform` constraints. So are `Header.js`,
+`Global.js`, `Part.js`, `Author.js`, `Comment.js` and `RelatedResource.js`, and nothing
+outside `src/mpm/` differs anywhere in the compiled project.
+
+**B. Public surface (`.d.ts`), comments stripped with a non-greedy block regex.** Only 6
+declarations differ, with exactly the intended changes: 5 overload pairs → one optional-
+parameter signature each (strictly wider — every previously valid call still typechecks),
+`addMetadata`'s 3 `any`s → real types, `private maps` → `private readonly maps`, and the 3
+`import type` lines. **Declared-member set project-wide: 1154 vs 1154, zero added, zero
+removed.** The one narrowing is `addMetadata`; both call sites (`Mei2MsmMpmConverter.ts:
+516,524`) typecheck unchanged, which the green whole-project `tsc` confirms.
+
+**C. Behavioural probe, both builds side by side — 368 checks, transcripts byte-identical**
+(`sha256 2f4ad91fc5b9a0f509f700918059683e75006adbca89c9f04d83e175b508f308` for base and
+work; **0 mismatches, 0 THREW**, 182 distinct values, and the 23 captured `console.error`
+lines identical). Floats recorded as raw IEEE-754 bits. Coverage: the **entire
+`isInNamespace` vocabulary**, 54 names positive and 13 near-miss negatives; all 6 `Mpm`
+construction paths including the defensive non-Document/non-string branch; **all 8
+null/non-null `addMetadata` combinations** against both a fresh and an existing
+`<metadata>`; **19 `createMetadata` forms** including explicit `undefined` in each slot;
+every call arity of the 5 collapsed factories plus explicit `undefined`; 24
+`Dated.addMapByType`/`addMapFromXml` cases over 12 map types including an unknown one;
+the header/environment wiring in both directions; 26 `Header` style operations; the
+`Author`/`Comment`/`RelatedResource` accessor and detach paths incl. 7 whitespace
+spellings of `type`; **the 5 deterministic all-maps fixtures** end to end (augmented MSM,
+expressive MIDI, raw MIDI); **all 16 MEI fixtures** through
+`Mei2MsmMpmConverter(720,true,false,true)` with uuid-canonicalised MSM/MPM and both MIDI
+dumps; and **21 real `perform()` runs**. Imprecision rendering excluded per charter — that
+also excludes the `all_maps` fixture, which carries two imprecisionMaps.
+
+**D. Negative controls — 12 mutations of the *new* src in a scratch tree (`src/` never
+touched), each rebuilt and re-probed. The unmutated control flips 0.**
+
+| control | flipped |
+|---|---|
+| unmutated (sanity, run twice) | **0** |
+| `return false` at the 1st documented fallthrough site | 1 (`isInNamespace[mpm]` — precisely the one case affected) |
+| `return false` at the 3rd fallthrough site (group boundary) | 42 |
+| `getFirstChildElement` matches the wrong child | 13 (+3 THREW) |
+| `Metadata`'s collapsed `author` local yields null | 30 |
+| `Dated.addMapFromXml` builds a generic instead of a typed map | 17 (+5 THREW) |
+| `renderMillisecondsModifiersToMap` drops the offset term | **24** |
+| `renderMillisecondsModifiersToMap` stops shifting on `noteoff.shift` | 5, incl. the real `ornamentation` fixture |
+| `perform` runs tempo before rubato (stage-order swap) | 2 real fixtures |
+| `renderTempoToMap` fallback drops the `date.end.perf` write-back | 2 |
+| `createPart` ignores the optional `id` | 1 |
+| `createPerformance` ignores the optional `ppq` | 2 |
+| `createHeader` ignores its `xml` argument | 4, incl. a real fixture |
+
+**A probe blind spot I found and closed, rather than shipped.** The first run of the
+offset-drop control flipped **0**: no fixture anywhere under
+`tests/integration/fixtures/**` produces `ornament.milliseconds.duration`, so the
+end-to-end sections cannot reach case 2 of the parity-critical method at all. I added a
+direct section driving `Performance.renderMillisecondsModifiersToMap` over the full
+**72-case attribute matrix** (`milliseconds.date.end` present/absent × 4 offsets × 3
+durations × 3 `noteoff.shift` states, 14 distinct outcomes) plus a 18-case matrix for the
+`renderTempoToMap` fallback. The control then flips 24. Worth stating plainly: this
+method's absolute-duration branch is **exercised by no test in the suite** — the
+byte-identical `Performance.js` is what actually guarantees T8 did not disturb it.
+
+**E. Coverage (invariant 7), measured on my own `git archive` of `b858cb9` with
+`node_modules` symlinked, byte-verified against `git show` for all 239 tracked `src/` and
+`tests/` files.**
+
+- **Functions 94.0314% → 94.3277%**, above the 94.0 floor (7a) — covered functions flat at
+  898, total 955 → 952.
+- **Uncovered statements 2292 → 2273** (7b) — shrank, did not grow.
+- **Uncovered functions 57 → 54.** Tests **2108 → 2108** (7c).
+- Statements 84.91 → 85.01, branches 85.56 → 85.58 (7d, indicators).
+
+**The deltas reconcile per file, with nothing unattributed:** `Mpm.ts` −19 statements
+(−18 uncovered) and −3 functions (all 3 uncovered) — the three dead helpers plus the
+`class Helper` declaration statement, which module functions do not produce;
+`Metadata.ts` −5 statements (−1 uncovered) and −4 branches (−1 uncovered) — the collapsed
+ternary, whose middle arm was never taken; `Dated.ts` −1 covered statement — the dead
+`let m = null`. Five further files show ±1–2 **branch** movement with zero statement and
+zero function movement (`maps/ArticulationMap`, `styles/ArticulationStyle`,
+`styles/GenericStyle`, `msm/Msm`, `supplementary/RandomNumberProvider`) — the same
+imprecision-path files [T7] saw, i.e. the ±0.02 RNG run-noise 7d anticipates.
+
+### ✅ The function-floor warning [T7] left is relieved
+
+T7 handed over 898/955 = 94.0314% with the note that **one** new uncovered function would
+breach 7a immediately and six covered-function removals would too. T8 deletes 3
+*uncovered* functions and adds none, so the margin widens to **898/952 = 94.3277%**.
+Recomputed headroom for T9–T11, solved rather than eyeballed:
+
+- **3 new *uncovered* functions are affordable** (898/955 = 94.0314%); the **4th breaches**
+  (898/956 = 93.9331%). This is still the binding constraint — it was 0 before T8.
+- **52 *covered*-function removals are affordable** (846/900 = 94.0000% exactly); the
+  **53rd breaches** (845/899 = 93.9933%). It was 5 before T8.
+
+So the knife edge is gone, but the uncovered-function budget is what to watch: three
+untested helpers across T9, T10 and T11 combined is the whole allowance. Re-measure rather
+than assume — these figures move with every item.
+
+### Lint
+
+Cluster **212 → 191 (−21)**, repo-wide **1368 → 1347**, measured per file with
+`eslint -f json` on both trees. By rule: `no-explicit-any` −9, `unified-signatures` −7,
+`no-fallthrough` −3 (now 0 repo-wide), `explicit-module-boundary-types` −2,
+`no-extraneous-class` −1, `no-unused-vars` **+1** (the freeze cost, above). Plus 3
+formerly-*suppressed* `no-explicit-any` genuinely eliminated, which never counted in the
+212. Real `no-explicit-any` measured with `--no-inline-config`: **55 → 43**.
+`prefer-readonly` in `src/`: **9 → 8** — and note the debt file's "11" is wrong; my
+measurement of the pre-T8 tree with the same one-rule config gives 9. Corrected there.
+
+### Deliberately left alone
+
+- **All 169 `no-non-null-assertion`.** T12's null policy owns them. `Performance.perform`
+  holds a large share, and adding guards inside the rendering pipeline is precisely the
+  behaviour change this item must not smuggle in.
+- **All 14 remaining `unified-signatures`** — distinct construction/lookup modes, each now
+  documented at the site (details in lint-debt.md).
+- **`Mpm`'s unreachable constructor `else` branch** — unreachable from TypeScript, but
+  reachable from plain JS (`new Mpm(42)`), where deleting it would leave `super()`
+  uninitialised. Kept, documented, and probed in both spellings.
+- **Every numeric literal, every `parseFloat`/`parseInt`, every `perform` stage.**
+- `Metadata.createMetadata`'s duck-typed dispatch beyond the dead ternary — restructuring
+  the one place where argument *shape* decides which children get appended is a real
+  behavioural risk and belongs to T16, not to a local-idiom pass.
+
+### DISCOVERED
+
+- **DISCOVERED (parity divergence, benign, documented at the site, needs no action):**
+  `Performance.perform`'s inlined global-ornamentation block guards only on
+  `globalOrnamentationMap !== null`, where the reference also returns early on
+  `ornamentationMap.isEmpty()` (`OrnamentationMap.java:215`). An *empty* global
+  ornamentation map therefore reaches `renderGlobalOrnamentationMap` here and returns early
+  from Java. Unreachable in practice: with zero ornament entries the apply loop runs zero
+  times, and the one observable difference — an error logged when neither header is set —
+  cannot occur for a global map, because a `Global` always has a `Header`. Java also
+  evaluates `getAllMsmPartsAffectedByGlobalMap` unconditionally where the port skips it
+  when the map is null; that method only reads. Left as-is per the "document, don't fix"
+  rule.
+- **DISCOVERED (T16, duplicated ornamentation entry point):** `OrnamentationMap` has its
+  own `renderMillisecondsModifiersToMap` (OrnamentationMap.ts:436 region) which the
+  pipeline **never calls** — `Performance` uses its inlined copy, because it only
+  type-imports the map classes. Two copies of parity-critical arithmetic that must not
+  drift apart. Whoever breaks the import cycle (T18) should delete one; until then, a
+  change to either must be mirrored.
+- **DISCOVERED (test gap, not a defect):** the `ornament.milliseconds.duration` branch of
+  `renderMillisecondsModifiersToMap` is reached by **no fixture and no test**. The T8 probe
+  covers it (72-case matrix, `scratchpad/t8probe/probe.mjs` section 11), but the suite does
+  not. A real unit test for that method would be cheap insurance for the one piece of code
+  in this cluster with a known history of divergence.
+- **DISCOVERED (T2/T16, ESLint config):** `Mpm.writeMpmString`'s deliberately unused
+  `_filename` costs a `no-unused-vars` that an `argsIgnorePattern: '^_'` would retire
+  properly. Config changes are not this item's to make.
+- **DISCOVERED (bookkeeping hygiene):** two figures in `refactor/lint-debt.md` were wrong
+  when measured — the `no-fallthrough` file attribution and the `prefer-readonly` src
+  total (11 vs a measured 9). Both corrected there. Later items should re-measure the
+  numbers they act on rather than inherit them; `eslint -f json` on a `git archive` of the
+  baseline takes under a minute.
+- **DISCOVERED (stray directories, pre-existing, outside scope):** a literal
+  `src/mpm/{elements` tree exists — `{elements`, `{elements/maps`, `{elements/metadata}`,
+  `{elements/styles`, `{elements/maps/data}`, `{elements/styles/defs}` — dated 20 March,
+  the residue of a `mkdir -p` whose brace expansion did not fire. It holds **zero files**
+  and is therefore untracked (git does not track empty directories), so it affects no
+  build, no test and no `git status`; charter rule 9's `git rm` does not apply and a plain
+  `rmdir` is the fix. Left in place: deleting things is not this item's business, and the
+  conductor should decide.
+
+### Handoff
+
+Probe at `scratchpad/t8probe/probe.mjs` — takes `<distDir> <out.json>`, imports `Mpm`
+first (the circular-import hazard), asserts non-vacuity in the pipeline sections, and
+records floats as raw IEEE-754 bits. Transcripts beside it as `out-base.json` /
+`out-work.json`. Negative controls in `scratchpad/t8nc/` with the `run.sh` that produced
+them (`run.sh <name> <mutator.py>`; it re-copies pristine src each time — use it rather
+than hand-mutating) and mutators `m0.py`–`m12.py`. `scratchpad/t8base/` holds the
+byte-verified `git archive` of `b858cb9` with `node_modules` symlinked and its coverage
+run already in `t8base/coverage/`.
+
+Traps inherited and confirmed still live: create scratch outDirs in a **prior** step, use
+absolute `-p` paths per tree, symlink `node_modules` into any tree built outside the repo,
+and pass `--declarationMap false` alongside `--declaration false` or tsc trips `TS5069`
+and emits anyway. Two new ones: **(a)** `shasum … | sed 's#.*/scratchpad/##'` eats the hash
+too, since `.*` is greedy — use `awk`; **(b)** when diffing two coverage-final.json files,
+normalise the paths per tree before comparing, or every file looks like it changed by its
+whole size.
+
+
+## [T8] verifier — PASS (2026-08-08)
+
+**PASS.** Every claim in the [T8] worker entry reproduced independently against a
+byte-verified `git archive` of `b858cb9` (`t8verify/base`, `git show`-checked). Own probes,
+own builds, own lint and coverage runs — the worker's artefacts were read but never trusted.
+
+### 1. `renderMillisecondsModifiersToMap` — stronger than "comments-only"
+
+No comment-stripping was needed: the method is **byte-identical**, all 49 lines,
+signature + body + its four inline comments (`base:526-574` vs `work:683-731`, `diff` empty).
+Only the doc comment *above* it grew. The Java-parity semantics in the brief hold unchanged:
+offset shifts `milliseconds.date`; `ornament.milliseconds.duration` → absolute
+`date+offset+duration` with addAttribute-if-absent; `ornament.noteoff.shift` present →
+`end += offset`; else end unaltered.
+
+### 2. The 3 `no-fallthrough` — the brief's premise was wrong, the worker's correction is right
+
+Independently token-counted with the TS scanner: **`Performance.ts` contains 0 `SwitchKeyword`
+and 0 `CaseKeyword` in *both* revisions.** It has no switch to change. All 3 are in
+`Mpm.isInNamespace`, whose switch region shows **zero code-token movement**; `BreakKeyword`
+is 0 in all 10 files, both revisions, so nothing was cleared with a `break`.
+
+Read `Mpm.java:185-255` directly: **54 cases**, TS also **54**, identical order, identical
+blank-line grouping, every case empty falling through to one `return true`, then
+`return false`. The three added comments name their groups — metadata / performance+global,
+part and header / dated — and each is **TRUE** for the block it precedes. The two load-bearing
+Java typos are at exactly the cited lines (`case "accentuation "` with trailing space
+`Mpm.java:214`, `case "dynamcisGradient"` `Mpm.java:218`) and are reproduced verbatim. Probed:
+all 54 names accepted, and both "corrected" spellings (`accentuation`, `dynamicsGradient`)
+rejected.
+
+### 3. `perform` stage order — no reordering
+
+Pure code-token diff (JSDoc subtrees pruned) of `Performance.ts` is **35 tokens**, and they
+are exhaustively: the `createPerformance` overload collapse (2 declarations out, 2
+`QuestionToken` + 1 `CommaToken` in) and **one** `as any` removed
+(`(globalOrnamentationMap as any).renderGlobalOrnamentationMap(…)` → same call, same args).
+No statement moved. Conclusively settled by evidence 5 below.
+
+### 4. Imports
+
+9 of 10 byte-identical. `Mpm.ts` carries the 3 **appended** `import type` lines the worker
+disclosed (`13a14,16`) — the existing 13 lines are unchanged and unreordered. Accepted,
+because the emitted `dist/mpm/Mpm.js` import block is **byte-identical at 13 lines in both
+builds**: no new module edge, so the circular-import hazard is untouched.
+
+### 5. Emitted JS — 3 of 59 files differ, 4 hunks, zero unclassified
+
+Both trees built `--removeComments --declaration false --declarationMap false
+--sourceMap false`, absolute `-p` paths, separate outDirs created in a prior step.
+
+| file | hunk | classification |
+|---|---|---|
+| `mpm/Mpm.js` | `class Helper` → 2 module functions | kept bodies **byte-identical** (whitespace-insensitive compare); the 3 deleted methods were dead — base `class Helper` was **never exported** (only `export class Mpm`), and `Mpm.ts` now contains zero `Helper.` references. The repo-wide `getAttributeValue`/`getFilenameWithoutExtension` hits are the unrelated `src/mei/Helper.ts`, which is unmodified. |
+| `mpm/Mpm.js` | 2 call sites lose `Helper.` prefix | same callee, same args |
+| `mpm/elements/Dated.js` | `let m = null; m = f()` → `const m = f()` | discarded `null` never read |
+| `mpm/elements/metadata/Metadata.js` | 3-armed ternary → `arg1` | emitted JS shows all three arms literally `arg1`; assertions erase |
+
+**`Performance.js` is byte-identical (23184 bytes)**, as are `Header/Global/Part/Author/
+Comment/RelatedResource.js`. Nothing outside `src/mpm/` differs anywhere.
+
+On the Metadata ternary: the dropped conditions are side-effect-free for every declared input
+(`arg1: Element | Author | Comment | RelatedResource[] | null`, and the `Element`/array arms
+are taken earlier, so `in` can never see a primitive). A pathological JS caller passing a
+primitive still throws at the same `in` test downstream and is caught by the same `try`.
+
+**Public surface (`.d.ts`, JSDoc stripped):** only 6 files differ — the 5 overload collapses
+(each strictly wider) plus `addMetadata`'s 3 `any` → real types and `private maps` →
+`private readonly maps`. Declared-member **set identical at 1486 both ways**, zero added,
+zero removed; the sole delta is that `readonly` modifier on a private field. `addMetadata` is
+the one narrowing, and whole-project `tsc` is green.
+
+### 6. Behavioural probes — mine, with demonstrated power
+
+Two probes written from the integration tests' API, not from the worker's:
+`t8verify/pipe.mjs` (5 deterministic all-maps fixtures + all 16 MEI fixtures → MSM/MPM,
+augmented MSM, raw + expressive MIDI, uuid-canonicalised; imprecision excluded) and
+`t8verify/api.mjs` (the surface T8 actually changed). **Both byte-identical between builds**
+— pipeline sha `e960dd16…` (24 entries, 0 threw), API sha `5ee8934d…` (129 entries, 0 threw).
+
+Negative controls, all against the *new* build (`src/` never touched):
+
+| control | pipeline | API |
+|---|---|---|
+| unmutated (sanity) | 0 | **0** |
+| `rmm` drops the offset term | 1 (real `ornamentation` fixture) | **20** |
+| `getFirstChildElement` match inverted | 0 | **5** |
+| collapsed `Metadata` author local → null | — | **16** |
+| 1st fallthrough group returns false | — | **1** |
+
+Two blind spots found in my own probes and closed rather than shipped: (a) `GenericMap.parseData`
+only admits children carrying a `date` attribute, so the first `rmm` matrix was vacuous and
+flipped 0 — with `date` added it flips 20; (b) no fixture MPM has a `<metadata>` element, so
+`getFirstChildElement`'s match arm is unreachable end-to-end — added a 7-document
+`new Mpm(xml)` section, after which it flips 5. Both confirm the worker's own warning that
+this cluster's changed surface is largely invisible to the fixture pipeline.
+
+### 7. Gate, manifest, hygiene
+
+Independent `npm run verify`: **green, 44 files, 2108/2108**. Manifest exactly **12 M**
+(10 src + lint-debt.md + log.md), **0 untracked**, 0 other. `tests/` diff empty; fixtures,
+`vitest.config.ts`, `tsconfig*.json`, `eslint.config.js`, `package.json` untouched.
+`eslint-disable` 2 → 1 (only `Mei2MsmMpmConverter.ts`, T10's); `@ts-ignore`/`@ts-expect-error`/
+`@ts-nocheck` 0 → 0; `as any` 11 → 2 (both survivors pre-existing and outside scope);
+`as unknown` 38 → 38. `refactor/log.md` **+321/−0 — append-only**. Prettier clean.
+The stray `src/mpm/{elements` tree exists and holds **0 files**, as reported.
+
+### 8. Lint — reconciles exactly
+
+Cluster **212 → 191 (−21)**, per-file identical to the worker's table (74→70, 36→32, 26→21,
+20→19, 17→12, 17→16, 9→8, 6/4/3 flat; columns sum to 212 and 191). Per-rule:
+`no-explicit-any` −9, `unified-signatures` −7, `no-fallthrough` −3 (**0 repo-wide**),
+`explicit-module-boundary-types` −2, `no-extraneous-class` −1, `no-unused-vars` **+1**.
+**No lint movement anywhere outside the cluster.** Cluster after = 169 + 14 + 8 = 191 ✓.
+
+Repo-wide **1368 → 1347 errors** plus 20 `no-param-reassign` warnings — the worker's figures
+are right; my first pass looked 20 off because I had conflated errors with warnings. The
+corrections land too: `--no-inline-config` `no-explicit-any` **55 → 43** whole-repo, and
+`prefer-readonly` in `src/` **9 → 8** with the cleared site being exactly
+`mpm/elements/Dated.ts` — so lint-debt's old "11" was indeed wrong.
+
+*Nit (not blocking):* the "Cleared (**21** errors)" header sits above a table whose rows sum
+to 22; the net is 21 once the `+1 no-unused-vars` carried in the Deferred table is applied.
+
+### 9. Coverage
+
+Measured on my own tree pair. **Functions 898/955 = 94.0314% → 898/952 = 94.3277%**, above the
+94.0 floor (7a); covered functions flat at 898, the 3 removed were all uncovered. **Uncovered
+statements 2292 → 2273** — shrank (7b). **Tests 2108 → 2108** (7c). Statements 84.91 → 85.01,
+branches 85.567 → 85.570 (7d).
+
+Per-file reconciliation matches the worker exactly where it is deterministic: `Mpm.ts`
+−19 stmts / −18 uncovered / −3 funcs (all 3 uncovered), `Metadata.ts` −5 stmts / −1 uncovered
+/ −4 branches / −1 uncovered branch, `Dated.ts` −1 *covered* stmt.
+
+**Correction to the worker's noise note, with proof:** the residual branch-total movement is
+run-noise, but the *file list is not reproducible* — the coverage provider is v8, so branch
+entries are derived from execution. Two consecutive coverage runs on the **identical,
+unmodified** working tree moved 4 files (`maps/ArticulationMap` 85→86, `maps/GenericMap`
+178→179, `styles/ArticulationStyle` 14→13, `xml/XomTypes` 189→190). My base-vs-work pair
+showed a *different* pair of files (`GenericMap`, `msm/Msm`), both byte-identical between
+trees. Later items should not read that file list as reproducible, nor treat a branch-total
+delta in an untouched file as a signal.
+
+### Handoff
+
+Probes at `scratchpad/t8verify/{pipe,api}.mjs` (`<distDir> <out.json>`; both import `Mpm`
+first). `toks.mjs` / `toks2.mjs` emit TS-scanner token streams — `toks2.mjs` prunes JSDoc, so
+a **0-line diff from it is a proof of "comments-only"** that survives reformatting; this is a
+better instrument than prettier-cancellation for comment-heavy items and is recommended for
+T9–T11. `ro.config.mjs` is a working one-rule type-aware `prefer-readonly` config (note
+`tseslint.configs.base` is **not** iterable in this version — use an explicit plugin/parser
+block). Trap for coverage work: `eslint`/coverage totals mix errors and warnings — split by
+`severity` before comparing against any figure in `lint-debt.md`.

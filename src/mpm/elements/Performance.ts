@@ -17,6 +17,25 @@ import type { OrnamentationMap } from './maps/OrnamentationMap.js';
 import type { ArticulationMap } from './maps/ArticulationMap.js';
 import type { MovementMap } from './maps/MovementMap.js';
 
+/**
+ * An MPM `<performance>` element: one complete interpretation of a piece.
+ * Port of meico.mpm.elements.Performance
+ *
+ * A performance owns a {@link Global} environment (style definitions and instruction maps
+ * that apply to every part) and a list of {@link Part}s (the same, per MSM part). Its
+ * reason to exist is {@link perform}, which reads an MSM and returns an augmented copy
+ * carrying millisecond timing, velocities and articulation — see that method's comment for
+ * the stage order, which is the load-bearing part of this class.
+ *
+ * NOTE ON THE `import type` BLOCK ABOVE: every map class is imported *for its type only*.
+ * That is deliberate — a value import would close an import cycle through `Mpm` (see the
+ * IMPORT-ORDER HAZARD note on `GenericStyle`). The price is that this file cannot call the
+ * maps' **static** methods, which is why {@link renderTempoToMap} and
+ * {@link renderMillisecondsModifiersToMap} exist here as private re-implementations of
+ * `TempoMap.renderTempoToMap` and `OrnamentationMap.renderMillisecondsModifiersToMap`.
+ * Keep them in sync with their originals; do not "simplify" them into the map classes
+ * without breaking the cycle first (item T18).
+ */
 export class Performance extends AbstractXmlSubtree {
   private nameAttr: Attribute | null = null;
   private pulsesPerQuarter = 720;
@@ -28,9 +47,16 @@ export class Performance extends AbstractXmlSubtree {
     super();
   }
 
-  static createPerformance(name: string): Performance | null;
-  static createPerformance(name: string, pulsesPerQuarter: number): Performance | null;
-  static createPerformance(name: string, pulsesPerQuarter: number, id: string): Performance | null;
+  /**
+   * Create a performance from scratch (`name`, optionally `pulsesPerQuarter` and `id`) or
+   * by parsing an existing `<performance>` element. Returns null — after logging — instead
+   * of throwing, which is how every factory in this cluster reports a malformed input.
+   */
+  static createPerformance(
+    name: string,
+    pulsesPerQuarter?: number,
+    id?: string,
+  ): Performance | null;
   static createPerformance(xml: Element): Performance | null;
   static createPerformance(
     nameOrXml: string | Element,
@@ -55,6 +81,17 @@ export class Performance extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * After this has run, {@link getXml} returns the very element passed in — `setXml` stores
+   * it verbatim rather than copying, so the attributes cached below ({@link nameAttr},
+   * {@link id}, the `pulsesPerQuarter` attribute) stay live views onto that element and
+   * the setters write through to the document.
+   *
+   * Parsing is not read-only: a `<performance>` without `pulsesPerQuarter` gets one added
+   * (defaulting to 720) and one without a `<global>` child gets an empty one appended, so
+   * that every performance is renderable afterwards. `<part>` children that fail to parse
+   * are skipped with a logged error rather than aborting the whole performance.
+   */
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate Performance object. XML Element is null.');
     const name = Helper.getAttribute('name', xml);
@@ -99,6 +136,12 @@ export class Performance extends AbstractXmlSubtree {
     return this.parts;
   }
 
+  /**
+   * Three genuinely different lookups, which is why these overloads are not collapsed onto
+   * a union or an optional parameter: by part number, by part name, or by the MIDI
+   * channel/port pair. `getPart(1)` and `getPart(1, 0)` answer different questions, and the
+   * signature is the only place that says so. Each returns the *first* match.
+   */
   getPart(number: number): Part | null;
   getPart(name: string): Part | null;
   getPart(midiChannel: number, midiPort: number): Part | null;
@@ -185,6 +228,15 @@ export class Performance extends AbstractXmlSubtree {
     return mpmPart;
   }
 
+  /**
+   * Wrap one named MSM map (`score`, `timeSignatureMap`, `pedalMap`, …) found under
+   * `msmDated` in a {@link GenericMap}, register it for timing processing and prime its
+   * elements with the `.perf` and `modified` attributes that the render passes write into.
+   *
+   * Two effects the callers depend on: the map is **appended to `list`**, which is the
+   * collection {@link perform} later runs rubato and tempo over, *and* it is returned so a
+   * caller can also address it individually. Returning null means the MSM has no such map.
+   */
   private static addMsmMapToList(
     mapName: string,
     msmDated: Element | null,
@@ -204,6 +256,12 @@ export class Performance extends AbstractXmlSubtree {
     return null;
   }
 
+  /**
+   * Seed the performance timing attributes: `date.perf` (always), plus `duration.perf` and
+   * `date.end.perf` where the symbolic counterparts exist. Every render pass edits these
+   * `.perf` attributes and leaves the symbolic `date`/`duration`/`date.end` untouched, so
+   * the original musical time stays readable next to the performed time.
+   */
   private static addPerformanceTimingAttributes(map: GenericMap | null): void {
     if (map === null || map.isEmpty()) return;
     for (const e of map.getAllElements()) {
@@ -219,11 +277,58 @@ export class Performance extends AbstractXmlSubtree {
     }
   }
 
+  /** Mark every element of the map as touched by performance rendering (empty `modified`). */
   private static addModifiedAttributes(map: GenericMap | null): void {
     if (map === null || map.isEmpty()) return;
     for (const e of map.getAllElements()) e.getValue().addAttribute(new Attribute('modified', ''));
   }
 
+  /**
+   * Render this performance into `msm`: returns an **augmented copy** carrying millisecond
+   * timing, velocities, articulation and ornamentation. The input is never modified — the
+   * first thing this does is clone it.
+   *
+   * ## The stage order is the algorithm
+   *
+   * Every pass mutates the `.perf` / `milliseconds.*` attributes that the *previous* pass
+   * produced, so reordering any two of them silently changes the output. Java runs exactly
+   * this order (Performance.java:385-548) and so must this. Reading it as a pipeline:
+   *
+   * 1. **Clone + PPQ conversion.** `convertPPQ` rescales every symbolic `date`,
+   *    `date.end` and `duration` to this performance's resolution. Everything downstream
+   *    assumes it has already happened.
+   * 2. **Global maps are resolved once** (rubato, tempo, asynchrony, the four imprecision
+   *    maps, dynamics, movement, metrical accentuation, ornamentation, articulation) and
+   *    reused as the per-part fallback in stage 4.
+   * 3. **Global data.** The MSM's global maps get `.perf` attributes, then global
+   *    ornamentation is distributed to the parts it affects, then rubato and tempo turn
+   *    symbolic dates into milliseconds, then asynchrony and timing imprecision shift them.
+   * 4. **Per MSM part**, in this order and for these reasons:
+   *    - *dynamics first*, because it reads symbolic dates and later passes move them; it
+   *      also yields the sub-note `channelVolumeMap`, a **new** map appended to the MSM.
+   *    - *movement* likewise yields a new `positionMap`.
+   *    - *metrical accentuation*, before rubato, because rubato shifts the symbolic dates
+   *      the accentuation pattern is measured against.
+   *    - *articulation without its millisecond modifiers* — the millisecond half cannot run
+   *      until milliseconds exist, i.e. not before the tempo pass. This split is the reason
+   *      `ArticulationMap` has two entry points, and nothing but this ordering enforces it.
+   *    - *rubato*, over every map collected for timing processing.
+   *    - *ornamentation*, still symbolic; its millisecond effects are deferred the same way.
+   *    - *tempo*, which is where symbolic time finally becomes `milliseconds.date` /
+   *      `milliseconds.date.end`. Everything after this point works in milliseconds.
+   *    - *pedal, channelVolume and position maps* get their own tempo/asynchrony treatment
+   *      — note `channelVolumeMap` and `positionMap` deliberately skip rubato, which would
+   *      put rubato's high-frequency wobble into the dynamics and position curves.
+   *    - *score*: asynchrony, then articulation's millisecond modifiers, then
+   *      ornamentation's ({@link renderMillisecondsModifiersToMap}) — the deferred halves,
+   *      in that order — and finally the four imprecision maps.
+   *
+   * A part with no `<dated>` is skipped entirely; a part with no `<score>` still gets its
+   * pedal/volume/position maps rendered before being skipped.
+   *
+   * @param msm the score to perform; left unmodified
+   * @returns a new Msm with performance data added
+   */
   perform(msm: Msm): Msm {
     console.log(`\nRendering performance "${this.getName()}" into "${msm.getTitle()}".`);
 
@@ -288,6 +393,21 @@ export class Performance extends AbstractXmlSubtree {
     Performance.addMsmMapToList('markerMap', globalDated, maps);
     const globalPedalMap = Performance.addMsmMapToList('pedalMap', globalDated, maps);
 
+    // Global ornamentation, inlined from OrnamentationMap.renderGlobalOrnamentationToParts
+    // because this file only type-imports the map classes (see the class comment). It adds
+    // modifier attributes to the affected parts' notes; those become performance attributes
+    // in the per-part processing further down.
+    //
+    // PARITY NOTE (divergence, benign, do not "fix" without a decision): the reference
+    // guard is `(ornamentationMap == null) || ornamentationMap.isEmpty()`
+    // (OrnamentationMap.java:215); this tests only for null. An *empty* global
+    // ornamentationMap therefore reaches `renderGlobalOrnamentationMap` here where Java
+    // returns early. The reachable behaviour is identical — with no ornament entries the
+    // apply loop runs zero times — and the one observable difference, an error logged when
+    // neither header is set, cannot occur for a global map, since a `Global` always has a
+    // `Header`. Java also evaluates `getAllMsmPartsAffectedByGlobalMap` unconditionally
+    // where this skips it when the map is null; that method only reads, so nothing depends
+    // on it running.
     if (globalOrnamentationMap !== null) {
       const affectedParts = this.getAllMsmPartsAffectedByGlobalMap(clone, Mpm.ORNAMENTATION_MAP);
       const mapsToOrnament: GenericMap[] = [];
@@ -301,7 +421,7 @@ export class Performance extends AbstractXmlSubtree {
           }
         }
       }
-      (globalOrnamentationMap as any).renderGlobalOrnamentationMap(mapsToOrnament);
+      globalOrnamentationMap.renderGlobalOrnamentationMap(mapsToOrnament);
     }
 
     for (const m of maps) {
@@ -464,6 +584,11 @@ export class Performance extends AbstractXmlSubtree {
     return clone;
   }
 
+  /**
+   * The MSM parts a *global* map of `mapType` actually reaches: all of them, minus those
+   * whose MPM part declares its own map of that type (a local map shadows the global one).
+   * Read-only — it builds a new list and touches neither the MSM nor this performance.
+   */
   private getAllMsmPartsAffectedByGlobalMap(msm: Msm, mapType: string): Element[] {
     const msmPartsWithoutLocalMap: Element[] = [];
 
@@ -488,8 +613,16 @@ export class Performance extends AbstractXmlSubtree {
   }
 
   /**
-   * TempoMap static fallback: when tempoMap is non-null, delegates to instance method;
-   * when null, copies date.perf directly as milliseconds.date (identity mapping).
+   * Mirrors `TempoMap.renderTempoToMap(map, ppq, tempoMap)` (TempoMap.java:450-478),
+   * re-implemented here because this file only type-imports the map classes.
+   *
+   * With a tempoMap it just delegates. Without one the fallback is **1 MIDI tick = 1
+   * millisecond**: `date.perf` is copied verbatim into `milliseconds.date`, so the numbers
+   * are the symbolic ones and only the attribute name changes. `milliseconds.date.end`
+   * comes from `date.end.perf` if present; otherwise, and only if both `duration.perf` and
+   * `date.perf` exist, it is computed as their sum — and that sum is written back to
+   * `date.end.perf` as well, so an element that arrived with only a duration leaves with an
+   * end date. Elements with no `date.perf` are left untouched rather than defaulted.
    */
   private static renderTempoToMap(
     map: GenericMap | null,
@@ -522,6 +655,30 @@ export class Performance extends AbstractXmlSubtree {
   /**
    * OrnamentationMap milliseconds modifiers — mirrors OrnamentationMap.renderMillisecondsModifiersToMap
    * (OrnamentationMap.java:477-509), inlined because this file only type-imports the map classes.
+   *
+   * ⚠ PARITY-CRITICAL, AND A DIVERGENCE THAT WAS ALREADY FOUND AND FIXED ONCE. Do not
+   * restructure, rename or reorder anything inside this method; the arithmetic below is
+   * required to be bit-identical to the reference. Documented here so the next reader does
+   * not have to reconstruct it from the Java a second time.
+   *
+   * It turns the three `ornament.*` modifier attributes that the ornamentation pass left on
+   * a note into the real `milliseconds.*` performance attributes. Notes without
+   * `milliseconds.date` are skipped — that attribute is the reference point every branch
+   * below is measured from, so there is nothing to transform without it.
+   *
+   * 1. `ornament.milliseconds.date.offset` shifts `milliseconds.date` by the offset.
+   *    `millisecondsDate` keeps the value read *before* that write, and every case below
+   *    uses that pre-shift value plus the offset — never the re-read attribute.
+   * 2. `ornament.milliseconds.duration` sets an **absolute** end:
+   *    `date + offset + duration`, written to `milliseconds.date.end` if it exists and
+   *    *added* to the note if it does not. This is the add-attribute-if-absent case; the
+   *    single `millisecondsDateEnd` local here is the same expression Java evaluates twice,
+   *    in the same operand order, so the sum is bit-identical either way.
+   * 3. Otherwise `ornament.noteoff.shift`, which the ornamentation pass only ever creates
+   *    with the value `"true"`, so its mere presence is the signal: the end date shifts by
+   *    the same offset as the start, leaving the sounding duration unchanged. The end is
+   *    re-read from the attribute here rather than recomputed.
+   * 4. Neither modifier present: `milliseconds.date.end` is left exactly as it was.
    */
   private static renderMillisecondsModifiersToMap(
     map: GenericMap | null,

@@ -6,6 +6,20 @@ import { Author } from './Author.js';
 import { Comment } from './Comment.js';
 import { RelatedResource } from './RelatedResource.js';
 
+/**
+ * An MPM `<metadata>` element: who made this performance description, why, and what it
+ * relates to.
+ * Port of meico.mpm.elements.metadata.Metadata
+ *
+ * Three independent child collections — {@link Author}s and {@link Comment}s as direct
+ * children, {@link RelatedResource}s wrapped in a single `<relatedResources>` container
+ * that is created and removed on demand. There is at most one metadata element per
+ * {@link Mpm}, and an empty one is not representable: {@link parseData} throws rather than
+ * produce a `<metadata/>` with nothing in it.
+ *
+ * The XML element is the single source of truth (see {@link AbstractXmlSubtree}); the three
+ * arrays are lookup indices kept in step by the add/remove methods.
+ */
 export class Metadata extends AbstractXmlSubtree {
   private readonly authors: Author[] = [];
   private readonly comments: Comment[] = [];
@@ -15,6 +29,21 @@ export class Metadata extends AbstractXmlSubtree {
     super();
   }
 
+  /**
+   * Build a metadata element from an existing `<metadata>`, from any one of the three
+   * content kinds, or from all three at once.
+   *
+   * ⚠ The single-argument forms are dispatched by **duck typing**, not by `instanceof`:
+   * `getName`+`getNumber` identifies an {@link Author} and `getText` a {@link Comment}.
+   * That is why the overloads cannot be collapsed onto a union — the argument's *shape* is
+   * what selects the behaviour — and it is also the fragile part of this factory: adding a
+   * `getText` to `Author`, or a `getName` to `Comment`, would silently re-route callers.
+   * The `arg2`/`arg3` reads distinguish the single-argument forms from the three-argument
+   * one, since `undefined` is the only signal available.
+   *
+   * Returns null — after logging — instead of throwing, as every factory in this cluster
+   * does; note that "no usable content" is one of the failures, via {@link parseData}.
+   */
   static createMetadata(xml: Element): Metadata | null;
   static createMetadata(author: Author): Metadata | null;
   static createMetadata(comment: Comment): Metadata | null;
@@ -43,16 +72,14 @@ export class Metadata extends AbstractXmlSubtree {
         m.parseData(metadata);
       } else {
         const metadata = new Element('metadata', Mpm.MPM_NAMESPACE);
-        const author =
-          arg1 !== null && arg1 !== undefined && 'getName' in arg1 && 'getNumber' in (arg1 as any)
-            ? (arg1 as Author)
-            : arg2 === undefined
-              ? (arg1 as Author | null)
-              : (arg1 as Author | null);
+        // All three arms of the ternary this replaces evaluated to `arg1`; only the
+        // asserted type differed, and assertions erase. In the multi-argument form
+        // reached below, `arg1` *is* the author position.
+        const author = arg1 as Author | null;
         const comment =
           arg2 !== undefined
             ? arg2
-            : arg1 !== null && arg1 !== undefined && 'getText' in (arg1 as any)
+            : arg1 !== null && arg1 !== undefined && 'getText' in arg1
               ? (arg1 as unknown as Comment)
               : null;
         const relatedResources = arg3 ?? null;
@@ -60,10 +87,10 @@ export class Metadata extends AbstractXmlSubtree {
         if (arg2 === undefined && arg3 === undefined) {
           // Single argument factory
           if (arg1 !== null && arg1 !== undefined) {
-            if ('getName' in arg1 && 'getNumber' in (arg1 as any)) {
+            if ('getName' in arg1 && 'getNumber' in arg1) {
               // It's an Author
               metadata.appendChild((arg1 as Author).getXml()!);
-            } else if ('getText' in (arg1 as any)) {
+            } else if ('getText' in arg1) {
               // It's a Comment
               metadata.appendChild((arg1 as unknown as Comment).getXml()!);
             }
@@ -86,6 +113,15 @@ export class Metadata extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * After this has run, {@link getXml} returns the very element passed in — `setXml` stores
+   * it verbatim rather than copying.
+   *
+   * Unknown children are ignored, and children that fail to parse are skipped rather than
+   * aborting. The closing check is the one hard rule: a metadata element that yielded no
+   * author, no comment and no related resource throws, so `Metadata` never exists in an
+   * empty state. That is also how {@link createMetadata} reports "nothing usable given".
+   */
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate Metadata object. XML Element is null.');
     this.setXml(xml);
@@ -175,6 +211,11 @@ export class Metadata extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * Related resources live inside a single `<relatedResources>` container element, which
+   * this creates on demand — and {@link removeRelatedResource} deletes again once it is
+   * empty, so the container never lingers without children.
+   */
   addRelatedResource(relatedResource: RelatedResource): number {
     if (relatedResource === null) return -1;
     let rrElt = Helper.getFirstChildElement('relatedResources', this.getXml()!);

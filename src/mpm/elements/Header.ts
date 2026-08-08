@@ -10,6 +10,24 @@ import { MetricalAccentuationStyle } from './styles/MetricalAccentuationStyle.js
 import { RubatoStyle } from './styles/RubatoStyle.js';
 import { OrnamentationStyle } from './styles/OrnamentationStyle.js';
 
+/**
+ * An MPM `<header>` element: the style definitions available to the instruction maps that
+ * sit beside it in the same environment.
+ * Port of meico.mpm.elements.Header
+ *
+ * The shape is two levels deep, and {@link styleDefs} mirrors it: *style type*
+ * (`tempoStyles`, `dynamicsStyles`, … — the `Mpm.*_STYLE` constants) → *style name* →
+ * {@link GenericStyle}. A map instruction naming `style="foo"` is resolved by looking `foo`
+ * up under its own type, first in the part's local header and then in the global one.
+ *
+ * Both a `Global` and a `Part` own a header, which is what makes that two-stage lookup
+ * possible — see `GenericMap.setHeaders`.
+ *
+ * The XML element remains the single source of truth (see {@link AbstractXmlSubtree}):
+ * {@link styleDefs} is a lookup index over the element's children, kept in step by
+ * {@link addStyleType}/{@link removeStyleType} and {@link addStyleDef}/{@link removeStyleDef}.
+ * Never insert into it directly.
+ */
 export class Header extends AbstractXmlSubtree {
   private readonly styleDefs = new Map<string, Map<string, GenericStyle>>();
 
@@ -17,8 +35,10 @@ export class Header extends AbstractXmlSubtree {
     super();
   }
 
-  static createHeader(): Header | null;
-  static createHeader(xml: Element): Header | null;
+  /**
+   * Create an empty header, or one parsed from an existing `<header>` element. Returns null
+   * — after logging — instead of throwing, as every factory in this cluster does.
+   */
   static createHeader(xml?: Element): Header | null {
     try {
       const h = new Header();
@@ -31,6 +51,16 @@ export class Header extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * After this has run, {@link getXml} returns the very element passed in — `setXml` stores
+   * it verbatim rather than copying.
+   *
+   * Style-type collections are discovered by *name shape*, not by an allow-list: any
+   * descendant whose local name contains `Styles` is treated as one. That is how the six
+   * `Mpm.*_STYLE` types and any future or vendor-specific one are picked up alike, and it
+   * is why {@link addStyleType} falls back to a plain {@link GenericStyle} for unknown types
+   * rather than rejecting them.
+   */
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate Header object. XML Element is null.');
     this.setXml(xml);
@@ -41,6 +71,16 @@ export class Header extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * Add a whole style-type collection: either create an empty one of the given type, or
+   * adopt an existing `…Styles` element and parse the `<styleDef>` children out of it. Two
+   * genuinely different operations, which is why the overloads are not collapsed onto a
+   * `string | Element` union.
+   *
+   * An existing collection of the same type is **replaced**, not merged. `styleDef`
+   * children that fail to parse are skipped, and duplicates of a name silently keep the
+   * last one — the map is keyed by name.
+   */
   addStyleType(type: string): Map<string, GenericStyle> | null;
   addStyleType(xml: Element): Map<string, GenericStyle> | null;
   addStyleType(typeOrXml: string | Element): Map<string, GenericStyle> | null {
@@ -114,6 +154,15 @@ export class Header extends AbstractXmlSubtree {
     return styleType.get(name) ?? null;
   }
 
+  /**
+   * Add one style definition under a style type, either an existing {@link GenericStyle} or
+   * a fresh empty one created from a name. The type's collection is created on demand, and
+   * an existing def of the same name is removed first, so a name never appears twice.
+   *
+   * The `switch` picks the subclass that knows how to parse that type's defs; an unknown
+   * type falls back to {@link GenericStyle}, matching {@link parseData}'s open-ended
+   * discovery.
+   */
   addStyleDef(type: string, styleDef: GenericStyle): void;
   addStyleDef(type: string, name: string): GenericStyle | null;
   addStyleDef(type: string, styleDefOrName: GenericStyle | string): GenericStyle | null | void {
@@ -170,6 +219,14 @@ export class Header extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * Rename a style definition in place, keeping the same object and XML element and only
+   * changing its `name` attribute and its key in the index.
+   *
+   * Any def already holding `newName` is dropped from the index first — so a rename onto an
+   * occupied name wins, and note that the loser is removed from the index only: its element
+   * stays in the XML. Renaming to the current name is a no-op that returns the def.
+   */
   renameStyleDef(type: string, currentName: string, newName: string): GenericStyle | null {
     if (currentName === newName) return this.getStyleDef(type, currentName);
     const allStyleDefs = this.getAllStyleDefs(type);

@@ -3,6 +3,16 @@ import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { Helper } from '../../../mei/Helper.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 
+/**
+ * An MPM `<author>` element inside {@link Metadata}.
+ * Port of meico.mpm.elements.metadata.Author
+ *
+ * The author's name is the element's **text content**, not an attribute, so
+ * {@link nameText} caches the `Text` node itself; `number` and `xml:id` are optional
+ * attributes. All three are live views onto the XML — the setters write through to the
+ * document, and passing `null` to {@link setNumber} or {@link setId} detaches the attribute
+ * rather than blanking it.
+ */
 export class Author extends AbstractXmlSubtree {
   private nameText: Text | null = null;
   private number: Attribute | null = null;
@@ -39,6 +49,15 @@ export class Author extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * After this has run, {@link getXml} returns the very element passed in — `setXml` stores
+   * it verbatim rather than copying.
+   *
+   * An `<author/>` whose first child is not a text node gets an empty one appended, so
+   * {@link getName} always has something to read. Note that only child 0 is considered: an
+   * author element that leads with a comment or an element is treated as having no name and
+   * gains a second, empty text node.
+   */
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate Author object. XML Element is null.');
     this.setXml(xml);

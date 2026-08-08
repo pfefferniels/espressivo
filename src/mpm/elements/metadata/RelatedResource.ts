@@ -3,6 +3,16 @@ import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { Helper } from '../../../mei/Helper.js';
 import { Mpm } from '../../../mpm/Mpm.js';
 
+/**
+ * An MPM `<resource>` element: a pointer to a file this performance description relates to
+ * — typically the MEI or MSM it was generated from.
+ * Port of meico.mpm.elements.metadata.RelatedResource
+ *
+ * Unlike {@link Author} and {@link Comment} both values are attributes, and both are
+ * mandatory: {@link parseData} creates `uri` and `type` as empty attributes when absent
+ * rather than rejecting the element, so the setters always have something to write through
+ * to. Resources are held inside {@link Metadata}'s `<relatedResources>` container.
+ */
 export class RelatedResource extends AbstractXmlSubtree {
   private uri: Attribute | null = null;
   private type: Attribute | null = null;
@@ -56,6 +66,16 @@ export class RelatedResource extends AbstractXmlSubtree {
   getUri(): string {
     return this.uri!.getValue();
   }
+  /**
+   * All whitespace is stripped, not just trimmed: `type` names a resource kind (`mei`,
+   * `msm`, …) and must stay a single token. Mirrors `RelatedResource.java:110`'s
+   * `replaceAll("\\s+", "")`.
+   *
+   * PARITY NOTE: JavaScript's `\s` also matches non-ASCII whitespace (NBSP, U+2028, …)
+   * where Java's default `\s` is the six ASCII characters only, so a type containing exotic
+   * whitespace would be stripped here and kept there. No fixture reaches it; same family as
+   * the `parseFloat` vs `Double.parseDouble` divergences logged under [T6].
+   */
   setType(type: string): void {
     this.type!.setValue(type.replace(/\s+/g, ''));
   }
