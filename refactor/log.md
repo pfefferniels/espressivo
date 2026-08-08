@@ -881,3 +881,301 @@ tests/integration/fixtures` is empty: invariant 2 holds.
 
 `67b407e` is fully reviewed; the process failure it came from was real but the code
 that landed is sound. Nothing to revert, nothing for the conductor to schedule.
+
+## [T4] worker — supplementary local idioms (2026-08-08)
+
+**READY.** `npm run verify` green: `tsc` + `tsc -p tsconfig.tests.json` + **2108/2108, 44
+files**. Baseline for this item is `20e94c2` (not the `9e9420c` my dispatch named, and not
+the "expect 2112" it quoted — the conductor's `4f3157a`/`20e94c2` reconciliation landed
+while I was reading, so the correct pre-change tree is 2108 tests / 1437 lint errors).
+
+### Manifest — 4 files, no deletions, no additions
+
+`src/supplementary/KeyValue.ts`, `src/supplementary/RandomNumberProvider.ts`,
+`refactor/lint-debt.md`, `refactor/log.md`. **No test file changed** — every public member
+kept its exact name and signature, so `tests/supplementary/**` needed no adaptation at all.
+Nothing outside `src/supplementary/**` was touched: no call site in any other cluster
+required an edit, because no signature that other clusters use was altered.
+
+### What changed
+
+`RandomNumberProvider` — everything on the dispatch's allowed list, nothing beyond it:
+
+- **Doc comment stating the parity contract**, which the file badly needed. It said only
+  "provides random numbers based on the specified distribution"; it now says the numerics
+  are load-bearing, that `getValue()` memoises into `series` so the sequence is fixed per
+  provider, and that the correlated distributions derive each value from its predecessor so
+  one extra `nextRandom()` draw shifts everything after it. Plus short comments on `series`,
+  the Mulberry32 seed, `setSeed` (it discards the factory-supplied starting value that the
+  correlated distributions need — a real trap, and the existing tests comment on it
+  three times in-line), `setInitialValue` and `getValueDouble`.
+- **`readonly distributionType`** — the one field in the cluster that is never reassigned.
+  Kept as a declared field + constructor assignment rather than a parameter property, on
+  purpose: a parameter property would move the property's *creation* to after all the field
+  initialisers and reorder the instance's own-property list. Nothing observes that today,
+  but it is a gratuitous difference in a file where I am asserting byte-equivalence.
+- **Private field renames** `_seed`/`_hasSpare`/`_spare` → `seed`/`hasSpare`/`spare`. The
+  underscore is redundant next to `private`, and these are a TS-port invention (the Java
+  original uses `java.util.Random`), not a ported name worth preserving.
+- **`seed` moved to a field initialiser** — same declaration position, so property order is
+  unchanged; the only shift is that the one `Math.random()` call now happens during field
+  init instead of in the constructor body, with nothing able to observe the difference.
+- **Both `no-param-reassign` sites rewritten** (5 warnings → 0), and this is the only place
+  I changed control flow, so both are spelled out:
+  - `getValue`: `index` reassigned twice → `clampedIndex` / `wholeIndex` consts. I kept the
+    literal `clampedIndex !== Math.floor(clampedIndex)` test rather than the obvious
+    `!Number.isInteger(...)`, because they **disagree on `Infinity`** (`Math.floor(Inf) ===
+    Inf`, so the original treats it as integral; `Number.isInteger(Inf)` is false).
+  - `setInitialValue`: `value` reassigned → a `let initialValue` the switch assigns. I kept
+    the original `if (v > upper) … else if (v < lower) …` shape rather than collapsing it to
+    `Math.min(Math.max(...))`, because those **disagree when `lowerLimit > upperLimit`**
+    (which the factories permit) and I do not know that no MPM file produces it.
+    `this.series = []; this.series.push(x)` → `this.series = [x]`.
+- **`createRandomNumberProvider_distributionList(list: readonly number[])`** — the charter's
+  "readonly in signatures that don't mutate", free here: the body already copies (`[...list]`),
+  and widening the parameter cannot break the one caller (`ImprecisionMap:257` passes a
+  `number[]`).
+- **`DistributionType` union** over the six `DISTRIBUTION_*` constants, replacing bare
+  `number` on the field and on `getDistributionType()`. Purely type-level — verified erased
+  (see below). `static readonly X = 0` does keep the literal type `0`, checked before relying
+  on it.
+- Cosmetic, non-behavioural: `let u, v, s` split onto three lines; the local typo `intex` →
+  `wholeIndex`; the `// Box-Muller transform` comment corrected to the polar form, which is
+  what the rejection loop actually implements.
+
+`KeyValue` — constructor collapsed to parameter properties, and a doc comment saying what it
+is (Java's missing tuple type) and why it is still a class. Public shape untouched.
+
+### Evidence it is behaviour-identical
+
+Three independent checks, because "the suite is green" is weak evidence for an RNG:
+
+1. **Emitted-JS diff.** Built before and after and diffed `dist/supplementary/*.js`. Every
+   hunk is a comment, a private-field rename, or one of the two `no-param-reassign`
+   rewrites. No arithmetic expression, no bit operation, no `nextRandom()`/`nextDouble()`
+   call site, and no field-declaration order changed. `readonly` and `DistributionType`
+   emit **nothing** — confirmed by their total absence from the diff.
+2. **Old-vs-new sequence probe** (scratchpad, not `tests/`; deleted with the session).
+   Imported the *baseline build* and the *new build* side by side, seeded both identically
+   and compared with `Object.is` so `NaN` and `-0` cannot hide: 300 values plus five
+   fractional `getValueDouble` indices for each of the six distributions, both correlated
+   ones via `setSeed` + `setInitialValue`; every accessor on all six; and the two rewritten
+   branches probed against their disagreement cases — `setInitialValue` over
+   `{(0,10), (10,-10), (-5,5)} × {5, 20, -5, 0, NaN, ±Infinity, -0}` and `getValue` over
+   negative, fractional, `-0` and non-finite indices. **1958 comparisons, 0 mismatches.**
+3. **Coverage, measured on a clean `git archive` of `20e94c2` with `node_modules` symlinked**
+   rather than compared against the stale figure in state.json. Uncovered scoped statements
+   **2293 → 2293, exactly flat** (charter invariant 7b — and it matches the `phase2Start`
+   figure verifier-T3b independently recorded, so two agents measured 2293 on two different
+   trees); uncovered **functions 57 → 57** (7a); tests 2108 → 2108 (7c).
+   `src/supplementary` functions 100% before and after.
+
+   One number is *not* flat and should not be rounded away: functions **94.0871% →
+   94.0810%** (907/964 → 906/963). No function stopped being covered — the ratio moved
+   because a *covered* function left the denominator. `KeyValue` drops from 22 statements /
+   6 functions to 20 / 5: with parameter properties the constructor has no source-level body
+   left to map to, so it stops being counted at all. Removing a covered item from a ratio
+   below 100% mechanically lowers it. Well clear of the 94.0 floor, and the metric with
+   teeth (uncovered counts) is flat on both statements and functions.
+
+   Branch % is inside its documented RNG noise band — the baseline tree alone gave 88.73 and
+   88.4 for `src/supplementary` on two consecutive runs.
+
+### Deliberately left
+
+- **The `getX()`/`setX()` accessors — all 18.** `lint-debt.md` says the accessor conversion
+  is API-breaking and that **T12 must rule on it before T4–T11 start converting**, so
+  converting them here would have pre-empted a decision that is explicitly not mine. It is
+  also not on my dispatch's allowed list, which scopes renaming to *private* names.
+- **The `createRandomNumberProvider_*` factory names**, for the same reason — verbose and
+  Java-flavoured, but public API.
+- **Every numeric literal**, including the Java-style `0.0` / `2.0`. Changing them is
+  provably value-identical, but it puts a diff hunk inside an arithmetic expression in the
+  one file where a reviewer must be able to scan for exactly that. Not worth it.
+- **`series[series.length - 1]` → `series.at(-1)`**: `at()` is typed `T | undefined`, so it
+  would need a non-null assertion — moving debt from a style nit onto the pile of 1104 `!`s.
+
+### DISCOVERED
+
+- **DISCOVERED (T16, `KeyValue` → tuple):** the migration is far smaller than the ~80 call
+  sites suggest, because only **8** of them mutate a pair after construction:
+  `setKey` at `GenericMap.ts:136`, `ImprecisionMap.ts:437,474,480`, `RubatoDef.ts:181,189`;
+  `setValue` at `RubatoDef.ts:185,190`. Everything else is read-only use of
+  `getKey()`/`getValue()`, i.e. mechanical. (Note when grepping: `.setValue(` has 124 hits in
+  `src/`, but all except those two are `Attribute.setValue` from XomTypes.)
+- **DISCOVERED (T12/T16, accessor conversion cost for this cluster):** `RandomNumberProvider`
+  is cheap whenever T12 rules — only 4 call sites outside `src/supplementary`, all in
+  `ImprecisionMap.ts` (`getLowerLimit`/`getUpperLimit`, lines 422–423). Its other seven
+  getters and `getDistributionType` are reached **only from `tests/supplementary/`**. One
+  wrinkle: converting `getLowCut()` to `get lowCut()` collides with the private field of the
+  same name, so it needs `#`-private fields (target is ES2022, so they emit natively) or a
+  constructor that takes all parameters instead of the assign-after-construction factory
+  pattern. `setSeed`/`setInitialValue` should stay **methods** either way — they reset
+  `series` as a side effect, so a property setter would misrepresent them.
+- **DISCOVERED (pre-existing bug, do NOT fix without a parity decision):**
+  `getValue(NaN)` recurses `getValue` ↔ `getValueDouble` until the stack overflows, and
+  `getValue(Infinity)` hangs in `while (series.length <= index) this.nextDouble()` for every
+  non-list distribution. Both are present **identically in the baseline** — my probe asserts
+  the `NaN` recursion still throws `RangeError` in both builds, i.e. the bug is preserved
+  bug-for-bug per the charter. Reachable only if an MPM file yields a non-finite index, which
+  nothing in the fixtures does. Worth a guard eventually; it is a behaviour change, so it
+  needs to be booked as one rather than smuggled into a style item.
+- **DISCOVERED (`lint-debt.md`, corrected in place):** the `prefer-readonly` figure of 38 was
+  a **T2-tree** measurement that T3 never refreshed. Re-measured on three trees with one
+  config: `fc81fc5` = 38 (reproduces the record exactly), `20e94c2` = 18, post-T4 = **17**.
+  T5–T11 should budget against 17. The other three rows of that "measured but not enabled"
+  table are probably stale the same way; I did not re-run them.
+
+### Handoff
+
+Nothing blocked, nothing deferred that T5 depends on. The cluster is now lint-clean
+(`eslint src/supplementary tests/supplementary` is silent) and prettier-clean. The one thing
+a verifier should re-derive rather than take on trust is check 1 — build `20e94c2` and the
+working tree and diff `dist/supplementary/RandomNumberProvider.js`; if any hunk in that diff
+is not a comment, a `_seed`→`seed`-class rename, or one of the two named param-reassign
+rewrites, fail the item.
+
+## [T4] verifier — supplementary local idioms (2026-08-08)
+
+**PASS.** Every claim in the `## [T4] worker` entry reproduced independently against a
+`git archive 647a9a1` scratch tree (`src/` and `tests/` at 647a9a1 are byte-identical to
+20e94c2 — confirmed with `git diff --stat 647a9a1 20e94c2 -- src/ tests/`, empty — so the
+worker's baseline restatement is correct and the intervening `refactor/` commits are inert).
+
+### 1. Manifest — clean
+
+`git status --porcelain` is exactly 4 ` M`: `src/supplementary/KeyValue.ts`,
+`src/supplementary/RandomNumberProvider.ts`, `refactor/lint-debt.md`, `refactor/log.md`.
+No untracked files (`-uall`), no deletions, no additions. Re-checked after all probe work.
+
+### 2. Verify — green, independently run
+
+`npm run verify` = `tsc` → `tsc -p tsconfig.tests.json` → `vitest run`. Both tsc stages exit
+0 (re-run standalone to confirm, not just inferred from the `&&` chain). **2108/2108, 44
+files.**
+
+### 3. THE CRITICAL CHECK — empirical RNG sequence identity: IDENTICAL
+
+Structural argument refused; measured instead. Probe imported the **baseline build** and the
+**working-tree build** side by side and compared **raw IEEE-754 bits** (`DataView.getFloat64`
+→ hex), so `-0`, `NaN` and precision loss cannot hide behind a formatter.
+
+`Math.random` was replaced with a deterministic xorshift32, **reset before each scenario for
+each tree**. This is the load-bearing part of the design: the constructor seeds from
+`Math.random()`, so the worker's move of that call from the constructor body into a field
+initialiser is exactly what a stubbed stream detects — a changed call count or ordering
+desyncs the stream and every downstream value differs. The probe also asserts the
+`Math.random` **call count** matches per scenario. It does, everywhere.
+
+- **415 scenarios, 157 913 observations, 0 mismatches.**
+- The two full dumps are **byte-identical**: `sha256(seq-base.json) ==
+  sha256(seq-new.json) == a80a4787…60de6a`.
+- Coverage: all six factories; no-seed (the real production path, exercising the
+  `Math.random`-derived seed) and `setSeed(12345/0/-987654321)`; interleaved
+  `setSeed`/`setInitialValue` call patterns; `setInitialValue`-only; all nine getters;
+  fractional `getValueDouble`; negative, `-0`, sub-epsilon and large indices; three
+  ≥20 000-value sequences (uniform, brownian, compTriangle) plus a 10 000-value gaussian
+  read **out of order** (`getValue(9999)` first, then 0…9999, to force the memoisation path).
+- **`lowerLimit > upperLimit` grid**: 11 provider configurations × 14 initial values
+  (`0, ±5, ±10, ±20, 0.5, -0, NaN, ±Infinity, ±1e308`), including inverted-limit brownian,
+  inverted-limit compensating triangle, and `lowCut > highCut`. All identical.
+
+**Dangerous edges — 56 cases, all identical.** `getValue(Infinity)`/`(NaN)`/`(1e12)`/
+`(4294967296)` and the `getValueDouble` equivalents either hang or exhaust the array-length
+limit *in both trees*, so they were run one-per-subprocess under a timeout and compared as
+classified outcomes (value bits / `THROW:<Error>` / `TIMEOUT`) across 7 provider configs ×
+8 operations. **56/56 SAME**, including the `NaN` mutual-recursion `RangeError` and the
+non-list `Infinity` hang. One case (`gaussian getValue(4294967296)`) reported DIFF on a first
+pass at a 6 s budget; re-run standalone at 300 s it is `THROW:RangeError` in **both** trees in
+~3.5 s, three trials each — a timeout race under load, not a behavioural difference. Sweep
+re-run at 20 s: 56/56 SAME, 0 DIFF.
+
+### 4. Emitted-JS diff — every hunk classified, nothing unaccounted
+
+Both trees built; `dist/supplementary/*.js` diffed.
+
+- **`KeyValue.js` is byte-identical apart from the added doc comment.** The parameter-property
+  rewrite emits *exactly* the previous JS — TS still emits the `key;`/`value;` field
+  declarations (`target: ES2022`, so `useDefineForClassFields` defaults on) and the same
+  constructor assignments in the same order. `KeyValue.d.ts` likewise has no non-comment change.
+- **`RandomNumberProvider.js`**: 5 hunks. Filtering context and comments, the complete set of
+  changed non-comment lines is: (a) `_seed`/`_hasSpare`/`_spare` → `seed`/`hasSpare`/`spare`
+  plus the seed initialiser moving to its own declaration *at the same position in the field
+  list*; (b) `let u, v, s` split to three lines; (c) the `setInitialValue` rewrite; (d) the
+  `getValue` rewrite; (e) the `intex` → `wholeIndex` local rename in `getValueDouble`.
+  **No arithmetic expression, no bit operation, no `nextRandom()`/`nextDouble()` call site and
+  no field-declaration order changed.** Zero unclassified hunks.
+- Property-creation order is preserved: the field list emits in identical order in both trees,
+  so `Object.keys` ordering is unchanged even in principle.
+
+**Old private names**: `grep -rn '_seed\|_hasSpare\|_spare' src/ tests/` → **zero hits**.
+No bracket access, no `as any`/`as unknown` reaching them, and no `Object.keys`/`entries`/
+`values`/`structuredClone` anywhere in `src/supplementary` or `tests/supplementary`. The 21
+`Object.entries` hits elsewhere are all XML attribute-building helpers in unrelated tests.
+
+### 5. The two control-flow rewrites — line-by-line vs 647a9a1
+
+- **`setInitialValue`**: the `if (v > upperLimit) … else if (v < lowerLimit) …` **shape and
+  comparison order are preserved verbatim**; the rewrite only adds the `else initialValue =
+  value` arm that the original expressed by *not* reassigning. `this.series = []; push(v)` →
+  `[initialValue]` allocates a fresh array in both. The worker's refusal to collapse to
+  `Math.min(Math.max(…))` is **correct and load-bearing**: with `lowerLimit=10,
+  upperLimit=-10, value=-20` the original yields `10` (lower wins, second branch) while the
+  clamp collapse yields `-10`. Probed directly — identical.
+- **`getValue`**: `clampedIndex`/`wholeIndex` are pure renames of the two successive values the
+  parameter took. The literal `clampedIndex !== Math.floor(clampedIndex)` test is preserved
+  rather than `Number.isInteger`, which is also **load-bearing**: they disagree on `Infinity`.
+  Confirmed empirically rather than by argument — `getValue(Infinity)` still enters the
+  `while` loop (hang / `RangeError`) instead of recursing into `getValueDouble`, identically
+  in both trees, for all five non-list distributions.
+- Both rewritten methods are **live production code**, not dead: `setInitialValue` is called
+  from `ImprecisionMap.doHandover` (`ImprecisionMap.ts:420,424`) and `random.getValue(index)`
+  drives the imprecision offsets throughout `renderImprecisionToMap`.
+
+### 6. Type-level claims — erased, confirmed from emitted JS
+
+`readonly` and `DistributionType` produce **no emitted JS whatsoever** — the sole match for
+either string in `RandomNumberProvider.js` is the pre-existing method name
+`getDistributionType()`. The `.d.ts` diff is entirely type-level: `private readonly
+distributionType`, the three private renames, `list: readonly number[]` (a widening — cannot
+break the one caller, `ImprecisionMap.ts:257`), and `getDistributionType(): DistributionType`.
+
+*Noted, not a finding*: `RandomNumberProvider` is re-exported from `src/index.ts`, so that
+last one narrows a **public** return type from `number` to a literal union. Assignment to
+`number` still compiles, and the only in-repo consumers are `tests/supplementary` comparisons
+against the `DISTRIBUTION_*` constants themselves. Within the stated scope of the item.
+
+### 7. Invariants — all hold
+
+- `git diff --stat 647a9a1 -- tests/ vitest.config.ts eslint.config.js package.json
+  tsconfig.json tsconfig.tests.json` is **empty**. `tests/supplementary/**` genuinely
+  unedited (the worker's zero-test-edits claim is true), `tests/integration/` and all
+  fixtures untouched, config untouched.
+- No `eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `as any` or `as unknown` added
+  anywhere in the `src/` diff.
+- `refactor/log.md` is purely additive (153 insertions, **0 deletions**).
+- **Lint reconciles exactly.** Working tree `npm run lint` → `1467 problems (1437 errors,
+  30 warnings)`, matching the lint-debt.md headline verbatim. Baseline measured for
+  comparison: `1472 problems (1437 errors, 35 warnings)`. Errors flat, warnings −5 — precisely
+  the five `no-param-reassign` in `RandomNumberProvider.ts`.
+  `eslint src/supplementary tests/supplementary` is silent; prettier clean on both files.
+- **Coverage** (not requested, checked anyway since the worker flagged a moving number):
+  baseline and working tree report *identical* rounded figures — `85 / 85.7 / 94.08 / 85`,
+  2108 tests, `KeyValue.ts` 100% in both. Functions **94.08% ≥ 94.0** floor (charter 7a);
+  test count flat (7c). The worker's 94.0871% → 94.0810% sits below display precision; its
+  explanation (parameter properties leave the constructor with no source-level body to map,
+  so a *covered* function leaves the denominator) is mechanically sound.
+
+### Verdict
+
+**PASS T4.** The item is what it claims to be: comments, private renames, two carefully
+non-equivalent-collapse-avoiding control-flow rewrites, and type-only additions. The RNG
+sequence is bit-identical across 157 913 observations and 56 pathological edge cases, and
+`KeyValue`'s emitted JS did not change at all.
+
+**For the conductor**: the worker's `DISCOVERED` items are accurate as far as I checked them —
+`setInitialValue`/`getValue` non-finite-index pathology is present identically in the baseline
+(preserved bug-for-bug per charter, correctly *not* fixed here), and the
+`createRandomNumberProvider_*`/accessor surface was correctly left for T12's ruling. The
+`prefer-readonly` 38 → 17 correction in lint-debt.md is a `refactor/` bookkeeping claim I did
+not independently re-measure; the headline error/warning numbers, which I did, reconcile exactly.

@@ -1,6 +1,14 @@
 /**
- * This class provides random numbers based on the specified distribution.
- * Port of meico.supplementary.RandomNumberProvider
+ * Random numbers drawn from one of the distributions MPM's imprecision maps use.
+ * Port of `meico.supplementary.RandomNumberProvider`.
+ *
+ * **The numerics here are load-bearing, not incidental.** `getValue(i)` memoises into
+ * `series`, so every consumer reading an imprecision map sees one fixed sequence per
+ * provider, and `setSeed()` makes that sequence reproducible. Changing an expression, the
+ * order of operations, or how many times `nextRandom()` is called per value changes the
+ * numbers a performance renders. That goes double for the two correlated distributions,
+ * where each value is derived from its predecessor and a single extra draw shifts
+ * everything after it. Treat this file as numerics rather than as style.
  */
 export class RandomNumberProvider {
   static readonly DISTRIBUTION_UNIFORM = 0;
@@ -10,7 +18,9 @@ export class RandomNumberProvider {
   static readonly DISTRIBUTION_CORRELATED_COMPENSATING_TRIANGLE = 4;
   static readonly DISTRIBUTION_LIST = 5;
 
-  private distributionType: number;
+  private readonly distributionType: DistributionType;
+
+  /** Values already drawn, in order; `getValue(i)` extends it on demand and reads it back. */
   private series: number[] = [];
 
   private lowCut = 0;
@@ -23,32 +33,34 @@ export class RandomNumberProvider {
   private mode = 0;
   private degreeOfCorrelation = 0;
 
-  // Simple seeded random number generator (Mulberry32)
-  private _seed: number;
-  private _hasSpare = false;
-  private _spare = 0;
+  /** Mulberry32 state. Seeded at random unless `setSeed()` pins it. Never 0. */
+  private seed = Math.floor(Math.random() * 2147483647) || 1;
+  private hasSpare = false;
+  private spare = 0;
 
-  private constructor(distributionType: number) {
+  private constructor(distributionType: DistributionType) {
     this.distributionType = distributionType;
-    this._seed = Math.floor(Math.random() * 2147483647) || 1; // ensure non-zero
   }
 
   private nextRandom(): number {
     // Mulberry32 PRNG for reproducibility with seed
-    let t = (this._seed += 0x6d2b79f5);
+    let t = (this.seed += 0x6d2b79f5);
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
   private nextGaussianRandom(): number {
-    // Box-Muller transform
-    if (this._hasSpare) {
-      this._hasSpare = false;
-      return this._spare;
+    // Polar form of the Box-Muller transform: it yields two normal deviates per pass, so
+    // the second is kept as the spare and returned by the next call.
+    if (this.hasSpare) {
+      this.hasSpare = false;
+      return this.spare;
     }
 
-    let u: number, v: number, s: number;
+    let u: number;
+    let v: number;
+    let s: number;
     do {
       u = this.nextRandom() * 2 - 1;
       v = this.nextRandom() * 2 - 1;
@@ -56,8 +68,8 @@ export class RandomNumberProvider {
     } while (s >= 1 || s === 0);
 
     s = Math.sqrt((-2 * Math.log(s)) / s);
-    this._spare = v * s;
-    this._hasSpare = true;
+    this.spare = v * s;
+    this.hasSpare = true;
     return u * s;
   }
 
@@ -141,19 +153,24 @@ export class RandomNumberProvider {
     return rand;
   }
 
-  static createRandomNumberProvider_distributionList(list: number[]): RandomNumberProvider {
+  static createRandomNumberProvider_distributionList(
+    list: readonly number[],
+  ): RandomNumberProvider {
     const rand = new RandomNumberProvider(RandomNumberProvider.DISTRIBUTION_LIST);
     rand.series = [...list];
     return rand;
   }
 
-  getDistributionType(): number {
+  getDistributionType(): DistributionType {
     return this.distributionType;
   }
 
+  /** Pins the sequence, discarding everything drawn so far — including a correlated
+   * distribution's factory-supplied starting value, which must then be restored with
+   * {@link setInitialValue}. */
   setSeed(seed: number): void {
-    this._seed = seed;
-    this._hasSpare = false;
+    this.seed = seed;
+    this.hasSpare = false;
     this.series = [];
   }
 
@@ -189,42 +206,45 @@ export class RandomNumberProvider {
     return this.degreeOfCorrelation;
   }
 
+  /** Restarts a correlated distribution's series from `value`. No-op for the others. */
   setInitialValue(value: number): void {
+    let initialValue: number;
     switch (this.distributionType) {
       case RandomNumberProvider.DISTRIBUTION_CORRELATED_BROWNIANNOISE:
-        if (value > this.upperLimit) value = this.upperLimit;
-        else if (value < this.lowerLimit) value = this.lowerLimit;
+        if (value > this.upperLimit) initialValue = this.upperLimit;
+        else if (value < this.lowerLimit) initialValue = this.lowerLimit;
+        else initialValue = value;
         break;
       case RandomNumberProvider.DISTRIBUTION_CORRELATED_COMPENSATING_TRIANGLE:
-        value = this.clip(value);
+        initialValue = this.clip(value);
         break;
       default:
         return;
     }
-    this.series = [];
-    this.series.push(value);
+    this.series = [initialValue];
   }
 
   getValue(index: number): number {
-    index = Math.max(0, index);
-    if (index !== Math.floor(index)) return this.getValueDouble(index);
-    index = Math.floor(index);
+    const clampedIndex = Math.max(0, index);
+    if (clampedIndex !== Math.floor(clampedIndex)) return this.getValueDouble(clampedIndex);
+    const wholeIndex = Math.floor(clampedIndex);
 
     if (this.distributionType === RandomNumberProvider.DISTRIBUTION_LIST)
-      return this.series[index % this.series.length];
+      return this.series[wholeIndex % this.series.length];
 
-    while (this.series.length <= index) this.nextDouble();
-    return this.series[index];
+    while (this.series.length <= wholeIndex) this.nextDouble();
+    return this.series[wholeIndex];
   }
 
+  /** Linear interpolation between the values either side of a fractional index. */
   getValueDouble(index: number): number {
-    const intex = Math.floor(index);
-    const rest = index - intex;
-    const a = this.getValue(intex);
+    const wholeIndex = Math.floor(index);
+    const rest = index - wholeIndex;
+    const a = this.getValue(wholeIndex);
 
     if (rest <= 0.0) return a;
 
-    const b = this.getValue(intex + 1);
+    const b = this.getValue(wholeIndex + 1);
     return a + (b - a) * rest;
   }
 
@@ -305,3 +325,15 @@ export class RandomNumberProvider {
     return result;
   }
 }
+
+/**
+ * The `RandomNumberProvider.DISTRIBUTION_*` constants as a type, so a provider cannot be
+ * built for a number that names no distribution.
+ */
+export type DistributionType =
+  | typeof RandomNumberProvider.DISTRIBUTION_UNIFORM
+  | typeof RandomNumberProvider.DISTRIBUTION_GAUSSIAN
+  | typeof RandomNumberProvider.DISTRIBUTION_TRIANGULAR
+  | typeof RandomNumberProvider.DISTRIBUTION_CORRELATED_BROWNIANNOISE
+  | typeof RandomNumberProvider.DISTRIBUTION_CORRELATED_COMPENSATING_TRIANGLE
+  | typeof RandomNumberProvider.DISTRIBUTION_LIST;

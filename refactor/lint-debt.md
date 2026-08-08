@@ -1,6 +1,6 @@
-# Lint debt (as of T3)
+# Lint debt (as of T4)
 
-> Updated after **T3** (out-of-scope module excision). Counts below are the *current*
+> Updated after **T4** (supplementary local idioms). Counts below are the *current*
 > `npm run lint` output; the T2 baseline is kept in the headline table for comparison.
 
 Snapshot of every ESLint violation left in the tree after T2's safe auto-fixes, grouped by
@@ -17,14 +17,19 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 
 ## Headline numbers
 
-| | count | after T3 |
-|---|---|---|
-| Violations before T2 | 2104 | |
-| Auto-fixed in T2 (semantics-preserving only) | 345 | |
-| **Remaining debt (errors)** | **1759** | **1437** |
-| `no-param-reassign` warnings (separate, see below) | 40 | 35 |
-| Files affected (≥1 error) | 90 of 118 | 81 of 105 |
-| Still auto-fixable | 0 | 0 |
+| | count | after T3 | after T4 |
+|---|---|---|---|
+| Violations before T2 | 2104 | | |
+| Auto-fixed in T2 (semantics-preserving only) | 345 | | |
+| **Remaining debt (errors)** | **1759** | **1437** | **1437** |
+| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** |
+| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 |
+| Still auto-fixable | 0 | 0 | 0 |
+
+T4 touched only `src/supplementary/**`, which carried **zero errors** going in, so the error
+column is flat by construction. What it cleared is the warning column: all 5
+`no-param-reassign` in `RandomNumberProvider.ts` (35 → 30). Measured, not estimated:
+`npm run lint` → `1467 problems (1437 errors, 30 warnings)`.
 
 T2 predicted "306 sit in modules T3 deletes, real Phase 2 debt ~1453". T3 removed **322**
 errors and **5** warnings; the delta reconciles exactly:
@@ -119,11 +124,28 @@ All eight files below were removed by `git rm` in T3, so this debt is retired, n
 | 1 | `src/pitches/FeatureVector.ts` |
 | 1 | `src/svg/SvgCollection.ts` |
 
-### T4 — supplementary — 1 → **0**
+### T4 — supplementary — 1 → **0, DONE**
 Was `no-extraneous-class` 1 in `src/supplementary/InputStream2StringConverter.ts`, flagged
 at T2 as "not in T4's scope, not in the coverage include list, may be a T3 deletion
 candidate — **DISCOVERED, unresolved**". T3 **resolved it**: the file was referenced by
-nothing at all (not even `index.ts`), so it was deleted. T4 now starts from zero debt.
+nothing at all (not even `index.ts`), so it was deleted. T4 therefore started from zero
+errors and ends at zero: `eslint src/supplementary tests/supplementary` is **silent**.
+
+T4's actual payment was in the two non-error categories:
+
+| category | before T4 | after T4 |
+|---|---|---|
+| `no-param-reassign` (warn) | 5, all `RandomNumberProvider.ts` | **0** |
+| `prefer-readonly` (previewed, not enabled) | 1, `RandomNumberProvider.distributionType` | **0** |
+| `getX()`/`setX()` accessor census | 18 | **18 — deliberately unchanged, see below** |
+
+The accessor count is untouched **on purpose**. This file's own note (below) says the
+accessor conversion is API-breaking and that **T12 should rule on it before T4–T11 start
+converting**; T4 honoured that. `RandomNumberProvider`'s accessor surface is unusually cheap
+to convert whenever that ruling lands — only 4 call sites outside its own cluster, all in
+`ImprecisionMap.ts` (`getLowerLimit`/`getUpperLimit` ×2 each); the other seven getters and
+both setters are reached only from `tests/supplementary/`. `KeyValue` is the opposite
+extreme: ~80 call sites across `mei/`, `mpm/` and `msm/`.
 
 ### T5 — xml — 15
 `no-non-null-assertion` 6, `prefer-for-of` 3, `no-unused-vars` 2, `unified-signatures` 2,
@@ -264,14 +286,15 @@ Per the CHARTER.md section added 2026-08-08. T2 is a pure formatting/tooling ite
 codifies the direction in lint config and **measures** it; it annotates no `readonly` in
 `src/` and adds no functional-style plugin. That is Phase 2/3 work.
 
-**Enabled now**: `no-param-reassign` at **`warn`** (default `props: false`) — **35 warnings**
-after T3 (was 40), zero new errors, so it cannot turn the lint output red on its own.
+**Enabled now**: `no-param-reassign` at **`warn`** (default `props: false`) — **30 warnings**
+after T4 (35 after T3, was 40), zero new errors, so it cannot turn the lint output red on
+its own.
 
 | n | file |
 |---|---|
 | 7 | `src/midi/EventMaker.ts` |
 | ~~5~~ | ~~`src/mei/Mei2MusicXmlConverter.ts`~~ — deleted in T3, the full −5 |
-| 5 | `src/supplementary/RandomNumberProvider.ts` |
+| ~~5~~ | ~~`src/supplementary/RandomNumberProvider.ts`~~ — cleared in T4, the full −5 |
 | 3 | `src/midi/Midi.ts`, 3 `src/midi/MidiTypes.ts` |
 | 2 | `src/mpm/elements/maps/ImprecisionMap.ts`, `src/mpm/elements/styles/defs/RubatoDef.ts`, `src/msm/Msm.ts` |
 | 1 | 9 further map/data files, 2 integration tests |
@@ -284,10 +307,19 @@ the line. Do not "fix" them to zero before ARCHITECTURE.md exists.
 
 | rule | total | src only | verdict |
 |---|---|---|---|
-| `prefer-readonly` | 38 | 38 | **Enable in Phase 2.** Private fields never reassigned after construction — exactly the charter's "type-level immutability where it's free", zero runtime risk, small enough to clear per item. |
+| `prefer-readonly` | 38 | 38 → **17** | **Enable in Phase 2.** Private fields never reassigned after construction — exactly the charter's "type-level immutability where it's free", zero runtime risk, small enough to clear per item. **The 38 is a T2-tree figure and was never refreshed by T3** — see the correction below. |
 | `no-param-reassign` `{ props: true }` | 97 | 95 | The 57 beyond the 40 above are *mutations through* a parameter — i.e. the literal "don't mutate inputs" signal. **This is the number T12 should reason about** when drawing the mutation boundary; many will be the sanctioned `renderXToMap(map)` case. |
 | `prefer-readonly-parameter-types` | 805 | 679 | **Do not enable.** Confirms its reputation; 679 in `src/` would drown every other signal. The facade's plain-data acceptance criterion (T13) is a better instrument than this rule. |
 | `require-array-sort-compare` | 1 | 0 | Only site is in a test. No `.sort()`-without-comparator bug in `src/`. |
+
+> **`prefer-readonly` correction (T4).** The 38 above is real but *stale*: it was measured on
+> T2's tree, and T3 then deleted eight modules without re-running the preview. Re-measured on
+> three trees with one config (`prefer-readonly` alone, `projectService: true`, `src/` only):
+> **`fc81fc5` (T2's tree) = 38 — reproduces the recorded figure exactly**, `20e94c2` (post-T3,
+> T4's baseline) = **18**, working tree (post-T4) = **17**. So T3's deletions absorbed 20 of
+> them and T4 cleared 1 (`RandomNumberProvider.distributionType`). **T5–T11 should budget
+> against 17, not 38.** The same staleness likely affects the other three rows in this table,
+> which T4 did not re-measure — treat all four as T2-tree figures until someone re-runs them.
 
 Note the charter's facade criterion — plain, structured-clone-safe data — is **not** a lint
 property at all: no rule can tell a `readonly` wrapper around a live XomTypes node from
