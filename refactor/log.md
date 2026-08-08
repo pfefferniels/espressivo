@@ -4452,3 +4452,17 @@ Both required justifications are present in the worker entry and adequate: the
 **intentional behaviour change** (parity-bug fix, argued from mission + unreachability)
 under "Behaviour change — deliberate", and the **test-count increase 2108 → 2115** under
 its own heading, correctly noting invariant 7c gates *decreases* only.
+
+## [phase-2] conductor — phase end audit: PASS (2026-08-08)
+
+Phase 2 complete: T4-T11 + T9b, all verified, 0 blocked, 0 reverted. Invariant 7 v3:
+- Functions 94.22% >= 94.0 floor PASS
+- Uncovered statements 2255 <= 2318 budget PASS (improved from phase-start 2293)
+- Test count 2115: -5 (T3/T3b, tests of removed behavior, journaled) +7 (T9b Java-
+  derived pinning tests, journaled) PASS
+- Indicators: statements 85.08% (basis was 85.00), branch 85.61%.
+Every src cluster is now idiomatically cleaned with per-item behavioral proof.
+Advancing to Phase 3. First item: T20b (user-approved movement-fix mirror +
+ground-truth regeneration — invariant 2 is suspended FOR THE REGENERATED REFERENCE
+DIRS ONLY, per the user's 'yes, regenerate'; the hand-authored mei/*.mei inputs
+remain immutable). T12 architect follows.
