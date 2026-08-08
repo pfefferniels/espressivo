@@ -110,6 +110,21 @@ back to disk before finishing. Knowledge lives in: `CHARTER.md` (rules),
 from T12 on), and git history. If an agent's context degrades, it is killed and the
 item re-dispatched fresh — the disk state makes that lossless.
 
+## Agent craft notes (hard-won, follow them)
+
+- The session scratchpad is SHARED by all swarm agents. Always use an item-unique
+  subdirectory (`t7base/`, `t9verify/`, …); `git archive` over an existing dir
+  MERGES silently. Verify extracted baselines with
+  `git show <sha>:<path> | diff - <scratch>/<path>` spot checks.
+- `cd` persists across a compound bash command — a later stage can silently run in
+  the wrong tree. Prefer absolute paths or `(cd … && …)` subshells for per-tree
+  build/diff work.
+- Emitted-JS diffing (build both trees, diff dist/) is the standard evidence for
+  "type-level only" claims; pipeline byte-probes (fixtures → MSM/MPM/MIDI hashes
+  on both builds) are the standard evidence for serialization/rendering claims.
+  Reusable probes live in the scratchpad (t5verify/probe.mjs, probe2.mjs — take a
+  dist dir as argv[1]).
+
 ## Worker protocol
 
 1. Read CHARTER.md, your item in state.json, last ~3 entries of log.md, and

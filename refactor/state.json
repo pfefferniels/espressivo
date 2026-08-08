@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "431d944",
+  "lastGreenCommit": "009ee4f",
   "phase": 2,
-  "currentItem": "T5",
-  "counters": { "completed": 4, "blocked": 0, "reverted": 0 },
+  "currentItem": "T6",
+  "counters": { "completed": 5, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -51,14 +51,14 @@
     {
       "id": "T5",
       "phase": 2,
-      "status": "in_progress",
+      "status": "done",
       "title": "Local idioms: xml/XomTypes.ts",
       "details": "Internal cleanup only — the XOM-emulation API surface stays (it is load-bearing for serialization equivalence). Idiomatic internals, doc comment explaining the layer's purpose and byte-compat constraints. Deeper redesign is T17."
     },
     {
       "id": "T6",
       "phase": 2,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Local idioms: mpm styles + defs",
       "details": "src/mpm/elements/styles/** — getters/setters to accessors/properties, constructor patterns, static factory cleanup, union types over pseudo-enums, remove dead Java idioms. Update unit tests mechanically."
     },
