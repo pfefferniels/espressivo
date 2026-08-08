@@ -734,3 +734,26 @@ correct route for a reversal is a follow-up item, not an edit — the swarm's wh
 property is that every committed line passed an adversarial read, and an out-of-band edit
 silently voids that for the files it touches. Charter worker protocol step 5/6 implies this
 but does not say it; worth an explicit line if anyone amends the charter.
+
+## [T3b] conductor — integrity response to the unreviewed delta in 67b407e (2026-08-08)
+
+worker-T3 self-reported post-READY edits inside the verified commit: 3 out-of-scope
+stubs (Midi.exportMsm, Msm.exportChroma, Msm.exportPitches) + their 4 unit tests
+removed AFTER verifier-T3's PASS. Confirmed against the commit: tests/midi/Midi.test.ts
+(-33) and tests/msm/Msm.test.ts (-12) were never in the verifier's manifest.
+
+Decisions:
+1. NOT reverting preemptively — the delta gets what it lacked: review. verifier-T3b
+   dispatched on exactly the unreviewed hunks; revert only if it FAILs.
+2. Charter hardened: Worker protocol gains TREE FREEZE after READY; Conductor cycle
+   gains a mandatory manifest reconciliation before commit (this failure had two
+   parents: the worker edited late, and the conductor ran `git add -A` against a
+   stale manifest).
+3. Invariant 7 v3 adopted (verifier-T3 pt. 4, worker-T3 endorsement): ratio floor
+   retired; phase-end gates are functions ≥ 94.0, uncovered-statement budget
+   (phase-start + 25), and justified-only test-count decreases. The 85.00 stmts
+   floor with a 0.0072 margin would have tripped on the next honest deletion.
+4. Phase-2 start counts recorded in state.json (provisional until T3b confirms).
+5. Phase-1 audit verdict unchanged (worker's re-measured numbers still pass all
+   gates, old and new); its journaled numbers were stale — superseded by the [T3]
+   correction entry and this one.

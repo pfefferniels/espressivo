@@ -26,15 +26,18 @@ through files in `refactor/` + git history — never through agent memory.
 6. **Red → revert**: if verify is red after ≤2 fix rounds, `git restore .` /
    `git checkout -- .` back to last green, mark the item `blocked` in state.json
    with notes, move on.
-7. **Coverage floor** (rebased 2026-08-08 post-prettier, see [T3] verifier entry):
-   scoped coverage (vitest.config.ts include list) at each phase end must satisfy
-   statements ≥ 85.00 and functions ≥ 94.0. The statements metric is
-   FORMAT-SENSITIVE (v8 derives it from lines here) — a future mass reformat
-   re-bases it by construction and must never be read as a regression. Functions is
-   the format-insensitive, bit-stable anchor. Branch coverage is nondeterministic
-   (±0.02 run-to-run noise from RNG-driven tests): treat as a drift indicator with
-   ±0.1 tolerance, never as an equality check. Deleting *covered* dead code
-   legitimately lowers ratios — judge such dips by the diff, not the ratio.
+7. **Coverage invariant, v3** (2026-08-08; supersedes the ratio floor — rationale in
+   [T3] verifier entry pt. 4 + [T3] correction). Ratio floors punish honest
+   deletions and honest code-shrinking rewrites, so the phase-end audit checks:
+   a. **Functions ≥ 94.0%** (bit-stable, format-insensitive anchor).
+   b. **Uncovered scoped statements must not grow** beyond the phase-start count
+      + 25 budget without per-hunk journaled justification (catches new
+      unexercised code and lost test power; immune to deletions and shrinkage).
+   c. **Test count decreases only with journaled justification** (tests of removed
+      behavior; never weakened tests of kept behavior).
+   d. Statements% and branch% are reported as indicators only (branch has ±0.02
+      RNG run-noise; line-derived metrics rebase on mass reformats by construction).
+   The conductor records phase-start counts in state.json at each phase start.
 8. **Java repo is read-only.** Never touch `/Users/nielspfeffer/Projects/meico`.
 9. **File deletion**: use `git rm` (never bare `rm`) so deletions are tracked and
    permission-safe.
@@ -117,6 +120,11 @@ item re-dispatched fresh — the disk state makes that lossless.
 4. Append a log.md entry: what changed, why, surprises, handoff notes.
 5. Final report: `READY <id>` + 5-line summary, or `BLOCKED <id>` + reason.
 6. Do NOT commit — the conductor commits after verification.
+7. **TREE FREEZE after READY**: once you have reported READY, you may not touch the
+   working tree again — no edits, no "one more improvement", not even reversing your
+   own earlier call. If you realize something after READY, SendMessage the conductor
+   and wait; unreviewed post-READY edits poison the verified commit (this happened:
+   see the [T3] correction entry).
 
 ## Verifier protocol
 
@@ -140,7 +148,10 @@ item re-dispatched fresh — the disk state makes that lossless.
 1. Read state.json. Check running agents (ListAgents / task notifications).
 2. If a worker finished READY → dispatch verifier. If BLOCKED → revert tree, mark
    item blocked, dispatch next item's worker.
-3. If a verifier said PASS → commit (`refactor(<id>): ...`), push
+3. If a verifier said PASS → **first reconcile the manifest**: `git status
+   --porcelain` must match the file set the verifier's log entry reviewed (same
+   paths, same counts; refactor/ bookkeeping excepted). ANY unexplained delta →
+   do not commit; dispatch a delta review instead. Then commit (`refactor(<id>): ...`), push
    (`git push origin ts-idiomatic`), update state.json (status done,
    lastGreenCommit), dispatch next item's worker. Push only after a verified
    commit — never push an unverified working tree, never force-push. If the

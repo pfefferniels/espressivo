@@ -7,11 +7,17 @@
   "currentItem": "T4",
   "counters": { "completed": 3, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
-    "statementsFloor": 85.0,
-    "functionsFloor": 94.0,
-    "branchesIndicator": 85.73,
-    "branchesTolerance": 0.1,
-    "note": "Rebased 2026-08-08 post-prettier (was 86.69 stmts on pre-format basis; units changed, coverage did not — see [T3] verifier entry in log.md and charter invariant 7)"
+    "invariant": "v3 — see charter invariant 7",
+    "functionsFloorPct": 94.0,
+    "phase2Start": {
+      "coveredStatements": 13001,
+      "totalStatements": 15294,
+      "uncoveredStatements": 2293,
+      "functionsPct": 94.0871,
+      "testCount": 2108,
+      "provisional": "worker-T3-measured on clean archive of 67b407e; pending verifier-T3b confirmation"
+    },
+    "history": "86.69 stmts pre-format basis -> 85.03 post-prettier (units change) -> 85.0072 after T3+stub removal; ratio floor retired in favor of uncovered-count budget"
   },
   "queue": [
     {
