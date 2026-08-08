@@ -2,7 +2,7 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "4d02cb3",
+  "lastGreenCommit": "763546b",
   "phase": 1,
   "currentItem": "T2",
   "counters": { "completed": 1, "blocked": 0, "reverted": 0 },
@@ -97,7 +97,7 @@
       "phase": 3,
       "status": "pending",
       "title": "Public facade + index exports",
-      "details": "Implement the ARCHITECTURE.md facade (e.g. parseMei/convertToMsmMpm/perform/renderMidi) as additive API; index.ts exports curated; old entry points kept working. Integration tests may switch to facade only mechanically."
+      "details": "Implement the ARCHITECTURE.md facade (e.g. parseMei/convertToMsmMpm/perform/renderMidi) as additive API; index.ts exports curated; old entry points kept working. Integration tests may switch to facade only mechanically. ACCEPTANCE (charter, facade-plain-data bullet): facade outputs are plain JSON-serializable/structured-clone-safe data — survives postMessage, supports referential-equality memoization; XomTypes/XML types never appear in facade signatures."
     },
     {
       "id": "T14",
@@ -160,7 +160,7 @@
       "phase": 4,
       "status": "pending",
       "title": "Package hardening + docs",
-      "details": "package.json exports map, sideEffects, engines, declaration maps; README with API examples and the Java-parity story; document deliberate bug-for-bug parity list."
+      "details": "package.json exports map, sideEffects, engines, declaration maps; README with API examples and the Java-parity story; document deliberate bug-for-bug parity list. ALSO: rename package to `espressivo` (npm name `meico` is taken; user adopted the new name — update package.json name + any self-references in README/docs)."
     },
     {
       "id": "T23",
