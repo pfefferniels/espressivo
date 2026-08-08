@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "009ee4f",
+  "lastGreenCommit": "75da1e9",
   "phase": 2,
-  "currentItem": "T6",
-  "counters": { "completed": 5, "blocked": 0, "reverted": 0 },
+  "currentItem": "T7",
+  "counters": { "completed": 6, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -58,14 +58,14 @@
     {
       "id": "T6",
       "phase": 2,
-      "status": "in_progress",
+      "status": "done",
       "title": "Local idioms: mpm styles + defs",
       "details": "src/mpm/elements/styles/** — getters/setters to accessors/properties, constructor patterns, static factory cleanup, union types over pseudo-enums, remove dead Java idioms. Update unit tests mechanically."
     },
     {
       "id": "T7",
       "phase": 2,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Local idioms: mpm maps + data classes",
       "details": "src/mpm/elements/maps/** including data/. Same idiom checklist. Careful: rendering math must stay bit-identical; no reordering of floating-point operations."
     },
