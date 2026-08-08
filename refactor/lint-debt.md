@@ -1,6 +1,6 @@
-# Lint debt (as of T4)
+# Lint debt (as of T5)
 
-> Updated after **T4** (supplementary local idioms). Counts below are the *current*
+> Updated after **T5** (xml local idioms). Counts below are the *current*
 > `npm run lint` output; the T2 baseline is kept in the headline table for comparison.
 
 Snapshot of every ESLint violation left in the tree after T2's safe auto-fixes, grouped by
@@ -17,19 +17,24 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 
 ## Headline numbers
 
-| | count | after T3 | after T4 |
-|---|---|---|---|
-| Violations before T2 | 2104 | | |
-| Auto-fixed in T2 (semantics-preserving only) | 345 | | |
-| **Remaining debt (errors)** | **1759** | **1437** | **1437** |
-| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** |
-| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 |
-| Still auto-fixable | 0 | 0 | 0 |
+| | count | after T3 | after T4 | after T5 |
+|---|---|---|---|---|
+| Violations before T2 | 2104 | | | |
+| Auto-fixed in T2 (semantics-preserving only) | 345 | | | |
+| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** |
+| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 |
+| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 |
+| Still auto-fixable | 0 | 0 | 0 | 0 |
 
 T4 touched only `src/supplementary/**`, which carried **zero errors** going in, so the error
 column is flat by construction. What it cleared is the warning column: all 5
 `no-param-reassign` in `RandomNumberProvider.ts` (35 → 30). Measured, not estimated:
 `npm run lint` → `1467 problems (1437 errors, 30 warnings)`.
+
+T5 cleared 6 of the xml cluster's 15 errors (15 → 9, see the T5 section below) and left the
+warning column untouched. Measured: `npm run lint` → `1461 problems (1431 errors, 30
+warnings)`; `eslint -f json` confirms 81 files still carry ≥1 error, because both xml files
+retain deferred violations rather than reaching zero.
 
 T2 predicted "306 sit in modules T3 deletes, real Phase 2 debt ~1453". T3 removed **322**
 errors and **5** warnings; the delta reconciles exactly:
@@ -67,6 +72,10 @@ Counts are post-T3; the T2 column shows what the deletions absorbed.
 | 3 | 3 | `no-fallthrough` | `Performance.ts` switch cases — **verify each is intentional before touching**. |
 | 2 | 2 | `no-unsafe-function-type` | Bare `Function` type in tests. |
 | 1 | 1 | `no-this-alias` | (`no-case-declarations` is gone — its only site was a deleted module.) |
+
+T5's −6 came out of this table as: `prefer-for-of` 11 → 8, `no-unused-vars` 72 → 71,
+`no-explicit-any` 34 → 33, `no-this-alias` 1 → **0** (the rule now has no site left in the
+tree). The other rows are unchanged. The rest of the table is still the post-T3 measurement.
 
 ## Three things to read before paying any of this down
 
@@ -147,10 +156,32 @@ to convert whenever that ruling lands — only 4 call sites outside its own clus
 both setters are reached only from `tests/supplementary/`. `KeyValue` is the opposite
 extreme: ~80 call sites across `mei/`, `mpm/` and `msm/`.
 
-### T5 — xml — 15
-`no-non-null-assertion` 6, `prefer-for-of` 3, `no-unused-vars` 2, `unified-signatures` 2,
+### T5 — xml — 15 → **9, DONE (did not reach zero, deliberately)**
+Was: `no-non-null-assertion` 6, `prefer-for-of` 3, `no-unused-vars` 2, `unified-signatures` 2,
 `no-explicit-any` 1, `no-this-alias` 1 — `XmlBase.ts` 8, `XomTypes.ts` 7.
-The cleanest cluster in the codebase; T5 can plausibly reach zero.
+Now: `XmlBase.ts` 7, `XomTypes.ts` 2.
+
+**Cleared (6):** 3 `prefer-for-of` (index loops over xmldom `NamedNodeMap`/`NodeList` and a
+sibling scan → `for..of Array.from(...)`; a bare `for..of` does *not* typecheck because `lib`
+is `["ES2022","DOM"]` without `DOM.Iterable`), 1 `no-explicit-any` (the `as any` in
+`Element.query` → the xpath package's own `isElement`/`isAttribute`/`isTextNode` guards, which
+also retired a `as globalThis.Attr` cast), 1 `no-this-alias` (`let result = this` descent loop
+extracted into a module-local `descendChildElementPath`), 1 `no-unused-vars` (unused `Nodes`
+import in `XmlBase.ts`).
+
+**Deferred (9), each because clearing it exceeds this item's scope — not because it is hard:**
+
+| n | rule | why it stayed |
+|---|---|---|
+| 6 | `no-non-null-assertion` | 5 `XmlBase.ts`, 1 `XomTypes.ts` (`doc.documentElement!`). Per this file's own guidance, the fix is narrowing return types under **T12**'s null policy; adding guards would change behavior on paths that cannot be proven unreachable. |
+| 2 | `unified-signatures` | `Attribute`'s 2-arg/3-arg and `XmlBase`'s no-arg/`Document` constructor overload pairs. Collapsing either is a **public signature change**, forbidden by T5's scope. **T17**'s call. |
+| 1 | `no-unused-vars` | `XmlBase.validate(_schema?)` — removing the parameter is a public signature change, and the config has no `argsIgnorePattern`, so the underscore does not suppress it. |
+
+So the earlier "T5 can plausibly reach zero" was wrong: 3 of the 15 were public API surface
+that only T12/T17 can touch, and 6 are the codebase-wide null-assertion story.
+
+`prefer-readonly` in this cluster: **7 → 0** (6 private fields marked `readonly`, and dead
+`Element._ownerDocument` deleted).
 
 ### T6 — mpm styles + defs — 103
 `no-non-null-assertion` 84, `unified-signatures` 19

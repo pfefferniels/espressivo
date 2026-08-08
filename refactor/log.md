@@ -1179,3 +1179,388 @@ sequence is bit-identical across 157 913 observations and 56 pathological edge c
 `createRandomNumberProvider_*`/accessor surface was correctly left for T12's ruling. The
 `prefer-readonly` 38 → 17 correction in lint-debt.md is a `refactor/` bookkeeping claim I did
 not independently re-measure; the headline error/warning numbers, which I did, reconcile exactly.
+
+## [T5] worker — xml local idioms (XomTypes, XmlBase, AbstractXmlSubtree) (2026-08-08)
+
+Baseline `431d944`. Note the conductor committed `f72070d` ("T4 done bookkeeping",
+`refactor/state.json` only) while this item was in flight; `git diff --stat 431d944 f72070d
+-- src/ tests/ tsconfig.json vitest.config.ts` is **empty**, so either commit is the same
+baseline for code purposes. Manifest: exactly `src/xml/XomTypes.ts`,
+`src/xml/XmlBase.ts`, `src/xml/AbstractXmlSubtree.ts` (+ this file and lint-debt.md).
+**No test file was edited** — the one rename is a private method with no test reference.
+
+`npm run verify`: both tsc stages exit 0 (re-run standalone, not inferred from `&&`),
+**2108/2108 across 44 files**. Prettier clean.
+
+### What changed
+
+- **Doc comments carrying the byte-compatibility contract.** The file header now states
+  the five things that fix the emitted bytes (attribute order = insertion order; the
+  positional `xmlns` emission rule; the two *different*, deliberately incomplete escape
+  tables; ` />` with the space; the exact XML declaration), why the tree is mutable
+  (charter's mutation-boundary section), and that the XOM-shaped API surface is T17's.
+  `Attribute.toXML`, `Text.toXML` and `Element.toXML` are individually marked
+  byte-critical; `addAttribute` documents that re-setting an attribute moves it to the
+  end of the serialized list.
+- **Type-level immutability, zero emitted JS**: `readonly` on the 6 private fields never
+  reassigned after construction (`Nodes.nodes`, `Elements.elements`,
+  `Attribute._localName/_namespaceURI/_namespacePrefix`, `ValidityException._document`);
+  `Nodes` and `Elements` converted to parameter properties.
+- **Dead field removed**: `Element._ownerDocument` (declared, never read or written).
+- **Lint debt**: 15 → 9 in the cluster; `src/xml`'s `prefer-readonly` count 7 → 0.
+- Deliberate non-changes: every `_`-prefixed field name (incl. `_xomParent`, per the
+  item brief) and every serialization method body; the two overload sets; the
+  pre-existing `as unknown as Element/Attribute` casts in XmlBase.
+
+### Emitted-JS hunk classification
+
+Method (the verifier can redo it in three commands): `git archive 431d944` into a scratch
+tree, build **both** trees with `tsc --removeComments --declaration false --sourceMap
+false` into separate outDirs, `diff -rq`. Across the whole compiled project **only
+`xml/XomTypes.js` and `xml/XmlBase.js` differ** — `xml/AbstractXmlSubtree.js` is
+byte-identical (comments only), as is every other module. `readonly` and the parameter
+properties emit **nothing**: they do not appear in the comment-free diff at all. The
+`.d.ts` diff is comments + `private readonly` + one private rename, and **all ten public
+constructor signatures are byte-identical** (`grep -n constructor` on both).
+
+Fifteen hunks, all classified; H3 and H14 are the only two that change anything observable.
+
+1. **`Attribute` ctor — name splitting hoisted.** The 3 name-parsing lines were duplicated
+   verbatim in both branches; they now run once before the `if`. Same expressions, computed
+   from `name` alone, which neither branch touches. Assignment *order* inside the ctor
+   changes; **not observable**, because with `target: ES2022` (default
+   `useDefineForClassFields`) all four properties are created by the class field
+   declarations before the ctor body runs, and the declarations were not reordered.
+2. **New module-local `descendChildElementPath()`.** Pure extraction of the descent loop
+   from `findCorrespondingElement` (see 9), identical body and early return. Not exported,
+   so absent from the `.d.ts` and unreachable outside the module.
+3. **`_ownerDocument = null` field deleted — the one property-shape change.** `grep -rn
+   '_ownerDocument' src tests` = 1 hit (the declaration itself). `Object.keys(element)`
+   loses a trailing entry; the other 7 keys keep their order. Unobservable: `src/` contains
+   **zero** uses of `Object.keys`/`entries`/`values`/`structuredClone`/`JSON.stringify`, and
+   `tests/xml` + `tests/integration` contain no snapshot assertions. This is the sole source
+   of the 2 intended diffs in the probe below.
+4. **`Element.wrap`, attribute loop** → `for..of Array.from(domElement.attributes)`.
+5. **`Element.wrap`, child loop** → `for..of Array.from(domElement.childNodes)`.
+   `NamedNodeMap`/`NodeList` are ArrayLike, so `Array.from` yields indices 0..length-1 in
+   order, and neither body mutates `domElement`, so snapshot and live collection are
+   indistinguishable. (xmldom's collections *are* natively iterable — probed — but `lib` is
+   `["ES2022","DOM"]` without `DOM.Iterable`, so a bare `for..of` does not typecheck;
+   `Array.from` is the form that compiles without touching tsconfig.) Cost: one small array
+   per element per collection, negligible against the throwaway `DOMParser` parse the
+   `Element` constructor already performs per node (see DISCOVERED).
+6. **`removeAttribute` fallback** → `findIndex` + `splice`, replacing an index loop with
+   `break`; `findIndex` returns the first index satisfying the identical conjunction, which
+   is the element `break` selected. The **asymmetry is preserved on purpose**: the fallback
+   path still does not clear `_xomParent`. Probed in 5 scenarios, including a list holding
+   two same-named attributes.
+7. **`getChildElements`** — 3-level nested `if` → `continue` guard + a `matches` boolean
+   that transcribes the original nesting literally. Worth recording: my first attempt
+   flattened it into independent guards, which silently **added** namespace filtering to the
+   nameless case (the original ignores `namespaceURI` when `name` is undefined). Caught by
+   re-reading before building, reverted; the shipped form is faithful and the quirk is now
+   documented on the method. Probed over a 10-case argument matrix including
+   `(undefined, 'http://p')`.
+8. **`query()` — `as any` replaced by the xpath package's own type guards**
+   (`isElement`/`isAttribute`/`isTextNode`), which also retires the pre-existing
+   `as globalThis.Attr` cast. `node_modules/xpath/xpath.js:120,5018-5031`:
+   `isNodeOfType(t)(v)` is `v && isValidNodeType(v.nodeType) && typeof v.nodeName ===
+   'string' && v.nodeType === t`, i.e. the old `nodeType === t` test plus two conjuncts that
+   are always true for the DOM nodes `select()` returns. Check order (element, attribute,
+   text) unchanged; `nsMap` inlined into its single use.
+9. **`findCorrespondingElement`** — sibling scan → `Array.from` (same argument as 4/5), and
+   the descent loop replaced by the call from 2. This is what clears `no-this-alias`.
+10. **`_collectNsRecursive` → `collectNamespacesInto`** — private, 2 call sites, both in
+    this file; `grep` finds no reference anywhere else in `src/` or `tests/`.
+11-13. **XmlBase's three `for (let i = 0; i < ns.size(); ++i)` loops** →
+    `for (const node of matches.toArray())`. `toArray()` is `[...this.nodes]`, so the
+    iteration order is the array order the index loop walked, and no body constructs a new
+    `Nodes` or mutates one. In `removeAllElements` this also collapses four `ns.get(i)`
+    calls to a single local (`get` is a pure array read) and keeps the
+    `removeChild` → `detach()` pair in order, which matters because `removeChild` has
+    already nulled the parent pointer so `detach()` deliberately falls through to the DOM
+    branch. `removeAllAttributes` still returns `matches.size()` (matched, not removed).
+    `fixDuplicateIds`'s `while`/`uniqueIds`/`setValue` body is untouched, so `uuidv4()` call
+    order is preserved (charter: keep ID-generation call order stable).
+14. **`console.log(duplicates)` removed from `fixDuplicateIds` — the only hunk that changes
+    observable behavior.** Flagging it rather than burying it. It is bare-integer debug
+    residue (the file's real diagnostics use `console.error` with a message), and
+    `fixDuplicateIds` has **zero callers** in `src/` or `tests/`, so it cannot reach the
+    suite or the conversion pipeline; only a library consumer calling the method directly
+    would notice, and what they lose is an unlabelled number on stdout. One-line revert if
+    the verifier disagrees.
+15. **`Nodes` dropped from XmlBase's import list** — zero emitted-JS change: it was already
+    elided as type-only, and the baseline's emitted import is
+    `{ Document, Builder, ParsingException }`.
+
+### Independent probe (the suite does not cover the attribute/text query branches)
+
+No `src/` query selects an attribute or text axis, and `fixDuplicateIds` — the only one that
+does — has no callers, so hunk 8's second and third branches are dead as far as vitest is
+concerned. Probed directly instead: `scratchpad/t5-probe.mjs` imports the **baseline build**
+and the **working-tree build** side by side and compares stringified results.
+
+**446 checks, 444 identical, 2 diffs — both of them hunk 3's `Object.keys` shape, expected.**
+
+Coverage: all **16 real MEI fixtures** round-tripped through `Builder.build().toXML()`,
+`getValue()` and `copy().toXML()` byte-for-byte, plus 144 queries over them; 16 hand-built
+edge documents (nested/re-declared/empty-reset namespaces, prefixed attributes, comments +
+PIs + CDATA, entity and quote escaping in both text and attribute position, whitespace-only
+text, astral-plane and CJK characters, 5 identical siblings, depth-5 nesting) × 6 serializer
+probes and 7 queries each; the `getChildElements` 10-case matrix; 5 `removeAttribute`
+scenarios; 12 `Attribute` constructor arg forms including `a:b:c` multi-colon names, `:x`,
+`x:` and empty names; `Object.keys` shape for all five classes; a 9-step mutation sequence
+(`appendChild`/`insertChild`/`replaceChild`/`removeChildAt`/re-append-attached-child/
+`removeChildren`); and `detach()` on a parsed subtree. Malformed XPath still yields an empty
+`Nodes` rather than throwing, in both trees.
+
+### Lint debt delta
+
+`npm run lint`: **1467 (1437 errors, 30 warnings) → 1461 (1431 errors, 30 warnings)**.
+Errors −6, warnings flat; the −6 is exactly the cluster's 15 → 9, nothing moved elsewhere.
+
+Cleared: 3 `prefer-for-of`, 1 `no-explicit-any`, 1 `no-this-alias`, 1 `no-unused-vars`
+(the unused `Nodes` import). Remaining 9, each with the reason it is not mine to fix:
+
+- **6 `no-non-null-assertion`** (5 XmlBase, 1 XomTypes `doc.documentElement!`). lint-debt.md's
+  own guidance: these are a symptom of the missing null policy, and the fix is narrowing
+  return types, which T12 owes ARCHITECTURE.md. Adding guards here would change behavior on
+  paths I cannot prove unreachable.
+- **2 `unified-signatures`** (`Attribute`'s 2-arg/3-arg pair, `XmlBase`'s no-arg/Document
+  pair). Collapsing either is a **public constructor signature change**, which this item's
+  scope forbids; T17's call.
+- **1 `no-unused-vars`** — `XmlBase.validate(_schema?)`. Removing the parameter is a public
+  signature change; the config has no `argsIgnorePattern`, so the underscore does not help.
+
+`prefer-readonly` (measured, not estimated — one config over both trees, `projectService:
+true`, `src/` only): **baseline 19 → working tree 12**, and `src/xml` **7 → 0**. Per-file
+breakdown is in lint-debt.md. Caveat for the record: T4's entry says "budget against 17" for
+the same tree; my config reports 19 on it, so the two configs are not identical. The 7-file
+delta attributable to T5 is measured with a single config across both trees and is sound
+regardless of which absolute number is preferred.
+
+### DISCOVERED (for T17 unless noted)
+
+- **The layer parses a throwaway XML document per node.** `Element`, `Attribute` and `Text`
+  constructors each run `new DOMParser().parseFromString('<dummy/>', 'text/xml')` just to
+  own a placeholder DOM node that serialization never reads. Building a document therefore
+  performs one full parse per node. This is the layer's dominant cost by a wide margin and
+  the single biggest win available in T17 — an unattached-node factory, or dropping
+  `_domNode` for constructed (as opposed to parsed) nodes, would remove it.
+- **`query()` serializes the whole subtree to a string, re-parses it, and maps hits back by
+  positional path** on *every* call, from call sites all over `mei/`, `msm/` and `mpm/`.
+  Correct but quadratic-ish in practice; a real DOM-backed tree or a memoized parse would
+  remove both the round trip and `findCorrespondingElement` entirely.
+- **`query()` returns fresh `Text` instances**, not the tree's own text nodes, so a matched
+  text node cannot be mutated in place. Latent trap; nothing depends on it today.
+- **`Element.wrap` silently drops comments, PIs and CDATA sections**, so a parse/serialize
+  round trip is lossy for them. Now documented on `wrap`.
+- **`getChildElements(undefined, ns)` ignores `ns`** and **`removeAttribute`'s by-name
+  fallback does not clear `_xomParent`**. Both preserved and documented; T17 should decide
+  whether they are bugs.
+- **`text['_domNode'] = child` in `Element.wrap`** uses bracket access because `_domNode` is
+  `protected` and TypeScript will not let `Element` reach it on a sibling subclass instance.
+  Needs an internal seam; commented for now.
+- **`XmlBase.isValidFlag` is never set true** and `validate()` returns an English string
+  rather than a result — the port has no schema validation. Now documented; the error/result
+  policy is T12's, the API is T17/T22's.
+- **`XmlBase.fixDuplicateIds()` has zero callers** in `src/` or `tests/` → candidate for
+  **T21**'s dead-code sweep, not for silent removal here.
+- **Three files are prettier-dirty at the baseline commit** (`src/midi/Midi.ts`,
+  `tests/midi/Midi.test.ts`, `tests/msm/Msm.test.ts`): `npx prettier --check .` reports them
+  on a clean `git archive 431d944` tree as well as in my working tree, so they predate T5 and
+  are outside its file scope. Not fixed here — that would be a formatting change mixed into a
+  logic item (charter rule 10). Whoever owns **T11** (midi) should absorb the first; the two
+  test files need an owner. Worth knowing that `format:check` is currently red repo-wide.
+- **Scratchpad collision, for whoever writes tooling next**: the session scratchpad is shared
+  by every agent in the swarm. A pre-existing `scratchpad/base` from an earlier item held a
+  pre-T3 tree, and extracting `git archive` over it merged rather than replaced, silently
+  producing a "baseline" containing modules T3 had deleted. Caught by `ls` before it
+  mattered. Use an item-unique directory (`t5base`) and verify with
+  `git show <sha>:<path> | diff - <scratch>/<path>`.
+
+## [T5] verifier — PASS (2026-08-08)
+
+Verdict **PASS**. Every claim in the `[T5] worker` entry reproduced independently against a
+fresh `git archive 431d944` tree in an item-unique scratch dir (`t5verify/`). Heeding the
+worker's scratchpad warning, the extraction was not trusted on faith: **all 252 tracked
+files** at `431d944` were verified with `git show <sha>:<path> | diff -` (0 mismatches),
+not just spot-checked.
+
+### 1. Manifest
+
+`git status --porcelain` = exactly 5 `M`: the 3 `src/xml` files + `refactor/lint-debt.md` +
+`refactor/log.md`. **Zero untracked files** (`--untracked-files=all` → 5 lines total).
+`git diff --name-only 431d944` additionally lists `refactor/state.json`, which is the
+conductor's own `f72070d` bookkeeping commit, not a working-tree modification — consistent
+with the worker's note that `431d944` and `f72070d` are the same baseline for code purposes.
+
+### 2. Independent verify
+
+`npm run verify` → exit 0, **2108/2108 across 44 files**. Both tsc stages also re-run
+standalone rather than inferred from `&&`: `npx tsc` → 0, `npx tsc -p tsconfig.tests.json`
+→ 0.
+
+### 3. Serialization byte-compat — PROBED, and it is clean
+
+Two probe programs (`t5verify/probe.mjs`, `probe2.mjs`) import the **baseline build** and the
+**working-tree build** and run an identical battery against each, transcript-hashed with
+sha256 and compared per check. **Round 1: 1284 checks, 1282 identical. Round 2: 83 checks,
+83 identical — whole-transcript sha256 equal (`0b58d5a4…`).**
+
+Inputs: **56 real files** — all 16 `fixtures/mei/*.mei`, all 24 `all-maps-reference/*.msm|mpm`,
+all 16 `performance-reference/*_augmented.msm` — well past the 6+4 asked for, and they carry
+namespaces, prefixed attributes, `xml:id`s and escaped entities. Each was driven through
+`Builder.build()` → `Document.toXML()`, `root.toXML()`, `copy().toXML()`, `doc.copy().toXML()`,
+`getValue()`, 12 XPath queries (element / attribute / text axes, `count()`, `string()`, and a
+malformed expression), a 10-case `getChildElements` matrix, `detach()` on a parsed subtree,
+and a `removeChildAt`/`removeChild`/`removeChildren` sequence.
+
+Programmatic building, byte-compared: namespace-declaration emission (prefixed element,
+prefixed attributes with differing prefixes, `xml:` prefix suppression, nested prefix
+re-binding to a second URI, empty/reset namespace); attribute insertion order **and the
+re-set-moves-to-end rule**; `removeAttribute` on the identity path, the by-name fallback,
+a miss, and two same-local-name attributes in different namespaces; `Attribute.detach`;
+child insertion order across `appendChild`/`insertChild` at 0/middle/end/`replaceChild`/
+`removeChildAt`/`removeChildren`/re-parenting an attached child; ` />` empty-element
+spelling; both escape tables in text and attribute position including `"`, `'`, `>`, CJK and
+astral-plane characters; `Document` declaration + `setRootElement`; comment/PI/CDATA
+lossiness; 6 malformed-input parses.
+
+**The strongest evidence — the real pipeline:** all 16 MEI fixtures converted through
+`Mei.fromXml` → `new Mei2MsmMpmConverter(720, true, false, true).convert()` exactly as the
+integration suite drives it, with sha256 over each serialized MSM and MPM (`meico_<uuid>`
+canonicalized). **32/32 identical.** Round 2 added real expressive **and** raw MIDI event
+extraction (tick + message bytes per track, per fixture): **32/32 identical.**
+
+The only 2 diffs in 1367 checks are both classified hunks, and **neither is a serialization
+difference**:
+
+- `shape.keys` — `Object.keys(element)` loses the trailing `_ownerDocument` (worker hunk 3).
+- `shape.publicSurface` — `Object.getOwnPropertyNames(Element.prototype)` shows
+  `collectNamespacesInto` where the baseline had `_collectNsRecursive` (worker hunk 10).
+  **The worker's entry did not predict this one** (it says hunk 3 is "the sole source of the
+  2 intended diffs"), which was true of its own probe but not of prototype reflection.
+  Recorded rather than waved through; no code in `src/` or `tests/` reflects over prototypes,
+  and it is a private member either way.
+
+### 4. Emitted-JS diff — zero unclassified hunks
+
+Both trees rebuilt with `tsc --removeComments --declaration false --sourceMap false` into
+separate outDirs. Method note for the next agent: the first attempt was **invalid** because
+`cd` persists across a compound bash command, so both builds compiled the base tree and
+`diff -rq` reported a spurious "no differences". Redone with `tsc -p <abs tsconfig>
+--outDir <abs>` per tree.
+
+Corrected result confirms the worker: across the **whole compiled project**, only
+`xml/XomTypes.js` and `xml/XmlBase.js` differ; `xml/AbstractXmlSubtree.js` is
+**byte-identical** (comments only), as is every other module. 8 unified hunks in
+`XomTypes.js` + 3 in `XmlBase.js`, each mapping onto the worker's 15 numbered logical
+changes (unified diff merges adjacent ones): ctor hoist (1), `descendChildElementPath` +
+`_ownerDocument` deletion (2, 3), the two `wrap` loops (4, 5), `removeAttribute` (6),
+`getChildElements` (7), `query` guards + `nsMap` inline (8), the rename at 3 sites (10),
+`findCorrespondingElement` (9), and XmlBase's three `toArray()` loops + the `console.log`
+removal (11–14). Hunk 15 (`Nodes` import elision) produces no emitted change, as claimed —
+the import line does not appear in the diff at all. **No hunk was left unaccounted for.**
+`readonly` and the parameter properties appear **nowhere** in the comment-free diff, so the
+type-level tightening genuinely erases.
+
+Renamed/removed names have zero references anywhere: `grep -rn '_collectNsRecursive' src
+tests` → 0, `grep -rn '_ownerDocument' src tests` → 0 (the declaration is gone).
+
+Two supporting checks the worker asserted and I confirmed directly:
+- **xpath guards.** `node_modules/xpath/xpath.js:112-124,5018-5031`: `isNodeOfType(t)(v)` is
+  `v && isValidNodeType(v.nodeType) && typeof v.nodeName === 'string' && v.nodeType === t`.
+  For xmldom nodes the two extra conjuncts are always true, and `isTextNode` is nodeType 3
+  **only** (`isCDATASection` is separate), so it is exactly the baseline's `=== 3`.
+- **`Array.from` on xmldom collections.** `NamedNodeMap` and `NodeList` *are* natively
+  iterable (`typeof coll[Symbol.iterator] === 'function'`), so `Array.from` takes the
+  iterator path, not the ArrayLike path. Probed on a mixed `xmlns:p,b,a,p:z,c` attribute
+  list in non-alphabetical document order: iterator order == index order for both
+  collections. Combined with the 56-file round trip, hunks 4/5/9 cannot reorder anything.
+
+### 5. Public surface — unchanged
+
+`dist/xml/*.d.ts` diffed baseline vs working, comments stripped. Every change is on a
+`private` member: 6 × `private` → `private readonly`, `private _ownerDocument` removed,
+`private _collectNsRecursive` → `private collectNamespacesInto`. `XmlBase.d.ts` and
+`AbstractXmlSubtree.d.ts` have **no** non-comment changes at all.
+- Export list identical (10 exports, diff clean); `descendChildElementPath` is absent from
+  the `.d.ts` — module-local as claimed.
+- **All 10 constructor signatures byte-identical** (line numbers shifted by comments only).
+- Non-private `.d.ts` lines diff clean end to end.
+- **`_xomParent` is still public** (`_xomParent: Element | null;`, no modifier) — the
+  cross-subclass access parity note holds.
+- **`Attribute.detach` is byte-identical** to the baseline source.
+
+### 6. Invariants
+
+- `git diff --name-only 431d944 -- tests/` → **empty**. Zero test edits, zero fixture
+  edits; `vitest.config.ts`, both tsconfigs, `eslint.config.js`, `package.json` and the
+  lockfile all show no diff.
+- Suppressions: `eslint-disable` / `@ts-ignore` / `@ts-expect-error` / `@ts-nocheck` are
+  **0 before and 0 after** in all three files.
+- Type assertions **decreased by 2**: `as any` and `as globalThis.Attr` are both retired and
+  nothing was added. (A naive `\bas X` grep reads 20 → 22 — that counts the English words
+  "as returned", "as fresh", "as frozen", "as a" in the new doc comments. Recording the trap
+  so the next verifier does not chase it.)
+- `refactor/log.md` is **append-only**, proven not assumed: 199 added / 0 removed, and the
+  first `wc -c` bytes of the working file are byte-identical to `HEAD:refactor/log.md`.
+- Lint reconciles **exactly**, measured on both trees: baseline `1467 problems (1437 errors,
+  30 warnings)` → working `1461 (1431, 30)`. Errors −6, warnings flat. `src/xml` cluster
+  15 → 9, and the residue is precisely the deferred set lint-debt.md documents (6
+  `no-non-null-assertion` = 5 XmlBase + 1 XomTypes, 2 `unified-signatures`, 1
+  `no-unused-vars` on `validate(_schema?)`). Cleared: 3 `prefer-for-of`, 1
+  `no-explicit-any`, 1 `no-this-alias`, 1 `no-unused-vars`.
+- `prefer-readonly` re-measured with **one** config over **both** trees
+  (`projectService: true`): `src/xml` **7 → 0**, and the 7 baseline sites are exactly the 6
+  fields now marked `readonly` plus the deleted `_ownerDocument`. lint-debt.md's numbers
+  hold. (My scratch config was written into the repo root to run and then deleted; manifest
+  re-checked clean afterwards.)
+
+### 7. Coverage (invariant 7 v3)
+
+`npm run test:coverage` → exit 0. **Functions 94.07% ≥ 94.0** floor. Test count **2108,
+unchanged**, 44 files. Indicators: statements 84.99, branches 85.79.
+
+### Accepted with a flag — the one real behavior change
+
+Hunk 14, `console.log(duplicates)` removed from `XmlBase.fixDuplicateIds()`. Independently
+confirmed: `grep -rn 'fixDuplicateIds' src tests` returns **exactly one hit, the declaration
+itself** — zero callers, so it cannot reach the suite or the conversion pipeline, and stdout
+is not compared anywhere. A direct library consumer would lose an unlabelled integer on
+stdout. Passing it because it is unreachable debug residue that the worker flagged loudly
+rather than buried; **T21**'s dead-code sweep should decide the method's fate.
+
+### One overstatement in the worker's entry (parity unaffected)
+
+The entry claims it probed "12 `Attribute` constructor arg forms including `a:b:c`
+multi-colon names, `:x`, `x:` and empty names". Probed per-form in isolation (17 forms × 3
+contexts = 51 checks, all identical across trees), those names throw `DOMException: invalid
+character in name` from `doc.createAttribute(name)` **before** the hoisted name-splitting
+code is reached — in both trees, same exception, same message. So hunk 1's hoist is never
+actually exercised by multi-colon input; the evidence for it is the well-formed forms plus
+identical `Object.keys` ordering on both the 2-arg and 3-arg paths (uninitialized class
+fields are emitted as declarations under `useDefineForClassFields`, so all four properties
+exist before the ctor body and the hoist cannot reorder them). Parity holds; the doc comment
+describing the multi-colon quirk is accurate about intent but describes unreachable code.
+
+### Probe hash summary
+
+- round 1: base `f0957a6a4e622417e247cee862e4c4f41f6ab5b6fc973d0bf0e39c4c06b66a24`,
+  work `e3774dddb409ad5a8562208b07da94a93770455f21a27fc328d97970c46d50fc`
+  (1284 checks; differ **only** in the 2 reflection checks above)
+- round 2: base == work == `0b58d5a4c281914e605de46eb44be54e223d1eb7b08724702eca1ac703ca8c7c`
+  (83 checks, exact match)
+- pipeline: 32/32 MSM+MPM serialization hashes identical; 32/32 MIDI event dumps identical
+- `mei/articulations.mei` for the record — msm
+  `52df2cb5f76eb1fea977df6e305147f18c0737f7fffc8cb1200188934110db55`, mpm
+  `4684b2fe6ee466d31e6f969224664160b5275105021b773e1404fd769bb0e2bd`
+
+### Handoff
+
+Probes kept at `t5verify/probe.mjs` and `t5verify/probe2.mjs` — they take a dist dir as
+argv[1], so any later item touching `src/xml` can re-run them against a fresh baseline to
+re-prove byte-compat cheaply. Two method traps worth inheriting: **`cd` persists inside a
+compound bash command**, which silently invalidated my first emitted-JS diff; and grepping
+for `\bas <Type>` hits English prose in doc comments.

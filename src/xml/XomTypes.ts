@@ -1,7 +1,38 @@
 /**
- * XOM compatibility layer for browser/Node.js environments.
- * Wraps @xmldom/xmldom to provide an API matching the nu.xom Java library
- * that meico uses extensively throughout its codebase.
+ * XOM emulation layer — the substrate every MEI / MSM / MPM document in this port
+ * is built on.
+ *
+ * meico's Java original is written against `nu.xom`, so the port needs an XML tree
+ * with XOM's shape (`Element`, `Attribute`, `Nodes`, `Elements`, `Builder`, ...).
+ * `@xmldom/xmldom` supplies parsing and the raw DOM nodes; the tree itself, the
+ * parent wiring and — critically — the serializer live here.
+ *
+ * ## Byte-compatibility contract
+ *
+ * `toXML()` is not a pretty-printer and must not become one: the integration suite
+ * compares its output against Java-generated ground truth, so the following are
+ * load-bearing and may not be "improved".
+ *
+ * - **Attribute order is insertion order.** `Element._attributes` is an array, never
+ *   a map; `addAttribute` appends and the serializer walks it front to back.
+ * - **Namespace declarations are emitted positionally**: the element's own
+ *   declaration first (`xmlns:p=` when prefixed, `xmlns=` otherwise), then each
+ *   prefixed attribute's declaration immediately *after* that attribute, and only
+ *   when its prefix differs from the element's own and is not `xml`.
+ * - **The escaping tables differ per node type and are deliberately incomplete.**
+ *   Attribute values escape `&`, `<`, `"` — not `>` and not `'`; text nodes escape
+ *   `&`, `<`, `>` — not the quotes. Widening either set changes the bytes.
+ * - **Empty elements serialize as `<tag />`**, with the space, and non-empty ones
+ *   emit their children back to back with no added whitespace or indentation.
+ * - `Document.toXML()` prefixes exactly `<?xml version="1.0" encoding="UTF-8"?>\n`.
+ *
+ * The tree is deliberately mutable — see CHARTER.md, "Explicit mutation boundaries":
+ * the immutable-friendly direction applies to the layers above this one, not to the
+ * document tree itself.
+ *
+ * The public API mirrors XOM's Java names on purpose, because the call sites across
+ * `mei/`, `msm/` and `mpm/` are transliterated Java. Reworking that surface is item
+ * T17; this file is internals-only.
  */
 
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
@@ -11,14 +42,13 @@ import xpath from 'xpath';
 export { DOMParser, XMLSerializer };
 
 /**
- * Represents a collection of XML nodes, similar to XOM's Nodes class
+ * A fixed collection of nodes, as returned by {@link Element.query} — XOM's `Nodes`.
+ *
+ * The backing array is taken by reference and never mutated here; `toArray()` hands
+ * out a copy so callers cannot reach it.
  */
 export class Nodes {
-  private nodes: XomNode[];
-
-  constructor(nodes: XomNode[] = []) {
-    this.nodes = nodes;
-  }
+  constructor(private readonly nodes: XomNode[] = []) {}
 
   size(): number {
     return this.nodes.length;
@@ -34,7 +64,13 @@ export class Nodes {
 }
 
 /**
- * Base class for all XOM node types
+ * Base class for all node types in this layer.
+ *
+ * Every node carries a `@xmldom/xmldom` node, but that node is *not* the source of
+ * truth: it is a placeholder created at construction time and only the parsing paths
+ * ({@link Element.wrap}, {@link Element.query}) ever look at a real one. Structure and
+ * serialization are driven entirely by this layer's own `_attributes` / `_children`
+ * arrays, which is what makes the emitted bytes independent of xmldom's serializer.
  */
 export abstract class XomNode {
   protected _domNode: Node;
@@ -49,6 +85,10 @@ export abstract class XomNode {
     return this._domNode;
   }
 
+  /**
+   * The parent recorded by this layer, falling back to the wrapped DOM node's parent
+   * for nodes that came straight out of the parser and were never re-wired here.
+   */
   getParent(): Element | null {
     if (this._xomParent) return this._xomParent;
     const parent = this._domNode.parentNode;
@@ -74,13 +114,17 @@ export abstract class XomNode {
 }
 
 /**
- * Represents an XML attribute, similar to XOM's Attribute class
+ * An XML attribute — XOM's `Attribute`.
+ *
+ * An attribute knows its own namespace URI and prefix; it does not consult the
+ * element it hangs on. {@link Element.toXML} relies on that when it decides whether a
+ * prefixed attribute needs its own `xmlns:` declaration emitted alongside it.
  */
 export class Attribute extends XomNode {
-  private _localName: string;
+  private readonly _localName: string;
   private _value: string;
-  private _namespaceURI: string;
-  private _namespacePrefix: string;
+  private readonly _namespaceURI: string;
+  private readonly _namespacePrefix: string;
 
   constructor(name: string, value: string);
   constructor(name: string, namespaceURI: string, value: string);
@@ -90,20 +134,21 @@ export class Attribute extends XomNode {
     const attr = doc.createAttribute(name);
     super(attr as unknown as Node);
 
+    // `prefix:local` splits on the first colon, and a name carrying more than one
+    // colon loses everything after the second segment. Well-formed XML has at most
+    // one colon, so this only ever bites on malformed input; kept as-is for parity.
+    const parts = name.split(':');
+    this._namespacePrefix = parts.length > 1 ? parts[0] : '';
+    this._localName = parts.length > 1 ? parts[1] : name;
+
     if (value !== undefined) {
       // 3-arg constructor: name, namespace, value
       this._namespaceURI = valueOrNs;
       this._value = value;
-      const parts = name.split(':');
-      this._namespacePrefix = parts.length > 1 ? parts[0] : '';
-      this._localName = parts.length > 1 ? parts[1] : name;
     } else {
       // 2-arg constructor: name, value
       this._namespaceURI = '';
       this._value = valueOrNs;
-      const parts = name.split(':');
-      this._namespacePrefix = parts.length > 1 ? parts[0] : '';
-      this._localName = parts.length > 1 ? parts[1] : name;
     }
   }
 
@@ -131,6 +176,14 @@ export class Attribute extends XomNode {
     return this._namespacePrefix;
   }
 
+  /**
+   * Serialize as `name="value"`, without a leading space — {@link Element.toXML}
+   * supplies the separator.
+   *
+   * Byte-critical: the escape set is `&`, `<`, `"` in exactly that order (`&` first,
+   * so the ampersands introduced by the later replacements are not re-escaped). `>`
+   * and `'` are intentionally left raw. Do not extend or reorder this chain.
+   */
   toXML(): string {
     const name = this.getQualifiedName();
     const escapedValue = this._value
@@ -160,7 +213,8 @@ export class Attribute extends XomNode {
 }
 
 /**
- * Represents an XML text node, similar to XOM's Text class
+ * A text node — XOM's `Text`. The value is held here and mirrored onto the wrapped
+ * DOM node so that code reading the DOM directly sees the same string.
  */
 export class Text extends XomNode {
   private _value: string;
@@ -181,6 +235,11 @@ export class Text extends XomNode {
     (this._domNode as globalThis.Text).data = value;
   }
 
+  /**
+   * Byte-critical: text content escapes `&`, `<`, `>` (again `&` first), and leaves
+   * both quote characters raw — a different set from {@link Attribute.toXML}. The
+   * asymmetry is deliberate; do not unify the two.
+   */
   toXML(): string {
     return this._value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
@@ -191,14 +250,11 @@ export class Text extends XomNode {
 }
 
 /**
- * Represents a collection of child elements, similar to XOM's Elements class
+ * A fixed collection of child elements — XOM's `Elements`. Same contract as
+ * {@link Nodes}, narrowed to elements.
  */
 export class Elements {
-  private elements: Element[];
-
-  constructor(elements: Element[] = []) {
-    this.elements = elements;
-  }
+  constructor(private readonly elements: Element[] = []) {}
 
   size(): number {
     return this.elements.length;
@@ -214,8 +270,28 @@ export class Elements {
 }
 
 /**
- * Represents an XML element, similar to XOM's Element class.
- * This is the most heavily used XOM class in meico.
+ * Walk a path of child-element indices down from `root`.
+ *
+ * Split out of {@link Element.findCorrespondingElement}, whose own job is building the
+ * path. Indices count element children only, exactly as `getChildElements()` reports
+ * them; a path that leaves the tree yields null.
+ */
+function descendChildElementPath(root: Element, path: readonly number[]): Element | null {
+  let result = root;
+  for (const index of path) {
+    const childElements = result.getChildElements();
+    if (index >= childElements.size()) return null;
+    result = childElements.get(index);
+  }
+  return result;
+}
+
+/**
+ * An XML element — XOM's `Element`, and the most heavily used type in the port.
+ *
+ * Children and attributes live in plain arrays whose order *is* the document order
+ * and the serialization order; see the byte-compatibility contract at the top of this
+ * file before touching either one.
  */
 export class Element extends XomNode {
   private _localName: string;
@@ -223,7 +299,6 @@ export class Element extends XomNode {
   private _namespacePrefix: string;
   private _attributes: Attribute[] = [];
   private _children: XomNode[] = [];
-  private _ownerDocument: Document | null = null;
 
   constructor(name: string, namespaceURI?: string) {
     const doc = new DOMParser().parseFromString('<dummy/>', 'text/xml');
@@ -246,7 +321,15 @@ export class Element extends XomNode {
   }
 
   /**
-   * Wrap an existing DOM Element
+   * Recursively wrap a parsed DOM element as a tree of this layer's nodes.
+   *
+   * Only elements and text nodes are carried over — comments, processing
+   * instructions and CDATA sections are dropped, so a parse/serialize round trip is
+   * lossy for them by design.
+   *
+   * `xmlns` / `xmlns:*` attributes are skipped rather than stored: namespace
+   * declarations are re-derived at serialization time from each node's own prefix and
+   * URI, so keeping them would emit every declaration twice.
    */
   static wrap(domElement: globalThis.Element): Element {
     const localName = domElement.localName || domElement.nodeName;
@@ -255,15 +338,18 @@ export class Element extends XomNode {
     const qualifiedName = prefix ? `${prefix}:${localName}` : localName;
     const elem = new Element(qualifiedName, ns || undefined);
     elem._domNode = domElement;
+    // Restate what the constructor derived from `qualifiedName`: its own parse splits
+    // on the first colon and drops any further segment, whereas the DOM has already
+    // told us the authoritative prefix/local-name split.
     elem._localName = localName;
     elem._namespaceURI = ns;
     elem._namespacePrefix = prefix;
 
-    // Sync attributes
+    // Sync attributes. Array.from snapshots the live NamedNodeMap in index order;
+    // nothing below mutates domElement, so the snapshot and the map agree.
     elem._attributes = [];
     if (domElement.attributes) {
-      for (let i = 0; i < domElement.attributes.length; i++) {
-        const attr = domElement.attributes[i];
+      for (const attr of Array.from(domElement.attributes)) {
         const attrNs = attr.namespaceURI || '';
         const attrName = attr.name;
         if (attrName.startsWith('xmlns')) continue; // skip namespace declarations
@@ -277,8 +363,7 @@ export class Element extends XomNode {
 
     // Sync children
     elem._children = [];
-    for (let i = 0; i < domElement.childNodes.length; i++) {
-      const child = domElement.childNodes[i];
+    for (const child of Array.from(domElement.childNodes)) {
       if (child.nodeType === 1) {
         // ELEMENT_NODE
         const wrappedChild = Element.wrap(child as globalThis.Element);
@@ -287,6 +372,8 @@ export class Element extends XomNode {
       } else if (child.nodeType === 3) {
         // TEXT_NODE
         const text = new Text((child as globalThis.Text).data);
+        // Bracket access on purpose: `_domNode` is protected on XomNode, and TypeScript
+        // will not let Element reach it on an instance of its sibling subclass Text.
         text['_domNode'] = child;
         text._xomParent = elem;
         elem._children.push(text);
@@ -342,6 +429,13 @@ export class Element extends XomNode {
     return this._attributes.length;
   }
 
+  /**
+   * Append an attribute, replacing any same-named one first.
+   *
+   * Byte-critical: the replacement is a remove-then-append, so re-setting an existing
+   * attribute moves it to the END of the serialized attribute list. Several call sites
+   * depend on the resulting order matching the Java reference output.
+   */
   addAttribute(attr: Attribute): void {
     // Remove existing attribute with same name
     const existing = this.getAttribute(attr.getLocalName(), attr.getNamespaceURI() || undefined);
@@ -352,22 +446,28 @@ export class Element extends XomNode {
     this._attributes.push(attr);
   }
 
+  /**
+   * Remove an attribute by identity, falling back to a name+namespace match for
+   * callers holding an equivalent but distinct instance.
+   *
+   * Note the asymmetry, which is preserved on purpose: only the identity path clears
+   * the removed attribute's parent pointer.
+   */
   removeAttribute(attr: Attribute): void {
     const idx = this._attributes.indexOf(attr);
     if (idx !== -1) {
       attr._xomParent = null;
       this._attributes.splice(idx, 1);
-    } else {
-      // Try to find by name
-      for (let i = 0; i < this._attributes.length; i++) {
-        if (
-          this._attributes[i].getLocalName() === attr.getLocalName() &&
-          this._attributes[i].getNamespaceURI() === attr.getNamespaceURI()
-        ) {
-          this._attributes.splice(i, 1);
-          break;
-        }
-      }
+      return;
+    }
+
+    const byName = this._attributes.findIndex(
+      (candidate) =>
+        candidate.getLocalName() === attr.getLocalName() &&
+        candidate.getNamespaceURI() === attr.getNamespaceURI(),
+    );
+    if (byName !== -1) {
+      this._attributes.splice(byName, 1);
     }
   }
 
@@ -442,20 +542,22 @@ export class Element extends XomNode {
     return this._children.length;
   }
 
+  /**
+   * Child elements in document order; text children are skipped.
+   *
+   * Quirk, preserved deliberately: `namespaceURI` only ever narrows a *named* lookup.
+   * Called without `name` this returns every child element, whatever namespace it is
+   * in, even if a `namespaceURI` was passed.
+   */
   getChildElements(name?: string, namespaceURI?: string): Elements {
     const elements: Element[] = [];
     for (const child of this._children) {
-      if (child instanceof Element) {
-        if (name !== undefined) {
-          if (child.getLocalName() === name) {
-            if (namespaceURI === undefined || child.getNamespaceURI() === namespaceURI) {
-              elements.push(child);
-            }
-          }
-        } else {
-          elements.push(child);
-        }
-      }
+      if (!(child instanceof Element)) continue;
+      const matches =
+        name === undefined ||
+        (child.getLocalName() === name &&
+          (namespaceURI === undefined || child.getNamespaceURI() === namespaceURI));
+      if (matches) elements.push(child);
     }
     return new Elements(elements);
   }
@@ -484,8 +586,16 @@ export class Element extends XomNode {
   }
 
   /**
-   * Execute an XPath query against this element.
-   * This is heavily used by meico for navigating the XML tree.
+   * Execute an XPath query against this element — meico's main tool for navigating
+   * the tree, so most call sites in `mei/`, `msm/` and `mpm/` land here.
+   *
+   * The xpath library needs a real DOM, and this layer's nodes are only loosely
+   * attached to the placeholder DOM nodes they wrap. So the subtree is serialized and
+   * re-parsed, the query runs against that throwaway copy, and every hit is mapped
+   * back onto this tree by position. Consequences worth knowing: results are only as
+   * faithful as `toXML()`, matched text nodes come back as fresh {@link Text}
+   * instances rather than the originals, and a malformed expression yields an empty
+   * result instead of throwing.
    */
   query(xpathExpr: string): Nodes {
     // We need to serialize and re-parse to use xpath properly
@@ -493,10 +603,7 @@ export class Element extends XomNode {
     const doc = new DOMParser().parseFromString(xmlStr, 'text/xml');
     const contextNode = doc.documentElement!;
 
-    // Collect namespace mappings for the XPath resolver
-    const nsMap = this.collectNamespaces();
-
-    const select = xpath.useNamespaces(nsMap);
+    const select = xpath.useNamespaces(this.collectNamespaces());
 
     try {
       const result = select(xpathExpr, contextNode as unknown as Node);
@@ -504,28 +611,24 @@ export class Element extends XomNode {
       const xomNodes: XomNode[] = [];
       if (Array.isArray(result)) {
         for (const node of result) {
-          const domNode = node as any;
-          if (domNode.nodeType === 1) {
-            // ELEMENT_NODE
+          if (xpath.isElement(node)) {
             // Map back to our tree
-            const mapped = this.findCorrespondingElement(domNode);
+            const mapped = this.findCorrespondingElement(node);
             if (mapped) xomNodes.push(mapped);
-          } else if (domNode.nodeType === 2) {
-            // ATTRIBUTE_NODE
-            const ownerElem = (domNode as globalThis.Attr).ownerElement;
+          } else if (xpath.isAttribute(node)) {
+            const ownerElem = node.ownerElement;
             if (ownerElem) {
               const mappedElem = this.findCorrespondingElement(ownerElem);
               if (mappedElem) {
                 const attr = mappedElem.getAttribute(
-                  domNode.localName || domNode.nodeName,
-                  domNode.namespaceURI || undefined,
+                  node.localName || node.nodeName,
+                  node.namespaceURI || undefined,
                 );
                 if (attr) xomNodes.push(attr);
               }
             }
-          } else if (domNode.nodeType === 3) {
-            // TEXT_NODE
-            xomNodes.push(new Text(domNode.data || domNode.nodeValue || ''));
+          } else if (xpath.isTextNode(node)) {
+            xomNodes.push(new Text(node.data || node.nodeValue || ''));
           }
         }
       }
@@ -536,15 +639,22 @@ export class Element extends XomNode {
     }
   }
 
+  /**
+   * Prefix-to-URI bindings for the XPath resolver, gathered from this whole subtree.
+   *
+   * Flat and last-one-wins: a prefix rebound to a different URI deeper in the tree
+   * overwrites the outer binding for the entire query. Fine for the documents meico
+   * handles, which bind each prefix once at the root.
+   */
   private collectNamespaces(): Record<string, string> {
     const nsMap: Record<string, string> = {};
     // xml namespace is always available
     nsMap['xml'] = 'http://www.w3.org/XML/1998/namespace';
-    this._collectNsRecursive(this, nsMap);
+    this.collectNamespacesInto(this, nsMap);
     return nsMap;
   }
 
-  private _collectNsRecursive(elem: Element, nsMap: Record<string, string>): void {
+  private collectNamespacesInto(elem: Element, nsMap: Record<string, string>): void {
     if (elem._namespacePrefix && elem._namespaceURI) {
       nsMap[elem._namespacePrefix] = elem._namespaceURI;
     }
@@ -555,14 +665,18 @@ export class Element extends XomNode {
     }
     for (const child of elem._children) {
       if (child instanceof Element) {
-        this._collectNsRecursive(child, nsMap);
+        this.collectNamespacesInto(child, nsMap);
       }
     }
   }
 
   /**
-   * Find the corresponding element in our tree given a DOM element from a parsed copy.
-   * Uses a path-based matching strategy.
+   * Find the counterpart in this tree of a DOM element from the re-parsed copy.
+   *
+   * The copy was produced by `toXML()` moments earlier and is therefore structurally
+   * identical, so the path of child-element indices from the root identifies the
+   * counterpart uniquely. Text nodes are not counted on either side, which is what
+   * keeps the DOM indices and `getChildElements()` indices in step.
    */
   private findCorrespondingElement(domNode: globalThis.Element): Element | null {
     // Build the path from root to the target node
@@ -571,24 +685,27 @@ export class Element extends XomNode {
     while (current && current.parentNode && current.parentNode.nodeType === 1) {
       const parent: globalThis.Node = current.parentNode;
       let index = 0;
-      for (let i = 0; i < parent.childNodes.length; i++) {
-        if (parent.childNodes[i] === current) break;
-        if (parent.childNodes[i].nodeType === 1) index++;
+      // Array.from snapshots the live NodeList in index order; the copy is not being
+      // mutated, so counting over the snapshot sees exactly the same siblings.
+      for (const sibling of Array.from(parent.childNodes)) {
+        if (sibling === current) break;
+        if (sibling.nodeType === 1) index++;
       }
       path.unshift(index);
       current = parent;
     }
 
-    // Navigate our tree using the path
-    let result: Element = this;
-    for (const idx of path) {
-      const childElements = result.getChildElements();
-      if (idx >= childElements.size()) return null;
-      result = childElements.get(idx);
-    }
-    return result;
+    return descendChildElementPath(this, path);
   }
 
+  /**
+   * Serialize this element and everything under it.
+   *
+   * This method IS the byte-compatibility contract documented at the top of the file —
+   * emission order, the ` />` spelling of empty elements, and the placement of `xmlns`
+   * declarations are all fixed by the Java reference output that the integration suite
+   * compares against. Treat it as frozen.
+   */
   toXML(): string {
     let xml = `<${this.getQualifiedName()}`;
 
@@ -628,6 +745,10 @@ export class Element extends XomNode {
     return xml;
   }
 
+  /**
+   * Deep copy, detached: attributes then children are cloned in order, so the copy
+   * serializes identically, but it has no parent and shares no node with the original.
+   */
   copy(): Element {
     const clone = new Element(this.getQualifiedName(), this._namespaceURI || undefined);
     for (const attr of this._attributes) {
@@ -641,7 +762,8 @@ export class Element extends XomNode {
 }
 
 /**
- * Represents an XML document, similar to XOM's Document class
+ * An XML document — XOM's `Document`. Little more than a root element plus the XML
+ * declaration that {@link Document.toXML} puts in front of it.
  */
 export class Document {
   private _rootElement: Element;
@@ -668,8 +790,8 @@ export class Document {
 }
 
 /**
- * XML parser, similar to XOM's Builder class.
- * Parses XML strings into Document objects.
+ * XML parser — XOM's `Builder`. Parses a string with `@xmldom/xmldom` and hands the
+ * result to {@link Element.wrap}, which is where the DOM stops being authoritative.
  */
 export class Builder {
   build(xml: string): Document {
@@ -707,7 +829,7 @@ export class ParsingException extends Error {
  * Exception for XML validity errors (non-fatal - document still produced)
  */
 export class ValidityException extends ParsingException {
-  private _document: Document | null;
+  private readonly _document: Document | null;
 
   constructor(message: string, document?: Document) {
     super(message);
