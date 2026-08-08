@@ -3372,3 +3372,468 @@ with the `{"type":"module"}` package.json and a `node_modules` symlink the probe
 `{Msm,Goto,AbstractMsm}.{base,work}.tok`, `canon.diff`, `cov.py` + `{base,work}-per.json`
 (per-file function/statement counts — the tool that makes the coverage reconciliation a
 one-liner), `lint-{base,work}.json`, and `extract.py`.
+
+## [T10] worker — mei local idioms (Mei, Helper, Mei2MsmMpmConverter) (2026-08-08)
+
+**READY.** Baseline `efdc03e` (`src/` identical to the last green `c719022`; the intervening
+commit is `refactor/` bookkeeping only). `npm run verify` green — both tsc stages
+standalone, **2108/2108 across 44 files**. Prettier clean over `src/mei/` and both
+`refactor/` files. Two sub-rounds (Mei+Helper, then the converter), verify green after
+each, one report.
+
+### Manifest — 5 files, all in scope
+
+`src/mei/Mei.ts`, `src/mei/Helper.ts`, `src/mei/Mei2MsmMpmConverter.ts`, plus
+`refactor/lint-debt.md` and this file. `git status --porcelain` is exactly those 5 `M`
+lines, 0 untracked. **No test file, no fixture, no config** —
+`git diff --name-only -- tests/ vitest.config.ts tsconfig*.json eslint.config.js
+package.json` is empty. The full `dist/` diff touches **only** the 3 cluster files (`.js`
+and `.d.ts`), nothing else in the tree.
+
+Import blocks: `Mei.ts` byte-identical (7 lines). `Helper.ts` and
+`Mei2MsmMpmConverter.ts` each lost unused names from an existing import statement —
+`Builder, Elements, Nodes, XomNode` and `Nodes` respectively — with the module itself still
+imported, so module evaluation order is untouched. Emitted-inert by construction and
+confirmed below.
+
+### Headline: 6 code changes across 6161 lines, everything else is documentation
+
+Total emitted-JS **code-token** delta across the cluster, JSDoc pruned
+([T8] verifier's `toks2.mjs`): **Mei.js −90 tokens of 2798, Helper.js −82 of 5145,
+Mei2MsmMpmConverter.js −3 of 27202.** Every one of those tokens is listed below; there is
+no other change to any emitted statement in 4161+1509+491 lines of source.
+
+**1. Two dead-code removals — the port wreckage [T9] flagged, plus its twin.**
+
+- `Helper.cloneElement` (the site the [T9] entry pointed at, "wreckage comments and all"):
+  an unused `const clone = new Element(...)`, a `clone.setNamespaceURI(...)` on that
+  discarded local, an **empty-bodied** `for (let i = e.getAttributeCount()-1; …)` whose only
+  statement was an unused `const attr = e.getAttribute(i.toString())`, and five comments
+  narrating a workaround. The surviving body is the two lines that were already doing the
+  work (`e.copy()` then `removeChildren()`). Every deleted expression is a pure read or a
+  write to a discarded local.
+- `Mei._resolveExpansions`: a triple-nested loop over `copy.query('.//*')` with an **empty**
+  innermost body and an unused `const attrs = []`, 13 lines of narration and no effect.
+  `query()` in this port serialises and re-parses (it does not mutate `this`), so the whole
+  block is side-effect free.
+
+**2. Two unused bindings** — `for (const [elem, _] of placeholders)` →
+`placeholders.keys()` in `Mei.resolveCopyofs`, and the same shape in
+`Helper.updateMpmNoteidsAfterResolvingRepetitions`. A JS `Map`'s `keys()` and its entry
+iteration are the same order, so **UUID draw order is untouched** — the parity rule this
+cluster was warned about.
+
+**3. One `prefer-for-of`** — `Helper.prettyXml`'s index loop over a freshly `split` array
+that is not mutated in the loop. The `rows[i] == null` guard is preserved verbatim as
+`rawRow == null` (so the `eqeqeq` count is unchanged, per T12's ownership).
+
+**4. One unused local** — `const index = Helper.addToMap(gt, sequencingMap)` in
+`barline2SequencingCommand` became a bare call. `addToMap`'s insertion side effect is what
+the line is for; only the binding went. **This is the converter's entire 3-token emitted
+diff.**
+
+**5. Type-level tightening in the converter, all of which provably erases** (27202 → 27199
+tokens, and the 3 are item 4): `movements: any[]`→`Msm[]`, `performances: any[]`→`Mpm[]`,
+`convert` split into two overloads with real return types instead of `any`, `convertMei`
+and the two `KeyValue<any[], any[]>` constructions typed, `msmCleanup`/`msmCleanupSingle`/
+`mpmPostprocessing` given `Msm`/`Mpm`, and `computeControlEventTiming` given the tuple type
+`[number, number|null, Attribute|null, Attribute|null] | null` it always returned.
+
+That last one is the biggest win: all 8 call sites opened with four lines of
+`timingData[0] as number` / `[1] as number | null` / … — **29 type assertions that the
+tuple makes redundant, all deleted.** Cluster-wide `as` count (`AsKeyword` tokens, not
+grepped — the new prose contains the English word "as"): **123 → 93**.
+
+**6. `any` in Helper's environment stubs → `unknown`** (11 sites) and
+`(globalThis as any).process` → `(globalThis as { process?: unknown }).process`. Both erase
+to identical JS; the `.d.ts` token diff for `Helper` is exactly **9 `any` → `unknown`** and
+nothing else. Callers exist only in tests and pass `string`/`null`, which `unknown` accepts.
+
+### Counts, measured not inherited
+
+| | base | work | |
+|---|---|---|---|
+| `as` assertions (AsKeyword) | 123 | **93** | −30 |
+| `any` in source | 31 | **1** | −30 |
+| non-null `!` | 590 | **591** | **+1, see below** |
+| `eslint-disable` | 1 | 1 | unchanged |
+| `@ts-ignore` / `@ts-expect-error` / `@ts-nocheck` | 0 | 0 | |
+
+**The +1 non-null assertion is deliberate and is the one judgement call in this item.**
+Typing `msmCleanupSingle(msm: any)` as `msm: Msm` makes `msm.getRootElement()` — which
+returns `Element | null` — a type error. The three options were: keep `any` (leaves a bad
+public signature and the `explicit-module-boundary-types` entry), add a guard (a **behaviour
+change**: today's TypeError on an empty MSM would become a silent no-op), or `!`. I took
+the `!`, which is the idiom `XmlBase` itself uses for this exact call three times over, and
+documented it at the site as inheriting T12's standing null debt. Net for the file: −2
+errors even after the +1.
+
+### Two `any` sites that did **not** go, and why the file-level suppression stays
+
+`Mei2MsmMpmConverter.ts` keeps its `/* eslint-disable @typescript-eslint/no-explicit-any */`
+— the only `eslint-disable` left in the tree — for exactly one remaining site, down from 19.
+`relatedResources` in `makeMovement` is fed by `RelatedResource.createRelatedResource`,
+which returns `RelatedResource | null`, and is consumed by `Mpm.addMetadata`, which takes
+`RelatedResource[] | null`. The honest element type does not fit the consumer, and closing
+that means changing a signature in `mpm/` — outside this item. Recorded at the site.
+
+> `DISCOVERED:` clearing the last `any` here needs either a non-null return from
+> `RelatedResource.createRelatedResource` or a nullable element type on
+> `Mpm.addMetadata`'s third parameter. Whichever item owns that call (T13/T16) can then
+> delete the file-level suppression outright.
+
+### Doc comments — the point of the item, and the input T14/T15 asked for
+
+~700 lines of documentation, every claim checked against
+`/Users/nielspfeffer/Projects/meico/src/meico/mei/*.java` before being asserted. The
+substantial pieces:
+
+- **`Mei2MsmMpmConverter`'s class comment**: the six-step shape of `convertMei`, why the
+  `current*` fields are a cursor and not parameters, and why each deferred list
+  (`accid`, `endids`, `tstamp2s`, `arpeggiosToSort`) exists and where it drains. This is the
+  map T15 will need before it can split anything.
+- **`convertElement`'s dispatch — documented, not touched.** The finding worth having:
+  `continue` vs `break` **is** the traversal policy. `break` falls through to the
+  `convertElement(e)` at the bottom, i.e. descend; `continue` means finished, either
+  ignored or the handler did its own descent. So the set of `break` cases is exactly the
+  set of elements whose children reach the converter generically, and moving a case between
+  the groups silently changes what gets converted. Also recorded there: `trill`/`mordent`/
+  `turn` are ignored deliberately (Java's TODO), grace chords are skipped whole, and
+  `tuplet` descends only when `processTuplet` returns false.
+- **`computeDuration`** — the four stages in order (base value → dots → nested tuplets →
+  tupletSpans), including that `focus` is chosen with the base value so a note inheriting
+  `dur` from its chord inherits the chord's dots too, that dots accumulate through a running
+  `d` rather than a closed form, that a `tuplet` missing `num`/`numbase` zeroes the whole
+  duration rather than being skipped, and that the tupletSpan pass **deletes expired spans
+  as a side effect** — which is why it runs backwards.
+- **`computePitch`** — that `.ges` (gestural) values beat written ones *and* suppress the
+  work that would derive them (`accid.ges` clears `checkKeySign`; `pname.ges` + `oct.ges`
+  skips transposition entirely); the four-step accidental fallback ending at the key
+  signature; that a later global key signature is **copied into the local map**; and the
+  asymmetry in the transposition scans — `transposition` is exclusive and `break`s, while
+  `addTransposition` accumulates, which is what lets an 8va stack on an instrument's
+  transposition.
+- **`computeControlEventTiming`** — that returning null means "I moved the event in the MEI
+  tree next to the note it points at, come back to it", and that `dontRepositionMeAgain` is
+  what stops the move recurring (and `msmCleanupSingle` strips it).
+- Plus `getMidiTime` (and why `getMidiTimeAsString` is **not** `String(getMidiTime())` —
+  it preserves the stored text, so `"0.0"` does not become `"0"` in byte-compared output),
+  `processMeasure`, `processNote`, `processLayer`'s parallel-voice clock discipline,
+  `processRepeat`, `processEnding`, `processArpeg`, `makeMovement`, `makePart`'s channel/port
+  derivation, `makeTimeSignature`'s additive-meter summing, `barline2SequencingCommand`,
+  `reorderMeasureContent`, `checkEndid`/`checkSlurs`, `isSameLayer`,
+  `mpmPostprocessingSingle`, `Helper`'s utility groups, and `Mei`'s three preprocessing
+  passes.
+
+### Five Java-parity findings, documented at the site, none "fixed"
+
+1. **`Mei.getTitle`'s two fallbacks are unreachable — in Java too.** They are
+   `catch (NullPointerException)` handlers around `Helper.getFirstChildElement(name, ofThis)`,
+   which opens with `if (ofThis == null) return null;` in *both* languages. Nothing throws,
+   so control never leaves the first block: the MEI 3.0 `workDesc` and MEI 4.0 `workList`
+   title locations are never consulted, and a missing `fileDesc` chain falls straight
+   through to the filename. Movement titles in the reference MSMs were produced by exactly
+   this, so repairing it would rename movements.
+2. **`Helper.pname2midi` has no case returning 10.** `a#`, `as`, `bb`, `bf` and their
+   capitalised forms are simply absent from a table that spells out every other chromatic
+   degree, and fall to `default: -1.0`. Verified in `Helper.java:754-817`. Latent: MEI
+   normally spells B flat as `pname="b"` plus `accid`, and the converter's other entry point
+   passes `ac.substring(0, 1)`, so a bare letter always reaches the table.
+3. **`Mei._resolveExpansions`: repeated plist entries move rather than duplicate.** Java's
+   repeat mechanism is the `MultipleParentException` its `appendChild` throws, caught to
+   make a fresh copy with new ids. This port's `Element.appendChild` **silently detaches and
+   re-appends** instead (`XomTypes.ts:476`), so the `try` always succeeds, the handler is
+   unreachable, and a plist of `A B A` plays as `B A`. Inside that unreachable handler the
+   port also never implemented Java's `#`-reference rewriting (that was the dead loop
+   removed in item 1) — `idOldAndNew` is built and, as before, not consumed. **No fixture in
+   the suite contains an `expansion` element at all**, so both are latent; fixing either is a
+   behaviour change and belongs with T17/expansion support.
+4. **`Mei.resolveCopyofs`'s cycle test is stricter than Java's.** It compares sorted
+   reference lists for equality; Java uses mutual `HashMap.values().containsAll`, i.e. set
+   semantics that ignore multiplicity. A pass that changes only how *often* a reference
+   occurs is a cycle to Java and progress here. Also, iteration is insertion-ordered where
+   Java's `HashMap` is not, so the two draw UUIDs in different orders.
+5. **`Mei.removeRendElements` appends, it does not splice.** `parent.appendChild(r.getValue())`
+   puts a `rend`'s text at the **end** of its parent, so a `rend` in the middle of mixed
+   content moves its text to the back. Java identical; invisible downstream because the
+   consumers read the parent's whole value.
+
+Also recorded, not a parity finding: `processClefDis` is a **stub returning 0** — Java
+computes an octave-displacement offset there and this port never ported it. No fixture has
+`clef.dis`. Left as a stub so the gap stays visible.
+
+### Evidence
+
+**A. Emitted JS, whole project, every hunk classified.** Both trees built with the project
+`tsc` into a shared runtime dir (`t10rt/{dist-base,dist-work}` with `package.json` +
+`node_modules` symlink — the dist must sit under a `type: module` package or the ESM
+imports fail to resolve). `diff -rq` over the two dists reports **only** the 3 cluster
+files' `.js`/`.d.ts`. The raw `.js` diff is comment-dominated, so it was reduced to a
+JSDoc-pruned token stream: **Mei.js and Helper.js differ only by the tokens of items 1–3
+and 6, listed token-for-token in the transcript; Mei2MsmMpmConverter.js differs by exactly
+`ConstKeyword` + `Identifier "index"` + `FirstAssignment`, i.e. item 4, out of 27202
+tokens.**
+
+**B. `.d.ts` surfaces.** `Mei.d.ts` is **token-identical**. `Helper.d.ts` differs by exactly
+9 `AnyKeyword`→`UnknownKeyword`. `Mei2MsmMpmConverter.d.ts` differs by the intended type
+tightenings only, plus a new `import { Msm } from '../msm/Msm.js'` in the *declaration*
+file (`Msm` now appears in the public type surface; the emitted `.js` import list is
+unchanged, per A). No type widened; no `any` introduced.
+
+**C. Pipeline byte-probe over all 16 MEI fixtures.** [T8] verifier's `pipe.mjs` (24
+recorded entries: 5 deterministic all-maps fixtures + all 16 MEI fixtures through
+`Mei2MsmMpmConverter(720, true, false, true)`, hashing MSM XML, MPM XML, the performed MSM,
+raw MIDI and expressive MIDI, with `meico_<uuid>` canonicalised as the suite does).
+**Identical transcript on both builds, `sha=e960dd16…`, 0 threw, 21 non-vacuous.** Run
+after sub-round 1 and again after sub-round 2. These fixtures exercise this cluster more
+directly than any other, so this is the strongest available evidence for the item.
+
+**D. Lint, re-measured on both trees with `eslint -f json` over `src` + `tests`** (not
+inherited): **1336 → 1306 errors**, warnings **18 → 18**, files with ≥1 error 75 → 75.
+Per file: `Mei.ts` 31→29, `Helper.ts` 96→70, `Mei2MsmMpmConverter.ts` 555→553; the cluster
+total 682 → 652 = −30, and the table sums check.
+By rule, repo-wide: `explicit-module-boundary-types` 8 → **0** (the rule now has no site
+left anywhere in the tree, as `no-this-alias` reached in T5), `no-explicit-any` 24 → 12,
+`no-unused-vars` 68 → 58, `prefer-for-of` 7 → 6, `no-non-null-assertion` 1079 → 1080 (the
+documented +1). `eqeqeq` 44 → 44, `unified-signatures` 44 → 44, `no-require-imports` 3 → 3,
+`no-extraneous-class` 3 → 3 — all four untouched by design.
+
+**E. Coverage, both trees, same runner.** Against charter invariant 7:
+- **(a) Functions 94.3218% → 94.2166%**, floor 94.0% — **holds**, 0.22pp margin.
+- **(b) Uncovered scoped statements 2263 → 2256 (−7)**, phase-2 budget 2318 — **holds**,
+  and moved down.
+- **(c) Test count 2108 → 2108.**
+
+The function-coverage movement is **one function, and it is traced, not hand-waved**:
+`XomTypes.setNamespaceURI` (a file I did not touch) went from 360 hits to **0**. Its only
+caller in the entire covered surface was the discarded `clone` in `Helper.cloneElement`'s
+dead prologue — the code removed in item 1. `grep` confirms **zero callers of
+`setNamespaceURI` remain in `src/` or `tests/`**. No test power was lost: those 360 hits
+were a side effect of code that computed nothing.
+
+> `DISCOVERED:` `XomTypes.Element.setNamespaceURI` is now dead across `src/` and `tests/`.
+> Either delete it (T17) or give it a real unit test — right now it is an untested,
+> uncalled public method on the serialization layer.
+
+Statement-level: `Mei.ts` 51/368 → 42/359 uncovered/total, i.e. **all 9 removed statements
+were already uncovered** (the expansion path no fixture reaches). `XomTypes.ts` 24 → 26
+uncovered, the two statements of `setNamespaceURI`. `Mei2MsmMpmConverter.ts` uncovered
+**unchanged at 1595** while its total moved 3716 → 3722 — a source-map rebase from ~500
+lines of added comments in a 4161-line file, which the charter already calls out as
+by-construction for line-derived metrics; the count that the invariant gates on did not move.
+
+### Handoff
+
+- **T15 (converter break-up)**: read `convertElement`'s new comment first. The
+  `continue`/`break` split is the traversal contract and is not visible from the code.
+  The `current*` cursor and the four deferred lists, with their drain points, are documented
+  on the class — those are the state any decomposition has to thread.
+- **T14 (Helper break-up)**: the utility groups and their invariants are now on the class
+  comment. `Helper` is static-only (`no-extraneous-class`) and ~300 call sites deep; the
+  namespace-agnostic `localName` matching is the property to preserve above all.
+- **T12 (null policy)**: `Helper`'s 44 `== null` untouched as instructed; the cluster's
+  1080-strong `no-non-null-assertion` debt is the single biggest remaining item, 548 of it
+  in the converter.
+- **T18 (cycle)**: `Mei.exportMsmMpm`'s `require` untouched, now with a comment recording
+  that it is CommonJS in an ESM package and therefore throws (which
+  `tests/mei/Mei.test.ts` asserts).
+- **Unfixable from inside this item**: the stub parameters in `Helper` (schema validation,
+  XSLT) account for most of its remaining 14 `no-unused-vars`. They need
+  `argsIgnorePattern: '^_'` in `eslint.config.js`, which is config, not `src/mei/`. Two
+  earlier entries ([T8], [T9]) flagged the same thing for `writeMsmString`/`writeMpmString`;
+  that is now four items asking for one three-word config change.
+
+### Note, not an action
+
+`/Users/nielspfeffer/Projects/meico` (the read-only Java reference) has a pre-existing dirty
+working tree — `M src/tools/GenerateAllMapsReference.java` plus untracked `.vscode/`,
+`docs/meico.zip`, `src/tools/Perform.class`, all mtime 2026-08-08 10:04, well before this
+item started. Read only; nothing was written there.
+
+## [T10] verifier — mei cluster (Mei, Helper, Mei2MsmMpmConverter) (2026-08-08)
+
+**PASS.** Everything below was measured in this session against a freshly extracted
+baseline; no number, transcript or probe output was inherited from the worker.
+
+### Setup
+
+`efdc03e` extracted with `git archive` into a **fresh** `t10verify/base` (charter craft
+note: never over an existing dir), spot-checked with `git show <sha>:<path> | diff -`
+on all three cluster files plus `XomTypes.ts`, and confirmed `src/`-identical to the last
+green `c719022` (`git diff c719022 efdc03e -- src/` empty). Both trees built with the
+project `tsc` into separate dist dirs. `diff -rq` of `base/src` against the working tree
+reports exactly the 3 cluster files.
+
+### 1. Full-fixture pipeline probe — the decisive check, run twice over
+
+**(a) [T8]'s `pipe.mjs`, run by me on both builds.** First verified the worker's copy is
+byte-identical to the [T8] verifier's original (`diff` clean — no tampering), then ran it
+myself: `entries=24 threw=0 nonVacuous=21 sha=e960dd16…` on **both** dists, transcripts
+byte-identical. This reproduces the worker's figure independently.
+
+**(b) My own probe (`t10verify/probe2.mjs`, 90 entries), written to cover what (a) does
+not.** Also byte-identical on both builds, `sha=7752e215…`, 0 threw. It adds:
+
+- all 16 MEI fixtures under **three** converter configurations, not one:
+  `(720,true,false,true)`, `(720,true,false,**false**)` — the `cleanup=false` path, i.e.
+  the `msmCleanup`/`msmCleanupSingle` route whose signature took the new `!` — and
+  `(480,**false**,**true**,false)`. Non-vacuity is demonstrated: the three configs produce
+  three *different* hashes per fixture and agree base-vs-work in all three;
+- MSM, MPM, performed MSM, raw MIDI, expressive MIDI hashes **plus a generated-id count**
+  per fixture, with `meico_<uuid>` canonicalised in first-appearance order as the suite does;
+- `Mei`'s three preprocessing passes invoked directly per fixture (`resolveCopyofs`,
+  `removeRendElements`, `resolveExpansions`, `addIds`, `getTitle`, `computeMinimalPPQ`,
+  `getAllMdivs`, `getAllVariantEncodings`), each on a fresh `Mei`;
+- a **synthetic MEI carrying `expansion` elements** — I confirmed no fixture has one, so
+  this is the only way to exercise `_resolveExpansions`'s plist path at all — with plists
+  `#A #B #A`, `#B #A`, `#A #B #C`, `#C`, `#A #A #A`, `#Z`, a missing plist and an empty one,
+  each through both `resolveExpansions` alone and a full conversion, and with
+  `ignoreExpansions` on. Incidentally this **confirms the worker's parity finding 3 from the
+  outside**: `#A #B #A` and `#B #A` hash identically (`…#1180`), i.e. a repeated plist entry
+  moves rather than duplicates;
+- the three edited `Helper` functions driven directly: `cloneElement` on a namespaced
+  element with attributes + element child + text, on a bare element and on null (namespace,
+  prefix, attribute count, child count, independence from the original all recorded);
+  `prettyXml` on 11 inputs incl. empty, whitespace-only, CDATA, CRLF, mixed content;
+  `updateMpmNoteidsAfterResolvingRepetitions` with chained mappings in **two different
+  insertion orders**.
+
+### 2. Id generation — call sites, not just outputs
+
+Comment-stripped diff of every `uuidv4` / `meico_` / `xml:id` / `Attribute('id'` site in
+the three files: **identical text in identical order** (Helper 6 sites, Mei 15, converter
+47). `uuidv4()` call counts unchanged per file: **1 / 3 / 19**. Both rewritten loops were
+read in the emitted JS: the `placeholders` loop is the circular-reference bail-out and
+draws no id at all, and `Map.prototype.keys()` and entry iteration are the same insertion
+order by spec. Corroborated by check 1, where a changed *assignment* of ids to elements
+would break the first-appearance canonicalisation.
+
+### 3. Fenced items — all four hold
+
+- **(a)** `Mei.exportMsmMpm`'s lazy `require` is byte-identical (only its line number moved,
+  185 → 292, from the comments above it).
+- **(b)** `Helper.ts` loose-null sites: `== null` **28**, `!= null` **16**, total **44** in
+  both trees. Diffing the site texts, exactly one changed — `rows[i] == null` →
+  `rawRow == null`, the rename from the `prefer-for-of` change. None rewritten to `===`;
+  repo-wide `eqeqeq` stays at 44.
+- **(c)** The converter's **entire emitted token stream differs by 3 tokens out of 27202**,
+  which proves no restructuring anywhere in the file, dispatch cascades included — stronger
+  than a targeted diff. I re-derived this with [T8]'s `toks2.mjs` on both dists.
+- **(d)** `trill` / `mordent` / `turn` appear once each in both trees, each still
+  `case …: continue;`. No element handling was added (the 3-token identity forecloses it).
+
+### 4. Emitted JS — every hunk classified, zero unclassified
+
+Whole-project `diff -rq` over the two dists touches **only** the 3 cluster files (`.js`,
+`.d.ts`, maps). The extra dirs present only in the working dist (`audio/`, `musicxml/`,
+`pitches/`, `svg/`, `Mei2MusicXmlConverter`, `Midi2MsmConverter`, `ColorCoding`,
+`InputStream2StringConverter`) are **stale artifacts of [T3]'s excised modules** — absent
+from *both* `src/` trees, and `dist/` is gitignored and never cleaned. Not part of this diff.
+
+JSDoc-pruned token diffs, classified exhaustively:
+
+| file | tokens | differing lines | classification |
+|---|---|---|---|
+| `Mei2MsmMpmConverter.js` | 27202 → 27199 | 3 | `const index =` dropped from `barline2SequencingCommand`; I read the surrounding scope in both trees and `index` is never re-read there (the other `index` uses are in `processEnding`, untouched) |
+| `Mei.js` | 2798 → 2708 | 100 | 2 hunks: `placeholders` entries→`keys()`; the dead `copyDescendants` block |
+| `Helper.js` | 5145 → 5063 | 104 | 4 hunks: import trailing comma; `cloneElement` prologue; `noteIdMappings` entries→`keys()`; `prettyXml` for-of |
+
+**Nothing unclassified.** The `typeof globalThis.process` re-wrap that shows in the textual
+diff produces **zero** token difference — pure printer formatting.
+
+Side-effect freedom of the two deletions was established from the definitions, not asserted:
+`Element.query` serialises to a throwaway DOM and maps back by child-index path — it never
+writes to `this`; `getAttribute` is a pure scan; `setNamespaceURI` is a one-line field write
+on the **discarded** local; the `Element` constructor parses a private `<dummy/>` and touches
+no global state, no counter and no uuid. `cloneElement`'s return value is unchanged
+(`e.copy()` + `removeChildren()`), verified in the emitted output. In `_resolveExpansions`
+the brace nesting is preserved exactly — `regularizedRoot.appendChild(copy)` is still inside
+the `catch`, at the same depth. And that `catch` is unreachable for *any* input, not merely
+for the fixtures: `XomTypes.appendChild` silently detaches and re-appends instead of throwing.
+
+**Arithmetic**: no rename canonicalisation was even needed. The converter's emitted tokens
+are identical apart from the 3 above, and `Helper`'s duration/pitch tables show no token
+change, so all timing / duration / tuplet / transposition math is byte-identical in the
+emitted output.
+
+**`.d.ts`**: `Mei.d.ts` token-identical; `Helper.d.ts` exactly **9** `any`→`unknown`;
+the converter's is the claimed tightenings only (`movements`/`performances` → `Msm[]`/`Mpm[]`,
+`convert` overloads, the `computeControlEventTiming` tuple, `msmCleanup*`/`mpmPostprocessing`)
+plus the new `import { Msm }` in the *declaration*. **No type widened, no `any` introduced.**
+The tuple is honest: the method's only non-null return is `return [date, endDate, tstamp2,
+endid]`, and the call sites drop the `as` assertions while destructuring by the same indices.
+
+### 5. Imports
+
+`Mei.ts` byte-identical in source **and** emitted. The converter's emitted import line is
+byte-identical (only the source name list lost `Nodes`). **One nuance to record against the
+worker's wording:** `Helper.js`'s emitted import is *not* byte-identical — it is
+`{ Attribute, Element, }` → `{ Attribute, Element }`, a dropped trailing comma left behind
+when `tsc` elided the type-only names. Same module specifier, same two value bindings, same
+order, same position in the file: **module evaluation order is untouched** and the change is
+inert. Recorded because the [T8] precedent was stated as byte-identical.
+
+### 6. Standard gate — all independently re-measured
+
+- Manifest: exactly **5 `M`** (3 src + 2 `refactor/`), **0 untracked**, re-checked at the end.
+- `npm run verify` green, exit 0, **2108 passed / 44 files**; both `tsc` stages also run
+  standalone and clean (`tsc -p tsconfig.json --noEmit`, `tsc -p tsconfig.tests.json`).
+- `tests/`, fixtures and every config byte-identical (`diff -rq` of the whole `tests/` tree
+  plus `vitest.config.ts`, both `tsconfig`s, `eslint.config.js`, `package.json`).
+- Suppressions repo-wide: `eslint-disable` **1 → 1**, `@ts-ignore`/`@ts-expect-error`/
+  `@ts-nocheck` **0 → 0**. Type assertions (AST `AsExpression`, not grep) **119 → 89**,
+  `AnyKeyword` **31 → 1**, `NonNullExpression` **577 → 578** — the single documented `+1`,
+  which I located at `msmCleanupSingle`'s `getRootElement()!` and which erases at runtime.
+  Diffing the assertion *texts* shows the only newly-introduced one is
+  `null as unknown as Element`, **replacing** base's `null as any` at the synthesised
+  `Goto` (narrower than what it replaces, at a site that already had an assertion,
+  documented there). Net −30.
+- Lint, `eslint -f json` over `src` + `tests` on both trees: **1336 → 1306** errors,
+  warnings **18 → 18**, files with ≥1 error **75 → 75**. The only files whose counts move
+  are the three cluster files (96→70, 31→29, 555→553). Every rule delta reproduces:
+  `explicit-module-boundary-types` 8→**0**, `no-explicit-any` 24→12, `no-unused-vars` 68→58,
+  `prefer-for-of` 7→6, `no-non-null-assertion` 1079→1080; `eqeqeq` 44, `unified-signatures`
+  44, `no-require-imports` 3, `no-extraneous-class` 3 all flat.
+- `lint-debt.md` reconciles **exactly**: its post-T10 by-rule list sums to **1306**, and the
+  cluster breakdown (`no-non-null-assertion` 578, `eqeqeq` 44, `no-unused-vars` 19,
+  `unified-signatures` 7, `no-require-imports` 3, `no-extraneous-class` 1) sums to **652**,
+  matching 553 + 70 + 29. Both re-derived from my own json, not read off the table.
+- Coverage, both trees, same runner: **functions 94.3218% → 94.2166%** (floor 94.0, holds);
+  **uncovered scoped statements 2263 → 2256 (−7)** against the 2318 budget — it *fell*;
+  **tests 2108 → 2108**. Only three files move, and the one in an untouched file is traced
+  to the exact function: `XomTypes.setNamespaceURI` (line 402) went **360 hits → 0**, and
+  `grep` confirms zero remaining callers in `src/` or `tests/`. `Mei.ts` 51→42 uncovered of
+  368→359, i.e. all 9 removed statements were already uncovered; the converter's uncovered
+  count is **flat at 1595** while its total moves 3716→3722 (source-map rebase on ~500 added
+  comment lines, which the charter calls out as by-construction).
+- `log.md` append-only: `git diff --numstat` = **277 insertions, 0 deletions**.
+- Prettier clean on all five touched files.
+- Tree freeze respected: the three sources' mtimes (19:34–19:53) all predate my 20:05 build,
+  so the dist I diffed reflects the reviewed source.
+
+### Documentation spot-checks against the Java reference (read-only)
+
+The item is mostly ~700 lines of prose that T14/T15 will act on, so I checked the load-bearing
+claims rather than taking them on trust. All four I picked hold:
+
+1. `getTitle`'s fallbacks unreachable — `Helper.java:82-84` opens
+   `getFirstChildElement(String, Element)` with `if (ofThis == null) return null;`, and
+   `Helper.ts:115` has the same guard. Nothing throws; the MEI 3.0/4.0 title locations are
+   never consulted in either language.
+2. `pname2midi` has no case returning 10 — TS returns 0–9 and 11 only; Java's method
+   contains zero `return 10`. Real latent gap, correctly documented as such.
+3. Expansion repeats move rather than duplicate — verified twice: from
+   `XomTypes.appendChild`, which detaches instead of throwing, and empirically from my
+   synthetic-plist probe above.
+4. The `resolveCopyofs` cycle test really is stricter than Java's — `Mei.java:492-493` uses
+   mutual `values().containsAll(…)` (set semantics); the port compares sorted lists
+   elementwise (multiset semantics).
+
+### Notes for the conductor (neither is T10's doing, neither blocks the commit)
+
+- `src/mpm/{elements/` exists in the working tree: an **empty** directory tree (6 dirs, **0
+  files**) from a shell brace-expansion accident, mtime **20 März**, i.e. months before this
+  swarm. Git cannot see it (empty dirs), `tsc` and vitest ignore it. Worth a `rmdir` in some
+  later housekeeping item; it is not part of this manifest.
+- The worker's note about the Java repo's pre-existing dirty tree is accurate; I only read
+  from it.

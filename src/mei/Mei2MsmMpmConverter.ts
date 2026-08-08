@@ -1,4 +1,4 @@
-import { Element, Attribute, Nodes, Elements, Document } from '../xml/XomTypes.js';
+import { Element, Attribute, Elements, Document } from '../xml/XomTypes.js';
 import { Helper } from './Helper.js';
 import { Mei } from './Mei.js';
 import { Meico } from '../Meico.js';
@@ -32,9 +32,62 @@ import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
- * This class does the MEI to MSM/MPM conversion.
- * To use it, instantiate it with the constructor, then invoke convert().
- * Port of meico.mei.Mei2MsmMpmConverter
+ * Converts MEI into MSM (the score, as written) plus MPM (the performance instructions
+ * that make it expressive). This is where essentially all the musical knowledge in the
+ * port lives; {@link Mei} only owns the tree and {@link Msm}/{@link Mpm} only own the
+ * output formats.
+ *
+ * ### How to use it
+ *
+ * One converter, one conversion: {@link convert} is not re-entrant, because the object
+ * *is* the conversion's working state. Instantiate, call `convert(mei)`, discard.
+ *
+ * ### The shape of the conversion
+ *
+ * `convert(mei)` ({@link convertMei}) runs a fixed sequence:
+ * 1. bail out unless there is a `music/body` to convert;
+ * 2. raise {@link ppq} if {@link Mei.computeMinimalPPQ} says this score needs a finer grid
+ *    — and remember the original, because the field is restored at the end;
+ * 3. snapshot the MEI document if `cleanup` is set, since the next step rewrites it;
+ * 4. preprocess: resolve `copyof`/`sameas`, drop `rend`, resolve `expansion`s (unless
+ *    `ignoreExpansions`) — see {@link Mei} for what each does;
+ * 5. walk each `body` with {@link convertElement}, which is where the MSMs and MPMs get
+ *    built and pushed onto {@link movements} / {@link performances};
+ * 6. postprocess the MPMs, restore `ppq` and the MEI document, clean the MSMs, and name
+ *    the outputs after the source file.
+ *
+ * Step 5 is the recursive heart: {@link convertElement} switches on every MEI element name
+ * and either handles it, descends into it, or skips it. Everything else in this class is a
+ * handler for one of those cases (`processNote`, `processMeasure`, …), a builder
+ * (`makeMovement`, `makePart`, …), or a shared computation (`getMidiTime`,
+ * `computeDuration`, `computePitch`, …).
+ *
+ * ### Working state, and why it is a field
+ *
+ * The `current*` fields are a cursor into the MEI tree: the mdiv, part, layer, measure and
+ * chord the walk is currently inside, plus the MSM movement and MPM performance being
+ * filled. {@link reset} clears them per movement. Java keeps the same state on a `Helper`
+ * instance; this port hoisted it onto the converter, which is why {@link Helper} here is
+ * static-only. Untangling this into explicit context objects is T15's job — the shape is
+ * deliberate for now, so that the diff against `Mei2MsmMpmConverter.java` stays readable.
+ *
+ * The deferred lists (`accid`, `endids`, `tstamp2s`, `lyrics`, `arpeggiosToSort`) exist
+ * because MEI lets an element refer forward: an `accid` applies to notes that come later
+ * in the measure, an `endid`/`tstamp2` closes a span whose end has not been walked yet,
+ * and an arpeggio's note order is not known until every note it names has a pitch. Each is
+ * drained at a defined point — `accid` per measure, `endids`/`tstamp2s` as the referenced
+ * elements are met ({@link checkEndid}), `arpeggiosToSort` at the end of the movement.
+ *
+ * ### Parity constraints
+ *
+ * All timing, duration and pitch arithmetic is compared byte-for-byte against
+ * Java-generated MSM/MPM/MIDI references. Expression order, `parseFloat`/`parseInt`
+ * choices and rounding are therefore frozen, as is the order in which
+ * {@link Helper.addUUID} is called. The element dispatch in {@link convertElement} is
+ * equally frozen: its `continue`/`break` pattern encodes which elements are descended
+ * into, and reordering or merging cases changes what gets visited.
+ *
+ * Port of `meico.mei.Mei2MsmMpmConverter`.
  * @author Axel Berndt
  */
 export class Mei2MsmMpmConverter {
@@ -42,9 +95,13 @@ export class Mei2MsmMpmConverter {
   private ignoreExpansions = false;
   private cleanup = true;
 
+  /** the tick grid; raised during {@link convertMei} if the source needs finer resolution */
   protected ppq = 720;
+  /** serial number for the synthetic markers {@link processEnding} generates */
   protected endingCounter = 0;
   protected dontUseChannel10 = true;
+
+  // --- cursor into the MEI tree and the output being built; see the class comment ---
   protected currentMsmMovement: Element | null = null;
   protected currentMdiv: Element | null = null;
   protected currentWork: Element | null = null;
@@ -52,15 +109,23 @@ export class Mei2MsmMpmConverter {
   protected currentLayer: Element | null = null;
   protected currentMeasure: Element | null = null;
   protected currentChord: Element | null = null;
+
+  // --- deferred work, drained at the points named in the class comment ---
+  /** accidentals seen in this measure, applying to later notes of the same pitch */
   protected accid: Element[] = [];
+  /** MSM entries still waiting for the MEI element their `endid` names */
   protected endids: Element[] = [];
+  /** MSM entries still waiting for the measure their `tstamp2` names */
   protected tstamp2s: Element[] = [];
   protected lyrics: Element[] = [];
+  /** every note and chord of the current mdiv, by id — the target of `startid`/`plist` */
   protected allNotesAndChords = new Map<string, Element>();
+  /** arpeggio note lists to order by pitch once all pitches are known; the flag is "upwards" */
   protected arpeggiosToSort: KeyValue<Attribute, boolean>[] = [];
+
   protected currentPerformance: Performance | null = null;
-  protected movements: any[] = []; // Msm[]
-  protected performances: any[] = []; // Mpm[]
+  protected movements: Msm[] = [];
+  protected performances: Mpm[] = [];
 
   /**
    * constructor with default settings
@@ -82,11 +147,16 @@ export class Mei2MsmMpmConverter {
     this.cleanup = cleanup ?? true;
   }
 
+  /** converts the provided MEI data into MSM and MPM format and returns a tuplet of lists */
+  convert(mei: Mei): KeyValue<Msm[], Mpm[]>;
+  /** recursively traverses the mei tree (depth first), converting as it goes */
+  convert(root: Element): void;
   /**
-   * converts the provided MEI data into MSM and MPM format and return a tuplet of lists,
-   * or recursively traverse the mei tree (depth first) when called with an Element
+   * Java names both of these `convert`; the two do very different things, which is why the
+   * return type is a union here rather than `any`. The `Element` form is the recursive
+   * walker and is only meaningfully called from inside the conversion.
    */
-  convert(meiOrRoot: Mei | Element): any {
+  convert(meiOrRoot: Mei | Element): KeyValue<Msm[], Mpm[]> | void {
     if (meiOrRoot instanceof Mei) {
       return this.convertMei(meiOrRoot);
     } else {
@@ -94,10 +164,11 @@ export class Mei2MsmMpmConverter {
     }
   }
 
-  private convertMei(mei: Mei): KeyValue<any[], any[]> {
+  /** the whole conversion, step by step; see the class comment for the outline */
+  private convertMei(mei: Mei): KeyValue<Msm[], Mpm[]> {
     if (mei === null) {
       console.log('\nThe provided MEI object is null and cannot be converted.');
-      return new KeyValue<any[], any[]>([], []);
+      return new KeyValue<Msm[], Mpm[]>([], []);
     }
 
     const startTime = Date.now();
@@ -113,7 +184,7 @@ export class Mei2MsmMpmConverter {
       this.mei.getMusic()!.getFirstChildElement('body', this.mei.getMusic()!.getNamespaceURI()) ===
         null
     )
-      return new KeyValue<any[], any[]>([], []);
+      return new KeyValue<Msm[], Mpm[]>([], []);
 
     const minPPQ = this.mei.computeMinimalPPQ();
     const originalPPQ = this.ppq;
@@ -136,8 +207,8 @@ export class Mei2MsmMpmConverter {
       .getChildElements('body', this.mei.getMusic()!.getNamespaceURI());
     for (let b = 0; b < bodies.size(); ++b) this.convertElement(bodies.get(b));
 
-    const msms: any[] = [...this.movements];
-    const mpms: any[] = [...this.performances];
+    const msms: Msm[] = [...this.movements];
+    const mpms: Mpm[] = [...this.performances];
 
     Mei2MsmMpmConverter.mpmPostprocessing(mpms);
 
@@ -172,9 +243,45 @@ export class Mei2MsmMpmConverter {
       `MEI to MSM/MPM conversion finished. Time consumed: ${Date.now() - startTime} milliseconds`,
     );
 
-    return new KeyValue<any[], any[]>(msms, mpms);
+    return new KeyValue<Msm[], Mpm[]>(msms, mpms);
   }
 
+  /**
+   * The element dispatch: walks `root`'s children and, for each, decides what happens.
+   *
+   * **Read the `continue` / `break` as the real content of this method.** Every case ends
+   * in one of three ways, and the difference is the whole traversal policy:
+   * - `continue` — this element is finished. Either it was ignored (`clef`, `barline`,
+   *   `annot`: no effect on the sounding result) or its handler took over the descent
+   *   itself (`processMeasure`, `processLayer`, `processNote`, …). Nothing below it is
+   *   visited by *this* loop;
+   * - `break` — fall out of the switch to the `convertElement(e)` at the bottom, i.e.
+   *   **descend**. Used for structural wrappers with no meaning of their own (`score`,
+   *   `staffGrp`, `beam`, `parts`) and for handlers that annotate an element but still want
+   *   its children walked (`processKeySig`, `processStaffDef`, `processOctave`);
+   * - `default: continue` — unknown elements are skipped whole, not descended into.
+   *
+   * So the set of `break` cases is exactly the set of elements whose children reach the
+   * converter through the generic path. Moving a case between the two groups silently
+   * changes what gets converted, which is why this switch is frozen; restructuring it into
+   * a handler table is T15's work.
+   *
+   * A few cases carry extra logic worth noting: `chord` skips grace chords entirely
+   * (`grace` attribute present), `tuplet` descends only when {@link processTuplet} reports
+   * it could not handle the tuplet itself, and `bTrem`/`fTrem` are routed to
+   * {@link processChord} because MEI models them as chord-like containers.
+   *
+   * The editorial-markup elements split along the same line: `add`, `corr`, `expan`,
+   * `orig`, `reg`, `sic`, `subst`, `supplied` and `unclear` are descended into (their
+   * content is music), while `abbr`, `damage` and `gap` are skipped.
+   *
+   * `trill`, `mordent` and `turn` are deliberately in the ignore list: meico does not read
+   * ornaments from MEI (Java carries a TODO saying so). MPM ornamentation reaches the
+   * output through `arpeg` and through MPM styles, not through these.
+   *
+   * {@link checkEndid} runs before the switch for *every* element, because any element may
+   * be the one a previously parked `endid` was waiting for.
+   */
   private convertElement(root: Element): void {
     const es = root.getChildElements();
 
@@ -481,6 +588,27 @@ export class Mei2MsmMpmConverter {
   /**
    * this function gets an mdiv and creates an instance of Msm
    */
+  /**
+   * Start a new movement: build the MSM and the MPM for one `mdiv`, install them as the
+   * current output, convert the mdiv's content, then finish the two things that could not
+   * be done during the walk.
+   *
+   * The title is the work title plus the mdiv's `n` and `label`, appended in that order.
+   * The movement id is the mdiv's own id, or a fresh `meico_<uuid>` which is **written back
+   * onto the mdiv** so the MSM and the MEI agree.
+   *
+   * Then it locates this mdiv's `work` element in `meiHead`, which is where a global tempo
+   * may live: by `decls` reference if the mdiv has one, else by matching `n`, and trivially
+   * if there is exactly one `work`. That lookup only matters for the last step.
+   *
+   * After the walk, two postponed jobs run:
+   * - **arpeggios** parked on {@link arpeggiosToSort} are ordered by the pitches that are
+   *   only now known, ascending or descending per the stored flag, and written back as a
+   *   space-separated `#id` list;
+   * - **the tempo map** gets a fallback: if no tempo was found anywhere in the movement, the
+   *   `work`'s `tempo` element is used as an initial tempo at date 0. This is why the
+   *   `work` lookup above exists.
+   */
   private makeMovement(mdiv: Element): void {
     let titleString = this.mei!.getTitle();
     const mdivN = mdiv.getAttribute('n');
@@ -502,7 +630,12 @@ export class Mei2MsmMpmConverter {
 
     const mpm = Mpm.createMpm();
 
-    // Add metadata
+    // Add metadata.
+    // This stays `any[]`, and with it the file-level no-explicit-any suppression, for one
+    // reason: `RelatedResource.createRelatedResource` returns `RelatedResource | null`
+    // while `Mpm.addMetadata` takes `RelatedResource[] | null`, so the honest element type
+    // does not fit the consumer. Closing that needs either a non-null return there or a
+    // nullable parameter here — both in mpm/, i.e. outside this item.
     const relatedResources: any[] = [];
     const meiFile = this.mei!.getFile();
     if (meiFile !== null) {
@@ -866,6 +999,19 @@ export class Mei2MsmMpmConverter {
     );
   }
 
+  /**
+   * Convert one voice. The interesting part is the clock discipline around it, because
+   * layers are *parallel*: each must start where the previous one started, not where it
+   * ended.
+   *
+   * So the part's `currentDate` is saved, the layer is walked, and then either restored —
+   * if another `layer` sibling follows — or set to the latest `currentDate` reached by any
+   * sibling layer, which is where the next music begins. Each layer records its own end in a
+   * `currentDate` attribute on the MEI element for exactly that comparison.
+   *
+   * {@link accid} is cleared per layer as well as per measure: an accidental in one voice
+   * does not carry into another.
+   */
   private processLayer(layer: Element): void {
     const parentLayer = this.currentLayer;
     this.currentLayer = layer;
@@ -939,6 +1085,21 @@ export class Mei2MsmMpmConverter {
     if (restored !== null && restored.getValue() === 'true') this.convertElement(del);
   }
 
+  /**
+   * Turn an MEI `ending` (a volta bracket) into MSM sequencing: a `marker` at its start and
+   * a `goto` that decides, on each pass, whether this ending is the one to play.
+   *
+   * The ending's *number* comes from `n`, else from `label`, and is reduced to an integer
+   * by {@link Helper.extractAllIntegersFromString} — so `"1."`, `"1, 2"` and `"1-2"` all
+   * yield 1, the first integer found. An ending whose text contains "fine" is given
+   * `MAX_SAFE_INTEGER` so it sorts last, and one with no recognisable number gets
+   * `MIN_SAFE_INTEGER` and is simply appended in encounter order. Those two sentinels are
+   * how the ordering of gotos at one date is decided further down.
+   *
+   * The marker id is `endingMarker_<the ending's xml:id, or a fresh uuid>` — never
+   * `#`-prefixed, which is what makes {@link Goto}'s truncating parameter constructor
+   * harmless at this call site (see the note there).
+   */
   private processEnding(ending: Element): void {
     const startDate = this.getMidiTime();
     const endingCount = this.endingCounter++;
@@ -1021,7 +1182,16 @@ export class Mei2MsmMpmConverter {
       }
     }
 
-    const gotoObj = new Goto(dateOfGoto, startDate, markerId, `0${activity}`, null as any);
+    // `source` is the MEI element a Goto was read from; there is none here because this
+    // goto is synthesised, and Goto only ever stores the field, never reads it — so null is
+    // safe. Typed away rather than declared nullable because Goto's signature is T9's file.
+    const gotoObj = new Goto(
+      dateOfGoto,
+      startDate,
+      markerId,
+      `0${activity}`,
+      null as unknown as Element,
+    );
     const gt = gotoObj.toElement();
     gt.addAttribute(new Attribute('n', String(n)));
 
@@ -1067,10 +1237,10 @@ export class Mei2MsmMpmConverter {
   private processPhrase(phrase: Element): void {
     const timingData = this.computeControlEventTiming(phrase, this.currentPart);
     if (timingData === null) return;
-    const date = timingData[0] as number;
-    const endDate = timingData[1] as number | null;
-    const tstamp2 = timingData[2] as Attribute | null;
-    const endid = timingData[3] as Attribute | null;
+    const date = timingData[0];
+    const endDate = timingData[1];
+    const tstamp2 = timingData[2];
+    const endid = timingData[3];
 
     let att = phrase.getAttribute('part');
     if (att === null) att = phrase.getAttribute('staff');
@@ -1151,6 +1321,23 @@ export class Mei2MsmMpmConverter {
     sectionMapEntry.addAttribute(new Attribute('date.end', this.getMidiTimeAsString()));
   }
 
+  /**
+   * Convert one measure, and then reconcile the parts' clocks.
+   *
+   * Three things happen around the recursive descent:
+   * - **before**: parked {@link tstamp2s} are counted down one measure. `tstamp2` is
+   *   written `<measures>m+<beat>`, so each measure boundary decrements the count and only
+   *   the entry that reaches zero resolves to a `date.end` here. The in-place `splice`
+   *   with `i--` is why this is an index loop and not a `for..of`;
+   * - **before**: {@link reorderMeasureContent} hoists control events ahead of the staves;
+   * - **after**: {@link accid} is cleared, because MEI accidentals last exactly one measure.
+   *
+   * The tail then decides how long the measure actually was. `metcon="false"` marks a
+   * measure that deliberately does not fill its time signature (a pickup, a cadenza), and
+   * the parts are advanced by what they really contain; otherwise every part is advanced to
+   * the same measure end, so a part that under- or over-fills does not desynchronise the
+   * score.
+   */
   private processMeasure(measure: Element): void {
     const startDate = this.getMidiTime();
     measure.addAttribute(new Attribute('date', String(startDate)));
@@ -1330,6 +1517,18 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Handle a standalone or note-attached `accid`.
+   *
+   * First it looks for an enclosing `note`, stopping the search at a `layer` boundary — an
+   * `accid` that is not inside a note is a free-standing editorial accidental and belongs
+   * to no note in particular. When a parent note is found, the accidental is copied onto it
+   * (without overwriting one already there), so {@link computePitch} finds it in the usual
+   * place.
+   *
+   * Either way the element is also pushed onto {@link accid}, the per-measure list that
+   * {@link computePitch} consults for later notes of the same pitch and octave.
+   */
   private processAccid(accid: Element): void {
     let parentNote: Element | null = accid.getParent();
     for (; parentNote !== null; parentNote = parentNote.getParent()) {
@@ -1506,6 +1705,29 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Find or create the MSM `part` for a `staffDef`. Idempotent by `n`, so repeated
+   * `staffDef`s for the same staff — MEI restates them at every `scoreDef` — update rather
+   * than duplicate.
+   *
+   * The part's name is the enclosing `staffGrp`'s label followed by the staff's own label
+   * (attribute, else `label` child), space-joined. That name is what
+   * `Msm.processPartName`/`InstrumentsDictionary` later matches against to pick a MIDI
+   * program, so its exact spelling reaches the MIDI output.
+   *
+   * A `staffDef` without `n` gets a **negative** number derived from the current part count
+   * (and it is written back onto the MEI), so synthetic numbers can never collide with real
+   * staff numbers.
+   *
+   * MIDI channel and port are derived from the *last* part added, not from a counter: the
+   * channel is its channel + 1 modulo 16, skipping 9 — zero-based for MIDI channel 10 — when
+   * {@link dontUseChannel10} is set, and the port advances only when the channel wraps back
+   * to 0, modulo 256. Both are decided here rather than at MIDI export so that the MSM and
+   * the eventual MIDI file agree.
+   *
+   * The MPM gets a matching part with the same label, number, channel and port; the two
+   * stay index-aligned because both are appended here in the same call.
+   */
   private makePart(staffDef: Element): Element {
     const existingPart = this.getPart(staffDef.getAttributeValue('n') ?? '');
     if (existingPart !== null) return existingPart;
@@ -1580,6 +1802,14 @@ export class Mei2MsmMpmConverter {
     return part;
   }
 
+  /**
+   * Build an MSM `timeSignature` from a `scoreDef`/`staffDef`/`meterSig`, reading `count`
+   * and `unit` or their `meter.`-prefixed forms.
+   *
+   * The character loop over `count` is not decoration: MEI allows additive meters such as
+   * `"3+2+2"`, and this **sums** every numeric run it finds, so `3+2+2` becomes 7. Any
+   * non-numeric separator works, and a `count` with no digits at all sums to 0.
+   */
   protected makeTimeSignature(meiSource: Element): Element | null {
     const s = new Element('timeSignature');
     Helper.copyId(meiSource, s);
@@ -1788,6 +2018,15 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Handle a `tuplet` that carries its own `dur`, i.e. one that states its total length
+   * rather than leaving it to be derived from its contents.
+   *
+   * @return true if it was handled here — the caller then does **not** descend again, since
+   *   this method already walked the children; false to let {@link convertElement}'s
+   *   generic descent take over, which is the normal case. The tuplet ratio itself is
+   *   applied per note inside {@link computeDuration}, not here.
+   */
   private processTuplet(tuplet: Element): boolean {
     if (tuplet.getAttribute('dur') !== null) {
       const cd = parseFloat(this.currentPart!.getAttributeValue('currentDate')!);
@@ -1809,10 +2048,10 @@ export class Mei2MsmMpmConverter {
 
     const timingData = this.computeControlEventTiming(tupletSpan, this.currentPart);
     if (timingData === null) return;
-    const date = timingData[0] as number;
-    const endDate = timingData[1] as number | null;
-    const tstamp2 = timingData[2] as Attribute | null;
-    const endid = timingData[3] as Attribute | null;
+    const date = timingData[0];
+    const endDate = timingData[1];
+    const tstamp2 = timingData[2];
+    const endid = timingData[3];
 
     let att = tupletSpan.getAttribute('part');
     if (att === null) att = tupletSpan.getAttribute('staff');
@@ -1865,6 +2104,22 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Convert an MEI `arpeg` into an MPM ornament referencing the `arpeggio` ornament
+   * definition.
+   *
+   * `order="nonarp"` means "explicitly not arpeggiated" and is rejected up front. The note
+   * order is then determined one of two ways:
+   * - **no `plist`**: the order is symbolic — `'ascending pitch'`, or `'descending pitch'`
+   *   for `order="down"`. MPM resolves it at rendering time and nothing more is needed;
+   * - **with a `plist`**: the order is the listed notes, in listed order. A `plist` entry
+   *   naming a *chord* is expanded into its notes, minting ids for any that lack one.
+   *
+   * The `plist` case cannot be finished here, because a note's pitch is only known after
+   * {@link processNote} has run on it. So the ornament's `note.order` attribute is parked
+   * on {@link arpeggiosToSort} together with a direction flag and sorted at the end of
+   * {@link makeMovement}, once every `pnum` exists.
+   */
   private processArpeg(arpeg: Element): void {
     // check if this is really an arpeggio
     const order = Helper.getAttribute('order', arpeg);
@@ -1876,7 +2131,7 @@ export class Mei2MsmMpmConverter {
 
     // create ornament data
     const od = new OrnamentData();
-    od.date = timingData[0] as number;
+    od.date = timingData[0];
     od.ornamentDefName = 'arpeggio';
     od.scale = 0.0;
 
@@ -2066,10 +2321,10 @@ export class Mei2MsmMpmConverter {
     // compute the timing
     const timingData = this.computeControlEventTiming(dynam, this.currentPart);
     if (timingData === null) return;
-    dd.startDate = timingData[0] as number;
-    dd.endDate = timingData[1] as number | null;
-    const tstamp2 = timingData[2] as Attribute | null;
-    const endid = timingData[3] as Attribute | null;
+    dd.startDate = timingData[0];
+    dd.endDate = timingData[1];
+    const tstamp2 = timingData[2];
+    const endid = timingData[3];
 
     // read the xml:id
     const id = Helper.getAttribute('id', dynam);
@@ -2161,10 +2416,10 @@ export class Mei2MsmMpmConverter {
     // compute the timing or get the necessary data to compute the end date later on
     const timingData = this.computeControlEventTiming(tempo, this.currentPart);
     if (timingData === null) return;
-    tempoData.startDate = timingData[0] as number;
-    tempoData.endDate = timingData[1] as number | null;
-    const tstamp2 = timingData[2] as Attribute | null;
-    const endid = timingData[3] as Attribute | null;
+    tempoData.startDate = timingData[0];
+    tempoData.endDate = timingData[1];
+    const tstamp2 = timingData[2];
+    const endid = timingData[3];
 
     // parse the staff attribute (space separated staff numbers)
     let tempoMap: TempoMap | null;
@@ -2600,10 +2855,10 @@ export class Mei2MsmMpmConverter {
     // Simplified -- the full implementation handles plist, tstamp2, endid, staff assignment, etc.
     const timingData = this.computeControlEventTiming(slur, this.currentPart);
     if (timingData === null) return;
-    const date = timingData[0] as number;
-    const endDate = timingData[1] as number | null;
-    const tstamp2 = timingData[2] as Attribute | null;
-    const endid = timingData[3] as Attribute | null;
+    const date = timingData[0];
+    const endDate = timingData[1];
+    const tstamp2 = timingData[2];
+    const endid = timingData[3];
 
     const slurMisc = new Element('slur');
     slurMisc.addAttribute(new Attribute('date', String(date)));
@@ -2686,6 +2941,21 @@ export class Mei2MsmMpmConverter {
     this.processRepeat(0.5 * this.getOneMeasureLength(this.currentPart));
   }
 
+  /**
+   * Replay the last `timeframe` ticks of the current part by copying its score entries
+   * forward. This is what `mRpt`, `mRpt2`, `multiRpt`, `beatRpt` and `halfmRpt` all reduce
+   * to — MEI's "repeat what just happened" shorthands, expanded eagerly rather than
+   * expressed as sequencing.
+   *
+   * The backwards scan stops at the first entry older than `startDate`, which relies on the
+   * score map being date-ordered ({@link Helper.addToMap}'s invariant). Copies are built
+   * with `unshift`, so `els` ends up in forward order and the re-insertion preserves the
+   * original sequence. Each copy's id is rewritten to `meico_repeats_<old>_<uuid>` — one
+   * UUID per copied element, on the order-sensitive path.
+   *
+   * Layer filtering here is *inverted* relative to {@link isSameLayer}: an empty current
+   * layer copies everything, otherwise only entries whose `layer` matches exactly.
+   */
   private processRepeat(timeframe: number): void {
     if (
       this.currentPart === null ||
@@ -2899,10 +3169,10 @@ export class Mei2MsmMpmConverter {
 
     const timingData = this.computeControlEventTiming(octave, this.currentPart);
     if (timingData === null) return;
-    const date = timingData[0] as number;
-    const endDate = timingData[1] as number | null;
-    const tstamp2 = timingData[2] as Attribute | null;
-    const endid = timingData[3] as Attribute | null;
+    const date = timingData[0];
+    const endDate = timingData[1];
+    const tstamp2 = timingData[2];
+    const endid = timingData[3];
 
     let att = octave.getAttribute('part');
     if (att === null) att = octave.getAttribute('staff');
@@ -2967,10 +3237,10 @@ export class Mei2MsmMpmConverter {
     }
     const timingData = this.computeControlEventTiming(pedal, this.currentPart);
     if (timingData === null) return;
-    const date = timingData[0] as number;
-    const endDate = timingData[1] as number | null;
-    const tstamp2 = timingData[2] as Attribute | null;
-    const endid = timingData[3] as Attribute | null;
+    const date = timingData[0];
+    const endDate = timingData[1];
+    const tstamp2 = timingData[2];
+    const endid = timingData[3];
 
     let att = pedal.getAttribute('part');
     if (att === null) att = pedal.getAttribute('staff');
@@ -3027,6 +3297,27 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Convert one MEI `note` into an MSM `note`, the innermost step of the whole conversion.
+   *
+   * Order of operations, all of which matter:
+   * 1. give the note an id if its chord has articulations, since those reference notes by
+   *    id and an anonymous note could not be addressed;
+   * 2. descend into the note first ({@link convertElement}) — an `accid` or `artic` child
+   *    must be seen *before* the pitch and articulation are computed;
+   * 3. {@link checkSlurs} then {@link processArtic}, in that order, so articulation can see
+   *    the slur state;
+   * 4. compute pitch, bail out at -1 (unpitched: the MSM note is discarded), then duration;
+   * 5. advance the part clock **only when not inside a chord** — chord members all start
+   *    together, and the chord itself moves the clock once;
+   * 6. write `pnum`, `date` and `midi.dur` back onto the *MEI* element as well, because
+   *    later references (arpeggio ordering, `startid` lookups) read them from there.
+   *
+   * Ties are resolved by first character of `tie` (`i`nitial / `m`edial / `t`erminal),
+   * inherited from the chord when the note has none: an initial tie marks the MSM note,
+   * while medial and terminal ties reach back into the part's score map to extend the note
+   * that was tied from, rather than emitting a second note.
+   */
   private processNote(note: Element): void {
     if (this.currentPart === null) return;
 
@@ -3121,6 +3412,13 @@ export class Mei2MsmMpmConverter {
     );
   }
 
+  /**
+   * Clear the per-movement state. Called by {@link makeMovement} *before* it installs the
+   * new cursor, so a movement never inherits the previous one's accidentals, open spans or
+   * note index. {@link ppq}, {@link dontUseChannel10}, {@link movements} and
+   * {@link performances} deliberately survive — they belong to the conversion, not to a
+   * movement.
+   */
   protected reset(): void {
     this.endingCounter = 0;
     this.currentMsmMovement = null;
@@ -3138,6 +3436,15 @@ export class Mei2MsmMpmConverter {
     this.allNotesAndChords.clear();
   }
 
+  /**
+   * Build the id → element index that `startid`, `endid` and `plist` references resolve
+   * against. Only `note` and `chord` elements *with an `xml:id`* are indexed: an element
+   * without one cannot be referenced, so it cannot be a target.
+   *
+   * Run once per movement, before the walk, because MEI references point forward as
+   * readily as backward — {@link computeControlEventTiming} depends on being able to find
+   * a note that the traversal has not reached yet.
+   */
   public indexNotesAndChords(mdiv: Element): void {
     this.allNotesAndChords.clear();
     const nodes = mdiv.query(
@@ -3149,6 +3456,21 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * "What tick are we at?" — the clock the whole conversion writes dates from.
+   *
+   * There is no single counter. The answer is taken from the innermost context that has
+   * one, in this order: the MSM part being filled (its `currentDate`, which
+   * {@link processNote} and friends advance), else the current measure's start date, else
+   * the latest `currentDate` across all parts of the movement, else 0. The fallback chain
+   * is what lets global events (a `scoreDef`, a `tempo` outside any staff) get a sensible
+   * date without a part context.
+   *
+   * {@link getMidiTimeAsString} is the same decision returning the attribute's *string*.
+   * It is not `String(getMidiTime())`: for the first two cases it hands back the stored
+   * text verbatim, so `"0.0"` stays `"0.0"` instead of becoming `"0"`. MSM attribute text
+   * is byte-compared against the Java reference, so the two must stay separate.
+   */
   protected getMidiTime(): number {
     if (this.currentPart !== null)
       return parseFloat(this.currentPart.getAttributeValue('currentDate')!);
@@ -3179,11 +3501,22 @@ export class Mei2MsmMpmConverter {
     return String(latestDate);
   }
 
+  /** one measure in ticks under the time signature in force; `4 * ppq` is a whole note */
   protected getOneMeasureLength(msmPartContext: Element | null): number {
     const ts = this.getCurrentTimeSignature(msmPartContext);
     return (4.0 * this.ppq * ts[0]) / ts[1];
   }
 
+  /**
+   * The time signature in force, as `[numerator, denominator]`, resolved in this order:
+   * the part's own `timeSignatureMap`, else the global one, else a `meter` element on the
+   * `work` in `meiHead`, else 4/4.
+   *
+   * "In force" means the **last** entry of the map, not the last one at or before the
+   * current date — the maps are built in document order as the walk proceeds, so their
+   * final entry is the most recent one seen. That holds only while the conversion is
+   * running forward through the score, which is why this is not a general lookup.
+   */
   protected getCurrentTimeSignature(msmPartContext: Element | null): number[] {
     let es: Elements | null = null;
     if (msmPartContext !== null)
@@ -3332,6 +3665,16 @@ export class Mei2MsmMpmConverter {
     return -1;
   }
 
+  /**
+   * Close any parked span whose `endid` names `e`, called for every element the walk meets.
+   *
+   * The loop re-queries {@link getEndid} rather than iterating, because several parked
+   * entries may name the same element and each is removed from {@link endids} as it is
+   * resolved. Note the asymmetry in the end date: a `slur` ends *at* the onset of the
+   * element it points to, everything else ends after that element has sounded — hence the
+   * `+ computeDuration(e)` for all but slurs. That is what makes a slur's `date.end` line
+   * up with the last note's start, which is what {@link checkSlurs} then compares against.
+   */
   protected checkEndid(e: Element): void {
     const id = `#${Helper.getAttributeValue('id', e)}`;
     for (let j = this.getEndid(id); j >= 0; j = this.getEndid(id)) {
@@ -3348,6 +3691,21 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Mark note `e` with its slur state, reading the `slur` entries parked in the global and
+   * part-local `miscMap`s.
+   *
+   * The value written is `'im'` — "inside my slur", i.e. legato continues past this note —
+   * unless the note falls exactly on the slur's `date.end`, in which case it is `'t'` for
+   * terminal and the method **returns immediately**, so a terminating slur wins over any
+   * further slur that might also cover this note. Downstream, MPM's articulation rendering
+   * reads these to decide where legato stops.
+   *
+   * Global slurs are checked first and part-local ones second, and the part-local pass
+   * additionally filters by layer ({@link isSameLayer}) so a slur in one voice does not
+   * bind notes in another. Both passes walk backwards, so the most recently opened slur is
+   * considered first.
+   */
   protected checkSlurs(e: Element): void {
     let slurs = this.currentMsmMovement!.getFirstChildElement('global')!
       .getFirstChildElement('dated')!
@@ -3402,6 +3760,14 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Convert an MEI `tstamp` — a beat number within the current measure, **1-based**, where
+   * the beat unit is the time signature's denominator — into an absolute MSM tick.
+   *
+   * Hence the `- 1.0`, and hence the clamp: a `tstamp` below 1 is out of range and is
+   * treated as the downbeat rather than as a negative offset. With no `tstamp` or no
+   * current measure there is nothing to convert and the current clock is returned instead.
+   */
   protected tstampToTicks(tstamp: string | null, msmPartContext: Element | null): number {
     if (tstamp === null || tstamp === '' || this.currentMeasure === null) return this.getMidiTime();
 
@@ -3417,10 +3783,33 @@ export class Mei2MsmMpmConverter {
     );
   }
 
+  /**
+   * Works out *when* a control event (dynamics, tempo, slur, arpeggio, pedal, …) starts and
+   * ends, in MSM ticks. The one routine every control-event handler funnels through, which
+   * is why they all begin with the same four-line destructuring.
+   *
+   * The start date comes from `tstamp.ges` if present, else `tstamp`. If neither exists the
+   * event has no timing of its own and must borrow it from the note it points at: the
+   * event is **moved in the MEI tree** to sit immediately before that note (`startid`, or
+   * the first entry of `plist`), marked `dontRepositionMeAgain`, and null is returned so
+   * the caller gives up for now — the walk will reach the event again in its new position,
+   * where `getMidiTime()` yields the right date. That marker attribute is what stops the
+   * move from repeating forever, and {@link msmCleanupSingle} strips it afterwards.
+   *
+   * The end date is whichever of these exists, in this order: `dur`, `tstamp2.ges`,
+   * `tstamp2`, `endid`. A `tstamp2` of the form `<measures>m+<beat>` only resolves here
+   * when `<measures>` is 0 or absent, i.e. the span ends in the same measure; otherwise the
+   * attribute is handed back unresolved and the caller parks the entry on
+   * {@link tstamp2s} until that later measure is walked. Likewise an unresolved `endid` is
+   * parked on {@link endids} for {@link checkEndid}.
+   *
+   * @return `[date, endDate, tstamp2, endid]`, or null if the event was repositioned and
+   *   should be processed on the next encounter
+   */
   protected computeControlEventTiming(
     event: Element,
     msmPartContext: Element | null,
-  ): any[] | null {
+  ): [number, number | null, Attribute | null, Attribute | null] | null {
     let att = event.getAttribute('tstamp.ges');
     if (att === null) {
       att = event.getAttribute('tstamp');
@@ -3470,6 +3859,36 @@ export class Mei2MsmMpmConverter {
     return [date, endDate, tstamp2, endid];
   }
 
+  /**
+   * The duration of `ofThis` in MSM ticks — the single most parity-critical computation in
+   * the file. Four stages, in this order, and the order is the arithmetic:
+   *
+   * 1. **Base value.** From `dur` on the element; failing that, from the enclosing `chord`'s
+   *    `dur`; failing that, from the nearest applicable `dur.default` recorded in the
+   *    part's `miscMap` (falling back to the global one), matched by layer. `breve` and
+   *    `long` are special-cased to 8 and 16 quarters because they are words, not divisors;
+   *    everything else is `4 * ppq / parseInt(dur)`. **`focus` is set alongside the base
+   *    value and the later stages read dots from `focus`, not from `ofThis`** — so a note
+   *    inheriting its `dur` from its chord inherits the chord's dots too.
+   * 2. **Dots.** Each dot adds half of what the previous step added, accumulated in a
+   *    running `d` — not recomputed as `dur * (2 - 2^-n)`. `childDots` is honoured as well;
+   *    it is how a chord records dots that live on its children.
+   * 3. **Tuplets by nesting.** Walk the MEI ancestors up to the `mdiv` and, for every
+   *    `tuplet` on the way, scale by `numbase / num`. Nested tuplets therefore multiply.
+   *    A `tuplet` missing either attribute makes the whole duration 0 rather than being
+   *    skipped — Java does the same.
+   * 4. **Tuplets by span.** `tupletSpan` elements apply to elements that are not inside a
+   *    `tuplet`, so they are kept in a `tupletSpanMap` and matched by date and layer here.
+   *    Expired spans (`date.end` already passed) are deleted from the map as a side effect
+   *    of this walk — which is why it runs backwards, and why this method is not free of
+   *    effects despite its name.
+   *
+   * Elements whose name is not in the regex at the top have no duration by definition and
+   * return 0, as do grace notes: they sound, but they take no time from the measure.
+   *
+   * Every literal, every division and the `parseFloat`/`parseInt` split above are compared
+   * against the Java reference through the MSM tick values. Do not simplify the expressions.
+   */
   protected computeDuration(ofThis: Element): number {
     if (
       !ofThis
@@ -3627,6 +4046,52 @@ export class Mei2MsmMpmConverter {
     return startStaffId;
   }
 
+  /**
+   * The MIDI pitch of a note, and — through the out-parameter — the spelling that produced
+   * it. The other half of the parity-critical arithmetic, alongside
+   * {@link computeDuration}.
+   *
+   * ### `.ges` beats written, everywhere
+   *
+   * MEI's `pname.ges`, `oct.ges` and `accid.ges` are the *gestural* (sounding) values; the
+   * unsuffixed ones are what is written on the page. Wherever both exist the gestural one
+   * wins, and — this is the important part — **a gestural value also suppresses the work
+   * that would have derived it**: `accid.ges` clears `checkKeySign`, and having both
+   * `pname.ges` and `oct.ges` skips the entire transposition section, because a gestural
+   * pitch is already transposed by definition.
+   *
+   * ### Where each component comes from
+   *
+   * - **pitch name**: `pname.ges` (unless `'none'`), else `pname`; no pname at all means
+   *   this is not a pitched note and -1 is returned;
+   * - **octave**: `oct.ges`, else `oct`, else the nearest layer-matching `oct.default` from
+   *   the part's `miscMap` (global as fallback). When it has to fall back this far it
+   *   **writes the resolved `oct` back onto the MEI element**, so later passes see it;
+   * - **accidental**, in four escalating steps: `accid.ges`; else `accid`; else the most
+   *   recent {@link accid} entry in this measure for the same pname *and* octave — MEI
+   *   accidentals are octave-specific here; else the key signature.
+   *
+   * ### Key signature resolution
+   *
+   * Part-local before global, but only if the local one is not older: a global key
+   * signature dated later than the local one wins, and is then **copied into the local
+   * map** so subsequent notes in this part find it directly. An accidental in the key
+   * signature matches by pitch class (`pname2midi(pname) % 12`) against the entry's
+   * `midi.pitch` or `pitchname`.
+   *
+   * ### Transposition
+   *
+   * Four sources add up: global and part-local `transposition` and `addTransposition`
+   * entries in the `miscMap`s. `transposition` is exclusive — the backwards scan takes the
+   * first applicable entry and `break`s, so later entries override earlier ones — while
+   * `addTransposition` accumulates every applicable entry, which is what lets an `octave`
+   * (8va) line stack on top of an instrument's transposition. Note the asymmetry in the
+   * expiry test: an expired `transposition` `break`s the scan, an expired
+   * `addTransposition` merely `continue`s. Both shapes are Java's.
+   *
+   * @param pitchdata out-parameter, **appended to**: `[pitchname, accidental, octave]`
+   * @return the MIDI pitch, or -1 if `ofThis` carries no pitch name
+   */
   protected computePitch(ofThis: Element, pitchdata: string[]): number {
     let pname: string;
     let accid = '';
@@ -3965,13 +4430,28 @@ export class Mei2MsmMpmConverter {
     return pitch;
   }
 
-  public static msmCleanup(msms: any[]): void {
+  /** strip the conversion's scaffolding from every MSM; see {@link msmCleanupSingle} */
+  public static msmCleanup(msms: Msm[]): void {
     for (const msm of msms) Mei2MsmMpmConverter.msmCleanupSingle(msm);
   }
 
-  public static msmCleanupSingle(msm: any): void {
+  /**
+   * Remove everything the conversion needed but the MSM format does not define: the whole
+   * `miscMap` (the converter's scratch space for defaults, tuplet spans and the like) and
+   * the working attributes `currentDate`, `tie`, `layer`, `endid`, `tstamp2` and a `goto`'s
+   * `n`. Then drop the maps left empty by all of that.
+   *
+   * This is what the `cleanup` constructor flag switches on, and it is destructive — an
+   * MSM that has been through here can no longer be resumed by the converter.
+   *
+   * The `!` on `getRootElement()` carries this file's standing assumption that a movement
+   * under conversion has a root element; it is the same idiom `XmlBase` uses for this exact
+   * call. Narrowing it properly is T12's null policy, not a local idiom — a guard here
+   * would turn today's TypeError on an empty MSM into a silent no-op.
+   */
+  public static msmCleanupSingle(msm: Msm): void {
     const n = msm
-      .getRootElement()
+      .getRootElement()!
       .query(
         "descendant::*[local-name()='miscMap'] | descendant::*[attribute::currentDate]/attribute::currentDate | descendant::*[attribute::tie]/attribute::tie | descendant::*[attribute::layer]/attribute::layer | descendant::*[attribute::endid]/attribute::endid | descendant::*[attribute::tstamp2]/attribute::tstamp2 | descendant::*[local-name()='goto' and attribute::n]/attribute::n",
       );
@@ -3989,10 +4469,26 @@ export class Mei2MsmMpmConverter {
     msm.deleteEmptyMaps();
   }
 
-  public static mpmPostprocessing(mpms: any[]): void {
+  public static mpmPostprocessing(mpms: Mpm[]): void {
     for (const mpm of mpms) Mei2MsmMpmConverter.mpmPostprocessingSingle(mpm);
   }
 
+  /**
+   * Finish the MPM's continuous maps once the whole movement is known.
+   *
+   * Continuous instructions — a crescendo, an accelerando — are written as a start value
+   * plus `transition.to`, and they need a *following* instruction to transition into. This
+   * pass supplies the missing one: for every entry with a `date.end`, if no later
+   * instruction already starts at or before that date, a synthetic instruction carrying the
+   * `transition.to` value is inserted there (as `volume` for dynamics, `bpm` for tempo).
+   * Without it the transition would have no endpoint and would extend to the end of the
+   * piece.
+   *
+   * It also drops the working attributes `endid`, `tstamp2` and `date.end` — the MPM
+   * counterpart of what {@link msmCleanupSingle} does for MSM, except that this one runs
+   * unconditionally rather than under the `cleanup` flag, because these attributes are not
+   * valid MPM.
+   */
   public static mpmPostprocessingSingle(mpm: Mpm): void {
     const maps: GenericMap[] = [];
 
@@ -4062,6 +4558,17 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Move everything in a measure that is *not* staff content to the front.
+   *
+   * Control events (`dynam`, `tempo`, `dir`, `slur`, …) are commonly encoded after the
+   * staves they apply to, but the converter is a single forward pass: a dynamic must be
+   * seen before the notes it colours, or it would be dated after them. Hoisting every
+   * subtree with no `staff`/`oStaff` inside it to position 0 gives the walk that order.
+   *
+   * The backwards loop combined with `insertChild(subtree, 0)` is what preserves the
+   * relative order of the hoisted elements — walking forwards would reverse them.
+   */
   protected static reorderMeasureContent(measure: Element): void {
     const subtrees = measure.getChildElements();
     for (let i = subtrees.size() - 1; i >= 0; --i) {
@@ -4077,6 +4584,14 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Stamp a note with the id of the slur that covers it, so MPM's articulation rendering
+   * can tell two overlapping slurs apart.
+   *
+   * The `_meico_<uuid>` suffix makes the value unique per note while keeping the slur's own
+   * id readable as a prefix. It draws a UUID per stamped note, so this sits on the
+   * order-sensitive path described on {@link Helper.addUUID}.
+   */
   protected static addSlurId(fromThis: Element, toThis: Element): void {
     const slurid = Helper.getAttribute('id', fromThis);
     if (slurid !== null) {
@@ -4084,6 +4599,19 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Translate a barline into MSM sequencing commands — the `marker`/`goto` pairs that
+   * {@link Msm.applySequencingMapToMap} later expands into actual repeats.
+   *
+   * `rptstart` drops a "repetition start" marker; `rptend` emits a `goto` that jumps back
+   * to it; `rptboth` does both, in that order — the goto is written *before* the marker so
+   * that a `rptboth` barline jumps back to the *previous* repeat start rather than to
+   * itself. `end` marks "fine". Anything else is not a sequencing instruction and returns.
+   *
+   * The goto's target is found by scanning the map backwards for the newest marker strictly
+   * *before* this date; failing that the target stays `date 0` with an empty id, i.e. jump
+   * to the beginning.
+   */
   protected static barline2SequencingCommand(
     barline: string,
     date: number,
@@ -4116,7 +4644,7 @@ export class Mei2MsmMpmConverter {
       gt.addAttribute(new Attribute('activity', '1'));
       gt.addAttribute(new Attribute('target.date', '0'));
       gt.addAttribute(new Attribute('target.id', ''));
-      const index = Helper.addToMap(gt, sequencingMap);
+      Helper.addToMap(gt, sequencingMap);
       const ns = sequencingMap.query(
         "descendant::*[local-name()='marker' and (@message='repetition start' or @message='fine')]",
       );
@@ -4144,10 +4672,26 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Octave-displacement clefs (`clef.dis`, e.g. a tenor G clef sounding an octave down).
+   *
+   * **Not implemented — always 0.** Java computes a semitone offset here; this port never
+   * ported it, so a displaced clef is converted as an undisplaced one. Latent for the
+   * fixtures, which contain no `clef.dis`. Left as a stub rather than removed so the gap
+   * stays visible and the call sites keep their shape against the Java original.
+   */
   protected static processClefDis(_scoreStaffDef: Element): number {
     return 0.0;
   }
 
+  /**
+   * Does `e` apply to the layer `layerId`? The voice filter used throughout the converter.
+   *
+   * `e`'s `layer` attribute may name several layers, space separated. An element with **no**
+   * `layer` attribute applies everywhere, and an empty `layerId` — what
+   * {@link Mei.getLayerId} returns for unlayered music — matches everything, so the filter
+   * is inert on scores that do not use layers at all.
+   */
   public static isSameLayer(e: Element, layerId: string): boolean {
     if (e.getAttribute('layer') !== null) {
       const layers = e.getAttributeValue('layer')!.trim().split(/\s+/);

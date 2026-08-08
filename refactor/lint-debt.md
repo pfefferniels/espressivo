@@ -1,6 +1,6 @@
-# Lint debt (as of T9)
+# Lint debt (as of T10)
 
-> Updated after **T9** (msm cluster). Counts below are the *current*
+> Updated after **T10** (mei cluster). Counts below are the *current*
 > `npm run lint` output; the T2 baseline is kept in the headline table for comparison.
 
 Snapshot of every ESLint violation left in the tree after T2's safe auto-fixes, grouped by
@@ -17,20 +17,29 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 
 ## Headline numbers
 
-| | count | after T3 | after T4 | after T5 | after T6 | after T7 | after T8 | after T9 |
-|---|---|---|---|---|---|---|---|---|
-| Violations before T2 | 2104 | | | | | | | |
-| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | | | | |
-| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** | **1368** | **1347** | **1336** |
-| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** | **20** | 20 | **18** |
-| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 |
-| Still auto-fixable | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| | count | after T3 | after T4 | after T5 | after T6 | after T7 | after T8 | after T9 | after T10 |
+|---|---|---|---|---|---|---|---|---|---|
+| Violations before T2 | 2104 | | | | | | | | |
+| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | | | | | |
+| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** | **1368** | **1347** | **1336** | **1306** |
+| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** | **20** | 20 | **18** | 18 |
+| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 |
+| Still auto-fixable | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 > The T8 and T9 columns were added in T9; before that the table stopped at T7 while the
 > prose below already carried the T8 numbers. Both columns are measured with
 > `eslint -f json` over `src/**` + `tests/**` on a `git archive` of the respective tree,
 > splitting errors from warnings (they are reported together, which has misled two
 > earlier entries).
+
+T10 cleared 30 of the mei cluster's 682 errors (682 → 652) and left the warning column
+untouched (it had none). Measured: **1324 problems (1306 errors, 18 warnings)**. It
+reconciles exactly — errors −30, and the per-file comparison over the whole repo shows
+movement in **exactly three files**, the cluster's own: `Mei.ts` 31 → 29, `Helper.ts`
+96 → 70, `Mei2MsmMpmConverter.ts` 555 → 553. No file reached zero, so the "files affected"
+row is flat at 75. Note the −30 is a *net* figure: it includes one deliberately **added**
+`no-non-null-assertion`, explained in the T10 section below. See that section for what was
+cleared and what was deliberately not.
 
 T9 cleared 11 of the msm cluster's 132 errors (132 → 121) and both of its warnings.
 Measured: **1354 problems (1336 errors, 18 warnings)**. It reconciles exactly — errors
@@ -130,6 +139,18 @@ warning column. No other row moved. Post-T9 totals, measured repo-wide with
 `explicit-module-boundary-types` 8, `prefer-for-of` 7, `no-extraneous-class` 3,
 `no-require-imports` 3, `no-unsafe-function-type` 2, `no-fallthrough` 0, `no-this-alias` 0,
 plus 18 `no-param-reassign` warnings. (These sum to **1336** errors.)
+
+T10's −30 came out as: `no-explicit-any` 24 → **12** (−12), `no-unused-vars` 68 → **58**
+(−10), `explicit-module-boundary-types` 8 → **0** (−8), `prefer-for-of` 7 → **6** (−1), and
+`no-non-null-assertion` 1079 → **1080** (**+1**, deliberate — see the T10 note below). The
+warning column did not move. **`explicit-module-boundary-types` now has no site left
+anywhere in the tree**, the second rule to be fully retired (after `no-this-alias` in T5)
+rather than merely deferred. Post-T10 totals, measured repo-wide with `eslint -f json` on
+the working tree: `no-non-null-assertion` 1080, `no-unused-vars` 58, `no-empty-function` 54,
+`eqeqeq` 44, `unified-signatures` 44, `no-explicit-any` 12, `prefer-for-of` 6,
+`no-extraneous-class` 3, `no-require-imports` 3, `no-unsafe-function-type` 2,
+`explicit-module-boundary-types` 0, `no-fallthrough` 0, `no-this-alias` 0, plus 18
+`no-param-reassign` warnings. (These sum to **1306** errors.)
 
 T6's −42 came out as: `no-non-null-assertion` 1104 → **1079** (−25), `unified-signatures`
 94 → **77** (−17). *(Befores corrected by conductor per verifier-T6's re-measurement; the
@@ -476,19 +497,57 @@ public and genuinely mutated (`counter` by `isActive`), and `AbstractMsm` has no
 > runs — compare deltas within one config, and re-measure rather than inherit. **T10–T11
 > budget against a measured 9, and note 3 of them are T10's own file.**
 
-### T10 — mei — 682 (the big one)
-`no-non-null-assertion` 577, `eqeqeq` 44, `no-unused-vars` 29, `no-explicit-any` 12,
+### T10 — mei — 682 → **652** (the big one; local idioms done, structure deferred)
+Was `no-non-null-assertion` 577, `eqeqeq` 44, `no-unused-vars` 29, `no-explicit-any` 12,
 `explicit-module-boundary-types` 8, `unified-signatures` 7, `no-require-imports` 3,
 `no-extraneous-class` 1, `prefer-for-of` 1 —
 `Mei2MsmMpmConverter.ts` 555 (+19 suppressed `any`), `Helper.ts` 96, `Mei.ts` 31.
 
-(683 → 682 in T3: `Mei.ts` lost the `require()` in the deleted `exportMusicXml()`. The one
-remaining `require()` in `Mei.ts` is the `Mei2MsmMpmConverter` lazy import that dodges the
-import cycle — that one is **T18's** to remove, not T10's, and it is currently broken in
-ESM, see the note in `tests/mei/Mei.test.ts`.)
+Now **652**: `no-non-null-assertion` 578, `eqeqeq` 44, `no-unused-vars` 19,
+`unified-signatures` 7, `no-require-imports` 3, `no-extraneous-class` 1 —
+`Mei2MsmMpmConverter.ts` 553 (+**1** suppressed `any`, down from 19), `Helper.ts` 70,
+`Mei.ts` 29. `no-explicit-any`, `explicit-module-boundary-types` and `prefer-for-of` are at
+**zero** in this cluster; the middle one is now at zero repo-wide.
 
-`Mei2MsmMpmConverter.ts` alone is 38% of the entire remaining debt. T10's own note about
-splitting into ≤3 sub-rounds looks right.
+**What T10 cleared**
+
+| n | rule | how |
+|---|---|---|
+| 12 | `no-explicit-any` | `Helper`'s XSLT/transformer stub parameters and returns → `unknown`, which accepts every argument those (test-only) call sites pass, plus `(globalThis as any).process` → `(globalThis as { process?: unknown }).process`. All erase to identical JS; the `Helper.d.ts` token diff is exactly 9 `any`→`unknown`. |
+| 10 | `no-unused-vars` | 5 unused imports (`Builder`, `Elements`, `Nodes`, `XomNode` in `Helper.ts`; `Nodes` in the converter — all already elided from the emitted JS), 2 dead locals in removed port wreckage, 2 unused destructuring bindings replaced by `Map.keys()`, 1 unused `const index` on a call kept for its side effect. |
+| 8 | `explicit-module-boundary-types` | 7 fell out of the `unknown` change above; the 8th was `msmCleanupSingle(msm: any)` → `msm: Msm`. |
+| 1 | `prefer-for-of` | `Helper.prettyXml`'s index loop over a freshly `split` array. The `== null` guard inside is preserved verbatim, so `eqeqeq` does not move. |
+
+**What T10 deliberately did not clear**
+
+| n | rule | why it stayed |
+|---|---|---|
+| 578 | `no-non-null-assertion` | 548 of them in the converter alone — the single largest block of debt left in the repo. The fix is narrowing return types under **T12**'s null policy, not sprinkling guards: in this cluster a guard is a behaviour change, because today's TypeError on a malformed document would become a silent no-op. |
+| 44 | `eqeqeq` | Every one is the `== null` idiom in `Helper.ts`, untouched by instruction — **T12** owns the null policy and these are its input, not style noise. |
+| 19 | `no-unused-vars` | Almost all are **unused parameters on stub signatures** kept for API compatibility (`validateAgainstSchema`, the four XSLT stubs, `processClefDis`, the four `process*Rpt` handlers). They cannot be silenced from inside `src/mei/`: they need `argsIgnorePattern: '^_'` in `eslint.config.js`. Several already carry a `_` prefix in anticipation. **[T8], [T9] and now [T10] have all asked for this one-line config change** — whoever owns the config should just do it. |
+| 7 | `unified-signatures` | `Mei`'s 3-way constructor and `Helper`'s name-first/name-last overload sets. Same reasoning [T8] and [T9] recorded for `Mpm`/`Msm`: these are genuinely different things to start from, and collapsing them changes the API. **T16**'s call. Documented at both sites. |
+| 3 | `no-require-imports` | Unchanged by instruction: 1 is `Mei.exportMsmMpm`'s lazy converter import (**T18**'s cycle; it is CommonJS in an ESM package and therefore throws, which `tests/mei/Mei.test.ts` asserts) and 2 are `Helper.writeStringToFile`'s `fs`/`path`. |
+| 1 | `no-extraneous-class` | `Helper` is static-only. Converting it to module functions is **T14**, ~300 call sites deep. Its utility groups and their invariants are now documented on the class comment as input for that. |
+
+**The +1 `no-non-null-assertion`, stated plainly.** Typing `msmCleanupSingle(msm: any)` as
+`msm: Msm` turns `msm.getRootElement()` (which returns `Element | null`) into a type error.
+The three options were: keep `any`, add a guard (a behaviour change), or `!`. T10 took the
+`!` — the idiom `XmlBase` itself uses for this exact call three times over — and documented
+it at the site. Net for the file is still −2.
+
+**The last `any`, and why the file-level suppression survives.**
+`Mei2MsmMpmConverter.ts` keeps `/* eslint-disable @typescript-eslint/no-explicit-any */`,
+still the only `eslint-disable` in the tree, for **one** remaining site (down from 19):
+`relatedResources` in `makeMovement`. `RelatedResource.createRelatedResource` returns
+`RelatedResource | null`; `Mpm.addMetadata` takes `RelatedResource[] | null`. The honest
+element type does not fit the consumer, and fixing that means changing a signature in
+`mpm/`. **DISCOVERED, unresolved** — whichever item owns that call (T13/T16) can then delete
+the suppression outright and this cluster reaches zero `no-explicit-any`.
+
+Separately, T10's cleanup left **`XomTypes.Element.setNamespaceURI` with no caller in
+`src/` or `tests/`** — its only invocation was a discarded local in dead code. It shows as a
+function-coverage movement in an untouched file (72/74 → 71/74). **DISCOVERED**: T17 should
+either delete it or give it a unit test.
 
 ### T11 — midi — 33
 `Midi.ts` 23, `MidiTypes.ts` 6, `EventMaker.ts` 3, `InstrumentsDictionary.ts` 1.

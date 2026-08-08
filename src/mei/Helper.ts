@@ -1,18 +1,37 @@
-import {
-  Attribute,
-  Builder,
-  Document,
-  Element,
-  Elements,
-  Nodes,
-  XomNode,
-} from '../xml/XomTypes.js';
+import { Attribute, Document, Element } from '../xml/XomTypes.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
- * This class is used for mei to msm conversion to hold temporary data, used in class Mei.
- * It contains functionality that is also useful in other (mostly XML-related) contexts.
- * Ported from meico's Helper.java by Axel Berndt.
+ * The MEI conversion toolbox: everything {@link Mei} and {@link Mei2MsmMpmConverter} need
+ * that is not conversion logic itself.
+ *
+ * Java's `Helper` is two things at once — a bag of static utilities *and* an instantiable
+ * carrier for the converter's per-run state. This port kept only the first half; the
+ * mutable state lives on {@link Mei2MsmMpmConverter} as fields. What remains is grouped by
+ * the `// ---- … ----` banners below:
+ *
+ * - **child/sibling/parent navigation** (`getFirstChildElement`, `getAllChildElements`,
+ *   `getNextSiblingElement`, `getClosest`, …) — namespace-agnostic replacements for the
+ *   XOM methods, which the original author found unreliable in the face of MEI's
+ *   inconsistent namespace usage. Everything here matches on `localName` and ignores the
+ *   namespace, which is the single most load-bearing property of this file;
+ * - **map insertion** ({@link Helper.addToMap}) — the one place that knows MSM maps are
+ *   sorted by `date`;
+ * - **unit conversions** — MEI's `dur`/`accid`/`pname` vocabularies to the numbers MSM and
+ *   MIDI use. Pure lookup tables; the values are part of the pipeline's arithmetic and are
+ *   frozen;
+ * - **id handling** ({@link Helper.addUUID}, {@link Helper.copyId}) — see the warning on
+ *   `addUUID` about generation order;
+ * - **environment stubs** — schema validation, XSLT and file writing have no counterpart
+ *   in the target environment and warn instead of working.
+ *
+ * It is a class with only static members purely because Java's was; plain module functions
+ * are the idiomatic form and the reason the `no-extraneous-class` lint entry is still open.
+ * That conversion touches roughly 300 call sites across `mei/`, so it is T14's, not a
+ * local idiom.
+ *
+ * Port of `meico.mei.Helper`.
+ * @author Axel Berndt
  */
 export class Helper {
   // ---- Schema Validation (stubs) ----
@@ -43,6 +62,16 @@ export class Helper {
 
   // ---- Child Element Access ----
 
+  /*
+   * A note on the overload sets in this section, which read oddly: Java has
+   * `getFirstChildElement(Element)` and `getFirstChildElement(String, Element)`, and the
+   * port added `(Element, String)` on top. TypeScript dispatches them at runtime by
+   * inspecting `typeof arg1`, which is why the implementation signature is widened to
+   * `Element | string | null`. The `unified-signatures` lint entries this produces are
+   * knowingly left standing — collapsing name-first and name-last into one signature is an
+   * API change and belongs to T16.
+   */
+
   /**
    * Get the first child element of an xml element (no name filter).
    * @param ofThis
@@ -64,6 +93,14 @@ export class Helper {
    * @return the first child element with the given name or null
    */
   static getFirstChildElement(name: string, ofThis: Element): Element | null;
+  /**
+   * Note that the two named forms do not share an implementation: `(name, ofThis)` walks
+   * `getChildElements()` directly, while `(ofThis, localname)` goes through an XPath
+   * query — which in this port means serialising the subtree and re-parsing it (see
+   * {@link Element.query}). They agree on the result but not on the cost, and the query
+   * form additionally returns null for an empty `localname` where the walking form would
+   * search for a child literally named `''`.
+   */
   static getFirstChildElement(
     arg1: Element | string | null,
     arg2?: Element | string | null,
@@ -151,6 +188,12 @@ export class Helper {
    * @param ofThis
    * @return
    */
+  /**
+   * Pre-order: an element is pushed before its own descendants are searched, so the result
+   * reads in document order. Note the two different empty results — null when there is
+   * nothing to search (`ofThis` null or `name` empty), an empty array when the search ran
+   * and found nothing. Callers in the converter rely on the second and null-check anyway.
+   */
   static getAllDescendantsByName(name: string, ofThis: Element | null): Element[] | null {
     if (ofThis == null || name === '') return null;
     const children: Element[] = [];
@@ -209,6 +252,17 @@ export class Helper {
    * @return
    */
   static getNextSiblingElement(name: string, ofThis: Element): Element | null;
+  /**
+   * The named form walks the siblings **backwards** and remembers the most recent match in
+   * `candidate`; when the walk reaches `ofThis`, `candidate` is by construction the
+   * *nearest following* sibling with that name. Reaching the start of the list without
+   * having passed `ofThis` means `ofThis` is not a child of its own parent's element list
+   * — which happens for text-node-adjacent cases — and yields null.
+   *
+   * The unnamed form is a plain index step and therefore returns null when the immediate
+   * next node is a text node, rather than skipping over it. The two forms are thus not
+   * "the same thing with a filter": only the named one skips non-elements.
+   */
   static getNextSiblingElement(
     arg1: Element | string | null,
     arg2?: Element | null,
@@ -267,6 +321,7 @@ export class Helper {
    * @return
    */
   static getPreviousSiblingElement(name: string, ofThis: Element): Element | null;
+  /** the mirror image of {@link Helper.getNextSiblingElement}: forward walk, last match wins */
   static getPreviousSiblingElement(
     arg1: Element | string | null,
     arg2?: Element | null,
@@ -334,6 +389,22 @@ export class Helper {
   /**
    * this method adds element addThis to a timely sequenced list, the map, and ensures the timely order of the elements in the map;
    * therefore, addThis must contain the attribute "date"; if not, addThis is appended at the end
+   *
+   * This is the invariant every MSM map depends on: children are in non-decreasing `date`
+   * order. Three properties of the insertion are load-bearing and must not be "tidied":
+   *
+   * - the scan runs **backwards** from the end and stops at the first element whose `date`
+   *   is `<=` the new one, inserting *after* it. Together those make the insertion stable
+   *   — a new element lands behind everything already at the same date, so elements added
+   *   at one date keep the order the converter emitted them in, which is what makes the
+   *   serialized MSM byte-comparable against the Java reference;
+   * - the search uses `descendant::*[attribute::date]` — *descendants*, not children — but
+   *   the insertion index comes from `map.indexOf(...)`, which only knows direct children.
+   *   For a map whose entries have dated grandchildren, the two disagree and `indexOf`
+   *   returns -1, making the insert position 0. No MSM map produced by this converter
+   *   nests dated elements, so the case does not arise; Java has the identical shape;
+   * - dates are compared as `parseFloat`ed doubles, matching Java's `Double.parseDouble`.
+   *
    * @param addThis an xml element (should have an attribute date)
    * @param map a timely sequenced list of elements with attribute date
    * @return the index of the element in the map or -1 if insertion failed
@@ -394,27 +465,22 @@ export class Helper {
 
   /**
    * create a flat copy of element e including its attributes but not its child elements
+   *
+   * Deep-copy-then-strip, because {@link Element} exposes no attribute-by-index accessor
+   * to rebuild one attribute at a time the way Java does. The observable difference is
+   * namespaces: Java reconstructs each attribute as `new Attribute(localName, value)` and
+   * so **drops** its namespace, whereas copying preserves it. Only visible on an element
+   * carrying a namespaced attribute other than the element's own; nothing the converter
+   * clones does. (The same divergence and the same reasoning appear at `Msm.cloneElement`,
+   * documented there under T9.)
+   *
    * @param e
    * @return
    */
   static cloneElement(e: Element | null): Element | null {
     if (e == null) return null;
 
-    const clone = new Element(e.getLocalName());
-    clone.setNamespaceURI(e.getNamespaceURI());
-    for (let i = e.getAttributeCount() - 1; i >= 0; --i) {
-      const attr = e.getAttribute(i.toString());
-      // We need to iterate attributes by index; use a workaround
-      // since XomTypes doesn't have getAttribute(int)
-    }
-    // Use a different approach: iterate through known attributes
-    // Actually, we can access attributes by iterating the element's attribute list
-    // The Java code does: e.getAttribute(i).getLocalName() and e.getAttribute(i).getValue()
-    // In our XOM port, we don't have getAttribute(int), so we replicate
-    // by getting all child elements and attributes from the XML output.
-    // Instead, we use Element.copy() for attributes only (no children).
     const copy = e.copy();
-    // Remove all children from the copy
     copy.removeChildren();
     return copy;
   }
@@ -423,6 +489,13 @@ export class Helper {
 
   /**
    * returns the attribute with the specified name contained in ofThis, or null if that attribute does not exist, namespace is ignored
+   *
+   * Three lookups in a fixed order: no namespace, the element's own namespace, then the
+   * XML namespace. The last is what makes `getAttribute('id', e)` find `xml:id`, which is
+   * how nearly every id read in this port is spelled — MEI puts ids in the XML namespace,
+   * but plenty of encodings (and the elements this converter builds itself) use a bare
+   * `id`. The order matters: an element carrying both gets the unnamespaced one.
+   *
    * @param name
    * @param ofThis
    * @return
@@ -459,6 +532,13 @@ export class Helper {
   /**
    * Add a UUID-based xml:id to the specified element.
    * Caution: If the element has already an xml:id, it will be overwritten!
+   *
+   * **Order-sensitive.** The `meico_<uuid>` ids this mints end up in the MSM and MPM
+   * output, where the equivalence tests canonicalise them by first occurrence. Anything
+   * that changes *how many* of these are drawn, or *in what order*, changes the
+   * canonicalised output even though every individual id is random. So: do not reorder,
+   * hoist, memoise or short-circuit calls to this along the conversion path.
+   *
    * @param toThis
    * @return the generated uuid string
    */
@@ -564,14 +644,21 @@ export class Helper {
   /**
    * When articulationMaps are expanded via GenericMap.applySequencingMap() the noteid attribute is not updated.
    * Therefor, we get a Map from Msm.resolveRepetitions() and apply it to the already expanded articulationMap via this method.
+   * `noteIdMappings` is a *chain*, not a lookup table: it maps each note id to the id its
+   * next copy received, so following it repeatedly walks copy 1, copy 2, and so on. That
+   * is why this iterates the map's elements from index 1 and steps `current` once per
+   * element — the first occurrence keeps the original id, and the n-th gets the id found
+   * after n-1 steps along the chain. Only the keys are iterated here; the values are
+   * reached through those steps.
+   *
    * @param map a GenericMap-like object that has a getXml() method returning an Element
-   * @param noteIdMappings
+   * @param noteIdMappings note id → id of the next copy of that note
    */
   static updateMpmNoteidsAfterResolvingRepetitions(
     map: { getXml(): Element },
     noteIdMappings: Map<string, string>,
   ): void {
-    for (const [key, _value] of noteIdMappings) {
+    for (const key of noteIdMappings.keys()) {
       // for all mappings
       const ns = map.getXml().query(`descendant::*[attribute::noteid = '#${key}']`); // get all elements with the noteid attribute and the specific value
       if (ns.size() < 2)
@@ -592,8 +679,20 @@ export class Helper {
 
   // ---- Duration Conversion ----
 
+  /*
+   * The conversion tables below are pipeline arithmetic, not style. Every literal in this
+   * section feeds tick computations whose results are byte-compared against the Java
+   * reference, so the values, the case labels and the fall-through defaults are frozen.
+   */
+
   /**
    * convert the duration string into decimal (e.g., 4 -> 1/4) and returns the result
+   *
+   * The unit is the whole note: `1` → 1.0, `4` → 0.25, down to `2048`. The three mensural
+   * names sit above the whole note (`breve` 2, `long` 4, `maxima` 8). An unrecognised
+   * string — including `'0'`, which MEI allows for a breve — returns **0.0**, and callers
+   * that divide by the result get infinity rather than an error. Java behaves identically.
+   *
    * @param durString
    * @return
    */
@@ -765,6 +864,14 @@ export class Helper {
 
   /**
    * compute the decimal value of the accidental (1 = 1 semitone)
+   *
+   * Covers MEI's quarter-tone vocabulary as well, which is why the return type is
+   * fractional: `su`/`3qs` are +1.5, `sd`/`1qs` +0.5, and so on. Anything unrecognised —
+   * including `n` (natural), which is listed explicitly and deliberately falls through —
+   * yields 0. Note that {@link Helper.accidDecimal2String} is not a strict inverse: it
+   * maps 2 back to `ss` and 3 to `xs`, so `x`, `ts` and the `n`-prefixed spellings do not
+   * survive a round trip.
+   *
    * @param accid the string to be converted
    * @return the decimal value of the accidental
    */
@@ -840,6 +947,12 @@ export class Helper {
   /**
    * Compute the string value of a Decimal (given as String or number).
    * Will take the most simple accidental sign (avoids combinations with neutral signs).
+   *
+   * Both spellings of every value are listed (`'1'` and `'1.0'`) because the input reaches
+   * this either from a JavaScript number's `toString` (`1`) or straight out of an MSM
+   * attribute written by Java (`1.0`). A value that matches neither is **returned
+   * unchanged** rather than rejected, so this can hand back arbitrary strings.
+   *
    * @param accidObject
    * @return
    */
@@ -1008,8 +1121,20 @@ export class Helper {
 
   /**
    * converts an mei pname to a midi pitch number in the first midi octave
+   *
+   * Accepts bare letters (`c`…`b`, either case) and letters with a baked-in accidental
+   * (`c#`, `cs`, `db`, `df`, …); the octave is the caller's business, this only gives the
+   * pitch class.
+   *
+   * **There is no case returning 10.** `a#`, `as`, `bb` and `bf` — and their capitalised
+   * forms — are absent from the table and fall through to -1, while every other
+   * chromatic degree is spelled out. The gap is in `Helper.java` too and is ported as is.
+   * It is latent in practice: MEI normally encodes B flat as `pname="b"` with a separate
+   * `accid`, and the converter's other entry point passes only the first character
+   * (`pname2midi(ac.substring(0, 1))`), so a bare letter always reaches the table.
+   *
    * @param pname the pname string
-   * @return the midi pitch number in the first midi octave (one octave below the first MEI CMN octave)
+   * @return the midi pitch number in the first midi octave (one octave below the first MEI CMN octave), or -1 if unrecognised
    */
   static pname2midi(pname: string): number {
     switch (pname) {
@@ -1304,7 +1429,10 @@ export class Helper {
 
     try {
       // Node.js environment
-      if (typeof globalThis !== 'undefined' && typeof (globalThis as any).process !== 'undefined') {
+      if (
+        typeof globalThis !== 'undefined' &&
+        typeof (globalThis as { process?: unknown }).process !== 'undefined'
+      ) {
         // Dynamic import not possible in sync context, use require
         const fs = require('fs');
         const path = require('path');
@@ -1324,6 +1452,21 @@ export class Helper {
 
   // ---- XSLT Transform Stubs ----
 
+  /*
+   * Nothing below this line does any work. Java uses Saxon for XSLT and a schema validator
+   * for the two `validateAgainstSchema` methods above; neither has a counterpart in the
+   * target environment, so each of these warns once and returns null. They are kept
+   * because they are part of `Helper`'s published surface and dropping them would be an
+   * API change, not because anything on the conversion path calls them — nothing does.
+   *
+   * The `transformer` parameters were `any` in the original port (a Saxon object has no
+   * type here); they are now `unknown`, which accepts the same arguments at every call
+   * site while giving callers nothing they could unsafely use. The parameters themselves
+   * stay unread, which is what the remaining `no-unused-vars` entries in this file are —
+   * clearing those needs `argsIgnorePattern: '^_'` in `eslint.config.js`, a config file
+   * outside this item's scope.
+   */
+
   /**
    * a helper method to perform XSL transforms
    * STUB: XSLT is not available in the browser environment.
@@ -1336,11 +1479,11 @@ export class Helper {
    * a helper method to perform XSL transforms
    * STUB: XSLT is not available in the browser environment.
    * @param input the input xml document
-   * @param transformer the XSLT transformer (any, since Saxon is not available)
+   * @param transformer the XSLT transformer (untyped, since Saxon is not available)
    * @return the output Document of the transform or null
    */
-  static xslTransformToDocument(input: Document, transformer: any): Document | null;
-  static xslTransformToDocument(input: Document, xsltOrTransformer: string | any): Document | null {
+  static xslTransformToDocument(input: Document, transformer: unknown): Document | null;
+  static xslTransformToDocument(input: Document, xsltOrTransformer: unknown): Document | null {
     console.warn(
       'xslTransformToDocument: XSLT transforms are not available in the browser/Node.js environment. Returning null.',
     );
@@ -1362,7 +1505,7 @@ export class Helper {
    * @param transformer the XSLT transformer
    * @return the output string (null in case of an error)
    */
-  static xslTransformToString(input: Document, transformer: any): string | null;
+  static xslTransformToString(input: Document, transformer: unknown): string | null;
   /**
    * a helper method to perform XSL transforms
    * STUB: XSLT is not available in the browser environment.
@@ -1370,7 +1513,7 @@ export class Helper {
    * @param transformer the XSLT transformer
    * @return the output string (null in case of an error)
    */
-  static xslTransformToString(input: string, transformer: any): string | null;
+  static xslTransformToString(input: string, transformer: unknown): string | null;
   /**
    * a helper method to perform XSL transforms
    * STUB: XSLT is not available in the browser environment.
@@ -1379,10 +1522,7 @@ export class Helper {
    * @return the output string (null in case of an error)
    */
   static xslTransformToString(input: string, xslt: string): string | null;
-  static xslTransformToString(
-    input: Document | string,
-    xsltOrTransformer: string | any,
-  ): string | null {
+  static xslTransformToString(input: Document | string, xsltOrTransformer: unknown): string | null {
     console.warn(
       'xslTransformToString: XSLT transforms are not available in the browser/Node.js environment. Returning null.',
     );
@@ -1398,7 +1538,12 @@ export class Helper {
    * @param destination
    * @return null (stub)
    */
-  static makeXsltTransformer(xslt: string, processor: any, source: any, destination: any): any {
+  static makeXsltTransformer(
+    xslt: string,
+    processor: unknown,
+    source: unknown,
+    destination: unknown,
+  ): unknown {
     console.warn(
       'makeXsltTransformer: XSLT is not available in the browser/Node.js environment. Returning null.',
     );
@@ -1412,7 +1557,7 @@ export class Helper {
    * @param processor
    * @return null (stub)
    */
-  static makeXslt30Transformer(xslt: string, processor?: any): any {
+  static makeXslt30Transformer(xslt: string, processor?: unknown): unknown {
     console.warn(
       'makeXslt30Transformer: XSLT is not available in the browser/Node.js environment. Returning null.',
     );
@@ -1423,6 +1568,13 @@ export class Helper {
 
   /**
    * given a string of XML code, this method prettifies it
+   *
+   * Purely textual and purely cosmetic — it splits on tag boundaries and re-indents by a
+   * running depth counter. It is **not** used anywhere on the conversion path: the MSM and
+   * MPM that the equivalence tests compare are serialized by {@link Element.toXML}, not by
+   * this. Only human-facing output goes through here, which is why its edge cases (CDATA
+   * handled by an `endsWith(']]>')` guess, comments not handled at all) never mattered.
+   *
    * @param xml
    * @return
    */
@@ -1433,10 +1585,10 @@ export class Helper {
     let pretty = '';
     const rows = xml.trim().replace(/>/g, '>\n').replace(/</g, '\n<').split('\n');
 
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i] == null || rows[i].trim().length === 0) continue;
+    for (const rawRow of rows) {
+      if (rawRow == null || rawRow.trim().length === 0) continue;
 
-      const row = rows[i].trim();
+      const row = rawRow.trim();
       if (row.startsWith('<?')) {
         pretty += `${row}\n`;
       } else if (row.startsWith('</')) {
