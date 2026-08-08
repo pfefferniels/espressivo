@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "763546b",
+  "lastGreenCommit": "01315c8",
   "phase": 1,
-  "currentItem": "T2",
-  "counters": { "completed": 1, "blocked": 0, "reverted": 0 },
+  "currentItem": "T3",
+  "counters": { "completed": 2, "blocked": 0, "reverted": 0 },
   "coverageBaseline": { "statements": 86.69, "branches": 85.73, "functions": 94.11 },
   "queue": [
     {
@@ -18,14 +18,14 @@
     {
       "id": "T2",
       "phase": 1,
-      "status": "in_progress",
+      "status": "done",
       "title": "Tooling baseline: ESLint (typescript-eslint strict+stylistic) + Prettier",
       "details": "Flat eslint config + prettier, npm run lint / lint:fix / format. Apply auto-fixes and a one-time prettier format as a PURE formatting commit (no logic). Document remaining (non-auto-fixable) violations per file in refactor/lint-debt.md as input for Phase 2 items. Style decisions to codify: no getX()/setX() Java accessors (prefer properties/accessors), prefer for..of & array methods, template literals, ===, no var, prefer const, explicit return types on exported API. ALSO (T1 verifier finding): tests are not typechecked by the build (tsconfig excludes *.test.ts) — close that hole, e.g. tsconfig.tests.json + extend the verify script with a no-emit typecheck over tests/, so type breakage in adapted tests surfaces at the gate, not just as vitest runtime failures."
     },
     {
       "id": "T3",
       "phase": 1,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Excise out-of-scope modules",
       "details": "Scope = MEI / MSM+MPM => MIDI (see vitest.config.ts coverage include list). Remove via `git rm`: src/mei/Mei2MusicXmlConverter.ts, src/musicxml/**, src/audio/**, src/midi/Midi2MsmConverter.ts, src/supplementary/ColorCoding.ts IF unreferenced by in-scope code, and any other module unreachable from the in-scope surface (check imports transitively; also prune index.ts/Meico.ts exports and any dead tests for removed modules). Keep Midi playback-free: strip audio/playback methods from Midi.ts only if fully out of the dependency cone of MIDI file generation. Verify green."
     },

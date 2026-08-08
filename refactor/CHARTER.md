@@ -121,6 +121,11 @@ item re-dispatched fresh — the disk state makes that lossless.
    c. invariant violations (fixtures touched, integration tests semantically changed).
 4. Spot-check: for risky diffs, write a throwaway probe test in scratchpad (not in
    tests/) exercising old-vs-new behavior.
+   For reformat-heavy diffs, `--ignore-all-space` is NOT sufficient (prettier moves
+   line boundaries): cancel formatting exactly instead — `git archive` the base
+   commit into a scratch tree, run the same prettier config over it, diff that
+   against the working tree, then classify every remaining hunk (see [T2] verifier
+   entry for the worked example).
 5. Verdict: `PASS <id>` or `FAIL <id>: <reasons>` + log.md entry.
 
 ## Conductor cycle (runs on every wakeup / agent completion)
