@@ -126,7 +126,12 @@ item re-dispatched fresh — the disk state makes that lossless.
   "type-level only" claims; pipeline byte-probes (fixtures → MSM/MPM/MIDI hashes
   on both builds) are the standard evidence for serialization/rendering claims.
   Reusable probes live in the scratchpad (t5verify/probe.mjs, probe2.mjs — take a
-  dist dir as argv[1]).
+  dist dir as argv[1]). For "comments-only" claims, t8verify/toks2.mjs emits a
+  JSDoc-pruned token stream — a 0-line token diff is proof that survives
+  reformatting; better than prettier-cancellation for comment-heavy diffs.
+- Per-file BRANCH coverage deltas in untouched files are NOT a signal: two coverage
+  runs on an identical tree move ~4 files' branch totals (proven in [T8] verifier).
+  Only statement/function movements in files you touched are evidence.
 
 ## Worker protocol
 

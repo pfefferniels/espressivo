@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "b6b3b58",
+  "lastGreenCommit": "b09e096",
   "phase": 2,
-  "currentItem": "T8",
-  "counters": { "completed": 7, "blocked": 0, "reverted": 0 },
+  "currentItem": "T9",
+  "counters": { "completed": 8, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -72,14 +72,14 @@
     {
       "id": "T8",
       "phase": 2,
-      "status": "in_progress",
+      "status": "done",
       "title": "Local idioms: mpm core (Mpm, Performance, Header, metadata)",
       "details": "Same checklist. Performance.perform flow untouched semantically (pipeline redesign is T19)."
     },
     {
       "id": "T9",
       "phase": 2,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Local idioms: msm/ cluster",
       "details": "Msm, AbstractMsm, Goto, etc. Same checklist."
     },
