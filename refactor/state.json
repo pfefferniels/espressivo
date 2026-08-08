@@ -168,6 +168,13 @@
       "details": "EventMaker/Midi restructure per ARCHITECTURE.md; event ordering and byte layout must stay identical (midi-byte-equivalence suite proves it)."
     },
     {
+      "id": "T20b",
+      "phase": 3,
+      "status": "blocked",
+      "title": "Mirror Java movement fixes (BLOCKED: awaiting user approval to regenerate ground truth)",
+      "details": "Java fork now has (mpmify session, 2026-08-08, MOVEMENT_FIX_TEST_PASS verified): (1) MovementData XML ctor reads `controller` as plain no-ns attribute into this.controller; (2) addMovement(MovementData) serializes controller (after protraction, before xml:id); (3) getMovementDataOf parses curvature/protraction/controller; (4) additive static MovementMap.movementSampleMaxStep=0.1 replacing the literal (default byte-identical); (5) GenerateAllMapsReference movement cases now use normalized 0..1 positions (regenerated all-maps movement fixtures will differ beyond the bug fixes — expect that in the diff). Mirror all five in TS, regenerate reference fixtures from the fixed fork (GenerateReference/GeneratePerformanceReference/GenerateAllMapsReference — commands in project memory meico-ts-proof-harness.md, mind the classpath-shadowing gotcha), verify suite green against new ground truth. HARD GATE: do not start until the user approves regenerating tests/integration/fixtures/** (invariant 2). Adapt mpmify's MovementFixTest as a TS unit test (controller preserved through round-trip; defaults-render differs)."
+    },
+    {
       "id": "T21",
       "phase": 4,
       "status": "pending",
