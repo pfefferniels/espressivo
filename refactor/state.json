@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "75da1e9",
+  "lastGreenCommit": "b6b3b58",
   "phase": 2,
-  "currentItem": "T7",
-  "counters": { "completed": 6, "blocked": 0, "reverted": 0 },
+  "currentItem": "T8",
+  "counters": { "completed": 7, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -65,14 +65,14 @@
     {
       "id": "T7",
       "phase": 2,
-      "status": "in_progress",
+      "status": "done",
       "title": "Local idioms: mpm maps + data classes",
       "details": "src/mpm/elements/maps/** including data/. Same idiom checklist. Careful: rendering math must stay bit-identical; no reordering of floating-point operations."
     },
     {
       "id": "T8",
       "phase": 2,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Local idioms: mpm core (Mpm, Performance, Header, metadata)",
       "details": "Same checklist. Performance.perform flow untouched semantically (pipeline redesign is T19)."
     },
