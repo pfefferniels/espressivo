@@ -99,3 +99,17 @@ DISCOVERED (not T1's problem, for a later item):
 - `.claude/scheduled_tasks.lock` (conductor wakeup bookkeeping) is untracked and
   **not** in .gitignore. Harmless now, but it would be swept into any future
   `git add -A`. Recommend adding `.claude/` to .gitignore.
+
+## [infra] conductor — remote + push policy adopted; push blocked in this session (2026-08-08)
+
+- Verified peer-session infra: `origin` = github.com/pfefferniels/espressivo, main +
+  ts-idiomatic pushed and tracking; foreign commit 763546b touches only refactor/
+  coordination files (charter steer edits incl. facade-plain-data acceptance).
+- Bookkeeping committed (658b244): lastGreenCommit=763546b, espressivo rename queued
+  into T22, plain-data acceptance mirrored into T13 details.
+- `git push` is DENIED for this session by the permission classifier (tried twice:
+  combined and standalone). Per push policy: logged, will retry next cycles.
+  PENDING PUSH: ts-idiomatic is ahead of origin from 658b244 onward. Surfaced to
+  user: they can allow `Bash(git push origin *)` in permissions, push manually, or
+  pushes happen via the session that owns that capability. Never ask a peer to push
+  what this session was denied (permission laundering).
