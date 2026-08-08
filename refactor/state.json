@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "b09e096",
+  "lastGreenCommit": "c719022",
   "phase": 2,
-  "currentItem": "T9",
-  "counters": { "completed": 8, "blocked": 0, "reverted": 0 },
+  "currentItem": "T10",
+  "counters": { "completed": 9, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -79,14 +79,14 @@
     {
       "id": "T9",
       "phase": 2,
-      "status": "in_progress",
+      "status": "done",
       "title": "Local idioms: msm/ cluster",
       "details": "Msm, AbstractMsm, Goto, etc. Same checklist."
     },
     {
       "id": "T10",
       "phase": 2,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Local idioms: mei/ cluster (Mei, Helper, Mei2MsmMpmConverter)",
       "details": "Local idioms only — no structural break-up yet (that is T14/T15). These are the biggest files; keep diffs reviewable by splitting into ≤3 sub-rounds if needed (still one commit)."
     },
