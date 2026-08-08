@@ -3,9 +3,9 @@
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
   "lastGreenCommit": "c89043b",
-  "phase": 2,
-  "currentItem": "T9b",
-  "counters": { "completed": 11, "blocked": 0, "reverted": 0 },
+  "phase": 3,
+  "currentItem": "T20b",
+  "counters": { "completed": 12, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -100,7 +100,7 @@
     {
       "id": "T9b",
       "phase": 2,
-      "status": "in_progress",
+      "status": "done",
       "title": "Fix Msm.getMinimalPPQ integer-division divergence from Java",
       "details": "Discovered in T9: getMinimalPPQ uses float division where Java Msm.java uses integer division (ppq 720, duration 22 -> Java 32, TS 1). Latent (zero src/ callers; unit tests only reach exact-division subdivisions). Fix TOWARD Java parity, add unit tests pinning the non-exact-division cases against hand-computed Java semantics (verify against the Java source, cite lines). Small item — one method + tests."
     },
@@ -170,7 +170,7 @@
     {
       "id": "T20b",
       "phase": 3,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Mirror Java movement fixes + regenerate ground truth (USER-APPROVED 2026-08-08: 'yes, regenerate')",
       "priority": "run FIRST in Phase 3, before T12 — self-contained, no ARCHITECTURE.md dependency; updating ground truth early means every later item verifies against the corrected references",
       "details": "Java fork now has (mpmify session, 2026-08-08, MOVEMENT_FIX_TEST_PASS verified): (1) MovementData XML ctor reads `controller` as plain no-ns attribute into this.controller; (2) addMovement(MovementData) serializes controller (after protraction, before xml:id); (3) getMovementDataOf parses curvature/protraction/controller; (4) additive static MovementMap.movementSampleMaxStep=0.1 replacing the literal (default byte-identical); (5) GenerateAllMapsReference movement cases now use normalized 0..1 positions (regenerated all-maps movement fixtures will differ beyond the bug fixes — expect that in the diff). Mirror all five in TS, regenerate reference fixtures from the fixed fork (GenerateReference/GeneratePerformanceReference/GenerateAllMapsReference — commands in project memory meico-ts-proof-harness.md, mind the classpath-shadowing gotcha), verify suite green against new ground truth. HARD GATE: do not start until the user approves regenerating tests/integration/fixtures/** (invariant 2). Adapt mpmify's MovementFixTest as a TS unit test (controller preserved through round-trip; defaults-render differs)."
