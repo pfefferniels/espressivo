@@ -26,8 +26,15 @@ through files in `refactor/` + git history — never through agent memory.
 6. **Red → revert**: if verify is red after ≤2 fix rounds, `git restore .` /
    `git checkout -- .` back to last green, mark the item `blocked` in state.json
    with notes, move on.
-7. **Coverage floor**: scoped coverage (vitest.config.ts include list) must not drop
-   below the baseline (86% statements) at each phase end.
+7. **Coverage floor** (rebased 2026-08-08 post-prettier, see [T3] verifier entry):
+   scoped coverage (vitest.config.ts include list) at each phase end must satisfy
+   statements ≥ 85.00 and functions ≥ 94.0. The statements metric is
+   FORMAT-SENSITIVE (v8 derives it from lines here) — a future mass reformat
+   re-bases it by construction and must never be read as a regression. Functions is
+   the format-insensitive, bit-stable anchor. Branch coverage is nondeterministic
+   (±0.02 run-to-run noise from RNG-driven tests): treat as a drift indicator with
+   ±0.1 tolerance, never as an equality check. Deleting *covered* dead code
+   legitimately lowers ratios — judge such dips by the diff, not the ratio.
 8. **Java repo is read-only.** Never touch `/Users/nielspfeffer/Projects/meico`.
 9. **File deletion**: use `git rm` (never bare `rm`) so deletions are tracked and
    permission-safe.

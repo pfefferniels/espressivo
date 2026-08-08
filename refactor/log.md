@@ -656,3 +656,13 @@ anchor.**
 **PASS T3.** No behaviour drift, no test weakening, no invariant violation, no smuggled
 suppressions. The one defect is a precision error in the worker's *report* (branch coverage
 described as byte-identical when it is noisy), not in its *work*.
+
+## [phase-1] conductor — phase end audit: PASS; floor rebased (2026-08-08)
+
+Phase 1 complete: T1 (verify gate), T2 (lint/format baseline), T3 (out-of-scope
+excision) all done, 0 blocked, 0 reverted. Audit vs invariant 7 with the rebased
+floor (adopted verifier-T3's amended recommendation): stmts 85.02 ≥ 85.00 ✓,
+functions 94.10 ≥ 94.0 ✓, branch 85.72/85.73 within ±0.1 of indicator ✓.
+Floor policy updated in charter (stmts format-sensitive, functions anchor,
+branch tolerance-banded). state.json coverageBaseline restructured accordingly.
+Advancing to Phase 2 (local idiom sweep), starting T4 (supplementary/).

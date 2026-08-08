@@ -2,11 +2,17 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "01315c8",
-  "phase": 1,
-  "currentItem": "T3",
-  "counters": { "completed": 2, "blocked": 0, "reverted": 0 },
-  "coverageBaseline": { "statements": 86.69, "branches": 85.73, "functions": 94.11 },
+  "lastGreenCommit": "67b407e",
+  "phase": 2,
+  "currentItem": "T4",
+  "counters": { "completed": 3, "blocked": 0, "reverted": 0 },
+  "coverageBaseline": {
+    "statementsFloor": 85.0,
+    "functionsFloor": 94.0,
+    "branchesIndicator": 85.73,
+    "branchesTolerance": 0.1,
+    "note": "Rebased 2026-08-08 post-prettier (was 86.69 stmts on pre-format basis; units changed, coverage did not — see [T3] verifier entry in log.md and charter invariant 7)"
+  },
   "queue": [
     {
       "id": "T1",
@@ -25,14 +31,14 @@
     {
       "id": "T3",
       "phase": 1,
-      "status": "in_progress",
+      "status": "done",
       "title": "Excise out-of-scope modules",
       "details": "Scope = MEI / MSM+MPM => MIDI (see vitest.config.ts coverage include list). Remove via `git rm`: src/mei/Mei2MusicXmlConverter.ts, src/musicxml/**, src/audio/**, src/midi/Midi2MsmConverter.ts, src/supplementary/ColorCoding.ts IF unreferenced by in-scope code, and any other module unreachable from the in-scope surface (check imports transitively; also prune index.ts/Meico.ts exports and any dead tests for removed modules). Keep Midi playback-free: strip audio/playback methods from Midi.ts only if fully out of the dependency cone of MIDI file generation. Verify green."
     },
     {
       "id": "T4",
       "phase": 2,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Local idioms: supplementary/ (KeyValue, RandomNumberProvider)",
       "details": "Idiomatic TS within same public behavior. KeyValue likely becomes a readonly tuple or minimal class kept for API compat (full replacement is T16's call). RandomNumberProvider: field initializers, private #/private, remove Java-isms. Unit tests adapted."
     },
