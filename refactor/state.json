@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "6d1678c",
+  "lastGreenCommit": "c89043b",
   "phase": 2,
-  "currentItem": "T11",
-  "counters": { "completed": 10, "blocked": 0, "reverted": 0 },
+  "currentItem": "T9b",
+  "counters": { "completed": 11, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -93,14 +93,14 @@
     {
       "id": "T11",
       "phase": 2,
-      "status": "in_progress",
+      "status": "done",
       "title": "Local idioms: midi/ cluster",
       "details": "Midi, MidiTypes, EventMaker, InstrumentsDictionary. InstrumentsDictionary's big data tables may become const data structures. Byte-identical MIDI output required (suite proves it)."
     },
     {
       "id": "T9b",
       "phase": 2,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Fix Msm.getMinimalPPQ integer-division divergence from Java",
       "details": "Discovered in T9: getMinimalPPQ uses float division where Java Msm.java uses integer division (ppq 720, duration 22 -> Java 32, TS 1). Latent (zero src/ callers; unit tests only reach exact-division subdivisions). Fix TOWARD Java parity, add unit tests pinning the non-exact-division cases against hand-computed Java semantics (verify against the Java source, cite lines). Small item — one method + tests."
     },
