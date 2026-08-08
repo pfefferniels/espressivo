@@ -1,17 +1,17 @@
 {
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
-  "baselineCommit": null,
-  "lastGreenCommit": null,
+  "baselineCommit": "62c125f",
+  "lastGreenCommit": "62c125f",
   "phase": 1,
-  "currentItem": null,
+  "currentItem": "T1",
   "counters": { "completed": 0, "blocked": 0, "reverted": 0 },
   "coverageBaseline": { "statements": 86.69, "branches": 85.73, "functions": 94.11 },
   "queue": [
     {
       "id": "T1",
       "phase": 1,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Add verify script + record baseline metrics",
       "details": "Add `verify` npm script (build then vitest run). Record baseline in log.md: test count, suite runtime, tsc runtime, scoped coverage numbers (npm run test:coverage). No src changes."
     },
