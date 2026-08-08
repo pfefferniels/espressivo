@@ -5,7 +5,6 @@ import { Helper } from './Helper.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { Msm } from '../msm/Msm.js';
 import type { Mpm } from '../mpm/Mpm.js';
-import type { MusicXml } from '../musicxml/MusicXml.js';
 
 // Minimal MEI template
 const MINIMAL_MEI = `<?xml version="1.0" encoding="UTF-8"?>
@@ -185,11 +184,6 @@ export class Mei extends XmlBase {
     // Lazy import to avoid circular dependency
     const { Mei2MsmMpmConverter } = require('./Mei2MsmMpmConverter.js');
     return new Mei2MsmMpmConverter(ppq, dontUseChannel10, ignoreExpansions, cleanup).convert(this);
-  }
-
-  exportMusicXml(ignoreExpansions = false): MusicXml[] {
-    const { Mei2MusicXmlConverter } = require('./Mei2MusicXmlConverter.js');
-    return new Mei2MusicXmlConverter(ignoreExpansions).convert(this);
   }
 
   computeMinimalPPQ(): number {

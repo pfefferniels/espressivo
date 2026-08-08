@@ -928,37 +928,4 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // exportMsm
-  // ---------------------------------------------------------------
-  describe('exportMsm', () => {
-    it('should report that the conversion dependencies are missing', () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-      const midi = new Midi(480);
-      midi.setFile('test.mid');
-      expect(midi.exportMsm()).toBeNull();
-      expect(warnSpy).toHaveBeenCalled();
-
-      warnSpy.mockRestore();
-      logSpy.mockRestore();
-    });
-
-    it('should fall back to 360 pulses per quarter for a SMPTE sequence', () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      const midi = new Midi(new Sequence(Sequence.SMPTE_30, 80));
-      expect(midi.exportMsm()).toBeNull();
-      expect(errSpy).toHaveBeenCalledWith(
-        'Assuming MIDI time resolution of 360 pulses per quarter.',
-      );
-
-      warnSpy.mockRestore();
-      logSpy.mockRestore();
-      errSpy.mockRestore();
-    });
-  });
 });

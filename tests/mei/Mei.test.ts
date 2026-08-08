@@ -794,8 +794,4 @@ describe('Mei – the export entry points', () => {
   it('exportMsm fails for the same reason, it delegates to exportMsmMpm', () => {
     expect(() => new Mei(SAMPLE_MEI, true).exportMsm()).toThrow(/Mei2MsmMpmConverter/);
   });
-
-  it('exportMusicXml cannot load its converter either', () => {
-    expect(() => new Mei(SAMPLE_MEI, true).exportMusicXml()).toThrow(/Mei2MusicXmlConverter/);
-  });
 });

@@ -1,4 +1,7 @@
-# Lint debt (as of T2)
+# Lint debt (as of T3)
+
+> Updated after **T3** (out-of-scope module excision). Counts below are the *current*
+> `npm run lint` output; the T2 baseline is kept in the headline table for comparison.
 
 Snapshot of every ESLint violation left in the tree after T2's safe auto-fixes, grouped by
 the Phase 2/3 item that owns the files. This is **input for those items**, not a to-do list
@@ -14,34 +17,44 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 
 ## Headline numbers
 
-| | count |
-|---|---|
-| Violations before T2 | 2104 |
-| Auto-fixed in T2 (semantics-preserving only) | 345 |
-| **Remaining debt (errors)** | **1759** |
-| `no-param-reassign` warnings (separate, see below) | 40 |
-| Files affected | 90 of 118 |
-| Still auto-fixable | 0 |
+| | count | after T3 |
+|---|---|---|
+| Violations before T2 | 2104 | |
+| Auto-fixed in T2 (semantics-preserving only) | 345 | |
+| **Remaining debt (errors)** | **1759** | **1451** |
+| `no-param-reassign` warnings (separate, see below) | 40 | 35 |
+| Files affected (≥1 error) | 90 of 118 | 81 of 105 |
+| Still auto-fixable | 0 | 0 |
 
-Of the 1759, **306 sit in modules T3 deletes**, so the real Phase 2 debt is ~1453.
+T2 predicted "306 sit in modules T3 deletes, real Phase 2 debt ~1453". T3 removed **308**
+errors and **5** warnings; the delta reconciles exactly:
+
+| n | source |
+|---|---|
+| 306 | the 8 deleted modules listed in the T3 table below |
+| 1 | `src/supplementary/InputStream2StringConverter.ts` — booked under T4, also deleted |
+| 1 | `src/mei/Mei.ts` — `no-require-imports`, the `require()` in the removed `exportMusicXml()` |
+| 5 warnings | all `src/mei/Mei2MusicXmlConverter.ts` |
 
 ## By rule
 
-| count | rule | notes |
-|---|---|---|
-| 1333 | `no-non-null-assertion` | The dominant Java-ism. See below — do not bulk-fix. |
-| 106 | `unified-signatures` | Java-style overload sets that collapse to one optional/union signature. |
-| 104 | `no-unused-vars` | Mostly unused params in ported signatures + a few dead locals. |
-| 64 | `no-explicit-any` | 22 of these are hidden behind two file-level suppressions (see below). |
-| 59 | `no-empty-function` | Almost entirely test stubs. |
-| 44 | `eqeqeq` | All 44 are the `== null` idiom, all in `Helper.ts`. See below. |
-| 15 | `no-extraneous-class` | Static-only "utility" classes → plain module functions. Feeds T14. |
-| 12 | `prefer-for-of` | Index loops that never use the index. |
-| 11 | `explicit-module-boundary-types` | Exported members with inferred return types. |
-| 4 | `no-require-imports` | `require()` survivals in `src/mei/`. |
-| 3 | `no-fallthrough` | `Performance.ts` switch cases — **verify each is intentional before touching**. |
-| 2 | `no-unsafe-function-type` | Bare `Function` type in tests. |
-| 1 | `no-case-declarations`, 1 `no-this-alias` | |
+Counts are post-T3; the T2 column shows what the deletions absorbed.
+
+| count | (was T2) | rule | notes |
+|---|---|---|---|
+| 1104 | 1333 | `no-non-null-assertion` | The dominant Java-ism. See below — do not bulk-fix. |
+| 94 | 106 | `unified-signatures` | Java-style overload sets that collapse to one optional/union signature. |
+| 76 | 104 | `no-unused-vars` | Mostly unused params in ported signatures + a few dead locals. |
+| 59 | 59 | `no-empty-function` | Almost entirely test stubs. |
+| 44 | 44 | `eqeqeq` | All 44 are the `== null` idiom, all in `Helper.ts`. See below. |
+| 38 | 64 | `no-explicit-any` | 22 of these are hidden behind two file-level suppressions (see below). |
+| 11 | 11 | `explicit-module-boundary-types` | Exported members with inferred return types. |
+| 11 | 12 | `prefer-for-of` | Index loops that never use the index. |
+| 5 | 15 | `no-extraneous-class` | Static-only "utility" classes → plain module functions. Feeds T14. |
+| 3 | 4 | `no-require-imports` | `require()` survivals in `src/mei/` — the remaining 3 are the `Mei2MsmMpmConverter` lazy import (T18's cycle) and 2 in `Helper.ts`. |
+| 3 | 3 | `no-fallthrough` | `Performance.ts` switch cases — **verify each is intentional before touching**. |
+| 2 | 2 | `no-unsafe-function-type` | Bare `Function` type in tests. |
+| 1 | 1 | `no-this-alias` | (`no-case-declarations` is gone — its only site was a deleted module.) |
 
 ## Three things to read before paying any of this down
 
@@ -80,11 +93,13 @@ not a formatting change. T8 and T10 should delete them and type the `any`s prope
 
 ## By owning item
 
-Counts are violations, not files. `T3 (to be deleted)` needs no work — T3 removes the files.
+Counts are violations, not files.
 
-### T3 — modules slated for deletion — 306
+### T3 — modules deleted — 306 → **0, DONE**
 `no-non-null-assertion` 229, `no-unused-vars` 28, `no-explicit-any` 26,
 `unified-signatures` 12, `no-extraneous-class` 9, `no-case-declarations` 1, `prefer-for-of` 1
+
+All eight files below were removed by `git rm` in T3, so this debt is retired, not deferred.
 
 | n | file |
 |---|---|
@@ -97,10 +112,11 @@ Counts are violations, not files. `T3 (to be deleted)` needs no work — T3 remo
 | 1 | `src/pitches/FeatureVector.ts` |
 | 1 | `src/svg/SvgCollection.ts` |
 
-### T4 — supplementary — 1
-`no-extraneous-class` 1 — `src/supplementary/InputStream2StringConverter.ts`.
-Note this file is *not* in T4's stated scope (KeyValue, RandomNumberProvider) and not in the
-coverage include list either; it may be a T3 deletion candidate. **DISCOVERED, unresolved.**
+### T4 — supplementary — 1 → **0**
+Was `no-extraneous-class` 1 in `src/supplementary/InputStream2StringConverter.ts`, flagged
+at T2 as "not in T4's scope, not in the coverage include list, may be a T3 deletion
+candidate — **DISCOVERED, unresolved**". T3 **resolved it**: the file was referenced by
+nothing at all (not even `index.ts`), so it was deleted. T4 now starts from zero debt.
 
 ### T5 — xml — 15
 `no-non-null-assertion` 6, `prefer-for-of` 3, `no-unused-vars` 2, `unified-signatures` 2,
@@ -159,13 +175,18 @@ Java source before changing anything — deliberate fallthrough is likely, but c
 `no-explicit-any` 3, `no-extraneous-class` 1, `explicit-module-boundary-types` 1 —
 `Msm.ts` 121, `Goto.ts` 9, `AbstractMsm.ts` 7.
 
-### T10 — mei — 683 (the big one)
+### T10 — mei — 682 (the big one)
 `no-non-null-assertion` 577, `eqeqeq` 44, `no-unused-vars` 29, `no-explicit-any` 12,
-`explicit-module-boundary-types` 8, `unified-signatures` 7, `no-require-imports` 4,
+`explicit-module-boundary-types` 8, `unified-signatures` 7, `no-require-imports` 3,
 `no-extraneous-class` 1, `prefer-for-of` 1 —
-`Mei2MsmMpmConverter.ts` 555 (+19 suppressed `any`), `Helper.ts` 96, `Mei.ts` 32.
+`Mei2MsmMpmConverter.ts` 555 (+19 suppressed `any`), `Helper.ts` 96, `Mei.ts` 31.
 
-`Mei2MsmMpmConverter.ts` alone is 32% of the entire remaining debt. T10's own note about
+(683 → 682 in T3: `Mei.ts` lost the `require()` in the deleted `exportMusicXml()`. The one
+remaining `require()` in `Mei.ts` is the `Mei2MsmMpmConverter` lazy import that dodges the
+import cycle — that one is **T18's** to remove, not T10's, and it is currently broken in
+ESM, see the note in `tests/mei/Mei.test.ts`.)
+
+`Mei2MsmMpmConverter.ts` alone is 38% of the entire remaining debt. T10's own note about
 splitting into ≤3 sub-rounds looks right.
 
 ### T11 — midi — 37
@@ -234,13 +255,13 @@ Per the CHARTER.md section added 2026-08-08. T2 is a pure formatting/tooling ite
 codifies the direction in lint config and **measures** it; it annotates no `readonly` in
 `src/` and adds no functional-style plugin. That is Phase 2/3 work.
 
-**Enabled now**: `no-param-reassign` at **`warn`** (default `props: false`) — **40 warnings**,
-zero new errors, so it cannot turn the lint output red on its own.
+**Enabled now**: `no-param-reassign` at **`warn`** (default `props: false`) — **35 warnings**
+after T3 (was 40), zero new errors, so it cannot turn the lint output red on its own.
 
 | n | file |
 |---|---|
 | 7 | `src/midi/EventMaker.ts` |
-| 5 | `src/mei/Mei2MusicXmlConverter.ts` (T3 deletes) |
+| ~~5~~ | ~~`src/mei/Mei2MusicXmlConverter.ts`~~ — deleted in T3, the full −5 |
 | 5 | `src/supplementary/RandomNumberProvider.ts` |
 | 3 | `src/midi/Midi.ts`, 3 `src/midi/MidiTypes.ts` |
 | 2 | `src/mpm/elements/maps/ImprecisionMap.ts`, `src/mpm/elements/styles/defs/RubatoDef.ts`, `src/msm/Msm.ts` |

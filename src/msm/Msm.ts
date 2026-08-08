@@ -1389,28 +1389,6 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * export standard chroma features
-   * Stub: Pitches export not yet ported.
-   * @returns
-   */
-  exportChroma(): any {
-    // TODO: Port Pitches, Key, FeatureVector classes
-    console.error('Chroma/Pitches export is not yet implemented in the TypeScript port.');
-    return null;
-  }
-
-  /**
-   * export absolute pitches from the MSM score data
-   * Stub: Pitches export not yet ported.
-   * @returns
-   */
-  exportPitches(_key?: any): any {
-    // TODO: Port Pitches, Key, FeatureVector classes
-    console.error('Pitches export is not yet implemented in the TypeScript port.');
-    return null;
-  }
-
-  /**
    * a helper method for parsing the milliseconds date of an element
    * @param e
    * @returns

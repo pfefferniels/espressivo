@@ -20,14 +20,6 @@ import {
 } from './MidiTypes.js';
 import { EventMaker } from './EventMaker.js';
 
-// Forward-declared types for classes that will be created by other agents.
-// These are imported but may not yet exist; the TypeScript compiler will resolve them later.
-// import { Msm } from '../msm/Msm.js';
-// import { Helper } from '../mei/Helper.js';
-// import { TempoMap } from '../mpm/elements/maps/TempoMap.js';
-// import { Mei2MsmMpmConverter } from '../mei/Mei2MsmMpmConverter.js';
-// import { Midi2MsmConverter } from './Midi2MsmConverter.js';
-
 export class Midi {
   private file: string | null = null; // the midi filename
   private sequence: Sequence | null = null; // the midi sequence
@@ -754,45 +746,4 @@ export class Midi {
     }
   }
 
-  /**
-   * Convert the MIDI data to MSM.
-   * NOTE: This method requires the Msm, Helper, Mei2MsmMpmConverter, and Midi2MsmConverter
-   * classes to be available. It is provided as a template. Once those classes are ported,
-   * the imports at the top of this file should be uncommented and this method will work.
-   *
-   * @param useDefaultInstrumentNames
-   * @param cleanup set true to return a clean msm file or false to keep all the crap from the conversion process
-   * @return Msm object or null if dependencies are not available
-   */
-  exportMsm(useDefaultInstrumentNames = true, cleanup = true): any /* Msm */ | null {
-    // Dynamic import approach: this will be resolved at runtime when dependencies exist
-    console.log(`\nConverting ${this.file !== null ? this.file : 'MIDI data'} to MSM.`);
-
-    let ppq: number;
-    try {
-      ppq = this.getPPQ();
-    } catch (e) {
-      console.error(e);
-      console.error('Assuming MIDI time resolution of 360 pulses per quarter.');
-      ppq = 360;
-    }
-
-    const midiFileFormat = this.getMidiFileFormat();
-    console.log(`MIDI file format ${midiFileFormat} detected.`);
-
-    // NOTE: Actual MSM conversion requires Msm, Helper, Midi2MsmConverter, Mei2MsmMpmConverter classes.
-    // These will be ported by other agents. When available, the conversion follows this pattern:
-    //
-    // const filename = this.file ? Helper.getFilenameWithoutExtension(this.file) : "untitled";
-    // const msm = Msm.createMsm(filename, null, ppq);
-    // msm.setFile(filename + ".msm");
-    // const converter = new Midi2MsmConverter(midiFileFormat, useDefaultInstrumentNames, this.sequence!, msm);
-    // converter.convert();
-    // if (cleanup)
-    //     Mei2MsmMpmConverter.msmCleanup(msm);
-    // return msm;
-
-    console.warn('exportMsm: MSM conversion dependencies not yet available.');
-    return null;
-  }
 }

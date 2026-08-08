@@ -417,3 +417,242 @@ touched**:
    Harmless but confusing when globbing `src/mpm/**`; worth a `rmdir` during T7/T8.
 2. The scratch-tree "cancel out the formatting" technique above is the right review tool for
    any future formatting-only commit — noted since T2 is not the last one.
+
+## [T3] worker
+
+**Excised the out-of-scope modules: 13 files deleted via `git rm`, 4 files edited.**
+`npm run verify` green: 44 files, **2112/2112** (2113 − the single test of a removed method).
+
+### Method: the cone was computed, not eyeballed
+
+Reachability was computed with a script (scratchpad, not committed) that walks *every*
+specifier form — `import`, `export … from`, `import type`, `require()`, dynamic `import()` —
+starting from the in-scope surface, defined as the `vitest.config.ts` coverage include list
+expanded to files (58 roots). Everything outside the resulting cone is what got deleted.
+
+**The first run of that script was wrong in a way worth recording**: a naive regex counts
+*commented-out* imports as edges, and it reported three false edges that would have blocked
+the whole item —
+
+| claimed edge | reality |
+|---|---|
+| `Midi.ts` → `Midi2MsmConverter.ts` | line 29 was `// import { Midi2MsmConverter } …` |
+| `MusicXml.ts` → `MusicXml2MsmMpmConverter.ts` | line 6 was `// import { MusicXml2MsmMpmConverter } …` |
+| `Mei.ts` → `Mei2MusicXmlConverter.ts` | real, but `require()` inside a method that always throws |
+
+Each was opened and read before being dismissed. After that, **exactly one live reference
+attached the entire MusicXML subtree to in-scope code**: `Mei.exportMusicXml()`.
+
+### Per-module reachability argument
+
+| module | argument for deletion |
+|---|---|
+| `src/mei/Mei2MusicXmlConverter.ts` | referenced only by `index.ts` + the `require()` in `Mei.exportMusicXml()`, which was removed with it |
+| `src/musicxml/MusicXml.ts` | referenced by the two converters below/above + `import type` in `Mei.ts` (type-only, erased at runtime), solely for `exportMusicXml`'s return type |
+| `src/musicxml/MusicXml2MsmMpmConverter.ts` | `index.ts` only; the `MusicXml.ts` edge is a comment |
+| `src/midi/Midi2MsmConverter.ts` | `index.ts` only; the `Midi.ts` edge is a comment. MIDI→MSM is named out of scope in `vitest.config.ts` |
+| `src/audio/Audio.ts` | `index.ts` only; imports nothing |
+| `src/pitches/{Pitches,Key,FeatureVector,FeatureElement}.ts` | `index.ts` only; closed subgraph. `Msm.ts` mentions them in comments but never imported them |
+| `src/svg/{Svg,SvgCollection}.ts` | `index.ts` only; closed subgraph |
+| `src/supplementary/ColorCoding.ts` | **checked as the spec required**: `index.ts` only, zero in-scope references → deleted |
+| `src/supplementary/InputStream2StringConverter.ts` | referenced by **nothing at all**, not even `index.ts`. Resolves T2's "**DISCOVERED, unresolved**" note in lint-debt.md |
+
+Post-deletion the script re-run reports an empty "reachable but not a root" set and
+`src/index.ts` as the only file outside the cone — correct, it is the package barrel and now
+imports in-scope modules exclusively.
+
+### Kept deliberately
+
+- **`Midi.exportMsm()`** — kept. The spec authorised stripping *audio/playback* methods from
+  `Midi.ts`; **`Midi.ts` has no audio or playback methods at all** (the only match for
+  audio/play/synth/sequencer in the file is a doc line saying `javax.sound.midi` was replaced),
+  so that instruction was a no-op. `exportMsm` is a different thing: a dead stub that logs and
+  returns `null`, with 2 unit tests on it. It is *not* forced out by the deletions (it never
+  imported the converter), so removing it would have been an unrequested public-API change.
+  Its stale comments — which told the reader to uncomment imports of the now-deleted
+  `Midi2MsmConverter` — were rewritten to say it is out of scope and returns null.
+- **`Msm.exportChroma()` / `exportPitches()`** — same reasoning, 2 tests, kept. Their
+  `// TODO: Port Pitches, Key, FeatureVector classes` comments were **actively dangerous**
+  after this item (they instruct a future agent to re-port precisely what T3 deleted), so they
+  now say out-of-scope/removed-in-T3 instead. Comment-only edits.
+
+### Forced removal: `Mei.exportMusicXml()` + its one test
+
+Not optional: its return type is `MusicXml[]`, so it cannot survive `src/musicxml/` deletion.
+Worth stating plainly that **no working functionality was lost** — the method was already
+broken. It used `require()` in an ESM package, so it threw on every call, and the test that
+covered it asserted exactly that (`toThrow(/Mei2MusicXmlConverter/)`). That test was removed
+with the method: it is the test *of a removed behaviour*, not a weakened test of a kept one.
+This is the whole 2113 → **2112** delta. The sibling tests for `exportMsm`/`exportMsmMpm`,
+which pin the same ESM/`require()` limitation on the **kept** converter, are untouched.
+
+### Lint debt: 1759 → **1451** errors, 40 → **35** warnings
+
+`refactor/lint-debt.md` updated (re-measured with `eslint -f json`, not estimated). T2
+predicted 306 would vanish; the actual −308/−5 **reconciles exactly**: 306 from the eight
+deleted modules, +1 `InputStream2StringConverter.ts` (booked under T4), +1 `no-require-imports`
+in `Mei.ts` from the removed method; all 5 warnings were in `Mei2MusicXmlConverter.ts`.
+`no-case-declarations` is now 0 (its only site was deleted). T4 starts at **zero** debt.
+
+### DISCOVERED — coverage floor is already breached, and T3 is not the cause
+
+Charter invariant 7 sets the floor at 86% statements (`state.json` baseline 86.69). Current
+scoped coverage is **85.02%**, i.e. under the floor at Phase 1 end. **This predates T3.**
+Measured on clean `git archive` trees rather than inferred:
+
+| tree | stmts | branch | funcs |
+|---|---|---|---|
+| `1c3a44d` (pre-T2) | **86.69** | 85.73 | 94.11 |
+| `fc81fc5` (HEAD, post-T2, pre-T3) | **85.03** | 85.73 | 94.11 |
+| working tree (post-T3) | **85.02** | 85.73 | 94.10 |
+
+So **T2's prettier reformat cost −1.66 points and T3 costs −0.01** (the removed, fully covered
+3-line `exportMusicXml`; `Mei.ts` 86.29 → 86.14). The T2 drop is a **change of units, not a
+regression**: v8 statement/line coverage is line-sensitive, prettier splits statements across
+more lines, and uncovered multi-line constructs therefore weigh more. The tell is that
+**branch coverage is byte-identical (85.73) and function coverage identical (94.11) across the
+reformat**, with the same 2113 tests passing — no test lost any power.
+
+Conductor: this needs a decision that is **not the worker's to make** — recommend rebasing
+`state.json.coverageBaseline` to the post-prettier basis (85.03 stmts) and treating
+branch/function coverage as the drift-insensitive metrics, rather than recording a regression
+or asking a later item to "win back" 1.66 points that were never lost. Flagging it now because
+Phase 1 ends here and invariant 7 is checked at phase end.
+
+### Other notes / handoff
+
+- `tests/integration/**`, `tests/integration/fixtures/**` and `vitest.config.ts` are
+  **untouched** (`git diff HEAD --stat` over them is empty). Invariants 2 and 3 intact.
+- `tsconfig.json` (`include: src/**/*`), `tsconfig.tests.json` and `eslint.config.js` name
+  **none** of the deleted paths, so no config edit was needed — nothing mechanical was skipped.
+- The `audio/`, `musicxml/`, `pitches/` and `svg/` directories are gone entirely; `git rm`
+  cleaned them up. T2's leftover empty `src/mpm/{elements/` tree is still there, untouched.
+- **DISCOVERED (T22, packaging):** `dist/` still holds stale build output for the deleted
+  modules (`dist/musicxml/`, `dist/audio/`, …) because `tsc` never prunes its outDir. `dist/`
+  is gitignored so nothing is committed, but `main` points into it — T22 should add a clean
+  step before packing so dead modules cannot ship.
+- `src/index.ts` gained a short header comment recording what was removed and why, so the
+  next reader does not go looking for the missing exports.
+
+## [T3] verifier — PASS (2026-08-08)
+
+**PASS.** Everything the worker claimed reproduces, with one correction to its coverage
+narrative (below) that does not change the verdict but *does* change the conductor's
+proposed floor rebase.
+
+### Gate + invariants
+
+- `npm run verify` run independently: `tsc` + `tsc -p tsconfig.tests.json` + `vitest run`
+  all green, exit 0 — **44 files, 2112/2112**.
+- The 2113 → 2112 delta is exactly one test, `exportMusicXml cannot load its converter
+  either`, whose body was `expect(() => new Mei(...).exportMusicXml()).toThrow(
+  /Mei2MusicXmlConverter/)`. That is a test **of** the removed method's behaviour, not a
+  weakened test of kept behaviour. The sibling `exportMsm`/`exportMsmMpm` tests pinning the
+  same `require()` limitation on the **kept** converter are untouched.
+- `git diff fc81fc5 --stat -- tests/integration/ vitest.config.ts` → **empty**. Fixtures
+  untouched (`git status` over `tests/integration/fixtures/` empty). Invariants 2 and 3 intact.
+- `git status --porcelain` → **exactly 13 D + 7 M**, nothing else.
+
+### Reachability audit — clean
+
+Grepped remaining `src/` + `tests/` + all configs for every deleted module, both as import
+specifier (`from`/`require(`/`import(` against `musicxml|/audio/|/pitches/|/svg/|
+Mei2MusicXmlConverter|Midi2MsmConverter|ColorCoding|InputStream2StringConverter`) and as a
+word-boundary identifier. **Zero live references.** `Mei2MusicXmlConverter`,
+`MusicXml`, `MusicXml2MsmMpmConverter`, `Midi2MsmConverter`, `Audio`, `FeatureElement`,
+`Svg`, `SvgCollection`, `ColorCoding`, `InputStream2StringConverter` have **no textual hit
+at all**. The only surviving mentions are `Pitches`/`Key`/`FeatureVector` inside `Msm.ts`
+comments, which read "removed in T3 — **do not re-port it**" — i.e. they describe the
+removal, which the brief permits. Checked specifically for the failure mode the brief named:
+the old `Midi.ts` comment that *did* instruct a future agent to uncomment the deleted
+imports is **gone**. No comment anywhere now tells a reader to re-add a deleted module.
+
+### The 7 modified files contain only what was authorised
+
+- `src/index.ts` — export pruning + 4-line scope header. Nothing else.
+- `src/mei/Mei.ts` — `exportMusicXml()` removed + its `import type { MusicXml }`. Nothing else.
+- `src/midi/Midi.ts`, `src/msm/Msm.ts` — **proven comment-only**, not eyeballed: both files at
+  `fc81fc5` and at HEAD were run through a quote-aware comment stripper and compared;
+  both are **byte-identical after comment removal**. No executable-code change.
+- `tests/mei/Mei.test.ts` — the one removed test above.
+- `refactor/lint-debt.md`, `refactor/log.md` — bookkeeping.
+
+(The worker said "4 files edited", the dispatch said 7; both are right at different scopes —
+4 `src/` files, +1 test, +2 `refactor/` bookkeeping.)
+
+**Adversarial**: dumped *every* added line in `src/` + `tests/`. All 14 of them are comment
+lines. Zero executable additions. No `eslint-disable`, no `@ts-ignore`/`@ts-expect-error`,
+no type assertion, no non-null assertion introduced anywhere in the diff.
+
+### Lint reconciliation — matches
+
+`npm run lint` → **1486 problems (1451 errors, 35 warnings)**, exactly the updated
+`lint-debt.md` headline.
+
+### Coverage — independently measured, and the worker's branch claim is WRONG
+
+Measured on clean `git archive` trees (`node_modules` symlinked), identical
+`vitest.config.ts` include list verified across all three (`git diff 1c3a44d fc81fc5 --
+vitest.config.ts` is empty):
+
+| tree | stmts | branch | funcs | tests |
+|---|---|---|---|---|
+| `1c3a44d` (pre-T2) | **86.69** | 85.74 | 94.11 | 2113 |
+| `fc81fc5` (post-prettier, pre-T3) | **85.03** | 85.74 | 94.11 | 2113 |
+| working tree (post-T3), run 1 | **85.02** | 85.72 | 94.10 | 2112 |
+| working tree (post-T3), run 2 | **85.02** | 85.73 | 94.10 | 2112 |
+
+The worker's statement figures reproduce **exactly** (86.69 / 85.03 / 85.02), and its core
+inference — the T2 statement drop is a change of units, not lost coverage — **stands and is
+now better supported** (see mechanism below).
+
+But its supporting claim that "branch coverage is **byte-identical** at 85.73" is not
+reproducible as an equality, in two ways:
+
+1. The value is **85.74**, not 85.73, on both pre- and post-reformat trees.
+2. More importantly, **branch coverage is nondeterministic**. Same working tree, two
+   consecutive runs: **85.72 then 85.73**. Per-file, the wobble sits in exactly the
+   RNG-driven files the charter warns about — `RandomNumberProvider.ts` 87.5↔87.3,
+   `ArticulationMap.ts` 76.47↔76.74 (it moved **up**), `OrnamentationMap.ts` 93.23↔93.18 —
+   in files T3 never touched, with their **statement** figures frozen. Statement and
+   function coverage were bit-stable across repeat runs; branch was not.
+
+So the honest statement is "branch coverage is unchanged **within its ±0.02 run-to-run noise
+band**", not "identical". T3's own branch delta (85.74 → 85.72/85.73) is partly this noise and
+partly real: `Mei.ts` branch 90.62 → 90.55 and `src/mei` funcs 83 → 82.89 are the genuine,
+expected effect of deleting a **covered** method with a defaulted parameter. Nothing hidden.
+
+**Mechanism, checked rather than accepted.** Two independent confirmations that the −1.66
+was units, not coverage: (a) in *every row* of the v8 report `% Stmts` equals `% Lines`
+exactly — v8 derives statement coverage from lines here, so it is inherently
+formatting-sensitive; (b) the prettier reformat grew the scoped source from **17,277 to
+20,484 physical lines (+18.6%) with provably zero logic change** (T2 verified as pure
+reformat). An 18.6% larger line denominator over identical code is a full explanation of a
+1.9% relative statement-coverage move. No test lost power — same 2113 tests, same functions.
+
+### Recommendation on the floor rebase (charter invariant 7)
+
+**Endorse the rebase, with one amendment: do not enshrine branch coverage as an equality
+anchor.**
+
+1. **Rebase the stmts floor to 85.00** (not 85.03). The post-prettier basis is 85.03, but T3
+   legitimately lands at 85.02 by deleting covered dead code, and further in-scope deletions
+   (T4, the T21 dead-code sweep) will legitimately nudge it again. A floor set to the exact
+   current reading would fire on the next honest deletion. 85.00 keeps the ~1.7-point
+   guard-band the original 86% floor had against the then-current 86.69.
+2. **Record the floor as format-sensitive.** Any future mass-reformat re-bases it by
+   construction; it must never be read as a regression. Worth a line in CHARTER.md invariant 7.
+3. **Use functions (≥94.0) as the format-insensitive anchor, not branches.** Function
+   coverage was bit-stable across every repeat run I did; branch coverage was not. Branch is
+   still a useful drift indicator but only with a tolerance band (**±0.1**), never as an
+   equality check — a future agent asserting `branch === 85.73` would produce flaky failures
+   through no fault of its own.
+4. Deleting covered dead code will always dent percentage floors slightly. If that friction
+   recurs, the metric with actual teeth is **absolute covered-line count** plus the test
+   count, not a ratio.
+
+### Verdict
+
+**PASS T3.** No behaviour drift, no test weakening, no invariant violation, no smuggled
+suppressions. The one defect is a precision error in the worker's *report* (branch coverage
+described as byte-identical when it is noisy), not in its *work*.

@@ -1129,16 +1129,4 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // not-yet-ported exports
-  // ---------------------------------------------------------------
-  describe('chroma and pitches export', () => {
-    it('exportChroma should return null (not ported)', () => {
-      expect(Msm.createMsm('Test', null, 720).exportChroma()).toBeNull();
-    });
-
-    it('exportPitches should return null (not ported)', () => {
-      expect(Msm.createMsm('Test', null, 720).exportPitches()).toBeNull();
-    });
-  });
 });
