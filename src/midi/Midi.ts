@@ -6,6 +6,35 @@
  * our custom MidiTypes classes. The class provides export to Standard MIDI File
  * (SMF) binary format.
  *
+ * ## The SMF reader and writer have no Java counterpart
+ *
+ * `Midi.java` does not serialise anything itself: `writeMidi` delegates to
+ * `MidiSystem.write(sequence, 1, file)` and the constructor reads through
+ * `MidiSystem.getSequence(file)` (`Midi.java:77,538`). `readMidiData`,
+ * `exportMidi`, `buildTrackChunk` and `writeVariableLength` below are therefore a
+ * reimplementation of the JDK's `StandardMidiFileWriter`/`Reader`, not a port of
+ * meico code — there is no `.java` file to compare them against. What pins them is
+ * `tests/integration/midi-byte-equivalence.test.ts`, which parses the Java-generated
+ * `.mid` references and compares **event by event**, not byte by byte. Three
+ * measured consequences, all pre-existing and none of them bugs to fix:
+ *
+ * 1. **This writer never uses running status.** Every channel message gets its full
+ *    status byte. The JDK's writer does compress consecutive same-status messages,
+ *    so of the 48 Java reference `.mid` files, 33 come back byte-identical through
+ *    `readMidiData` → `exportMidi` and 15 come out 2–3 bytes longer — all of the
+ *    difference is running status the JDK used and this writer re-expands. The
+ *    reader handles running status on input, which is why the event streams match.
+ * 2. **This writer picks format 0 for a single-track sequence**, while Java always
+ *    passes 1 to `MidiSystem.write`. Only the header byte differs; the suite does
+ *    not read it.
+ * 3. **Negative ticks survive a read but not a write.** `all-maps-reference/
+ *    ornamentation_expressive.mid` really does begin at tick −18 — the ornamentation
+ *    renderer can move an event before the start — and the JDK wrote that as a
+ *    10-byte VLQ (`ff ff ff ff ff ff ff ff ff 6e`, Java's `long` −18). This reader's
+ *    32-bit shifts wrap around and recover −18 exactly; `buildTrackChunk` then
+ *    clamps the negative delta to 0 on export. That one file is the only reference
+ *    whose event stream is not a fixed point of read-then-write.
+ *
  * @author Axel Berndt
  */
 
@@ -13,7 +42,6 @@ import {
   Sequence,
   Track,
   MidiEvent,
-  MidiMessage,
   ShortMessage,
   MetaMessage,
   SysexMessage,
@@ -33,13 +61,10 @@ export class Midi {
    */
   constructor(ppq: number);
   /**
-   * constructor, instantiates a Midi object from a sequence
+   * constructor, instantiates a Midi object from a sequence, optionally setting the
+   * midi filename (an existing file is not read; `exportMidi` would overwrite it)
    */
-  constructor(sequence: Sequence);
-  /**
-   * constructor, instantiates a Midi object from a sequence and sets the midi file
-   */
-  constructor(sequence: Sequence, midifile: string);
+  constructor(sequence: Sequence, midifile?: string);
   /**
    * constructor, instantiates a Midi object from MIDI binary data
    */
@@ -64,6 +89,21 @@ export class Midi {
   /**
    * Parse MIDI binary data into the sequence.
    * This implements the Standard MIDI File (SMF) parser.
+   *
+   * Deliberately permissive, in the JDK's spirit: it trusts the MThd/MTrk tags and
+   * the chunk lengths, and resynchronises to `trackEnd` after each track, so a
+   * malformed event body costs one track rather than the file. It throws only on a
+   * missing tag.
+   *
+   * Two decoding details the exported bytes depend on:
+   *
+   * - **Running status.** A byte below 0x80 where a status byte is expected reuses
+   *   the previous *channel* status; system messages (≥ 0xF0) do not become the
+   *   running status. Since `buildTrackChunk` never re-emits running status, reading
+   *   and writing are not inverse at the byte level, only at the event level.
+   * - **Delta times use 32-bit `<<`.** A VLQ longer than five bytes wraps around,
+   *   which is what recovers Java's negative ticks exactly (see the class comment).
+   *
    * @param data raw MIDI file bytes
    */
   readMidiData(data: Uint8Array): void {
@@ -92,7 +132,9 @@ export class Midi {
     // Skip any extra header bytes
     offset += headerLength - 6;
 
-    // Check if division is PPQ (bit 15 = 0) or SMPTE
+    // Check if division is PPQ (bit 15 = 0) or SMPTE.
+    // An unrecognised SMPTE frame rate silently stays PPQ with the low byte as its
+    // resolution, which is wrong but harmless: nothing in the port writes SMPTE.
     let divisionType = Sequence.PPQ;
     let resolution = division;
     if (division & 0x8000) {
@@ -211,7 +253,9 @@ export class Midi {
 
   /**
    * check if there is any midi data in the sequence
-   * @return
+   *
+   * Only true before a sequence exists at all — a sequence with zero tracks, or
+   * with tracks holding no events, is not "empty" by this test.
    */
   isEmpty(): boolean {
     return this.sequence === null;
@@ -235,7 +279,12 @@ export class Midi {
 
   /**
    * determine the standard midi file format (0, 1 or 2) of the current midi file/sequence
-   * @return
+   *
+   * A structural guess, matching Java's *fallback* path (`Midi.java:132`): 0 for at
+   * most one track, 1 otherwise. Java's primary path asks `MidiSystem` which types
+   * the sequence supports and takes the highest, and its `writeMidi` then ignores
+   * the answer and always writes type 1. `exportMidi` applies the same rule as this
+   * method but derives it independently, so the two must be kept in step.
    */
   getMidiFileFormat(): number {
     if (this.sequence === null) return 1;
@@ -249,6 +298,11 @@ export class Midi {
 
   /**
    * this getter returns the midi sequence
+   *
+   * Asserts non-null. The field is only null between construction and the first
+   * assignment, which no public path exposes; see `refactor/lint-debt.md` — the `!`s
+   * in this file are T12's null-policy debt, not oversights.
+   *
    * @return the midi sequence
    */
   getSequence(): Sequence {
@@ -265,6 +319,13 @@ export class Midi {
 
   /**
    * Append the provided Midi to this. Differing PPQ will be adapted.
+   *
+   * Tracks are matched **by index**, not by name or channel: track 0 of the appended
+   * sequence extends track 0 of this one, and missing tracks are created empty. The
+   * offset is this sequence's current tick length, so the two pieces butt up against
+   * each other with no gap and no overlap. The argument is not modified — a clone is
+   * converted and read.
+   *
    * @param midi the Midi whose sequence should be appended
    */
   append(midi: Midi): void {
@@ -311,7 +372,12 @@ export class Midi {
   /**
    * This method converts the timing basis, i.e., it sets the new ppq value and converts all events' date accordingly.
    * A new MIDI sequence is created which replaces the old one.
-   * @param ppq
+   *
+   * Dates are scaled by `ppq / ppqOld` and **truncated toward zero**, so converting
+   * down and back up does not return the original ticks — the conversion is lossy by
+   * design, which is why `getMinimalPPQ` exists to pick a resolution that is not.
+   *
+   * @param ppq the new pulses-per-quarter-note resolution
    */
   convertPPQ(ppq: number): void {
     const ppqOld = this.getPPQ();
@@ -349,9 +415,16 @@ export class Midi {
 
   /**
    * computes the minimal integer timing resolution (in pulses per quarter note) necessary for an accurate representation of the specified sequence
-   * @param sequence
+   *
+   * For each event it finds the coarsest power-of-two subdivision of a quarter note
+   * that lands exactly on the event's tick, and keeps the finest such subdivision
+   * over the whole sequence. The scan starts at the running maximum rather than at 1,
+   * so an event already covered by the current answer costs one test — that is an
+   * optimisation, not a semantic: a tick divisible by `ppq / maxSubdivisions` is
+   * divisible by every coarser step too.
+   *
    * @param onlyNotes set false to consider all events; set true to consider only noteOn and noteOff events
-   * @return
+   * @return a power of two in 1..ppq
    */
   static getMinimalPPQ(sequence: Sequence, onlyNotes: boolean): number {
     if (sequence === null) throw new Error('Error: MIDI sequence is null.');
@@ -387,6 +460,11 @@ export class Midi {
    * Returns an array of tempo entries with tick, bpm, and beatlength values.
    * NOTE: This returns raw data rather than a TempoMap MPM object, to avoid circular dependencies.
    * The calling code can use this data to construct a TempoMap if needed.
+   *
+   * Entries come out in track order, then event order within a track — **not sorted
+   * by tick across tracks**. `beatlength` is always 0.25 because the MIDI set-tempo
+   * event is defined per quarter note; the beat unit is not recoverable from the file.
+   *
    * @return array of {tick, bpm, beatlength} entries
    */
   getTempoData(): { tick: number; bpm: number; beatlength: number }[] {
@@ -428,7 +506,14 @@ export class Midi {
 
   /**
    * print some basic MIDI data to a string
-   * @param sequence
+   *
+   * Diagnostic output, not a serialisation format. Two Java quirks are reproduced
+   * rather than repaired: the `PROGRAM_CHANGE` case has no `break`, so a program
+   * change prints its own line *and* the `default` branch's "Other message" text
+   * (`Midi.java:370-376`), and the two-space gap in `"noteOn,  key:"` comes from
+   * Java's `"noteOn, " + " key: "`. The one intentional divergence is the class name:
+   * Java prints `getMessage().getClass()` (e.g. `class com.sun.media.sound.FastShortMessage`),
+   * this prints `constructor.name` (e.g. `ShortMessage`).
    */
   static print(sequence: Sequence): string {
     if (sequence === null) {
@@ -491,22 +576,28 @@ export class Midi {
   /**
    * In MIDI noteOff events are often encoded as noteOn events with velocity 0.
    * With this method these events are converted to real noteOffs.
+   *
+   * Rewrites the messages **in place** through `ShortMessage.setMessage`, so no event
+   * is removed and re-added and no track is re-sorted — the sequence's event order is
+   * untouched. The two directions are not inverses: converting back with
+   * `noteOffs2NoteOns` gives a noteOn with velocity 0, which this method would convert
+   * again, so the pair is idempotent in each direction but lossy across the round trip.
+   *
    * @param sequence the sequence to be altered
    * @return the number of events changed
    */
   static noteOns2NoteOffs(sequence: Sequence): number {
     let eventsChanged = 0;
-    for (let t = 0; t < sequence.getTracks().length; ++t) {
+    for (const track of sequence.getTracks()) {
       // for all tracks
-      for (let e = 0; e < sequence.getTracks()[t].size(); ++e) {
+      for (let e = 0; e < track.size(); ++e) {
         // for all events in the track
-        const msg = sequence.getTracks()[t].get(e).getMessage();
+        const msg = track.get(e).getMessage();
         if (msg instanceof ShortMessage) {
           // if it is a ShortMessage
-          const sm = msg;
-          if (sm.getCommand() === ShortMessage.NOTE_ON && sm.getData2() === 0) {
+          if (msg.getCommand() === ShortMessage.NOTE_ON && msg.getData2() === 0) {
             // if this is a noteOn with velocity 0
-            sm.setMessage(EventMaker.NOTE_OFF, sm.getChannel(), sm.getData1(), 0); // convert it to noteOff
+            msg.setMessage(EventMaker.NOTE_OFF, msg.getChannel(), msg.getData1(), 0); // convert it to noteOff
             eventsChanged++;
           }
         }
@@ -528,22 +619,26 @@ export class Midi {
   /**
    * In MIDI noteOff events are often encoded as noteOn events with velocity 0.
    * With this method noteOffs are replaced by noteOns.
+   *
+   * The release velocity is **discarded**, not carried over: the replacement noteOn
+   * always gets velocity 0, because that is what marks it as a noteOff in this
+   * encoding. Java does the same (`Midi.java:451`).
+   *
    * @param sequence the sequence to be altered
    * @return the number of events changed
    */
   static noteOffs2NoteOns(sequence: Sequence): number {
     let eventsChanged = 0;
-    for (let t = 0; t < sequence.getTracks().length; ++t) {
+    for (const track of sequence.getTracks()) {
       // for all tracks
-      for (let e = 0; e < sequence.getTracks()[t].size(); ++e) {
+      for (let e = 0; e < track.size(); ++e) {
         // for all events in the track
-        const msg = sequence.getTracks()[t].get(e).getMessage();
+        const msg = track.get(e).getMessage();
         if (msg instanceof ShortMessage) {
           // if it is a ShortMessage
-          const sm = msg;
-          if (sm.getCommand() === ShortMessage.NOTE_OFF) {
+          if (msg.getCommand() === ShortMessage.NOTE_OFF) {
             // if this is a noteOff
-            sm.setMessage(EventMaker.NOTE_ON, sm.getChannel(), sm.getData1(), 0); // convert it to a noteOn with 0 velocity
+            msg.setMessage(EventMaker.NOTE_ON, msg.getChannel(), msg.getData1(), 0); // convert it to a noteOn with 0 velocity
             eventsChanged++;
           }
         }
@@ -554,7 +649,11 @@ export class Midi {
 
   /**
    * adds an offset (in ticks) to all events in this MIDI's sequence
-   * @param offsetInTicks
+   *
+   * Negative results are clamped to 0, so a large negative offset collapses the head
+   * of the sequence onto tick 0 rather than reordering it. Ticks are written in place
+   * and the tracks are **not** re-sorted, which is safe only because one constant
+   * offset preserves order; the clamp keeps that true at the boundary.
    */
   addOffset(offsetInTicks: number): void {
     if (offsetInTicks === 0) return;
@@ -569,6 +668,12 @@ export class Midi {
 
   /**
    * this creates a copy of the input sequence
+   *
+   * A deep copy: every message is cloned, so rewriting the clone's messages (as
+   * `noteOns2NoteOffs` does) cannot reach the original. Track and event order are
+   * preserved — events are re-added in their existing sorted order, and `Track.add`'s
+   * stable sort keeps ties where they were.
+   *
    * @param sequence the sequence to be cloned
    * @return the clone of the input sequence or null
    */
@@ -597,6 +702,13 @@ export class Midi {
   /**
    * Export the MIDI sequence as a Standard MIDI File (SMF) binary Uint8Array.
    * This implements the SMF spec: MThd header chunk, then MTrk track chunks.
+   *
+   * Header layout is fixed at 14 bytes — `MThd`, length 6, then format, track count
+   * and division as three big-endian 16-bit fields. `format` is 0 for at most one
+   * track and 1 otherwise (see the class comment for how that differs from Java).
+   * The whole file is sized before anything is written, so every byte position here
+   * is load-bearing: adding or reordering a write shifts the rest of the file.
+   *
    * @return MIDI file binary data, or null on error
    */
   exportMidi(): Uint8Array | null {
@@ -658,7 +770,27 @@ export class Midi {
 
   /**
    * Build the binary data for a single MIDI track (the content inside an MTrk chunk).
-   * @param track
+   *
+   * Each event is one delta-time VLQ followed by the message, in track order — which
+   * is tick order, because `Track.add` keeps the track sorted. Four rules decide the
+   * bytes, and all four are pinned by the byte-equivalence suite:
+   *
+   * - **Delta = this tick minus the previous tick, floored at 0.** The floor only
+   *   fires on a negative absolute tick, which the reader can produce from a Java
+   *   file (see the class comment) but nothing in the port generates.
+   * - **Meta events are re-framed, not copied.** `FF`, the type byte, then a fresh
+   *   length VLQ over `getData()` — the message's own stored framing is not reused.
+   * - **SysEx keeps its leading `F0`/`F7` and counts the remainder**, terminator
+   *   included, which is what the format asks for.
+   * - **Channel messages are copied verbatim, status byte and all.** No running
+   *   status: this is where the 15 byte-level differences against the Java references
+   *   come from, and they are semantically empty.
+   *
+   * The final `if (!hasEndOfTrack)` synthesises an end-of-track only if the track
+   * carried none. Note it checks for one *anywhere* in the track, not at the end, so
+   * a stray end-of-track in the middle suppresses the terminator the format requires.
+   * That is how the code has always behaved and the fixtures never hit it.
+   *
    * @return the raw track data (without the MTrk tag and length)
    */
   private static buildTrackChunk(track: Track): Uint8Array {
@@ -687,8 +819,8 @@ export class Midi {
         bytes.push(msg.getType() & 0xff);
         const data = msg.getData();
         Midi.writeVariableLength(bytes, data.length);
-        for (let j = 0; j < data.length; j++) {
-          bytes.push(data[j]);
+        for (const byte of data) {
+          bytes.push(byte);
         }
       } else if (msg instanceof SysexMessage) {
         // SysEx: status byte, then the length of the remaining bytes, then those bytes
@@ -700,15 +832,13 @@ export class Midi {
         }
       } else if (msg instanceof ShortMessage) {
         // Channel message
-        const rawData = msg.getMessage();
-        for (let j = 0; j < rawData.length; j++) {
-          bytes.push(rawData[j]);
+        for (const byte of msg.getMessage()) {
+          bytes.push(byte);
         }
       } else {
         // Unknown message type - write raw bytes
-        const rawData = msg.getMessage();
-        for (let j = 0; j < rawData.length; j++) {
-          bytes.push(rawData[j]);
+        for (const byte of msg.getMessage()) {
+          bytes.push(byte);
         }
       }
     }
@@ -726,24 +856,29 @@ export class Midi {
 
   /**
    * Write a variable-length quantity to the byte array.
+   *
+   * Seven bits per byte, most significant group first, high bit set on every byte
+   * but the last; negative values become a single `00`. Appends in place rather than
+   * returning an array — `MetaMessage.encodeVariableLength` is the allocating twin,
+   * and the two must stay in agreement.
+   *
    * @param bytes the output byte array
    * @param value the value to encode
    */
   private static writeVariableLength(bytes: number[], value: number): void {
-    if (value < 0) value = 0;
+    let rest = value < 0 ? 0 : value;
 
     // Build the variable-length bytes in reverse
     const vlqBytes: number[] = [];
-    vlqBytes.push(value & 0x7f);
-    value >>= 7;
-    while (value > 0) {
-      vlqBytes.push((value & 0x7f) | 0x80);
-      value >>= 7;
+    vlqBytes.push(rest & 0x7f);
+    rest >>= 7;
+    while (rest > 0) {
+      vlqBytes.push((rest & 0x7f) | 0x80);
+      rest >>= 7;
     }
     // Push in reverse order (MSB first)
     for (let i = vlqBytes.length - 1; i >= 0; i--) {
       bytes.push(vlqBytes[i]);
     }
   }
-
 }

@@ -8,6 +8,52 @@
  * The string similarity matching uses a Normalized Levenshtein distance
  * implemented in pure TypeScript (replacing the Java java-string-similarity library).
  *
+ * ## Lookup order is load-bearing
+ *
+ * `getProgramChange` is a **linear scan over the whole dictionary in insertion
+ * order**, and two of its rules make that order observable:
+ *
+ * - a distance of exactly 0 returns immediately, so an exact name never depends on
+ *   what follows it;
+ * - otherwise the best match is kept with a strict `<`, so among several keys at the
+ *   same minimal distance **the earliest one wins**.
+ *
+ * The insertion order is the line order of `DICT_DATA` below, because a JS `Map`
+ * iterates in insertion order. Reordering the data, or rebuilding the map from a
+ * differently-ordered source, silently re-resolves every fuzzy name that has a tie —
+ * and fuzzy names are the normal case (`"Klarinette in B"`, `"Horn in F"`).
+ *
+ * **Java-parity note, pre-existing, do not "fix".** Java's `dict` is a
+ * `HashMap<String, Short>` (`InstrumentsDictionary.java:57`) and `entrySet()`
+ * iterates in hash order, not insertion order. Exact matches agree in both languages
+ * — distance 0 returns the same value whatever the order — but a *tie* between two
+ * fuzzy candidates can resolve to different instruments in Java and here. The same
+ * asymmetry makes `getInstrumentName(pc)` deterministic here (it returns the first
+ * name listed under that program number) and effectively arbitrary in Java.
+ *
+ * ## The data format, and why it stays a string
+ *
+ * `DICT_DATA` is parsed at construction: `%` starts a comment line, `#N` sets the
+ * program number for everything that follows (clamped into 0..127), blank lines are
+ * skipped, and every other line is an instrument name stored lower-cased. It holds
+ * 838 name lines that collapse to **836 keys** — `lead 5 charang` is listed twice
+ * under one program number, and `tenore` is listed under both 52 and 53, so the
+ * later value (53) wins while the key keeps its *earlier* position in the scan.
+ * Turning the table into a `readonly` array of tuples is possible in principle, but
+ * it would have to reproduce that last-value/first-position rule exactly, and the
+ * only gain is parse time on a table that is rebuilt per lookup anyway. Left as
+ * data, deliberately.
+ *
+ * ## Only one distance method is reachable from the pipeline
+ *
+ * The eleven `distanceMethod` constants mirror the eleven metrics of Java's
+ * `info.debatty.java.stringsimilarity`; the implementations below are hand-written
+ * replacements, not a port of that library. Only `NormalizedLevenshtein` — the
+ * default, and the only one `EventMaker.createProgramChangeByName` can select — is
+ * exercised by the conversion pipeline, so it is the only one whose agreement with
+ * the Java library is evidenced by the fixtures. The other ten are public API for
+ * external callers and are pinned only by this port's own unit tests.
+ *
  * @author Axel Berndt
  */
 
@@ -25,7 +71,11 @@ export class InstrumentsDictionary {
   static readonly Jaccard: number = 0x09;
   static readonly SorensenDice: number = 0x0a;
 
-  static readonly DefaultNames: string[] = [
+  /**
+   * the default instrument names of General MIDI, indexed by program change number
+   * (used by `getInstrumentName`, e.g. for MIDI-to-MSM conversion)
+   */
+  static readonly DefaultNames: readonly string[] = [
     'Acoustic Grand Piano',
     'Bright Acoustic Piano',
     'Electric Grand Piano',
@@ -156,11 +206,15 @@ export class InstrumentsDictionary {
     'Gunshot',
   ];
 
-  private dict: Map<string, number>;
+  /** name (lower case) → program change number, in `DICT_DATA` line order */
+  private readonly dict: Map<string, number>;
 
   /**
    * The constructor. It builds the dictionary from the embedded data.
    * In Java this read from resources/instuments.dict; here the data is embedded directly.
+   *
+   * Cheap enough to be built per lookup, which is what callers do — Java rebuilds it
+   * per instance too, and nothing in `getProgramChange` mutates it.
    */
   constructor() {
     this.dict = new Map<string, number>();
@@ -170,6 +224,16 @@ export class InstrumentsDictionary {
   /**
    * Build the instruments dictionary from embedded data.
    * This replaces the Java file-reading constructor.
+   *
+   * A later duplicate of a name overwrites the earlier value but keeps the earlier
+   * scan position — the behaviour Java's `HashMap.put` has, and the reason `tenore`
+   * resolves to 53 while sitting among the 52s. Java's own guard against duplicates
+   * is commented out in `InstrumentsDictionary.java:76-77`, so last-wins is
+   * deliberate in both languages.
+   *
+   * One divergence: this trims trailing whitespace off each line before testing it
+   * for emptiness and before storing it, where Java stores the line as read. The
+   * embedded data has no trailing whitespace, so it makes no difference here.
    */
   private buildDictionary(): void {
     const dictData = InstrumentsDictionary.DICT_DATA;
@@ -198,11 +262,18 @@ export class InstrumentsDictionary {
    * This method parses the input string name and outputs its corresponding midi program change number.
    * This is based on the Normalized Levenshtein distance between the input string and the strings
    * in the instrument names dictionary.
+   *
+   * Never fails: an unmatched name still returns the nearest entry, and an empty name
+   * returns 0 without scanning. The scan order is significant — see the class comment.
+   * Every lookup reports the key it settled on to stdout, matching Java
+   * (`InstrumentsDictionary.java:157,168`); the port keeps that because the tests and
+   * the CLI both read it.
+   *
    * @param name an instrument's name string
+   * @param distanceMethod one of the eleven constants above; anything unrecognised,
+   *   including a missing argument, falls back to Normalized Levenshtein
    * @return the suggested midi program change number; if instrument unknown, output is 0 (Acoustic Grand Piano)
    */
-  getProgramChange(name: string): number;
-  getProgramChange(name: string, distanceMethod: number): number;
   getProgramChange(name: string, distanceMethod?: number): number {
     if (distanceMethod === undefined) {
       return this.getProgramChange(name, InstrumentsDictionary.NormalizedLevenshtein);
@@ -215,7 +286,7 @@ export class InstrumentsDictionary {
     const n = name.toLowerCase(); // to ignore the case
     let pc = 0; // here comes the result
     let distance = Number.MAX_VALUE; // indicates the distance to the name string
-    let foo = ''; // just for debugging
+    let bestKey = ''; // the key `pc` came from; reported below, Java calls it `foo`
 
     for (const [key, value] of this.dict.entries()) {
       let curDistance: number;
@@ -263,19 +334,27 @@ export class InstrumentsDictionary {
         return value; // return the value
       }
 
+      // strictly less than, so the earliest key at the minimal distance wins
       if (curDistance < distance) {
         distance = curDistance;
         pc = value;
-        foo = key;
+        bestKey = key;
       }
     }
-    console.log(`${name} is mapped to ${foo} with ${distance}`);
+    console.log(`${name} is mapped to ${bestKey} with ${distance}`);
     return pc;
   }
 
   /**
    * given a program change number, return the instrument's name
-   * @param programChangeNumber
+   *
+   * Reading the dictionary (the default) returns the **first** name listed under that
+   * program number, lower-cased, because the scan follows `DICT_DATA` order — so
+   * program 0 gives `"acoustic grand piano"`, not `"Klavier"`. Java's hash-ordered
+   * map gives an arbitrary synonym instead. Pass `useGmDefaultNames` for the
+   * canonical General MIDI spelling, which is also the fallback if the dictionary
+   * cannot be built.
+   *
    * @param useGmDefaultNames if false the names are taken from the instruments dictionary
    * @return the instrument's name or an empty string if not found in the dictionary
    */
@@ -302,6 +381,12 @@ export class InstrumentsDictionary {
 
   /**
    * Compute the Levenshtein distance of two strings.
+   *
+   * Textbook full-matrix edit distance: the number of single-character insertions,
+   * deletions and substitutions between the two strings. This is the one metric whose
+   * definition is unambiguous enough that the hand-written version and Java's library
+   * cannot disagree, which matters because `normalizedLevenshteinDistance` — the
+   * default and only pipeline-reachable metric — is built on it.
    */
   private static levenshteinDistance(str1: string, str2: string): number {
     const matrix: number[][] = [];
@@ -325,6 +410,10 @@ export class InstrumentsDictionary {
 
   /**
    * Compute the Normalized Levenshtein distance (0..1) of two strings.
+   *
+   * Edit distance divided by the longer length, so an exact match is 0 and a total
+   * mismatch approaches 1. **This is the metric the whole conversion pipeline uses**:
+   * every instrument name in every MEI fixture is resolved through it.
    */
   private static normalizedLevenshteinDistance(str1: string, str2: string): number {
     const maxLen = Math.max(str1.length, str2.length);
@@ -475,7 +564,7 @@ export class InstrumentsDictionary {
   }
 
   /**
-   * Get n-grams of a string.
+   * Get n-grams of a string. Returns an empty list when the string is shorter than `n`.
    */
   private static getNgrams(s: string, n: number): string[] {
     const ngrams: string[] = [];
@@ -519,6 +608,7 @@ export class InstrumentsDictionary {
 
   /**
    * Get a profile (map of ngrams to counts) for QGram-based distances.
+   * Unlike `ngramDistance`, the string is not padded first.
    */
   private static getProfile(s: string, n: number): Map<string, number> {
     const profile = new Map<string, number>();
@@ -531,6 +621,12 @@ export class InstrumentsDictionary {
 
   /**
    * Compute the QGram distance of two strings.
+   *
+   * The odd one out: **not normalised to 0..1**, it is the summed absolute difference
+   * of the two bigram profiles, so it grows with string length. That is the library's
+   * definition too, but it means a `distance` from this metric is not comparable with
+   * one from any other — only within a single scan, which is all `getProgramChange`
+   * needs.
    */
   private static qgramDistance(s1: string, s2: string, q: number): number {
     const profile1 = InstrumentsDictionary.getProfile(s1, q);
@@ -620,6 +716,9 @@ export class InstrumentsDictionary {
   // ============================================================
   // Embedded instruments dictionary data
   // (originally from resources/instuments.dict)
+  //
+  // FROZEN — line order is lookup order (see the class comment). Adding a name is
+  // safe; moving one re-resolves every fuzzy lookup that ties with it.
   // ============================================================
 
   private static readonly DICT_DATA: string = `% Acoustic Grand Piano

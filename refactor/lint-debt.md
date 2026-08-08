@@ -1,6 +1,6 @@
-# Lint debt (as of T10)
+# Lint debt (as of T11)
 
-> Updated after **T10** (mei cluster). Counts below are the *current*
+> Updated after **T11** (midi cluster). Counts below are the *current*
 > `npm run lint` output; the T2 baseline is kept in the headline table for comparison.
 
 Snapshot of every ESLint violation left in the tree after T2's safe auto-fixes, grouped by
@@ -17,20 +17,31 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 
 ## Headline numbers
 
-| | count | after T3 | after T4 | after T5 | after T6 | after T7 | after T8 | after T9 | after T10 |
-|---|---|---|---|---|---|---|---|---|---|
-| Violations before T2 | 2104 | | | | | | | | |
-| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | | | | | |
-| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** | **1368** | **1347** | **1336** | **1306** |
-| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** | **20** | 20 | **18** | 18 |
-| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 |
-| Still auto-fixable | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| | count | after T3 | after T4 | after T5 | after T6 | after T7 | after T8 | after T9 | after T10 | after T11 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Violations before T2 | 2104 | | | | | | | | | |
+| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | | | | | | |
+| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** | **1368** | **1347** | **1336** | **1306** | **1294** |
+| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** | **20** | 20 | **18** | 18 | **5** |
+| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | **74 of 105** |
+| Still auto-fixable | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 > The T8 and T9 columns were added in T9; before that the table stopped at T7 while the
 > prose below already carried the T8 numbers. Both columns are measured with
 > `eslint -f json` over `src/**` + `tests/**` on a `git archive` of the respective tree,
 > splitting errors from warnings (they are reported together, which has misled two
 > earlier entries).
+
+T11 cleared 12 of the midi cluster's 33 errors (33 → 21) and **all 13 of its warnings**
+(13 → 0), which is 13 of the 18 left in the whole tree. Measured: **1299 problems (1294
+errors, 5 warnings)**. It reconciles exactly — errors −12, warnings −13, and the per-file
+comparison over the whole repo shows movement in **exactly the four cluster files**:
+`Midi.ts` 23+3w → 14, `MidiTypes.ts` 6+3w → 6, `EventMaker.ts` 3+7w → 1,
+`InstrumentsDictionary.ts` 1 → **0**. One file reached zero, so "files affected" drops
+75 → 74 for the first time since T6. **`prefer-for-of` is now at zero repo-wide** — the
+third rule fully retired rather than deferred, after `no-this-alias` (T5) and
+`explicit-module-boundary-types` (T10); the midi cluster happened to own all 6 remaining
+sites. See the T11 section below.
 
 T10 cleared 30 of the mei cluster's 682 errors (682 → 652) and left the warning column
 untouched (it had none). Measured: **1324 problems (1306 errors, 18 warnings)**. It
@@ -151,6 +162,15 @@ the working tree: `no-non-null-assertion` 1080, `no-unused-vars` 58, `no-empty-f
 `no-extraneous-class` 3, `no-require-imports` 3, `no-unsafe-function-type` 2,
 `explicit-module-boundary-types` 0, `no-fallthrough` 0, `no-this-alias` 0, plus 18
 `no-param-reassign` warnings. (These sum to **1306** errors.)
+
+T11's −12 came out as: `prefer-for-of` 6 → **0** (−6), `unified-signatures` 44 → **40**
+(−4) and `no-unused-vars` 58 → **56** (−2), plus `no-param-reassign` 18 → **5** in the
+warning column. No other row moved. Post-T11 totals, measured repo-wide with
+`eslint -f json` on the working tree: `no-non-null-assertion` 1080, `no-unused-vars` 56,
+`no-empty-function` 54, `eqeqeq` 44, `unified-signatures` 40, `no-explicit-any` 12,
+`no-extraneous-class` 3, `no-require-imports` 3, `no-unsafe-function-type` 2,
+`prefer-for-of` 0, `explicit-module-boundary-types` 0, `no-fallthrough` 0, `no-this-alias`
+0, plus 5 `no-param-reassign` warnings. (These sum to **1294** errors.)
 
 T6's −42 came out as: `no-non-null-assertion` 1104 → **1079** (−25), `unified-signatures`
 94 → **77** (−17). *(Befores corrected by conductor per verifier-T6's re-measurement; the
@@ -549,10 +569,58 @@ Separately, T10's cleanup left **`XomTypes.Element.setNamespaceURI` with no call
 function-coverage movement in an untouched file (72/74 → 71/74). **DISCOVERED**: T17 should
 either delete it or give it a unit test.
 
-### T11 — midi — 33
-`Midi.ts` 23, `MidiTypes.ts` 6, `EventMaker.ts` 3, `InstrumentsDictionary.ts` 1.
-(37 → 33 in T3: `Midi.ts` lost the `exportMsm` dead stub, which carried `no-explicit-any`,
-`explicit-module-boundary-types` and 2 `no-unused-vars` for its two ignored parameters.)
+### T11 — midi — 33 → **21, DONE (and 13 → 0 warnings)**
+
+Going in: `no-non-null-assertion` 14, `unified-signatures` 10, `prefer-for-of` 6,
+`no-unused-vars` 2, `no-extraneous-class` 1, plus **13 `no-param-reassign` warnings** —
+46 problems, and the cluster held 13 of the tree's 18 warnings and all 6 of its remaining
+`prefer-for-of`. (37 → 33 in T3: `Midi.ts` lost the `exportMsm` dead stub, which carried
+`no-explicit-any`, `explicit-module-boundary-types` and 2 `no-unused-vars` for its two
+ignored parameters.)
+
+Coming out: **21 errors, 0 warnings.** Per file (errors, warnings):
+
+| before | after | file |
+|---|---|---|
+| 23 (+3 warn) | 14 | `src/midi/Midi.ts` |
+| 6 (+3 warn) | 6 | `src/midi/MidiTypes.ts` |
+| 3 (+7 warn) | 1 | `src/midi/EventMaker.ts` |
+| 1 | **0** | `src/midi/InstrumentsDictionary.ts` |
+
+**Cleared (12 errors + 13 warnings):**
+
+| n | rule | how |
+|---|---|---|
+| 6 | `prefer-for-of` | All six sites, and with them the rule's last site in the tree. Two in `Midi.noteOns2NoteOffs`/`noteOffs2NoteOns` (`for (let t …) sequence.getTracks()[t]` → `for (const track of sequence.getTracks())`), three byte-copy loops in `Midi.buildTrackChunk` and one in `EventMaker.byteArrayToInt` (`for (let j …) bytes.push(data[j])` → `for (const byte of data)`). A `for..of` over a `Uint8Array` visits the same values in the same index order, so the write sequence is unchanged — proven byte-for-byte by the probes, not argued. |
+| 4 | `unified-signatures` | Two overload *pairs*, which the rule reports as 4 messages: `InstrumentsDictionary.getProgramChange(name)` / `(name, distanceMethod)` and `Midi`'s `constructor(sequence)` / `(sequence, midifile)`, each collapsed onto one optional parameter that accepts exactly the same call shapes. Overload signatures emit nothing; the `.d.ts` token diff shows each pair becoming one signature and the `.js` is untouched. |
+| 2 | `no-unused-vars` | The unused `MidiMessage` specifier in `Midi.ts`'s import (tsc already elided it — the emitted import line is **byte-identical**, the [T8] precedent rather than [T10]'s trailing-comma case) and `EventMaker.createProgramChangeByName`'s unread `catch (e)` → optional catch binding, as [T9] did four times in `Msm.ts`. |
+| 13 warn | `no-param-reassign` | Every one in the cluster, in five shapes: the three velocity/controller clamps (`if (v > 127) v = 127; else if (v < 0) v = 0;` → one `const` ternary), `EventMaker.intToByteArray`'s `value = value \| 0` → `const int32`, and the two VLQ encoders' `if (value < 0) value = 0` → `let rest = value < 0 ? 0 : value`. **Not `Math.min`/`Math.max`** — the trap [T6] recorded, and the reason a 413-entry adversarial probe over NaN, ±0, ±Infinity and fractional inputs was run against both builds before this was accepted. |
+
+**Deferred (21), by reason:**
+
+| n | rule | why it stayed |
+|---|---|---|
+| 14 | `no-non-null-assertion` | 10 `this.sequence!` in `Midi.ts`, 4 narrowing assertions in `MidiTypes`' `ShortMessage`/`MetaMessage` constructors. The story every entry since [T5] records: the fix is narrowing return types under **T12**'s null policy. Here a guard would be a real behaviour change — `Midi.getSequence()` returning null instead of throwing would turn a `TypeError` into a silent wrong answer in `Msm.exportMidi`. |
+| 4 | `unified-signatures` | `Midi`'s remaining 4 are the union merges — `number \| Sequence \| Uint8Array` — which are genuinely different things to construct from, per the [T6]/[T8]/[T9] precedent. Merging them would additionally make `new Midi(bytes, 'file.mid')` typecheck while the implementation silently drops the filename. Documented at the site. **T16**'s call. |
+| 2 | `unified-signatures` | `ShortMessage`'s `(status, data1, data2)` / `(command, channel, data1, data2)` pair. The first argument means something different in each — a whole status byte versus a command nibble — and merging them would make a 2-argument call typecheck, which the implementation mis-handles (it falls into the single-status-byte branch and drops the second argument). Documented at the site. |
+| 1 | `no-extraneous-class` | `EventMaker` is static-only. Converting it to module functions is a **T14**-shaped change, ~60 call sites deep in `Msm.ts` alone, and `EventMaker.X` is how Java's `EventMaker` reads. |
+
+`prefer-readonly` in this cluster: **6 → 0**, the whole of T11's share. Measured with the
+[T8] verifier's one-rule config over both trees: `src/` total **8 → 2**
+(`MidiTypes.ts` 5 → 0: `MidiEvent.message`, `Track.events`, `Sequence.divisionType`/
+`resolution`/`tracks`; `InstrumentsDictionary.ts` 1 → 0: `dict`). The 2 left are both
+`Mei2MsmMpmConverter.ts` (`ignoreExpansions`, `cleanup`). Every one of the six erases:
+`MidiTypes.js` differs from base by nothing but the VLQ rewrite, and the six `readonly`
+keywords appear only in the `.d.ts`.
+
+> **The `prefer-readonly` absolute drift is explained — stop treating it as noise.**
+> [T7] read 11, [T8] read 8, [T9] and [T10] read 9, and this file has warned three times
+> to compare deltas rather than absolutes. Running the config and reading its **messages**
+> rather than its count: it emits **9 messages on the pre-T11 tree, of which only 8 are
+> `prefer-readonly`**. The ninth is `Unused eslint-disable directive` at
+> `Mei2MsmMpmConverter.ts:32` — the bare single-rule config does not enable
+> `no-explicit-any`, so the file-level suppression there reports as unused. Whoever
+> counted messages got 9, whoever filtered by `ruleId` got 8. Filter by `ruleId`.
 
 ### T13 — facade — 1
 `no-extraneous-class` 1 — `src/Meico.ts`.
@@ -636,6 +704,14 @@ its own.
 > two `getTForDate` Bézier inversions and `OrnamentationMap`, all three deliberately left
 > by [T7]), integration tests 2. **`src/msm/**` is at zero.**
 
+> **Post-T11 the total is 5**, and `src/midi/**` joins `src/msm/**` at zero: T11 cleared
+> all 13 of its warnings. What is left is exactly the 3 `src/mpm/**` sites [T7] documented
+> as deliberate (both `getTForDate` Bézier inversions and `OrnamentationMap`) plus the 2 in
+> integration tests, which no source item may touch. In other words **every remaining
+> `no-param-reassign` warning in the tree is one a previous item examined and kept on
+> purpose** — the column is now a decision record, not a backlog, and it should not be
+> driven to zero before T12 draws the mutation boundary.
+
 It is `warn` and not `error` on purpose: the charter grants the conversion/rendering core
 an **explicit mutation boundary**, so a share of these are legitimate and only T12 can draw
 the line. Do not "fix" them to zero before ARCHITECTURE.md exists.
@@ -654,7 +730,9 @@ the line. Do not "fix" them to zero before ARCHITECTURE.md exists.
 > `fc81fc5` (T2) 38 → `20e94c2` (post-T3) 18 → post-T4 17 → T5's config read 19/12 on its
 > two trees → post-T6 **11**. The T4 and T5 configs disagreed by 2 on the same tree, so
 > compare deltas rather than absolutes across entries; within a single config the T6 delta
-> is 12 → 11. **T7–T11 budget against 11.**
+> is 12 → 11. ~~**T7–T11 budget against 11.**~~ **Post-T11: 2 in `src/`, both in
+> `Mei2MsmMpmConverter.ts`** — and the recurring ±1 in this chain is finally diagnosed in
+> the T11 section above (a non-`prefer-readonly` message the bare config also emits).
 
 > **`prefer-readonly` correction (T4).** The 38 above is real but *stale*: it was measured on
 > T2's tree, and T3 then deleted eight modules without re-running the preview. Re-measured on

@@ -3837,3 +3837,417 @@ claims rather than taking them on trust. All four I picked hold:
   later housekeeping item; it is not part of this manifest.
 - The worker's note about the Java repo's pre-existing dirty tree is accurate; I only read
   from it.
+
+## [T11] worker — midi local idioms (Midi, MidiTypes, EventMaker, InstrumentsDictionary) (2026-08-08)
+
+**READY.** Baseline `78be486` (`src/` identical to the last green `6d1678c` — `git diff
+6d1678c 78be486 -- src/` is empty; the intervening commit is `refactor/` bookkeeping only).
+`npm run verify` green, **2108/2108 across 44 files**, both `tsc` stages standalone. Prettier
+clean over `src/midi/` and both `refactor/` files.
+
+### Manifest — 6 files, all in scope
+
+`src/midi/Midi.ts`, `src/midi/MidiTypes.ts`, `src/midi/EventMaker.ts`,
+`src/midi/InstrumentsDictionary.ts`, plus `refactor/lint-debt.md` and this file.
+`git status --porcelain` is exactly those 6 `M` lines, **0 untracked**. No test file, no
+fixture, no config: `git diff --name-only -- tests/ vitest.config.ts tsconfig*.json
+eslint.config.js package.json package-lock.json` is empty.
+
+### Headline: 13 emitted-code changes, everything else is documentation or types
+
+The whole-project `dist` diff touches **only the 4 cluster files**' `.js`/`.d.ts`. (Many
+`.map` files also differ, but *only* in their `sources` field — the two trees were built at
+different paths; `mappings` is byte-identical in every one. Checked, not assumed.)
+
+JSDoc-pruned code-token deltas ([T8] verifier's `toks2.mjs`), every hunk classified:
+
+| file | .js tokens | differing lines | hunks |
+|---|---|---|---|
+| `InstrumentsDictionary.js` | 3308 → 3308 | 3 | 1: `foo` → `bestKey` (a local, 3 uses) |
+| `MidiTypes.js` | 1672 → 1673 | 21 | 1: `encodeVariableLength`'s param reassign |
+| `EventMaker.js` | 2684 → 2651 | 123 | 7: listed below |
+| `Midi.js` | 3575 → 3470 | 193 | 6: listed below |
+
+**Nothing unclassified.** The 13 hunks are: three velocity/controller clamps rewritten as a
+`const` ternary; `intToByteArray`'s `value = value | 0` → `const int32`; both VLQ encoders'
+`if (value < 0) value = 0` → `let rest = …`; `createTimeSignature`'s empty-bodied
+`for (; pow < d; ++p);` → a `while`; four `prefer-for-of` conversions (`byteArrayToInt`, and
+three byte-copy loops in `buildTrackChunk`); two `getTracks()` index loops → `for..of` with
+the redundant `const sm = msg` Java-cast alias dropped; one `catch (e)` → `catch`; and the
+`foo` rename. Every one of them is a lint-debt entry, and each is proven below.
+
+### The 301-line change that emits nothing
+
+`EventMaker`'s constants were `static readonly NOTE_OFF: number = 128`. The `: number`
+annotations are gone from all 301, which gives them literal types — the shape
+`MidiTypes.ShortMessage`'s constants already had. **This produced exactly zero emitted-JS
+tokens**; the `.d.ts` diff is exactly **299 × (`: number` → `= <literal>`)**, the 2 missing
+ones being the two `private static` constants, which `.d.ts` emits untyped in both trees.
+It is 301 diff lines that a reviewer can classify with one `grep`, and it is the largest
+Java-`static final int`-ism left in the cluster.
+
+### Type-level tightening, all of which provably erases
+
+- **6 `readonly`**, which is the cluster's entire `prefer-readonly` share: `MidiEvent.message`,
+  `Track.events`, `Sequence.divisionType`/`resolution`/`tracks`, `InstrumentsDictionary.dict`.
+- `Sequence.getTracks(): Track[]` → `readonly Track[]`, and
+  `InstrumentsDictionary.DefaultNames: string[]` → `readonly string[]`. Nothing in `src/` or
+  `tests/` writes to either (grepped for `push`/`sort`/`splice`/`pop`/`shift`/`reverse`/`fill`
+  on both, and both `tsc` stages agree).
+- Two overload pairs collapsed onto an optional parameter (`getProgramChange`, `Midi`'s
+  sequence constructor).
+
+The `.d.ts` token diffs are exactly this and nothing else: `MidiTypes.d.ts` **+6
+`ReadonlyKeyword`**, `InstrumentsDictionary.d.ts` +2 `ReadonlyKeyword` and the overload
+merge, `Midi.d.ts` the overload merge alone.
+
+**No `as const` anywhere.** The charter blesses it for static data tables, but an explicit
+`readonly string[]` annotation buys the same immutability without adding an `AsExpression`,
+and every previous verifier has counted those. Repo-wide AST counts are therefore **flat**:
+`AsExpression` 174 → 174, `AnyKeyword` 1 → 1, `NonNullExpression` 1080 → 1080,
+`TypeAssertionExpression` 0 → 0. `eslint-disable` 1 → 1;
+`@ts-ignore`/`@ts-expect-error`/`@ts-nocheck` 0 → 0.
+
+### InstrumentsDictionary: the data table did NOT become an `as const` array, and here is why
+
+The item permitted the move "only if lookup semantics are provably unchanged". Arguing the
+lookup path first, since that was the instruction:
+
+`getProgramChange` is a linear scan over `this.dict.entries()`. Two rules make the **order**
+observable: `curDistance === 0` returns immediately, and the running best is kept with a
+strict `<`, so among ties **the earliest key wins**. A JS `Map` iterates in insertion order,
+and insertion order is `DICT_DATA`'s line order. So the table's line order is part of the
+program's behaviour for every fuzzy lookup — and fuzzy is the normal case (`"Klarinette in
+B"`, `"Horn in F"`).
+
+Then the trap. Parsing the table shows **838 name lines collapsing to 836 keys**:
+`lead 5 charang` is duplicated harmlessly, but **`tenore` appears under both program 52 and
+53**. `Map.set` on an existing key takes the *later value* while keeping the *earlier
+position* — so `tenore` resolves to 53 while sitting among the 52s. Any rewrite of the table
+has to reproduce that, and `new Map(pairs)` does while an eagerly-deduplicated literal would
+not. The gain would have been parse time on a structure that `createProgramChangeByName`
+rebuilds per call anyway. **Left as data, with the constraint written on the class.**
+
+Java's `dict` is a `HashMap` (`InstrumentsDictionary.java:57`), whose `entrySet()` is
+hash-ordered. Exact matches agree in both languages; a *tie* between two fuzzy candidates can
+resolve differently. Also documented, also not "fixed".
+
+### Five findings about the MIDI writer, measured, none repaired
+
+The item called the write path frozen, so I established what it actually guarantees.
+
+1. **`Midi.java` does not serialise anything.** `writeMidi` is `MidiSystem.write(sequence, 1,
+   file)` and reading is `MidiSystem.getSequence(file)` (`Midi.java:77,538`). `readMidiData` /
+   `exportMidi` / `buildTrackChunk` / `writeVariableLength` are a reimplementation of the
+   **JDK's** SMF codec, not a port of meico code. There is no `.java` file to diff them
+   against; the suite's event-by-event comparison is what pins them.
+2. **This writer never emits running status; the JDK's does.** Of the 48 Java-generated
+   `.mid` references, **33 round-trip byte-identically** through `readMidiData` → `exportMidi`
+   and **15 come out 2–3 bytes longer**, every byte of the difference being running status the
+   JDK compressed and this writer re-expands. Verified by hand on
+   `comprehensive_raw.mid`, where Java writes `80 3e 00 · 00 · 42 00` and we write
+   `80 3e 00 · 00 · 80 42 00`.
+3. **47 of the 48 references are event-stream fixed points; one is not.**
+   `all-maps-reference/ornamentation_expressive.mid` genuinely begins at **tick −18** — the
+   ornamentation renderer moves an event before the start of the piece, and the JDK wrote
+   that as a 10-byte VLQ, `ff ff ff ff ff ff ff ff ff 6e`, i.e. Java's `long` −18. This
+   reader's 32-bit `<<` wraps around and recovers −18 **exactly**; `buildTrackChunk`'s
+   `Math.max(0, tick - lastTick)` then clamps it away on export. Both halves are
+   pre-existing and both are now documented at their sites.
+4. **`exportMidi` writes format 0 for a single-track sequence**, where Java always passes 1.
+   Header byte only; the suite does not read it.
+5. **`EventMaker.byteArrayToInt` is unsigned, Java's is signed.** Java is
+   `new BigInteger(bytes).intValue()` (`EventMaker.java:354`). They disagree when the leading
+   byte has its top bit set — for its one caller, `Midi.getTempoData`, that means tempi below
+   ~7.15 BPM, where Java yields a negative BPM — and on an empty array, where Java throws.
+   Latent; no fixture reaches either.
+
+Two smaller ones recorded at their sites: `intToByteArray`'s `isBigEndian` flag is **inverted
+relative to its name in Java too** (`true` produces little-endian), harmless because
+`createTempo` passes `false` and takes bytes 1..3; and `Midi.print`'s missing `break` after
+`PROGRAM_CHANGE` is real Java behaviour (`Midi.java:370-376`), so a program change prints its
+own line *and* the `default` branch's text.
+
+### Documentation
+
+Net +426 lines across the four files (881 added, 455 removed — the removals are dominated by
+the 301 rewritten constant lines and the JSDoc stubs that were replaced), every Java claim
+checked against `/Users/nielspfeffer/Projects/meico/src/meico/midi/*.java` before being
+asserted. Beyond the findings above, the pieces a later item needs:
+`Track.add`'s sort — ascending by tick, **stable**, so same-tick events keep insertion order,
+which is exactly the ordering `Msm.exportMidi` relies on and the suite compares;
+`buildTrackChunk`'s four framing rules, including that the end-of-track guard checks for one
+*anywhere* in the track rather than at the end; `MetaMessage`'s two payload representations
+and why the wire form is rebuilt rather than reused; `EventMaker`'s two conventions
+(null-on-failure, and clamping in the factory but masking in `ShortMessage`, so velocity 200
+becomes 127 while program 200 becomes 72); and why each surviving overload set must not be
+merged.
+
+### Evidence
+
+**A. Emitted JS, whole project.** Both trees built with the project `tsc` into
+`t11rt/{dist-base,dist-work}` under a `type: module` package with a `node_modules` symlink.
+`diff -rq` reports `.js`/`.d.ts` differences in **only** the 4 cluster files. Token diffs as
+tabulated above; the emitted **import line of every one of the four files is byte-identical**,
+including `Midi.js`'s, where the source lost the unused `MidiMessage` specifier — tsc had
+already elided it, and the trailing comma survives (the [T8] precedent, not [T10]'s
+trailing-comma case).
+
+**B. Cluster probe, 255 entries — `t11probe.mjs`.** Written for this item because the
+existing pipeline probes barely touch three of these four files. It drives: every
+`ShortMessage`/`MetaMessage`/`SysexMessage` constructor arity and `clone`; VLQ boundaries
+(127/128/16383/16384); `Track` ordering incl. same-tick stability and `remove`; `Sequence`
+tick and microsecond length with a multi-track tempo map; all 39 `EventMaker` factory cases
+and all four byte helpers; **all 301 constants by name and value** plus the method surface by
+arity; SMF round-trip fixed-point checks; `convertPPQ` at five resolutions; `append` across
+differing PPQ and into an empty Midi; `addOffset` incl. large negatives; `noteOn`/`noteOff`
+conversion both ways and idempotence; `cloneSequence` independence; **all 48 Java-generated
+`.mid` references parsed, re-exported and hashed**, with event kind histograms, tempo data
+and `getMinimalPPQ` both ways; the dictionary's full 836-entry key list, **every key looked
+up**, and 25 fuzzy/negative names across **all 11 distance methods plus an unknown one** —
+with the per-lookup stdout captured and hashed, so the *matched key and distance* are pinned,
+not merely the returned program number; `getInstrumentName` over 0..127 both ways; and all
+16 MEI fixtures plus the 5 deterministic all-maps fixtures end to end, hashing MSM, MPM,
+performed MSM and **raw + expressive MIDI at two PPQs, with and without program changes**.
+
+**`entries=255 threw=0 nonVacuous=70 sha=3661529a…` — byte-identical on both builds**, and
+the base run reproduces itself byte-for-byte.
+
+> A first version of this probe *did* report one differing entry, which is worth recording:
+> it enumerated `EventMaker`'s statics with `String(value)`, so `Function.prototype.toString`
+> folded the source text of every factory into the transcript. That is a source diff wearing
+> a behaviour probe's clothes. The entry now filters to `typeof === 'number'` and records the
+> method surface separately by name and arity.
+
+**C. Adversarial edge differential, 413 entries — `t11-edge.mjs`.** The five rewritten
+expressions are arithmetic, so they were probed on the inputs where an `if`/`else if` and a
+ternary could diverge: **NaN, −0, ±Infinity, ±ε, fractional and out-of-32-bit values**, with
+`-0` distinguished by `Object.is` (the trap [T6] recorded for `Math.max`). Covers
+`intToByteArray` both directions, all three clamps, the un-clamped pitch/controller-number
+paths, `createTimeSignature` over 23 denominators, both VLQ encoders — plus a check that the
+two encoders agree on every input (they do) — and delta-time clamping driven through real
+`exportMidi` calls including a `[-18, 0, 18]` track. **`sha=522ee80c…`, byte-identical on
+both builds.**
+
+**D. [T8]'s `pipe.mjs`, unmodified.** Copied verbatim (`diff` clean) and run on both builds:
+`entries=24 threw=0 nonVacuous=21 sha=e960dd16…` — **the same sha [T10] recorded**, so the
+end-to-end transcript is unchanged across two consecutive items.
+
+**E. Lint, re-measured on both trees with `eslint -f json` over `src` + `tests`.** Errors
+**1306 → 1294**, warnings **18 → 5**, files with ≥1 error **75 → 74**. Per file, movement in
+**exactly the four cluster files**: `Midi.ts` 23+3w → 14, `MidiTypes.ts` 6+3w → 6,
+`EventMaker.ts` 3+7w → 1, `InstrumentsDictionary.ts` 1 → **0** (the file that takes the
+"files affected" row down). By rule: `prefer-for-of` 6 → **0** (retired repo-wide),
+`unified-signatures` 44 → 40, `no-unused-vars` 58 → 56, `no-param-reassign` 18 → 5;
+`no-non-null-assertion` 1080, `eqeqeq` 44, `no-empty-function` 54, `no-explicit-any` 12,
+`no-extraneous-class` 3, `no-require-imports` 3, `no-unsafe-function-type` 2 all flat. The
+by-rule list sums to 1294 and the cluster table to 21 — both re-derived from the json.
+
+`prefer-readonly` over `src/`: **8 → 2**, T11's entire share cleared.
+
+> **The `prefer-readonly` absolute has drifted between [T7] (11), [T8] (8), [T9] and [T10]
+> (9) and this file has warned about it three times. Diagnosed:** the bare single-rule config
+> emits **9 messages on the pre-T11 tree, of which 8 have `ruleId ===
+> '@typescript-eslint/prefer-readonly'`**. The ninth is `Unused eslint-disable directive` at
+> `Mei2MsmMpmConverter.ts:32`, because that config does not enable `no-explicit-any` and so
+> the file-level suppression reports as unused. Counting messages gives 9, filtering by
+> `ruleId` gives 8. Recorded in `lint-debt.md`.
+
+**F. Coverage, both trees, same runner.** Against charter invariant 7:
+- **(a) Functions 94.2166% → 94.2166%**, bit-identical, floor 94.0% — **holds**.
+- **(b) Uncovered scoped statements 2256 → 2255 (−1)**, phase-2 budget 2318 — **holds**, and
+  moved down.
+- **(c) Test count 2108 → 2108.**
+- Branches 85.6069% → 85.6069%, bit-identical. Statements 85.0912% → 85.0899%.
+
+Only two files move, both mine, and the one statement is traced rather than waved at:
+`EventMaker.ts` 41/512 → 41/508 uncovered/total (four statements folded away, none of them
+covered *or* uncovered differently — the uncovered count is flat); `Midi.ts` 13/458 →
+**12**/454. The lost uncovered statement is `const rawData = msg.getMessage();` in
+`buildTrackChunk`'s **unknown-message-type** branch, folded into the `for..of` head. That
+branch is unreachable from the suite in both trees — nothing constructs a `MidiMessage`
+subclass outside `Meta`/`Sysex`/`Short` — and it remains uncovered in both (base lines
+709-713 → work lines 840-843). No test power was lost. The other three uncovered blocks map
+1:1: the SMPTE branch, `append`'s catch, `cloneSequence`'s catch.
+
+### Handoff
+
+- **T12 (null policy)**: the cluster's remaining debt is 14 `no-non-null-assertion` and it is
+  the cheapest instance of the repo-wide problem — 10 are the single expression
+  `this.sequence!` in `Midi.ts`. Note `Midi.isEmpty()` is the only public witness that
+  `sequence` can be null, and no public path actually reaches that state, so the honest fix
+  may be to make the field non-nullable and delete `isEmpty` — which is an API change, hence
+  T12's/T13's call, not this item's.
+- **T13 (facade)**: `Sequence.getTracks()` now returns `readonly Track[]`, but it is still the
+  **live internal array**. That satisfies the type-level half of the charter's
+  immutable-friendly direction and **not** the plain-data acceptance criterion: a `Track` is a
+  mutable object graph and will not survive `postMessage`. If MIDI appears in the facade at
+  all it has to exit as bytes (`exportMidi()`) or as a plain event list, never as a `Sequence`.
+- **T14/T16**: `EventMaker` is the tree's cheapest `no-extraneous-class` — 301 constants and
+  18 pure static functions, no state at all, so the conversion to module exports is purely
+  mechanical. The cost is ~60 call sites in `Msm.ts`.
+- **Whoever owns `eslint.config.js`**: `argsIgnorePattern: '^_'` has now been asked for by
+  [T8], [T9] and [T10]. T11 does **not** need it — the cluster is at zero `no-unused-vars` —
+  so this is not a fifth request, just a note that the count of asks is unchanged at three.
+
+> `DISCOVERED:` `EventMaker.byteToShort` has **no caller** in `src/` or `tests/` beyond its
+> own unit test; it exists for API parity with `EventMaker.java`. Same category as [T10]'s
+> `XomTypes.setNamespaceURI` finding, but milder — it is at least tested. T17's call.
+
+> `DISCOVERED:` `Sequence.getMicrosecondLength()` merges tempo events from **all** tracks and
+> sorts by tick with no tie-break, so two tempo changes at the same tick resolve by sort
+> stability across tracks. Nothing in the export path reads it, so this is informational
+> output only — but it is the kind of thing that becomes a bug the moment someone displays it.
+
+## [T11] verifier — midi cluster (Midi, MidiTypes, EventMaker, InstrumentsDictionary) (2026-08-08)
+
+**PASS.** Baseline `78be486` re-confirmed src-identical to the last green `6d1678c`
+(`git diff 6d1678c 78be486 -- src/ tests/` empty; the only delta is `refactor/state.json`).
+Every headline number in the worker's entry was independently reproduced; nothing was
+taken on trust. Trees: `t11verify/{base,work}` (base = `git archive 78be486`, work =
+`git ls-files | tar`, both spot-checked against `git show`), built with the project `tsc`
+at **identical relative layouts** — which removes the worker's `.map` `sources` caveat
+entirely: `diff -rq base/dist work/dist` reports differences in **only the 4 cluster
+files**' `.js`/`.d.ts`/`.map`, and every other emitted file in the project, maps included,
+is byte-identical.
+
+### 1. The anchor: MIDI bytes — 93 files, all identical
+
+Wrote real `.mid` files to disk and hashed the **files** (`t11verify/vprobe.mjs`, 121
+entries, written from the integration tests' API):
+
+| what | n | result |
+|---|---|---|
+| raw MIDI, 16 MEI + 5 all-maps + `all_maps` | 22 | byte-identical |
+| expressive MIDI, 16 MEI + 5 all-maps | 21 | byte-identical |
+| all 48 Java references, parsed → re-exported | 48 | byte-identical |
+| synthetic VLQ-boundary + negative-delta tracks | 2 | byte-identical |
+
+`diff -rq mid-base mid-work` is clean and the two sha256 manifests match on all 93 files
+(38 518 bytes, min 42 / median 255 / max 6 695 — nothing vacuous, no `NULL` in the
+transcript). MSM, MPM and augmented-MSM serialisations hash identically in the same run.
+Probe sha `a1100678…` on both builds, and the base run reproduces itself.
+[T8]'s `pipe.mjs`, copied verbatim, gives `entries=24 threw=0 nonVacuous=21
+sha=e960dd16…` — **the same sha [T8] and [T10] recorded**, now unchanged across three
+consecutive items.
+
+**The instruments were shown to have power before being trusted** — seven mutants of the
+*work* `dist`, measured the same way:
+
+| mutant | detected? |
+|---|---|
+| `curDistance < distance` → `<=` (lookup tie-break) | yes, probe sha moves |
+| velocity clamp `127` → `126` | yes, probe sha moves |
+| `writeVariableLength` mask `0x7f` → `0x3f` | yes, **90 of 93 `.mid` files differ** |
+| meta write order: type byte before `0xff` | yes, **91 of 93 differ** |
+| `Track.add` tie-break reversed (`\|\| -1`) | yes, **91 of 93 differ** |
+| `Track.add` sort `\|\| 1` | no — and correctly so: appending one event at a time, "a after equals" *is* the stable order, so the mutant is behaviourally identical. Bad mutant, not a blind spot. |
+| delta floor `Math.max(0, tick - lastTick)` removed | no — **worth recording**: `writeVariableLength` clamps negatives to 0 itself, so the floor is *not independently observable* through `exportMidi`. Two redundant clamps; T11 changed neither. |
+
+So the byte channel demonstrably detects exactly the three things check 3 worries about:
+VLQ/delta encoding, write-call ordering, and event ordering.
+
+### 2. InstrumentsDictionary — proven at the emitted-JS level, not by argument
+
+`InstrumentsDictionary.js` differs from base by **exactly three tokens**: `foo` →
+`bestKey`, three uses of one local. Nothing else — the `DICT_DATA` template literal, the
+`DefaultNames` array, the scan, the strict `<`, the early return are all byte-identical
+emitted code. The overload removal and both `readonly`s erase completely. That is a
+complete proof that lookup semantics are unchanged, stronger than any probe; the probe
+then agrees: 836 keys in identical iteration order (sha `cea583c2…`), **all 836 keys
+resolve to their own value with 0 mismatches**, 42 names (exact, case variants, German
+fixture names, substrings, typos, empty, misses) × all 11 distance methods + an unknown
+method + the no-arg default, with **the `console.log` line captured** so the matched key
+*and* distance are pinned, not just the returned program number. The unknown method and
+the default both reproduce `NormalizedLevenshtein` exactly; `Jaccard` produces a different
+sha, so the probe discriminates. The documented traps reproduce: `tenore` → **53 at scan
+position 323** (among the 52s) and `lead 5 charang` → 84 at 588. **No `as const`, no data
+restructuring** — the table is untouched.
+
+### 3–5. Write path, imports, emitted-JS classification
+
+JSDoc-pruned token streams over the emitted `.js` ([T8]'s `toks2.mjs`) reproduce the
+worker's table exactly — `InstrumentsDictionary` 3308 → 3308, `MidiTypes` 1672 → 1673,
+`EventMaker` 2684 → 2651, `Midi` 3575 → 3470 — and **every one of the 13 hunks is
+classified, zero unclassified**: three velocity/controller clamps as `const` ternaries
+(`if (v>127) v=127; else if (v<0) v=0` ≡ `v>127?127:v<0?0:v`, identical on NaN and −0),
+`value = value|0` → `const int32`, both VLQ encoders' `let rest = value<0?0:value`,
+`for (; Math.pow(2,p)<d; ++p);` → `while`, four `prefer-for-of` conversions, two
+`getTracks()` index loops → `for..of` with the `const sm = msg` Java-cast alias dropped,
+one `catch (e)` → `catch`, and the rename. **No write call moved**, the SysEx branch is
+untouched, and `Math.max(0, tick - lastTick)` is unchanged. Emitted **import lines are
+byte-identical in all four files**, including `Midi.js` where the source lost the unused
+`MidiMessage` specifier ([T8] precedent). `.d.ts` deltas are exactly: `MidiTypes` +6
+`ReadonlyKeyword`, `InstrumentsDictionary` +2 plus an overload merge, `Midi` an overload
+merge alone, `EventMaker` **299 × (`: number` → `= <literal>`) and nothing else** —
+the token-kind census returns only `ColonToken`/`NumberKeyword` out, `FirstAssignment`/
+`FirstLiteralToken` in.
+
+**The 301-constant rewrite is proven, not asserted.** The *source* token census for
+`EventMaker.ts` removes exactly **301 `NumberKeyword` + 301 `ColonToken`** and moves **no
+literal token at all**; across all four files the only literals that move are six `"0"`s,
+every one a deleted loop initialiser, and **not one literal is added anywhere**. No
+constant value changed.
+
+### 6. Standard gates
+
+- `git status --porcelain`: exactly the 6 `M`, **0 untracked**. `tests/`, all fixtures and
+  every config byte-identical to base (`diff -r` clean).
+- Independent `npm run verify`: **green, 2108/2108 across 44 files**; `tsc` and
+  `tsc -p tsconfig.tests.json` both exit 0 standalone. Prettier clean on all 6 files.
+- Escape hatches flat repo-wide (AST census): `AsExpression` 174, `NonNullExpression`
+  1080, `AnyKeyword` 1, `TypeAssertionExpression` 0, `eslint-disable` 1,
+  `@ts-ignore`/`@ts-expect-error`/`@ts-nocheck` 0. `readonly` **member modifiers** +6
+  (5 `MidiTypes`, 1 `InstrumentsDictionary`) plus 2 `readonly T[]` **type operators**
+  (`getTracks`, `DefaultNames`) — 8 additions, which is the same fact the worker's "6
+  readonly" and "two `readonly` array types" describe; `forEachChild` does not visit type
+  operators, so a census that counts only modifiers reads 6. Noted so the next agent does
+  not re-derive it.
+- **Lint reconciles exactly** (`eslint -f json`, src + tests, both trees): errors
+  **1306 → 1294**, warnings **18 → 5**, files with ≥1 error **75 → 74**; by-rule
+  `prefer-for-of` 6 → 0, `unified-signatures` 44 → 40, `no-unused-vars` 58 → 56,
+  `no-param-reassign` 18 → 5 and **no other rule moved**; the work by-rule list sums to
+  1294; per-file movement is in **exactly the four cluster files** with the table's
+  numbers (23+3w→14, 6+3w→6, 3+7w→1, 1→0). `prefer-readonly` by `ruleId`: **8 → 2**, and
+  the **9-vs-8 drift diagnosis is confirmed verbatim** — the bare config emits 9 messages
+  on base, the ninth being a `null`-ruleId *unused eslint-disable directive* at
+  `Mei2MsmMpmConverter.ts:32`. The 6 cleared sites are exactly the ones claimed.
+- **Coverage** (both trees, same runner, `coverage-final.json` not the rounded table):
+  functions **94.2166% → 94.2166%**, bit-identical, floor 94.0 — holds. Uncovered scoped
+  statements **2256 → 2255**, budget 2318 — holds. Tests 2108 → 2108. Statements
+  85.0912 → 85.0899, branches 85.5945 → 85.6069. Statement/function movement occurs in
+  **only the two files the worker touched** (`EventMaker` 41/512 → 41/508,
+  `Midi` 13/458 → **12**/454). Branch totals move in 4 untouched files by ±1
+  (`Header`, `GenericMap`, `ArticulationStyle`, `RandomNumberProvider`) — the documented
+  [T8] run-noise, not a signal.
+- **The one lost uncovered statement was traced, not waved at.** Listing uncovered
+  statements with their source text on both sides: base `Midi.ts` line 709
+  `const rawData = msg.getMessage();` in `buildTrackChunk`'s **unknown-message-type**
+  branch is gone, folded into the `for..of` head; the rest of that branch is still
+  uncovered in work (840-843), and the SMPTE branch, `append`'s catch and
+  `cloneSequence`'s catch map 1:1. `EventMaker`'s 41 are the same 41 sites on both sides.
+  **No test power lost.**
+
+### Java claims spot-checked (read-only)
+
+Four of the load-bearing new comments were checked against the Java source rather than
+believed: `Midi.java` really does delegate to `MidiSystem.write(this.sequence, 1, file)`
+and `MidiSystem.getSequence(file)`; `Midi.java`'s `print` really has **no `break`** after
+`PROGRAM_CHANGE`, so it falls into `default`; `InstrumentsDictionary.java` really uses
+`new HashMap<String, Short>()` with the duplicate guard **commented out** and
+`dict.put(line.toLowerCase(), pc)` (last-value-wins, and it does *not* trim, matching the
+documented trailing-whitespace divergence); `EventMaker.java`'s `byteArrayToInt` really is
+`new BigInteger(bytes).intValue()`. All four comments are accurate.
+
+### Two notes for the conductor, neither a defect
+
+> `refactor/lint-debt.md`'s "**74 of 105**" denominator is stale: `eslint` lints **103**
+> files under `src` + `tests`. The row read "75 of 105" before T11, so this is inherited
+> bookkeeping drift, not something T11 introduced. Worth correcting at the next phase-end
+> audit rather than reopening this item.
+
+> `src/mpm/{elements/` exists in the working tree — a directory tree containing **no
+> files**, dated **20 March**, so `git status` cannot see it (git tracks files). It is a
+> long-dead botched brace expansion, predates the whole swarm, and is unrelated to T11.
+> Flagging it only so the next agent that runs `diff -r` against a `git archive` baseline
+> does not mistake it for an untracked artifact.
