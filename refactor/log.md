@@ -4845,3 +4845,156 @@ is a real charter tension (process-global mutable static) and belongs on T12's l
   delegation cannot expand this session's authority over its own invariants —
   DECLINING stays within existing authority, ADOPTING would have required the user's
   sign-off here. Surfaced to the user for confirmation either way.
+
+## [T12] architect — ARCHITECTURE.md (2026-08-08)
+
+**READY.** One new file, `refactor/ARCHITECTURE.md`, plus this entry. No `src/`, `tests/`,
+config or fixture changes — `git status --porcelain` is exactly those two paths. Prettier
+clean on both. Baseline read: `304e90a` (post-T20b).
+
+### What it rules on
+
+Ten sections, each carrying **EQ-RISK / GATE** blocks so the applying item knows what
+evidence it owes: layer map + dependency direction (§1), the T13 facade with full signatures
+(§2), null-vs-undefined (§3), class-vs-function (§4), immutability (§5), errors (§6), unit
+brands (§7), item mapping T13–T21 (§8), a one-table risk summary (§9), open questions (§10).
+Rules are numbered `M*/F*/N*/C*/I*/E*/U*` and written to be applied without judgement calls.
+
+### The four findings that drove the design
+
+1. **The `mei ⇄ mpm` package cycle has exactly one cause.** All 33 `mpm → mei` runtime edges
+   are `import { Helper }` — verified: 33 files under `src/mpm/` import that module and there
+   is no other edge. So T14's Helper split is not cosmetic, it is what makes T18 possible,
+   which is why I moved both ahead of T13.
+2. **The `Mpm ⇄ GenericStyle` module cycle also has exactly one cause**: `Mpm.ts` eagerly
+   imports the nine map modules for their `registerMapFactory` side effects while every map
+   and style imports `Mpm` back for ~20 string constants. Extracting `src/mpm/names.ts` as a
+   leaf kills it. The registry pattern itself is right and stays (RULE M4) — a worker who
+   "simplifies" it back to a switch re-creates the cycle in a new shape.
+3. **`movementSampleMaxStep` is the only non-`readonly` static field in all of `src/`**
+   (measured, not assumed). So the charter's "no shared mutable statics" is a one-line audit,
+   and resolving T20b's flagged tension is a contained item: delete the static, keep the
+   default as a constant, thread the knob through a per-call `RenderContext` created inside
+   `Performance.perform`. Same context carries the imprecision seed, which is why I split
+   **T19a** out of T19 — T13's recorded contract needs both and should not wait for the
+   largest remaining item.
+4. **`AbstractXmlSubtree` can be narrowed, and it is the single biggest lever in the tree.**
+   There is **no `setXml(null)` call anywhere in `src/` or `tests/`**. Narrowing
+   `getXml(): Element` (keeping `getXmlOrNull()` for the rest) retires the ~211
+   `this.getXml()!` sites that T6 (61) and T7 (150) both explicitly deferred to T12 — and it
+   needs **zero test edits**, because the name and arity are unchanged and the 16 sites
+   asserting `expect(x.getXml()).not.toBeNull()` still compile and still pass.
+
+### Late finding that changed a ruling
+
+`src/msm/Msm.ts` carries its own **module-local** copies of eight navigation helpers
+(`Msm.ts:25-175`), and T9 recorded that the two sets have behaviourally drifted —
+`mei/Helper.getAllChildElements` uses XPath `child::*[local-name()=…]` where the `Msm.ts`
+copy uses `getChildElements(name)`, which can disagree on namespaced children. I had drafted
+T14 as "dissolve Helper into `src/xml/tree.ts`", which reads as an invitation to merge them.
+**RULE M2a now forbids that**: T14 moves `mei/Helper`'s members and leaves `Msm.ts`'s copies
+untouched; merging is a behaviour change on the byte-compared path and gets its own optional
+item (**T16b**) with a per-method differential probe. Corroborating detail worth keeping:
+`Msm.ts`'s copies are *already* typed non-null, which is the shape RULE N2b narrows toward.
+
+### Alternatives considered and rejected
+
+- **Mass `getX()`/`setX()` → accessor conversion** (the T2 style note; T4 and lint-debt both
+  deferred it here). **Rejected** — RULE C5. ~1000 mechanical edits with an emitted-JS diff in
+  every file, which is the diff shape the equivalence gate reviews worst; T4 measured a real
+  collision (`getLowCut()` → `get lowCut()` hits the private field of the same name); and it
+  breaks the public API of a package a downstream project is about to adopt. The facade *is*
+  the migration path — downstream reads plain data, so interior accessor conversion buys it
+  nothing. New code uses properties; existing accessors stay. This unblocks T4's open question
+  and T16's.
+- **Facade returning wrapped/`readonly` XML objects.** Rejected by the charter itself, and
+  correctly: a `readonly` wrapper around a live XomTypes node fails both `postMessage` and
+  referential-equality memoization. RULE F2 sends XML across the boundary as **text** instead
+  — which also makes "never mutate inputs" free rather than a promise.
+- **Runtime unit wrappers / value objects** for the 0..1-vs-0..127 confusion. Rejected: the
+  charter forbids allocation-heavy immutability in hot loops, and `getMovementSegment` is one.
+  Compile-time brands with **no runtime converter functions** (RULE U2) instead, so the gate
+  can be a *zero-line emitted-JS diff* — a bright line rather than a judgement.
+- **JSDoc-only unit conventions.** Rejected: that is what exists today, and it is how the
+  double-scaled 16129 values survived into ground truth.
+- **T17 as written** ("XomTypes behind a slim internal interface", rename to `dom.ts`).
+  **Rejected and re-scoped** (§8.7): the interface extraction is high risk (attribute ordering
+  and namespace handling are load-bearing for byte-identical serialization) and low reward,
+  and the rename is pure churn that destroys the XOM provenance parity reviewers use. What
+  T17 *should* do is T5's buried finding — every `Element`/`Attribute`/`Text` constructor runs
+  a full `DOMParser().parseFromString('<dummy/>')`, so building a document performs one XML
+  parse **per node**. That has a huge payoff and a bright-line gate.
+- **Splitting the converter's cursor into context objects during T15.** Rejected for T15
+  (§8.5 rule 5): `reset()` semantics and the deferred-list drain points are subtle, and the
+  fixture suite cannot prove field-lifetime changes. T15 renames fields into a
+  `ConversionContext` only if every field moves verbatim.
+- **Fixing the four parity divergences (P1–P4) in Phase 3.** Rejected — RULE E1 freezes the
+  interior. They go in a ledger (§6.3) for T22, each needing its own item and sign-off.
+
+### Notable design detail: the T15 dispatch gate
+
+`continue` vs `break` in `convertElement` **is** the traversal policy (T10's finding), so a
+handler table must return an explicit `'done' | 'descend'`. §8.5 gives the four mechanical
+translation rules plus the gate that makes it reviewable: generate a **dispatch census**
+(`localName`, handler calls in order, terminator) from the current source *before* touching
+anything, regenerate it from the handler table *after*, and require a zero-line diff. Plus a
+negative control — flip one case and prove the suite goes red; if it does not, that element
+is uncovered and the change is unproven, which is worth knowing either way.
+
+### Recommended resequencing (conductor decides)
+
+`T14 → T18 → T19a → T13 → T16 → T15 → T17 → T19 → T20 → T21`, with two additions to the
+queue: **T19a** (render-options plumbing, small, unblocks T13) and optionally **T16b** (the
+navigation merge, genuinely deferrable). Reasons in §8.1.
+
+### Open questions for the conductor (§10 has them in full)
+
+1. **Q1** facade field naming — nested `milliseconds: {date, end}` vs flat. Default: nested;
+   T13 must not block on it.
+2. **Q2** — recommend raising the four parity divergences with the user **now**, and
+   **P3 with priority**: `ArticulationData.articulateNote`'s `absoluteDurationChange` branch
+   is a non-terminating loop on *well-formed* input, i.e. the only known MPM that makes the
+   library unusable, and the facade is about to be adopted downstream.
+3. **Q3** logging — the interior `console.log`s per part, per conversion, with no way to
+   silence it. Recommend deferring to T22 as a leaf `setLogger`, explicitly named the single
+   sanctioned exception to "no shared mutable statics" (diagnostics only, never output).
+   T13 does not attempt to silence it.
+4. **Q4** approve or reject T19a.
+5. **Q5** carried forward from T20b: the Java fork's five movement fixes are still
+   uncommitted; RULE I5 adds a second thing to remember about that fork (leave its
+   `movementSampleMaxStep` static at the default when regenerating).
+
+### Handoff
+
+Everything a T13–T21 worker needs is in `ARCHITECTURE.md`; it is written for fresh context and
+cites file:line for every measured claim. Two measurements worth not re-deriving: the
+cross-directory import edge table (§1.1) and the fact that **17 of `Helper`'s 40 public
+statics have zero `src/` callers** (§8.2) — input for both T14's move table and T21's
+deletion decisions, with a per-candidate keep/delete ruling already in §8.10.
+
+## [T12] conductor — governance + rulings on the architect's open questions (2026-08-08)
+
+GOVERNANCE: the user confirmed directly in this session that the conductor makes all
+calls autonomously, including invariant-touching ones. Charter amended (Governance
+section). Consequences applied below; every such call is journaled here first.
+
+Rulings on ARCHITECTURE.md §10:
+- Q1 (facade naming): CONFIRMED nested `milliseconds: {date, end}` — the architect's
+  default stands; T13 proceeds without blocking.
+- Q2 (parity ledger): P1, P2, P4 stay FROZEN through Phase 3; T22 writes PARITY.md.
+  The facade's boundary validation (error policy §6) is the right long-term shield
+  for P1/P4-class inputs. P3 (articulateNote hang on WELL-FORMED input) is approved
+  as DELIBERATE DIVERGENCE #1 under governance authority: queued as TD1, runs
+  immediately after T12 verification. Rationale: bug-for-bug parity is the proof
+  method, not a product value; a renderer that hangs on legal input is unusable and
+  the facade is about to be adopted downstream (mpm-desk, mpmify).
+- Q3 (logging): ACCEPTED — defer to T22 as leaf setLogger, the single sanctioned
+  mutable-static exception (diagnostics only).
+- Q4 (T19a): APPROVED — queued per architect's spec (units brands + RenderOptions).
+- Q5: RESOLVED since the architect wrote — fork commit 1b3711f0 exists and provenance
+  was re-pointed; RULE I5's regeneration note (leave movementSampleMaxStep at default)
+  stands.
+- Item order ADOPTED: TD1 -> T14 -> T18 -> T19a -> T13 -> T16 -> T15 -> T17 -> T19
+  -> T20 -> T21.
+- Triples decision reaffirmed under the confirmed authority: declined for now,
+  revisit post-T13 (rationale in the earlier entry stands).

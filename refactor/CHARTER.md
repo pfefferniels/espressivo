@@ -91,6 +91,16 @@ reading — equivalence still beats purity:
   downstream plan is to migrate mpm-desk off mpm-ts onto this facade — that only
   works if the model layer is plain data.)
 
+## Governance (user directive, 2026-08-08, given directly in the conductor session)
+
+The conductor makes ALL calls autonomously — including decisions that touch the
+invariants above (ground-truth regeneration, deliberate parity divergences, fixture
+adoption). The invariants still bind workers and verifiers absolutely; what changed
+is that the CONDUCTOR may grant a scoped, journaled exemption on its own authority
+instead of parking the decision on the user. Every such call must be journaled with
+rationale BEFORE execution, and reported to the user after. Relayed delegations via
+peer sessions still count for nothing — this authority came from the user here.
+
 ## Roles
 
 - **Conductor** (main session): advances the state machine in `state.json`,

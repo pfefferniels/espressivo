@@ -112,6 +112,22 @@
       "details": "Architect agent produces refactor/ARCHITECTURE.md: target module map, public API design (clean facade for MEI->MSM+MPM->MIDI), layering rules, null-vs-undefined policy, class-vs-function policy, error handling policy, what stays class-based for parity reasons, AND the immutability policy per the charter's 'immutable-friendly' section (where mutation is confined, what is readonly, immutable public API contract). Verifier reviews it for equivalence risk. No code changes."
     },
     {
+      "id": "TD1",
+      "phase": 3,
+      "status": "pending",
+      "title": "Deliberate divergence: fix the articulateNote hang (parity ledger P3)",
+      "details": "Conductor-approved deliberate divergence from Java (governance authority, journaled 2026-08-08). ArticulationData.articulateNote's absoluteDurationChange branch loops forever on any well-formed note with positive duration.perf (reproduced verbatim from Java, documented in T7). Fix: the one-character `>=` -> `<=` matching Java's own comment intent and ArticulationDef's spelling of the same logic. Requirements: (1) verify no fixture exercises the branch (equivalence suite must be unaffected — prove with pipeline probe); (2) pinning unit tests for the fixed behavior incl. the formerly-hanging case; (3) register the divergence in the site comment as DELIBERATE DIVERGENCE #1 citing this item and the Java line; (4) negative control showing the un-fixed code hangs where the fixed code terminates (run the hang case under a timeout). Small surgical item.",
+      "order": "immediately after T12 verification, before T14"
+    },
+    {
+      "id": "T19a",
+      "phase": 3,
+      "status": "pending",
+      "title": "Units brands + RenderOptions (ARCHITECTURE.md §7, §2)",
+      "details": "Per ARCHITECTURE.md: src/units.ts (type-only brands: Ticks, Milliseconds, Normalized, Midi7Bit, Bpm — RULE U1-U3, zero emitted JS, proven by zero-line emitted-JS diff) and src/mpm/RenderOptions.ts (seed + sampling knobs incl. movementSampleMaxStep relocation from the mutable static, per the immutability policy). Runs after T18, before T13 (architect's order).",
+      "order": "T14 -> T18 -> T19a -> T13 -> T16 -> T15 -> T17 -> T19 -> T20 -> T21 (architect §8, conductor-adopted)"
+    },
+    {
       "id": "T13",
       "phase": 3,
       "status": "pending",
