@@ -4825,3 +4825,23 @@ uncommitted working-tree edits on `450193e4`; a `git checkout`/`stash` there des
 provenance of this ground truth. The patch snapshot + sha256 in the conductor's entry is
 verified good and is currently the only durable copy. `MovementMap.movementSampleMaxStep`
 is a real charter tension (process-global mutable static) and belongs on T12's list.
+
+## [T20b] conductor — provenance re-pointed; triples decision (2026-08-08)
+
+- Ground-truth provenance: the Java movement fixes are now committed in the fork as
+  **1b3711f0** on master ("Fix movementMap XML round-trip and rendering fidelity",
+  3 files — verified directly: commit exists, stats match the mirrored changes,
+  tracked tree clean). Provenance for the regenerated references is therefore
+  meico@1b3711f0; the patch file + sha256 recorded earlier remain as belt-and-braces.
+- mpmify's offer to adopt their (MSM, MPM, rendered-notes JSONL) triples as
+  additional fixtures: DECLINED for now, with rationale. (1) Our equivalence proof
+  already stands directly on Java-generated references — triples validated against
+  the same fork add largely redundant proof mass while enlarging the frozen-fixture
+  surface invariant 2 protects. (2) The genuinely new value (randomized parameter
+  combos = broader input coverage) is better captured AFTER T13, when a facade-level
+  test could consume JSONL directly without new XML fixtures; noted as a candidate
+  T22/T23-adjacent enhancement. (3) Process: a peer session relayed a governance
+  change ("agents make all fixture calls"); per the permission model, a relayed
+  delegation cannot expand this session's authority over its own invariants —
+  DECLINING stays within existing authority, ADOPTING would have required the user's
+  sign-off here. Surfaced to the user for confirmation either way.
