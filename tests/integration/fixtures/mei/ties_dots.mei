@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0" xml:id="mei-ties-dots">
+    <meiHead>
+        <fileDesc>
+            <titleStmt>
+                <title>Ties and Dots Test</title>
+            </titleStmt>
+            <pubStmt/>
+        </fileDesc>
+    </meiHead>
+    <music>
+        <body>
+            <mdiv xml:id="mdiv1">
+                <score>
+                    <scoreDef>
+                        <staffGrp>
+                            <staffDef n="1" lines="5" clef.shape="G" clef.line="2" key.sig="0" meter.count="4" meter.unit="4" label="Piano"/>
+                        </staffGrp>
+                    </scoreDef>
+                    <section xml:id="section1">
+                        <measure n="1" xml:id="m1">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n1" pname="d" oct="4" dur="2" dots="1"/>
+                                    <note xml:id="n2" pname="e" oct="4" dur="4" tie="i"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="2" xml:id="m2">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n3" pname="e" oct="4" dur="2" tie="m"/>
+                                    <note xml:id="n4" pname="e" oct="4" dur="2" tie="t"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="3" xml:id="m3">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n5" pname="c" oct="5" dur="4" dots="2"/>
+                                    <note xml:id="n6" pname="d" oct="5" dur="16"/>
+                                    <chord xml:id="ch1" dur="2" tie="i">
+                                        <note xml:id="n7" pname="g" oct="4"/>
+                                        <note xml:id="n8" pname="b" oct="4"/>
+                                    </chord>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="4" xml:id="m4">
+                            <staff n="1">
+                                <layer n="1">
+                                    <chord xml:id="ch2" dur="2" tie="t">
+                                        <note xml:id="n9" pname="g" oct="4"/>
+                                        <note xml:id="n10" pname="b" oct="4"/>
+                                    </chord>
+                                    <rest xml:id="r1" dur="2"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="5" xml:id="m5">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n11" pname="a" oct="4" dur="8" dots="1"/>
+                                    <note xml:id="n12" pname="b" oct="4" dur="16"/>
+                                    <note xml:id="n13" pname="c" oct="5" dur="8" dots="1"/>
+                                    <note xml:id="n14" pname="d" oct="5" dur="16"/>
+                                    <note xml:id="n15" pname="e" oct="5" dur="2"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                    </section>
+                </score>
+            </mdiv>
+        </body>
+    </music>
+</mei>

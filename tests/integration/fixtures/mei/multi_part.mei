@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0" xml:id="mei-multi">
+    <meiHead>
+        <fileDesc>
+            <titleStmt>
+                <title>Multi Part Test</title>
+            </titleStmt>
+            <pubStmt/>
+        </fileDesc>
+    </meiHead>
+    <music>
+        <body>
+            <mdiv xml:id="mdiv1">
+                <score>
+                    <scoreDef>
+                        <staffGrp>
+                            <staffDef n="1" lines="5" clef.shape="G" clef.line="2" key.sig="0" meter.count="3" meter.unit="4" label="Violin"/>
+                            <staffDef n="2" lines="5" clef.shape="F" clef.line="4" key.sig="0" meter.count="3" meter.unit="4" label="Cello"/>
+                        </staffGrp>
+                    </scoreDef>
+                    <section xml:id="section1">
+                        <measure n="1" xml:id="m1">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n1" pname="e" oct="5" dur="4"/>
+                                    <note xml:id="n2" pname="f" oct="5" dur="4" dots="1"/>
+                                    <note xml:id="n3" pname="e" oct="5" dur="8"/>
+                                </layer>
+                            </staff>
+                            <staff n="2">
+                                <layer n="1">
+                                    <note xml:id="n4" pname="c" oct="3" dur="2" dots="1"/>
+                                </layer>
+                            </staff>
+                            <dynam xml:id="dyn1" staff="1" tstamp="1" label="mf">mf</dynam>
+                            <dynam xml:id="dyn2" staff="2" tstamp="1" label="mp">mp</dynam>
+                            <tempo xml:id="t1" staff="1" tstamp="1" mm="100">Moderato</tempo>
+                        </measure>
+                        <measure n="2" xml:id="m2">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n5" pname="d" oct="5" dur="4" artic="stacc"/>
+                                    <note xml:id="n6" pname="c" oct="5" dur="4"/>
+                                    <note xml:id="n7" pname="b" oct="4" dur="4"/>
+                                </layer>
+                            </staff>
+                            <staff n="2">
+                                <layer n="1">
+                                    <note xml:id="n8" pname="g" oct="2" dur="4"/>
+                                    <note xml:id="n9" pname="a" oct="2" dur="4"/>
+                                    <note xml:id="n10" pname="b" oct="2" dur="4"/>
+                                </layer>
+                            </staff>
+                            <hairpin xml:id="hp1" staff="1" form="dim" tstamp="1" tstamp2="0m+3"/>
+                        </measure>
+                    </section>
+                </score>
+            </mdiv>
+        </body>
+    </music>
+</mei>

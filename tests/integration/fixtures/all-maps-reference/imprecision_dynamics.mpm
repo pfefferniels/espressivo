@@ -1,0 +1,2 @@
+<?xml version="1.0"?>
+<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="test performance" pulsesPerQuarter="720"><global><header /><dated><tempoMap><tempo date="0.0" bpm="120" beatLength="0.25" /></tempoMap></dated></global><part name="Piano" number="1" midi.channel="0" midi.port="0"><header /><dated><dynamicsMap><dynamics date="0.0" volume="100" /></dynamicsMap><imprecisionMap.dynamics><distribution.gaussian date="0.0" deviation.standard="5.0" limit.lower="-15.0" limit.upper="15.0" seed="42" /></imprecisionMap.dynamics></dated></part></performance></mpm>

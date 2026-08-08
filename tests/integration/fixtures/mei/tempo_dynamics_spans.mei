@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0" xml:id="mei-tempo-dynamics-spans">
+    <meiHead>
+        <fileDesc>
+            <titleStmt>
+                <title>Tempo and Dynamics Spans Test</title>
+            </titleStmt>
+            <pubStmt/>
+        </fileDesc>
+    </meiHead>
+    <music>
+        <body>
+            <mdiv xml:id="mdiv1">
+                <score>
+                    <scoreDef>
+                        <staffGrp>
+                            <staffDef n="1" lines="5" clef.shape="G" clef.line="2" key.sig="0" meter.count="4" meter.unit="4" label="Violin"/>
+                        </staffGrp>
+                    </scoreDef>
+                    <section xml:id="section1">
+                        <measure n="1" xml:id="m1">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n1" pname="g" oct="4" dur="4"/>
+                                    <note xml:id="n2" pname="a" oct="4" dur="4"/>
+                                    <note xml:id="n3" pname="b" oct="4" dur="4"/>
+                                    <note xml:id="n4" pname="c" oct="5" dur="4"/>
+                                </layer>
+                            </staff>
+                            <tempo xml:id="t1" tstamp="1">Andante</tempo>
+                            <dynam xml:id="dyn1" staff="1" tstamp="1">p</dynam>
+                        </measure>
+                        <measure n="2" xml:id="m2">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n5" pname="d" oct="5" dur="4"/>
+                                    <note xml:id="n6" pname="e" oct="5" dur="4"/>
+                                    <note xml:id="n7" pname="f" oct="5" dur="4"/>
+                                    <note xml:id="n8" pname="g" oct="5" dur="4"/>
+                                </layer>
+                            </staff>
+                            <dynam xml:id="dyn2" staff="1" tstamp="1" tstamp2="1m+1">cresc.</dynam>
+                        </measure>
+                        <measure n="3" xml:id="m3">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n9" pname="a" oct="5" dur="2"/>
+                                    <note xml:id="n10" pname="g" oct="5" dur="2"/>
+                                </layer>
+                            </staff>
+                            <dynam xml:id="dyn3" staff="1" tstamp="1">ff</dynam>
+                            <tempo xml:id="t2" tstamp="3" mm="80" tstamp2="1m+1">rit.</tempo>
+                        </measure>
+                        <measure n="4" xml:id="m4">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n11" pname="f" oct="5" dur="4"/>
+                                    <note xml:id="n12" pname="e" oct="5" dur="4"/>
+                                    <note xml:id="n13" pname="d" oct="5" dur="2"/>
+                                </layer>
+                            </staff>
+                            <dynam xml:id="dyn4" staff="1" tstamp="1" tstamp2="0m+3">dim.</dynam>
+                            <dynam xml:id="dyn5" staff="1" tstamp="3">pp</dynam>
+                        </measure>
+                        <measure n="5" xml:id="m5">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n14" pname="c" oct="5" dur="1"/>
+                                </layer>
+                            </staff>
+                            <tempo xml:id="t3" tstamp="1" mm="60">Adagio</tempo>
+                        </measure>
+                    </section>
+                </score>
+            </mdiv>
+        </body>
+    </music>
+</mei>

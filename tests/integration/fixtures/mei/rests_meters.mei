@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0" xml:id="mei-rests-meters">
+    <meiHead>
+        <fileDesc>
+            <titleStmt>
+                <title>Rests and Meter Changes Test</title>
+            </titleStmt>
+            <pubStmt/>
+        </fileDesc>
+    </meiHead>
+    <music>
+        <body>
+            <mdiv xml:id="mdiv1">
+                <score>
+                    <scoreDef>
+                        <staffGrp>
+                            <staffDef n="1" lines="5" clef.shape="G" clef.line="2" key.sig="0" meter.count="4" meter.unit="4" label="Flute"/>
+                        </staffGrp>
+                    </scoreDef>
+                    <section xml:id="section1">
+                        <measure n="1" xml:id="m1">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n1" pname="c" oct="5" dur="4"/>
+                                    <rest xml:id="r1" dur="4"/>
+                                    <note xml:id="n2" pname="d" oct="5" dur="8"/>
+                                    <rest xml:id="r2" dur="8"/>
+                                    <note xml:id="n3" pname="e" oct="5" dur="4"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="2" xml:id="m2">
+                            <staff n="1">
+                                <layer n="1">
+                                    <mRest xml:id="mr1"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <scoreDef meter.count="3" meter.unit="8"/>
+                        <measure n="3" xml:id="m3">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n4" pname="g" oct="5" dur="8"/>
+                                    <note xml:id="n5" pname="f" oct="5" dur="8"/>
+                                    <note xml:id="n6" pname="e" oct="5" dur="8"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="4" xml:id="m4">
+                            <staff n="1">
+                                <layer n="1">
+                                    <mSpace xml:id="ms1"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <scoreDef meter.count="6" meter.unit="8"/>
+                        <measure n="5" xml:id="m5">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n7" pname="c" oct="5" dur="4" dots="1"/>
+                                    <note xml:id="n8" pname="d" oct="5" dur="8"/>
+                                    <note xml:id="n9" pname="e" oct="5" dur="8"/>
+                                    <note xml:id="n10" pname="f" oct="5" dur="8"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="6" xml:id="m6">
+                            <staff n="1">
+                                <layer n="1">
+                                    <multiRest xml:id="mur1" num="2"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="7" xml:id="m7">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n11" pname="c" oct="5" dur="2" dots="1"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                    </section>
+                </score>
+            </mdiv>
+        </body>
+    </music>
+</mei>

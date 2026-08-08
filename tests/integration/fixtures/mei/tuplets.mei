@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0" xml:id="mei-tuplets">
+    <meiHead>
+        <fileDesc>
+            <titleStmt>
+                <title>Tuplets Test</title>
+            </titleStmt>
+            <pubStmt/>
+        </fileDesc>
+    </meiHead>
+    <music>
+        <body>
+            <mdiv xml:id="mdiv1">
+                <score>
+                    <scoreDef>
+                        <staffGrp>
+                            <staffDef n="1" lines="5" clef.shape="G" clef.line="2" key.sig="1s" meter.count="4" meter.unit="4" label="Violin"/>
+                        </staffGrp>
+                    </scoreDef>
+                    <section xml:id="section1">
+                        <measure n="1" xml:id="m1">
+                            <staff n="1">
+                                <layer n="1">
+                                    <tuplet xml:id="tup1" num="3" numbase="2">
+                                        <note xml:id="n1" pname="g" oct="4" dur="8"/>
+                                        <note xml:id="n2" pname="a" oct="4" dur="8"/>
+                                        <note xml:id="n3" pname="b" oct="4" dur="8"/>
+                                    </tuplet>
+                                    <note xml:id="n4" pname="c" oct="5" dur="4"/>
+                                    <note xml:id="n5" pname="d" oct="5" dur="2"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="2" xml:id="m2">
+                            <staff n="1">
+                                <layer n="1">
+                                    <tuplet xml:id="tup2" num="5" numbase="4">
+                                        <note xml:id="n6" pname="e" oct="5" dur="16"/>
+                                        <note xml:id="n7" pname="d" oct="5" dur="16"/>
+                                        <note xml:id="n8" pname="c" oct="5" dur="16"/>
+                                        <note xml:id="n9" pname="b" oct="4" dur="16"/>
+                                        <note xml:id="n10" pname="a" oct="4" dur="16"/>
+                                    </tuplet>
+                                    <note xml:id="n11" pname="g" oct="4" dur="4" dots="1"/>
+                                    <note xml:id="n12" pname="a" oct="4" dur="8"/>
+                                    <note xml:id="n13" pname="b" oct="4" dur="4"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="3" xml:id="m3">
+                            <staff n="1">
+                                <layer n="1">
+                                    <tuplet xml:id="tup3" num="6" numbase="4">
+                                        <note xml:id="n14" pname="g" oct="4" dur="8"/>
+                                        <note xml:id="n15" pname="a" oct="4" dur="8"/>
+                                        <note xml:id="n16" pname="b" oct="4" dur="8"/>
+                                        <note xml:id="n17" pname="c" oct="5" dur="8"/>
+                                        <note xml:id="n18" pname="d" oct="5" dur="8"/>
+                                        <note xml:id="n19" pname="e" oct="5" dur="8"/>
+                                    </tuplet>
+                                    <note xml:id="n20" pname="d" oct="5" dur="2"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                    </section>
+                </score>
+            </mdiv>
+        </body>
+    </music>
+</mei>

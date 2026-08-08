@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0" xml:id="mei-repeats-endings">
+    <meiHead>
+        <fileDesc>
+            <titleStmt>
+                <title>Repeats and Endings Test</title>
+            </titleStmt>
+            <pubStmt/>
+        </fileDesc>
+    </meiHead>
+    <music>
+        <body>
+            <mdiv xml:id="mdiv1">
+                <score>
+                    <scoreDef>
+                        <staffGrp>
+                            <staffDef n="1" lines="5" clef.shape="G" clef.line="2" key.sig="0" meter.count="4" meter.unit="4" label="Piano"/>
+                        </staffGrp>
+                    </scoreDef>
+                    <section xml:id="section1">
+                        <measure n="1" xml:id="m1">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n1" pname="c" oct="4" dur="4"/>
+                                    <note xml:id="n2" pname="d" oct="4" dur="4"/>
+                                    <note xml:id="n3" pname="e" oct="4" dur="4"/>
+                                    <note xml:id="n4" pname="f" oct="4" dur="4"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="2" xml:id="m2" left="rptstart">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n5" pname="g" oct="4" dur="2"/>
+                                    <note xml:id="n6" pname="a" oct="4" dur="2"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <ending n="1" xml:id="end1">
+                            <measure n="3" xml:id="m3" right="rptend">
+                                <staff n="1">
+                                    <layer n="1">
+                                        <note xml:id="n7" pname="b" oct="4" dur="2"/>
+                                        <note xml:id="n8" pname="g" oct="4" dur="2"/>
+                                    </layer>
+                                </staff>
+                            </measure>
+                        </ending>
+                        <ending n="2" xml:id="end2">
+                            <measure n="4" xml:id="m4">
+                                <staff n="1">
+                                    <layer n="1">
+                                        <note xml:id="n9" pname="b" oct="4" dur="2"/>
+                                        <note xml:id="n10" pname="c" oct="5" dur="2"/>
+                                    </layer>
+                                </staff>
+                            </measure>
+                        </ending>
+                        <measure n="5" xml:id="m5" right="rptboth">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n11" pname="d" oct="5" dur="1"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="6" xml:id="m6" right="rptend">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n12" pname="c" oct="5" dur="1"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                    </section>
+                </score>
+            </mdiv>
+        </body>
+    </music>
+</mei>

@@ -1,0 +1,173 @@
+{
+  "project": "meico-ts idiomatic refactor",
+  "branch": "ts-idiomatic",
+  "baselineCommit": null,
+  "lastGreenCommit": null,
+  "phase": 1,
+  "currentItem": null,
+  "counters": { "completed": 0, "blocked": 0, "reverted": 0 },
+  "coverageBaseline": { "statements": 86.69, "branches": 85.73, "functions": 94.11 },
+  "queue": [
+    {
+      "id": "T1",
+      "phase": 1,
+      "status": "pending",
+      "title": "Add verify script + record baseline metrics",
+      "details": "Add `verify` npm script (build then vitest run). Record baseline in log.md: test count, suite runtime, tsc runtime, scoped coverage numbers (npm run test:coverage). No src changes."
+    },
+    {
+      "id": "T2",
+      "phase": 1,
+      "status": "pending",
+      "title": "Tooling baseline: ESLint (typescript-eslint strict+stylistic) + Prettier",
+      "details": "Flat eslint config + prettier, npm run lint / lint:fix / format. Apply auto-fixes and a one-time prettier format as a PURE formatting commit (no logic). Document remaining (non-auto-fixable) violations per file in refactor/lint-debt.md as input for Phase 2 items. Style decisions to codify: no getX()/setX() Java accessors (prefer properties/accessors), prefer for..of & array methods, template literals, ===, no var, prefer const, explicit return types on exported API."
+    },
+    {
+      "id": "T3",
+      "phase": 1,
+      "status": "pending",
+      "title": "Excise out-of-scope modules",
+      "details": "Scope = MEI / MSM+MPM => MIDI (see vitest.config.ts coverage include list). Remove via `git rm`: src/mei/Mei2MusicXmlConverter.ts, src/musicxml/**, src/audio/**, src/midi/Midi2MsmConverter.ts, src/supplementary/ColorCoding.ts IF unreferenced by in-scope code, and any other module unreachable from the in-scope surface (check imports transitively; also prune index.ts/Meico.ts exports and any dead tests for removed modules). Keep Midi playback-free: strip audio/playback methods from Midi.ts only if fully out of the dependency cone of MIDI file generation. Verify green."
+    },
+    {
+      "id": "T4",
+      "phase": 2,
+      "status": "pending",
+      "title": "Local idioms: supplementary/ (KeyValue, RandomNumberProvider)",
+      "details": "Idiomatic TS within same public behavior. KeyValue likely becomes a readonly tuple or minimal class kept for API compat (full replacement is T16's call). RandomNumberProvider: field initializers, private #/private, remove Java-isms. Unit tests adapted."
+    },
+    {
+      "id": "T5",
+      "phase": 2,
+      "status": "pending",
+      "title": "Local idioms: xml/XomTypes.ts",
+      "details": "Internal cleanup only — the XOM-emulation API surface stays (it is load-bearing for serialization equivalence). Idiomatic internals, doc comment explaining the layer's purpose and byte-compat constraints. Deeper redesign is T17."
+    },
+    {
+      "id": "T6",
+      "phase": 2,
+      "status": "pending",
+      "title": "Local idioms: mpm styles + defs",
+      "details": "src/mpm/elements/styles/** — getters/setters to accessors/properties, constructor patterns, static factory cleanup, union types over pseudo-enums, remove dead Java idioms. Update unit tests mechanically."
+    },
+    {
+      "id": "T7",
+      "phase": 2,
+      "status": "pending",
+      "title": "Local idioms: mpm maps + data classes",
+      "details": "src/mpm/elements/maps/** including data/. Same idiom checklist. Careful: rendering math must stay bit-identical; no reordering of floating-point operations."
+    },
+    {
+      "id": "T8",
+      "phase": 2,
+      "status": "pending",
+      "title": "Local idioms: mpm core (Mpm, Performance, Header, metadata)",
+      "details": "Same checklist. Performance.perform flow untouched semantically (pipeline redesign is T19)."
+    },
+    {
+      "id": "T9",
+      "phase": 2,
+      "status": "pending",
+      "title": "Local idioms: msm/ cluster",
+      "details": "Msm, AbstractMsm, Goto, etc. Same checklist."
+    },
+    {
+      "id": "T10",
+      "phase": 2,
+      "status": "pending",
+      "title": "Local idioms: mei/ cluster (Mei, Helper, Mei2MsmMpmConverter)",
+      "details": "Local idioms only — no structural break-up yet (that is T14/T15). These are the biggest files; keep diffs reviewable by splitting into ≤3 sub-rounds if needed (still one commit)."
+    },
+    {
+      "id": "T11",
+      "phase": 2,
+      "status": "pending",
+      "title": "Local idioms: midi/ cluster",
+      "details": "Midi, MidiTypes, EventMaker, InstrumentsDictionary. InstrumentsDictionary's big data tables may become const data structures. Byte-identical MIDI output required (suite proves it)."
+    },
+    {
+      "id": "T12",
+      "phase": 3,
+      "status": "pending",
+      "title": "Architecture design doc",
+      "details": "Architect agent produces refactor/ARCHITECTURE.md: target module map, public API design (clean facade for MEI->MSM+MPM->MIDI), layering rules, null-vs-undefined policy, class-vs-function policy, error handling policy, what stays class-based for parity reasons. Verifier reviews it for equivalence risk. No code changes."
+    },
+    {
+      "id": "T13",
+      "phase": 3,
+      "status": "pending",
+      "title": "Public facade + index exports",
+      "details": "Implement the ARCHITECTURE.md facade (e.g. parseMei/convertToMsmMpm/perform/renderMidi) as additive API; index.ts exports curated; old entry points kept working. Integration tests may switch to facade only mechanically."
+    },
+    {
+      "id": "T14",
+      "phase": 3,
+      "status": "pending",
+      "title": "Split mei/Helper.ts into focused modules",
+      "details": "Static-utility god class into cohesive modules per ARCHITECTURE.md. Pure moves + renames; call sites updated; no logic edits."
+    },
+    {
+      "id": "T15",
+      "phase": 3,
+      "status": "pending",
+      "title": "Restructure Mei2MsmMpmConverter",
+      "details": "Element-dispatch architecture (handler map per MEI element) per ARCHITECTURE.md, replacing the Java-style switch/instanceof cascades. Highest-risk item: sub-round per element group, verify after each."
+    },
+    {
+      "id": "T16",
+      "phase": 3,
+      "status": "pending",
+      "title": "Model layer: composition & types (msm/mpm)",
+      "details": "Per ARCHITECTURE.md: reduce inheritance depth, KeyValue->tuples if decided, typed attribute access helpers, GenericMap/GenericStyle generics cleaned. Behavior-identical."
+    },
+    {
+      "id": "T17",
+      "phase": 3,
+      "status": "pending",
+      "title": "XML layer isolation",
+      "details": "XomTypes behind a slim internal interface with a clean TS API; serialization byte-compat proven by full suite. Rename to reflect role (e.g. src/xml/dom.ts). Only if ARCHITECTURE.md judges the risk worth it; otherwise document and close."
+    },
+    {
+      "id": "T18",
+      "phase": 3,
+      "status": "pending",
+      "title": "Eliminate circular imports + enforce",
+      "details": "Fix the Mpm/GenericStyle deep-import hazard and all other cycles (map with madge or eslint import/no-cycle); add lint enforcement so they cannot return."
+    },
+    {
+      "id": "T19",
+      "phase": 3,
+      "status": "pending",
+      "title": "Performance rendering pipeline cleanup",
+      "details": "Performance.perform + map-rendering flow into clearly composed stages per ARCHITECTURE.md. Floating-point operation order must not change. Ornamentation ms-domain rendering (Java OrnamentationMap.java:477-509 parity) is especially sensitive."
+    },
+    {
+      "id": "T20",
+      "phase": 3,
+      "status": "pending",
+      "title": "MIDI generation layer cleanup",
+      "details": "EventMaker/Midi restructure per ARCHITECTURE.md; event ordering and byte layout must stay identical (midi-byte-equivalence suite proves it)."
+    },
+    {
+      "id": "T21",
+      "phase": 4,
+      "status": "pending",
+      "title": "Dead-code sweep + coverage audit",
+      "details": "Remove now-dead code (ts-prune or knip), re-run scoped coverage, must be >= baseline floor. Update vitest.config.ts include list if module paths moved (mechanical only)."
+    },
+    {
+      "id": "T22",
+      "phase": 4,
+      "status": "pending",
+      "title": "Package hardening + docs",
+      "details": "package.json exports map, sideEffects, engines, declaration maps; README with API examples and the Java-parity story; document deliberate bug-for-bug parity list."
+    },
+    {
+      "id": "T23",
+      "phase": 4,
+      "status": "pending",
+      "title": "Final adversarial audit",
+      "details": "Fresh audit agent: full-diff review vs baseline commit for any semantic drift; perf smoke (suite runtime + a large-fixture render) vs baseline numbers from T1; verify all invariants held (fixtures untouched: git log on tests/integration/fixtures must be empty after baseline). Final report to user."
+    }
+  ]
+}

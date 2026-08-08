@@ -1,0 +1,2 @@
+<?xml version="1.0"?>
+<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="test performance" pulsesPerQuarter="720"><global><header /><dated><tempoMap><tempo date="0.0" bpm="120" beatLength="0.25" /></tempoMap><rubatoMap><rubato date="0.0" frameLength="2880.0" intensity="0.5" lateStart="0.0" earlyEnd="1.0" loop="true" /></rubatoMap></dated></global><part name="Piano" number="1" midi.channel="0" midi.port="0"><header /><dated /></part></performance></mpm>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0" xml:id="mei-simple">
+    <meiHead>
+        <fileDesc>
+            <titleStmt>
+                <title>Simple Notes Test</title>
+            </titleStmt>
+            <pubStmt/>
+        </fileDesc>
+    </meiHead>
+    <music>
+        <body>
+            <mdiv xml:id="mdiv1">
+                <score>
+                    <scoreDef>
+                        <staffGrp>
+                            <staffDef n="1" lines="5" clef.shape="G" clef.line="2" key.sig="0" meter.count="4" meter.unit="4"/>
+                        </staffGrp>
+                    </scoreDef>
+                    <section xml:id="section1">
+                        <measure n="1" xml:id="m1">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n1" pname="c" oct="4" dur="4"/>
+                                    <note xml:id="n2" pname="d" oct="4" dur="4"/>
+                                    <note xml:id="n3" pname="e" oct="4" dur="4"/>
+                                    <note xml:id="n4" pname="f" oct="4" dur="4"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="2" xml:id="m2">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n5" pname="g" oct="4" dur="2"/>
+                                    <rest xml:id="r1" dur="4"/>
+                                    <note xml:id="n6" pname="a" oct="4" dur="8"/>
+                                    <note xml:id="n7" pname="b" oct="4" dur="8"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <measure n="3" xml:id="m3">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n8" pname="c" oct="5" dur="1"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                    </section>
+                </score>
+            </mdiv>
+        </body>
+    </music>
+</mei>

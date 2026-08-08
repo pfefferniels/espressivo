@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0" xml:id="mei-composite-advanced">
+    <meiHead>
+        <fileDesc>
+            <titleStmt>
+                <title>Composite Advanced Test</title>
+            </titleStmt>
+            <pubStmt/>
+        </fileDesc>
+    </meiHead>
+    <music>
+        <body>
+            <mdiv xml:id="mdiv1">
+                <score>
+                    <scoreDef>
+                        <staffGrp>
+                            <staffDef n="1" lines="5" clef.shape="G" clef.line="2" key.sig="1s" meter.count="3" meter.unit="4" label="Oboe"/>
+                            <staffDef n="2" lines="5" clef.shape="F" clef.line="4" key.sig="1s" meter.count="3" meter.unit="4" label="Bassoon"/>
+                        </staffGrp>
+                    </scoreDef>
+                    <section xml:id="section1">
+                        <measure n="1" xml:id="m1">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n1" pname="g" oct="4" dur="4"/>
+                                    <note xml:id="n2" pname="a" oct="4" dur="4"/>
+                                    <note xml:id="n3" pname="b" oct="4" dur="4"/>
+                                </layer>
+                            </staff>
+                            <staff n="2">
+                                <layer n="1">
+                                    <note xml:id="n4" pname="g" oct="3" dur="2" dots="1"/>
+                                </layer>
+                            </staff>
+                            <tempo xml:id="t1" tstamp="1" mm="96">Moderato</tempo>
+                            <dynam xml:id="dyn1" staff="1" tstamp="1">mf</dynam>
+                        </measure>
+                        <measure n="2" xml:id="m2" left="rptstart">
+                            <staff n="1">
+                                <layer n="1">
+                                    <tuplet xml:id="tup1" num="3" numbase="2">
+                                        <note xml:id="n5" pname="c" oct="5" dur="8"/>
+                                        <note xml:id="n6" pname="d" oct="5" dur="8"/>
+                                        <note xml:id="n7" pname="e" oct="5" dur="8"/>
+                                    </tuplet>
+                                    <note xml:id="n8" pname="f" oct="5" dur="4"/>
+                                    <note xml:id="n9" pname="d" oct="5" dur="4"/>
+                                </layer>
+                            </staff>
+                            <staff n="2">
+                                <layer n="1">
+                                    <note xml:id="n10" pname="b" oct="2" dur="2" dots="1"/>
+                                </layer>
+                                <layer n="2">
+                                    <note xml:id="n11" pname="g" oct="2" dur="4"/>
+                                    <note xml:id="n12" pname="a" oct="2" dur="4"/>
+                                    <note xml:id="n13" pname="b" oct="2" dur="4"/>
+                                </layer>
+                            </staff>
+                        </measure>
+                        <ending n="1" xml:id="end1">
+                            <measure n="3" xml:id="m3" right="rptend">
+                                <staff n="1">
+                                    <layer n="1">
+                                        <note xml:id="n14" pname="c" oct="5" dur="2"/>
+                                        <note xml:id="n15" pname="b" oct="4" dur="4" artic="stacc"/>
+                                    </layer>
+                                </staff>
+                                <staff n="2">
+                                    <layer n="1">
+                                        <mRest xml:id="mr1"/>
+                                    </layer>
+                                </staff>
+                            </measure>
+                        </ending>
+                        <ending n="2" xml:id="end2">
+                            <measure n="4" xml:id="m4">
+                                <staff n="1">
+                                    <layer n="1">
+                                        <note xml:id="n16" pname="c" oct="5" dur="2"/>
+                                        <note xml:id="n17" pname="d" oct="5" dur="4"/>
+                                    </layer>
+                                </staff>
+                                <staff n="2">
+                                    <layer n="1">
+                                        <note xml:id="n18" pname="c" oct="3" dur="2" dots="1"/>
+                                    </layer>
+                                </staff>
+                            </measure>
+                        </ending>
+                        <measure n="5" xml:id="m5">
+                            <staff n="1">
+                                <layer n="1">
+                                    <note xml:id="n19" pname="e" oct="5" dur="8" grace="acc"/>
+                                    <note xml:id="n20" pname="d" oct="5" dur="4"/>
+                                    <note xml:id="n21" pname="c" oct="5" dur="4"/>
+                                    <note xml:id="n22" pname="b" oct="4" dur="4"/>
+                                </layer>
+                            </staff>
+                            <staff n="2">
+                                <layer n="1">
+                                    <note xml:id="n23" pname="d" oct="3" dur="2" dots="1" tie="i"/>
+                                </layer>
+                            </staff>
+                            <trill xml:id="tr1" staff="1" startid="#n20"/>
+                            <hairpin xml:id="hp1" staff="1" form="cres" tstamp="1" tstamp2="0m+4"/>
+                        </measure>
+                        <measure n="6" xml:id="m6">
+                            <staff n="1">
+                                <layer n="1">
+                                    <chord xml:id="ch1" dur="2" dots="1">
+                                        <note xml:id="n24" pname="g" oct="4"/>
+                                        <note xml:id="n25" pname="b" oct="4"/>
+                                        <note xml:id="n26" pname="d" oct="5"/>
+                                    </chord>
+                                </layer>
+                            </staff>
+                            <staff n="2">
+                                <layer n="1">
+                                    <note xml:id="n27" pname="d" oct="3" dur="2" dots="1" tie="t"/>
+                                </layer>
+                            </staff>
+                            <fermata xml:id="f1" staff="1" startid="#ch1"/>
+                            <dynam xml:id="dyn2" staff="1" tstamp="1">f</dynam>
+                        </measure>
+                    </section>
+                </score>
+            </mdiv>
+        </body>
+    </music>
+</mei>
