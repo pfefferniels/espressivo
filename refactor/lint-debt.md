@@ -1,6 +1,6 @@
-# Lint debt (as of T5)
+# Lint debt (as of T6)
 
-> Updated after **T5** (xml local idioms). Counts below are the *current*
+> Updated after **T6** (mpm styles + defs). Counts below are the *current*
 > `npm run lint` output; the T2 baseline is kept in the headline table for comparison.
 
 Snapshot of every ESLint violation left in the tree after T2's safe auto-fixes, grouped by
@@ -17,14 +17,14 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 
 ## Headline numbers
 
-| | count | after T3 | after T4 | after T5 |
-|---|---|---|---|---|
-| Violations before T2 | 2104 | | | |
-| Auto-fixed in T2 (semantics-preserving only) | 345 | | | |
-| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** |
-| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 |
-| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 |
-| Still auto-fixable | 0 | 0 | 0 | 0 |
+| | count | after T3 | after T4 | after T5 | after T6 |
+|---|---|---|---|---|---|
+| Violations before T2 | 2104 | | | | |
+| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | |
+| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** |
+| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** |
+| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 |
+| Still auto-fixable | 0 | 0 | 0 | 0 | 0 |
 
 T4 touched only `src/supplementary/**`, which carried **zero errors** going in, so the error
 column is flat by construction. What it cleared is the warning column: all 5
@@ -35,6 +35,13 @@ T5 cleared 6 of the xml cluster's 15 errors (15 → 9, see the T5 section below)
 warning column untouched. Measured: `npm run lint` → `1461 problems (1431 errors, 30
 warnings)`; `eslint -f json` confirms 81 files still carry ≥1 error, because both xml files
 retain deferred violations rather than reaching zero.
+
+T6 cleared 42 of the styles cluster's 103 errors (103 → 61) and both of its warnings.
+Measured: `npm run lint` → `1417 problems (1389 errors, 28 warnings)`. It reconciles exactly
+— errors −42, warnings −2, and nothing moved outside the cluster. Six files dropped to zero
+errors (81 → 75 files with ≥1 error): the six style subclasses `ArticulationStyle`,
+`DynamicsStyle`, `MetricalAccentuationStyle`, `OrnamentationStyle`, `RubatoStyle`,
+`TempoStyle`. See the T6 section below for what was cleared and what was deliberately not.
 
 T2 predicted "306 sit in modules T3 deletes, real Phase 2 debt ~1453". T3 removed **322**
 errors and **5** warnings; the delta reconciles exactly:
@@ -75,7 +82,16 @@ Counts are post-T3; the T2 column shows what the deletions absorbed.
 
 T5's −6 came out of this table as: `prefer-for-of` 11 → 8, `no-unused-vars` 72 → 71,
 `no-explicit-any` 34 → 33, `no-this-alias` 1 → **0** (the rule now has no site left in the
-tree). The other rows are unchanged. The rest of the table is still the post-T3 measurement.
+tree). The other rows are unchanged.
+
+T6's −42 came out as: `no-non-null-assertion` 1104 → **1079** (−25), `unified-signatures`
+94 → **77** (−17). *(Befores corrected by conductor per verifier-T6's re-measurement; the
+worker's sentence said 1102/96, contradicting this file's own By-rule baselines.)* No other row moved. (The two rows T5 touched had already shifted the post-T3 numbers
+in that column; the current per-rule totals, measured repo-wide with `eslint -f json` on the
+post-T6 tree, are `no-non-null-assertion` 1079, `unified-signatures` 77, `no-unused-vars` 71,
+`no-empty-function` 54, `eqeqeq` 44, `no-explicit-any` 33, `explicit-module-boundary-types`
+10, `prefer-for-of` 8, `no-extraneous-class` 5, `no-require-imports` 3, `no-fallthrough` 3,
+`no-unsafe-function-type` 2, `no-this-alias` 0, plus 28 `no-param-reassign` warnings.)
 
 ## Three things to read before paying any of this down
 
@@ -183,18 +199,56 @@ that only T12/T17 can touch, and 6 are the codebase-wide null-assertion story.
 `prefer-readonly` in this cluster: **7 → 0** (6 private fields marked `readonly`, and dead
 `Element._ownerDocument` deleted).
 
-### T6 — mpm styles + defs — 103
-`no-non-null-assertion` 84, `unified-signatures` 19
+### T6 — mpm styles + defs — 103 → 61 (DONE, partially paid down)
 
-| n | file |
-|---|---|
-| 20 | `src/mpm/elements/styles/defs/RubatoDef.ts` |
-| 17 | `src/mpm/elements/styles/defs/ArticulationDef.ts` |
-| 15 | `src/mpm/elements/styles/defs/AccentuationPatternDef.ts` |
-| 14 | `src/mpm/elements/styles/defs/OrnamentDef.ts` |
-| 9 | `src/mpm/elements/styles/GenericStyle.ts` |
-| 4 | `src/mpm/elements/styles/defs/TempoDef.ts` |
-| 3 each | `ArticulationStyle`, `DynamicsStyle`, `MetricalAccentuationStyle`, `OrnamentationStyle`, `RubatoStyle`, `TempoStyle`, `defs/AbstractDef`, `defs/DynamicsDef` |
+Going in: `no-non-null-assertion` 86, `unified-signatures` 17, plus 2 `no-param-reassign`
+warnings (the warnings were missing from the earlier revision of this table, which counted
+errors only — the cluster's true total was 105 problems, not 103).
+
+Coming out: **61, all of them `no-non-null-assertion`.** Per file:
+
+| n before | n after | file |
+|---|---|---|
+| 20 (+2 warn) | 12 | `src/mpm/elements/styles/defs/RubatoDef.ts` |
+| 17 | 15 | `src/mpm/elements/styles/defs/ArticulationDef.ts` |
+| 15 | 11 | `src/mpm/elements/styles/defs/AccentuationPatternDef.ts` |
+| 14 | 11 | `src/mpm/elements/styles/defs/OrnamentDef.ts` |
+| 9 | 5 | `src/mpm/elements/styles/GenericStyle.ts` |
+| 4 | 3 | `src/mpm/elements/styles/defs/TempoDef.ts` |
+| 3 | 1 | `src/mpm/elements/styles/defs/AbstractDef.ts` |
+| 3 | 3 | `src/mpm/elements/styles/defs/DynamicsDef.ts` |
+| 3 | **0** | `ArticulationStyle`, `DynamicsStyle`, `MetricalAccentuationStyle`, `OrnamentationStyle`, `RubatoStyle`, `TempoStyle` |
+
+**Cleared (42 errors + 2 warnings):**
+
+| n | rule | how |
+|---|---|---|
+| 25 | `no-non-null-assertion` | `this.getXml()!` inside `parseData`/`parseDataInternal` bodies replaced by the `xml` parameter (23), plus 2 inside the dead `if (this.getXml()!.getLocalName() …)` blocks deleted in TempoDef/RubatoDef. Not a guard and not a weakening: `AbstractXmlSubtree.setXml` stores the reference verbatim and `getXml` returns it, so after `super.parseData(xml)` the two expressions are the *same object*. Provably identical, zero emitted-JS risk. |
+| 17 | `unified-signatures` | 10 overload pairs that differ only by an optional parameter, collapsed: the 7 `createXStyle(name)` / `(name, id)` pairs, `createAccentuationPatternDef(name, length)` / `(…, id)`, and the `constructor()` / `constructor(xml)` pairs of `TemporalSpread` and `DynamicsGradient`. Emits **nothing** — verified absent from the emitted-JS diff — and every existing call site still typechecks. The 9 remaining `string \| Element` messages were **not** collapsed (see below). |
+| 2 warn | `no-param-reassign` | `RubatoDef.setLateStart` / `setEarlyEnd`, rewritten to a `let value` local exactly as [T4] did in `RandomNumberProvider`. The clamp is deliberately **not** `Math.max`: the two disagree on `-0`, which a probe confirmed (13 transcript checks flip if you use `Math.max`). |
+
+**Deferred (61), all `no-non-null-assertion`, all the same shape:** `this.getXml()!` outside
+a parse body (in setters, `addDef`, `sortXml`, …) plus a handful of `getAttribute(…)!`.
+Deferred for the reason [T5] already recorded and this file already prescribes: the fix is
+narrowing `AbstractXmlSubtree.getXml()`'s return type under **T12**'s null policy, not adding
+guards here. A throwing accessor would turn today's `TypeError` into a different error on a
+path this item cannot prove unreachable, which is a behavior change smuggled into a style
+item. **T16** owns the model-layer follow-through.
+
+`prefer-readonly` in this cluster: **1 → 0**. Measured with one config over both trees
+(`prefer-readonly` alone, `projectService: true`, `src/` only): src-total **12 → 11**, and
+the single cluster site was `AccentuationPatternDef.accentuations`, now `readonly`. Only one
+field in the whole cluster qualified — everything else is either reassigned during parsing
+(`GenericStyle.defs`, `AbstractDef.id`, every numeric def field) or public and mutable by
+design (`TemporalSpread.frameStart` and friends). **T7–T11 should budget against 11.**
+
+**Not collapsed on purpose — 9 `unified-signatures` of the `string | Element` kind**
+(the 7 styles' `createXStyle(xml)`, `createArticulationDef`, `createOrnamentDef`). Merging
+`(name: string)` with `(xml: Element)` into `(nameOrXml: string | Element)` would erase the
+one place the API states that these factories have two distinct construction modes, and for
+the 7 styles it would additionally make `createXStyle(element, 'id')` typecheck while the
+implementation silently ignores the id. That is a real loss of type safety in exchange for a
+lint number. **T16**'s call when it redesigns the factory surface.
 
 ### T7 — mpm maps + data — 171
 `no-non-null-assertion` 140, `unified-signatures` 23, `no-unused-vars` 7, `prefer-for-of` 1
@@ -342,6 +396,13 @@ the line. Do not "fix" them to zero before ARCHITECTURE.md exists.
 | `no-param-reassign` `{ props: true }` | 97 | 95 | The 57 beyond the 40 above are *mutations through* a parameter — i.e. the literal "don't mutate inputs" signal. **This is the number T12 should reason about** when drawing the mutation boundary; many will be the sanctioned `renderXToMap(map)` case. |
 | `prefer-readonly-parameter-types` | 805 | 679 | **Do not enable.** Confirms its reputation; 679 in `src/` would drown every other signal. The facade's plain-data acceptance criterion (T13) is a better instrument than this rule. |
 | `require-array-sort-compare` | 1 | 0 | Only site is in a test. No `.sort()`-without-comparator bug in `src/`. |
+
+> **`prefer-readonly` update (T6).** Re-measured with one config over the T6 baseline
+> (`dbc63eb`) and the post-T6 tree: **12 → 11** in `src/`. Chain of record so far:
+> `fc81fc5` (T2) 38 → `20e94c2` (post-T3) 18 → post-T4 17 → T5's config read 19/12 on its
+> two trees → post-T6 **11**. The T4 and T5 configs disagreed by 2 on the same tree, so
+> compare deltas rather than absolutes across entries; within a single config the T6 delta
+> is 12 → 11. **T7–T11 budget against 11.**
 
 > **`prefer-readonly` correction (T4).** The 38 above is real but *stale*: it was measured on
 > T2's tree, and T3 then deleted eight modules without re-running the preview. Re-measured on

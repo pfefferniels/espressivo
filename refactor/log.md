@@ -1564,3 +1564,383 @@ argv[1], so any later item touching `src/xml` can re-run them against a fresh ba
 re-prove byte-compat cheaply. Two method traps worth inheriting: **`cd` persists inside a
 compound bash command**, which silently invalidated my first emitted-JS diff; and grepping
 for `\bas <Type>` hits English prose in doc comments.
+
+## [T6] worker — mpm styles + defs local idioms (2026-08-08)
+
+**READY.** Baseline `dbc63eb`. `npm run verify` green — both tsc stages re-run standalone
+rather than inferred from the `&&` chain, **2108/2108 across 44 files**. Prettier clean.
+
+### Manifest — 14 files, all in `src/mpm/elements/styles/**`
+
+The 7 styles (`GenericStyle`, `ArticulationStyle`, `DynamicsStyle`,
+`MetricalAccentuationStyle`, `OrnamentationStyle`, `RubatoStyle`, `TempoStyle`) and the 7
+defs (`AbstractDef`, `AccentuationPatternDef`, `ArticulationDef`, `DynamicsDef`,
+`OrnamentDef`, `RubatoDef`, `TempoDef`), plus `refactor/lint-debt.md` and this file.
+**No test file changed, no fixture, no config** — `git diff --name-only dbc63eb -- tests/`
+is empty. Every public member kept its name; the only signature changes are 10 overload
+pairs collapsed onto an optional parameter (see below), which no call site can notice.
+
+### What changed
+
+**1. Doc comments — the bulk of the diff, and the point of the item.** The cluster had
+almost none: 9 of 14 files opened with a bare "Port of meico.…" line and nothing else. Now
+each class says what its MPM element *is*, and every trap I had to reconstruct from the Java
+is written down where the next reader will hit it. The ones worth knowing about:
+
+- **`AccentuationPatternDef.getAccentuationAt` — the deliberate Java bug is now documented
+  in full**, including why `segmentEnd` can never move (`i > this.accentuations.length - 1`
+  inside a loop that starts at `length - 1` and counts down — Java line 317, whose comment
+  says "if it is between two accentuations"), what it does to the output (every ramp runs to
+  the end of the pattern, flattening all but the last accentuation), what the intended test
+  presumably was, and that unit tests pin the buggy values. **Not one character of that
+  method's code was touched.**
+- `ArticulationDef.articulateNote`: the write order is load-bearing (duration is set
+  absolutely, then scaled, then shifted, each step re-reading what the previous wrote), the
+  `absoluteDurationMs` short-circuit, and why the `reduce *= 2.0` halving loop terminates.
+- `TempoDef.getDefaultTempo`: the substring tests are order-dependent and match Java
+  line-for-line (`TempoDef.java:125-141`); "allegro assai" resolves to 147, not 145.
+- `GenericStyle`: the circular-import hazard, restated at the site with the explicit warning
+  not to convert those imports to `import type` (an elided import moves evaluation order).
+- `TemporalSpread.getXml()` / `DynamicsGradient.getXml()`: **not pure reads** — they generate
+  and cache the element, while `toXml()` deliberately returns `''`.
+- `OrnamentDef.createDefaultOrnamentDef`: the gradient is set before the spread, and that
+  ordering fixes the serialized child order.
+- Three `PARITY NOTE`s where Java calls `Element.setLocalName()` and XomTypes cannot.
+
+**2. Three dead constructs removed.** All three were empty bodies left over from the port:
+`ArticulationDef`'s `for (let c = getAttributeCount() - 1; c >= 0; --c) {}` (a busy loop
+with an empty body — it really did spin once per attribute), and the `if (getLocalName() !==
+'…') {}` in `TempoDef` and `RubatoDef`. Each removal drops one pure read plus, in the first
+case, the spin; the knowledge each was standing in for is now a doc comment instead.
+
+**3. `this.getXml()!` → the `xml` parameter inside parse bodies (23 non-null assertions).**
+`AbstractXmlSubtree.setXml` stores the reference verbatim and `getXml` returns it, so after
+`super.parseData(xml)` the two expressions are the same object. Not a guard, not a
+weakening — using the value already in hand. Deliberately **not** extended to the other 61
+sites; those need T12's null policy (reasoning in lint-debt.md).
+
+**4. `ArticulationDef.parseDataInternal` — the one real body rewrite.** A `knownNames`
+array, a `Record<string,string>` staging object, a read loop and twelve
+`if (attrs['x'] !== undefined)` blocks became twelve
+`this.x = numeric('x') ?? this.x;` lines over a 4-line local helper. The read order is
+unchanged, each name feeds an independent field, and `null` (absent) is distinguishable from
+`NaN` (present but unparsable) exactly as before. −62 statements.
+
+**5. `if (defs) { for (const d of defs) … }` → `for (const d of … ?? [])`** at 8 sites.
+Worth recording: **the fallback is provably unreachable at all 8.**
+`Helper.getAllChildElements(name, ofThis)` returns null only when `ofThis == null` or
+`name === ''` (`Helper.ts:123,129`); every site passes a non-empty literal and the element
+`super.parseData` just validated. So the old truthiness guard was dead too — this trades one
+dead guard for a shorter dead one. (DISCOVERED consequence below.)
+
+**6. Smaller, each provably equivalent.** `readonly` on `AccentuationPatternDef.accentuations`
+(the only field in the cluster that qualifies — measured, see lint-debt.md). The two
+`no-param-reassign` warnings in `RubatoDef.setLateStart`/`setEarlyEnd` rewritten to a `let
+value` local, following [T4]'s precedent; **deliberately not `Math.max`**, which disagrees
+on `-0`. `GenericStyle.getDef`'s `?? undefined` dropped (`Map.get` cannot return anything
+else; both write paths null-check, and `getAllDefs()` is only ever read). The duplicated
+bodies of `getNumericValue`/`getNumericBpmValue` now delegate to their own static twin — the
+static's `style !== null ? style.getDef(s) : undefined` reduces to `this.getDef(s)`.
+`ArticulationStyle`'s local `as_` renamed to `style`.
+
+### Evidence
+
+**A. Emitted-JS diff, whole project, every hunk classified.** Both trees built with
+`tsc --removeComments --declaration false --sourceMap false` into scratch outDirs
+(`t6base/distjs`, `t6work/distjs`), absolute `-p` paths per tree so the `cd` trap [T5] hit
+cannot recur. **Exactly 13 files differ, all mine.** `defs/DynamicsDef.js` is
+**byte-identical** — its changes were comments only. Nothing outside
+`mpm/elements/styles/**` differs anywhere in the compiled project. Every hunk maps onto
+items 2-6 above; there is no hunk I cannot name. `readonly` and the collapsed overloads
+appear **nowhere** in the diff, which is the proof that they are type-level only.
+
+**B. Public surface (`.d.ts`), comments stripped programmatically.** 11 structural changes,
+all intended: 8 factory overload pairs collapsed to an optional parameter, 2 constructor
+pairs likewise, `private accentuations` → `private readonly accentuations`. **Export list
+identical (18 declarations); every other member name and signature byte-identical.** Method
+note: my first strip used `sed '/\/\*\*/,/\*\//d'`, which for a *single-line* `/** … */`
+runs the range to the next comment's `*/` and silently ate the `FrameDomain` enum, making it
+look deleted. It is not — verify with `grep FrameDomain` on the `.d.ts`. Use a real
+block-comment regex.
+
+**C. Behavioural probe, both builds side by side — 2288 checks, transcripts
+byte-identical** (`sha256 e14507553c4e37954204c6d78bf0cf6952f9f2d581cd76e562acf971f13a197e`
+for base and work; 0 per-check mismatches). Numbers recorded as raw IEEE-754 bits, so `-0`,
+`NaN` and precision loss cannot hide, and **`console.error` output is captured and compared
+too**, since "logs and returns 100.0" is observable behaviour of these classes. Coverage:
+every factory × {name, name+id, name+undefined, missing name, null, unknown children,
+malformed children}; the 12 `ArticulationDef` attributes each alone over 15 value spellings
+(`''`, `abc`, `1e3`, `±Infinity`, `NaN`, `-0`, `0x10`, `1,5`, …) plus all twelve together in
+forward and reversed document order and a same-local-name-twice case; `articulateNote` over
+16 def shapes × 9 note shapes; `RubatoDef`'s two rewritten setters over 12 values × 3
+starting shapes plus a 7-step ordering sequence; `getAccentuationAt` over a 59-point grid per
+pattern for 13 patterns; `OrnamentDef` transformers applied to chord sequences of 0/1/2/3/5;
+and **the real pipeline** — all 16 MEI fixtures through
+`Mei.fromXml` → `Mei2MsmMpmConverter(720,true,false,true).convert()` with sha256 over the
+serialized MSM and MPM (uuid-canonicalised) and over expressive **and** raw MIDI event dumps
+(tick + message bytes per track), plus every `styleDef` in all 32 reference MSM/MPM fixtures
+reparsed through all 7 style factories and re-serialized.
+
+**D. Negative controls — the probe is not vacuous.** Five mutations of the *new* build, each
+re-run through the same probe:
+
+| control | flipped checks |
+|---|---|
+| "fix" the deliberate Java bug (`i >` → `i <` in `getAccentuationAt`) | sha changes |
+| `setLateStart` clamp via `Math.max` instead of `let value` (the `-0` case) | 13 |
+| drop one `?? this.x` default-preservation in `ArticulationDef` | 279 |
+| `getDef` returns `null` instead of `undefined` on a miss | 193 |
+| drop the skip-malformed `continue` in `TempoStyle.parseData` | 2 |
+
+The `Math.max` control is the one I most wanted: it confirms the `-0` reasoning is real and
+not a theoretical worry.
+
+**E. Coverage (invariant 7), measured on a clean archive of `dbc63eb` with `node_modules`
+symlinked, not taken from state.json.**
+
+- **Uncovered statements 2292 → 2292, exactly flat** (7b; phase-2 budget 2318).
+- **Uncovered functions 57 → 57, flat.**
+- **Functions 94.07% → 94.08%**, above the 94.0 floor (7a). It rose because the new
+  `numeric` helper is a covered function: 905/962 → 906/963.
+- **Tests 2108 → 2108** (7c).
+- Statements 84.99 → 84.93 and branches 85.79 → 85.58 (7d, indicators). The statement
+  movement is pure shrinkage — total 15278 → 15216, covered down by the same 62, uncovered
+  flat, which is exactly the case invariant 7 was rewritten to stop punishing.
+
+**The branch indicator moved by more than noise, so here is the actual cause rather than a
+shrug.** Uncovered branches 665 → 673, and all +8 are at the 8 `?? []` sites, one each.
+Read from `coverage-final.json` per branch: this istanbul config emits **one** entry per
+branch path that exists in source, so `if (defs) { … }` with no `else` contributed a single,
+covered entry, while `x ?? []` contributes **two** — and the fallback operand is never
+evaluated. Since that operand is provably unreachable (point 5), no test lost power; the
+untaken path simply acquired a counter it did not have before. Confirmed on
+`ArticulationStyle`: baseline `if (articDefs)` counts `[43]` against 44 `parseData` entries,
+and the missing 44th is the one test where `super.parseData` throws on a missing `name`, not
+a null return.
+
+### Deliberately left alone
+
+- **Every `getX()`/`setX()` accessor.** They are called from 15 files outside the cluster
+  (`mei/Mei2MsmMpmConverter`, 12 `mpm/elements/maps/**`, `mpm/elements/Header`), so
+  converting them is exactly the cross-cluster API change lint-debt.md reserves for T12/T16.
+- **`FrameDomain` / `NoteOffShift` stay real `enum`s.** The item text says "union types over
+  pseudo-enums", but there is no pseudo-enum in this cluster — these are genuine string
+  enums, they are imported by `tests/mpm/elements/OrnamentationMap.test.ts` and by T7's
+  `maps/data/OrnamentData.ts`, and converting them would change emitted JS (enum IIFE → const
+  object) *and* widen the type (a bare `'ticks'` is not assignable to an enum but is to a
+  union). That is a model-layer decision, not a local idiom. **DISCOVERED for T16.**
+- **The 6 style subclasses are near-identical** — same factory body, same `parseData` shape
+  modulo one element name and one def factory. Deduplicating them behind a protected helper
+  on `GenericStyle` is the biggest structural win left here, and it is **T16's** ("GenericMap/
+  GenericStyle generics cleaned"), not a local idiom. Sketch in DISCOVERED.
+- `AccentuationPatternDef.sortXml`'s index loop (the index *is* the insert position; the
+  `prefer-for-of` rule correctly does not fire) and both `apply` loops in `OrnamentDef`
+  (index feeds the interpolation math; T19 owns that arithmetic).
+- `resetAttribute(name: string)` **not** narrowed to a union of the 12 attribute names: a
+  unit test calls it with `'somethingElse'`, and the quirk it exposes — an unknown-but-present
+  attribute is removed with no field to reset — is real behaviour that a narrowed type would
+  hide rather than fix. Documented instead.
+- Every numeric literal, including the Java-style `0.0` / `2.0`, and all
+  serialization-visible string building.
+
+### DISCOVERED
+
+- **DISCOVERED (T10/T12, `Helper.getAllChildElements` return type):** it is typed
+  `Element[] | null` but returns null only for a null element or an empty name string
+  (`Helper.ts:123,129`). At all 8 call sites in this cluster the null is unreachable, and I
+  would expect the same across `mei/` and `msm/`. Narrowing the overloads to `Element[]`
+  where the name is a literal would delete a large family of dead guards repo-wide — a good
+  concrete first payment on T12's null policy.
+- **DISCOVERED (T16, style-subclass deduplication):** all 6 subclasses reduce to
+  `parseDefs('articulationDef', ArticulationDef.createArticulationDef)` plus a factory that
+  differs only in the class it news up. A protected
+  `parseDefs<D>(childName: string, create: (e: Element) => D | null)` on `GenericStyle`
+  collapses ~30 lines per file to 2. I did not do it: it adds a protected member to the
+  `.d.ts`, rewrites 6 files' emitted JS, and touches the class T18 must untangle.
+- **DISCOVERED (parity divergence, needs a decision, do NOT fix silently):** Java's
+  `Double.parseDouble` **throws** on a malformed number; the port's `parseFloat` yields
+  `NaN`. So for `<tempoDef name="x" value="abc"/>` Java's factory returns null and the style
+  skips the def, while this port creates a def whose value is `NaN` and *keeps* it. Same
+  shape in `DynamicsDef`, `RubatoDef` (`frameLength="x"`), `AccentuationPatternDef`
+  (`length`, `beat`) and all 12 `ArticulationDef` attributes. My probe pins the current
+  behaviour identically in both trees, so nothing regressed — but it is a real difference
+  from the Java reference that no fixture exercises, because every fixture is well-formed.
+  It is codebase-wide (every `parseFloat` in the port), so it belongs to T12's error policy,
+  booked as a behaviour change rather than smuggled into a style item.
+- **DISCOVERED (T16/T17, duplicated `setId`/`getId`):** `GenericStyle` and `AbstractDef`
+  carry byte-identical `setId`/`getId`/`getName`/`setName` implementations, and
+  `TemporalSpread`/`DynamicsGradient` carry a third and fourth near-copy of `setId`/`getId`/
+  `setXml`/`getXml`/`toXml` that are not even in the `AbstractXmlSubtree` hierarchy. One
+  shared mixin or base would remove four copies.
+- **DISCOVERED (T16, `TemporalSpread`/`DynamicsGradient` file placement):** both are exported
+  from `defs/OrnamentDef.ts` rather than their own modules, so importing either drags
+  `OrnamentDef` in. Splitting them is an import-graph change and thus T18-adjacent; I left
+  the imports in this cluster completely untouched, as instructed.
+
+### Handoff
+
+Probe kept at `scratchpad/t6work/probe.mjs` — it takes `<distDir> <out.json>` and imports
+`Mpm` before anything else (deep-importing `GenericStyle.js` first throws), so any later item
+touching this cluster can re-prove equivalence in two runs plus a `sha` comparison. Both
+transcripts and the four negative-control transcripts are beside it. `t6base/` holds a
+verified `git archive` of `dbc63eb` (all 252 files checked with `git show | diff -`, zero
+mismatches) with `node_modules` symlinked, ready for coverage or build comparisons — note
+that a dist tree built *outside* the repo needs its own `node_modules` symlink or Node cannot
+resolve `@xmldom/xmldom`. Two traps to inherit: the single-line-`/** */` stripping bug in
+point B, and that `\bas [A-Z]` still hits prose — "as Java does" in a new doc comment is the
+only "type assertion" my grep found in the cluster.
+
+## [T6] verifier — PASS (2026-08-08)
+
+**PASS.** Every claim in the worker entry reproduced independently on my own trees; nothing
+taken on trust. One documentation defect found (lint-debt.md per-file table, below) — it does
+not touch code, tests, or equivalence, so it does not gate the commit.
+
+### 1. Manifest — exact
+`git status --porcelain` = **16 M, zero untracked**: the 14 `src/mpm/elements/styles/**`
+files + `refactor/lint-debt.md` + `refactor/log.md`. Re-checked after all my runs (dist/ and
+coverage/ are gitignored, so my builds did not pollute it). `git diff --name-only dbc63eb`
+outside those two directories is **empty**; `tests/` diff is **empty**; fixtures and all
+configs (`package.json`, both tsconfigs, `vitest.config.ts`, `eslint.config.js`) untouched.
+
+### 2. Verify — green, stages run standalone
+Not inferred from the `&&` chain: `npx tsc` → 0, `npx tsc -p tsconfig.tests.json` → 0,
+`npx vitest run` → 0. **44 files, 2108/2108 passed.** Prettier clean over the cluster and
+both refactor/ files.
+
+### 3. IMPORT-ORDER INVARIANT — zero changes, verified mechanically
+For each of the 14 files I extracted the import statements from **both** revisions with line
+numbers and diffed them. **Identical in all 14 — same text, same order, same line numbers.**
+No reordering, no merge/split, no `import`↔`import type`, no count change (5/5/5/5/5/5/5,
+3/5/4/4/4/5/4). A broader scan for any line mentioning `import`/`require(`/`export … from`
+found exactly **three** differing lines, all of them **prose inside the new GenericStyle doc
+comment** warning the next reader not to touch the imports. No multi-line import exists in the
+cluster, so the line-anchored comparison is complete. **PASS.**
+
+### 4. AccentuationPatternDef.getAccentuationAt — bug preserved verbatim
+The method is **byte-identical** to `dbc63eb` — not "logically equivalent", identical. The
+`if (i > this.accentuations.length - 1)` guard inside the countdown loop is intact. The tests
+pinning it (`tests/…/AccentuationPatternDef.test.ts:284-336`, `Styles.test.ts:353`) are
+untouched (tests/ diff is empty) and pass. Independently corroborated two ways: the istanbul
+branch map still shows `AccentuationPatternDef.ts:252` as a **dead branch** (the guard is
+never true), and negative control #1 below shows the fixture pipeline moves if you "fix" it.
+
+### 5. Emitted-JS diff — 17 hunks, all classified, none unexplained
+Both trees built with `tsc --removeComments --declaration false --sourceMap false` into
+separate outDirs, absolute `-p` paths per tree. **Exactly 13 files differ, all in the cluster;
+`defs/DynamicsDef.js` is byte-identical** (comments only), and **nothing else in the whole
+compiled project differs.** Reproduces claim A exactly. Hunk classification: 6× `?? []` +
+`this.getXml()!`→`xml` in style `parseData`; 2× dead-`if` removal (TempoDef, RubatoDef); 1×
+dead busy-loop + the `numeric` helper rewrite (ArticulationDef); 2× `let value` setters
+(RubatoDef); 1× `getDef` `?? undefined` drop; 2× static delegation (Dynamics/TempoStyle); 1×
+`as_`→`style` local rename; 2× the `parseData` restructure in §5a. Zero unclassified.
+
+**5a. One hunk the worker's items 2-6 do not explicitly name** (item 3 covers only
+`this.getXml()!`→`xml`): in `GenericStyle.parseData` and `AbstractDef.parseData` the pattern
+`this.nameAttr = getAttribute(…); if (this.nameAttr === null) throw` became
+`const nameAttr = …; if (nameAttr === null) throw; this.nameAttr = nameAttr`. Both fields are
+declared with definite assignment and **no initializer**, so on the throwing path the base
+left the field `null` while the new code leaves it `undefined` (first parse) or unchanged
+(re-parse). I chased this to ground and it is **unobservable**: all 13 factory-bearing classes
+wrap the only `parseData` call in a single `try { … } catch { console.error; return null }`,
+every constructor in the cluster is `private`/`protected` except `TemporalSpread` and
+`DynamicsGradient` (which do not use this code path), and no re-parse path exists — so an
+object whose parse threw is never returned to any caller. **Property-creation order is also
+unchanged** on the success path: `id`/`defs` are created by their field initializers at
+construction, `nameAttr`/`name` by the same assignment in the same position relative to
+`setXml`. Classified, verified, harmless — but worth naming, since "assign after the null
+check" is exactly the shape that *usually* hides a behavior change.
+
+**5b. Call-site surface — zero renames, proven not asserted.** Declarations built for both
+trees and comment-stripped with a real non-greedy block-comment regex (avoiding the
+single-line `/** */` bug the worker documented — `FrameDomain` and `NoteOffShift` are present
+3× in both). Only the 14 cluster `.d.ts` differ, with **exactly 11 structural changes**: 8
+factory overload pairs collapsed onto an optional parameter, 2 constructor pairs likewise,
+`private accentuations` → `private readonly accentuations`. Reproduces claim B. I then
+compared the **member-identifier sets across the whole project's declarations: 1136 vs 1136,
+zero removed, zero added.** No member was renamed or changed, so no call site in any other
+cluster can be affected — and the whole-project emitted-JS diff already showed nothing outside
+the cluster changed. The overload collapse only *widens* the accepted argument set (it now
+also admits an explicit `undefined`), so no existing call can break.
+
+### 6. Behavioural probe — my own, both builds, identical
+Wrote an independent probe (`t6verify/vprobe.mjs <distDir> <out.json>`; imports `Mpm` first).
+**27 check groups, all byte-identical between the two builds.** Coverage: the 5 deterministic
+all-maps fixtures end-to-end (`perform()` → augmented MSM, expressive MIDI, raw MIDI — event
+dumps, not file bytes); **all 16 MEI fixtures** through `Mei.fromXml` →
+`Mei2MsmMpmConverter(720,true,false,true).convert()` with MSM/MPM/expressive+raw MIDI hashes
+(uuid-canonicalised); 497 styleDef round-trips through all 7 style factories over every
+reference MSM/MPM fixture; 472-point `getAccentuationAt` grids; 184 `ArticulationDef`
+attribute×spelling cases; 115 factory edge cases; and captured `console.error` output (185
+lines) compared as behaviour. Numbers recorded as raw IEEE-754 bits. Imprecision excluded per
+charter (`all_maps` carries an imprecisionMap, so it is deliberately not byte-compared).
+
+**Gap I closed:** no fixture in the repo contains a `rubatoDef` or `rubatoStyles` element, so
+the pipeline alone does **not** exercise `RubatoDef`/`RubatoStyle` — the two rewritten setters
+included. I added 159 direct checks (7 def shapes × 12 values × both setters, plus a
+RubatoStyle over all shapes). Also caught and fixed a vacuity bug in my own first draft: the
+MEI section silently produced empty results because I guessed the converter's return API
+wrong; it returns a `KeyValue`, and the section now asserts a non-empty result.
+
+**Negative controls — 5 mutations of a scratch copy of the new src (src/ never touched):**
+
+| control | detected by |
+|---|---|
+| "fix" the Java bug (`i >` → `i <`) | `accentuationAt` **and** `maps.metrical_accentuation` |
+| `Math.max` clamp instead of `let value` (the `-0` case) | `rubato` |
+| wrong default in one `?? this.x` | `articulationDef` + **2 real MEI fixtures** |
+| `getDef` returns `null` on a miss | probe **crashes** (`TypeError` in `getNumericValueStatic`) |
+| drop the skip-malformed `continue` in `TempoStyle` | `factories` + `consoleErrors` |
+
+Note the third control could not be written as the worker described it — dropping `?? this.x`
+outright is a **compile error** (`number | null` not assignable to `number`), so the type
+system already prevents that regression; I used a wrong-default variant instead. The `-0`
+reasoning is confirmed real: `Math.max` genuinely flips.
+
+### 7. Standard invariants
+- **tests/** zero diff; fixtures and configs untouched (§1).
+- **No new suppressions or assertions.** Scanning only *added code lines* (comment lines
+  excluded) for `eslint-disable`/`@ts-ignore`/`@ts-expect-error`/`as X`/`as unknown`/`<X>(`
+  → **zero hits**. The cluster contains no suppression comment in either revision. The
+  worker's warning is right: `\bas [A-Z]` matches only the prose "as Java does".
+- **log.md append-only**: a single hunk at EOF, 1566 → 1791 lines, **zero deleted lines**.
+- **Coverage (invariant 7), measured on my own archive of `dbc63eb`, not from state.json** —
+  every worker figure reproduced: uncovered statements **2292 → 2292 (flat)**, budget 2318;
+  uncovered functions **57 → 57**; **functions 94.07% → 94.08%**, above the 94.0 floor
+  (962 → 963 total, the covered `numeric` helper); **tests 2108 → 2108**. Indicators:
+  statements 84.99 → 84.93 (total 15278 → 15216, i.e. −62 statements with covered down by
+  exactly 62 and uncovered flat — pure shrinkage, the case invariant 7 was rewritten for);
+  branches 85.80 → 85.57, uncovered 665 → **673**. I verified the branch story by location
+  rather than accepting it: the 8 new uncovered branches are **exactly** the 8 `?? []`
+  fallbacks (ArticulationStyle:42, DynamicsStyle:39, MetricalAccentuationStyle:45,
+  OrnamentationStyle:42, RubatoStyle:39, TempoStyle:39, AccentuationPatternDef:42,
+  OrnamentDef:374). No test lost power; an unreachable operand acquired a counter.
+
+### 8. DEFECT (documentation only, non-gating): lint-debt.md T6 per-file table
+Lint reconciles **at the headline**, which I measured on both trees: errors **1431 → 1389**
+(−42), warnings **30 → 28** (−2), cluster **105 → 61 problems**, and every "current per-rule
+total" the file lists is correct (`no-non-null-assertion` 1079, `unified-signatures` 77, and
+the rest). The worker's catch that the cluster's true total is 105 problems, not 103, is right.
+
+But two sub-claims inside the new T6 section are wrong:
+1. **The per-rule split is inverted by 2.** Measured: `no-non-null-assertion` **−25** (not 23)
+   and `unified-signatures` **−17** (not 19). The total is right (42) either way. The extra 2
+   non-null removals are the two dead `if (this.getXml()!.getLocalName() …)` blocks the item
+   deleted — a source the "23 × `getXml()!`→`xml`" narrative does not count.
+2. **The per-file "after" column does not sum to its own stated 61 — it sums to 63** — and
+   four rows are wrong. Measured after-counts: `RubatoDef` **12** (table says 18),
+   `ArticulationDef` **15** (says 12), `OrnamentDef` **11** (says 10), `AbstractDef` **1**
+   (says 2), `DynamicsDef` **3** (says 2). Correct rows: AccentuationPatternDef 11,
+   GenericStyle 5, TempoDef 3, and all six style subclasses 0. These do sum to 61.
+
+I did **not** edit `lint-debt.md` — correcting a worker deliverable is outside the verifier
+role and would change the manifest the conductor reconciles. Numbers above are ready to paste.
+
+### Handoff
+`t6verify/` holds my baseline archive (`base/`, independently created), both comment-stripped
+declaration dumps, `js.diff` (the 17 classified hunks), `vprobe.mjs` + `base.json`/`work.json`,
+and the 5 negative-control transcripts. I re-verified the worker's `t6base/` before relying on
+it: **all 252 tracked files byte-match `git show dbc63eb:<path>`, zero mismatches** — it is a
+sound archive, not just the 3 spot checks asked for. Trap worth inheriting beyond the worker's
+two: `npm run verify > scratch/newdir/log` **races** a `mkdir` issued in the same parallel
+batch and silently runs nothing while reporting exit 0 — create the directory first.

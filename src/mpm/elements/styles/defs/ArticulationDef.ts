@@ -4,7 +4,15 @@ import { Mpm } from '../../../../mpm/Mpm.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /**
+ * An `articulationDef`: the bundle of duration, timing, velocity and detuning changes that
+ * one articulation name ("staccato", "accent", …) stands for.
  * Port of meico.mpm.elements.styles.defs.ArticulationDef
+ *
+ * The `absolute*` fields that default to null mean "leave the note's own value alone",
+ * which is why they are `number | null` rather than 0: an absolute duration of 0 is a
+ * meaningful (if extreme) instruction. The `*Ms` variants are not applied here at all —
+ * {@link articulateNote} writes them onto the note as `articulation.*` attributes for the
+ * millisecond-domain pass to pick up later.
  */
 export class ArticulationDef extends AbstractDef {
   private absoluteDuration: number | null = null;
@@ -24,63 +32,49 @@ export class ArticulationDef extends AbstractDef {
     super();
   }
 
+  /**
+   * PARITY NOTE on how the attributes are read: Java walks the element's attribute list by
+   * index (backwards) and switches on each local name; XomTypes has no `getAttribute(int)`,
+   * so this looks the twelve known names up instead. The results agree. Each name feeds an
+   * independent field, so visiting order cannot matter; and even for an element that
+   * carries one local name twice, Java's backwards walk gives the last write to the
+   * earliest attribute — the very one this lookup returns.
+   *
+   * Java also renames a foreign element to `articulationDef` via `setLocalName()`, which
+   * XomTypes cannot do; see the same note on `TempoDef`.
+   */
   private parseDataInternal(xml: Element): void {
     super.parseData(xml);
 
-    for (let c = this.getXml()!.getAttributeCount() - 1; c >= 0; --c) {
-      // We need to iterate attributes. Since our XOM layer doesn't have getAttribute(int),
-      // we parse from the XML element's attributes by name.
-    }
+    // null = attribute absent, so the field keeps its default; NaN = present but unparsable
+    const numeric = (name: string): number | null => {
+      const a = Helper.getAttribute(name, xml);
+      return a === null ? null : parseFloat(a.getValue());
+    };
 
-    // Parse known attributes
-    const attrs: Record<string, string> = {};
-    const knownNames = [
-      'absoluteDuration',
-      'absoluteDurationChange',
-      'absoluteDurationMs',
-      'absoluteDurationChangeMs',
-      'relativeDuration',
-      'absoluteDelay',
-      'absoluteDelayMs',
-      'absoluteVelocity',
-      'relativeVelocity',
-      'absoluteVelocityChange',
-      'detuneCents',
-      'detuneHz',
-    ];
-    for (const name of knownNames) {
-      const a = Helper.getAttribute(name, this.getXml()!);
-      if (a !== null) attrs[name] = a.getValue();
-    }
-
-    if (attrs['absoluteDuration'] !== undefined)
-      this.absoluteDuration = parseFloat(attrs['absoluteDuration']);
-    if (attrs['absoluteDurationChange'] !== undefined)
-      this.absoluteDurationChange = parseFloat(attrs['absoluteDurationChange']);
-    if (attrs['absoluteDurationMs'] !== undefined)
-      this.absoluteDurationMs = parseFloat(attrs['absoluteDurationMs']);
-    if (attrs['absoluteDurationChangeMs'] !== undefined)
-      this.absoluteDurationChangeMs = parseFloat(attrs['absoluteDurationChangeMs']);
-    if (attrs['relativeDuration'] !== undefined)
-      this.relativeDuration = parseFloat(attrs['relativeDuration']);
-    if (attrs['absoluteDelay'] !== undefined)
-      this.absoluteDelay = parseFloat(attrs['absoluteDelay']);
-    if (attrs['absoluteDelayMs'] !== undefined)
-      this.absoluteDelayMs = parseFloat(attrs['absoluteDelayMs']);
-    if (attrs['absoluteVelocity'] !== undefined)
-      this.absoluteVelocity = parseFloat(attrs['absoluteVelocity']);
-    if (attrs['relativeVelocity'] !== undefined)
-      this.relativeVelocity = parseFloat(attrs['relativeVelocity']);
-    if (attrs['absoluteVelocityChange'] !== undefined)
-      this.absoluteVelocityChange = parseFloat(attrs['absoluteVelocityChange']);
-    if (attrs['detuneCents'] !== undefined) this.detuneCents = parseFloat(attrs['detuneCents']);
-    if (attrs['detuneHz'] !== undefined) this.detuneHz = parseFloat(attrs['detuneHz']);
+    this.absoluteDuration = numeric('absoluteDuration') ?? this.absoluteDuration;
+    this.absoluteDurationChange = numeric('absoluteDurationChange') ?? this.absoluteDurationChange;
+    this.absoluteDurationMs = numeric('absoluteDurationMs') ?? this.absoluteDurationMs;
+    this.absoluteDurationChangeMs =
+      numeric('absoluteDurationChangeMs') ?? this.absoluteDurationChangeMs;
+    this.relativeDuration = numeric('relativeDuration') ?? this.relativeDuration;
+    this.absoluteDelay = numeric('absoluteDelay') ?? this.absoluteDelay;
+    this.absoluteDelayMs = numeric('absoluteDelayMs') ?? this.absoluteDelayMs;
+    this.absoluteVelocity = numeric('absoluteVelocity') ?? this.absoluteVelocity;
+    this.relativeVelocity = numeric('relativeVelocity') ?? this.relativeVelocity;
+    this.absoluteVelocityChange = numeric('absoluteVelocityChange') ?? this.absoluteVelocityChange;
+    this.detuneCents = numeric('detuneCents') ?? this.detuneCents;
+    this.detuneHz = numeric('detuneHz') ?? this.detuneHz;
   }
 
   protected parseData(xml: Element): void {
     this.parseDataInternal(xml);
   }
 
+  /**
+   * Create a def either from a name — with every effect at its neutral default — or by
+   * parsing an existing element. Returns null after logging instead of throwing.
+   */
   static createArticulationDef(name: string): ArticulationDef | null;
   static createArticulationDef(xml: Element): ArticulationDef | null;
   static createArticulationDef(nameOrXml: string | Element): ArticulationDef | null {
@@ -100,6 +94,17 @@ export class ArticulationDef extends AbstractDef {
     }
   }
 
+  /**
+   * Remove one attribute from the element and put the corresponding field back to its
+   * default.
+   *
+   * Two quirks, both faithful to Java: an unknown name is a silent no-op only because the
+   * lookup fails first — a name that IS present but is not one of the twelve (`name`, say,
+   * or `xml:id`) gets REMOVED from the element with no field to reset, which is why the
+   * parameter deliberately stays `string` rather than a union of the twelve. And a
+   * `resetAttribute` on an absent attribute leaves the field alone even if it was set
+   * programmatically without touching the XML.
+   */
   resetAttribute(name: string): void {
     const a = Helper.getAttribute(name, this.getXml()!);
     if (a === null) return;
@@ -229,6 +234,10 @@ export class ArticulationDef extends AbstractDef {
     this.getXml()!.addAttribute(new Attribute('detuneHz', String(v)));
   }
 
+  /**
+   * Build a def pre-filled with meico's default meaning for a known articulation name.
+   * An unknown name yields an empty (no-op) def rather than null.
+   */
   static createDefaultArticulationDef(name: string): ArticulationDef | null {
     const d = ArticulationDef.createArticulationDef(name);
     if (d === null) return null;
@@ -311,6 +320,24 @@ export class ArticulationDef extends AbstractDef {
     return d;
   }
 
+  /**
+   * Apply this articulation to a note element, in place.
+   * @returns whether `date.perf` changed — the caller has to re-sort the map if it did
+   *
+   * The order of the writes is load-bearing and must not be rearranged: duration is set
+   * absolutely, then scaled relatively, then shifted, and each step re-reads `duration.perf`
+   * from the attribute the previous step wrote. Velocity works the same way. So the effects
+   * compose multiplicatively-then-additively, not independently.
+   *
+   * `absoluteDurationMs` short-circuits the whole tick-domain duration branch: when it is
+   * set, the note only gets the `articulation.absoluteDurationMs` attribute and its
+   * `duration.perf` is left untouched.
+   *
+   * The `for (let reduce = 2.0; durNew <= 0.0; reduce *= 2.0)` loop halves a negative
+   * `absoluteDurationChange` until the resulting duration is positive, so an articulation
+   * that would annihilate a short note shortens it instead. It terminates because `dur` is
+   * known positive.
+   */
   articulateNote(note: Element | null): boolean {
     if (note === null) return false;
     let dateChanged = false;

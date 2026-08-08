@@ -5,7 +5,20 @@ import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /**
+ * A `rubatoDef`: a reusable rubato shape that stretches and compresses time inside a
+ * frame of `frameLength` ticks.
  * Port of meico.mpm.elements.styles.defs.RubatoDef
+ *
+ * Parsing is not read-only: missing `intensity`, `lateStart` and `earlyEnd` attributes are
+ * ADDED to the element with their defaults, and out-of-range values are clamped in place,
+ * so a def that round-trips through this class serializes more attributes than it came
+ * with. See {@link ensureIntensityBoundaries} and
+ * {@link ensureLateStartEarlyEndBoundaries} for the clamping rules.
+ *
+ * PARITY NOTE: Java renames a foreign element to `rubatoDef` via `Element.setLocalName()`
+ * when parsing. XomTypes has no `setLocalName`, so a def parsed from a differently named
+ * element keeps that name here. `RubatoStyle` only ever feeds this factory real
+ * `rubatoDef` children, so the pipeline never reaches that difference.
  */
 export class RubatoDef extends AbstractDef {
   private frameLength = 0.0;
@@ -20,33 +33,29 @@ export class RubatoDef extends AbstractDef {
   private parseDataInternal(xml: Element): void {
     super.parseData(xml);
 
-    if (this.getXml()!.getLocalName() !== 'rubatoDef') {
-      // setLocalName not directly supported
-    }
-
-    const frameLengthAttr = Helper.getAttribute('frameLength', this.getXml()!);
+    const frameLengthAttr = Helper.getAttribute('frameLength', xml);
     if (frameLengthAttr === null)
       throw new Error('Cannot generate RubatoDef object. Missing attribute frameLength.');
 
-    let intensityAttr = Helper.getAttribute('intensity', this.getXml()!);
+    let intensityAttr = Helper.getAttribute('intensity', xml);
     if (intensityAttr === null) {
       intensityAttr = new Attribute('intensity', String(this.intensity));
-      this.getXml()!.addAttribute(intensityAttr);
+      xml.addAttribute(intensityAttr);
     } else {
       intensityAttr.setValue(
         String(RubatoDef.ensureIntensityBoundaries(parseFloat(intensityAttr.getValue()))),
       );
     }
 
-    let lateStartAttr = Helper.getAttribute('lateStart', this.getXml()!);
+    let lateStartAttr = Helper.getAttribute('lateStart', xml);
     if (lateStartAttr === null) {
       lateStartAttr = new Attribute('lateStart', String(this.lateStart));
-      this.getXml()!.addAttribute(lateStartAttr);
+      xml.addAttribute(lateStartAttr);
     }
-    let earlyEndAttr = Helper.getAttribute('earlyEnd', this.getXml()!);
+    let earlyEndAttr = Helper.getAttribute('earlyEnd', xml);
     if (earlyEndAttr === null) {
       earlyEndAttr = new Attribute('earlyEnd', String(this.earlyEnd));
-      this.getXml()!.addAttribute(earlyEndAttr);
+      xml.addAttribute(earlyEndAttr);
     }
     const le = RubatoDef.ensureLateStartEarlyEndBoundaries(
       parseFloat(lateStartAttr.getValue()),
@@ -65,6 +74,12 @@ export class RubatoDef extends AbstractDef {
     this.parseDataInternal(xml);
   }
 
+  /**
+   * Create a def from a name plus frame length (optionally with the full shape), or by
+   * parsing an existing element. Returns null — after logging — instead of throwing, e.g.
+   * when `frameLength` is missing. Passing `intensity` also requires `lateStart` and
+   * `earlyEnd`; that is why they travel as one 5-argument overload.
+   */
   static createRubatoDef(name: string, frameLength: number): RubatoDef | null;
   static createRubatoDef(
     name: string,
@@ -122,35 +137,43 @@ export class RubatoDef extends AbstractDef {
   getLateStart(): number {
     return this.lateStart;
   }
+  /** Rejected outright if it would reach `earlyEnd`; a negative value is clamped to 0. */
   setLateStart(lateStart: number): void {
     if (lateStart >= this.earlyEnd) {
       console.error('Setting lateStart >= earlyEnd is not allowed.');
       return;
     }
-    if (lateStart < 0.0) {
+    let value = lateStart;
+    if (value < 0.0) {
       console.error('Invalid rubato lateStart < 0.0 is set to 0.0.');
-      lateStart = 0.0;
+      value = 0.0;
     }
-    this.lateStart = lateStart;
+    this.lateStart = value;
     this.getXml()!.getAttribute('lateStart')!.setValue(String(this.lateStart));
   }
 
   getEarlyEnd(): number {
     return this.earlyEnd;
   }
+  /** Rejected outright if it would reach `lateStart`; a value above 1 is clamped to 1. */
   setEarlyEnd(earlyEnd: number): void {
     if (this.lateStart >= earlyEnd) {
       console.error('Setting earlyEnd <= lateStart is not allowed.');
       return;
     }
-    if (earlyEnd > 1.0) {
+    let value = earlyEnd;
+    if (value > 1.0) {
       console.error('Invalid rubato earlyEnd > 1.0 is set to 1.0.');
-      earlyEnd = 1.0;
+      value = 1.0;
     }
-    this.earlyEnd = earlyEnd;
+    this.earlyEnd = value;
     this.getXml()!.getAttribute('earlyEnd')!.setValue(String(this.earlyEnd));
   }
 
+  /**
+   * Set both bounds at once — the only way to move them past each other, since
+   * {@link setLateStart} and {@link setEarlyEnd} each refuse to cross the other.
+   */
   setLateStartAndEarlyEnd(lateStart: number, earlyEnd: number): void {
     const le = RubatoDef.ensureLateStartEarlyEndBoundaries(lateStart, earlyEnd);
     this.earlyEnd = le.getValue();
@@ -159,6 +182,7 @@ export class RubatoDef extends AbstractDef {
     this.getXml()!.getAttribute('lateStart')!.setValue(String(this.lateStart));
   }
 
+  /** Intensity must be non-zero and positive: 0 becomes 0.01, negatives are inverted. */
   private static ensureIntensityBoundaries(intensity: number): number {
     if (intensity === 0.0) {
       console.error('Invalid rubato intensity = 0.0 is set to 0.01.');
@@ -171,6 +195,11 @@ export class RubatoDef extends AbstractDef {
     return intensity;
   }
 
+  /**
+   * Clamp the pair into `0 <= lateStart < earlyEnd <= 1`. The three tests run in this order
+   * and the last one overrides the first two, so a crossed pair collapses to the full
+   * frame (0, 1) rather than to the individually clamped values.
+   */
   private static ensureLateStartEarlyEndBoundaries(
     lateStart: number,
     earlyEnd: number,

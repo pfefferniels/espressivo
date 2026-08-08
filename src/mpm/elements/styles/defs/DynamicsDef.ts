@@ -4,6 +4,8 @@ import { Mpm } from '../../../../mpm/Mpm.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /**
+ * A `dynamicsDef`: it gives a dynamics name ("forte", "pp", …) a numeric MIDI-velocity
+ * value.
  * Port of meico.mpm.elements.styles.defs.DynamicsDef
  */
 export class DynamicsDef extends AbstractDef {
@@ -40,6 +42,11 @@ export class DynamicsDef extends AbstractDef {
     this.parseDataInternal(xml);
   }
 
+  /**
+   * Create a def either from a name and a velocity value, or by parsing an existing
+   * element. Returns null — after logging — instead of throwing, e.g. when `value` is
+   * missing.
+   */
   static createDynamicsDef(name: string, value: number): DynamicsDef | null;
   static createDynamicsDef(xml: Element): DynamicsDef | null;
   static createDynamicsDef(nameOrXml: string | Element, value?: number): DynamicsDef | null {
@@ -68,6 +75,11 @@ export class DynamicsDef extends AbstractDef {
     return DynamicsDef.createDynamicsDef(name, DynamicsDef.getDefaultVolumeLevel(name));
   }
 
+  /**
+   * Map a dynamics name to a default MIDI velocity. Unlike `TempoDef.getDefaultTempo`,
+   * which matches substrings, this matches the *whole* trimmed, lower-cased string, so
+   * "mezzo forte" (with a space) does not resolve and falls back to 74.0.
+   */
   static getDefaultVolumeLevel(dynamics: string): number {
     switch (dynamics.trim().toLowerCase()) {
       case 'pppp':

@@ -4,15 +4,18 @@ import { Mpm } from '../../../mpm/Mpm.js';
 import { GenericStyle } from './GenericStyle.js';
 import { AccentuationPatternDef } from './defs/AccentuationPatternDef.js';
 
+/**
+ * A `styleDef` holding `accentuationPatternDef` children, indexed by name.
+ * Port of meico.mpm.elements.styles.MetricalAccentuationStyle
+ */
 export class MetricalAccentuationStyle extends GenericStyle<AccentuationPatternDef> {
   private constructor() {
     super();
   }
 
-  static createMetricalAccentuationStyle(name: string): MetricalAccentuationStyle | null;
   static createMetricalAccentuationStyle(
     name: string,
-    id: string,
+    id?: string,
   ): MetricalAccentuationStyle | null;
   static createMetricalAccentuationStyle(xml: Element): MetricalAccentuationStyle | null;
   static createMetricalAccentuationStyle(
@@ -36,15 +39,13 @@ export class MetricalAccentuationStyle extends GenericStyle<AccentuationPatternD
     }
   }
 
+  /** Defs that fail to parse are skipped, so one malformed child cannot lose the style. */
   protected parseData(xml: Element): void {
     super.parseData(xml);
-    const maDefs = Helper.getAllChildElements('accentuationPatternDef', this.getXml()!);
-    if (maDefs) {
-      for (const maDef of maDefs) {
-        const apd = AccentuationPatternDef.createAccentuationPatternDef(maDef);
-        if (apd === null) continue;
-        this.defs.set(apd.getName(), apd);
-      }
+    for (const maDef of Helper.getAllChildElements('accentuationPatternDef', xml) ?? []) {
+      const apd = AccentuationPatternDef.createAccentuationPatternDef(maDef);
+      if (apd === null) continue;
+      this.defs.set(apd.getName(), apd);
     }
   }
 }

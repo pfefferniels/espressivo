@@ -4,13 +4,16 @@ import { Mpm } from '../../../mpm/Mpm.js';
 import { GenericStyle } from './GenericStyle.js';
 import { RubatoDef } from './defs/RubatoDef.js';
 
+/**
+ * A `styleDef` holding `rubatoDef` children, indexed by name.
+ * Port of meico.mpm.elements.styles.RubatoStyle
+ */
 export class RubatoStyle extends GenericStyle<RubatoDef> {
   private constructor() {
     super();
   }
 
-  static createRubatoStyle(name: string): RubatoStyle | null;
-  static createRubatoStyle(name: string, id: string): RubatoStyle | null;
+  static createRubatoStyle(name: string, id?: string): RubatoStyle | null;
   static createRubatoStyle(xml: Element): RubatoStyle | null;
   static createRubatoStyle(nameOrXml: string | Element, id?: string): RubatoStyle | null {
     try {
@@ -30,15 +33,13 @@ export class RubatoStyle extends GenericStyle<RubatoDef> {
     }
   }
 
+  /** Defs that fail to parse are skipped, so one malformed child cannot lose the style. */
   protected parseData(xml: Element): void {
     super.parseData(xml);
-    const rubatoDefs = Helper.getAllChildElements('rubatoDef', this.getXml()!);
-    if (rubatoDefs) {
-      for (const def of rubatoDefs) {
-        const rd = RubatoDef.createRubatoDef(def);
-        if (rd === null) continue;
-        this.defs.set(rd.getName(), rd);
-      }
+    for (const def of Helper.getAllChildElements('rubatoDef', xml) ?? []) {
+      const rd = RubatoDef.createRubatoDef(def);
+      if (rd === null) continue;
+      this.defs.set(rd.getName(), rd);
     }
   }
 }

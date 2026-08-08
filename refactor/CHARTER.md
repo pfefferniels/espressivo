@@ -119,6 +119,9 @@ item re-dispatched fresh — the disk state makes that lossless.
 - `cd` persists across a compound bash command — a later stage can silently run in
   the wrong tree. Prefer absolute paths or `(cd … && …)` subshells for per-tree
   build/diff work.
+- Redirecting output into a directory created in the SAME parallel tool batch
+  (`mkdir X` + `cmd > X/log`) races — the command can silently run nothing while
+  reporting exit 0. Create directories in a prior step.
 - Emitted-JS diffing (build both trees, diff dist/) is the standard evidence for
   "type-level only" claims; pipeline byte-probes (fixtures → MSM/MPM/MIDI hashes
   on both builds) are the standard evidence for serialization/rendering claims.

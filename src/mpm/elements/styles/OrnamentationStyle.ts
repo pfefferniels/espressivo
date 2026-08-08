@@ -4,13 +4,16 @@ import { Mpm } from '../../../mpm/Mpm.js';
 import { GenericStyle } from './GenericStyle.js';
 import { OrnamentDef } from './defs/OrnamentDef.js';
 
+/**
+ * A `styleDef` holding `ornamentDef` children, indexed by name.
+ * Port of meico.mpm.elements.styles.OrnamentationStyle
+ */
 export class OrnamentationStyle extends GenericStyle<OrnamentDef> {
   private constructor() {
     super();
   }
 
-  static createOrnamentationStyle(name: string): OrnamentationStyle | null;
-  static createOrnamentationStyle(name: string, id: string): OrnamentationStyle | null;
+  static createOrnamentationStyle(name: string, id?: string): OrnamentationStyle | null;
   static createOrnamentationStyle(xml: Element): OrnamentationStyle | null;
   static createOrnamentationStyle(
     nameOrXml: string | Element,
@@ -33,15 +36,13 @@ export class OrnamentationStyle extends GenericStyle<OrnamentDef> {
     }
   }
 
+  /** Defs that fail to parse are skipped, so one malformed child cannot lose the style. */
   protected parseData(xml: Element): void {
     super.parseData(xml);
-    const ornamentDefs = Helper.getAllChildElements('ornamentDef', this.getXml()!);
-    if (ornamentDefs) {
-      for (const def of ornamentDefs) {
-        const od = OrnamentDef.createOrnamentDef(def);
-        if (od === null) continue;
-        this.defs.set(od.getName(), od);
-      }
+    for (const def of Helper.getAllChildElements('ornamentDef', xml) ?? []) {
+      const od = OrnamentDef.createOrnamentDef(def);
+      if (od === null) continue;
+      this.defs.set(od.getName(), od);
     }
   }
 }

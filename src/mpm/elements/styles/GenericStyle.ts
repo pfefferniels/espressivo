@@ -5,7 +5,20 @@ import { Mpm } from '../../../mpm/Mpm.js';
 import { AbstractDef } from './defs/AbstractDef.js';
 
 /**
+ * An MPM `styleDef` element: a named bag of definitions ("defs") that performance
+ * instructions elsewhere in the document refer to by name.
  * Port of meico.mpm.elements.styles.GenericStyle
+ *
+ * The XML element is the single source of truth (see {@link AbstractXmlSubtree}). The
+ * {@link defs} map is only a lookup index over the element's def children; {@link addDef}
+ * and {@link removeDef} keep the two in step, so never insert into the map directly.
+ *
+ * IMPORT-ORDER HAZARD: this module and `Mpm` form an import cycle. Importing this file
+ * *deeply* — that is, before `Mpm` has been evaluated — throws while the module is being
+ * evaluated. Import `Mpm` first, or go through the package entry point. Do not reorder,
+ * merge or split the imports above, and do not turn any of them into `import type`: an
+ * elided import changes module evaluation order and can move the failure somewhere else.
+ * Breaking the cycle properly is item T18.
  */
 export class GenericStyle<E extends AbstractDef = AbstractDef> extends AbstractXmlSubtree {
   private nameAttr!: Attribute;
@@ -16,19 +29,28 @@ export class GenericStyle<E extends AbstractDef = AbstractDef> extends AbstractX
     super();
   }
 
+  /**
+   * Subclasses override this to also parse their def children, calling `super.parseData`
+   * first — after it has run, {@link getXml} returns the very element passed in here.
+   */
   protected parseData(xml: Element): void {
     if (xml === null)
       throw new Error('Cannot generate GenericStyleDef object. XML Element is null.');
-    this.nameAttr = Helper.getAttribute('name', xml)!;
-    if (this.nameAttr === null)
+    const nameAttr = Helper.getAttribute('name', xml);
+    if (nameAttr === null)
       throw new Error('Cannot generate GenericStyleDef object. Missing name attribute.');
+    this.nameAttr = nameAttr;
     this.setXml(xml);
-    this.id = Helper.getAttribute('id', this.getXml()!);
+    this.id = Helper.getAttribute('id', xml);
     this.defs = new Map();
   }
 
-  static createGenericStyle(name: string): GenericStyle | null;
-  static createGenericStyle(name: string, id: string): GenericStyle | null;
+  /**
+   * Create a style either from scratch (`name`, optionally `id`) or by parsing an existing
+   * `styleDef` element. Returns null — after logging — instead of throwing, which is how
+   * every factory in this cluster reports a malformed input.
+   */
+  static createGenericStyle(name: string, id?: string): GenericStyle | null;
   static createGenericStyle(xml: Element): GenericStyle | null;
   static createGenericStyle(nameOrXml: string | Element, id?: string): GenericStyle | null {
     try {
@@ -55,6 +77,7 @@ export class GenericStyle<E extends AbstractDef = AbstractDef> extends AbstractX
     this.nameAttr.setValue(name);
   }
 
+  /** Set, replace or (with null) remove the `xml:id`, in the object and in the element. */
   setId(id: string | null): void {
     if (id === null) {
       if (this.id !== null) {
@@ -74,13 +97,15 @@ export class GenericStyle<E extends AbstractDef = AbstractDef> extends AbstractX
   getId(): string | null {
     return this.id === null ? null : this.id.getValue();
   }
+  /** The live lookup index, not a copy — mutating it desynchronises the style from its XML. */
   getAllDefs(): Map<string, E> {
     return this.defs;
   }
   getDef(name: string): E | undefined {
-    return this.defs.get(name) ?? undefined;
+    return this.defs.get(name);
   }
 
+  /** Add a def, replacing any def of the same name in both the map and the element. */
   addDef(def: E): void {
     if (def === null) {
       console.error('Cannot add a null object to the styleDef.');

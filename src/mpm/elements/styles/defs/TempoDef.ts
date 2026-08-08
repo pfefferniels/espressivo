@@ -4,7 +4,13 @@ import { Mpm } from '../../../../mpm/Mpm.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /**
+ * A `tempoDef`: it gives a tempo name ("Allegro", "fast", …) a numeric value in bpm.
  * Port of meico.mpm.elements.styles.defs.TempoDef
+ *
+ * PARITY NOTE: Java renames a foreign element to `tempoDef` via `Element.setLocalName()`
+ * when parsing. XomTypes has no `setLocalName`, so a def parsed from a differently named
+ * element keeps that name here and serializes under it. Nothing in the pipeline reaches
+ * that path — `TempoStyle` only ever feeds this factory real `tempoDef` children.
  */
 export class TempoDef extends AbstractDef {
   private value = 0.0;
@@ -35,10 +41,6 @@ export class TempoDef extends AbstractDef {
     if (valueAttr === null)
       throw new Error('Cannot generate TempoDef object. Missing value attribute.');
 
-    if (this.getXml()!.getLocalName() !== 'tempoDef') {
-      // In the original Java, setLocalName is used. We skip this as our Element doesn't support it directly.
-    }
-
     this.value = parseFloat(valueAttr.getValue());
   }
 
@@ -46,6 +48,10 @@ export class TempoDef extends AbstractDef {
     this.parseDataInternal(xml);
   }
 
+  /**
+   * Create a def either from a name and a bpm value, or by parsing an existing element.
+   * Returns null — after logging — instead of throwing, e.g. when `value` is missing.
+   */
   static createTempoDef(name: string, value: number): TempoDef | null;
   static createTempoDef(xml: Element): TempoDef | null;
   static createTempoDef(nameOrXml: string | Element, value?: number): TempoDef | null {
@@ -74,6 +80,14 @@ export class TempoDef extends AbstractDef {
     return TempoDef.createTempoDef(name, TempoDef.getDefaultTempo(name));
   }
 
+  /**
+   * Guess a bpm value from a tempo descriptor by substring match.
+   *
+   * The ORDER OF THESE TESTS IS LOAD-BEARING and matches the Java original line for line
+   * (TempoDef.java:125-141): the first match wins, so a descriptor containing several
+   * terms — "allegro assai" — resolves to the one tested first (147.0, not 145.0).
+   * Reordering them, however tempting alphabetically, changes rendered tempo.
+   */
   static getDefaultTempo(descriptor: string): number {
     const des = descriptor.trim().toLowerCase();
     if (des.includes('grave')) return 42.0;
