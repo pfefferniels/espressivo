@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "757948e",
+  "lastGreenCommit": "e31877b",
   "phase": 3,
-  "currentItem": "T14",
-  "counters": { "completed": 15, "blocked": 0, "reverted": 0 },
+  "currentItem": "T18",
+  "counters": { "completed": 16, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -137,7 +137,7 @@
     {
       "id": "T14",
       "phase": 3,
-      "status": "in_progress",
+      "status": "done",
       "title": "Split mei/Helper.ts into focused modules",
       "details": "Static-utility god class into cohesive modules per ARCHITECTURE.md. Pure moves + renames; call sites updated; no logic edits."
     },
@@ -165,7 +165,7 @@
     {
       "id": "T18",
       "phase": 3,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Eliminate circular imports + enforce",
       "details": "Fix the Mpm/GenericStyle deep-import hazard and all other cycles (map with madge or eslint import/no-cycle); add lint enforcement so they cannot return."
     },
