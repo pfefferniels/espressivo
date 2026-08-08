@@ -551,6 +551,131 @@ describe('ArticulationMap', () => {
       expect(attr).not.toBeNull();
       expect(parseFloat(attr!.getValue())).toBeCloseTo(50, 5);
     });
+
+    // -------------------------------------------------------------
+    // absoluteDurationChange - DELIBERATE DIVERGENCE #1 (item TD1)
+    // -------------------------------------------------------------
+    // Java's ArticulationData.java:197 spells the halving loop `durNew >= 0.0` and has no
+    // `duration > 0.0` guard, so it never terminates; the port follows the spelling of
+    // Java's ArticulationDef.java:420-423 instead. These are the pinning tests for that
+    // divergence, and they must fail rather than hang if it is ever undone.
+    //
+    // A vitest per-test timeout cannot do that on its own: a synchronous loop never yields
+    // the event loop, so the timeout timer never fires (measured - a 1500 ms per-test
+    // timeout let a plain `for (;;)` run until an external kill). The timeouts below are
+    // the outer net; the watchdog is what actually converts non-termination into a failure.
+    // It counts reads of `absoluteDurationChange`, which the loop body performs once per
+    // iteration - a loop that spins therefore trips it within `maxReads` iterations.
+    function articulateUnderWatchdog(
+      ad: ArticulationData,
+      note: Element,
+      maxReads = 100_000,
+    ): boolean {
+      const change = ad.absoluteDurationChange;
+      let reads = 0;
+      Object.defineProperty(ad, 'absoluteDurationChange', {
+        configurable: true,
+        get() {
+          if (++reads > maxReads)
+            throw new Error(
+              `articulateNote did not terminate: absoluteDurationChange was read ${reads} times`,
+            );
+          return change;
+        },
+      });
+      try {
+        return ad.articulateNote(note);
+      } finally {
+        Object.defineProperty(ad, 'absoluteDurationChange', {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: change,
+        });
+      }
+    }
+
+    it('absoluteDurationChange shortens a positive duration and marks the note modified', () => {
+      const ad = new ArticulationData();
+      ad.xmlId = 'art1';
+      ad.absoluteDurationChange = -70;
+
+      const note = createNote(100, 200, 80);
+      articulateUnderWatchdog(ad, note);
+
+      // 200 - 70 = 130, positive on the first try, so the loop body never runs.
+      expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(130, 5);
+      expect(note.getAttributeValue('modified')).toBe('art1');
+    }, 5000);
+
+    it('absoluteDurationChange is halved until the duration stays positive', () => {
+      const ad = new ArticulationData();
+      ad.xmlId = 'art1';
+      ad.absoluteDurationChange = -400;
+
+      const note = createNote(100, 100, 80);
+      articulateUnderWatchdog(ad, note);
+
+      // -400 -> -200 -> -100 (duration 0, still not positive) -> -50 => 50.
+      expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(50, 5);
+      expect(note.getAttributeValue('modified')).toBe('art1');
+    }, 5000);
+
+    it('absoluteDurationChange is skipped for a zero duration, which stays unmodified', () => {
+      // The case that discriminates the two candidate fixes: with the flipped comparison
+      // but no guard this spins forever, because durNew converges to 0.0 and stays <= 0.0.
+      // duration.perf="0.0" is real - it occurs in composite_advanced_augmented.msm.
+      const ad = new ArticulationData();
+      ad.xmlId = 'art1';
+      ad.absoluteDurationChange = -70;
+
+      const note = createNote(100, 0, 80);
+      articulateUnderWatchdog(ad, note);
+
+      expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBe(0);
+      expect(note.getAttribute('modified')).toBeNull();
+    }, 5000);
+
+    it('absoluteDurationChange is skipped for a negative duration, which stays unmodified', () => {
+      const ad = new ArticulationData();
+      ad.xmlId = 'art1';
+      ad.absoluteDurationChange = -70;
+
+      const note = createNote(100, -10, 80);
+      articulateUnderWatchdog(ad, note);
+
+      expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(-10, 5);
+      expect(note.getAttribute('modified')).toBeNull();
+    }, 5000);
+
+    it('a positive absoluteDurationChange lengthens the note without halving', () => {
+      const ad = new ArticulationData();
+      ad.xmlId = 'art1';
+      ad.absoluteDurationChange = 50;
+
+      const note = createNote(100, 200, 80);
+      articulateUnderWatchdog(ad, note);
+
+      expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(250, 5);
+      expect(note.getAttributeValue('modified')).toBe('art1');
+    }, 5000);
+
+    it('absoluteDurationChange does not compose with the other duration modifiers', () => {
+      // ArticulationData reads duration.perf once, up front, so the last duration branch to
+      // fire simply overwrites - unlike ArticulationDef, which re-reads and therefore
+      // composes. TD1 kept that difference: the guard tests the hoisted local, it does not
+      // re-read the attribute.
+      const ad = new ArticulationData();
+      ad.xmlId = 'art1';
+      ad.relativeDuration = 0.5;
+      ad.absoluteDurationChange = -70;
+
+      const note = createNote(100, 200, 80);
+      articulateUnderWatchdog(ad, note);
+
+      // Computed from the original 200, not from the 100 relativeDuration just wrote.
+      expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(130, 5);
+    });
   });
 
   // ---------------------------------------------------------------

@@ -5544,3 +5544,247 @@ change TD1 does not intend.
 Gates: `npm run verify` green (44 files / 2124 tests), prettier clean, manifest still exactly
 `M refactor/ARCHITECTURE.md` + `M refactor/log.md`, `git diff -- src tests` empty, `log.md`
 append-only. **Hard freeze — no further writes from me.**
+
+## [TD1] worker — DELIBERATE DIVERGENCE #1: the articulateNote hang (2026-08-08)
+
+Implemented §8.0 exactly as the corrected spec reads: **both** changes to
+`ArticulationData.articulateNote`'s `absoluteDurationChange` branch — the `duration > 0.0`
+guard and the `>=` → `<=` flip — mirroring the control flow of `ArticulationDef.ts:355-363` /
+`ArticulationDef.java:420-423`. The guard tests the **hoisted** `duration` local
+(`ArticulationData.ts:188`); the attribute is deliberately not re-read, so `ArticulationData`'s
+duration modifiers still overwrite rather than compose, which is the difference from
+`ArticulationDef` that §8.0 requirement 1 says must survive. A new pinning test asserts exactly
+that (`relativeDuration=0.5` + `absoluteDurationChange=-70` on `duration.perf=200` ⇒ 130,
+computed from the original 200, not from the 100 `relativeDuration` just wrote).
+
+**Requirement 3 — the `modified` suppression, journaled as required.** The branch ends with
+`Helper.addToListAttribute(note, 'modified', this.xmlId)`, which `ArticulationDef`'s does not
+have. It now sits **inside** the guard, so a note with `duration.perf <= 0` and a non-zero
+`absoluteDurationChange` no longer gets its `modified` list entry. That is a second observable,
+serialization-visible change beyond termination. It is deliberate: the alternative — announcing
+a modification on a note whose duration was provably not touched — is worse, and no fixture
+reaches the branch either way. Two of the new tests assert the absence directly
+(`expect(note.getAttribute('modified')).toBeNull()`), so the choice is pinned, not incidental.
+
+**Requirement 4 — the branch is unreached, re-proven not assumed.** `grep -rl
+absoluteDurationChange tests/integration/fixtures` ⇒ **0 files**, and the only writer of the
+field in `src/` is the `<articulation>` XML constructor (plus `clone`); `ArticulationMap.ts:69`
+only serializes it back out. Pipeline probe (reused the T8/T11 verifier probe, `t11-pipe.mjs`:
+5 deterministic all-maps fixtures + all 16 MEI fixtures through
+`Mei2MsmMpmConverter(720,true,false,true)` → MSM XML, MPM XML, augmented MSM, raw MIDI,
+expressive MIDI, UUID-canonicalized) over **two clean builds** — `git archive HEAD` vs the
+working tree: `entries=24 threw=0 nonVacuous=21`, transcript sha
+`169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` on **both**, JSON files
+`diff`-clean. Imprecision fixtures excluded per charter (nondeterministic).
+
+**Emitted-JS diff, clean tree vs clean tree.** Only `dist/mpm/elements/maps/data/
+ArticulationData.js` (+ its `.d.ts`, comment-only) differs across the whole `dist/`, and the
+hunks are exactly: the doc-comment rewrite, the new site comment, `if (duration > 0.0) {`, and
+`durNew <= 0.0`. Nothing else. **Note for the next agent:** the *project's* `dist/` carries
+stale artifacts from before earlier items deleted `src/audio`, `src/musicxml`, `src/pitches`,
+`src/svg`, `Mei2MusicXmlConverter.ts`, `Midi2MsmConverter.ts`, `ColorCoding.ts`,
+`InputStream2StringConverter.ts` (tsc does not prune). A `diff -r` against a fresh baseline
+build therefore reports a pile of `Only in .../dist:` lines that have nothing to do with the
+item under review — build both sides clean, or ignore that set.
+
+**Requirement 5 — negative control, three trees, all `git archive HEAD` + the new tests.**
+
+| tree | source | tests | result |
+|---|---|---|---|
+| NC-A | unfixed (`>=`, no guard) | new tests as shipped | **6 failed / 57 passed** in ms — 3 by non-termination (watchdog), 3 on wrong values (`-300` vs 50, `-70` vs 0, `-80` vs −10) |
+| NC-B | unfixed | watchdog call sites replaced by a direct `ad.articulateNote(note)` | **hung**; killed externally at 60 s (exit 124) although every test carries a 5000 ms timeout |
+| NC-C | **wrong fix**: `<=` flipped, guard omitted | new tests as shipped | **2 failed / 61 passed** — exactly the `duration.perf = 0` and `duration.perf = -10` cases, both by non-termination |
+
+NC-C is the one that matters: it reproduces verifier-T12's B2 finding as an executable gate.
+The comparison-only fix passes every other assertion and still hangs, so a gate built on
+byte-identity alone (or on the positive-duration case alone) would have signed it off.
+
+**Why the tests carry a watchdog and not just a timeout — measured, not assumed.** A vitest
+per-test timeout **cannot** interrupt a synchronous spin loop: the loop never yields the event
+loop, so the timer never fires. Measured directly (`<scratch>/td1/synchang.test.ts`): a plain
+`for (;;)` under a **1500 ms** per-test timeout ran until an external kill at 40 s, and NC-B
+reproduces it with the real code. §8.0 requirement 3's stated purpose — "a regression to
+non-termination fails the suite instead of hanging it" — is therefore not achievable with a
+timeout alone. The tests keep the explicit 5000 ms timeouts (spec-literal, and they do catch a
+merely-slow regression) **and** add `articulateUnderWatchdog`, which installs a counting getter
+over `absoluteDurationChange` and throws past 100 000 reads. The loop body re-reads that field
+once per iteration, so any spinning spelling trips it; the fixed loop needs ~1030 iterations at
+absolute worst (`reduce` doubles to `Infinity`), so the cap has ~100× headroom. **Caveat,
+stated so it is not discovered later:** the watchdog assumes the loop keeps re-reading the
+field. A future refactor that hoists `this.absoluteDurationChange` into a local would silently
+blind it — if you do that, replace the watchdog, do not just delete it.
+
+**Counts.** `npm run verify` green: 44 files, **2130 tests**, up from 2124. Invariant 7c is
+about *decreases*; the +6 are the new pinning tests (3 terminating-behaviour cases, 2
+guard/`modified`-suppression cases, 1 non-composition case), no test removed or weakened.
+Coverage, measured on both trees with the same command: uncovered scoped statements
+**2230 → 2224 (−6)** — the branch was literally untestable before, since exercising it hung the
+runner; total scoped statements 15132 → 15134 (+2, the guard and its block); functions
+**94.22 % → 94.22 %**, above the 94.0 floor; `ArticulationData.ts` statements 73.29 % → 76.96 %,
+branches 88 % → 92.59 %. eslint totals unchanged on both trees (**1292 errors / 5 warnings**,
+74 files — the standing pre-existing debt), and per-file: `ArticulationData.ts` keeps its single
+`no-non-null-assertion`, the test file stays at 0. No new suppressions of any kind (`git diff`
+grep for `eslint-disable` / `@ts-ignore` / `@ts-expect-error` / coverage-ignore pragmas ⇒ none).
+
+**Scope.** `src/mpm/elements/maps/data/ArticulationData.ts` and
+`tests/mpm/elements/ArticulationMap.test.ts` (the existing home of every
+`ArticulationData.articulateNote` test — no new test file, so the class's tests stay in one
+place), plus this entry. `tests/integration/**`, fixtures and configs untouched.
+
+**Handoff.** ARCHITECTURE.md §6.3 row P3 still reads "APPROVED as TD1 … repaired by TD1"; the
+conductor may want to mark it *implemented* now, and T22 will need it for `PARITY.md` —
+divergence text and both Java citations are in the site comment at
+`ArticulationData.ts:196-212`. The class doc's old PARITY NOTE was replaced by a three-line
+pointer to that comment so the account lives in one place. §7's characterisation of the port's
+one non-terminating loop is now historical: after TD1 the port has **no** known
+non-terminating path in `ArticulationData`; `RandomNumberProvider` (P4) still has one and stays
+frozen.
+
+**Addendum — evidence re-run against the exact shipped bytes.** Two things changed after the
+first evidence pass, so every gate was re-run rather than carried over: (a) `prettier --write`
+collapsed the new `it(name, fn, 5000)` calls into the idiomatic `it(name, () => {…}, 5000)`
+layout; (b) the site comment's fixture claim was made precise (it now names
+`performance-reference/composite_advanced_augmented.msm` instead of saying "in the fixtures").
+Re-run with the final bytes: `npm run verify` green (44 files / **2130 tests**), clean-tree
+`dist` diff still **one file** with the guard + comparison as its only executable change
+(everything else in the hunks is comment text), pipeline probe still sha
+`169e964b…` on both builds, and all three negative controls reproduced — NC-A 6 failed / 57
+passed, NC-B killed at 45 s (exit 124), NC-C exactly the two guard cases failing on
+non-termination. Manifest: `M src/mpm/elements/maps/data/ArticulationData.ts`,
+`M tests/mpm/elements/ArticulationMap.test.ts`, `M refactor/log.md` — nothing else.
+
+**DISCOVERED (out of scope, pre-existing):** `tests/midi/Midi.test.ts` fails
+`npx prettier --check` — and fails it identically on a clean `git archive HEAD` tree, so it is
+standing debt, not TD1's. Left untouched; it belongs to whichever item next owns that file, or
+to a formatting-only commit under charter invariant 10.
+
+## [TD1] verifier — DELIBERATE DIVERGENCE #1: the articulateNote hang (2026-08-08)
+
+**PASS TD1.** Every claim in the worker's entry reproduced independently, on trees I built
+myself; nothing was carried over. Item-unique scratch `td1verify/`. Src-identity confirmed
+first: `git diff 48245bd HEAD -- src tests` is empty, so the baseline under review really is
+last-green + bookkeeping. Manifest exactly **3 M** (`ArticulationData.ts`,
+`tests/mpm/elements/ArticulationMap.test.ts`, `refactor/log.md`), unchanged before and after
+my runs.
+
+**1. The fix is the verbatim mirror — read at all three sites, then proven behaviourally.**
+Java `ArticulationData.java:195-201` carries `durNew >= 0.0` with no guard and the
+`Helper.addToListAttribute(note,"modified",…)` write at :200, and hoists
+`double duration` at :182. Java `ArticulationDef.java:418-426` has `if (dur > 0.0)` at **:420**
+and `durNew <= 0.0` at **:422** — both cited line references check out. The fixed branch
+(`ArticulationData.ts:211-219`) carries **both** changes, and the guard is `if (duration > 0.0)`
+on the **hoisted local from line 177** — the attribute is not re-read, so the overwrite-not-
+compose semantics survive.
+
+I did not take that on the diff's word. Differential probe (`td1verify/mirror.mjs`), a 7×7
+matrix of (duration, absoluteDurationChange) with *only* that modifier set, so the branch is the
+sole difference between the two classes: **49 input pairs, 0 mismatches**, all terminating.
+Extended with degenerate inputs (`"abc"`, `NaN`, `Infinity`, `change=-Infinity`, denormal
+`1e-320`): agreement on all five, no hang. The branch is now a total behavioural mirror of
+`ArticulationDef`'s. And the difference that had to *survive* does: with
+`relativeDuration=0.5 + absoluteDurationChange=-70` on `duration.perf=200`, `ArticulationData`
+yields **130** (from the original 200 — overwrite) while `ArticulationDef` yields **30** (from
+the re-read 100 — compose). A guard that had re-read the attribute would have collapsed those
+to one number; it did not.
+
+**2. Termination, empirically — three builds, harness-free, under `gtimeout`.** Built
+`fixed` (working tree), `unfixed` (`git archive HEAD`) and `wrongfix` (HEAD with **only** `>=`→`<=`,
+the B2 trap) as separate clean trees. `td1verify/termprobe.mjs` runs one case per child process
+with no watchdog and no vitest, so non-termination is an outright timeout:
+
+| case (duration, change) | fixed | unfixed | wrongfix (`<=` only) |
+|---|---|---|---|
+| (200, −70) — spec case (a) | 130, `modified` ✓ | **HANG** (killed 20 s) | 130 ✓ |
+| (0, −70) — spec case (b) | 0 unchanged, `modified`=null | −70, `modified` set | **HANG** |
+| (−10, −70) — spec case (b′) | −10 unchanged, `modified`=null | −80, `modified` set | **HANG** |
+| (100, −400) halving | 50 ✓ | −300 | 50 ✓ |
+| (200, +50) | 250 ✓ | **HANG** | 250 ✓ |
+
+Note the asymmetry, which the task anticipated: **unfixed does not hang on case (b)** — it
+terminates immediately with an absurd negative duration (−70 from a 0-length note) because
+`durNew >= 0.0` is false on entry. The positive-duration case is the one that definitely hangs
+unfixed, and it does. Case (b)'s hang lives in the **wrongfix** column — which is exactly why
+that control, not the unfixed one, is what makes the guard load-bearing.
+
+**3. The B2 trap is not reintroduced, and the `modified` suppression is real.** On the fixed
+build, `duration.perf` ∈ {0, −10} with `absoluteDurationChange=-70`: the loop is never entered,
+`duration.perf` is left byte-unchanged, **and `note.getAttribute('modified')` is `null`** — the
+`Helper.addToListAttribute` write is suppressed on the guarded path, as required. The worker
+journaled this in its entry *and* in the site comment, before I looked; it was not a discovery.
+The same two inputs hang the wrongfix tree, so the guard — not the comparison — is what closes
+B2.
+
+**4. Pipeline probe over all deterministic fixtures, two clean builds.** Reused the standing
+`t11-pipe.mjs` after reading it: 5 deterministic all-maps fixtures + all 16 MEI fixtures end to
+end (MSM XML, MPM XML, augmented MSM, raw MIDI, expressive MIDI, UUID-canonicalised). Its
+deterministic list is **identical to the suite's own** `deterministicFixtures` in
+`all-maps-equivalence.test.ts:156-162`; the three excluded all-maps fixtures are precisely the
+three whose `.mpm` contains an `imprecisionMap` (`all_maps`, `imprecision_timing`,
+`imprecision_dynamics`) — charter-excluded as nondeterministic, verified by grep, not assumed.
+Result on fixed and on unfixed: `entries=24 threw=0 nonVacuous=21`, transcript sha
+`169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` on **both**, JSON `diff`
+clean. Fixture non-reach re-confirmed: `grep -rl absoluteDurationChange tests/integration/fixtures`
+⇒ **0 of 136 files**; the only matches under `tests/` are the two articulation unit-test files.
+`duration.perf="0.0"` does occur in `performance-reference/composite_advanced_augmented.msm`
+(1 hit), so the guarded case is grounded in real data.
+
+**5. Emitted JS.** Clean build vs clean build, whole tree: **236 files each side**, and exactly
+four differ — `ArticulationData.js`, `.js.map`, `.d.ts`, `.d.ts.map`. The `.js` hunks are the
+doc-comment rewrite, the new site comment, `if (duration > 0.0) {` and `durNew <= 0.0`; the
+**only executable change in the entire dist is the guard and the comparison**. The `.d.ts` diff
+is comment text only — `articulateNote(note: Element | null): boolean` is untouched. (The
+worker's warning about the *project's* stale `dist/` is correct and I avoided it by building
+both sides fresh.)
+
+**6. Site comment.** Present at `ArticulationData.ts:192-210`, headed `DELIBERATE DIVERGENCE #1`,
+citing refactor item **TD1**, ARCHITECTURE.md **§6.3 row P3** and **§8.0**, and **both** Java
+references — `ArticulationData.java:197` and `ArticulationDef.java:420-423`. It also states why
+both changes are needed and names the zero-duration fixture. Requirement met in full.
+
+**7. Standard gates.** Independent `npm run verify` **green: 44 files / 2130 tests**. Baseline
+measured, not inferred: a pristine `git archive HEAD` tree runs **2124** — so **+6**, no test
+removed or weakened (the test-file diff has **0 deleted lines**), satisfying invariant 7c.
+Coverage from `coverage-final.json` on both trees: functions **94.2227 % → 94.2227 %** (≥ 94.0
+floor ✓); uncovered scoped statements **2230 → 2224 (−6)** — a *decrease*, far inside the 7b
+budget; total scoped statements 15132 → 15134 (+2, the guard and its block);
+`ArticulationData.ts` 129/176 → 137/178 covered statements. eslint identical on both trees —
+**1292 errors / 5 warnings / 74 files**, zero per-file movement, `ArticulationData.ts` keeps its
+one pre-existing `no-non-null-assertion`. No new suppressions (`eslint-disable`, `@ts-ignore`,
+`@ts-expect-error`, coverage pragmas, `.skip`/`.todo`) anywhere in the diff. Integration tests,
+fixtures and every config file untouched. `refactor/log.md` is a **strict prefix** append —
+HEAD's copy diffs clean against the first N lines of the working copy.
+
+**NC-B reproduced independently, and it matters.** The worker's justification for the watchdog
+is that a vitest per-test timeout cannot interrupt a synchronous spin. I rebuilt that test on the
+real unfixed code with a **1500 ms** per-test timeout and no watchdog: vitest never returned and
+was killed at 40 s (**exit 124**). The timeout genuinely cannot do this job, so
+`articulateUnderWatchdog` is not belt-and-braces — it is the mechanism that turns non-termination
+into a test failure. Under vitest the three trees give **fixed 63 passed**, **unfixed 6 failed /
+57 passed** (3 by watchdog, 3 on wrong values), **wrongfix 2 failed / 61 passed** — and I
+confirmed by test name that the wrongfix pair is exactly the zero-duration and negative-duration
+cases, both failing on non-termination. The worker's NC-A/NC-B/NC-C table is accurate in every
+cell.
+
+**A third observable change class, for the record.** Beyond termination and the `modified`
+suppression, inputs where the unfixed code *did* terminate now yield different values —
+(100, −400) went from −300 to 50, (0, −70) from −70 to 0, (−10, −70) from −80 to −10. This is
+the intended semantics of the mirrored code (`ArticulationDef`'s doc: halve the change "so an
+articulation that would annihilate a short note shortens it instead"), it is pinned by three of
+the new tests, and the worker did journal it — in the NC-A row. Flagging it explicitly so T22's
+`PARITY.md` entry describes all three classes, not just the hang.
+
+**Two nits, neither a gate.** (a) The sixth new test ("does not compose…") omits the explicit
+`5000` third argument the other five carry, so it falls back to the global `testTimeout: 30000`;
+§8.0 req 3 asks for an explicit per-test timeout on every case. Harmless — it is not one of the
+spec's (a)/(b)/(c) cases and the watchdog, not the timeout, is the real gate — but a future
+editor should add it for uniformity. (b) The worker's handoff cites the site comment at
+`ArticulationData.ts:196-212`; it is actually at **192-210**. Worth correcting when T22 quotes it.
+
+**Handoff.** The worker's suggestion stands: ARCHITECTURE.md §6.3 row P3 still reads "APPROVED as
+TD1 … repaired by TD1" and can now be marked *implemented*. After TD1 the port has no known
+non-terminating path in `ArticulationData`; `RandomNumberProvider` (P4) still has one and stays
+frozen. The watchdog's stated caveat is real and worth carrying forward: it counts reads of
+`absoluteDurationChange`, so any future refactor that hoists that field into a local blinds it —
+replace it, do not delete it. The `tests/midi/Midi.test.ts` prettier failure the worker
+flagged as DISCOVERED is confirmed pre-existing: it fails identically on a pristine HEAD tree,
+while both files TD1 touched pass `prettier --check` clean.

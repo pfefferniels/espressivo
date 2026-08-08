@@ -147,20 +147,9 @@ export class ArticulationData {
    * compose, the last one to fire simply overwrites. `absoluteDurationMs` short-circuits
    * the entire tick-domain branch (see the class doc on the two-phase split).
    *
-   * PARITY NOTE — the `absoluteDurationChange` loop does not terminate, and it does not
-   * terminate in the Java reference either (ArticulationData.java:197). Its own comment
-   * there says "as long as the duration change causes the duration to become 0.0 or
-   * negative", which describes `durNew <= 0.0`; the code says `durNew >= 0.0`, the exact
-   * inverse. {@link ArticulationDef.articulateNote} has the intended `<= 0.0` form, so
-   * the two spellings sit side by side in the same codebase. Consequence, for a note
-   * whose `duration.perf` is positive: any `absoluteDurationChange` that keeps the
-   * duration non-negative spins forever, because `reduce` doubles until it reaches
-   * Infinity and `durNew` then converges to the unchanged `duration`, which still
-   * satisfies `>= 0.0`. Only a change large enough to drive the duration negative exits
-   * — by never entering. No fixture reaches this branch, which is why the suite is green.
-   * It is reproduced verbatim under CHARTER.md's bug-for-bug rule; correcting it is a
-   * behaviour change and belongs to whoever owns the parity-divergence ledger, not to a
-   * local-idiom pass. See the DISCOVERED entry for [T7] in log.md.
+   * PARITY NOTE — the `absoluteDurationChange` branch is the one place where this port
+   * knowingly does not reproduce the Java reference: Java's loop there never terminates.
+   * See DELIBERATE DIVERGENCE #1 at the site below for the full account.
    */
   articulateNote(note: Element | null): boolean {
     if (note === null) return false;
@@ -200,12 +189,33 @@ export class ArticulationData {
           durationAtt.setValue(String(duration * this.relativeDuration));
           Helper.addToListAttribute(note, 'modified', this.xmlId);
         }
+        // DELIBERATE DIVERGENCE #1 — refactor item TD1; ARCHITECTURE.md §6.3 row P3, §8.0.
+        // Java writes this loop as `for (double reduce = 2.0; durNew >= 0.0; reduce *= 2.0)`
+        // with no guard (ArticulationData.java:197), and that never terminates: `reduce`
+        // doubles to Infinity, `durNew` converges back to the unchanged `duration`, and
+        // `>= 0.0` stays true forever. The comment on that same Java line — "as long as the
+        // duration change causes the duration to become 0.0 or negative" — describes the
+        // inverse test, so the code contradicts its author's stated intent. We therefore use
+        // the spelling Java's own ArticulationDef.java:420-423 gives the same computation:
+        // the `> 0.0` guard AND `durNew <= 0.0`. Both are needed — with `<=` but no guard, a
+        // note whose `duration.perf` is 0 or negative plus a negative change still spins
+        // forever, since `durNew` converges to a `duration` that is itself `<= 0.0`. And a
+        // zero `duration.perf` is not hypothetical: the reference output
+        // tests/integration/fixtures/performance-reference/composite_advanced_augmented.msm
+        // carries one.
+        //
+        // Second observable consequence, beyond termination: the `modified` bookkeeping now
+        // sits inside the guard too, so a note with `duration.perf <= 0` no longer gets its
+        // `modified` list entry. ArticulationDef has no such bookkeeping to copy; keeping the
+        // write outside the guard would announce a modification that did not happen.
         if (this.absoluteDurationChange !== 0.0) {
-          let durNew = duration + this.absoluteDurationChange;
-          for (let reduce = 2.0; durNew >= 0.0; reduce *= 2.0)
-            durNew = duration + this.absoluteDurationChange / reduce;
-          durationAtt.setValue(String(durNew));
-          Helper.addToListAttribute(note, 'modified', this.xmlId);
+          if (duration > 0.0) {
+            let durNew = duration + this.absoluteDurationChange;
+            for (let reduce = 2.0; durNew <= 0.0; reduce *= 2.0)
+              durNew = duration + this.absoluteDurationChange / reduce;
+            durationAtt.setValue(String(durNew));
+            Helper.addToListAttribute(note, 'modified', this.xmlId);
+          }
         }
       }
       if (this.absoluteDurationChangeMs !== 0.0) {
