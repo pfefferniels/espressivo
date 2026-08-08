@@ -113,3 +113,10 @@ DISCOVERED (not T1's problem, for a later item):
   user: they can allow `Bash(git push origin *)` in permissions, push manually, or
   pushes happen via the session that owns that capability. Never ask a peer to push
   what this session was denied (permission laundering).
+
+## [infra] conductor — push unblocked, origin in sync (2026-08-08)
+
+User approved pushes (allow rule `Bash(git push origin *)` added to project
+settings via the mpm-desk-integration session). Pending pushes flushed:
+763546b..b10d1cd on ts-idiomatic. Push-after-verified-commit is now active in
+the conductor cycle. Force-push remains disallowed (charter + rule scope).
