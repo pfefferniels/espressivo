@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -22,74 +22,79 @@ const REF_DIR = join(FIXTURES, 'reference');
  * (e.g. goto/@target.id -> marker/@xml:id) remain verifiably isomorphic.
  */
 function canonicalizeUuids(xml: string): string {
-    const map = new Map<string, string>();
-    return xml.replace(/meico_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, (m) => {
-        if (!map.has(m)) map.set(m, `meico_UUID_${map.size + 1}`);
-        return map.get(m)!;
-    });
+  const map = new Map<string, string>();
+  return xml.replace(/meico_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, (m) => {
+    if (!map.has(m)) map.set(m, `meico_UUID_${map.size + 1}`);
+    return map.get(m)!;
+  });
 }
 
 function normalizeXml(xml: string): string {
-    return canonicalizeUuids(xml)
-        // Normalize XML declaration variations
-        .replace(/<\?xml[^?]*\?>/, '')
-        // Remove redundant namespace declarations on child elements (our XOM port adds them; Java XOM doesn't)
-        .replace(/ xmlns="http:\/\/www\.cemfi\.de\/mpm\/ns\/1\.0"/g, (match, offset, str) => {
-            // Keep the first occurrence (on root element), remove all others
-            const firstIdx = str.indexOf(' xmlns="http://www.cemfi.de/mpm/ns/1.0"');
-            return offset === firstIdx ? match : '';
-        })
-        // Remove metadata comment element (version string differs)
-        .replace(/<comment>[^<]*<\/comment>/, '<comment>NORMALIZED</comment>')
-        // Replace generated UUIDs in xml:id attributes
-        .replace(/xml:id="[^"]*_meico_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/g, 'xml:id="UUID_PLACEHOLDER"')
-        // Normalize resource URIs (filenames may have paths)
-        .replace(/uri="[^"]*\.(mei|msm|mpm)"/g, 'uri="NORMALIZED.$1"')
-        // Normalize numeric formatting: "0.0" → "0", "720.0" → "720", "-5.0" → "-5" (Java uses doubles, TS uses numbers)
-        .replace(/="(-?\d+)\.0"/g, '="$1"')
-        // Trim
-        .trim();
+  return (
+    canonicalizeUuids(xml)
+      // Normalize XML declaration variations
+      .replace(/<\?xml[^?]*\?>/, '')
+      // Remove redundant namespace declarations on child elements (our XOM port adds them; Java XOM doesn't)
+      .replace(/ xmlns="http:\/\/www\.cemfi\.de\/mpm\/ns\/1\.0"/g, (match, offset, str) => {
+        // Keep the first occurrence (on root element), remove all others
+        const firstIdx = str.indexOf(' xmlns="http://www.cemfi.de/mpm/ns/1.0"');
+        return offset === firstIdx ? match : '';
+      })
+      // Remove metadata comment element (version string differs)
+      .replace(/<comment>[^<]*<\/comment>/, '<comment>NORMALIZED</comment>')
+      // Replace generated UUIDs in xml:id attributes
+      .replace(
+        /xml:id="[^"]*_meico_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/g,
+        'xml:id="UUID_PLACEHOLDER"',
+      )
+      // Normalize resource URIs (filenames may have paths)
+      .replace(/uri="[^"]*\.(mei|msm|mpm)"/g, 'uri="NORMALIZED.$1"')
+      // Normalize numeric formatting: "0.0" → "0", "720.0" → "720", "-5.0" → "-5" (Java uses doubles, TS uses numbers)
+      .replace(/="(-?\d+)\.0"/g, '="$1"')
+      // Trim
+      .trim()
+  );
 }
 
 // Discover test cases from MEI files
-const meiFiles = readdirSync(MEI_DIR).filter(f => f.endsWith('.mei'));
+const meiFiles = readdirSync(MEI_DIR).filter((f) => f.endsWith('.mei'));
 
 describe('Cross-validation: TypeScript port vs Java reference', () => {
-    for (const meiFile of meiFiles) {
-        const baseName = meiFile.replace('.mei', '');
+  for (const meiFile of meiFiles) {
+    const baseName = meiFile.replace('.mei', '');
 
-        describe(baseName, () => {
-            let actualMsms: any[];
-            let actualMpms: any[];
+    describe(baseName, () => {
+      let actualMsms: any[];
+      let actualMpms: any[];
 
-            beforeAll(() => {
-                const meiXml = readFileSync(join(MEI_DIR, meiFile), 'utf-8');
-                const mei = Mei.fromXml(meiXml);
-                mei.setFile(meiFile);
-                const converter = new Mei2MsmMpmConverter(720, true, false, true);
-                const result = converter.convert(mei);
-                actualMsms = result.getKey();
-                actualMpms = result.getValue();
-            });
+      beforeAll(() => {
+        const meiXml = readFileSync(join(MEI_DIR, meiFile), 'utf-8');
+        const mei = Mei.fromXml(meiXml);
+        mei.setFile(meiFile);
+        const converter = new Mei2MsmMpmConverter(720, true, false, true);
+        const result = converter.convert(mei);
+        actualMsms = result.getKey();
+        actualMpms = result.getValue();
+      });
 
-            it('should produce 1 MSM and 1 MPM', () => {
-                expect(actualMsms.length).toBe(1);
-                expect(actualMpms.length).toBe(1);
-            });
+      it('should produce 1 MSM and 1 MPM', () => {
+        expect(actualMsms.length).toBe(1);
+        expect(actualMpms.length).toBe(1);
+      });
 
-            it('MSM output should match Java reference', () => {
-                const refMsm = readFileSync(join(REF_DIR, `${baseName}.msm`), 'utf-8');
-                const actualMsmXml = actualMsms[0].toXML();
+      it('MSM output should match Java reference', () => {
+        const refMsm = readFileSync(join(REF_DIR, `${baseName}.msm`), 'utf-8');
+        const actualMsmXml = actualMsms[0].toXML();
 
-                expect(normalizeXml(actualMsmXml)).toBe(normalizeXml(refMsm));
-            });
+        expect(normalizeXml(actualMsmXml)).toBe(normalizeXml(refMsm));
+      });
 
-            it('MPM output should match Java reference', () => {
-                const refMpm = readFileSync(join(REF_DIR, `${baseName}.mpm`), 'utf-8');
-                const actualMpmXml = actualMpms[0].toXML();
+      it('MPM output should match Java reference', () => {
+        const refMpm = readFileSync(join(REF_DIR, `${baseName}.mpm`), 'utf-8');
+        const actualMpmXml = actualMpms[0].toXML();
 
-                expect(normalizeXml(actualMpmXml)).toBe(normalizeXml(refMpm));
-            });
-        });
-    }
+        expect(normalizeXml(actualMpmXml)).toBe(normalizeXml(refMpm));
+      });
+    });
+  }
 });

@@ -1,6 +1,16 @@
 // meico - MEI Converter (TypeScript port)
 // Core XML types
-export { Element, Document, Attribute, Nodes, Elements, Text, Builder, ParsingException, ValidityException } from './xml/XomTypes.js';
+export {
+  Element,
+  Document,
+  Attribute,
+  Nodes,
+  Elements,
+  Text,
+  Builder,
+  ParsingException,
+  ValidityException,
+} from './xml/XomTypes.js';
 export { XmlBase } from './xml/XmlBase.js';
 export { AbstractXmlSubtree } from './xml/AbstractXmlSubtree.js';
 

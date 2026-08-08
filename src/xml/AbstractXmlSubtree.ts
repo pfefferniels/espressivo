@@ -5,21 +5,20 @@ import { Element } from './XomTypes.js';
  * Port of meico.xml.AbstractXmlSubtree
  */
 export abstract class AbstractXmlSubtree {
-    private xml: Element | null = null;
+  private xml: Element | null = null;
 
-    getXml(): Element | null {
-        return this.xml;
-    }
+  getXml(): Element | null {
+    return this.xml;
+  }
 
-    protected setXml(xml: Element | null): void {
-        this.xml = xml;
-    }
+  protected setXml(xml: Element | null): void {
+    this.xml = xml;
+  }
 
-    protected abstract parseData(xml: Element): void;
+  protected abstract parseData(xml: Element): void;
 
-    toXml(): string {
-        if (this.xml === null)
-            return "";
-        return this.xml.toXML();
-    }
+  toXml(): string {
+    if (this.xml === null) return '';
+    return this.xml.toXML();
+  }
 }

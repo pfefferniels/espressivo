@@ -6,57 +6,55 @@ import type { AccentuationPatternDef } from '../../styles/defs/AccentuationPatte
  * Port of meico.mpm.elements.maps.data.MetricalAccentuationData
  */
 export class MetricalAccentuationData {
-    xml: Element | null = null;
-    xmlId: string | null = null;
+  xml: Element | null = null;
+  xmlId: string | null = null;
 
-    styleName: string = "";
-    style: MetricalAccentuationStyle | null = null;
+  styleName = '';
+  style: MetricalAccentuationStyle | null = null;
 
-    accentuationPatternDefName: string | null = null;
-    accentuationPatternDef: AccentuationPatternDef | null = null;
+  accentuationPatternDefName: string | null = null;
+  accentuationPatternDef: AccentuationPatternDef | null = null;
 
-    startDate: number = 0.0;
-    endDate: number | null = null;
-    scale: number = 1.0;
-    loop: boolean = false;
-    stickToMeasures: boolean = true;
+  startDate = 0.0;
+  endDate: number | null = null;
+  scale = 1.0;
+  loop = false;
+  stickToMeasures = true;
 
-    constructor();
-    constructor(xml: Element);
-    constructor(xml?: Element) {
-        if (xml === undefined) return;
+  constructor();
+  constructor(xml: Element);
+  constructor(xml?: Element) {
+    if (xml === undefined) return;
 
-        this.xml = xml;
-        this.startDate = parseFloat(xml.getAttributeValue("date")!);
-        this.accentuationPatternDefName = xml.getAttributeValue("name.ref");
-        this.scale = parseFloat(xml.getAttributeValue("scale")!);
+    this.xml = xml;
+    this.startDate = parseFloat(xml.getAttributeValue('date')!);
+    this.accentuationPatternDefName = xml.getAttributeValue('name.ref');
+    this.scale = parseFloat(xml.getAttributeValue('scale')!);
 
-        const loopAtt = xml.getAttribute("loop");
-        if (loopAtt !== null)
-            this.loop = loopAtt.getValue() === "true";
+    const loopAtt = xml.getAttribute('loop');
+    if (loopAtt !== null) this.loop = loopAtt.getValue() === 'true';
 
-        const stickToMeasuresAtt = xml.getAttribute("stickToMeasures");
-        if (stickToMeasuresAtt !== null)
-            this.stickToMeasures = stickToMeasuresAtt.getValue() === "true";
+    const stickToMeasuresAtt = xml.getAttribute('stickToMeasures');
+    if (stickToMeasuresAtt !== null)
+      this.stickToMeasures = stickToMeasuresAtt.getValue() === 'true';
 
-        const id = xml.getAttribute("id", "http://www.w3.org/XML/1998/namespace");
-        if (id !== null)
-            this.xmlId = id.getValue();
-    }
+    const id = xml.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
+    if (id !== null) this.xmlId = id.getValue();
+  }
 
-    clone(): MetricalAccentuationData {
-        const c = new MetricalAccentuationData();
-        c.xml = (this.xml === null) ? null : this.xml.copy() as Element;
-        c.xmlId = this.xmlId;
-        c.styleName = this.styleName;
-        c.style = this.style;
-        c.startDate = this.startDate;
-        c.endDate = this.endDate;
-        c.accentuationPatternDefName = this.accentuationPatternDefName;
-        c.accentuationPatternDef = this.accentuationPatternDef;
-        c.scale = this.scale;
-        c.loop = this.loop;
-        c.stickToMeasures = this.stickToMeasures;
-        return c;
-    }
+  clone(): MetricalAccentuationData {
+    const c = new MetricalAccentuationData();
+    c.xml = this.xml === null ? null : (this.xml.copy() as Element);
+    c.xmlId = this.xmlId;
+    c.styleName = this.styleName;
+    c.style = this.style;
+    c.startDate = this.startDate;
+    c.endDate = this.endDate;
+    c.accentuationPatternDefName = this.accentuationPatternDefName;
+    c.accentuationPatternDef = this.accentuationPatternDef;
+    c.scale = this.scale;
+    c.loop = this.loop;
+    c.stickToMeasures = this.stickToMeasures;
+    return c;
+  }
 }
