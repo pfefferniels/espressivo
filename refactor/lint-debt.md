@@ -1,6 +1,6 @@
-# Lint debt (as of T11)
+# Lint debt (as of T20b)
 
-> Updated after **T11** (midi cluster). Counts below are the *current*
+> Updated after **T20b** (movement fixes). Counts below are the *current*
 > `npm run lint` output; the T2 baseline is kept in the headline table for comparison.
 
 Snapshot of every ESLint violation left in the tree after T2's safe auto-fixes, grouped by
@@ -17,20 +17,33 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 
 ## Headline numbers
 
-| | count | after T3 | after T4 | after T5 | after T6 | after T7 | after T8 | after T9 | after T10 | after T11 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Violations before T2 | 2104 | | | | | | | | | |
-| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | | | | | | |
-| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** | **1368** | **1347** | **1336** | **1306** | **1294** |
-| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** | **20** | 20 | **18** | 18 | **5** |
-| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | **74 of 105** |
-| Still auto-fixable | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| | count | after T3 | after T4 | after T5 | after T6 | after T7 | after T8 | after T9 | after T10 | after T11 | after T20b |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Violations before T2 | 2104 | | | | | | | | | | |
+| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | | | | | | | |
+| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** | **1368** | **1347** | **1336** | **1306** | **1294** | **1292** |
+| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** | **20** | 20 | **18** | 18 | **5** | 5 |
+| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | **74 of 105** | **73 of 105** |
+| Still auto-fixable | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 > The T8 and T9 columns were added in T9; before that the table stopped at T7 while the
 > prose below already carried the T8 numbers. Both columns are measured with
 > `eslint -f json` over `src/**` + `tests/**` on a `git archive` of the respective tree,
 > splitting errors from warnings (they are reported together, which has misled two
 > earlier entries).
+>
+> T9b is not a column: it moved nothing (1294/5 on both trees, per-rule histogram
+> identical). T20b is, because it did.
+
+T20b (movement fixes + ground-truth regeneration) cleared **2 errors incidentally**:
+`tests/mpm/elements/MovementMap.test.ts` imported `Element` and `Attribute` without using
+them, and the new round-trip tests use both — so that file goes **2 → 0** and becomes the
+second file to reach zero since T6, dropping "files affected" 74 → 73. Measured:
+**1297 problems (1292 errors, 5 warnings)**, `git archive` baseline vs working tree. It
+reconciles exactly — the only rule that moves is `no-unused-vars` (56 → 54), and the only
+file that moves is that test file. The two `src/` files T20b edits (`MovementMap.ts`,
+`MovementData.ts`) lint at 0 before and after. Nothing was paid down deliberately; T20b is
+a parity item, not a cluster cleanup.
 
 T11 cleared 12 of the midi cluster's 33 errors (33 → 21) and **all 13 of its warnings**
 (13 → 0), which is 13 of the 18 left in the whole tree. Measured: **1299 problems (1294
@@ -625,10 +638,12 @@ keywords appear only in the `.d.ts`.
 ### T13 — facade — 1
 `no-extraneous-class` 1 — `src/Meico.ts`.
 
-### tests — 88
-`no-empty-function` 54, `no-unused-vars` 20, `no-explicit-any` 12,
+### tests — 86
+`no-empty-function` 54, `no-unused-vars` 18, `no-explicit-any` 12,
 `no-unsafe-function-type` 2. Concentrated in `tests/mei/Mei.test.ts` (24),
 `tests/mpm/Mpm.test.ts` (10), `tests/mei/Helper.test.ts` (7).
+(88 → 86 in T20b: the two unused-import errors in `tests/mpm/elements/MovementMap.test.ts`
+went away because the new round-trip tests actually use `Element` and `Attribute`.)
 (93 → 88 in T3: the 4 removed stub tests took 5 `vi.spyOn(...).mockImplementation(() => {})`
 `no-empty-function` sites with them, all in `tests/midi/Midi.test.ts`.)
 Adapt alongside the source item that owns each area. `no-non-null-assertion` and

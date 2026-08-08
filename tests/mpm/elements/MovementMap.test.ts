@@ -1,4 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { Mpm } from '../../../src/mpm/Mpm.js';
+import { Msm } from '../../../src/msm/Msm.js';
+import { Performance } from '../../../src/mpm/elements/Performance.js';
+import { Part } from '../../../src/mpm/elements/Part.js';
+import { TempoMap } from '../../../src/mpm/elements/maps/TempoMap.js';
 import { MovementMap } from '../../../src/mpm/elements/maps/MovementMap.js';
 import { MovementData } from '../../../src/mpm/elements/maps/data/MovementData.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
@@ -607,6 +612,221 @@ describe('MovementMap', () => {
       const elem = map.getElement(index)!;
       expect(elem.getLocalName()).toBe('style');
       expect(elem.getAttributeValue('name.ref')).toBe('myMovementStyle');
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // The 2026-08-08 movement fixes (item T20b), mirrored from the Java
+  // reference. Adapted from mpmify's MovementFixTest, which is what
+  // verified the fixes on the Java side.
+  // ---------------------------------------------------------------
+  describe('movement round-trip fixes', () => {
+    it('MovementData reads controller from the plain, no-namespace attribute', () => {
+      const e = new Element('movement');
+      e.addAttribute(new Attribute('date', '0.0'));
+      e.addAttribute(new Attribute('controller', 'soft'));
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', 'mov-1'));
+
+      const md = new MovementData(e);
+      expect(md.controller).toBe('soft');
+      // ...and does not overwrite xmlId while doing so
+      expect(md.xmlId).toBe('mov-1');
+    });
+
+    it('MovementData keeps the "sustain" default when there is no controller attribute', () => {
+      const e = new Element('movement');
+      e.addAttribute(new Attribute('date', '0.0'));
+
+      expect(new MovementData(e).controller).toBe('sustain');
+    });
+
+    it('addMovement(MovementData) serializes controller after protraction, before xml:id', () => {
+      const map = MovementMap.createMovementMap()!;
+      const md = new MovementData();
+      md.startDate = 0;
+      md.position = 0.2;
+      md.transitionTo = 0.9;
+      md.curvature = 0.8;
+      md.protraction = 0.5;
+      md.controller = 'soft';
+      md.xmlId = 'mov-1';
+
+      const xml = map.getElement(map.addMovement(md))!.toXML();
+      expect(xml).toContain('controller="soft"');
+      // Attribute order is byte-visible in the serialized MPM.
+      expect(xml.indexOf('protraction=')).toBeLessThan(xml.indexOf('controller='));
+      expect(xml.indexOf('controller=')).toBeLessThan(xml.indexOf('xml:id='));
+    });
+
+    it('getMovementDataOf parses curvature, protraction and controller back out', () => {
+      const map = MovementMap.createMovementMap()!;
+      const md = new MovementData();
+      md.startDate = 0;
+      md.position = 0.2;
+      md.transitionTo = 0.9;
+      md.curvature = 0.8;
+      md.protraction = 0.5;
+      md.controller = 'soft';
+      map.addMovement(md);
+
+      const parsed = map.getMovementDataOf(0)!;
+      expect(parsed.curvature).toBe(0.8);
+      expect(parsed.protraction).toBe(0.5);
+      expect(parsed.controller).toBe('soft');
+    });
+
+    it('getMovementDataOf falls back to the MovementData defaults when attributes are absent', () => {
+      const map = MovementMap.createMovementMap()!;
+      const e = new Element('movement');
+      e.addAttribute(new Attribute('date', '0.0'));
+      e.addAttribute(new Attribute('position', '0.2'));
+      e.addAttribute(new Attribute('transition.to', '0.9'));
+      map.addElement(e);
+
+      const parsed = map.getMovementDataOf(0)!;
+      expect(parsed.curvature).toBe(0.4);
+      expect(parsed.protraction).toBe(0.0);
+      expect(parsed.controller).toBe('sustain');
+    });
+
+    // --- End-to-end equivalent of mpmify's MovementFixTest ---
+
+    function buildMsm(): Msm {
+      const msm = Msm.createMsm('movement fix test', null, 720);
+      const part = Msm.makePart('Piano', 1, 0, 0);
+      const dated = part.getFirstChildElement('dated')!;
+      dated
+        .getFirstChildElement('timeSignatureMap')!
+        .appendChild(Msm.makeTimeSignature(0, 4, 4, null));
+      const score = dated.getFirstChildElement('score')!;
+      for (let i = 0; i < 8; i++) {
+        const note = new Element('note');
+        note.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', `n${i}`));
+        note.addAttribute(new Attribute('date', String(i * 720.0)));
+        note.addAttribute(new Attribute('midi.pitch', '60.0'));
+        note.addAttribute(new Attribute('pitchname', 'x'));
+        note.addAttribute(new Attribute('accidentals', '0.0'));
+        note.addAttribute(new Attribute('octave', '3.0'));
+        note.addAttribute(new Attribute('duration', '720.0'));
+        score.appendChild(note);
+      }
+      msm.addPart(part);
+      return msm;
+    }
+
+    /** `curvature`/`protraction` null means "no attribute written", i.e. the defaults apply. */
+    function buildMpm(
+      curvature: number | null,
+      protraction: number | null,
+      controller: string,
+    ): Mpm {
+      const mpm = Mpm.createMpm();
+      const perf = Performance.createPerformance('perf', 720)!;
+      mpm.addPerformance(perf);
+
+      const tempoMap = TempoMap.createTempoMap()!;
+      tempoMap.addTempo(0, '120', 0.25);
+      perf.getGlobal()!.getDated()!.addMap(tempoMap);
+
+      const movMap = MovementMap.createMovementMap()!;
+      const md = new MovementData();
+      md.startDate = 0;
+      md.position = 0.2;
+      md.transitionTo = 0.9;
+      md.controller = controller;
+      md.curvature = curvature;
+      md.protraction = protraction;
+      movMap.addMovement(md);
+      // Two terminating instructions: the last entry of a movementMap is never rendered,
+      // it only marks where the preceding transition aims.
+      for (const startDate of [2880, 5760]) {
+        const term = new MovementData();
+        term.startDate = startDate;
+        term.position = 0.9;
+        term.transitionTo = 0.9;
+        term.controller = controller;
+        movMap.addMovement(term);
+      }
+      perf.getGlobal()!.getDated()!.addMap(movMap);
+      perf.addPart(Part.createPart('Piano', 1, 0, 0)!);
+      return mpm;
+    }
+
+    function render(mpm: Mpm, msm: Msm): Msm {
+      return mpm.getAllPerformances()[0].perform(msm);
+    }
+
+    function positionsOf(augmented: Msm): number[][] {
+      const out: number[][] = [];
+      const parts = augmented.getRootElement()!.getChildElements('part');
+      for (let p = 0; p < parts.size(); p++) {
+        const posMap = parts
+          .get(p)
+          .getFirstChildElement('dated')!
+          .getFirstChildElement('positionMap');
+        if (posMap === null) continue;
+        const events = posMap.getChildElements('position');
+        for (let i = 0; i < events.size(); i++)
+          out.push([
+            parseFloat(events.get(i).getAttributeValue('date')!),
+            parseFloat(events.get(i).getAttributeValue('value')!),
+          ]);
+      }
+      return out;
+    }
+
+    function controllerOf(augmented: Msm): string | null {
+      const parts = augmented.getRootElement()!.getChildElements('part');
+      for (let p = 0; p < parts.size(); p++) {
+        const posMap = parts
+          .get(p)
+          .getFirstChildElement('dated')!
+          .getFirstChildElement('positionMap');
+        if (posMap === null) continue;
+        const events = posMap.getChildElements('position');
+        if (events.size() > 0) return events.get(0).getAttributeValue('controller');
+      }
+      return null;
+    }
+
+    it('renders identically in memory and after a serialize/re-parse round-trip', () => {
+      const mpm = buildMpm(0.8, 0.5, 'soft');
+      const inMemory = render(mpm, buildMsm());
+      const reParsed = render(new Mpm(mpm.toXML()), new Msm(buildMsm().toXML()));
+
+      // Bit-identical, not merely close: the round-trip must not lose curve shape.
+      expect(positionsOf(reParsed)).toEqual(positionsOf(inMemory));
+      expect(positionsOf(inMemory).length).toBeGreaterThan(0);
+    });
+
+    it('preserves the controller through the serialize/re-parse round-trip', () => {
+      const mpm = buildMpm(0.8, 0.5, 'soft');
+      expect(controllerOf(render(mpm, buildMsm()))).toBe('soft');
+      expect(controllerOf(render(new Mpm(mpm.toXML()), new Msm(buildMsm().toXML())))).toBe('soft');
+    });
+
+    it('curvature and protraction actually take effect (differ from the defaults render)', () => {
+      const shaped = render(new Mpm(buildMpm(0.8, 0.5, 'soft').toXML()), buildMsm());
+      const defaults = render(new Mpm(buildMpm(null, null, 'soft').toXML()), buildMsm());
+
+      expect(positionsOf(shaped)).not.toEqual(positionsOf(defaults));
+    });
+
+    it('movementSampleMaxStep defaults to 0.1 and controls the sampling density', () => {
+      expect(MovementMap.movementSampleMaxStep).toBe(0.1);
+
+      const map = MovementMap.createMovementMap()!;
+      map.addMovement(0, 'sustain', 0, 1, 'mov-1');
+      map.addMovement(1000, 'sustain', 1, 0, 'mov-2');
+      const atDefault = map.renderMovementToMap()!.size();
+
+      try {
+        MovementMap.movementSampleMaxStep = 0.5;
+        expect(map.renderMovementToMap()!.size()).toBeLessThan(atDefault);
+      } finally {
+        MovementMap.movementSampleMaxStep = 0.1;
+      }
+      expect(map.renderMovementToMap()!.size()).toBe(atDefault);
     });
   });
 });

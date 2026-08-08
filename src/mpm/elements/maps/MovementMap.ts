@@ -17,6 +17,18 @@ import { MovementData } from './data/MovementData.js';
  * Port of meico.mpm.elements.maps.MovementMap
  */
 export class MovementMap extends GenericMap {
+  /**
+   * Largest value step tolerated between two consecutive sampled `<position>` events,
+   * in the normalized 0..1 position space that {@link MovementData.getMovementSegment}
+   * subdivides against (the 127× MIDI scaling happens after sampling). Raising it
+   * subdivides less and so emits fewer events for a long ramp; lowering it emits more.
+   *
+   * 0.1 is the historic default every reference fixture is generated with — changing it
+   * changes rendered output, so leave it alone unless that is the point. Mirrors the
+   * static of the same name in MovementMap.java:252.
+   */
+  static movementSampleMaxStep = 0.1;
+
   private constructor(typeOrXml: string | Element) {
     super(typeOrXml);
   }
@@ -56,6 +68,11 @@ export class MovementMap extends GenericMap {
         e.addAttribute(new Attribute('curvature', String(data.curvature)));
       if (data.protraction !== null)
         e.addAttribute(new Attribute('protraction', String(data.protraction)));
+      // Serialized since 2026-08-08 (MovementMap.java:120-121); before that this overload
+      // silently dropped the controller, so a round-tripped movement always came back as
+      // "sustain". Attribute order is byte-visible: after protraction, before xml:id.
+      // Java guards on `data.controller != null`; the field is non-nullable here.
+      e.addAttribute(new Attribute('controller', data.controller));
       if (data.xmlId !== null)
         e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
       return this.insertElement(new KeyValue(data.startDate, e), false);
@@ -94,6 +111,16 @@ export class MovementMap extends GenericMap {
     else md.position = parseFloat(posAtt.getValue());
     const ttAtt = Helper.getAttribute('transition.to', e);
     if (ttAtt !== null) md.transitionTo = parseFloat(ttAtt.getValue());
+    // Parsed since 2026-08-08 (MovementMap.java:182-192). Previously the shape and the
+    // target controller written into a `<movement>` were ignored on the way back out, so
+    // every rendered movement used the MovementData defaults (curvature 0.4, protraction
+    // 0, controller "sustain") regardless of the XML.
+    const curvatureAtt = Helper.getAttribute('curvature', e);
+    if (curvatureAtt !== null) md.curvature = parseFloat(curvatureAtt.getValue());
+    const protractionAtt = Helper.getAttribute('protraction', e);
+    if (protractionAtt !== null) md.protraction = parseFloat(protractionAtt.getValue());
+    const controllerAtt = Helper.getAttribute('controller', e);
+    if (controllerAtt !== null) md.controller = controllerAtt.getValue();
     return md;
   }
 
@@ -103,7 +130,7 @@ export class MovementMap extends GenericMap {
    * PARITY NOTE — the loop condition is `j > 0`, not `j >= 0`, so **entry 0 is never
    * examined**: a movement that inherits its position from the very first entry in the
    * map gets 0 instead of that entry's `transition.to`. This is faithful to the Java
-   * reference (MovementMap.java:185). Also unlike the reference, a preceding movement
+   * reference (MovementMap.java:200). Also unlike the reference, a preceding movement
    * with no `transition.to` leaves `finalPosition` at 0 here, where Java throws a
    * NullPointerException — a difference confined to the malformed-input path.
    */
@@ -153,7 +180,7 @@ export class MovementMap extends GenericMap {
   }
 
   private static generateMovement(movementData: MovementData, movementMap: GenericMap): void {
-    const movementSegment = movementData.getMovementSegment(0.1);
+    const movementSegment = movementData.getMovementSegment(MovementMap.movementSampleMaxStep);
     for (const event of movementSegment) {
       const e = new Element('position', movementMap.getXml()!.getNamespaceURI());
       e.addAttribute(new Attribute('date', String(event[0])));

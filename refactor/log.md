@@ -4671,3 +4671,157 @@ sha256 3c5fc1b22b5f0312b649bd33e0ac85d31bc36d43759fd005ed287c81ac9704f5.
 `git apply` of that patch on 450193e4 reconstructs the generator state bit-for-bit.
 A fork commit is on the user's pending-decisions list; when it lands, re-point this
 note at the SHA.
+
+## [T20b] verifier — PASS (2026-08-08)
+
+Adversarial re-verification of the one item where charter invariant 2 is suspended. I
+reproduced every load-bearing claim from scratch; nothing below is taken from the worker's
+entry. Scratch: `t20bverify/` (`cmp.py`, `categorize.py`, `negctl/`, `lintbase/`).
+
+### 1. FIXTURE PROVENANCE — regenerated independently, exact match
+
+I re-ran all three generators myself from `/Users/nielspfeffer/Projects/meico` into scratch
+output dirs (cwd was the scratchpad, never the Java tree; `git status` there is unchanged
+before and after — invariant 8 intact). Compiled classes were verified current rather than
+recompiled: `MovementMap.class`/`MovementData.class` 21:38:24 postdate their sources
+(21:38:01 / 21:37:25), and the three `Generate*.class` in `out/production/meico` (22:02:0x)
+postdate `GenerateAllMapsReference.java` (21:39:38) — so the classpath-shadowing gotcha is
+already neutralised.
+
+Comparison of my 120 generated files against the committed fixtures, after canonicalizing
+**all** UUIDs (both `meico_<uuid>` and bare) by first occurrence:
+
+```
+DIFFER 0 | MATCH 110 | EXCLUDED 10 (imprecision) | missing 0 | generated-only 0
+```
+
+Excluded by name (`imprecision*`, nondeterministic per charter): `imprecision_dynamics.{mpm,msm}`,
+`imprecision_dynamics_augmented.msm`, `imprecision_dynamics_{raw,expressive}.mid`,
+`imprecision_timing.{mpm,msm}`, `imprecision_timing_augmented.msm`,
+`imprecision_timing_{raw,expressive}.mid`. Everything else matches, **including every
+`.mid` byte-for-byte** — `movement_expressive.mid` (254 bytes) among them. The committed
+ground truth demonstrably came from the current fork state.
+
+I also checked the conductor's provenance record: `meico-movement-fixes-on-450193e4.patch`
+exists, its sha256 is the recorded `3c5fc1b2…`, and it is **byte-identical to the Java
+repo's current `git diff`**. The durable snapshot really does reconstruct what I generated
+from.
+
+### 2. FIXTURE DIFF CATEGORIZATION vs HEAD — nothing outside the approved set
+
+(HEAD moved to `068b8d6` mid-verification — a conductor bookkeeping commit that appends 205
+lines to `log.md` and touches no `src/`, `tests/` or fixture path, so the fixture baseline
+is unaffected.)
+
+| category | files | evidence |
+|---|---|---|
+| UUID-only noise | **20** | canonicalized texts byte-identical; 6 differ only in `meico_<uuid>`, 14 only in the bare root `xml:id`; zero mixed |
+| Imprecision nondeterminism | 2 | `imprecision_timing_augmented.msm` (7 `milliseconds.date` + 4 `.date.end` jitter), `imprecision_timing_expressive.mid` (197→196 B) |
+| Movement semantics / 0..1 normalization | 4 | below |
+| **total** | **26** | |
+
+- `movement.mpm`, `all_maps.mpm` — attribute-multiset diff is *exactly* `position 127.0→1.0`
+  (+`transition.to 127.0→1.0` in `movement.mpm`) and `+controller="sustain"`. Nothing else.
+- `movement_augmented.msm` — `<position>` 1625→17; max `value` 16129.0→127.0, i.e. the
+  double-scaling is gone. Added attribute pairs are 15 `value`s and nothing else.
+- `movement_expressive.mid` — 5074→254 B, the same event collapse.
+
+⚠ **Correction to the worker's table.** It reports 18 UUID-only + 2 imprecision + 4 movement
+= 24, which does not sum to its own 26. The true split is 20 + 2 + 4; the two missing files
+are `imprecision_dynamics_augmented.msm` and `imprecision_timing.msm`, which are UUID-only
+and were evidently absorbed into the imprecision row. A tally error in the journal, not in
+the tree — all 26 still fall inside the three approved categories, so this does not gate.
+
+### 3. TS MIRROR FIDELITY — all five, exact
+
+Read against the Java **working-tree** sources, not the brief. (a) `MovementData.ts:61-62`
+mirrors `MovementData.java:64-66` (plain no-ns lookup → `this.controller`, same `if (att !=
+null)` shape, same position after the `xml:id` read). (b) `MovementMap.ts:75` sits after
+`protraction`, before `xml:id`, matching `MovementMap.java:120-121` — order verified as
+byte-visible by a serialization assertion in the new tests. (c) three reads appended after
+`transition.to`, same order as `MovementMap.java:182-192`. (d) `movementSampleMaxStep = 0.1`
+= `MovementMap.java:252`. (e) generator-side only.
+
+Every cited Java line number is **correct as of the current fork state** — I checked each
+one, including the updated `getPreviousPosition` citation: `j > 0` really is
+`MovementMap.java:200`, so that surviving PARITY NOTE is still true and correctly re-cited.
+The null-guard divergence in (b) is sound: `MovementData.controller` is typed `string` with
+a `'sustain'` initializer, so Java's `!= null` guard cannot be reached from any TS-typed
+caller. `Helper.getAttribute` in TS is a line-for-line match of `Helper.java:346-359`
+(no-ns → element-ns → xml-ns), so (c) inherits Java's lookup semantics exactly.
+
+**Old comments:** T7's bug-documenting block in `MovementData.ts` is gone, replaced by one
+describing the fixed behaviour. The three surviving mentions of the old behaviour are all
+explicitly past-tense ("Until 2026-08-08…", "before that this overload…", "Previously…") —
+history, not a live claim, so no landmine. No stale "deliberately ported bug" text remains
+for movement anywhere in `src/`, and `CHARTER.md`'s parity list never named these.
+
+Observation, **not** a T20b defect: `XomTypes.Element.getAttribute(name)` with no namespace
+arg matches on localName *or* qualified name, where XOM's single-arg form is no-namespace
+only. Pre-existing across the whole layer (the same ctor's `position`/`curvature`/
+`protraction` reads already rely on it) and unreachable for `controller` in any fixture.
+
+### 4. THE 9 NEW TESTS — non-circular, and 6 of them bite
+
+Negative control (`negctl/`): `git archive HEAD` (pre-fix `src/`) + the **new** test file →
+**6 failed / 50 passed of 56**. The six that fail without the fix are exactly the
+discriminating ones: no-ns controller read, attribute order, `getMovementDataOf` parse-back,
+controller through round-trip, curvature/protraction-take-effect, and `movementSampleMaxStep`.
+The three that pass either way are invariants (the two default-fallback tests and Java's
+`maxDiff == 0.0` round-trip identity, which cannot fail pre-fix because both sides used
+defaults) — correct to keep, but they are not the proof. 56 − 47 = **+9**, and no other
+test file changed, so 2115 → 2124 reconciles.
+
+Provenance of every hard-coded expectation: `'sustain'`, `0.4`, `0.0`, `0.1` are
+`MovementData.java:21,23,24` and `MovementMap.java:252` — Java-derived, not read back off
+the TS implementation. `'soft'`, `0.8`, `0.5` are inputs. Nothing circular.
+
+The worker's warning is correct and I confirm it independently: the generator only ever
+emits `controller="sustain"` with default curvature/protraction, so the fixtures cannot
+discriminate (a)/(b)/(c). **These unit tests are the only guard on the parse/serialize
+fixes — do not delete them as redundant.**
+
+### 5. STANDARD GATES
+
+- **Manifest 30 M, 0 A, 0 D, 0 untracked** (`--untracked-files=all`). This is the worker's
+  31 minus `refactor/log.md`, which commit `068b8d6` took in mid-flight; the delta is fully
+  explained, no unreviewed file.
+- **`npm run verify` green independently: 44 files, 2124/2124, exit 0.** Both tsc stages
+  also run standalone: `npm run build` exit 0, `npm run typecheck:tests` exit 0.
+- **Untouched, byte-exact:** `tests/integration/*.test.ts`, `tests/integration/fixtures/mei/**`
+  (16 `.mei`), `vitest.config.ts`, `tsconfig*.json`, `eslint.config.js`, `package*.json`.
+- **No new suppressions** — zero added `eslint-disable`/`@ts-ignore`/`@ts-expect-error`/
+  `@ts-nocheck`/`as any` in the `src/`+`tests/` diff.
+- **Lint reconciles exactly:** 1294 err/5 warn (HEAD archive) → **1292/5** (worktree). The
+  only rule that moves is `no-unused-vars` 56→54; the only file that moves is
+  `MovementMap.test.ts` 2→0; files-with-≥1-error 74→73, matching `lint-debt.md`.
+- **Coverage, invariant 7:** functions **94.2227%** ≥ 94.0 PASS; uncovered scoped statements
+  **2230** (12902/15132 covered) ≤ 2318 budget PASS, and down from 2255; tests 2124 = 2115+9,
+  an increase, journaled PASS. Indicators: stmts 85.26, branch 85.68.
+- **`log.md` append-only** — the `a9b86d9` version is an exact byte prefix of the current file.
+
+### 6. MIDI REGRESSION BREADTH — the fixes are inert outside movement
+
+Two independent locks. (i) Only 2 of 26 changed fixtures are `.mid`, and they are
+`movement_expressive.mid` and `imprecision_timing_expressive.mid`; every other
+`*_expressive.mid` / `*_raw.mid` in `performance-reference/` and `all-maps-reference/` is
+byte-identical to HEAD. (ii) All of those unchanged MIDIs *also* match my fresh
+regeneration byte-for-byte, so they are unchanged on both sides of the comparison.
+
+Why exactly those and no others: `grep` finds **no `movementMap` or `<movement>` in any
+MEI-derived fixture** — MEI has no movement encoding, so changes (a)–(d) have no reachable
+input in `reference/` or `performance-reference/`, leaving those 6 files with UUID noise
+only. Among the programmatic fixtures only `movement` and `all_maps` build a `MovementMap`;
+of those, `all_maps_augmented.msm` is content-unchanged because its single `<movement>` is
+the last entry and `renderMovementToMap` never renders the last entry — its `<positionMap>`
+holds 0 `<position>` elements before and after, which I verified directly (every other
+`*_augmented.msm` is likewise 0; only `movement_augmented.msm` has 17). So the changed CC
+stream is confined to the one fixture that can produce one.
+
+### VERDICT: PASS T20b
+
+Carry-forward (unchanged from the worker, re-confirmed): the fork's fixes are still
+uncommitted working-tree edits on `450193e4`; a `git checkout`/`stash` there destroys the
+provenance of this ground truth. The patch snapshot + sha256 in the conductor's entry is
+verified good and is currently the only durable copy. `MovementMap.movementSampleMaxStep`
+is a real charter tension (process-global mutable static) and belongs on T12's list.

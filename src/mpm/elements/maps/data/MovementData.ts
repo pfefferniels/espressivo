@@ -52,17 +52,14 @@ export class MovementData {
     const id = xml.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
     if (id !== null) this.xmlId = id.getValue();
 
-    // PARITY NOTE — this is a bug, and it is a bug in the Java reference, so it stays.
-    // MovementData.java:64-66 reads the `controller` attribute and assigns it to
-    // `this.xmlId`, not to `this.controller`; it also looks the attribute up in the
-    // xml: namespace, where `controller` never lives. Both mistakes are reproduced
-    // verbatim. The visible consequences: `controller` keeps its "sustain" default no
-    // matter what the XML says, and (because the lookup never matches) `xmlId` is not
-    // actually clobbered either. Populating `controller` correctly would change which
-    // MIDI controller every rendered movement targets. See CHARTER.md, "Known parity
-    // subtleties" — behaviour parity beats correctness.
-    const controllerAttr = xml.getAttribute('controller', 'http://www.w3.org/XML/1998/namespace');
-    if (controllerAttr !== null) this.xmlId = controllerAttr.getValue();
+    // `controller` is a plain attribute in no namespace. Until 2026-08-08 the reference
+    // — and therefore this port — looked it up in the xml: namespace, where it never
+    // lives, and assigned the result to `xmlId`; `controller` was consequently stuck on
+    // its "sustain" default no matter what the XML said. Fixed in MovementData.java:64-66
+    // and mirrored here (item T20b); the ground truth was regenerated from the fixed
+    // reference, so this is now the parity behaviour, not a divergence from it.
+    const controllerAttr = xml.getAttribute('controller');
+    if (controllerAttr !== null) this.controller = controllerAttr.getValue();
   }
 
   clone(): MovementData {
