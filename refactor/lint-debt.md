@@ -1,5 +1,9 @@
 # Lint debt (as of T13)
 
+> Re-measured after **T15** (converter dispatch): **1083 errors / 2 warnings**, identical to
+> T16 per rule *and* per file. T15 is not a column for the same reason T9b is not — it moved
+> nothing. See the T15 section under "By owning item".
+
 > Updated after **T13** (the public facade): **1245 errors / 5 warnings**, unchanged from
 > T19a and per-rule identical — eight new files, all clean. The headline table below stops at
 > T20b and was not extended by T14/T18/T19a/T13 — read the per-item sections at the end for
@@ -791,6 +795,33 @@ zero. The one edge this item adds across a layer boundary — `src/msm/Msm.ts` �
 `src/mpm/RenderOptions.js` — is an `import type`, which the `msm` zone permits by name
 (`typeOk: true`); the emitted `dist/msm/Msm.js` imports nothing new, which is the proof
 that matters.
+
+### T15 — converter dispatch — repo 1083 → **1083** errors (warnings unchanged at 2)
+
+**Zero delta, zero per rule, and zero per file** — measured as a full per-rule *and* per-file
+histogram over a `git archive e2a7456` baseline and the working tree. Every rule is flat:
+`no-non-null-assertion` 917, `no-empty-function` 54, `no-unused-vars` 54,
+`unified-signatures` 41, `no-explicit-any` 12, `no-require-imports` 2,
+`no-unsafe-function-type` 2, `no-extraneous-class` 1, `no-param-reassign` 2 (warnings).
+**Not one file's count moved**, including the one file the item rewrites. No new
+suppressions (`eslint-disable` / `@ts-ignore` / `@ts-expect-error` stay at zero repo-wide).
+
+Three notes for T21's audit, since this item adds the tree's first dispatch table:
+
+- **`unified-signatures` is flat at 41 even though T15 deleted an overload pair.**
+  `convert(mei: Mei)` / `convert(root: Element)` was never among the 41: the rule only flags
+  pairs that *could* be unified, and these two differ in return type
+  (`KeyValue<Msm[], Mpm[]>` vs `void`). Removing it is a real simplification the rule could
+  not have asked for — see the log entry for why no caller was affected.
+- **The new `private static readonly ELEMENT_HANDLERS` is not a "shared mutable static"** in
+  the sense the charter bans. It is `readonly`, its 118 values are stateless pure functions,
+  and it holds no conversion state whatsoever — the state stays on the instance, which is
+  exactly why the handlers take the converter as their first parameter. `no-extraneous-class`
+  is unaffected (the class has 100+ instance members).
+- **`prefer-for-of` did not fire on the rewritten walker.** The index loop
+  `for (let i = 0; i < es.size(); ++i)` is kept deliberately (`Elements` is not iterable, and
+  the doc's `for (const e of …)` sketch is illustrative); the rule only flags loops over an
+  indexable with `.length`, so this is not suppressed debt — it is outside the rule.
 
 ### tests — 86
 `no-empty-function` 54, `no-unused-vars` 18, `no-explicit-any` 12,

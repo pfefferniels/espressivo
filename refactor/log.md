@@ -8185,3 +8185,412 @@ the original rebase), with a charter note that function-minting restructures reb
 7a only with a full per-function accounting like [T15] worker §7. The uncovered-
 statement budget (7b) remains the primary anti-drift gate. The 27 never-dispatched
 elements are journaled as a candidate for test additions in T21's audit, not now.
+
+## [T15] verifier — converter dispatch: the switch cascade becomes a handler table (2026-08-09)
+
+**FAIL T15 — one defect, in the routing the item added, not in any moved handler body.**
+Everything else the item claims is reproduced and holds, including the coverage accounting
+the conductor's ruling hangs on. The defect has a validated one-hunk fix (section 6), so this
+is a fix round, not a revert.
+
+Src identity confirmed first: `git diff 979c391 -- src/` is the converter alone
+(+356/−342), and `979c391:…/Mei2MsmMpmConverter.ts` is byte-identical to
+`e2a7456`'s, so the worker's baseline is the last green tree.
+
+### 1. THE DEFECT — the table lookup does not reproduce `default: continue`
+
+`ELEMENT_HANDLERS` is a plain object literal, so its prototype is `Object.prototype`.
+`ELEMENT_HANDLERS[e.getLocalName()]` therefore does **not** return `undefined` for every
+element outside the 118 — it returns the inherited member for any element whose local name
+collides with one. `handler === undefined` is false, and the walker calls it.
+
+Proven end-to-end on both builds (`t15verify/protoprobe.mjs`, one unknown element inserted
+as a direct child of `<body>`, i.e. squarely on the walker's path, `simple_notes.mei`):
+
+| element local name | baseline (`switch`) | after T15 (table) |
+|---|---|---|
+| `zzUnknownElement` | OK, skipped | OK, skipped |
+| `toString`, `constructor` | OK, skipped | OK, skipped (returns a non-`'descend'` value) |
+| **`valueOf`** | **OK, skipped** | **TypeError: Cannot convert undefined or null to object** |
+| **`hasOwnProperty`** | **OK, skipped** | **TypeError** |
+| **`isPrototypeOf`** | **OK, skipped** | **TypeError** |
+| **`propertyIsEnumerable`** | **OK, skipped** | **TypeError** |
+| **`toLocaleString`** | **OK, skipped** | **TypeError: … called on null or undefined** |
+
+`__proto__` is worse in kind: the lookup yields `Object.prototype` itself, a non-function, so
+`handler(this, e)` throws `handler is not a function`. The handlers are invoked as bare calls
+(`handler(this, e)`), so the inherited member runs with `this === undefined` — that is what
+turns five of them into hard crashes rather than silent skips.
+
+**Why this is a FAIL and not a note.** ARCHITECTURE.md §8.5 does not merely sketch this line,
+it specifies its meaning: `if (handler === undefined) continue; // == today's default:
+continue`. It is not equal to it. The item's entire value proposition is a provably verbatim
+move of the dispatch, and this is the one piece of genuinely new logic in it — precisely where
+the scrutiny belongs. A conversion that previously skipped an element now aborts.
+
+**The worker's own evidence gate is blind here, and its §3 claim overstates what it proves.**
+The census `*unknown*` line is generated from the *source text* of the unknown branch
+(`default: continue` vs `handler === undefined`); it compares two spellings and cannot see a
+prototype chain. "It matching across g6 is the proof that the unknown-element policy survived
+the collapse" is not supported — the census is structurally incapable of detecting this class
+of defect. This is worth recording for T21: token-equality gates prove *moves*, never
+*lookups*.
+
+Reachability, stated honestly: no fixture triggers it (all 131 artifacts are byte-identical,
+section 3), and no MEI element is named `valueOf`. `getLocalName()` strips namespaces, so the
+exposure is foreign-namespace or malformed content — exactly the input class `default:
+continue` existed to absorb.
+
+### 2. Handler body purity — PASS, by an independent instrument
+
+I did not reuse `t15work/census.mjs`. `t15verify/vcensus.mjs` is a fresh TypeScript-AST
+census: it walks the baseline `switch` inside `convertElement` and the new
+`ELEMENT_HANDLERS` object literal, and emits per element a token stream with `this`/`c` →
+`SELF`, `continue`/`return 'done'`/`IGNORE` → `DONE`, `break`/`return 'descend'`/`DESCEND` →
+`DESCEND`, semicolons dropped, **every other token kept verbatim** — call names, arguments,
+guards, parens, literals. It aborts on a duplicate key (none: all 118 case labels and all 118
+object keys are unique, so no element matched two conditions at baseline and none is silently
+overwritten now).
+
+- **TypeScript source: 118 entries + `*unknown* DONE`, ZERO-LINE DIFF.**
+- **Emitted JS (`basetree/dist` vs `dist`): 118 entries, ZERO-LINE DIFF** — token equality in
+  the code that actually runs, not just in the TypeScript.
+- Group split reproduces the worker's exactly: **IGNORE 53, DESCEND 17, handler+`'done'` 36,
+  handler+`'descend'` 10, conditional 2 = 118.**
+- **Hazard scan clean.** I additionally checked every moved body for constructs whose meaning
+  differs between a `case` body and an arrow body — a bare `return`, a label, a labelled
+  jump, a nested loop/switch (which would make `break` bind to the loop, not the switch), a
+  nested function. **Zero hits on both trees**, so the three substitutions are sound for every
+  one of the 118 bodies. This is the check that makes "token-equal" imply "behaviour-equal".
+- Loop equivalence: the baseline body is `checkEndid(e); switch(…){…} convertElement(e);` and
+  the new one is `checkEndid(e); lookup; if undefined continue; if 'descend' convertElement(e);`.
+  `checkEndid` runs **before** dispatch for every element including unknown ones, unchanged.
+
+**The gate has power.** Five poisons on scratch copies, never built: terminator flip
+(`keySig` `'descend'`→`'done'`), dropped guard (`chord`'s grace skip), retargeted call
+(`bTrem` `processChord`→`processNote`), deleted entry (`staffGrp`), and one the worker did not
+try — **argument swap** (`hairpin`'s `processDynam(e)`→`processDynam(root)`). All five caught.
+
+Whole-`dist` diff: **exactly four files**, all this module's `.js`/`.d.ts`/`.js.map`/
+`.d.ts.map`. `dist/api/**` and every other module byte-identical, so the T13 facade is frozen
+at the emitted level.
+
+### 3. Pipeline byte-probe — PASS
+
+Both builds driven over **all 16 MEI fixtures (every movement) + the 6 deterministic all-maps
+sets = 131 full canonicalized artifacts** (MSM, MPM, augmented MSM, raw MIDI, expressive
+MIDI). `diff -r`: **byte-identical, no exceptions.**
+
+UUID order is checked, not assumed: the dump canonicalizes `meico_<uuid>` by **first
+occurrence**, so any change in mint order would repaint the ids and diff. Spot-verified on the
+goto/repeat-heavy fixtures — `repeats_endings` and `composite_advanced` reproduce their
+`<marker xml:id="meico_UUID_1">` / `<goto target.id="#meico_UUID_1">` wiring identically, so
+the sequencing graph is isomorphic and mint order is frozen.
+
+Negative control reproduced independently in an isolated tree (`t15verify/negtree`, never
+`src/`): `staffGrp: DESCEND` → `IGNORE` turns `cross-validation.test.ts` **30 failed / 18
+passed**. The suite does hold this table down.
+
+Gate 6 re-checked: every `.convert(` call site passes a `Mei` — 10 in `tests/integration/**`,
+3 in `tests/api/**`, 1 in `src/api/pipeline.ts`, 2 prose mentions in `Mei.ts`. Zero test
+edits, as §8.5 predicted. The removed overload branch was provably dead (section 4).
+
+### 4. COVERAGE ACCOUNTING — PASS, re-measured independently; the ruling is grounded
+
+Both trees measured with one instrument (`t15verify/cov.mjs`, over `coverage-final.json`).
+**Every figure in the worker's §7 reproduces to the digit.**
+
+| charter 7 | baseline `979c391` | after T15 | |
+|---|---|---|---|
+| a. functions | **931/983 = 94.7101 %** | **955/1034 = 92.3598 %** | breaches 94.0 |
+| b. uncovered scoped statements | **2179** | **2138 (−41)** | passes |
+| c. tests | **2272** | **2272** | flat |
+| d. statements (indicator) | 85.7860 % | 86.0316 % | improves |
+
+**Exactly one file moves.** Per-file diff across all 78 scoped files: only
+`src/mei/Mei2MsmMpmConverter.ts` (`57/83 → 81/134` functions, `1578 → 1537` uncovered
+statements). No other file's functions or statements moved at all.
+
+**+51 minted, verified by name, not by arithmetic:** diffing the two `fnMap`s gives 51
+functions present in the new tree and absent from the baseline, and **0 removed**. They are
+**48 element arrows + `IGNORE` (20 hits) + `DESCEND` (460 hits) + `<static_initializer>`
+(10 hits)**. 24 covered = 21 arrows + those 3; 27 uncovered = 27 arrows. Confirms §7 exactly.
+
+**The 27 are the same untested paths, proven per element rather than argued.** I built a
+per-element dispatch verdict comparable across the restructure (`t15verify/perelem.mjs`):
+baseline = "did any statement of `case 'x':`'s body execute?", new = "did element x's arrow
+execute?". For the 48 elements that have their own arrow:
+
+> **21 COVERED in both, 27 UNCOVERED in both, ZERO disagreements.**
+
+So every one of the 27 newly-uncovered functions was already a never-executed dispatch at
+baseline. The worker's cross-check also holds: 22 of the 27 have a `process*` method that is
+itself in the baseline uncovered list (`processApp`, `processArpeg`, `processBeatRpt`,
+`processBreath`, `processChoice`, `processDel`, `processDot`, `processHalfmRpt`,
+`processKeySig`, `processLayerDef`, `processMeterSig`, `processMRpt`, `processMRpt2`,
+`processMultiRpt`, `processPedal`, `processPhrase`, `processReh`, `processRestore`,
+`processSpace`, `processSyl`, `processTie`, `processTupletSpan`), and the 5 informative cases
+(`artic`, `bTrem`, `fTrem`, `oLayer`, `oStaff`) have a covered method reached through another
+element. **The baseline's 26 uncovered converter functions are all still uncovered — the set
+is unchanged, only shifted in line number. Nothing regressed.**
+
+**One nuance the ruling should carry, because §7 does not say it.** The −41 uncovered
+statements is *shrinkage, not new test power*, and I localized it: **−39 inside the dispatch
+region, −2 outside.** The −2 is the dropped `convert(root: Element)` overload, whose
+`else { return this.convertElement(meiOrRoot); }` had **0 hits at baseline** — provably dead
+code, an honest deletion. The −39 is dominated by a granularity loss: at baseline each of the
+70 `IGNORE`/`DESCEND` elements carried its own `continue;`/`break;` statement, and **65 of
+those 70 were never dispatched**, so 65 uncovered statements were deleted rather than
+executed. Those 70 elements now share 2 sentinel functions and have **no per-element coverage
+signal at all**. This does not violate 7b (which guards against *growth*, and which invariant
+7 v3 was rewritten precisely to make deletion-immune), but "7b improves by 41" should be read
+as "dead uncovered statements were removed", not "more code is now exercised".
+
+**Test count 2272 vs the [T16]-era 2268 — journaled, not a finding.** The +4 is
+`tests/xml/AbstractXmlSubtree.test.ts`, added by T16 itself; `git log --diff-filter=A` puts
+its creation in **979c391** (`refactor(T16): model layer composition & types`), and the
+[T16] verifier journaled it at log.md:7638 ("+4 tests, all new … no existing test changed").
+2268 was pre-T16; **2272 is T15's correct baseline** and it is flat.
+
+**Ruling basis: CONFIRMED.** The conductor's 7a rebase to ≥ 92.0 on a basis of **92.3598 %**
+is factually grounded — the number, the +51 accounting, the 1:1 mapping of all 27 onto
+already-uncovered baseline paths, the flat test count and the improved 7b all reproduce
+independently. The rebase does not depend on the section 1 defect, and the fix in section 6
+does not disturb it (it declares no function; re-measured: functions **955/1034 = 92.3598 %**,
+uncovered statements **2138**, identical).
+
+### 5. Standard gates — PASS
+
+- **`npm run verify` exit 0**, run independently: `tsc`, then `tsc -p tsconfig.tests.json`,
+  then **59 files / 2272 tests passed**. Both typecheck stages present and green.
+- **Manifest reconciles.** `git status --porcelain --untracked-files=all` = exactly
+  **`M src/mei/Mei2MsmMpmConverter.ts`** and **`M refactor/lint-debt.md`**; no untracked
+  files. `refactor/log.md` (worker entry + conductor ruling, +295/−0) is already committed in
+  `5b5a3aa`, so the expected 3-path set is accounted for with no unexplained delta.
+- **`tests/` diff vs 979c391 is EMPTY** — not mechanical-only, literally empty. Fixtures
+  untouched. `vitest.config.ts`, both tsconfigs, `eslint.config.js`, `package.json` and
+  `package-lock.json` untouched. `ARCHITECTURE.md` and `state.json` untouched.
+- **No new suppressions**: `eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`,
+  `istanbul ignore`, `v8 ignore` are **0 across `src/` and `tests/` on both trees**.
+- Facade battery green at its own counts: `plain-data` 37, `pipeline` 38,
+  `facade-equivalence` 26, `determinism` 8.
+- `prettier --check` clean on the touched file. `log.md` append-only (+295/−0, no deleted
+  lines). `lint-debt.md` gains a T15 section consistent with a zero-delta item.
+
+### 6. The fix, validated before recommending it
+
+Give the table a null prototype so a name outside the 118 misses, as `default:` did:
+
+```ts
+private static readonly ELEMENT_HANDLERS: Readonly<Record<string, ElementHandler | undefined>> =
+  Object.assign(Object.create(null) as Record<string, ElementHandler | undefined>, {
+    …118 entries, untouched…
+  } satisfies Record<string, ElementHandler>);
+```
+
+The `satisfies` is load-bearing: without it `Object.assign` drops the contextual typing and
+all 96 arrow parameters go implicit-`any` (I hit this — `tsc` exit 2, TS7006 ×96). Applied in
+`t15verify/negtree` and measured:
+
+- unknown-element probe **identical to baseline for all 8 names**, crashes gone;
+- **all 131 artifacts still byte-identical** to the current working tree;
+- full suite **59 files / 2272 tests green**;
+- **census still a zero-line diff** — the fix touches no table entry;
+- coverage unchanged (**92.3598 %**, uncovered statements 2138).
+
+A `hasOwnProperty` guard in the walker or a `Map` would work equally; the requirement is only
+that lookup miss for every name that is not one of the 118 own keys. Whichever shape is
+chosen, `t15work/census.mjs` needs the same one-line tweak mine did to see through the
+wrapper (unwrap `Object.assign(…)` / `satisfies` before expecting the object literal),
+otherwise it reports "table not found" and silently gates nothing — a trap worth naming.
+
+### 7. Minor, not blocking
+
+The class comment above the table cites `processStaffDef` as an example of "handler then
+`'descend'`", but `staffDef` is `handler then 'done'` (it drives its own descent via
+`this.convertElement(staffDef)`). The baseline comment said the same thing, so this is
+inherited inaccuracy carried over verbatim, not a T15 regression — worth correcting in the
+same fix round since the comment is being touched anyway.
+
+**Verdict: FAIL T15** on section 1 alone. Sections 2–5 are clean and reproduced
+independently; the coverage accounting underpinning the conductor's ruling is confirmed and
+survives the fix.
+
+## [T15] worker — fix round: null-prototype dispatch table (2026-08-09)
+
+**READY.** One hunk, exactly the fix [T15] verifier §6 validated. No table entry changed.
+
+**I reproduced the defect on my own build before fixing it**, with `__proto__` added to the
+verifier's eight names. Against `basedist` (the pre-item `switch` build), inserting one unknown
+element as a direct child of `<body>` in `simple_notes.mei`:
+
+| local name | baseline | before fix | after fix |
+|---|---|---|---|
+| `zzUnknownElement`, `toString`, `constructor` | OK, 1 movement / 8 notes | same | same |
+| `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable` | OK | **TypeError: Cannot convert undefined or null to object** | OK, matches baseline |
+| `toLocaleString` | OK | **TypeError: Object.prototype.toLocaleString called on null or undefined** | OK, matches baseline |
+| `__proto__` | OK | **TypeError: handler is not a function** | OK, matches baseline |
+
+The verifier's diagnosis is exactly right and its criticism of my §3 lands: the census compares
+two *spellings* of the unknown branch and is structurally incapable of seeing a prototype
+chain. "It matching across g6 is the proof that the unknown-element policy survived" was an
+overclaim — a token-equality gate proves *moves*, never *lookups*. The `*unknown*` census line
+should be read as "the source of the fallback still says `continue`", nothing more.
+
+**The fix**, verbatim from §6, plus a comment saying why both halves are load-bearing:
+
+```ts
+private static readonly ELEMENT_HANDLERS: Readonly<Record<string, ElementHandler | undefined>> =
+  Object.assign(Object.create(null) as Record<string, ElementHandler | undefined>, {
+    …118 entries, untouched…
+  } satisfies Record<string, ElementHandler>);
+```
+
+Chose the null prototype over §6's two alternatives (a `hasOwnProperty` guard, or a `Map`): it
+is the only one that puts the correction *in the table's construction* rather than in the
+walker, so the walker stays the doc's three lines and every future reader of the lookup gets
+the right behaviour without having to remember a guard.
+
+**Re-run on the fixed tree, all green:**
+
+- unknown-element probe: **all 9 names identical to baseline**, five crashes gone;
+- pipeline byte-probe: **131/131 artifacts byte-identical**, tree hash `79a83f34a0bb53a1` —
+  the same hash as every earlier round and as the pre-item build;
+- source census **zero-line diff**, emitted-JS census **zero-line diff** (118 entries);
+- per-member emitted JS still **102/105 token-identical**, the same 3 moved
+  (`ELEMENT_HANDLERS` added, `convert`, `convertElement`); whole-`dist` still **4 files**;
+- `npm run verify` **exit 0**, 59 files / **2272 tests**;
+- lint **1083/2, no rule moved**; zero suppressions in the touched file; `prettier --check` clean;
+- coverage **unchanged at 955/1034 = 92.3598 %**, uncovered statements **2138** — the fix
+  declares no function, so the conductor's 7a rebase basis is untouched.
+
+**Also fixed, per verifier §7:** the table comment cited `processStaffDef` as a
+handler-then-`'descend'` example; `staffDef` is `'done'` (it drives its own descent). Corrected
+to `processScoreDef`, with a note that the pre-T15 comment carried the same error, so nobody
+re-introduces it from the old text.
+
+**Tool trap closed, and the verifier was right to name it.** `t15work/census.mjs` would not
+have seen through `Object.assign(…)`/`satisfies`. It now unwraps `as`, `satisfies`, parens and
+`Object.assign(x, { … })` before expecting the object literal, **and aborts with exit 2 if
+neither a walker switch nor `ELEMENT_HANDLERS` is found** — self-tested by pointing it at a
+copy with the table renamed, which now fails loudly instead of reporting an empty census.
+`t15work/protoproto.mjs` is a one-name companion probe for `__proto__`, which
+`t15verify/protoprobe.mjs` silently loses: writing `results['__proto__'] = …` on a plain
+object sets the prototype instead of recording a value, so the probe for the prototype bug had
+a prototype bug. Both are worth keeping for T21.
+
+**Manifest — 3 paths**: `M src/mei/Mei2MsmMpmConverter.ts`, `M refactor/lint-debt.md`,
+`M refactor/log.md`. `tests/` and fixtures untouched.
+
+## [T15] verifier — re-verify after the fix round (2026-08-09)
+
+**PASS T15.** The defect from my first entry is gone, the fix is exactly the one I validated,
+and nothing else moved. All four re-verify checks the conductor asked for are green, plus the
+standard gates re-run.
+
+### 1. The applied hunk is the §6 fix, and it changed no table entry
+
+Diffed the working tree against **my own last-verified copy** of the file (sha
+`04809e16…` → `8dcd7d3f…`), not against a commit, so the comparison is exactly "what changed
+since I passed judgement". **Two hunks, nothing else:**
+
+1. the table declaration wrapped as
+   `Object.assign(Object.create(null) as Record<string, ElementHandler | undefined>, { …118
+   entries… } satisfies Record<string, ElementHandler>)` — **verbatim my §6**, including the
+   `satisfies` — plus a doc paragraph explaining why both halves are load-bearing;
+2. the `processStaffDef` → `processScoreDef` comment correction from my §7, with a note that
+   the pre-T15 comment carried the same error.
+
+The 274→285 line churn in `git diff` is **entirely the 2-space re-indent** the wrapper forces
+on all 118 entries. Proof, not inspection: my census (whitespace- and comment-insensitive
+token streams) is a **zero-line diff against the baseline `switch`** on **both the TypeScript
+source and the emitted JS**, 118 entries each. The walker is untouched. Whole-`dist` diff is
+still **exactly four files**, all this module's `.js`/`.d.ts`/`.js.map`/`.d.ts.map`.
+
+### 2. Unknown-element policy — restored, measured three ways over 13 names
+
+I rebuilt the **pre-fix** tree from my archived copy (`t15verify/prefixtree`) so all three
+states are measured by me rather than taken from the worker's table. Names extended past my
+original eight to the whole `Object.prototype` surface:
+
+| | baseline `979c391` | pre-fix T15 | post-fix T15 |
+|---|---|---|---|
+| `zzUnknownElement`, `toString`, `constructor` | OK | OK | OK |
+| `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString` | OK | **TypeError** | OK |
+| `__proto__` | OK | **TypeError: handler is not a function** | OK |
+| `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, `__lookupSetter__` | OK | **TypeError** | OK |
+
+**Post-fix is byte-identical to baseline for all 13 names — zero crashes.** Worth recording
+that the defect was **broader than my first entry said**: I reported 5–6 crashing names, the
+true pre-fix count is **10**. The `__define*`/`__lookup*` family crashed too and I had not
+enumerated it. The fix covers the whole surface because it removes the prototype rather than
+blacklisting names, which is why the null-prototype shape was the right choice over a
+name-based guard.
+
+**The worker found a real bug in my probe and it deserves recording.** My original
+`protoprobe.mjs` accumulated results into a plain object, so `results['__proto__'] = …` would
+have *set the prototype* instead of recording a value — the probe for the prototype bug had
+the prototype bug, and would have silently dropped exactly the name most worth testing. Now a
+`Map`. I found the same class of blind spot in my `perelem.mjs` during this round (it could
+not see through `Object.assign`, and returned an **empty** comparison that looked like a clean
+pass); it now unwraps the wrapper **and throws** rather than reporting nothing.
+
+### 3. Pipeline byte-probe — full, not a subset
+
+Re-ran all **131 artifacts** (16 MEI fixtures × every movement + 6 deterministic all-maps
+sets; MSM, MPM, augmented MSM, raw MIDI, expressive MIDI):
+
+- **byte-identical to the baseline `979c391` build**, and
+- **byte-identical to my own pre-fix dump** — so the fix moved nothing at all, and the item as
+  a whole is still bit-exact against the pre-item tree.
+
+### 4. Verify + coverage — unchanged, so the ruling basis is untouched
+
+`npm run verify` **exit 0**, independently: `tsc`, `tsc -p tsconfig.tests.json`,
+**59 files / 2272 tests**.
+
+| | value | vs pre-fix |
+|---|---|---|
+| functions | **955/1034 = 92.3598 %** | identical |
+| uncovered scoped statements | **2138** | identical |
+| tests | **2272** | identical |
+| converter functions | 81/134 (53 uncovered) | identical |
+
+The accounting stands **verbatim**, not just numerically: the uncovered-function *name set* is
+identical to the pre-fix set (the 26 baseline + the 27 arrows), and the per-element dispatch
+comparison against the baseline `switch` still gives **21 COVERED / 27 UNCOVERED, zero
+disagreements** over the 48 own-arrow elements. The fix declares no function.
+**The conductor's 7a rebase to ≥ 92.0 on a 92.3598 % basis remains factually grounded.**
+
+### 5. Standard gates
+
+- **Lint zero-delta, independently measured on both trees**: `eslint src tests` gives
+  **1083 errors / 2 warnings** at baseline `979c391` **and** post-fix, with the rewritten file
+  itself flat at **552**. Every per-rule count asserted in `lint-debt.md`'s T15 section
+  reproduces exactly (`no-non-null-assertion` 917, `no-empty-function` 54, `no-unused-vars`
+  54, `unified-signatures` 41, `no-explicit-any` 12, `no-require-imports` 2,
+  `no-unsafe-function-type` 2, `no-extraneous-class` 1, `no-param-reassign` 2 warnings), so
+  the section needed no fix-round edit and got none.
+- **Zero suppressions** repo-wide (`eslint-disable`, `@ts-ignore`, `@ts-expect-error`,
+  `@ts-nocheck`, `istanbul ignore`, `v8 ignore` all 0 across `src/` and `tests/`).
+- `prettier --check` clean on the touched file.
+- **Manifest = 3 paths**, no untracked: `M src/mei/Mei2MsmMpmConverter.ts`,
+  `M refactor/lint-debt.md`, `M refactor/log.md`. `src/` diff vs `979c391` is the converter
+  alone (+369/−342).
+- `tests/`, `tests/integration/fixtures/**`, `vitest.config.ts`, both tsconfigs,
+  `eslint.config.js`, `package.json`, `package-lock.json` and `ARCHITECTURE.md`: **all
+  untouched**. `log.md` append-only (0 deleted lines).
+- Tooling claim spot-checked: `t15work/census.mjs` now unwraps the wrapper (118 entries on the
+  fixed source) **and exits 2 on a table it cannot find** — verified by pointing it at a copy
+  with `ELEMENT_HANDLERS` renamed. Mine exits 4 on the same poison. Neither can silently gate
+  nothing any more.
+
+### 6. Note for T21
+
+The one durable lesson: **token-equality gates prove moves, never lookups.** The census was
+green through all nine sub-rounds while the dispatch was semantically wrong, because it
+compared two spellings of the fallback branch. Any future item that replaces control flow with
+a data structure needs a *behavioural* probe of the miss path alongside the census — and the
+probe must not be written on a plain object if the thing under test is prototype behaviour.
+
+**Verdict: PASS T15.**

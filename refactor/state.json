@@ -8,7 +8,8 @@
   "counters": { "completed": 20, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
-    "functionsFloorPct": 94.0,
+    "functionsFloorPct": 92.0,
+    "functionsFloorNote": "Rebased 2026-08-09, basis 92.3598 post-T15 dispatch restructure (+51 minted functions, accounting verifier-confirmed)",
     "phase2Start": {
       "coveredStatements": 13001,
       "totalStatements": 15294,

@@ -29,7 +29,11 @@ through files in `refactor/` + git history — never through agent memory.
 7. **Coverage invariant, v3** (2026-08-08; supersedes the ratio floor — rationale in
    [T3] verifier entry pt. 4 + [T3] correction). Ratio floors punish honest
    deletions and honest code-shrinking rewrites, so the phase-end audit checks:
-   a. **Functions ≥ 94.0%** (bit-stable, format-insensitive anchor).
+   a. **Functions ≥ 92.0%** (bit-stable, format-insensitive anchor; rebased
+      2026-08-09 after T15's dispatch restructure minted +51 functions — the metric
+      changed unit, not the coverage; verifier-confirmed per-function accounting in
+      [T15] entries. Function-minting restructures may rebase 7a ONLY with such an
+      accounting).
    b. **Uncovered scoped statements must not grow** beyond the phase-start count
       + 25 budget without per-hunk journaled justification (catches new
       unexercised code and lost test power; immune to deletions and shrinkage).

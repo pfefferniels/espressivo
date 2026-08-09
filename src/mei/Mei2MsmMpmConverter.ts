@@ -43,6 +43,33 @@ import { Comment } from '../mpm/elements/metadata/Comment.js';
 import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
 
 /**
+ * What the walker does with an element once its handler has run.
+ *
+ * This is the traversal policy that used to be spelled `continue` / `break` inside the
+ * dispatch switch, made explicit: `'done'` means the element is finished (either it was
+ * ignored or its handler took over the descent itself), `'descend'` means the walker
+ * recurses into its children. The set of `'descend'` elements is exactly the set whose
+ * children reach the converter through the generic path, so moving an element between the
+ * two silently changes what gets converted.
+ */
+type Traversal = 'done' | 'descend';
+
+/**
+ * One entry of {@link Mei2MsmMpmConverter.ELEMENT_HANDLERS}.
+ *
+ * Handlers are free functions rather than methods so the table can be a single static
+ * value; they receive the converter explicitly because the conversion state *is* the
+ * converter (see the class comment on the cursor fields).
+ */
+type ElementHandler = (c: Mei2MsmMpmConverter, e: Element) => Traversal;
+
+/** element without effect on the sounding result: skipped whole, not descended into */
+const IGNORE: ElementHandler = () => 'done';
+
+/** structural wrapper with no meaning of its own: nothing to do but walk its children */
+const DESCEND: ElementHandler = () => 'descend';
+
+/**
  * Converts MEI into MSM (the score, as written) plus MPM (the performance instructions
  * that make it expressive). This is where essentially all the musical knowledge in the
  * port lives; {@link Mei} only owns the tree and {@link Msm}/{@link Mpm} only own the
@@ -67,11 +94,11 @@ import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
  * 6. postprocess the MPMs, restore `ppq` and the MEI document, clean the MSMs, and name
  *    the outputs after the source file.
  *
- * Step 5 is the recursive heart: {@link convertElement} switches on every MEI element name
- * and either handles it, descends into it, or skips it. Everything else in this class is a
- * handler for one of those cases (`processNote`, `processMeasure`, …), a builder
- * (`makeMovement`, `makePart`, …), or a shared computation (`getMidiTime`,
- * `computeDuration`, `computePitch`, …).
+ * Step 5 is the recursive heart: {@link convertElement} looks every MEI element name up in
+ * {@link ELEMENT_HANDLERS} and either handles it, descends into it, or skips it. Everything
+ * else in this class is a handler for one of those elements (`processNote`,
+ * `processMeasure`, …), a builder (`makeMovement`, `makePart`, …), or a shared computation
+ * (`getMidiTime`, `computeDuration`, `computePitch`, …).
  *
  * ### Working state, and why it is a field
  *
@@ -79,9 +106,12 @@ import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
  * chord the walk is currently inside, plus the MSM movement and MPM performance being
  * filled. {@link reset} clears them per movement. Java keeps the same state on a `Helper`
  * instance; this port hoisted it onto the converter, which is why the port's `Helper` held
- * no state at all — and is why T14 could dissolve it into plain modules. Untangling this
- * cursor into explicit context objects is T15's job — the shape is deliberate for now, so
- * that the diff against `Mei2MsmMpmConverter.java` stays readable.
+ * no state at all — and is why T14 could dissolve it into plain modules. **The cursor stays
+ * one object on purpose**: ARCHITECTURE.md §8.5 rules that splitting it into context objects
+ * is out of scope, because `reset()`'s semantics and the drain points of the deferred lists
+ * below are subtle and the fixture suite cannot prove a change in a field's lifetime. This is
+ * also why the handlers in {@link ELEMENT_HANDLERS} take the converter itself: the conversion
+ * state *is* the converter.
  *
  * The deferred lists (`accid`, `endids`, `tstamp2s`, `lyrics`, `arpeggiosToSort`) exist
  * because MEI lets an element refer forward: an `accid` applies to notes that come later
@@ -95,9 +125,9 @@ import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
  * All timing, duration and pitch arithmetic is compared byte-for-byte against
  * Java-generated MSM/MPM/MIDI references. Expression order, `parseFloat`/`parseInt`
  * choices and rounding are therefore frozen, as is the order in which
- * {@link addUUID} is called. The element dispatch in {@link convertElement} is
- * equally frozen: its `continue`/`break` pattern encodes which elements are descended
- * into, and reordering or merging cases changes what gets visited.
+ * {@link addUUID} is called. The element dispatch is equally frozen: the {@link Traversal}
+ * each {@link ELEMENT_HANDLERS} entry returns encodes which elements are descended into, and
+ * moving an element between the traversal groups changes what gets visited.
  *
  * Port of `meico.mei.Mei2MsmMpmConverter`.
  * @author Axel Berndt
@@ -159,21 +189,16 @@ export class Mei2MsmMpmConverter {
     this.cleanup = cleanup ?? true;
   }
 
-  /** converts the provided MEI data into MSM and MPM format and returns a tuplet of lists */
-  convert(mei: Mei): KeyValue<Msm[], Mpm[]>;
-  /** recursively traverses the mei tree (depth first), converting as it goes */
-  convert(root: Element): void;
   /**
-   * Java names both of these `convert`; the two do very different things, which is why the
-   * return type is a union here rather than `any`. The `Element` form is the recursive
-   * walker and is only meaningfully called from inside the conversion.
+   * Converts the provided MEI data into MSM and MPM format and returns a tuplet of lists.
+   *
+   * Java overloads this name: `convert(Mei)` is the conversion, `convert(Element)` is the
+   * recursive walker. The walker is {@link convertElement} here and is private, because no
+   * caller outside the conversion ever meaningfully drove it — which leaves this method with
+   * one signature and no `instanceof` dispatch.
    */
-  convert(meiOrRoot: Mei | Element): KeyValue<Msm[], Mpm[]> | void {
-    if (meiOrRoot instanceof Mei) {
-      return this.convertMei(meiOrRoot);
-    } else {
-      return this.convertElement(meiOrRoot);
-    }
+  convert(mei: Mei): KeyValue<Msm[], Mpm[]> {
+    return this.convertMei(mei);
   }
 
   /** the whole conversion, step by step; see the class comment for the outline */
@@ -259,40 +284,329 @@ export class Mei2MsmMpmConverter {
   }
 
   /**
-   * The element dispatch: walks `root`'s children and, for each, decides what happens.
+   * The element dispatch: MEI element name → what {@link convertElement} does with it.
    *
-   * **Read the `continue` / `break` as the real content of this method.** Every case ends
-   * in one of three ways, and the difference is the whole traversal policy:
-   * - `continue` — this element is finished. Either it was ignored (`clef`, `barline`,
-   *   `annot`: no effect on the sounding result) or its handler took over the descent
-   *   itself (`processMeasure`, `processLayer`, `processNote`, …). Nothing below it is
-   *   visited by *this* loop;
-   * - `break` — fall out of the switch to the `convertElement(e)` at the bottom, i.e.
-   *   **descend**. Used for structural wrappers with no meaning of their own (`score`,
-   *   `staffGrp`, `beam`, `parts`) and for handlers that annotate an element but still want
-   *   its children walked (`processKeySig`, `processStaffDef`, `processOctave`);
-   * - `default: continue` — unknown elements are skipped whole, not descended into.
+   * **The {@link Traversal} each handler returns is the real content of this table**, and it
+   * splits the 118 known elements four ways:
+   * - {@link IGNORE} (53) — no effect on the sounding result: `clef`, `barline`, `annot`, …;
+   * - {@link DESCEND} (17) — structural wrappers with no meaning of their own, whose children
+   *   are the music: `score`, `staffGrp`, `beam`, `parts`, …;
+   * - handler then `'done'` (36) — the handler took over the descent itself, so nothing below
+   *   the element is visited by *this* loop: `processMeasure`, `processLayer`, `processNote`, …;
+   * - handler then `'descend'` (10) — the handler annotates the element but still wants its
+   *   children walked: `processKeySig`, `processScoreDef`, `processOctave`, …. (Not
+   *   `processStaffDef`, which the pre-T15 comment cited here: `staffDef` is `'done'`,
+   *   because it drives its own descent.)
    *
-   * So the set of `break` cases is exactly the set of elements whose children reach the
-   * converter through the generic path. Moving a case between the two groups silently
-   * changes what gets converted, which is why this switch is frozen; restructuring it into
-   * a handler table is T15's work.
+   * **Absence from this table is meaningful**: an unknown element is skipped whole, not
+   * descended into. That is what the cascade's `default: continue` said.
    *
-   * A few cases carry extra logic worth noting: `chord` skips grace chords entirely
-   * (`grace` attribute present), `tuplet` descends only when {@link processTuplet} reports
-   * it could not handle the tuplet itself, and `bTrem`/`fTrem` are routed to
-   * {@link processChord} because MEI models them as chord-like containers.
+   * The set of `'descend'` elements is exactly the set whose children reach the converter
+   * through the generic path, so moving an element between the groups silently changes what
+   * gets converted. This table is frozen against the Java reference in that sense; T15
+   * converted it from a `switch` whose `continue`/`break` carried the same meaning, under a
+   * mechanical census that required every entry to keep its calls, its arguments and its
+   * terminator.
    *
-   * The editorial-markup elements split along the same line: `add`, `corr`, `expan`,
-   * `orig`, `reg`, `sic`, `subst`, `supplied` and `unclear` are descended into (their
-   * content is music), while `abbr`, `damage` and `gap` are skipped.
+   * Two entries carry a condition rather than a fixed traversal: `chord` skips grace chords
+   * entirely (`grace` attribute present), and `tuplet` descends only when
+   * {@link processTuplet} reports it could not handle the tuplet itself. `bTrem`/`fTrem` are
+   * routed to {@link processChord} because MEI models them as chord-like containers.
    *
-   * `trill`, `mordent` and `turn` are deliberately in the ignore list: meico does not read
-   * ornaments from MEI (Java carries a TODO saying so). MPM ornamentation reaches the
-   * output through `arpeg` and through MPM styles, not through these.
+   * The editorial-markup elements split along the same line: `add`, `corr`, `expan`, `orig`,
+   * `reg`, `sic`, `subst`, `supplied` and `unclear` are descended into (their content is
+   * music), while `abbr`, `damage` and `gap` are skipped.
    *
-   * {@link checkEndid} runs before the switch for *every* element, because any element may
-   * be the one a previously parked `endid` was waiting for.
+   * `trill`, `mordent` and `turn` are deliberately `IGNORE`: meico does not read ornaments
+   * from MEI (Java carries a TODO saying so). MPM ornamentation reaches the output through
+   * `arpeg` and through MPM styles, not through these.
+   *
+   * **The null prototype is load-bearing, not a style choice.** On a plain object literal the
+   * lookup below inherits from `Object.prototype`, so an element named `valueOf`,
+   * `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString` or
+   * `__proto__` would resolve to a *defined* member, fail the `undefined` test and be invoked
+   * — throwing, where `default: continue` skipped it. `getLocalName()` strips namespaces, so
+   * that is reachable from foreign-namespace or malformed content. `Object.create(null)` makes
+   * the lookup miss for every name that is not one of the 118 own keys, which is what the
+   * cascade's `default:` meant. The `satisfies` is load-bearing too: without it `Object.assign`
+   * drops the contextual typing and all 96 arrow parameters become implicit `any`.
+   */
+  private static readonly ELEMENT_HANDLERS: Readonly<Record<string, ElementHandler | undefined>> =
+    Object.assign(Object.create(null) as Record<string, ElementHandler | undefined>, {
+      // T15-TABLE-START
+      abbr: IGNORE,
+      accid: (c, e) => {
+        c.processAccid(e);
+        return 'done';
+      },
+      add: DESCEND,
+      anchorText: IGNORE,
+      annot: IGNORE,
+      app: (c, e) => {
+        c.processApp(e);
+        return 'done';
+      },
+      arpeg: (c, e) => {
+        c.processArpeg(e);
+        return 'done';
+      },
+      artic: (c, e) => {
+        c.processArtic(e);
+        return 'done';
+      },
+      barline: IGNORE,
+      beam: DESCEND,
+      beamSpan: IGNORE,
+      beatRpt: (c, e) => {
+        c.processBeatRpt(e);
+        return 'done';
+      },
+      bend: IGNORE,
+      breath: (c, e) => {
+        c.processBreath(e);
+        return 'done';
+      },
+      bTrem: (c, e) => {
+        c.processChord(e);
+        return 'done';
+      },
+      caesura: IGNORE,
+      choice: (c, e) => {
+        c.processChoice(e);
+        return 'done';
+      },
+      chord: (c, e) => {
+        if (e.getAttribute('grace') !== null) return 'done';
+        c.processChord(e);
+        return 'done';
+      },
+      chordTable: IGNORE,
+      clef: IGNORE,
+      clefGrp: IGNORE,
+      corr: DESCEND,
+      curve: IGNORE,
+      custos: IGNORE,
+      damage: IGNORE,
+      del: (c, e) => {
+        c.processDel(e);
+        return 'done';
+      },
+      dir: IGNORE,
+      div: IGNORE,
+      dot: (c, e) => {
+        c.processDot(e);
+        return 'done';
+      },
+      dynam: (c, e) => {
+        c.processDynam(e);
+        return 'done';
+      },
+      ending: (c, e) => {
+        c.processEnding(e);
+        return 'done';
+      },
+      expan: DESCEND,
+      expansion: IGNORE,
+      fermata: IGNORE,
+      fTrem: (c, e) => {
+        c.processChord(e);
+        return 'done';
+      },
+      gap: IGNORE,
+      gliss: IGNORE,
+      grpSym: IGNORE,
+      hairpin: (c, e) => {
+        c.processDynam(e);
+        return 'done';
+      },
+      halfmRpt: (c, e) => {
+        c.processHalfmRpt(e);
+        return 'descend';
+      },
+      handShift: IGNORE,
+      harm: IGNORE,
+      harpPedal: IGNORE,
+      incip: IGNORE,
+      ineume: IGNORE,
+      instrDef: IGNORE,
+      instrGrp: IGNORE,
+      keyAccid: IGNORE,
+      keySig: (c, e) => {
+        c.processKeySig(e);
+        return 'descend';
+      },
+      label: IGNORE,
+      layer: (c, e) => {
+        c.processLayer(e);
+        return 'done';
+      },
+      layerDef: (c, e) => {
+        c.processLayerDef(e);
+        return 'descend';
+      },
+      lb: IGNORE,
+      lem: IGNORE,
+      line: IGNORE,
+      lyrics: DESCEND,
+      mdiv: (c, e) => {
+        c.makeMovement(e);
+        return 'done';
+      },
+      measure: (c, e) => {
+        c.processMeasure(e);
+        return 'done';
+      },
+      mensur: IGNORE,
+      meterSig: (c, e) => {
+        c.processMeterSig(e);
+        return 'descend';
+      },
+      meterSigGrp: DESCEND,
+      midi: IGNORE,
+      mordent: IGNORE,
+      mRest: (c, e) => {
+        c.processMeasureRest(e);
+        return 'done';
+      },
+      mRpt: (c, e) => {
+        c.processMRpt(e);
+        return 'descend';
+      },
+      mRpt2: (c, e) => {
+        c.processMRpt2(e);
+        return 'descend';
+      },
+      mSpace: (c, e) => {
+        c.processMeasureRest(e);
+        return 'done';
+      },
+      multiRest: (c, e) => {
+        c.processMultiRest(e);
+        return 'done';
+      },
+      multiRpt: (c, e) => {
+        c.processMultiRpt(e);
+        return 'descend';
+      },
+      note: (c, e) => {
+        c.processNote(e);
+        return 'done';
+      },
+      octave: (c, e) => {
+        c.processOctave(e);
+        return 'descend';
+      },
+      oLayer: (c, e) => {
+        c.processLayer(e);
+        return 'done';
+      },
+      orig: DESCEND,
+      ossia: IGNORE,
+      oStaff: (c, e) => {
+        c.processStaff(e);
+        return 'done';
+      },
+      parts: DESCEND,
+      part: DESCEND,
+      pb: IGNORE,
+      pedal: (c, e) => {
+        c.processPedal(e);
+        return 'done';
+      },
+      pgFoot: IGNORE,
+      pgFoot2: IGNORE,
+      pgHead: IGNORE,
+      pgHead2: IGNORE,
+      phrase: (c, e) => {
+        c.processPhrase(e);
+        return 'done';
+      },
+      proport: IGNORE,
+      rdg: IGNORE,
+      reg: DESCEND,
+      reh: (c, e) => {
+        c.processReh(e);
+        return 'done';
+      },
+      rend: IGNORE,
+      rest: (c, e) => {
+        c.processRest(e);
+        return 'done';
+      },
+      restore: (c, e) => {
+        c.processRestore(e);
+        return 'descend';
+      },
+      sb: IGNORE,
+      scoreDef: (c, e) => {
+        c.processScoreDef(e);
+        return 'descend';
+      },
+      score: DESCEND,
+      section: (c, e) => {
+        c.processSection(e);
+        return 'done';
+      },
+      sic: DESCEND,
+      space: (c, e) => {
+        c.processSpace(e);
+        return 'done';
+      },
+      slur: (c, e) => {
+        c.processSlur(e);
+        return 'done';
+      },
+      stack: IGNORE,
+      staff: (c, e) => {
+        c.processStaff(e);
+        return 'done';
+      },
+      staffDef: (c, e) => {
+        c.processStaffDef(e);
+        return 'done';
+      },
+      staffGrp: DESCEND,
+      subst: DESCEND,
+      supplied: DESCEND,
+      syl: (c, e) => {
+        c.processSyl(e);
+        return 'done';
+      },
+      syllable: IGNORE,
+      symbol: IGNORE,
+      symbolTable: IGNORE,
+      tempo: (c, e) => {
+        c.processTempo(e);
+        return 'done';
+      },
+      tie: (c, e) => {
+        c.processTie(e);
+        return 'done';
+      },
+      timeline: IGNORE,
+      trill: IGNORE,
+      tuplet: (c, e) => {
+        if (c.processTuplet(e)) return 'done';
+        return 'descend';
+      },
+      tupletSpan: (c, e) => {
+        c.processTupletSpan(e);
+        return 'done';
+      },
+      turn: IGNORE,
+      unclear: DESCEND,
+      uneume: IGNORE,
+      verse: DESCEND,
+      // T15-TABLE-END
+    } satisfies Record<string, ElementHandler>);
+
+  /**
+   * The recursive heart: walks `root`'s children and hands each to its handler from
+   * {@link ELEMENT_HANDLERS}, recursing only where the handler asks to descend.
+   *
+   * {@link checkEndid} runs *before* the dispatch and for *every* element, including the
+   * ones with no handler at all, because any element may be the one a previously parked
+   * `endid` was waiting for.
    */
   private convertElement(root: Element): void {
     const es = root.getChildElements();
@@ -302,296 +616,9 @@ export class Mei2MsmMpmConverter {
 
       this.checkEndid(e);
 
-      switch (e.getLocalName()) {
-        case 'abbr':
-          continue;
-        case 'accid':
-          this.processAccid(e);
-          continue;
-        case 'add':
-          break;
-        case 'anchorText':
-          continue;
-        case 'annot':
-          continue;
-        case 'app':
-          this.processApp(e);
-          continue;
-        case 'arpeg':
-          this.processArpeg(e);
-          continue;
-        case 'artic':
-          this.processArtic(e);
-          continue;
-        case 'barline':
-          continue;
-        case 'beam':
-          break;
-        case 'beamSpan':
-          continue;
-        case 'beatRpt':
-          this.processBeatRpt(e);
-          continue;
-        case 'bend':
-          continue;
-        case 'breath':
-          this.processBreath(e);
-          continue;
-        case 'bTrem':
-          this.processChord(e);
-          continue;
-        case 'caesura':
-          continue;
-        case 'choice':
-          this.processChoice(e);
-          continue;
-        case 'chord':
-          if (e.getAttribute('grace') !== null) continue;
-          this.processChord(e);
-          continue;
-        case 'chordTable':
-          continue;
-        case 'clef':
-          continue;
-        case 'clefGrp':
-          continue;
-        case 'corr':
-          break;
-        case 'curve':
-          continue;
-        case 'custos':
-          continue;
-        case 'damage':
-          continue;
-        case 'del':
-          this.processDel(e);
-          continue;
-        case 'dir':
-          continue;
-        case 'div':
-          continue;
-        case 'dot':
-          this.processDot(e);
-          continue;
-        case 'dynam':
-          this.processDynam(e);
-          continue;
-        case 'ending':
-          this.processEnding(e);
-          continue;
-        case 'expan':
-          break;
-        case 'expansion':
-          continue;
-        case 'fermata':
-          continue;
-        case 'fTrem':
-          this.processChord(e);
-          continue;
-        case 'gap':
-          continue;
-        case 'gliss':
-          continue;
-        case 'grpSym':
-          continue;
-        case 'hairpin':
-          this.processDynam(e);
-          continue;
-        case 'halfmRpt':
-          this.processHalfmRpt(e);
-          break;
-        case 'handShift':
-          continue;
-        case 'harm':
-          continue;
-        case 'harpPedal':
-          continue;
-        case 'incip':
-          continue;
-        case 'ineume':
-          continue;
-        case 'instrDef':
-          continue;
-        case 'instrGrp':
-          continue;
-        case 'keyAccid':
-          continue;
-        case 'keySig':
-          this.processKeySig(e);
-          break;
-        case 'label':
-          continue;
-        case 'layer':
-          this.processLayer(e);
-          continue;
-        case 'layerDef':
-          this.processLayerDef(e);
-          break;
-        case 'lb':
-          continue;
-        case 'lem':
-          continue;
-        case 'line':
-          continue;
-        case 'lyrics':
-          break;
-        case 'mdiv':
-          this.makeMovement(e);
-          continue;
-        case 'measure':
-          this.processMeasure(e);
-          continue;
-        case 'mensur':
-          continue;
-        case 'meterSig':
-          this.processMeterSig(e);
-          break;
-        case 'meterSigGrp':
-          break;
-        case 'midi':
-          continue;
-        case 'mordent':
-          continue;
-        case 'mRest':
-          this.processMeasureRest(e);
-          continue;
-        case 'mRpt':
-          this.processMRpt(e);
-          break;
-        case 'mRpt2':
-          this.processMRpt2(e);
-          break;
-        case 'mSpace':
-          this.processMeasureRest(e);
-          continue;
-        case 'multiRest':
-          this.processMultiRest(e);
-          continue;
-        case 'multiRpt':
-          this.processMultiRpt(e);
-          break;
-        case 'note':
-          this.processNote(e);
-          continue;
-        case 'octave':
-          this.processOctave(e);
-          break;
-        case 'oLayer':
-          this.processLayer(e);
-          continue;
-        case 'orig':
-          break;
-        case 'ossia':
-          continue;
-        case 'oStaff':
-          this.processStaff(e);
-          continue;
-        case 'parts':
-          break;
-        case 'part':
-          break;
-        case 'pb':
-          continue;
-        case 'pedal':
-          this.processPedal(e);
-          continue;
-        case 'pgFoot':
-          continue;
-        case 'pgFoot2':
-          continue;
-        case 'pgHead':
-          continue;
-        case 'pgHead2':
-          continue;
-        case 'phrase':
-          this.processPhrase(e);
-          continue;
-        case 'proport':
-          continue;
-        case 'rdg':
-          continue;
-        case 'reg':
-          break;
-        case 'reh':
-          this.processReh(e);
-          continue;
-        case 'rend':
-          continue;
-        case 'rest':
-          this.processRest(e);
-          continue;
-        case 'restore':
-          this.processRestore(e);
-          break;
-        case 'sb':
-          continue;
-        case 'scoreDef':
-          this.processScoreDef(e);
-          break;
-        case 'score':
-          break;
-        case 'section':
-          this.processSection(e);
-          continue;
-        case 'sic':
-          break;
-        case 'space':
-          this.processSpace(e);
-          continue;
-        case 'slur':
-          this.processSlur(e);
-          continue;
-        case 'stack':
-          continue;
-        case 'staff':
-          this.processStaff(e);
-          continue;
-        case 'staffDef':
-          this.processStaffDef(e);
-          continue;
-        case 'staffGrp':
-          break;
-        case 'subst':
-          break;
-        case 'supplied':
-          break;
-        case 'syl':
-          this.processSyl(e);
-          continue;
-        case 'syllable':
-          continue;
-        case 'symbol':
-          continue;
-        case 'symbolTable':
-          continue;
-        case 'tempo':
-          this.processTempo(e);
-          continue;
-        case 'tie':
-          this.processTie(e);
-          continue;
-        case 'timeline':
-          continue;
-        case 'trill':
-          continue;
-        case 'tuplet':
-          if (this.processTuplet(e)) continue;
-          break;
-        case 'tupletSpan':
-          this.processTupletSpan(e);
-          continue;
-        case 'turn':
-          continue;
-        case 'unclear':
-          break;
-        case 'uneume':
-          continue;
-        case 'verse':
-          break;
-        default:
-          continue;
-      }
-      this.convertElement(e);
+      const handler = Mei2MsmMpmConverter.ELEMENT_HANDLERS[e.getLocalName()];
+      if (handler === undefined) continue;
+      if (handler(this, e) === 'descend') this.convertElement(e);
     }
 
     return;
