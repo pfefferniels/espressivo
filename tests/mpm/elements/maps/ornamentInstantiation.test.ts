@@ -290,6 +290,26 @@ describe('MPM v3 ornament instantiation', () => {
       expect(head.generated).toBeNull();
     });
 
+    /**
+     * The **D10 id-uniqueness ruling** (ornamentation/LOG.md, 2026-08-09), pinned at the level
+     * that decides it. Nothing in this suite used to constrain the heir when a leftover
+     * survives, so the renderer's original reading — leftover *and* heir both carrying the id —
+     * passed here and was only caught downstream, in W6's augmented document. The rule is an
+     * exclusive or: the id goes to the leftover when one survives, else to the heir, never to
+     * both, because two elements sharing an `xml:id` is not a valid document. Every generated
+     * note carries `ornament.anchor` instead, which is what makes that safe.
+     */
+    it('gives the id to the leftover alone, never also to the heir', () => {
+      const notes = render();
+      expect(notes.filter((note) => note.id === 'P')).toHaveLength(1);
+      // the heir is the second slot, `#P` — the first reference sourced from the principal —
+      // and it keeps the id it drew, reaching its principal through the anchor
+      const heir = notes[2];
+      expect(heir.source).toBe('P');
+      expect(heir.id).toMatch(/^meico_[0-9a-f-]{36}$/);
+      expect(notes.slice(1).map((note) => note.anchor)).toEqual(['P', 'P', 'P', 'P']);
+    });
+
     it('places the four ornament notes at 720, 960, 1200, 1440', () => {
       expect(render().map((note) => note.date)).toEqual([0, 720, 960, 1200, 1440]);
     });

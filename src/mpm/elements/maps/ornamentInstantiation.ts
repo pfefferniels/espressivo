@@ -603,8 +603,12 @@ function renderGroup(
   if (built.every((one) => one.chords.length === 0)) return;
 
   if (principal !== null) {
-    assignPrincipalId(principal, planned[0].ornament.principalPitch, built);
-    carve(principal, planned, geometry, owners);
+    // Carving decides who keeps the id, so it runs first (D10 id-uniqueness ruling, LOG.md
+    // 2026-08-09): a surviving head leftover *is* the principal and keeps its own id, and only
+    // when the principal is consumed whole does the id move to a generated note. Never both —
+    // two elements sharing an xml:id is not a valid document.
+    if (!carve(principal, planned, geometry, owners))
+      assignPrincipalId(principal, planned[0].ornament.principalPitch, built);
   }
 
   const owner = ownerOf(principal, owners, maps);
@@ -961,9 +965,15 @@ function createNote(
  * equal to the number of generated notes, in document order (PARITY.md §5: "keep ID-generation
  * call order stable").
  *
- * Note that a principal kept as a head leftover keeps its id on the leftover, and this then
- * re-uses it on a generated note as well. That is deliberate — the leftover *is* the principal
- * — and {@link carve} is what decides which of the two cases applies; see its note.
+ * **Called only when the principal was consumed whole.** An earlier draft ran this
+ * unconditionally, reasoning that a head leftover *is* the principal and may therefore share
+ * its id with the heir; the W6 verifier found the consequence — an augmented document carrying
+ * two elements with the same `xml:id`, which is not a valid document — and the conductor's
+ * **D10 id-uniqueness ruling** (LOG.md, 2026-08-09) settled it the other way: the id goes to
+ * the leftover when one survives, else to the heir, never to both. D10's original wording was
+ * exclusive and was never amended; XML id uniqueness wins; and `ornament.anchor` is on every
+ * generated note precisely so that no consumer needs the id there to find its way home.
+ * {@link carve} reports which case applies and {@link renderGroup} is the xor.
  */
 function assignPrincipalId(
   principal: Element,
@@ -1006,13 +1016,18 @@ function assignPrincipalId(
  * frame that *is* rendered — `frameLength − frame.offset` milliseconds measured back from the
  * principal's end — because that is the only quantity here that exists before the tempo pass:
  * how much of the principal precedes it depends on a millisecond duration nobody knows yet.
+ *
+ * @returns whether the principal survived as a head leftover. That is also the answer to "does
+ *   the principal's `xml:id` still exist in the document", which is why the caller runs this
+ *   *before* {@link assignPrincipalId} and skips it when this returns true — the D10
+ *   id-uniqueness ruling (LOG.md, 2026-08-09).
  */
 function carve(
   principal: Element,
   planned: readonly PlannedOrnament[],
   geometry: PrincipalGeometry,
   owners: ReadonlyMap<Element, GenericMap>,
-): void {
+): boolean {
   const leavesHead = planned.some(
     (plan) => plan.ornament.frame.domain === 'ticks' && plan.ornament.frame.alignment === 'at end',
   );
@@ -1027,7 +1042,7 @@ function carve(
       setNumber(principal, 'duration.perf', duration);
       setNumber(principal, 'date.end.perf', geometry.date + geometry.perfDelta + duration);
     }
-    return;
+    return true;
   }
 
   for (const plan of planned) {
@@ -1043,6 +1058,7 @@ function carve(
 
   const owner = owners.get(principal);
   if (owner !== undefined) owner.removeElement(principal);
+  return false;
 }
 
 // ---------------------------------------------------------------------------------------
