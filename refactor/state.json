@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "e31877b",
+  "lastGreenCommit": "75e5ff1",
   "phase": 3,
-  "currentItem": "T18",
-  "counters": { "completed": 16, "blocked": 0, "reverted": 0 },
+  "currentItem": "T19a",
+  "counters": { "completed": 17, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -122,7 +122,7 @@
     {
       "id": "T19a",
       "phase": 3,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Units brands + RenderOptions (ARCHITECTURE.md §7, §2)",
       "details": "Per ARCHITECTURE.md: src/units.ts (type-only brands: Ticks, Milliseconds, Normalized, Midi7Bit, Bpm — RULE U1-U3, zero emitted JS, proven by zero-line emitted-JS diff) and src/mpm/RenderOptions.ts (seed + sampling knobs incl. movementSampleMaxStep relocation from the mutable static, per the immutability policy). Runs after T18, before T13 (architect's order).",
       "order": "T14 -> T18 -> T19a -> T13 -> T16 -> T15 -> T17 -> T19 -> T20 -> T21 (architect §8, conductor-adopted)"
@@ -165,7 +165,7 @@
     {
       "id": "T18",
       "phase": 3,
-      "status": "in_progress",
+      "status": "done",
       "title": "Eliminate circular imports + enforce",
       "details": "Fix the Mpm/GenericStyle deep-import hazard and all other cycles (map with madge or eslint import/no-cycle); add lint enforcement so they cannot return."
     },
