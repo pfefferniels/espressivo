@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { OrnamentDef } from '../../../../../src/mpm/elements/styles/defs/OrnamentDef.js';
 import { DynamicsGradient } from '../../../../../src/mpm/elements/styles/defs/DynamicsGradient.js';
 import {
@@ -911,5 +911,525 @@ describe('setId(null) on parsed transformers', () => {
     expect(xml.getAttribute('id', XML_NS)!.getValue()).toBe('dg-2');
     expect(dg.toXml()).toContain('xml:id="dg-2"');
     expect(dg.toXml()).not.toContain('dg-1');
+  });
+});
+
+// ==========================================================================
+//  MPM v3 — TemporalSpread (DESIGN.md D2, D3, D12) and OrnamentDef.alignment
+//
+//  Everything below is ADDITIVE. The suites above pin the v2 behaviour and none
+//  of them was weakened: v2 documents must keep parsing and serializing exactly
+//  as they did before v3 existed, which is what the first suite here nails down
+//  byte for byte.
+// ==========================================================================
+
+const MPM_NS = 'http://www.cemfi.de/mpm/ns/1.0';
+
+/** parse an XML string into an element, the way a real document reaches the parser */
+function parseElement(xml: string): Element {
+  return new Builder().build(xml).getRootElement();
+}
+
+/** parse a `<temporalSpread>` given as source text */
+function spread(attributes: string): TemporalSpread {
+  return new TemporalSpread(parseElement(`<temporalSpread xmlns="${MPM_NS}" ${attributes}/>`));
+}
+
+/** silence and capture console.error for one call */
+function captureErrors(run: () => void): string[] {
+  const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    run();
+    return spy.mock.calls.map((args) => String(args[0]));
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+describe('TemporalSpread — v2 byte stability (DESIGN.md D6/D12)', () => {
+  // The contract: a temporalSpread showing no v3 marker parses and re-serializes
+  // EXACTLY as it did before this wave. The expected strings were captured from the
+  // committed behaviour (branch ornamentation-v3 @ cd140e1, before W3) and are asserted
+  // as whole strings rather than attribute by attribute, so that attribute ORDER — which
+  // is byte-visible in the Java fixture comparison — is pinned too.
+  const CASES: readonly (readonly [string, string])[] = [
+    // a bare spread stays bare: every value is at its v2 default
+    ['', `<temporalSpread xmlns="${MPM_NS}" />`],
+    // the "arpeggio" def of the Java reference fixture; note "-22.0" -> "-22", the
+    // port-wide String(x) vs Java Double.toString divergence, unchanged here
+    [
+      'frame.start="-22.0" frameLength="44.0"',
+      `<temporalSpread xmlns="${MPM_NS}" frame.start="-22" frameLength="44" />`,
+    ],
+    // frame.start="0.0" is dropped on write (only non-default values are written)
+    [
+      'frame.start="0.0" frameLength="300.0" time.unit="milliseconds"',
+      `<temporalSpread xmlns="${MPM_NS}" frameLength="300" time.unit="milliseconds" />`,
+    ],
+    // the "spreadMs" def of the Java reference fixture, with every attribute set
+    [
+      'frame.start="-30.0" frameLength="60.0" time.unit="milliseconds" intensity="2.0" noteoff.shift="true" xml:id="ts-1"',
+      `<temporalSpread xmlns="${MPM_NS}" frame.start="-30" frameLength="60" time.unit="milliseconds" intensity="2" noteoff.shift="true" xml:id="ts-1" />`,
+    ],
+    // a negative frameLength is clamped to 0 on read and 0 is not written
+    [
+      'frameLength="-10.0" noteoff.shift="monophonic"',
+      `<temporalSpread xmlns="${MPM_NS}" noteoff.shift="monophonic" />`,
+    ],
+    // every explicitly spelled default disappears on the round trip
+    [
+      'frame.start="5" frameLength="0.0" time.unit="ticks" intensity="1.0" noteoff.shift="false"',
+      `<temporalSpread xmlns="${MPM_NS}" frame.start="5" />`,
+    ],
+    [
+      'frame.start="-22.0" frameLength="44.0" intensity="0.5" noteoff.shift="monophonic" xml:id="x"',
+      `<temporalSpread xmlns="${MPM_NS}" frame.start="-22" frameLength="44" intensity="0.5" noteoff.shift="monophonic" xml:id="x" />`,
+    ],
+  ];
+
+  for (const [attributes, expected] of CASES) {
+    it(`should re-serialize <temporalSpread ${attributes}/> byte-identically`, () => {
+      expect(spread(attributes).generateXML().toXML()).toBe(expected);
+    });
+  }
+
+  it('should report every v2 spread as v2-sourced', () => {
+    for (const [attributes] of CASES) expect(spread(attributes).getSourceFormat()).toBe('v2');
+  });
+
+  it('should leave the v3 accessors null on a v2 spread', () => {
+    // the documented invariant: the two readings never both hold state
+    const ts = spread('frame.start="-22.0" frameLength="44.0"');
+    expect(ts.getFrameOffset()).toBeNull();
+    expect(ts.getFrameLengthValue()).toBeNull();
+  });
+
+  it('should not treat an alignment attribute as a v3 marker', () => {
+    // alignment is v3-only but is not a frame value and is never serialized here, so a
+    // spread carrying nothing else stays v2 and keeps its v2 bytes (D2)
+    const ts = spread('frame.start="-22.0" frameLength="44.0" alignment="at end"');
+    expect(ts.getSourceFormat()).toBe('v2');
+    expect(ts.generateXML().toXML()).toBe(
+      `<temporalSpread xmlns="${MPM_NS}" frame.start="-22" frameLength="44" />`,
+    );
+  });
+});
+
+describe('TemporalSpread — v3 parsing (DESIGN.md D3)', () => {
+  it('should read per-value unit suffixes', () => {
+    // the spec's own temporalSpread exemplum (temporalSpread.xml:45-48): the two frame
+    // values are in DIFFERENT domains, which is exactly what v3 added
+    const ts = spread('frame.offset="-100.0ms" frameLength="200.0ticks" intensity="1.4"');
+
+    expect(ts.getSourceFormat()).toBe('v3');
+    expect(ts.getFrameOffset()).toEqual({ value: -100.0, domain: 'milliseconds' });
+    expect(ts.getFrameLengthValue()).toEqual({ value: 200.0, domain: 'ticks' });
+    expect(ts.intensity).toBe(1.4);
+  });
+
+  it('should read a relative frameLength', () => {
+    // ornamentDef.xml:57-59, the "upper turn": frame.offset="0" frameLength="100.0%"
+    const ts = spread('frame.offset="0" frameLength="100.0%"');
+    expect(ts.getFrameOffset()).toEqual({ value: 0, domain: 'ticks' });
+    expect(ts.getFrameLengthValue()).toEqual({ value: 100.0, domain: 'relative' });
+  });
+
+  it('should default a suffix-less value to ticks', () => {
+    // the real corpus writes frame.offset without a suffix (github-v3-design.md §5);
+    // frame.offset is a v3 marker in its own right, so this IS a v3 element
+    const ts = spread('frame.offset="0.0" frameLength="300.0"');
+    expect(ts.getSourceFormat()).toBe('v3');
+    expect(ts.getFrameOffset()).toEqual({ value: 0, domain: 'ticks' });
+    expect(ts.getFrameLengthValue()).toEqual({ value: 300, domain: 'ticks' });
+  });
+
+  it('should honour a legacy time.unit for suffix-less values', () => {
+    // "Reger - Moment Musical op 13 no 4.mpm" writes exactly this, and it is what the
+    // attribute descriptions still point at although v3 deleted the attribute
+    const ts = spread('frame.offset="0.0" frameLength="300.0" time.unit="milliseconds"');
+    expect(ts.getFrameOffset()).toEqual({ value: 0, domain: 'milliseconds' });
+    expect(ts.getFrameLengthValue()).toEqual({ value: 300, domain: 'milliseconds' });
+  });
+
+  it('should honour time.unit="relative"', () => {
+    // wider than the v2 reader, which has no relative domain at all — reachable only
+    // from the v3 path, so it cannot move a v2 byte
+    const ts = spread('frame.offset="50.0" time.unit="relative"');
+    expect(ts.getFrameOffset()).toEqual({ value: 50, domain: 'relative' });
+  });
+
+  it('should fall back to ticks for an unknown time.unit', () => {
+    const ts = spread('frame.offset="7.0" time.unit="furlongs"');
+    expect(ts.getFrameOffset()).toEqual({ value: 7, domain: 'ticks' });
+  });
+
+  it('should let a per-value suffix win over time.unit', () => {
+    const ts = spread('frame.offset="12ms" frameLength="80%" time.unit="ticks"');
+    expect(ts.getFrameOffset()).toEqual({ value: 12, domain: 'milliseconds' });
+    expect(ts.getFrameLengthValue()).toEqual({ value: 80, domain: 'relative' });
+  });
+
+  it('should default frameLength to 100% on a bare v3 spread', () => {
+    // temporalSpread.xml:38 — the v3 default is "the whole principal note", where the
+    // v2 default (0.0) is "no frame at all"
+    const ts = spread('frame.offset="0ticks"');
+    expect(ts.getFrameLengthValue()).toEqual({ value: 100, domain: 'relative' });
+  });
+
+  it('should default frame.offset to 0.0ticks when only frameLength is v3', () => {
+    // att.time.frame.xml:16
+    const ts = spread('frameLength="50%"');
+    expect(ts.getSourceFormat()).toBe('v3');
+    expect(ts.getFrameOffset()).toEqual({ value: 0, domain: 'ticks' });
+  });
+
+  it('should read frame.start as an alias of frame.offset once anything marks the element v3', () => {
+    // RULING (DESIGN.md D3 + the wave brief): ANY v3 marker makes the whole instance v3.
+    // "frame.start" is v2's spelling, but a suffixed frameLength is a v3 marker, so the
+    // element is v3 and its frame.start value is read through D3's alias.
+    const ts = spread('frame.start="-22.0" frameLength="44%"');
+    expect(ts.getSourceFormat()).toBe('v3');
+    expect(ts.getFrameOffset()).toEqual({ value: -22, domain: 'ticks' });
+    expect(ts.getFrameLengthValue()).toEqual({ value: 44, domain: 'relative' });
+    // and the v2 numeric fields stay at their initialisers — they are not authoritative
+    expect(ts.frameStart).toBe(0.0);
+    expect(ts.getFrameLength()).toBe(0.0);
+    expect(ts.frameDomain).toBe(FrameDomain.Ticks);
+  });
+
+  it('should prefer frame.offset over frame.start when both are present', () => {
+    const ts = spread('frame.offset="10ticks" frame.start="-99.0"');
+    expect(ts.getFrameOffset()).toEqual({ value: 10, domain: 'ticks' });
+  });
+
+  it('should clamp a negative v3 frameLength while keeping its domain', () => {
+    const messages = captureErrors(() => {
+      const ts = spread('frame.offset="0ticks" frameLength="-50%"');
+      expect(ts.getFrameLengthValue()).toEqual({ value: 0, domain: 'relative' });
+    });
+    expect(messages.join('\n')).toContain('negative frameLength');
+  });
+
+  it('should treat an unparseable v3 value as absent rather than destroying the def', () => {
+    // DESIGN.md D3, diverging from the reference implementation, whose
+    // NumberFormatException on "80%" drops the whole ornamentDef and with it every
+    // ornament referring to it (lars-v3-implementation.md §3.2 item 2)
+    let ts: TemporalSpread | null = null;
+    const messages = captureErrors(() => {
+      ts = spread('frame.offset="abcticks" frameLength="60%" intensity="2.0"');
+    });
+    expect(ts!.getFrameOffset()).toEqual({ value: 0, domain: 'ticks' }); // the default
+    expect(ts!.getFrameLengthValue()).toEqual({ value: 60, domain: 'relative' }); // unharmed
+    expect(ts!.intensity).toBe(2.0); // and the rest of the element survives
+    expect(messages.join('\n')).toContain('no MPM v3 temporal value');
+  });
+
+  it('should treat a malformed value marked v3 by its SUFFIX ALONE as absent', () => {
+    // The companion of the test above, and the one that pins the suffix half of
+    // detectSourceFormat. There the attribute NAME (frame.offset) was already a v3 marker,
+    // so the element would have been v3 with or without the suffix probe. Here the only
+    // marker in the whole element is the trailing "%", which is exactly why the probe is a
+    // FORMAT test and not a validity test: without it "abc%" would slide back onto the v2
+    // path, where parseFloat("abc%") is NaN, setFrameLength's Math.max(0, NaN) is NaN, and
+    // generateXML would write a silent frameLength="NaN" with no diagnostic at all.
+    let ts: TemporalSpread | null = null;
+    const messages = captureErrors(() => {
+      ts = spread('frameLength="abc%"');
+    });
+    expect(ts!.getSourceFormat()).toBe('v3');
+    expect(ts!.getFrameLengthValue()).toEqual({ value: 100, domain: 'relative' }); // the default
+    expect(ts!.getFrameOffset()).toEqual({ value: 0, domain: 'ticks' });
+    expect(messages.join('\n')).toContain('no MPM v3 temporal value');
+    // and no NaN leaked into the v2 reading or into the output
+    expect(ts!.getFrameLength()).toBe(0.0);
+    expect(ts!.generateXML().toXML()).toBe(
+      `<temporalSpread xmlns="${MPM_NS}" frame.offset="0ticks" frameLength="100%" />`,
+    );
+  });
+
+  it('should treat a malformed frame.start marked v3 by its suffix as absent', () => {
+    // the twin on the offset side: "xx ticks" carries the suffix, so the element is v3 and
+    // the value is reported and dropped, rather than becoming frame.start="NaN"
+    let ts: TemporalSpread | null = null;
+    const messages = captureErrors(() => {
+      ts = spread('frame.start="xx ticks" frameLength="44.0"');
+    });
+    expect(ts!.getSourceFormat()).toBe('v3');
+    expect(ts!.getFrameOffset()).toEqual({ value: 0, domain: 'ticks' }); // the default
+    expect(ts!.getFrameLengthValue()).toEqual({ value: 44, domain: 'ticks' }); // suffix-less
+    expect(messages.join('\n')).toContain('no MPM v3 temporal value');
+    expect(ts!.frameStart).toBe(0.0);
+    expect(ts!.generateXML().toXML()).toBe(
+      `<temporalSpread xmlns="${MPM_NS}" frame.offset="0ticks" frameLength="44ticks" />`,
+    );
+  });
+
+  it('should treat an out-of-range v3 value as absent', () => {
+    // 309 legal digits are schema-valid and overflow to Infinity, which would serialize
+    // as the unreadable "Infinityticks"; TemporalValue hands that decision here (W1 F2)
+    const messages = captureErrors(() => {
+      const ts = spread(`frameLength="${'9'.repeat(309)}%"`);
+      expect(ts.getFrameLengthValue()).toEqual({ value: 100, domain: 'relative' });
+    });
+    expect(messages.join('\n')).toContain('out of range');
+  });
+
+  it('should keep reading intensity, noteoff.shift and xml:id on the v3 path', () => {
+    const ts = spread(
+      'frame.offset="0ticks" intensity="0.25" noteoff.shift="monophonic" xml:id="v3-1"',
+    );
+    expect(ts.intensity).toBe(0.25);
+    expect(ts.noteOffShift).toBe(NoteOffShift.Monophonic);
+    expect(ts.getId()).toBe('v3-1');
+  });
+
+  it('should read an alignment attribute without owning it', () => {
+    // D2: the reference implementation puts alignment on temporalSpread, the spec puts it
+    // on ornamentDef. It is read here and surfaced; OrnamentDef decides.
+    expect(spread('alignment="at end"').getParsedAlignment()).toBe('at end');
+    expect(spread('alignment="at start"').getParsedAlignment()).toBe('at start');
+    expect(spread('frame.offset="0ticks"').getParsedAlignment()).toBeNull();
+  });
+
+  it('should reject an alignment value outside the closed value list', () => {
+    const messages = captureErrors(() => {
+      expect(spread('alignment="at the end"').getParsedAlignment()).toBeNull();
+    });
+    expect(messages.join('\n')).toContain('no legal alignment');
+  });
+});
+
+describe('TemporalSpread — v3 serialization (DESIGN.md D12)', () => {
+  it('should write canonical v3 with unit suffixes and no time.unit', () => {
+    const ts = spread('frame.offset="-100.0ms" frameLength="200.0ticks"');
+    // formatTemporalValue writes String(x), so "-100.0ms" comes back as "-100ms" — the
+    // same port-wide number-formatting divergence the v2 path shows (pinned in W1)
+    expect(ts.generateXML().toXML()).toBe(
+      `<temporalSpread xmlns="${MPM_NS}" frame.offset="-100ms" frameLength="200ticks" />`,
+    );
+  });
+
+  it('should drop a legacy time.unit it consumed on read', () => {
+    const ts = spread('frame.offset="0.0" frameLength="300.0" time.unit="milliseconds"');
+    // v3 removed the attribute from every element; the domain now travels in the values
+    expect(ts.generateXML().toXML()).toBe(
+      `<temporalSpread xmlns="${MPM_NS}" frame.offset="0ms" frameLength="300ms" />`,
+    );
+  });
+
+  it('should re-emit a frame.start alias as frame.offset', () => {
+    // the mixed-spelling ruling, on the write side
+    const ts = spread('frame.start="-22.0" frameLength="44%"');
+    expect(ts.generateXML().toXML()).toBe(
+      `<temporalSpread xmlns="${MPM_NS}" frame.offset="-22ticks" frameLength="44%" />`,
+    );
+  });
+
+  it('should write both frame attributes even when they carry their defaults', () => {
+    // unlike the v2 writer, which omits a 0.0. In v3 the value carries the domain, so an
+    // omitted frameLength would read back as the 100% default instead of 0% — the exact
+    // round-trip bug the reference implementation has (lars §3.5 "two omission bugs")
+    const ts = spread('frame.offset="0ticks" frameLength="0%"');
+    expect(ts.generateXML().toXML()).toBe(
+      `<temporalSpread xmlns="${MPM_NS}" frame.offset="0ticks" frameLength="0%" />`,
+    );
+  });
+
+  it('should keep intensity, noteoff.shift and xml:id in their v2 positions', () => {
+    const ts = spread(
+      'frame.offset="360ticks" frameLength="50%" intensity="1.4" noteoff.shift="true" xml:id="ts-9"',
+    );
+    expect(ts.generateXML().toXML()).toBe(
+      `<temporalSpread xmlns="${MPM_NS}" frame.offset="360ticks" frameLength="50%" intensity="1.4" noteoff.shift="true" xml:id="ts-9" />`,
+    );
+  });
+
+  it('should never write alignment', () => {
+    // D2: alignment is serialized on ornamentDef only
+    const ts = spread('frame.offset="0ticks" alignment="at end"');
+    expect(ts.generateXML().getAttribute('alignment')).toBeNull();
+  });
+
+  it('should round-trip a canonical v3 element to a fixpoint', () => {
+    const source = `<temporalSpread xmlns="${MPM_NS}" frame.offset="-30.5ms" frameLength="80%" intensity="2" noteoff.shift="monophonic" />`;
+    const once = new TemporalSpread(parseElement(source)).generateXML().toXML();
+    const twice = new TemporalSpread(parseElement(once)).generateXML().toXML();
+    expect(twice).toBe(once);
+    // ... and it is already canonical, so the first pass changed nothing either
+    expect(once).toBe(source);
+  });
+});
+
+describe('TemporalSpread — the v3 API (DESIGN.md D12)', () => {
+  it('should turn a programmatic spread v3 by setting a frame offset', () => {
+    const ts = new TemporalSpread();
+    expect(ts.getSourceFormat()).toBe('v2');
+
+    ts.setFrameOffset({ value: 360, domain: 'ticks' });
+    expect(ts.getSourceFormat()).toBe('v3');
+    // the companion value takes its spec default rather than staying null
+    expect(ts.getFrameLengthValue()).toEqual({ value: 100, domain: 'relative' });
+    expect(ts.generateXML().toXML()).toBe(
+      `<temporalSpread xmlns="${MPM_NS}" frame.offset="360ticks" frameLength="100%" />`,
+    );
+  });
+
+  it('should turn a programmatic spread v3 by setting a frame length', () => {
+    const ts = new TemporalSpread();
+    ts.setFrameLengthValue({ value: 50, domain: 'relative' });
+    expect(ts.getFrameOffset()).toEqual({ value: 0, domain: 'ticks' });
+    expect(ts.generateXML().toXML()).toBe(
+      `<temporalSpread xmlns="${MPM_NS}" frame.offset="0ticks" frameLength="50%" />`,
+    );
+  });
+
+  it('should clamp a negative length set through the v3 API', () => {
+    const ts = new TemporalSpread();
+    captureErrors(() => ts.setFrameLengthValue({ value: -20, domain: 'milliseconds' }));
+    expect(ts.getFrameLengthValue()).toEqual({ value: 0, domain: 'milliseconds' });
+  });
+
+  it('should switch a v2-parsed spread over to v3 output when the v3 API is used', () => {
+    const ts = spread('frame.start="-22.0" frameLength="44.0"');
+    expect(ts.getSourceFormat()).toBe('v2');
+    ts.setFrameOffset({ value: -22, domain: 'ticks' });
+    expect(ts.getSourceFormat()).toBe('v3');
+    expect(ts.generateXML().toXML()).toBe(
+      `<temporalSpread xmlns="${MPM_NS}" frame.offset="-22ticks" frameLength="100%" />`,
+    );
+  });
+});
+
+describe('OrnamentDef — alignment (DESIGN.md D2)', () => {
+  /** parse an `<ornamentDef>` given as source text */
+  function def(body: string): OrnamentDef {
+    return OrnamentDef.createOrnamentDef(
+      parseElement(`<ornamentDef xmlns="${MPM_NS}" name="turn" ${body}</ornamentDef>`),
+    )!;
+  }
+
+  it('should default to "at start" and to the v2 source format', () => {
+    const d = OrnamentDef.createOrnamentDef('trill')!;
+    expect(d.getAlignment()).toBe('at start');
+    expect(d.getSourceFormat()).toBe('v2');
+  });
+
+  it('should read alignment from the ornamentDef element', () => {
+    // ornamentDef.xml:57 — <ornamentDef name="upper turn" alignment="at end">
+    const d = def('alignment="at end">');
+    expect(d.getAlignment()).toBe('at end');
+    expect(d.getSourceFormat()).toBe('v3');
+  });
+
+  it('should read alignment from a temporalSpread child (reference-implementation form)', () => {
+    const d = def('><temporalSpread alignment="at end"/>');
+    expect(d.getAlignment()).toBe('at end');
+    expect(d.getSourceFormat()).toBe('v3');
+  });
+
+  it('should let the ornamentDef attribute win over the temporalSpread one', () => {
+    const d = def('alignment="at start"><temporalSpread alignment="at end"/>');
+    expect(d.getAlignment()).toBe('at start');
+  });
+
+  it('should fall back to the temporalSpread value when the def attribute is malformed', () => {
+    // a malformed value is not a value: it is logged and treated as absent, which leaves
+    // the well-formed one on the spread in force rather than silently forcing the default
+    let d: OrnamentDef | null = null;
+    const messages = captureErrors(() => {
+      d = def('alignment="AT END"><temporalSpread alignment="at end"/>');
+    });
+    expect(d!.getAlignment()).toBe('at end');
+    expect(messages.join('\n')).toContain('no legal alignment');
+  });
+
+  it('should fall back to the default when both attributes are malformed', () => {
+    let d: OrnamentDef | null = null;
+    captureErrors(() => {
+      d = def('alignment="left"><temporalSpread alignment="right"/>');
+    });
+    expect(d!.getAlignment()).toBe('at start');
+    // ... but the def still knows it was written as v3, because the attribute was there
+    expect(d!.getSourceFormat()).toBe('v3');
+  });
+
+  it('should become v3-sourced when its temporalSpread is', () => {
+    const d = def('><temporalSpread frame.offset="0ticks"/>');
+    expect(d.getSourceFormat()).toBe('v3');
+    expect(d.getAlignment()).toBe('at start');
+  });
+
+  it('should stay v2-sourced for a v2 def', () => {
+    const d = def('><temporalSpread frame.start="-22.0" frameLength="44.0"/>');
+    expect(d.getSourceFormat()).toBe('v2');
+  });
+
+  it('should write alignment onto the ornamentDef element and only for "at end"', () => {
+    const d = OrnamentDef.createOrnamentDef('turn')!;
+    d.setAlignment('at end');
+
+    expect(d.getSourceFormat()).toBe('v3');
+    expect(d.getXml()!.getAttributeValue('alignment')).toBe('at end');
+
+    d.setAlignment('at start'); // the schema default: written as absence
+    expect(d.getAlignment()).toBe('at start');
+    expect(d.getXml()!.getAttribute('alignment')).toBeNull();
+  });
+
+  it('should overwrite an alignment the document already carried', () => {
+    const d = def('alignment="at end">');
+    d.setAlignment('at end');
+    expect(d.getXml()!.getAttributeValue('alignment')).toBe('at end');
+    d.setAlignment('at start');
+    expect(d.getXml()!.getAttribute('alignment')).toBeNull();
+  });
+
+  it('should never put alignment on the temporalSpread', () => {
+    const d = OrnamentDef.createOrnamentDef('turn')!;
+    d.setTemporalSpreadValues(0.0, 44.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
+    d.setAlignment('at end');
+
+    expect(d.getTemporalSpread()!.generateXML().getAttribute('alignment')).toBeNull();
+    expect(d.getXml()!.getAttributeValue('alignment')).toBe('at end');
+  });
+
+  it('should keep an adopted alignment when the temporalSpread is replaced', () => {
+    // the spread element is regenerated by setTemporalSpread and a regenerated spread
+    // never carries alignment, so a def that had ADOPTED its alignment from the old
+    // spread would lose it unless it re-asserts what it owns
+    const d = def('><temporalSpread alignment="at end"/>');
+    expect(d.getAlignment()).toBe('at end');
+
+    d.setTemporalSpreadValues(0.0, 44.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
+    expect(d.getAlignment()).toBe('at end');
+    expect(d.getXml()!.getAttributeValue('alignment')).toBe('at end');
+    expect(d.getTemporalSpread()!.getXml().getAttribute('alignment')).toBeNull();
+  });
+
+  it('should not touch a v2 def when its temporalSpread is replaced', () => {
+    const d = def('><temporalSpread frame.start="-22.0" frameLength="44.0"/>');
+    d.setTemporalSpreadValues(-30.0, 60.0, FrameDomain.Milliseconds, 2.0, NoteOffShift.True);
+    expect(d.getXml()!.getAttribute('alignment')).toBeNull();
+    expect(d.getSourceFormat()).toBe('v2');
+  });
+
+  it('should leave a parsed alignment where the document wrote it', () => {
+    // DOCUMENTED CONSEQUENCE: parsing never mutates the caller's tree, so a
+    // reference-style document keeps its attribute on the spread until setAlignment
+    // canonicalises it. The model value is right either way.
+    const source = `<ornamentDef xmlns="${MPM_NS}" name="turn"><temporalSpread alignment="at end"/></ornamentDef>`;
+    const d = OrnamentDef.createOrnamentDef(parseElement(source))!;
+    expect(d.getAlignment()).toBe('at end');
+    // untouched: the child keeps the attribute, and the def element has none of its own.
+    // (The serializer restates the namespace on the child and writes ` />`; that shape is
+    // this port's, not this wave's.)
+    expect(d.getXml()!.toXML()).toBe(
+      `<ornamentDef xmlns="${MPM_NS}" name="turn"><temporalSpread xmlns="${MPM_NS}" alignment="at end" /></ornamentDef>`,
+    );
+    expect(d.getXml()!.getAttribute('alignment')).toBeNull();
+
+    // calling the v3 API is what canonicalises it onto the ornamentDef
+    d.setAlignment('at end');
+    expect(d.getXml()!.getAttributeValue('alignment')).toBe('at end');
   });
 });

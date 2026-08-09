@@ -3,8 +3,76 @@ import { attribute, firstChildElement, getAttributeValue } from '../../../xml/tr
 import { MPM_NAMESPACE, ORNAMENTATION_STYLE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
-import { OrnamentData } from './data/OrnamentData.js';
+import {
+  OrnamentData,
+  parseOrnamentNotePool,
+  parseOrnamentRepetitions,
+} from './data/OrnamentData.js';
 import { OrnamentationStyle } from '../styles/OrnamentationStyle.js';
+import type { OrnamentNote } from './data/OrnamentNote.js';
+
+/**
+ * Everything an MPM v3 `<ornament>` can say, for {@link OrnamentationMap.addOrnament}'s
+ * options form (RULE F5's named-parameter shape, applied inside the library).
+ *
+ * Optional properties are `?:` and never `null` (RULE N1): absence is "the caller did not
+ * supply this", and each has a documented default.
+ */
+export interface AddOrnamentOptions {
+  /** Symbolic date of the ornament, in ticks. */
+  readonly date: number;
+  /** `name.ref` — the `ornamentDef` in the style currently in scope. */
+  readonly nameRef: string;
+  /**
+   * Scaling factor of the def's dynamics gradient. Defaults to `0.0`, the spec's default
+   * (`ornament.xml:36-44`), which means "no dynamics effect" — and is always written, see
+   * {@link OrnamentationMap.addOrnament}.
+   */
+  readonly scale?: number;
+  /**
+   * `note.order`. A string is written verbatim, which is how the v3 grammar (chords
+   * `[ … ]`, repeat groups `|: … :|`) gets in — build it with `formatNoteOrder` from
+   * `noteOrder.ts`. An array is the v2 shape and is written exactly as the v2 overload
+   * writes it: `#`-prefixed ids, or a bare pitch keyword.
+   */
+  readonly noteOrder?: string | readonly string[];
+  /** `noteid` — the principal note, written exactly as given (DESIGN.md D7). */
+  readonly noteid?: string;
+  /** `repetitions`; written only when it differs from the default `0` (DESIGN.md D12). */
+  readonly repetitions?: number;
+  /** The note pool, written as `<note>` children in the given order. */
+  readonly notes?: readonly OrnamentNote[];
+  /** `xml:id` of the ornament element. */
+  readonly id?: string;
+}
+
+/**
+ * The `scale` default (`ornament.xml:36-44`). It is `0.0`, not `1.0`: an `<ornament>` without
+ * a `scale` is specified to produce no dynamics effect at all, which reads as a bug and is
+ * not one (research/java-ts-v2-ornamentation.md §2.4 — the MEI importer writes `scale="0.0"`
+ * explicitly for exactly this reason).
+ */
+const DEFAULT_ORNAMENT_SCALE = 0.0;
+
+/**
+ * Build a `note.order` attribute value from a list of ids — the v2 spelling, `#`-prefixed and
+ * space-separated, or one of the two pitch keywords, which win outright and end the list.
+ *
+ * FROZEN: extracted verbatim from `addOrnament` so that the v2 and v3 writers cannot drift
+ * apart. The `.replace('#', '')` strips only the FIRST `#` (Java's `String.replace(char,char)`
+ * would strip all of them, but the TS port has always read this way); the `.trim()` on each id
+ * and on the result are both load-bearing for the leading space the loop produces.
+ */
+function noteOrderAttributeValue(noteOrder: readonly string[]): string {
+  let noteIdsString = '';
+  for (const nid of noteOrder) {
+    if (nid === 'ascending pitch' || nid === 'descending pitch') {
+      noteIdsString = nid;
+      break;
+    } else noteIdsString += ` #${nid.trim().replace('#', '')}`;
+  }
+  return noteIdsString.trim();
+}
 
 /**
  * An MPM `ornamentationMap`: trills, arpeggios, mordents — ornaments that reshape the
@@ -48,45 +116,130 @@ export class OrnamentationMap extends GenericMap {
     }
   }
 
+  /**
+   * Add an ornament entry, in v2 or in v3 form.
+   *
+   * The positional form is v2 and is BYTE-FROZEN — `date`, `name.ref`, `scale` (only when it
+   * differs from `1.0`), `note.order`, `xml:id` (only when non-empty), in that order. The
+   * options form is v3 (DESIGN.md D12) and is the only one that can write a note pool,
+   * `repetitions` or `noteid`; see {@link AddOrnamentOptions}.
+   */
   addOrnament(
     date: number,
     nameRef: string,
+    scale?: number,
+    noteOrder?: string[] | null,
+    id?: string | null,
+  ): number;
+  addOrnament(options: AddOrnamentOptions): number;
+  addOrnament(
+    dateOrOptions: number | AddOrnamentOptions,
+    nameRef = '',
     scale = 1.0,
     noteOrder: string[] | null = null,
     id: string | null = null,
+  ): number {
+    if (typeof dateOrOptions !== 'number') return this.addOrnamentV3(dateOrOptions);
+    return this.addOrnamentV2(dateOrOptions, nameRef, scale, noteOrder, id);
+  }
+
+  /** The v2 writer, unchanged. Frozen against the Java fixtures. */
+  private addOrnamentV2(
+    date: number,
+    nameRef: string,
+    scale: number,
+    noteOrder: string[] | null,
+    id: string | null,
   ): number {
     const ornament = new Element('ornament', MPM_NAMESPACE);
     ornament.addAttribute(new Attribute('date', String(date)));
     ornament.addAttribute(new Attribute('name.ref', nameRef));
     if (scale !== 1.0) ornament.addAttribute(new Attribute('scale', String(scale)));
-    if (noteOrder !== null && noteOrder.length > 0) {
-      let noteIdsString = '';
-      for (const nid of noteOrder) {
-        if (nid === 'ascending pitch' || nid === 'descending pitch') {
-          noteIdsString = nid;
-          break;
-        } else noteIdsString += ` #${nid.trim().replace('#', '')}`;
-      }
-      ornament.addAttribute(new Attribute('note.order', noteIdsString.trim()));
-    }
+    if (noteOrder !== null && noteOrder.length > 0)
+      ornament.addAttribute(new Attribute('note.order', noteOrderAttributeValue(noteOrder)));
     if (id !== null && id !== '')
       ornament.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
     return this.insertElement(new KeyValue(date, ornament), false);
   }
 
+  /**
+   * The v3 writer (DESIGN.md D12): canonical v3, and generation-preserving in the sense that
+   * only a caller who asked for v3 gets it.
+   *
+   * Two deliberate differences from the v2 writer, both fixing a round-trip asymmetry rather
+   * than following it:
+   *
+   * - `scale` is written **always**, and defaults to the spec's `0.0` instead of `1.0`. The
+   *   v2 writer omits `scale` when it is `1.0` while every reader defaults a missing `scale`
+   *   to `0.0` (`ornament.xml:36-44`), so writing `1.0` and reading it back yields `0.0` — a
+   *   silently muted dynamics gradient. The reference implementation has the same bug
+   *   (research/lars-v3-implementation.md §5 note 1); D12 diverges from it here.
+   * - `repetitions` is written **only** when it differs from `0`, so a v3 ornament that does
+   *   not repeat looks like one (the reference stamps `repetitions="0"` onto everything).
+   *
+   * Attribute order extends the v2 order rather than the spec exemplum's (`ornament.xml:66-72`
+   * leads with `noteid`): `date` and `name.ref` stay in front so a v2 and a v3 ornament read
+   * alike in a diff, and each new attribute sits next to the one it qualifies — `noteid`
+   * names the note that `name.ref`'s def applies to, `repetitions` multiplies a `note.order`
+   * group. Order is byte-visible (CHARTER §79-80); no Java reference writes these attributes,
+   * so nothing external binds the choice.
+   */
+  private addOrnamentV3(options: AddOrnamentOptions): number {
+    const ornament = new Element('ornament', MPM_NAMESPACE);
+    ornament.addAttribute(new Attribute('date', String(options.date)));
+    ornament.addAttribute(new Attribute('name.ref', options.nameRef));
+    if (options.noteid !== undefined && options.noteid !== '')
+      ornament.addAttribute(new Attribute('noteid', options.noteid));
+    ornament.addAttribute(new Attribute('scale', String(options.scale ?? DEFAULT_ORNAMENT_SCALE)));
+
+    const noteOrder = options.noteOrder;
+    if (noteOrder !== undefined) {
+      const value = typeof noteOrder === 'string' ? noteOrder : noteOrderAttributeValue(noteOrder);
+      if (value !== '') ornament.addAttribute(new Attribute('note.order', value));
+    }
+
+    const repetitions = options.repetitions ?? 0;
+    if (repetitions !== 0) ornament.addAttribute(new Attribute('repetitions', String(repetitions)));
+
+    if (options.id !== undefined && options.id !== '')
+      ornament.addAttribute(
+        new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', options.id),
+      );
+
+    for (const note of options.notes ?? []) ornament.appendChild(note.generateXML());
+
+    return this.insertElement(new KeyValue(options.date, ornament), false);
+  }
+
+  /**
+   * Write an ornament from a data object.
+   *
+   * Routes to the v3 form as soon as the data carries anything v3 can express and v2 cannot —
+   * otherwise `getOrnamentDataOf` → `addOrnamentFromData` would silently drop the note pool,
+   * the repeat count and the principal reference. Data with none of them takes the v2 call
+   * unchanged, so nothing a v2 document round-trips through here moves.
+   */
   addOrnamentFromData(data: OrnamentData): number {
     if (data.ornamentDef !== null) data.ornamentDefName = data.ornamentDef.getName();
     else if (data.ornamentDefName === null) {
       console.error('Cannot add ornament.');
       return -1;
     }
-    return this.addOrnament(
-      data.date,
-      data.ornamentDefName,
-      data.scale,
-      data.noteOrder,
-      data.xmlId,
-    );
+    const nameRef = data.ornamentDefName;
+    if (data.notes.length > 0 || data.repetitions !== 0 || data.noteid !== null)
+      return this.addOrnament({
+        date: data.date,
+        nameRef,
+        scale: data.scale,
+        // the raw text when the data came from a document (it is the only lossless form of a
+        // v3 note.order), the flat array when the object was built in code
+        noteOrder: data.noteOrderText ?? data.noteOrder ?? undefined,
+        noteid: data.noteid ?? undefined,
+        repetitions: data.repetitions,
+        notes: data.notes,
+        id: data.xmlId ?? undefined,
+      });
+    return this.addOrnament(data.date, nameRef, data.scale, data.noteOrder, data.xmlId);
   }
 
   /**
@@ -123,7 +276,32 @@ export class OrnamentationMap extends GenericMap {
     if (scaleAtt !== null) od.scale = parseFloat(scaleAtt.getValue());
     const idAtt = attribute('id', xml);
     if (idAtt !== null) od.xmlId = idAtt.getValue();
+    this.readV3OrnamentFields(xml, od);
     return od;
+  }
+
+  /**
+   * Read the three MPM v3 additions of an `<ornament>` into a data object: the principal
+   * reference `noteid`, the repeat count, and the note pool (DESIGN.md D7, D9, D1).
+   *
+   * Shared by {@link getOrnamentDataOf} and by the inline reader inside {@link apply}, which
+   * exists so that pass one can carry the style forward across entries — the two must agree
+   * on what an ornament says. For a v2 document every one of these is absent, so the method
+   * leaves the data object at its defaults and no v2 byte can move.
+   */
+  private readV3OrnamentFields(xml: Element, od: OrnamentData): void {
+    // `note.order` as written. The flat `od.noteOrder` above cannot carry the v3 grammar —
+    // stripping every `#` makes an id and a repeat mark indistinguishable — so a writer that
+    // has to reproduce this ornament reads the text instead (OrnamentData.noteOrderText).
+    const noteOrderAtt = xml.getAttribute('note.order');
+    if (noteOrderAtt !== null) od.noteOrderText = noteOrderAtt.getValue();
+
+    const noteidAtt = attribute('noteid', xml);
+    if (noteidAtt !== null) od.noteid = noteidAtt.getValue();
+    const repetitionsAtt = attribute('repetitions', xml);
+    if (repetitionsAtt !== null)
+      od.repetitions = parseOrnamentRepetitions(repetitionsAtt.getValue());
+    od.notes = parseOrnamentNotePool(xml);
   }
 
   /**
@@ -250,6 +428,11 @@ export class OrnamentationMap extends GenericMap {
 
       const scaleAtt = attribute('scale', ornamentXml);
       if (scaleAtt !== null) od.scale = parseFloat(scaleAtt.getValue());
+
+      // The v3 additions. Read here so that this reader and getOrnamentDataOf see the same
+      // ornament; nothing below consumes them yet — the note pool becomes real notes in the
+      // renderer wave (DESIGN.md D5), which is what fills OrnamentData.apply's dead seam.
+      this.readV3OrnamentFields(ornamentXml, od);
 
       // determine the note order and collect the notes which the ornament will be applied to
       let noteOrderAscending = 1; // 1 = ascending pitch, -1 = descending pitch, 0 = ID sequence
