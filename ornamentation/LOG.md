@@ -148,3 +148,20 @@ outputs derived from spec math (cross-checked against patched Lars build where
 useful), stamped spec-derived. GenerateFromMsmMpm tool shape adopted.
 Consider (user decision, not autonomous): reporting the PR defects upstream as a
 review on cemfi/meico#31 — valuable to the ecosystem, outward-facing, so parked.
+
+## 2026-08-09 — P1: DESIGN.md adopted (ORN-5); blueprint landed (ORN-6)
+
+orn-research-lars delivered ornamentation/research/lars-v3-implementation.md (1976
+lines): full algorithm walkthrough, 24-item spec-fidelity audit (headline: the PR
+cannot read a spec-conformant v3 file), 29-item bug catalogue, port recommendations,
+and the finding that the PR ships ZERO tests. ornamentation/DESIGN.md adopted with
+17 binding decisions (D1–D17), module map, 6 normative worked examples
+(figure-derived), test strategy, and waves W1–W10. Headline rulings: spec-first with
+documented lenience; two-phase architecture keeping note INSTANTIATION + tick/%
+spacing in the symbolic slot (fixes Lars' phase bugs by construction, keeps
+gradients reaching velocity); % resolves against tick duration (≠Lars, rationale:
+ODD pipeline classification + Berndt's tempo-dependence ruling in #55);
+generation-preserving serialization (v2 sources stay byte-identical, v3 sources emit
+canonical v3); generated notes are real MSM <note>s with provenance attrs; facade
+additions limited to PerformedNote.ornamented/.ornamentRef + PerformOptions.
+expandOrnaments. ORN-5, ORN-6 complete. Next: W1+W2 (parallelizable pure modules).
