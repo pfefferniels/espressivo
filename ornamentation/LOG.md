@@ -62,3 +62,32 @@ will shape DESIGN.md most:
 5. Byte probes are insufficient evidence for Performance.ts changes — budget a call
    tracer (passtrace shape); negative controls mandatory ("a gate that never fails is
    not a gate").
+
+## 2026-08-09 — P0: v2 exact-semantics report landed (orn-research-java)
+
+ornamentation/research/java-ts-v2-ornamentation.md (861 lines). Facts most relevant to
+v3 design:
+- v2 never creates notes: it writes ornament.* marker attrs on existing notes; two
+  passes fold them in (tick pass before tempo, ms pass after; markers never deleted —
+  they are part of the visible augmented-MSM format).
+- Frame math: dateOffset(i)=pow(i/(n-1),intensity)*frameLength+frameStart, last chord
+  placed out-of-loop at frameStart+frameLength; n==1 → single chord at frame END.
+- NoteOffShift: False=duration absorbs shift (end preserved); True=presence-only marker
+  attr, end shifts, duration preserved; Monophonic EXISTS in v2 Java already —
+  retro-shortens previous chord, writes ABSOLUTE ornament.duration which wins over
+  shift downstream. Last chord keeps original length.
+- DynamicsGradient: linear, n==1 uses transitionTo (asymmetry, pinned); additive
+  velocity offset, accumulates; applied gradient-then-spread (attr insertion order is
+  fixture-visible).
+- scale trap: missing scale attr → 0.0 → gradient multiplied to zero; MEI importer
+  writes scale="0.0" explicitly. Any v3 repair = ground-truth decision.
+- chordSequence type supports chords but v2 never builds them (every chord = 1 note);
+  '[' brackets TODO unimplemented in Java; note.order ID list: '#' stripped, unknown
+  IDs silently dropped; default/ascending/descending sorts by midi.pitch of chord[0].
+- v2 time.unit parse: anything ≠ "milliseconds" → Ticks. RelativeToNoteDuration exists
+  only as commented-out enum constant — v3's '%' realizes it.
+- TS divergences: getOrnamentDataOf alive in TS (dead in Java) — UNDOCUMENTED in
+  PARITY.md (flag to conductor at integration); duplicated ms pass (both copies must
+  change together); TS String(x) vs Java Double.toString formatting ("-22" vs "-22.0")
+  — invisible to numeric tests, visible in bytes.
+ORN-1 complete.
