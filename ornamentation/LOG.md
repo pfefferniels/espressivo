@@ -2462,3 +2462,15 @@ The '49/4 did not reproduce' remark in my carved-leftover dispatch to the W5 aut
 misattributed the claim: it was the W7 entry's NC1 (DEFAULT_EXPAND_ORNAMENTS over
 the api suites), not a W5 report. The W5 author's control numbers have reproduced
 under verification in every round. Recorded per the same standard I hold the waves to.
+
+## 2026-08-09 — Conductor: commit-sweep note + process fix
+
+(a) Commit e84eff6 ("correct conductor misattribution", described as 7 lines) also
+swept in the W7 author's concurrently-appended 118-line '### carved-leftover fix
+(W7 half)' entry — content intact and byte-identical in HEAD; the commit MESSAGE
+under-describes it. Recorded here rather than rewriting history.
+(b) PROCESS FIX (effective now): no more parallel implementer agents in this shared
+worktree. The two-halves parallelism raced on dist/ (a mid-mutation rebuild briefly
+produced a phantom defect) and on LOG.md (the sweep above). Remaining waves W8-W10
+run one implementer at a time; verifiers still run solo after freeze. Conductor
+stages files explicitly per commit (git add <paths>, never -A while agents run).
