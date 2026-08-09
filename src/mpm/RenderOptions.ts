@@ -29,6 +29,24 @@ export interface RenderOptions {
    * {@link DEFAULT_MOVEMENT_SAMPLE_MAX_STEP}.
    */
   readonly movementSampleMaxStep?: number;
+
+  /**
+   * Whether MPM v3 ornaments generate their notes. Defaults to
+   * {@link DEFAULT_EXPAND_ORNAMENTS}.
+   *
+   * Set to `false` and every ornament that uses a v3 feature (`isV3Ornament`'s gate: a note
+   * pool, a `noteid`, `repetitions`, or the grouping syntax in `note.order`) is skipped
+   * whole: no note is created, no `ornament.*` provenance attribute is written, and not even
+   * the `note.order.perf` echo lands on the `<ornament>` element.
+   *
+   * **It does not reach MPM v2 ornaments.** Those generate nothing to begin with — they
+   * write modifier markers onto notes that already exist — so there is nothing for this knob
+   * to switch off, and switching them off would be a different feature (rendering the score
+   * without its ornamentation) that no option here offers. A v3 ornament suppressed by this
+   * flag is *not* re-routed through the v2 path either: v2 would spread notes the v3
+   * ornament never claimed, which is neither the ornament as written nor its absence.
+   */
+  readonly expandOrnaments?: boolean;
 }
 
 /**
@@ -40,6 +58,17 @@ export interface RenderOptions {
  * anyone regenerating ground truth from the Java fork (parity ledger row D1).
  */
 export const DEFAULT_MOVEMENT_SAMPLE_MAX_STEP = 0.1 as Normalized;
+
+/**
+ * Ornament expansion is on unless a caller turns it off, so that omitting
+ * {@link RenderOptions.expandOrnaments} renders the MPM as written — the same contract every
+ * other option here keeps.
+ *
+ * The opt-out mirrors meico's own (`Mei.exportMsmMpm`'s `ignoreOrnaments`, CLI `-eo`), whose
+ * default is likewise "expand"; the polarity is flipped because an option named for what it
+ * enables reads better at the facade than one named for what it suppresses.
+ */
+export const DEFAULT_EXPAND_ORNAMENTS = true;
 
 /**
  * Per-render, per-call state. Created in {@link Performance.perform} and passed by

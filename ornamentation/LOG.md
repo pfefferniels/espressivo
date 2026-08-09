@@ -2474,3 +2474,81 @@ worktree. The two-halves parallelism raced on dist/ (a mid-mutation rebuild brie
 produced a phantom defect) and on LOG.md (the sweep above). Remaining waves W8-W10
 run one implementer at a time; verifiers still run solo after freeze. Conductor
 stages files explicitly per commit (git add <paths>, never -A while agents run).
+
+### W7 verifier — re-check of the combined carved-leftover fix (2026-08-09)
+
+**PASS.** Both halves re-measured on the frozen tree with my own instruments. FAIL 1 is fixed
+at the exact measurement that produced it, and the fix is load-bearing, leak-free and does not
+move v2 bytes. FAIL 2 stands closed by the conductor's own journalled correction.
+
+1. **FAIL 1's original measurement, re-run.** `turn-atend` through the rebuilt dist: the head
+   leftover `P` is shortened 1440 → 720 exactly as before and now reports
+   `ornamented: true, ornamentRef: 'orn2'`, with `ornamentSource`/`ornamentSlot`/`ornamentPass`/
+   `ornamentAnchor` all `null` and the score's own `xml:id` intact. **Widened beyond the case I
+   originally found**: a sweep over all 8 `fixtures-v3` documents comparing every surviving score
+   note between `expandOrnaments: false` and `true` across `pitch`/`date`/`duration`/`velocity`/
+   `milliseconds.*` finds **7 altered principals, all 7 marked with a ref, and zero
+   altered-but-unmarked notes anywhere**. The predicate now covers every alteration the v3 path
+   makes to a note the score already had.
+2. **The discriminating no-id case is load-bearing — re-measured myself.** Deleting
+   `'ornament.carved'` from `ORNAMENT_MARKER_ATTRIBUTES` ⇒ **exactly 1 red**, and it is precisely
+   *"marks a carved head whose ornament has no xml:id, where only ornament.carved says so"*. The
+   claim reproduces exactly: without that case the deletion stays green, because `carve` co-writes
+   `ornament.ref` in every fixture where the ornament has an id.
+3. **No carve-marker leakage.** Across all 8 fixtures, no note carrying `ornament.carved` also
+   carries `ornament.generated` or a `meico_` id; `turn-atend` writes exactly one, `turn-atstart`
+   (no head survives) none, and `expandOrnaments: false` none. Their detection control reproduces:
+   forcing every generated note to carry the marker ⇒ **4 red across 2 files**
+   (`ornamentInstantiation.test.ts` 3, `ornamentation-v3.test.ts` 1).
+   - **Advisory, a zero-flip control explained rather than reported as protection**: removing
+     `'ornament.carved'` from `NOT_INHERITED` flips **0** tests. The entry is **unreachable**:
+     `createChords` runs at `ornamentInstantiation.ts:602`, `carve` — and therefore `markCarved` —
+     at `:611`, so at note-creation time the principal does not yet carry the marker and there is
+     nothing to strip. Harmless, and right if that order ever changes, but it is dead defensive
+     code and must not be counted as the thing preventing leakage. What actually prevents it is
+     the write site being `markCarved(principal, …)` alone.
+4. **types.ts audit, all six fields read fresh.** The two corrections are right and nothing else
+   is now wrong: `ornamentRef`'s old "Null on every note the score already had" is gone and its
+   replacement states the carved head and the no-id case correctly; `ornamentAnchor`'s "Null on
+   notes the score already had" remains **true** (the carved head takes no anchor because it *is*
+   the anchor); `ornamentSource`/`ornamentSlot` carry no absence clause to be wrong;
+   `ornamentPass`'s clause is true if partial. **One wording advisory** (not a contract error):
+   `ornamented`'s "a **carved head** … carries `ornamentRef` alone" reads as a presence guarantee,
+   while the head of an *id-less* ornament carries none of the five. The `ornamentRef` field two
+   lines below states that case correctly and the wave pins it with a dedicated test, so the
+   published contract is sound — but "carries `ornamentRef` and nothing else, and even that only
+   when the ornament has an id" would close the gap between the two paragraphs.
+5. **Byte gates hold.** dist rebuilt from the frozen tree: `probe.mjs checks=1284
+   sha256=ed158a07d553f934…` and `probe2.mjs checks=83 sha256=0b58d5a4c281914e…` — both reproduce
+   unchanged, so the carve write did not move the v2 path. My **API-consumer simulation**
+   (dist-only imports, as mpmify/MLign) passes all 23 checks against the new shapes, including the
+   `expandOrnaments: false` suppression of `ornament.carved` along with every other marker.
+6. **`npm run verify` green: 65 files / 2986 tests** (+7 on W7's 2979). Footprint is 11 working-tree
+   files — 6 source, 5 test — with the LOG appends already committed in HEAD. eslint
+   `Performance.ts` **17**, `OrnamentationMap.ts` **2**, `ornamentInstantiation.ts` **0**, each
+   equal to the same file at HEAD (measured by stashing); every other touched file 0. Zero
+   suppressions; prettier clean on all 11. `Performance.ts` is byte-identical to what I verified
+   in the first round (`md5 00957b0b…`), so its four-line threading proof carries over unre-run.
+7. **CHARTER §18-21 sign-off, explicit and logged as that rule requires.**
+   `tests/integration/ornamentation-v3.test.ts` was modified. The change is **purely additive**:
+   one `carved` field on `NoteRecord`/`readNote`, and one new case carrying the suite's explicit
+   per-test `TIMEOUT`. No existing assertion, normalization, auto-discovery or fixture was touched,
+   and no case was removed or loosened. It strengthens the suite. **Signed off.**
+8. **Marker list re-checked at 14 names**: set-equal to every `'ornament.*'` string literal in
+   `src/`, with no name built dynamically — so the list is still complete over what can be written,
+   now including the alteration path it used to miss.
+
+**FAIL 2** (W7's NC1 journalled as 49/4, measured 99/5) is closed by the conductor's own entry of
+2026-08-09 correcting the attribution; both figures are now in the record.
+
+**Verdict: PASS W7.**
+
+## 2026-08-09 — Conductor: W7 committed
+
+W7 verifier re-check PASS (predicate proven complete: 7/7 altered principals marked
+across all fixtures, zero unmarked; charter §18-21 sign-off recorded for the
+integration-suite addition). Conductor applied the verifier's types.ts wording
+advisory (id-less carved head carries none of the five — doc-only). The dead
+NOT_INHERITED entry advisory noted for W9 (harmless; keep or comment). W7 commits
+now: facade provenance sextet + ornament.carved semantics + expandOrnaments.
+Owed pings to mpmify + MLign go out after the commit.

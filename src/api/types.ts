@@ -87,6 +87,20 @@ export interface PerformOptions {
    * Default 0.1. Larger values emit fewer control-change events for a long ramp.
    */
   readonly movementSampleMaxStep?: number;
+  /**
+   * Whether MPM v3 ornaments generate their notes. Default true.
+   *
+   * With `false`, an ornament that uses a v3 feature — a note pool, a `noteid`, `repetitions`,
+   * or the grouping syntax in `note.order` — is skipped whole: no note is added to the score
+   * and no `ornament.*` attribute is written, so every {@link PerformedNote} it would have
+   * produced is simply absent and its principal comes through unornamented.
+   *
+   * **MPM v2 ornaments are unaffected**, whatever this is set to. A v2 ornament generates no
+   * notes in the first place — it shifts and shapes notes the score already has — so there is
+   * nothing here for the flag to expand or suppress, and those notes keep reporting
+   * {@link PerformedNote.ornamented} as true.
+   */
+  readonly expandOrnaments?: boolean;
 }
 
 export interface MidiOptions {
@@ -109,6 +123,56 @@ export interface PerformedNote {
     /** MSM `milliseconds.date.end`. */
     readonly end: Milliseconds;
   };
+  /**
+   * Whether an ornament made this note what it is — either by generating it (MPM v3 adds notes
+   * the score never had) or by moving, shortening or re-shading a note the score already had.
+   *
+   * It is true exactly when the note carries at least one `ornament.*` attribute, which is the
+   * whole evidence an ornament leaves behind. There are three shapes it comes in, and the five
+   * fields below are what tells them apart:
+   *
+   * - a **generated** note (v3) carries the full set that applies to it — `ornamentRef` when
+   *   the ornament has an id, plus `ornamentSource`, `ornamentSlot`, `ornamentAnchor`, and
+   *   `ornamentPass` when it came from a repeat group;
+   * - a **v2-altered** note has all five `null`: a v2 ornament shifts and shades notes that
+   *   already exist and names no roles — it has no pool, no slots and no passes to report;
+   * - a **carved head** — the principal of an end-aligned v3 ornament, shortened so its
+   *   generated notes fit after it — carries `ornamentRef` and nothing else, and even that
+   *   only when the ornament has an id (an id-less ornament leaves all five `null`). It is
+   *   not part of the expansion, so it has no source, slot or pass; and it needs no anchor
+   *   because it *is* the anchor, still carrying the score's own id.
+   */
+  readonly ornamented: boolean;
+  /**
+   * MSM `ornament.ref`: the `xml:id` of the `<ornament>` this note came out of, or was altered
+   * by. Set on a generated note and on a carved head; null when the ornament has no id, and on
+   * every note no v3 ornament touched — including a v2-altered one, since a v2 ornament leaves
+   * modifier markers but never names itself on the note.
+   */
+  readonly ornamentRef: string | null;
+  /**
+   * MSM `ornament.source`: the `note.order` token this note resolved from — a pool note's id,
+   * the principal's id, or the id of another score note the order named.
+   */
+  readonly ornamentSource: string | null;
+  /** MSM `ornament.slot`: 0-based position in the expanded sequence, after dedup and landing. */
+  readonly ornamentSlot: number | null;
+  /**
+   * MSM `ornament.pass`: 0-based repetition pass. Null on a generated note that came from no
+   * repeat group, which is why it is reported apart from {@link ornamentSlot}.
+   */
+  readonly ornamentPass: number | null;
+  /**
+   * MSM `ornament.anchor`: the `xml:id` the principal note carried *before* the ornament
+   * replaced it — the score-side note this one belongs to.
+   *
+   * It exists so that a generated note can always be joined back to the score. The transitive
+   * route (generated → principal → score) has a hole: when `note.order` never names the
+   * principal and no leftover of it survives, the principal's id is on no note at all. This
+   * carries it regardless. Null on notes the score already had, and on an ornament that
+   * resolved no principal.
+   */
+  readonly ornamentAnchor: string | null;
 }
 
 export type ControlChangeKind = 'channelVolume' | 'position';

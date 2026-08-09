@@ -1,6 +1,8 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, firstChildElement, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE, ORNAMENTATION_STYLE } from '../../names.js';
+import { DEFAULT_EXPAND_ORNAMENTS } from '../../RenderOptions.js';
+import type { RenderContext } from '../../RenderOptions.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import {
@@ -317,10 +319,14 @@ export class OrnamentationMap extends GenericMap {
    * A global ornament may reach across parts — that is the point of it — so all the
    * parts' score maps are collected first and handed to {@link apply} together, letting
    * one ornament's `note.order` name notes in several parts at once.
+   *
+   * @param ctx supplies {@link RenderOptions.expandOrnaments}; omitting it expands, which is
+   *   what every fixture is generated with (see {@link apply})
    */
   static renderGlobalOrnamentationToParts(
     parts: Element[],
     ornamentationMap: OrnamentationMap | null,
+    ctx?: RenderContext,
   ): void {
     if (ornamentationMap === null || ornamentationMap.isEmpty()) return;
     const mapsToOrnament: GenericMap[] = [];
@@ -334,24 +340,25 @@ export class OrnamentationMap extends GenericMap {
         }
       }
     }
-    ornamentationMap.renderGlobalOrnamentationMap(mapsToOrnament);
+    ornamentationMap.renderGlobalOrnamentationMap(mapsToOrnament, ctx);
   }
 
-  renderGlobalOrnamentationMap(maps: GenericMap[]): void {
+  renderGlobalOrnamentationMap(maps: GenericMap[], ctx?: RenderContext): void {
     if (maps.length === 0) return;
-    this.apply(maps);
+    this.apply(maps, ctx);
   }
   static renderOrnamentationToMap(
     map: GenericMap | null,
     ornamentationMap: OrnamentationMap | null,
+    ctx?: RenderContext,
   ): void {
-    if (ornamentationMap !== null) ornamentationMap.renderOrnamentationToMap(map);
+    if (ornamentationMap !== null) ornamentationMap.renderOrnamentationToMap(map, ctx);
   }
 
-  renderOrnamentationToMap(map: GenericMap | null): void {
+  renderOrnamentationToMap(map: GenericMap | null, ctx?: RenderContext): void {
     if (map === null) return;
     if (this.getLocalHeader() !== null) {
-      this.apply([map]);
+      this.apply([map], ctx);
     }
     this.renderAllNonmillisecondsModifiersToMap(map);
   }
@@ -385,9 +392,18 @@ export class OrnamentationMap extends GenericMap {
    * generated notes appear in the map only once the walk is over, so a later v2 ornament's
    * "every note at this date" still collects what it always collected. See
    * `ornamentInstantiation.ts` for why the deferral is required rather than tidy.
+   *
+   * **`expandOrnaments`** is read here, once per call, and is the only thing the option does:
+   * with it off, an ornament that passes the v3 gate is dropped on the spot instead of being
+   * prepared, so nothing downstream of the gate ever sees it. The read sits *inside* this
+   * method rather than at the facade because the default belongs to `src/mpm/`
+   * (ARCHITECTURE.md §2.4), and it is a single `const` rather than a per-ornament lookup
+   * because `ctx` is per-render and cannot change mid-walk.
    */
-  private apply(maps: GenericMap[]): void {
+  private apply(maps: GenericMap[], ctx?: RenderContext): void {
     if (maps.length === 0) return;
+
+    const expandOrnaments = ctx?.options.expandOrnaments ?? DEFAULT_EXPAND_ORNAMENTS;
 
     if (this.getLocalHeader() === null && this.getGlobalHeader() === null) {
       console.error(
@@ -454,6 +470,10 @@ export class OrnamentationMap extends GenericMap {
       // MPM v3 (DESIGN.md D6): an ornament that generates notes leaves the v2 path here. It is
       // only read now — its notes are created after the walk, see this method's comment.
       if (isV3Ornament(ornamentXml, od)) {
+        // `expandOrnaments: false` stops here, before `prepareOrnament` — which reads the
+        // ornament but also writes `note.order.perf` back onto it (D7). Skipping the whole
+        // call is what makes "not expanded" mean the document is left as it was found.
+        if (!expandOrnaments) continue;
         owners ??= noteOwners(maps);
         const one = prepareOrnament(od, ornamentXml, notes, owners);
         if (one !== null) prepared.push(one);

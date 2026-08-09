@@ -480,7 +480,7 @@ export class Performance extends AbstractXmlSubtree {
     const pedalMap = Performance.addMsmMapToList('pedalMap', globalDated, maps);
     const collected: CollectedMaps = { maps, timeSignatureMap, pedalMap };
 
-    this.renderGlobalOrnamentation(clone, mpm.ornamentation);
+    this.renderGlobalOrnamentation(clone, mpm.ornamentation, ctx);
     Performance.renderGlobalMilliseconds(this.renderGlobalTiming(collected, mpm), mpm, ctx);
 
     return timeSignatureMap;
@@ -503,7 +503,11 @@ export class Performance extends AbstractXmlSubtree {
    * where this skips it when the map is null; that method only reads, so nothing depends
    * on it running.
    */
-  private renderGlobalOrnamentation(clone: Msm, ornamentationMap: OrnamentationMap | null): void {
+  private renderGlobalOrnamentation(
+    clone: Msm,
+    ornamentationMap: OrnamentationMap | null,
+    ctx: RenderContext,
+  ): void {
     if (ornamentationMap !== null) {
       const affectedParts = this.getAllMsmPartsAffectedByGlobalMap(clone, ORNAMENTATION_MAP);
       const mapsToOrnament: GenericMap[] = [];
@@ -517,7 +521,7 @@ export class Performance extends AbstractXmlSubtree {
           }
         }
       }
-      ornamentationMap.renderGlobalOrnamentationMap(mapsToOrnament);
+      ornamentationMap.renderGlobalOrnamentationMap(mapsToOrnament, ctx);
     }
   }
 
@@ -712,7 +716,7 @@ export class Performance extends AbstractXmlSubtree {
 
     for (const m of collected.maps) if (mpm.rubato !== null) mpm.rubato.renderRubatoToMap(m);
 
-    if (mpm.ornamentation !== null) mpm.ornamentation.renderOrnamentationToMap(score);
+    if (mpm.ornamentation !== null) mpm.ornamentation.renderOrnamentationToMap(score, ctx);
 
     return { ...collected, channelVolumeMap, positionMap };
   }

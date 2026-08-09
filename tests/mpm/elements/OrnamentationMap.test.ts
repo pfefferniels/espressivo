@@ -13,6 +13,7 @@ import { Header } from '../../../src/mpm/elements/Header.js';
 import { OrnamentationStyle } from '../../../src/mpm/elements/styles/OrnamentationStyle.js';
 import { OrnamentDef } from '../../../src/mpm/elements/styles/defs/OrnamentDef.js';
 import { FrameDomain, NoteOffShift } from '../../../src/mpm/elements/styles/defs/TemporalSpread.js';
+import type { RenderContext } from '../../../src/mpm/RenderOptions.js';
 
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 
@@ -1696,6 +1697,117 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
     expect(notes.map((note) => note.getAttributeValue('date'))).toEqual(['0', '0', '22']);
     expect(notes[2].getAttributeValue('xml:id')).toBe('n1');
     expect(notes[1].getAttributeValue('ornament.generated')).toBe('true');
+  });
+});
+
+/**
+ * `RenderOptions.expandOrnaments` (DESIGN.md D15) at its point of use.
+ *
+ * The default is resolved here, inside `src/mpm/`, and not at the facade
+ * (ARCHITECTURE.md §2.4) — which is exactly why it needs a test here: a caller that hands
+ * over no context at all, as every existing call site and every fixture does, must still
+ * expand. `movementSampleMaxStep` is the precedent this follows.
+ */
+describe('OrnamentationMap — expandOrnaments (D15)', () => {
+  /** The score + map of the v3 case above, which generates two notes out of one principal. */
+  function v3Case(): { score: GenericMap; map: OrnamentationMap } {
+    const score = makeScore([makePerformedNote('n1', 0, 60), makePerformedNote('n2', 0, 64)]);
+    const map = OrnamentationMap.createOrnamentationMap()!;
+    map.setHeaders(null, makeHeader([arpeggioDef()]));
+    map.addStyleSwitch(0, 'orn style');
+    map.addOrnament({
+      date: 0,
+      nameRef: 'arpeggio',
+      scale: 2.0,
+      noteid: '#n1',
+      noteOrder: '[ #aux ] #n1',
+      notes: [new OrnamentNote('aux', { kind: 'chromatic', value: 1.0 })],
+    });
+    return { score, map };
+  }
+
+  const ctx = (expandOrnaments?: boolean): RenderContext => ({
+    options: expandOrnaments === undefined ? {} : { expandOrnaments },
+    streamOrdinal: 0,
+  });
+
+  it('should expand with no context, which is what every existing call site passes', () => {
+    const { score, map } = v3Case();
+    map.renderOrnamentationToMap(score);
+    expect(score.getAllElementsOfType('note').length).toBe(3);
+  });
+
+  it('should expand for a context that does not mention the option', () => {
+    const { score, map } = v3Case();
+    map.renderOrnamentationToMap(score, ctx());
+    expect(score.getAllElementsOfType('note').length).toBe(3);
+  });
+
+  it('should expand for expandOrnaments: true', () => {
+    const { score, map } = v3Case();
+    map.renderOrnamentationToMap(score, ctx(true));
+    expect(score.getAllElementsOfType('note').length).toBe(3);
+  });
+
+  it('should leave the score untouched for expandOrnaments: false', () => {
+    const { score, map } = v3Case();
+    const warnings = captureErrors(() => map.renderOrnamentationToMap(score, ctx(false)));
+
+    // The two score notes and nothing else, with the principal still carrying its own id and
+    // pitch: the ornament did not run at all rather than running and being undone.
+    const notes = score.getAllElementsOfType('note').map((e) => e.getValue());
+    expect(notes.map((note) => note.getAttributeValue('xml:id'))).toEqual(['n1', 'n2']);
+    expect(notes.map((note) => note.getAttributeValue('midi.pitch'))).toEqual(['60', '64']);
+    // Not one marker of either generation, and no complaint logged: skipping is the
+    // instruction being followed, not a failure to render.
+    for (const note of notes) {
+      expect(note.getAttributeValue('ornament.generated')).toBeNull();
+      expect(note.getAttributeValue('ornament.date.offset')).toBeNull();
+      expect(note.getAttributeValue('ornament.dynamics')).toBeNull();
+    }
+    expect(warnings).toEqual([]);
+  });
+
+  it('should not write note.order.perf back onto a skipped ornament', () => {
+    // The gate sits *before* prepareOrnament, which writes `note.order.perf` onto the
+    // `<ornament>` element for downstream visibility (D7). Suppressed means the MPM comes back
+    // exactly as it went in.
+    const { score, map } = v3Case();
+    map.renderOrnamentationToMap(score, ctx(false));
+    const ornament = map.getAllElementsOfType('ornament')[0].getValue();
+    expect(ornament.getAttributeValue('note.order.perf')).toBeNull();
+
+    const expanded = v3Case();
+    expanded.map.renderOrnamentationToMap(expanded.score, ctx(true));
+    expect(
+      expanded.map
+        .getAllElementsOfType('ornament')[0]
+        .getValue()
+        .getAttributeValue('note.order.perf'),
+    ).not.toBeNull();
+  });
+
+  it('should leave a v2 ornament alone whichever way the option is set', () => {
+    // The flag suppresses *expansion*, and a v2 ornament expands nothing — it writes markers
+    // onto notes that already exist. Both renders must produce the v2 arpeggio's own numbers.
+    const markers = (expandOrnaments: boolean) => {
+      const notes = [
+        makePerformedNote('n1', 0, 60),
+        makePerformedNote('n2', 0, 64),
+        makePerformedNote('n3', 0, 67),
+      ];
+      const score = makeScore(notes);
+      const map = OrnamentationMap.createOrnamentationMap()!;
+      map.setHeaders(null, makeHeader([arpeggioDef()]));
+      map.addStyleSwitch(0, 'orn style');
+      map.addOrnament(0, 'arpeggio', 2.0, null, null);
+      map.renderOrnamentationToMap(score, ctx(expandOrnaments));
+      return notes.map((note) => [num(note, 'date.perf'), num(note, 'velocity')]);
+    };
+
+    expect(markers(false)).toEqual(markers(true));
+    // and it really did ornament: the arpeggio's -22 / 0 / +22 spread, folded into date.perf
+    expect(markers(false).map(([date]) => date)).toEqual([-22, 0, 22]);
   });
 });
 
