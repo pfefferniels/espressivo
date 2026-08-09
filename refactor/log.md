@@ -9707,3 +9707,17 @@ still `export class`.
    not part of `npm run verify`.
 
 **PASS T20.**
+
+## [phase-3] conductor — phase end audit: PASS (2026-08-09)
+
+Phase 3 complete: T20b, T12 (with adversarial review cycle), TD1, T14, T18, T19a,
+T13, T16, T15 (with fix round), T17, T19, T20 — all verified, 0 blocked, 0 reverted.
+Invariant 7 v3 gates: functions 92.46% >= 92.0 (rebased floor) PASS; uncovered
+statements 2138 <= 2318 budget PASS (phase-2 end was 2255 — improved); tests 2276,
+every change journaled per 7c PASS. Indicators: statements 86.34%, branch 87.85%.
+The architecture is fully applied: facade live (externally validated by mpmify),
+zero import cycles, god-classes split, dispatch table, model-layer null policy,
+explicit stage order, module-function MIDI layer. Two deliberate divergences from
+Java are on the books (TD1 hang fix; movement fixes mirrored with regenerated
+ground truth). Advancing to Phase 4: T21 dead-code sweep, T22 packaging/docs/rename,
+T23 final adversarial audit.
