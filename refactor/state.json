@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "c432849",
+  "lastGreenCommit": "979c391",
   "phase": 3,
-  "currentItem": "T16",
-  "counters": { "completed": 19, "blocked": 0, "reverted": 0 },
+  "currentItem": "T15",
+  "counters": { "completed": 20, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -144,14 +144,14 @@
     {
       "id": "T15",
       "phase": 3,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Restructure Mei2MsmMpmConverter",
       "details": "Element-dispatch architecture (handler map per MEI element) per ARCHITECTURE.md, replacing the Java-style switch/instanceof cascades. Highest-risk item: sub-round per element group, verify after each."
     },
     {
       "id": "T16",
       "phase": 3,
-      "status": "in_progress",
+      "status": "done",
       "title": "Model layer: composition & types (msm/mpm)",
       "details": "Per ARCHITECTURE.md: reduce inheritance depth, KeyValue->tuples if decided, typed attribute access helpers, GenericMap/GenericStyle generics cleaned, immutable-friendly model surface (readonly properties, no input mutation outside declared boundaries). Behavior-identical."
     },
