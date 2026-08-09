@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "83e6d0a",
+  "lastGreenCommit": "c96ac69",
   "phase": 4,
-  "currentItem": "T21",
-  "counters": { "completed": 24, "blocked": 0, "reverted": 0 },
+  "currentItem": "T22",
+  "counters": { "completed": 25, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 92.0,
@@ -195,14 +195,14 @@
     {
       "id": "T21",
       "phase": 4,
-      "status": "in_progress",
+      "status": "done",
       "title": "Dead-code sweep + coverage audit",
       "details": "Remove now-dead code (ts-prune or knip), re-run scoped coverage, must be >= baseline floor. Update vitest.config.ts include list if module paths moved (mechanical only)."
     },
     {
       "id": "T22",
       "phase": 4,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Package hardening + docs",
       "details": "package.json exports map, sideEffects, engines, declaration maps; README with API examples and the Java-parity story; document deliberate bug-for-bug parity list. ALSO: rename package to `espressivo` (npm name `meico` is taken; user adopted the new name — update package.json name + any self-references in README/docs)."
     },
