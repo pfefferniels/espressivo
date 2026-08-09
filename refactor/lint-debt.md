@@ -1,5 +1,13 @@
 # Lint debt (as of T13)
 
+> Re-measured after **T21** (dead code and audits): **1011 errors / 2 warnings**, and for the
+> first time the figure is not comparable to its predecessor without saying which config it
+> was measured under. T21 enabled RULE N6's three type-aware rules, so:
+> **1046 → 955 under the OLD config** (this item's edits: −91, the largest drop of the
+> project) **→ 1011 under the NEW one** (+56, all `no-unnecessary-condition`, all journaled).
+> `no-require-imports` reaches **0 repo-wide** — the fourth rule retired outright.
+> See the T21 section under "By owning item".
+
 > Re-measured after **T19** (performance pipeline): **1047 errors / 2 warnings** — the
 > largest single drop of the project so far, **−33, every one of them
 > `no-non-null-assertion`, every one in `src/mpm/elements/Performance.ts`**, and none of them
@@ -29,7 +37,11 @@ for anyone else: each item pays down its own cluster as part of its normal work.
 Config: `eslint.config.js` — typescript-eslint `strict` + `stylistic` (non-type-checked),
 plus `eqeqeq`, `no-var`, `prefer-const`, `prefer-template`,
 `@typescript-eslint/explicit-module-boundary-types`, `@typescript-eslint/prefer-for-of`,
-and `no-param-reassign` (warn). Reproduce with `npm run lint`.
+and `no-param-reassign` (warn in `tests/`, **`error` in `src/` since T21**). **Since T21 it
+also carries RULE N6's three type-aware rules over `src/` only** — `prefer-readonly`,
+`no-unnecessary-condition`, `no-unnecessary-type-assertion` — which is why the run is now ~10 s
+rather than ~2 s, and why any figure in this file below the T21 section is an *old-config*
+figure. Reproduce with `npm run lint`.
 
 **`npm run lint` is not part of `npm run verify`** and must not be added to it until this
 debt is near zero — a red gate that everyone learns to ignore is worse than no gate.
@@ -928,6 +940,60 @@ static` ones (`TICKS_PER_METER_CLICK`, `THIRTY_SECOND_NOTES_PER_QUARTER`) are mo
 table, and its only caller is still `tests/midi/EventMaker.test.ts`. Deleting it means
 removing both, not just the function.
 
+### T21 — dead code and audits — repo 1046 → **955** under the old config, **1011** under the new
+
+**Two effects, and they must not be netted against each other.** This item both *removed*
+debt (deletions and 83 assertion removals) and *added* a new measuring instrument (RULE N6's
+three type-aware rules). Reported separately, each as a full per-rule and per-file histogram
+over a `git archive 5085159` baseline and the working tree, one tool version across both.
+
+**(a) This item's edits, measured under the OLD config — 1046 → 955 errors, −91.** Warnings
+flat at 2. Five rules move, no rule increases anywhere:
+
+| n | rule | how |
+|---|---|---|
+| −65 | `no-non-null-assertion` | 884 → **819**. 64 are `!`s that `no-unnecessary-type-assertion` proved redundant and its fixer removed; the 65th went with `XmlBase.fixDuplicateIds`. **Not a narrowing and not a guard**: a `!` erases at emit, so every one of these is invisible in the emitted JS — proven, see below. |
+| −14 | `no-unused-vars` | 53 → **39**. All 14 are the deliberately-unread stub parameters in `src/compat/unsupported.ts`, deleted with the file. |
+| −5 | `no-empty-function` | 54 → **49**. The five `vi.spyOn(...).mockImplementation(() => {})` in `tests/compat/unsupported.test.ts`. |
+| −5 | `unified-signatures` | 39 → **34**. `xslTransformToDocument`'s pair and `xslTransformToString`'s four-overload set. |
+| −2 | `no-require-imports` | 2 → **0, and the rule is retired repo-wide.** These are the `writeStringToFile` `require('fs')`/`require('path')` sites that [T14] booked and [T18] deliberately declined to rewrite because §8.10 had this file scheduled for deletion. That decision paid off exactly as intended: the debt was deleted, not migrated. |
+
+14 + 2 + 5 = the 21 `src/compat/unsupported.ts` carried, so nothing vanished unexplained.
+Per file, the movers are exactly the manifest and nothing else: `unsupported.ts` 21 → **0**,
+`tests/compat/unsupported.test.ts` 5 → **0**, `Mei2MsmMpmConverter.ts` 552 → 499,
+`Msm.ts` 105 → 102, `MovementData.ts` 18 → 16, `TempoMap.ts` 15 → 13, `MidiTypes.ts` 6 → 5,
+`XmlBase.ts` 5 → 4, `DynamicsMap.ts` 4 → 3, `OrnamentationMap.ts` 3 → 2, `MovementMap.ts` 2 → 1.
+Two files reach zero, so "files affected" drops 77 → **75**.
+
+**(b) RULE N6's three rules, on top — 955 → 1011 errors, +56.**
+
+| rule | count | disposition |
+|---|---|---|
+| `prefer-readonly` | 2 → **0** | §8.10 audit 5. Both were `Mei2MsmMpmConverter.ignoreExpansions` and `.cleanup` — constructor options never touched again. Marked `readonly`; type-only, emits nothing. **This is the first reproducible measurement of RULE I4 in the project**: every earlier figure in this file (38 → 18 → 17 → 11 → 9 → 2) was taken with a throwaway one-rule config, which is why they drifted by ±1 between entries. From here the number is just `npm run lint`. |
+| `no-unnecessary-type-assertion` | 83 → **0** | All 83 removed with an isolated one-rule config so no other fixer could run. 65 were `!`, 18 were identity `as` casts the old config never counted. **Zero equivalence risk by construction** — assertions erase — and proven: the comment-stripped emitted JS is byte-identical for every file except the four deletions, and `dist/mei/Mei2MsmMpmConverter.js`, whose difference is line wrapping alone (JSDoc-pruned token stream identical, 27 403 tokens, 0-line diff). **RULE U2/U3(a)'s brand casts are untouched** — `as Ticks`/`as Normalized` change the type, so the rule ignores them; [T13]'s 10 and [T19a]'s 8 are all still there. |
+| `no-unnecessary-condition` | **56** | §8.10 audit 6 permits "fixed **or** journaled"; all 56 are journaled and none fixed. They are not the `?? []` leftovers the rule was enabled to catch — 49 are runtime null guards on parameters the types declare non-nullable, and §9's `N2b` row already ruled that deleting such a guard needs a per-site unreachability argument plus a negative control, because the failure mode is an unguarded `TypeError` on published API reachable from untyped JS. Shape breakdown and the full site list are in the [T21] log entry §6 and `t21work/nuc-inventory.txt`. |
+
+**Nothing was suppressed.** `eslint-disable` / `@ts-ignore` / `@ts-expect-error` / `@ts-nocheck`
+/ coverage-ignore comments are still **0** across `src/` and `tests/`, and
+`allowConstantLoopConditions` was deliberately *not* enabled to silence `Mei.ts:384`'s
+`while (true)`.
+
+**All five gates are proven live**, which matters more than usual here because three of them
+are new and two had their parser options changed by this item. In a throwaway tree: a synthetic
+2-file cycle makes `import/no-cycle` report 2; an `import type` from `src/xml/**` to
+`src/mei/**` makes the layer zone report 1; a redundant `!` plus a never-firing `if` make
+`no-unnecessary-type-assertion` and `no-unnecessary-condition` each report one more; and a
+never-reassigned `private` field plus a reassigned parameter make `prefer-readonly` and
+`no-param-reassign` fire, both at severity 2.
+
+**Audit results** (§8.10's list): `no-extraneous-class` **0**; RULE I5's corrected static-field
+command returns **nothing**; `no-param-reassign` **0 in `src/` and promoted to `error` there**,
+with `tests/integration/**`'s two survivors left at `warn` because no source item may touch
+them; `import/no-cycle` and all four layer zones **0**; `no-non-null-assertion` **819**, well
+under the < 1080 target. Files linted 140 → 138; files with ≥1 finding 77 → 75 → **79**, the
+four entrants (`index.ts`, `GenericStyle.ts`, `AbstractDef.ts`, `prettyPrint.ts`) each carrying
+a single `no-unnecessary-condition` and nothing else.
+
 ### tests — 86
 `no-empty-function` 54, `no-unused-vars` 18, `no-explicit-any` 12,
 `no-unsafe-function-type` 2. Concentrated in `tests/mei/Mei.test.ts` (24),
@@ -963,7 +1029,18 @@ keep `getX()` where the tests and the Java parity story depend on call-order vis
 Note `getXml()`/`getValue()` etc. are used pervasively *inside* the port, so a rename is a
 whole-tree mechanical change, not a per-item one — it may deserve its own item.
 
-## What type-aware linting would add (measured, not enabled)
+## What type-aware linting would add (measured; three of them ENABLED by T21)
+
+> **T21 update.** The recommendation below ("switch to the type-checked presets") was
+> **narrowed, not adopted**: RULE N6 rejected the presets by name and named three rules
+> instead, and T21 enabled exactly those three over `src/` only. Measured on the real tree
+> rather than in a preview: `no-unnecessary-type-assertion` **83** (all fixed),
+> `no-unnecessary-condition` **56** (all journaled), `prefer-readonly` **2** (both fixed).
+> The preview's 126 / 112 / — were measured with the full `strictTypeChecked` preset over
+> `tsconfig.tests.json`, i.e. `src/` **and** `tests/`, on a pre-T14 tree; the rows below stay
+> as the historical record of that measurement. Every other row in the table remains
+> unmeasured on the current tree and **not enabled**.
+
 
 Preview run with `strictTypeChecked` + `stylisticTypeChecked` over `tsconfig.tests.json`:
 **4442 violations, 7s wall** — so the cost objection to type-aware linting is not real, only
@@ -1058,3 +1135,14 @@ Also unenforceable by lint, and worth restating from the charter: "no shared mut
 statics/singletons". The 15 `no-extraneous-class` hits are a partial proxy — every
 static-only utility class is a candidate — but T12/T21 have to audit module-level mutable
 state by hand.
+
+> **T21 did that audit, and the answer is one binding.** `grep -rnE "^(export )?(let|var) "
+> src` returns exactly `src/xml/XomTypes.ts:70`, `let placeholderDocument`. It is the memo of
+> a constant [T17] documented and asked to keep: assigned once by `placeholderDom()`, never
+> reassigned, never handed out, and the document it holds is never mutated. It is `let`
+> rather than a top-level `const` precisely so that importing `XomTypes.js` stays free of
+> load-time side effects, which T18's import-order work depends on — a top-level `const`
+> would have added an entry to that inventory. **Kept, with its comment.** The static-field
+> half of the same question is RULE I5's command, which returns nothing (audit 3), and
+> `no-extraneous-class` is at 0 (audit 2). So the charter's "no shared mutable
+> statics/singletons" holds in `src/` with exactly one documented, inert exception.

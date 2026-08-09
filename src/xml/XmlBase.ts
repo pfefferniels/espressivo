@@ -1,5 +1,4 @@
-import { Document, Element, Attribute, Builder, ParsingException } from './XomTypes.js';
-import { v4 as uuidv4 } from 'uuid';
+import { Document, Element, Builder, ParsingException } from './XomTypes.js';
 
 /**
  * What {@link XmlBase.validate} reports.
@@ -155,32 +154,6 @@ export class XmlBase {
     }
 
     return matches.size();
-  }
-
-  /**
-   * Give every `xml:id` that repeats a fresh `meico_<uuid>` value, keeping the first
-   * occurrence, and return how many had to be renamed.
-   *
-   * The `while` is not a typo: a freshly generated id is re-checked against the set,
-   * so a (vanishingly unlikely) collision is retried rather than accepted.
-   */
-  fixDuplicateIds(): number {
-    let duplicates = 0;
-    const uniqueIds = new Set<string>();
-
-    const attributes = this.getRootElement()!.query('descendant-or-self::node()/attribute::xml:id');
-    for (const node of attributes.toArray()) {
-      const attribute = node as unknown as Attribute;
-      let duplicate = false;
-      while (uniqueIds.has(attribute.getValue())) {
-        duplicate = true;
-        attribute.setValue(`meico_${uuidv4()}`);
-      }
-      uniqueIds.add(attribute.getValue());
-      duplicates += duplicate ? 1 : 0;
-    }
-
-    return duplicates;
   }
 
   /**

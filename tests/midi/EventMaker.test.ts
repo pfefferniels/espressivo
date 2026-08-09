@@ -338,28 +338,18 @@ describe('EventMaker', () => {
   });
 
   // ---------------------------------------------------------------
-  // shortToByteArray / byteToShort
+  // shortToByteArray
+  //
+  // `byteToShort` used to be tested here too. T21 deleted it (ARCHITECTURE.md §8.10: no
+  // caller outside this file), and its two `it`s went with it per charter invariant 7c.
   // ---------------------------------------------------------------
-  describe('shortToByteArray and byteToShort', () => {
+  describe('shortToByteArray', () => {
     it('should reduce a value to its lowest byte', () => {
       expect(Array.from(EventMaker.shortToByteArray(0))).toEqual([0]);
       expect(Array.from(EventMaker.shortToByteArray(9))).toEqual([9]);
       expect(Array.from(EventMaker.shortToByteArray(255))).toEqual([255]);
       expect(Array.from(EventMaker.shortToByteArray(256))).toEqual([0]);
       expect(Array.from(EventMaker.shortToByteArray(300))).toEqual([300 & 0xff]);
-    });
-
-    it('should read a byte back as an unsigned value', () => {
-      expect(EventMaker.byteToShort(0)).toBe(0);
-      expect(EventMaker.byteToShort(127)).toBe(127);
-      expect(EventMaker.byteToShort(255)).toBe(255);
-      expect(EventMaker.byteToShort(-1)).toBe(255);
-    });
-
-    it('should round-trip through shortToByteArray', () => {
-      for (const value of [0, 1, 15, 64, 127, 200, 255]) {
-        expect(EventMaker.byteToShort(EventMaker.shortToByteArray(value)[0])).toBe(value);
-      }
     });
   });
 
@@ -513,8 +503,10 @@ describe('EventMaker', () => {
 
     it('should expose exactly the module’s exports', () => {
       expect([...Object.keys(EventMaker)].sort()).toEqual([...moduleExports].sort());
-      // 299 constants + 18 functions, the public surface of the former class
-      expect(Object.keys(EventMaker)).toHaveLength(317);
+      // 299 constants + 17 functions, the public surface of the former class.
+      // 318 → 317 in T20 (the class had no re-export table); 317 → 316 in T21, which
+      // deleted `byteToShort` per ARCHITECTURE.md §8.10 — no caller but its own test.
+      expect(Object.keys(EventMaker)).toHaveLength(316);
     });
 
     it('should hold the module’s own bindings, not copies of them', () => {

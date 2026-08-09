@@ -74,7 +74,7 @@ export class MovementMap extends GenericMap {
     e.addAttribute(new Attribute('position', String(position)));
     e.addAttribute(new Attribute('transition.to', String(transitionTo)));
     e.addAttribute(new Attribute('controller', controller!));
-    e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id!));
+    e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
     return this.insertElement(new KeyValue(date, e), false);
   }
 

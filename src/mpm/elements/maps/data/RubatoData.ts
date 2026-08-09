@@ -72,7 +72,7 @@ export class RubatoData {
 
   clone(): RubatoData {
     const c = new RubatoData();
-    c.xml = this.xml === null ? null : (this.xml.copy() as Element);
+    c.xml = this.xml === null ? null : this.xml.copy();
     c.xmlId = this.xmlId;
     c.styleName = this.styleName;
     c.style = this.style;

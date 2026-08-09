@@ -81,7 +81,7 @@ export function firstChildElement(
     return null;
   } else {
     // arg1 is Element
-    const ofThis = arg1 as Element;
+    const ofThis = arg1;
     if (arg2 === undefined || arg2 === null) {
       // firstChildElement(ofThis: Element) - no name filter
       const es = ofThis.getChildElements();
@@ -271,7 +271,7 @@ export function getNextSiblingElement(
     return null;
   } else {
     // getNextSiblingElement(ofThis: Element)
-    const ofThis = arg1 as Element;
+    const ofThis = arg1;
     const parent = ofThis.getParent();
     if (parent == null) return null;
 
@@ -330,7 +330,7 @@ export function getPreviousSiblingElement(
     return null;
   } else {
     // getPreviousSiblingElement(ofThis: Element)
-    const ofThis = arg1 as Element;
+    const ofThis = arg1;
     const parent = ofThis.getParent();
     if (parent == null) return null;
 

@@ -85,7 +85,7 @@ export class Metadata extends AbstractXmlSubtree {
           arg2 !== undefined
             ? arg2
             : arg1 !== null && arg1 !== undefined && 'getText' in arg1
-              ? (arg1 as unknown as Comment)
+              ? arg1
               : null;
         const relatedResources = arg3 ?? null;
 
@@ -94,10 +94,10 @@ export class Metadata extends AbstractXmlSubtree {
           if (arg1 !== null && arg1 !== undefined) {
             if ('getName' in arg1 && 'getNumber' in arg1) {
               // It's an Author
-              metadata.appendChild((arg1 as Author).getXml());
+              metadata.appendChild(arg1.getXml());
             } else if ('getText' in arg1) {
               // It's a Comment
-              metadata.appendChild((arg1 as unknown as Comment).getXml());
+              metadata.appendChild(arg1.getXml());
             }
           }
         } else {

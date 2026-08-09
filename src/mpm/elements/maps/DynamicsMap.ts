@@ -179,7 +179,7 @@ export class DynamicsMap extends GenericMap {
         // non-sub-note dynamics: add a volume=100 entry to channelVolumeMap
         if (
           chanVolMap.isEmpty() ||
-          getAttributeValue('value', chanVolMap.getLastElement()!) !== '100.0'
+          getAttributeValue('value', chanVolMap.getLastElement()) !== '100.0'
         ) {
           const volE = new Element('volume', chanVolMap.getXml().getNamespaceURI());
           volE.addAttribute(new Attribute('date', String(dd.startDate)));

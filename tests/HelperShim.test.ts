@@ -8,7 +8,6 @@ import * as duration from '../src/music/duration.js';
 import * as text from '../src/music/text.js';
 import * as dateMap from '../src/msm/dateMap.js';
 import * as mpmNoteIds from '../src/mei/mpmNoteIds.js';
-import * as unsupported from '../src/compat/unsupported.js';
 import { Element, Attribute } from '../src/xml/XomTypes.js';
 
 // T14 dissolved `mei/Helper` into nine modules (ARCHITECTURE.md §8.2) and left the `Helper`
@@ -16,10 +15,16 @@ import { Element, Attribute } from '../src/xml/XomTypes.js';
 // that shim promises: every original public static is still reachable under its original name
 // and still does what it did.
 
-/** The 41 public statics `mei/Helper` carried at 757948e, in declaration order. */
+/**
+ * The 34 public statics `mei/Helper` carried at 757948e that survive, in declaration order.
+ *
+ * It carried 41. T21 deleted the 7 `compat/unsupported.js` members (the two
+ * `validateAgainstSchema*`, `writeStringToFile`, the two `xslTransform*` and the two
+ * `makeXslt*Transformer`) per ARCHITECTURE.md §8.10: every one was a stub that could not do
+ * its job, so the shim no longer promises them. The tests that exercised those seven went
+ * with them (charter invariant 7c, tests of removed behavior).
+ */
 const PUBLIC_STATICS = [
-  'validateAgainstSchema',
-  'validateAgainstSchemaString',
   'getFirstChildElement',
   'getAllChildElements',
   'getAllDescendantsByName',
@@ -52,18 +57,13 @@ const PUBLIC_STATICS = [
   'midi2PnameAndAccid',
   'midi2PnameAccidOct',
   'getFilenameWithoutExtension',
-  'writeStringToFile',
-  'xslTransformToDocument',
-  'xslTransformToString',
-  'makeXsltTransformer',
-  'makeXslt30Transformer',
   'prettyXml',
   'addToListAttribute',
 ] as const;
 
 describe('Helper compatibility shim', () => {
-  it('still exposes all 41 public statics, and nothing else', () => {
-    expect(PUBLIC_STATICS.length).toBe(41);
+  it('still exposes all 34 surviving public statics, and nothing else', () => {
+    expect(PUBLIC_STATICS.length).toBe(34);
     for (const name of PUBLIC_STATICS) {
       expect(typeof (Helper as Record<string, unknown>)[name], name).toBe('function');
     }
@@ -103,15 +103,8 @@ describe('Helper compatibility shim', () => {
       midi2PnameAccidOct: pitch.midi2PnameAccidOct,
       updateMpmNoteidsAfterResolvingRepetitions:
         mpmNoteIds.updateMpmNoteidsAfterResolvingRepetitions,
-      validateAgainstSchema: unsupported.validateAgainstSchema,
-      validateAgainstSchemaString: unsupported.validateAgainstSchemaString,
-      writeStringToFile: unsupported.writeStringToFile,
-      xslTransformToDocument: unsupported.xslTransformToDocument,
-      xslTransformToString: unsupported.xslTransformToString,
-      makeXsltTransformer: unsupported.makeXsltTransformer,
-      makeXslt30Transformer: unsupported.makeXslt30Transformer,
     };
-    expect(Object.keys(identity).length).toBe(37);
+    expect(Object.keys(identity).length).toBe(30);
     for (const [name, fn] of Object.entries(identity)) {
       expect((Helper as Record<string, unknown>)[name], name).toBe(fn);
     }

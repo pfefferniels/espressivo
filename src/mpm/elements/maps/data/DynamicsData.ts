@@ -85,7 +85,7 @@ export class DynamicsData {
 
   clone(): DynamicsData {
     const c = new DynamicsData();
-    c.xml = this.xml === null ? null : (this.xml.copy() as Element);
+    c.xml = this.xml === null ? null : this.xml.copy();
     c.xmlId = this.xmlId;
     c.styleName = this.styleName;
     c.style = this.style;

@@ -102,7 +102,7 @@ export class DistributionData {
 
   clone(): DistributionData {
     const c = new DistributionData();
-    c.xml = this.xml === null ? null : (this.xml.copy() as Element);
+    c.xml = this.xml === null ? null : this.xml.copy();
     c.xmlId = this.xmlId;
     c.startDate = this.startDate;
     c.endDate = this.endDate;

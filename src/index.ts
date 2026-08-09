@@ -41,15 +41,6 @@ import {
 import { extractAllIntegersFromString, getFilenameWithoutExtension } from './music/text.js';
 import { addToMap } from './msm/dateMap.js';
 import { updateMpmNoteidsAfterResolvingRepetitions } from './mei/mpmNoteIds.js';
-import {
-  makeXslt30Transformer,
-  makeXsltTransformer,
-  validateAgainstSchema,
-  validateAgainstSchemaString,
-  writeStringToFile,
-  xslTransformToDocument,
-  xslTransformToString,
-} from './compat/unsupported.js';
 import { VERSION } from './version.js';
 
 // The public facade (T13, ARCHITECTURE.md §2): plain data in, plain data out.
@@ -120,7 +111,6 @@ export * from './music/duration.js';
 export * from './music/text.js';
 export * from './msm/dateMap.js';
 export * from './mei/mpmNoteIds.js';
-export * from './compat/unsupported.js';
 
 // MEI
 export { Mei } from './mei/Mei.js';
@@ -173,10 +163,17 @@ function helperGetAllChildElements(
 /**
  * Compatibility shim for the dissolved `mei/Helper` class (ARCHITECTURE.md RULE M2, §8.2).
  *
- * Every one of `Helper`'s 41 public statics is here under its original name, delegating to
- * the module function it moved to, so code written against the published API keeps working.
+ * 34 of `Helper`'s 41 public statics are here under their original name, delegating to
+ * the module function they moved to, so code written against the published API keeps working.
  * New code should import from `xml/tree.js`, `xml/ids.js`, `music/*.js` and friends directly
  * — T22 marks this object deprecated.
+ *
+ * The missing 7 are the XSLT / schema-validation / file-write members that lived in
+ * `compat/unsupported.js`. T21 deleted them per ARCHITECTURE.md §8.10: every one was a stub
+ * that logged and returned `null`/`false`/nothing, and the file-write path additionally used
+ * `require()`, which is not defined in this ESM build. They could not do their job in any
+ * environment this package ships to, so keeping their names was a promise the port could not
+ * keep.
  *
  * Four members changed shape in the move and the shim absorbs the difference:
  * `getFirstChildElement`, `getAttribute` and `getParentElement` were renamed
@@ -226,12 +223,4 @@ export const Helper = {
   midi2PnameAccidOct,
   // mei/mpmNoteIds.js
   updateMpmNoteidsAfterResolvingRepetitions,
-  // compat/unsupported.js
-  validateAgainstSchema,
-  validateAgainstSchemaString,
-  writeStringToFile,
-  xslTransformToDocument,
-  xslTransformToString,
-  makeXsltTransformer,
-  makeXslt30Transformer,
 } as const;

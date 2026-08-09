@@ -364,7 +364,7 @@ export class Element extends XomNode {
       elem = doc.createElement(localName) as unknown as globalThis.Element;
     }
 
-    super(elem as unknown as Node);
+    super(elem);
     this._localName = localName;
     this._namespaceURI = namespaceURI || '';
     this._namespacePrefix = prefix;
@@ -445,10 +445,6 @@ export class Element extends XomNode {
 
   getNamespacePrefix(): string {
     return this._namespacePrefix;
-  }
-
-  setNamespaceURI(uri: string): void {
-    this._namespaceURI = uri;
   }
 
   setNamespacePrefix(prefix: string): void {

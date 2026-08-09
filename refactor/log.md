@@ -9721,3 +9721,526 @@ explicit stage order, module-function MIDI layer. Two deliberate divergences fro
 Java are on the books (TD1 hang fix; movement fixes mirrored with regenerated
 ground truth). Advancing to Phase 4: T21 dead-code sweep, T22 packaging/docs/rename,
 T23 final adversarial audit.
+
+## [T21] worker — dead code and audits: §8.10's rulings executed, RULE N6's rules enabled (2026-08-09)
+
+Baseline: `HEAD` = 5085159 (src-identical to the last green 83e6d0a; verified by extracting
+`git archive HEAD` and spot-diffing). Every number below is measured on that archive versus
+the working tree, one tool version across both.
+
+### 1. The four DELETE rulings, executed
+
+| §8.10 candidate | what went | why it was safe |
+|---|---|---|
+| `src/compat/unsupported.ts` + `tests/compat/unsupported.test.ts` | **whole module, `git rm`** | see the non-functionality proof below |
+| `XmlBase.fixDuplicateIds` | the method + the now-orphaned `uuid` and `Attribute` imports | 0 callers anywhere; **0 tests**; knip agrees (below) |
+| `XomTypes.Element.setNamespaceURI` | the method | 0 callers, 0 tests, dead since T11; knip agrees |
+| `EventMaker.byteToShort` | the function, its re-export table entry, its 2 tests, and the table's arity assertion | only caller was its own test, exactly as [T20] predicted |
+
+Both directories emptied out entirely, so `src/compat/` and `tests/compat/` no longer exist.
+
+**§8.10 required "verify each is genuinely non-functional before deleting", and that is the one
+ruling in the table that could have been wrong, so it was checked by running the code rather
+than by reading it** (`t21work/nonfunctional.mjs`, against the *baseline* `dist/`):
+
+```
+validateAgainstSchema        -> undefined  (warns, validates nothing)
+validateAgainstSchemaString  -> undefined  (warns, validates nothing)
+writeStringToFile(str, path) -> false      + the file does NOT exist afterwards
+xslTransformToDocument       -> null
+xslTransformToString         -> null
+makeXsltTransformer          -> null
+makeXslt30Transformer        -> null
+```
+
+**The file-write path is worth stating precisely, because the deleted test asserted the
+opposite.** `tests/compat/unsupported.test.ts:36-46` asserted `writeStringToFile` returns
+`true` and writes `'<mei/>\n'`, and it passed. In the **shipped ESM build** the same call
+throws `ReferenceError: require is not defined` at `dist/compat/unsupported.js:62`, is caught
+by the function's own `try/catch`, and returns `false` having written nothing. The test was
+green only because vitest transforms the TypeScript source into a module system that still
+provides `require`. So that test did not pin behaviour the package has — it pinned an artifact
+of the test runner, and it is exactly the case §8.10 had in mind ("the file-write path uses
+`require()` in an ESM build"). Deleting it removes a *false* guarantee.
+
+**The `Helper` shim shrinks, and that is an API change, stated plainly rather than buried.**
+`src/index.ts`'s `Helper` object went **41 → 34** members and `tests/HelperShim.test.ts`'s two
+pinning assertions moved with it (`PUBLIC_STATICS.length` 41 → 34, the identity map 37 → 30).
+No `it` was removed from that file and no surviving member lost an assertion — the file still
+pins every one of the 34 by name, by type and by identity. Both the shim's doc comment and the
+test's doc comment now record which 7 went and why.
+
+### 2. The KEEP rulings, honoured — including where that looks wrong
+
+§8.10 keeps: the six `Helper` music-theory conversions, `getClosest`, `getClosestByAttr`,
+`getAllPreviousSiblingElements`, `updateMpmNoteidsAfterResolvingRepetitions`, `copyIdNoNs`,
+`pulseDuration2decimal`, `addUUID`, `accidDecimal2String`, `midi2PnameAccidOct`,
+`Msm.getMinimalPPQ`, and the ms-domain ornament renderer. **Not one was touched.**
+
+Two places where the ruling is deliberately narrower than the evidence, so that nobody reads
+this item as "delete what looks dead":
+
+- **`Element.setNamespacePrefix` stays.** It sits on the next line after the deleted
+  `setNamespaceURI`, has the same shape, the same zero callers, and knip flags both. §8.10
+  names one and not the other, so one went and one stayed.
+- **`OrnamentationMap.renderMillisecondsModifiersToMap` stays and is now marked**, as the
+  ruling requires. Its JSDoc says outright that no fixture and no test reaches it, that
+  `Performance.perform` runs a private character-identical copy, that nothing enforces the two
+  staying in step, and that [T19] declined the collapse. The class doc's three-pass list
+  carries a pointer, which also closes the [T7] verifier's consequence #1. **Comment-only** —
+  proven by the comment-stripped emit below.
+
+### 3. The audits (§8.10's list of ten)
+
+| # | audit | result |
+|---|---|---|
+| 1 | RULE N6's three type-aware rules enabled, `src/` only, no preset | **done, and proven live** (§5) |
+| 2 | `no-extraneous-class` = 0 | **0** |
+| 3 | no non-`readonly` static fields in `src/` (RULE I5's corrected command) | **no output** |
+| 4 | `no-param-reassign` = 0 in `src/`, promoted to `error` | **0 in `src/`, now `error` there**; the 2 survivors are `tests/integration/**`, which stays `warn` |
+| 5 | `prefer-readonly` = 0 | 2 → **0** (`Mei2MsmMpmConverter.ignoreExpansions`/`.cleanup`) |
+| 6 | `no-unnecessary-condition` — every finding fixed or journaled | 56 findings, **all 56 journaled**, none fixed (§6) |
+| 7 | `import/no-cycle` clean | **0**, with the negative control re-run (§5) |
+| 8 | `no-non-null-assertion` strictly below 1080 | 884 → **819** |
+| 9 | coverage per charter invariant 7 | **PASS** (§8) |
+| 10 | `vitest.config.ts` include list mechanical update | `src/compat/**/*.ts` removed; `src/api/**`, `src/music/**`, `src/xml/**`, `src/units.ts` confirmed **in** scope |
+
+`eslint.config.js` also lost `src/compat/**/*.ts` from RULE M1's `leaves` layer zone — a glob
+that now matches nothing. Mechanical, and the zone's negative control still fires (§5).
+
+### 4. `no-unnecessary-type-assertion`: 83 findings, all fixed, zero emitted code
+
+RULE N6 calls this rule "exactly N3's cleanup surface", and enabling it surfaced **83**
+redundant assertions. All 83 were removed, because this is the one class of finding in this
+codebase whose fix carries **no** equivalence risk: a `!` and an `as T` both erase at emit, so
+the *proof* is mechanical rather than argumentative.
+
+- Applied with an **isolated one-rule flat config** (`t21work/fixassert.config.mjs`) so no
+  other rule's fixer could run alongside it.
+- **74 source lines changed; a canonicalizer that strips `!`, `as T` and now-redundant parens
+  maps every single one of the 74 old lines onto its new line. Residue: 0.**
+- 65 of the 83 were `!` (so `no-non-null-assertion` falls by 65: 64 here + 1 that went with
+  `fixDuplicateIds`); the other 18 were identity `as` casts, which the old config never counted.
+- `prettier` re-wrapped three expressions in the converter as a consequence. That is the only
+  reason `dist/mei/Mei2MsmMpmConverter.js` is not byte-identical, and it is proven to be the
+  only reason: the **JSDoc-pruned token stream of the emitted JS is identical, 27 403 tokens,
+  0-line diff**.
+
+**None of RULE U2/U3(a)'s brand casts were touched** — `as Ticks`, `as Milliseconds`,
+`as Midi7Bit`, `as Normalized` all change the type, so the rule correctly ignores them. The
+inventories [T13] and [T19a] left for this audit (10 in `api/pipeline.ts`, 8 in
+`MovementData`/`MovementMap`/`RenderOptions`) are intact, unflagged and unedited.
+
+**One hunk will make a reviewer stop, so read it here first.** In
+`Metadata.createMetadata`, dropping `(arg1 as Author)` and `(arg1 as unknown as Comment)`
+leaves **two textually identical lines**, `metadata.appendChild(arg1.getXml());`, in two
+different arms of the duck-typed dispatch ([T8] typed those guards; the union narrows on its
+own). They were **not** merged, and merging them would be a real restructure of a
+shape-dispatching factory, which is not this item's business. `dist/mpm/elements/metadata/
+Metadata.js` is **byte-identical** to the baseline, which is the proof that both arms are
+still there and still do what they did.
+
+### 5. The new gates are gates — four negative controls
+
+A rule that reports 0 because it never ran is worse than no rule, and this config now has
+three that are new plus two ([T18]'s) whose parser options this item changed. All were made
+to fail, in a throwaway copy of the tree (`t21work/nc/`), then restored:
+
+| control | expected | observed |
+|---|---|---|
+| synthetic 2-file cycle in `src/` | `import/no-cycle` fires | **2 errors** (0 before, 0 after) |
+| `src/xml/tree.ts` `import type` from `src/mei/Mei.js` | layer zone fires | **1 error** |
+| a redundant `!` + a never-firing `if` in a new `src/` file | `no-unnecessary-type-assertion` +1, `no-unnecessary-condition` +1 | **both fired** |
+| a never-reassigned `private` field + a reassigned parameter | `prefer-readonly`, `no-param-reassign` | **both fired, both at severity 2** |
+
+### 6. `no-unnecessary-condition`: 56 findings, all journaled, none fixed — and why
+
+This is the rule §8.10 wanted for the leftover `?? []` and `!` guards. What it actually found
+is **not** leftovers: 49 of the 56 are `Unnecessary conditional, the types have no overlap`,
+i.e. runtime null guards on parameters whose declared type is non-nullable.
+
+| n | shape | example |
+|---|---|---|
+| 10 | factory guard that **throws** on a null `xml` | `Dated.ts:60`, `Global.ts:53`, `Header.ts:73`, `Part.ts:91`, `Performance.ts:188`, `GenericMap.ts:132`, `Author.ts:61`, `Comment.ts:50`, `Metadata.ts:135`, `AbstractDef.ts:21` |
+| 4 | factory guard that **returns** on a null `xml` | `Dated.ts:72`, `GenericMap.ts:370`, `RelatedResource.ts:48`, `GenericStyle.ts:37` |
+| 6 | module-local navigation helper guarding `ofThis` | `Mpm.ts:26,38`, `Msm.ts:28,54,66,87` |
+| 29 | other null guards on declared-non-null values | 5 in the converter, 6 in `Metadata`, 3 each in `Midi`/`Mpm`/`Msm`, … |
+| 4 | `?.` on the `currentPerformance` chain | `Mei2MsmMpmConverter.ts:780,794,800,803` |
+| 3 | always-truthy: `Mei.ts:384` `while (true)`, `XomTypes.ts:401,729` xmldom fields | |
+
+**Ruling: journal, do not fix.** ARCHITECTURE.md §9's `N2b` row already decided this — deleting
+a guard whose type says it cannot fire turns a graceful `return`/`throw` into an unguarded
+`TypeError`, "a *worse* failure mode than N2a's", and it needs a per-site unreachability
+argument plus a negative control **each**. Three concrete reasons the types cannot be taken at
+face value here: this is published API reachable from untyped JavaScript, where a `null`
+argument is a real input; `noUncheckedIndexedAccess` is off, so `xs[i]` is typed `T` and
+`prettyPrint.ts:33`'s `rawRow == null` is guarding a case the type denies; and the XOM layer
+returns `undefined` on paths its signatures type as non-null (the reason RULE N5 blessed
+`== null` in the first place). 56 findings × (argument + control) is its own item, not a line
+in a dead-code sweep. The full inventory with source lines is in
+`t21work/nuc-inventory.txt`; the per-shape table above is its index.
+
+Nothing was suppressed to make these quiet. In particular `allowConstantLoopConditions` was
+**not** switched on to hide `while (true)`, because tuning a rule's options until it stops
+reporting is how a gate dies.
+
+### 7. Tooling corroboration — knip and ts-prune, including where they disagree with §8.10
+
+Both were run over the tree (`npx knip@5`, `npx ts-prune@0.10.3`; neither added to
+`package.json`). The honest result is that **the tools corroborate two of the four DELETE
+rulings and are blind to the other two**:
+
+- **knip `--include classMembers`, run on the baseline, flags `XmlBase.fixDuplicateIds` and
+  `Element.setNamespaceURI` by name.** Independent confirmation of those two rulings.
+- **It does not flag `byteToShort` or `compat/unsupported.ts`** — the first is kept alive by
+  its own test, the second by its own test *and* by `index.ts`'s barrel re-export. A
+  reachability tool cannot tell "used" from "used only by the test that exists to use it",
+  which is precisely the judgement §8.10 had to make by hand. Worth recording for T23: the
+  absence of a knip finding is not evidence that code is live.
+- **ts-prune's 83 non-`used in module` hits are all barrel re-exports** from `src/index.ts`
+  and `src/api/index.ts` — unused *within* the repo by construction, since this is a library.
+  No signal. Its other 337 hits are the informational "used in module" class.
+
+Everything the tools flag that §8.10 does **not** rule on is listed as DISCOVERED below and
+was left strictly alone.
+
+### 8. Evidence
+
+**Pipeline byte-probe — identical.** `t21work/pipe.mjs` (the [T8]-verifier probe: 5
+deterministic all-maps fixtures + all 16 MEI fixtures → MSM/MPM/augmented-MSM/raw-MIDI/
+expressive-MIDI, UUID-canonicalised) on two clean out-of-tree builds. Both
+`entries=24 threw=0 nonVacuous=21`, transcript sha
+`169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e`, `diff` of the two JSON
+transcripts clean. **Same sha the chain has carried since TD1 — unbroken.**
+
+**Emitted-JS classification, comment-immune** (both trees re-emitted with `removeComments`).
+Exactly **five** files differ, plus the deleted `dist/compat/`:
+
+| file | difference |
+|---|---|
+| `index.js` | the 7 imports, the `export *`, the 7 shim entries — the deletion, nothing else |
+| `xml/XmlBase.js` | `fixDuplicateIds`'s body and the `uuid` import — the deletion, nothing else |
+| `xml/XomTypes.js` | `setNamespaceURI`'s 3 lines — the deletion, nothing else |
+| `midi/EventMaker.js` | `byteToShort`'s body and its table entry — the deletion, nothing else |
+| `mei/Mei2MsmMpmConverter.js` | **line wrapping only; token-identical (27 403 tokens, 0 diff)** |
+
+Every other emitted file in the tree is **byte-identical**, which is what proves the 83
+assertion removals and the `readonly` fields emit nothing.
+
+**Deep-import battery** (`tools/deepimport.mjs`, fresh node process per module, no warm-up
+import): baseline **79 modules, 79 clean, 0 threw**; work **78 modules, 78 clean, 0 threw**.
+The −1 is `compat/unsupported.js`. T18's load-order guarantee survives the deletions.
+
+**`npm run verify` green: 58 files / 2268 tests** (baseline 59 / 2276, reproduced on the
+archive — the phase-3 audit's 2276 lands bit-exactly).
+
+**Test-count accounting, charter 7c — −8, all tests of removed behavior:**
+
+| n | test | removed with |
+|---|---|---|
+| 6 | all of `tests/compat/unsupported.test.ts` (3 `writeStringToFile`, 3 XSLT/schema stubs) | `src/compat/unsupported.ts` |
+| 2 | `EventMaker.test.ts` "should read a byte back as an unsigned value", "should round-trip through shortToByteArray" | `byteToShort` |
+
+**No test of surviving behaviour was removed or weakened.** Three assertions were *retargeted*
+because the thing they counted got smaller, each with the old and new number recorded at the
+site: `PUBLIC_STATICS.length` 41 → 34, the shim identity map 37 → 30, and the re-export table's
+`toHaveLength(317)` → `316`. The `shortToByteArray` describe kept its own `it` unchanged.
+
+**Coverage (charter invariant 7 v3) — every gate improved:**
+
+| metric | baseline | now | gate |
+|---|---|---|---|
+| **functions** | 92.4618 % (969/1048) | **92.5819 %** (961/1038) | ≥ 92.0 **PASS** |
+| **uncovered statements** | 2138 | **2107** | ≤ 2318 **PASS** (−31) |
+| tests | 2276 | 2268 | 7c journaled above **PASS** |
+| statements (indicator) | 86.3456 % | 86.4502 % | — |
+| branch (indicator) | 87.8536 % | 87.8574 % | — |
+
+Charter 7 asks for the deletion accounting either way, so here it is, reconciled exactly:
+
+- **uncovered −31** = `unsupported.ts` −6 + `Mei2MsmMpmConverter.ts` −8 + `XmlBase.ts` −15 +
+  `XomTypes.ts` −2 + `EventMaker.ts` ±0. The converter's −8 is **not** new test power: total
+  statements there fell by 10 because removing `as`/`!` and prettier's re-wrap changed how v8
+  segments three expressions. `fixDuplicateIds` was 15 uncovered statements — genuinely dead
+  code, genuinely deleted.
+- **functions −10** = `unsupported.ts` 7 + `byteToShort` + `fixDuplicateIds` +
+  `setNamespaceURI`. **Covered −8, uncovered −2**: the deleted set was 80 % covered against a
+  tree at 92.5 %, which is *why* the ratio rose. This is the "deleting covered dead code lowers
+  ratios" case from 7a and it did not bite, because the two uncovered deletions
+  (`fixDuplicateIds`, `setNamespaceURI`) were enough to tip it the other way. The floor was
+  never in danger either way.
+
+**Lint — reconciled exactly, and the two effects are reported separately** so the deletions can
+be read on their own. Measured as a full per-rule *and* per-file histogram, `eslint . -f json`.
+
+*This item's edits, under the **old** config: **1046 → 955 errors (−91)**, warnings flat at 2.*
+
+| n | rule | where |
+|---|---|---|
+| −65 | `no-non-null-assertion` | 64 assertion removals + `fixDuplicateIds`'s one `!` |
+| −14 | `no-unused-vars` | the stub parameters in `unsupported.ts` |
+| −5 | `no-empty-function` | the 5 `mockImplementation(() => {})` in the deleted test |
+| −5 | `unified-signatures` | `unsupported.ts`'s two overload sets |
+| −2 | `no-require-imports` | **the rule reaches 0 repo-wide** — the two `writeStringToFile` sites [T14] booked and [T18] deliberately left for this item |
+
+14+2+5 = the 21 `unsupported.ts` carried; the file-level movers are exactly the 11 files in the
+manifest and no other file moves by ±1. **`no-require-imports` is the fourth rule retired
+outright** (after `no-this-alias`, `explicit-module-boundary-types`, `prefer-for-of`), and
+`no-extraneous-class` stays at the 0 [T20] reached.
+
+*Then RULE N6's rules, on top: **955 → 1011 errors (+56)**, all of it
+`no-unnecessary-condition`, journaled in §6. `prefer-readonly` and
+`no-unnecessary-type-assertion` are enabled at **0**.*
+
+Files with ≥1 finding: 77 → 75 under the old config (`unsupported.ts` and its test reach zero),
+then 79 under the new one — the 4 entering are `index.ts`, `GenericStyle.ts`, `AbstractDef.ts`
+and `prettyPrint.ts`, each carrying a single `no-unnecessary-condition` and nothing else.
+Files linted 140 → 138. **No new suppressions**: `eslint-disable` / `@ts-ignore` /
+`@ts-expect-error` / `@ts-nocheck` / coverage-ignore are still **0** across `src/` and `tests/`.
+
+`tests/integration/**` and `tests/integration/fixtures/**`: **untouched**
+(`git status --porcelain -- tests/integration` is empty). `tests/midi/Midi.test.ts`'s
+pre-existing prettier failure is left alone, as [T14] left it — reproduced on the baseline
+archive, so it is not this item's.
+
+### 9. DISCOVERED
+
+**DISCOVERED — the 27 never-dispatched converter elements are NOT this item's, and here they
+are by name.** The [T15] conductor ruling made them "a candidate for test additions in T21's
+audit". Audited: **§8.10 assigns T21 ten audits and none of them is a test addition**, so no
+tests were added — inventing that scope is what the KEEP rulings exist to prevent. The
+evaluation, for whoever does own it: coverage now names them exactly. The 27 dispatch arrows
+with zero hits are `app`, `arpeg`, `artic`, `bTrem`, `beatRpt`, `breath`, `choice`, `del`,
+`dot`, `fTrem`, `halfmRpt`, `keySig`, `layerDef`, `mRpt`, `mRpt2`, `meterSig`, `multiRpt`,
+`oLayer`, `oStaff`, `pedal`, `phrase`, `reh`, `restore`, `space`, `syl`, `tie`, `tupletSpan`,
+and 23 of them pair 1:1 with an equally uncovered `process*` handler (53 uncovered functions in
+that file in total, the remaining 3 being `getOneMeasureLength`, `isSameLayerInstance`,
+`isSameStaff`). A minimal dispatch test per element — feed a one-element MEI, assert the
+handler ran — would convert 27 uncovered functions into covered ones and, more usefully, would
+be the first thing in the suite that could catch a mis-wired table entry for these elements.
+**Recommended for T23's consideration**, or a T24 if T23 stays a pure audit.
+
+**DISCOVERED — knip's unruled findings, left alone.** `--include classMembers` reports 30
+unused exported class members on the baseline; §8.10 rules on 2 of them (both deleted). The
+other 28: `Part.setName/setNumber/setMidiChannel/setMidiPort/getGlobal`,
+`GenericMap.getElementByID/getStyleAt/updateAttributeValues`, `ImprecisionMap.setDomain`,
+`Mpm.removeMetadata/writeMpmString`, `AbstractDef.setName`, `GenericStyle.setName`,
+`XomNode.getDomNode`, `Element.setNamespacePrefix`, 8 `ShortMessage` system-message constants,
+`Mei2MsmMpmConverter.endingCounter/isSameLayerInstance/isSameStaff`, and — worth flagging
+specifically — **`TempoMap.renderTempoToMap` and
+`MetricalAccentuationMap.renderMetricalAccentuationToMap`, which are the same
+"`Performance` keeps a private copy" phenomenon §8.10 rules KEEP for the ornament one.**
+Whoever revisits that decision should revisit all three together.
+Without `classMembers`, knip's 275 "unused exports" are ~271 `EventMaker` GM/CC/META constants
+(published API by design, pinned by the re-export-table tests [T20] added), `MidiMessage`,
+the `DOMParser`/`XMLSerializer` convenience re-exports, and the exported type
+`DistributionType`.
+
+**DISCOVERED — `@types/uuid` is an unused devDependency** (`uuid` v13 ships its own types).
+A `package.json` edit, so it belongs to **T22**, not here.
+
+**DISCOVERED — the `no-unnecessary-condition` backlog (56) is a real item, not noise.** §6
+explains why it cannot be discharged inside a dead-code sweep. If it is ever taken up, the
+shape-groups in §6 are the natural work units and the 10 "factory guard that throws" sites are
+the cheapest, since their entire call-graph is inside `src/`.
+
+### 10. Handoff
+
+- **T22** inherits: `@types/uuid`; a `Helper` shim that is now 34 members and already carries
+  the deprecation note pointing at the per-module imports; and the fact that `src/compat/` no
+  longer exists, so any packaging `exports` map must not name it.
+- **T23** inherits the three lists above plus one caution worth repeating: this item's diff
+  contains 74 lines whose *only* change is a removed type assertion. The evidence that they are
+  inert is the comment-stripped emitted-JS diff (4 files differ, all deletions) and the
+  converter's 0-line token diff — that is the thing to re-run, not a line-by-line read.
+- `refactor/lint-debt.md` has a T21 section with the full reconciliation.
+
+## [T21] verifier — PASS. Every claim reproduced independently; one cosmetic log error (2026-08-09)
+
+Baseline `5085159` confirmed src-identical to the last green `83e6d0a` (`git diff --stat` over
+`src tests vitest.config.ts eslint.config.js package.json tsconfig.json` is empty; the only
+delta is `refactor/log.md` + `state.json`). All measurements below are my own, on my own
+out-of-tree builds (`t21verify/base`, `t21verify/work`, plus a pristine `t21verify/baseclean`
+for lint), never the worker's artifacts. Every number in the worker's entry reproduced.
+
+### 1. Ruling conformance — both directions, and the audit is exhaustive by construction
+
+**Deletions ⇒ rulings.** Rather than trust an enumeration, I closed the space: a deleted
+*runtime* symbol must show in a comment-stripped emitted-JS diff, and a deleted *type* symbol
+must show in a `.d.ts` diff. I ran both over the full tree. Their union is the complete set of
+removed symbols, and it is exactly:
+
+| removed | §8.10 ruling |
+|---|---|
+| `src/compat/unsupported.ts` (module, 7 members) + its barrel re-export + its 7 `Helper` shim entries | DELETE ("delete the module and its tests") |
+| `XmlBase.fixDuplicateIds` + the now-orphaned `uuid` import | DELETE |
+| `XomTypes.Element.setNamespaceURI` | DELETE |
+| `EventMaker.byteToShort` + its re-export table entry | DELETE |
+
+Nothing else. **No deletion lacks a ruling.** The only other `.d.ts` movement is `private
+ignoreExpansions`/`cleanup` gaining `readonly` (private members; no public surface change) and
+two JSDoc additions.
+
+**Rulings ⇒ tree.** All **17** KEEP-ruled symbols enumerated and grepped, each confirmed
+present in the built output: the six music-theory conversions (`duration2word`,
+`decimalDuration2HtmlUnicode`, `accidString2word`, `accidDecimal2unicodeString`, `midi2pname`,
+`prettyXml`), `getClosest`, `getClosestByAttr`, `getAllPreviousSiblingElements`,
+`updateMpmNoteidsAfterResolvingRepetitions`, `copyIdNoNs`, `pulseDuration2decimal`, `addUUID`,
+`accidDecimal2String`, `midi2PnameAccidOct` — all 15 still in the `Helper` shim — plus
+`Msm.getMinimalPPQ` and `OrnamentationMap.renderMillisecondsModifiersToMap`. The latter's
+"keep **and mark**" clause is satisfied: the JSDoc states that no fixture and no test reaches
+it, names `Performance`'s private copy, and is comment-only (its `.js` is byte-identical).
+`Element.setNamespacePrefix`, deliberately unruled, is untouched.
+
+**§8.10's one falsifiable premise, re-tested independently.** The table demanded "verify each
+is genuinely non-functional before deleting", and the deleted test asserted the *opposite* of
+the worker's conclusion (`writeStringToFile(...)` `toBe(true)` plus written content). I wrote
+my own probe (`t21verify/nonfunc.mjs`) against the **baseline** shipped ESM build: the six
+XSLT/schema entry points return `undefined`/`null`, and `writeStringToFile` returns **`false`
+with no file created** (`typeof require === 'undefined'` in ESM). The premise holds and the
+deleted test pinned a vitest-transform artifact, not shipped behaviour.
+
+### 2. Unruled candidates — reran both tools, reconciled item for item
+
+- **knip `--include classMembers`: baseline 30, work 28.** The delta is *exactly*
+  `fixDuplicateIds` and `setNamespaceURI` — the two ruled deletions knip corroborates. All 28
+  survivors are present in the tree and match the worker's DISCOVERED list member for member
+  (5 `Part`, 3 `GenericMap`, `ImprecisionMap.setDomain`, 2 `Mpm`, `AbstractDef.setName`,
+  `GenericStyle.setName`, `XomNode.getDomNode`, `Element.setNamespacePrefix`, 8 `ShortMessage`
+  constants, 3 `Mei2MsmMpmConverter`, `TempoMap.renderTempoToMap`,
+  `MetricalAccentuationMap.renderMetricalAccentuationToMap`). **Not one was deleted.**
+- knip flags neither `byteToShort` nor `compat/unsupported.ts` — the worker's self-incriminating
+  disclosure is accurate, and its warning to T23 (absence of a knip finding is not evidence of
+  liveness) is worth keeping.
+- **ts-prune: 420 hits, 337 "used in module", 83 others — all 83 in `src/index.ts` (57) and
+  `src/api/index.ts` (26)**, i.e. barrel re-exports of a library. No signal, as claimed.
+- Unused devDependency `@types/uuid` and unused type `DistributionType` both reproduce; both
+  correctly deferred (the former to T22 as a `package.json` edit).
+
+### 3. Equivalence evidence — reproduced, not accepted
+
+- **Pipeline byte-probe**: the unmodified [T8]-verifier probe (byte-identical to `t8verify/
+  pipe.mjs`; 5 deterministic all-maps fixtures + all 16 MEI fixtures → MSM/MPM/augmented-MSM/
+  raw-MIDI/expressive-MIDI, UUID-canonicalised) on two clean out-of-tree builds. Both
+  `entries=24 threw=0 nonVacuous=21`, sha
+  `169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e`, transcript `diff` clean.
+  **Unbroken since TD1.**
+- **Emitted-JS classification** (both re-emitted with `removeComments`): exactly **five** files
+  differ plus the deleted `compat/`. Four are pure deletions and I read every hunk. The fifth,
+  `mei/Mei2MsmMpmConverter.js`, is **token-identical — 27 403 tokens, 0-line diff** (TS scanner
+  stream, JSDoc-pruned); its raw diff is three re-wrapped expressions. Every other emitted
+  file is **byte-identical**, which is what proves the 83 assertion removals and the two
+  `readonly`s emit nothing. `Metadata.js` byte-identical ⇒ both arms of the duck-typed factory
+  survive the `as` removals that made them textually identical.
+- **Deep-import battery** (fresh node process per module): baseline 79/79 clean, work 78/78
+  clean, 0 threw. The −1 is `compat/unsupported.js`. T18's load-order guarantee survives.
+- **Facade freeze**: `git status --porcelain -- src/api` empty. `src/api/**` untouched.
+
+### 4. RULE N6 — enabled correctly, and every gate probe-tested
+
+Three rules, no preset, `projectService` scoped to `src/**` — as N6 requires. Measured
+`eslint . -f json` myself: **`prefer-readonly` 0, `no-unnecessary-type-assertion` 0**,
+`no-unnecessary-condition` 56, `no-param-reassign` 0 errors in `src/` (its 2 survivors are
+`warn` in `tests/integration/**`). Also confirmed: `no-extraneous-class` 0, `import/no-cycle`
+0, `no-require-imports` **0 repo-wide**, `no-non-null-assertion` **819** (§8.10 audit 8 wants
+strictly below 1080). §8.10 audit 3 (RULE I5's corrected command) returns no output.
+
+**A rule that reports 0 because it never ran is not a gate, so I planted violations myself** in
+a throwaway copy (`t21verify/nc/`, which first reproduced 1011/2 exactly):
+
+| planted | rule | observed |
+|---|---|---|
+| never-reassigned `private` field | `prefer-readonly` | **fires, severity 2** |
+| redundant `!` and an identity `as` | `no-unnecessary-type-assertion` | **fires ×2, severity 2** |
+| `if (o === null)` on a non-nullable param | `no-unnecessary-condition` | **fires, severity 2** |
+| reassigned parameter in `src/` | `no-param-reassign` | **fires, severity 2** (promotion is real) |
+| the same file placed in `tests/` | the three type-aware rules | **silent** — `src/`-only scoping is real; only `no-param-reassign` fires there, at `warn` |
+| synthetic 2-file cycle | `import/no-cycle` | **fires ×2** |
+| `xml/` importing `mei/Mei.js` | layer zone | **fires** |
+
+The last two matter because this item changed the parser options T18's gates run under; they
+still fire.
+
+**The one judgement call, stated openly.** My brief asked for the enabled rules to be green at
+zero. Two are; `no-unnecessary-condition` stands at 56, journaled and unfixed. I rule this
+**conformant**, because §8.10 audit 6 says "every finding is **either fixed or journaled**",
+§9's N2b row forbids deleting exactly these guards without a per-site unreachability argument
+plus a negative control *each*, and `npm run lint` is deliberately outside `npm run verify`
+(RULE N6's own reasoning), so no gate goes red. I verified all 56 independently: 49 "types have
+no overlap", 3 "always truthy", 4 "unnecessary optional chain" (= 56), and **every single site
+named in the worker's shape table reproduces at the exact file and line** (27 of 27 checked).
+Nothing was suppressed to make them quiet — `eslint-disable` / `@ts-ignore` / `@ts-expect-error`
+/ `@ts-nocheck` / coverage-ignore are **0** across `src/` and `tests/`, and
+`allowConstantLoopConditions` was not switched on.
+
+### 5. Tests — the −8 is fully accounted, nothing kept lost power
+
+Independent runs: **baseline 59 files / 2276 tests** (the phase-3 audit figure lands
+bit-exactly), **work 58 / 2268**. Δ = −8 = the deleted `tests/compat/unsupported.test.ts`
+(I counted its `it`s in `git show`: **6**) + 2 `byteToShort` `it`s. Both are tests of removed
+behavior per charter 7c. The complete `tests/` diff is three files and I read all of it: no
+other `it` removed, no assertion loosened, no glob narrowed. Three counters were *retargeted*
+because what they count shrank (`PUBLIC_STATICS` 41→34, identity map 37→30, re-export table
+317→316), each with old and new recorded at the site; the surviving 34 shim members are still
+pinned by name, type and identity, and `shortToByteArray`'s own `it` is unchanged.
+`tests/integration/**` (and its fixtures): `git status --porcelain` empty.
+
+### 6. Standard gates
+
+- `npm run verify` **green, run by me**: build + `typecheck:tests` + 58 files / 2268 tests.
+- **Manifest exactly 2 D / 27 M**, 0 untracked, nothing staged beyond the two `git rm`s.
+- `vitest.config.ts`: single mechanical deletion of `src/compat/**/*.ts`; `src/api/**`,
+  `src/music/**`, `src/xml/**`, `src/units.ts` all confirmed **in** scope.
+- `refactor/log.md` **append-only** (333 insertions, 0 deletions, all after line 9723).
+  `lint-debt.md` has the T21 section; its 2 deleted lines are the config description and a
+  section heading, both rewritten because type-aware linting is now enabled — no debt erased.
+- **Lint reconciles exactly** on a pristine baseline archive: **1046 → 955 (old config, −91)
+  → 1011 (new, +56)**, warnings flat at 2. Per-rule: `no-non-null-assertion` 884→819 (−65),
+  `no-unused-vars` −14, `no-empty-function` −5, `unified-signatures` −5, `no-require-imports`
+  2→0; no rule increases. Files linted 140→138; files with findings 77→79 — the 2 leaving are
+  `unsupported.ts` (21) and its test (5), the 4 entering are exactly the ones named.
+
+**Coverage (charter invariant 7 v3), both runs mine, with the deletion accounting audited
+per-file:**
+
+| metric | baseline | work | gate |
+|---|---|---|---|
+| functions | 92.4618 % (969/1048) | **92.5819 %** (961/1038) | ≥ 92.0 **PASS** |
+| uncovered scoped statements | 2138 | **2107** (−31) | ≤ 2318 **PASS** |
+| tests | 2276 | 2268 | 7c journaled **PASS** |
+| statements / branch (indicators) | 86.3456 / 87.8562 | 86.4502 / 87.8626 | — |
+
+Per-file deltas — **only five files move, all five are files this item touched**, no untouched
+file moves at all:
+
+| file | Δ stmt total | Δ stmt uncovered | Δ func total | Δ func covered | Δ func uncovered |
+|---|---|---|---|---|---|
+| `compat/unsupported.ts` | −74 | −6 | −7 | −7 | 0 |
+| `mei/Mei2MsmMpmConverter.ts` | −10 | −8 | 0 | 0 | 0 |
+| `midi/EventMaker.ts` | −4 | 0 | −1 | −1 | 0 |
+| `xml/XmlBase.ts` | −17 | −15 | −1 | 0 | −1 |
+| `xml/XomTypes.ts` | −3 | −2 | −1 | 0 | −1 |
+
+**The direction claim checks out, which was the thing to scrutinize.** The deleted function set
+is 8 covered + 2 uncovered = **80 % covered against a tree at 92.46 %**; removing a subset whose
+ratio is *below* the whole necessarily *raises* the whole, so the +0.12 pp is arithmetic, not
+new test power — and the worker said so rather than claiming credit. The converter's −8
+uncovered is v8 re-segmentation over changed source text (total fell 10, covered fell 2) and
+cannot hide lost test power: lost power *raises* uncovered, never lowers it. The emitted JS
+there is token-identical, so no behaviour moved.
+
+### 7. The one error found
+
+**§8's sentence "the 4 entering are `index.ts`, `GenericStyle.ts`, `AbstractDef.ts` and
+`prettyPrint.ts`, each carrying a single `no-unnecessary-condition`" is wrong on one count:
+`GenericStyle.ts` carries two** (lines 37 and 107), so the four entering files carry 5 findings,
+not 4. The set of files is right, "and nothing else" is right (all five are that one rule), the
+total of 56 is right, and the worker's own §6 inventory contains both sites. Cosmetic prose
+error in a summary sentence; it moves no gate, no count and no ruling, and I am not failing the
+item for it. Recording it so T23 does not inherit a figure it cannot reproduce.
+
+**Verdict: PASS T21.** Four DELETE rulings executed and no deletion beyond them (proven by
+closing the symbol space, not by enumeration); 17 KEEP rulings intact; 28 unruled tool findings
+journaled and untouched; byte-probe sha unbroken since TD1; RULE N6 enabled to spec with all
+seven gates probe-tested; −8 tests all tests-of-removed-behavior; coverage improves on both
+gates for a reason that is arithmetic and was stated as such.

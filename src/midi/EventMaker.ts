@@ -425,16 +425,6 @@ export function shortToByteArray(value: number): Uint8Array {
 }
 
 /**
- * convert byte to short ... trivial but good to keep it present
- *
- * Reinterprets a signed Java byte as unsigned. Unused inside the port; kept for
- * API parity with `EventMaker.java`.
- */
-export function byteToShort(b: number): number {
-  return b & 0xff;
-}
-
-/**
  * create a note off event
  *
  * @param chan MIDI channel; masked to 0..15 by `ShortMessage`
@@ -1058,7 +1048,6 @@ export const EventMaker = {
   intToByteArray,
   byteArrayToInt,
   shortToByteArray,
-  byteToShort,
   createNoteOff,
   createNoteOn,
   createProgramChangeByName,

@@ -68,7 +68,7 @@ export class MovementData {
 
   clone(): MovementData {
     const c = new MovementData();
-    c.xml = this.xml === null ? null : (this.xml.copy() as Element);
+    c.xml = this.xml === null ? null : this.xml.copy();
     c.xmlId = this.xmlId;
     c.startDate = this.startDate;
     c.position = this.position;
@@ -115,7 +115,7 @@ export class MovementData {
     }
 
     const t = this.getTForDate(date);
-    return (3.0 - 2.0 * t) * t * t * (this.transitionTo! - this.position!) + this.position!;
+    return (3.0 - 2.0 * t) * t * t * (this.transitionTo! - this.position) + this.position;
   }
 
   /** A constant movement has no curve to evaluate: every `t` yields the start point. */

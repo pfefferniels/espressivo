@@ -296,7 +296,7 @@ export class TempoMap extends GenericMap {
         const date = parseFloat(getAttributeValue('date.perf', mapEntry.getValue()));
         if (mapEntry.getKey() <= td.startDate)
           milliseconds = TempoMap.computeDiffTiming(date, ppq, null);
-        else milliseconds = TempoMap.computeDiffTiming(date, ppq, td) + td.startDateMilliseconds!;
+        else milliseconds = TempoMap.computeDiffTiming(date, ppq, td) + td.startDateMilliseconds;
         mapEntry.getValue().addAttribute(new Attribute('milliseconds.date', String(milliseconds)));
 
         const dateEndAtt = attribute('date.end.perf', mapEntry.getValue());
@@ -319,8 +319,7 @@ export class TempoMap extends GenericMap {
         const endDate = pd.getKey();
         if (endDate > td.endDate!) continue;
         if (endDate <= td.startDate) milliseconds = TempoMap.computeDiffTiming(endDate, ppq, null);
-        else
-          milliseconds = TempoMap.computeDiffTiming(endDate, ppq, td) + td.startDateMilliseconds!;
+        else milliseconds = TempoMap.computeDiffTiming(endDate, ppq, td) + td.startDateMilliseconds;
         map.elements[pd.getValue()]
           .getValue()
           .addAttribute(new Attribute('milliseconds.date.end', String(milliseconds)));

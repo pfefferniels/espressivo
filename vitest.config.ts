@@ -12,6 +12,8 @@ export default defineConfig({
       // `mei/Helper.ts` dissolved into `xml/`, `music/`, `msm/dateMap.ts`,
       // `mei/mpmNoteIds.ts` and `compat/` (§8.2). Same code, same scope — the `xml/**`
       // and `msm/**` globs already cover their share.
+      // T21 mechanical removal: `src/compat/**` no longer exists (§8.10 deleted the module
+      // wholesale), so its glob would match nothing.
       // T13 mechanical additions: `src/api/**` is the new public facade (§2) and
       // `src/units.ts` is the brand module T19a added, which matched no glob (its
       // DISCOVERED note asked for exactly this). Both are in scope by definition — the
@@ -31,7 +33,6 @@ export default defineConfig({
         'src/midi/InstrumentsDictionary.ts',
         'src/xml/**/*.ts',
         'src/music/**/*.ts',
-        'src/compat/**/*.ts',
         'src/supplementary/KeyValue.ts',
         'src/supplementary/RandomNumberProvider.ts',
       ],

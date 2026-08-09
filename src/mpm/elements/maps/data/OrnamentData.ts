@@ -52,7 +52,7 @@ export class OrnamentData {
 
   clone(): OrnamentData {
     const c = new OrnamentData();
-    c.xml = this.xml === null ? null : (this.xml.copy() as Element);
+    c.xml = this.xml === null ? null : this.xml.copy();
     c.xmlId = this.xmlId;
     c.styleName = this.styleName;
     c.style = this.style;

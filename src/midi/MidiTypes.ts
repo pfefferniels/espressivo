@@ -222,7 +222,7 @@ export class MetaMessage extends MidiMessage {
       // that to avoid copying every meta payload out of the file image. Nothing
       // escapes: it is only read from below, and `_data` is a copy.
       const metaData = data
-        ? new Uint8Array(data.buffer, data.byteOffset, length!)
+        ? new Uint8Array(data.buffer, data.byteOffset, length)
         : new Uint8Array(0);
       // Build the full message: 0xFF, type, variable-length, data
       const vlq = MetaMessage.encodeVariableLength(metaData.length);

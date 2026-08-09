@@ -78,7 +78,7 @@ export class TempoData {
    */
   clone(): TempoData {
     const c = new TempoData();
-    c.xml = this.xml === null ? null : (this.xml.copy() as Element);
+    c.xml = this.xml === null ? null : this.xml.copy();
     c.xmlId = this.xmlId;
     c.styleName = this.styleName;
     c.style = this.style;

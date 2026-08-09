@@ -51,7 +51,7 @@ export class MetricalAccentuationData {
 
   clone(): MetricalAccentuationData {
     const c = new MetricalAccentuationData();
-    c.xml = this.xml === null ? null : (this.xml.copy() as Element);
+    c.xml = this.xml === null ? null : this.xml.copy();
     c.xmlId = this.xmlId;
     c.styleName = this.styleName;
     c.style = this.style;

@@ -19,7 +19,8 @@ import { OrnamentationStyle } from '../styles/OrnamentationStyle.js';
  *    (`ornament.dynamics`, `ornament.date.offset`, `ornament.duration`) into `velocity`,
  *    `date.perf`, `duration.perf` and `date.end.perf` — before the tempo map runs.
  * 3. {@link renderMillisecondsModifiersToMap} folds the millisecond-domain markers into
- *    `milliseconds.date` and `milliseconds.date.end` — after it has.
+ *    `milliseconds.date` and `milliseconds.date.end` — after it has. **Pass 3 is not the
+ *    copy the pipeline runs**; see that method's own note.
  *
  * `ornament.noteoff.shift` decides, in passes 2 and 3 alike, whether a shifted onset
  * drags the note's end with it (duration preserved) or not (duration absorbs the shift).
@@ -81,7 +82,7 @@ export class OrnamentationMap extends GenericMap {
     }
     return this.addOrnament(
       data.date,
-      data.ornamentDefName!,
+      data.ornamentDefName,
       data.scale,
       data.noteOrder,
       data.xmlId,
@@ -402,6 +403,18 @@ export class OrnamentationMap extends GenericMap {
    * a hard-won parity fix. Every addition's operand order is load-bearing. Do not
    * refactor, do not extract the repeated sub-expression, do not reorder the attribute
    * lookups.
+   *
+   * ⚠ NO FIXTURE REACHES THIS METHOD, and no test does either. `Performance.perform` calls
+   * its own private copy (`Performance.ts`, `private static
+   * renderMillisecondsModifiersToMap`) — a re-implementation that exists because that file
+   * type-imports the map classes and so cannot call their statics. The two bodies are
+   * character-identical today and nothing enforces that; the suite cannot catch a drift
+   * between them, because it never runs this one. Found by the [T7] verifier, re-confirmed
+   * by [T19]'s, and **kept deliberately** by ARCHITECTURE.md §8.10: it is the Java-parity
+   * code path, and deleting it would make a future comparison against
+   * OrnamentationMap.java harder than keeping a second copy is. Collapsing the two is
+   * [T19]'s declined ruling — do not reopen it without the evidence named in
+   * `Performance.ts`'s class comment.
    */
   static renderMillisecondsModifiersToMap(
     map: GenericMap | null,

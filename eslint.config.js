@@ -6,12 +6,12 @@ import importPlugin from 'eslint-plugin-import';
 /**
  * Flat ESLint config for meico-ts.
  *
- * Baseline: typescript-eslint `strict` + `stylistic` (non-type-checked presets).
- * Type-aware linting is deliberately deferred: it is slow across 26k LOC and its
- * findings (`no-unnecessary-condition`, `restrict-template-expressions`, ...) are
- * entangled with the null-vs-undefined policy that item T12 has to settle first.
- * `refactor/lint-debt.md` records a measured preview of what type-aware rules would
- * add, so that decision can be made with numbers.
+ * Baseline: typescript-eslint `strict` + `stylistic` (non-type-checked presets), plus the
+ * three type-aware rules ARCHITECTURE.md RULE N6 names, enabled by T21 over `src/` only.
+ * The *presets* stay non-type-checked: N6 rejected `recommendedTypeChecked` explicitly,
+ * because hundreds of findings over parity-frozen code would drown a gate that is
+ * deliberately outside `npm run verify`. `refactor/lint-debt.md` records the measured
+ * preview those numbers came from.
  *
  * The architecture rules of ARCHITECTURE.md §1.2 are enforced at the bottom of this file
  * (item T18): `import/no-cycle` for the cycle ban, and per-layer `no-restricted-imports`
@@ -35,13 +35,7 @@ import importPlugin from 'eslint-plugin-import';
 const LAYER_ZONES = [
   {
     layer: 'leaves',
-    files: [
-      'src/xml/**/*.ts',
-      'src/music/**/*.ts',
-      'src/supplementary/**/*.ts',
-      'src/compat/**/*.ts',
-      'src/version.ts',
-    ],
+    files: ['src/xml/**/*.ts', 'src/music/**/*.ts', 'src/supplementary/**/*.ts', 'src/version.ts'],
     forbidden: ['**/midi/**', '**/msm/**', '**/mpm/**', '**/mei/**', '**/musicxml/**'],
     why: 'L0/L1 leaf modules import nothing from a higher layer (ARCHITECTURE.md RULE M1).',
   },
@@ -128,6 +122,37 @@ export default tseslint.config(
       // is provably present is clearer than a redundant guard.
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
+    },
+  },
+
+  // --- Type-aware linting (T21; ARCHITECTURE.md RULE N6) ---
+  //
+  // Three named rules, no preset, `src/` only. The preset was rejected by name in N6: over
+  // parity-frozen code it adds hundreds of findings to a gate that is deliberately not part
+  // of `npm run verify`. These three each pay for themselves — `prefer-readonly` is the only
+  // way to measure RULE I4 at all, and the other two are the safety net for the null policy
+  // (N2b's `?? []` guards and N3's `!`s become *provably* dead here rather than by argument).
+  //
+  // `projectService` is what makes them work and what makes them slow, so it is scoped to
+  // `src/**` exactly as N6 requires; `tests/**` keeps the cheap syntactic parse.
+  {
+    files: ['src/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      '@typescript-eslint/prefer-readonly': 'error',
+      '@typescript-eslint/no-unnecessary-condition': 'error',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'error',
+
+      // §8.10 audit 4. `src/` reached zero in T16 (the last three sites went with RULE C3's
+      // Bézier extraction and the `resolveEntryIndex` rewrite), so promoting this costs
+      // nothing here and makes the regression loud. `tests/**` keeps `warn`: the two
+      // remaining sites are in `tests/integration/**`, which no source item may touch.
+      'no-param-reassign': 'error',
     },
   },
 

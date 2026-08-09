@@ -743,14 +743,14 @@ export class Msm extends AbstractMsm {
           // or if the map is empty
           continue; // continue with the next
 
-        const newMap = Msm.applySequencingMapToMap(sequencingMap!, map, repetitionIDs); // apply the sequencingMap to it
+        const newMap = Msm.applySequencingMapToMap(sequencingMap, map, repetitionIDs); // apply the sequencingMap to it
         if (newMap !== null) map.getParent()!.replaceChild(map, newMap); // replace the old map by the new one
       }
 
       // delete the local sequencingMap (because it does not apply anymore)
       if (localMap) {
-        part.getFirstChildElement('dated')!.removeChild(sequencingMap!);
-        sequencingMap!.detach();
+        part.getFirstChildElement('dated')!.removeChild(sequencingMap);
+        sequencingMap.detach();
       }
     }
 
