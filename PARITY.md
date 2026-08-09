@@ -343,13 +343,13 @@ same reverted tree fails four of them, in both the direct and the parse path.
 
 ### `Attribute.detach()` was a silent no-op on everything that came out of the parser
 
-|                           |                                                                                                             |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Item                      | `TD4`                                                                                                       |
+|                           |                                                                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item                      | `TD4`                                                                                                                                                   |
 | Java                      | `nu.xom.Attribute.detach()` — XOM removes the attribute from its parent unconditionally; an attribute in a parsed XOM document always knows its element |
-| TypeScript                | `src/xml/XomTypes.ts` — `Element.wrap` at `:389`, the parent wiring at `:418`, `Attribute.detach` at `:264` |
-| Guard tests               | `tests/xml/XomTypes.test.ts` (9), `tests/mpm/elements/styles/defs/OrnamentDef.test.ts` (4), `tests/xml/AbstractXmlSubtree.test.ts` (1) |
-| Reachable from a fixture? | **No** — no conversion or rendering path detaches a parser-sourced attribute; proven by probe, see below      |
+| TypeScript                | `src/xml/XomTypes.ts` — `Element.wrap` at `:389`, the parent wiring at `:418`, `Attribute.detach` at `:264`                                             |
+| Guard tests               | `tests/xml/XomTypes.test.ts` (9), `tests/mpm/elements/styles/defs/OrnamentDef.test.ts` (4), `tests/xml/AbstractXmlSubtree.test.ts` (1)                  |
+| Reachable from a fixture? | **No** — no conversion or rendering path detaches a parser-sourced attribute; proven by probe, see below                                                |
 
 A port bug, and the second half of one that was only ever half fixed. This layer emulates XOM on
 top of `@xmldom/xmldom`, and it keeps its own parent pointers rather than reading the DOM's.
@@ -391,8 +391,71 @@ JSON transcripts `diff`-clean. A wider TD4-specific probe — 306 hashed checks 
 files: MEI conversion, both reference sets performed from parsed MSM+MPM, augmented MSM, raw and
 expressive MIDI, plus parse/serialize identity, `copy`, `fixDuplicateIds`, `removeAllAttributes`
 and `removeAllElements` — moves **exactly** the 64 checks that detach a parsed attribute on
-purpose, and not one of the other 242. On the old build those 64 all hash to the *unchanged*
+purpose, and not one of the other 242. On the old build those 64 all hash to the _unchanged_
 document, which is the bug stated as a measurement.
+
+### Two map reads that skipped attributes Java reads, and the fixture blind spot that hid them
+
+|                           |                                                                                                                                                                                                                         |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Item                      | `E1`/`E2` — reported from outside the refactor programme, by the mpmify v4 data-generation campaign                                                                                                                     |
+| Java                      | `ArticulationMap.java:310-356`, `DynamicsMap.java:344-350`                                                                                                                                                              |
+| TypeScript                | `src/mpm/elements/maps/ArticulationMap.ts`, `getArticulationDataOf`; `src/mpm/elements/maps/DynamicsMap.ts`, `getDynamicsDataOf`                                                                                        |
+| Guard tests               | `tests/mpm/elements/ArticulationMap.test.ts`, "reads the inline numeric modifiers" (6); `tests/mpm/elements/DynamicsMap.test.ts`, "reads curvature and protraction" (4) + "addDynamics clamps the curve parameters" (3) |
+| Reachable from a fixture? | **No** — for a reason worth reading, see below                                                                                                                                                                          |
+
+Two port bugs of the same shape: a map's `get…DataOf` stopped short of attributes its Java
+counterpart reads, so the values were silently dropped on the way in.
+
+`getArticulationDataOf` read the identifying fields and stopped. The twelve numeric modifiers an
+`<articulation>` may carry itself — `absoluteVelocity`, `relativeVelocity`,
+`absoluteVelocityChange`, `absoluteDuration`, `absoluteDurationChange`, `relativeDuration`,
+`absoluteDelay`, `absoluteDurationMs`, `absoluteDurationChangeMs`, `absoluteDelayMs`,
+`detuneCents`, `detuneHz` — were never read, so every one of them kept its neutral default and an
+inline articulation rendered as the **identity**. `ArticulationData`'s own XML constructor parses
+all twelve; it is simply not the path the map takes. `getDynamicsDataOf` had the same omission in
+its transition branch: `curvature` and `protraction` were never read, leaving both null, so every
+transition rendered on the straight Bézier whatever curve the document asked for. Both now read
+what Java reads, in Java's order, and the two curve parameters pass the boundary guards Java
+applies (`curvature` into `[0, 1]`, `protraction` into `[-1, 1]`) on the way in — and, matching
+`DynamicsMap.java:91-163,225-230`, on the way out through `addDynamics` and `addDynamicsFromData`
+too, the latter writing the corrected value back into the caller's `DynamicsData` as Java does.
+
+**The fixture blind spot, which is the part worth keeping.** Both defects survived the whole
+certification programme because the fixtures cannot express them. Every `<articulation>` in
+`tests/integration/fixtures` carries `name.ref` and `noteid` and nothing else, and every
+`<dynamics>` with a `transition.to` carries `curvature="0.0" protraction="0.0"` — which is what
+the fields default to anyway. So the reference corpus agreed with a port that read neither, and
+kept agreeing. The gap was found from outside, by generating MPM documents with literal non-zero
+values and comparing the two renderers directly. The guard tests above therefore build their XML
+rather than reach for a fixture, and that is deliberate: a fixture cannot pin this.
+
+**Evidence.** The TD4-era verifier probe — 407 hashed checks: all 16 MEI fixtures through MSM,
+MPM, augmented MSM, raw and expressive MIDI; all 16 reference MSM+MPM pairs performed from disk;
+6 all-maps fixtures; and the XML-layer operations over 88 fixture files — returns
+`528b234043d64d532428c72a176d34ca2d6e1e1831428f4bee3cafe1e64b2175` on both builds, so no fixture
+byte moves and the standing transcript hash above is untouched. That is only meaningful with a
+driven control, because a probe blind to the fix would report the same thing: injecting inline
+modifiers into every `<articulation>` of the reference MPMs moves all three fixtures that have
+articulations and none of the one that does not, and replacing `curvature="0.0" protraction="0.0"`
+with a real curve moves all three that have transitions and not the one that does not. The
+instrument sees the fix; the fixtures do not exercise it.
+
+**End to end.** A 40-piece pilot of generated MPM documents that _do_ carry these attributes
+(mpmify `ml/node/generate_v4.mjs`, seed 20260809, all six v4 maps), rendered by both this port and
+the Java fork and compared field by field — 124 134 scalar comparisons — goes from **3169
+differing values, 3133 of them outside the libm envelope** to **37 differing, 0 outside it**.
+Velocity, the field E1 and E2 both land on, goes from 2408 of 4513 disagreeing to **0**;
+`milliseconds.date.end` from 735 (725 out of envelope) to 11, all within envelope and at most
+2 ULP. What is left is only the `pow`/`log` divergence between Java's fdlibm and macOS' libm on
+millisecond fields, and that attribution is itself controlled: the same 40 pieces with tempo
+transitions and rubato stripped — the configuration with no `pow`/`log` on the render path at
+all — compare **bit-exact, 124 134 comparisons, 0 differing**.
+
+**Still `parseFloat`, not `parseJavaDouble`.** Both reads take the same shape as the def parsers
+P1 fixed, but a def can be skipped by the factory above it and a map entry cannot, so there is
+nowhere for a `NumberFormatError` to go. These are two of the map-level reads P1's closing note
+lists as open.
 
 ## 2. Frozen divergences
 

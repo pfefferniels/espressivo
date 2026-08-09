@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ArticulationMap } from '../../../src/mpm/elements/maps/ArticulationMap.js';
 import { ArticulationData } from '../../../src/mpm/elements/maps/data/ArticulationData.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
-import { Element, Attribute } from '../../../src/xml/XomTypes.js';
+import { Element, Attribute, Builder } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 
 describe('ArticulationMap', () => {
@@ -256,6 +256,163 @@ describe('ArticulationMap', () => {
       const ad = map.getArticulationDataOf(0)!;
       expect(ad.date).toBe(240);
       expect(ad.articulationDefName).toBe('legato');
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // getArticulationDataOf - the twelve inline numeric modifiers
+  // ---------------------------------------------------------------
+  // These read literal attributes off a parsed <articulation>, which no fixture in
+  // tests/integration/fixtures does: every fixture articulation carries name.ref and
+  // noteid only, so the whole certification suite was green while this read was missing
+  // and every inline modifier rendered as the identity. That blind spot is why these
+  // tests build their XML rather than reach for a fixture.
+  describe('getArticulationDataOf reads the inline numeric modifiers', () => {
+    const parse = (xml: string): Element => new Builder().build(xml).getRootElement();
+
+    const mapOf = (articulations: string): ArticulationMap =>
+      ArticulationMap.createArticulationMap(
+        parse(`<articulationMap xmlns="${Mpm.MPM_NAMESPACE}">${articulations}</articulationMap>`),
+      )!;
+
+    it('reads all twelve from a literal articulation element', () => {
+      const ad = mapOf(
+        '<articulation date="0.0" absoluteVelocity="88.5" relativeVelocity="0.75"' +
+          ' absoluteVelocityChange="20.5" absoluteDuration="600.0"' +
+          ' absoluteDurationChange="-30.0" relativeDuration="0.66" absoluteDelay="-12.0"' +
+          ' absoluteDurationMs="160.0" absoluteDurationChangeMs="-40.0"' +
+          ' absoluteDelayMs="25.0" detuneCents="14.0" detuneHz="3.5" />',
+      ).getArticulationDataOf(0)!;
+
+      expect(ad.absoluteVelocity).toBe(88.5);
+      expect(ad.relativeVelocity).toBe(0.75);
+      expect(ad.absoluteVelocityChange).toBe(20.5);
+      expect(ad.absoluteDuration).toBe(600.0);
+      expect(ad.absoluteDurationChange).toBe(-30.0);
+      expect(ad.relativeDuration).toBe(0.66);
+      expect(ad.absoluteDelay).toBe(-12.0);
+      expect(ad.absoluteDurationMs).toBe(160.0);
+      expect(ad.absoluteDurationChangeMs).toBe(-40.0);
+      expect(ad.absoluteDelayMs).toBe(25.0);
+      expect(ad.detuneCents).toBe(14.0);
+      expect(ad.detuneHz).toBe(3.5);
+    });
+
+    it('leaves an absent modifier at its neutral default', () => {
+      const ad = mapOf('<articulation date="0.0" relativeDuration="0.5" />').getArticulationDataOf(
+        0,
+      )!;
+
+      expect(ad.relativeDuration).toBe(0.5);
+      expect(ad.absoluteDuration).toBeNull();
+      expect(ad.absoluteVelocity).toBeNull();
+      expect(ad.absoluteDurationMs).toBeNull();
+      expect(ad.absoluteDurationChange).toBe(0.0);
+      expect(ad.absoluteDurationChangeMs).toBe(0.0);
+      expect(ad.absoluteVelocityChange).toBe(0.0);
+      expect(ad.relativeVelocity).toBe(1.0);
+      expect(ad.absoluteDelay).toBe(0.0);
+      expect(ad.absoluteDelayMs).toBe(0.0);
+      expect(ad.detuneCents).toBe(0.0);
+      expect(ad.detuneHz).toBe(0.0);
+    });
+
+    it('a zero-valued modifier is read as 0, not as absent', () => {
+      // The one case `?? default` would get wrong if it tested falsiness rather than null:
+      // relativeVelocity="0" is a silenced note and must not fall back to 1.0.
+      const ad = mapOf(
+        '<articulation date="0.0" relativeVelocity="0.0" relativeDuration="0.0" />',
+      ).getArticulationDataOf(0)!;
+
+      expect(ad.relativeVelocity).toBe(0.0);
+      expect(ad.relativeDuration).toBe(0.0);
+    });
+
+    it('applies the inline modifiers to a note, def or no def', () => {
+      const map = mapOf(
+        '<articulation date="0.0" relativeDuration="0.5" absoluteVelocityChange="20.0"' +
+          ' absoluteDelay="30.0" />',
+      );
+      const note = new Element('note', Mpm.MPM_NAMESPACE);
+      note.addAttribute(new Attribute('date', '0'));
+      note.addAttribute(new Attribute('date.perf', '0'));
+      note.addAttribute(new Attribute('duration.perf', '720'));
+      note.addAttribute(new Attribute('velocity', '64'));
+
+      map.getArticulationDataOf(0)!.articulateNote(note);
+
+      expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(360, 5);
+      expect(parseFloat(note.getAttributeValue('velocity')!)).toBeCloseTo(84, 5);
+      expect(parseFloat(note.getAttributeValue('date.perf')!)).toBeCloseTo(30, 5);
+    });
+
+    it('applies the inline modifiers on top of the referenced def', () => {
+      // The styleDef path is the second half of the fixture blind spot: every fixture
+      // articulation is a bare name.ref, so a def carrying inline modifiers alongside it
+      // was never rendered. The def runs first and these run on top of the result, so an
+      // absolute modifier replaces what the def wrote while a relative one compounds with
+      // it - both directions are pinned here.
+      const mpm = new Mpm(
+        `<mpm xmlns="${Mpm.MPM_NAMESPACE}"><performance name="p" pulsesPerQuarter="720">` +
+          '<global><header><articulationStyles><styleDef name="s">' +
+          '<articulationDef name="stacc" relativeDuration="0.5" absoluteVelocityChange="-5.0" />' +
+          '</styleDef></articulationStyles></header><dated /></global>' +
+          '<part name="" number="1" midi.channel="0" midi.port="0"><header /><dated>' +
+          '<articulationMap><style date="0.0" name.ref="s" />' +
+          '<articulation date="0.0" name.ref="stacc" relativeDuration="0.9"' +
+          ' absoluteVelocity="100.0" /></articulationMap>' +
+          '</dated></part></performance></mpm>',
+      );
+      const map = mpm
+        .getAllPerformances()[0]
+        .getPart(1)!
+        .getDated()!
+        .getMap('articulationMap') as ArticulationMap;
+
+      // Entry 0 is the <style> switch, so the articulation is entry 1.
+      const ad = map.getArticulationDataOf(1)!;
+      expect(ad.articulationDef).not.toBeNull();
+      expect(ad.relativeDuration).toBe(0.9);
+      expect(ad.absoluteVelocity).toBe(100.0);
+
+      const note = new Element('note', Mpm.MPM_NAMESPACE);
+      note.addAttribute(new Attribute('date', '0'));
+      note.addAttribute(new Attribute('date.perf', '0'));
+      note.addAttribute(new Attribute('duration.perf', '720'));
+      note.addAttribute(new Attribute('velocity', '64'));
+      ad.articulateNote(note);
+
+      // 720 * 0.5 (def) * 0.9 (inline) - the inline factor multiplies the def's result,
+      // not the original duration. Velocity is the other case: the def's -5 lands on 59
+      // and the inline absolute then replaces it outright.
+      expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(324, 5);
+      expect(parseFloat(note.getAttributeValue('velocity')!)).toBeCloseTo(100, 5);
+    });
+
+    it('renders the inline millisecond modifiers through both passes', () => {
+      // The ms modifiers are the half of E1 that only shows up in pass two: pass one parks
+      // them on the note, pass two consumes them.
+      const map = mapOf(
+        '<articulation date="0.0" absoluteDurationMs="160.0" absoluteDelayMs="25.0" />',
+      );
+      const noteMap = GenericMap.createGenericMap('someMap')!;
+      const note = new Element('note', Mpm.MPM_NAMESPACE);
+      note.addAttribute(new Attribute('date', '0'));
+      note.addAttribute(new Attribute('date.perf', '0'));
+      note.addAttribute(new Attribute('duration.perf', '720'));
+      note.addAttribute(new Attribute('velocity', '64'));
+      noteMap.addElement(note);
+
+      map.renderArticulationToMap_noMillisecondModifiers(noteMap);
+      expect(note.getAttributeValue('articulation.absoluteDurationMs')).toBe('160');
+      expect(note.getAttributeValue('articulation.absoluteDelayMs')).toBe('25');
+
+      note.addAttribute(new Attribute('milliseconds.date', '1000'));
+      note.addAttribute(new Attribute('milliseconds.date.end', '2000'));
+      map.renderArticulationToMap_millisecondModifiers(noteMap);
+
+      expect(parseFloat(note.getAttributeValue('milliseconds.date')!)).toBeCloseTo(1025, 5);
+      expect(parseFloat(note.getAttributeValue('milliseconds.date.end')!)).toBeCloseTo(1185, 5);
     });
   });
 
