@@ -108,10 +108,14 @@ final call in DESIGN.md after research lands.
   (incl. ms-domain second pass).
 - P5 Hardening: property tests, spec-example integration fixtures (every egXML in the
   spec becomes a test), guideline-figure scenarios reproduced numerically, error paths.
-- P6 Docs + integration: PARITY.md/README updates, rebase onto post-merge main,
-  final verify, report; merge only per coordination with refactor conductor + user
-  directive ("merge ts-idiomatic into main after completion" belongs to THEIR program —
-  ours ends with ornamentation-v3 ready and either merged or PR'd per conductor state).
+- P6 Docs + integration: PARITY.md/README updates, rebase onto post-merge main
+  (landed: main = d981c14, refactor program complete 2026-08-09), final verify,
+  report. END STATE (user directive, 2026-08-09, given directly in this session):
+  when everything is done, merge ornamentation-v3 straight into main (--no-ff,
+  merge commit documenting the program, push), then remove the worktree
+  /Users/nielspfeffer/Projects/meico-ts-orn (git worktree remove) and delete the
+  merged branch. The main checkout at /Users/nielspfeffer/Projects/meico-ts is
+  free again after the refactor program's completion.
 
 ## Agent craft (inherited from the refactor swarm, still true)
 
