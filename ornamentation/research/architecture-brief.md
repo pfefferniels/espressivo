@@ -52,7 +52,7 @@ layer, or sideways within the same directory** (`:59-61`). Relevant layers:
   A renderer that needs an MSM helper takes it from `src/msm/`, never the reverse.
 - **RULE M3 — new MPM names go in `src/mpm/names.ts`, never on `Mpm`**
   (`refactor/ARCHITECTURE.md:157-165`). That file imports nothing and must stay a leaf:
-  `src/mpm/names.ts:1-16` states that adding *any* import there re-opens the `Mpm ⇄ maps/styles`
+  `src/mpm/names.ts:9-10` states that adding *any* import there re-opens the `Mpm ⇄ maps/styles`
   cycle for all 31 element modules at once. `Mpm` re-exports each name as a static of the same
   name and value (`src/mpm/names.ts:12-13`).
 - **RULE M4 — registration stays a registry, never a `switch`**
@@ -269,7 +269,9 @@ empty-map divergence (see §3.4).
 
 ### 2.5 Two duplicated statics — the single most dangerous fact for an ornamentation implementer
 
-`Performance.renderMillisecondsModifiersToMap` (a `private static` in `Performance.ts`) is a
+`Performance.renderMillisecondsModifiersToMap` (a `private static`, declared at
+`src/mpm/elements/Performance.ts:876`, called at `:768`, with the class comment naming it a
+deliberate copy at `:116-118`) is a
 **character-identical copy** of `OrnamentationMap.renderMillisecondsModifiersToMap`
 (`src/mpm/elements/maps/OrnamentationMap.ts:419`), measured brace-to-brace at **2140 characters**
 (`refactor/log.md:9182-9186`, verified independently at `:9255-9258`). The same holds for
@@ -531,7 +533,7 @@ same reasoning applies to an ornament-shaped mirror of data already in `notes`.
   carries ±0.02 RNG run-noise). Latest measured: 970/1049 = 92.4690 %, uncovered scoped statements
   2138 (`refactor/log.md:9159-9162`).
 - **`vitest.config.ts`'s `include` list is the coverage scope, and a new directory outside it is
-  invisible** (`vitest.config.ts:22-37`; the obligation to update it mechanically is
+  invisible** (`vitest.config.ts:21-38`; the obligation to update it mechanically is
   `refactor/ARCHITECTURE.md:1588-1590`). `src/mpm/**/*.ts` and `src/api/**/*.ts` are already in
   scope, so a module under either needs no config change; a genuinely new top-level directory does.
 - **The four evidence instruments** (`refactor/ARCHITECTURE.md:11-23`): emitted-JS diff;

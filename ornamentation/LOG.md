@@ -43,3 +43,22 @@ Strategic consequences (journaled before acting):
    own late wave after the MPM-side model+renderer.
 4. Dedicated deep-dive agent orn-research-lars dispatched (ORN-6); orn-research-java
    re-scoped explicitly to v2-only so the two reports don't blur.
+
+## 2026-08-09 — P0: architecture brief landed (orn-research-arch)
+
+ornamentation/research/architecture-brief.md (571 lines, cited). The five facts that
+will shape DESIGN.md most:
+1. `OrnamentData.apply` always returns [] (Java TODO); the consuming loop in
+   OrnamentationMap.apply is dead by construction — THAT is the discrete-note seam.
+2. `Performance.renderMillisecondsModifiersToMap` is a character-identical PRIVATE COPY
+   of OrnamentationMap's (2140 chars); only Performance's copy runs. Any v3 ms-domain
+   change must land in both or be journaled. The ms ornament renderer is otherwise
+   unprotected (no fixture reaches ornament.milliseconds.duration).
+3. `Timed<T>` phantom type gates symbolic→ms pipeline placement; a new ms pass called
+   from Performance must take Timed<PartRender>.
+4. Facade frozen at dist/api byte identity — v3 exposure = additive PerformedNote
+   fields + PerformOptions knobs; renderer should write REAL MSM notes (date, duration,
+   midi.pitch) so they surface through the existing note discovery automatically.
+5. Byte probes are insufficient evidence for Performance.ts changes — budget a call
+   tracer (passtrace shape); negative controls mandatory ("a gate that never fails is
+   not a gate").
