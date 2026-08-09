@@ -89,6 +89,13 @@ not just ornamented/ornamentRef but also ornamentSource/ornamentSlot/ornamentPas
 Recommended-recipe promise made: perform-once-extract-twice keeps ground truth exact
 under imprecision. Offer open to ping them at merge.
 
+MERGE-DAY RACE PROTOCOL (agreed with mpmify 2026-08-09): mpmify lands an E1/E2 fix
+pair on main (ArticulationMap/DynamicsMap readers + regression tests + PARITY.md
+note) within hours and pings when done; nothing else of theirs targets main until
+their v5. Before the final --no-ff merge: (1) confirm main tip includes their E1/E2
+pair (rebase over it), (2) ping mpmify to hold main commits until the merge is
+through, (3) merge, push, then release the hold in the same ping thread.
+
 ## Invariants
 
 1. Never write outside this worktree + scratchpad (exceptions: memory dir; nothing else).
