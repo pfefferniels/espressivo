@@ -10780,3 +10780,11 @@ silent 0; (5) P4 RNG pathological-index guards. Explicitly preserved (not obviou
 bugs): ArticulationData overwrite-not-compose (ambiguous Java design intent),
 imprecision nondeterminism (by design). T23's audit will run against the post-fix
 tree.
+
+## [T22] conductor — one-digit close-out (2026-08-09)
+
+Re-verify FAILed solely on README.md:225's stale test count (2268 -> 2269 after the
+fix round's pinning test). Applied the verifier's exact one-digit fix as conductor
+(precedent: T6 lint-debt corrections; README is a deliverable, not src/). T22 is
+otherwise PASS on both rounds — guard proven unbeatable in either direction. Note
+for TD2: its test-count changes must propagate to README.md:225 as part of the wave.

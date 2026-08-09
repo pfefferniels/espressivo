@@ -2,7 +2,7 @@
  * The public facade (ARCHITECTURE.md §2), in one import.
  *
  * ```ts
- * import { convertMeiToMsmMpm, performMsmToData, renderExpressiveMidi } from 'meico/api';
+ * import { convertMeiToMsmMpm, performMsmToData, renderExpressiveMidi } from 'espressivo';
  *
  * const [movement] = convertMeiToMsmMpm(meiText, { sourceName: 'sonata.mei' });
  * const data = performMsmToData(movement);              // plain per-note data

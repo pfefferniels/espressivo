@@ -113,6 +113,19 @@ describe('Mpm', () => {
       expect(mpm.isInNamespace('note')).toBe(false);
       expect(mpm.isInNamespace('')).toBe(false);
     });
+
+    // These four assertions look wrong and are not. The vocabulary reproduces two typos from
+    // the Java reference verbatim — a trailing space in 'accentuation ' (Mpm.java:214) and
+    // 'dynamcisGradient' for dynamicsGradient (Mpm.java:218) — because correcting either would
+    // accept a name the reference rejects and reject one it accepts. See PARITY.md §3; do not
+    // "fix" the vocabulary to make these read better.
+    it('should reproduce the two Java typos in the vocabulary, bug-for-bug', () => {
+      const mpm = Mpm.createMpm();
+      expect(mpm.isInNamespace('accentuation ')).toBe(true);
+      expect(mpm.isInNamespace('accentuation')).toBe(false);
+      expect(mpm.isInNamespace('dynamcisGradient')).toBe(true);
+      expect(mpm.isInNamespace('dynamicsGradient')).toBe(false);
+    });
   });
 
   // ---------------------------------------------------------------

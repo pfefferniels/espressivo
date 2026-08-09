@@ -1,12 +1,52 @@
 {
-  "name": "meico",
+  "name": "espressivo",
   "version": "0.8.8",
-  "description": "MEI Converter - TypeScript port of the Java meico library",
+  "description": "MEI / MSM+MPM => expressive MIDI. An idiomatic TypeScript port of the Java meico library, proven equivalent to it.",
+  "keywords": [
+    "mei",
+    "msm",
+    "mpm",
+    "midi",
+    "music-encoding",
+    "music-performance",
+    "expressive-performance",
+    "meico"
+  ],
+  "homepage": "https://github.com/pfefferniels/espressivo#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pfefferniels/espressivo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pfefferniels/espressivo/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": [
+    "./dist/mpm/Mpm.js",
+    "./dist/mpm/elements/maps/*.js"
+  ],
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "files": [
+    "dist",
+    "src",
+    "PARITY.md"
+  ],
   "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "prebuild": "npm run clean",
     "build": "tsc",
+    "prepack": "npm run build",
     "typecheck:tests": "tsc -p tsconfig.tests.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
