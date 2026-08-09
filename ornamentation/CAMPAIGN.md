@@ -89,6 +89,13 @@ not just ornamented/ornamentRef but also ornamentSource/ornamentSlot/ornamentPas
 Recommended-recipe promise made: perform-once-extract-twice keeps ground truth exact
 under imprecision. Offer open to ping them at merge.
 
+Third stakeholder: exaggeration campaign (socket uds:/tmp/cc-socks/77472.sock),
+worktree meico-ts-exag branch `exaggeration` off main@da24612, ports mpm-renderer's
+shader. Given the v3 numeric-surface registry (frame.offset/frameLength as
+TemporalValues, intensity>0 neutral 1, transitions [-1,1], scale≥0-default-0 quirk,
+repetitions discrete, pool intervals excluded by default) 2026-08-09. They merge
+AFTER us and rebase. OWED PING: at our merge (same moment as the other two).
+
 MERGE-DAY RACE PROTOCOL (agreed with mpmify 2026-08-09): mpmify lands an E1/E2 fix
 pair on main (ArticulationMap/DynamicsMap readers + regression tests + PARITY.md
 note) within hours and pings when done; nothing else of theirs targets main until
