@@ -1121,3 +1121,340 @@ vanishes from the note list. RULING: every generated note additionally carries
 ornament.anchor="<original principal note id>" (the score-side anchor), making the
 join total; W7 exposes it as PerformedNote.ornamentAnchor (string|null). No-principal
 ornaments (D7 step 3) carry no anchor (null). Journaled before amending W5.
+
+## W5 implementer — the discrete-note renderer and its pipeline wiring
+
+Implemented, not committed. Files: NEW `src/mpm/elements/maps/ornamentInstantiation.ts`
+(the renderer) and `tests/mpm/elements/maps/ornamentInstantiation.test.ts` (64 tests);
+modified `OrnamentationMap.ts` (v3 branch in `apply`, the ms-pass addition),
+`data/OrnamentData.ts` (`apply` comes alive), `data/ornamentExpansion.ts` (additive
+`Slot.repetitionPass`, per the mid-wave provenance ruling), `Performance.ts` (the ms-pass
+addition, nothing else), `Mpm.ts` (`note` in `isInNamespace`), plus additive tests in
+`OrnamentationMap.test.ts`, `Mpm.test.ts` and `ornamentExpansion.test.ts`.
+
+### Decisions taken, each documented at its site
+
+- **The v3 path is deferred, not inline** (`ornamentInstantiation.ts` module doc). `apply`'s
+  walk only *prepares* a v3 ornament; instantiation runs after the walk. Two reasons, and the
+  second is the load-bearing one: D11 needs a principal's ornaments together before it can lay
+  out the first, and inserting notes mid-walk would change what a *later* v2 ornament sees,
+  since the v2 branch collects "every note at this date" from the live map. Deferring is what
+  keeps the v2 path's inputs bit-for-bit unchanged.
+- **The D6 gate is a byte probe, not a parse** (`isV3Ornament`). `[`, `]` and `|` are the only
+  characters v3 adds to `note.order`, so W2's parser never runs on a v2 value at all.
+- **A v2-shaped ornament naming a v3 def now logs.** Such an ornament keeps the v2 path (the
+  gate is about the *ornament*, and routing it to v3 would turn score notes it merely spreads
+  into generated ones), but a v3 `temporalSpread` carries no v2 frame, so the v2 engine would
+  silently spread nothing. One `console.error` at the site; unreachable for a v2 document.
+- **Frame domain = `frameLength`'s domain**; `%` resolves against the principal's symbolic tick
+  duration (D4). `frame.offset` is compared against the *resolved* domain, which is what makes
+  the spec's own figure-3 exemplum (`frame.offset="360ticks" frameLength="50%"`) legal. An
+  offset in an unusable domain is dropped to 0 with a log — unless it is 0, which is the schema
+  default rather than an authoring mistake.
+- **No `temporalSpread` at all → `0.0ticks` / `100%`**, the spec's attribute defaults, so a def
+  consisting of nothing but a `dynamicsGradient` still renders.
+- **Layout in notated time, shifted by the principal's own deflection.** Generated notes get
+  `date`/`duration` from the frame and `date.perf = date + (principal.date.perf − principal.date)`,
+  so an ornament on a rubato-shifted note sounds where its principal sounds. The principal's
+  *duration* deflection (articulation) is deliberately not inherited — the frame already fixes
+  each ornament note's length. `.perf` attributes are written only when the principal has them,
+  because the global ornamentation stage runs before `addPerformanceTimingAttributes`.
+- **Insertion goes into the principal's own map**, not `maps[0]` as the dead v2 loop did: a
+  global ornamentation map reaches across parts, and `maps[0]` would move a second part's notes
+  into the first. Generated notes join the date group at its end (`GenericMap.addElement`'s
+  rule), which is where a same-dated element always goes.
+- **Every generated note draws exactly one uuid, in document order**, and the heir's is then
+  overwritten with the principal's id in place. That keeps `xml:id` where it sits in the
+  attribute list and keeps the id-generation call order trivially stable (PARITY.md §5).
+- **Key signatures** are read from the principal's own part (`readKeyFifths`), sharps positive
+  and flats negative — deliberately NOT reproducing `Msm.parseKeySignatureMap`'s ported `> 1.0`
+  bug, which counts no sharp at all. New code, no Java counterpart, no fixture: reproducing it
+  would put a trill in the wrong key. PARITY NOTE at the site.
+
+### Rulings the brief left open, decided here and journaled
+
+1. **Millisecond frames need a principal.** A ms frame borrows its tick position and length
+   from its principal; with none (D7 step 3) there is nothing to borrow, so the ornament is
+   logged and skipped. The no-principal path therefore supports tick/`%` frames only, and its
+   stand-in geometry is "anchored at the ornament's date, lasting exactly as long as the frame".
+2. **No overflow scaling in the millisecond domain.** D11's `scaleFactor` needs the principal's
+   duration; in milliseconds that does not exist before the tempo pass. Factor 1, documented.
+3. **`at end` + millisecond frame loses the principal's head.** The tick-domain head leftover
+   is computed from tick dates; a ms ornament's notes sit on the principal's own tick date, so
+   there is no head to carve. Known limitation, documented at `carve`.
+4. **The landing copy carries no `repetitionPass`.** It follows the passes rather than being
+   one; `landing: true` already identifies it.
+5. **`ornament.slot` numbers the expansion's sequence, not the survivors.** A note dropped by
+   D14 leaves a gap rather than renumbering the rest — the attribute is provenance about the
+   expansion and has to stay true to it.
+
+### Surprises
+
+- **`OrnamentData.apply`'s seam had to be a `!== null` check, not "did it return anything".**
+  Routing the v3 path through the *whole* v2 body would run `TemporalSpread.apply` over a
+  v3-sourced spread, whose v2 fields are all `0.0` — every generated note would get
+  `ornament.date.offset="0"` and, under `monophonic`, `ornament.duration="0"`, which the tick
+  pass turns into `duration.perf="0"`. The v3 branch runs the gradient and its own spacing
+  writer and stops.
+- **The expansion engine shares slot objects across repeat passes** (W4 documented it and
+  warned W5 not to key bookkeeping on identity). The first draft of the id-carrier logic did
+  exactly that. It now pairs each element with its resolved note at creation time. The
+  provenance ruling then forced fresh slot objects for grouped slots anyway.
+- **`Element` has no attribute enumerator** (`_attributes` is private), so a generated note is
+  `principal.copy()` minus an explicit `NOT_INHERITED` list rather than a whitelist. That is
+  the better default anyway — an attribute nobody thought to name rides along.
+- **A W3 test and a Mpm test had to be inverted**, both flagged in advance by their own
+  comments: "should render a v2 ornament unchanged when v3 attributes are present" (its comment
+  named the renderer wave as what would change it) and `isInNamespace('note') === false`.
+  Both were replaced by assertions of the new behaviour plus a same-strength substitute for
+  what they had also been checking (`score` for the namespace rejection; the full "no v2 marker
+  anywhere" set for the diverted ornament), and both carry an INVERTED note.
+
+### Gate evidence
+
+- `npm run verify` **green, 63 files / 2803 tests** (baseline 2725; +78, none removed or
+  weakened). `npx vitest run tests/integration` green, 6 files / 251 tests.
+- **Byte probes**, baseline (`f36c4c8` build) vs WIP dist, identical:
+  `probe.mjs` 1284 checks `ed158a07d553f9346b958e8943b98c3b8c55a046f4fb4061654567e864e8757f`,
+  `probe2.mjs` 83 checks `0b58d5a4c281914e605de46eb44be54e223d1eb7b08724702eca1ac703ca8c7c` —
+  both equal to the hashes W3 recorded.
+- **Call tracer** (`scratchpad/w5/tracer.mjs`; wraps every `render*`/`apply`/`getMap` on all
+  nine map classes **plus `Performance`'s four stages and its two private re-implementations**,
+  over all eight all-maps fixtures): baseline and WIP both **557 calls,
+  `8e7613471b7d0156e6868b06bf2a8d12c1e8c79a211cc52105dd3d83664ae7cf`** — byte-identical
+  transcripts. **Positive control**: the same tracer over a v3 document (a `50%` monophonic
+  turn) gives `8e45f8a2…` on baseline and `6f241916…` on WIP, differing in exactly the calls
+  whose score grew from 2 notes to 5 — the instrument is not vacuous.
+- **Augmented-MSM byte comparison** over the six deterministic all-maps fixtures (the two
+  imprecision ones are excluded: PARITY.md §5 — they are nondeterministic against *themselves*,
+  which this run reconfirmed): 22450 bytes,
+  `262215051296312455d055734dfc9be4ca479147cf6381e761f34fecb8ab941b`, identical on both builds.
+- **Negative controls.** (a) `OrnamentData.apply` reverted to `return []` on the v3 branch ⇒
+  **42 tests red** across the two ornament suites; source restored, `md5 68b60e4b…` verified.
+  (b) above — a v2-only document through the WIP build is byte-identical. (c) the `fromend`
+  branch broken in **only** `OrnamentationMap`'s copy (`-` → `+`) ⇒ all **three**
+  synchronization tests red (source text, branch text, behaviour); source restored,
+  `md5 62001ecb…` verified.
+- **The two copies of `renderMillisecondsModifiersToMap` are raw character-identical**, 3451
+  characters brace to brace, and three tests now pin that — the drift guard T19 recorded as
+  missing.
+- `prettier --check` clean on all touched files. **eslint: zero findings on both new files and
+  on all touched test files; the per-file counts on the five modified sources are unchanged
+  against the pre-wave tree** (`Mpm.ts` 21 = 21, `Performance.ts` 17 = 17, `OrnamentationMap.ts`
+  2 = 2, `OrnamentData.ts` 5 = 5, `tests/mpm/Mpm.test.ts` 10 = 10). Zero suppressions repo-wide,
+  unchanged. Explicit per-test timeouts on the nine expansion-loop cases.
+- Coverage: functions **93.1 %** (invariant ≥ 92.0; was 92.469).
+
+### W5 implementer — acknowledgement of the two mid-wave scope amendments
+
+Both conductor rulings of 2026-08-09 landed **inside** this wave (they were journaled while the
+renderer was being written, and were read from LOG.md before the instantiation code froze), so
+there was no retrofit round:
+
+- **"D10 provenance extension".** `ornament.source` / `ornament.slot` / `ornament.pass` are
+  written by `createNote` alongside `ornament.generated` / `ornament.ref`. `source` is the
+  resolved note's `ref` — the `note.order` token it came from, whichever space answered.
+  `slot` is the index in the **expansion's** final sequence (post-dedup, post-landing), so a
+  note dropped by D14 leaves a gap rather than renumbering its neighbours: the attribute is
+  provenance about the expansion and has to stay true to it. `pass` is written only where the
+  slot carries one.
+- **The carrier of `pass`** is `Slot.repetitionPass?: number` in `ornamentExpansion.ts` — the
+  **slot** level, not `ResolvedNote`, because a pass is a property of the *occurrence* (a chord
+  slot's notes all share it, and the same `ResolvedNote` objects recur across passes). The
+  change is purely additive: one optional field, plus the fresh slot objects the field forces
+  for grouped slots (the module previously re-emitted the same object per pass, which W4's own
+  doc warned W5 not to key bookkeeping on). `notes` arrays are still shared, so the
+  million-slot ceiling still costs an array of small headers. **All 118 pre-existing tests in
+  `ornamentExpansion.test.ts` are untouched and green** — `git diff --numstat` on that file is
+  `61 0`, a pure append of 7 new cases.
+- **The landing copy carries no `pass`.** It is appended *after* the last pass rather than as
+  part of one; `ResolvedNote.landing` already identifies it. Pinned by test.
+- **"ornament.anchor addendum".** Every generated note carries the id its principal had
+  **before** any carving — read from the principal element inside `createNote`, which runs
+  before `assignPrincipalId` moves that id onto the heir, so it is the pre-replacement value by
+  construction rather than by luck. No-principal ornaments (D7 step 3) write no anchor. Pinned
+  three ways: on worked vector §5.3 (all eight notes anchor to `P`), on the case the addendum
+  exists for (`note.order` naming only pool notes, so the principal's id would otherwise vanish
+  from the document), and on the no-principal case (absent).
+- **Write order** is `…musical attrs…`, then `generated`, `ref`, `source`, `slot`, `pass`,
+  `anchor` — provenance last, documented at `createNote` with the reason the order is fixed at
+  all (byte-visibility, no Java precedent to inherit).
+- **Vector §5.3 now pins the family**: 8 slots, sources `n1 P n1 P n1 P n1 P`, slots `0…7`,
+  passes `0 0 1 1 2 2 3 3` (the group holds 2 slots and is played `repetitions + 1 = 4` times),
+  anchors all `P`, refs all `orn3`.
+
+Re-run after the amendments — `npm run verify` **63 files / 2803 tests green**; `probe.mjs`
+`ed158a07…`, `probe2.mjs` `0b58d5a4…`, call tracer 557 calls `8e761347…`, deterministic
+augmented-MSM `26221505…` — all four still baseline-identical, because every attribute above is
+written only on notes that exist only in v3.
+
+## W5 verifier — FAIL (2026-08-09)
+
+**FAIL is narrow and test-only.** I found no defect in the renderer's behaviour: every number I
+recomputed by hand matches, the v2 freeze holds under four instruments I re-measured from a
+baseline dist I built myself, and the two inversions are both correct and minimal. What fails is
+evidence: **three of my eight mutations survive the whole suite**, and all three sit on decisions
+this wave journaled as load-bearing. The remedy is three tests and no source change.
+
+### Subject
+
+`git status --short` is exactly the sanctioned set — nine modified, two new
+(`ornamentInstantiation.ts` + its test), nothing else. `git diff --numstat` on LOG.md is
+**166 0**: a pure append, no earlier entry edited.
+
+### Independent arithmetic (recomputed from DESIGN.md's rules, not read off the code)
+
+**§5.1** frame = 50 % × 1440 = 720, start 0. `pow(i/3,1)·720 + 0` ⇒ **0, 240, 480**, last pinned
+at `0+720` = **720**. Monophonic: 240−0, 480−240, 720−480 = 240/240/240, last = principalEnd −
+720 = **720** ⇒ note-offs **240/480/720/1440**. Pitches 65/64/63/64. Test matches.
+
+**§5.2** at end: start = 1440 − 720 + 0 = 720 ⇒ **720, 960, 1200, 1440**; monophonic
+240/240/240 and the last = 1440 − 1440 = **0**. Head leftover **[0, 720)** = 720 ticks, keeping
+`xml:id="P"`. Test matches. (The zero-length final note is what DESIGN's own §5.2 arithmetic
+yields — the v2 pin at `start+length` coinciding with the principal end — so it is pinned
+correctly, not a slip.)
+
+**§5.3** frame [360, 1080], n = 8, intensity 1: `pow(i/7,1)·720 + 360` =
+360, 462.857142857…, 565.714285714…, 668.571428571…, 771.428571428…, 874.285714285…,
+977.142857142…, last pinned **1080**. Landing does not fire (group opens on n1 = 65 ≠ principal
+64); dedup collapses nothing across the pass boundary (P|n1 = 64|65). Provenance: group = 2 slots
+× (repetitions 3 + 1) = 8 ⇒ sources `n1 P n1 P n1 P n1 P`, slots `0…7`, passes `0 0 1 1 2 2 3 3`,
+anchors all `P`, refs all `orn3`. Test matches on every one.
+
+**§5.5** n = 3, intensity 2, frameStart −30, frameLength 60: `pow(0/2,2)·60−30` = **−30**,
+`pow(1/2,2)·60−30` = 15−30 = **−15**, last pinned −30+60 = **+30**. Cross-checked against the
+committed ground truth: `all-maps-reference/ornamentation_augmented.msm` gives n7/n8/n9
+`ornament.milliseconds.date.offset` = **−30.0 / −15.0 / 30.0** with `ornament.noteoff.shift="true"`,
+and `milliseconds.date` 1970/1985/2030 against a 2000 ms onset. Identical semantics.
+
+**D5-amendment vector** (at-end ms, same numbers): endTotal 60 ⇒ cursor −60, start −60+(−30) =
+−90 ⇒ markers −90, (1/9)·60−90 = −83.333…, (4/9)·60−90 = −63.333…, pinned −30. Verified end to
+end through the real pipeline (PPQ 720 @ 120 bpm, principal ms [1000, 2000]): the four notes land
+at `milliseconds.date` 1910 / 1916.666… / 1936.666… / 1970, ends unchanged at 2000. Exactly the
+amendment's `spacing_k + frame.offset − frameLength`.
+
+### The duplicated millisecond pass
+
+Measured brace-to-brace with my own extractor: both copies **3451 characters**, sha256-16
+`cb07148cd4c877a3`, byte-identical — the implementer's number confirmed. `Timed<T>` still gates:
+hoisting `renderPartMilliseconds` above `renderPartTiming` in a scratch mutation gives
+`TS2345: Argument of type 'PartRender' is not assignable to parameter of type 'Timed<PartRender>'`
+(file restored, md5 `4cc9f457…`).
+
+**The drift guard is stronger than claimed, and I re-measured both directions.** Breaking the
+`fromend` line in only `OrnamentationMap`'s copy ⇒ **3 red** (source-text, branch-text, behaviour),
+as reported. Breaking a *pre-existing* branch (`String(millisecondsDate + offset)` → `−`) in only
+`OrnamentationMap`'s copy ⇒ **7 red**; in only **`Performance`'s live copy — the one nothing could
+catch before** ⇒ **2 red** (`token for token` + `computes the same result from both`). So the new
+tests sync the **whole method in both directions**, not just the new branch. T19's recorded gap is
+closed outright.
+
+### The two inversions — both correct, both minimal
+
+1. **`isInNamespace('note')` false → true.** Correct: D1 makes `note` the v3 pool child, so
+   reporting it foreign would be the bug, and the table was already a deliberate superset of
+   Java's. The substitute rejection `score` is genuinely absent from the switch (checked). Minimal.
+2. **"should render a v2 ornament unchanged when v3 attributes are present".** I read the
+   pre-image at HEAD. Its ornament carries `noteid: '#n1'`, `repetitions: 3` **and** a note pool —
+   three D6 markers. D6 says v3 processing triggers per ornament *on v3 features*, so that
+   ornament must leave the v2 path; the title was misleading, the body was not. It did **not** pin
+   "a v2-formatted ornament without v3 features is untouched" — that case is pinned separately
+   (`leaves a v2 ornament on the v2 path — markers, not notes`, the arpeggio at −22/0/+22) and is
+   still green, as is the whole fixture battery. **Not a D6 violation.** Strength rose from 5
+   assertions to 13, plus a companion test rendering the same def as notes.
+
+### The five rulings
+
+1. **ms frames need a principal** — sound. A ms frame has no length of its own in ticks and no
+   anchor; the alternative (invent one) is worse than skipping with a log.
+2. **No overflow scaling in ms** — sound and forced: `scaleFactor` is a function of the
+   principal's duration, which does not exist before the tempo pass.
+3. **`at end` + ms loses the principal's head** — see below. **Accepted with an obligation.**
+4. **The landing copy carries no pass** — sound (`landing: true` already identifies it) and pinned
+   at both levels; my mutation stamping `pass ?? 0` unconditionally dies (2 red).
+5. **`ornament.slot` numbers the expansion, not the survivors** — the right ruling (provenance
+   must stay true to what it describes) but **unpinned**; see finding F1.
+
+**Ruling 3, scrutinised.** I measured what actually happens rather than reading the note: `carve`
+requires `domain === 'ticks'` for `leavesHead`, so an at-end ms ornament takes the removal path and
+the principal element is deleted outright. End to end, a 1000 ms principal becomes four notes
+sounding 1910–2000, 1916.7–2000, 1936.7–2000, 1970–2000: **910 of its 1000 ms are dropped, with no
+runtime log.** I still accept it, for a reason I checked rather than assumed: carving the head
+needs the principal shortened to end at `msEnd − frameLength + offset`, and no existing marker can
+say that — `ornament.milliseconds.duration` is anchored at the *onset*, and the quantity it would
+need (`principalMsDuration − 90`) is unknowable before tempo. It would take a **second** new ms
+branch, and the D5 amendment sanctioned exactly one. Journaling instead of inventing was the right
+call. **Obligation on W6, though:** the silence is inconsistent with this module's own E1 discipline
+— every other unrenderable combination here logs (wrong-domain offset, ms frame without principal,
+both domains on one principal). Emit a warning at the site, and put the alternative reading (leave
+the principal at full length and let the figure overlay its end) into PARITY.md §v3 as
+considered-and-rejected, or take the second marker to the conductor.
+
+### Mutation table (8 mine + 3 re-runs; every restore md5-verified)
+
+| # | mutation | killed by |
+|---|---|---|
+| NC-a | seam: v3 branch of `OrnamentData.apply` → `return []` | **44 red** across the two ornament suites (43 for the `applyGeneration` variant; the entry's "42" is conservative, not inflated) |
+| NC-b | `fromend` broken in `OrnamentationMap`'s copy only | 3 red (the sync trio) |
+| NC-c | old ms branch broken in `Performance`'s live copy only | 2 red (sync trio, source + behaviour) |
+| M1 | last slot falls through the loop formula | 1 test — `n === 1` gives `0/0 → NaN`; for `n > 1` the two spellings are numerically identical (research §1.2), so the pin is about operand order only |
+| M2 | spacing divisor `count` instead of `count − 1` | 10 red |
+| M3 | head-leftover off-by-one (`head >= date`) | 1 red (the mixed front/back D11 case; §5.2 cannot see it, `head = 720 > 0` either way) |
+| M4 | one cursor shared across both frame domains | 1 red |
+| M6 | `ornament.anchor` read from the generated note, not the principal | 4 red |
+| M7 | `ornament.pass` stamped on every note (`?? 0`) | 2 red |
+| **M5** | **`ornament.slot` renumbered over survivors** | **SURVIVES — 196/196 green** |
+| **M8** | **`ownerOf` always returns `maps[0]`** | **SURVIVES — 447/447 green, integration included** |
+| **M9** | **`.perf` written even when the principal has none** | **SURVIVES** |
+
+### The three findings (all test-only)
+
+- **F1 — ruling 5 is unpinned (M5).** No test lets D14 drop a *middle* slot: the two D14 cases drop
+  everything or nothing. One test where a slot vanishes and the survivors keep their original
+  indices would pin the ruling that `ornament.slot` describes the expansion. This matters to the
+  mpmify stakeholder the attribute exists for.
+- **F2 — the global v3 path has no test at all (M8, M9).** DESIGN §7 puts "Phase-N wiring incl.
+  global fallback" inside W5, and the journal singles out "insertion goes into the principal's own
+  map, not `maps[0]`" as a correctness fix over the dead v2 loop — yet replacing that logic with
+  the dead loop's `maps[0]` passes every test in the repository. I wrote my own probe and the
+  **code is right**: two parts, one global ornamentation map, one ornament per part — each part
+  keeps its own generated notes, anchors and provenance. The same hole hides M9 (`hasPerf`), since
+  only the global stage sees a principal without `date.perf`; there the mutation additionally
+  writes a `date.end.perf` that `addPerformanceTimingAttributes` would not. Two tests close both.
+- **F3 — ruling 3's head loss is silent** (see above). A log line, and a PARITY.md §v3 note.
+
+### Re-measured gates (baseline = a dist I built myself from `git archive HEAD`)
+
+- `npm run verify` **green, 63 files / 2803 tests**; coverage functions **93.1 %** (≥ 92.0 ✓).
+- `probe.mjs` 1284 checks **`ed158a07d553f9346b958e8943b98c3b8c55a046f4fb4061654567e864e8757f`**,
+  `probe2.mjs` 83 checks **`0b58d5a4c281914e605de46eb44be54e223d1eb7b08724702eca1ac703ca8c7c`** —
+  identical on both builds, **0 differing labels of 1284**.
+- Call tracer (the implementer's, audited before use) over the eight all-maps fixtures:
+  **557 calls, `8e7613471b7d0156e6868b06bf2a8d12c1e8c79a211cc52105dd3d83664ae7cf`** on both.
+  **Positive control** with my v3 document appended: `24126a8a…` (baseline) vs `9a4c122d…` (WIP),
+  differing exactly where the score grows 2 → 8 notes. The instrument is not vacuous.
+- Provenance dumped from a real `perform()` run: `generated, ref, source, slot, [pass], anchor`,
+  in that order, provenance last, `pass` only on repeat-group notes, `anchor` absent only for the
+  no-principal case. Complete. (Cosmetic note for W9: a generated note's `xml:id` sits *after* the
+  attributes inherited from the principal — e.g. `velocity` — where an authored MSM note has it
+  first. v3-only notes, no fixture, no Java precedent; worth a line in PARITY.md §v3.)
+- `prettier --check` clean on all ten touched files; eslint per-file counts **identical to the
+  pre-wave tree measured in my own baseline checkout** (Mpm 21 = 21, Performance 17 = 17,
+  OrnamentationMap 2 = 2, OrnamentData 5 = 5, Mpm.test 10 = 10) and **0 findings on both new
+  files**; **0 suppressions repo-wide**. Per-test timeouts follow `ornamentExpansion.test.ts`'s
+  established convention (explicit only where non-termination is possible), and vector 3 and the
+  D11 cases carry them anyway.
+
+**Verdict: FAIL W5** — on F1 and F2 only. No source change is required or wanted: three tests
+(a mid-sequence D14 drop; a global v3 ornament across two parts asserting per-part insertion; the
+same rendered without `date.perf` on the principal) plus F3's log line, and this becomes a PASS.
+
+## 2026-08-09 — Conductor: W5 fix round dispatched; W9 obligation recorded
+
+W5 verdict FAIL (test-only; renderer behavior vindicated on independent arithmetic).
+Fix round: F1 middle-slot-drop pin (M5), F2 global-v3-path tests (M8/M9), F3 warning
+at the at-end-ms carve site. W9 OBLIGATION (from verifier ruling-3 assessment): PARITY
+§v3 must record the at-end-ms head-loss semantics + the considered-and-rejected
+alternative (leave principal full length under the figure), and the second-marker
+option remains open for a future decision. Also noted: verifier confirms the sync
+trio now guards BOTH ms-pass copies in both directions — T19's recorded gap closed.
