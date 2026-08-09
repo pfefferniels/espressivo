@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DynamicsMap } from '../../../src/mpm/elements/maps/DynamicsMap.js';
 import { DynamicsData } from '../../../src/mpm/elements/maps/data/DynamicsData.js';
-import { Element, Attribute } from '../../../src/xml/XomTypes.js';
+import { Element, Attribute, Builder } from '../../../src/xml/XomTypes.js';
 
 // ==========================================================================
 //  DynamicsMap Tests
@@ -239,6 +239,129 @@ describe('DynamicsMap', () => {
       const dd2 = map.getDynamicsDataOf(2)!;
       expect(dd2.volume).toBe(100);
       expect(dd2.endDate).toBe(Number.MAX_VALUE);
+    });
+  });
+
+  // ---------------------------------------------------------------
+  //  getDynamicsDataOf - curvature and protraction
+  // ---------------------------------------------------------------
+  // Every transition in tests/integration/fixtures carries curvature="0.0"
+  // protraction="0.0", which is what the fields default to anyway - so the certification
+  // suite could not see that these two were not being read at all, and every transition
+  // with a real curve rendered on the straight Bezier. These tests therefore use literal
+  // non-zero values, which no fixture has.
+  describe('getDynamicsDataOf reads curvature and protraction', () => {
+    const parse = (xml: string): Element => new Builder().build(xml).getRootElement();
+
+    const mapOf = (dynamics: string): DynamicsMap =>
+      DynamicsMap.createDynamicsMap(
+        parse(`<dynamicsMap xmlns="http://www.cemfi.de/mpm/ns/1.0">${dynamics}</dynamicsMap>`),
+      )!;
+
+    it('reads both from a literal transition element', () => {
+      const dd = mapOf(
+        '<dynamics date="0.0" volume="94.2" transition.to="48.3" curvature="0.4"' +
+          ' protraction="0.44" />',
+      ).getDynamicsDataOf(0)!;
+
+      expect(dd.volume).toBe(94.2);
+      expect(dd.transitionTo).toBe(48.3);
+      expect(dd.curvature).toBe(0.4);
+      expect(dd.protraction).toBe(0.44);
+    });
+
+    it('zeroes both when there is no transition.to', () => {
+      // A constant instruction has no curve for them to shape, so Java reads neither and
+      // sets both to 0.0 - even when the element spells them out.
+      const dd = mapOf(
+        '<dynamics date="0.0" volume="80" curvature="0.4" protraction="0.44" />',
+      ).getDynamicsDataOf(0)!;
+
+      expect(dd.curvature).toBe(0.0);
+      expect(dd.protraction).toBe(0.0);
+    });
+
+    it('clamps curvature into [0, 1] and protraction into [-1, 1] on the way in', () => {
+      const above = mapOf(
+        '<dynamics date="0.0" volume="60" transition.to="100" curvature="1.5"' +
+          ' protraction="2.0" />',
+      ).getDynamicsDataOf(0)!;
+      expect(above.curvature).toBe(1.0);
+      expect(above.protraction).toBe(1.0);
+
+      const below = mapOf(
+        '<dynamics date="0.0" volume="60" transition.to="100" curvature="-0.5"' +
+          ' protraction="-3.0" />',
+      ).getDynamicsDataOf(0)!;
+      expect(below.curvature).toBe(0.0);
+      expect(below.protraction).toBe(-1.0);
+    });
+
+    it('the curve it reads is the curve that renders', () => {
+      // The observable consequence of the omission: with curvature dropped, a curved
+      // transition rendered on the straight Bezier and every velocity inside the span was
+      // wrong. Same span, same endpoints, different curvature => different midpoint.
+      const straight = mapOf(
+        '<dynamics date="0.0" volume="0" transition.to="100" curvature="0.0"' +
+          ' protraction="0.0" /><dynamics date="1000.0" volume="100" />',
+      ).getDynamicsDataOf(0)!;
+      const curved = mapOf(
+        '<dynamics date="0.0" volume="0" transition.to="100" curvature="0.9"' +
+          ' protraction="0.0" /><dynamics date="1000.0" volume="100" />',
+      ).getDynamicsDataOf(0)!;
+
+      // Both curves are symmetric, so they agree at the midpoint and nowhere else: the
+      // midpoint is exactly where a suite that only sampled the centre would have missed
+      // the omission.
+      expect(curved.getDynamicsAt(500)).toBeCloseTo(50, 6);
+      expect(straight.getDynamicsAt(500)).toBeCloseTo(50, 6);
+
+      // High curvature holds the starting level longer and then climbs steeply, so the
+      // curved crescendo is quieter than the straight one in its first half and louder in
+      // its second.
+      expect(curved.getDynamicsAt(250)).toBeLessThan(straight.getDynamicsAt(250));
+      expect(curved.getDynamicsAt(750)).toBeGreaterThan(straight.getDynamicsAt(750));
+    });
+  });
+
+  // ---------------------------------------------------------------
+  //  curvature / protraction boundaries on the way out
+  // ---------------------------------------------------------------
+  describe('addDynamics clamps the curve parameters', () => {
+    it('clamps what addDynamics writes into the element', () => {
+      const map = DynamicsMap.createDynamicsMap()!;
+      const index = map.addDynamics(0, '60', '100', 1.5, -2.0);
+      const elem = map.getElement(index)!;
+
+      expect(elem.getAttributeValue('curvature')).toBe('1');
+      expect(elem.getAttributeValue('protraction')).toBe('-1');
+    });
+
+    it('clamps what addDynamicsFromData writes, and corrects the data object too', () => {
+      // Java writes the corrected value back into the caller's object, so a caller that
+      // reuses it does not keep a value the document does not carry.
+      const map = DynamicsMap.createDynamicsMap()!;
+      const data = new DynamicsData();
+      data.startDate = 0;
+      data.volumeString = '60';
+      data.transitionToString = '100';
+      data.curvature = -0.5;
+      data.protraction = 4.0;
+
+      const elem = map.getElement(map.addDynamicsFromData(data))!;
+
+      expect(elem.getAttributeValue('curvature')).toBe('0');
+      expect(elem.getAttributeValue('protraction')).toBe('1');
+      expect(data.curvature).toBe(0.0);
+      expect(data.protraction).toBe(1.0);
+    });
+
+    it('leaves an in-range value untouched', () => {
+      const map = DynamicsMap.createDynamicsMap()!;
+      const elem = map.getElement(map.addDynamics(0, '60', '100', 0.4, -0.44))!;
+
+      expect(elem.getAttributeValue('curvature')).toBe('0.4');
+      expect(elem.getAttributeValue('protraction')).toBe('-0.44');
     });
   });
 

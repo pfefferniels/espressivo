@@ -2,10 +2,11 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "9914fd4",
+  "PROGRAM": "COMPLETE 2026-08-09 — certified by T23 final audit + TD4 addendum; merged to main d981c14",
+  "lastGreenCommit": "56739a2",
   "phase": 4,
-  "currentItem": "T23",
-  "counters": { "completed": 28, "blocked": 0, "reverted": 0 },
+  "currentItem": null,
+  "counters": { "completed": 30, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 92.0,
@@ -224,7 +225,7 @@
     {
       "id": "TD4",
       "phase": 4,
-      "status": "pending",
+      "status": "done",
       "title": "Fix Attribute.detach silent no-op for parser-sourced attributes",
       "details": "Reported by the ornamentation-v3 sibling (verified by conductor in source, 2026-08-09): Element.wrap fills _attributes with new Attribute(...) without setting _xomParent (child elements DO get it, ~XomTypes.ts:420); Attribute.detach() (XomTypes.ts:259) only acts if _xomParent is set — so detach on any parser-sourced attribute is a silent no-op. Live consequence: TemporalSpread.setId(null)/DynamicsGradient.setId(null) leave stale xml:id in serialized XML for parser-sourced elements. This is the unfinished half of the proof-harness-era detach fix (which covered constructed elements only). Fix: set the attribute's parent in wrap (or route through addAttribute if its semantics are side-effect-identical — worker verifies which is behavior-safe); tests: parser-sourced setId(null) round-trip (serialize, assert no stale xml:id) for both def classes + a direct wrap+detach unit test; byte-probe: serialization of all fixtures unchanged (the fix only ENABLES detach, must not alter any other serialization path — argue and prove); PARITY.md Fixed-bugs entry. SEQUENCING: runs AFTER T23's verdict; auditor-T23 then does a focused addendum on the TD4 delta before the merge. Small item, TD1 discipline.",
       "order": "after T23 verdict, before merge"
@@ -232,7 +233,7 @@
     {
       "id": "T23",
       "phase": 4,
-      "status": "in_progress",
+      "status": "done",
       "postCompletion": "USER DIRECTIVE 2026-08-09: after T23 PASS + final report, merge ts-idiomatic into main (--no-ff) and push both branches",
       "title": "Final adversarial audit",
       "details": "Fresh audit agent: full-diff review vs baseline commit for any semantic drift; perf smoke (suite runtime + a large-fixture render) vs baseline numbers from T1; verify all invariants held (fixtures untouched: git log on tests/integration/fixtures must be empty after baseline). Final report to user."

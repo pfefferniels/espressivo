@@ -93,9 +93,14 @@ export class ArticulationMap extends GenericMap {
    * Read the articulation at `index` into an {@link ArticulationData}, or null if that
    * entry is not an `<articulation>`.
    *
-   * Only the identifying fields are read here; the numeric modifiers are not. They live
-   * on the referenced `articulationDef` and are applied straight from it by
-   * {@link ArticulationData.articulateNote}.
+   * Both halves of an articulation are read: the identifying fields, which resolve the
+   * `articulationDef` the style in scope supplies, and the twelve numeric modifiers the
+   * element may carry itself. The two meet in {@link ArticulationData.articulateNote},
+   * which runs the def first and these on top of its result — so an inline *absolute*
+   * modifier replaces what the def wrote, while an inline *relative* one compounds with
+   * it. An absent modifier keeps its neutral default (`relativeDuration` 1.0,
+   * `absoluteVelocityChange` 0.0, …), which is what makes an articulation naming nothing
+   * but a def render as that def alone.
    *
    * `noteid` has its first character stripped — the attribute holds an XML reference
    * (`#note123`) while the map is keyed by bare IDs.
@@ -117,6 +122,31 @@ export class ArticulationMap extends GenericMap {
       ad.articulationDefName = nrAtt.getValue();
       if (ad.style !== null) ad.articulationDef = ad.style.getDef(ad.articulationDefName) ?? null;
     }
+
+    // null = attribute absent, so the field keeps its default. Same twelve names and the
+    // same shape as ArticulationDef.parseDataInternal, but reading through `parseFloat`
+    // rather than `parseJavaDouble`: a def can be skipped by the factory above it, an
+    // articulation entry cannot, so there is nowhere for a NumberFormatError to go. That
+    // makes this one of the map-level reads PARITY.md's P1 entry names as still open.
+    const numeric = (name: string): number | null => {
+      const a = attribute(name, e);
+      return a === null ? null : parseFloat(a.getValue());
+    };
+
+    ad.absoluteDuration = numeric('absoluteDuration') ?? ad.absoluteDuration;
+    ad.absoluteDurationChange = numeric('absoluteDurationChange') ?? ad.absoluteDurationChange;
+    ad.relativeDuration = numeric('relativeDuration') ?? ad.relativeDuration;
+    ad.absoluteDurationMs = numeric('absoluteDurationMs') ?? ad.absoluteDurationMs;
+    ad.absoluteDurationChangeMs =
+      numeric('absoluteDurationChangeMs') ?? ad.absoluteDurationChangeMs;
+    ad.absoluteVelocityChange = numeric('absoluteVelocityChange') ?? ad.absoluteVelocityChange;
+    ad.absoluteVelocity = numeric('absoluteVelocity') ?? ad.absoluteVelocity;
+    ad.relativeVelocity = numeric('relativeVelocity') ?? ad.relativeVelocity;
+    ad.absoluteDelayMs = numeric('absoluteDelayMs') ?? ad.absoluteDelayMs;
+    ad.absoluteDelay = numeric('absoluteDelay') ?? ad.absoluteDelay;
+    ad.detuneCents = numeric('detuneCents') ?? ad.detuneCents;
+    ad.detuneHz = numeric('detuneHz') ?? ad.detuneHz;
+
     return ad;
   }
 
