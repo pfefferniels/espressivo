@@ -22,7 +22,10 @@ through files in `refactor/` + git history — never through agent memory.
 4. **Unit tests** may be rewritten to fit new APIs, but assertion strength must be
    preserved (same behaviors checked, not fewer).
 5. **One work item = one commit** on branch `ts-idiomatic`, message
-   `refactor(<id>): <title>`. Never commit on `main`.
+   `refactor(<id>): <title>`. Never commit on `main` — with ONE exception
+   (user directive, 2026-08-09): after T23's final audit PASSes and the final
+   report is delivered, the conductor merges `ts-idiomatic` into `main`
+   (--no-ff, merge commit documenting the program) and pushes both branches.
 6. **Red → revert**: if verify is red after ≤2 fix rounds, `git restore .` /
    `git checkout -- .` back to last green, mark the item `blocked` in state.json
    with notes, move on.
