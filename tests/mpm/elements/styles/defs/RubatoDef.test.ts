@@ -301,4 +301,36 @@ describe('RubatoDef', () => {
       expect(rd.getId()).toBeNull();
     });
   });
+  // PARITY.md, "Fixed bugs", P1. All four numeric attributes go through Java's
+  // Double.parseDouble (RubatoDef.java:135,148,153-154), so any one of them being malformed
+  // makes the factory return null rather than producing a def with NaN fields.
+  describe('malformed numeric attributes', () => {
+    it.each(['frameLength', 'intensity', 'lateStart', 'earlyEnd'])(
+      'returns null when %s is not a number',
+      (attributeName) => {
+        const attributes: Record<string, string> = {
+          name: 'x',
+          frameLength: '360.0',
+          intensity: '1.0',
+          lateStart: '0.0',
+          earlyEnd: '1.0',
+        };
+        attributes[attributeName] = 'abc';
+        expect(quiet(() => RubatoDef.createRubatoDef(rubatoDefElement(attributes)))).toBeNull();
+      },
+    );
+
+    it('rejects a value parseFloat would have silently truncated', () => {
+      expect(
+        quiet(() =>
+          RubatoDef.createRubatoDef(rubatoDefElement({ name: 'x', frameLength: '360ticks' })),
+        ),
+      ).toBeNull();
+    });
+
+    it('still parses a well-formed neighbour', () => {
+      const rd = RubatoDef.createRubatoDef(rubatoDefElement({ name: 'x', frameLength: '360.0' }))!;
+      expect(rd.getFrameLength()).toBe(360.0);
+    });
+  });
 });

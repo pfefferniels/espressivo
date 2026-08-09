@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Msm } from '../../../src/msm/Msm.js';
 import { Performance } from '../../../src/mpm/elements/Performance.js';
@@ -866,6 +866,92 @@ describe('MovementMap', () => {
       expect(
         MovementMap.renderMovementToMap(map, ctx({ movementSampleMaxStep: 0.5 }))!.size(),
       ).toBeLessThan(MovementMap.renderMovementToMap(map)!.size());
+    });
+  });
+  // ---------------------------------------------------------------
+  // Inheriting a position from the preceding movement
+  // ---------------------------------------------------------------
+  describe('position inheritance (PARITY.md, "Fixed bugs", P2)', () => {
+    /** A bare <movement> with exactly the attributes given. */
+    function movement(attributes: Record<string, string>): Element {
+      const e = new Element('movement');
+      for (const [name, value] of Object.entries(attributes))
+        e.addAttribute(new Attribute(name, value));
+      return e;
+    }
+
+    /** Runs body with console.error silenced; the skip path logs. */
+    function quiet<T>(body: () => T): T {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        return body();
+      } finally {
+        err.mockRestore();
+      }
+    }
+
+    it('inherits the preceding movement transition.to when there is one', () => {
+      const map = MovementMap.createMovementMap()!;
+      map.addElement(movement({ date: '0.0', position: '0.1', 'transition.to': '0.4' }));
+      map.addElement(movement({ date: '480.0', position: '0.4', 'transition.to': '0.7' }));
+      map.addElement(movement({ date: '960.0' }));
+
+      expect(map.getMovementDataOf(2)!.position).toBe(0.7);
+    });
+
+    // Java NPEs here (MovementMap.java:200) and the port used to yield a silent 0, placing
+    // the movement at "fully released" as if that were a real reading. Now the movement is
+    // skipped and the rest of the map still renders.
+    it('skips a movement whose inherited position is unavailable', () => {
+      const map = MovementMap.createMovementMap()!;
+      map.addElement(movement({ date: '0.0', position: '0.1', 'transition.to': '0.4' }));
+      map.addElement(movement({ date: '480.0', position: '0.4' }));
+      map.addElement(movement({ date: '960.0' }));
+
+      expect(quiet(() => map.getMovementDataOf(2))).toBeNull();
+      // The neighbours are untouched: this is a skip, not an aborted parse.
+      expect(map.getMovementDataOf(0)!.position).toBe(0.1);
+      expect(map.getMovementDataOf(1)!.position).toBe(0.4);
+    });
+
+    it('logs which movement it skipped', () => {
+      const map = MovementMap.createMovementMap()!;
+      map.addElement(movement({ date: '0.0', position: '0.1', 'transition.to': '0.4' }));
+      map.addElement(movement({ date: '480.0', position: '0.4' }));
+      map.addElement(movement({ date: '960.0' }));
+
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        map.getMovementDataOf(2);
+        expect(err).toHaveBeenCalledTimes(1);
+        expect(String(err.mock.calls[0][0])).toContain('transition.to');
+      } finally {
+        err.mockRestore();
+      }
+    });
+
+    it('renders the rest of the map when one movement is skipped', () => {
+      const map = MovementMap.createMovementMap()!;
+      map.addElement(movement({ date: '0.0', position: '0.1', 'transition.to': '0.4' }));
+      map.addElement(movement({ date: '480.0', position: '0.4' }));
+      map.addElement(movement({ date: '960.0' }));
+      map.addElement(movement({ date: '1440.0', position: '0.9', 'transition.to': '1.0' }));
+
+      const rendered = quiet(() => map.renderMovementToMap())!;
+      expect(rendered).not.toBeNull();
+      expect(rendered.size()).toBeGreaterThan(0);
+    });
+
+    // The off-by-one that is NOT a repair: the scan runs `j > 0`, so entry 0 is never
+    // examined and a movement inheriting from the very first entry gets 0 rather than that
+    // entry's transition.to. Faithful to MovementMap.java:200 and deliberately kept — see
+    // PARITY.md, "Bug-for-bug preservations".
+    it('still never examines entry 0, so inheriting from it yields 0', () => {
+      const map = MovementMap.createMovementMap()!;
+      map.addElement(movement({ date: '0.0', position: '0.1', 'transition.to': '0.4' }));
+      map.addElement(movement({ date: '480.0' }));
+
+      expect(map.getMovementDataOf(1)!.position).toBe(0);
     });
   });
 });

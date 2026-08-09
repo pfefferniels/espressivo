@@ -114,17 +114,31 @@ describe('Mpm', () => {
       expect(mpm.isInNamespace('')).toBe(false);
     });
 
-    // These four assertions look wrong and are not. The vocabulary reproduces two typos from
-    // the Java reference verbatim — a trailing space in 'accentuation ' (Mpm.java:214) and
-    // 'dynamcisGradient' for dynamicsGradient (Mpm.java:218) — because correcting either would
-    // accept a name the reference rejects and reject one it accepts. See PARITY.md §3; do not
-    // "fix" the vocabulary to make these read better.
-    it('should reproduce the two Java typos in the vocabulary, bug-for-bug', () => {
+    // Two names in the Java vocabulary are typos: a trailing space in 'accentuation '
+    // (Mpm.java:214) and 'dynamcisGradient' for dynamicsGradient (Mpm.java:218). The
+    // corrections are accepted here and the misspellings are STILL accepted, so this
+    // vocabulary is a superset of the reference's: it rejects nothing the reference
+    // accepts. The two misspelled assertions look wrong and are not — deleting either
+    // case label would reject a name a Java-written MPM may legitimately carry.
+    // See PARITY.md, "Fixed bugs"; the previous version of this test pinned the
+    // corrections as rejected (T22), and TD2 inverted that half.
+    it('accepts the corrected spellings and keeps accepting the two Java typos', () => {
       const mpm = Mpm.createMpm();
       expect(mpm.isInNamespace('accentuation ')).toBe(true);
-      expect(mpm.isInNamespace('accentuation')).toBe(false);
+      expect(mpm.isInNamespace('accentuation')).toBe(true);
       expect(mpm.isInNamespace('dynamcisGradient')).toBe(true);
-      expect(mpm.isInNamespace('dynamicsGradient')).toBe(false);
+      expect(mpm.isInNamespace('dynamicsGradient')).toBe(true);
+    });
+
+    // The guard the inversion above must not lose: a name that is neither the typo nor its
+    // correction is still rejected, so "accept both spellings" cannot degrade into
+    // "accept anything that looks close".
+    it('still rejects near-misses of the two corrected names', () => {
+      const mpm = Mpm.createMpm();
+      expect(mpm.isInNamespace('accentuation  ')).toBe(false);
+      expect(mpm.isInNamespace(' accentuation')).toBe(false);
+      expect(mpm.isInNamespace('dynamicsGradiant')).toBe(false);
+      expect(mpm.isInNamespace('dynamcisGradients')).toBe(false);
     });
   });
 

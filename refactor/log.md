@@ -11081,3 +11081,287 @@ ornamentation file and not Performance.ts). House rules relayed: ARCHITECTURE.md
 law, facade frozen (additive only), v2 ms-rendering byte-load-bearing, PARITY.md
 needs a Java-verified-vs-spec-derived split post-integration, probes are session-
 mortal (copy or re-derive).
+
+---
+
+## [TD2] verifier — PASS. Every claim reproduced; four documentation defects to correct (2026-08-09)
+
+Verdict **PASS TD2**. I reproduced every measurement in the worker's entry independently — none
+was taken on trust — and all of them hold, several to the last digit. The four defects below are
+documentation only: no behavioural claim in the wave is wrong, and no code change is required.
+
+**Tree provenance.** `src/`, `tests/`, `vitest.config.ts`, `tsconfig*.json` and `package.json`
+are byte-identical between `f5aef95` (last green) and HEAD, so the four bookkeeping commits since
+are genuinely bookkeeping and the working-tree diff is exactly TD2. Note for the conductor: HEAD
+moved **during** this verification — `f788c93` ("journal ornamentation-v3 sibling coordination")
+committed `refactor/log.md`, which swept the `[TD2] worker` entry into it. That commit is
++293/−0 on `refactor/log.md` alone. The manifest I reviewed is therefore **21 M / 2 ??**, not the
+22 M / 2 ?? in my brief; the one-file delta is `refactor/log.md` moving from modified to
+committed, which is the `refactor/` bookkeeping exception. Everything else matches path for path.
+I re-built the tree comment-free at the end of the session and diffed it against my first build:
+identical, so nothing moved under me while I measured (no post-READY edits).
+
+### Gates, run independently
+
+- `npm run verify` **exit 0**, both tsc stages present in the log (`tsc` → `tsc -p
+  tsconfig.tests.json` → vitest): **59 files, 2334 tests**.
+- **Test count, checked for hidden decreases** rather than in aggregate. I ran the full suite on a
+  `git archive HEAD` tree: **58 files / 2269 tests**. Per file, **no file lost a single test**;
+  gains are Mpm +1, MovementMap +5, AccentuationPatternDef +8, ArticulationDef +15, DynamicsDef
+  +3, RubatoDef +6, TempoDef +3, RandomNumberProvider +12, plus 12 in the new
+  `parseJavaDouble.test.ts` = +65. Invariant 7c is satisfied without needing its justification
+  clause.
+- **Coverage v3** reproduced exactly from `coverage-final.json`: functions **965/1041 =
+  92.6993 %** (floor 92.0), uncovered scoped statements **2094** (budget 2318, T22 was 2107).
+  Per file: `parseJavaDouble.ts` 17/17 statements and 2/2 functions, `errors.ts` 4/4, all five def
+  classes 100 %, `MovementMap.ts` 3 uncovered (lines 31–33, unchanged), `RandomNumberProvider.ts`
+  3 uncovered (370–372). **Every new error path is exercised** — that was the specific thing to
+  check, and it holds.
+- **Lint** reconciles to the digit: base **1013** → work **1019**. I diffed per (file, rule): the
+  +6 are five buckets, all `@typescript-eslint/no-empty-function`, all in test files, matching
+  `lint-debt.md`'s table row for row. **No suppressions anywhere** — `eslint-disable`,
+  `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `istanbul ignore` and `v8 ignore` are all at
+  **0 in both** HEAD and the working tree.
+- `prettier --check` clean on all 23 touched files. `tests/integration/**` and `fixtures/**`
+  untouched (`git status` and `git diff` against HEAD both empty for that path).
+- **Emitted-JS classification**, both trees built `--removeComments --declaration false
+  --sourceMap false`: exactly **9 files differ plus the new `parseJavaDouble.js`**, nothing else
+  in the compiled project.
+- **Facade battery** against the shipped build, all green: `plaindata` 488/0, `postmessage` 8/8
+  through a real Worker, `contract` 33/0, `paths` 174/0 in **both** facade and legacy modes,
+  `seed` 12/0, `imprecision` 18/0, `rulings` 49/0, `typesurface` 0 forbidden-name hits.
+- **Full-tree pipeline byte-probe, run by me on both builds** (`t21verify/pipe.mjs`, the T8
+  verifier's independent probe): baseline `git archive HEAD` build and the shipped build both
+  give `169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e`, 24 entries, 0 threw,
+  21 non-vacuous, and the two transcripts are byte-identical. The worker's baseline sha is
+  therefore confirmed, and so is its final-bytes claim.
+
+### Fix 1 — `isInNamespace`, probed rather than read
+
+I probed the **vocabulary itself** on both builds (54 candidate names assembled from the static
+constants plus a literal list written independently of the switch) instead of reading the diff:
+
+- base accepts 54, work accepts 56; **lost = ∅**, gained = exactly `'accentuation'` and
+  `'dynamicsGradient'`. The strict-superset claim is measured, not argued.
+- All **four** spellings accepted on the shipped build; both misspellings still accepted, so the
+  Java-written-file compatibility requirement holds.
+- Twelve near-misses (`'accentuation  '`, `' accentuation'`, `'accentuation\t'`, `'Accentuation'`,
+  `'dynamicsGradiant'`, `'dynamcisGradients'`, trailing-space variants, `''`, …) rejected on
+  **both** builds — the inversion lost no lower bound.
+- Zero callers in `src/` confirmed, so byte-probe identity is a formality here, exactly as the
+  entry says. The T22 test inversion is journaled at the test site.
+
+### Fix 2 — confirmed absent from the tree
+
+Token-level, not eyeball. In the comment-free build the **only** differences in
+`AccentuationPatternDef.js` are the parse-path `parseFloat` → `parseJavaDouble` calls; I extracted
+the whole `getAccentuationAt` body from both builds and hashed it — `3acd2be8f44ac2b1373a6c22164b790e`
+on both. The segment-end behaviour is untouched, as required.
+
+**I also reproduced the escalation's evidence**, since §2's byte claims are part of what I gate.
+On a third scratch tree I changed the one character (`i >` → `i <`) and re-ran the probe:
+`63c7faa5485217e78dc214b439a5b0ec106a5901b2728d4f509368810580921c` — the worker's hash, character
+for character. Diffing the transcripts entry by entry: **exactly one** pipeline entry differs,
+`allmaps/metrical_accentuation`. The fixture
+`all-maps-reference/metrical_accentuation_augmented.msm` does contain `velocity="100.0003471017008"`,
+and `100+1/2881` and `100+1/720` print as `100.0003471017008` and `100.00138888888888` — both
+strings to the last digit. The escalation and the TD3 gating are fully substantiated.
+
+### Fix 3 — P1, read against the Java source and probed per attribute
+
+I read the five Java factories: every one is `try { new XDef(xml) } catch (Exception e) {
+e.printStackTrace(); return null; }`, and `ArticulationStyle.parseData` does `if (ad == null)
+continue`. TS `GenericStyle.parseDefs` mirrors it with `if (d === null) continue`. So the required
+observable outcome is factory-null and a skipped def.
+
+Probed **every** class and attribute the ledger names — TempoDef/@value, DynamicsDef/@value,
+RubatoDef @frameLength/@intensity/@lateStart/@earlyEnd, AccentuationPatternDef @length and
+accentuation @beat/@value/@transition.from/@transition.to, and **all twelve** ArticulationDef
+attributes — with two malformed values each (`'abc'`, and `'12abc'` which `parseFloat` silently
+truncates) plus a well-formed control:
+
+- baseline: **KEPT**, with `NaN` or the truncated value (e.g. tempoDef `KEPT(12)` for `'12abc'`) —
+  the bug, reproduced;
+- shipped: **SKIPPED** in all 30 malformed cases;
+- controls **identical on both builds**, so well-formed input is untouched;
+- at style level the skip is observable: a `styleDef` with one malformed `articulationDef` yields
+  `bad,good1,good2` on the baseline and `good1,good2` on the shipped build.
+
+No exception escapes a factory. `addAccentuationFromXml` is the one propagating site, and Java
+agrees: `public int addAccentuation(Element xml)` (APD.java:198-212) has no try/catch and
+`NumberFormatException` is unchecked. It has zero callers in `src/`, so it cannot reach the
+conversion path.
+
+**The §6 question the brief asked me to settle.** The worker cited **§6.1 RULE E1** and argued the
+throw is interior plumbing between the parse and a `catch` that already existed, so what a caller
+sees is E1's logs-and-returns-null. I measured that and it is true — every factory returns null,
+nothing throws outward — and it is what TD2's spec demanded ("internal: null-return skip path,
+NOT exceptions"). The letter of E1 also says "do not add throws … except where §6.3 records an
+approved divergence", and §6.3 still lists P1/P2/P4 as **frozen**; the charter's 2026-08-09 bug
+policy and the TD2 item override that, and the worker correctly left the governance document to
+the conductor rather than editing it from inside an item (TD1 precedent). **§6.3 is stale and
+wants the conductor's hand** — its P1/P2/P4 rows and E1's pointer, as the worker's DISCOVERED
+note says.
+
+**Java cross-check of the new parser, which the worker did not have.** `javac` is available here,
+so I ran the grammar against the real thing: 56 inputs through `Double.parseDouble` in
+OpenJDK 17 versus `parseJavaDouble`. **54/56 agree; the two disagreements are exactly `0x1.8p1`
+and `0X1.8P1`** — the single hex-float narrowing that is journaled in the module doc, PARITY.md
+and the tests. `'1.5f'`/`'1.5d'` accepted, `'0x10'`/`'0b101'`/`'0o17'` rejected, `'NaN'`/
+`'±Infinity'` accepted, `'12abc'`/`'120bpm'`/`'97dB'`/`'0.5x'` rejected — all matching Java.
+The whitespace claim is the one I most expected to break and it did not: 13 exotic-whitespace
+cases (NUL, VT, US, NBSP, U+2028, BOM, ideographic and em space) **agree 13/13 with Java**, where
+`String.trim` would have diverged in **7** of them, in both directions. The `charCodeAt`
+implementation is exactly right and its justification is measured, not asserted.
+
+### Fix 4 — P2, probed on both builds
+
+`renderMovementToMap`'s `if (md === null) continue` is pre-existing (unchanged in the diff), so
+the new null lands on a skip path that already existed. Six cases, both builds:
+
+| case | baseline | shipped |
+| --- | --- | --- |
+| well-formed inherit (prev `transition.to=0.7`) | 0.7 | 0.7 |
+| **prev movement has no `transition.to`** | **position=0, silent** | **skipped, 1 log** |
+| preserved `j > 0` off-by-one (inherit from entry 0) | 0 | 0 |
+| neighbour of a skipped entry | 0.1 | 0.1 |
+| whole-map render with a skip | size 15 | size 12, 1 log |
+| explicit position | 0.55 | 0.55 |
+
+So the silent 0 is gone, the choice matches the journaled one (log + skip per RULE E1, **not** a
+typed throw), well-formed input is unchanged, the preserved off-by-one is genuinely preserved, and
+the render survives. Five tests pin it, including the log-content assertion and the preserved case.
+
+### Fix 5 — P4, the critical one
+
+**Sequence identity, my own probe, not the worker's.** `Math.random` stubbed with a deterministic
+counter-based source **and call-counted**, `nextRandom` wrapped on the prototype **and
+call-counted** — the direct measurement of "the guard draws nothing". All six factories × three
+seeds, 500-long sequential runs, out-of-order access, fractional indices, and the edge-legal values
+the brief named (`0`, `-0`, `1`, `0.5`, negatives, `999`, `1e6`, `9_999_999`), through both
+`getValue` and `getValueDouble`. **9,696 values:**
+
+- transcript **bit-identical** across builds, sha
+  `9f206138f1ab09a4c112adb9a67f48397b2fbd718e4bdadd60ca7f49ad7b6ff2`;
+- `nextRandom` calls **177,116,226 on both** — zero extra draws;
+- `Math.random` calls **262 on both** — zero extra entropy.
+
+The guard is a pure precondition. Measured, not inferred from reading it.
+
+**Pathological classes and negative control**, each in its own subprocess under a 25 s timeout
+(the [T4] verifier's technique), `getValue` and `getValueDouble`, on both builds:
+
+| index | unguarded baseline | guarded build |
+| --- | --- | --- |
+| `NaN` | `RangeError: Maximum call stack size exceeded`, 11–20 ms | `OutOfRangeError`, 0 ms |
+| `Infinity` | `RangeError: Invalid array length`, 3.7–4.9 s | `OutOfRangeError`, 0–1 ms |
+| `1e12` / `1e9` | `RangeError: Invalid array length`, 3.7–5.4 s | `OutOfRangeError`, 0 ms |
+| `MAX_INDEX+1` | returns normally, ~200 ms | `OutOfRangeError`, 0 ms |
+| `MAX_INDEX`, `MAX_INDEX-1` | returns | **returns, same value** |
+
+Every rejection is `OutOfRangeError`, `instanceof MeicoError`, names the method and the offending
+index, and is prompt. The boundary is legal on both builds and yields the **same value**. The
+worker's correction to the inherited "hangs for ever" wording is right: on Node 23.8 the infinite
+and huge cases die with a bare `RangeError` after seconds rather than hanging.
+
+### Defects — documentation only, none blocking
+
+1. **`TempoDef.java:85` is the wrong line, in three places** — PARITY.md's P1 table, the site
+   comment in `TempoDef.ts`, and the comment in `TempoDef.test.ts`. The `Double.parseDouble` is at
+   **`TempoDef.java:88`**; line 85 is `this.getXml().setLocalName("tempoDef")`. I checked every
+   other citation in the wave against the source and they are **all exact**: `DynamicsDef.java:88`,
+   `RubatoDef.java:135,148,153-154`, `AccentuationPatternDef.java:113,122-136` and `:198-212`,
+   `ArticulationDef.java:100-133` (twelve sites, verified one by one), `MovementMap.java:200`,
+   `Mpm.java:214,218`.
+2. **PARITY.md §2 cites `AccentuationPatternDef.ts:222`** for the segment-end site. Line 222 is
+   `getAccentuationXml`; the method is `getAccentuationAt` at **:262** and the buggy guard is at
+   **:273**. TD3 will read this entry to find its target, so the pointer should be right.
+3. **The retired "hangs / never returns" wording survives in three source comments** even though
+   the worker's own entry says it was replaced by the measurement: `RandomNumberProvider.ts`'s
+   `getValue` doc still says "`getValue(Infinity)` never returned", `errors.ts`'s `OutOfRangeError`
+   doc says such indices "each … otherwise overflows the stack or hangs", and the RNG test-block
+   header says "drew for ever". PARITY.md §1's P4 entry carries the corrected measurement, so the
+   documents now contradict each other on a point the worker specifically set out to fix.
+4. **`-Infinity` is a newly rejected input whose baseline behaviour was not pathological**, and
+   that is nowhere recorded. Measured on the unguarded build: `getValue(-Infinity)` **returns
+   `series[0]`** in ~1 ms (`Math.max(0, -Infinity)` is 0) and `getValueDouble(-Infinity)` returns
+   `NaN`. Neither hangs nor overflows. Rejecting them is the right call — `-Infinity` silently
+   meaning "index 0" is worse than an error, the guard's `Number.isFinite` spelling is the clean
+   one, and the tests cover it — but the justification as written ("each of which otherwise
+   overflows the stack or hangs") is **false for this class**, and PARITY.md's P4 does not mention
+   it. Defect 3 and defect 4 are one edit: state the measured behaviour per class.
+   (`MAX_INDEX+1`, also newly rejected after returning fine in ~200 ms, **is** properly journaled
+   with the cost measurements, so it needs nothing.)
+
+### Handoff
+
+- The recommended corrections are four line-edits in `PARITY.md`, `TempoDef.ts`,
+  `TempoDef.test.ts`, `RandomNumberProvider.ts` and `errors.ts`. None touches behaviour; a
+  comment-only re-verify would be a token diff.
+- **For the conductor**: `ARCHITECTURE.md §6.3` is now stale in a way that outlasts this item —
+  its P1/P2/P4 rows still read "frozen" and RULE E1 does not know about the charter's bug-policy
+  amendment. Worth fixing before TD3 cites §6 again.
+- **For TD3**: my scratch tree `td2verify/apdfix/` is the one-character-fixed build, already
+  proven to produce `63c7faa5…` with `allmaps/metrical_accentuation` as the sole differing entry.
+  Probes reused/written this session live in `td2verify/`: `nsprobe.mjs` (vocabulary),
+  `p1probe.mjs`, `p2probe.mjs`, `rngseq.mjs` (call-counted sequence identity),
+  `rngcase.mjs` (one pathological call per subprocess) and `javadouble/` (the OpenJDK
+  cross-check). Each takes a dist dir as argv, so TD3 can re-run them against its own build.
+
+## [TD2] worker — doc fix round (2026-08-09)
+
+All four verifier defects applied, comments and documentation only. **Zero executable changes,
+proven the way the verifier asked:** both trees built with
+`tsc --removeComments --declaration false --sourceMap false`, and the comment-stripped emitted
+JavaScript of the post-round tree is **byte-identical to the pre-round tree's across the whole
+project** (`diff -rq` reports nothing). Gates re-run rather than carried over: `npm run verify`
+exit 0 at 59 files / 2334 tests, pipeline probe back to
+`169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e`, eslint 1019 unchanged,
+prettier clean.
+
+I re-derived each of the four claims from the sources before editing rather than trusting the
+verdict — the corrections are line-number and behaviour facts, and a fix round that propagates a
+wrong correction is worse than the defect.
+
+**1. `TempoDef.java:85` → `:88`, three sites.** Confirmed: `:88` is
+`this.value = Double.parseDouble(value.getValue());`, `:85` is
+`this.getXml().setLocalName("tempoDef")`. Corrected in PARITY.md's P1 table, `TempoDef.ts`'s site
+comment and `TempoDef.test.ts`'s comment. The verifier's own entry keeps the old number where it
+quotes the defect, which is correct for a historical record and was left alone.
+
+**2. The segment-end pointer.** Confirmed: `:222` is `getAccentuationXml`; `getAccentuationAt` is
+at `:262` and the guard to correct at `:273`. PARITY.md §2's TypeScript row now names the method
+and both line numbers, since TD3 navigates by this row. Note for TD3: these numbers moved once
+already in this item (the site comment above the method grew), so re-grep rather than trusting
+them if the file has been touched since.
+
+**3+4. The retired "hangs / never returns" wording, and `-Infinity`.** Measured on the unguarded
+baseline build before writing anything: `getValue(-Infinity)` returns `series[0]` in ~1 ms —
+`Math.max(0, -Infinity)` is 0 — and `getValueDouble(-Infinity)` returns `NaN`. Reproduced the
+verifier's finding exactly; neither hangs nor overflows.
+
+So the three rejected classes fail in three different ways, and the documents now say so per class
+instead of asserting one story for all of them. Rewritten: `RandomNumberProvider.getValue`'s
+`@throws` doc, `errors.ts`'s `OutOfRangeError` doc, the RNG test-block header, and PARITY.md's P4
+entry, which gained a five-row measured table (`NaN`, `Infinity`, `1e12`, `-Infinity`,
+`MAX_INDEX`) plus a paragraph on why `-Infinity` is rejected even though it was not pathological:
+an index that silently means "the first value in the series" is a wrong answer dressed as a right
+one, the caller cannot distinguish it from a real reading, and the arithmetic that yields
+`Infinity` yields `-Infinity` too. `Number.isFinite` is therefore the honest spelling of the
+precondition — screening only for the two loud failure modes would have left the quiet one in.
+
+**One site beyond the four specified**, flagged so it is not read as scope creep: the `MAX_INDEX`
+doc comment (`RandomNumberProvider.ts:16-24`) carried the same retired claim — "10^12 … never
+returns at all" — and my own measurement says it dies with a bare `RangeError` after ~1.9 s. The
+verifier named three comments and did not list this fourth; leaving a statement I had just
+measured as false, in the very comment that justifies the constant, would have re-created defect 3
+one line away from its fix. It now carries the cost curve (10^7 = 178 ms / 236 MB, 10^8 = 1.7 s /
+1.5 GB, 10^9 = throws after 1.9 s) that PARITY.md already used to justify the limit. Comment only,
+inside the same file and the same defect class.
+
+PARITY.md's P4 also now states outright that the inherited [T4] / ARCHITECTURE.md §6.3 wording
+("hangs") does not reproduce on this runtime, so the next reader meets the discrepancy in the
+ledger rather than discovering it against the source.
+
+Manifest unchanged from the verified set: 22 modified + 2 new. `tests/integration/**` and fixtures
+untouched, no suppressions.

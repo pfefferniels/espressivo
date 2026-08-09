@@ -15,6 +15,16 @@ function tempoDefElement(attributes: Record<string, string>): Element {
   return e;
 }
 
+/** Runs body with console.error silenced; the factories log before returning null. */
+function quiet<T>(body: () => T): T {
+  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    return body();
+  } finally {
+    err.mockRestore();
+  }
+}
+
 describe('TempoDef', () => {
   describe('createTempoDef from name and value', () => {
     it('stores name and value and builds a tempoDef element', () => {
@@ -209,6 +219,28 @@ describe('TempoDef', () => {
     it('uses the 100 bpm fallback for unknown descriptors', () => {
       const td = TempoDef.createDefaultTempoDef('irgendwas')!;
       expect(td.getValue()).toBe(100.0);
+    });
+  });
+  // PARITY.md, "Fixed bugs", P1. Java's Double.parseDouble throws on a malformed value
+  // (TempoDef.java:88) and createTempoDef turns that into null, so the style skips the def.
+  // The port used parseFloat and kept a NaN-valued def instead.
+  describe('malformed value attribute', () => {
+    it('returns null instead of a NaN-valued def', () => {
+      const td = quiet(() => TempoDef.createTempoDef(tempoDefElement({ name: 'x', value: 'abc' })));
+      expect(td).toBeNull();
+    });
+
+    it('rejects a value parseFloat would have silently truncated', () => {
+      // parseFloat('120bpm') === 120; Double.parseDouble throws.
+      const td = quiet(() =>
+        TempoDef.createTempoDef(tempoDefElement({ name: 'x', value: '120bpm' })),
+      );
+      expect(td).toBeNull();
+    });
+
+    it('still parses a well-formed neighbour', () => {
+      const td = TempoDef.createTempoDef(tempoDefElement({ name: 'x', value: '120' }))!;
+      expect(td.getValue()).toBe(120);
     });
   });
 });

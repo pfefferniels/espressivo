@@ -168,11 +168,13 @@ export class Mpm extends AbstractMsm {
    * Every case is empty and falls through to the single `return true` — the switch is a
    * membership table, not a dispatch, and the blank-line groups below (document /
    * metadata / header / dated environment) are the only structure it has. This mirrors
-   * `Mpm.java:193-255` case for case, in the same order, **including two typos that are
-   * part of the vocabulary as shipped**: `'accentuation '` carries a trailing space
-   * (Mpm.java:214) and `'dynamcisGradient'` misspells `dynamicsGradient`
-   * (Mpm.java:218). Both are reproduced verbatim: correcting either would accept a name
-   * the reference rejects, and reject one it accepts.
+   * `Mpm.java:193-255` case for case and in the same order, with **two additions**: the
+   * reference misspells `'accentuation '` with a trailing space (Mpm.java:214) and
+   * `'dynamcisGradient'` for `dynamicsGradient` (Mpm.java:218), and both correct
+   * spellings are accepted here alongside the misspelled ones. Neither typo is removed —
+   * a document written by Java meico may legitimately carry them — so the table is a
+   * superset of the reference's and no name the reference accepts is rejected here.
+   * See PARITY.md, "Fixed bugs".
    */
   isInNamespace(elementName: string): boolean {
     switch (elementName) {
@@ -197,11 +199,13 @@ export class Mpm extends AbstractMsm {
       case 'dynamicsDef':
       case Mpm.METRICAL_ACCENTUATION_STYLE:
       case 'accentuationPatternDef':
-      case 'accentuation ':
+      case 'accentuation ': // Mpm.java:214's trailing space, kept for Java-written files
+      case 'accentuation':
       case Mpm.ORNAMENTATION_STYLE:
       case 'ornamentDef':
       case 'temporalSpread':
-      case 'dynamcisGradient':
+      case 'dynamcisGradient': // Mpm.java:218's misspelling, kept for Java-written files
+      case 'dynamicsGradient':
       case Mpm.RUBATO_STYLE:
       case 'rubatoDef':
       case Mpm.TEMPO_STYLE:

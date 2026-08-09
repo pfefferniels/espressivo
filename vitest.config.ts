@@ -18,6 +18,11 @@ export default defineConfig({
       // `src/units.ts` is the brand module T19a added, which matched no glob (its
       // DISCOVERED note asked for exactly this). Both are in scope by definition — the
       // facade IS the MEI/MSM+MPM => MIDI surface.
+      // TD2 mechanical addition: `src/supplementary/parseJavaDouble.ts` is the strict numeric
+      // parser every def now reads its attributes through, so it sits on the MPM parse path
+      // and is in scope by definition. `src/supplementary/` is listed file by file rather
+      // than by glob, so a new module there is invisible to the coverage invariant until it
+      // is named — which is why this line exists.
       include: [
         'src/version.ts',
         'src/units.ts',
@@ -34,6 +39,7 @@ export default defineConfig({
         'src/xml/**/*.ts',
         'src/music/**/*.ts',
         'src/supplementary/KeyValue.ts',
+        'src/supplementary/parseJavaDouble.ts',
         'src/supplementary/RandomNumberProvider.ts',
       ],
     },

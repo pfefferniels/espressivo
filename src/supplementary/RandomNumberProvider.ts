@@ -1,3 +1,5 @@
+import { OutOfRangeError } from '../xml/errors.js';
+
 /**
  * Random numbers drawn from one of the distributions MPM's imprecision maps use.
  * Port of `meico.supplementary.RandomNumberProvider`.
@@ -11,6 +13,19 @@
  * everything after it. Treat this file as numerics rather than as style.
  */
 export class RandomNumberProvider {
+  /**
+   * The largest index {@link getValue} will serve.
+   *
+   * An index is an allocation, not just a lookup: the series memoises one double per index up
+   * to the one asked for. Measured without the guard: 10^7 costs 178 ms and 236 MB, 10^8 costs
+   * 1.7 s and 1.5 GB, and 10^9 spends 1.9 s allocating before V8 refuses to grow the array and
+   * throws a bare `RangeError: Invalid array length`. Ten million is therefore the last index
+   * that is merely expensive, and it is already far beyond any real document — at the default
+   * 100 ms timing basis it stands for 10^9 ms, about eleven days of music, where a real
+   * document reaches an index in the hundreds.
+   */
+  static readonly MAX_INDEX = 10_000_000;
+
   static readonly DISTRIBUTION_UNIFORM = 0;
   static readonly DISTRIBUTION_GAUSSIAN = 1;
   static readonly DISTRIBUTION_TRIANGULAR = 2;
@@ -224,7 +239,39 @@ export class RandomNumberProvider {
     this.series = [initialValue];
   }
 
+  /**
+   * Reject an index no series can have, before it is used for anything.
+   *
+   * A **pure precondition**: it draws nothing, memoises nothing and touches no field, so the
+   * sequence a valid caller sees is bit-for-bit what it was without the guard. That property
+   * is the point — see this class's opening note on the numerics being load-bearing.
+   *
+   * @throws {OutOfRangeError} for `NaN`, `±Infinity` or an index above {@link MAX_INDEX}
+   */
+  private static requireUsableIndex(index: number, method: string): void {
+    if (Number.isFinite(index) && index <= RandomNumberProvider.MAX_INDEX) return;
+    throw new OutOfRangeError(
+      `RandomNumberProvider.${method}: ${String(index)} is not a usable index (expected a finite value of at most ${String(RandomNumberProvider.MAX_INDEX)}).`,
+    );
+  }
+
+  /**
+   * The value at `index`, drawing and memoising as far as needed to reach it. A fractional
+   * index is interpolated by {@link getValueDouble}; a negative one is clamped to 0.
+   *
+   * @throws {OutOfRangeError} for a non-finite or absurdly large index. The unguarded
+   *   behaviour differs by class, all measured on Node 23.8: `NaN` recursed with
+   *   {@link getValueDouble} until the stack overflowed; `Infinity` and huge finite indices
+   *   allocated for seconds and then died with a bare `RangeError: Invalid array length`
+   *   naming neither method nor index; and `-Infinity` was **not** pathological at all — it
+   *   clamped to 0 and quietly returned `series[0]`, while `getValueDouble(-Infinity)`
+   *   returned `NaN`. That last class is rejected anyway, and deliberately: an index that
+   *   silently means "the first value" is a wrong answer dressed as a right one, which is
+   *   worse than an error. See PARITY.md, "Fixed bugs", P4.
+   */
   getValue(index: number): number {
+    RandomNumberProvider.requireUsableIndex(index, 'getValue');
+
     const clampedIndex = Math.max(0, index);
     if (clampedIndex !== Math.floor(clampedIndex)) return this.getValueDouble(clampedIndex);
     const wholeIndex = Math.floor(clampedIndex);
@@ -236,8 +283,16 @@ export class RandomNumberProvider {
     return this.series[wholeIndex];
   }
 
-  /** Linear interpolation between the values either side of a fractional index. */
+  /**
+   * Linear interpolation between the values either side of a fractional index.
+   *
+   * @throws {OutOfRangeError} as {@link getValue}. A fractional index at exactly
+   *   {@link MAX_INDEX} also throws, from the lookup of its interpolation partner one place
+   *   further on — the boundary is the last index that can be *drawn*.
+   */
   getValueDouble(index: number): number {
+    RandomNumberProvider.requireUsableIndex(index, 'getValueDouble');
+
     const wholeIndex = Math.floor(index);
     const rest = index - wholeIndex;
     const a = this.getValue(wholeIndex);

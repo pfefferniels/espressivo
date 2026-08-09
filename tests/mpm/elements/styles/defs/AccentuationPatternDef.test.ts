@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { AccentuationPatternDef } from '../../../../../src/mpm/elements/styles/defs/AccentuationPatternDef.js';
 import { Element, Attribute } from '../../../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../../../src/mpm/Mpm.js';
+import { NumberFormatError } from '../../../../../src/xml/errors.js';
 
 /**
  * Reference: meico/src/meico/mpm/elements/styles/defs/AccentuationPatternDef.java
@@ -27,6 +28,16 @@ function xmlBeats(def: AccentuationPatternDef): string[] {
   const beats: string[] = [];
   for (let i = 0; i < children.size(); ++i) beats.push(children.get(i).getAttributeValue('beat')!);
   return beats;
+}
+
+/** Runs body with console.error silenced; the factory logs before returning null. */
+function quiet<T>(body: () => T): T {
+  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    return body();
+  } finally {
+    err.mockRestore();
+  }
 }
 
 describe('AccentuationPatternDef', () => {
@@ -334,6 +345,65 @@ describe('AccentuationPatternDef', () => {
       const apd = AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0)!;
       apd.addAccentuation(1.0, 1.0, 0.7, 0.7);
       expect(apd.getAccentuationAt(2.5)).toBeCloseTo(0.7, 10);
+    });
+  });
+  // PARITY.md, "Fixed bugs", P1. Java reads length and all four accentuation attributes with
+  // Double.parseDouble inside the throwing constructor (AccentuationPatternDef.java:113,
+  // 122-136), so a malformed one skips the whole pattern.
+  describe('malformed numeric attributes', () => {
+    it('returns null when length is not a number', () => {
+      expect(
+        quiet(() =>
+          AccentuationPatternDef.createAccentuationPatternDef(
+            patternElement({ name: '4/4', length: 'four' }),
+          ),
+        ),
+      ).toBeNull();
+    });
+
+    it.each(['beat', 'value', 'transition.from', 'transition.to'])(
+      'returns null when an accentuation %s is not a number',
+      (attributeName) => {
+        const attributes: Record<string, string> = {
+          beat: '1.0',
+          value: '1.0',
+          'transition.from': '0.0',
+          'transition.to': '1.0',
+        };
+        attributes[attributeName] = 'abc';
+        expect(
+          quiet(() =>
+            AccentuationPatternDef.createAccentuationPatternDef(
+              patternElement({ name: '4/4', length: '4.0' }, [accentuation(attributes)]),
+            ),
+          ),
+        ).toBeNull();
+      },
+    );
+
+    it('still parses a well-formed neighbour', () => {
+      const apd = AccentuationPatternDef.createAccentuationPatternDef(
+        patternElement({ name: '4/4', length: '4.0' }, [
+          accentuation({ beat: '1.0', value: '1.0' }),
+        ]),
+      )!;
+      expect(apd.size()).toBe(1);
+    });
+
+    // No factory absorbs this one: Java's NumberFormatException is unchecked and propagates
+    // out of addAccentuation(Element) (AccentuationPatternDef.java:198-212), so it reaches
+    // the caller here too.
+    it('throws out of addAccentuationFromXml rather than storing NaN', () => {
+      const apd = AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0)!;
+      expect(() => apd.addAccentuationFromXml(accentuation({ beat: 'abc' }))).toThrow(
+        NumberFormatError,
+      );
+      expect(apd.size()).toBe(0);
+    });
+
+    it('still returns -1 for an accentuation with no beat at all', () => {
+      const apd = AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0)!;
+      expect(apd.addAccentuationFromXml(accentuation({ value: '1.0' }))).toBe(-1);
     });
   });
 });

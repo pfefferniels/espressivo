@@ -1,6 +1,7 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
+import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /**
@@ -41,7 +42,10 @@ export class TempoDef extends AbstractDef {
     if (valueAttr === null)
       throw new Error('Cannot generate TempoDef object. Missing value attribute.');
 
-    this.value = parseFloat(valueAttr.getValue());
+    // Java throws here on a malformed value (TempoDef.java:88, Double.parseDouble) and
+    // createTempoDef turns that into null, so the style skips the def. See PARITY.md,
+    // "Fixed bugs", P1 — `parseFloat` used to keep a NaN-valued def instead.
+    this.value = parseJavaDouble(valueAttr.getValue(), 'tempoDef/@value');
   }
 
   protected parseData(xml: Element): void {

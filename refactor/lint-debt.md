@@ -1146,3 +1146,35 @@ state by hand.
 > half of the same question is RULE I5's command, which returns nothing (audit 3), and
 > `no-extraneous-class` is at 0 (audit 2). So the charter's "no shared mutable
 > statics/singletons" holds in `src/` with exactly one documented, inert exception.
+
+---
+
+## TD2 (2026-08-09) — +6, all one rule, all in tests
+
+Repo total **1013 → 1019** (1017 errors, 2 warnings). Every one of the six is
+`@typescript-eslint/no-empty-function` on `vi.spyOn(console, 'error').mockImplementation(() => {})`
+— the `quiet` helper that silences the deliberate `console.error` of a factory returning null.
+
+| file | base | after |
+| --- | --- | --- |
+| `tests/mpm/elements/MovementMap.test.ts` | 0 | 2 |
+| `tests/mpm/elements/styles/defs/AccentuationPatternDef.test.ts` | 2 | 3 |
+| `tests/mpm/elements/styles/defs/ArticulationDef.test.ts` | 2 | 3 |
+| `tests/mpm/elements/styles/defs/DynamicsDef.test.ts` | 3 | 4 |
+| `tests/mpm/elements/styles/defs/TempoDef.test.ts` | 3 | 4 |
+
+The idiom was kept rather than spelled around (`() => undefined` would satisfy the rule) because
+`quiet` is copied verbatim from the three helpers that already existed in
+`tests/mpm/elements/styles/Styles.test.ts`, `.../defs/RubatoDef.test.ts` and
+`tests/mpm/elements/metadata/Metadata.test.ts`. One of four sibling helpers written differently to
+dodge a lint counter is worse than the counter. This is the `no-empty-function` row of the "By
+rule" table above (54 → 60), which that table still records as "almost entirely test stubs" —
+correctly.
+
+**No suppressions of any kind were added**: `git diff` over the item contains no
+`eslint-disable`, `@ts-ignore`, `@ts-expect-error` or coverage pragma. The one place a suppression
+was nearly needed — `no-control-regex`, for a `[\x00-\x20]` character class in `parseJavaDouble` —
+was resolved by writing the trim against `charCodeAt` instead, which is also clearer about why it
+is not `String.trim`.
+
+New `src/` file `src/supplementary/parseJavaDouble.ts` lints clean: **0 problems**.

@@ -1,6 +1,7 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
+import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /**
@@ -46,10 +47,14 @@ export class ArticulationDef extends AbstractDef {
   private parseDataInternal(xml: Element): void {
     super.parseData(xml);
 
-    // null = attribute absent, so the field keeps its default; NaN = present but unparsable
+    // null = attribute absent, so the field keeps its default. Present but unparsable is not
+    // a third outcome: it throws, createArticulationDef returns null and the style skips the
+    // whole def, which is what Java does for all twelve (ArticulationDef.java:100-133 —
+    // every one is a bare Double.parseDouble inside the throwing constructor). This is the
+    // single choke point for the twelve; see PARITY.md, "Fixed bugs", P1.
     const numeric = (name: string): number | null => {
       const a = attribute(name, xml);
-      return a === null ? null : parseFloat(a.getValue());
+      return a === null ? null : parseJavaDouble(a.getValue(), `articulationDef/@${name}`);
     };
 
     this.absoluteDuration = numeric('absoluteDuration') ?? this.absoluteDuration;

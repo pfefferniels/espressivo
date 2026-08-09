@@ -176,7 +176,7 @@ Options, all optional:
 > same millisecond date, the interior picks which one keeps its value with a bare `Math.random()`
 > and re-rolls the rest through an unseeded generator — faithfully, from
 > `ImprecisionMap.java:845,894`. A seeded render is reproducible only while no two offsets share a
-> date, which for polyphonic input is often false. See [PARITY.md §4](PARITY.md).
+> date, which for polyphonic input is often false. See [PARITY.md §5](PARITY.md).
 
 ### The class API underneath
 
@@ -222,7 +222,7 @@ produces"**. That is enforced mechanically:
   equivalence event by event, and the MIDI export pipeline. They auto-discover every `.mei` fixture, so a missing reference is
   a **failure, not a skip**, and they canonicalize generated `meico_<uuid>` identifiers by
   first-occurrence order — which keeps `goto` → `marker` wiring verifiable rather than deleting it.
-- **2269 tests across 58 files**, run as a gate (`npm run verify` = clean build + typecheck of the
+- **2334 tests across 59 files**, run as a gate (`npm run verify` = clean build + typecheck of the
   test sources + the full suite) before every single commit of the refactor that produced this
   codebase.
 - **Byte probes for every refactor.** Beyond the suite, each structural change was proven with a
@@ -236,13 +236,15 @@ produces"**. That is enforced mechanically:
   bytes.
 
 What this does **not** claim: imprecision output is nondeterministic by design and is never
-byte-compared (see [PARITY.md §4](PARITY.md)), and behaviour on malformed input can differ — those
-paths are enumerated in [PARITY.md §2](PARITY.md) rather than fixed, because the reference is the
-specification.
+byte-compared (see [PARITY.md §5](PARITY.md)), and a short list of behaviours on malformed or
+unreachable input still differs from the reference — those are enumerated in
+[PARITY.md §3](PARITY.md) rather than fixed.
 
-### Deliberate divergences
+### Where this deliberately differs from Java
 
-There are exactly three, each approved and journaled before implementation:
+The reference is the specification, so its bugs are reproduced rather than corrected. The
+exception is an **obvious** bug, which is fixed provided the fix is proven not to move the bytes of
+any reference fixture:
 
 1. **The articulation hang is fixed.** `ArticulationData.articulateNote`'s
    `absoluteDurationChange` branch never terminates in Java (`ArticulationData.java:197`); the port
@@ -251,9 +253,20 @@ There are exactly three, each approved and journaled before implementation:
    were regenerated from it.
 3. **`Msm.getMinimalPPQ` was repaired toward Java**, which uses integer division where the port
    had used float division.
+4. **Both spellings of the two `Mpm.isInNamespace` typos are accepted** — the corrections as well
+   as Java's `'accentuation '` and `'dynamcisGradient'`, so the vocabulary is a superset of the
+   reference's.
+5. **Malformed numeric attributes skip the def** instead of yielding one whose value is `NaN`,
+   matching what `Double.parseDouble` plus Java's factory `catch` already did.
+6. **A movement that cannot inherit a position is skipped**, where Java throws a
+   `NullPointerException` and the port used to render it at position 0.
+7. **The random-number provider rejects an unusable index** — `NaN`, infinite, or absurdly large —
+   instead of overflowing the stack or allocating without bound, as both Java and the port did.
 
 Full accounts, with Java line citations and the evidence for each, are in [PARITY.md](PARITY.md) —
-along with the frozen divergences and the Java bugs that are reproduced on purpose.
+along with the differences left in place, the Java bugs reproduced on purpose, and one further fix
+that is approved but held back because correcting it provably moves fixture bytes — it needs the
+Java reference patched and the ground truth regenerated in the same step.
 
 ## Provenance
 

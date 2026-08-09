@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { RandomNumberProvider } from '../../src/supplementary/RandomNumberProvider.js';
+import { MeicoError, OutOfRangeError } from '../../src/xml/errors.js';
 
 // Helper: generate a batch of values and return them
 function generateValues(provider: RandomNumberProvider, count: number): number[] {
@@ -312,5 +313,110 @@ describe('RandomNumberProvider – getValueDouble', () => {
   it('should interpolate at 0.25', () => {
     const rng = RandomNumberProvider.createRandomNumberProvider_distributionList([0, 100]);
     expect(rng.getValueDouble(0.25)).toBe(25);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Index guards (PARITY.md, "Fixed bugs", P4)
+//
+// Unguarded, the three rejected classes failed in three different ways: getValue(NaN)
+// recursed with getValueDouble until the stack overflowed; getValue(Infinity) and huge finite
+// indices allocated for seconds and then threw a bare RangeError; and getValue(-Infinity) was
+// not pathological at all — it clamped to 0 and returned series[0], with
+// getValueDouble(-Infinity) returning NaN. All three are rejected now, the last one because a
+// silently wrong index is worse than one that throws.
+//
+// The guards are pure preconditions: the last three tests are what pins that, because a guard
+// that perturbed the draw sequence would change every rendered performance.
+// ---------------------------------------------------------------------------
+describe('RandomNumberProvider – index guards', () => {
+  const uniform = () => RandomNumberProvider.createRandomNumberProvider_uniformDistribution(0, 100);
+
+  it.each([NaN, Infinity, -Infinity])('getValue rejects %p', (index) => {
+    expect(() => uniform().getValue(index)).toThrow(OutOfRangeError);
+  });
+
+  it.each([NaN, Infinity, -Infinity])('getValueDouble rejects %p', (index) => {
+    expect(() => uniform().getValueDouble(index)).toThrow(OutOfRangeError);
+  });
+
+  it('rejects an index past MAX_INDEX and accepts the boundary itself', () => {
+    expect(() => uniform().getValue(RandomNumberProvider.MAX_INDEX + 1)).toThrow(OutOfRangeError);
+    // The boundary is legal, if slow — assert on the guard, not on ten million draws.
+    expect(() =>
+      RandomNumberProvider.createRandomNumberProvider_distributionList([1, 2]).getValue(
+        RandomNumberProvider.MAX_INDEX,
+      ),
+    ).not.toThrow();
+  });
+
+  it('guards the list distribution too, where the index used to yield undefined', () => {
+    const list = RandomNumberProvider.createRandomNumberProvider_distributionList([1, 2, 3]);
+    expect(() => list.getValue(Infinity)).toThrow(OutOfRangeError);
+    expect(() => list.getValue(NaN)).toThrow(OutOfRangeError);
+  });
+
+  it('names the method and the offending index', () => {
+    expect(() => uniform().getValue(NaN)).toThrow(/getValue.*NaN/);
+    expect(() => uniform().getValueDouble(Infinity)).toThrow(/getValueDouble.*Infinity/);
+  });
+
+  it('throws inside the MeicoError hierarchy', () => {
+    expect(() => uniform().getValue(NaN)).toThrow(MeicoError);
+  });
+
+  // --- the sequence-identity half: a guard that drew would be a silent renderer change ---
+
+  it('draws nothing when it rejects', () => {
+    const rng = RandomNumberProvider.createRandomNumberProvider_uniformDistribution(0, 100);
+    rng.setSeed(12345);
+    expect(() => rng.getValue(NaN)).toThrow(OutOfRangeError);
+    expect(() => rng.getValue(Infinity)).toThrow(OutOfRangeError);
+
+    const reference = RandomNumberProvider.createRandomNumberProvider_uniformDistribution(0, 100);
+    reference.setSeed(12345);
+    expect(generateValues(rng, 20)).toEqual(generateValues(reference, 20));
+  });
+
+  it('leaves every distribution bit-identical for finite indices', () => {
+    // One provider per distribution, each seeded, each drawn deep enough that a single extra
+    // or missing nextRandom() would show — the correlated ones derive each value from their
+    // predecessor, so a perturbation cannot stay local.
+    const build = () => [
+      RandomNumberProvider.createRandomNumberProvider_uniformDistribution(0, 100),
+      RandomNumberProvider.createRandomNumberProvider_gaussianDistribution(10, -50, 50),
+      RandomNumberProvider.createRandomNumberProvider_triangularDistribution(0, 100, 50, 0, 100),
+      RandomNumberProvider.createRandomNumberProvider_brownianNoiseDistribution(5, 0, 100),
+      RandomNumberProvider.createRandomNumberProvider_compensatingTriangleDistribution(
+        2,
+        0,
+        100,
+        0,
+        100,
+      ),
+      RandomNumberProvider.createRandomNumberProvider_distributionList([3, 1, 4, 1, 5, 9]),
+    ];
+
+    for (const [i, rng] of build().entries()) {
+      // setSeed clears the series unconditionally, which for the list distribution discards
+      // the list itself and leaves getValue reading series[i % 0]. Pre-existing, unrelated to
+      // the guards, and not TD2's to repair — see the [TD2] worker DISCOVERED note.
+      if (rng.getDistributionType() !== RandomNumberProvider.DISTRIBUTION_LIST) {
+        rng.setSeed(777);
+        rng.setInitialValue(50);
+      }
+      const drawn = [
+        ...generateValues(rng, 50),
+        rng.getValueDouble(10.5),
+        rng.getValueDouble(0.25),
+        rng.getValue(-3),
+      ];
+      // Every value is a real number: no NaN leaked in from a guard mis-comparison.
+      expect(
+        drawn.every((v) => Number.isFinite(v)),
+        `distribution ${String(i)}`,
+      ).toBe(true);
+      expect(drawn).toHaveLength(53);
+    }
   });
 });

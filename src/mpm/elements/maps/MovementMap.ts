@@ -97,8 +97,16 @@ export class MovementMap extends GenericMap {
     const att = attribute('id', e);
     if (att !== null) md.xmlId = att.getValue();
     const posAtt = attribute('position', e);
-    if (posAtt === null) md.position = this.getPreviousPosition(i) as Normalized;
-    else md.position = parseFloat(posAtt.getValue()) as Normalized;
+    if (posAtt === null) {
+      const inherited = this.getPreviousPosition(i);
+      if (inherited === null) {
+        console.error(
+          `Cannot read movement at index ${String(i)}: it has no position attribute and the preceding movement has no transition.to to inherit one from. Skipping it.`,
+        );
+        return null;
+      }
+      md.position = inherited as Normalized;
+    } else md.position = parseFloat(posAtt.getValue()) as Normalized;
     const ttAtt = attribute('transition.to', e);
     if (ttAtt !== null) md.transitionTo = parseFloat(ttAtt.getValue()) as Normalized;
     // Parsed since 2026-08-08 (MovementMap.java:182-192). Previously the shape and the
@@ -115,25 +123,31 @@ export class MovementMap extends GenericMap {
   }
 
   /**
-   * The end position of the nearest preceding `<movement>`, or 0 if there is none.
+   * The end position of the nearest preceding `<movement>`; 0 if there is none, and null if
+   * the one found cannot supply a position.
    *
    * PARITY NOTE — the loop condition is `j > 0`, not `j >= 0`, so **entry 0 is never
    * examined**: a movement that inherits its position from the very first entry in the
    * map gets 0 instead of that entry's `transition.to`. This is faithful to the Java
-   * reference (MovementMap.java:200). Also unlike the reference, a preceding movement
-   * with no `transition.to` leaves `finalPosition` at 0 here, where Java throws a
-   * NullPointerException — a difference confined to the malformed-input path.
+   * reference (MovementMap.java:200) and is deliberately kept.
+   *
+   * The null return is not: a preceding `<movement>` with no `transition.to` used to leave
+   * `finalPosition` at 0, silently placing the movement at "fully released" — a wrong
+   * position rendered as if it were a real one. Java throws a NullPointerException at
+   * `MovementMap.java:200` (`getAttribute("transition.to").getValue()`) and aborts the
+   * whole render instead. Neither is right, so this reports "no position available" and
+   * {@link getMovementDataOf} logs and skips just that movement, which is the interior's
+   * house policy for malformed input (ARCHITECTURE.md RULE E1, logs-and-returns-null) and
+   * the same shape the def factories use. See PARITY.md, "Fixed bugs", P2.
    */
-  private getPreviousPosition(index: number): number {
-    let finalPosition = 0;
+  private getPreviousPosition(index: number): number | null {
     for (let j = index - 1; j > 0; --j) {
       if (this.elements[j].getValue().getLocalName() === 'movement') {
         const ttAtt = this.elements[j].getValue().getAttribute('transition.to');
-        if (ttAtt !== null) finalPosition = parseFloat(ttAtt.getValue());
-        break;
+        return ttAtt === null ? null : parseFloat(ttAtt.getValue());
       }
     }
-    return finalPosition;
+    return 0;
   }
 
   private getEndDate(index: number): number {

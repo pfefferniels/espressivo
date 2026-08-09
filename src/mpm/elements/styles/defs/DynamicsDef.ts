@@ -1,6 +1,7 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
+import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /**
@@ -35,7 +36,9 @@ export class DynamicsDef extends AbstractDef {
     const valueAttr = attribute('value', xml);
     if (valueAttr === null)
       throw new Error('Cannot generate DynamicsDef object. Missing value attribute.');
-    this.value = parseFloat(valueAttr.getValue());
+    // Malformed value => throw => createDynamicsDef returns null => the style skips the def,
+    // as in Java (DynamicsDef.java:88). PARITY.md, "Fixed bugs", P1.
+    this.value = parseJavaDouble(valueAttr.getValue(), 'dynamicsDef/@value');
   }
 
   protected parseData(xml: Element): void {

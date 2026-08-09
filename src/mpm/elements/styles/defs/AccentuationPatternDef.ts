@@ -2,6 +2,7 @@ import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { allChildElements, attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
+import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /**
@@ -37,22 +38,29 @@ export class AccentuationPatternDef extends AbstractDef {
       lengthAttr = new Attribute('length', String(this.length));
       xml.addAttribute(lengthAttr);
     }
-    this.length = parseFloat(lengthAttr.getValue());
+    // Every read below throws on a malformed value, so createAccentuationPatternDef returns
+    // null and the style skips the pattern — Java's behaviour at AccentuationPatternDef.java:
+    // 113,122-136, where each is a bare Double.parseDouble in the throwing constructor.
+    // See PARITY.md, "Fixed bugs", P1.
+    this.length = parseJavaDouble(lengthAttr.getValue(), 'accentuationPatternDef/@length');
 
     for (const ac of allChildElements(xml, 'accentuation')) {
       const att = attribute('beat', ac);
       if (att === null) continue;
-      const accentuation = [parseFloat(att.getValue()), 0.0, 0.0, 0.0];
+      const accentuation = [parseJavaDouble(att.getValue(), 'accentuation/@beat'), 0.0, 0.0, 0.0];
 
       const valAtt = attribute('value', ac);
-      if (valAtt !== null) accentuation[1] = parseFloat(valAtt.getValue());
+      if (valAtt !== null)
+        accentuation[1] = parseJavaDouble(valAtt.getValue(), 'accentuation/@value');
 
       const tfAtt = attribute('transition.from', ac);
-      if (tfAtt !== null) accentuation[2] = parseFloat(tfAtt.getValue());
+      if (tfAtt !== null)
+        accentuation[2] = parseJavaDouble(tfAtt.getValue(), 'accentuation/@transition.from');
       else accentuation[2] = accentuation[1];
 
       const ttAtt = attribute('transition.to', ac);
-      if (ttAtt !== null) accentuation[3] = parseFloat(ttAtt.getValue());
+      if (ttAtt !== null)
+        accentuation[3] = parseJavaDouble(ttAtt.getValue(), 'accentuation/@transition.to');
       else accentuation[3] = accentuation[2];
 
       this.addAccentuationToArrayList(accentuation, ac);
@@ -130,21 +138,28 @@ export class AccentuationPatternDef extends AbstractDef {
    * As {@link addAccentuation}, but taking the values from an existing `accentuation`
    * element, which is then adopted as a child.
    * @returns the index it was sorted to, or -1 if the element has no `beat`
+   * @throws {NumberFormatError} if an attribute is present but not numeric. Unlike the parse
+   *   path there is no factory to absorb it here, so it reaches the caller — which is what
+   *   Java's unchecked `NumberFormatException` does from `addAccentuation(Element)`
+   *   (AccentuationPatternDef.java:198-212). PARITY.md, "Fixed bugs", P1.
    */
   addAccentuationFromXml(xml: Element): number {
     const att = xml.getAttribute('beat');
     if (att === null) return -1;
-    const accentuation = [parseFloat(att.getValue()), 0.0, 0.0, 0.0];
+    const accentuation = [parseJavaDouble(att.getValue(), 'accentuation/@beat'), 0.0, 0.0, 0.0];
 
     const valAtt = xml.getAttribute('value');
-    if (valAtt !== null) accentuation[1] = parseFloat(valAtt.getValue());
+    if (valAtt !== null)
+      accentuation[1] = parseJavaDouble(valAtt.getValue(), 'accentuation/@value');
 
     const tfAtt = xml.getAttribute('transition.from');
-    if (tfAtt !== null) accentuation[2] = parseFloat(tfAtt.getValue());
+    if (tfAtt !== null)
+      accentuation[2] = parseJavaDouble(tfAtt.getValue(), 'accentuation/@transition.from');
     else accentuation[2] = accentuation[1];
 
     const ttAtt = xml.getAttribute('transition.to');
-    if (ttAtt !== null) accentuation[3] = parseFloat(ttAtt.getValue());
+    if (ttAtt !== null)
+      accentuation[3] = parseJavaDouble(ttAtt.getValue(), 'accentuation/@transition.to');
     else accentuation[3] = accentuation[2];
 
     const index = this.addAccentuationToArrayList(accentuation, xml);
@@ -219,15 +234,21 @@ export class AccentuationPatternDef extends AbstractDef {
    * in between it is linearly interpolated from the preceding accentuation's
    * `transition.from` towards its `transition.to`.
    *
-   * DELIBERATE JAVA BUG — PORTED AS IS, DO NOT "FIX" (charter: behavior parity beats
-   * correctness). `segmentEnd` is meant to become the *next* accentuation's beat, so that
-   * each transition ramps to its own segment's end. The guard that would do it reads
-   * `i > this.accentuations.length - 1` (Java AccentuationPatternDef.java:317, where the
-   * comment says "if it is between two accentuations"), but the loop starts at
-   * `length - 1` and only ever counts down, so the condition can never hold. `segmentEnd`
-   * therefore stays at `length + 1.0` and EVERY ramp runs to the end of the whole pattern,
-   * flattening the interpolation of all but the last accentuation. The intended test was
-   * presumably `i < this.accentuations.length - 1`.
+   * DELIBERATE JAVA BUG, STILL PORTED AS IS — do not correct it here on its own; the fix is
+   * approved and belongs to item TD3. `segmentEnd` is meant to become the *next*
+   * accentuation's beat, so that each transition ramps to its own segment's end. The guard
+   * that would do it reads `i > this.accentuations.length - 1` (Java
+   * AccentuationPatternDef.java:317, where the comment says "if it is between two
+   * accentuations"), but the loop starts at `length - 1` and only ever counts down, so the
+   * condition can never hold. `segmentEnd` therefore stays at `length + 1.0` and EVERY ramp
+   * runs to the end of the whole pattern, flattening the interpolation of all but the last
+   * accentuation. The intended test is `i < this.accentuations.length - 1`.
+   *
+   * Correcting that one character in isolation moves fixture bytes: the Java-generated
+   * `all-maps-reference/metrical_accentuation_augmented.msm` stores the value this spelling
+   * produces. TD3 patches the Java fork, regenerates that ground truth and changes this line
+   * together. PARITY.md §2 carries the measurement, including why a green test suite does
+   * not certify the change.
    *
    * Consequences worth knowing before touching anything here: the comparison chain and the
    * loop direction are load-bearing, `accentuation` is deliberately read after the loop via

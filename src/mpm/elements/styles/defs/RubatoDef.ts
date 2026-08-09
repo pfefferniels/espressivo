@@ -2,6 +2,7 @@ import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
+import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /**
@@ -42,8 +43,15 @@ export class RubatoDef extends AbstractDef {
       intensityAttr = new Attribute('intensity', String(this.intensity));
       xml.addAttribute(intensityAttr);
     } else {
+      // Each of these four reads throws on a malformed value, which createRubatoDef turns
+      // into null so the style skips the def — Java's behaviour at RubatoDef.java:135,148,
+      // 153-154. PARITY.md, "Fixed bugs", P1.
       intensityAttr.setValue(
-        String(RubatoDef.ensureIntensityBoundaries(parseFloat(intensityAttr.getValue()))),
+        String(
+          RubatoDef.ensureIntensityBoundaries(
+            parseJavaDouble(intensityAttr.getValue(), 'rubatoDef/@intensity'),
+          ),
+        ),
       );
     }
 
@@ -58,14 +66,14 @@ export class RubatoDef extends AbstractDef {
       xml.addAttribute(earlyEndAttr);
     }
     const le = RubatoDef.ensureLateStartEarlyEndBoundaries(
-      parseFloat(lateStartAttr.getValue()),
-      parseFloat(earlyEndAttr.getValue()),
+      parseJavaDouble(lateStartAttr.getValue(), 'rubatoDef/@lateStart'),
+      parseJavaDouble(earlyEndAttr.getValue(), 'rubatoDef/@earlyEnd'),
     );
     lateStartAttr.setValue(String(le.getKey()));
     earlyEndAttr.setValue(String(le.getValue()));
 
-    this.frameLength = parseFloat(frameLengthAttr.getValue());
-    this.intensity = parseFloat(intensityAttr.getValue());
+    this.frameLength = parseJavaDouble(frameLengthAttr.getValue(), 'rubatoDef/@frameLength');
+    this.intensity = parseJavaDouble(intensityAttr.getValue(), 'rubatoDef/@intensity');
     this.lateStart = le.getKey();
     this.earlyEnd = le.getValue();
   }

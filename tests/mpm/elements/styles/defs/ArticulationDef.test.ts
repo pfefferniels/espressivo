@@ -21,6 +21,16 @@ function note(attributes: Record<string, string>): Element {
   return e;
 }
 
+/** Runs body with console.error silenced; the factory logs before returning null. */
+function quiet<T>(body: () => T): T {
+  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    return body();
+  } finally {
+    err.mockRestore();
+  }
+}
+
 describe('ArticulationDef', () => {
   describe('createArticulationDef', () => {
     it('creates a def with the documented default values', () => {
@@ -564,6 +574,57 @@ describe('ArticulationDef', () => {
       expect(parseFloat(n.getAttributeValue('articulation.absoluteDurationMs')!)).toBe(160.0);
       expect(n.getAttributeValue('duration.perf')).toBe('360.0');
       expect(parseFloat(n.getAttributeValue('velocity')!)).toBe(59.0);
+    });
+  });
+  // PARITY.md, "Fixed bugs", P1. All twelve attributes are bare Double.parseDouble calls in
+  // Java's throwing constructor (ArticulationDef.java:100-133), so a malformed one skips the
+  // whole def instead of leaving that single field NaN.
+  describe('malformed numeric attributes', () => {
+    const NUMERIC_ATTRIBUTES = [
+      'absoluteDuration',
+      'absoluteDurationChange',
+      'absoluteDurationMs',
+      'absoluteDurationChangeMs',
+      'relativeDuration',
+      'absoluteDelay',
+      'absoluteDelayMs',
+      'absoluteVelocity',
+      'relativeVelocity',
+      'absoluteVelocityChange',
+      'detuneCents',
+      'detuneHz',
+    ];
+
+    it.each(NUMERIC_ATTRIBUTES)('returns null when %s is not a number', (attributeName) => {
+      const def = quiet(() =>
+        ArticulationDef.createArticulationDef(
+          articulationDefElement({ name: 'x', [attributeName]: 'abc' }),
+        ),
+      );
+      expect(def).toBeNull();
+    });
+
+    it('covers every numeric attribute the class reads', () => {
+      // If someone adds a thirteenth attribute, this count fails and the list above has to
+      // grow with it — the it.each block is only as complete as this number.
+      expect(NUMERIC_ATTRIBUTES).toHaveLength(12);
+    });
+
+    it('rejects a value parseFloat would have silently truncated', () => {
+      expect(
+        quiet(() =>
+          ArticulationDef.createArticulationDef(
+            articulationDefElement({ name: 'x', relativeDuration: '0.5x' }),
+          ),
+        ),
+      ).toBeNull();
+    });
+
+    it('still parses a well-formed neighbour', () => {
+      const def = ArticulationDef.createArticulationDef(
+        articulationDefElement({ name: 'x', relativeDuration: '0.5' }),
+      )!;
+      expect(def.getRelativeDuration()).toBe(0.5);
     });
   });
 });

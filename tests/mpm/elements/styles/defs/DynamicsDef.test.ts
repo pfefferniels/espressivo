@@ -13,6 +13,16 @@ function dynamicsDefElement(attributes: Record<string, string>): Element {
   return e;
 }
 
+/** Runs body with console.error silenced; the factories log before returning null. */
+function quiet<T>(body: () => T): T {
+  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    return body();
+  } finally {
+    err.mockRestore();
+  }
+}
+
 describe('DynamicsDef', () => {
   describe('createDynamicsDef from name and value', () => {
     it('stores name and value and builds a dynamicsDef element', () => {
@@ -136,6 +146,28 @@ describe('DynamicsDef', () => {
     it('uses the 74 fallback for unknown dynamics strings', () => {
       const dd = DynamicsDef.createDefaultDynamicsDef('irgendwas')!;
       expect(dd.getValue()).toBe(74.0);
+    });
+  });
+  // PARITY.md, "Fixed bugs", P1 — as DynamicsDef.java:88, a malformed value makes the
+  // factory return null rather than yielding a def whose value is NaN.
+  describe('malformed value attribute', () => {
+    it('returns null instead of a NaN-valued def', () => {
+      const dd = quiet(() =>
+        DynamicsDef.createDynamicsDef(dynamicsDefElement({ name: 'x', value: 'loud' })),
+      );
+      expect(dd).toBeNull();
+    });
+
+    it('rejects a value parseFloat would have silently truncated', () => {
+      const dd = quiet(() =>
+        DynamicsDef.createDynamicsDef(dynamicsDefElement({ name: 'x', value: '97dB' })),
+      );
+      expect(dd).toBeNull();
+    });
+
+    it('still parses a well-formed neighbour', () => {
+      const dd = DynamicsDef.createDynamicsDef(dynamicsDefElement({ name: 'x', value: '97' }))!;
+      expect(dd.getValue()).toBe(97);
     });
   });
 });
