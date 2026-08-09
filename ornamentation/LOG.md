@@ -1458,3 +1458,147 @@ at the at-end-ms carve site. W9 OBLIGATION (from verifier ruling-3 assessment): 
 alternative (leave principal full length under the figure), and the second-marker
 option remains open for a future decision. Also noted: verifier confirms the sync
 trio now guards BOTH ms-pass copies in both directions — T19's recorded gap closed.
+
+### W5 fix round
+
+Verifier's three findings addressed; tree freeze re-applied afterwards. Nothing outside F1–F3
+was touched — `git diff --numstat` grew on exactly two files, the renderer (one log site plus
+its doc) and its test file.
+
+**F1 — ruling 5 pinned, mutation M5 dead.** New vector under "negative dates (D14)": principal
+1440 ticks, `frame.offset="-960ticks" frameLength="1440ticks"` (equal to the principal, so D11's
+overflow factor is 1 and does not perturb the arithmetic), `noteoff.shift="monophonic"`, four
+distinct pool pitches. Onsets −960 / −480 / 0 / 480; monophonic durations 480 / 480 / 480 / 960;
+note-offs −480 / 0 / 480 / 1440. D14 drops the first two, and the survivors report
+`ornament.slot="2"` and `"3"` with sources `c` and `d`. **The test comment states why the dropped
+run is a prefix and not a strictly interior slot**: the spacing offsets are non-decreasing in `i`
+and every `noteoff.shift` mode keeps the note-off non-decreasing too (`true` adds a constant,
+`false` is constant, `monophonic` takes the next onset), so `end <= 0` can only hold for an
+initial run — an interior-only drop is unreachable by construction. This is the strongest form
+the rule can take, and it is strictly stronger against M5 than an interior drop would be: the
+first surviving index is **non-zero**, which is exactly what survivor-renumbering destroys.
+Control: renumbering by survivor order (`slotIndex: notes.length`) ⇒ that test alone red.
+
+**F2 — the global stage now has coverage; M8 and M9 dead.** New `describe` driving the real
+entry point `OrnamentationMap.renderGlobalOrnamentationToParts(parts, map)` with a map whose
+style comes from the **global** header (`setHeaders(header, null)`), which is the branch of
+`apply` no other test reaches.
+(a) Two parts, one global map, one ornament per part: each part's score keeps only its own
+ornament's notes (61/60 in A, 71/72 in B), with `ornament.ref` ornA/ornB, `ornament.anchor`
+a1/b1, slots 0/1, and each principal's id surviving on its own part's heir. Control: `ownerOf`
+returning `maps[0]` unconditionally ⇒ that test alone red.
+(b) A principal with `date`/`duration` but no `.perf` anything — which is what the global stage
+actually sees, since it runs before `addPerformanceTimingAttributes`: the generated notes carry
+**no `date.end.perf`, no `date.perf`, no `duration.perf`**, while `date`/`duration`/`midi.pitch`
+are all present (D13). Control: dropping the `geometry.hasPerf` guard ⇒ that test alone red.
+
+**F3 — the at-end-ms head loss now announces itself.** `carve` logs, in the module's existing
+voice, before removing a principal whose group holds a millisecond frame aligned `at end`. The
+span it names is `frameLength − frame.offset` ms — the part of the note that *is* rendered,
+counted back from its end (90 ms for the vector, matching the verifier's 910-of-1000 reading
+from the other side). That is the only quantity available: how much of the principal precedes
+the frame depends on a millisecond duration that does not exist until the tempo pass. Two tests:
+the warning fires for the at-end case (id and span asserted), and does **not** fire for the same
+frame aligned `at start`. Control: silencing the loop ⇒ the first test alone red.
+
+Log-only, and the byte gates confirm it: rebuilt dist re-probed, `probe.mjs` 1284 checks
+`ed158a07…`, `probe2.mjs` 83 checks `0b58d5a4…`, call tracer 557 calls `8e761347…`,
+deterministic augmented MSM `26221505…` — all four still baseline-identical.
+
+Gates: `npm run verify` **63 files / 2808 tests green** (was 2803; +5, none removed or
+weakened); the ornamentation suites plus `tests/integration` re-run together, 19 files / 1168
+tests green. `prettier --check` clean and `eslint` silent on both touched files; zero
+suppressions. Source md5 after every control run: `ornamentInstantiation.ts 099e981f…`,
+restored and verified each time.
+
+Not mine, and left alone: the PARITY.md §v3 considered-and-rejected note (W9 owns PARITY;
+conductor has recorded the obligation).
+
+### W5 verifier — re-check (2026-08-09)
+
+**PASS W5.** All three surviving mutations are dead, each killed by exactly one new test. One
+claim in the fix round is wrong — the interior-drop unreachability argument — but it is a comment,
+not a gate: the prefix vector kills M5 anyway, and I measured that the code does the right thing in
+the interior case too. Two obligations recorded below; neither blocks the commit.
+
+**Scope of the fix round, checked before anything else.** LOG.md is a strict append — the working
+tree's bytes begin with HEAD's exactly, 55 added, 0 deleted — and my FAIL entry survives verbatim
+both at HEAD and in the tree. Of the six sources I fingerprinted before verification, **only**
+`ornamentInstantiation.ts` moved (`ec4f13c6…` → `099e981f…`); the other five are md5-identical.
+The source diff is two hunks and both are log-only: a doc paragraph on `carve`, and a
+`console.error` loop placed *after* the head-carving early return, so it can only run on the path
+that already removed the principal. No behaviour statement changed.
+
+**(1) The three mutations, re-run verbatim from my sandbox.**
+
+| mutation | before | after |
+|---|---|---|
+| M5 `ornament.slot` renumbered over survivors | survived 196/196 | **red** — `keeps the expansion's slot numbering when D14 drops the notes before it` |
+| M8 `ownerOf` always returns `maps[0]` | survived 447/447 | **red** — `puts each ornament's notes into the part its principal lives in` |
+| M9 `.perf` written even without a principal's | survived | **red** — `writes no performance attributes when the principal has none yet` |
+
+Each restore md5-verified back to `099e981f…`. I re-derived the F1 vector independently before
+trusting it: start −960, length 1440, n = 4, intensity 1 ⇒ onsets −960, −480, 0, 480; monophonic
+durations 480/480/480 and tail 1440 − 480 = 960 ⇒ ends −480, 0, 480, 1440; `end <= 0` drops slots
+0 and 1; survivors are dates 0 and 480, durations 480 and 960, pitches 67 and 68, slots `2`/`3`.
+Every number the test asserts. Likewise F2's: frame 100 % of 1440, n = 2 ⇒ onsets 0 and 1440,
+pitches 61/60 in part A and 71/72 in part B, each principal's id landing on its own part's heir.
+
+**(2) The unreachability argument is false — verified by construction, not by reading.**
+
+The comment argues that "the spacing offsets are non-decreasing in i", so `end <= 0` can only hold
+for an initial run and an interior-only drop is unreachable. The premise fails for **intensity < 0**,
+which this codebase accepts and `spacingOffsets` deliberately reproduces from v2 (`pow(0, −k)` is
+`Infinity`, documented at the function and in research §1.2). For a negative intensity
+`pow(i/(n−1), intensity)` *decreases* in i while the last slot stays pinned at `start + length`, so
+the onsets run downhill and the ends with them.
+
+Construction: intensity −1, `frame.offset` −1000 ticks, `frameLength` 100 ticks, monophonic, four
+slots, principal date 0 duration 1440. Offsets `pow(0/3,−1)·100−1000 = Infinity`,
+`pow(1/3,−1) = 3 ⇒ −700`, `pow(2/3,−1) = 1.5 ⇒ −850`, pinned `−900`. Monophonic ends: `Infinity`
+(kept), `−700` (dropped), `−850` (dropped), `−900 + (1440+900) = 1440` (kept). **Slots 1 and 2 drop
+and slots 0 and 3 survive** — an interior-only drop. Run against the built dist, the two survivors
+carry `ornament.slot="0"` and `ornament.slot="3"`.
+
+**F1 does not reopen, for a reason I measured rather than assumed.** The prefix vector still kills
+M5 (above), and in the interior case the implementation is *also* right — the survivors keep 0 and
+3, which is exactly what ruling 5 says and what renumbering would destroy. So the pin is sufficient
+and the ruling is honoured on both paths. What is wrong is the paragraph asserting an engine
+invariant that does not hold. **Obligation O1 (small, W6 or the commit itself):** replace the
+"unreachable by construction" sentence with the true statement — the dropped run is a prefix for
+every non-negative intensity, and a negative intensity reverses the ordering and can drop an
+interior run, which the same rule covers — and, if cheap, add the interior vector as a second case.
+
+**Side finding, W9 (O2).** That same path materialises a real `<note date="Infinity"
+duration="NaN">`: D14's clamp guards `end <= 0` but not non-finite values, and `end − date` is
+`Infinity − Infinity`. In v2 the identical input only ever wrote a marker *attribute*; v3 now emits
+a note that reaches MIDI export. Inherited garbage-in, newly materialised — a finiteness guard in
+`createChords` belongs with the hardening wave, not here.
+
+**(3) F3 spot-check.** The fires/stays-silent pair is present and both halves assert the right
+thing. The message's span arithmetic is correct: `frameLength − frame.offset` = 60 − (−30) = 90 ms,
+and my earlier end-to-end run (PPQ 720 @ 120 bpm, principal ms [1000, 2000]) put the earliest
+generated note at 1910 — exactly 90 ms back from the end. One nit for whoever touches it next: at
+`intensity === 0` every slot lands at `start + length`, so the rendered span is `−frame.offset`
+rather than `frameLength − frame.offset` and the line overstates by `frameLength`. Log text only.
+
+**(4) Re-measured gates.** `vitest run` **63 files / 2808 tests green** (2803 + the five new).
+`probe.mjs` 1284 checks **`ed158a07…`**, `probe2.mjs` 83 checks **`0b58d5a4…`**, call tracer
+**557 calls `8e761347…`** — all three byte-identical to the baseline dist I built myself from
+`git archive` of the pre-wave tree, re-run against a dist rebuilt cleanly after the fix round.
+`prettier --check` clean and `eslint` **0 findings** on both touched files; **0 suppressions**
+repo-wide.
+
+**Verdict: PASS W5**, with O1 (correct the false invariant in the F1 comment) and O2 (finiteness
+guard, W9). The renderer is correct, the v2 freeze is intact under four instruments, and every
+mutation I devised now dies.
+
+## 2026-08-09 — Conductor: O1 discharged, W5 committed
+
+O1 (false invariant comment) fixed by the conductor with the verifier's prescribed
+wording — comment-only, in the F1 test's doc block; prettier clean, suite green
+(71/71 in the file). O2 (finiteness guard in createChords — the Infinity-date note
+the negative-intensity construction materializes) queued into W9 hardening, together
+with: PARITY §v3 at-end-ms head-loss entry (F3 obligation), the intensity==0 log-span
+nit, the W2 verifier's advisories (quadratic bracket peel, unbounded warnings), and
+the W1 F3 parseJavaDouble decision (W10). W5 commit follows this entry.

@@ -106,9 +106,23 @@ export interface ResolvedNote {
   readonly landing?: true;
 }
 
-/** One onset of the expanded sequence. More than one note means a chord. */
+/**
+ * One onset of the expanded sequence. More than one note means a chord.
+ *
+ * `repetitionPass` is the 0-based number of the pass over a repeat group that emitted this
+ * slot — 0 for the group's first (authored) playing, 1 for the first repetition, and so on.
+ * Like {@link ResolvedNote.landing} it is optional and never spelled for the absent case:
+ * a slot outside every repeat group simply does not carry it, and neither does the landing
+ * copy, which the landing rule appends *after* the last pass rather than as part of one.
+ *
+ * It exists for provenance, not for the engine: W5 stamps it onto the generated note as
+ * `ornament.pass` so that a consumer can tell the third turn of a trill from the first
+ * (conductor ruling 2026-08-09, "D10 provenance extension"). Adding it is what makes the
+ * repeated slots below distinct objects rather than the shared ones the module used to emit.
+ */
 export interface Slot {
   readonly notes: readonly ResolvedNote[];
+  readonly repetitionPass?: number;
 }
 
 /** Everything {@link expandOrnament} needs. See each field's type for its contract. */
@@ -514,11 +528,13 @@ function mapGroups(
  * Rules 3 and 4: emit the sequence with every group repeated `passes` extra times in place,
  * each followed by its landing slot where the landing rule fires.
  *
- * Repeated slots are the **same objects**, not copies. Everything in {@link Slot} and
- * {@link ResolvedNote} is `readonly`, so sharing is invisible to a well-typed caller, and it
- * is what keeps a million-slot budget an array of pointers rather than a million allocations.
- * W5 instantiates a fresh MSM note per *occurrence* and must therefore key its bookkeeping on
- * the slot's index, never on the slot's identity.
+ * A slot emitted from inside a repeat group is a fresh object carrying its
+ * {@link Slot.repetitionPass}; every other slot is passed through by reference. Sharing is
+ * invisible to a well-typed caller — everything in {@link Slot} and {@link ResolvedNote} is
+ * `readonly` — and the `notes` arrays are shared in either case, so a million-slot budget
+ * stays an array of small headers rather than a million deep copies. W5 instantiates a fresh
+ * MSM note per *occurrence* and must therefore key its bookkeeping on the slot's index, never
+ * on the slot's identity.
  */
 function expand(
   slots: readonly Slot[],
@@ -537,7 +553,8 @@ function expand(
     }
 
     for (let pass = 0; pass <= passes; pass += 1)
-      for (let inner = group.start; inner <= group.end; inner += 1) expanded.push(slots[inner]);
+      for (let inner = group.start; inner <= group.end; inner += 1)
+        expanded.push({ notes: slots[inner].notes, repetitionPass: pass });
 
     const landing = landingSlot(slots[group.start], principal);
     if (landing !== null) expanded.push(landing);

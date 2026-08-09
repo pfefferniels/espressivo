@@ -9,7 +9,14 @@ import {
   parseOrnamentRepetitions,
 } from './data/OrnamentData.js';
 import { OrnamentationStyle } from '../styles/OrnamentationStyle.js';
+import {
+  instantiateOrnaments,
+  isV3Ornament,
+  noteOwners,
+  prepareOrnament,
+} from './ornamentInstantiation.js';
 import type { OrnamentNote } from './data/OrnamentNote.js';
+import type { PreparedOrnament } from './ornamentInstantiation.js';
 
 /**
  * Everything an MPM v3 `<ornament>` can say, for {@link OrnamentationMap.addOrnament}'s
@@ -367,9 +374,17 @@ export class OrnamentationMap extends GenericMap {
    * comparator, with the direction captured in a const because the sort callback closes
    * over it.
    *
-   * The `for (const chord of od.apply(...))` loop is currently dead — `apply` always
-   * returns an empty list. See {@link OrnamentData.apply}; it is a contract for
-   * note-generating ornaments, not an oversight.
+   * The `for (const chord of od.apply(...))` loop below is dead on this path — for a v2
+   * ornament `apply` always returns an empty list. See {@link OrnamentData.apply}; it is a
+   * contract for note-generating ornaments, not an oversight, and MPM v3 is what fills it.
+   *
+   * **The v3 branch.** An ornament that uses anything v2 cannot express (`isV3Ornament`, the
+   * DESIGN.md D6 gate: a note pool, `noteid`, `repetitions`, or the `note.order` grouping
+   * syntax) is *prepared* here and *instantiated* after the walk. Everything below the gate is
+   * therefore reached by exactly the ornaments that reached it before, with the same inputs:
+   * generated notes appear in the map only once the walk is over, so a later v2 ornament's
+   * "every note at this date" still collects what it always collected. See
+   * `ornamentInstantiation.ts` for why the deferral is required rather than tidy.
    */
   private apply(maps: GenericMap[]): void {
     if (maps.length === 0) return;
@@ -391,6 +406,9 @@ export class OrnamentationMap extends GenericMap {
     }
 
     let style: OrnamentationStyle | null = null;
+    const prepared: PreparedOrnament[] = [];
+    // Built on first use, so that a document with no v3 ornament never walks the notes twice.
+    let owners: ReadonlyMap<Element, GenericMap> | null = null;
 
     // process each ornament entry in this ornamentationMap
     for (let i = 0; i < this.size(); ++i) {
@@ -430,9 +448,21 @@ export class OrnamentationMap extends GenericMap {
       if (scaleAtt !== null) od.scale = parseFloat(scaleAtt.getValue());
 
       // The v3 additions. Read here so that this reader and getOrnamentDataOf see the same
-      // ornament; nothing below consumes them yet — the note pool becomes real notes in the
-      // renderer wave (DESIGN.md D5), which is what fills OrnamentData.apply's dead seam.
+      // ornament.
       this.readV3OrnamentFields(ornamentXml, od);
+
+      // MPM v3 (DESIGN.md D6): an ornament that generates notes leaves the v2 path here. It is
+      // only read now — its notes are created after the walk, see this method's comment.
+      if (isV3Ornament(ornamentXml, od)) {
+        owners ??= noteOwners(maps);
+        const one = prepareOrnament(od, ornamentXml, notes, owners);
+        if (one !== null) prepared.push(one);
+        continue;
+      }
+      if (od.ornamentDef.getSourceFormat() === 'v3')
+        console.error(
+          `Warning: the ornament at date ${od.date} names an MPM v3 ornamentDef but uses no v3 feature itself, so it is rendered as a v2 ornament — and a v3 temporalSpread carries no v2 frame, so it will spread nothing. Give the ornament a note pool, a noteid or a v3 note.order.`,
+        );
 
       // determine the note order and collect the notes which the ornament will be applied to
       let noteOrderAscending = 1; // 1 = ascending pitch, -1 = descending pitch, 0 = ID sequence
@@ -489,6 +519,11 @@ export class OrnamentationMap extends GenericMap {
         }
       }
     }
+
+    // MPM v3: every note-generating ornament, laid out and instantiated now that the walk has
+    // seen all of them (DESIGN.md D11 needs a principal's ornaments together). Nothing here
+    // runs for a document without a v3 ornament.
+    if (owners !== null) instantiateOrnaments(prepared, owners, maps);
   }
 
   /**
@@ -573,6 +608,14 @@ export class OrnamentationMap extends GenericMap {
    * A note without `milliseconds.date` is skipped outright — it is the reference point
    * every transformation here is relative to, so there is nothing to compute without it.
    *
+   * MPM v3 adds exactly one branch, `ornament.milliseconds.fromend.offset` (DESIGN.md's D5
+   * amendment): a frame aligned `at end` in the millisecond domain is anchored at a note's
+   * millisecond END, which the symbolic phase cannot compute, so it is expressed as a static
+   * offset from that end and resolved back into an ordinary onset shift here. Everything after
+   * it is v2, unchanged, and reads the resolved shift. The branch is **character-identical** to
+   * the copy in `Performance.ts` and `tests/mpm/elements/OrnamentationMap.test.ts` pins that —
+   * the one thing the suite could never do for the rest of this method.
+   *
    * `millisecondsDate` is captured **before** the attribute is overwritten, and the
    * absolute-duration branch then computes the end as
    * `millisecondsDate + ornamentMillisecondsDateOffset + duration` from those saved
@@ -614,6 +657,28 @@ export class OrnamentationMap extends GenericMap {
       if (ornamentMillisecondsDateAtt !== null) {
         ornamentMillisecondsDateOffset = parseFloat(ornamentMillisecondsDateAtt.getValue());
         millisecondsDateAtt.setValue(String(millisecondsDate + ornamentMillisecondsDateOffset));
+      }
+
+      // MPM v3 (DESIGN.md D5 amendment): a millisecond frame aligned "at end" is anchored at
+      // this note's millisecond END, which the symbolic phase cannot know, so it writes an
+      // end-anchored marker instead of an onset offset. Resolving it into
+      // ornamentMillisecondsDateOffset is what keeps the rest of this method v2: the absolute
+      // duration and the note-off shift below go on reading one offset and mean by it exactly
+      // what they meant before. The end is read BEFORE anything writes to it, like every other
+      // value in this loop, and a note without one cannot be placed from its end at all.
+      const ornamentMillisecondsFromEndAtt = attribute(
+        'ornament.milliseconds.fromend.offset',
+        note,
+      );
+      if (ornamentMillisecondsFromEndAtt !== null) {
+        const millisecondsDateEndBeforeAtt = attribute('milliseconds.date.end', note);
+        if (millisecondsDateEndBeforeAtt !== null) {
+          const millisecondsDateFromEnd =
+            parseFloat(millisecondsDateEndBeforeAtt.getValue()) +
+            parseFloat(ornamentMillisecondsFromEndAtt.getValue());
+          ornamentMillisecondsDateOffset = millisecondsDateFromEnd - millisecondsDate;
+          millisecondsDateAtt.setValue(String(millisecondsDateFromEnd));
+        }
       }
 
       const millisecondsDateEndAtt = attribute('milliseconds.date.end', note);

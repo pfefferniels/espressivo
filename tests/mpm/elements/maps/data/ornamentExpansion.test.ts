@@ -708,3 +708,64 @@ describe('expandOrnament — properties', () => {
     expect(JSON.parse(JSON.stringify(result))).toEqual(result);
   });
 });
+
+/**
+ * `Slot.repetitionPass` — the additive field the conductor's 2026-08-09 "D10 provenance
+ * extension" ruling asked for, so that W5 can stamp `ornament.pass` onto a generated note and
+ * a consumer can tell the third turn of a trill from the first.
+ */
+describe('expandOrnament — repetitionPass (D10 provenance extension)', () => {
+  /** Every slot's pass number, `null` where the slot carries none. */
+  function passes(result: ExpansionResult): (number | null)[] {
+    return ok(result).slots.map((slot) => slot.repetitionPass ?? null);
+  }
+
+  it('numbers the passes of a repeat group from 0', () => {
+    // "|: #up #P :|" with repetitions 2 plays the group 3 times ⇒ passes 0,0 1,1 2,2
+    expect(passes(run('|: #up #P :|', { repetitions: 2 }))).toEqual([0, 0, 1, 1, 2, 2]);
+  });
+
+  it('gives a slot outside every group no pass at all', () => {
+    expect(passes(run('#abs #msm'))).toEqual([null, null]);
+  });
+
+  it('marks only the grouped slots when a group sits inside a longer order', () => {
+    // "#abs |: #up #P :| #msm" with repetitions 1: abs, (up P) pass 0, (up P) pass 1, msm
+    expect(passes(run('#abs |: #up #P :| #msm', { repetitions: 1 }))).toEqual([
+      null,
+      0,
+      0,
+      1,
+      1,
+      null,
+    ]);
+  });
+
+  it('numbers each group independently', () => {
+    // two groups, repetitions 1 ⇒ each is played twice and each numbers its own passes from 0
+    expect(passes(run('|: #up #P :| |: #dn #P :|', { repetitions: 1 }))).toEqual([
+      0, 0, 1, 1, 0, 0, 1, 1,
+    ]);
+  });
+
+  it('leaves the landing copy without a pass — it follows the passes, it is not one', () => {
+    // the group opens on `uni`, a pool unison with the principal, so the landing rule fires
+    const result = ok(run('|: #uni #up :|', { repetitions: 1 }));
+    expect(result.slots.map((slot) => slot.repetitionPass ?? null)).toEqual([0, 0, 1, 1, null]);
+    expect(result.slots[result.slots.length - 1].notes[0].landing).toBe(true);
+  });
+
+  it('keeps the surviving slot’s own pass when dedup collapses a repetition', () => {
+    // "#abs |: #up :|" with repetitions 1 expands to 64, 61 (pass 0), 61 (pass 1); the two
+    // consecutive 61s collapse to the first, so the survivor reports pass 0 — the pass it was
+    // emitted in, not the one that was dropped onto it.
+    const result = ok(run('#abs |: #up :|', { repetitions: 1 }));
+    expect(result.slots.map((slot) => slot.notes[0].midiPitch)).toEqual([64, 61]);
+    expect(passes(result)).toEqual([null, 0]);
+  });
+
+  it('stays plain readonly data', () => {
+    const result = ok(run('|: #up #P :|', { repetitions: 2 }));
+    expect(JSON.parse(JSON.stringify(result))).toEqual(result);
+  });
+});

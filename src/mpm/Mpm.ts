@@ -168,13 +168,19 @@ export class Mpm extends AbstractMsm {
    * Every case is empty and falls through to the single `return true` — the switch is a
    * membership table, not a dispatch, and the blank-line groups below (document /
    * metadata / header / dated environment) are the only structure it has. This mirrors
-   * `Mpm.java:193-255` case for case and in the same order, with **two additions**: the
+   * `Mpm.java:193-255` case for case and in the same order, with **three additions**: the
    * reference misspells `'accentuation '` with a trailing space (Mpm.java:214) and
    * `'dynamcisGradient'` for `dynamicsGradient` (Mpm.java:218), and both correct
    * spellings are accepted here alongside the misspelled ones. Neither typo is removed —
    * a document written by Java meico may legitimately carry them — so the table is a
    * superset of the reference's and no name the reference accepts is rejected here.
    * See PARITY.md, "Fixed bugs".
+   *
+   * The third addition is `note`, the pool child an MPM v3 `<ornament>` may carry
+   * (DESIGN.md D1). It belongs to the MPM namespace by the spec and the table would
+   * otherwise report a valid v3 document's own elements as foreign. No v2 document
+   * contains an `<ornament>` with children at all, so nothing that used to be answered
+   * changes its answer.
    */
   isInNamespace(elementName: string): boolean {
     switch (elementName) {
@@ -236,6 +242,7 @@ export class Mpm extends AbstractMsm {
       case 'accentuationPattern':
       case Mpm.ORNAMENTATION_MAP:
       case 'ornament':
+      case 'note':
       case Mpm.RUBATO_MAP:
       case 'rubato':
       case Mpm.TEMPO_MAP:

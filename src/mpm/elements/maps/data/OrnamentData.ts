@@ -61,6 +61,28 @@ export function parseOrnamentRepetitions(raw: string): number {
 }
 
 /**
+ * What an MPM v3 note-generating ornament hands to {@link OrnamentData.apply}: the notes it
+ * created, grouped one array per onset, and how their spacing is written.
+ *
+ * `chords` is the same `Element[][]` shape the v2 path passes around — one inner array per
+ * *slot*, with more than one element in it when the slot is a chord — because that is what
+ * both transformers iterate. Unlike the v2 path's, these elements are not yet in the score:
+ * `apply` returns them, and the caller inserts them.
+ *
+ * `spacing` is null whenever the notes already carry their final tick dates, which is every
+ * tick-domain and `%` frame (DESIGN.md D4 resolves those in the symbolic phase). It is a
+ * function rather than a `TemporalSpread` because a millisecond frame aligned `at end` writes
+ * a marker the v2 class has no name for (the D5 amendment); the renderer decides which writer
+ * applies and this class only has to run it in the right place — *after* the dynamics
+ * gradient, which is the v2 transformer order and is observable in the attribute order of the
+ * augmented MSM.
+ */
+export interface OrnamentGeneration {
+  readonly chords: Element[][];
+  readonly spacing: ((chords: Element[][]) => void) | null;
+}
+
+/**
  * All data needed to apply one ornament — a single MPM `<ornament>` element plus the
  * style context only {@link OrnamentationMap} knows.
  *
@@ -133,6 +155,17 @@ export class OrnamentData {
    */
   noteid: string | null = null;
 
+  /**
+   * The MPM v3 note generation, installed by the renderer (`ornamentInstantiation.ts`) just
+   * before {@link apply} runs, and null on the v2 path — which is every ornament in every
+   * existing document, so the v2 branch of `apply` stays exactly what it was.
+   *
+   * It is state on the data object rather than an argument because `apply`'s signature is the
+   * v2 seam's, shared with the Java reference, and the loop that consumes its return value
+   * (`OrnamentationMap.apply`) is the code the contract is written for.
+   */
+  generation: OrnamentGeneration | null = null;
+
   constructor(xml?: Element) {
     if (xml === undefined) return;
 
@@ -196,6 +229,9 @@ export class OrnamentData {
     c.notes = [...this.notes];
     c.repetitions = this.repetitions;
     c.noteid = this.noteid;
+    // `generation` is deliberately NOT copied: it is render state that lives for the length of
+    // one `apply` call and points at Element objects being inserted into one particular score.
+    // A clone is a fresh ornament, not a render in progress.
     return c;
   }
 
@@ -206,20 +242,27 @@ export class OrnamentData {
    * (see {@link OrnamentationMap.renderAllNonmillisecondsModifiersToMap} and
    * {@link OrnamentationMap.renderMillisecondsModifiersToMap}).
    *
-   * The return value is **always an empty array**, and the Java reference is the same
-   * (OrnamentData.java, where a TODO marks the spot). It is the seam for a feature that
-   * does not exist yet: ornaments that *generate* notes rather than only modifying
-   * existing ones would return them here for the caller to insert into the map. Until
-   * that lands, the `for (const chord of od.apply(...))` loop in OrnamentationMap.apply
-   * is dead by construction. Do not "simplify" it away — it is the contract, not an
-   * oversight. (DESIGN.md D5 fills exactly this seam in wave W5; the v3 fields above are
-   * the input it will read.)
+   * On the v2 path the return value is **always an empty array**, and the Java reference is
+   * the same (OrnamentData.java, where a TODO marks the spot): a v2 ornament only ever
+   * *modifies* the notes it was given, so there is nothing for the caller to add, and the
+   * `for (const chord of od.apply(...))` loop in OrnamentationMap.apply is dead. That loop was
+   * documented as a contract rather than an oversight, and MPM v3 is what fills it: an
+   * ornament that *generates* notes returns them here, and the caller inserts them into the
+   * map (DESIGN.md D5, wave W5).
    *
-   * `tempChordSequence` is likewise inherited from the reference and protects nothing:
-   * the spread is shallow, so the inner arrays and the Element objects are shared with
-   * the caller, and the transformers mutate exactly those.
+   * The v3 branch is {@link generation}. It runs the same two transformers in the same order —
+   * the gradient before the spacing, which fixes the attribute insertion order the reference
+   * augmented MSM shows verbatim — over the notes the renderer generated, and hands those
+   * notes back. It does **not** fall through to the v2 branch: `chordSequence` on that call is
+   * the generation itself, so running the v2 branch too would write every marker twice.
+   *
+   * `tempChordSequence` is inherited from the reference and protects nothing: the spread is
+   * shallow, so the inner arrays and the Element objects are shared with the caller, and the
+   * transformers mutate exactly those.
    */
   apply(chordSequence: Element[][]): Element[][] {
+    if (this.generation !== null) return this.applyGeneration(this.generation);
+
     const chordsToAdd: Element[][] = [];
 
     if (this.ornamentDef === null) return chordsToAdd;
@@ -233,5 +276,29 @@ export class OrnamentData {
       this.ornamentDef.getTemporalSpread()!.apply(tempChordSequence);
 
     return chordsToAdd;
+  }
+
+  /**
+   * The v3 half of {@link apply}: the transformers over the generated notes, then the notes.
+   *
+   * The shallow copy is kept for the same reason the v2 branch keeps it — the transformers
+   * mutate the elements, and the copy makes that explicit rather than hiding it — and the
+   * gradient is applied with this ornament's `scale`, exactly as in v2, so a v3 ornament's
+   * `ornament.dynamics` markers are folded into `velocity` by the same tick pass that folds a
+   * v2 arpeggio's.
+   */
+  private applyGeneration(generation: OrnamentGeneration): Element[][] {
+    if (this.ornamentDef === null) return [];
+
+    const tempChordSequence: Element[][] = [...generation.chords];
+
+    // The v2 branch above spells this `getDynamicsGradient()!` twice, which is the shape the
+    // Java reference has and is frozen there; new code does not add to that debt.
+    const gradient = this.ornamentDef.getDynamicsGradient();
+    if (gradient !== null) gradient.apply(tempChordSequence, this.scale);
+
+    if (generation.spacing !== null) generation.spacing(tempChordSequence);
+
+    return generation.chords;
   }
 }

@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { OrnamentationMap } from '../../../src/mpm/elements/maps/OrnamentationMap.js';
+import { Performance } from '../../../src/mpm/elements/Performance.js';
 import { OrnamentData } from '../../../src/mpm/elements/maps/data/OrnamentData.js';
 import { OrnamentNote } from '../../../src/mpm/elements/maps/data/OrnamentNote.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
@@ -1616,12 +1620,20 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
     expect(od.noteid).toBeNull();
   });
 
-  it('should render a v2 ornament unchanged when v3 attributes are present', () => {
-    // NEGATIVE CONTROL for the reader added to the apply() path: the v3 attributes are
-    // read into the data object and nothing downstream consumes them yet, so an ornament
-    // carrying a pool, a noteid and a repeat count must still produce exactly the v2
-    // arpeggio markers. Compare with the "tick arpeggio exactly as the Java reference
-    // does" test above, whose numbers these are (frame -22..+22 over three notes).
+  /**
+   * INVERTED by W5, and its predecessor's own comment said it would be. W3 pinned that an
+   * ornament carrying v3 attributes still produced exactly the v2 arpeggio markers, because
+   * "nothing downstream consumes them yet — that is the renderer wave". W5 is that wave: the
+   * DESIGN.md D6 gate now diverts such an ornament off the v2 path entirely, so the v2 markers
+   * are precisely what must NOT appear.
+   *
+   * Assertion strength is preserved rather than reduced: where the old test named the three
+   * `date.perf` values and two velocities the v2 path produces, this one asserts that none of
+   * them moved *and* that no marker was written *and* that the ornament was skipped rather
+   * than half-rendered — and the case that used to be untestable, the same ornament with a
+   * `note.order` it can actually play, is pinned next to it.
+   */
+  it('should divert an ornament with v3 attributes off the v2 path (D6)', () => {
     const n1 = makePerformedNote('n1', 0, 60);
     const n2 = makePerformedNote('n2', 0, 64);
     const n3 = makePerformedNote('n3', 0, 67);
@@ -1641,13 +1653,49 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
 
     map.renderOrnamentationToMap(score);
 
-    expect(num(n1, 'date.perf')).toBeCloseTo(-22.0);
+    // none of the v2 arpeggio's numbers (-22 / 0 / +22 and 98 / 102) was produced
+    for (const note of [n1, n2, n3]) {
+      expect(note.getAttributeValue('ornament.date.offset')).toBeNull();
+      expect(note.getAttributeValue('ornament.dynamics')).toBeNull();
+      expect(num(note, 'velocity')).toBeCloseTo(100.0);
+    }
+    expect(num(n1, 'date.perf')).toBeCloseTo(0.0);
     expect(num(n2, 'date.perf')).toBeCloseTo(0.0);
-    expect(num(n3, 'date.perf')).toBeCloseTo(22.0);
-    expect(num(n1, 'velocity')).toBeCloseTo(98.0); // 100 + (-1 * 2)
-    expect(num(n3, 'velocity')).toBeCloseTo(102.0); // 100 + (1 * 2)
-    // and the pool note was NOT turned into a real note — that is the renderer wave
+    expect(num(n3, 'date.perf')).toBeCloseTo(22.0 - 22.0);
+    // and it generated nothing either: with a pool but no note.order there is no sequence to
+    // play, so the v3 renderer logs and skips (D7/D9)
     expect(score.getAllElementsOfType('note').length).toBe(3);
+  });
+
+  it('should render the same ornament as notes once it names a v3 note.order', () => {
+    // arpeggioDef's frame is v2: frame.start -22, frameLength 44, ticks, noteoff.shift false.
+    // Principal n1 (60, date 0, duration 1440): start = -22, length = 44, two slots,
+    // intensity 1 ⇒ onsets 0 + (-22) = -22 and 0 + (-22 + 44) = 22. The first ends at
+    // 1440 (noteoff.shift false) so it straddles tick 0 and is clamped to [0, 1440); the
+    // second runs [22, 1440). The pool note aux is +1 chromatic ⇒ 61.
+    const n1 = makePerformedNote('n1', 0, 60);
+    const score = makeScore([n1, makePerformedNote('n2', 0, 64)]);
+
+    const map = OrnamentationMap.createOrnamentationMap()!;
+    map.setHeaders(null, makeHeader([arpeggioDef()]));
+    map.addStyleSwitch(0, 'orn style');
+    map.addOrnament({
+      date: 0,
+      nameRef: 'arpeggio',
+      scale: 2.0,
+      noteid: '#n1',
+      noteOrder: '[ #aux ] #n1',
+      notes: [new OrnamentNote('aux', { kind: 'chromatic', value: 1.0 })],
+    });
+
+    map.renderOrnamentationToMap(score);
+
+    const notes = score.getAllElementsOfType('note').map((e) => e.getValue());
+    // n2 is untouched, n1 is replaced by the two generated notes
+    expect(notes.map((note) => note.getAttributeValue('midi.pitch'))).toEqual(['64', '61', '60']);
+    expect(notes.map((note) => note.getAttributeValue('date'))).toEqual(['0', '0', '22']);
+    expect(notes[2].getAttributeValue('xml:id')).toBe('n1');
+    expect(notes[1].getAttributeValue('ornament.generated')).toBe('true');
   });
 });
 
@@ -1792,5 +1840,149 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
       // itself plus scale being present for a default-constructed (scale 0.0) data object
       expect(m.getElement(0)!.getAttributeValue('scale')).toBe('0');
     }
+  });
+});
+
+// ---------------------------------------------------------------
+// The two copies of renderMillisecondsModifiersToMap
+// ---------------------------------------------------------------
+describe('OrnamentationMap — the duplicated millisecond pass', () => {
+  /**
+   * `Performance` carries a private static copy of
+   * {@link OrnamentationMap.renderMillisecondsModifiersToMap}, and **that copy is the one the
+   * pipeline runs** — this class's is Java-parity code no fixture reaches (architecture brief
+   * §2.5, `refactor/log.md:2376-2401`). T19 measured the two bodies character-identical and
+   * ruled the duplication stays, noting that nothing keeps them in step.
+   *
+   * W5 had to edit both (the MPM v3 `ornament.milliseconds.fromend.offset` branch of the D5
+   * amendment), so it leaves this behind: the drift guard that was missing. It is deliberately
+   * two assertions, because either alone can pass while the copies have diverged —
+   * source-text equality would not notice `parseFloat` vs `Number`-shaped semantics if both
+   * were spelled the same way, and behavioural equality on one input would not notice a branch
+   * neither input reaches.
+   */
+  describe('parity between the two copies of renderMillisecondsModifiersToMap', () => {
+    /** A method body, brace to brace, cut out of the TypeScript source. */
+    const methodBody = (relativePath: string, signature: string): string => {
+      const source = readFileSync(
+        join(dirname(fileURLToPath(import.meta.url)), '../../..', relativePath),
+        'utf-8',
+      );
+      const at = source.indexOf(signature);
+      expect(at, `${signature} not found in ${relativePath}`).toBeGreaterThanOrEqual(0);
+      const start = source.indexOf('{', source.indexOf('): void', at));
+      let depth = 0;
+      let end = start;
+      for (; end < source.length; ++end) {
+        if (source[end] === '{') ++depth;
+        else if (source[end] === '}' && --depth === 0) {
+          ++end;
+          break;
+        }
+      }
+      return source.slice(start, end);
+    };
+
+    const performanceCopy = (): string =>
+      methodBody(
+        'src/mpm/elements/Performance.ts',
+        'private static renderMillisecondsModifiersToMap',
+      );
+    const ornamentationCopy = (): string =>
+      methodBody(
+        'src/mpm/elements/maps/OrnamentationMap.ts',
+        'static renderMillisecondsModifiersToMap',
+      );
+
+    it('has the same body in both files, token for token', () => {
+      const collapse = (body: string) => body.replace(/\s+/g, ' ').trim();
+      expect(collapse(performanceCopy())).toBe(collapse(ornamentationCopy()));
+    });
+
+    it('has the v3 fromend branch in both, character for character', () => {
+      const branch = (body: string) => {
+        const at = body.indexOf('const ornamentMillisecondsFromEndAtt');
+        expect(at).toBeGreaterThanOrEqual(0);
+        return body.slice(at, body.indexOf('const millisecondsDateEndAtt', at));
+      };
+      expect(branch(performanceCopy())).toBe(branch(ornamentationCopy()));
+    });
+
+    it('computes the same result from both, on an input that reaches every branch', () => {
+      // One note per branch of the pass: a plain onset offset, an absolute duration, a
+      // note-off shift, the v3 end-anchored offset, and one with no marker at all.
+      const build = (): GenericMap => {
+        const map = GenericMap.createGenericMap('score')!;
+        const note = (id: string, markers: Record<string, string>) => {
+          const n = makeNote(id, 0, 60, {
+            'milliseconds.date': '1000',
+            'milliseconds.date.end': '2000',
+            ...markers,
+          });
+          map.addElement(n);
+          return n;
+        };
+        note('plain', {});
+        note('offset', { 'ornament.milliseconds.date.offset': '-30' });
+        note('absolute', {
+          'ornament.milliseconds.date.offset': '-30',
+          'ornament.milliseconds.duration': '250',
+        });
+        note('shift', {
+          'ornament.milliseconds.date.offset': '-30',
+          'ornament.noteoff.shift': 'true',
+        });
+        note('fromEnd', { 'ornament.milliseconds.fromend.offset': '-90' });
+        note('fromEndShift', {
+          'ornament.milliseconds.fromend.offset': '-90',
+          'ornament.noteoff.shift': 'true',
+        });
+        note('fromEndAbsolute', {
+          'ornament.milliseconds.fromend.offset': '-90',
+          'ornament.milliseconds.duration': '250',
+        });
+        return map;
+      };
+      const read = (map: GenericMap): string[] =>
+        map
+          .getAllElementsOfType('note')
+          .map(
+            (e) =>
+              `${e.getValue().getAttributeValue('xml:id')}:` +
+              `${e.getValue().getAttributeValue('milliseconds.date')}/` +
+              `${e.getValue().getAttributeValue('milliseconds.date.end')}`,
+          );
+
+      const viaOrnamentationMap = build();
+      OrnamentationMap.renderMillisecondsModifiersToMap(
+        viaOrnamentationMap,
+        OrnamentationMap.createOrnamentationMap(),
+      );
+
+      const viaPerformance = build();
+      // `private static`, so the cast is the only way in; it is a member of the emitted class
+      // like any other, and reaching it here is the whole point of the test.
+      (
+        Performance as unknown as {
+          renderMillisecondsModifiersToMap: (
+            map: GenericMap,
+            ornamentationMap: OrnamentationMap | null,
+          ) => void;
+        }
+      ).renderMillisecondsModifiersToMap(viaPerformance, OrnamentationMap.createOrnamentationMap());
+
+      expect(read(viaPerformance)).toEqual(read(viaOrnamentationMap));
+      // and the values are the ones the semantics call for, so the test is not just
+      // "two wrongs agree"
+      expect(read(viaOrnamentationMap)).toEqual([
+        'plain:1000/2000',
+        'offset:970/2000',
+        'absolute:970/1220',
+        'shift:970/1970',
+        'fromEnd:1910/2000',
+        'fromEndShift:1910/2910',
+        'fromEndAbsolute:1910/2160',
+      ]);
+    });
   });
 });
