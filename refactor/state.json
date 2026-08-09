@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "8283853",
+  "lastGreenCommit": "9914fd4",
   "phase": 4,
-  "currentItem": "TD3",
-  "counters": { "completed": 27, "blocked": 0, "reverted": 0 },
+  "currentItem": "T23",
+  "counters": { "completed": 28, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 92.0,
@@ -216,7 +216,7 @@
     {
       "id": "TD3",
       "phase": 4,
-      "status": "in_progress",
+      "status": "done",
       "title": "Segment-end accentuation fix + ground-truth regeneration (UNGATED: Java fix committed as meico@1d662105)",
       "javaFix": "meico@1d662105, AccentuationPatternDef.java:316-320 (verified: commit exists, 1 file 2+/2-). Semantics to mirror EXACTLY: `i >` -> `i <`, segmentEnd = next anchor's beat for non-last anchors; the LAST anchor's segment KEEPS patternLength+1 as its end (at beatPosition 2200 in the probe pattern: 40/721 = 0.05547850208044383 — denominator 721 not 720). Probe reference: mpmify/ml/java/AccentFixProbe.java (beat 1.0 -> 0.001388888888888889 -> velocity 100.00138888888888).",
       "details": "The TD2 wave's fix 2, deferred by conductor ruling (see [TD2] worker finding + conductor ruling in log.md): AccentuationPatternDef.getAccentuationAt segment-end bug IS exercised by the metrical_accentuation all-maps fixture, whose Java-generated reference pins the buggy velocity (100.0003471017008 vs fixed 100.00138888888888; delta 0.00104 hidden by the 0.01 all-maps tolerance). Plan (T20b pattern): (1) mpmify session applies + commits the one-character Java fix in the fork (requested 2026-08-09; ping expected with SHA); (2) TD3 worker mirrors the fix in TS exactly (cite final Java lines), regenerates the metrical_accentuation reference set (GenerateAllMapsReference; only accentuation-related files may change — categorize the diff), inverts the pinning tests with hand-computed FIXED values, PARITY.md Fixed-bugs entry updated from 'pending' to done; (3) evaluate tightening the all-maps numeric tolerance (DISCOVERED: 0.01 hides 1e-3 drift; port currently matches reference exactly, so tightening is safe — propose the value with evidence, needs verifier sign-off under invariant 3). Full TD1-discipline evidence."
@@ -224,7 +224,7 @@
     {
       "id": "T23",
       "phase": 4,
-      "status": "pending",
+      "status": "in_progress",
       "postCompletion": "USER DIRECTIVE 2026-08-09: after T23 PASS + final report, merge ts-idiomatic into main (--no-ff) and push both branches",
       "title": "Final adversarial audit",
       "details": "Fresh audit agent: full-diff review vs baseline commit for any semantic drift; perf smoke (suite runtime + a large-fixture render) vs baseline numbers from T1; verify all invariants held (fixtures untouched: git log on tests/integration/fixtures must be empty after baseline). Final report to user."
