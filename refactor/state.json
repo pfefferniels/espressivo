@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "979c391",
+  "lastGreenCommit": "3bcee79",
   "phase": 3,
-  "currentItem": "T15",
-  "counters": { "completed": 20, "blocked": 0, "reverted": 0 },
+  "currentItem": "T17",
+  "counters": { "completed": 21, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 92.0,
@@ -145,7 +145,7 @@
     {
       "id": "T15",
       "phase": 3,
-      "status": "in_progress",
+      "status": "done",
       "title": "Restructure Mei2MsmMpmConverter",
       "details": "Element-dispatch architecture (handler map per MEI element) per ARCHITECTURE.md, replacing the Java-style switch/instanceof cascades. Highest-risk item: sub-round per element group, verify after each."
     },
@@ -159,7 +159,7 @@
     {
       "id": "T17",
       "phase": 3,
-      "status": "pending",
+      "status": "in_progress",
       "title": "XML layer isolation",
       "details": "XomTypes behind a slim internal interface with a clean TS API; serialization byte-compat proven by full suite. Rename to reflect role (e.g. src/xml/dom.ts). Only if ARCHITECTURE.md judges the risk worth it; otherwise document and close."
     },
