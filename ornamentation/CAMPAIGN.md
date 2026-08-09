@@ -81,6 +81,14 @@ provenance attrs + (part,date,pitch,slot), never generated ids; they emit
 spec-strict+suffixed v3. OWED PINGS: (1) when W7's facade fields land on the branch,
 (2) when the merge to main happens. Keep these promises.
 
+Second stakeholder: MLign (ListAgents `mlign-57`; socket uds:/tmp/cc-socks/6326.sock),
+score↔performance alignment, trains on espressivo-rendered synthetic performances.
+Consequence adopted 2026-08-09: D15 facade extension WIDENS — PerformedNote exposes
+not just ornamented/ornamentRef but also ornamentSource/ornamentSlot/ornamentPass
+(plain fields, null when absent) so alignment gets sub-roles without reading MSM XML.
+Recommended-recipe promise made: perform-once-extract-twice keeps ground truth exact
+under imprecision. Offer open to ping them at merge.
+
 ## Invariants
 
 1. Never write outside this worktree + scratchpad (exceptions: memory dir; nothing else).
