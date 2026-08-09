@@ -25,6 +25,7 @@ import { KeyValue } from '../../supplementary/KeyValue.js';
 import { Global } from './Global.js';
 import { Part } from './Part.js';
 import { GenericMap } from './maps/GenericMap.js';
+import type { RenderContext, RenderOptions } from '../RenderOptions.js';
 import type { Msm } from '../../msm/Msm.js';
 import type { TempoMap } from './maps/TempoMap.js';
 import type { DynamicsMap } from './maps/DynamicsMap.js';
@@ -346,10 +347,16 @@ export class Performance extends AbstractXmlSubtree {
    * pedal/volume/position maps rendered before being skipped.
    *
    * @param msm the score to perform; left unmodified
+   * @param options render knobs (§2.4). Omitting them, or passing `{}`, renders exactly
+   *   as this method did before they existed — every default is the historic value.
    * @returns a new Msm with performance data added
    */
-  perform(msm: Msm): Msm {
+  perform(msm: Msm, options?: RenderOptions): Msm {
     console.log(`\nRendering performance "${this.getName()}" into "${msm.getTitle()}".`);
+
+    // One context per call, local to it, passed by reference down the render chain. It is
+    // never stored anywhere that outlives this method (RULE I1, boundary 6).
+    const ctx: RenderContext = { options: options ?? {}, streamOrdinal: 0 };
 
     const clone = msm.clone();
     if (clone.getFile() !== null) {
@@ -447,7 +454,7 @@ export class Performance extends AbstractXmlSubtree {
     }
     if (globalAsynchronyMap !== null) globalAsynchronyMap.renderAsynchronyToMap(globalPedalMap);
     if (globalImprecisionMap_timing !== null)
-      globalImprecisionMap_timing.renderImprecisionToMap(globalPedalMap, true);
+      globalImprecisionMap_timing.renderImprecisionToMap(globalPedalMap, true, ctx);
 
     // process the msm parts
     const parts = clone.getParts();
@@ -543,7 +550,7 @@ export class Performance extends AbstractXmlSubtree {
         Performance.addModifiedAttributes(channelVolumeMap);
       }
 
-      const positionMap = movementMap !== null ? movementMap.renderMovementToMap() : null;
+      const positionMap = movementMap !== null ? movementMap.renderMovementToMap(ctx) : null;
       if (positionMap !== null) {
         dated.appendChild(positionMap.getXml()!);
         Performance.addPerformanceTimingAttributes(positionMap);
@@ -568,7 +575,7 @@ export class Performance extends AbstractXmlSubtree {
       // pedalMap
       if (asynchronyMap !== null) asynchronyMap.renderAsynchronyToMap(pedalMap);
       if (imprecisionMap_timing !== null)
-        imprecisionMap_timing.renderImprecisionToMap(pedalMap, true);
+        imprecisionMap_timing.renderImprecisionToMap(pedalMap, true, ctx);
 
       // channelVolumeMap
       Performance.renderTempoToMap(channelVolumeMap, this.getPPQ(), tempoMap);
@@ -585,12 +592,14 @@ export class Performance extends AbstractXmlSubtree {
         articulationMap.renderArticulationToMap_millisecondModifiers(score);
       Performance.renderMillisecondsModifiersToMap(score, ornamentationMap);
 
-      if (imprecisionMap_timing !== null) imprecisionMap_timing.renderImprecisionToMap(score, true);
+      if (imprecisionMap_timing !== null)
+        imprecisionMap_timing.renderImprecisionToMap(score, true, ctx);
       if (imprecisionMap_dynamics !== null)
-        imprecisionMap_dynamics.renderImprecisionToMap(score, true);
+        imprecisionMap_dynamics.renderImprecisionToMap(score, true, ctx);
       if (imprecisionMap_toneduration !== null)
-        imprecisionMap_toneduration.renderImprecisionToMap(score, true);
-      if (imprecisionMap_tuning !== null) imprecisionMap_tuning.renderImprecisionToMap(score, true);
+        imprecisionMap_toneduration.renderImprecisionToMap(score, true, ctx);
+      if (imprecisionMap_tuning !== null)
+        imprecisionMap_tuning.renderImprecisionToMap(score, true, ctx);
     }
 
     console.log('Performance rendering finished.');

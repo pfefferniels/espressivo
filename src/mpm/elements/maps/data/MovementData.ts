@@ -1,4 +1,5 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
+import type { Normalized } from '../../../../units.js';
 
 /**
  * All data needed to compute a continuous controller movement (pedal, and anything
@@ -16,8 +17,10 @@ export class MovementData {
   xmlId: string | null = null;
 
   startDate = 0.0;
-  position: number | null = 0.0;
-  transitionTo: number | null = null;
+  /** Normalized 0..1; {@link getMovementSegment} scales it to 0..127 on the way out. */
+  position: Normalized | null = 0.0 as Normalized;
+  /** Normalized 0..1, like {@link position}. */
+  transitionTo: Normalized | null = null;
   endDate: number | null = null;
   controller = 'sustain';
 
@@ -35,12 +38,12 @@ export class MovementData {
 
     const positionAttr = xml.getAttribute('position');
     if (positionAttr !== null) {
-      this.position = parseFloat(positionAttr.getValue());
+      this.position = parseFloat(positionAttr.getValue()) as Normalized;
     }
 
     const transitionToAtt = xml.getAttribute('transition.to');
     if (transitionToAtt !== null) {
-      this.transitionTo = parseFloat(transitionToAtt.getValue());
+      this.transitionTo = parseFloat(transitionToAtt.getValue()) as Normalized;
     }
 
     const curvatureAtt = xml.getAttribute('curvature');
@@ -177,8 +180,16 @@ export class MovementData {
    * begins and ends with an exact, unsampled endpoint — and the first pair is therefore
    * duplicated whenever the sampled t=0 point coincides with it. Then every value is
    * scaled by 127 into the MIDI controller range, mutating the tuples in place.
+   *
+   * @param maxStepSize in the **normalized 0..1** position domain — the domain the
+   *   subdivision compares against, not the 0..127 one the result is scaled into.
+   *   Feeding it a 0..127 threshold is the 16129 bug of ARCHITECTURE.md §7.
+   * @returns `[date, value]` pairs where `value` is already `Midi7Bit` (0..127) and
+   *   `date` is symbolic ticks. Deliberately left `number[][]` rather than branded
+   *   tuples (RULE U4a): this is the method's own working array, spliced and mutated in
+   *   place, and a `readonly` tuple type would forbid exactly that.
    */
-  getMovementSegment(maxStepSize: number): number[][] {
+  getMovementSegment(maxStepSize: Normalized): number[][] {
     if (this.x1 === null) this.computeInnerControlPointsXPositions();
 
     const ts: number[] = [0.0, 1.0];

@@ -8,6 +8,7 @@ import { Midi } from '../midi/Midi.js';
 import { Sequence, Track, MidiEvent } from '../midi/MidiTypes.js';
 import { EventMaker } from '../midi/EventMaker.js';
 import type { Performance } from '../mpm/elements/Performance.js';
+import type { RenderOptions } from '../mpm/RenderOptions.js';
 
 /**
  * Java's `Helper` in miniature, private to this module.
@@ -1011,6 +1012,10 @@ export class Msm extends AbstractMsm {
    *   is rendered as-is and must already carry the performance attributes
    * @param generateProgramChanges true by default; ignored when `performance` is omitted,
    *   as in Java (`Msm.java:667`), because that path delegates with a hard-coded `true`
+   * @param options render knobs, passed straight through to {@link Performance.perform};
+   *   ignored when `performance` is omitted, since nothing is then rendered. This layer
+   *   deliberately knows nothing about their defaults — `src/msm/` may only `import type`
+   *   from `src/mpm/` (RULE M1), so every default is resolved there, at the point of use
    * @returns the Midi object, or null if the MSM being rendered is empty
    *
    * Without the performance attributes (`milliseconds.date`, `milliseconds.date.end`,
@@ -1018,10 +1023,14 @@ export class Msm extends AbstractMsm {
    * logs; the output is then MIDI in name only. That fallback is per element, not per
    * document — see {@link readMillisecondsDateFromElement}.
    */
-  exportExpressiveMidi(performance?: Performance, generateProgramChanges?: boolean): Midi | null {
+  exportExpressiveMidi(
+    performance?: Performance,
+    generateProgramChanges?: boolean,
+    options?: RenderOptions,
+  ): Midi | null {
     const genPC = generateProgramChanges !== undefined ? generateProgramChanges : true;
     if (performance !== undefined) {
-      return performance.perform(this).renderMidi(83.33, genPC, true);
+      return performance.perform(this, options).renderMidi(83.33, genPC, true);
     }
     return this.renderMidi(83.33, true, true);
   }

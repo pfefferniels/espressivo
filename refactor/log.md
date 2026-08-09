@@ -6582,3 +6582,462 @@ above: the stale-dist module counts (83/85 vs 68/70) and the side-effect count (
 and the overstated "no observable behaviour change" on `Mei.exportMsmMpm`. Recommend the
 conductor also file the ARCHITECTURE.md §1.2 "twelve `*_MAP`" → **thirteen** correction and
 the worker's §8.3 amendment.
+
+## [T19a] worker
+
+Two items in one, deliberately measured apart (§7's OWNER note). **M-a** is the units-only
+gate; **M-b** is RenderOptions on top. Neither measurement can substitute for the other:
+brands must emit nothing, RenderOptions emits by design.
+
+### MEASUREMENT M-a — units-only (brands alone)
+
+Baseline: a clean `rm -rf dist && npm run build` on the working tree at `a604f4a`
+(`git status --porcelain` empty; `a604f4a` is refactor/-only bookkeeping over the last green
+`75e5ff1`, so src-identical), snapshotted to `t19a/dist-base` — **280 files, 70 `.js`**.
+Work build: same command after adding `src/units.ts` and the U3(b) annotations *only*.
+
+**New emitted files: exactly the four permitted** — `units.js`, `units.js.map`,
+`units.d.ts`, `units.d.ts.map`. Nothing removed.
+
+**Pre-existing files that differ at all: 7**, and every one of them is accounted for:
+
+| file | kind of change |
+|---|---|
+| `MovementData.d.ts`, `MovementMap.d.ts` | the branded declarations — gate (iii), the point of the item |
+| `MovementData.d.ts.map`, `MovementMap.d.ts.map`, `MovementData.js.map`, `MovementMap.js.map` | source positions moved |
+| `MovementData.js` | **+10 lines, all JSDoc, 0 code lines** — see below |
+
+**Gate (i) — "zero-line diff over every pre-existing `dist/` file" — passes on code and
+fails literally on one comment block, and I am flagging that rather than hiding it.**
+`MovementData.js` gains ten comment lines: two one-line field docs and the eight-line
+`@param`/`@returns` block on `getMovementSegment`. Those exist because **RULE U4a orders
+them** ("leave the return type `number[][]` and document the units in its JSDoc") — the
+JSDoc *is* the U4a deliverable, and `tsconfig.json` does not set `removeComments`, so it
+lands in the `.js`. The choice was: obey U4a and diff ten comment lines, or hit a literal
+byte-for-byte `.js` diff by shipping the one method in the tree whose units are known to have
+caused a ground-truth regeneration with no unit documentation at all. I obeyed U4a.
+
+**So the gate is met at the level it is actually about — no runtime construct crept in —
+and proven mechanically, not argued:** the charter's comment-immune tool
+(`t8verify/toks2.mjs`, TS scanner tokens with JSDoc subtrees pruned) over **all 70
+pre-existing `.js` files**: **0 token-differing**. Ten added comment lines, zero code tokens
+changed, across the whole emitted tree.
+
+**Gate (ii) — `dist/units.js` code content.** Token stream is exactly
+`export` `{` `}` `;` and nothing else; re-transpiling it with `removeComments` yields the
+string `"export {};\n"` — the 44 bytes §7 predicts. The file on disk is **1483 bytes**, not
+44, because it carries the module's doc header. §7's own wording is "`dist/units.js`'s
+**code content** must be exactly `export {};`", which is what was measured; the 44-byte
+figure in the same paragraph holds only for a comment-free `units.ts`, and every other
+module in this tree carries a doc header. Flagging the discrepancy so a verifier does not
+have to rediscover it: **`export {};` + doc comment, 0 runtime constructs, 0 converters.**
+
+**Pipeline byte-probe** (T8 verifier's `pipe.mjs`, unmodified: 5 deterministic all-maps
+fixtures + all 16 MEI fixtures → MSM/MPM/augmented-MSM/raw-MIDI/expressive-MIDI hashes):
+baseline and units-only builds are **byte-identical**, 24 entries, 0 throws, 21 non-vacuous,
+`sha=169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` — the *same* sha T18
+recorded, so this is also a cross-item confirmation that nothing drifted between commits.
+
+**Verify:** green — 53 files / **2143 tests**, unchanged from T18. No test added or removed
+in M-a.
+
+#### What was branded, and the cast budget as measured (§7 predicted 9 sites; the tree needs 5)
+
+Applied exactly the U3(b) declarations that exist today:
+`MovementData.position`/`.transitionTo` (`Normalized | null`) and
+`getMovementSegment(maxStepSize: Normalized)`. The fourth,
+`DEFAULT_MOVEMENT_SAMPLE_MAX_STEP: Normalized`, cannot be branded in M-a because the
+declaration does not exist yet — `src/mpm/RenderOptions.ts` is M-b. It is branded there.
+
+RULE U2 `as` casts, **7 in `src/`** (`grep -n "as Normalized"`), all at parse/construct
+boundaries, none inside arithmetic: `MovementData.ts:21` (the field initializer `0.0 as
+Normalized`), `:41`, `:46` (the two `parseFloat`s); `MovementMap.ts:31` (the static, see
+below), `:111` (`getPreviousPosition(i)`), `:112`, `:114` (the two `parseFloat`s). Those are
+§7's `MovementData.ts:38,43` + `MovementMap.ts:110,111,113` at their post-T14/T18 line
+numbers, plus two declaration initializers §7 did not count. §7's budget of "9 sites"
+over-counts in the other direction: it lists `MovementData.ts:150,165,197,201`, and
+those need **no** cast at all — a branded type *is* a `number` for arithmetic and is
+assignable to `number`, so `transitionTo! - position!`, `result[1] = …` and the two
+`number[]` tuple literals all compile untouched. The over-count does not change U4's
+verdict — the override stands either way — but recording it so T13 sizes U3(a) from
+measurement rather than from that paragraph.
+
+**`MovementMap.movementSampleMaxStep` is branded too** — `= 0.1 as Normalized`, inferred
+`Normalized` — even though §7 does not enumerate it. Reason: it *is*
+`DEFAULT_MOVEMENT_SAMPLE_MAX_STEP` under its pre-I5 name and it is the sole argument to the
+now-branded parameter. The alternative (casting at the call site in `generateMovement`)
+pushes that line past prettier's print width, wraps the emitted call across three lines, and
+would have broken the zero-line `.js` gate for no benefit — measured, not guessed. The
+declaration disappears in M-b anyway.
+
+#### Test fallout, and why it is 73 sites
+
+`tests/mpm/elements/MovementMap.test.ts` is the only file in `tests/**` that touches
+`MovementData` at all, and `npm run typecheck:tests` flagged **73** sites there (61 field
+assignments, 10 `getMovementSegment` arguments, 2 static assignments). Mechanical: a
+test-local `const norm = (x: number): Normalized => x as Normalized`, applied by regex to
+literal-valued assignments only. Reads (`expect(md.position).toBe(…)`) and `= null`
+assignments are untouched, no assertion changed, no test added or removed — charter
+invariant 4 holds by construction. The helper is a converter function, which RULE U2 bans
+**in `src/`** because it would emit; in `tests/**` it emits nothing into `dist/` and 73
+inline `as Normalized` casts would have buried the assertions.
+
+**DISCOVERED (T13, cheap):** `src/units.ts` is not matched by any glob in
+`vitest.config.ts`'s coverage `include` list. It has zero executable statements, so it can
+neither help nor hurt any charter-7 metric, and I left the config alone rather than make a
+non-mechanical edit. When T13 adds `src/api/**`, adding `src/units.ts` alongside it costs
+nothing and removes the question.
+
+### MEASUREMENT M-b — RenderOptions on top of the brands
+
+This half **emits by design**, so the M-a gate cannot apply and does not: the evidence is
+hunk classification plus behaviour probes. Baseline throughout is the same
+`t19a/dist-base`; `t19a/dist-h1` (units-only) is kept so the two halves stay separable.
+
+**Emitted JS: 2 added, 5 changed, 0 removed.** Added: `units.js` (M-a) and
+`mpm/RenderOptions.js`. Every hunk in the five changed files classified, by reading the
+diffs rather than by trusting the shape of the change:
+
+| file | +/− | what is in the hunks |
+|---|---|---|
+| `mpm/elements/maps/data/MovementData.js` | +10/−0 | **M-a's JSDoc only** — M-b adds nothing here |
+| `mpm/elements/maps/ImprecisionMap.js` | +15/−3 | `import { deriveSeed }`; the `ctx` parameter and the one-line `ordinal` read; the two-line `else if` seed branch; the static wrapper's pass-through; 8 comment lines |
+| `mpm/elements/maps/MovementMap.js` | +17/−17 | the deleted static and its 10-line doc comment (−11); `import { DEFAULT_MOVEMENT_SAMPLE_MAX_STEP }`; `ctx` on three signatures and two call sites; the two-line default resolution |
+| `mpm/elements/Performance.js` | +13/−8 | the `options` parameter; the one-line `RenderContext` construction; six call sites gaining `, ctx`; 4 comment lines |
+| `msm/Msm.js` | +6/−2 | the `options` parameter, the pass-through into `perform`, 4 JSDoc lines |
+
+**`msm/Msm.js` gains no import** — that is the mechanical proof that hop 1's cross-layer
+edge is `import type` and erases, as RULE M1 requires. No other file in `dist/` moved.
+
+**GATE (a) — pipeline byte-probe, default options.** T8 verifier's `pipe.mjs` unchanged, 5
+deterministic all-maps fixtures + all 16 MEI fixtures → MSM/MPM/augmented-MSM/raw-MIDI/
+expressive-MIDI: baseline and work **byte-identical**, 24 entries, 0 throws, 21 non-vacuous,
+`sha=169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` — the same sha as
+M-a and as T18's entry. Nothing on the default path moved.
+
+**GATE (b) — imprecision fixtures, structurally.** The two seeded fixtures
+(`imprecision_timing`, `imprecision_dynamics`), 3 runs per build, on both builds: identical
+note counts (8/8), identical attribute-name sets on every note (14 names), every
+`milliseconds.date`/`.end`/`velocity`/`date` finite, and every offset within the
+distribution's declared limit — checked against a reference render with the imprecision
+maps stripped from **both** global and part `<dated>`s. That last detail is what makes the
+check non-vacuous: my first version stripped only the global map, the part-level dynamics
+map survived, and the bound check compared two identical renders and read a perfect 0.
+Real spreads: timing 17.5–19.8 ms against a declared ±20, dynamics 10.84 against ±15.
+
+**GATE (c) — determinism, 15 new tests** in `tests/mpm/RenderOptions.test.ts`: same seed
+twice ⇒ byte-identical MIDI; different seed ⇒ different MIDI; no seed twice ⇒ different
+MIDI (the default path is still nondeterministic, which is the property the charter relies
+on); an MPM `seed` beats `options.seed` (RULE F7); `ctx.streamOrdinal` advances per call so
+two maps in one render draw different sequences while a fresh context replays the first
+exactly; and `deriveSeed` pinned against an independent reimplementation of §2.4's formula,
+so the multiplier, the unsigned coercions and the left-to-right fold cannot be "simplified"
+silently.
+
+**GATE (d) and I5's negative controls — three, all run in a scratch copy of the tree
+(`t19a/nc`, `src/` diffed back to the repo afterwards), never in the repo.**
+
+1. **Drop `ctx` at one call site** (`generateMovement(md, movementMap)` inside
+   `renderMovementToMap`) — exactly the failure RULE I5's EQ-RISK names. **4 tests red.**
+2. **Drop the options at hop 1** (`performance.perform(this)` in `exportExpressiveMidi`).
+   **2 tests red**, including the same-seed determinism one, since without hop 1 the seed
+   never reaches the render at all.
+3. **§2.4 gate (d): apply the derivation even when `options.seed` is undefined.** The new
+   determinism test goes **red**, as it should.
+
+**§2.4's gate (d) is wrong about *which* gate catches it, and I measured that rather than
+asserting the doc.** It says this control must make gate (a) go red. **It does not** —
+gate (a)'s transcript is `sha=169e964b…` on the sabotaged build too, bit-for-bit. Two
+independent reasons, both structural: gate (a)'s fixture set is by definition the
+*deterministic* fixtures, i.e. the ones carrying no imprecision map, so no change to
+imprecision seeding can reach it; and the two fixtures that *do* carry imprecision both
+declare `seed="42"` in the MPM, so RULE F7's first branch fires and the derivation is never
+evaluated (gate (b) is likewise blind to it — verified, structure identical). **A control
+that passes on the sabotaged build is not a control.** The real control for the seed branch
+is the gate (c) test, which is why it was written first and why it must not be weakened.
+
+#### The finding that matters beyond this item: a seed does not buy reproducibility on its own
+
+The first version of the determinism test failed, and the reason is not in this item's
+diff. `ImprecisionMap.shakeTimingOffsets` picks which of several simultaneous offsets keeps
+its value with a bare `Math.floor(Math.random() * n)`, and `ImprecisionMap.shake` re-rolls
+the others through a **freshly constructed, unseeded** `RandomNumberProvider`. Neither
+consults any seed. So whenever two offsets share a `milliseconds.date`, the render is
+nondeterministic **even with a seed in the MPM**.
+
+Measured, not deduced: on the **baseline** build (`t19a/seedprobe.mjs`), a fixture with
+`duration = ppq` — where every note's end coincides with the next note's start — renders
+three different note-onset vectors from the same MPM `seed="42"`; the same fixture with
+`duration = ppq/2`, where no two dates collide, renders bit-identically three times out of
+three. And it is faithful: `meico/ImprecisionMap.java:845` is `(new Random()).nextInt(...)`
+and `:894`'s `shake` builds an unseeded provider exactly as the port does. **Not a
+regression, not this item's doing, and not to be "fixed" — but it bounds what a `seed`
+promises.**
+
+Consequences, and they are for other items, not this one:
+- The test fixture's half-length durations are load-bearing and carry a comment saying so;
+  "tidying" them to `ppq` re-breaks the test in a way that looks like a plumbing bug.
+- **T13 must not document `seed` as "reproducible output".** The honest contract is
+  "reproducible where no two imprecision offsets share a millisecond date", which for real
+  polyphonic input is *often false*.
+- **DISCOVERED (T19/T21, needs a conductor ruling):** making the shake path seed-aware
+  would be a deliberate parity divergence — it changes rendered output for every
+  chord-bearing fixture — so it cannot be done quietly inside another item. Recording it as
+  a candidate, not doing it.
+
+#### Decisions taken where the doc left a choice
+
+- **`deriveSeed` lives in `src/mpm/RenderOptions.ts`**, exported. §2.4 gives its body
+  verbatim but no home. `ImprecisionMap` is its only caller today; module-private there it
+  would be untestable directly, and gate (c)'s "pinned against an independent
+  reimplementation" test is worth more than the encapsulation.
+- **No `MovementMap.DEFAULT_MOVEMENT_SAMPLE_MAX_STEP` re-export.** RULE I5 offers "add a
+  `static readonly` **or** take the constant from `RenderOptions.ts`"; taking it leaves one
+  name for one value. `RenderOptions.ts` also had to own it anyway, because U3(b) brands it
+  `Normalized` and §2.4 puts it there.
+- **`ordinal` is read at the very top of `renderImprecisionToMap`, before the early
+  returns**, per §2.4's "counts calls, not entries". A no-op call therefore consumes an
+  ordinal — deterministic either way, and this spelling is the one the doc's words describe.
+- **The two static wrappers** (`MovementMap.renderMovementToMap(map, ctx?)`,
+  `ImprecisionMap.renderImprecisionToMap(map, impMap, shake, ctx?)`) also take the context.
+  Neither is called from `src/`, but a static that silently ignores the knob its instance
+  method honours is a trap; a test now pins the pass-through.
+- **`RenderOptions.movementSampleMaxStep` stays plain `number`** and is branded with a
+  single `as` at the point of use (RULE U3a). §2.4's interface block is normative and says
+  the same.
+
+#### Scope check against §8.1, since two neighbouring items could claim this work
+
+§8.1 assigns T19a "thread the context through all **four** hops of §2.4's table; implement
+RULE F7's seed branch with §2.4's exact `deriveSeed`" — so the seed wiring **is** this item
+and was built here rather than deferred. What was deliberately **not** built: U3(a) and
+U3a's facade types (`src/api/types.ts` does not exist; that is T13), and no `PerformOptions`
+surface. The four hops in the tree, at their post-T14/T18 line numbers (§2.4's are stale):
+`Msm.ts:1028` → `Performance.ts:355,359` → `MovementMap.renderMovementToMap` at
+`Performance.ts:553` → `ImprecisionMap.renderImprecisionToMap` at
+`Performance.ts:457,578,596,598,600,602` (§2.4 says `433,558,575,577,579,580`).
+
+**RULE I5's audit command now returns nothing** — the last non-`readonly` static in `src/`
+is gone. T21 re-runs it.
+
+#### Numbers
+
+**Verify:** green — **54 files / 2159 tests**, up 16 from T18's 2143: 15 new in
+`tests/mpm/RenderOptions.test.ts` and 1 new in `tests/mpm/elements/MovementMap.test.ts`
+(the static-pass-through test). **No test removed, none weakened** — charter invariant 7c
+needs justification only for decreases, and the one migrated test kept both of its
+assertions and gained a third (below).
+
+**The migrated test is stronger, not weaker.** The old
+`movementSampleMaxStep defaults to 0.1 and controls the sampling density` asserted the
+default and that a coarser step emits fewer events, wrapped in a `try/finally` that restored
+the static. It now asserts the default via `DEFAULT_MOVEMENT_SAMPLE_MAX_STEP`, that a
+coarser step emits fewer events **and** a finer step emits more, and that a render with no
+options is unaffected by any render before it — which used to need the `finally` and is now
+true by construction, because there is no global left to restore.
+
+**Coverage:** functions **94.2348 %** (floor 94.0 ✓) — bit-identical to T14 and T18.
+Uncovered scoped statements **2217 → 2217** (charter 7b ✓, budget 2318).
+`src/mpm/RenderOptions.ts` is **100 %** (8/8 statements, 1/1 functions).
+
+**Lint:** **1245 errors / 5 warnings**, and the per-rule histogram against a
+`git archive a604f4a` baseline has a **delta of zero on every rule**. Both new modules lint
+clean; no new suppressions anywhere (`eslint-disable`/`@ts-ignore`/`@ts-expect-error`: 0
+across all nine touched files). `import/no-cycle` and T18's four layer zones stay green.
+`lint-debt.md` updated with a T19a section and a corrected header (it still claimed T20b's
+1292 while the per-item sections already carried 1246 → 1245).
+
+**Manifest — 10 paths, all inside §8.1's file scope:** `src/units.ts` (new),
+`src/mpm/RenderOptions.ts` (new), `tests/mpm/RenderOptions.test.ts` (new),
+`src/mpm/elements/Performance.ts`, `src/mpm/elements/maps/MovementMap.ts`,
+`src/mpm/elements/maps/ImprecisionMap.ts`, `src/mpm/elements/maps/data/MovementData.ts`,
+`src/msm/Msm.ts`, `tests/mpm/elements/MovementMap.test.ts`, `refactor/log.md`
+(+ `refactor/lint-debt.md`). **Untouched:** `tests/integration/**`, every fixture,
+`vitest.config.ts`, `eslint.config.js`, `package.json`.
+
+#### DISCOVERED
+
+- **DISCOVERED (T21, one line):** `src/units.ts` is not listed in `eslint.config.js`'s
+  `LAYER_ZONES` "leaves" group. It imports nothing, so nothing can violate the zone today,
+  but the zone is the enforcement of RULE M1 and a leaf outside it is unguarded. Adding
+  `'src/units.ts'` next to `'src/version.ts'` is the whole fix; out of this item's file
+  scope, so not done.
+- **DISCOVERED (T13):** `src/units.ts` matches no glob in `vitest.config.ts`'s coverage
+  `include`. Zero executable statements, so no charter-7 metric can move either way; fold it
+  in when T13 adds `src/api/**`.
+- **DISCOVERED (T13, contract wording):** see the shake finding above — `seed` guarantees
+  reproducibility only where no two imprecision offsets share a millisecond date.
+- **DISCOVERED (pre-existing, cosmetic):** `npx prettier --check .` reports one file,
+  `tests/midi/Midi.test.ts`. It is byte-identical to the same file on a `git archive
+  a604f4a` baseline, so it arrived before this item and I left it alone rather than mix an
+  unrelated reformat into a logic commit (charter invariant 10). Every file T19a touched
+  passes `--check`.
+- **DISCOVERED (doc, for the conductor):** §2.4's gate (d) is vacuous as specified (proven
+  above); §7's cast budget of "9 sites" over-counts four sites that need no cast (M-a); §7's
+  "44 bytes" for `dist/units.js` holds only for a comment-free module; and §2.4's line
+  numbers for the four hops predate T14/T18. None of these blocked the item; all four are
+  worth an amendment so the next reader is not misled.
+
+## [T19a] verifier
+
+**PASS.** Every claim in the worker entry was reproduced independently — separate scratch
+trees (`t19averify/`), my own probes, my own negative controls. Nothing was taken on trust,
+and the repo working tree is byte-unchanged by this verification (`git status --porcelain`
+identical before and after).
+
+**Baseline identity.** `a604f4a` differs from the last green `75e5ff1` only in
+`refactor/state.json` — src-identical, so it is a legitimate measurement base.
+
+### 1. M-a reproduced from scratch, not replayed
+
+I did **not** reuse `t19a/dist-h1`. I built the units-only tree myself: `git archive
+a604f4a` → `t19averify/unitsonly`, added `src/units.ts` and the work tree's
+`MovementData.ts` (whose entire diff is M-a — no `ctx`, no `RenderOptions` import), then
+hand-applied the four MovementMap brand hunks to the *baseline* file (`import type
+{ Normalized }`, `static movementSampleMaxStep = 0.1 as Normalized`, and the three casts at
+:110,:111,:113). `tsc` clean.
+
+| gate | measured |
+|---|---|
+| new emitted files | **exactly 4**: `units.js`, `units.js.map`, `units.d.ts`, `units.d.ts.map`. Nothing removed |
+| pre-existing files differing | **7**, the same seven the worker lists; the only differing `.js` is `MovementData.js` |
+| `MovementData.js` diff | **+10/−0, every line a comment** — read line by line, two field docs and the 8-line `@param`/`@returns` block |
+| code-level diff | **0 of 70** pre-existing `.js` files differ, via my own stripper (`t19averify/strip.mjs`: re-emits each file through `ts.transpileModule` with `removeComments`) — independent of the worker's token tool |
+| `dist/units.js` code content | stripped output is exactly `"export {};\n"` |
+| pipeline byte-probe | base vs units-only **byte-identical**, `sha=169e964b…` |
+
+Baseline dist is 280 files / 70 `.js` and units-only is 284 — the worker's counts.
+
+**Gate (i) as literally worded cannot be satisfied, and that is a doc defect, not a worker
+defect.** RULE U4a *orders* the `getMovementSegment` JSDoc; `tsconfig.json` does not set
+`removeComments`; therefore the JSDoc necessarily lands in `dist/.../MovementData.js`. "Zero
+*line* diff over every pre-existing `dist/` file" and RULE U4a are mutually unsatisfiable.
+The gate's own stated purpose — "any change to a pre-existing `.js` means a runtime
+construct crept in" — is met with proof: zero code tokens moved anywhere in the tree. The
+worker chose U4a and flagged the tension rather than hiding it; that was the right call, and
+the fix belongs in the doc (below).
+
+### 2. Cast budget — enumerated, and the worker is right
+
+Real `as Normalized` casts in `src/`, final tree: **8** (a 9th grep hit is prose inside a
+RenderOptions.ts doc comment): `MovementData.ts:21,41,46`, `MovementMap.ts:101,102,104,190`,
+`RenderOptions.ts:42`. In the units-only staging it is 7 (RenderOptions.ts:42 and
+MovementMap.ts:190 do not exist yet; the branded static does).
+
+§7's "9 sites" budget lists `MovementData.ts:150,165,197,201` — verified against the
+baseline file, those lines are `return (…)*(this.transitionTo! - this.position!) + …`,
+`result[1] = …`, `const beginning: number[] = [this.startDate, this.position!]` and
+`const end: number[] = [this.endDate!, this.transitionTo]`. All four are read positions
+where a branded number widens to `number` freely, and the tree **compiles today with no cast
+at any of them** — which is proof, not argument. §7 over-counts by exactly 4 and under-counts
+the two declaration initializers. U4's override verdict is unaffected either way.
+
+**Brands appear only at RULE U3(b)'s sites and nowhere else.** Every `Normalized`
+type-position in `src/`: the `units.ts` declaration, three `import type` lines, and the four
+declarations U3(b) enumerates (`MovementData.position`, `.transitionTo`,
+`getMovementSegment`'s parameter, `DEFAULT_MOVEMENT_SAMPLE_MAX_STEP`). `Performance.ts`,
+`ImprecisionMap.ts` and `Msm.ts` — the parity-frozen arithmetic — are brand-free, so RULE U4
+holds. `Ticks`/`Milliseconds`/`Midi7Bit`/`Bpm` are declared and unused: correct, U3(a) is T13's.
+
+### 3. M-b — every hunk re-read, every probe re-run
+
+Emitted JS vs baseline: **2 added** (`units.js`, `mpm/RenderOptions.js`), **5 changed**
+(`MovementData.js` +10/−0, `ImprecisionMap.js` +15/−3, `MovementMap.js` +17/−17,
+`Performance.js` +13/−8, `Msm.js` +6/−2), **0 removed** — the worker's table to the line. I
+read all five diffs in full; every hunk is the parameter, the pass-through, the comment or
+the deleted static it is claimed to be, and no arithmetic moved. `dist/msm/Msm.js` gains
+**no import**, which is the mechanical proof that hop 1's cross-layer edge is `import type`
+and erases (RULE M1). Emitted `deriveSeed` is §2.4's body verbatim — multiplier, both `>>> 0`
+coercions, fold direction, `|| 1`.
+
+- **GATE (a)**: T8 verifier's `pipe.mjs` (5 deterministic all-maps fixtures + all 16 MEI
+  fixtures) on **three** builds — baseline, units-only, work: all `sha=169e964b…`, 24
+  entries, 0 throws, 21 non-vacuous. Also the sha T18 recorded.
+- **Knob works, measured**: `movement` fixture, work build — `<position>` events default
+  **17**, explicit 0.1 **17**, 0.5 → **5**, 0.02 → **81**; expressive MIDI 267 → 219 / 521
+  bytes. I isolated **hop 1 alone** (`t19averify/hop1.mjs`: options passed *only* to
+  `Msm.exportExpressiveMidi`, never to `perform`) — `HOP1_LIVE`, so the hop that §2.4 says
+  was missing from the first draft genuinely delivers.
+- **Mutable static gone**: RULE I5's audit command returns nothing;
+  `MovementMap.movementSampleMaxStep` has no remaining reference in `src/`.
+
+### 4. RNG discipline — proven stronger than [T4] requires
+
+`t19averify/rngprobe.mjs` pins `Math.random` to a fixed mulberry32 *before* any render and
+instruments `RandomNumberProvider`'s six factories and every prototype method, logging
+`(instance#, method, args)` in order. Across 8 all-maps fixtures **including both imprecision
+fixtures**, default options, base build vs work build: the RNG call sequences are identical
+(576 / 316 / 1166 … calls, hashed), **and so are the rendered augmented MSM and expressive
+MIDI bytes**. With the two exempted nondeterminism sources pinned, the charter-exempt
+fixtures become byte-comparable and they compare equal. Structurally this is forced anyway:
+the only RNG-adjacent change is an `else if` guarded on `ctx?.options.seed !== undefined`,
+provider construction is untouched, and `ctx.streamOrdinal++` draws nothing.
+
+### 5. My own negative controls (scratch copy `t19averify/nc`, verified a faithful copy first)
+
+1. **Drop `ctx` at the `generateMovement` call site** — my knob probe reports `KNOB_DEAD`
+   (17/17/17/17) and **4 tests go red**. Matches the worker.
+2. **Drop `options` at hop 1** — `HOP1_DEAD` and **2 tests red**, including the same-seed
+   determinism test. Matches.
+3. **§2.4 gate (d): derive even when `options.seed` is undefined** — gate (a) is
+   `sha=169e964b…` on the sabotaged build, **bit-for-bit unchanged**. The worker is right and
+   §2.4 is wrong: a control that passes on the sabotaged build is not a control. The gate (c)
+   test `stays nondeterministic without a seed` is the one that goes red, and it does.
+
+### 6. Tests, scope, standard gates
+
+- Independent `npm run verify`: **green, exit 0**, both `tsc` stages — **54 files / 2159
+  tests**. Chain reconciles: T14 → 2143, T18 → 2143, M-a → 2143, +15
+  (`tests/mpm/RenderOptions.test.ts`) +1 (`MovementMap.test.ts`) = **2159**, an increase, so
+  invariant 7c needs nothing beyond the journaling already present.
+- **No test weakening, proven mechanically.** I cancelled the 73 mechanical `norm(x)`
+  wrappers by regex and diffed the result against the baseline file: what remains is the
+  import/helper header, the migrated test, and the one new test — **zero** other changes. The
+  migrated test keeps both original assertions (0.1 default, coarser ⇒ fewer) and adds
+  finer ⇒ more, `ctx({})` ≡ default, and a non-vacuity check. Strictly stronger.
+- The 15 new tests assert **behaviour**, not implementation: rendered MIDI bytes, `<position>`
+  element counts, MPM-seed-beats-options-seed, ordinal advance across two renders with a
+  fresh-context replay, and `deriveSeed` pinned against an independent reimplementation.
+- **Scope clean**: `tests/integration/**` and every fixture untouched; `vitest.config.ts`,
+  `eslint.config.js`, `tsconfig*.json`, `package.json` byte-unchanged (the `units.ts`
+  coverage-glob question correctly left to T13). No `src/api/`, no `PerformOptions` — no
+  facade work smuggled in. No `eslint-disable` / `@ts-ignore` / `@ts-expect-error` anywhere
+  in the nine touched files. No TODO/FIXME/stub markers in the diff; no orphaned imports
+  (a resumed-worker risk I looked for specifically — lint delta zero rules it out).
+- **Lint**: my own full-tree histograms, baseline vs work — both **1245 errors / 5 warnings**,
+  **delta zero on every rule**, matching the worker's per-rule numbers exactly.
+  `lint-debt.md` updated with a T19a section and a corrected header.
+- **Coverage** (computed from `coverage-final.json`, not read off the table): functions
+  **94.2348 %** ≥ 94.0 floor; uncovered scoped statements **2217** ≤ 2318 budget;
+  `RenderOptions.ts` 8/8 statements, 1/1 functions; `src/units.ts` outside coverage scope, as
+  the worker's DISCOVERED note says.
+- **Manifest reconciles exactly**: 6 `M` under `src/` + `tests/`, 3 `??`, plus `log.md` and
+  `lint-debt.md`. `log.md` is strictly append-only (295 insertions, 0 deletions).
+- `prettier --check` clean on all nine touched files. The one repo-wide warning
+  (`tests/midi/Midi.test.ts`) is byte-identical to baseline — pre-existing, correctly left
+  alone under charter invariant 10.
+
+### 7. Doc amendments for the conductor — all four confirmed, plus a fifth
+
+1. **§2.4 gate (d) is vacuous** — CONFIRMED by my own sabotage: gate (a) cannot see it
+   (its fixture set is by definition the imprecision-free one, and the two imprecision
+   fixtures both carry `seed="42"`, so F7's first branch fires). Reword to name the gate (c)
+   determinism test as the control.
+2. **§7's "9 sites" cast budget** — CONFIRMED: 4 of the 9 need no cast; 2 declaration
+   initializers are uncounted. Actual 8 in the final tree, inventory above.
+3. **§7's "44 bytes"** — CONFIRMED and quantified: 44 = `export {};\n` (11) +
+   `//# sourceMappingURL=units.js.map` (33), i.e. it holds only for a comment-free module.
+   The shipped file is 1483 bytes of doc header + the same 44.
+4. **§2.4's four-hop line numbers are stale** — CONFIRMED: `Msm.ts:1023` / `Performance.ts:
+   533` / `433,558,575,577,579,580` match neither the baseline (1024 / 546 /
+   450,571,588,590,592,593) nor the work tree.
+5. **NEW — §7 gate (i) should say "zero *code* diff", not "zero-line diff"**, and should name
+   the comment-immune measurement as the instrument. As written it contradicts RULE U4a
+   outright (see §1 above), and the next worker to hit this has no way to pass both.
+
+*Nit, no action needed:* the worker's own hop line numbers (`Msm.ts:1028`,
+`Performance.ts:355`) point at the signature lines; the pass-through is at `Msm.ts:1033` and
+`perform`'s signature at `Performance.ts:354`.
+
+**Verdict: PASS T19a.** Commit the eleven paths as they stand; items 1–5 above are a
+conductor doc-amendment, not a fix round.

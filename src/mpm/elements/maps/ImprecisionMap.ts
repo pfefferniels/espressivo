@@ -5,6 +5,8 @@ import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { RandomNumberProvider } from '../../../supplementary/RandomNumberProvider.js';
 import { GenericMap } from './GenericMap.js';
 import { DistributionData } from './data/DistributionData.js';
+import { deriveSeed } from '../../RenderOptions.js';
+import type { RenderContext } from '../../RenderOptions.js';
 
 /**
  * An MPM `imprecisionMap`: deliberate human inaccuracy — notes that land slightly early
@@ -242,7 +244,18 @@ export class ImprecisionMap extends GenericMap {
    * `continue`s, the deferred `pendingDurations` pass, and the handover calls each
    * correspond to a specific number of draws from the sequence.
    */
-  renderImprecisionToMap(map: GenericMap | null, shakePolyphonicPart: boolean): void {
+  renderImprecisionToMap(
+    map: GenericMap | null,
+    shakePolyphonicPart: boolean,
+    ctx?: RenderContext,
+  ): void {
+    // Read once per call, before anything can return early, so it counts calls rather
+    // than distributions: `impIndex` below distinguishes the distributions *within* one
+    // map, this distinguishes the maps within one render, and the pair is unique per
+    // RandomNumberProvider. Order-dependent by design — for identical input and options
+    // the call order is fixed, so the derived seeds reproduce.
+    const ordinal = ctx !== undefined ? ctx.streamOrdinal++ : 0;
+
     if (map === null || this.elements.length === 0) return;
 
     let domain: number;
@@ -333,7 +346,12 @@ export class ImprecisionMap extends GenericMap {
           continue;
       }
 
+      // A `seed` in the MPM always wins (RULE F7); `options.seed` supplies one only where
+      // the MPM supplies none. With neither, the provider keeps its constructor's
+      // Math.random() seed — today's behaviour, deliberately untouched.
       if (dd.seed !== null) random.setSeed(dd.seed);
+      else if (ctx?.options.seed !== undefined)
+        random.setSeed(deriveSeed(ctx.options.seed, ordinal, impIndex));
 
       // make sure that the timing resolution is specified, and if not, compute a reasonable value
       if (dd.millisecondsTimingBasis === null) {
@@ -631,8 +649,10 @@ export class ImprecisionMap extends GenericMap {
     map: GenericMap | null,
     imprecisionMap: ImprecisionMap | null,
     shakePolyphonicPart: boolean,
+    ctx?: RenderContext,
   ): void {
-    if (imprecisionMap !== null) imprecisionMap.renderImprecisionToMap(map, shakePolyphonicPart);
+    if (imprecisionMap !== null)
+      imprecisionMap.renderImprecisionToMap(map, shakePolyphonicPart, ctx);
   }
 }
 

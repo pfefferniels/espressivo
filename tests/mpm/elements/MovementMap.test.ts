@@ -7,6 +7,23 @@ import { TempoMap } from '../../../src/mpm/elements/maps/TempoMap.js';
 import { MovementMap } from '../../../src/mpm/elements/maps/MovementMap.js';
 import { MovementData } from '../../../src/mpm/elements/maps/data/MovementData.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
+import {
+  DEFAULT_MOVEMENT_SAMPLE_MAX_STEP,
+  type RenderContext,
+  type RenderOptions,
+} from '../../../src/mpm/RenderOptions.js';
+import type { Normalized } from '../../../src/units.js';
+
+/**
+ * Brand a plain literal as {@link Normalized} (ARCHITECTURE.md §7). RULE U2 forbids
+ * converter functions in `src/` — one would emit JavaScript and cost the brands their
+ * zero-line emitted-JS proof — but a test-local one emits nothing into `dist/` and keeps
+ * the assertions below readable.
+ */
+const norm = (x: number): Normalized => x as Normalized;
+
+/** A throwaway render context, as `Performance.perform` would build it. */
+const ctx = (options: RenderOptions): RenderContext => ({ options, streamOrdinal: 0 });
 
 describe('MovementMap', () => {
   // ---------------------------------------------------------------
@@ -58,8 +75,8 @@ describe('MovementMap', () => {
       const map = MovementMap.createMovementMap()!;
       const md = new MovementData();
       md.startDate = 0;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
 
       const index = map.addMovement(md);
       expect(index).toBeGreaterThanOrEqual(0);
@@ -152,8 +169,8 @@ describe('MovementMap', () => {
     it('should clone correctly', () => {
       const md = new MovementData();
       md.startDate = 100;
-      md.position = 0.3;
-      md.transitionTo = 0.8;
+      md.position = norm(0.3);
+      md.transitionTo = norm(0.8);
       md.controller = 'expression';
       md.curvature = 0.6;
       md.protraction = 0.2;
@@ -180,12 +197,12 @@ describe('MovementMap', () => {
 
     it('clone should be independent of original', () => {
       const md = new MovementData();
-      md.position = 0.5;
-      md.transitionTo = 1.0;
+      md.position = norm(0.5);
+      md.transitionTo = norm(1.0);
 
       const clone = md.clone();
-      clone.position = 0.0;
-      clone.transitionTo = 0.0;
+      clone.position = norm(0.0);
+      clone.transitionTo = norm(0.0);
 
       expect(md.position).toBe(0.5);
       expect(md.transitionTo).toBe(1.0);
@@ -199,13 +216,13 @@ describe('MovementMap', () => {
 
     it('isConstantMovement: non-null transitionTo returns false', () => {
       const md = new MovementData();
-      md.transitionTo = 1.0;
+      md.transitionTo = norm(1.0);
       expect(md.isConstantMovement()).toBe(false);
     });
 
     it('isConstantMovement: transitionTo = 0.0 returns false', () => {
       const md = new MovementData();
-      md.transitionTo = 0.0;
+      md.transitionTo = norm(0.0);
       expect(md.isConstantMovement()).toBe(false);
     });
   });
@@ -218,7 +235,7 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 960;
-      md.position = 0.5;
+      md.position = norm(0.5);
       md.transitionTo = null;
 
       // For constant movement, getPositionAt returns position!
@@ -232,8 +249,8 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 960;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
@@ -244,8 +261,8 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 960;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
@@ -256,8 +273,8 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 100;
       md.endDate = 960;
-      md.position = 0.3;
-      md.transitionTo = 0.8;
+      md.position = norm(0.3);
+      md.transitionTo = norm(0.8);
 
       expect(md.getPositionAt(50)).toBe(0.3);
     });
@@ -266,8 +283,8 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 960;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
 
       expect(md.getPositionAt(2000)).toBe(1.0);
     });
@@ -283,8 +300,8 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 960;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
@@ -297,8 +314,8 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 1000;
-      md.position = 0.2;
-      md.transitionTo = 0.8;
+      md.position = norm(0.2);
+      md.transitionTo = norm(0.8);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
@@ -311,8 +328,8 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 960;
-      md.position = 1.0;
-      md.transitionTo = 0.0;
+      md.position = norm(1.0);
+      md.transitionTo = norm(0.0);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
@@ -333,8 +350,8 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 1000;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
@@ -348,8 +365,8 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 1000;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.4;
       md.protraction = 0.0;
 
@@ -367,16 +384,16 @@ describe('MovementMap', () => {
       const md1 = new MovementData();
       md1.startDate = 0;
       md1.endDate = 1000;
-      md1.position = 0.0;
-      md1.transitionTo = 1.0;
+      md1.position = norm(0.0);
+      md1.transitionTo = norm(1.0);
       md1.curvature = 0.0;
       md1.protraction = 0.0;
 
       const md2 = new MovementData();
       md2.startDate = 0;
       md2.endDate = 1000;
-      md2.position = 0.0;
-      md2.transitionTo = 1.0;
+      md2.position = norm(0.0);
+      md2.transitionTo = norm(1.0);
       md2.curvature = 0.5;
       md2.protraction = 0.0;
 
@@ -400,12 +417,12 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 1000;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
-      const segment = md.getMovementSegment(0.1);
+      const segment = md.getMovementSegment(norm(0.1));
       expect(segment.length).toBeGreaterThanOrEqual(4);
     });
 
@@ -413,12 +430,12 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 1000;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
-      const segment = md.getMovementSegment(0.1);
+      const segment = md.getMovementSegment(norm(0.1));
       for (const point of segment) {
         expect(point[1]).toBeGreaterThanOrEqual(0);
         expect(point[1]).toBeLessThanOrEqual(127);
@@ -429,12 +446,12 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 1000;
-      md.position = 0.5;
-      md.transitionTo = 1.0;
+      md.position = norm(0.5);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
-      const segment = md.getMovementSegment(0.1);
+      const segment = md.getMovementSegment(norm(0.1));
       // First entry is the beginning: [startDate, position * 127]
       expect(segment[0][0]).toBe(0);
       expect(segment[0][1]).toBeCloseTo(0.5 * 127, 5);
@@ -444,12 +461,12 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 1000;
-      md.position = 0.0;
-      md.transitionTo = 0.8;
+      md.position = norm(0.0);
+      md.transitionTo = norm(0.8);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
-      const segment = md.getMovementSegment(0.1);
+      const segment = md.getMovementSegment(norm(0.1));
       const last = segment[segment.length - 1];
       expect(last[0]).toBe(1000);
       expect(last[1]).toBeCloseTo(0.8 * 127, 5);
@@ -459,12 +476,12 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 100;
       md.endDate = 500;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
-      const segment = md.getMovementSegment(0.1);
+      const segment = md.getMovementSegment(norm(0.1));
       for (const point of segment) {
         expect(point[0]).toBeGreaterThanOrEqual(100);
         expect(point[0]).toBeLessThanOrEqual(500);
@@ -475,21 +492,21 @@ describe('MovementMap', () => {
       const mdSmall = new MovementData();
       mdSmall.startDate = 0;
       mdSmall.endDate = 1000;
-      mdSmall.position = 0.0;
-      mdSmall.transitionTo = 0.1;
+      mdSmall.position = norm(0.0);
+      mdSmall.transitionTo = norm(0.1);
       mdSmall.curvature = 0.0;
       mdSmall.protraction = 0.0;
 
       const mdLarge = new MovementData();
       mdLarge.startDate = 0;
       mdLarge.endDate = 1000;
-      mdLarge.position = 0.0;
-      mdLarge.transitionTo = 1.0;
+      mdLarge.position = norm(0.0);
+      mdLarge.transitionTo = norm(1.0);
       mdLarge.curvature = 0.0;
       mdLarge.protraction = 0.0;
 
-      const segSmall = mdSmall.getMovementSegment(0.1);
-      const segLarge = mdLarge.getMovementSegment(0.1);
+      const segSmall = mdSmall.getMovementSegment(norm(0.1));
+      const segLarge = mdLarge.getMovementSegment(norm(0.1));
 
       // Larger transition needs more subdivision points
       expect(segLarge.length).toBeGreaterThanOrEqual(segSmall.length);
@@ -499,12 +516,12 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 1000;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.3;
       md.protraction = 0.0;
 
-      const segment = md.getMovementSegment(0.1);
+      const segment = md.getMovementSegment(norm(0.1));
       for (let i = 1; i < segment.length; i++) {
         expect(segment[i][0]).toBeGreaterThanOrEqual(segment[i - 1][0]);
       }
@@ -514,12 +531,12 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 1000;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
-      const segment = md.getMovementSegment(0.1);
+      const segment = md.getMovementSegment(norm(0.1));
       // For upward transition, position values should be monotonically non-decreasing
       for (let i = 1; i < segment.length; i++) {
         expect(segment[i][1]).toBeGreaterThanOrEqual(segment[i - 1][1] - 0.001);
@@ -530,12 +547,12 @@ describe('MovementMap', () => {
       const md = new MovementData();
       md.startDate = 0;
       md.endDate = 1000;
-      md.position = 0.0;
-      md.transitionTo = 1.0;
+      md.position = norm(0.0);
+      md.transitionTo = norm(1.0);
       md.curvature = 0.0;
       md.protraction = 0.0;
 
-      const segment = md.getMovementSegment(0.1);
+      const segment = md.getMovementSegment(norm(0.1));
       expect(segment[0][1]).toBeCloseTo(0, 5);
       expect(segment[segment.length - 1][1]).toBeCloseTo(127, 5);
     });
@@ -644,8 +661,8 @@ describe('MovementMap', () => {
       const map = MovementMap.createMovementMap()!;
       const md = new MovementData();
       md.startDate = 0;
-      md.position = 0.2;
-      md.transitionTo = 0.9;
+      md.position = norm(0.2);
+      md.transitionTo = norm(0.9);
       md.curvature = 0.8;
       md.protraction = 0.5;
       md.controller = 'soft';
@@ -662,8 +679,8 @@ describe('MovementMap', () => {
       const map = MovementMap.createMovementMap()!;
       const md = new MovementData();
       md.startDate = 0;
-      md.position = 0.2;
-      md.transitionTo = 0.9;
+      md.position = norm(0.2);
+      md.transitionTo = norm(0.9);
       md.curvature = 0.8;
       md.protraction = 0.5;
       md.controller = 'soft';
@@ -731,8 +748,8 @@ describe('MovementMap', () => {
       const movMap = MovementMap.createMovementMap()!;
       const md = new MovementData();
       md.startDate = 0;
-      md.position = 0.2;
-      md.transitionTo = 0.9;
+      md.position = norm(0.2);
+      md.transitionTo = norm(0.9);
       md.controller = controller;
       md.curvature = curvature;
       md.protraction = protraction;
@@ -742,8 +759,8 @@ describe('MovementMap', () => {
       for (const startDate of [2880, 5760]) {
         const term = new MovementData();
         term.startDate = startDate;
-        term.position = 0.9;
-        term.transitionTo = 0.9;
+        term.position = norm(0.9);
+        term.transitionTo = norm(0.9);
         term.controller = controller;
         movMap.addMovement(term);
       }
@@ -812,21 +829,43 @@ describe('MovementMap', () => {
       expect(positionsOf(shaped)).not.toEqual(positionsOf(defaults));
     });
 
+    // Migrated from the `MovementMap.movementSampleMaxStep` static this item deleted
+    // (RULE I5). Both of the original assertions are kept — the 0.1 default and the
+    // sampling-density effect of a non-default value — and the restore-afterwards check
+    // now proves something stronger: with the knob in `RenderOptions` there is no global
+    // to leak in the first place, so a render with no options is unaffected by any render
+    // that came before it.
     it('movementSampleMaxStep defaults to 0.1 and controls the sampling density', () => {
-      expect(MovementMap.movementSampleMaxStep).toBe(0.1);
+      expect(DEFAULT_MOVEMENT_SAMPLE_MAX_STEP).toBe(0.1);
 
       const map = MovementMap.createMovementMap()!;
       map.addMovement(0, 'sustain', 0, 1, 'mov-1');
       map.addMovement(1000, 'sustain', 1, 0, 'mov-2');
       const atDefault = map.renderMovementToMap()!.size();
+      expect(atDefault).toBeGreaterThan(0);
 
-      try {
-        MovementMap.movementSampleMaxStep = 0.5;
-        expect(map.renderMovementToMap()!.size()).toBeLessThan(atDefault);
-      } finally {
-        MovementMap.movementSampleMaxStep = 0.1;
-      }
+      expect(map.renderMovementToMap(ctx({}))!.size()).toBe(atDefault);
+      expect(map.renderMovementToMap(ctx({ movementSampleMaxStep: 0.5 }))!.size()).toBeLessThan(
+        atDefault,
+      );
+      expect(map.renderMovementToMap(ctx({ movementSampleMaxStep: 0.02 }))!.size()).toBeGreaterThan(
+        atDefault,
+      );
+
       expect(map.renderMovementToMap()!.size()).toBe(atDefault);
+    });
+
+    it('the static renderMovementToMap passes the context through', () => {
+      const map = MovementMap.createMovementMap()!;
+      map.addMovement(0, 'sustain', 0, 1, 'mov-1');
+      map.addMovement(1000, 'sustain', 1, 0, 'mov-2');
+
+      expect(
+        MovementMap.renderMovementToMap(map, ctx({ movementSampleMaxStep: 0.5 }))!.size(),
+      ).toBe(map.renderMovementToMap(ctx({ movementSampleMaxStep: 0.5 }))!.size());
+      expect(
+        MovementMap.renderMovementToMap(map, ctx({ movementSampleMaxStep: 0.5 }))!.size(),
+      ).toBeLessThan(MovementMap.renderMovementToMap(map)!.size());
     });
   });
 });

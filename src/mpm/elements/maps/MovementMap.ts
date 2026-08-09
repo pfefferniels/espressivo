@@ -4,6 +4,9 @@ import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { MovementData } from './data/MovementData.js';
+import { DEFAULT_MOVEMENT_SAMPLE_MAX_STEP } from '../../RenderOptions.js';
+import type { RenderContext } from '../../RenderOptions.js';
+import type { Normalized } from '../../../units.js';
 
 /**
  * An MPM `movementMap`: continuous controller movement, most commonly the sustain
@@ -17,18 +20,6 @@ import { MovementData } from './data/MovementData.js';
  * Port of meico.mpm.elements.maps.MovementMap
  */
 export class MovementMap extends GenericMap {
-  /**
-   * Largest value step tolerated between two consecutive sampled `<position>` events,
-   * in the normalized 0..1 position space that {@link MovementData.getMovementSegment}
-   * subdivides against (the 127× MIDI scaling happens after sampling). Raising it
-   * subdivides less and so emits fewer events for a long ramp; lowering it emits more.
-   *
-   * 0.1 is the historic default every reference fixture is generated with — changing it
-   * changes rendered output, so leave it alone unless that is the point. Mirrors the
-   * static of the same name in MovementMap.java:252.
-   */
-  static movementSampleMaxStep = 0.1;
-
   private constructor(typeOrXml: string | Element) {
     super(typeOrXml);
   }
@@ -107,10 +98,10 @@ export class MovementMap extends GenericMap {
     const att = attribute('id', e);
     if (att !== null) md.xmlId = att.getValue();
     const posAtt = attribute('position', e);
-    if (posAtt === null) md.position = this.getPreviousPosition(i);
-    else md.position = parseFloat(posAtt.getValue());
+    if (posAtt === null) md.position = this.getPreviousPosition(i) as Normalized;
+    else md.position = parseFloat(posAtt.getValue()) as Normalized;
     const ttAtt = attribute('transition.to', e);
-    if (ttAtt !== null) md.transitionTo = parseFloat(ttAtt.getValue());
+    if (ttAtt !== null) md.transitionTo = parseFloat(ttAtt.getValue()) as Normalized;
     // Parsed since 2026-08-08 (MovementMap.java:182-192). Previously the shape and the
     // target controller written into a `<movement>` were ignored on the way back out, so
     // every rendered movement used the MovementData defaults (curvature 0.4, protraction
@@ -161,26 +152,43 @@ export class MovementMap extends GenericMap {
    * (`movementIndex < this.size() - 1`): a movement is a transition *towards* the next
    * one, so the final entry has no span to cover and only serves as the target the
    * previous transition aims at. Movements at a negative date are skipped as well.
+   *
+   * @param ctx supplies {@link RenderOptions.movementSampleMaxStep}; omitting it samples
+   *   at {@link DEFAULT_MOVEMENT_SAMPLE_MAX_STEP}, which is what every fixture is
+   *   generated with.
    */
-  renderMovementToMap(): GenericMap | null {
+  renderMovementToMap(ctx?: RenderContext): GenericMap | null {
     const movementMap = GenericMap.createGenericMap('positionMap');
     for (let movementIndex = 0; movementIndex < this.size(); ++movementIndex) {
       const md = this.getMovementDataOf(movementIndex);
       if (md === null) continue;
       if (movementMap !== null && movementIndex < this.size() - 1 && md.startDate >= 0) {
-        MovementMap.generateMovement(md, movementMap);
+        MovementMap.generateMovement(md, movementMap, ctx);
       }
     }
     return movementMap;
   }
 
-  static renderMovementToMap(movementMap: MovementMap | null): GenericMap | null {
+  static renderMovementToMap(
+    movementMap: MovementMap | null,
+    ctx?: RenderContext,
+  ): GenericMap | null {
     if (movementMap === null) return null;
-    return movementMap.renderMovementToMap();
+    return movementMap.renderMovementToMap(ctx);
   }
 
-  private static generateMovement(movementData: MovementData, movementMap: GenericMap): void {
-    const movementSegment = movementData.getMovementSegment(MovementMap.movementSampleMaxStep);
+  private static generateMovement(
+    movementData: MovementData,
+    movementMap: GenericMap,
+    ctx?: RenderContext,
+  ): void {
+    // The default is resolved here, at the point of use inside `src/mpm/`, never by a
+    // caller — `src/msm/` may only `import type` from this layer (RULE M1), so it cannot
+    // reach the constant. The `as` is RULE U3a's single boundary cast: options are plain
+    // numbers on the way in, branded where they are consumed.
+    const maxStepSize = (ctx?.options.movementSampleMaxStep ??
+      DEFAULT_MOVEMENT_SAMPLE_MAX_STEP) as Normalized;
+    const movementSegment = movementData.getMovementSegment(maxStepSize);
     for (const event of movementSegment) {
       const e = new Element('position', movementMap.getXml()!.getNamespaceURI());
       e.addAttribute(new Attribute('date', String(event[0])));

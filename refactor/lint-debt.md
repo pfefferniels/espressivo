@@ -1,6 +1,9 @@
-# Lint debt (as of T20b)
+# Lint debt (as of T19a)
 
-> Updated after **T20b** (movement fixes). Counts below are the *current*
+> Updated after **T19a** (branded units + render options): **1245 errors / 5 warnings**,
+> unchanged from T18 and per-rule identical. The headline table below stops at T20b and was
+> not extended by T14/T18/T19a — read the per-item sections at the end for the chain
+> 1292 → 1246 (T14) → 1245 (T18) → 1245 (T19a). Counts in the prose are the *current*
 > `npm run lint` output; the T2 baseline is kept in the headline table for comparison.
 
 Snapshot of every ESLint violation left in the tree after T2's safe auto-fixes, grouped by
@@ -686,6 +689,35 @@ needed `settings['import/parsers']` as well as the resolver before it saw anythi
 The [T18] log entry records the four controls (synthetic 2-file cycle, the real
 `GenericStyle → Mpm` cycle, four layer violations, and the `allowTypeImports` split) and
 they should be re-run by anyone who touches that config block.
+
+### T19a — branded units + render options — repo 1245 → **1245** errors (warnings 5)
+
+**Zero delta, and zero per rule** — measured as a full per-rule histogram over a
+`git archive a604f4a` baseline and the working tree, not as a totals comparison:
+`no-non-null-assertion` 1079, `no-unused-vars` 54, `no-empty-function` 54,
+`unified-signatures` 41, `no-explicit-any` 12, `no-param-reassign` 5 (warnings),
+`no-require-imports` 2, `no-unsafe-function-type` 2, `no-extraneous-class` 1. Nothing
+added, nothing traded.
+
+Both new modules lint **clean at zero**: `src/units.ts` and `src/mpm/RenderOptions.ts`.
+Worth recording why that is not luck — `units.ts` has no runtime code to violate anything,
+and `RenderOptions.ts` is one exported function plus two interfaces with
+`explicit-module-boundary-types` satisfied. The two new test files add nothing either.
+
+**No new suppressions** (`eslint-disable`, `@ts-ignore`, `@ts-expect-error`: zero across
+all nine touched files). The item's **8 `as Normalized` casts in `src/`** are sanctioned by
+ARCHITECTURE.md RULE U2 — which forbids converter *functions* precisely so that
+construction happens through `as` — and RULE U3a's single boundary cast in
+`MovementMap.generateMovement`. They are not lint findings: type assertions are not
+reported by this config (`no-unnecessary-type-assertion` is type-aware and therefore off,
+RULE N6), so they neither help nor hurt the number above. Inventory, for T21's audit:
+`MovementData.ts:21,41,46`, `MovementMap.ts:101,102,104,190`, `RenderOptions.ts:42`.
+
+`import/no-cycle` and the four `no-restricted-imports` layer zones T18 added stay green at
+zero. The one edge this item adds across a layer boundary — `src/msm/Msm.ts` →
+`src/mpm/RenderOptions.js` — is an `import type`, which the `msm` zone permits by name
+(`typeOk: true`); the emitted `dist/msm/Msm.js` imports nothing new, which is the proof
+that matters.
 
 ### tests — 86
 `no-empty-function` 54, `no-unused-vars` 18, `no-explicit-any` 12,
