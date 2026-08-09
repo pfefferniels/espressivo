@@ -48,6 +48,20 @@ through files in `refactor/` + git history — never through agent memory.
 10. **Formatting commits are separate from logic commits** (T2 may produce a pure
     reformat commit; later items must not mix mass-reformat with logic changes).
 
+## Bug policy (user directive, 2026-08-09: "fix all the obvious bugs … and document them")
+
+The original bug-for-bug rule is AMENDED: obvious bugs — Java-inherited or
+port-born, big or small, including typos — get FIXED, each as a documented,
+TD1-discipline divergence: (a) prove no fixture exercises the buggy path (or that
+the fix cannot move fixture bytes — pipeline byte-probe mandatory), (b) pinning
+tests for the FIXED behavior (inverting any tests that pinned the bug, journaled),
+(c) negative control where the failure mode allows one, (d) a PARITY.md "Fixed
+bugs" entry with Java citations and rationale. What stays preserved: behavioral
+differences that are NOT obviously bugs (ambiguous Java design intent, e.g.
+ArticulationData's overwrite-not-compose semantics) — documented as preserved with
+reasoning. The subtleties below remain load-bearing for everything NOT covered by
+an approved fix entry.
+
 ## Known parity subtleties (do not "fix" these)
 
 - Java bugs are ported bug-for-bug deliberately (e.g. `AccentuationPatternDef.

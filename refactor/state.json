@@ -207,6 +207,13 @@
       "details": "package.json exports map, sideEffects, engines, declaration maps; README with API examples and the Java-parity story; document deliberate bug-for-bug parity list. ALSO: rename package to `espressivo` (npm name `meico` is taken; user adopted the new name — update package.json name + any self-references in README/docs)."
     },
     {
+      "id": "TD2",
+      "phase": 4,
+      "status": "pending",
+      "title": "Bug-fix wave: fix all obvious inherited bugs (user directive 2026-08-09)",
+      "details": "Fix each as a TD1-discipline documented divergence, sub-round per bug with pipeline byte-probe between: (1) Mpm.isInNamespace two Java typos (Mpm.java:214,218) — accept the CORRECT spellings while KEEPING the misspelled ones accepted (compat with Java-written files; fixtures contain only currently-accepted names, so byte-probes must stay identical); INVERT the just-added T22 pinning test to assert both spellings accepted (journal the inversion). (2) AccentuationPatternDef.getAccentuationAt segment-end bug (Java ~:317; the dead countdown-loop guard) — fix to Java's evident intent; the istanbul dead-branch evidence says no fixture hits it; invert the pinning tests (AccentuationPatternDef.test.ts:284-336 area, Styles.test.ts:353). (3) Parity-ledger P1: malformed numeric attributes — match Java semantics (Double.parseDouble throws -> factory returns null -> def skipped) instead of keeping NaN-valued defs; implement per ARCHITECTURE.md §3/§6 error policy (internal: null-return skip path, NOT exceptions, unless the doc rules otherwise); fixtures are well-formed so probes stay identical; add malformed-input tests per def class. (4) P2: MovementMap.getPreviousPosition on missing transition.to — Java NPEs, TS silently yields 0: replace the silent 0 with the §6-policy error (typed error at parse or explicit skip per the doc's malformed-input ruling; journal the choice); add tests. (5) P4: RandomNumberProvider.getValue/getValueDouble on NaN/Infinity/huge indices — both Java and TS hang or overflow: add input guards (typed RangeError-class rejection), tests for each pathological class; this diverges from Java like TD1 (unusable-on-input beats hang). Each bug: PARITY.md 'Fixed bugs' entry with Java citations, site comment, negative control where feasible. What NOT to touch: ArticulationData overwrite-not-compose (ambiguous design intent — document as preserved), imprecision nondeterminism, anything not listed without a journaled conductor ruling. Full standard evidence duty; verify green; TREE FREEZE after READY."
+    },
+    {
       "id": "T23",
       "phase": 4,
       "status": "pending",

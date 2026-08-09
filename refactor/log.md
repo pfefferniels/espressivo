@@ -10244,3 +10244,539 @@ closing the symbol space, not by enumeration); 17 KEEP rulings intact; 28 unrule
 journaled and untouched; byte-probe sha unbroken since TD1; RULE N6 enabled to spec with all
 seven gates probe-tested; −8 tests all tests-of-removed-behavior; coverage improves on both
 gates for a reason that is arithmetic and was stated as such.
+
+## [T22] worker — package hardening + docs: the port becomes a publishable package (2026-08-09)
+
+Packaging and documentation only. **`git diff -- src/` is one line** — a doc-comment specifier,
+detailed in §6. No behaviour, no test changes (2268, unchanged), no fixture touched.
+Manifest: `M package.json`, `M package-lock.json`, `M src/api/index.ts`, `?? README.md`,
+`?? PARITY.md`.
+
+### 1. package.json — what changed and why each is defensible
+
+- **`name`: `meico` → `espressivo`** (user-adopted; the npm name `meico` is taken). The
+  lockfile's two `name` fields were re-synced with
+  `npm install --package-lock-only --ignore-scripts`; the resulting diff is exactly those two
+  lines plus the mirrored `engines` block — **zero dependency movement**, checked in the diff.
+- **`exports` map**, root only: `{".": {"types", "default"}, "./package.json": "./package.json"}`.
+  `main`/`types` are kept alongside for pre-exports resolvers. **No subpath exports**: the brief
+  allows them only where ARCHITECTURE.md prescribes them, and ARCHITECTURE.md says nothing about
+  packaging (`grep -n 'package.json|exports|subpath'` over it returns exactly one hit, RULE M6 on
+  the version string). See DISCOVERED for the `./api` question this leaves open.
+- **`sideEffects`: an allowlist, NOT `false`** — see §2, this was the one real judgement call.
+- **`engines`: `node >= 18.18.0`** — a *measured* floor, not an aspiration. An AST sweep of all
+  312 emitted `dist/*.js` for post-ES2022 API (`toSorted`, `findLast`, `structuredClone`,
+  `Object.groupBy`, `Object.hasOwn`, `.at(`, `replaceAll`) finds **one hit, and it is inside a
+  comment**. Dependencies: `@xmldom/xmldom` `>=14.6`, `xpath` `>=0.6.0`, `uuid` unconstrained.
+  18.18 is the oldest LTS line that satisfies all of that and the dev toolchain (vitest 3 accepts
+  `^18.0.0`).
+- **`files` allowlist**: `dist`, `src`, `PARITY.md` (README/LICENSE/package.json are automatic).
+  `src` ships **deliberately**: `declarationMap` and `sourceMap` are both on, and their maps point
+  at `../src/*.ts` — shipping the maps without the sources is a dangling reference, so either the
+  sources ship or the maps should not be generated. Chose the former.
+- **Clean-dist**: `"clean": "node -e \"require('fs').rmSync('dist', {recursive:true, force:true})\""`,
+  wired as **`prebuild`** (so `npm run build`, and therefore `npm run verify`, always builds
+  clean) and **`prepack`: `npm run build`** (so no pack can ship stale output). Full clean rebuild
+  costs 3.4 s, measured — cheap enough to pay every time. The script no-ops safely when `dist/`
+  is absent (checked). Single-quoted JS inside the double-quoted npm script is cmd.exe-safe.
+- Added `keywords`, `homepage`, `repository`, `bugs` (the remote is the one the charter's
+  Commands section names) and rewrote `description` for the new name.
+
+**Negative control for the clean step, because "it should work" is not evidence.** Wrote
+`dist/STALE_PROBE.js` (a file no `src` module produces), ran `npm run build`, and it is **gone**;
+`dist` is back to exactly 312 files. `tsc` alone never prunes — that is precisely the T3
+DISCOVERED hazard and the stale-`dist` confusion the [TD1] entry warns the next agent about, and
+it is now structurally impossible on the build path.
+
+### 2. `sideEffects` — the audit says `false` would be WRONG, and here is the proof
+
+The brief asked me to verify side-effect freedom "after T18" before claiming it. **It is not
+side-effect-free, and T18 is the reason why**: ARCHITECTURE.md RULE M4 kept the factory
+registration pattern on purpose and gave `Mpm.ts` a single barrel import whose only job is to run
+it.
+
+AST sweep (TypeScript compiler API over every `dist/*.js`, classifying each top-level statement):
+
+| finding | count | where |
+| --- | --- | --- |
+| bare side-effect-only imports | 10 | `Mpm.js` → the maps barrel; the barrel → its 9 map modules |
+| top-level expression statements | 13 | `GenericMap.registerMapFactory(…)` in 10 map modules (ImprecisionMap registers 5 names) |
+| ditto, module-local only | 2 | the enum IIFEs in `TemporalSpread.js` — they mutate a module-local `var`, nothing external |
+| any other top-level statement | **0** | — |
+
+**Load-bearing probe** — the failure mode is silent, which is what makes `sideEffects: false`
+dangerous here rather than merely inaccurate:
+
+```
+A  deep-import GenericMap only:   createTypedMap('dynamicsMap', xml) -> GenericMap   (fallback!)
+B  after importing the barrel:    createTypedMap('dynamicsMap', xml) -> DynamicsMap
+```
+
+A bundler that believed `sideEffects: false` could drop the bare barrel import (it binds no
+names), and every typed map would silently degrade to a plain `GenericMap` — no crash, no error,
+just wrong rendering. So: `"sideEffects": ["./dist/mpm/Mpm.js", "./dist/mpm/elements/maps/*.js"]`
+— exactly the 12 files the audit found, and nothing else. (`*` does not cross `/`, so
+`maps/data/**` is correctly excluded; the audit found nothing there.)
+
+### 3. README.md — every snippet is executed, not just written
+
+Sections: what it is, install, quick start, per-note data, staged pipeline, errors, the API table,
+the class API underneath, **Equivalence with Java meico**, deliberate divergences, provenance
+(cemfi/meico upstream → the pfefferniels fork → `meico@1b3711f0`; `VERSION` 0.11.2 vs the npm
+version, with RULE M6's reason), scope, development, license.
+
+**Doc-test, in the strongest form available: a real consumer of the real tarball.**
+`npm pack` → install the `.tgz` into a scratch project → extract all 5 ```` ```ts ```` blocks →
+typecheck **and run** them. That tests the `exports` map, the type resolution and the code at
+once; a snippet-typecheck against `src/` would have tested none of the three.
+
+| config | result |
+| --- | --- |
+| `module/moduleResolution: NodeNext`, `strict`, `skipLibCheck: true` | **0 errors** |
+| same, `skipLibCheck: false`, `lib: ES2022,DOM` | **0 errors** |
+| same, `skipLibCheck: false`, `lib: ES2022` (no DOM) | 5 errors, **all inside the package's own `.d.ts`**, none in snippet code — see DISCOVERED |
+| compiled and executed, all 5 | **all exit 0**; snippet 1 writes a 543-byte file opening with `MThd` |
+
+Reproduce: `scratchpad/t22work/extract-snippets.mjs <md> <outdir>`, consumer project in
+`scratchpad/t22work/consumer/` (`sonata.mei` = the `composite_advanced` fixture, `multi_part.mei`
+= its own). Snippet order and README line numbers are printed by the extractor.
+
+**The documented sample output is measured, not invented.** The README states that
+`multi_part.mei` yields `Violin` ch. 0 / 6 notes and `Cello` ch. 1 / 4 notes with a first note of
+`{id:"n1", pitch:76, date:0, duration:720, velocity:83, milliseconds:{date:0, end:570}}`. That is
+the literal stdout of the installed package. Every API name, option and error class in the prose
+was read out of `src/api/{types,pipeline,errors}.ts` rather than recalled.
+
+### 4. PARITY.md — the complete ledger, five sections
+
+1. **Deliberate divergences** (3): DELIBERATE DIVERGENCE #1 / TD1 with `ArticulationData.java:197`
+   vs `ArticulationDef.java:420-423`, the `modified`-suppression consequence, the probe sha
+   `169e964b…` and the NC-C negative control; T20b's five mirrored movement fixes with
+   `meico@1b3711f0` provenance, the `450193e4` patch sha256 and sub-divergence D1
+   (`movementSampleMaxStep` static → `RenderOptions`, with the corollary for future
+   regenerations); T9b's `getMinimalPPQ` (`Msm.java:254-279`, int division at `:262`/`:270`,
+   zero `src/` callers, expected values produced by running Java).
+2. **Frozen divergences**: P1 (`parseFloat` vs `Double.parseDouble`), P2, P4 from §6.3, plus the
+   three smaller ones I found in the source markers rather than in §6.3 — the five-site
+   `setLocalName` family, `RelatedResource.setType`'s `\s` class vs Java's ASCII-only, and
+   `Performance.renderGlobalOrnamentation`'s null-only guard vs `OrnamentationMap.java:215`.
+3. **Bug-for-bug preservations**: `AccentuationPatternDef.getAccentuationAt`
+   (`AccentuationPatternDef.java:317`, with the three corroborations from the [T6] verifier);
+   `ArticulationData`'s overwrite-not-compose duration semantics with the 200 → 130 pinning test;
+   `MovementMap.getPreviousPosition`'s `j > 0` (`MovementMap.java:200`) and
+   `TempoMap.getTempoDataAt`'s run down to `-1` (`TempoMap.java:181`); the two `Mpm.isInNamespace`
+   typos (`Mpm.java:214` trailing space, `:218` `dynamcisGradient`) and the probe that pins both
+   corrections negative; `TempoData.clone`'s omitted `startDateMilliseconds`.
+4. **Nondeterminism**: imprecision (`ImprecisionMap.java:845,894`) and the UUID canonicalization,
+   with the charter's never-byte-compare rule.
+5. **What is *not* a divergence**: the unrendered last movement, and the console logging (RULE E1).
+
+Sourced from ARCHITECTURE.md §6.3, the [T4]/[T6]/[T7]/[T8]/[T9b]/[TD1]/[T20b] entries, and the 14
+`PARITY NOTE` / `DELIBERATE JAVA BUG` / `DELIBERATE DIVERGENCE` markers in `src/` (enumerated by
+grep, so the ledger is closed against the source rather than against my reading of the journal).
+
+### 5. Evidence summary
+
+- `npm run verify` **green, twice**: 58 files / **2268 tests**, unchanged from [T21].
+- `npm pack --dry-run`, before → after: **596 files / 5.16 MB → 393 files / 3.08 MB**
+  (tarball 1195 kB → 657 kB). Before, the tarball shipped `tests/` (194 files, **including the
+  immutable Java ground truth**), the whole `refactor/` journal, and every config file. After, it
+  is exactly `dist` (312 = 78 × {js, js.map, d.ts, d.ts.map}) + `src` (78) + `package.json` +
+  `README.md` + `PARITY.md` = **393**, arithmetic closed. Zero stale entries: every `dist` file
+  maps to an existing `src/*.ts` (scripted check, 0 orphans).
+- **Lint: 1013 problems (1011 errors, 2 warnings) — identical to [T21]'s recorded baseline.**
+  `eslint src/api/index.ts` (the only changed source file): **0 findings**.
+- `prettier --check` on `README.md`, `PARITY.md`, `package.json`: clean.
+- No pipeline byte-probe (no src behaviour change; `git diff -- src/` is one comment line).
+
+### 6. The one src/ line, and the one I deliberately did not touch
+
+`src/api/index.ts:5` advertised `from 'meico/api'` in its doc comment. With the rename and with no
+`./api` subpath export, that specifier was wrong twice over; it now reads `from 'espressivo'`,
+which is accurate — `index.ts` exports all three named functions. It is inside a `/** */` block:
+no statement, expression or type is touched, and the only emitted consequence is the comment text
+in `dist/api/index.{js,d.ts}`.
+
+**Not touched, on purpose:** `Mei2MsmMpmConverter.ts:684,690` `Author.createAuthor('meico', …)`.
+That is serialization-visible MPM metadata naming the *upstream tool*, not this package; changing
+it would move fixture bytes. Same for every `meico_<uuid>` id prefix and the `meico`-named
+fixtures. The rename touched **only** references meaning *this npm package*.
+
+### DISCOVERED
+
+- **The published `.d.ts` require the DOM lib.** `dist/xml/XomTypes.d.ts` refers to the global
+  `Node` (4 sites) and `globalThis.Element` (1 site), because `tsconfig.json` compiles with
+  `"lib": ["ES2022", "DOM"]`. A consumer with `skipLibCheck: false` and no `"DOM"` in `lib` gets 5
+  errors *inside this package*. The facade's own types are unaffected. Out of scope to fix here
+  (it is a `src` type change and would need its own gate); documented in the README's install
+  section as a caveat. Candidate follow-up: type the XomTypes seam against `@xmldom/xmldom`'s own
+  types instead of the DOM globals.
+- **No `license` field and no `LICENSE` file.** Upstream meico is **GNU GPL v3**
+  (`/Users/nielspfeffer/Projects/meico/LICENSE`, and the upstream README says so explicitly); no
+  per-file "or any later version" headers exist, so `GPL-3.0-only` is the conservative reading.
+  This port is a derivative work, so the terms are effectively determined — but asserting a
+  license in the user's package is not a worker's call, and `npm publish` without it would
+  distribute a GPL derivative with no notice. **Blocking for publish, not for this item.** The
+  README's License section states the situation rather than inventing an answer. Conductor
+  ruling wanted.
+- **`./api` subpath export: deferred, not forgotten.** `src/index.ts`'s own comment calls
+  `src/api/index.ts` "the one-import entry point for consumers who only want the facade", but with
+  a root-only `exports` map that module is unreachable for a package consumer. Adding
+  `"./api": {...}` is two lines and would make that sentence true again; it is also a public-surface
+  decision ARCHITECTURE.md does not authorize. Left to the conductor/architect.
+- **`tests/midi/Midi.test.ts` is not prettier-clean** (`prettier --check .` flags it, and only it).
+  Pre-existing — the file is unmodified in this item's manifest. Flagging so T23 does not read it
+  as T22 breakage.
+- **Publishing readiness, beyond the license**: the package has never been published under either
+  name, so the `exports` map — which does newly forbid deep imports like
+  `espressivo/dist/xml/tree.js` — breaks no existing consumer contract. Worth stating explicitly
+  in the final report to the user.
+
+### Handoff to T23
+
+Nothing in this item can drift behaviour, so the audit surface is small: confirm `git diff -- src/`
+is still the single comment line, that `dist` after a fresh `npm run build` still has zero orphans,
+and that the tarball is still 393 files. The two decisions that would benefit from an adversarial
+second read are the `sideEffects` allowlist (§2) and the `engines` floor (§1) — both are argued
+from measurements that are scripted and cheap to re-run.
+
+## [T22] verifier — PASS with one required doc correction: PARITY.md claims a test guard that does not exist (2026-08-09)
+
+Everything material reproduced independently. The two decisions the worker flagged for an
+adversarial read (`sideEffects`, `engines`) both survive it — the `sideEffects` allowlist is not
+merely defensible, it is **provably load-bearing under a real bundler**. One finding, in
+PARITY.md §3, detailed in pt. 6.
+
+### 1. src identity — comment-only, confirmed by token stream
+
+`git diff c96ac69 -- src/` is the single line `src/api/index.ts:5`. JSDoc-pruned TS token stream
+(t8verify/toks2.mjs) of base vs work: **0-line diff, 16 tokens identical** — the file is a pure
+re-export barrel, so no statement, expression or type exists to have changed.
+
+**Upstream-meico references survive.** 141 `meico` occurrences remain in `src/`, exactly **one**
+`espressivo` (the changed comment). Spot-checked the serialization-visible ones the worker said it
+deliberately left alone: `Mei2MsmMpmConverter.ts:684,690` `Author.createAuthor('meico', …)`, the
+`meico_${uuidv4()}` id prefixes, `restored-meico`, `meico_copyId_`, `meico_repeats_`. All intact.
+The rename touched only references meaning *this npm package*, as claimed.
+
+### 2. Standard gates
+
+- `npm run verify` **green, run by me**: both tsc stages (`tsc`, then `tsc -p tsconfig.tests.json`)
+  then **58 files / 2268 tests**, exit 0.
+- **Test-count chain closes**: phase-3 audit 2276 (c6d80cf) − 8 (`tests/compat/unsupported.test.ts`,
+  deleted in T21 under invariant 7c, journaled and verifier-confirmed) = **2268**, and file count
+  59 → 58 matches the one deleted file. T22's "unchanged" is exact; no unexplained delta.
+- **Coverage v3 bit-exact vs T21**: functions **961/1038 = 92.5819 %** (floor 92.0 PASS),
+  uncovered scoped statements **2107** (budget 2318 PASS). Both reproduce [T21] verifier's recorded
+  figures to the digit — the correct result for a comment-only src change.
+- Fixtures untouched (`git status`/`git diff c96ac69 -- tests/` both empty). No suppressions in any
+  changed file. log.md append-only (0 deleted lines). `eslint src/api/index.ts` → **0 findings**;
+  full lint **1013 problems (1011 errors, 2 warnings)**, matching [T21]'s recorded 1011/2 exactly.
+  `prettier --check README.md PARITY.md package.json` clean.
+- Manifest exactly as declared: `M package.json`, `M package-lock.json`, `M src/api/index.ts`,
+  `?? README.md`, `?? PARITY.md` (+ log.md bookkeeping). Lockfile diff is **two `name` lines plus
+  the mirrored `engines` block — zero dependency movement**, as claimed.
+
+### 3. Packaging — packed, installed, and probed as a real consumer
+
+- `npm pack --dry-run`: **393 files / 656.9 kB**. Composition: 312 `dist` + 78 `src` +
+  `package.json` + `README.md` + `PARITY.md`. `dist` census is **78 × {js, js.map, d.ts, d.ts.map}**
+  — declaration maps and source maps both present, as the item required. **Zero orphans**: every
+  `dist` artifact maps to an existing `src/*.ts` (scripted). No `tests/`, `refactor/`, `coverage/`,
+  fixture or config entry.
+- **Clean-dist negative control, done my own way.** Planted `dist/STALE_PROBE.{js,d.ts}` *and* a
+  fake deleted-module residue `dist/mpm/elements/maps/DeletedModule.{js,d.ts,js.map,d.ts.map}`
+  (318 files), then ran the **ship path** `npm pack --dry-run` — which fires
+  `prepack → build → prebuild → clean`. Result: tarball back to **393 with zero stale entries**,
+  disk back to 312. Stale output is structurally unable to ship.
+- **exports map, on a packed + installed copy** (`npm pack` → `npm install` the `.tgz` into a
+  scratch project): `import 'espressivo'` resolves, **76 exports, all three facade functions
+  present**; `espressivo/package.json` resolves; `espressivo/dist/index.js` and `espressivo/api`
+  both correctly rejected with `ERR_PACKAGE_PATH_NOT_EXPORTED` (the latter confirming the worker's
+  DISCOVERED note about `./api` being unreachable). End-to-end through the installed package works.
+
+### 4. `sideEffects` — the allowlist is provably necessary, sufficient, and correctly scoped
+
+My own TS-compiler-API sweep over all 312 `dist/*.js`, classifying every top-level statement,
+reproduces the worker's table: **10 bare imports, 13 `registerMapFactory` calls, 2 enum IIFEs**,
+across **13 files**. Allowlist arithmetic closes: `maps/*.js` is 11 files + `Mpm.js` = **12**, and
+all 13 registrations live in those 11. Nothing under `maps/data/` has a side effect, so the
+non-`/`-crossing `*` correctly excludes it.
+
+**Real-bundler proof, which is stronger than the worker's argument.** esbuild, bundling a consumer
+that parses `comprehensive.mpm` through the installed package:
+
+| config | `registerMapFactory` in bundle | typed maps | fallbacks |
+| --- | --- | --- | --- |
+| unbundled baseline | — | 3 | 0 |
+| **shipped allowlist** | 14 | **3** | **0** |
+| counterfactual `sideEffects: false` | **1** | **0** | **3** |
+
+With `false`, all 13 registrations are dropped and `dynamicsMap`/`tempoMap`/`articulationMap` each
+degrade silently to `GenericMap` — no crash, no warning. The worker's judgement call is correct and
+`false` would have shipped a silently-broken package. The shipped allowlist reproduces the
+unbundled baseline exactly.
+
+**The 13th file's exclusion is also correct.** `styles/defs/TemporalSpread.js` is deliberately *not*
+listed; its two statements are TS enum IIFEs initializing their own exported bindings. Bundled vs
+unbundled, `FrameDomain` and `NoteOffShift` come back **identical** (`{Ticks, Milliseconds}`,
+`{False, True, Monophonic}`) — excluding it only permits dropping the module when unused, which is
+right.
+
+### 5. `engines`, README snippets, PARITY citations
+
+- **engines ≥ 18.18.0**: my independent AST sweep for post-ES2022 APIs over all emitted `dist/*.js`
+  finds **0 call sites**. Dependency floors confirmed as declared: `@xmldom/xmldom` `>=14.6`,
+  `xpath` `>=0.6.0`, `uuid` declares no `engines`. Floor is measured, not aspirational.
+- **README snippets: all 5 extracted and compiled against the packed types**, three configs, and the
+  worker's table reproduces exactly — `skipLibCheck:true` **0 errors**; `skipLibCheck:false` + DOM
+  **0 errors**; `skipLibCheck:false` without DOM **5 errors, all inside
+  `node_modules/espressivo/dist/xml/XomTypes.d.ts`** (4 × `Node`, 1 × `globalThis.Element`), **none
+  in snippet code**. The README documents this caveat accurately. All 5 also **compiled and ran**,
+  exit 0; snippet 1 writes a **543-byte file opening `MThd`**.
+- **The documented sample output is real.** Re-ran snippet 2: `Violin` ch 0 / 6 notes, `Cello`
+  ch 1 / 4 notes, first note
+  `{"id":"n1","pitch":76,"date":0,"duration":720,"velocity":83,"milliseconds":{"date":0,"end":570}}`
+  — matches the README's JSON block byte for byte.
+- **README facts**: 2268 tests / 58 files ✓; 16 MEI, 32 reference, 48 performance-reference
+  (16+16+16), 40 all-maps-reference ✓ (arithmetic closes against the tree); exactly **six**
+  integration suites ✓; `VERSION = '0.11.2'` ✓; a missing reference is a `readFileSync` inside
+  `it()` ⇒ **failure, not skip** ✓; provenance `1b3711f0` "Fix movementMap XML round-trip and
+  rendering fidelity" is the Java fork's actual HEAD, preceded by `450193e4` ✓.
+- **Java citations — every one checked landed on the exact line**, not a ballpark:
+  `ArticulationData.java:197` (`durNew >= 0.0`, no guard, comment describing the inverse test);
+  `ArticulationDef.java:420-423` (the `dur > 0.0` guard **and** `durNew <= 0.0` — both, as claimed);
+  `Msm.java:254-279` = `getMinimalPPQ` exactly, `int` at `:255/:261/:269`, `ppq / subdivs` at
+  `:262/:270`; `AccentuationPatternDef.java:317` `i > (size()-1)` with `segmentEnd = length + 1.0`
+  at `:311` and the down-counting loop at `:312`, so the guard is provably dead;
+  `Mpm.java:214` `case "accentuation ":` (trailing space) and `:218` `case "dynamcisGradient":`;
+  `MovementMap.java:200` `j > 0`; `TempoMap.java:181` `i >= -1`; `ImprecisionMap.java:845` unseeded
+  `new Random()` and `:894` `shake()` using an unseeded provider; `OrnamentationMap.java:215`
+  `(map == null) || map.isEmpty()`; `RelatedResource.java:110` `replaceAll("\\s+", "")`.
+- **T20b provenance**: the patch exists and its sha256 is
+  `3c5fc1b22b5f0312b649bd33e0ac85d31bc36d43759fd005ed287c81ac9704f5` — **matches the claim exactly**.
+- **P1/P2/P4/D1 vs ARCHITECTURE.md §6.3**: descriptions match near-verbatim; PARITY sharpens P2 with
+  a real file:line (`MovementMap.ts:120-132`) and D1's corollary is carried over. §6.3's instruction
+  that "T22 writes all five into a PARITY.md / README section" is satisfied — all five rows present.
+- TS-side citations verified: `ArticulationData.ts:193-215` (guard at `:213`),
+  `ArticulationDef.ts:355-363`, `AccentuationPatternDef.ts:222`, `ArticulationData.ts:145-153`,
+  `RenderOptions.ts` carries `movementSampleMaxStep`, `api/errors.ts` exists. The TD1 claim that a
+  zero `duration.perf` is not hypothetical checks out: `composite_advanced_augmented.msm` carries
+  **exactly one** `duration.perf="0.0"`. `absoluteDurationChange` appears in **0** fixture files.
+  `Msm.getMinimalPPQ` has **zero call sites** in `src/` (the `Midi.getMinimalPPQ` hits are a
+  different class with a different arity).
+
+### 6. FINDING — PARITY.md §3 asserts a suite guard that does not exist
+
+PARITY.md's "Two Java typos in `Mpm.isInNamespace`" ends:
+
+> The [T8] behavioural probe asserts both misspellings positive **and** both corrections negative,
+> **so a well-meaning future edit fails the suite.**
+
+The first clause is true; **the last clause is false.** [T8]'s probe was a scratch-tree artifact
+(its own entry: "12 mutations of the *new* src in a scratch tree (`src/` never touched)") — per
+charter verifier protocol step 4, throwaway probes live in the scratchpad, not `tests/`. Nothing in
+`tests/` asserts either typo: `tests/mpm/Mpm.test.ts:94`'s `isInNamespace` block checks only
+generic names (`mpm`, `performance`, `tempoMap`, …) and four negatives, and an exhaustive grep for
+`dynamcisGradient` / `'accentuation '` across `tests/` returns **nothing outside fixtures**.
+
+**Proven, not argued.** Scratch tree from `git archive HEAD` (real `src/` never touched, confirmed
+by `git status`), both typos "corrected" to `'accentuation'` and `'dynamicsGradient'`, full suite:
+**58 files / 2268 tests passed, exit 0.** The edit PARITY.md promises will fail the suite passes it.
+
+This matters more than a wording slip: §3's stated purpose is "Do not *fix* these", and this is the
+one preservation in the ledger with **no** regression guard — while the ledger claims it has one.
+Contrast the neighbouring entries, whose equivalent claims I verified as **true**:
+`ArticulationMap.test.ts:663-678` pins the 200 → 130 overwrite semantics verbatim
+(`relativeDuration=0.5` + `absoluteDurationChange=-70` on 200 ⇒ 130), and `:636`/`:648` are exactly
+the **two** `expect(note.getAttribute('modified')).toBeNull()` assertions TD1 claims. The
+`AccentuationPatternDef` bug is genuinely protected too (its negative control moves fixture hashes).
+So this is an isolated overstatement, not a pattern — but it ships in the tarball.
+
+**Required before publish** (conductor's call on how): either delete the clause, or — better, and
+two lines — add the assertions to `tests/mpm/Mpm.test.ts` so the sentence becomes true and the one
+unguarded preservation gains its guard:
+`expect(mpm.isInNamespace('accentuation ')).toBe(true)` / `isInNamespace('accentuation')` false;
+`isInNamespace('dynamcisGradient')` true / `isInNamespace('dynamicsGradient')` false.
+
+Cosmetic, no action: the worker's log calls `multi_part.mei` "its own" — it is in fact byte-identical
+to `tests/integration/fixtures/mei/multi_part.mei`, i.e. the real fixture, which is better than
+claimed. Both snippet inputs are byte-identical to repo fixtures.
+
+### Verdict
+
+**PASS T22**, conditional on the §6 correction, which is documentation-only and touches no code,
+no behaviour and no packaging. Every acceptance criterion of the item is independently met: exports
+map resolves on a packed+installed copy, `sideEffects` is proven correct under a real bundler,
+`engines` is measured, declaration maps ship, the tarball is exactly the allowlist with no stale
+output, every README snippet compiles and runs as written, and every Java citation in the ledger is
+exact. The open items the worker raised (no `license`/`LICENSE` — GPL-3.0 derivative; the `./api`
+subpath; the DOM-lib `.d.ts` caveat) are genuine and remain conductor calls; the license one is
+correctly flagged as blocking for publish, not for this item.
+
+## [T22] worker — fix round: the ledger's one unguarded claim gets its guard (2026-08-09)
+
+Verifier-T22 pt. 6 was right, and the finding was sharper than a wording slip: PARITY.md §3 told
+readers "do not fix these" and then cited a suite guard that did not exist. The [T8] evidence was
+a scratchpad probe (correctly so — charter verifier protocol step 4 puts throwaway probes there),
+and the verifier proved the gap by correcting both typos in a scratch tree and watching the full
+suite pass, exit 0. Took the conductor's option **(b)**: make the sentence true rather than delete
+it, since this was the only preservation in the ledger with no regression guard.
+
+**The test** — `tests/mpm/Mpm.test.ts`, one `it` appended to the existing `isInNamespace` describe,
+exactly the four assertions the verifier specified and exactly what the [T8] probe measured:
+
+```
+isInNamespace('accentuation ')    -> true      isInNamespace('accentuation')     -> false
+isInNamespace('dynamcisGradient') -> true      isInNamespace('dynamicsGradient') -> false
+```
+
+All four were read off the running code before being written down, not predicted. A five-line
+comment above them explains why the assertions look wrong, names `Mpm.java:214` / `:218`, and
+points at PARITY.md §3 — the failure mode to defend against is a future reader "fixing" the
+*test* to match a corrected vocabulary.
+
+**Negative control — the verifier's own experiment, re-run with the guard in place.** Scratch tree
+from `git archive HEAD` (real `src/` never touched; `git status` confirms, and
+`git show HEAD:src/mpm/Mpm.ts | diff -` against the extracted copy is empty), new test copied in,
+both typos corrected to `'accentuation'` / `'dynamicsGradient'`:
+
+| tree | result |
+| --- | --- |
+| unmutated HEAD src + new test (control) | `tests/mpm/Mpm.test.ts` **25 passed**, exit 0 |
+| both typos "corrected" | **1 failed / 24 passed**, `AssertionError: expected false to be true` |
+| both typos "corrected", **full suite** | **1 failed / 2268 passed (2269)** — where the verifier measured 2268 passed / exit 0 |
+
+The third row is the point: the exact edit that silently passed the suite yesterday now fails it,
+and fails only on the assertion that is supposed to catch it.
+
+**PARITY.md §3 rewritten** to cite `tests/mpm/Mpm.test.ts` as the guard, and — because the ledger's
+value is its honesty — to say plainly that the guard is newer than the preservation it protects and
+that correcting both typos used to pass. A reader who checks the claim now finds it true and finds
+its history.
+
+**Gates.** `npm run verify` green: 58 files / **2269 tests** (2268 + 1). Invariant 7c gates
+*decreases*; this is an increase and it is the item's point — the new test adds assertion power over
+a behaviour that had none. Coverage bit-identical to [T21] and to the verifier's reproduction —
+functions **961/1038 = 92.5819 %** (floor 92.0), uncovered scoped statements **2107** (budget 2318)
+— as expected for a test that exercises already-covered lines. Lint: `tests/mpm/Mpm.test.ts` carries
+**10 findings, and carried the same 10 at HEAD** (measured by piping `git show HEAD:` through eslint
+with the same config — the unused `Document` import plus nine pre-existing `any`s in the mock
+performance); repo total **1013 (1011 errors, 2 warnings)**, unchanged. `prettier --check` clean.
+Tarball unchanged at **393 files** — `tests/` is not in the `files` allowlist, so the guard ships as
+a repo asset, not as package weight.
+
+Manifest is now 5 M / 2 untracked: `package.json`, `package-lock.json`, `src/api/index.ts`,
+`tests/mpm/Mpm.test.ts`, `refactor/log.md`, plus `README.md` and `PARITY.md`. `src/` is still the
+single comment line; `tests/integration/**` and every fixture still untouched.
+
+## [T22] verifier — re-verify of the fix round: guard is real and complete; README's test count went stale (2026-08-09)
+
+The fix itself is **better than specified** — I could not find a way to make the new test pass a
+broken vocabulary, in either direction. But the fix round moved the suite from 2268 to 2269 and
+did not carry that number into `README.md`, which still states the old one. Verdict below.
+
+### 1. The test asserts exactly what PARITY.md claims
+
+PARITY.md §3 now reads "`tests/mpm/Mpm.test.ts` pins all four facts — both misspellings accepted,
+both corrections rejected". The test is those four facts and nothing else:
+
+| PARITY.md says | test asserts |
+| --- | --- |
+| misspelling accepted | `isInNamespace('accentuation ')` → `true` |
+| correction rejected | `isInNamespace('accentuation')` → `false` |
+| misspelling accepted | `isInNamespace('dynamcisGradient')` → `true` |
+| correction rejected | `isInNamespace('dynamicsGradient')` → `false` |
+
+The diff is **+13 lines, purely additive** — one `it` appended inside the existing `isInNamespace`
+describe, plus a five-line comment naming `Mpm.java:214`/`:218` and pointing at PARITY.md §3. No
+existing assertion was touched, loosened or removed; no other test file moved; `tests/integration/**`
+and every fixture untouched. The old false clause is gone from PARITY.md, and the replacement is
+honest about provenance ("That guard is newer than the preservation it protects … correcting both
+typos passed the full suite"), which is exactly what I proved last round.
+
+### 2. The guard can fail — four mutations, and it is complete in both directions
+
+Scratch tree from `git archive HEAD` + the new test copied in (real `src/` never touched;
+`git show HEAD:src/mpm/Mpm.ts | diff -` against the extract is **empty**). The worker ran the
+combined flip; I ran each typo **independently**, and added a fourth mutation the worker did not,
+to test whether the *negative* assertions carry any weight:
+
+| tree | `tests/mpm/Mpm.test.ts` |
+| --- | --- |
+| control — unmutated HEAD src + new test | **25 passed**, exit 0 |
+| **M1** flip only the trailing space (`'accentuation '` → `'accentuation'`) | **1 failed / 24** — `expected false to be true` |
+| **M2** flip only the misspelling (`'dynamcisGradient'` → `'dynamicsGradient'`) | **1 failed / 24** — `expected false to be true` |
+| **M3** flip both (the edit that silently passed before T22) | **1 failed / 24** |
+| **M4** *add* the corrected spellings **alongside** the typos | **1 failed / 24** — `expected true to be false` |
+| re-control after restore | **25 passed** |
+
+M1/M2 prove each typo is guarded on its own, not merely as a pair. **M4 is the one that matters
+most**: it leaves both typos in place, so every positive assertion still holds, and it is caught
+only by the "corrections rejected" half — proving those two assertions are load-bearing rather
+than decoration. That is the "accept a name the reference rejects" direction, and it is closed.
+The re-control returning to green shows the failures come from the mutation, not tree contamination.
+
+### 3. Gates — all green, nothing else moved
+
+- `npm run verify` **run by me**: both tsc stages, **58 files / 2269 tests**, exit 0.
+- **Test-count delta correctly journaled.** 2268 → 2269 (+1). The worker's reading of invariant 7c
+  is right: 7c gates *decreases* ("test count decreases only with journaled justification"); an
+  increase needs no dispensation, and this one adds assertion power over a behaviour that
+  previously had none. Chain remains closed: 2276 (phase-3 audit) − 8 (T21) + 1 (T22 fix) = **2269**.
+- **Coverage bit-identical** to [T21] and to my own earlier reproduction: functions
+  **961/1038 = 92.5819 %** (floor 92.0), uncovered scoped statements **2107** (budget 2318). Correct
+  — the new test exercises `isInNamespace`, already covered, and the two case labels are empty
+  fallthroughs with no statements of their own.
+- **Lint parity confirmed by measurement, not assertion**: `tests/mpm/Mpm.test.ts` reports **10
+  problems**, and the HEAD version of the same file, linted through the same config in the scratch
+  tree, also reports **10** — the new `it` adds **zero**. Repo total **1013 (1011 errors, 2
+  warnings)**, unchanged. `prettier --check` clean on all five touched files.
+- **Nothing else moved.** `src/` is still the single comment line (`git diff --stat c96ac69 -- src/`
+  = 1 file, 1 insertion, 1 deletion); `package.json` and `package-lock.json` are byte-for-byte what
+  I verified last round; tarball still **393 files** (`tests/` is not in the `files` allowlist, so
+  the guard ships as a repo asset, not package weight). Manifest is now 5 M + 2 untracked exactly
+  as the worker declares.
+
+### 4. FINDING — README.md:225 now states a false test count
+
+> - **2268 tests across 58 files**, run as a gate …
+
+The suite is **2269**. `README.md`'s mtime is **09:21:41**, before the fix round touched the test
+(09:45:32), PARITY.md (09:46:52) and log.md (09:49:02) — so the README was simply not revisited.
+The worker's own fix-round entry records "58 files / **2269** tests (2268 + 1)", so the number was
+known; it just did not get propagated to the one shipped document that also states it. PARITY.md
+makes no test-count claim, so this is the only stale site (grepped both files).
+
+This is small but it is not cosmetic: `README.md` ships in the tarball, the figure is offered as a
+precise, checkable fact in the section that carries the equivalence claim, and "test count" is the
+first item the T22 brief named under README factual accuracy. I verified this exact line as
+**accurate** last round; the fix round invalidated it.
+
+**Fix**: `README.md:225`, `2268` → `2269`. One digit. Nothing else in the README is affected — I
+re-checked its other countable claims and they all still hold (16 MEI / 32 reference / 48
+performance-reference / 40 all-maps-reference fixtures, six equivalence suites, 58 files,
+`VERSION` 0.11.2, provenance `1b3711f0`).
+
+### Verdict
+
+**FAIL T22** — solely on the stale README test count (pt. 4). Everything the fix round set out to
+do is verified and verified well: the guard exists, matches PARITY.md exactly, is complete in both
+directions under four independent mutations, and costs nothing in coverage, lint or package weight.
+This is T22's **first** FAIL (my previous verdict was PASS-conditional), so per charter cycle step 4
+it entitles one fix round rather than a revert — and the outstanding work is a single character.
+
+## [TD2] conductor — user directive: fix all obvious bugs, document them (2026-08-09)
+
+User directive received mid-T22-re-verify: "fix all the obvious bugs — small or big —
+found along the way (including typos) and document them." Charter amended (Bug policy
+section): the bug-for-bug rule flips for OBVIOUS bugs; each fix follows the TD1
+discipline. Inventory from the journal, already fixed: TD1 articulateNote hang, T9b
+getMinimalPPQ, T20b movement fixes. Queued as TD2 wave (runs after T22 closes, before
+the T23 final audit): (1) isInNamespace typos — accept correct spellings, keep
+misspellings for Java-file compat; (2) AccentuationPatternDef segment-end bug;
+(3) P1 malformed-numeric handling toward Java semantics; (4) P2 getPreviousPosition
+silent 0; (5) P4 RNG pathological-index guards. Explicitly preserved (not obvious
+bugs): ArticulationData overwrite-not-compose (ambiguous Java design intent),
+imprecision nondeterminism (by design). T23's audit will run against the post-fix
+tree.
