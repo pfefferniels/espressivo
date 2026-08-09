@@ -10788,3 +10788,296 @@ fix round's pinning test). Applied the verifier's exact one-digit fix as conduct
 (precedent: T6 lint-debt corrections; README is a deliverable, not src/). T22 is
 otherwise PASS on both rounds — guard proven unbeatable in either direction. Note
 for TD2: its test-count changes must propagate to README.md:225 as part of the wave.
+
+## [TD2] worker — the bug-fix wave: four fixed, one escalated and re-scoped to TD3 (2026-08-09)
+
+Four of the five specified fixes are implemented, each with a byte-probe between sub-rounds.
+**Fix 2 (AccentuationPatternDef segment-end) is NOT implemented here**: the brief's premise that
+no fixture reaches it is false, and I measured that before touching the tree. I escalated with the
+measurement before starting any other work; the conductor ruled **option 2 — the fix is APPROVED
+and moves to its own gated item TD3**, which patches the Java fork, regenerates the affected
+ground truth and applies the one-character change together (the T20b pattern). TD2 therefore ships
+1/3/4/5, and PARITY.md carries the segment-end bug in a new §2 "Approved, pending ground-truth
+regeneration" — not as a preservation. Details in sub-round 2.
+
+Byte-probe table — `t21verify/pipe.mjs` (5 deterministic all-maps + all 16 MEI fixtures through
+MSM, MPM, augmented MSM, raw MIDI, expressive MIDI; UUID-canonicalized), each run on a clean
+`tsc --outDir` build of the working tree at that point:
+
+| after sub-round | transcript sha | vs baseline |
+| --- | --- | --- |
+| baseline (`git archive HEAD`) | `169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` | — |
+| 1 — isInNamespace typos | `169e964b…` | identical |
+| 2 — segment-end (scratch tree only, NOT shipped) | `63c7faa5485217e78dc214b439a5b0ec106a5901b2728d4f509368810580921c` | **1 entry differs** |
+| 3 — P1 malformed numerics | `169e964b…` | identical |
+| 4 — P2 getPreviousPosition | `169e964b…` | identical |
+| 5 — P4 RNG guards | `169e964b…` | identical |
+| final shipped bytes (re-run after prettier) | `169e964b…` | identical |
+
+The baseline sha reproduces TD1's exactly, which is the cross-check that the probe is the same
+probe.
+
+### Sub-round 1 — the two `Mpm.isInNamespace` typos
+
+Both correct spellings added as case labels; both misspellings kept, each with a one-line comment
+naming its Java site. The vocabulary is now a strict superset of `Mpm.java:193-255`'s, so nothing
+the reference accepts is rejected here — that framing is what makes the change safe, and it is
+what the PARITY.md entry leads with.
+
+`isInNamespace` has **zero callers in `src/`** (`grep -rn isInNamespace src/` returns only its own
+definition), so the byte-probe cannot see this fix at all and its identity is a formality rather
+than evidence. The evidence is the tests. T22's pinning test asserted four facts — misspellings
+accepted, corrections rejected; **the second pair is inverted**, and the test renamed from
+"should reproduce the two Java typos in the vocabulary, bug-for-bug" to "accepts the corrected
+spellings and keeps accepting the two Java typos". Its comment now records that the inversion
+happened and why, so the T22 entry is not left looking wrong.
+
+I added a **second** test the brief did not ask for, and it is the one that carries the risk:
+near-misses (`'accentuation  '` with two spaces, `' accentuation'` with a leading space,
+`'dynamicsGradiant'`, `'dynamcisGradients'`) must still be rejected. Without it, "accept both
+spellings" has no lower bound and could decay into "accept anything close" under a later edit.
+
+### Sub-round 2 — escalated, ruled APPROVED, re-scoped to TD3
+
+**Do not retry this without reading this section.** The brief says "the istanbul dead-branch data
+says no fixture reaches it". That inference does not hold: istanbul reports the guard
+`i > this.accentuations.length - 1` as a dead branch, which proves the **buggy** condition never
+fires. It says nothing about whether a fixture reaches the **fixed** condition. It does.
+
+Measured on a scratch `git archive HEAD` tree with the single character changed (real `src/` never
+touched during this):
+
+- probe sha moves `169e964b…` → `63c7faa5…`, with **exactly one** differing entry,
+  `allmaps/metrical_accentuation`.
+- The differing values are note velocities in the augmented MSM: `100.0003471017008` becomes
+  `100.00138888888888`.
+- `tests/integration/fixtures/all-maps-reference/metrical_accentuation_augmented.msm` — Java-
+  generated ground truth, immutable under charter invariant 2 — contains
+  **`velocity="100.0003471017008"`**. The reference stores the buggy value.
+- Hand arithmetic reproduces both strings to the last digit. The pattern has `length="2880"` and
+  accentuations at beats 0/720/1440/2160, all `transition.from="0.0" transition.to="1.0"`; the
+  note sits at beatPosition 1.0. Buggy `segmentEnd = length + 1 = 2881` ⇒ `1/2881 =
+  0.0003471017008`. Fixed `segmentEnd = 720` (the next accentuation's beat) ⇒ `1/720 =
+  0.00138888888888`. So the mechanism is understood, not merely observed.
+
+Charter bug-policy condition (a) — "prove no fixture exercises the buggy path, or that the fix
+cannot move fixture bytes" — therefore **fails**, and this is the one bug in the wave where it
+does. Unlike TD1, whose branch no fixture carried at all, this fixture disagrees with the fix.
+
+**The part that matters most for whoever reviews this.** With the fix applied, `npm run verify`
+is **green at 2269/2269**. `tests/integration/all-maps-equivalence.test.ts` compares numeric
+attributes with `tolerance = 0.01` and the divergence is 0.00104, so the suite cannot see it. A
+green verify is not evidence here, and a worker who trusted the brief's premise plus a green gate
+would have shipped a silent divergence from the reference bytes. I have written that tolerance
+blind spot into PARITY.md §2 so the next person meets it before the bug rather than after. I did
+**not** touch `tests/integration/**` (charter invariant 3).
+
+**Ruling and where it landed.** The conductor took option 2: the fix is approved, and the Java
+patch + regeneration + one-character change become **TD3**, gated together, coordinated with the
+session that owns fork-side work. The segment-end *behaviour* is therefore unchanged in this item —
+`getAccentuationAt` still computes exactly what it computed at HEAD. What did change is the
+documentation around it: PARITY.md gained a **§2, "Approved, pending ground-truth
+regeneration"**, holding this one entry with status *FIX APPROVED, pending Java-side patch +
+ground-truth regeneration (TD3)*, the two velocities, the hand arithmetic and the tolerance
+blind spot. It is deliberately not in §4 (bug-for-bug preservations) any more — it is neither
+fixed nor preserved, and a reader who finds it under "preservations" would draw the wrong
+conclusion. The site comment in `AccentuationPatternDef.ts` was updated to match: it still says
+the buggy spelling is ported as is, and now says the fix is approved, belongs to TD3, and must
+not be applied on its own. Section numbering shifted (old §2→§3, §3→§4, §4→§5, §5→§6) and
+README's three `PARITY.md §n` links were updated with it.
+
+### Sub-round 3 — P1, malformed numeric attributes
+
+New leaf module `src/supplementary/parseJavaDouble.ts` implements the grammar published by
+`Double.valueOf`'s javadoc and throws `NumberFormatError` (new, in `src/xml/errors.ts`) otherwise.
+The five def classes P1 names read every numeric attribute through it: `TempoDef`, `DynamicsDef`,
+`RubatoDef` (4 attributes), `AccentuationPatternDef` (both its parse path and
+`addAccentuationFromXml`), and `ArticulationDef` — whose twelve attributes all go through the one
+`numeric()` helper, so that is a single edit rather than twelve.
+
+**Which §6 ruling I follow, since the brief asked me to cite it.** §6.1 RULE E1 says the interior
+keeps *Java's* behaviour and does not add throws on malformed-input paths. Java's behaviour at
+these sites **is** to throw: `Double.parseDouble` raises `NumberFormatException`, the `create*Def`
+factory catches `Exception`, logs and returns null, and the style skips the def. So the throw is
+interior plumbing between the parse and a `catch` that already exists, and what a *caller* sees is
+exactly E1's null-return skip. No factory grew a `try`; every one already had one.
+`addAccentuationFromXml` is the single site with no factory above it and it propagates to its
+caller — which is what Java's unchecked exception does from `addAccentuation(Element)`
+(`AccentuationPatternDef.java:198-212`). That asymmetry is documented at the site and in its test.
+
+Grammar decisions, all pinned by tests in `tests/supplementary/parseJavaDouble.test.ts`:
+
+- `'NaN'`, `'Infinity'`, `'±Infinity'` are **accepted**. Java accepts them, so rejecting them
+  would be a new divergence rather than a repair — a `value="NaN"` attribute yields a NaN-valued
+  def in Java too.
+- Java's `f`/`d` type suffix (`'1.5f'`) is accepted; `Number()` alone rejects it.
+- `'0x10'`, `'0b101'`, `'0o17'` are **rejected**; `Number()` would have returned 16/5/15 and Java
+  throws.
+- Hexadecimal float (`'0x1.8p1'`) is **rejected** although Java accepts it. This is the one
+  deliberate narrowing, journaled here and in the module doc: supporting it needs a hand-written
+  hex-float decoder and nothing in this ecosystem emits one.
+- Trimming uses Java's `[\x00-\x20]` class written against `charCodeAt`, **not** `String.trim`,
+  whose Unicode class would have accepted literals Java rejects — i.e. it deliberately avoids
+  minting a second instance of the `RelatedResource.setType` whitespace divergence.
+
+Tests: a malformed-input block per def class, each asserting the factory returns null, that a
+value `parseFloat` would have truncated (`'120bpm'`, `'97dB'`, `'0.5x'`) is rejected, and that a
+well-formed neighbour still parses — the last one is what distinguishes "skipped" from "aborted".
+`ArticulationDef`'s block is an `it.each` over all twelve attribute names plus a length assertion
+on that list, so a thirteenth attribute cannot be added without the test noticing.
+
+### Sub-round 4 — P2, the silent 0 in `getPreviousPosition`
+
+`getPreviousPosition` now returns `number | null`; `getMovementDataOf` logs and returns null,
+which `renderMovementToMap` already treats as "skip this entry".
+
+**Choice and its reason, per the brief.** §6's malformed-input ruling (RULE E1,
+logs-and-returns-null) points at the explicit skip rather than a typed throw, and here the policy
+and the merits agree: Java's `NullPointerException` at `MovementMap.java:200` aborts the entire
+render, which is worse than losing one movement, while the port's silent 0 was worse still — it
+placed the movement at "fully released" and rendered that into the MIDI as though it were a real
+reading. A skip is the only one of the three that neither hides the problem nor destroys the
+output. It is also the same shape as sub-round 3, which is worth something on its own.
+
+The `j > 0` off-by-one is **untouched** and now has its own test (`still never examines entry 0,
+so inheriting from it yields 0`), so the repaired case and the preserved case cannot be confused
+by a later reader. Five tests total, including one that renders a whole map with a skipped
+movement in the middle and one that asserts the log names `transition.to`.
+
+### Sub-round 5 — P4, the RNG index guards
+
+`requireUsableIndex` rejects non-finite indices and anything above the new
+`RandomNumberProvider.MAX_INDEX` (10,000,000) with `OutOfRangeError` (new, `src/xml/errors.ts`).
+Both `getValue` and `getValueDouble` call it first.
+
+**The sequence-identity discipline from [T4], discharged by measurement.** The guard allocates
+nothing, draws nothing and writes no field. Probe `rngseq.mjs` draws 7,673 values — five
+distributions × three seeds × 500 sequential indices, plus five fractional indices, plus negative
+and zero indices, plus the list distribution — and hashes them:
+`82697d7bf7787eef7b28eff44b7933a5c699354df942001f8907538632bf0a46` on the **unguarded baseline
+build and the shipped build alike**. A unit test also asserts that a provider whose guard just
+rejected two calls yields a sequence bit-identical to a fresh one's.
+
+**Negative control, and a correction to the inherited claim.** [T4]/§6.3 describe the pathology as
+"recurses to stack overflow" and "hangs". Measured on the unguarded baseline build, Node 23.8:
+
+| index | unguarded baseline | guarded build |
+| --- | --- | --- |
+| `NaN` | `RangeError: Maximum call stack size exceeded`, 0.1 s | `OutOfRangeError`, 0.14 s |
+| `Infinity` | `RangeError: Invalid array length`, 3.4 s | `OutOfRangeError`, 0.11 s |
+| `1e12` | `RangeError: Invalid array length`, 1.9 s | `OutOfRangeError`, 0.14 s |
+
+So the NaN case is the documented stack overflow, but the infinite/huge cases do **not** hang for
+ever on this runtime — they allocate until V8 refuses to grow the array, then die with a bare
+`RangeError` naming neither the method nor the index. I have written the measured behaviour into
+PARITY.md rather than repeating "hangs", because the inherited wording would not survive a
+verifier re-running it.
+
+`MAX_INDEX` is not arbitrary. Measured cost of `getValue(n)` on the unguarded build: `1e7` = 178 ms
+/ 236 MB, `1e8` = 1.7 s / 1.5 GB, `1e9` = dies after 1.9 s. The limit sits at the last value that is
+merely expensive. At the default 100 ms timing basis it stands for ~11 days of music; the realistic
+producer of an absurd index is `ImprecisionMap`'s `milliseconds.date / millisecondsTimingBasis`,
+where a real document lands in the hundreds.
+
+`OutOfRangeError` extends `MeicoError`, not the built-in `RangeError`: `src/xml/errors.ts`'s own
+doc makes `MeicoError` the single root for everything the library raises deliberately, and a class
+cannot have both parents. The name carries the RangeError sense; the doc comment says so
+explicitly.
+
+### Evidence — gates
+
+- `npm run verify` **exit 0** on the shipped bytes: 59 files, **2334 tests** (2269 + 65). Invariant
+  7c gates *decreases*; no test was removed or weakened. The one test that changed meaning is
+  T22's typo pinning test, inverted deliberately and journaled in sub-round 1.
+- **Emitted-JS classification**, both trees built clean with
+  `--removeComments --declaration false --sourceMap false`: exactly **9 files differ** plus the new
+  `parseJavaDouble.js`, and **nothing else in the whole compiled project**. Line deltas —
+  `Mpm.js` +2/−0 (two case labels), `MovementMap.js` +10/−7, `AccentuationPatternDef.js` +10/−9,
+  `ArticulationDef.js` +2/−1, `DynamicsDef.js` +2/−1, `RubatoDef.js` +5/−4, `TempoDef.js` +2/−1,
+  `RandomNumberProvider.js` +9/−0 (the static, the guard method, two call lines — no change inside
+  any drawing code), `errors.js` +4/−0 (two class declarations).
+- **Coverage v3**: functions **965/1041 = 92.6993 %** (floor 92.0, T22 measured 92.5819).
+  Uncovered scoped statements **2094**, down from T22's 2107 — the new error paths are all
+  exercised, so the budget (2318) is not touched. Per file: `parseJavaDouble.ts` 17/17 statements
+  and 2/2 functions, `errors.ts` 4/4, all five def classes 100 %, `MovementMap.ts` 3 uncovered
+  (unchanged, lines 31-33), `RandomNumberProvider.ts` 3 uncovered.
+- **`vitest.config.ts` amended, and it needed to be.** `src/supplementary/` is listed file by file
+  rather than by glob, so `parseJavaDouble.ts` was **invisible to the coverage invariant** until
+  named. Adding it follows the precedent the file's own comments record for T13 (`src/api/**`) and
+  T19a (`src/units.ts`), and I flagged the glob asymmetry in the comment so the next new module
+  there is not missed. Without this the item would have reported coverage that silently excluded
+  its own new code.
+- **Lint**: repo total 1013 → **1019**. All +6 are `no-empty-function` on the `quiet` helper's
+  `mockImplementation(() => {})`, in test files, an existing debt class; per-file table and the
+  reasoning for keeping the idiom are in `refactor/lint-debt.md`. `parseJavaDouble.ts` lints
+  clean. **No suppressions added** — the one place a `no-control-regex` disable was nearly needed
+  was resolved by writing the trim against `charCodeAt`.
+- **Facade battery, run against the shipped build**: `plaindata` 488 checks / 0 failures,
+  `postmessage` 8/8 payloads round-tripped through a real Worker, `contract` 33/0, `paths` 174/0 in
+  **both** `facade` and `legacy` modes, `seed` 12/0, `imprecision` 18/0, `rulings` 49/0,
+  `typesurface` 0 forbidden-name hits. (`paths.mjs` takes its mode as argv[2] and the dist as
+  argv[3]; invoked with the dist first it dies in `path.resolve` on **both** trees — a probe
+  invocation trap, not a regression.)
+- `prettier --check` clean on every touched file. Fixtures and `tests/integration/**` untouched.
+
+### Docs
+
+`PARITY.md` restructured into six sections. **§1 Fixed bugs** holds seven entries — TD1's hang,
+T9b's `getMinimalPPQ`, T20b's movement fixes, and TD2's four — each with Java citations, symptom,
+fix and a guard-test pointer. **§2 Approved, pending ground-truth regeneration** is new and holds
+the segment-end bug alone (see sub-round 2). **§3** keeps only the three XML-layer capability gaps
+that remain genuinely frozen. **§4** keeps the preservations, with `ArticulationData`'s
+overwrite-not-compose stated explicitly as a **design-intent** preservation rather than a
+fixture-bytes one — that distinction is what the user's directive turns on, and §4's intro now
+draws it instead of claiming every entry is fixture-bearing. §5's imprecision nondeterminism is
+unchanged. The file opens with the byte-probe hash as the evidence standard every §1 entry meets,
+and its "one of four things" opening tells a reader which section their case belongs in.
+
+`README.md`: test count 2269 → **2334**, 58 → **59 files**; "Deliberate divergences — there are
+exactly three" became "Where this deliberately differs from Java" with seven numbered entries, plus
+a closing sentence naming the eighth fix that is approved and held back. Its three `PARITY.md §n`
+links were re-pointed after the renumbering.
+
+### DISCOVERED — out of scope, each left alone deliberately
+
+- **P1 is closed for the five def classes the ledger names, not repo-wide.** Still `parseFloat`:
+  the map and data classes; the render-time reads in `ArticulationDef.articulateNote` (`:354-393`),
+  `TemporalSpread` (`:136-160`) and `DynamicsGradient` (`:56`); and the def classes P1 never named
+  — `OrnamentDef`, `TemporalSpread`, `DynamicsGradient`. `parseJavaDouble` is in place, so each is
+  a one-line change plus tests. PARITY.md's P1 entry states this boundary rather than implying the
+  family is closed.
+- **`MovementMap.getMovementDataOf` still `parseFloat`s** `position`, `transition.to`, `curvature`
+  and `protraction`. Same family as above; P2's scope was the missing-attribute path only.
+- **`setSeed` destroys a list distribution.** `setSeed` clears `series` unconditionally, but for
+  `DISTRIBUTION_LIST` the series *is* the list, so afterwards `getValue(i)` reads
+  `series[i % 0]` = `series[NaN]` = `undefined` — typed `number`, returned to the caller. Found by
+  my own sequence-identity test, which I worked around rather than fixed (the workaround is
+  commented and points here). Pre-existing, unrelated to the guards, and not on TD2's list; it
+  wants its own item, and a fix probably means making `setSeed` a no-op for the list distribution.
+- **DISCOVERED (TD3, adopted by the conductor): `tests/integration/all-maps-equivalence.test.ts`'s
+  0.01 numeric tolerance** is a blind spot of exactly the size that hid sub-round 2's divergence —
+  the fix moves velocities by 0.00104 and the suite cannot see it. Not mine to touch (invariant 3).
+  TD3 will evaluate tightening it: the port matches the reference exactly today, so a tighter
+  tolerance is safe now and would have caught this class of divergence by itself. Whoever does it
+  should re-measure per-attribute agreement first rather than assuming exactness holds everywhere —
+  that is the assumption the current tolerance was presumably hiding.
+- **`ARCHITECTURE.md` §6.3 is now stale**: its table still reads "P1, P2 and P4 stay frozen in
+  Phase 3", and its RULE E1 paragraph does not know about the charter's bug-policy amendment.
+  Following TD1's precedent I left the doc to the conductor rather than editing a governance
+  document from inside a worker item. The rows want: P1/P2/P4 → "repaired by TD2", and E1 → a
+  pointer to the amended charter section.
+- **Empty stray directories** `src/mpm/{elements` and friends exist in the working tree (a
+  brace-expansion accident from some earlier item). Git does not track empty directories so they
+  are invisible to `git status`; harmless, but someone should `rmdir` them.
+
+## [infra] conductor — sibling program coordination: ornamentation-v3 (2026-08-09)
+
+New user-mandated sibling session is implementing the MPM v3 ornamentation module on
+branch `ornamentation-v3` (separate worktree meico-ts-orn, based on a09f82c). Protocol
+agreed: they never touch our tree/branches/fixtures; they rebase onto main AFTER our
+T23 + merge completes; v3 fixtures are spec-derived on their branch (Java has no v3),
+v2 ornamentation keeps Java parity. Conflict forecast given (remaining items touch no
+ornamentation file and not Performance.ts). House rules relayed: ARCHITECTURE.md is
+law, facade frozen (additive only), v2 ms-rendering byte-load-bearing, PARITY.md
+needs a Java-verified-vs-spec-derived split post-integration, probes are session-
+mortal (copy or re-derive).
