@@ -58,6 +58,28 @@ const LAYER_ZONES = [
     forbidden: ['**/mei/**', '**/musicxml/**'],
     why: 'src/mpm/** is L4 and must not import the MEI layer at all — T14 removed the last 33 such edges (RULE M1/M2).',
   },
+  {
+    layer: 'expression',
+    files: ['src/expression/**/*.ts'],
+    // Negated last, gitignore-style: everything under `src/mpm/` is forbidden EXCEPT
+    // `names.ts`, which is the MPM vocabulary — the namespace URI plus the six style-collection
+    // and thirteen map local names. That module is a documented leaf that imports nothing (it
+    // exists precisely to break the `Mpm` ⇄ element-module cycle), so depending on it is
+    // depending on the format's spelling, not on the renderer.
+    forbidden: [
+      '**/midi/**',
+      '**/msm/**',
+      '**/mei/**',
+      '**/musicxml/**',
+      '**/mpm/**',
+      '!**/mpm/names.js',
+    ],
+    why:
+      'src/expression/** is a document transform over raw MPM XML: it may use src/xml/**, ' +
+      'src/supplementary/** and the MPM name constants, and nothing else. Importing a renderer ' +
+      'class would reintroduce exactly what DESIGN.md D-A/A1 forbids — `new Mpm(text)` runs the ' +
+      'mutating def parsers in its CONSTRUCTOR, so merely parsing a document rewrites it.',
+  },
 ];
 export default tseslint.config(
   {

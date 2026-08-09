@@ -23,10 +23,16 @@ export default defineConfig({
       // and is in scope by definition. `src/supplementary/` is listed file by file rather
       // than by glob, so a new module there is invisible to the coverage invariant until it
       // is named — which is why this line exists.
+      // W2 addition (expression-transform campaign): `src/expression/**` is the exaggeration
+      // engine — MPM text in, MPM text out. It is the same MEI/MSM+MPM surface this list
+      // already scopes, entered from the writing end rather than the rendering one: it reads
+      // the MPM vocabulary through the same def and style semantics the renderer uses, and a
+      // divergence there produces a document the rest of this port then renders wrongly.
       include: [
         'src/version.ts',
         'src/units.ts',
         'src/api/**/*.ts',
+        'src/expression/**/*.ts',
         'src/mei/Mei.ts',
         'src/mei/mpmNoteIds.ts',
         'src/mei/Mei2MsmMpmConverter.ts',

@@ -330,11 +330,16 @@ export type SiteState =
   | 'absent'       // no such attribute/element exists in this performance
   | 'inert'        // present, but the renderer gives it no effect
   | 'transformed'  // written
-  | 'partial'      // some components reachable, others excluded (articulation)
-  | 'skipped';     // failed the validation gate or a site-discipline rule
+  | 'partial'      // some levers reachable, at least one excluded (see below)
+  | 'skipped';     // every candidate site failed the gate or a site-discipline rule
 
 export interface DimensionReport {
   readonly requestedFactor: number | null;
+  /** Dimension-level verdict. Precedence when sites disagree (W2, w2c #9):
+   *  transformed > partial > skipped > inert > absent — any write makes the
+   *  dimension 'transformed'; 'skipped' outranks 'inert' so a gate rejection is
+   *  never hidden behind an inert sibling. Note 'inert' with sitesSkipped > 0 is
+   *  reachable and legal (W3 carries the pinning test). */
   readonly state: SiteState;
   readonly sitesTransformed: number;
   readonly sitesSkipped: number;
@@ -348,7 +353,9 @@ export interface DimensionReport {
 export interface ReportNote {
   readonly kind: ReportNoteKind;   // closed union, one per §7 obligation
   readonly dimension: ExpressionDimension | null;
-  readonly site: SiteRef;
+  /** Null for dimension-level notes that belong to no single site — e.g. an
+   *  empty center population, or a factor rejected before any site was read. */
+  readonly site: SiteRef | null;
   readonly detail: string;
 }
 
@@ -356,7 +363,12 @@ export interface PerformanceReport {
   readonly performance: { readonly index: number; readonly name: string };
   readonly dimensions: Record<ExpressionDimension, DimensionReport>; // full record, N4
   readonly centers: { readonly tempo: number | null; readonly dynamics: number | null };
-  readonly bounds: { readonly tempoMaxS: number | null; readonly rubatoMaxS: number | null };
+  /** tempoDeviationRatio is the document's largest level deviation from the
+   *  center (the `r` of §8's formula), NOT a maximum s: the window [lo,hi] is
+   *  the caller's musical choice and C2 forbids the engine inventing one. The
+   *  caller completes `s ≤ min(ln(hi/c), ln(c/lo)) / ln r` with its own window.
+   *  rubatoMaxS IS a bound, because its ceiling is mechanical (the A6 guard). */
+  readonly bounds: { readonly tempoDeviationRatio: number | null; readonly rubatoMaxS: number | null };
   readonly mergedLevels: readonly (readonly [string, string])[]; // clamp-collapsed named defs
   readonly notes: readonly ReportNote[];
   readonly totalWrites: number;
@@ -388,6 +400,34 @@ export interface SpotlightResult {
   }[];
 }
 ```
+
+**W2 amendments (LOG: "W2 — w2c integration complete").** Five corrections the
+implementation forced, all reflected in the types above:
+
+- **#7 `bounds.tempoMaxS` → `bounds.tempoDeviationRatio`.** The v1 field promised
+  a maximum s, but §8's formula needs a musical window `[lo,hi]` that only the
+  caller can supply — inventing one in the engine is exactly the magic constant
+  C2 forbids. The report now returns the one quantity the document determines, the
+  deviation ratio `r`, and the caller completes the formula. `rubatoMaxS` keeps
+  its name because its ceiling *is* mechanical: it falls out of the A6 guard, not
+  out of a taste judgement.
+- **#8 `ReportNote.site` is nullable.** Some obligations belong to a dimension
+  rather than a site — an empty center population, or a factor rejected before any
+  element was read — and RULE N4 requires absence to be `null`, not a fabricated
+  `SiteRef` pointing at index 0.
+- **#9 `'skipped'` joins `SiteState`, with a dimension-level precedence rule.**
+  A dimension aggregates many sites that can disagree; the precedence
+  `transformed > partial > skipped > inert > absent` makes the verdict
+  deterministic, and puts `skipped` above `inert` so that a gate rejection is
+  never masked by an inert sibling. The combination `state: 'inert'` with
+  `sitesSkipped > 0` is legal and reachable — W3 pins it.
+- **#10 a `gradientOutsideNominalRange` note kind.** §7.11 says a transformed
+  gradient endpoint leaving [−1,1] is "reported informationally"; that obligation
+  had no note kind, so it was unimplementable as plain data.
+- **#4 `'partial'` is generalized beyond articulation.** The v1 comment scoped it
+  to the articulation staccato family. The implemented rule is structural: **any
+  site where at least one excluded lever sits beside at least one transformed
+  lever** is `partial`. Articulation is the motivating case, not the definition.
 
 Interior: `src/expression/` — transforms (pure functions on numbers), registry
 (attribute → scale space + neutral + domain predicate + s-domain + P5r verdict),
@@ -423,26 +463,58 @@ an empty `<global>`; `Global` appends empty `<header>`/`<dated>`; `Part` adds
 maps/style-collections. `Builder` is verified non-mutating — def attributes and
 whitespace intact.
 
-The applier therefore replicates, rather than borrows, four renderer behaviours:
+The applier therefore replicates, rather than borrows, five renderer behaviours.
+**W2 amendment (LOG: "W2 — foundation layers landed")** — W2b implemented the
+document layer against the code and found five places where the wording below
+was wrong; each is corrected here, and the code follows the corrected form.
 
-- **Date-stable child ordering as an internal view** — a stable sort by
-  `parseFloat(@date)` preserving document order for ties, computed in memory and
-  **never written back**.
+- **Date ordering is the renderer's backwards-insertion loop, transliterated —
+  not a comparator sort.** W2 amendment: the v1 "stable sort by
+  `parseFloat(@date)`" is not what `GenericMap` does. The renderer walks children
+  in document order and, for each, scans **backwards** for the last index whose
+  date is `<=` the new one (`GenericMap.ts:148-155`). The observable difference is
+  NaN: a non-numeric `@date` fails every `<=` comparison, so the backwards scan
+  runs off the front and the child is inserted at the **FRONT**, where a
+  comparator sort would leave it in place or push it to the end. Computed in
+  memory, **never written back**.
+- **The ordered view also excludes `<style>` without `@name.ref`.** W2 amendment:
+  the v1 text mentioned only dateless children. `GenericMap.ts:145-146` skips a
+  `<style>` lacking `@name.ref` as well, so such an element is invisible to the
+  positional style scan and must not shift any index.
 - **Positional style scope** — `findStyleSwitchAt` semantics: scan backwards *by
   array position* over that view. Never `getStyleAt`, which is date-based and
   disagrees at equal dates (a `<style>` at the same date as a preceding
   instruction is in scope for the former but not the latter, and the two readings
   differ by 3 velocity units on an ordinary MEI export).
 - **Whole-styleDef shadowing** — part-local header first, then global, as a whole
-  styleDef, never a per-def merge.
+  styleDef, never a per-def merge. **Map and style-collection discovery is
+  descendant-axis, last-one-wins** (W2 amendment): `Header.ts:75` and
+  `Dated.ts:63` search the descendant axis and the *last* match of a given type
+  wins, so a direct-child-only walker is a strict subset of what the parser sees.
+  The document layer replicates this as a **pre-order walk** over the child
+  primitives, keeping the last match — identical for well-formed MPM, and
+  faithful for nested ones.
 - **Renderer numeric semantics** — def lookup **first**, then `parseFloat`, then
   the fallback. A strict `Number()`/regex classifier is wrong twice:
   `bpm="120bpm"` renders as 120, and `<tempoDef name="120" value="60"/>` shadows
-  the numeric reading of `bpm="120"`.
+  the numeric reading of `bpm="120"`. Two W2 amendments to the def half.
+  **(i) Only VALID defs are indexed.** `parseJavaDouble` throws on a malformed
+  literal, the factory returns null and the style skips that def, so an invalid
+  def does **not** shadow the numeric reading — the name falls through to
+  `parseFloat` — and among duplicates the **last VALID** one wins, not the last
+  one. **(ii) `kind === 'def'` does not imply finite.** `parseJavaDouble` accepts
+  Java's `NaN`/`Infinity`/`-Infinity` literals, so a successfully resolved def
+  value can be non-finite. The §1.2 gate rejects it **before** it can reach the
+  center computation, where a single non-finite member would poison the geometric
+  mean for the whole performance.
 
 Navigation uses `getChildElements`/`getFirstChildElement` only. **`Element.query`
 is banned**: it serializes the subtree with `toXML()`, re-parses it with
-DOMParser and maps hits back by child-index path — O(document) per call.
+DOMParser and maps hits back by child-index path — O(document) per call. **W2
+amendment**: the ban extends by name to `xml/tree.ts`'s `allChildElements` and
+the **two-argument** form of `firstChildElement` — they are `Element.query` in
+disguise (they delegate to it) and carry the identical cost. The document layer
+uses `getChildElements` exclusively.
 
 Writes go through `attribute(name, el).setValue(...)`, which mutates only
 `Attribute._value` and is order-preserving; **never**
@@ -527,7 +599,17 @@ types keep s=1, every other dimension gets the caller's required `attenuation`.
   renderer's exact-float constant-instruction test — the gesture would be
   *deleted*, not attenuated.
 - **Pair-collapse guard**: after transforming a pair, if
-  `String(to') === String(bpm')` the write is **refused and reported**.
+  `String(to') === String(bpm')` the write is **refused and reported**. **W2
+  amendment (LOG: "W2 — w2c integration complete", #6): the refusal covers BOTH
+  endpoints**, not just the target. Writing one half of a collapsed pair would
+  leave the document in a state neither the caller nor the renderer intends — a
+  moved `bpm` with an unmoved `transition.to`, i.e. a *different* gesture rather
+  than a refused one. Mechanical consequence worth stating: under `gesture` scope
+  as attenuation → 0 every pair collapses, so the run reports
+  `pair-collapse-refused` at every site and writes nothing, instead of flattening
+  the performance. That is the backstop behind D-I's `attenuation > 0` rule — the
+  rule states the intent, the guard enforces it even if a caller reaches the
+  limit numerically.
 - **Piecewise-constant maps**: level dimensions are inert under `gesture` and are
   reported `inert` with the reason, never silently claimed as transformed.
 - **End-marker duplicate is HANDLED, not merely reported**: when a constant
@@ -590,12 +672,30 @@ and §8's bounds depend on it.
 > placeholders, heterogeneous-`@beatLength` defs, anything failing the validation
 > gate). Then the population is: every numeric level attribute on its own element
 > (`@bpm`, `@volume`) counted **once**, plus every `<tempoDef>`/`<dynamicsDef>`
-> `@value` that at least one in-scope level string references, counted **once**
-> per def element. `@transition.to` is **excluded from the population** — it is a
-> target, not a prevailing level — while remaining fully transformed. Unreferenced
-> defs are excluded and not transformed. The center is the unweighted geometric
-> mean over that population, computed per performance and per dimension; tempo in
-> quarter-note-normalized space (`bpm·beatLength·4`).
+> `@value` that at least one in-scope **prevailing-level** attribute references,
+> counted **once** per def element. `@transition.to` is **excluded from the
+> population** — it is a target, not a prevailing level — while remaining fully
+> transformed, **and a `transition.to` naming a def does not enroll that def
+> either**. Unreferenced defs are excluded and not transformed. The center is the
+> unweighted geometric mean over that population, computed per performance and per
+> dimension; tempo in quarter-note-normalized space (`bpm·beatLength·4`).
+
+**W2 amendment (LOG: "W2 — w2c integration complete", #3): only a prevailing-level
+reference enrolls a def.** The v1 wording said "at least one in-scope level
+string", which would have let a `transition.to="ff"` pull `ff`'s def value into
+the center even though the literal `transition.to="111"` on the neighbouring
+element is excluded — the named and literal sides would have disagreed about the
+same musical quantity. Enrolment now follows the same prevailing/target
+distinction as the literal side, so a name↔literal refactoring still yields the
+same center (§7.1's refactoring-invariance property). A def referenced *only* from
+transition targets is still **transformed**; it simply does not vote on the center.
+
+Two further W2 findings on the population, both from the same entry:
+**whole-styleDef shadowing means a part-shadowed global def is not referenced on
+that part's account** and must not enter the population through it; and the
+renderer's invented `100.0` for an unresolvable level is **never** a population
+member — the engine reports the site and skips it rather than enrolling a number
+the document does not contain.
 
 Three properties this buys, each of which the v1 wording lost:
 
@@ -666,6 +766,15 @@ mapped back through its own factor (SURVEY.md:81-83, SURVEY.md:183-188). A
 `tempoDef` borrows the referencing instruction's `@beatLength`, so a def reached
 from instructions whose values differ cannot be normalized and is skipped.
 
+*Inert instructions — and the same verdict for `tempoShape`.* **W2 amendment
+(LOG: "W2 — w2c integration complete", #12):** a `<tempo>` lacking `@beatLength`
+is dropped by the renderer *as a whole instruction*, so its `@meanTempoAt` is
+equally unreachable. `tempoShape` must therefore report that site `inert` for the
+same reason `tempo` does, rather than transforming a shape parameter on an
+instruction that never renders. The two dimensions are separate factors but they
+share this one inertness condition, because it is a property of the element, not
+of the attribute.
+
 *Inert instructions.* A `<tempo>` without `@beatLength` is skipped by the renderer
 entirely (SURVEY.md:432-435) and a transition on the last instruction integrates
 over an effectively infinite span (SURVEY.md:404-409). Report `inert`.
@@ -680,12 +789,35 @@ arise. Element-identity dedupe is required on the **def** side only.
 
 | attribute | transform | neutral | domain + citation | P5r | notes |
 |---|---|---|---|---|---|
-| `tempo@meanTempoAt` | logit(0,1) | 0.5 (`exponent = 1.0`) — SURVEY.md:138-144 | open (0,1); out-of-range **reinterpreted**, not clamped — SURVEY.md:130-136 | cliff | transform only when `@transition.to` is present, else report `inert`; **output clamp to [ε, 1−ε]** required — the logit saturates to exactly 1.0 at s ≈ 8 for 0.99, and 0/1 are semantic cliffs that turn the instruction into a constant tempo at the *other* endpoint |
+| `tempo@meanTempoAt` | logit(0,1) | 0.5 (`exponent = 1.0`) — SURVEY.md:138-144 | open (0,1); out-of-range **reinterpreted**, not clamped — SURVEY.md:130-136 | cliff | transform only when `@transition.to` is present, else report `inert`; **saturation refuses the write and reports** — the logit reaches exactly 1.0 at s ≈ 8 for an authored 0.99, and 0/1 are semantic cliffs that turn the instruction into a constant tempo at the *other* endpoint |
 
-*The epsilon is an output clamp, not an input guard.* The survey stated it as
-mandatory; v1 dropped it believing the logit's openness sufficed, which holds in ℝ
-and not in doubles (`1/(1+exp(−z))` returns exactly 1.0 once z ≳ 36.7). Reaching
-it is reported — it marks the point past which further s does nothing.
+**W2 amendment (LOG: "W2 — w2a rulings", R-W2-1): the ε output clamp is
+superseded by A3's saturation refusal.** The pre-adjudication text required
+clamping the result into `[ε, 1−ε]`; A3's rule — arrived at independently and
+ratified in W2a — is that a transform which saturates onto a bound **refuses the
+write and reports the cliff**, never writes a clamped value. Refusal is the
+better disposition on the same evidence: the clamp would have written a value the
+caller did not ask for, at a point where further s does nothing anyway, and it
+would have hidden the cliff behind a number that looks like a result. A saturated
+`meanTempoAt` therefore leaves the document unchanged at that site and appears in
+the report; `ε` is no longer an option or a constant.
+
+**W2 amendment (LOG: "W2 — w2a rulings", R-W2-2): what counts as saturation.**
+Saturation is an **interior input landing on a bound it did not start on** ⇒
+refusal. Its complement is the fixed-point rule: an input **already on** an
+admissible bound stays there and is not a refusal — `curvature = 1` and
+`protraction = ±1` are fixed points, exactly as §7.5 and §7.14 require, and the
+closed forms produce them without a `0·∞`. Bound-to-bound *flips* are refused,
+not treated as fixed points: `protraction = +1` at `s = −1` would land on `−1`,
+and an inversion is not an exaggeration.
+
+**W2 amendment (LOG: "W2 — w2a rulings", R-W2-3): `jointTrimWindow` is the one
+sanctioned carve-out.** The rubato joint trim (§7.6) **clamps rather than
+refuses**, and that is the A6 guard working as designed, not a deviation from
+R-W2-1. The distinction is deliberate: the trim's clamp produces *smooth
+saturation* toward "the whole frame is trimmed", which stays musically monotone,
+whereas a refusal there would make the window discontinuously stop responding.
+A pinned contrast test keeps the two behaviours from drifting together.
 
 *Metric choice.* logit over the position, not log-1 over the renderer's own
 `exponent = ln0.5/ln x`: both satisfy P1–P5 and give different numbers (x=0.25 at
@@ -696,7 +828,7 @@ s=2 gives 0.1 vs 0.0625). The position is the perceptually even parameter — it
 
 | attribute | transform | neutral | domain + citation | P5r | notes |
 |---|---|---|---|---|---|
-| `dynamics@volume` | map-geomean-log | performance-wide center per §7.1; `center.dynamics` may override | unbounded ℝ at parse; MIDI range enforced only downstream — SURVEY.md:463-471 | saturates | clamp to `velocityRange` (R6a) and count; `gesture` scope leaves this untouched |
+| `dynamics@volume` | map-geomean-log | performance-wide center per §7.1; `center.dynamics` may override | **ℝ>0** — the log-space intersection, not the parser's unbounded ℝ; MIDI range enforced only downstream — SURVEY.md:463-471 | saturates | values ≤ 0 are **gate-skipped**, not clamped (see below); clamp the *result* to `velocityRange` (R6a) and count; `gesture` scope leaves this untouched |
 | `dynamics@transition.to` | map-geomean-log, same center; `gesture`: pair geomean | `to == volume` is `isConstantDynamics` — SURVEY.md:519-525 | as `@volume`; its **presence** is the switch into the transition branch — SURVEY.md:513-517 | saturates | **excluded from the center population**, still transformed; never materialize or drop it; the MEI end-marker duplicate moves with it (D-I) |
 | `dynamicsDef@value` | map-geomean-log | the same center (defs share it) | unbounded ℝ; malformed literal ⇒ def silently dropped — SURVEY.md:619-623 | saturates | the **correct** lever for name-valued volumes (the MEI norm); dedupe by def identity; blast radius is the whole styleDef; clamp collapse reported via `mergedLevels` |
 | ✔ RESOLVED-1 | — | — | — | — | center algorithm in §7.1 |
@@ -730,6 +862,15 @@ an incomplete set. And the range itself becomes the **`velocityRange` option**
 (default `{min:1, max:127}`) rather than a constant in the requirement text; the
 floor of 1 is documented (velocity 0 is a note-off) and mlign was notified that it
 narrows their stated [0,127].
+
+**W2 amendment (LOG: "W2 — w2c integration complete", #2): the dynamics level
+domain is the log-space intersection.** The parser accepts unbounded ℝ, but
+map-geomean-log needs `x > 0`, so the row's **input predicate** is `ℝ>0` and a
+`volume="0"` or `volume="-5"` is skipped and reported by the §1.2 gate rather than
+transformed or repaired. This is the general §1 rule (a dimension's admissible
+domain is the intersection over its rows) applied to a value domain rather than to
+s, and it is why `velocityRange.min ≤ 0` is now an `InvalidOptionError`: a floor
+of 0 would ask the clamp to produce a value the transform's own domain excludes.
 
 *Clamping merges named levels.* The clamp bites only at the top, so two adjacent
 named levels converge and can become identical — on the reference fixture both `f`
@@ -800,7 +941,10 @@ grounds that crossing was "gone by construction" — is **restored**, because th
 proof fails in IEEE-754. Once `(1−t)^s < 2⁻⁵⁴`, `1 − (1−t)^s` rounds to exactly
 1.0, the split returns `a' + b' = 1`, and the renderer's *inclusive*
 `lateStart >= earlyEnd` test trips the very reset cliff the trim exists to remove
-(verified at s=16 for ls .45/ee .55). So: `t'` is clamped to
+(verified at s=17 for ls .45/ee .55 — **W2 amendment**, LOG: "W2 — w2a rulings",
+R-W2-4: the cited triple said s=16, but at 16 the A6 clamp fires first and
+exact-1.0 rounding only begins at 17; the guard is load-bearing either way, and
+the corrected number is what the pinned test asserts). So: `t'` is clamped to
 `1 − minRubatoWindow`, `ls' < ee'` is asserted before any write, and §8 regains
 the per-document bound as a report field. Second correction: skipping a
 cross-site partial override does **not** prevent the crossing, because the def is
@@ -815,16 +959,20 @@ error, because the renderer's response to a crossed pair is a silent total reset
 (0,1). Without the clamp the ℝ proof fails in doubles: once `(1−t)^s < 2⁻⁵⁴`,
 `1 − (1−t)^s` rounds to exactly 1.0 and the split returns `a' + b' = 1`, which
 trips the renderer's inclusive `lateStart >= earlyEnd` test — the exact cliff the
-joint trim exists to remove (verified at s=16 for ls .45/ee .55).
+joint trim exists to remove (verified at s=17 for ls .45/ee .55; R-W2-4).
 
-**Cross-site overrides bind the def, not just the element.** Skipping a partially
-overriding element does not prevent the crossing, because the def is still
-transformed and inheritance resolves *per attribute*: a def (0.1, 0.9) with an
-element supplying `lateStart="0.85"` has effective window (0.85, 0.9), and
-transforming the def alone to (0.18, 0.82) crosses it. So: resolve every
-referencing element's effective window first; **exclude a def from the joint trim
-when any referencing element partially overrides it**, and report naming the
-element, not only the def.
+**Cross-site overrides skip BOTH sites.** Skipping a partially overriding element
+alone does not prevent the crossing, because the def would still be transformed
+and inheritance resolves *per attribute*: a def (0.1, 0.9) with an element
+supplying `lateStart="0.85"` has effective window (0.85, 0.9), and transforming
+the def alone to (0.18, 0.82) crosses it. **W2 amendment (LOG: "W2 — w2c
+integration complete", #5):** the implemented rule is symmetric — when any
+referencing element partially overrides its def's window, **neither the element
+nor the def is transformed**, and the pair is **reported once, naming the
+element**. The A6 amendment above said "exclude the def"; that was half the rule,
+since leaving the element writable produces the mirror-image crossing. Naming the
+element rather than the def is deliberate: the element is where the effective
+window lives, and a caller given only the def name cannot find the site.
 
 **✔ RESOLVED-3 — P1's "strict input==output" clause is unreachable for def-bearing
 documents.** D-A originally claimed the module "never instantiates the def parsers
@@ -1243,8 +1391,8 @@ returned in `report.bounds` rather than baked in as constants.
 
 | dimension | range | distribution | derived from |
 |---|---|---|---|
-| `tempo` | **0.5 … 2** | log-uniform | Re-derived in **global-scope** terms — the v1 range (0.25…4) was inherited from the prototype's *local* semantics, where the scaled quantity is the small log-ratio inside one transition, and was arithmetically wrong by ~a factor of 2 in the exponent. Under global scope the scaled quantity is a section's deviation from the center, routinely a factor 1.4–2.2. For a document whose largest level deviation from the center is a factor r, the s keeping every level inside a musical window [lo,hi] is **s ≤ min(ln(hi/c), ln(c/lo)) / ln r**; on the built-in ladder (r ≈ 2.2, window [10,400]) that is s ≈ 1.8. Verified failure of the old bound: on `tempo.mpm` (120/80/160, center ≈ 115) s = 4 renders 26.7 and 427 bpm. The per-document bound is reported as `bounds.tempoMaxS` |
-| `tempoShape` | 0.5 … 2 | log-uniform | The logit saturates to exactly 1.0 — deleting the transition — at s ≈ 8 for an authored 0.99, s ≈ 16.75 for 0.9. The ε output clamp (§7.3) makes larger s safe but inert, so the useful range ends well below it; 2 is the point at which a 0.25 mean-position reaches 0.1, already an extreme back-loading |
+| `tempo` | **0.5 … 2** | log-uniform | Re-derived in **global-scope** terms — the v1 range (0.25…4) was inherited from the prototype's *local* semantics, where the scaled quantity is the small log-ratio inside one transition, and was arithmetically wrong by ~a factor of 2 in the exponent. Under global scope the scaled quantity is a section's deviation from the center, routinely a factor 1.4–2.2. For a document whose largest level deviation from the center is a factor r, the s keeping every level inside a musical window [lo,hi] is **s ≤ min(ln(hi/c), ln(c/lo)) / ln r**; on the built-in ladder (r ≈ 2.2, window [10,400]) that is s ≈ 1.8. Verified failure of the old bound: on `tempo.mpm` (120/80/160, center ≈ 115) s = 4 renders 26.7 and 427 bpm. The document-determined half is reported as `bounds.tempoDeviationRatio` (the `r` above); the caller supplies `[lo,hi]` and completes the formula — **W2 amendment**, LOG: "W2 — w2c integration complete", #7 |
+| `tempoShape` | 0.5 … 2 | log-uniform | The logit saturates to exactly 1.0 — deleting the transition — at s ≈ 8 for an authored 0.99, s ≈ 16.75 for 0.9. Saturation there is **refused and reported** (§7.3, R-W2-1), so larger s is safe but silently does nothing at those sites — the useful range ends well below it; 2 is the point at which a 0.25 mean-position reaches 0.1, already an extreme back-loading |
 | `dynamics` | 0.5 … 1.75 | log-uniform | Under §7.1's population (each site once, `transition.to` excluded) a p(48)…f(97) map centers at √(48·97) ≈ 68 and reaches the 127 ceiling at **s ≈ 1.76** — so the clamp, and the `mergedLevels` risk, begin just above the range. The v1 figure of 1.8 was quoted for a population the v1 rule never produced (it gave ≈ 90 and a clamp at s ≈ 1.64); the algorithm and the arithmetic now agree |
 | `dynamicsShape` | 0.5 … 2 | log-uniform | Range-safe by construction (pure time reparameterization), so the bound is perceptual, not mechanical: at s = 2 an authored curvature 0.3 becomes 0.51, a pronounced late bloom; beyond that the swell reads as a step. Its own row now, so asking for this no longer requires asking for louder dynamics |
 | `rubato` | 0.5 … 2.5 | log-uniform | Intensity: the prototype's clamp [0.1, 5.0] is reached from a typical authored 0.5…2.0 at s ≈ 2.3. Window: the joint trim saturates smoothly, but only because of the A6 guard — the per-document cliff bound (the s at which `t'` would reach `1 − minRubatoWindow`) is restored and returned as `bounds.rubatoMaxS` |
@@ -1265,11 +1413,15 @@ returned in `report.bounds` rather than baked in as constants.
 "rubato is perceptually violent, damp it" as `w = 0.2` rather than as a narrower
 range. The ranges above are for **direct** sampling of the factors record (R3).
 
-*Two bounds are computed per document, not sampled blind* — `bounds.tempoMaxS` and
-`bounds.rubatoMaxS`, plus the note-length-dependent cliff risks for
-`ornamentSpread` and `imprecisionDuration`, which require `options.msm` to quantify
-and are otherwise flagged qualitatively. A sample exceeding a document-specific
-bound is reported, not silently produced.
+*Two per-document quantities are computed, not sampled blind* —
+`bounds.rubatoMaxS`, which is a true maximum s because its ceiling is mechanical
+(the A6 guard), and `bounds.tempoDeviationRatio`, which is **not** a bound but the
+document's deviation ratio `r`: the engine cannot finish the tempo formula without
+inventing the musical window `[lo,hi]`, so it reports `r` and the caller completes
+it (W2 amendment, #7). Alongside them are the note-length-dependent cliff risks
+for `ornamentSpread` and `imprecisionDuration`, which need `options.msm` to
+quantify and are otherwise flagged qualitatively. A sample exceeding a
+document-specific bound is reported, not silently produced.
 
 ## 9. Panel findings disposition
 
@@ -1327,5 +1479,5 @@ disposition and the adjudication item that carries it. Only two were rejected.
 | P5 names two different properties | **adapted** — P5a/P5r split with a per-row verdict column; **the net-deviation articulation transform REJECTED**: it needs the note's incoming velocity, which is MSM data and therefore forbidden by R1 | A12 |
 | P2 exact only to ~1 ULP | adopted — stated numerically with an epsilon, tested on parsed numbers | A3 |
 | Center double-counts defs against references | adopted — one entry per def element (§7.1) | A5 |
-| meanTempoAt drops the mandatory epsilon guard | adopted — ε restored as a reported output clamp | A3 |
+| meanTempoAt drops the mandatory epsilon guard | adopted — the guard is restored, but as A3's saturation **refusal**, not the survey's clamp (superseded at W2 by R-W2-1; §7.3) | A3 |
 | P1–P5 cannot validate any registry choice | adopted — stated in §1.1; per-row metric justifications; per-row render tests added to W3 | A14 |
