@@ -26,7 +26,12 @@ context compaction) reads it FIRST.
   copied to ornamentation/tools/ (probe.mjs, probe2.mjs take a dist dir as argv[1];
   toks2.mjs emits JSDoc-pruned token streams); refactor/log.md [T7]/[T19] entries hold
   the parity traps (distilled into ornamentation/research/architecture-brief.md).
-- **Java reference** /Users/nielspfeffer/Projects/meico — READ-ONLY, always.
+- **Java reference (v2 parity)** /Users/nielspfeffer/Projects/meico — READ-ONLY, always.
+- **Java reference (v3)**: LarsEngeln/meico branch `develop` @ 3deb141c = open PR
+  cemfi/meico#31 "v0.12.0" (unmerged, unreviewed — pin the SHA, track review changes).
+  Implements the full v3 model incl. MeiOrnamentExpander (MEI ornament → MPM
+  expansion; in scope as a late wave). Blueprint report:
+  ornamentation/research/lars-v3-implementation.md (ORN-6).
 - **MPM spec clone** (develop @ 1de00bb): scratchpad/mpm-develop
   (/private/tmp/claude-501/-Users-nielspfeffer-Projects-meico-ts/5d7ca67d-74f7-491c-a4c3-06867b04b872/scratchpad/mpm-develop).
   If missing (scratchpad is ephemeral): `git clone --branch develop
