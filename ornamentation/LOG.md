@@ -1061,3 +1061,32 @@ round-trips are fixpoints, parse never mutates the caller's tree, and every muta
 devise now dies. Two items remain open for the conductor, both pre-existing and both correctly
 left alone by this wave: the `setId(null)` no-op on parser-built attributes in `TemporalSpread`
 and `DynamicsGradient`, and `note` not yet registered in `Mpm.isInNamespace` (flagged for W9).
+
+## 2026-08-09 — Conductor: W1–W4 committed; D5 amendment for W5 (journaled before acting)
+
+W1 9b4e610, W2 cd140e1, W3 e89d162, W4 6ca4b79. Suite at 2725 tests, all byte
+gates baseline-identical.
+
+**D5 AMENDMENT (binding for W5).** D5 claimed "NO change needed to the ms pass
+itself". Planning W5 falsifies this for ONE combination: alignment="at end" with an
+ms-domain frame — the anchor (principal ms end − frameLength) is unknowable before
+tempo rendering, so phase N cannot express it with the v2 onset-offset marker.
+Resolution: phase N writes, for that combination only, an end-anchored marker
+`ornament.milliseconds.fromend.offset` (value = spacing_k + frame.offset −
+frameLength, a static ms quantity); the ms pass gains ONE new branch consuming it:
+msDate_new = msDateEnd_before + value (duration/noteoff handling analogous to the
+existing branches, read-before-write discipline identical). The branch lands in
+BOTH copies of renderMillisecondsModifiersToMap (Performance's live copy AND
+OrnamentationMap's parity copy), with a synchronization test asserting the two
+copies' behavior on the same input stays identical (closing the nothing-keeps-them-
+in-step trap for the NEW branch at least). v2 documents never carry the marker →
+byte gates unaffected. Rationale: the ODD itself classifies this as a
+"milliseconds modifier", so extending the ms pass is spec-aligned, not a hack.
+
+Further W5 rulings (D11-impl): multi-ornament layout cursor runs per frame domain
+(tick/% ornaments on a tick cursor, ms ornaments on an ms cursor); overflow scaling
+per domain group; BOTH domains stacking on one principal → warning logged,
+domains laid out independently (spec silent; documented limitation). The -1
+repetition sentinel requires an explicit ms frameLength (budget = ceil(ms/150)
+computable pre-tempo); tick/% frames with -1 → log + skip (D9 refinement).
+`note` gets added to Mpm.isInNamespace (v3 vocabulary; flagged by W3 verifier).
