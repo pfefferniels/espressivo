@@ -255,6 +255,11 @@ export class Attribute extends XomNode {
    * XOM parity: detaching an attribute must remove it from its parent
    * element's attribute list (the base implementation only searches child
    * nodes, which left detached attributes in the serialized XML).
+   *
+   * There is deliberately no DOM fallback for the parentless case, because an attribute
+   * that sits on an element always has `_xomParent`: {@link Element.addAttribute} sets it
+   * for constructed attributes and {@link Element.wrap} for parsed ones. An attribute
+   * without it is one no element holds, and detaching it is a no-op by definition.
    */
   detach(): void {
     if (this._xomParent) {
@@ -403,11 +408,15 @@ export class Element extends XomNode {
         const attrNs = attr.namespaceURI || '';
         const attrName = attr.name;
         if (attrName.startsWith('xmlns')) continue; // skip namespace declarations
-        if (attrNs) {
-          elem._attributes.push(new Attribute(attrName, attrNs, attr.value));
-        } else {
-          elem._attributes.push(new Attribute(attrName, attr.value));
-        }
+        const wrapped = attrNs
+          ? new Attribute(attrName, attrNs, attr.value)
+          : new Attribute(attrName, attr.value);
+        // Parented like the child nodes below, and for the same reason: `_xomParent` is
+        // the only route {@link Attribute.detach} has back to the list it must remove
+        // itself from. Assigned directly rather than via `addAttribute`, which would
+        // additionally dedupe by local name and could drop a parsed attribute.
+        wrapped._xomParent = elem;
+        elem._attributes.push(wrapped);
       }
     }
 

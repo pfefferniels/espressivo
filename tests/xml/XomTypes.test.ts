@@ -619,3 +619,85 @@ describe('XomNode – parent and detach', () => {
     expect(parent.removeChild(orphan)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Attribute.detach on parsed trees
+//
+// Element.wrap parents the attributes it creates, exactly as it parents the child
+// nodes. Without that, detach() had nothing to remove itself from and silently did
+// nothing, so a parsed attribute stayed in the serialized XML forever.
+// ---------------------------------------------------------------------------
+describe('Attribute – detach on parser-sourced attributes', () => {
+  const parse = (xml: string): Element => new Builder().build(xml).getRootElement();
+
+  it('should report the wrapping element as the parent of a parsed attribute', () => {
+    const root = parse('<note dur="4" oct="5"/>');
+    expect(root.getAttribute('dur')!.getParent()).toBe(root);
+  });
+
+  it('should remove a parsed attribute from the serialized XML', () => {
+    const root = parse('<note dur="4" oct="5"/>');
+    root.getAttribute('dur')!.detach();
+    expect(root.getAttribute('dur')).toBeNull();
+    expect(root.getAttributeCount()).toBe(1);
+    expect(root.toXML()).toBe('<note oct="5" />');
+  });
+
+  it('should remove a parsed namespaced attribute', () => {
+    const root = parse(
+      '<note xmlns:xml="http://www.w3.org/XML/1998/namespace" xml:id="n1" dur="4"/>',
+    );
+    root.getAttribute('id', 'http://www.w3.org/XML/1998/namespace')!.detach();
+    expect(root.getAttribute('id', 'http://www.w3.org/XML/1998/namespace')).toBeNull();
+    expect(root.toXML()).toBe('<note dur="4" />');
+  });
+
+  it('should remove a parsed attribute below the root', () => {
+    const root = parse('<score><note dur="4" oct="5"/></score>');
+    const note = root.getChildElements('note').get(0);
+    note.getAttribute('oct')!.detach();
+    expect(note.toXML()).toBe('<note dur="4" />');
+    expect(root.toXML()).toBe('<score><note dur="4" /></score>');
+  });
+
+  it('should leave the remaining attributes in their original order', () => {
+    const root = parse('<note a="1" b="2" c="3" d="4"/>');
+    root.getAttribute('b')!.detach();
+    expect(root.toXML()).toBe('<note a="1" c="3" d="4" />');
+  });
+
+  it('should keep two same-local-name attributes distinguishable when parsed', () => {
+    // Storage is a plain array filled in document order, with no dedupe: routing wrap
+    // through addAttribute would match `id` against `xml:id`'s local name and drop one.
+    const root = parse('<note xml:id="n1" id="plain"/>');
+    expect(root.getAttributeCount()).toBe(2);
+    expect(root.toXML()).toBe('<note xml:id="n1" id="plain" />');
+
+    root.getAttribute('id', 'http://www.w3.org/XML/1998/namespace')!.detach();
+    expect(root.toXML()).toBe('<note id="plain" />');
+  });
+
+  it('should be a no-op for an attribute no element holds', () => {
+    const orphan = new Attribute('dur', '4');
+    expect(() => orphan.detach()).not.toThrow();
+    expect(orphan.getValue()).toBe('4');
+  });
+
+  it('should still detach attributes of constructed elements', () => {
+    const el = new Element('note');
+    const a = new Attribute('dur', '4');
+    el.addAttribute(a);
+    el.addAttribute(new Attribute('oct', '5'));
+    a.detach();
+    expect(el.getAttribute('dur')).toBeNull();
+    expect(el.toXML()).toBe('<note oct="5" />');
+  });
+
+  it('should survive a parse/detach/serialize/re-parse round trip', () => {
+    const root = parse('<note xmlns="http://x" dur="4" oct="5"/>');
+    root.getAttribute('dur')!.detach();
+    const reparsed = parse(root.toXML());
+    expect(reparsed.getAttribute('dur')).toBeNull();
+    expect(reparsed.getAttributeValue('oct')).toBe('5');
+  });
+});

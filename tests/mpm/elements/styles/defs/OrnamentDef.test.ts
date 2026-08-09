@@ -6,7 +6,7 @@ import {
   FrameDomain,
   NoteOffShift,
 } from '../../../../../src/mpm/elements/styles/defs/TemporalSpread.js';
-import { Element, Attribute } from '../../../../../src/xml/XomTypes.js';
+import { Element, Attribute, Builder } from '../../../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../../../src/mpm/Mpm.js';
 
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
@@ -835,5 +835,81 @@ describe('OrnamentDef', () => {
     expect(reparsed.getDynamicsGradient()!.transitionTo).toBe(1.0);
     expect(reparsed.getTemporalSpread()!.frameStart).toBe(-22.0);
     expect(reparsed.getTemporalSpread()!.getFrameLength()).toBe(44.0);
+  });
+});
+
+// ==========================================================================
+//  setId(null) on transformers that came out of the parser
+//
+//  Both classes remove their id by detaching the attribute. Until the attribute
+//  carried its parent, that detach did nothing for anything parsed from a file and
+//  the stale xml:id stayed in the serialized MPM.
+// ==========================================================================
+describe('setId(null) on parsed transformers', () => {
+  const parse = (xml: string): Element => new Builder().build(xml).getRootElement();
+
+  it('should drop a parsed DynamicsGradient id from the serialized XML', () => {
+    const xml = parse(
+      `<dynamicsGradient xmlns="${Mpm.MPM_NAMESPACE}" xml:id="dg-1" transition.from="-1.0" transition.to="1.0"/>`,
+    );
+    const dg = new DynamicsGradient(xml);
+    expect(dg.getId()).toBe('dg-1');
+
+    dg.setId(null);
+
+    expect(dg.getId()).toBeNull();
+    expect(xml.getAttribute('id', XML_NS)).toBeNull();
+    expect(dg.toXml()).not.toContain('xml:id');
+    expect(dg.toXml()).toContain('transition.from="-1.0"');
+  });
+
+  it('should drop a parsed TemporalSpread id from the serialized XML', () => {
+    const xml = parse(
+      `<temporalSpread xmlns="${Mpm.MPM_NAMESPACE}" xml:id="ts-1" frame.start="-22.0" frameLength="44.0"/>`,
+    );
+    const ts = new TemporalSpread(xml);
+    expect(ts.getId()).toBe('ts-1');
+
+    ts.setId(null);
+
+    expect(ts.getId()).toBeNull();
+    expect(xml.getAttribute('id', XML_NS)).toBeNull();
+    expect(ts.toXml()).not.toContain('xml:id');
+    expect(ts.toXml()).toContain('frame.start="-22.0"');
+  });
+
+  it('should drop the ids of both transformers of a parsed ornamentDef', () => {
+    const xml = parse(
+      `<ornamentDef xmlns="${Mpm.MPM_NAMESPACE}" name="arpeggio" xml:id="od-1">` +
+        `<dynamicsGradient xml:id="dg-1" transition.from="-1.0" transition.to="1.0"/>` +
+        `<temporalSpread xml:id="ts-1" frame.start="-22.0" frameLength="44.0"/>` +
+        `</ornamentDef>`,
+    );
+    const def = OrnamentDef.createOrnamentDef(xml)!;
+
+    def.getDynamicsGradient()!.setId(null);
+    def.getTemporalSpread()!.setId(null);
+
+    const serialized = def.getXml()!.toXML();
+    expect(serialized).not.toContain('dg-1');
+    expect(serialized).not.toContain('ts-1');
+    // the def's own id is untouched, and so is every other attribute
+    expect(serialized).toContain('xml:id="od-1"');
+    expect(serialized).toContain('transition.from="-1.0"');
+    expect(serialized).toContain('frameLength="44.0"');
+  });
+
+  it('should re-add an id after it was dropped from a parsed element', () => {
+    const xml = parse(
+      `<dynamicsGradient xmlns="${Mpm.MPM_NAMESPACE}" xml:id="dg-1" transition.from="-1.0"/>`,
+    );
+    const dg = new DynamicsGradient(xml);
+    dg.setId(null);
+    dg.setId('dg-2');
+
+    expect(dg.getId()).toBe('dg-2');
+    expect(xml.getAttribute('id', XML_NS)!.getValue()).toBe('dg-2');
+    expect(dg.toXml()).toContain('xml:id="dg-2"');
+    expect(dg.toXml()).not.toContain('dg-1');
   });
 });

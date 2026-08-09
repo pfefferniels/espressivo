@@ -1178,3 +1178,27 @@ was resolved by writing the trim against `charCodeAt` instead, which is also cle
 is not `String.trim`.
 
 New `src/` file `src/supplementary/parseJavaDouble.ts` lints clean: **0 problems**.
+
+---
+
+## TD4 (2026-08-09) — 0, nothing moved
+
+Repo total **1019 → 1019** (1017 errors, 2 warnings), and — the stronger statement — the
+per-`(file, rule)` histogram is **identical**: comparing `eslint . -f json` over a `git archive`
+of `a67fb6e` against the working tree yields **0 new pairs and 0 removed pairs**. TD4 is not a
+column for the same reason T15 and T9b are not.
+
+The one `src/` edit is a five-line comment plus a field assignment inside an existing loop, and the
+three test files gain one import specifier each — all used, so no `no-unused-vars`. The new
+`Builder` import in `tests/xml/AbstractXmlSubtree.test.ts` and
+`tests/mpm/elements/styles/defs/OrnamentDef.test.ts` is the kind of thing that has silently added
+debt before (see the T20b and TD2 sections); here it did not, because both are consumed by the
+tests that requested them.
+
+**No suppressions of any kind were added**: `git diff` over the item contains no `eslint-disable`,
+`@ts-ignore`, `@ts-expect-error` or coverage pragma. `grep -rn "eslint-disable" src/` is still the
+single `Mei2MsmMpmConverter.ts` line the T16 section describes — TD4 neither added nor removed one.
+
+`prettier --check src/ tests/` reports exactly one file on both trees, `tests/midi/Midi.test.ts`.
+That is pre-existing (confirmed on the `git archive` baseline) and was **left alone**: charter
+invariant 10 keeps formatting out of logic commits.

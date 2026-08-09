@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { AbstractXmlSubtree } from '../../src/xml/AbstractXmlSubtree.js';
-import { Element } from '../../src/xml/XomTypes.js';
+import { Builder, Element } from '../../src/xml/XomTypes.js';
 import { GenericMap } from '../../src/mpm/elements/maps/GenericMap.js';
+
+const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 
 /**
  * A minimal subclass, so the state *before* `parseData` — which no factory can hand out,
@@ -11,6 +13,17 @@ import { GenericMap } from '../../src/mpm/elements/maps/GenericMap.js';
 class Probe extends AbstractXmlSubtree {
   protected parseData(xml: Element): void {
     this.setXml(xml);
+  }
+  parse(xml: Element): void {
+    this.parseData(xml);
+  }
+}
+
+/** As {@link Probe}, but it also picks up the `xml:id` the way every real subclass does. */
+class IdProbe extends AbstractXmlSubtree {
+  protected parseData(xml: Element): void {
+    this.setXml(xml);
+    this.id = xml.getAttribute('id', XML_NS);
   }
   parse(xml: Element): void {
     this.parseData(xml);
@@ -42,5 +55,16 @@ describe('AbstractXmlSubtree', () => {
     const map = GenericMap.createGenericMap('tempoMap')!;
     expect(map.getXmlOrNull()).not.toBeNull();
     expect(map.getXml()).toBe(map.getXmlOrNull());
+  });
+
+  it('setId(null) removes an xml:id that came out of the parser', () => {
+    const probe = new IdProbe();
+    probe.parse(new Builder().build('<tempoMap xml:id="tm-1" foo="bar"/>').getRootElement());
+    expect(probe.getId()).toBe('tm-1');
+
+    probe.setId(null);
+
+    expect(probe.getId()).toBeNull();
+    expect(probe.toXml()).toBe('<tempoMap foo="bar" />');
   });
 });

@@ -12286,3 +12286,328 @@ that field. This is the unfinished half of the proof-harness-era detach fix. Que
 as TD4 under the user's fix-all-obvious-bugs directive; sequenced AFTER the in-flight
 T23 verdict with a focused audit addendum before the merge, so the certification
 stays honest.
+
+## [TD4] worker — the attribute half of detach, and why `addAttribute` was the wrong door (2026-08-09)
+
+One-line fix, in the file where a one-line fix is least casual. Baseline HEAD `a67fb6e`
+(src-identical to the last green `9914fd4`).
+
+### 1. The bug, reproduced before touching anything
+
+`mech.mjs` against a clean build of HEAD:
+
+```
+parsed attr getParent()          null
+parsed attr _xomParent           null
+parsed attr domNode.parentNode   null
+before detach     <r xmlns="http://x" a="1" xml:id="i1" b="2">…
+after detach(a)   <r xmlns="http://x" a="1" xml:id="i1" b="2">…      ← unchanged
+after detach(xml:id) <r xmlns="http://x" a="1" xml:id="i1" b="2">…   ← unchanged
+parsed child elem getParent()    root (wired)
+```
+
+Exactly as the conductor described. Worth noting the third line: the base
+`XomNode.getParent`/`detach` DOM fallback is **not** a safety net here, because a wrapped
+attribute keeps its *placeholder* DOM node (`wrap` calls `adoptDomNode` for elements and text
+nodes, never for attributes), and a placeholder `Attr` has neither `parentNode` nor
+`ownerElement`. So the parentless attribute was invisible from both directions.
+
+### 2. Mechanism — (a) direct assignment, and the measurement that ruled out (b)
+
+The brief asked me to establish `addAttribute`'s full semantics before choosing. It has three
+behaviours beyond setting the parent, and one of them is disqualifying:
+
+1. **It dedupes, on a lookup that is wider than it looks.** `addAttribute` calls
+   `getAttribute(attr.getLocalName(), attr.getNamespaceURI() || undefined)`, and with
+   `namespaceURI === undefined` that lookup matches `localName === name` **or**
+   `qualifiedName === name`. An unprefixed `id` therefore finds a previously added `xml:id`,
+   whose local name is also `id`, and removes it. Measured, both orders:
+
+   | sequence | result | count |
+   | --- | --- | --- |
+   | `addAttribute('xml:id')` then `addAttribute('id')` | `<r id="plain" />` | **1** |
+   | `addAttribute('id')` then `addAttribute('xml:id')` | `<r id="plain" xml:id="i1" />` | 2 |
+   | `wrap` of `<r xml:id="i1" id="plain"/>` (today) | `<r xml:id="i1" id="plain" />` | 2 |
+   | `wrap` of `<r id="plain" xml:id="i1"/>` (today) | `<r id="plain" xml:id="i1" />` | 2 |
+
+   Routing `wrap` through `addAttribute` would thus **drop a parsed attribute** on any document
+   where an unprefixed attribute's name equals a prefixed attribute's local name and the
+   unprefixed one comes second. That is silent data loss in the parser, traded for nothing.
+2. **Its replacement is a remove-then-append**, i.e. it can move an attribute to the end of the
+   list — and the file header states in its first bullet that storage order *is* serialization
+   order. Nothing may reorder.
+3. It does **not** mirror onto the DOM node (neither does anything else in this layer), so the
+   "double-mirroring corrupts serialization" hypothesis in the brief is not a risk in either
+   direction — but it is also not a reason to prefer (b).
+
+No fixture is exposed to (1) today: I scanned all four fixture directories for elements carrying
+two attributes with the same local name — **0 collisions across 10 368 attributes on 3 020
+elements**. That is an argument *against* (b), not for it: a probe cannot catch a corruption no
+fixture exercises, so the choice would have shipped on an unexercised assumption.
+
+**Chosen: (a).** One assignment, in the loop that already exists, three lines above the identical
+assignment `wrap` makes for child elements. It cannot dedupe, cannot reorder, is O(1) rather than
+O(n) per attribute (this is the hot parse path T17 spent an item optimising), and its entire
+observable effect is the two reads of `_xomParent`.
+
+### 3. The full behaviour surface that changes, enumerated
+
+`_xomParent` is read in exactly two places, so (a)'s blast radius is closed-form:
+
+- **`Attribute.detach()`** — the fix. Now removes the attribute, as XOM does.
+- **`XomNode.getParent()`** — a parser-sourced attribute now answers with its element instead of
+  `null`. `grep` over `src/` finds exactly **one** attribute-capable consumer:
+  `Mei2MsmMpmConverter.msmCleanupSingle` (`:4466-4472`), whose `node instanceof Attribute` branch
+  does `getParent()` then `removeAttribute`. That branch was dead for parsed attributes and is
+  now live. **It cannot move the pipeline**, because the MSM it runs on is built programmatically
+  — `Msm.createMsm` constructs the whole skeleton with `new Element` / `addAttribute`
+  (`src/msm/Msm.ts:262-293`), and `currentDate`/`tie`/`layer`/`endid`/`tstamp2`/`goto@n` are all
+  written during conversion via `addAttribute`, so they already carried parents and the branch
+  already fired. Its only caller is `convert()` itself (`:257`).
+
+Everything else is untouched by construction: `removeAttribute` is called by identity at every
+`src/` site (`XmlBase.removeAllAttributes` included, which fetches the attribute from the element
+first), and `Element.copy` routes through `addAttribute`, which always set the parent.
+
+**One hazard restated rather than introduced.** `removeAttribute`'s documented by-name fallback
+does not clear the removed attribute's parent, so an attribute removed that way keeps a stale
+`_xomParent` and a later `detach()` would remove whatever attribute now answers to that name.
+That asymmetry is pre-existing and deliberate (its comment says so); it applied to constructed
+attributes before and applies to parsed ones now. The fix makes the two kinds behave the same,
+which is the whole point — it does not create a new class of hazard.
+
+### 4. Evidence
+
+**Pipeline byte-probe, standing hash — unchanged.** `t21work/pipe.mjs` (the probe PARITY.md's
+header cites) on two clean out-of-tree builds: `entries=24 threw=0 nonVacuous=21`, sha
+`6e0124f58aa5375e7123d860d35d5116a52470efe1db7175159b9b2076d7b24b` on **both**, `diff` of the two
+JSON transcripts clean. The chain TD3 set is unbroken.
+
+**TD4-specific probe, deliberately built to be able to fail.** `td4/pipe.mjs`, 306 hashed checks:
+
+| battery | what | labels | moved |
+| --- | --- | --- | --- |
+| A | 16 MEI fixtures → MSM, MPM, augmented MSM, raw + expressive MIDI | 17 | 0 |
+| B | 16 `reference/` MSM+MPM pairs **parsed from disk** → perform → MIDI | 17 | 0 |
+| C | 6 deterministic all-maps fixtures → perform → MIDI | 7 | 0 |
+| D | 88 fixture files: parse/serialize identity, `copy`, `fixDuplicateIds`, `removeAllAttributes`×4, `removeAllElements`×6 | 177 | 0 |
+| D′ | 88 files: **detach each root attribute in turn**, re-serialize | 88 | **64** |
+
+242 of 306 identical, and the 64 that move are D′ — the fixed branch, driven on purpose. The
+remaining 24 D′ labels are `n=0` (the `.mpm` roots carry no attributes), so nothing that *could*
+move failed to. Battery B is the one that matters most for this item: those trees come out of
+`Element.wrap`, so every attribute in them is parser-sourced, and their augmented-MSM and MIDI
+hashes do not move.
+
+The old-build D′ transcripts are the bug as a measurement — e.g.
+`reference/simple_notes.msm`, detaching each of the root's three attributes:
+
+```
+BASE  n=3  title=>…#1423   xml:id=>…#1423   pulsesPerQuarter=>…#1423     ← one hash, nothing removed
+WORK  n=3  title=>…#1397   xml:id=>…#1408   pulsesPerQuarter=>…#1400     ← three, each shorter
+```
+
+The three deltas are 26, 15 and 23 bytes, which is exactly ` title="Simple Notes"`,
+` xml:id="UUID0"` (canonicalised) and ` pulsesPerQuarter="720"`. Across all 64 moved labels, every
+one of the 306 individual positions shrank; none grew.
+
+**Independent second battery — identical.** `t5verify/probe.mjs`, 1284 checks (namespace emission,
+both escape tables, attribute insertion order and the re-set-moves-to-end rule, `removeAttribute`
+identity vs by-name, element detach, `query` axes, malformed input, class shapes, `XmlBase`
+round trips, plus its own pipeline section): sha
+`ed158a07d553f9346b958e8943b98c3b8c55a046f4fb4061654567e864e8757f` on **both** builds.
+
+**Emitted-JS classification — one file, as expected.** `diff -rq` over the two `dist/` trees:
+`xml/XomTypes.js`, `.d.ts` and the two maps, nothing else. The `.js` hunk is the ternary + the one
+assignment; the `.d.ts` hunk is **comment-only** (`detach(): void;` is identical), so the type
+surface does not move.
+
+**Facade battery — green.** `tests/api/` 109 tests; `t13verify/postmessage.mjs` 8/8 payloads
+survive a real `node:worker_threads` hop; `plaindata.mjs` 488 checks and `contract.mjs` 33 checks,
+**0 failures on both builds**.
+
+**`npm run verify` — green.** 59 files, **2352 tests**, 0 failures (build + `typecheck:tests` +
+vitest).
+
+### 5. Tests — +14, and the negative control
+
+Baseline **2338 → 2352**. Nothing was weakened, nothing inverted: **no existing test pinned the
+bug**, because every existing `setId(null)` / `detach` test builds its element with `new Element` +
+`addAttribute`, i.e. exercises the half that already worked. Those tests are the regression guard
+the brief asked me to confirm, and they pass unchanged on both trees.
+
+| file | n | what |
+| --- | --- | --- |
+| `tests/xml/XomTypes.test.ts` | 9 | parsed attribute reports its parent; detach removes it (plain, namespaced, below the root); remaining attributes keep their order; two same-local-name attributes stay distinguishable (this one pins mechanism (a) against (b)); orphan detach is a no-op; **constructed detach still works**; parse/detach/serialize/re-parse round trip |
+| `tests/mpm/elements/styles/defs/OrnamentDef.test.ts` | 4 | the live consequence — parsed `DynamicsGradient` and `TemporalSpread` `setId(null)`, then both through a parsed `ornamentDef`, asserting the stale id is gone from the *serialized* XML and that no other attribute moved; re-adding an id after dropping it |
+| `tests/xml/AbstractXmlSubtree.test.ts` | 1 | the same bug in the shared base class — see the DISCOVERED note |
+
+**Negative control (charter bug policy (c)).** A `git archive` of `a67fb6e` (verified
+`diff`-identical to `git show HEAD:src/xml/XomTypes.ts`) with only the new test files copied in:
+**11 of the 14 fail**, and the 3 that pass are exactly the ones that must —
+
+- *orphan detach is a no-op* and *constructed detach still works*: guards, green on both trees by
+  design;
+- *re-add an id after it was dropped*: green on both, and instructively so. On the old build
+  `setId(null)` leaves the attribute in place, so the subsequent `setId('dg-2')` finds it and takes
+  the `setValue` path instead of the `addAttribute` path — different route, same observable
+  result. It is in the suite as a statement that the fix does not disturb that route.
+
+### 6. DISCOVERED (out of scope, not acted on)
+
+- **The sibling report named two of four call sites.** `AbstractXmlSubtree.setId(null)`
+  (`src/xml/AbstractXmlSubtree.ts:68`) and `Author.setNumber(null)`
+  (`src/mpm/elements/metadata/Author.ts:83`) have the identical shape and were identically broken
+  for parsed subtrees; `AbstractXmlSubtree` is the base of twelve classes (`Part`, `Dated`,
+  `Performance`, `Global`, `RelatedResource`, `GenericMap`, `GenericStyle`, `Header`,
+  `AbstractDef`, `Metadata`, `Author`, `Comment`). All are fixed by the same assignment. I added
+  one test at the base class rather than twelve at the leaves; a follow-up could pin
+  `Author.setNumber(null)` too.
+- **`msmCleanupSingle` is public and now behaves differently for a parsed MSM.** It is exported
+  (`Mei2MsmMpmConverter.msmCleanupSingle`), and a caller handing it an MSM read from a file now
+  gets `currentDate`/`tie`/`layer`/`endid`/`tstamp2` actually stripped, which is what the method
+  promises and what it already did for converted MSMs. Not reachable from any fixture path (§3),
+  but it is the one place where "enabling detach" is visible from outside this layer.
+- **`Attribute.getParent()` had no consumer that could ever see a non-null answer** before this
+  item, which is why the defect survived. Anything relying on `getParent() === null` as a proxy
+  for "attribute is unattached" would now be wrong; nothing in `src/` did.
+
+### 7. Handoff
+
+- Working tree: 4 files — `src/xml/XomTypes.ts` (+14/−5, of which the semantic change is one
+  assignment), and the three test files above. Plus `PARITY.md`, `refactor/lint-debt.md` and this
+  entry.
+- Lint: **1019 → 1019**, per-`(file, rule)` histogram identical, 0 new pairs. No suppressions
+  added. `prettier --check` flags only the pre-existing `tests/midi/Midi.test.ts`, left alone per
+  charter invariant 10.
+- Probes for the verifier, all taking a dist dir as `argv[1]`: `td4/mech.mjs` (mechanism
+  analysis + the fixture collision scan), `td4/pipe.mjs <dist> <out.json>` (the 306-check
+  battery), and the negative-control tree at `td4/negctl/` — rebuild it with
+  `git archive a67fb6e` if the working tree has moved.
+
+## [TD4] verifier — PASS; the rejected mechanism measured, the pipeline unmoved (2026-08-09)
+
+Independent tree, independent probes, nothing taken on the worker's word. Two clean
+out-of-tree builds: `base` = `git archive a67fb6e` (spot-checked `diff`-identical to
+`git show a67fb6e:src/xml/XomTypes.ts`), `work` = `git archive HEAD` + the 7 modified files
+copied from the working tree (each `diff`-verified against the live file). `src-identity`
+holds: the tree differs from the last green `9914fd4` in **one** file, `src/xml/XomTypes.ts`.
+
+### 1. Mechanism — the rejected door really does slam on a finger
+
+Read `addAttribute`/`getAttribute`/`removeAttribute`/`wrap` first, then measured both
+mechanisms on both builds (`td4verify/mech.mjs`). The worker's disqualifying finding
+reproduces exactly:
+
+| measured | result | count |
+| --- | --- | --- |
+| `addAttribute('xml:id')` then `addAttribute('id')` | `<r id="plain" />` | **1** |
+| `addAttribute('id')` then `addAttribute('xml:id')` | `<r id="plain" xml:id="i1" />` | 2 |
+| `wrap` of `<r xml:id="i1" id="plain"/>`, both builds | `<r xml:id="i1" id="plain" />` | 2 |
+| re-`addAttribute('a')` over an existing `a` | `<r b="2" c="3" a="9" />` | order moved |
+
+So mechanism (b) **would** have dropped a parsed attribute (`getAttribute(name, undefined)`
+matches local name *or* qualified name, so an unprefixed `id` finds `xml:id`) and **would**
+have been able to reorder — and storage order is serialization order. The rejection is
+justified on measurement, not on taste.
+
+The chosen mechanism's non-effects, all measured on both builds and all identical:
+parsed attribute order preserved (`<r a="1" b="2">…`); the wrapped DOM element's own
+attribute list untouched **before and after** `detach()` (`a=1 b=2` on both) — so there is no
+DOM double-mirroring and serialization stays driven by `_attributes` alone; and after
+`detach()` the attribute's `getParent()` is `null` again, because `removeAttribute`'s identity
+path clears the pointer. No stale-parent residue. The fixture collision scan reproduces to
+the digit: **88 files, 3 020 elements, 10 368 attributes, 0 local-name collisions.**
+
+Blast radius re-derived independently: `_xomParent` is read in exactly two places. Of the 40
+`getParent()` call sites in `src/`, every one but `msmCleanupSingle`'s `node instanceof
+Attribute` branch is `Element`-typed. And no site anywhere moves an existing `Attribute`
+between elements — every `addAttribute` call passes a fresh `new Attribute(...)` or `.copy()`
+(checked `Mei.addIds`, `ids.ts`, `Part.parseData`, `AbstractXmlSubtree.setId`, `Element.copy`),
+so the fix cannot alias an attribute into two lists.
+
+### 2. Baseline-failing, confirmed by running them there
+
+Third tree (`td4verify/nc`) = baseline `src/` + the three new test files, nothing else.
+**11 of 14 fail**, and the three that pass are exactly the guards: *orphan detach is a no-op*,
+*constructed detach still works*, *re-add an id after dropping it*. Failing there are all seven
+new parser-sourced `XomTypes` cases, the three parsed `setId(null)` cases and the
+`AbstractXmlSubtree` one — they pin the fix and nothing else. The pre-existing
+constructed-element detach tests (`DynamicsGradient`/`TemporalSpread` *"should detach the id
+from the XML when set to null"*) pass on **both** trees, so the regression guard is intact.
+Full suites: baseline **2338/2338** green, working tree **2352/2352** green, 59 files both,
++14 with zero deletions and zero weakened assertions (the only `-` lines in the test diff are
+two `import` statements widened by one specifier each).
+
+### 3. Pipeline byte-probe — written here, not reused
+
+`td4verify/probe.mjs`, 407 hashed labels over all 88 fixture XML files, built from the
+integration tests' API rather than from the worker's probe:
+
+| battery | what | labels | moved |
+| --- | --- | --- | --- |
+| A | 16 MEI → MSM, MPM, augmented MSM, raw + expressive MIDI | 16 | **0** |
+| B | 16 `reference/` MSM+MPM pairs **parsed from disk** → perform → MIDI | 16 | **0** |
+| C | 6 deterministic all-maps fixtures → perform → MIDI | 6 | **0** |
+| D | 88 files: parse/serialize identity, `copy`, attribute stripping | 265 | **0** |
+| E | driven control: `msmCleanupSingle` on parsed reference MSMs | 16 | 0 (vacuous, see below) |
+| F | driven control: detach each root attribute in turn | 88 | **64** |
+
+343 labels byte-identical, `threw=0` on both builds; the only movement is the control that
+exists to move. F's 24 static labels are all `n=0` — the `.mpm` roots carry no attributes — so
+nothing that could move failed to. Battery B is the load-bearing one: those trees come out of
+`Element.wrap`, every attribute in them is parser-sourced, and their augmented MSM and MIDI
+hashes do not budge. The standing chain probe (`t21work/pipe.mjs`) independently returns
+`6e0124f58aa5375e7123d860d35d5116a52470efe1db7175159b9b2076d7b24b` on **both** builds with
+`diff`-clean transcripts — the hash PARITY.md cites, reproduced.
+
+**Battery E turned out vacuous, so I built the driven control it was missing.** No fixture MSM
+carries a cleanup-target attribute (`grep`: 0 files with `currentDate`/`tie`/`layer`/`endid`/
+`tstamp2`; the 16 `miscMap` hits go through the *element* branch, which always worked). So E
+proves nothing on its own. `td4verify/cleanup.mjs` synthesises a parsed MSM carrying all five:
+on base they **all survive** `msmCleanupSingle`, on work they are **all removed**. The worker's
+DISCOVERED note is therefore real and correctly scoped — the attribute branch is genuinely live
+now for a parsed MSM, it does what the method's own contract promises, and A/B/E prove no
+fixture path reaches it.
+
+### 4. Emitted JS, facade, deep imports
+
+`diff -rq` over the two `dist/` trees: **one** module — `xml/XomTypes.js`, `.d.ts` and the two
+maps, nothing else. The `.js` hunk is the ternary restructure (semantically identical), the one
+assignment and comments; the `.d.ts` hunk is **comment-only**, `detach(): void;` byte-identical,
+so the public type surface does not move. Facade battery green: `tests/api/` 38+37+26+8 = **109**
+tests inside the green verify, `t13verify/postmessage.mjs` 8/8 payloads through a real
+`node:worker_threads` hop, `plaindata.mjs` **488/0** and `contract.mjs` **33/0** on *both*
+builds. Deep-import battery unaffected: `t21work/deepimport.mjs` reports
+`modules=79 imported_clean=79 threw=0` on both.
+
+### 5. Standard gate
+
+Manifest **exactly 7 M**, no untracked files, `tests/integration/fixtures/**` and
+`tests/integration/*.test.ts` untouched. Independent `npm run verify` green through both tsc
+stages (`build`, `typecheck:tests`) and vitest 59 files / **2352** tests / 0 failures —
+2338 + 14, as journaled. Lint reconciles to the strong form: **1019 → 1019** (1017 errors,
+2 warnings) with an **identical per-`(file, rule)` histogram** — 126 pairs, 0 new, 0 removed,
+0 changed counts. No `eslint-disable`, `@ts-ignore`, `@ts-expect-error` or coverage pragma
+anywhere in the diff. `log.md` append-only (no deleted lines). Coverage v3: **functions
+92.6993 % ≥ 92.0**, **uncovered scoped statements 2094 ≤ 2318**, test count up not down.
+
+### 6. Two prose corrections for PARITY.md (non-blocking)
+
+Neither touches code, tests or parity; both are in the new Fixed-bugs entry.
+
+- **The Java citation row overstates XOM.** It reads "`nu.xom.Attribute.detach()` — XOM removes
+  the attribute from its parent unconditionally". Decompiled `xom-1.3.8.jar`: `Attribute` has no
+  `detach()` of its own, and the inherited `nu.xom.Node.detach()` opens with
+  `if (parent == null) return;` before its `isAttribute()` branch — i.e. **the same guard shape
+  this layer has**. The divergence was never the guard; it was that XOM's builder always sets the
+  parent, which is precisely what the row's own second clause says. Suggested tightening: cite
+  `nu.xom.Node.detach()` and replace "unconditionally" with "after the same `parent != null`
+  guard — which never fires in XOM, because its builder parents every attribute it creates".
+  Worth fixing because the entry as written contradicts the (correct) comment the same item added
+  to `Attribute.detach`, and could invite a future agent to "fix" the guard away.
+- **The sibling report is not cited** in PARITY.md. No other Fixed-bugs entry cites provenance
+  either, and the ornamentation-v3 sibling *is* credited in the worker's §6 and in state.json, so
+  this is a house-style question for the conductor rather than a defect.
+
+**Verdict: PASS TD4.**

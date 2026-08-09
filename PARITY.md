@@ -341,6 +341,59 @@ not either: it showed the guard as a dead branch, which proves only that the _bu
 never fires, not that no fixture reaches the _fixed_ one. What does the work is the unit tests: the
 same reverted tree fails four of them, in both the direct and the parse path.
 
+### `Attribute.detach()` was a silent no-op on everything that came out of the parser
+
+|                           |                                                                                                             |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Item                      | `TD4`                                                                                                       |
+| Java                      | `nu.xom.Attribute.detach()` — XOM removes the attribute from its parent unconditionally; an attribute in a parsed XOM document always knows its element |
+| TypeScript                | `src/xml/XomTypes.ts` — `Element.wrap` at `:389`, the parent wiring at `:418`, `Attribute.detach` at `:264` |
+| Guard tests               | `tests/xml/XomTypes.test.ts` (9), `tests/mpm/elements/styles/defs/OrnamentDef.test.ts` (4), `tests/xml/AbstractXmlSubtree.test.ts` (1) |
+| Reachable from a fixture? | **No** — no conversion or rendering path detaches a parser-sourced attribute; proven by probe, see below      |
+
+A port bug, and the second half of one that was only ever half fixed. This layer emulates XOM on
+top of `@xmldom/xmldom`, and it keeps its own parent pointers rather than reading the DOM's.
+`Element.wrap` sets `_xomParent` on every child element and text node it creates (`:429`, `:435`)
+but did not set it on the attributes it creates — while `Attribute.detach` acts only
+`if (this._xomParent)`. So `detach()` on any attribute that came out of the parser did nothing at
+all, silently, and the attribute stayed in the serialized XML.
+
+The `Attribute.detach` override itself dates to the pre-refactor baseline (`62c125f`), where it
+fixed the same defect for **constructed** elements: `XomNode.detach`, which it overrides, searches
+child nodes only, so before that override a detached attribute survived serialization in every
+case. `Element.addAttribute` sets the parent, so the override worked from the day it was written —
+for attributes the code had built itself. Nothing set the parent on the parser's side, so parsed
+documents kept the bug for another year. The two halves are now symmetric: **every** attribute
+that sits on an element carries `_xomParent`, whichever route put it there.
+
+**The live consequence.** `AbstractXmlSubtree.setId(null)`, and the private copies of it in
+`TemporalSpread` and `DynamicsGradient`, remove an `xml:id` by detaching its attribute. For any
+MPM subtree read from a file that removal did not happen: the object reported `getId() === null`
+while the serialized XML still carried the old `xml:id`. The same shape reached
+`Author.setNumber(null)`. All of them are fixed by the one assignment, and all are now pinned by
+tests.
+
+**Why the parent is assigned directly rather than routed through `addAttribute`.** `addAttribute`
+would also set the parent, but it first removes any same-named attribute, and its lookup
+(`getAttribute(name, undefined)`) matches on **local name or qualified name**. Adding a plain `id`
+to an element that already carries `xml:id` therefore deletes the `xml:id` — measured, not
+inferred: `addAttribute('xml:id')` then `addAttribute('id')` leaves an element with **one**
+attribute, while the parser's direct push leaves both. Routing `wrap` through it would have
+introduced silent attribute loss on any document with a local-name collision across namespaces.
+No fixture has one (0 collisions over 10 368 attributes on 3 020 elements across all four fixture
+directories), which makes it worse rather than better — an unexercised corruption is one no test
+would have caught. The direct assignment also cannot reorder anything, and attribute storage order
+is byte-visible in serialization.
+
+**Evidence that fixture bytes cannot move.** The standing pipeline probe returns
+`6e0124f58aa5375e7123d860d35d5116a52470efe1db7175159b9b2076d7b24b` on both builds, with the two
+JSON transcripts `diff`-clean. A wider TD4-specific probe — 306 hashed checks over **88** fixture
+files: MEI conversion, both reference sets performed from parsed MSM+MPM, augmented MSM, raw and
+expressive MIDI, plus parse/serialize identity, `copy`, `fixDuplicateIds`, `removeAllAttributes`
+and `removeAllElements` — moves **exactly** the 64 checks that detach a parsed attribute on
+purpose, and not one of the other 242. On the old build those 64 all hash to the *unchanged*
+document, which is the bug stated as a measurement.
+
 ## 2. Frozen divergences
 
 Known, journaled, and deliberately **not** repaired. All three come from capability gaps in the
