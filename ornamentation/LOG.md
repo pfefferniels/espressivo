@@ -1090,3 +1090,24 @@ domains laid out independently (spec silent; documented limitation). The -1
 repetition sentinel requires an explicit ms frameLength (budget = ceil(ms/150)
 computable pre-tempo); tick/% frames with -1 → log + skip (D9 refinement).
 `note` gets added to Mpm.isInNamespace (v3 vocabulary; flagged by W3 verifier).
+
+## 2026-08-09 — Conductor: D10 provenance extension (mpmify stakeholder request)
+
+The mpmify ML program (user-connected stakeholder) needs per-generated-note
+supervision provenance beyond D10's ornament.generated/ornament.ref: the note's role
+in the expansion. RULING (journaled before amending W5's scope): the provenance
+attribute family on generated notes becomes:
+  ornament.generated="true"            (as designed)
+  ornament.ref="<ornament xml:id>"     (as designed; only when the ornament has an id)
+  ornament.source="<ref id>"           NEW — the id token this note resolved from
+                                       (pool note id / principal id / msm note id)
+  ornament.slot="<n>"                  NEW — 0-based slot index in the FINAL expanded
+                                       sequence (post-dedup/landing)
+  ornament.pass="<n>"                  NEW — repetition pass number (0-based), only on
+                                       notes originating from a repeat-group expansion
+ornamentExpansion.ts gains an additive repetitionPass field (Slot/ResolvedNote level)
++ tests — W4 is committed, so this is an additive API extension inside W5's wave,
+called out to the W5 verifier explicitly. All three new attrs are v3-only outputs
+(byte gates unaffected). Determinism note for the record: expansion and rendering
+draw NO random values; the only nondeterminism on generated notes is the meico_<uuid>
+id scheme (pre-existing, canonicalized by tests); provenance attrs are id-independent.
