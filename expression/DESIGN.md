@@ -1118,7 +1118,17 @@ than a bound.
 *Branch on the unit before choosing s.* `@time.unit` decides whether the frame
 numbers are PPQ-relative ticks (tempo-relative) or absolute milliseconds, folded in
 before and after the tempo map respectively (SURVEY.md:2795-2813). Excluded as an
-enum but load-bearing for the factor.
+enum but load-bearing for the factor. **v3 narrows this rather than removing it**
+(§7.15 correction 1): each value may carry its own unit, but a suffix-less one
+still falls back to this same enum, so the read-it obligation survives in both
+generations and the report answers the question either way.
+
+*This section's two rows are the v2 reading of a two-generation element.* The
+element itself, the dimension, the factor and the atomic-pair rule are shared;
+what differs is the value encoding and one default. §7.15 carries the v3 half,
+including the one place where **§7.9's own reasoning does not survive**: "an
+absent bound is already at its neutral" is a v2 fact only, because v3's absent
+`@frameLength` is `100%` rather than `0.0`.
 
 *`@noteoff.shift` modulates the sign.* Absent ⇒ duration absorbs the offset;
 `"true"` ⇒ the note end moves with the onset (the safe mode); `"monophonic"` ⇒
@@ -1323,26 +1333,72 @@ from hand-authored or mpmify-generated MPM — so this dimension is exercised by
 narrow, externally-produced corpus. The reference fixture carries
 `curvature="0.4" protraction="0.0"`.
 
-### 7.15 v3 ornamentation block — ACTIVATES ON `ornamentation-v3` REBASE
+### 7.15 v3 ornamentation block
 
-> **Status: DORMANT.** Written against the ornamentation-v3 surface, **not** live
-> on `main`. On rebase, activate these rows and retire the `main` rows they
-> replace. Until then the v2 rows are authoritative.
+> **Status: ACTIVE** since W2.5 (2026-08-09), on the rebase of this branch onto
+> `main@05147ed`, the merge that landed the MPM v3 ornamentation program. The
+> rows below are live in `registry.ts`, and the v2 rows they were drafted to
+> "replace" are live *beside* them — see the correction under the table.
 
-| attribute | transform | neutral | replaces (v2) | notes |
+| attribute | transform | neutral | relation to v2 | notes |
 |---|---|---|---|---|
-| `frame.offset` (TemporalValue) | gain — signed offset | 0.0 | **replaces** `temporalSpread@frame.start` (§7.9) | O1: signed gain; keep paired with `frameLength` under the `ornamentSpread` factor |
-| `frameLength` (TemporalValue) | gain, s ≥ 0 | 0.0 | **replaces** `temporalSpread@frameLength` (§7.9) | the v2 one-sided `Math.max(0,·)` rationale still applies |
-| `intensity` | log-1 | 1.0 | **restates** `temporalSpread@intensity` (§7.10) | `ornamentSpacing`; epsilon floor dropped per A4 — the §1.2 gate covers it |
-| `dynamicsGradient` endpoints | gain — no clamp, out-of-[−1,1] reported informationally | 0.0 | **replaces** the v2 rows in §7.11 | **orn-conductor CONFIRMED 2026-08-09**: v3 enforces [−1,1] nowhere, at parse or render, so the gain reading carries forward unchanged |
-| `ornament@scale` | **EXCLUDED** | — | **replaces** the v2 row, also excluded (§7.16) | **orn-conductor CONFIRMED**; nuance: the v3 *writer* always serializes `@scale`, so the absent≙0 dead-lever case is v2/MEI-specific — the degree-1 s² argument (D-C) is what keeps it excluded in v3 |
+| `frame.offset` (TemporalValue) | gain — signed offset | 0.0 | **new row**, beside `temporalSpread@frame.start` (§7.9) | O1: signed gain; paired with `frameLength` under the `ornamentSpread` factor. Its presence is also the primary generation marker |
+| `frameLength` (TemporalValue) | gain, s ≥ 0 | 0.0 | **one row for both generations** | the v2 one-sided `Math.max(0,·)` rationale still applies — v3 clamps identically. What v3 changed is the *encoding* and the *absent-value default*, neither of which is a row property |
+| `intensity` | log-1 | 1.0 | **restates** `temporalSpread@intensity` (§7.10) | `ornamentSpacing`; epsilon floor dropped per A4 — the §1.2 gate covers it. Verified unchanged in code: parsed by the same `parseFloat` outside the v2/v3 branch |
+| `dynamicsGradient` endpoints | gain — no clamp, out-of-[−1,1] reported informationally | 0.0 | **unchanged**; the §7.11 rows govern both generations | **orn-conductor CONFIRMED 2026-08-09**: v3 enforces [−1,1] nowhere, at parse or render. W2.5 adds the stronger finding: `DynamicsGradient` has no v3 branch *at all*, so there was never anything to replace |
+| `ornament@scale` | **EXCLUDED** | — | unchanged, still excluded (§7.16) | **orn-conductor CONFIRMED**; nuance: the v3 *writer* always serializes `@scale` (and defaults it to `0.0`), so the absent≙0 dead-lever case is v2/MEI-specific — the degree-1 s² argument (D-C) is what keeps it excluded in v3. The *reader* is unchanged: absent ≙ 0 in both |
 | `repetitions`, pool attributes | EXCLUDED | — | (new in v3) | O1: they select *which* material is generated, not how large a deviation is |
 
-The TemporalValue typing is the only structural change: `frame.offset` and
-`frameLength` carry their unit with them instead of deferring to a sibling
-`@time.unit` enum, which removes §7.9's "branch on the unit" hazard from the
-applier. §8's sampling ranges still distinguish tick-domain from ms-domain
-magnitudes.
+**Correction (W2.5, from the code rather than from the spec).** This block's
+closing paragraph read "The TemporalValue typing is the only structural change:
+… which removes §7.9's *branch on the unit* hazard from the applier." Three
+parts of that are wrong, and the implementation follows the code:
+
+1. **The unit branch is not removed, only narrowed.** A suffix-less v3 value
+   still falls back to a sibling `@time.unit`, then to ticks
+   (`TemporalSpread.ts:134-145`, D3) — and suffix-less is what the format's own
+   sample corpus writes (`Reger - Moment Musical op 13 no 4.mpm`). So
+   `@time.unit` keeps its §7.16 "read it" obligation into v3; the report just
+   names each value's own domain there instead of the enum.
+2. **`frame.offset` does not retire `frame.start`.** D3 keeps the old name as a
+   read alias, so a v3 spread may legally spell its offset either way and the
+   §7.9 row stays live for both generations. Detection is per
+   `<temporalSpread>` **element**, not per document — any one v3 marker makes
+   the whole element v3, including the mixed spelling
+   `frame.start="-22.0" frameLength="44%"` (`TemporalSpread.ts:96-119`, pinned
+   by test) — so one performance may hold a v2 and a v3 spread side by side and
+   each keeps its own byte discipline.
+3. **The absent-bound argument of §7.9 does not survive into v3.** §7.9 rests on
+   "an absent bound is already at its neutral … `s · 0 = 0`", which v2's two
+   `0.0` defaults make true. v3 kept the offset default at `0.0ticks` (still the
+   neutral) but changed the **length** default to `100%` of the principal note
+   (`temporalSpread.xml:38`) — the widest frame there is, not the narrowest. So
+   a v3 spread carrying an offset and no `@frameLength` has a non-neutral absent
+   bound that D-A forbids materializing, and scaling the offset alone would move
+   the figure without resizing it. **Ruling (W2.5): the whole site is skipped and
+   reported**, on the W2 F1 precedent that reported suppression beats
+   half-application. The reverse case — a length with no offset — is unaffected,
+   because there the absent bound *is* at its neutral.
+
+**What the activation actually cost.** One new row (`frame.offset`), one new
+module (`temporalValue.ts`: the v3 grammar replicated under the layer zone,
+pinned against the real parser), one new write primitive
+(`gate.writeSuffixedNumber`), and one new report note kind
+(`frame-alias-shadowed`, for a v3 spread carrying both offset spellings, where
+the reader takes `frame.offset` and never looks at the alias). §8's sampling
+ranges still distinguish tick-domain from ms-domain magnitudes, and now have a
+third case they do not yet address: a `relative` frame, whose magnitude is a
+percentage of the principal note rather than a duration — flagged for §8 at W4,
+not decided here.
+
+**The one thing the engine must never do to a v3 value: canonicalize it.** The
+renderer's `formatTemporalValue` rebuilds a value's text from its *resolved*
+domain, so it writes `"88ticks"` for a value the author spelled `"44"`. That
+round trip is correct for the renderer and forbidden here: D-A licenses changing
+the number the caller asked to scale and nothing else on the same attribute.
+`temporalValue.ts` therefore carries the **suffix bytes**, not the domain, and
+puts the same bytes back — `"80%"` at s = 1.5 is `"120%"`, `"44"` at s = 2 is
+`"88"`. The domain is derived separately and used only for the report.
 
 ### 7.16 Excluded
 

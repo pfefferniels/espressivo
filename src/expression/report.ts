@@ -125,8 +125,23 @@ export type ReportNoteKind =
   | 'transition-to-absent'
   /** §7.11/RESOLVED-5 — a gradient endpoint left the nominal [−1,1]. Informational only. */
   | 'gradient-outside-nominal-range'
-  /** §7.9/§8 — which unit a transformed ornament frame is in; the caller's `s` depends on it. */
+  /**
+   * §7.9/§8 — which unit a transformed ornament frame is in; the caller's `s` depends on it.
+   *
+   * Two readings behind one kind, because the question the caller asks is one question. On a
+   * v2 spread the answer is the `@time.unit` enum, one unit for the whole frame; on a v3
+   * spread it is each value's OWN domain (§7.15), which may differ between the two bounds and
+   * which a suffix-less value still takes from a legacy `@time.unit`.
+   */
   | 'frame-time-unit'
+  /**
+   * §7.15 — a v3 spread carrying both `@frame.offset` and its legacy alias `@frame.start`.
+   *
+   * The reader takes `@frame.offset` and never looks at the alias, and the v3 writer never
+   * emits it, so the alias is a dead attribute: it is left exactly as found, and this note is
+   * what keeps that from being a silent skip.
+   */
+  | 'frame-alias-shadowed'
   /** §7.9 — `@noteoff.shift`, which decides what absorbs the offset and can flip its sign. */
   | 'frame-noteoff-shift'
   /** §7.4 — `@subNoteDynamics="true"`: a CC-based regime for which the clamp is the wrong model. */

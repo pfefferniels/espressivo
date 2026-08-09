@@ -106,10 +106,33 @@ export type WriteOutcome =
 
 /** Set an existing attribute to `value`, under all three rules in this module's doc. */
 export function writeNumber(element: Element, attribute: string, value: number): WriteOutcome {
+  return writeSuffixedNumber(element, attribute, value, '');
+}
+
+/**
+ * {@link writeNumber} for a value whose text is a number followed by a unit — MPM v3's
+ * `frameLength="80%"` (§7.15).
+ *
+ * The suffix is passed through verbatim rather than derived, because the engine's licence is
+ * to change the number and nothing else: a v3 document that spells its frame suffix-less
+ * (which the format's own sample encodings do) must come back suffix-less, and one that
+ * spells it `%` must come back `%`. Deriving it from a resolved domain would canonicalize the
+ * attribute, which is a document edit no caller asked for.
+ *
+ * All three rules of this module hold unchanged, and the "spelling unchanged" test is applied
+ * to the WHOLE text: `frameLength="80%"` at `s = 1` compares `"80%"` against `"80%"`, not `80`
+ * against `80`, so a unit-only difference could never be counted as a write either.
+ */
+export function writeSuffixedNumber(
+  element: Element,
+  attribute: string,
+  value: number,
+  suffix: string,
+): WriteOutcome {
   if (!Number.isFinite(value)) return 'non-finite';
   const existing = readAttributeValue(element, attribute);
   if (existing === null) return 'absent';
-  const text = numberToString(value);
+  const text = `${numberToString(value)}${suffix}`;
   if (existing === text) return 'unchanged';
   writeAttributeValue(element, attribute, text);
   return 'written';

@@ -39,7 +39,7 @@
 import type { Element } from '../xml/XomTypes.js';
 import { readAttributeValue, readNumericAttributeValue } from './attributes.js';
 import { orderedEntries, styleNameAt, type DatedEntry } from './datedView.js';
-import { gateAndTransform, writeNumber } from './gate.js';
+import { gateAndTransform, writeNumber, writeSuffixedNumber } from './gate.js';
 import { applyLevelDimension } from './levels.js';
 import {
   environmentsOf,
@@ -64,6 +64,9 @@ import {
   DYNAMICS_GRADIENT_ELEMENT,
   EXCLUDED_ARTICULATION_LEVERS,
   EXPRESSION_DIMENSIONS,
+  FRAME_LENGTH_ATTRIBUTE,
+  FRAME_OFFSET_ATTRIBUTE,
+  FRAME_START_ATTRIBUTE,
   FRAME_TIME_UNIT_ATTRIBUTE,
   IMPRECISION_DIMENSION_MAPS,
   INERT_IMPRECISION_MAP,
@@ -105,6 +108,14 @@ import {
 } from './report.js';
 import { defContainerLabel, instructionSiteRef, siteRefOf, type SiteRef } from './siteRef.js';
 import { findStyleDef, resolveLevel, type LevelDomain } from './styleScope.js';
+import {
+  detectFrameFormat,
+  parseTemporalText,
+  resolveTemporalDomain,
+  v3FrameOffsetAttribute,
+  type FrameFormat,
+  type TemporalSuffix,
+} from './temporalValue.js';
 import { jointTrimWindow, type ScaleSpace } from './transforms.js';
 import {
   ARTICULATION_MAP,
@@ -1022,71 +1033,95 @@ class PerformancePass {
   // --- §7.9 / §7.10 / §7.11 ornamentation -------------------------------------------------
 
   /**
-   * `<temporalSpread>`'s frame, as ONE geometric pair under ONE factor.
+   * `<temporalSpread>`'s frame, as ONE geometric pair under ONE factor — in either MPM
+   * generation.
    *
-   * `[start, start + length]` is a frame, not two numbers: scaling the length alone drags the
-   * centroid late. Both are gains with neutral 0, so an absent bound is already at its neutral
-   * and needs no materialization — `s · 0 = 0`. The pair is atomic on failure: if one bound
-   * fails the gate the other is not written either, because half a scaled frame is a frame the
-   * caller did not ask for.
+   * `[offset, offset + length]` is a frame, not two numbers: scaling the length alone drags
+   * the centroid late. Both are gains with neutral 0, and the pair is atomic on failure — if
+   * one bound fails the gate the other is not written either, because half a scaled frame is a
+   * frame the caller did not ask for.
+   *
+   * **The generation is detected per element** ({@link detectFrameFormat}), because that is how
+   * the renderer detects it and because one performance may hold both. A v2 spread is read and
+   * written exactly as before — bare doubles through `parseFloat`, byte for byte — and a v3 one
+   * through {@link parseTemporalText}, which keeps each value's unit suffix as bytes so that
+   * `frameLength="80%"` at `s = 1.5` comes back `"120%"` and a suffix-less `"44"` comes back
+   * `"88"`.
+   *
+   * **One v3 asymmetry costs an otherwise-transformable site**, and it is the reason this is
+   * not simply a decoding change. §7.9 rests on "an absent bound is already at its neutral and
+   * needs no materialization — `s · 0 = 0`", which v2's two defaults (`frame.start` 0.0,
+   * `frameLength` 0.0) make true. v3 kept the offset default at 0 but changed the LENGTH
+   * default to `100%` — the whole principal note, which is the widest frame there is rather
+   * than the narrowest. So on a v3 spread that carries an offset and no `@frameLength`, the
+   * absent bound is not neutral, D-A forbids creating it, and scaling the offset alone would
+   * move the figure without resizing it. Reported suppression beats half-application (the W2
+   * F1 ruling): the whole site is skipped with the pair's own note.
    */
   private applyOrnamentSpread(): void {
     const accumulator = this.sink.dimensions.ornamentSpread;
-    const rows = rowsOf('ornamentSpread');
     const factor = this.factors.ornamentSpread;
     this.eachTemporalSpread((spread, siteFor) => {
-      const present = rows.filter((row) => readAttributeValue(spread, row.attribute) !== null);
-      if (present.length === 0) return;
+      const format = detectFrameFormat(spread);
+      const reading = format === 'v2' ? readV2Frame(spread) : readV3Frame(spread);
+      if (reading.ok && reading.bounds.length === 0) return;
       accumulator.markPresent();
+      if (!reading.ok) {
+        accumulator.countSkipped();
+        this.sink.note(
+          'atomic-group-skipped',
+          'ornamentSpread',
+          siteFor(reading.attribute),
+          reading.detail,
+        );
+        return;
+      }
 
-      const planned: { row: RegistryRow; value: number }[] = [];
-      for (const row of present) {
-        const value = readNumericAttributeValue(spread, row.attribute);
-        const transformed = gateAndTransform(row, unparameterizedSpaceOf(row), value, factor);
+      const planned: FrameBound[] = [];
+      for (const bound of reading.bounds) {
+        const space = unparameterizedSpaceOf(bound.row);
+        const transformed = gateAndTransform(bound.row, space, bound.value, factor);
         if (!transformed.ok) {
           accumulator.countSkipped();
           this.sink.note(
             'atomic-group-skipped',
             'ornamentSpread',
-            siteFor(row.attribute),
+            siteFor(bound.attribute),
             `${transformed.detail} — the frame is one geometric pair, so neither bound is written`,
           );
           return;
         }
-        planned.push({ row, value: transformed.value });
+        planned.push({ ...bound, value: transformed.value });
       }
       let writes = 0;
-      for (const { row, value } of planned) {
-        writes += writeNumber(spread, row.attribute, value) === 'written' ? 1 : 0;
+      for (const { attribute, value, suffix } of planned) {
+        writes += writeSuffixedNumber(spread, attribute, value, suffix) === 'written' ? 1 : 0;
       }
       accumulator.countTransformed(writes);
-      this.reportFrameRegime(spread, siteFor);
+      this.reportFrameRegime(spread, siteFor, format, planned);
     });
   }
 
   /**
-   * §7.16's two "read it" obligations for the ornament frame, discharged as report notes (F5).
+   * §7.16's two "read it" obligations for the ornament frame, discharged as report notes (F5),
+   * plus §7.15's third: the alias a v3 spread can carry and never read.
    *
-   * Neither attribute is ever written — both are enums with no neutral — but both change what
-   * a given `s` MEANS, which is a fact only the document holds and only the report can carry.
-   * `@time.unit` decides whether the frame is PPQ-relative ticks or absolute milliseconds, and
-   * §8's `ornamentSpread` row makes the caller's admissible range depend on it ("in the
-   * milliseconds frame domain the same s is absolute rather than tempo-relative — halve it").
-   * `@noteoff.shift` decides which attribute absorbs the scaled offset, and `"monophonic"`
-   * flips the sign of the effect on note length: a wider frame LENGTHENS notes there.
+   * None of these attributes is ever written — they are enums and a dead spelling, none with a
+   * neutral — but each changes what a given `s` MEANS, which is a fact only the document holds
+   * and only the report can carry. `@noteoff.shift` decides which attribute absorbs the scaled
+   * offset, and `"monophonic"` flips the sign of the effect on note length: a wider frame
+   * LENGTHENS notes there. It is unchanged in v3 (`temporalSpread.xml:39-41` only restates the
+   * `false` default), so it is read the same way for both generations.
    */
-  private reportFrameRegime(spread: Element, siteFor: (attribute: string) => SiteRef): void {
-    const unit = readAttributeValue(spread, FRAME_TIME_UNIT_ATTRIBUTE);
-    this.sink.note(
-      'frame-time-unit',
-      'ornamentSpread',
-      siteFor(FRAME_TIME_UNIT_ATTRIBUTE),
-      unit === null
-        ? 'no @time.unit: the frame is in the default domain, and §8’s sampling range applies ' +
-            'as written'
-        : `@time.unit = ${JSON.stringify(unit)}: §8’s ornamentSpread range is stated for the ` +
-            'tick domain, so a millisecond frame wants a smaller s for the same audible width',
-    );
+  private reportFrameRegime(
+    spread: Element,
+    siteFor: (attribute: string) => SiteRef,
+    format: FrameFormat,
+    bounds: readonly FrameBound[],
+  ): void {
+    if (format === 'v3') this.reportV3FrameUnits(spread, siteFor, bounds);
+    else this.reportV2FrameUnit(spread, siteFor);
+
     const shift = readAttributeValue(spread, NOTEOFF_SHIFT_ATTRIBUTE);
     if (shift !== null) {
       this.sink.note(
@@ -1099,6 +1134,64 @@ class PerformancePass {
               'where the offset is absorbed by duration.perf with no floor'
             : ': the note end moves with the onset, which is the range-safe mode'
         }`,
+      );
+    }
+  }
+
+  /**
+   * The v2 frame unit: one `@time.unit` enum for the whole element, or the default domain.
+   *
+   * §8's `ornamentSpread` row makes the caller's admissible range depend on it ("in the
+   * milliseconds frame domain the same s is absolute rather than tempo-relative — halve it").
+   */
+  private reportV2FrameUnit(spread: Element, siteFor: (attribute: string) => SiteRef): void {
+    const unit = readAttributeValue(spread, FRAME_TIME_UNIT_ATTRIBUTE);
+    this.sink.note(
+      'frame-time-unit',
+      'ornamentSpread',
+      siteFor(FRAME_TIME_UNIT_ATTRIBUTE),
+      unit === null
+        ? 'no @time.unit: the frame is in the default domain, and §8’s sampling range applies ' +
+            'as written'
+        : `@time.unit = ${JSON.stringify(unit)}: §8’s ornamentSpread range is stated for the ` +
+            'tick domain, so a millisecond frame wants a smaller s for the same audible width',
+    );
+  }
+
+  /**
+   * The v3 frame units: one per value, named at the bound that carries it, and sited at the
+   * first frame attribute rather than at `@time.unit` — which a v3 spread usually does not have.
+   *
+   * The note still answers §8's question ("is this s absolute or tempo-relative here?"), but it
+   * now has to answer it twice, because `frame.offset="22ms" frameLength="90%"` is legal and
+   * puts the two bounds of one frame on two clocks. A suffix-less value is reported with where
+   * its domain came from, since that is the case §7.15 expected to have disappeared and which
+   * the real corpus keeps writing.
+   */
+  private reportV3FrameUnits(
+    spread: Element,
+    siteFor: (attribute: string) => SiteRef,
+    bounds: readonly FrameBound[],
+  ): void {
+    if (bounds.length === 0) return;
+    const units = bounds.map((bound) => frameDomainPhrase(spread, bound)).join(', ');
+    this.sink.note(
+      'frame-time-unit',
+      'ornamentSpread',
+      siteFor(bounds[0].attribute),
+      `v3 per-value units — ${units}: §8’s ornamentSpread range is stated for the tick domain, ` +
+        'so a millisecond frame wants a smaller s for the same audible width',
+    );
+    if (
+      readAttributeValue(spread, FRAME_OFFSET_ATTRIBUTE) !== null &&
+      readAttributeValue(spread, FRAME_START_ATTRIBUTE) !== null
+    ) {
+      this.sink.note(
+        'frame-alias-shadowed',
+        'ornamentSpread',
+        siteFor(FRAME_START_ATTRIBUTE),
+        '@frame.start is the legacy alias of @frame.offset and this spread carries both, so ' +
+          'the renderer reads @frame.offset and never this one: it is left exactly as found',
       );
     }
   }
@@ -1566,6 +1659,121 @@ function findNamedDef(styleDef: Element, defElement: string, name: string): Elem
     if (readAttributeValue(def, 'name') === name) found = def;
   }
   return found;
+}
+
+/**
+ * One bound of an ornament frame: the row that governs it, the attribute that physically
+ * carries it, its number, and the unit bytes that number has to be put back under.
+ *
+ * The attribute is carried separately from `row.attribute` for one case: a v3 spread may spell
+ * its offset `frame.start`, the legacy alias the v3 reader still accepts (§7.15), and the row
+ * that governs it is then the `frame.start` row — the same signed gain over the same domain,
+ * which is why the alias needs no row of its own. Keeping the physical name is what makes the
+ * report, and every gate message, name the attribute the caller can actually find.
+ */
+interface FrameBound {
+  readonly row: RegistryRow;
+  readonly attribute: string;
+  readonly value: number;
+  readonly suffix: TemporalSuffix;
+}
+
+/**
+ * A frame read off one `<temporalSpread>`, or the reason it cannot be scaled at all.
+ *
+ * A refusal here is a property of the PAIR rather than of one value — an unreadable v3 value,
+ * or a v3 length whose absence is not neutral — so it carries the attribute that caused it and
+ * the whole explanation, and the caller turns it into one `atomic-group-skipped` note.
+ */
+type FrameReading =
+  | { readonly ok: true; readonly bounds: readonly FrameBound[] }
+  | { readonly ok: false; readonly attribute: string; readonly detail: string };
+
+/**
+ * The v2 frame: bare doubles under `parseFloat`, exactly as before.
+ *
+ * BYTE-FROZEN in both directions. `parseFloat` is the renderer's own reading here
+ * (`TemporalSpread`'s v2 branch), lenience included, and an absent bound is genuinely at its
+ * neutral — both v2 defaults are 0.0 — so it is simply not a site.
+ */
+function readV2Frame(spread: Element): FrameReading {
+  const bounds: FrameBound[] = [];
+  for (const attribute of [FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE]) {
+    if (readAttributeValue(spread, attribute) === null) continue;
+    bounds.push({
+      row: requireRow(TEMPORAL_SPREAD_ELEMENT, attribute),
+      attribute,
+      value: readNumericAttributeValue(spread, attribute),
+      suffix: '',
+    });
+  }
+  return { ok: true, bounds };
+}
+
+/**
+ * The v3 frame: two {@link parseTemporalText} values, each keeping its own unit spelling.
+ *
+ * Two refusals live here rather than in the gate, because neither is a property of a number.
+ *
+ * - **An unreadable value.** The v3 grammar is far narrower than `parseFloat` — no exponent,
+ *   no leading dot, no `+` — and the renderer answers a violation by ignoring the attribute
+ *   and applying its default. Sliding such a value onto the v2 numeric path instead would
+ *   read `frameLength="80abc"` as 80 and write back `"160"`, inventing a well-formed frame out
+ *   of a malformed one.
+ * - **An absent `@frameLength`.** In v2 that is the neutral 0; in v3 it is `100%` of the
+ *   principal note (`temporalSpread.xml:38`), the widest frame there is. D-A forbids
+ *   materializing it, and scaling the offset against a length that stays put would move the
+ *   figure without resizing it — so the pair is refused whole.
+ */
+function readV3Frame(spread: Element): FrameReading {
+  const offsetAttribute = v3FrameOffsetAttribute(spread);
+  const bounds: FrameBound[] = [];
+  for (const attribute of [offsetAttribute, FRAME_LENGTH_ATTRIBUTE]) {
+    if (attribute === null) continue;
+    const raw = readAttributeValue(spread, attribute);
+    if (raw === null) continue;
+    const temporal = parseTemporalText(raw);
+    if (temporal === null) {
+      return {
+        ok: false,
+        attribute,
+        detail:
+          `@${attribute} = ${JSON.stringify(raw)} is no MPM v3 temporal value (a decimal ` +
+          'number, optionally suffixed ms, % or ticks), so the renderer ignores it and applies ' +
+          'its default — the frame is one geometric pair, so neither bound is written',
+      };
+    }
+    bounds.push({
+      row: requireRow(TEMPORAL_SPREAD_ELEMENT, attribute),
+      attribute,
+      value: temporal.value,
+      suffix: temporal.suffix,
+    });
+  }
+  if (bounds.length > 0 && readAttributeValue(spread, FRAME_LENGTH_ATTRIBUTE) === null) {
+    return {
+      ok: false,
+      attribute: FRAME_LENGTH_ATTRIBUTE,
+      detail:
+        '@frameLength is absent, and in v3 an absent @frameLength is 100% of the principal ' +
+        'note rather than v2’s 0.0 — so the missing bound is not at its neutral, and scaling ' +
+        'the offset alone would move the figure without resizing it. Nothing is created and ' +
+        'neither bound is written',
+    };
+  }
+  return { ok: true, bounds };
+}
+
+/** One bound's domain and where that domain came from, for the v3 `frame-time-unit` note. */
+function frameDomainPhrase(spread: Element, bound: FrameBound): string {
+  const domain = resolveTemporalDomain(bound.suffix, spread);
+  if (bound.suffix !== '') return `@${bound.attribute} = ${domain} (its own "${bound.suffix}")`;
+  const legacy = readAttributeValue(spread, FRAME_TIME_UNIT_ATTRIBUTE);
+  const source =
+    legacy === null
+      ? 'no suffix and no @time.unit, so the ticks default'
+      : `no suffix, so the legacy @time.unit = ${JSON.stringify(legacy)}`;
+  return `@${bound.attribute} = ${domain} (${source})`;
 }
 
 /** A registry row that must exist. Its absence is a programmer error, not a document one. */

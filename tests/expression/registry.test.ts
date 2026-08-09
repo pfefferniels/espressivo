@@ -101,17 +101,36 @@ describe('§1/A3 — a dimension’s s-domain is the intersection over its rows'
     ]);
   });
 
-  it('constrains ornamentSpread through @frameLength alone', () => {
-    // `@frame.start` is a signed gain admitting every real s; `@frameLength` is an ordered one.
-    // The dimension scales both by ONE factor, so the pair's domain is the stricter of the two
-    // — which is also what §8's `0 … 4` sampling range assumes.
-    expect(
-      SCALE_SPACE_FACTOR_DOMAINS[scaleSpaceTagOf(rowFor('temporalSpread', 'frame.start')!.space)],
-    ).toBe('real');
+  it('constrains ornamentSpread through @frameLength alone, in either generation', () => {
+    // Both offset spellings are signed gains admitting every real s; `@frameLength` is an
+    // ordered one. The dimension scales the pair by ONE factor, so its domain is the stricter
+    // of the two — which is also what §8's `0 … 4` sampling range assumes. v3 adds a spelling,
+    // not a space: `@frame.offset` and its legacy alias `@frame.start` are the same row shape,
+    // and `@frameLength` is literally one shared row (§7.15).
+    for (const attribute of ['frame.start', 'frame.offset']) {
+      expect(
+        SCALE_SPACE_FACTOR_DOMAINS[scaleSpaceTagOf(rowFor('temporalSpread', attribute)!.space)],
+      ).toBe('real');
+    }
     expect(
       SCALE_SPACE_FACTOR_DOMAINS[scaleSpaceTagOf(rowFor('temporalSpread', 'frameLength')!.space)],
     ).toBe('non-negative');
     expect(factorDomainOf('ornamentSpread')).toBe('non-negative');
+  });
+
+  it('gives the two offset spellings the same space, domain and verdict (§7.15)', () => {
+    // What differs between them is the value ENCODING and which generation writes them, and
+    // neither is a row property — so a divergence here would mean the same musical quantity had
+    // acquired two different transforms by accident.
+    const v2 = rowFor('temporalSpread', 'frame.start')!;
+    const v3 = rowFor('temporalSpread', 'frame.offset')!;
+    expect(v3.dimension).toBe(v2.dimension);
+    expect(v3.space).toEqual(v2.space);
+    expect(v3.p5r).toBe(v2.p5r);
+    expect(v3.inCenterPopulation).toBe(v2.inCenterPopulation);
+    for (const value of [-22, 0, 44, 1e9]) {
+      expect(v3.valueDomain(value)).toBe(v2.valueDomain(value));
+    }
   });
 
   it('leaves the pure log and gain dimensions on all of ℝ', () => {

@@ -497,7 +497,24 @@ const ORNAMENT_ROWS: readonly RegistryRow[] = [
     notes:
       '§7.9 — scaled by the SAME factor as @frameLength: the frame [start, start+length] is a ' +
       'geometric pair and scaling the length alone drags the centroid late. Negative values ' +
-      'are idiomatic. @time.unit and @noteoff.shift are read, never written (§7.16).',
+      'are idiomatic. @time.unit and @noteoff.shift are read, never written (§7.16). §7.15: ' +
+      'v3 did NOT retire this name — it is still accepted as the legacy alias of ' +
+      '@frame.offset, so this row also governs the offset of a v3 spread that spells it the ' +
+      'old way, where the value is a TemporalValue rather than a bare double.',
+  },
+  {
+    dimension: 'ornamentSpread',
+    attribute: 'frame.offset',
+    sites: [defSite(ORNAMENTATION_STYLE, 'temporalSpread')],
+    space: GAIN_SPACE,
+    inCenterPopulation: false,
+    valueDomain: anyFinite,
+    p5r: 'cliff',
+    notes:
+      '§7.15 — the v3 spelling of @frame.start, and a v3 structural marker: its mere presence ' +
+      'makes the whole <temporalSpread> v3. Same signed gain under the same factor as ' +
+      '@frameLength; what differs is the ENCODING — the value carries its own unit suffix, ' +
+      'which is preserved byte for byte across the scaling (temporalValue.ts).',
   },
   {
     dimension: 'ornamentSpread',
@@ -510,7 +527,11 @@ const ORNAMENT_ROWS: readonly RegistryRow[] = [
     notes:
       "§7.9 / D-E — s ≥ 0 because the setter's one-sided Math.max(0,·) turns a negative value " +
       "into a collapsed spread rather than a reversed one. The prototype's collection-geomean " +
-      'is dropped: it is an exact no-op for single-def styles and couples unrelated defs.',
+      'is dropped: it is an exact no-op for single-def styles and couples unrelated defs. ' +
+      '§7.15: ONE row for both generations — v3 changed the encoding (a unit suffix) and the ' +
+      'ABSENT-value default (100% of the principal note, not 0.0), never the space or the ' +
+      'domain. The v3 clamp is the same one-sided Math.max(0,·), so a negative value is ' +
+      'refused rather than repaired in both.',
   },
   {
     dimension: 'ornamentSpacing',
@@ -523,7 +544,9 @@ const ORNAMENT_ROWS: readonly RegistryRow[] = [
     notes:
       '§7.10 — the spacing curve of the roll, an exponent rather than a width, which is why it ' +
       'is its own dimension. The epsilon floor is DROPPED (A4): this space cannot produce a ' +
-      'non-positive result from a positive input, so a floor could only edit an authored value.',
+      'non-positive result from a positive input, so a floor could only edit an authored value. ' +
+      'UNCHANGED in v3, verified in the code: TemporalSpread parses @intensity with the same ' +
+      'parseFloat outside its v2/v3 branch, so it never carries a unit suffix.',
   },
   {
     dimension: 'ornamentDynamics',
@@ -537,7 +560,9 @@ const ORNAMENT_ROWS: readonly RegistryRow[] = [
       '§7.11 / RESOLVED-5 — a GAIN, not a logit on [−1,1]: nothing enforces that range ' +
       'anywhere, the values are velocity units ADDED to velocity, and the built-in arpeggio ' +
       'ships (−1,+1), which a logit would make fixed points. A result outside [−1,1] is ' +
-      'reported informationally, never corrected.',
+      'reported informationally, never corrected. §7.15 says v3 "replaces" this row; the code ' +
+      'says nothing to replace — DynamicsGradient has no v3 branch at all, so both generations ' +
+      'share this row unchanged, endpoints, absent-@transition.to default and all.',
   },
   {
     dimension: 'ornamentDynamics',
@@ -893,8 +918,25 @@ export const INERT_IMPRECISION_MAP = IMPRECISION_MAP_TUNING;
  * absolute rather than tempo-relative — halve it, or sample against the value"). A caller
  * cannot make that judgement from a document it has not parsed, so every transformed spread
  * reports which regime it was in.
+ *
+ * §7.15 expected v3 to retire this attribute, and v3's spec did delete it from every element.
+ * The READER did not: a suffix-less v3 value still falls back to a sibling `@time.unit` before
+ * defaulting to ticks (`temporalValue.ts`'s `resolveTemporalDomain`), and suffix-less is what
+ * the format's own sample corpus writes. So the read-it obligation survives into v3 — the
+ * report just names the value's own domain there instead of the enum.
  */
 export const FRAME_TIME_UNIT_ATTRIBUTE = 'time.unit';
+
+/**
+ * The two spellings of the ornament frame's offset and the one spelling of its length.
+ *
+ * Named because the applier's generation detection is keyed on them structurally rather than
+ * on a row lookup: `@frame.offset`'s mere PRESENCE is what makes a `<temporalSpread>` v3, and
+ * `@frame.start` is both the v2 name and the alias v3 still reads it under.
+ */
+export const FRAME_OFFSET_ATTRIBUTE = 'frame.offset';
+export const FRAME_START_ATTRIBUTE = 'frame.start';
+export const FRAME_LENGTH_ATTRIBUTE = 'frameLength';
 
 /**
  * §7.9/§7.16 — the enum that decides which attribute absorbs the scaled offset, and which

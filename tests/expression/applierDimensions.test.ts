@@ -365,6 +365,270 @@ describe('ornamentation — spread, spacing and gradient (§7.9–§7.11)', () =
   });
 });
 
+describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
+  /** A `<temporalSpread>` with the given attributes, referenced by a live `<ornament>`. */
+  function withSpread(attributes: string, ornamentAttributes = 'scale="1"'): string {
+    return globalDocument(
+      '<ornamentationStyles><styleDef name="O"><ornamentDef name="trill">' +
+        `<temporalSpread id="spread" ${attributes}/>` +
+        '</ornamentDef></styleDef></ornamentationStyles>',
+      '<ornamentationMap><style date="0.0" name.ref="O"/>' +
+        `<ornament id="o1" date="0.0" name.ref="trill" ${ornamentAttributes}/>` +
+        '</ornamentationMap>',
+    );
+  }
+
+  describe('the frame is still one geometric pair, and the unit spelling survives it', () => {
+    it.each([
+      [
+        'both bounds in ticks',
+        'frame.offset="-22.0ticks" frameLength="44ticks"',
+        '-44ticks',
+        '88ticks',
+      ],
+      ['two clocks in one frame', 'frame.offset="22ms" frameLength="90%"', '44ms', '180%'],
+      [
+        'suffix-less, which is what the sample corpus writes',
+        'frame.offset="-22.0" frameLength="44"',
+        '-44',
+        '88',
+      ],
+      ['the legacy alias under a v3 marker', 'frame.start="-22.0" frameLength="44%"', '-44', '88%'],
+      [
+        'a fractional millisecond value',
+        'frame.offset="20.5ms" frameLength="10.5ms"',
+        '41ms',
+        '21ms',
+      ],
+    ])('%s', (_label, attributes, offset, length) => {
+      const { root } = exaggerate(withSpread(attributes), { ornamentSpread: 2 });
+      const offsetAttribute = attributes.includes('frame.offset') ? 'frame.offset' : 'frame.start';
+      expect(textAt(root, 'spread', offsetAttribute)).toBe(offset);
+      expect(textAt(root, 'spread', 'frameLength')).toBe(length);
+    });
+
+    it('scales a percentage by a fractional factor without touching its unit', () => {
+      const { root } = exaggerate(withSpread('frame.offset="0%" frameLength="80%"'), {
+        ornamentSpread: 1.5,
+      });
+      expect(textAt(root, 'spread', 'frameLength')).toBe('120%');
+      // 0 is the gain neutral, so the offset is numerically unchanged — and therefore not
+      // rewritten at all, spelling included.
+      expect(textAt(root, 'spread', 'frame.offset')).toBe('0%');
+    });
+
+    it('carries a negative offset through to zero at s = 0 without an IEEE minus sign', () => {
+      const { root } = exaggerate(withSpread('frame.offset="-22.0ms" frameLength="44ms"'), {
+        ornamentSpread: 0,
+      });
+      expect(textAt(root, 'spread', 'frame.offset')).toBe('0ms');
+      expect(textAt(root, 'spread', 'frameLength')).toBe('0ms');
+    });
+
+    it('keeps a negative offset negative, and the frame’s geometry, as s grows', () => {
+      const { root } = exaggerate(withSpread('frame.offset="-22.0ticks" frameLength="44ticks"'), {
+        ornamentSpread: 3,
+      });
+      expect(textAt(root, 'spread', 'frame.offset')).toBe('-66ticks');
+      expect(textAt(root, 'spread', 'frameLength')).toBe('132ticks');
+    });
+
+    it('writes nothing at all at s = 1, in v3 spelling as in v2', () => {
+      const { root, report } = exaggerate(withSpread('frame.offset="-22.0ms" frameLength="80%"'), {
+        ornamentSpread: 1,
+      });
+      expect(report.totalWrites).toBe(0);
+      expect(textAt(root, 'spread', 'frame.offset')).toBe('-22.0ms');
+      expect(textAt(root, 'spread', 'frameLength')).toBe('80%');
+    });
+  });
+
+  describe('what the v3 frame refuses, and why', () => {
+    it('refuses the whole pair when @frameLength is absent — v3’s default is 100%, not 0', () => {
+      const { root, performance } = exaggerate(withSpread('frame.offset="-22.0ticks"'), {
+        ornamentSpread: 2,
+      });
+      expect(textAt(root, 'spread', 'frame.offset')).toBe('-22.0ticks');
+      expect(performance.dimensions.ornamentSpread.sitesSkipped).toBe(1);
+      expect(notesOfKind(performance, 'atomic-group-skipped')[0].detail).toContain('100%');
+    });
+
+    it('does NOT refuse an absent offset, whose v3 default 0.0ticks IS the neutral', () => {
+      const { root, performance } = exaggerate(withSpread('frameLength="44%"'), {
+        ornamentSpread: 2,
+      });
+      expect(textAt(root, 'spread', 'frameLength')).toBe('88%');
+      expect(performance.dimensions.ornamentSpread.sitesSkipped).toBe(0);
+    });
+
+    it('refuses a value the v3 grammar rejects rather than sliding it onto parseFloat', () => {
+      // parseFloat("80abc") is 80, so the v2 path would have written a well-formed "160".
+      const { root, performance } = exaggerate(
+        withSpread('frame.offset="0ticks" frameLength="80abc"'),
+        { ornamentSpread: 2 },
+      );
+      expect(textAt(root, 'spread', 'frameLength')).toBe('80abc');
+      expect(textAt(root, 'spread', 'frame.offset')).toBe('0ticks');
+      expect(notesOfKind(performance, 'atomic-group-skipped')[0].detail).toContain(
+        'no MPM v3 temporal value',
+      );
+    });
+
+    it('refuses a negative @frameLength in v3 for the same reason as in v2', () => {
+      // The v3 regex admits the sign, and the v3 reader clamps it to 0 exactly as the v2
+      // setter does — so the engine refuses rather than repairing, in both generations.
+      const { root, performance } = exaggerate(
+        withSpread('frame.offset="0ticks" frameLength="-10ticks"'),
+        { ornamentSpread: 2 },
+      );
+      expect(textAt(root, 'spread', 'frameLength')).toBe('-10ticks');
+      expect(performance.dimensions.ornamentSpread.sitesSkipped).toBe(1);
+    });
+
+    it('leaves a shadowed @frame.start exactly as found, and says why', () => {
+      const { root, performance } = exaggerate(
+        withSpread('frame.offset="-22.0ticks" frame.start="-11.0" frameLength="44ticks"'),
+        { ornamentSpread: 2 },
+      );
+      expect(textAt(root, 'spread', 'frame.offset')).toBe('-44ticks');
+      expect(textAt(root, 'spread', 'frame.start')).toBe('-11.0');
+      expect(notesOfKind(performance, 'frame-alias-shadowed')[0].attribute).toBe('frame.start');
+    });
+  });
+
+  describe('the report’s unit note', () => {
+    it('names each value’s own domain on a v3 spread', () => {
+      const { performance } = exaggerate(withSpread('frame.offset="22ms" frameLength="90%"'), {
+        ornamentSpread: 2,
+      });
+      const note = notesOfKind(performance, 'frame-time-unit')[0];
+      expect(note.detail).toContain('@frame.offset = milliseconds');
+      expect(note.detail).toContain('@frameLength = relative');
+      expect(note.attribute).toBe('frame.offset');
+    });
+
+    it('names where a suffix-less value’s domain came from', () => {
+      const { performance } = exaggerate(
+        withSpread('frame.offset="22" frameLength="90" time.unit="milliseconds"'),
+        { ornamentSpread: 2 },
+      );
+      const note = notesOfKind(performance, 'frame-time-unit')[0];
+      expect(note.detail).toContain('@frame.offset = milliseconds (no suffix, so the legacy');
+      expect(note.detail).toContain('@frameLength = milliseconds');
+    });
+
+    it('falls back to ticks, and says so, with neither suffix nor @time.unit', () => {
+      const { performance } = exaggerate(withSpread('frame.offset="22" frameLength="90"'), {
+        ornamentSpread: 2,
+      });
+      expect(notesOfKind(performance, 'frame-time-unit')[0].detail).toContain(
+        'no suffix and no @time.unit, so the ticks default',
+      );
+    });
+
+    it('keeps the v2 enum wording for a v2 spread', () => {
+      const { performance } = exaggerate(
+        withSpread('frame.start="-22" frameLength="44" time.unit="milliseconds"'),
+        { ornamentSpread: 2 },
+      );
+      const note = notesOfKind(performance, 'frame-time-unit')[0];
+      expect(note.detail).toContain('@time.unit = "milliseconds"');
+      expect(note.attribute).toBe('time.unit');
+    });
+  });
+
+  describe('the two dimensions v3 did not change', () => {
+    it('scales @intensity on a v3 spread exactly as on a v2 one (§7.10 restated)', () => {
+      // Verified in the code: TemporalSpread reads @intensity with the same parseFloat outside
+      // its v2/v3 branch, so it never carries a unit suffix in either generation.
+      const V3 = withSpread('frame.offset="-22.0ticks" frameLength="44ticks" intensity="2.0"');
+      const V2 = withSpread('frame.start="-22.0" frameLength="44" intensity="2.0"');
+      const v3Intensity = numberAt(
+        exaggerate(V3, { ornamentSpacing: 2 }).root,
+        'spread',
+        'intensity',
+      );
+      expect(v3Intensity).toBe(logAroundOne(2, 2));
+      expect(numberAt(exaggerate(V2, { ornamentSpacing: 2 }).root, 'spread', 'intensity')).toBe(
+        v3Intensity,
+      );
+    });
+
+    it('reads @noteoff.shift the same way in both generations', () => {
+      const { performance } = exaggerate(
+        withSpread('frame.offset="0ticks" frameLength="44ticks" noteoff.shift="monophonic"'),
+        { ornamentSpread: 2 },
+      );
+      expect(notesOfKind(performance, 'frame-noteoff-shift')[0].detail).toContain('LENGTHENS');
+    });
+
+    it('scales gradient endpoints on a v3 document with no v3 branch of its own (§7.11)', () => {
+      // DynamicsGradient has no v3 reading at all — same attributes, same parseFloat, same
+      // absent-@transition.to default — so the v2 rows govern both generations unchanged.
+      const V3_GRADIENT = globalDocument(
+        '<ornamentationStyles><styleDef name="O"><ornamentDef name="trill">' +
+          '<temporalSpread frame.offset="0ticks" frameLength="50%"/>' +
+          '<dynamicsGradient id="grad" transition.from="-0.5" transition.to="0.5"/>' +
+          '</ornamentDef></styleDef></ornamentationStyles>',
+        '<ornamentationMap><style date="0.0" name.ref="O"/>' +
+          '<ornament id="o1" date="0.0" name.ref="trill" scale="1"/></ornamentationMap>',
+      );
+      const { root } = exaggerate(V3_GRADIENT, { ornamentDynamics: 2 });
+      expect(numberAt(root, 'grad', 'transition.from')).toBe(-1);
+      expect(numberAt(root, 'grad', 'transition.to')).toBe(1);
+    });
+
+    it('keeps @scale absent≙0 in v3 too — what changed is that the v3 WRITER always emits it', () => {
+      const gradient = (ornamentAttributes: string): string =>
+        globalDocument(
+          '<ornamentationStyles><styleDef name="O"><ornamentDef name="trill">' +
+            '<temporalSpread frame.offset="0ticks" frameLength="50%"/>' +
+            '<dynamicsGradient id="grad" transition.from="0.5" transition.to="0.5"/>' +
+            '</ornamentDef></styleDef></ornamentationStyles>',
+          '<ornamentationMap><style date="0.0" name.ref="O"/>' +
+            `<ornament id="o1" date="0.0" name.ref="trill" ${ornamentAttributes}/>` +
+            '</ornamentationMap>',
+        );
+      // An explicit 0 — the v3 writer's default — is as dead as an absent one.
+      const zero = exaggerate(gradient('scale="0"'), { ornamentDynamics: 2 });
+      expect(zero.performance.dimensions.ornamentDynamics.sitesInert).toBe(1);
+      expect(textAt(zero.root, 'grad', 'transition.from')).toBe('0.5');
+      // And the case that makes the dimension live at all in a v3 corpus.
+      const live = exaggerate(gradient('scale="1"'), { ornamentDynamics: 2 });
+      expect(live.performance.dimensions.ornamentDynamics.sitesInert).toBe(0);
+      expect(numberAt(live.root, 'grad', 'transition.from')).toBe(1);
+    });
+  });
+
+  it('reads each <temporalSpread> in its own generation within one performance', () => {
+    const MIXED = globalDocument(
+      '<ornamentationStyles><styleDef name="O">' +
+        '<ornamentDef name="old"><temporalSpread id="v2" frame.start="-22.0" frameLength="44" ' +
+        'time.unit="milliseconds" intensity="2.0"/></ornamentDef>' +
+        '<ornamentDef name="new"><temporalSpread id="v3" frame.offset="-22.0ms" ' +
+        'frameLength="80%" intensity="2.0"/></ornamentDef>' +
+        '</styleDef></ornamentationStyles>',
+      '<ornamentationMap><style date="0.0" name.ref="O"/>' +
+        '<ornament id="o1" date="0.0" name.ref="old" scale="1"/>' +
+        '<ornament id="o2" date="1.0" name.ref="new" scale="1"/>' +
+        '</ornamentationMap>',
+    );
+    const { root, performance } = exaggerate(MIXED, { ornamentSpread: 2, ornamentSpacing: 2 });
+    // The v2 spread keeps its bare doubles; the v3 one keeps both of its units.
+    expect(textAt(root, 'v2', 'frame.start')).toBe('-44');
+    expect(textAt(root, 'v2', 'frameLength')).toBe('88');
+    expect(textAt(root, 'v3', 'frame.offset')).toBe('-44ms');
+    expect(textAt(root, 'v3', 'frameLength')).toBe('160%');
+    // One shared dimension, two sites, both transformed.
+    expect(performance.dimensions.ornamentSpread.sitesTransformed).toBe(2);
+    expect(performance.dimensions.ornamentSpread.sitesSkipped).toBe(0);
+    // And one unit note per generation, each in its own wording.
+    const units = notesOfKind(performance, 'frame-time-unit').map((note) => note.detail);
+    expect(units[0]).toContain('@time.unit = "milliseconds"');
+    expect(units[1]).toContain('v3 per-value units');
+  });
+});
+
 describe('asynchrony — @milliseconds.offset (§7.12)', () => {
   it('scales exactly linearly', () => {
     const OFFSETS = globalDocument(

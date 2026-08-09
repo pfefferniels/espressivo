@@ -280,3 +280,74 @@ site; reported suppression beats half-application); (3) NUL-byte hygiene scan
 added to the commit ritual after w2c found two raw NULs in registry.ts had
 made grep classify it as binary — silently exempting it from every grep-based
 verification claim. Scan clean; verify green; W2 committed.
+
+## 2026-08-09 W2.5 — the v3 ornamentation rows activated (rebase onto main@05147ed)
+
+Rebased onto `main@05147ed`, the merge that landed the MPM v3 ornamentation
+program, and turned DESIGN §7.15 from DORMANT to ACTIVE. Verify green at 3625
+(baseline 3479, +146).
+
+What landed: a new `src/expression/temporalValue.ts` (the v3 value grammar
+replicated under the layer zone, plus per-element generation detection and the
+legacy-`@time.unit` fallback), one new registry row (`frame.offset`), one new
+write primitive (`gate.writeSuffixedNumber`), one new report note kind
+(`frame-alias-shadowed`), and a rewritten `applyOrnamentSpread` that reads each
+`<temporalSpread>` in its own generation. The v2 path is untouched and its
+byte-compatibility is measured rather than argued: every pre-existing expression
+test passed unmodified, and the P1/P2/A4 fixtures now carry v3 elements beside
+their v2 twins.
+
+**Five things the v3 code contradicted in §7.15's expectations.** None was
+silently absorbed; each is now written into §7.15 as a correction with a
+citation.
+
+1. §7.15: "the TemporalValue typing … removes §7.9's *branch on the unit*
+   hazard". It does not. A suffix-less v3 value still falls back to a sibling
+   `@time.unit` and then to ticks (TemporalSpread.ts:134-145), and suffix-less
+   is what the format's own sample corpus writes. `@time.unit` keeps its §7.16
+   read-it obligation in both generations; the `frame-time-unit` note now
+   carries per-value domains for v3 sites and the enum for v2 sites.
+2. §7.15: `frame.offset` "replaces" `frame.start`. It does not — D3 keeps the
+   old name as a read alias, so the §7.9 row stays live and governs a v3 spread
+   that spells its offset the old way. Where both spellings are present the
+   alias is dead (the reader takes `frame.offset`, the writer never emits the
+   other), which is the new `frame-alias-shadowed` note: a present registry site
+   that is deliberately not written now names its reason.
+3. Detection is per `<temporalSpread>` ELEMENT, not per document (the wave brief
+   said "per document"). Any one v3 marker makes the whole element v3, including
+   the mixed spelling `frame.start="-22.0" frameLength="44%"`. Implemented and
+   pinned that way, and one performance may hold both generations.
+4. **The load-bearing one.** §7.9's atomic-pair rule rests on "an absent bound is
+   already at its neutral — `s · 0 = 0`". v3 kept the offset default at
+   `0.0ticks` but changed the LENGTH default to `100%` of the principal note —
+   the widest frame there is. So a v3 spread with an offset and no `@frameLength`
+   has a non-neutral absent bound, D-A forbids materializing it, and scaling the
+   offset alone would move the figure without resizing it. RULING: skip the whole
+   site and report it, on the W2 F1 precedent that reported suppression beats
+   half-application. The reverse case (length, no offset) is unaffected.
+5. §7.15: the gradient endpoints' rows are "replaced" in v3. There was nothing to
+   replace — `DynamicsGradient` has no v3 branch at all, same attributes, same
+   `parseFloat`, same absent-`@transition.to` default. Likewise `@intensity` and
+   `@noteoff.shift` are parsed outside `TemporalSpread`'s v2/v3 branch and are
+   literally the same code in both. §7.15's "unchanged in v3" claims are now
+   marked verified-in-code rather than expected.
+
+`ornament@scale` stays EXCLUDED in both generations, and the §7.15 nuance holds
+as written: the *reader* is unchanged (absent ≙ 0, `OrnamentData.scale = 0.0`,
+read identically on both paths), and it is the v3 *writer* that always
+serializes `@scale` — so a v3-authored corpus will typically make
+`ornamentDynamics` live where an MEI-converted v2 one leaves it inert. Pinned
+both ways.
+
+**The rule the new module exists to enforce:** never canonicalize a v3 value.
+The renderer's `formatTemporalValue` rebuilds text from the resolved domain and
+would write `"88ticks"` for a value the author spelled `"44"`; D-A licenses
+changing the number and nothing else on the same attribute. So the engine carries
+the suffix BYTES, not the domain, through the scaling, and the domain is derived
+separately for the report only. `writeSuffixedNumber` applies the
+spelling-unchanged test to the whole text, so a unit-only difference could never
+be counted as a write either.
+
+Open for W3/W4: §8's sampling ranges have no `relative` case — a `%` frame's
+magnitude is a fraction of the principal note rather than a duration, so neither
+the tick nor the ms bound transfers. Flagged, not decided.

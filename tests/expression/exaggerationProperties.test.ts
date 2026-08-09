@@ -26,7 +26,8 @@ import {
   type RowSpace,
 } from '../../src/expression/registry.js';
 import type { ReportNoteKind } from '../../src/expression/report.js';
-import { exaggerate, globalDocument, numberAt } from './applierFixtures.js';
+import { parseTemporalText } from '../../src/expression/temporalValue.js';
+import { exaggerate, globalDocument, numberAt, textAt } from './applierFixtures.js';
 
 /**
  * A document that reaches every one of the fifteen dimensions.
@@ -60,7 +61,14 @@ const EVERY_DIMENSION = globalDocument(
     '<ornamentationStyles><styleDef name="O"><ornamentDef name="arp">' +
     '<temporalSpread id="spread" frame.start="-22.0" frameLength="44" intensity="1.60"/>' +
     '<dynamicsGradient id="grad" transition.from="-1" transition.to="1"/>' +
-    '</ornamentDef></styleDef></ornamentationStyles>',
+    '</ornamentDef>' +
+    // The v3 reading of the same dimensions (§7.15), in the same performance as its v2 twin:
+    // unit-suffixed values on both bounds, spelled non-canonically for the same reason as
+    // everything else here.
+    '<ornamentDef name="trill">' +
+    '<temporalSpread id="v3spread" frame.offset="-22.0ms" frameLength="80%" intensity="1.30"/>' +
+    '</ornamentDef>' +
+    '</styleDef></ornamentationStyles>',
   '<tempoMap><style date="0.0" name.ref="T"/>' +
     '<tempo id="t1" date="0.0" bpm="Allegro" beatLength="0.25"/>' +
     '<tempo id="t2" date="4.0" bpm="90" beatLength="0.25" transition.to="70" meanTempoAt="0.40"/>' +
@@ -77,7 +85,8 @@ const EVERY_DIMENSION = globalDocument(
     '<accentuationPattern id="p1" date="0.0" name.ref="p4" scale="1.5"/>' +
     '</metricalAccentuationMap>' +
     '<ornamentationMap><style date="0.0" name.ref="O"/>' +
-    '<ornament id="o1" date="0.0" name.ref="arp" scale="2"/></ornamentationMap>' +
+    '<ornament id="o1" date="0.0" name.ref="arp" scale="2"/>' +
+    '<ornament id="o2" date="2.0" name.ref="trill" scale="1"/></ornamentationMap>' +
     '<asynchronyMap><asynchrony id="y1" date="0.0" milliseconds.offset="-18.0"/></asynchronyMap>' +
     '<imprecisionMap.timing><distribution.uniform id="u" date="0.0" limit.lower="-9.0" ' +
     'limit.upper="9.0" milliseconds.timingBasis="100"/></imprecisionMap.timing>' +
@@ -118,6 +127,24 @@ function collectAttributes(xml: string): Map<string, string> {
   return found;
 }
 
+/**
+ * An attribute value read as a finite number plus the unit it was wearing, or null when it is
+ * not a number at all.
+ *
+ * Both sweeps below classify every attribute of a document into "a quantity the engine may have
+ * computed" and "text it must have left alone", and MPM v3 put a third shape between them: a
+ * number with a unit suffix (§7.15), which `Number` reads as `NaN` and which would therefore be
+ * misfiled as text. `parseTemporalText` is the engine's own reader for that shape, so the
+ * classification splits values exactly where the transform did — and `Number` still handles the
+ * spellings the v3 grammar excludes but `parseFloat` accepts (`1e3`, `.5`).
+ */
+function numericPart(text: string): { readonly value: number; readonly suffix: string } | null {
+  const temporal = parseTemporalText(text);
+  if (temporal !== null && Number.isFinite(temporal.value)) return temporal;
+  const value = Number(text);
+  return Number.isFinite(value) ? { value, suffix: '' } : null;
+}
+
 describe('P1 identity (§1.1, A2)', () => {
   it('an empty factors record reproduces the canonical baseline byte for byte', () => {
     const { xml, report } = exaggerate(EVERY_DIMENSION, {});
@@ -129,6 +156,15 @@ describe('P1 identity (§1.1, A2)', () => {
     const { xml, report } = exaggerate(EVERY_DIMENSION, uniformFactors(1));
     expect(xml).toBe(canonicalBaseline(EVERY_DIMENSION));
     expect(report.totalWrites).toBe(0);
+  });
+
+  it('holds over a v3 frame, which a real factor demonstrably does rewrite', () => {
+    // Anti-vacuity for the two byte assertions above: the fixture's v3 spread is not inert, so
+    // its bytes surviving `s = 1` is the short-circuit working rather than the engine never
+    // reaching it. Both units are preserved across the scaling; only the numbers move.
+    const { root } = exaggerate(EVERY_DIMENSION, { ornamentSpread: 2 });
+    expect(textAt(root, 'v3spread', 'frame.offset')).toBe('-44ms');
+    expect(textAt(root, 'v3spread', 'frameLength')).toBe('160%');
   });
 
   it('reports every dimension as requested-and-skipped under the short-circuit', () => {
@@ -198,9 +234,9 @@ describe('P2 composition on the clamp-free subdomain (§1.1, A3)', () => {
       const [, elementLocalName, attributeName] = /^\d+:([^@]+)@(.+)$/.exec(key)!;
       const row = rowFor(elementLocalName, attributeName);
 
-      const composedValue = Number(composedText);
-      const directValue = Number(directText);
-      if (row === null || !Number.isFinite(composedValue) || !Number.isFinite(directValue)) {
+      const composedValue = numericPart(composedText);
+      const directValue = numericPart(directText);
+      if (row === null || composedValue === null || directValue === null) {
         // Either not a live attribute at all — `@date`, `@beatLength`, every §7.16 exclusion —
         // or a level attribute holding a def NAME, which D-C forbids rewriting as a number.
         // In both cases the two arrangements must agree on the SPELLING, not just the value.
@@ -208,8 +244,11 @@ describe('P2 composition on the clamp-free subdomain (§1.1, A3)', () => {
         continue;
       }
       comparedNumbers += 1;
-      expect(Math.abs(composedValue - directValue)).toBeLessThan(
-        toleranceFor(row.space, directValue),
+      // A v3 unit composes by not moving at all: only the number is scaled, so a drift in the
+      // suffix would be the engine rewriting a unit, which nothing in §7 licenses.
+      expect(composedValue.suffix).toBe(directValue.suffix);
+      expect(Math.abs(composedValue.value - directValue.value)).toBeLessThan(
+        toleranceFor(row.space, directValue.value),
       );
     }
     // Guard against the comparison silently passing because it compared nothing.
@@ -316,7 +355,17 @@ describe('A4 — the engine never writes a non-finite value', () => {
       '<dynamicsGradient transition.from="NaN"/></ornamentDef>' +
       '<ornamentDef name="live"><temporalSpread frame.start="-22" frameLength="44" ' +
       'intensity="1.5" time.unit="ticks"/><dynamicsGradient transition.from="-1" ' +
-      'transition.to="1"/></ornamentDef></styleDef></ornamentationStyles>',
+      'transition.to="1"/></ornamentDef>' +
+      // The v3 frame's own hostile shapes (§7.15). A 309-digit value is schema-VALID and
+      // overflows to Infinity, so the parse succeeds and only the gate stands between it and
+      // the document; a v3 spread with no @frameLength has a non-neutral absent bound; and a
+      // live v3 spread keeps the sweep from proving the invariant by writing nothing.
+      `<ornamentDef name="v3huge"><temporalSpread frame.offset="${'9'.repeat(309)}ticks" ` +
+      'frameLength="44ticks"/></ornamentDef>' +
+      '<ornamentDef name="v3half"><temporalSpread frame.offset="-22.0ticks"/></ornamentDef>' +
+      '<ornamentDef name="v3live"><temporalSpread frame.offset="-22.0ms" frameLength="80%" ' +
+      'intensity="1.5"/></ornamentDef>' +
+      '</styleDef></ornamentationStyles>',
     '<tempoMap><style date="0.0" name.ref="T"/>' +
       '<tempo date="0.0" bpm="Nan" beatLength="0.25"/>' +
       '<tempo date="1.0" bpm="Inf" beatLength="0.25"/>' +
@@ -354,7 +403,10 @@ describe('A4 — the engine never writes a non-finite value', () => {
       '</metricalAccentuationMap>' +
       '<ornamentationMap><style date="0.0" name.ref="O"/>' +
       '<ornament date="0.0" name.ref="arp" scale="1e999"/>' +
-      '<ornament date="1.0" name.ref="live" scale="2"/></ornamentationMap>' +
+      '<ornament date="1.0" name.ref="live" scale="2"/>' +
+      '<ornament date="2.0" name.ref="v3huge" scale="1"/>' +
+      '<ornament date="3.0" name.ref="v3half" scale="1"/>' +
+      '<ornament date="4.0" name.ref="v3live" scale="1"/></ornamentationMap>' +
       '<asynchronyMap><asynchrony date="0.0" milliseconds.offset="Infinity"/>' +
       '<asynchrony date="1.0" milliseconds.offset="-3ms"/></asynchronyMap>' +
       '<imprecisionMap.timing><distribution.uniform date="0.0" limit.lower="NaN" ' +
@@ -385,8 +437,9 @@ describe('A4 — the engine never writes a non-finite value', () => {
     for (const [key, value] of after) {
       if (value === before.get(key)) continue;
       changed += 1;
-      // Anything the engine CHANGED it also computed, so it must be a finite number.
-      expect(Number.isFinite(Number(value))).toBe(true);
+      // Anything the engine CHANGED it also computed, so it must be a finite number — in v3
+      // possibly one wearing a unit, which `Number` alone would read as `NaN` (§7.15).
+      expect(numericPart(value) !== null, `${key} = ${value}`).toBe(true);
       expect(['NaN', 'Infinity', '-Infinity']).not.toContain(value);
     }
     // F7's anti-vacuity guard: the invariant is "everything written was finite", which a
