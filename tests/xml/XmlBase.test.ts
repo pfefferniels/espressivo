@@ -169,14 +169,14 @@ describe('XmlBase – exportXml', () => {
 // validate (stub)
 // ---------------------------------------------------------------------------
 describe('XmlBase – validate', () => {
-  it('should return error message when empty', () => {
+  it('should report no-data when empty', () => {
     const xb = new XmlBase();
-    expect(xb.validate()).toBe('No data present to be validated');
+    expect(xb.validate()).toEqual({ validated: false, reason: 'no-data' });
   });
 
-  it('should return unsupported message when data present', () => {
+  it('should report not-implemented when data present', () => {
     const xb = new XmlBase(SIMPLE_XML, true);
-    expect(xb.validate()).toBe('Validation not supported in browser context');
+    expect(xb.validate()).toEqual({ validated: false, reason: 'not-implemented' });
   });
 });
 

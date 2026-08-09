@@ -8594,3 +8594,401 @@ a data structure needs a *behavioural* probe of the miss path alongside the cens
 probe must not be written on a plain object if the thing under test is prototype behaviour.
 
 **Verdict: PASS T15.**
+
+## [T17] worker — XML layer: the per-node throwaway parse, and the seams T5 parked (2026-08-09)
+
+Baseline `82d1b66` (`refactor/`-only bookkeeping atop `3bcee79`; `git diff --stat 3bcee79
+82d1b66 -- src tests` is **empty**, so either is the same code baseline). Scratch dir
+`t17work/`, extraction spot-checked with `git show <sha>:<path> | diff -` on the three files
+I touch. `npm run verify` **exit 0**, 59 files / **2272 tests**, first round, no fix round.
+
+### What the doc ruled, and what I did with it
+
+ARCHITECTURE.md §8.7 **rejects** both halves of the queue item's framing — no slim interface
+around XomTypes, no rename to `dom.ts` — and redirects T17 at T5's DISCOVERED findings. I did
+(1), (3), (4), (5) and **deliberately did not do (2)**, which the doc gates on judgement
+("Attempt only if (1) lands cleanly"). §5 below is the measurement that decides (2); I would
+rather hand T21 a number than a half-finished cache.
+
+**(1) The per-node throwaway parse is gone.** `Element`, `Attribute` and `Text` each ran
+`new DOMParser().parseFromString('<dummy/>', 'text/xml')` to own a placeholder DOM node that
+serialization never reads. They now take that placeholder from **one lazily built document**
+(`placeholderDom()`).
+
+**(3)** `Element.wrap`'s `text['_domNode'] = child` bracket access is replaced by an
+`@internal adoptDomNode(node)` seam on `XomNode` (the field stays `protected`; the method
+follows the `_xomParent` precedent of "public in TypeScript, internal by contract").
+
+**(4)** Both `unified-signatures` pairs collapsed: `Attribute(name, valueOrNs, value?)` and
+`XmlBase(document?)`. Type-only — the overload signatures never reached the emitted JS, and
+each collapsed signature accepts exactly the calls its two overloads did, since they differed
+in arity alone.
+
+**(5) `validate()` decided: honest result type, not deletion.** It returned one of two English
+sentences and took a `schema` parameter it ignored. It now returns
+`ValidationResult = { validated: true } | { validated: false; reason: 'no-data' |
+'not-implemented' }` and takes nothing. Deletion is the other option the doc offers, but it
+pairs deletion with `src/compat/unsupported.ts`, which is **T21's**; doing it here would
+delete two tests out from under T21's charter-7c justification. `isValidFlag`/`isValid()` are
+untouched (not in §8.7's list).
+
+### 1. Why a shared placeholder document, and not lazy/dropped `_domNode`
+
+The obvious bigger win — drop the placeholder for constructed nodes, create it on demand —
+**changes observable behavior, and I have the probe that proves it.** `t17work/xmldom-edge.mjs`
+over 10 name forms × 3 creation calls: `createElementNS(ns, 'a:b:c')`, `createAttribute('')`,
+`createAttribute(':x')`, `createAttribute('x:')`, `createAttribute('1bad')`,
+`createAttribute('a b')` and 6 more **throw `DOMException` today, from inside the constructor**.
+Deferring the placeholder would defer or lose those throws. T5's probe2 already pins that
+behavior (it constructs `Attribute` in 12 arg forms, including `a:b:c`, `:x`, `x:` and `''`),
+so it is not hypothetical — it is gated.
+
+The same probe shows a **shared** document is indistinguishable from a fresh one: for all 10
+names, every one of `nodeName|localName|prefix|namespaceURI|parentNode|ownerElement` matches,
+every throw matches including its message, two nodes from one document are still distinct
+objects, and after creating dozens of nodes the shared document still serializes to `<dummy/>`
+with `childNodes.length === 1` — creating a node does not attach it. So each XomNode still gets
+its own distinct, unattached placeholder; only the *owner document identity* is shared, and
+nothing in this port reads `getDomNode().ownerDocument` (the sole `getDomNode` mention outside
+this file is a negative assertion in `tests/api/plain-data.test.ts`).
+
+**Lazy, not a top-level `const`, on purpose.** T18's side-effect inventory classifies
+`const X = <expr>` with a call or `new` in the initialiser as an impure top-level statement. A
+top-level parse would have added the XML layer's first such entry. As a `let … = null` plus a
+function, the inventory is **byte-identical to baseline (107 lines, both trees)** — see §4.
+
+### 2. Serialization byte-compat — the anchor gate, three independent instruments
+
+- **Full pipeline byte-probe** (`t16verify/dump.mjs`, reused unmodified): 16 MEI fixtures ×
+  every movement + 6 deterministic all-maps sets → MSM, MPM, augmented MSM, raw MIDI,
+  expressive MIDI. **131 artifacts, `diff -r` clean — byte-identical.**
+- **[T5]'s round-trip probes, the reference instruments**, run over both builds:
+  `probe.mjs` **1284 checks** and `probe2.mjs` **83 checks**, and in both cases the *whole
+  ordered transcript sha matches* (`5fbb68b164299201`, `0b58d5a4c281914e`) — 0 diffs out of
+  1367. That covers parse/serialize round trips over all 16 fixtures, 144 queries, both escape
+  tables, namespace edge documents, the `getChildElements` matrix, `removeAttribute` scenarios,
+  the 12 `Attribute` arg forms **including the throwing ones**, `Object.keys` shape for all
+  five classes, the 9-step mutation sequence and `detach()`.
+- **Emitted-JS classification** (`--removeComments`, both trees, `diff -rq`): of **79 modules,
+  exactly 2 differ** — `xml/XomTypes.js` and `xml/XmlBase.js` — and their hunks are only:
+  the new `placeholderDom` pair, `adoptDomNode`, the three `new DOMParser()…` → `placeholderDom()`
+  swaps, the two `wrap` assignments becoming `adoptDomNode` calls, and `validate`'s body. The
+  overload collapses emit **nothing**, as predicted. `dist/api/**` is **identical including
+  `.d.ts`** — facade freeze holds and no XML type reached it.
+
+### 3. The parse is measurably gone, and nothing else moved with it
+
+Constructor-level census over the full 16-fixture pipeline, same instrument on both builds
+(`t17work/count.mjs` against an instrumented copy of each `dist`):
+
+| | baseline | T17 |
+|---|---|---|
+| `Attribute` constructed | 29 824 | **29 824** |
+| `Text` constructed | 9 264 | **9 264** |
+| `Element` constructed | 8 949 | **8 949** |
+| `Element.wrap` calls | 769 | **769** |
+| `query()` re-parses | 1 082 | **1 082** |
+| **throwaway `<dummy/>` parses** | **48 037** | **1** |
+
+Identical node counts are the point: no construction was skipped, merged or added — only the
+parse behind it disappeared.
+
+### 4. Load order — no new sensitivity
+
+- **Side-effect inventory + ESM evaluation order** (`t18verify/tools/sidefx.mjs`, both dists,
+  paths normalised): **identical, 107 lines each.** `XomTypes.js` contributes no load-time
+  side effect.
+- **Deep-import battery** (`t18verify/tools/battery.mjs`, one fresh node process per module):
+  **79/79 clean, 0 threw**, on both builds.
+- *Tool trap, recorded because it nearly cost me the finding:* my first inventory comparison
+  ran `diff <(sed 's#…#…#' …) <(sed …)` — the `#` delimiter made both `sed`s **exit with an
+  error and emit nothing**, and `diff` cheerfully reported the two empty streams identical.
+  A normalisation step that fails silently turns a gate into a rubber stamp; the comparison
+  was redone in Python with an explicit line count printed alongside the verdict.
+
+### 5. Runtime — the measurement §8.7 requires, and why (2) stops here
+
+Medians of 3 interleaved rounds (7 timed reps each, base/work alternating on the same
+machine), `t17work/bench.mjs`:
+
+| benchmark | baseline | T17 | change |
+|---|---|---|---|
+| 100 k `new Element` | 131.0 ms | **11.1 ms** | **−91.5 %** |
+| 100 k `new Element` (namespaced) | 140.7 ms | **19.4 ms** | −86.2 % |
+| 100 k `new Attribute` | 134.0 ms | **9.5 ms** | −92.9 % |
+| 100 k `new Text` | 129.1 ms | **3.0 ms** | −97.7 % |
+| `Builder.build` × 16 MEI fixtures | 15.7 ms | **6.4 ms** | −59.2 % |
+| **full pipeline, 16 fixtures** | **320.8 ms** | **223.4 ms** | **−30.4 %** |
+| 48 queries over 16 fixtures | 38.9 ms | 41.0 ms | *noise, see below* |
+
+Node construction is **9–33× cheaper** and the end-to-end conversion pipeline is **~30 %
+faster**. The query row moved +5 % in the first pass, so I measured it properly (20 reps,
+3 interleaved rounds, `qbench.mjs`): minima base 28.46/28.09/29.93 vs work 27.74/29.06/28.45,
+medians swinging ±40 % *within* a build. **Query is unchanged within noise** — as it must be,
+since nothing on that path changed.
+
+**Why I did not do (2), with the profile rather than a feeling.** Instrumented split of the
+1082 pipeline `query()` calls: **xpath evaluation 141.1 ms (57 %)**, DOM parse 71.5 ms (29 %),
+`toXML()` 15.2 ms (6 %), `findCorrespondingElement` **10.7 ms (4 %)**, namespace collection
+3.2 ms (1 %). So:
+
+- memoising the parse attacks the 29 %, and a per-element single-slot cache keyed on the
+  serialized string **hits 253 of 1082 calls (23 %)** across 442 distinct elements (measured,
+  `hit.mjs`) — ceiling ≈ 7 % of query time, ≈ 4 % of the pipeline, bought with retained parsed
+  DOMs (unbounded: one per queried element) and a cache-invalidation surface;
+- retiring `findCorrespondingElement` — the "quadratic-ish" cost T5 flagged — is worth **4 %**;
+  the fixtures do not make it hurt;
+- the 57 % sits inside the `xpath` package and only "back the tree with a real DOM" would
+  touch it, which is precisely the serialization-entangled rewrite §8.7 rejects.
+
+That is the doc's own escape hatch taken with evidence: **(1) delivered −30 % for zero
+behavioural surface, (2) offers ≤ 4 % for a correctness risk.** Recommend T21 record (2) as
+closed rather than deferred.
+
+### 6. Public surface delta (complete — 4 items)
+
+`ValidationResult` type + its `export type` line in `index.ts`; `validate()`'s signature;
+the two collapsed overload sets; `adoptDomNode` (`@internal`). Nothing else in any `.d.ts`
+moved — `index.d.ts`, `xml/XmlBase.d.ts`, `xml/XomTypes.d.ts` are the only three that differ.
+
+### 7. Gates
+
+- `npm run verify` **exit 0** — `tsc`, `tsc -p tsconfig.tests.json`, 59 files / **2272 tests**.
+- **Coverage v3, both trees measured on this machine**: functions **955/1034 = 92.3598 %** →
+  **957/1036 = 92.3745 %** (floor 92.0 ✓, and *up*). The 2 minted functions are
+  `placeholderDom` and `adoptDomNode`, **both covered** — the only per-file movement in the
+  whole report is `xml/XomTypes.ts` 71/74 → 73/76. **Uncovered scoped statements 2138 → 2138,
+  zero delta.** Test count **2272 → 2272** — no test removed, so no 7c justification is owed.
+- **Lint 1083/2 → 1080/2**, per-rule and per-file histogram over both trees:
+  `unified-signatures` 41 → 39, `no-unused-vars` 54 → 53, every other rule flat, and the only
+  files that move are the two I touched. `lint-debt.md` has the T17 section.
+- **Zero suppressions** repo-wide. `prettier --check` clean on all four touched files.
+- **Manifest — 5 paths**: `M src/xml/XomTypes.ts`, `M src/xml/XmlBase.ts`, `M src/index.ts`,
+  `M tests/xml/XmlBase.test.ts`, plus `M refactor/lint-debt.md` + `M refactor/log.md`.
+  `tests/integration/**`, fixtures, `vitest.config.ts`, both tsconfigs, `eslint.config.js`,
+  `package.json` and `ARCHITECTURE.md`: **untouched**.
+- **Test change is the mechanical minimum**: the two `XmlBase – validate` assertions become
+  `toEqual({ validated: false, reason: … })`. Same two behaviors, same strength, structural
+  instead of string equality. No other test file changed.
+
+### DISCOVERED
+
+- **Nothing pins the placeholder contract as a unit test.** My correctness argument rests on
+  three properties — distinct placeholder per node, `parentNode === null` for constructed
+  nodes, malformed names still throwing — and all three are currently gated only by scratchpad
+  probes. Three cheap tests in `tests/xml/XomTypes.test.ts` would move that into the suite; I
+  did not add them because this item's brief limits test edits to mechanical adaptation. Worth
+  a line in **T21**, or a one-line instruction to whoever next touches this file.
+- **`query()` still returns fresh `Text` instances** (T5's finding, unchanged) and still cannot
+  see comments/PIs/CDATA. Untouched here.
+- **`getChildElements(undefined, ns)` ignores `ns`, and `removeAttribute`'s by-name fallback
+  does not clear `_xomParent`.** T5 asked T17 to decide whether these are bugs. **Ruling: they
+  are bugs, and they stay** — both are reachable from `mei/`, `msm/` and `mpm/` call sites, and
+  "fix" means changing what those call sites see, with no fixture able to prove the new
+  behavior right. They are documented at both sites. If anyone ever changes them it needs its
+  own item with a differential probe, not a cleanup hunk.
+- **`XmlBase.fixDuplicateIds()` still has zero callers** → **T21**'s delete list, as recorded.
+- The `no-non-null-assertion` count in this cluster is **6 and unchanged**; it is the only lint
+  debt left in `src/xml/`, and it belongs to the tree-wide null policy, not to this layer.
+
+## [T17] verifier — PASS (2026-08-09)
+
+Verdict **PASS**. Every claim in the `[T17] worker` entry reproduced on independently built
+trees; nothing was taken on the worker's word. Scratch `t17verify/`, baseline `git archive
+82d1b66` (extraction checked with `git show <sha>:<path> | diff -` on 7 files and an
+`md5` over the full `src`+`tests` path list vs `git ls-tree`). Confirmed first that
+`git diff 3bcee79 82d1b66 -- src tests` is empty, so the code baseline is unambiguous, and
+that there are no untracked files anywhere in the tree.
+
+### 1. Doc-ruling conformance — §8.7 sub-item by sub-item
+
+**(1) per-node throwaway parse — DONE, and the doc's two suggested routes were correctly
+not taken.** §8.7 offered "an unattached-node factory, or dropping `_domNode` for
+constructed nodes". The worker took a third route (one lazily built shared placeholder
+document) and I confirm the second route was *unavailable*: my probe records **44 genuine
+throws** (39 `DOMException` + 5 `ParseError`), identical in class, `name` and message on both
+builds, and 39 of them come out of the three constructors themselves for malformed names
+(`""`, `":x"`, `"x:"`, `"a:b:c"`, `"1bad"`, `"a b"`, `"a<b"`, `"€"`, …). Deferring the
+placeholder defers or loses those throws, so eager creation is forced. The sub-item's actual
+requirement — remove the parse — is met and measured below.
+
+**(3) internal seam — DONE.** `text['_domNode'] = child` is gone; `adoptDomNode` replaces it
+and also absorbs `Element.wrap`'s `elem._domNode = domElement`. Public (not protected) is
+forced by TypeScript: `Element` cannot reach a protected member on an instance of its
+sibling subclass `Text`. Marked `@internal`, per the `_xomParent` precedent.
+
+**(4) both `unified-signatures` pairs — DONE.** `Attribute(name, valueOrNs, value?)` and
+`XmlBase(document?)`. Verified type-only three ways: lint `unified-signatures` 41 → 39, the
+emitted JS carries **no** signature-related hunk, and probe2's 12 `Attribute` arg forms
+(including the throwing ones) are transcript-identical.
+
+**(5) `validate()` — DONE, and the option taken is one the doc offers.** §8.7 said "delete it
+(with `src/compat/unsupported.ts`, T21) **or** give it an honest result type"; the worker took
+the second. Its reason for not deleting — deletion is bundled with T21's compat work and
+would remove two tests out from under T21's charter-7c accounting — is sound. I checked the
+one factual claim in the new JSDoc: `validateAgainstSchema` **does** exist, at
+`src/compat/unsupported.ts:32`. Not a doc defect.
+
+**(2) `query()` memoization — SKIPPED, and I rule the skip JUSTIFIED.** This was the item I
+was told to rule on rather than accept, so I re-measured the profile the decision rests on
+instead of reading it (`t17verify/qprofile.mjs`, stage timers on `toXML` / `parseFromString` /
+`collectNamespaces` / `findCorrespondingElement`, plus a WeakMap model of the single-slot
+cache §8.7 proposes). Mine vs the worker's, over the same 16-fixture pipeline:
+
+| | worker | verifier |
+|---|---|---|
+| `query()` calls | 1082 | **1082** |
+| xpath evaluation | 57 % | **56.5 %** |
+| DOM parse | 29 % | **33.5 %** |
+| `findCorrespondingElement` | 4 % | **5.5 %** (3271 calls) |
+| namespace collection | 1 % | **1.0 %** |
+| distinct elements queried | 442 | **442** |
+| single-slot cache hits | 253 of 1082 (23 %) | **253 of 1082 (23.4 %)** |
+
+The two deterministic counts (253 hits, 442 elements) reproduce **exactly**, which is what
+tells me the measurement was actually run. The reasoning holds on my numbers: memoizing the
+parse has a ceiling of ~7.8 % of query time, and (2)'s other named route — "back the tree
+with a real DOM" — is the only one that reaches the dominant 56.5 %, and is precisely the
+serialization-entangled rewrite §8.7's own opening paragraph rejects. On the doc's wording,
+"Attempt only if (1) lands cleanly" states a necessary condition for attempting (2), not a
+mandate to attempt it; the doc's required currency for this item is a measurement, and the
+worker paid it for the declined work as well as the delivered work. **This is not a skip for
+convenience.** I endorse the recommendation that T21 record (2) as closed, not deferred.
+
+### 2. Serialization byte-compat — the anchor gate, reproduced
+
+- **Full pipeline byte dump** (`t16verify/dump.mjs`, unmodified, both builds): 16 MEI
+  fixtures × every movement + the deterministic all-maps sets → MSM, MPM, augmented MSM, raw
+  MIDI, expressive MIDI. **131 artifacts each, `diff -r` clean.**
+- **[T5]'s round-trip probes over both builds**: `probe.mjs` **1284 checks**, `probe2.mjs`
+  **83 checks**; whole-transcript sha256 matches in both cases
+  (`5fbb68b164299201…`, `0b58d5a4c281914e…`), and a field-by-field JSON comparison after
+  stripping the `dist` path field reports **0 differing entries out of 1367**.
+- **Emitted JS**: of 79 modules, exactly **2** differ (`xml/XomTypes.js`, `xml/XmlBase.js`)
+  and every hunk is accounted for. `dist/index.js` is **unchanged** — the `ValidationResult`
+  re-export is `export type` and emits nothing. `dist/api/**` is byte-identical including
+  `.d.ts` (16 entries): **facade freeze holds**.
+
+### 3. The headline change — behavior identity, established two ways
+
+**Structurally, from xmldom's source.** `Document.prototype.createElement`,
+`createElementNS`, `createAttribute` and `createTextNode` (`lib/dom.js:2164-2318`) read
+`this` only to set `ownerDocument` and to test `this.type`/`this.contentType`; they mutate
+**nothing** on the document and never attach the node they return. And nothing can attach one
+later: the only DOM-level mutation left in this layer is `detach()`'s
+`this._domNode.parentNode.removeChild(...)`, which is guarded on a non-null `parentNode` —
+every other `appendChild`/`removeChild` in the file operates on the layer's own `_children`
+array. So sharing the owner document is unobservable by construction.
+
+**Empirically, `t17verify/shared.mjs` — 242 checks, written independently of the worker's
+probes** and aimed at what sharing could break: `getParent()`/`detach()` (the two `_domNode`
+fallback paths) on constructed nodes of all five kinds; placeholder distinctness (500 nodes,
+500 distinct); cross-contamination under interleaved construction; `Text.setValue`
+write-through; namespace leakage between namespaced elements; 20 malformed names × 4
+constructors; document stability after 900 constructions; recovery after a throw; 18 text
+values covering entities, whitespace, CRLF, CDATA-ish and control chars, each as a bare
+value, inside an element, and as an attribute; 12 documents through the real parser
+(internal-subset entity, numeric refs, `xml:space`, CDATA, comments/PIs, mixed namespaces) ×
+4 checks; 7 malformed documents; mixed constructed/parsed trees, re-parenting, copy
+independence; and a parse→serialize→reparse over all 16 MEI fixtures.
+
+**Result: 241 of 242 identical. The single difference is
+`getDomNode().ownerDocument` identity** (`false` → `true`), which is the sharing itself and
+which my probe asserts deliberately. Everything else matches, including — on both builds —
+the document still holding `childNodes.length === 1`, still serializing to `<dummy/>`, and
+its `documentElement` still having zero children after 900 node constructions.
+
+That one difference has no reachable consumer: `getDomNode()` has **zero** callers in `src/`
+outside `XomTypes.ts` (the only mention anywhere else is a *negative* assertion in
+`tests/api/plain-data.test.ts:189`), and `ownerDocument` is never read in the repo.
+
+**The parse is measurably gone, and node construction is untouched** (`t17verify/census.mjs`,
+patching the real xmldom prototypes both builds share, so one instrument serves both):
+
+| | baseline | T17 |
+|---|---|---|
+| `<dummy/>` parses | 38 947 | **1** |
+| total parses | 40 045 | **1 099** |
+| non-dummy parses | 1 098 | **1 098** |
+| `createElement` | 870 | **870** |
+| `createAttribute` | 21 854 | **21 854** |
+| `createTextNode` | 15 927 | **15 927** |
+| `createElementNS` | 54 577 | 15 631 |
+
+The `createElementNS` row is the cross-check that closes this: **54 577 − 15 631 = 38 946 =
+38 947 − 1**, i.e. the entire difference is the one root element each eliminated `<dummy/>`
+parse used to build. `createAttribute` and `createTextNode` are flat because `<dummy/>` has
+neither. Node construction is identical; only the parse behind it disappeared. (The worker's
+48 037 counts the same thing over a longer pipeline that also renders MIDI — different scope,
+same collapse to 1.)
+
+**Runtime** (§8.7 requires a measurement; this reproduces one). Four interleaved rounds,
+MEI → MSM/MPM over 16 fixtures, base/work alternating: base 408.5 / 430.7 / 432.5 / 451.6 ms
+vs work 326.7 / 341.7 / 347.1 / 336.9 ms — work faster in **every** round, ~20-25 % on this
+stage. The worker's −30.4 % is over the full pipeline with a warmed harness; direction and
+magnitude corroborated. The win is real.
+
+### 4. Load order and layer contracts
+
+- **Deep-import battery** (`t18verify/tools/battery.mjs`, fresh node process per module):
+  **79/79 clean, 0 threw**, both builds.
+- **Side-effect inventory + ESM evaluation order** (`t18verify/tools/sidefx.mjs … index.js`):
+  **107 lines each, identical** after path normalisation; `XomTypes.js` still contributes
+  zero load-time side effects and the tree-wide total stays 16. `let placeholderDocument =
+  null` is a pure declaration; a top-level `const` with the parse in its initialiser would
+  have added this layer's first entry, so the lazy form is load-bearing, not stylistic.
+  *(Note for whoever reuses that tool: it takes `<dist> <entryRelPath>`. Called with one
+  argument it still exits 0 and prints a truncated report — I hit that before passing
+  `index.js`. Same genus as the silent-`sed` trap the worker recorded.)*
+- **T5's layer contracts intact**: the byte-compat contract at the top of `XomTypes.ts` is
+  unchanged; the only header edit records §8.7's ruling in place of the stale "Reworking that
+  surface is item T17". All **21** `_xomParent` lines are byte-identical to baseline.
+- `src/api/**`, `refactor/ARCHITECTURE.md`, `refactor/CHARTER.md`, `refactor/state.json`,
+  `tests/integration/**`, fixtures, both tsconfigs, `vitest.config.ts`, `eslint.config.js`
+  and `package.json`: **untouched**.
+
+### 5. Standard gates
+
+- **Manifest: exactly 6 `M`**, matching the reviewed set — `src/xml/XomTypes.ts`,
+  `src/xml/XmlBase.ts`, `src/index.ts`, `tests/xml/XmlBase.test.ts`, `refactor/lint-debt.md`,
+  `refactor/log.md`. No untracked files.
+- **`npm run verify` exit 0**, run independently: `tsc`, `tsc -p tsconfig.tests.json`, then
+  59 files / **2272 tests**. Baseline tree runs **2272** too — zero delta, so no charter-7c
+  justification is owed.
+- **Coverage v3** from `coverage-final.json` on the working tree: functions **957/1036 =
+  92.3745 %** (floor 92.0 ✓, and above baseline's 92.3598 %); **uncovered scoped statements
+  2138** (gate ≤ 2318 ✓, zero delta). Both minted functions (`placeholderDom`,
+  `adoptDomNode`) are covered.
+- **Lint reconciles exactly**: full per-rule and per-file histogram over both trees with one
+  config — **1083 errors / 2 warnings → 1080 / 2**. The only moving rules are
+  `unified-signatures` 41 → 39 and `no-unused-vars` 54 → 53; the only moving files are
+  `XmlBase.ts` 7 → 5 and `XomTypes.ts` 2 → 1. No rule increased anywhere.
+  `lint-debt.md` retires exactly the two T5 rows this item cleared (2 deletions, both
+  annotated rather than dropped) and adds a T17 section that matches these numbers.
+- **Zero suppressions repo-wide**, baseline and working tree alike (`eslint-disable`,
+  `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, coverage-ignore: 0 → 0).
+- **`prettier --check` clean** on all six changed files. **`log.md` is pure append** — 196
+  lines added at old EOF+1, 0 deletions.
+- **Test change is the mechanical minimum and not a weakening**: the same two `it`s assert
+  the same two behaviors, `toBe('<English sentence>')` → `toEqual({ validated: false, reason:
+  … })`. Object equality on a two-field shape is if anything stricter than string equality.
+  No other test file changed.
+- **Public surface delta is exactly the 4 claimed items** and nothing else: only
+  `index.d.ts`, `xml/XmlBase.d.ts`, `xml/XomTypes.d.ts` differ, carrying `ValidationResult` +
+  its `export type` line, `validate()`'s signature, the two collapsed overload sets, and
+  `adoptDomNode`.
+
+### Notes for the conductor (none block the commit)
+
+- The worker entry's gate section is headed "**Manifest — 5 paths**" and then correctly
+  enumerates **6**. Miscount in the prose only; the enumeration and the tree agree.
+- `getDomNode().ownerDocument` identity is now shared. Unreachable today (zero callers, and
+  the type never appears in a facade signature), but it is the one place where a future
+  consumer holding a `getDomNode()` result could reach global state that used to be
+  per-node. The worker already routed `placeholderDocument` to **T21**'s "no shared mutable
+  statics" sweep with the argument for keeping it; that is the right home for this too.
+- Seconding the worker's first DISCOVERED item: the three properties this change rests on
+  (distinct placeholder per node, `parentNode === null` for constructed nodes, malformed
+  names still throwing from the constructor) are gated only by scratchpad probes. They are
+  now gated by *two* independent sets of them, but still none in `tests/`. Three cheap tests
+  in `tests/xml/XomTypes.test.ts` would fix that — worth a line in **T21**.

@@ -1,5 +1,10 @@
 # Lint debt (as of T13)
 
+> Re-measured after **T17** (XML layer): **1080 errors / 2 warnings** — the first drop since
+> T14, and it comes entirely from the three items T5 parked on T17 (2 `unified-signatures`,
+> 1 `no-unused-vars`). Only the two files T17 touches move. See the T17 section under
+> "By owning item".
+
 > Re-measured after **T15** (converter dispatch): **1083 errors / 2 warnings**, identical to
 > T16 per rule *and* per file. T15 is not a column for the same reason T9b is not — it moved
 > nothing. See the T15 section under "By owning item".
@@ -355,8 +360,8 @@ import in `XmlBase.ts`).
 | n | rule | why it stayed |
 |---|---|---|
 | 6 | `no-non-null-assertion` | 5 `XmlBase.ts`, 1 `XomTypes.ts` (`doc.documentElement!`). Per this file's own guidance, the fix is narrowing return types under **T12**'s null policy; adding guards would change behavior on paths that cannot be proven unreachable. |
-| 2 | `unified-signatures` | `Attribute`'s 2-arg/3-arg and `XmlBase`'s no-arg/`Document` constructor overload pairs. Collapsing either is a **public signature change**, forbidden by T5's scope. **T17**'s call. |
-| 1 | `no-unused-vars` | `XmlBase.validate(_schema?)` — removing the parameter is a public signature change, and the config has no `argsIgnorePattern`, so the underscore does not suppress it. |
+| 2 | `unified-signatures` | `Attribute`'s 2-arg/3-arg and `XmlBase`'s no-arg/`Document` constructor overload pairs. Collapsing either is a **public signature change**, forbidden by T5's scope. **T17**'s call. — *cleared by T17, see its section.* |
+| 1 | `no-unused-vars` | `XmlBase.validate(_schema?)` — removing the parameter is a public signature change, and the config has no `argsIgnorePattern`, so the underscore does not suppress it. — *cleared by T17, see its section.* |
 
 So the earlier "T5 can plausibly reach zero" was wrong: 3 of the 15 were public API surface
 that only T12/T17 can touch, and 6 are the codebase-wide null-assertion story.
@@ -822,6 +827,40 @@ Three notes for T21's audit, since this item adds the tree's first dispatch tabl
   `for (let i = 0; i < es.size(); ++i)` is kept deliberately (`Elements` is not iterable, and
   the doc's `for (const e of …)` sketch is illustrative); the rule only flags loops over an
   indexable with `.length`, so this is not suppressed debt — it is outside the rule.
+
+### T17 — XML layer — repo 1083 → **1080** errors (warnings unchanged at 2)
+
+The **only** item so far to pay down debt another item had explicitly parked: all three
+entries T5's "Deferred (9)" table assigned to T17 are gone, and nothing else moved.
+
+| n | rule | how |
+|---|---|---|
+| 2 | `unified-signatures` | 41 → **39**. `Attribute`'s 2-arg/3-arg pair → `constructor(name: string, valueOrNs: string, value?: string)`; `XmlBase`'s no-arg/`Document` pair → `constructor(document?: Document)`. Both are type-only: the emitted JS is unchanged (overload signatures do not survive compilation), and each collapsed pair accepts exactly the calls the two overloads accepted, since they differed in arity alone. |
+| 1 | `no-unused-vars` | 54 → **53**. `XmlBase.validate(_schema?)`'s parameter is gone rather than renamed — see the log entry for why "accept a schema and ignore it" was the dishonest half of that method. |
+
+Measured as a full per-rule and per-file histogram over a `git archive 82d1b66` baseline
+and the working tree, one config across both: **1083/2 → 1080/2**, and the *only* files
+whose counts move are `src/xml/XmlBase.ts` (7 → 5) and `src/xml/XomTypes.ts` (2 → 1). No
+rule increased anywhere. No new suppressions (`eslint-disable` / `@ts-ignore` /
+`@ts-expect-error` / `@ts-nocheck` / coverage-ignore comments all still **0** repo-wide).
+
+**What is left in the cluster is exactly the 6 `no-non-null-assertion`** T5 documented — 5
+in `XmlBase.ts` (lines 104/118/129/149/171), 1 in `XomTypes.ts` (`doc.documentElement!`,
+line 651). They are the codebase-wide null-policy story, not this item's; **T21** budgets
+them inside its `no-non-null-assertion` < 1080 target.
+
+Two notes for T21's audit:
+
+- **`placeholderDocument` is a module-level mutable binding** — the first one this layer
+  has — and T21's "no shared mutable statics" sweep will find it. It is a memo of a
+  constant: assigned once by `placeholderDom()`, never reassigned, never handed out, and
+  the document it holds is never mutated (creating a node does not attach it). It is `let`
+  rather than a top-level `const` on purpose, so that importing `XomTypes.js` stays free of
+  load-time side effects — T18's inventory is byte-identical with it in place, and would
+  have gained an entry with a top-level `const`. Keep it, and keep the comment.
+- **`adoptDomNode` is `@internal`, not public API.** It follows `_xomParent`'s precedent:
+  TypeScript has no package-private, so the seam is a documented internal method rather
+  than the bracket access (`text['_domNode'] = child`) it replaces.
 
 ### tests — 86
 `no-empty-function` 54, `no-unused-vars` 18, `no-explicit-any` 12,

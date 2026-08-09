@@ -106,6 +106,7 @@ export {
   ValidityException,
 } from './xml/XomTypes.js';
 export { XmlBase } from './xml/XmlBase.js';
+export type { ValidationResult } from './xml/XmlBase.js';
 export { AbstractXmlSubtree } from './xml/AbstractXmlSubtree.js';
 export { MeicoError, MissingNodeError } from './xml/errors.js';
 

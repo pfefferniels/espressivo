@@ -2,6 +2,17 @@ import { Document, Element, Attribute, Builder, ParsingException } from './XomTy
 import { v4 as uuidv4 } from 'uuid';
 
 /**
+ * What {@link XmlBase.validate} reports.
+ *
+ * `no-data` means there was nothing to validate; `not-implemented` means this port
+ * carries no schema validator. The successful arm exists so that adding one later is not
+ * another breaking change — nothing returns it today.
+ */
+export type ValidationResult =
+  | { readonly validated: true }
+  | { readonly validated: false; readonly reason: 'no-data' | 'not-implemented' };
+
+/**
  * This class is a primitive for all XML-based classes in meico.
  * Port of meico.xml.XmlBase
  *
@@ -19,8 +30,14 @@ export class XmlBase {
    */
   protected isValidFlag = false;
 
-  constructor();
-  constructor(document: Document);
+  /**
+   * Empty, around an already-parsed {@link Document}, or around XML source.
+   *
+   * The first two were separate overloads until T17; `document?: Document` accepts the
+   * same two call forms, and the string form stays separate because its second argument
+   * is what distinguishes it.
+   */
+  constructor(document?: Document);
   constructor(xml: string, isXmlString: true);
   constructor(arg?: Document | string, isXmlString?: true) {
     if (arg === undefined) {
@@ -55,10 +72,19 @@ export class XmlBase {
     return this.isValidFlag;
   }
 
-  validate(_schema?: string): string {
-    if (this.isEmpty()) return 'No data present to be validated';
-    // Validation not implemented in browser context
-    return 'Validation not supported in browser context';
+  /**
+   * Report whether this document has been validated against a schema — which, in this
+   * port, it never has.
+   *
+   * Until T17 this returned one of two English sentences and took a `schema` parameter
+   * it ignored, which read like a validator and was not one. The result type now says so
+   * in a form a caller can branch on, and the parameter is gone rather than accepted and
+   * dropped. Wiring up a real validator (`validateAgainstSchema` in `src/compat/` is the
+   * matching stub) is what would set `validated: true`.
+   */
+  validate(): ValidationResult {
+    if (this.isEmpty()) return { validated: false, reason: 'no-data' };
+    return { validated: false, reason: 'not-implemented' };
   }
 
   getFile(): string | null {

@@ -31,15 +31,47 @@
  * document tree itself.
  *
  * The public API mirrors XOM's Java names on purpose, because the call sites across
- * `mei/`, `msm/` and `mpm/` are transliterated Java. Reworking that surface is item
- * T17; this file is internals-only.
+ * `mei/`, `msm/` and `mpm/` are transliterated Java. T17 considered reworking that
+ * surface — wrapping it behind a slim interface, or renaming the module to `dom.ts` —
+ * and ruled against both (ARCHITECTURE.md §8.7): the attribute ordering and namespace
+ * handling above are load-bearing, and the XOM names are what makes a side-by-side
+ * comparison with the Java original readable. This file stays internals-only.
  */
 
-import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
+import { DOMParser, XMLSerializer, type Document as DomDocument } from '@xmldom/xmldom';
 import xpath from 'xpath';
 
 // Re-export for convenience
 export { DOMParser, XMLSerializer };
+
+/**
+ * The document that every constructed node's placeholder DOM node is created from.
+ *
+ * A placeholder is never read by serialization, but creating one still needs an owner
+ * document. Until T17 each `Element`, `Attribute` and `Text` constructor built its own
+ * by parsing `<dummy/>`, so constructing a document cost one full XML parse *per node* —
+ * 48 037 parses to convert the 16 MEI fixtures. One shared document removes all but the
+ * first, which is worth ~30 % of the end-to-end conversion pipeline and makes node
+ * construction 9–33× cheaper (measured; log.md's T17 entry).
+ *
+ * Sharing is unobservable. `createElement`, `createElementNS`, `createAttribute` and
+ * `createTextNode` return unattached nodes and leave the document itself at `<dummy/>`,
+ * so no node can see another's existence through it; each still gets its own distinct
+ * placeholder, with the same `nodeName`/`localName`/`prefix`/`namespaceURI` and the same
+ * `parentNode === null` as before. Malformed names still throw the same `DOMException`
+ * from the same call, which is why the placeholder is still created eagerly rather than
+ * on demand: the throw is part of the constructors' observable behavior.
+ *
+ * The one thing this *is* — a module-level mutable binding, which CHARTER.md's
+ * immutable-friendly direction otherwise rules out — is a memo of a constant, assigned
+ * once and never reassigned. It is built on first use rather than at module load so that
+ * importing this module stays side-effect-free (T18's load-order work depends on that).
+ */
+let placeholderDocument: DomDocument | null = null;
+
+function placeholderDom(): DomDocument {
+  return (placeholderDocument ??= new DOMParser().parseFromString('<dummy/>', 'text/xml'));
+}
 
 /**
  * A fixed collection of nodes, as returned by {@link Element.query} — XOM's `Nodes`.
@@ -67,7 +99,7 @@ export class Nodes {
  * Base class for all node types in this layer.
  *
  * Every node carries a `@xmldom/xmldom` node, but that node is *not* the source of
- * truth: it is a placeholder created at construction time and only the parsing paths
+ * truth: it is a placeholder from {@link placeholderDom} and only the parsing paths
  * ({@link Element.wrap}, {@link Element.query}) ever look at a real one. Structure and
  * serialization are driven entirely by this layer's own `_attributes` / `_children`
  * arrays, which is what makes the emitted bytes independent of xmldom's serializer.
@@ -83,6 +115,21 @@ export abstract class XomNode {
 
   getDomNode(): Node {
     return this._domNode;
+  }
+
+  /**
+   * @internal Swap the constructed placeholder for the real node this layer is wrapping.
+   *
+   * Only {@link Element.wrap} calls it, and only on nodes it has just built: a node that
+   * came out of the parser keeps a live DOM node, which is what lets {@link getParent}
+   * and {@link detach} fall back to the DOM for tree positions this layer never wired.
+   * It exists because `_domNode` is protected, so `Element` cannot assign it on an
+   * instance of its sibling subclass `Text` — the previous workaround was a bracket
+   * access (`text['_domNode'] = child`) that documented the missing seam instead of
+   * providing it.
+   */
+  adoptDomNode(domNode: Node): void {
+    this._domNode = domNode;
   }
 
   /**
@@ -126,12 +173,16 @@ export class Attribute extends XomNode {
   private readonly _namespaceURI: string;
   private readonly _namespacePrefix: string;
 
-  constructor(name: string, value: string);
-  constructor(name: string, namespaceURI: string, value: string);
+  /**
+   * Two call forms, both XOM's: `(name, value)` and `(name, namespaceURI, value)`.
+   *
+   * They were two overloads until T17. One signature accepts exactly the same calls —
+   * every parameter is a `string`, so the overloads differed in arity alone — and the
+   * form is selected at runtime by whether the third argument is present.
+   */
   constructor(name: string, valueOrNs: string, value?: string) {
     // Create a placeholder node - attributes are attached to elements later
-    const doc = new DOMParser().parseFromString('<dummy/>', 'text/xml');
-    const attr = doc.createAttribute(name);
+    const attr = placeholderDom().createAttribute(name);
     super(attr as unknown as Node);
 
     // `prefix:local` splits on the first colon, and a name carrying more than one
@@ -220,8 +271,7 @@ export class Text extends XomNode {
   private _value: string;
 
   constructor(value: string) {
-    const doc = new DOMParser().parseFromString('<dummy/>', 'text/xml');
-    const textNode = doc.createTextNode(value);
+    const textNode = placeholderDom().createTextNode(value);
     super(textNode as unknown as Node);
     this._value = value;
   }
@@ -301,7 +351,7 @@ export class Element extends XomNode {
   private _children: XomNode[] = [];
 
   constructor(name: string, namespaceURI?: string) {
-    const doc = new DOMParser().parseFromString('<dummy/>', 'text/xml');
+    const doc = placeholderDom();
     let elem: globalThis.Element;
 
     const parts = name.split(':');
@@ -337,7 +387,7 @@ export class Element extends XomNode {
     const prefix = domElement.prefix || '';
     const qualifiedName = prefix ? `${prefix}:${localName}` : localName;
     const elem = new Element(qualifiedName, ns || undefined);
-    elem._domNode = domElement;
+    elem.adoptDomNode(domElement);
     // Restate what the constructor derived from `qualifiedName`: its own parse splits
     // on the first colon and drops any further segment, whereas the DOM has already
     // told us the authoritative prefix/local-name split.
@@ -372,9 +422,7 @@ export class Element extends XomNode {
       } else if (child.nodeType === 3) {
         // TEXT_NODE
         const text = new Text((child as globalThis.Text).data);
-        // Bracket access on purpose: `_domNode` is protected on XomNode, and TypeScript
-        // will not let Element reach it on an instance of its sibling subclass Text.
-        text['_domNode'] = child;
+        text.adoptDomNode(child);
         text._xomParent = elem;
         elem._children.push(text);
       }
