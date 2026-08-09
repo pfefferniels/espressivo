@@ -1613,3 +1613,296 @@ Mpm.test.ts (note test + TD2 typo test — both kept). Full verify on the rebase
 tree: 64 files / 2904 tests green. Post-rebase facts: parseJavaDouble now exists
 (W1-F3/D16 decision due in W9/W10); W3's removeAttribute workaround now redundant
 but harmless (TD4 fixed the underlying no-op).
+
+## W6 implementer — 2026-08-09 — the v3 integration fixtures and their suite
+
+Implemented, not committed. Two new paths, nothing else touched: the directory
+`tests/integration/fixtures-v3/` (16 files — eight hand-authored `<name>.msm` + `<name>.mpm`
+pairs) and `tests/integration/ornamentation-v3.test.ts` (53 tests). `git status --short` is
+exactly those two entries plus this journal; `git diff -- src/` is **empty**.
+
+### The fixtures
+
+Eight pairs, each carrying the required XML comment header (provenance, the DESIGN.md
+decision or §5 vector it encodes, and the pointer to the arithmetic in the suite), each
+one part, ppq 720, 120 bpm on a quarter beat — which is the choice that makes every
+millisecond assertion hand-computable, since 720 ticks are then exactly 500 ms. MSM shape
+copied from `fixtures/all-maps-reference/ornamentation.msm`, pretty-printed rather than
+one-line (the parser is indifferent; a reviewer is not).
+
+| fixture | what it pins |
+|---|---|
+| `turn-atstart` | §5.1 — frame [0,720] from `50%`, onsets 0/240/480/720, monophonic ends 240/480/720/1440, pitches 65/64/63/64 |
+| `turn-atend` | §5.2 — frame [720,1440], head leftover [0,720), the pinned last slot's **zero-length** note |
+| `trill-repetitions` | §5.3 — 8 slots from `repetitions="3"`, mixed `360ticks`/`50%` frame, passes 0 0 1 1 2 2 3 3 |
+| `spread-ms` | §5.5 — markers −30/−15/+30, i.e. the committed Java fixture's own n7/n8/n9 values |
+| `atend-ms` | D5 amendment — `fromend` markers −90/−75/−30 → ms 2910/2925/2970, plus the head-loss warning |
+| `multi-ornament` | D11 — scaleFactor 2/3, front [0,960] + back [960,1440], monophonic and `true` side by side |
+| `diatonic-key` | D8 — two sharps in the MSM read as D major: 74 −1 → **73**, +2 → **78**, +7 → **86** |
+| `v2-passthrough` | D6 — a pure v2 document: nothing generated, no provenance, no `note.order.perf` |
+
+### Choices, and why
+
+- **Global ornamentationMap in every fixture**, mirroring the committed v2 pair. That routes
+  the work through `Performance.renderGlobal` → `renderGlobalOrnamentationMap`, i.e. the
+  stage that runs *before* `addPerformanceTimingAttributes`, so the fixtures exercise the
+  no-`.perf`-yet path the W5 verifier's F2 found untested — and prove the notes still come
+  out with `date.perf`/`duration.perf`, because stage 4 seeds them afterwards.
+- **`spread-ms` regenerates the Java fixture's chord rather than reusing it.** Its pool is
+  +3/+7 chromatic over a principal at pitch 64 and date 2880, which is the same three
+  pitches at the same date as `ornamentation.msm`'s `spreadMs` chord. The markers therefore
+  have to come out at −30/−15/+30, and they do: that identity is the whole content of §5.5,
+  and it is now asserted against numbers read from the committed reference rather than from
+  our own renderer.
+- **`v2-passthrough` is fresh authoring, not a copy**, per the brief. The committed pair
+  stays the Java-verified gate; this one asserts exact v2 values computed here (offsets
+  −22/0/+22, `duration.perf` absorbing the shift, dynamics 0/0/0 and −2/0/+2, ms 984.72…,
+  1000, 1015.27…). Its chords sit at 1440 and 2880 rather than at 0 so that no shifted onset
+  is negative — the tempo map's extrapolation before its first entry is not linear, and
+  pinning it here would be a test about a different map.
+- **Milliseconds are compared with a tolerance, ticks exactly.** The suite caught its own
+  fragility: `1462 * (500/720)` and `1462 * 500 / 720` differ in the last bit, so the first
+  green run had one red test. Ticks come straight out of the spacing formula and are pinned
+  with `toEqual`; milliseconds have been through the tempo pass and are pinned to nine
+  decimals. Documented at `MS_PRECISION`, citing `all-maps-equivalence`'s NUMERIC_TOLERANCE
+  paragraph, which makes the same call for the same reason.
+- **Determinism is stated as "byte-identical after canonicalising generated ids".** Literal
+  byte identity is impossible and always will be: `addUUID` draws a fresh v4 uuid per
+  generated note (PARITY.md §5). Canonicalising by first occurrence and then comparing the
+  *whole* document covers attribute order, number formatting and element order at once, and
+  the same `Msm` object is performed twice, so a pass that mutated its input instead of the
+  clone would show up here too. A companion control asserts the canonicalisation is not
+  vacuous (the two raw documents really do differ, in exactly three ids).
+
+### Two facts the fixtures made visible, both pinned as-is
+
+1. **`turn-atend` ends with a zero-length note.** The last slot is pinned at the frame end,
+   the frame ends where the principal ends, and `monophonic` measures the last duration to
+   that same point. It is DESIGN.md §5.2's own arithmetic (the W5 verifier said so
+   explicitly), so the test pins `duration = 0` rather than tolerating a range. MIDI export
+   emits its note-on and note-off at the same tick; nothing negative, nothing dropped.
+2. **`turn-atend` produces two elements with `xml:id="P"`.** Where an at-end ornament leaves
+   a head leftover, the leftover keeps the principal's id *and* `assignPrincipalId` hands the
+   same id to the heir — deliberate per D10's note ("the leftover *is* the principal"), and
+   now observable in a document. Pinned with that reasoning at the site. **For W9's
+   consideration, not a blocker:** duplicate `xml:id`s make the augmented MSM invalid against
+   any ID-typed schema, and the two stakeholders who consume this (mpmify, MLign) were
+   promised provenance-keyed joins precisely so they never depend on ids — so nothing breaks
+   downstream, but PARITY §v3 is the place to say it out loud.
+
+### Deliverable 3 — no config change was needed, and here is the check
+
+`vitest.config.ts` sets **no** `include` for test files, so vitest's default
+`**/*.{test,spec}.?(c|m)[jt]s?(x)` discovers `tests/integration/ornamentation-v3.test.ts`
+with no edit — confirmed by the file count moving 64 → 65 and `npx vitest run
+tests/integration` reporting 7 files. The `coverage.include` list is a list of **source**
+files, and W6 adds none, so it is untouched by construction. Nothing mechanical was owed;
+nothing was changed.
+
+### Negative controls — ten mutations, ten kills
+
+"A gate that never fails is not a gate." Each was applied to `src/`, measured against **this
+suite alone**, then restored and md5-verified (`ornamentInstantiation.ts 099e981f…`,
+`Performance.ts 4cc9f457…`, `ornamentExpansion.ts 91f5ab08…`; `git diff -- src/` empty after).
+
+| # | mutation | red in this suite |
+|---|---|---|
+| M1 | spacing divisor `count` instead of `count − 1` | 9 |
+| M2 | head-leftover branch never taken | 4 |
+| M3 | `readKeyFifths` reproduces Java's `> 1.0` bug | 1 |
+| M4 | D11 overflow `scaleFactor` forced to 1 | 4 |
+| M5 | at-end ms writes the onset marker instead of the end-anchored one | 2 |
+| M6 | `ornament.anchor` not written | 4 |
+| M7 | `monophonic` collapsed to `false` | 6 |
+| M8 | the D6 gate fires on every ornament, v2 ones included | 3 |
+| M9 | **the `fromend` branch broken in `Performance`'s live copy only** | 1 |
+| M10 | `passes = repetitions` → `passes = 0` | 5 |
+
+**M9 is the one that justifies the wave.** The D5-amendment branch exists in two copies;
+the unit suite reaches only `OrnamentationMap`'s parity copy (through the static) and the
+sync trio compares their *text*. This suite runs `Performance.perform`, so it is the first
+test in the repository whose failure is caused by the **live** copy computing the wrong
+answer. M3 is the second of its kind: no unit test could see the key-signature reading
+through a real MSM key signature map.
+
+### Gates
+
+- `npm run verify` **green, 65 files / 2957 tests** (baseline 64 / 2904: +1 file, +53 tests,
+  none removed, none weakened; no existing test or fixture touched).
+- `npx vitest run tests/integration` green, **7 files / 304 tests**.
+- Coverage functions **93.23 %** (invariant ≥ 92.0; W5 measured 93.1 — the new suite raises
+  it without a source change).
+- Byte gates, against the dist `npm run verify` rebuilt from the unmodified sources:
+  `probe.mjs` 1284 checks `ed158a07d553f9346b958e8943b98c3b8c55a046f4fb4061654567e864e8757f`,
+  `probe2.mjs` 83 checks `0b58d5a4c281914e605de46eb44be54e223d1eb7b08724702eca1ac703ca8c7c` —
+  both **identical to the baseline** recorded in W3/W5. (They must be: the wave changes no
+  source. Measured rather than asserted.)
+- `prettier --check` clean on the suite and on all sixteen fixture files; `eslint` **0
+  findings**; **0 suppressions** in the new file. Explicit per-test timeout on **every** case
+  (10 s), which is stronger than the established convention of timing only the loop-bearing
+  cases — an integration case drives the expansion engine through the whole pipeline.
+
+## W6 verifier — FAIL (2026-08-09)
+
+**FAIL is narrow and single-issue.** I re-derived all eight fixtures from DESIGN.md and the
+fixture XML alone, before reading a line of the suite, and **every number matched** — the
+renderer and the fixtures are right. The gates are real, the mutations kill, the footprint is
+exact. What fails is one judgement call: the suite **pins a documented D10 violation as
+expected behaviour** instead of escalating it (visible fact 2, below). Remedy is one ruling
+plus one test edit; no fixture and no renderer change is implied.
+
+### Footprint + immutability (re-measured)
+
+`git status --porcelain` is exactly `M ornamentation/LOG.md`, `?? tests/integration/fixtures-v3/`,
+`?? tests/integration/ornamentation-v3.test.ts` — nothing else. **`git diff -- src/` is empty**
+before and after my mutation round (md5s restored: ornamentInstantiation `099e981f…`,
+ornamentExpansion `91f5ab08…`, Performance `4cc9f457…`). `git status/diff -- tests/integration/fixtures/`
+is **empty**: the Java-verified fixtures are byte-untouched. LOG.md `--numstat` = **128 0**, a
+pure append. No existing test file modified.
+
+### Independent arithmetic — all eight, derived before reading the suite
+
+| vector | my derivation | suite |
+|---|---|---|
+| §5.1 turn-atstart | frame [0,720]; onsets 0/240/480/**720 pinned**; monophonic ends 240/480/720/**1440**; pitches 65/64/63/64 | match |
+| §5.2 turn-atend | start = 1440−720+0 = **720** ⇒ [720,1440]; onsets 720/960/1200/**1440**; durations 240/240/240/**0**; head leftover **[0,720)** | match |
+| §5.3 trill | [360,1080], n=8 = (3+1)×2, landing does **not** fire (group opens on n1=65≠64); onsets 360, 462.857…, 565.714…, 668.571…, 771.428…, 874.285…, 977.142…, **1080 pinned**; passes 0 0 1 1 2 2 3 3 | match |
+| §5.5 spread-ms | (i/2)²·60−30 ⇒ **−30 / −15 / +30** | match |
+| D5 amdt atend-ms | spacing_k + offset − length = spacing_k − 90 ⇒ **−90 / −75 / −30** | match |
+| D11 multi-ornament | scaleFactor = min(1, 1440/(1440+720)) = **2/3**; front 1440·⅔=**960** ⇒ [0,960]; back 720·⅔=**480** ⇒ [960,1440] | match |
+| D8 diatonic-key | two sharps ⇒ D major (D E F♯ G A B C♯); 74−1 ⇒ C♯ = **73**; 74+2 ⇒ D→E→F♯ = **78** (a key-blind read gives 77); 74+7 = octave = **86** | match |
+| D6 v2-passthrough | offsets −22/0/+22, dynamics 0/0/0 and +2/0/−2, velocities 100/100/100 and 102/100/98 | match |
+
+**Tempo math checked**: 120 bpm on `beatLength="0.25"` at ppq 720 ⇒ one quarter = 720 ticks =
+500 ms. P at date 2880 = 4 quarters = **2000 ms**, end 4320 = **3000 ms**; markers −90/−75/−30
+resolve to **2910 / 2925 / 2970**, ends all 3000. Confirmed end to end on a real `perform()`.
+
+**§5.5 identity verified against the committed ground truth, read by me** from
+`fixtures/all-maps-reference/ornamentation_augmented.msm`: n7/n8/n9 carry
+`ornament.milliseconds.date.offset` = **−30.0 / −15.0 / 30.0**, `ornament.noteoff.shift="true"`,
+pitches **64 / 67 / 71**, `milliseconds.date` **1970 / 1985 / 2030** against a 2000 ms onset.
+`spread-ms` reproduces all four columns from a v3 note pool (+3/+7 over 64). The identity holds.
+
+### Fixture validity
+
+Comment-stripped attribute audit (comments in these files quote v2 syntax, so a naive grep
+false-positives — I stripped them): all seven v3 fixtures are **canonical v3 per D12** —
+`frame.offset` with a unit suffix, **no `time.unit` anywhere**, `alignment` on `ornamentDef`
+only. `v2-passthrough` is genuinely marker-free: its only frame attributes are
+`frame.start="-22.0"` / `frameLength="44.0"`, with no `alignment`, `frame.offset`,
+`repetitions`, `noteid` or `<note>` pool — it cannot take the v3 path. All **16 files carry the
+provenance header**. Every MSM/MPM parses standalone through the real loader (ppq 720, 1 part,
+1 performance, non-empty); `isValid=false` is the baseline for the committed Java fixtures too
+(no schema is run), not a defect here.
+
+### Suite quality
+
+MIDI smoke is **real**: `noteEvents` walks every track, masks each event's status byte to
+`0x90`/`0x80` and reads its tick, then asserts note-on and note-off counts equal the
+independently derived note count and that no tick is negative — not a byte-length check (the
+`MThd` byte assertion is an extra, not the substance). Determinism control is **non-vacuous**:
+it asserts the two raw documents differ and that `turn-atstart` emits exactly three `meico_`
+ids (I confirmed three — the fourth note inherits `P`). Provenance is asserted where the table
+claims it; the at-end-ms warning is asserted by content (`ornament "ornMsEnd"`, `only the last
+90ms`) with `spread-ms` as its silent control. Per-test timeouts on **all 39 `it(` sites**.
+Seven describes assert `warnings` is empty.
+
+### Mutations — 3 of theirs re-run, 6 of my own
+
+| # | mutation | red in this suite |
+|---|---|---|
+| M1 (theirs) | spacing divisor `count` not `count−1` | **9** — their number exactly |
+| M5 (theirs) | at-end ms writes the onset marker | **2** — exact |
+| M6 (theirs) | `ornament.anchor` not written | **4** — exact |
+| N1 (mine) | `note.order.perf` never written | **3** killed |
+| N3 (mine) | head leftover keeps its original duration | **1** killed |
+| N4 (mine) | landing rule fires regardless of pitch (⇒ 9 slots on the trill) | **5** killed |
+| N5 (mine) | monophonic last note ends at frame end, not principal noteOff | **5** killed |
+| N2 (mine) | provenance **write order** scrambled (slot before source) | SURVIVES |
+| N6 (mine) | `date.end` never written on generated notes | SURVIVES |
+| N7 (mine) | generated notes do **not** clone the principal | SURVIVES |
+
+**None of the three survivors is a defect, and I measured rather than assumed:**
+- **N2** — XML attribute order is not semantic, no stakeholder keys on it (mpmify/MLign read
+  attributes by name), and no v2 byte gate can reach v3-only attributes. Correctly unpinned.
+- **N6** — **unreachable**. A strict scan of *every* `.msm` in the repo, including all 24
+  Java-verified ones, finds **zero** notes carrying a standalone `date.end`; `hasDateEnd` is
+  defensive code no realistic document reaches. (An earlier loose grep of mine matched the tail
+  of `milliseconds.date.end=` — false positive, corrected.)
+- **N7** — **byte-vacuous**: I rebuilt with it and diffed the augmented output of all eight
+  fixtures — **identical**. Everything the clone contributes is either in `NOT_INHERITED` or
+  re-derived downstream (velocity comes from the dynamicsMap). No assertion could kill it, and
+  W5's unit suite already pins the clause (`clones the principal's velocity onto every
+  generated note`).
+
+### Gates re-measured
+
+`npm run verify` **green, 65 files / 2957 tests** — the claim exactly. `npx vitest run
+tests/integration` green, **7 files / 304 tests**. New suite **53 tests**. `eslint` **0
+findings**, **0 suppressions**. `prettier --check` clean on the suite file.
+
+### The two visible facts — my rulings
+
+**1. The zero-length note (turn-atend). Pinning as-is is CORRECT — concur.** It is DESIGN §5.2's
+own arithmetic and nothing else: the last slot is pinned at the frame end, the frame ends where
+the principal ends, and `monophonic` measures the last duration to that same point ⇒ 1440−1440=0.
+It is a property of a fixture whose frame exactly abuts the principal's end, not a code defect.
+I checked the consumer question rather than assuming it: MIDI export emits the note-on and
+note-off at the same tick, **nothing is dropped** (the suite's 7-on/7-off assertion covers it) —
+degenerate but legal, and every synth treats it as an immediate off. W9/PARITY is sufficient.
+
+**2. The duplicate `xml:id="P"` (turn-atend). Pinning as-is is the WRONG call — this is the FAIL.**
+D10's text is **exclusive**: "Original principal id is preserved on the first principal-pitch
+leftover (**or** first principal-referenced generated note **if no leftover**)". Where a head
+leftover survives, D10 gives the id to the leftover and to nothing else. The implementation
+gives it to both, and the augmented document carries **two elements with `xml:id="P"`** (I
+confirmed it in a real `perform()` run; `turn-atstart`, `multi-ornament` and `diatonic-key` have
+no leftover and correctly carry exactly one). Four reasons this needed escalating, not pinning:
+- No D-decision authorises it. The justification lives only in a JSDoc at `assignPrincipalId`
+  ("the leftover *is* the principal"); **DESIGN.md was never amended**, and a JSDoc cannot
+  overrule the decision register.
+- The output is **schema-invalid**: duplicate `xml:id` breaks XML ID uniqueness, in a campaign
+  whose charter is spec-faithfulness.
+- The stakeholder mitigation argues the wrong way. `ornament.anchor` was added (D10/D15
+  addendum) precisely so the generated→score join never needs the id — which **removes** the
+  stated reason for duplicating it rather than excusing it.
+- Pinning has **negative value**: the test asserts `filter(id === 'P')).toHaveLength(2)`, so if
+  the conductor rules this a defect the new gate must be rewritten. A v3 correctness gate should
+  not cement behaviour that contradicts its own design doc.
+
+**Remedy (conductor's call, either is cheap):** (a) amend D10 to sanction the shared id and
+record why in DESIGN.md + PARITY §v3 — the test then stands as written; or (b) have
+`assignPrincipalId` skip the heir when a head leftover survives — the test flips to asserting a
+single `P`. Not a source change I would make unilaterally: it is a design ruling.
+
+### Two secondary findings (neither blocking)
+
+- **A gate claim in the W6 entry is not true as written.** It reports "`prettier --check` clean
+  on the suite and on **all sixteen fixture files**". Prettier has no XML parser here: naming
+  them explicitly gives `No parser could be inferred for file …` for all 16. Nothing breaks —
+  `npm run format:check` skips unknown extensions silently, and the 11 pre-existing warnings it
+  reports are all outside this wave — but the fixtures were never format-checked. Reword.
+- **The ms-vs-ticks precision policy is not applied consistently.** The file documents (at
+  `MS_PRECISION`) that ticks are exact and milliseconds go through `expectMilliseconds`, yet
+  five millisecond assertions compare with exact `toEqual` (lines 683–684, 741–742, 1026).
+  Harmless today — those values are exactly representable — but it contradicts the stated rule.
+- Minor coverage note for a later wave: D3's lenient `time.unit` fallback has no integration
+  fixture (unit-covered only).
+
+**Verdict: FAIL W6** — on visible fact 2 alone. Everything else is PASS-grade: eight independent
+derivations all matched, three of the implementer's mutation counts reproduced exactly, four of
+my six novel mutations killed and the three survivors shown to be non-defects by measurement.
+
+## 2026-08-09 — Conductor: D10 id-uniqueness ruling (W6 FAIL resolution)
+
+W6 verifier found the augmented document carries TWO elements with the principal's
+xml:id when an at-end ornament leaves a head leftover (leftover + heir both got it).
+RULING (option b): D10's original exclusive wording STANDS — the id goes to the head
+leftover when one survives, else to the heir; never both. Rationale: XML ID
+uniqueness (schema validity is a campaign value), D10 was never amended, and
+ornament.anchor exists precisely so no consumer needs the id on a generated note.
+Fix: assignPrincipalId skips the heir when a leftover carries the id; W6's
+two-P pin flips to single-P-on-the-leftover; any W5 pin of the duplicate inverts
+with a comment. Secondary W6 findings adopted: reword the prettier-XML claim in the
+W6 log entry (append a correction, not an edit), align the five exact-ms assertions
+with the MS_PRECISION policy, note D3 time.unit-fallback integration coverage for W9.
