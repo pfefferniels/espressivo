@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+
+# Java-generated ground truth + MEI inputs. Immutable (charter invariant 2).
+tests/integration/fixtures/
+
+# Swarm coordination journal — hand-formatted, reflowing it would churn the log.
+refactor/

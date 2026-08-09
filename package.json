@@ -1,15 +1,61 @@
 {
-  "name": "meico",
+  "name": "espressivo",
   "version": "0.8.8",
-  "description": "MEI Converter - TypeScript port of the Java meico library",
+  "description": "MEI / MSM+MPM => expressive MIDI. An idiomatic TypeScript port of the Java meico library, proven equivalent to it.",
+  "keywords": [
+    "mei",
+    "msm",
+    "mpm",
+    "midi",
+    "music-encoding",
+    "music-performance",
+    "expressive-performance",
+    "meico"
+  ],
+  "homepage": "https://github.com/pfefferniels/espressivo#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pfefferniels/espressivo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pfefferniels/espressivo/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": [
+    "./dist/mpm/Mpm.js",
+    "./dist/mpm/elements/maps/*.js"
+  ],
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "files": [
+    "dist",
+    "src",
+    "PARITY.md"
+  ],
   "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "prebuild": "npm run clean",
     "build": "tsc",
+    "prepack": "npm run build",
+    "typecheck:tests": "tsc -p tsconfig.tests.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "verify": "npm run build && npm run typecheck:tests && vitest run"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.8",
@@ -17,10 +63,17 @@
     "xpath": "^0.0.34"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^22.0.0",
     "@types/uuid": "^10.0.0",
     "@vitest/coverage-v8": "^3.2.7",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import": "^2.32.0",
+    "prettier": "^3.9.6",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.66.0",
     "vitest": "^3.0.0"
   }
 }

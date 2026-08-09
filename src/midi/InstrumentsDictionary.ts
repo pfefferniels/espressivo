@@ -8,509 +8,729 @@
  * The string similarity matching uses a Normalized Levenshtein distance
  * implemented in pure TypeScript (replacing the Java java-string-similarity library).
  *
+ * ## Lookup order is load-bearing
+ *
+ * `getProgramChange` is a **linear scan over the whole dictionary in insertion
+ * order**, and two of its rules make that order observable:
+ *
+ * - a distance of exactly 0 returns immediately, so an exact name never depends on
+ *   what follows it;
+ * - otherwise the best match is kept with a strict `<`, so among several keys at the
+ *   same minimal distance **the earliest one wins**.
+ *
+ * The insertion order is the line order of `DICT_DATA` below, because a JS `Map`
+ * iterates in insertion order. Reordering the data, or rebuilding the map from a
+ * differently-ordered source, silently re-resolves every fuzzy name that has a tie —
+ * and fuzzy names are the normal case (`"Klarinette in B"`, `"Horn in F"`).
+ *
+ * **Java-parity note, pre-existing, do not "fix".** Java's `dict` is a
+ * `HashMap<String, Short>` (`InstrumentsDictionary.java:57`) and `entrySet()`
+ * iterates in hash order, not insertion order. Exact matches agree in both languages
+ * — distance 0 returns the same value whatever the order — but a *tie* between two
+ * fuzzy candidates can resolve to different instruments in Java and here. The same
+ * asymmetry makes `getInstrumentName(pc)` deterministic here (it returns the first
+ * name listed under that program number) and effectively arbitrary in Java.
+ *
+ * ## The data format, and why it stays a string
+ *
+ * `DICT_DATA` is parsed at construction: `%` starts a comment line, `#N` sets the
+ * program number for everything that follows (clamped into 0..127), blank lines are
+ * skipped, and every other line is an instrument name stored lower-cased. It holds
+ * 838 name lines that collapse to **836 keys** — `lead 5 charang` is listed twice
+ * under one program number, and `tenore` is listed under both 52 and 53, so the
+ * later value (53) wins while the key keeps its *earlier* position in the scan.
+ * Turning the table into a `readonly` array of tuples is possible in principle, but
+ * it would have to reproduce that last-value/first-position rule exactly, and the
+ * only gain is parse time on a table that is rebuilt per lookup anyway. Left as
+ * data, deliberately.
+ *
+ * ## Only one distance method is reachable from the pipeline
+ *
+ * The eleven `distanceMethod` constants mirror the eleven metrics of Java's
+ * `info.debatty.java.stringsimilarity`; the implementations below are hand-written
+ * replacements, not a port of that library. Only `NormalizedLevenshtein` — the
+ * default, and the only one `EventMaker.createProgramChangeByName` can select — is
+ * exercised by the conversion pipeline, so it is the only one whose agreement with
+ * the Java library is evidenced by the fixtures. The other ten are public API for
+ * external callers and are pinned only by this port's own unit tests.
+ *
  * @author Axel Berndt
  */
 
 export class InstrumentsDictionary {
-    // Distance method constants
-    static readonly Levenshtein: number = 0x00;
-    static readonly NormalizedLevenshtein: number = 0x01;
-    static readonly Damerau: number = 0x02;
-    static readonly JaroWinkler: number = 0x03;
-    static readonly LongestCommonSubsequence: number = 0x04;
-    static readonly MetricLCS: number = 0x05;
-    static readonly NGram: number = 0x06;
-    static readonly QGram: number = 0x07;
-    static readonly Cosine: number = 0x08;
-    static readonly Jaccard: number = 0x09;
-    static readonly SorensenDice: number = 0x0A;
+  // Distance method constants. The `: number` annotations they used to carry widened
+  // them away from their own values for no gain (RULE I4); without them each constant
+  // types as its literal, and `getProgramChange`'s `distanceMethod: number` parameter
+  // still accepts every one of them.
+  static readonly Levenshtein = 0x00;
+  static readonly NormalizedLevenshtein = 0x01;
+  static readonly Damerau = 0x02;
+  static readonly JaroWinkler = 0x03;
+  static readonly LongestCommonSubsequence = 0x04;
+  static readonly MetricLCS = 0x05;
+  static readonly NGram = 0x06;
+  static readonly QGram = 0x07;
+  static readonly Cosine = 0x08;
+  static readonly Jaccard = 0x09;
+  static readonly SorensenDice = 0x0a;
 
-    static readonly DefaultNames: string[] = [
-        "Acoustic Grand Piano", "Bright Acoustic Piano", "Electric Grand Piano", "Honkytonk Piano",
-        "Electric Piano 1", "Electric Piano 2", "Harpsichord", "Clavinet", "Celesta", "Glockenspiel",
-        "Music Box", "Vibraphone", "Marimba", "Xylophone", "Tubular Bells", "Dulcimer", "Drawbar Organ",
-        "Percussive Organ", "Rock Organ", "Church Organ", "Reed Organ", "Accordion", "Harmonica",
-        "Tango Accordion", "Acoustic Nylon Guitar", "Acoustic Steel Guitar", "Electric Jazz Guitar",
-        "Electric Clean Guitar", "Electric Muted Guitar", "Overdriven Guitar", "Distorted Guitar",
-        "Harmonic Guitar", "Acoustic Bass", "Fingered Electric Bass", "Picked Electric Bass", "Fretless Bass",
-        "Slap Bass 1", "Slap Bass 2", "Synth Bass 1", "Synth Bass 2", "Violin", "Viola", "Cello",
-        "Contrabass", "Tremolo Strings", "Pizzicato Strings", "Orchestral Harp", "Timpani",
-        "String Ensemble 1", "String Ensemble 2", "Synth Strings 1", "Synth Strings 2", "Choir Aahs",
-        "Voice Oohs", "Synth Choir", "Orchestra Hit", "Trumpet", "Trombone", "Tuba", "Muted Trumpet",
-        "French Horn", "Brass Section", "Synth Brass 1", "Synth Brass 2", "Soprano Sax", "Alto Sax",
-        "Tenor Sax", "Baritone Sax", "Oboe", "English Horn", "Bassoon", "Clarinet", "Piccolo", "Flute",
-        "Recorder", "Pan Flute", "Blown Bottle", "Shakuhachi", "Whistle", "Ocarina", "Lead 1 Square",
-        "Lead 2 Sawtooth", "Lead 3 Calliope", "Lead 4 Chiff", "Lead 5 Charang", "Lead 6 Voice",
-        "Lead 7 Fifths", "Lead 8 (Bass + Lead)", "Pad 1 New Age", "Pad 2 Warm", "Pad 3 Polysynth",
-        "Pad 4 Choir", "Pad 5 Bowed", "Pad 6 Metallic", "Pad 7 Halo", "Pad 8 Sweep", "FX 1 Rain",
-        "FX 2 Soundtrack", "FX 3 Crystal", "FX 4 Atmosphere", "FX 5 Brightness", "FX 6 Goblins",
-        "FX 7 Echoes", "FX 8 Scifi", "Sitar", "Banjo", "Shamisen", "Koto", "Kalimba", "Bagpipe",
-        "Fiddle", "Shanai", "Tinkle Bell", "Agogo", "Steel Drums", "Woodblock", "Taiko Drum",
-        "Melodic Tom", "Synth Drum", "Reverse Cymbal", "Guitar Fret Noise", "Breath Noise", "Seashore",
-        "Bird Tweet", "Telephone Ring", "Helicopter", "Applause", "Gunshot"
-    ];
+  /**
+   * the default instrument names of General MIDI, indexed by program change number
+   * (used by `getInstrumentName`, e.g. for MIDI-to-MSM conversion)
+   *
+   * `as const` per RULE I4: a fixed 128-entry table indexed by program change number,
+   * so the tuple length and the literal names are worth having in the type. The other
+   * table in this file, `DICT_DATA`, deliberately stays a plain `string` — see the
+   * class comment on why it stays data, and note that `as const` on a 20 KB template
+   * literal buys a 20 KB literal type and nothing else.
+   */
+  static readonly DefaultNames = [
+    'Acoustic Grand Piano',
+    'Bright Acoustic Piano',
+    'Electric Grand Piano',
+    'Honkytonk Piano',
+    'Electric Piano 1',
+    'Electric Piano 2',
+    'Harpsichord',
+    'Clavinet',
+    'Celesta',
+    'Glockenspiel',
+    'Music Box',
+    'Vibraphone',
+    'Marimba',
+    'Xylophone',
+    'Tubular Bells',
+    'Dulcimer',
+    'Drawbar Organ',
+    'Percussive Organ',
+    'Rock Organ',
+    'Church Organ',
+    'Reed Organ',
+    'Accordion',
+    'Harmonica',
+    'Tango Accordion',
+    'Acoustic Nylon Guitar',
+    'Acoustic Steel Guitar',
+    'Electric Jazz Guitar',
+    'Electric Clean Guitar',
+    'Electric Muted Guitar',
+    'Overdriven Guitar',
+    'Distorted Guitar',
+    'Harmonic Guitar',
+    'Acoustic Bass',
+    'Fingered Electric Bass',
+    'Picked Electric Bass',
+    'Fretless Bass',
+    'Slap Bass 1',
+    'Slap Bass 2',
+    'Synth Bass 1',
+    'Synth Bass 2',
+    'Violin',
+    'Viola',
+    'Cello',
+    'Contrabass',
+    'Tremolo Strings',
+    'Pizzicato Strings',
+    'Orchestral Harp',
+    'Timpani',
+    'String Ensemble 1',
+    'String Ensemble 2',
+    'Synth Strings 1',
+    'Synth Strings 2',
+    'Choir Aahs',
+    'Voice Oohs',
+    'Synth Choir',
+    'Orchestra Hit',
+    'Trumpet',
+    'Trombone',
+    'Tuba',
+    'Muted Trumpet',
+    'French Horn',
+    'Brass Section',
+    'Synth Brass 1',
+    'Synth Brass 2',
+    'Soprano Sax',
+    'Alto Sax',
+    'Tenor Sax',
+    'Baritone Sax',
+    'Oboe',
+    'English Horn',
+    'Bassoon',
+    'Clarinet',
+    'Piccolo',
+    'Flute',
+    'Recorder',
+    'Pan Flute',
+    'Blown Bottle',
+    'Shakuhachi',
+    'Whistle',
+    'Ocarina',
+    'Lead 1 Square',
+    'Lead 2 Sawtooth',
+    'Lead 3 Calliope',
+    'Lead 4 Chiff',
+    'Lead 5 Charang',
+    'Lead 6 Voice',
+    'Lead 7 Fifths',
+    'Lead 8 (Bass + Lead)',
+    'Pad 1 New Age',
+    'Pad 2 Warm',
+    'Pad 3 Polysynth',
+    'Pad 4 Choir',
+    'Pad 5 Bowed',
+    'Pad 6 Metallic',
+    'Pad 7 Halo',
+    'Pad 8 Sweep',
+    'FX 1 Rain',
+    'FX 2 Soundtrack',
+    'FX 3 Crystal',
+    'FX 4 Atmosphere',
+    'FX 5 Brightness',
+    'FX 6 Goblins',
+    'FX 7 Echoes',
+    'FX 8 Scifi',
+    'Sitar',
+    'Banjo',
+    'Shamisen',
+    'Koto',
+    'Kalimba',
+    'Bagpipe',
+    'Fiddle',
+    'Shanai',
+    'Tinkle Bell',
+    'Agogo',
+    'Steel Drums',
+    'Woodblock',
+    'Taiko Drum',
+    'Melodic Tom',
+    'Synth Drum',
+    'Reverse Cymbal',
+    'Guitar Fret Noise',
+    'Breath Noise',
+    'Seashore',
+    'Bird Tweet',
+    'Telephone Ring',
+    'Helicopter',
+    'Applause',
+    'Gunshot',
+  ] as const;
 
-    private dict: Map<string, number>;
+  /** name (lower case) → program change number, in `DICT_DATA` line order */
+  private readonly dict: Map<string, number>;
 
-    /**
-     * The constructor. It builds the dictionary from the embedded data.
-     * In Java this read from resources/instuments.dict; here the data is embedded directly.
-     */
-    constructor() {
-        this.dict = new Map<string, number>();
-        this.buildDictionary();
+  /**
+   * The constructor. It builds the dictionary from the embedded data.
+   * In Java this read from resources/instuments.dict; here the data is embedded directly.
+   *
+   * Cheap enough to be built per lookup, which is what callers do — Java rebuilds it
+   * per instance too, and nothing in `getProgramChange` mutates it.
+   */
+  constructor() {
+    this.dict = new Map<string, number>();
+    this.buildDictionary();
+  }
+
+  /**
+   * Build the instruments dictionary from embedded data.
+   * This replaces the Java file-reading constructor.
+   *
+   * A later duplicate of a name overwrites the earlier value but keeps the earlier
+   * scan position — the behaviour Java's `HashMap.put` has, and the reason `tenore`
+   * resolves to 53 while sitting among the 52s. Java's own guard against duplicates
+   * is commented out in `InstrumentsDictionary.java:76-77`, so last-wins is
+   * deliberate in both languages.
+   *
+   * One divergence: this trims trailing whitespace off each line before testing it
+   * for emptiness and before storing it, where Java stores the line as read. The
+   * embedded data has no trailing whitespace, so it makes no difference here.
+   */
+  private buildDictionary(): void {
+    const dictData = InstrumentsDictionary.DICT_DATA;
+    const lines = dictData.split('\n');
+    let pc = 0;
+
+    for (const rawLine of lines) {
+      const line = rawLine.trimEnd();
+      if (line.length === 0) continue; // empty line
+      if (line.charAt(0) === '%') continue; // comment line
+
+      if (line.charAt(0) === '#') {
+        // program change number line
+        pc = parseInt(line.substring(1).replace(/\s+/g, ''), 10);
+        if (pc > 127) pc = 127;
+        if (pc < 0) pc = 0;
+        continue;
+      }
+
+      // put the string into the map, associate it with pc
+      this.dict.set(line.toLowerCase(), pc);
+    }
+  }
+
+  /**
+   * This method parses the input string name and outputs its corresponding midi program change number.
+   * This is based on the Normalized Levenshtein distance between the input string and the strings
+   * in the instrument names dictionary.
+   *
+   * Never fails: an unmatched name still returns the nearest entry, and an empty name
+   * returns 0 without scanning. The scan order is significant — see the class comment.
+   * Every lookup reports the key it settled on to stdout, matching Java
+   * (`InstrumentsDictionary.java:157,168`); the port keeps that because the tests and
+   * the CLI both read it.
+   *
+   * @param name an instrument's name string
+   * @param distanceMethod one of the eleven constants above; anything unrecognised,
+   *   including a missing argument, falls back to Normalized Levenshtein
+   * @return the suggested midi program change number; if instrument unknown, output is 0 (Acoustic Grand Piano)
+   */
+  getProgramChange(name: string, distanceMethod?: number): number {
+    if (distanceMethod === undefined) {
+      return this.getProgramChange(name, InstrumentsDictionary.NormalizedLevenshtein);
     }
 
-    /**
-     * Build the instruments dictionary from embedded data.
-     * This replaces the Java file-reading constructor.
-     */
-    private buildDictionary(): void {
-        const dictData = InstrumentsDictionary.DICT_DATA;
-        const lines = dictData.split('\n');
-        let pc = 0;
+    if (name.length === 0)
+      // if the name string is empty
+      return 0; // default instrument is Acoustic Grand Piano (program Change = 0)
 
-        for (const rawLine of lines) {
-            const line = rawLine.trimEnd();
-            if (line.length === 0) continue;                          // empty line
-            if (line.charAt(0) === '%') continue;                     // comment line
+    const n = name.toLowerCase(); // to ignore the case
+    let pc = 0; // here comes the result
+    let distance = Number.MAX_VALUE; // indicates the distance to the name string
+    let bestKey = ''; // the key `pc` came from; reported below, Java calls it `foo`
 
-            if (line.charAt(0) === '#') {                             // program change number line
-                pc = parseInt(line.substring(1).replace(/\s+/g, ''), 10);
-                if (pc > 127) pc = 127;
-                if (pc < 0) pc = 0;
-                continue;
-            }
+    for (const [key, value] of this.dict.entries()) {
+      let curDistance: number;
+      switch (distanceMethod) {
+        case InstrumentsDictionary.Levenshtein:
+          curDistance = InstrumentsDictionary.levenshteinDistance(key, n);
+          break;
+        case InstrumentsDictionary.NormalizedLevenshtein:
+          curDistance = InstrumentsDictionary.normalizedLevenshteinDistance(key, n);
+          break;
+        case InstrumentsDictionary.Damerau:
+          curDistance = InstrumentsDictionary.damerauLevenshteinDistance(key, n);
+          break;
+        case InstrumentsDictionary.JaroWinkler:
+          curDistance = InstrumentsDictionary.jaroWinklerDistance(key, n);
+          break;
+        case InstrumentsDictionary.LongestCommonSubsequence:
+          curDistance = InstrumentsDictionary.lcsDistance(key, n);
+          break;
+        case InstrumentsDictionary.MetricLCS:
+          curDistance = InstrumentsDictionary.metricLCSDistance(key, n);
+          break;
+        case InstrumentsDictionary.NGram:
+          curDistance = InstrumentsDictionary.ngramDistance(key, n, 2);
+          break;
+        case InstrumentsDictionary.QGram:
+          curDistance = InstrumentsDictionary.qgramDistance(key, n, 2);
+          break;
+        case InstrumentsDictionary.Cosine:
+          curDistance = InstrumentsDictionary.cosineDistance(key, n);
+          break;
+        case InstrumentsDictionary.Jaccard:
+          curDistance = InstrumentsDictionary.jaccardDistance(key, n);
+          break;
+        case InstrumentsDictionary.SorensenDice:
+          curDistance = InstrumentsDictionary.sorensenDiceDistance(key, n);
+          break;
+        default:
+          curDistance = InstrumentsDictionary.normalizedLevenshteinDistance(key, n);
+      }
 
-            // put the string into the map, associate it with pc
-            this.dict.set(line.toLowerCase(), pc);
-        }
+      if (curDistance === 0) {
+        // found perfect match
+        console.log(`${name} is mapped to ${key} with ${curDistance}`);
+        return value; // return the value
+      }
+
+      // strictly less than, so the earliest key at the minimal distance wins
+      if (curDistance < distance) {
+        distance = curDistance;
+        pc = value;
+        bestKey = key;
+      }
+    }
+    console.log(`${name} is mapped to ${bestKey} with ${distance}`);
+    return pc;
+  }
+
+  /**
+   * given a program change number, return the instrument's name
+   *
+   * Reading the dictionary (the default) returns the **first** name listed under that
+   * program number, lower-cased, because the scan follows `DICT_DATA` order — so
+   * program 0 gives `"acoustic grand piano"`, not `"Klavier"`. Java's hash-ordered
+   * map gives an arbitrary synonym instead. Pass `useGmDefaultNames` for the
+   * canonical General MIDI spelling, which is also the fallback if the dictionary
+   * cannot be built.
+   *
+   * @param useGmDefaultNames if false the names are taken from the instruments dictionary
+   * @return the instrument's name or an empty string if not found in the dictionary
+   */
+  static getInstrumentName(programChangeNumber: number, useGmDefaultNames = false): string {
+    if (useGmDefaultNames) return InstrumentsDictionary.DefaultNames[programChangeNumber];
+
+    let dict: InstrumentsDictionary;
+    try {
+      dict = new InstrumentsDictionary();
+    } catch (e) {
+      console.error(e);
+      return InstrumentsDictionary.DefaultNames[programChangeNumber];
     }
 
-    /**
-     * This method parses the input string name and outputs its corresponding midi program change number.
-     * This is based on the Normalized Levenshtein distance between the input string and the strings
-     * in the instrument names dictionary.
-     * @param name an instrument's name string
-     * @return the suggested midi program change number; if instrument unknown, output is 0 (Acoustic Grand Piano)
-     */
-    getProgramChange(name: string): number;
-    getProgramChange(name: string, distanceMethod: number): number;
-    getProgramChange(name: string, distanceMethod?: number): number {
-        if (distanceMethod === undefined) {
-            return this.getProgramChange(name, InstrumentsDictionary.NormalizedLevenshtein);
+    for (const [key, value] of dict.dict.entries()) {
+      if (value === programChangeNumber) return key;
+    }
+    return '';
+  }
+
+  // ============================================================
+  // String distance implementations (replacing java-string-similarity library)
+  // ============================================================
+
+  /**
+   * Compute the Levenshtein distance of two strings.
+   *
+   * Textbook full-matrix edit distance: the number of single-character insertions,
+   * deletions and substitutions between the two strings. This is the one metric whose
+   * definition is unambiguous enough that the hand-written version and Java's library
+   * cannot disagree, which matters because `normalizedLevenshteinDistance` — the
+   * default and only pipeline-reachable metric — is built on it.
+   */
+  private static levenshteinDistance(str1: string, str2: string): number {
+    const matrix: number[][] = [];
+    for (let i = 0; i <= str1.length; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= str2.length; j++) {
+      matrix[0][j] = j;
+    }
+    for (let a = 1; a <= str1.length; a++) {
+      for (let b = 1; b <= str2.length; b++) {
+        const right = str1.charAt(a - 1) !== str2.charAt(b - 1) ? 1 : 0;
+        let mini = matrix[a - 1][b] + 1;
+        if (matrix[a][b - 1] + 1 < mini) mini = matrix[a][b - 1] + 1;
+        if (matrix[a - 1][b - 1] + right < mini) mini = matrix[a - 1][b - 1] + right;
+        matrix[a][b] = mini;
+      }
+    }
+    return matrix[str1.length][str2.length];
+  }
+
+  /**
+   * Compute the Normalized Levenshtein distance (0..1) of two strings.
+   *
+   * Edit distance divided by the longer length, so an exact match is 0 and a total
+   * mismatch approaches 1. **This is the metric the whole conversion pipeline uses**:
+   * every instrument name in every MEI fixture is resolved through it.
+   */
+  private static normalizedLevenshteinDistance(str1: string, str2: string): number {
+    const maxLen = Math.max(str1.length, str2.length);
+    if (maxLen === 0) return 0;
+    return InstrumentsDictionary.levenshteinDistance(str1, str2) / maxLen;
+  }
+
+  /**
+   * Compute the Damerau-Levenshtein distance of two strings.
+   */
+  private static damerauLevenshteinDistance(str1: string, str2: string): number {
+    const len1 = str1.length;
+    const len2 = str2.length;
+    const d: number[][] = [];
+    for (let i = 0; i <= len1; i++) {
+      d[i] = [];
+      for (let j = 0; j <= len2; j++) {
+        d[i][j] = 0;
+      }
+    }
+    for (let i = 0; i <= len1; i++) d[i][0] = i;
+    for (let j = 0; j <= len2; j++) d[0][j] = j;
+
+    for (let i = 1; i <= len1; i++) {
+      for (let j = 1; j <= len2; j++) {
+        const cost = str1.charAt(i - 1) === str2.charAt(j - 1) ? 0 : 1;
+        d[i][j] = Math.min(
+          d[i - 1][j] + 1, // deletion
+          d[i][j - 1] + 1, // insertion
+          d[i - 1][j - 1] + cost, // substitution
+        );
+        if (
+          i > 1 &&
+          j > 1 &&
+          str1.charAt(i - 1) === str2.charAt(j - 2) &&
+          str1.charAt(i - 2) === str2.charAt(j - 1)
+        ) {
+          d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + cost); // transposition
         }
+      }
+    }
+    return d[len1][len2];
+  }
 
-        if (name.length === 0)                                      // if the name string is empty
-            return 0;                                                // default instrument is Acoustic Grand Piano (program Change = 0)
+  /**
+   * Compute the Jaro-Winkler distance (0..1) of two strings.
+   */
+  private static jaroWinklerDistance(s1: string, s2: string): number {
+    if (s1 === s2) return 0;
+    const maxLen = Math.max(s1.length, s2.length);
+    if (maxLen === 0) return 0;
 
-        const n = name.toLowerCase();                                // to ignore the case
-        let pc = 0;                                                  // here comes the result
-        let distance = Number.MAX_VALUE;                             // indicates the distance to the name string
-        let foo = "";                                                // just for debugging
+    const matchDistance = Math.max(0, Math.floor(maxLen / 2) - 1);
+    const s1Matches = new Array(s1.length).fill(false);
+    const s2Matches = new Array(s2.length).fill(false);
 
-        for (const [key, value] of this.dict.entries()) {
-            let curDistance: number;
-            switch (distanceMethod) {
-                case InstrumentsDictionary.Levenshtein:
-                    curDistance = InstrumentsDictionary.levenshteinDistance(key, n);
-                    break;
-                case InstrumentsDictionary.NormalizedLevenshtein:
-                    curDistance = InstrumentsDictionary.normalizedLevenshteinDistance(key, n);
-                    break;
-                case InstrumentsDictionary.Damerau:
-                    curDistance = InstrumentsDictionary.damerauLevenshteinDistance(key, n);
-                    break;
-                case InstrumentsDictionary.JaroWinkler:
-                    curDistance = InstrumentsDictionary.jaroWinklerDistance(key, n);
-                    break;
-                case InstrumentsDictionary.LongestCommonSubsequence:
-                    curDistance = InstrumentsDictionary.lcsDistance(key, n);
-                    break;
-                case InstrumentsDictionary.MetricLCS:
-                    curDistance = InstrumentsDictionary.metricLCSDistance(key, n);
-                    break;
-                case InstrumentsDictionary.NGram:
-                    curDistance = InstrumentsDictionary.ngramDistance(key, n, 2);
-                    break;
-                case InstrumentsDictionary.QGram:
-                    curDistance = InstrumentsDictionary.qgramDistance(key, n, 2);
-                    break;
-                case InstrumentsDictionary.Cosine:
-                    curDistance = InstrumentsDictionary.cosineDistance(key, n);
-                    break;
-                case InstrumentsDictionary.Jaccard:
-                    curDistance = InstrumentsDictionary.jaccardDistance(key, n);
-                    break;
-                case InstrumentsDictionary.SorensenDice:
-                    curDistance = InstrumentsDictionary.sorensenDiceDistance(key, n);
-                    break;
-                default:
-                    curDistance = InstrumentsDictionary.normalizedLevenshteinDistance(key, n);
-            }
+    let matches = 0;
+    let transpositions = 0;
 
-            if (curDistance === 0) {                                  // found perfect match
-                console.log(name + " is mapped to " + key + " with " + curDistance);
-                return value;                                        // return the value
-            }
-
-            if (curDistance < distance) {
-                distance = curDistance;
-                pc = value;
-                foo = key;
-            }
-        }
-        console.log(name + " is mapped to " + foo + " with " + distance);
-        return pc;
+    for (let i = 0; i < s1.length; i++) {
+      const start = Math.max(0, i - matchDistance);
+      const end = Math.min(i + matchDistance + 1, s2.length);
+      for (let j = start; j < end; j++) {
+        if (s2Matches[j] || s1.charAt(i) !== s2.charAt(j)) continue;
+        s1Matches[i] = true;
+        s2Matches[j] = true;
+        matches++;
+        break;
+      }
     }
 
-    /**
-     * given a program change number, return the instrument's name
-     * @param programChangeNumber
-     * @param useGmDefaultNames if false the names are taken from the instruments dictionary
-     * @return the instrument's name or an empty string if not found in the dictionary
-     */
-    static getInstrumentName(programChangeNumber: number, useGmDefaultNames: boolean = false): string {
-        if (useGmDefaultNames)
-            return InstrumentsDictionary.DefaultNames[programChangeNumber];
+    if (matches === 0) return 1;
 
-        let dict: InstrumentsDictionary;
-        try {
-            dict = new InstrumentsDictionary();
-        } catch (e) {
-            console.error(e);
-            return InstrumentsDictionary.DefaultNames[programChangeNumber];
-        }
-
-        for (const [key, value] of dict.dict.entries()) {
-            if (value === programChangeNumber)
-                return key;
-        }
-        return "";
+    let k = 0;
+    for (let i = 0; i < s1.length; i++) {
+      if (!s1Matches[i]) continue;
+      while (!s2Matches[k]) k++;
+      if (s1.charAt(i) !== s2.charAt(k)) transpositions++;
+      k++;
     }
 
-    // ============================================================
-    // String distance implementations (replacing java-string-similarity library)
-    // ============================================================
+    const jaro =
+      (matches / s1.length + matches / s2.length + (matches - transpositions / 2) / matches) / 3;
 
-    /**
-     * Compute the Levenshtein distance of two strings.
-     */
-    private static levenshteinDistance(str1: string, str2: string): number {
-        const matrix: number[][] = [];
-        for (let i = 0; i <= str1.length; i++) {
-            matrix[i] = [i];
-        }
-        for (let j = 0; j <= str2.length; j++) {
-            matrix[0][j] = j;
-        }
-        for (let a = 1; a <= str1.length; a++) {
-            for (let b = 1; b <= str2.length; b++) {
-                const right = str1.charAt(a - 1) !== str2.charAt(b - 1) ? 1 : 0;
-                let mini = matrix[a - 1][b] + 1;
-                if (matrix[a][b - 1] + 1 < mini) mini = matrix[a][b - 1] + 1;
-                if (matrix[a - 1][b - 1] + right < mini) mini = matrix[a - 1][b - 1] + right;
-                matrix[a][b] = mini;
-            }
-        }
-        return matrix[str1.length][str2.length];
+    // Winkler prefix bonus
+    let prefix = 0;
+    for (let i = 0; i < Math.min(4, Math.min(s1.length, s2.length)); i++) {
+      if (s1.charAt(i) === s2.charAt(i)) prefix++;
+      else break;
     }
 
-    /**
-     * Compute the Normalized Levenshtein distance (0..1) of two strings.
-     */
-    private static normalizedLevenshteinDistance(str1: string, str2: string): number {
-        const maxLen = Math.max(str1.length, str2.length);
-        if (maxLen === 0) return 0;
-        return InstrumentsDictionary.levenshteinDistance(str1, str2) / maxLen;
+    return 1 - (jaro + prefix * 0.1 * (1 - jaro));
+  }
+
+  /**
+   * Compute the Longest Common Subsequence distance of two strings.
+   */
+  private static lcsDistance(s1: string, s2: string): number {
+    const len1 = s1.length;
+    const len2 = s2.length;
+    const dp: number[][] = [];
+    for (let i = 0; i <= len1; i++) {
+      dp[i] = [];
+      for (let j = 0; j <= len2; j++) {
+        dp[i][j] = 0;
+      }
+    }
+    for (let i = 1; i <= len1; i++) {
+      for (let j = 1; j <= len2; j++) {
+        if (s1.charAt(i - 1) === s2.charAt(j - 1)) {
+          dp[i][j] = dp[i - 1][j - 1] + 1;
+        } else {
+          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+      }
+    }
+    const lcsLen = dp[len1][len2];
+    return len1 + len2 - 2 * lcsLen;
+  }
+
+  /**
+   * Compute the Metric LCS distance (0..1) of two strings.
+   */
+  private static metricLCSDistance(s1: string, s2: string): number {
+    const maxLen = Math.max(s1.length, s2.length);
+    if (maxLen === 0) return 0;
+    // The Metric LCS = 1 - LCS(s1, s2) / max(|s1|, |s2|)
+    const len1 = s1.length;
+    const len2 = s2.length;
+    const dp: number[][] = [];
+    for (let i = 0; i <= len1; i++) {
+      dp[i] = [];
+      for (let j = 0; j <= len2; j++) {
+        dp[i][j] = 0;
+      }
+    }
+    for (let i = 1; i <= len1; i++) {
+      for (let j = 1; j <= len2; j++) {
+        if (s1.charAt(i - 1) === s2.charAt(j - 1)) {
+          dp[i][j] = dp[i - 1][j - 1] + 1;
+        } else {
+          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+      }
+    }
+    const lcsLen = dp[len1][len2];
+    return 1 - lcsLen / maxLen;
+  }
+
+  /**
+   * Get n-grams of a string. Returns an empty list when the string is shorter than `n`.
+   */
+  private static getNgrams(s: string, n: number): string[] {
+    const ngrams: string[] = [];
+    if (s.length < n) return ngrams;
+    for (let i = 0; i <= s.length - n; i++) {
+      ngrams.push(s.substring(i, i + n));
+    }
+    return ngrams;
+  }
+
+  /**
+   * Compute the N-Gram distance (0..1) of two strings.
+   */
+  private static ngramDistance(s1: string, s2: string, n: number): number {
+    if (s1.length === 0 && s2.length === 0) return 0;
+    if (s1.length === 0 || s2.length === 0) return 1;
+
+    // Normalized N-gram distance
+    const special = '\n'; // padding character
+    const s1p = special.repeat(n - 1) + s1;
+    const s2p = special.repeat(n - 1) + s2;
+
+    const ngrams1 = InstrumentsDictionary.getNgrams(s1p, n);
+    const ngrams2 = InstrumentsDictionary.getNgrams(s2p, n);
+
+    let matches = 0;
+    const used = new Array(ngrams2.length).fill(false);
+
+    for (const ng1 of ngrams1) {
+      for (let j = 0; j < ngrams2.length; j++) {
+        if (!used[j] && ng1 === ngrams2[j]) {
+          matches++;
+          used[j] = true;
+          break;
+        }
+      }
     }
 
-    /**
-     * Compute the Damerau-Levenshtein distance of two strings.
-     */
-    private static damerauLevenshteinDistance(str1: string, str2: string): number {
-        const len1 = str1.length;
-        const len2 = str2.length;
-        const d: number[][] = [];
-        for (let i = 0; i <= len1; i++) {
-            d[i] = [];
-            for (let j = 0; j <= len2; j++) {
-                d[i][j] = 0;
-            }
-        }
-        for (let i = 0; i <= len1; i++) d[i][0] = i;
-        for (let j = 0; j <= len2; j++) d[0][j] = j;
+    return 1 - matches / Math.max(ngrams1.length, ngrams2.length);
+  }
 
-        for (let i = 1; i <= len1; i++) {
-            for (let j = 1; j <= len2; j++) {
-                const cost = str1.charAt(i - 1) === str2.charAt(j - 1) ? 0 : 1;
-                d[i][j] = Math.min(
-                    d[i - 1][j] + 1,       // deletion
-                    d[i][j - 1] + 1,       // insertion
-                    d[i - 1][j - 1] + cost  // substitution
-                );
-                if (i > 1 && j > 1 && str1.charAt(i - 1) === str2.charAt(j - 2) && str1.charAt(i - 2) === str2.charAt(j - 1)) {
-                    d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + cost); // transposition
-                }
-            }
-        }
-        return d[len1][len2];
+  /**
+   * Get a profile (map of ngrams to counts) for QGram-based distances.
+   * Unlike `ngramDistance`, the string is not padded first.
+   */
+  private static getProfile(s: string, n: number): Map<string, number> {
+    const profile = new Map<string, number>();
+    const ngrams = InstrumentsDictionary.getNgrams(s, n);
+    for (const ng of ngrams) {
+      profile.set(ng, (profile.get(ng) || 0) + 1);
+    }
+    return profile;
+  }
+
+  /**
+   * Compute the QGram distance of two strings.
+   *
+   * The odd one out: **not normalised to 0..1**, it is the summed absolute difference
+   * of the two bigram profiles, so it grows with string length. That is the library's
+   * definition too, but it means a `distance` from this metric is not comparable with
+   * one from any other — only within a single scan, which is all `getProgramChange`
+   * needs.
+   */
+  private static qgramDistance(s1: string, s2: string, q: number): number {
+    const profile1 = InstrumentsDictionary.getProfile(s1, q);
+    const profile2 = InstrumentsDictionary.getProfile(s2, q);
+
+    const allKeys = new Set<string>();
+    for (const k of profile1.keys()) allKeys.add(k);
+    for (const k of profile2.keys()) allKeys.add(k);
+
+    let distance = 0;
+    for (const key of allKeys) {
+      const v1 = profile1.get(key) || 0;
+      const v2 = profile2.get(key) || 0;
+      distance += Math.abs(v1 - v2);
+    }
+    return distance;
+  }
+
+  /**
+   * Compute the Cosine distance (0..1) of two strings based on bigram profiles.
+   */
+  private static cosineDistance(s1: string, s2: string): number {
+    const profile1 = InstrumentsDictionary.getProfile(s1, 2);
+    const profile2 = InstrumentsDictionary.getProfile(s2, 2);
+
+    if (profile1.size === 0 && profile2.size === 0) return 0;
+    if (profile1.size === 0 || profile2.size === 0) return 1;
+
+    const allKeys = new Set<string>();
+    for (const k of profile1.keys()) allKeys.add(k);
+    for (const k of profile2.keys()) allKeys.add(k);
+
+    let dotProduct = 0;
+    let norm1 = 0;
+    let norm2 = 0;
+    for (const key of allKeys) {
+      const v1 = profile1.get(key) || 0;
+      const v2 = profile2.get(key) || 0;
+      dotProduct += v1 * v2;
+      norm1 += v1 * v1;
+      norm2 += v2 * v2;
     }
 
-    /**
-     * Compute the Jaro-Winkler distance (0..1) of two strings.
-     */
-    private static jaroWinklerDistance(s1: string, s2: string): number {
-        if (s1 === s2) return 0;
-        const maxLen = Math.max(s1.length, s2.length);
-        if (maxLen === 0) return 0;
+    const denom = Math.sqrt(norm1) * Math.sqrt(norm2);
+    if (denom === 0) return 1;
+    return 1 - dotProduct / denom;
+  }
 
-        const matchDistance = Math.max(0, Math.floor(maxLen / 2) - 1);
-        const s1Matches = new Array(s1.length).fill(false);
-        const s2Matches = new Array(s2.length).fill(false);
+  /**
+   * Compute the Jaccard distance (0..1) of two strings based on bigram sets.
+   */
+  private static jaccardDistance(s1: string, s2: string): number {
+    const ngrams1 = new Set(InstrumentsDictionary.getNgrams(s1, 2));
+    const ngrams2 = new Set(InstrumentsDictionary.getNgrams(s2, 2));
 
-        let matches = 0;
-        let transpositions = 0;
+    if (ngrams1.size === 0 && ngrams2.size === 0) return 0;
 
-        for (let i = 0; i < s1.length; i++) {
-            const start = Math.max(0, i - matchDistance);
-            const end = Math.min(i + matchDistance + 1, s2.length);
-            for (let j = start; j < end; j++) {
-                if (s2Matches[j] || s1.charAt(i) !== s2.charAt(j)) continue;
-                s1Matches[i] = true;
-                s2Matches[j] = true;
-                matches++;
-                break;
-            }
-        }
-
-        if (matches === 0) return 1;
-
-        let k = 0;
-        for (let i = 0; i < s1.length; i++) {
-            if (!s1Matches[i]) continue;
-            while (!s2Matches[k]) k++;
-            if (s1.charAt(i) !== s2.charAt(k)) transpositions++;
-            k++;
-        }
-
-        const jaro = (matches / s1.length + matches / s2.length + (matches - transpositions / 2) / matches) / 3;
-
-        // Winkler prefix bonus
-        let prefix = 0;
-        for (let i = 0; i < Math.min(4, Math.min(s1.length, s2.length)); i++) {
-            if (s1.charAt(i) === s2.charAt(i)) prefix++;
-            else break;
-        }
-
-        return 1 - (jaro + prefix * 0.1 * (1 - jaro));
+    let intersection = 0;
+    for (const ng of ngrams1) {
+      if (ngrams2.has(ng)) intersection++;
     }
 
-    /**
-     * Compute the Longest Common Subsequence distance of two strings.
-     */
-    private static lcsDistance(s1: string, s2: string): number {
-        const len1 = s1.length;
-        const len2 = s2.length;
-        const dp: number[][] = [];
-        for (let i = 0; i <= len1; i++) {
-            dp[i] = [];
-            for (let j = 0; j <= len2; j++) {
-                dp[i][j] = 0;
-            }
-        }
-        for (let i = 1; i <= len1; i++) {
-            for (let j = 1; j <= len2; j++) {
-                if (s1.charAt(i - 1) === s2.charAt(j - 1)) {
-                    dp[i][j] = dp[i - 1][j - 1] + 1;
-                } else {
-                    dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-                }
-            }
-        }
-        const lcsLen = dp[len1][len2];
-        return len1 + len2 - 2 * lcsLen;
+    const union = ngrams1.size + ngrams2.size - intersection;
+    if (union === 0) return 0;
+    return 1 - intersection / union;
+  }
+
+  /**
+   * Compute the Sorensen-Dice distance (0..1) of two strings based on bigram sets.
+   */
+  private static sorensenDiceDistance(s1: string, s2: string): number {
+    const ngrams1 = new Set(InstrumentsDictionary.getNgrams(s1, 2));
+    const ngrams2 = new Set(InstrumentsDictionary.getNgrams(s2, 2));
+
+    if (ngrams1.size === 0 && ngrams2.size === 0) return 0;
+
+    let intersection = 0;
+    for (const ng of ngrams1) {
+      if (ngrams2.has(ng)) intersection++;
     }
 
-    /**
-     * Compute the Metric LCS distance (0..1) of two strings.
-     */
-    private static metricLCSDistance(s1: string, s2: string): number {
-        const maxLen = Math.max(s1.length, s2.length);
-        if (maxLen === 0) return 0;
-        // The Metric LCS = 1 - LCS(s1, s2) / max(|s1|, |s2|)
-        const len1 = s1.length;
-        const len2 = s2.length;
-        const dp: number[][] = [];
-        for (let i = 0; i <= len1; i++) {
-            dp[i] = [];
-            for (let j = 0; j <= len2; j++) {
-                dp[i][j] = 0;
-            }
-        }
-        for (let i = 1; i <= len1; i++) {
-            for (let j = 1; j <= len2; j++) {
-                if (s1.charAt(i - 1) === s2.charAt(j - 1)) {
-                    dp[i][j] = dp[i - 1][j - 1] + 1;
-                } else {
-                    dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-                }
-            }
-        }
-        const lcsLen = dp[len1][len2];
-        return 1 - lcsLen / maxLen;
-    }
+    const denom = ngrams1.size + ngrams2.size;
+    if (denom === 0) return 0;
+    return 1 - (2 * intersection) / denom;
+  }
 
-    /**
-     * Get n-grams of a string.
-     */
-    private static getNgrams(s: string, n: number): string[] {
-        const ngrams: string[] = [];
-        if (s.length < n) return ngrams;
-        for (let i = 0; i <= s.length - n; i++) {
-            ngrams.push(s.substring(i, i + n));
-        }
-        return ngrams;
-    }
+  // ============================================================
+  // Embedded instruments dictionary data
+  // (originally from resources/instuments.dict)
+  //
+  // FROZEN — line order is lookup order (see the class comment). Adding a name is
+  // safe; moving one re-resolves every fuzzy lookup that ties with it.
+  // ============================================================
 
-    /**
-     * Compute the N-Gram distance (0..1) of two strings.
-     */
-    private static ngramDistance(s1: string, s2: string, n: number): number {
-        if (s1.length === 0 && s2.length === 0) return 0;
-        if (s1.length === 0 || s2.length === 0) return 1;
-
-        // Normalized N-gram distance
-        const special = '\n'; // padding character
-        const s1p = special.repeat(n - 1) + s1;
-        const s2p = special.repeat(n - 1) + s2;
-
-        const ngrams1 = InstrumentsDictionary.getNgrams(s1p, n);
-        const ngrams2 = InstrumentsDictionary.getNgrams(s2p, n);
-
-        let matches = 0;
-        const used = new Array(ngrams2.length).fill(false);
-
-        for (const ng1 of ngrams1) {
-            for (let j = 0; j < ngrams2.length; j++) {
-                if (!used[j] && ng1 === ngrams2[j]) {
-                    matches++;
-                    used[j] = true;
-                    break;
-                }
-            }
-        }
-
-        return 1 - matches / Math.max(ngrams1.length, ngrams2.length);
-    }
-
-    /**
-     * Get a profile (map of ngrams to counts) for QGram-based distances.
-     */
-    private static getProfile(s: string, n: number): Map<string, number> {
-        const profile = new Map<string, number>();
-        const ngrams = InstrumentsDictionary.getNgrams(s, n);
-        for (const ng of ngrams) {
-            profile.set(ng, (profile.get(ng) || 0) + 1);
-        }
-        return profile;
-    }
-
-    /**
-     * Compute the QGram distance of two strings.
-     */
-    private static qgramDistance(s1: string, s2: string, q: number): number {
-        const profile1 = InstrumentsDictionary.getProfile(s1, q);
-        const profile2 = InstrumentsDictionary.getProfile(s2, q);
-
-        const allKeys = new Set<string>();
-        for (const k of profile1.keys()) allKeys.add(k);
-        for (const k of profile2.keys()) allKeys.add(k);
-
-        let distance = 0;
-        for (const key of allKeys) {
-            const v1 = profile1.get(key) || 0;
-            const v2 = profile2.get(key) || 0;
-            distance += Math.abs(v1 - v2);
-        }
-        return distance;
-    }
-
-    /**
-     * Compute the Cosine distance (0..1) of two strings based on bigram profiles.
-     */
-    private static cosineDistance(s1: string, s2: string): number {
-        const profile1 = InstrumentsDictionary.getProfile(s1, 2);
-        const profile2 = InstrumentsDictionary.getProfile(s2, 2);
-
-        if (profile1.size === 0 && profile2.size === 0) return 0;
-        if (profile1.size === 0 || profile2.size === 0) return 1;
-
-        const allKeys = new Set<string>();
-        for (const k of profile1.keys()) allKeys.add(k);
-        for (const k of profile2.keys()) allKeys.add(k);
-
-        let dotProduct = 0;
-        let norm1 = 0;
-        let norm2 = 0;
-        for (const key of allKeys) {
-            const v1 = profile1.get(key) || 0;
-            const v2 = profile2.get(key) || 0;
-            dotProduct += v1 * v2;
-            norm1 += v1 * v1;
-            norm2 += v2 * v2;
-        }
-
-        const denom = Math.sqrt(norm1) * Math.sqrt(norm2);
-        if (denom === 0) return 1;
-        return 1 - dotProduct / denom;
-    }
-
-    /**
-     * Compute the Jaccard distance (0..1) of two strings based on bigram sets.
-     */
-    private static jaccardDistance(s1: string, s2: string): number {
-        const ngrams1 = new Set(InstrumentsDictionary.getNgrams(s1, 2));
-        const ngrams2 = new Set(InstrumentsDictionary.getNgrams(s2, 2));
-
-        if (ngrams1.size === 0 && ngrams2.size === 0) return 0;
-
-        let intersection = 0;
-        for (const ng of ngrams1) {
-            if (ngrams2.has(ng)) intersection++;
-        }
-
-        const union = ngrams1.size + ngrams2.size - intersection;
-        if (union === 0) return 0;
-        return 1 - intersection / union;
-    }
-
-    /**
-     * Compute the Sorensen-Dice distance (0..1) of two strings based on bigram sets.
-     */
-    private static sorensenDiceDistance(s1: string, s2: string): number {
-        const ngrams1 = new Set(InstrumentsDictionary.getNgrams(s1, 2));
-        const ngrams2 = new Set(InstrumentsDictionary.getNgrams(s2, 2));
-
-        if (ngrams1.size === 0 && ngrams2.size === 0) return 0;
-
-        let intersection = 0;
-        for (const ng of ngrams1) {
-            if (ngrams2.has(ng)) intersection++;
-        }
-
-        const denom = ngrams1.size + ngrams2.size;
-        if (denom === 0) return 0;
-        return 1 - 2 * intersection / denom;
-    }
-
-    // ============================================================
-    // Embedded instruments dictionary data
-    // (originally from resources/instuments.dict)
-    // ============================================================
-
-    private static readonly DICT_DATA: string =
-`% Acoustic Grand Piano
+  private static readonly DICT_DATA: string = `% Acoustic Grand Piano
 # 0
 Acoustic Grand Piano
 Grand Piano

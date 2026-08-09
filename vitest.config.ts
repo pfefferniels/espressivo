@@ -8,10 +8,27 @@ export default defineConfig({
       // Scope: this port exists for MEI / MSM+MPM => MIDI rendering.
       // Format conversions (MusicXML, MIDI->MSM, MEI->MusicXML), audio,
       // playback, chroma/pitches and SVG are explicitly out of scope.
+      // T14 mechanical path update: `Meico.ts` became `version.ts` (RULE M6) and
+      // `mei/Helper.ts` dissolved into `xml/`, `music/`, `msm/dateMap.ts`,
+      // `mei/mpmNoteIds.ts` and `compat/` (§8.2). Same code, same scope — the `xml/**`
+      // and `msm/**` globs already cover their share.
+      // T21 mechanical removal: `src/compat/**` no longer exists (§8.10 deleted the module
+      // wholesale), so its glob would match nothing.
+      // T13 mechanical additions: `src/api/**` is the new public facade (§2) and
+      // `src/units.ts` is the brand module T19a added, which matched no glob (its
+      // DISCOVERED note asked for exactly this). Both are in scope by definition — the
+      // facade IS the MEI/MSM+MPM => MIDI surface.
+      // TD2 mechanical addition: `src/supplementary/parseJavaDouble.ts` is the strict numeric
+      // parser every def now reads its attributes through, so it sits on the MPM parse path
+      // and is in scope by definition. `src/supplementary/` is listed file by file rather
+      // than by glob, so a new module there is invisible to the coverage invariant until it
+      // is named — which is why this line exists.
       include: [
-        'src/Meico.ts',
+        'src/version.ts',
+        'src/units.ts',
+        'src/api/**/*.ts',
         'src/mei/Mei.ts',
-        'src/mei/Helper.ts',
+        'src/mei/mpmNoteIds.ts',
         'src/mei/Mei2MsmMpmConverter.ts',
         'src/msm/**/*.ts',
         'src/mpm/**/*.ts',
@@ -20,7 +37,9 @@ export default defineConfig({
         'src/midi/EventMaker.ts',
         'src/midi/InstrumentsDictionary.ts',
         'src/xml/**/*.ts',
+        'src/music/**/*.ts',
         'src/supplementary/KeyValue.ts',
+        'src/supplementary/parseJavaDouble.ts',
         'src/supplementary/RandomNumberProvider.ts',
       ],
     },

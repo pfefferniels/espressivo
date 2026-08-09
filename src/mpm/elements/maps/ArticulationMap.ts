@@ -1,200 +1,323 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { Helper } from '../../../mei/Helper.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { attribute, getAttributeValue } from '../../../xml/tree.js';
+import { ARTICULATION_STYLE, MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { ArticulationData } from './data/ArticulationData.js';
 import { ArticulationStyle } from '../styles/ArticulationStyle.js';
 import { ArticulationDef } from '../styles/defs/ArticulationDef.js';
 
+/**
+ * An MPM `articulationMap`: staccato, accent, tenuto and the rest — per-note changes to
+ * duration, velocity, onset and tuning.
+ *
+ * This map renders in **two passes**, and the split is not optional. Tick-domain
+ * modifiers are applied by
+ * {@link ArticulationMap.renderArticulationToMap_noMillisecondModifiers} before the
+ * tempo map runs; millisecond-domain modifiers cannot be, because milliseconds do not
+ * exist yet, so they are parked on the notes as `articulation.*Ms` attributes and
+ * consumed afterwards by
+ * {@link ArticulationMap.renderArticulationToMap_millisecondModifiers}. See
+ * {@link ArticulationData} for the field-by-field division.
+ *
+ * An `<articulation>` either names a single note through `noteid` or, with no `noteid`,
+ * applies to every note at its date. Notes matched by neither fall back to the
+ * `defaultArticulation` of the style in force, if it declares one.
+ *
+ * Port of meico.mpm.elements.maps.ArticulationMap
+ */
 export class ArticulationMap extends GenericMap {
-    private constructor(typeOrXml: string | Element) { super(typeOrXml); }
+  private constructor(typeOrXml: string | Element) {
+    super(typeOrXml);
+  }
 
-    static createArticulationMap(): ArticulationMap | null;
-    static createArticulationMap(xml: Element): ArticulationMap | null;
-    static createArticulationMap(xml?: Element): ArticulationMap | null {
-        try { return xml !== undefined ? new ArticulationMap(xml) : new ArticulationMap("articulationMap"); } catch (e) { console.error(e); return null; }
+  static createArticulationMap(xml?: Element): ArticulationMap | null {
+    try {
+      return xml !== undefined ? new ArticulationMap(xml) : new ArticulationMap('articulationMap');
+    } catch (e) {
+      console.error(e);
+      return null;
     }
+  }
 
-    protected parseData(xml: Element): void { super.parseData(xml); }
+  addArticulation(
+    date: number,
+    articulationDefName: string | null,
+    noteid: string | null,
+    id: string | null,
+  ): number {
+    const e = new Element('articulation', MPM_NAMESPACE);
+    e.addAttribute(new Attribute('date', String(date)));
+    if (articulationDefName === null) return -1;
+    e.addAttribute(new Attribute('name.ref', articulationDefName));
+    if (noteid !== null) e.addAttribute(new Attribute('noteid', noteid));
+    if (id !== null)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
+    return this.insertElement(new KeyValue(date, e), false);
+  }
 
-    addArticulation(date: number, articulationDefName: string | null, noteid: string | null, id: string | null): number {
-        const e = new Element("articulation", Mpm.MPM_NAMESPACE);
-        e.addAttribute(new Attribute("date", String(date)));
-        if (articulationDefName === null) return -1;
-        e.addAttribute(new Attribute("name.ref", articulationDefName));
-        if (noteid !== null) e.addAttribute(new Attribute("noteid", noteid));
-        if (id !== null) e.addAttribute(new Attribute("xml:id", "http://www.w3.org/XML/1998/namespace", id));
-        return this.insertElement(new KeyValue(date, e), false);
+  addArticulationFromData(data: ArticulationData): number {
+    const e = new Element('articulation', MPM_NAMESPACE);
+    e.addAttribute(new Attribute('date', String(data.date)));
+    if (data.xmlId !== null)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
+    if (data.articulationDefName !== null)
+      e.addAttribute(new Attribute('name.ref', data.articulationDefName));
+    if (data.noteid !== null) e.addAttribute(new Attribute('noteid', data.noteid));
+    if (data.absoluteDuration !== null)
+      e.addAttribute(new Attribute('absoluteDuration', String(data.absoluteDuration)));
+    if (data.absoluteDurationChange !== 0.0)
+      e.addAttribute(new Attribute('absoluteDurationChange', String(data.absoluteDurationChange)));
+    if (data.relativeDuration !== 1.0)
+      e.addAttribute(new Attribute('relativeDuration', String(data.relativeDuration)));
+    return this.insertElement(new KeyValue(data.date, e), false);
+  }
+
+  addArticulationStyleSwitch(
+    date: number,
+    styleName: string,
+    defaultArticulation?: string | null,
+    id?: string | null,
+  ): number {
+    const e = new Element('style', MPM_NAMESPACE);
+    e.addAttribute(new Attribute('date', String(date)));
+    e.addAttribute(new Attribute('name.ref', styleName));
+    if (defaultArticulation !== null && defaultArticulation !== undefined)
+      e.addAttribute(new Attribute('defaultArticulation', defaultArticulation));
+    if (id !== null && id !== undefined)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
+    return this.insertElement(new KeyValue(date, e), true);
+  }
+
+  /**
+   * Read the articulation at `index` into an {@link ArticulationData}, or null if that
+   * entry is not an `<articulation>`.
+   *
+   * Only the identifying fields are read here; the numeric modifiers are not. They live
+   * on the referenced `articulationDef` and are applied straight from it by
+   * {@link ArticulationData.articulateNote}.
+   *
+   * `noteid` has its first character stripped — the attribute holds an XML reference
+   * (`#note123`) while the map is keyed by bare IDs.
+   */
+  getArticulationDataOf(index: number): ArticulationData | null {
+    const i = this.resolveEntryIndex(index, 'articulation');
+    if (i < 0) return null;
+    const e = this.elements[i].getValue();
+    const ad = new ArticulationData();
+    ad.xml = e;
+    ad.date = this.elements[i].getKey();
+    const att = attribute('xml:id', e);
+    if (att !== null) ad.xmlId = att.getValue();
+    const nidAtt = attribute('noteid', e);
+    if (nidAtt !== null) ad.noteid = nidAtt.getValue().substring(1);
+    this.findStyle(i, ad);
+    const nrAtt = attribute('name.ref', e);
+    if (nrAtt !== null) {
+      ad.articulationDefName = nrAtt.getValue();
+      if (ad.style !== null) ad.articulationDef = ad.style.getDef(ad.articulationDefName) ?? null;
     }
+    return ad;
+  }
 
-    addArticulationFromData(data: ArticulationData): number {
-        const e = new Element("articulation", Mpm.MPM_NAMESPACE);
-        e.addAttribute(new Attribute("date", String(data.date)));
-        if (data.xmlId !== null) e.addAttribute(new Attribute("xml:id", "http://www.w3.org/XML/1998/namespace", data.xmlId));
-        if (data.articulationDefName !== null) e.addAttribute(new Attribute("name.ref", data.articulationDefName));
-        if (data.noteid !== null) e.addAttribute(new Attribute("noteid", data.noteid));
-        if (data.absoluteDuration !== null) e.addAttribute(new Attribute("absoluteDuration", String(data.absoluteDuration)));
-        if (data.absoluteDurationChange !== 0.0) e.addAttribute(new Attribute("absoluteDurationChange", String(data.absoluteDurationChange)));
-        if (data.relativeDuration !== 1.0) e.addAttribute(new Attribute("relativeDuration", String(data.relativeDuration)));
-        return this.insertElement(new KeyValue(data.date, e), false);
+  /**
+   * Unlike the other maps' style lookup this also reads `defaultArticulation` off the
+   * switch element, which is why it takes the element rather than just the name.
+   */
+  private findStyle(index: number, ad: ArticulationData): void {
+    const s = this.findStyleSwitchAt(index);
+    if (s === null) return;
+    ad.styleName = getAttributeValue('name.ref', s);
+    ad.style = this.getStyle(ARTICULATION_STYLE, ad.styleName) as ArticulationStyle | null;
+    const att = attribute('defaultArticulation', s);
+    if (att !== null) {
+      ad.defaultArticulation = att.getValue();
+      if (ad.style !== null)
+        ad.defaultArticulationDef = ad.style.getDef(ad.defaultArticulation) ?? null;
     }
+  }
 
-    addArticulationStyleSwitch(date: number, styleName: string, defaultArticulation?: string | null, id?: string | null): number {
-        const e = new Element("style", Mpm.MPM_NAMESPACE);
-        e.addAttribute(new Attribute("date", String(date)));
-        e.addAttribute(new Attribute("name.ref", styleName));
-        if (defaultArticulation !== null && defaultArticulation !== undefined) e.addAttribute(new Attribute("defaultArticulation", defaultArticulation));
-        if (id !== null && id !== undefined) e.addAttribute(new Attribute("xml:id", "http://www.w3.org/XML/1998/namespace", id));
-        return this.insertElement(new KeyValue(date, e), true);
-    }
+  /**
+   * Pass one of two: apply every tick-domain articulation to `map`, and park the
+   * millisecond ones for later (see the class doc).
+   *
+   * Built in three stages. First the explicit articulations are indexed by the note
+   * element they target, since one note can collect several. Then the style switches are
+   * resolved into a date-ordered list of default articulation defs. Finally the map is
+   * walked once: a note with explicit articulations gets those and *only* those — the
+   * default is deliberately not also applied — and every other note gets whichever
+   * default is current, tracked by a forward-only `defaultArticulationIndex`.
+   *
+   * The `mapTimingChanged` accumulator is why `map.sort()` runs at the end. Articulation
+   * can move a note's onset, which can reorder the map; leaving it unsorted would break
+   * every later pass, all of which assume date order. Note the `||` operands' order:
+   * `articulateNote` must be called for its side effects on every note, so it has to come
+   * first and cannot be short-circuited away.
+   */
+  renderArticulationToMap_noMillisecondModifiers(map: GenericMap | null): void {
+    if (map === null) return;
 
-    getArticulationDataOf(index: number): ArticulationData | null {
-        if (this.elements.length === 0 || index < 0) return null;
-        if (index >= this.elements.length) index = this.elements.length - 1;
-        const e = this.getElement(index);
-        if (!e || e.getLocalName() !== "articulation") return null;
-        const ad = new ArticulationData();
-        ad.xml = e; ad.date = this.elements[index].getKey();
-        const att = Helper.getAttribute("xml:id", e); if (att !== null) ad.xmlId = att.getValue();
-        const nidAtt = Helper.getAttribute("noteid", e); if (nidAtt !== null) ad.noteid = nidAtt.getValue().substring(1);
-        this.findStyle(index, ad);
-        const nrAtt = Helper.getAttribute("name.ref", e);
-        if (nrAtt !== null) { ad.articulationDefName = nrAtt.getValue(); if (ad.style !== null) ad.articulationDef = ad.style.getDef(ad.articulationDefName) ?? null; }
-        return ad;
-    }
+    // make a hashmap (note element, articulation data list) for all notes with a specific (i.e. non-default) articulation
+    const noteArtics = new Map<Element, ArticulationData[]>();
+    let mapTimingChanged = false;
 
-    private findStyle(index: number, ad: ArticulationData): void {
-        for (let j = index; j >= 0; --j) {
-            const s = this.elements[j].getValue();
-            if (s.getLocalName() === "style") {
-                ad.styleName = Helper.getAttributeValue("name.ref", s);
-                ad.style = this.getStyle(Mpm.ARTICULATION_STYLE, ad.styleName) as ArticulationStyle | null;
-                const att = Helper.getAttribute("defaultArticulation", s);
-                if (att !== null) { ad.defaultArticulation = att.getValue(); if (ad.style !== null) ad.defaultArticulationDef = ad.style.getDef(ad.defaultArticulation) ?? null; }
-                return;
-            }
+    for (let articIndex = 0; articIndex < this.size(); ++articIndex) {
+      const ad = this.getArticulationDataOf(articIndex);
+      if (ad === null) continue;
+
+      if (ad.noteid !== null) {
+        const index = map.getElementIndexByID(ad.noteid);
+        if (index < 0) continue;
+        if (map.getAllElements()[index].getKey() !== ad.date)
+          console.error(
+            `Warning: articulation date and referee date do not match!\n    ${ad.xml!.toXML()}\n    ${map.getAllElements()[index].getValue().toXML()}`,
+          );
+        const note = map.getAllElements()[index].getValue();
+        let adList = noteArtics.get(note);
+        if (adList === undefined) {
+          adList = [];
+          noteArtics.set(note, adList);
         }
-    }
+        adList.push(ad);
+        continue;
+      }
 
-    renderArticulationToMap_noMillisecondModifiers(map: GenericMap | null): void {
-        if (map === null) return;
-
-        // make a hashmap (note element, articulation data list) for all notes with a specific (i.e. non-default) articulation
-        const noteArtics: Map<Element, ArticulationData[]> = new Map();
-        let mapTimingChanged = false;
-
-        for (let articIndex = 0; articIndex < this.size(); ++articIndex) {
-            const ad = this.getArticulationDataOf(articIndex);
-            if (ad === null)
-                continue;
-
-            if (ad.noteid !== null) {
-                const index = map.getElementIndexByID(ad.noteid);
-                if (index < 0)
-                    continue;
-                if (map.getAllElements()[index].getKey() !== ad.date)
-                    console.error("Warning: articulation date and referee date do not match!\n    " + ad.xml!.toXML() + "\n    " + map.getAllElements()[index].getValue().toXML());
-                const note = map.getAllElements()[index].getValue();
-                let adList = noteArtics.get(note);
-                if (adList === undefined) { adList = []; noteArtics.set(note, adList); }
-                adList.push(ad);
-                continue;
-            }
-
-            // if no noteid is specified, the articulation is potentially relevant to all map elements at the same date
-            const elements = map.getAllElementsAt(ad.date);
-            for (const element of elements) {
-                if (element.getValue().getLocalName() !== "note")
-                    continue;
-                let adList = noteArtics.get(element.getValue());
-                if (adList === undefined) { adList = []; noteArtics.set(element.getValue(), adList); }
-                adList.push(ad);
-            }
+      // if no noteid is specified, the articulation is potentially relevant to all map elements at the same date
+      const elements = map.getAllElementsAt(ad.date);
+      for (const element of elements) {
+        if (element.getValue().getLocalName() !== 'note') continue;
+        let adList = noteArtics.get(element.getValue());
+        if (adList === undefined) {
+          adList = [];
+          noteArtics.set(element.getValue(), adList);
         }
+        adList.push(ad);
+      }
+    }
 
-        // create a list of styles/switches
-        const defaultArticulations: KeyValue<number, ArticulationDef | null>[] = [];
-        const styleSwitchList = this.getAllElementsOfType("style");
-        for (const styleEntry of styleSwitchList) {
-            const aStyle = this.getStyle(Mpm.ARTICULATION_STYLE, Helper.getAttributeValue("name.ref", styleEntry.getValue())) as ArticulationStyle | null;
-            if (aStyle === null)
-                continue;
+    // create a list of styles/switches
+    const defaultArticulations: KeyValue<number, ArticulationDef | null>[] = [];
+    const styleSwitchList = this.getAllElementsOfType('style');
+    for (const styleEntry of styleSwitchList) {
+      const aStyle = this.getStyle(
+        ARTICULATION_STYLE,
+        getAttributeValue('name.ref', styleEntry.getValue()),
+      ) as ArticulationStyle | null;
+      if (aStyle === null) continue;
 
-            const defaultArticulationAtt = Helper.getAttribute("defaultArticulation", styleEntry.getValue());
-            if (defaultArticulationAtt === null) {
-                defaultArticulations.push(new KeyValue<number, ArticulationDef | null>(styleEntry.getKey(), null));
-                continue;
-            }
+      const defaultArticulationAtt = attribute('defaultArticulation', styleEntry.getValue());
+      if (defaultArticulationAtt === null) {
+        defaultArticulations.push(
+          new KeyValue<number, ArticulationDef | null>(styleEntry.getKey(), null),
+        );
+        continue;
+      }
 
-            const aDef = aStyle.getDef(defaultArticulationAtt.getValue()) ?? null;
-            if (aDef === null)
-                console.error("Warning: attribute " + Helper.getAttribute("defaultArticulation", styleEntry.getValue())!.toXML() + " in style element refers to an unknown articulationDef.");
-            defaultArticulations.push(new KeyValue<number, ArticulationDef | null>(styleEntry.getKey(), aDef));
+      const aDef = aStyle.getDef(defaultArticulationAtt.getValue()) ?? null;
+      if (aDef === null)
+        console.error(
+          `Warning: attribute ${attribute('defaultArticulation', styleEntry.getValue())!.toXML()} in style element refers to an unknown articulationDef.`,
+        );
+      defaultArticulations.push(
+        new KeyValue<number, ArticulationDef | null>(styleEntry.getKey(), aDef),
+      );
+    }
+
+    // articulate the map elements
+    let defaultArticulationIndex = 0;
+    for (let mapIndex = 0; mapIndex < map.size(); ++mapIndex) {
+      const mapEntry = map.elements[mapIndex];
+      if (mapEntry.getValue().getLocalName() !== 'note') continue;
+
+      const artics = noteArtics.get(mapEntry.getValue());
+      if (artics !== undefined) {
+        for (const artic of artics) {
+          mapTimingChanged = artic.articulateNote(mapEntry.getValue()) || mapTimingChanged;
         }
+        continue;
+      }
 
-        // articulate the map elements
-        let defaultArticulationIndex = 0;
-        for (let mapIndex = 0; mapIndex < map.size(); ++mapIndex) {
-            const mapEntry = map.elements[mapIndex];
-            if (mapEntry.getValue().getLocalName() !== "note")
-                continue;
+      // otherwise apply the default articulation
+      if (defaultArticulations.length === 0) continue;
 
-            const artics = noteArtics.get(mapEntry.getValue());
-            if (artics !== undefined) {
-                for (const artic of artics) {
-                    mapTimingChanged = artic.articulateNote(mapEntry.getValue()) || mapTimingChanged;
-                }
-                continue;
-            }
+      // make sure we use the latest default articulation
+      while (
+        defaultArticulationIndex + 1 < defaultArticulations.length &&
+        defaultArticulations[defaultArticulationIndex + 1].getKey() <= mapEntry.getKey()
+      )
+        defaultArticulationIndex++;
 
-            // otherwise apply the default articulation
-            if (defaultArticulations.length === 0)
-                continue;
+      const defaultArticulationDef = defaultArticulations[defaultArticulationIndex].getValue();
+      if (defaultArticulationDef === null) continue;
 
-            // make sure we use the latest default articulation
-            while (((defaultArticulationIndex + 1) < defaultArticulations.length) && (defaultArticulations[defaultArticulationIndex + 1].getKey() <= mapEntry.getKey()))
-                defaultArticulationIndex++;
-
-            const defaultArticulationDef = defaultArticulations[defaultArticulationIndex].getValue();
-            if (defaultArticulationDef === null)
-                continue;
-
-            mapTimingChanged = defaultArticulationDef.articulateNote(mapEntry.getValue()) || mapTimingChanged;
-        }
-
-        // correct map order due to timing changes
-        if (mapTimingChanged)
-            map.sort();
+      mapTimingChanged =
+        defaultArticulationDef.articulateNote(mapEntry.getValue()) || mapTimingChanged;
     }
 
-    static renderArticulationToMap_noMillisecondModifiers(map: GenericMap | null, articulationMap: ArticulationMap | null): void {
-        if (articulationMap !== null) articulationMap.renderArticulationToMap_noMillisecondModifiers(map);
-    }
+    // correct map order due to timing changes
+    if (mapTimingChanged) map.sort();
+  }
 
-    renderArticulationToMap_millisecondModifiers(map: GenericMap | null): void {
-        if (map === null) return;
-        for (const entry of map.elements) {
-            const dateAtt = Helper.getAttribute("milliseconds.date", entry.getValue());
-            if (dateAtt === null) continue;
-            const date = parseFloat(dateAtt.getValue());
-            let dateNew = date;
-            const endAtt = Helper.getAttribute("milliseconds.date.end", entry.getValue());
-            let endNew = endAtt !== null ? parseFloat(endAtt.getValue()) : null;
-            const absoluteDelayMs = Helper.getAttribute("articulation.absoluteDelayMs", entry.getValue());
-            if (absoluteDelayMs !== null) { dateNew += parseFloat(absoluteDelayMs.getValue()); entry.getValue().removeAttribute(absoluteDelayMs); }
-            const absoluteDurationMs = Helper.getAttribute("articulation.absoluteDurationMs", entry.getValue());
-            if (absoluteDurationMs !== null) { if (endNew !== null) endNew = dateNew + parseFloat(absoluteDurationMs.getValue()); entry.getValue().removeAttribute(absoluteDurationMs); }
-            const absoluteDurationChangeMs = Helper.getAttribute("articulation.absoluteDurationChangeMs", entry.getValue());
-            if (absoluteDurationChangeMs !== null) { if (endNew !== null) endNew += parseFloat(absoluteDurationChangeMs.getValue()); entry.getValue().removeAttribute(absoluteDurationChangeMs); }
-            if (endNew === null || dateNew < endNew) { dateAtt.setValue(String(dateNew)); if (endAtt !== null && endNew !== null) endAtt.setValue(String(endNew)); }
-        }
-    }
+  static renderArticulationToMap_noMillisecondModifiers(
+    map: GenericMap | null,
+    articulationMap: ArticulationMap | null,
+  ): void {
+    if (articulationMap !== null)
+      articulationMap.renderArticulationToMap_noMillisecondModifiers(map);
+  }
 
-    static renderArticulationToMap_millisecondModifiers(map: GenericMap | null, articulationMap: ArticulationMap | null): void {
-        if (articulationMap !== null) articulationMap.renderArticulationToMap_millisecondModifiers(map);
+  /**
+   * Pass two of two: consume the `articulation.*Ms` attributes that pass one parked on
+   * the notes, now that the tempo map has produced real millisecond dates.
+   *
+   * Each attribute is removed as it is applied, so the markers do not survive into the
+   * serialized output. The guard at the end is what keeps the result playable: the new
+   * values are committed **only** if the note still ends after it starts. A millisecond
+   * modifier that would invert or zero a note's duration is dropped wholesale — start
+   * and end both keep their old values rather than half the change landing.
+   */
+  renderArticulationToMap_millisecondModifiers(map: GenericMap | null): void {
+    if (map === null) return;
+    for (const entry of map.elements) {
+      const dateAtt = attribute('milliseconds.date', entry.getValue());
+      if (dateAtt === null) continue;
+      const date = parseFloat(dateAtt.getValue());
+      let dateNew = date;
+      const endAtt = attribute('milliseconds.date.end', entry.getValue());
+      let endNew = endAtt !== null ? parseFloat(endAtt.getValue()) : null;
+      const absoluteDelayMs = attribute('articulation.absoluteDelayMs', entry.getValue());
+      if (absoluteDelayMs !== null) {
+        dateNew += parseFloat(absoluteDelayMs.getValue());
+        entry.getValue().removeAttribute(absoluteDelayMs);
+      }
+      const absoluteDurationMs = attribute('articulation.absoluteDurationMs', entry.getValue());
+      if (absoluteDurationMs !== null) {
+        if (endNew !== null) endNew = dateNew + parseFloat(absoluteDurationMs.getValue());
+        entry.getValue().removeAttribute(absoluteDurationMs);
+      }
+      const absoluteDurationChangeMs = attribute(
+        'articulation.absoluteDurationChangeMs',
+        entry.getValue(),
+      );
+      if (absoluteDurationChangeMs !== null) {
+        if (endNew !== null) endNew += parseFloat(absoluteDurationChangeMs.getValue());
+        entry.getValue().removeAttribute(absoluteDurationChangeMs);
+      }
+      if (endNew === null || dateNew < endNew) {
+        dateAtt.setValue(String(dateNew));
+        if (endAtt !== null && endNew !== null) endAtt.setValue(String(endNew));
+      }
     }
+  }
+
+  static renderArticulationToMap_millisecondModifiers(
+    map: GenericMap | null,
+    articulationMap: ArticulationMap | null,
+  ): void {
+    if (articulationMap !== null) articulationMap.renderArticulationToMap_millisecondModifiers(map);
+  }
 }
 
-
-GenericMap.registerMapFactory('articulationMap', (xml) => ArticulationMap.createArticulationMap(xml));
+GenericMap.registerMapFactory('articulationMap', (xml) =>
+  ArticulationMap.createArticulationMap(xml),
+);

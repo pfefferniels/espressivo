@@ -1,0 +1,15 @@
+{
+  // Typecheck-only project covering the test suite, which tsconfig.json excludes.
+  // Without this, a type-level breakage in an adapted test can only ever surface as
+  // a vitest runtime failure — see the `typecheck:tests` step of `npm run verify`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "tests/**/*", "vitest.config.ts"],
+  "exclude": ["node_modules", "dist", "tests/integration/fixtures"]
+}

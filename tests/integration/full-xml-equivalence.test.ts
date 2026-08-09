@@ -16,12 +16,15 @@ const __dirname2 = dirname(fileURLToPath(import.meta.url));
 const MEI_DIR = join(__dirname2, 'fixtures', 'mei');
 const PERF_REF_DIR = join(__dirname2, 'fixtures', 'performance-reference');
 
-interface ParsedAttr { name: string; value: string; }
+interface ParsedAttr {
+  name: string;
+  value: string;
+}
 interface ParsedElement {
-    tag: string;
-    attrs: ParsedAttr[];
-    children: ParsedElement[];
-    text: string;
+  tag: string;
+  attrs: ParsedAttr[];
+  children: ParsedElement[];
+  text: string;
 }
 
 /**
@@ -29,59 +32,68 @@ interface ParsedElement {
  * Good enough for MSM XML which is straightforward single-line XML.
  */
 function parseXml(xml: string): ParsedElement {
-    xml = xml.replace(/<\?xml[^?]*\?>/, '').trim();
-    let pos = 0;
+  xml = xml.replace(/<\?xml[^?]*\?>/, '').trim();
+  let pos = 0;
 
-    function skipWhitespace() { while (pos < xml.length && /\s/.test(xml[pos])) pos++; }
+  function skipWhitespace() {
+    while (pos < xml.length && /\s/.test(xml[pos])) pos++;
+  }
 
-    function parseElement(): ParsedElement {
-        skipWhitespace();
-        if (xml[pos] !== '<') throw new Error(`Expected '<' at pos ${pos}: ${xml.substring(pos, pos + 20)}`);
-        pos++; // skip <
-        let tag = '';
-        while (pos < xml.length && !/[\s/>]/.test(xml[pos])) tag += xml[pos++];
+  function parseElement(): ParsedElement {
+    skipWhitespace();
+    if (xml[pos] !== '<')
+      throw new Error(`Expected '<' at pos ${pos}: ${xml.substring(pos, pos + 20)}`);
+    pos++; // skip <
+    let tag = '';
+    while (pos < xml.length && !/[\s/>]/.test(xml[pos])) tag += xml[pos++];
 
-        const attrs: ParsedAttr[] = [];
-        const children: ParsedElement[] = [];
-        let text = '';
+    const attrs: ParsedAttr[] = [];
+    const children: ParsedElement[] = [];
+    let text = '';
 
-        // parse attributes
-        while (pos < xml.length) {
-            skipWhitespace();
-            if (xml[pos] === '/' && xml[pos + 1] === '>') { pos += 2; return { tag, attrs, children, text }; }
-            if (xml[pos] === '>') { pos++; break; }
-            // parse attribute
-            let name = '';
-            while (pos < xml.length && xml[pos] !== '=') name += xml[pos++];
-            name = name.trim();
-            pos++; // skip =
-            const quote = xml[pos++]; // skip opening quote
-            let value = '';
-            while (pos < xml.length && xml[pos] !== quote) value += xml[pos++];
-            pos++; // skip closing quote
-            attrs.push({ name, value });
-        }
-
-        // parse children and text
-        while (pos < xml.length) {
-            skipWhitespace();
-            if (xml[pos] === '<' && xml[pos + 1] === '/') {
-                // closing tag
-                pos += 2;
-                while (pos < xml.length && xml[pos] !== '>') pos++;
-                pos++; // skip >
-                break;
-            }
-            if (xml[pos] === '<') {
-                children.push(parseElement());
-            } else {
-                while (pos < xml.length && xml[pos] !== '<') text += xml[pos++];
-            }
-        }
+    // parse attributes
+    while (pos < xml.length) {
+      skipWhitespace();
+      if (xml[pos] === '/' && xml[pos + 1] === '>') {
+        pos += 2;
         return { tag, attrs, children, text };
+      }
+      if (xml[pos] === '>') {
+        pos++;
+        break;
+      }
+      // parse attribute
+      let name = '';
+      while (pos < xml.length && xml[pos] !== '=') name += xml[pos++];
+      name = name.trim();
+      pos++; // skip =
+      const quote = xml[pos++]; // skip opening quote
+      let value = '';
+      while (pos < xml.length && xml[pos] !== quote) value += xml[pos++];
+      pos++; // skip closing quote
+      attrs.push({ name, value });
     }
 
-    return parseElement();
+    // parse children and text
+    while (pos < xml.length) {
+      skipWhitespace();
+      if (xml[pos] === '<' && xml[pos + 1] === '/') {
+        // closing tag
+        pos += 2;
+        while (pos < xml.length && xml[pos] !== '>') pos++;
+        pos++; // skip >
+        break;
+      }
+      if (xml[pos] === '<') {
+        children.push(parseElement());
+      } else {
+        while (pos < xml.length && xml[pos] !== '<') text += xml[pos++];
+      }
+    }
+    return { tag, attrs, children, text };
+  }
+
+  return parseElement();
 }
 
 /**
@@ -89,93 +101,95 @@ function parseXml(xml: string): ParsedElement {
  * Java uses doubles ("60.0"), TS may use "60". We compare as numbers.
  */
 function normalizeNumericValue(v: string): number | null {
-    const n = parseFloat(v);
-    return isNaN(n) ? null : n;
+  const n = parseFloat(v);
+  return isNaN(n) ? null : n;
 }
 
 /** Attributes to skip in comparison (implementation-specific or random) */
 const SKIP_ATTRS = new Set([
-    'xml:id',       // UUIDs may differ
-    'uri',          // file paths
-    'file',         // file paths
+  'xml:id', // UUIDs may differ
+  'uri', // file paths
+  'file', // file paths
 ]);
 
 /** Attributes whose values are random (imprecision) — skip value comparison */
-const RANDOM_ATTRS = new Set([
-    'tuning.offset',
-]);
+const RANDOM_ATTRS = new Set(['tuning.offset']);
 
 /**
  * Compare two parsed elements recursively, reporting all differences.
  */
 function compareElements(
-    tsEl: ParsedElement,
-    refEl: ParsedElement,
-    path: string,
-    diffs: string[],
-    tolerance: number = 0.001
+  tsEl: ParsedElement,
+  refEl: ParsedElement,
+  path: string,
+  diffs: string[],
+  tolerance = 0.001,
 ): void {
-    // Compare tag
-    if (tsEl.tag !== refEl.tag) {
-        diffs.push(`${path}: tag mismatch: TS="${tsEl.tag}" vs Java="${refEl.tag}"`);
-        return;
+  // Compare tag
+  if (tsEl.tag !== refEl.tag) {
+    diffs.push(`${path}: tag mismatch: TS="${tsEl.tag}" vs Java="${refEl.tag}"`);
+    return;
+  }
+
+  const fullPath = `${path}/${tsEl.tag}`;
+
+  // Compare attributes
+  const tsAttrMap = new Map(tsEl.attrs.map((a) => [a.name, a.value]));
+  const refAttrMap = new Map(refEl.attrs.map((a) => [a.name, a.value]));
+
+  // Check all reference attributes exist in TS
+  for (const [name, refValue] of refAttrMap) {
+    if (SKIP_ATTRS.has(name)) continue;
+    if (RANDOM_ATTRS.has(name)) continue;
+
+    const tsValue = tsAttrMap.get(name);
+    if (tsValue === undefined) {
+      // Some attributes may use namespace prefix in one but not the other
+      const altName = name === 'id' ? 'xml:id' : name === 'xml:id' ? 'id' : null;
+      if (altName && tsAttrMap.has(altName)) continue;
+      diffs.push(`${fullPath}: missing attribute "${name}" (Java has "${refValue}")`);
+      continue;
     }
 
-    const fullPath = `${path}/${tsEl.tag}`;
+    // Compare values
+    const refNum = normalizeNumericValue(refValue);
+    const tsNum = normalizeNumericValue(tsValue);
 
-    // Compare attributes
-    const tsAttrMap = new Map(tsEl.attrs.map(a => [a.name, a.value]));
-    const refAttrMap = new Map(refEl.attrs.map(a => [a.name, a.value]));
-
-    // Check all reference attributes exist in TS
-    for (const [name, refValue] of refAttrMap) {
-        if (SKIP_ATTRS.has(name)) continue;
-        if (RANDOM_ATTRS.has(name)) continue;
-
-        const tsValue = tsAttrMap.get(name);
-        if (tsValue === undefined) {
-            // Some attributes may use namespace prefix in one but not the other
-            const altName = name === 'id' ? 'xml:id' : (name === 'xml:id' ? 'id' : null);
-            if (altName && tsAttrMap.has(altName)) continue;
-            diffs.push(`${fullPath}: missing attribute "${name}" (Java has "${refValue}")`);
-            continue;
-        }
-
-        // Compare values
-        const refNum = normalizeNumericValue(refValue);
-        const tsNum = normalizeNumericValue(tsValue);
-
-        if (refNum !== null && tsNum !== null) {
-            if (Math.abs(refNum - tsNum) > tolerance) {
-                diffs.push(`${fullPath}@${name}: TS=${tsValue} vs Java=${refValue} (diff=${Math.abs(refNum - tsNum).toFixed(6)})`);
-            }
-        } else if (tsValue !== refValue) {
-            // String comparison for non-numeric values
-            if (refValue === '' && tsValue === '') continue; // both empty
-            diffs.push(`${fullPath}@${name}: TS="${tsValue}" vs Java="${refValue}"`);
-        }
+    if (refNum !== null && tsNum !== null) {
+      if (Math.abs(refNum - tsNum) > tolerance) {
+        diffs.push(
+          `${fullPath}@${name}: TS=${tsValue} vs Java=${refValue} (diff=${Math.abs(refNum - tsNum).toFixed(6)})`,
+        );
+      }
+    } else if (tsValue !== refValue) {
+      // String comparison for non-numeric values
+      if (refValue === '' && tsValue === '') continue; // both empty
+      diffs.push(`${fullPath}@${name}: TS="${tsValue}" vs Java="${refValue}"`);
     }
+  }
 
-    // Check TS doesn't have unexpected extra attributes (warn only)
-    for (const [name] of tsAttrMap) {
-        if (SKIP_ATTRS.has(name) || RANDOM_ATTRS.has(name)) continue;
-        if (!refAttrMap.has(name)) {
-            // Not necessarily an error, but worth noting
-            // Some implementation-specific attrs are OK
-        }
+  // Check TS doesn't have unexpected extra attributes (warn only)
+  for (const [name] of tsAttrMap) {
+    if (SKIP_ATTRS.has(name) || RANDOM_ATTRS.has(name)) continue;
+    if (!refAttrMap.has(name)) {
+      // Not necessarily an error, but worth noting
+      // Some implementation-specific attrs are OK
     }
+  }
 
-    // Compare children count
-    if (tsEl.children.length !== refEl.children.length) {
-        diffs.push(`${fullPath}: child count mismatch: TS=${tsEl.children.length} vs Java=${refEl.children.length}`);
-        // Still try to compare what we can
-    }
+  // Compare children count
+  if (tsEl.children.length !== refEl.children.length) {
+    diffs.push(
+      `${fullPath}: child count mismatch: TS=${tsEl.children.length} vs Java=${refEl.children.length}`,
+    );
+    // Still try to compare what we can
+  }
 
-    // Compare children pairwise
-    const maxChildren = Math.min(tsEl.children.length, refEl.children.length);
-    for (let i = 0; i < maxChildren; i++) {
-        compareElements(tsEl.children[i], refEl.children[i], `${fullPath}[${i}]`, diffs, tolerance);
-    }
+  // Compare children pairwise
+  const maxChildren = Math.min(tsEl.children.length, refEl.children.length);
+  for (let i = 0; i < maxChildren; i++) {
+    compareElements(tsEl.children[i], refEl.children[i], `${fullPath}[${i}]`, diffs, tolerance);
+  }
 }
 
 /**
@@ -185,161 +199,179 @@ function compareElements(
  * preserves and verifies that wiring.
  */
 function canonicalizeUuids(xml: string): string {
-    const map = new Map<string, string>();
-    return xml.replace(/meico_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, (m) => {
-        if (!map.has(m)) map.set(m, `meico_UUID_${map.size + 1}`);
-        return map.get(m)!;
-    });
+  const map = new Map<string, string>();
+  return xml.replace(/meico_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, (m) => {
+    if (!map.has(m)) map.set(m, `meico_UUID_${map.size + 1}`);
+    return map.get(m)!;
+  });
 }
 
 /**
  * Run the TS pipeline and compare full augmented MSM against Java reference.
  */
 function runFullComparison(fixture: string): { diffs: string[]; tsXml: string; refXml: string } {
-    const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-    const mei = Mei.fromXml(meiXml);
-    mei.setFile(`${fixture}.mei`);
-    const converter = new Mei2MsmMpmConverter(720, true, false, true);
-    const result = converter.convert(mei);
-    const msm = result.getKey()[0];
-    const mpm = result.getValue()[0];
-    const performance = mpm.getAllPerformances()[0];
+  const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
+  const mei = Mei.fromXml(meiXml);
+  mei.setFile(`${fixture}.mei`);
+  const converter = new Mei2MsmMpmConverter(720, true, false, true);
+  const result = converter.convert(mei);
+  const msm = result.getKey()[0];
+  const mpm = result.getValue()[0];
+  const performance = mpm.getAllPerformances()[0];
 
-    const augmented = performance.perform(msm);
-    const tsXml = canonicalizeUuids(augmented.getRootElement()!.toXML());
-    const refXml = canonicalizeUuids(readFileSync(join(PERF_REF_DIR, `${fixture}_augmented.msm`), 'utf-8'));
+  const augmented = performance.perform(msm);
+  const tsXml = canonicalizeUuids(augmented.getRootElement()!.toXML());
+  const refXml = canonicalizeUuids(
+    readFileSync(join(PERF_REF_DIR, `${fixture}_augmented.msm`), 'utf-8'),
+  );
 
-    const tsTree = parseXml(tsXml);
-    const refTree = parseXml(refXml);
-    const diffs: string[] = [];
-    compareElements(tsTree, refTree, '', diffs);
+  const tsTree = parseXml(tsXml);
+  const refTree = parseXml(refXml);
+  const diffs: string[] = [];
+  compareElements(tsTree, refTree, '', diffs);
 
-    return { diffs, tsXml, refXml };
+  return { diffs, tsXml, refXml };
 }
 
 // Auto-discover all MEI fixtures; every fixture MUST have a Java reference (missing = failure, not skip)
-const fixtures = readdirSync(MEI_DIR).filter(f => f.endsWith('.mei')).map(f => f.replace(/\.mei$/, '')).sort();
+const fixtures = readdirSync(MEI_DIR)
+  .filter((f) => f.endsWith('.mei'))
+  .map((f) => f.replace(/\.mei$/, ''))
+  .sort();
 
 describe('Full XML equivalence: augmented MSM (TS vs Java)', () => {
-    for (const fixture of fixtures) {
-        it(`${fixture}: ALL elements and ALL attributes match Java reference`, () => {
-            const refPath = join(PERF_REF_DIR, `${fixture}_augmented.msm`);
-            expect(existsSync(refPath), `missing Java reference ${fixture}_augmented.msm — regenerate with GeneratePerformanceReference`).toBe(true);
+  for (const fixture of fixtures) {
+    it(`${fixture}: ALL elements and ALL attributes match Java reference`, () => {
+      const refPath = join(PERF_REF_DIR, `${fixture}_augmented.msm`);
+      expect(
+        existsSync(refPath),
+        `missing Java reference ${fixture}_augmented.msm — regenerate with GeneratePerformanceReference`,
+      ).toBe(true);
 
-            const { diffs } = runFullComparison(fixture);
+      const { diffs } = runFullComparison(fixture);
 
-            if (diffs.length > 0) {
-                const report = diffs.map(d => `  - ${d}`).join('\n');
-                expect.fail(`${diffs.length} differences found:\n${report}`);
-            }
-        });
-    }
+      if (diffs.length > 0) {
+        const report = diffs.map((d) => `  - ${d}`).join('\n');
+        expect.fail(`${diffs.length} differences found:\n${report}`);
+      }
+    });
+  }
 });
 
 describe('Attribute-level coverage audit', () => {
-    it('should verify all performance-specific attributes are present on notes', () => {
-        // Check that the TS output actually produces all expected performance attributes
-        const expectedNoteAttrs = [
-            'date', 'midi.pitch', 'duration',
-            'date.perf', 'duration.perf', 'date.end.perf',
-            'milliseconds.date', 'milliseconds.date.end',
-            'velocity', 'modified',
-        ];
+  it('should verify all performance-specific attributes are present on notes', () => {
+    // Check that the TS output actually produces all expected performance attributes
+    const expectedNoteAttrs = [
+      'date',
+      'midi.pitch',
+      'duration',
+      'date.perf',
+      'duration.perf',
+      'date.end.perf',
+      'milliseconds.date',
+      'milliseconds.date.end',
+      'velocity',
+      'modified',
+    ];
 
-        for (const fixture of fixtures) {
-            const refPath = join(PERF_REF_DIR, `${fixture}_augmented.msm`);
-            expect(existsSync(refPath), `missing Java reference for ${fixture}`).toBe(true);
+    for (const fixture of fixtures) {
+      const refPath = join(PERF_REF_DIR, `${fixture}_augmented.msm`);
+      expect(existsSync(refPath), `missing Java reference for ${fixture}`).toBe(true);
 
-            const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-            const mei = Mei.fromXml(meiXml);
-            mei.setFile(`${fixture}.mei`);
-            const converter = new Mei2MsmMpmConverter(720, true, false, true);
-            const result = converter.convert(mei);
-            const msm = result.getKey()[0];
-            const mpm = result.getValue()[0];
-            const perf = mpm.getAllPerformances()[0];
+      const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
+      const mei = Mei.fromXml(meiXml);
+      mei.setFile(`${fixture}.mei`);
+      const converter = new Mei2MsmMpmConverter(720, true, false, true);
+      const result = converter.convert(mei);
+      const msm = result.getKey()[0];
+      const mpm = result.getValue()[0];
+      const perf = mpm.getAllPerformances()[0];
 
-            const augmented = perf.perform(msm);
-            const tsTree = parseXml(augmented.getRootElement()!.toXML());
+      const augmented = perf.perform(msm);
+      const tsTree = parseXml(augmented.getRootElement()!.toXML());
 
-            // Find all note elements in the tree
-            function findNotes(el: ParsedElement): ParsedElement[] {
-                const notes: ParsedElement[] = [];
-                if (el.tag === 'note') notes.push(el);
-                for (const child of el.children) notes.push(...findNotes(child));
-                return notes;
-            }
+      // Find all note elements in the tree
+      function findNotes(el: ParsedElement): ParsedElement[] {
+        const notes: ParsedElement[] = [];
+        if (el.tag === 'note') notes.push(el);
+        for (const child of el.children) notes.push(...findNotes(child));
+        return notes;
+      }
 
-            const notes = findNotes(tsTree);
-            expect(notes.length).toBeGreaterThan(0);
+      const notes = findNotes(tsTree);
+      expect(notes.length).toBeGreaterThan(0);
 
-            for (const note of notes) {
-                const attrNames = new Set(note.attrs.map(a => a.name));
-                for (const expected of expectedNoteAttrs) {
-                    expect(attrNames.has(expected),
-                        `${fixture}: note missing attribute "${expected}". Has: ${[...attrNames].join(', ')}`
-                    ).toBe(true);
-                }
-            }
+      for (const note of notes) {
+        const attrNames = new Set(note.attrs.map((a) => a.name));
+        for (const expected of expectedNoteAttrs) {
+          expect(
+            attrNames.has(expected),
+            `${fixture}: note missing attribute "${expected}". Has: ${[...attrNames].join(', ')}`,
+          ).toBe(true);
         }
-    });
+      }
+    }
+  });
 
-    it('should verify channelVolumeMap is present when dynamics are rendered', () => {
-        // dynamics and comprehensive fixtures should have a channelVolumeMap
-        for (const fixture of ['dynamics', 'comprehensive']) {
-            const refPath = join(PERF_REF_DIR, `${fixture}_augmented.msm`);
-            expect(existsSync(refPath), `missing Java reference for ${fixture}`).toBe(true);
+  it('should verify channelVolumeMap is present when dynamics are rendered', () => {
+    // dynamics and comprehensive fixtures should have a channelVolumeMap
+    for (const fixture of ['dynamics', 'comprehensive']) {
+      const refPath = join(PERF_REF_DIR, `${fixture}_augmented.msm`);
+      expect(existsSync(refPath), `missing Java reference for ${fixture}`).toBe(true);
 
-            const refXml = readFileSync(refPath, 'utf-8');
-            if (!refXml.includes('channelVolumeMap')) continue;
+      const refXml = readFileSync(refPath, 'utf-8');
+      if (!refXml.includes('channelVolumeMap')) continue;
 
-            const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-            const mei = Mei.fromXml(meiXml);
-            mei.setFile(`${fixture}.mei`);
-            const converter = new Mei2MsmMpmConverter(720, true, false, true);
-            const result = converter.convert(mei);
-            const msm = result.getKey()[0];
-            const mpm = result.getValue()[0];
-            const perf = mpm.getAllPerformances()[0];
+      const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
+      const mei = Mei.fromXml(meiXml);
+      mei.setFile(`${fixture}.mei`);
+      const converter = new Mei2MsmMpmConverter(720, true, false, true);
+      const result = converter.convert(mei);
+      const msm = result.getKey()[0];
+      const mpm = result.getValue()[0];
+      const perf = mpm.getAllPerformances()[0];
 
-            const augmented = perf.perform(msm);
-            const tsXml = augmented.getRootElement()!.toXML();
-            expect(tsXml).toContain('channelVolumeMap');
-        }
-    });
+      const augmented = perf.perform(msm);
+      const tsXml = augmented.getRootElement()!.toXML();
+      expect(tsXml).toContain('channelVolumeMap');
+    }
+  });
 
-    it('should verify global sectionMap gets performance timing attributes', () => {
-        for (const fixture of fixtures) {
-            const refPath = join(PERF_REF_DIR, `${fixture}_augmented.msm`);
-            expect(existsSync(refPath), `missing Java reference for ${fixture}`).toBe(true);
+  it('should verify global sectionMap gets performance timing attributes', () => {
+    for (const fixture of fixtures) {
+      const refPath = join(PERF_REF_DIR, `${fixture}_augmented.msm`);
+      expect(existsSync(refPath), `missing Java reference for ${fixture}`).toBe(true);
 
-            const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-            const mei = Mei.fromXml(meiXml);
-            mei.setFile(`${fixture}.mei`);
-            const converter = new Mei2MsmMpmConverter(720, true, false, true);
-            const result = converter.convert(mei);
-            const msm = result.getKey()[0];
-            const mpm = result.getValue()[0];
-            const perf = mpm.getAllPerformances()[0];
+      const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
+      const mei = Mei.fromXml(meiXml);
+      mei.setFile(`${fixture}.mei`);
+      const converter = new Mei2MsmMpmConverter(720, true, false, true);
+      const result = converter.convert(mei);
+      const msm = result.getKey()[0];
+      const mpm = result.getValue()[0];
+      const perf = mpm.getAllPerformances()[0];
 
-            const augmented = perf.perform(msm);
-            const tsTree = parseXml(augmented.getRootElement()!.toXML());
+      const augmented = perf.perform(msm);
+      const tsTree = parseXml(augmented.getRootElement()!.toXML());
 
-            // Find sectionMap > section elements in global
-            function findSections(el: ParsedElement): ParsedElement[] {
-                const sections: ParsedElement[] = [];
-                if (el.tag === 'section') sections.push(el);
-                for (const child of el.children) sections.push(...findSections(child));
-                return sections;
-            }
+      // Find sectionMap > section elements in global
+      function findSections(el: ParsedElement): ParsedElement[] {
+        const sections: ParsedElement[] = [];
+        if (el.tag === 'section') sections.push(el);
+        for (const child of el.children) sections.push(...findSections(child));
+        return sections;
+      }
 
-            const sections = findSections(tsTree);
-            for (const section of sections) {
-                const attrNames = new Set(section.attrs.map(a => a.name));
-                expect(attrNames.has('date.perf'), `${fixture}: section missing date.perf`).toBe(true);
-                expect(attrNames.has('milliseconds.date'), `${fixture}: section missing milliseconds.date`).toBe(true);
-                expect(attrNames.has('modified'), `${fixture}: section missing modified`).toBe(true);
-            }
-        }
-    });
+      const sections = findSections(tsTree);
+      for (const section of sections) {
+        const attrNames = new Set(section.attrs.map((a) => a.name));
+        expect(attrNames.has('date.perf'), `${fixture}: section missing date.perf`).toBe(true);
+        expect(
+          attrNames.has('milliseconds.date'),
+          `${fixture}: section missing milliseconds.date`,
+        ).toBe(true);
+        expect(attrNames.has('modified'), `${fixture}: section missing modified`).toBe(true);
+      }
+    }
+  });
 });
