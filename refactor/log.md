@@ -12611,3 +12611,137 @@ Neither touches code, tests or parity; both are in the new Fixed-bugs entry.
   this is a house-style question for the conductor rather than a defect.
 
 **Verdict: PASS TD4.**
+
+## [T23] FINAL AUDIT — addendum: the TD4 delta (2026-08-09)
+
+Focused re-check of the certification over one item that landed after it. **The certification
+stands.** TD4 moves nothing my §1 differential measured, its one real behaviour change is on a
+path no fixture reaches, and it is documented and pinned. Two new non-blocking findings, both
+documentation, one of them new *since* the T23 audit.
+
+### 1. The "nothing else changed" claim — verified
+
+`git log 78c657b..HEAD` is **exactly two commits**: `a67fb6e` (queue bookkeeping, 2 files) and
+`56739a2` (TD4, 7 files). Full range manifest is 8 paths: `src/xml/XomTypes.ts`, three test
+files, `PARITY.md`, `refactor/lint-debt.md`, `refactor/log.md`, `refactor/state.json`.
+
+- **`tests/integration/` — fixtures and equivalence suites — is untouched.** `git diff
+  --name-only 78c657b HEAD -- tests/integration/` is empty. Invariants 2 and 3 are not in play.
+- **`src/` is one file.** The diff is a doc paragraph on `Attribute.detach` plus, in
+  `Element.wrap`, a ternary restructure and **one new assignment** (`wrapped._xomParent = elem`).
+- **My T23 entry survived intact.** `git diff 78c657b HEAD -- refactor/log.md` contains **zero
+  deleted lines** — the journal was appended to, not edited.
+
+### 2. Verify, and the continuity probe that actually settles it
+
+`npm run verify` exit 0, both `tsc` stages, **59 files / 2352 tests** (2338 + 14).
+
+The decisive check is not re-reading the diff but re-running the *same* probe against the *same*
+recorded hashes. I re-ran `t23audit/pipeprobe.mjs` — the 180-value battery from §1 of the audit
+(16 MEI fixtures × 7 artifacts, 8 all-maps × 2, 48 reference round trips, 4 manifest keys) — on
+the TD4 tree and compared it key-by-key against `head1.json`, the transcript I recorded from the
+tree I certified:
+
+| | |
+|---|---|
+| keys, both sides | 180 / 180, no key added or lost |
+| `THREW` on the TD4 tree | **0** |
+| stable values differing from the certified tree | **0** |
+| identical | **178** (the 2 excluded are the known `imprecision_timing` pair) |
+
+**Zero drift against the certified tree.** §1's conclusion — that the program's only aggregate
+behaviour change is TD3's accentuation fix — carries over to this tree verbatim.
+
+### 3. The TD4 delta, measured myself on both builds
+
+I built the certified tree (`git archive 78c657b`, `tsc` exit 0, 79 emitted `.js`,
+`XomTypes.ts` spot-checked `diff`-identical to `78c657b`'s) and ran a driven differential
+(`t23audit/td4probe.mjs`). Three things change, and they are the three that should:
+
+| probe | certified | TD4 |
+|---|---|---|
+| `detach()` a **parsed** attribute | `<r xml:id="i1" a="1" b="2">…` — **survives** | `<r xml:id="i1" b="2">…` — **removed** |
+| `getParent()` on a parsed attribute | `null` | the owning element |
+| `msmCleanupSingle` on a **parsed** MSM: `currentDate`, `tie`, `layer`, `endid`, `tstamp2` | all five **SURVIVE** | all five **removed** |
+
+and four regression guards do not move: `detach()` on a **constructed** attribute
+(`<r b="2" />` both), parse→serialize round trip, `copy()`, and — the one worth naming —
+**after `detach()` the attribute's `getParent()` is `null` again on both builds**, because
+`removeAttribute`'s identity path clears the pointer. No stale-parent residue. Cleanup also
+leaves the `<note>` and its `xml:id` alone on both builds; it strips only its five targets.
+
+**The `getParent()` row is the change the item's own title does not mention**, and it follows
+from the mechanism: `_xomParent` is read in exactly two places, `detach()` and `getParent()`, so
+parenting parsed attributes necessarily moves both. It is a move toward XOM (`Attribute.getParent()`
+returns the element), the DOM fallback could never have produced it (`Attr.parentNode` is `null`
+by spec), and of the 40 `getParent()` call sites in `src/` the only non-`Element` receiver is
+`msmCleanupSingle`'s `node instanceof Attribute` branch — which is row three. The verifier found
+this independently and scoped it correctly.
+
+**Fixture exposure of row three, checked myself.** Zero `.msm` fixture carries any of the five
+cleanup targets (`currentDate` 0, `tie` 0, `layer` 0, `endid` 0, `tstamp2` 0 across all fixture
+directories). The `tie`/`endid`/`tstamp2` hits a naive grep finds are in the **`.mei` inputs**,
+where they are legitimate MEI attributes the converter *reads* and never cleans. And the
+pipeline's own call site — `msmCleanup(msms)` at `Mei2MsmMpmConverter.ts:4440` — runs on MSMs
+the converter has just **constructed**, whose attributes went through `addAttribute` and
+therefore always had `_xomParent`. The newly-live branch is reachable only by calling the public
+`msmCleanupSingle` on an MSM parsed from disk. Same shape as TD1 and TD2: correct, latent,
+unreached, documented.
+
+### 4. Negative control and test integrity
+
+Ran the three modified test files against the **pre-TD4 `src/`** (new tests copied into the
+certified build, nothing else changed): **11 failed / 143 passed**. Reproduces the verifier's
+figure exactly. The 143 include every pre-existing test in those files — so the
+constructed-element detach guards still pass on the old tree, i.e. the new tests pin the fix and
+only the fix. The 3 new tests that pass on both are the guards they are meant to be.
+
+Invariant 4: **the only deleted lines in the entire test diff are two `import` statements**, each
+replaced by the same import with one more specifier. Zero assertions removed, zero weakened,
++14 tests. Invariant 7c gates decreases; this is an increase.
+
+### 5. Gates — unmoved
+
+| gate | T23 audit | TD4 tree | |
+|---|---|---|---|
+| functions (7a) | 92.6993 % (965/1041) | **92.6993 % (965/1041)** | bit-identical |
+| uncovered statements (7b) | 2094 | **2094** | bit-identical |
+| statements (indicator) | 86.5786 % | **86.5786 %** | bit-identical |
+| branch (indicator) | 88.0897 % | 88.0947 % | +0.005, inside the documented RNG noise |
+| lint | 1017 / 2 | **1017 / 2** | per-rule histogram **identical**, no rule moved |
+| deep imports | 79/79 clean | **79/79 clean** | `XomTypes` is core; re-checked |
+| tests | 2338 | **2352** | +14, no deletions |
+
+### 6. Two findings — both documentation, both non-blocking
+
+- **A1 · `PARITY.md` now fails `prettier --check`, and did not before.** It is clean at
+  `78c657b` and flagged at `HEAD`; the deviation is **14 lines of markdown table column padding**
+  in TD4's new entry. `prettier --write PARITY.md` fixes it. Consequence for my §9: the tree now
+  carries **two** formatting deviations, not one — and unlike F1 (a test file) this one is in a
+  **shipped, user-facing deliverable** that README points at.
+- **A2 · the verifier's first prose correction was never applied, and no doc round exists.**
+  `PARITY.md:349` still reads "`nu.xom.Attribute.detach()` — XOM removes the attribute from its
+  parent **unconditionally**". The TD4 verifier decompiled `xom-1.3.8.jar` and **measured** that
+  `Attribute` has no `detach()` of its own and that the inherited `nu.xom.Node.detach()` opens
+  with `if (parent == null) return;` — the same guard shape this layer has. So the ledger's Java
+  citation is wrong on the point it is cited for, **and it contradicts the comment the same
+  commit added six lines away** at `XomTypes.ts:258-262` ("There is deliberately no DOM fallback
+  for the parentless case … detaching it is a no-op by definition"). The verifier flagged this
+  as worth fixing precisely because the contradiction "could invite a future agent to 'fix' the
+  guard away" — a guard that is load-bearing. It went in unfixed. This is the sharper cousin of
+  my F3 and F5: not merely stale, but actively pointing a maintainer at the wrong edit. It is a
+  two-clause sentence to correct, and the verifier already wrote the replacement wording.
+
+### 7. Verdict
+
+**PASS addendum.** The TD4 delta does not disturb any finding, measurement or conclusion of the
+T23 certification: the pipeline is byte-identical to the tree I certified across all 178 stable
+values, every gate is unmoved (three of them bit-identical), the fixtures and equivalence suites
+are untouched, and the one real behaviour change is correct, latent, unreached by any fixture,
+pinned by a negative control I reproduced, and written into the ledger. **The certification of
+2026-08-09 stands over `56739a2`.**
+
+Carrying forward: my five findings are unchanged, F1 is joined by **A1**, and **A2** joins F3/F5
+as documentation that should be corrected before this ledger is treated as the durable record.
+None blocks the merge.
+
