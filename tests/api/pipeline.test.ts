@@ -19,6 +19,7 @@ import {
   renderExpressiveMidi,
   renderMidi,
 } from '../../src/api/index.js';
+import type { PerformanceData, PerformOptions } from '../../src/api/index.js';
 import {
   EmptyDocumentError,
   InvalidOptionError,
@@ -34,6 +35,39 @@ const augmented = (name: string) =>
   readFileSync(join(FIXTURES, 'performance-reference', `${name}_augmented.msm`), 'utf-8');
 const allMaps = (name: string, ext: 'msm' | 'mpm') =>
   readFileSync(join(FIXTURES, 'all-maps-reference', `${name}.${ext}`), 'utf-8');
+
+/**
+ * W6's spec-derived MPM v3 documents, read where they live. They are the integration suite's
+ * fixtures and stay its fixtures — the tick and millisecond arithmetic is asserted there, by
+ * hand; what this file asks of them is only that the facade reports what the augmented MSM
+ * says.
+ */
+const V3_FIXTURES = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'integration',
+  'fixtures-v3',
+);
+const v3 = (name: string) => ({
+  msm: readFileSync(join(V3_FIXTURES, `${name}.msm`), 'utf-8'),
+  mpm: readFileSync(join(V3_FIXTURES, `${name}.mpm`), 'utf-8'),
+});
+
+/**
+ * Rewrite the `meico_<uuid>` ids a v3 render draws for its generated notes to `generated-N` by
+ * first occurrence, so two renders of one document can be compared.
+ *
+ * Those ids are the only thing that differs between two renders of an ornamented document
+ * (nothing in the v3 path draws a random *value*), and canonicalising them is the convention
+ * `ornamentation-v3.test.ts` already established for exactly this comparison.
+ */
+function canonicaliseGeneratedIds(xml: string): string {
+  const seen = new Map<string, string>();
+  return xml.replace(/meico_[0-9a-f-]{36}/g, (id) => {
+    if (!seen.has(id)) seen.set(id, `generated-${seen.size + 1}`);
+    return seen.get(id)!;
+  });
+}
 
 /**
  * An MSM built by hand, so the error paths can be reached with exactly one thing wrong.
@@ -196,11 +230,23 @@ describe('facade: performMsm', () => {
 });
 
 describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
-  /** Reads the fixture's `<note>` attributes independently of the facade's own reader. */
+  /**
+   * Reads the fixture's `<note>` attributes independently of the facade's own reader.
+   *
+   * `ornamented` is derived by a **prefix probe** where the facade uses a closed list of
+   * attribute names, deliberately: the two agree only while that list stays complete, so a
+   * marker the renderer starts writing and the facade does not know about fails this
+   * comparison on any fixture that produces it. `ornamented`'s contract is "carries at least
+   * one `ornament.*` attribute", and the regex is that contract asked directly.
+   */
   function notesFromXml(xml: string) {
     return [...xml.matchAll(/<note\s[^>]*\/>/g)].map((m) => {
       const attr = (name: string) =>
         new RegExp(`(?:^|\\s)${name.replace(/\./g, '\\.')}="([^"]*)"`).exec(m[0])?.[1];
+      const num = (name: string) => {
+        const raw = attr(name);
+        return raw === undefined || !Number.isFinite(Number(raw)) ? null : Number(raw);
+      };
       return {
         id: attr('xml:id') ?? null,
         pitch: Number(attr('midi.pitch')),
@@ -211,6 +257,12 @@ describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
           date: Number(attr('milliseconds.date')),
           end: Number(attr('milliseconds.date.end')),
         },
+        ornamented: /(?:^|\s)ornament\.[a-z.]+=/.test(m[0]),
+        ornamentRef: attr('ornament.ref') ?? null,
+        ornamentSource: attr('ornament.source') ?? null,
+        ornamentSlot: num('ornament.slot'),
+        ornamentPass: num('ornament.pass'),
+        ornamentAnchor: attr('ornament.anchor') ?? null,
       };
     });
   }
@@ -350,6 +402,18 @@ describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
     );
     const [first, second] = extractPerformanceData(partial).parts[0].notes;
 
+    // The ornamentation sextet on a document with no ornamentation map at all: `false` and
+    // five nulls, spelled out rather than matched loosely, because RULE N4's whole point is
+    // that absence is a present field holding null (D15).
+    const unornamented = {
+      ornamented: false,
+      ornamentRef: null,
+      ornamentSource: null,
+      ornamentSlot: null,
+      ornamentPass: null,
+      ornamentAnchor: null,
+    };
+
     expect(first).toEqual({
       id: 'n1',
       pitch: 60,
@@ -357,6 +421,7 @@ describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
       duration: 720,
       velocity: 64,
       milliseconds: { date: 0, end: 500 },
+      ...unornamented,
     });
     expect(second).toEqual({
       id: 'n2',
@@ -365,6 +430,7 @@ describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
       duration: 360,
       velocity: 100,
       milliseconds: { date: 720, end: 1080 },
+      ...unornamented,
     });
   });
 
@@ -398,6 +464,12 @@ describe('facade: performMsmToData', () => {
         'duration',
         'id',
         'milliseconds',
+        'ornamentAnchor',
+        'ornamentPass',
+        'ornamentRef',
+        'ornamentSlot',
+        'ornamentSource',
+        'ornamented',
         'pitch',
         'velocity',
       ]);
@@ -405,6 +477,275 @@ describe('facade: performMsmToData', () => {
       expect(Number.isFinite(note.milliseconds.date)).toBe(true);
       expect(Number.isFinite(note.milliseconds.end)).toBe(true);
     }
+  });
+});
+
+/**
+ * The ornamentation provenance sextet (DESIGN.md D15, widened by the D10 provenance extension
+ * and the `ornament.anchor` addendum), as the two ML stakeholders consume it.
+ *
+ * Nothing here re-derives the renderer's arithmetic — `ornamentation-v3.test.ts` owns that,
+ * with the numbers computed by hand. What these cases pin is the *mapping*: which MSM
+ * attribute becomes which field, what absence looks like (RULE N4: a present field holding
+ * null, never a missing one), and the one semantic judgement the facade makes on its own —
+ * what `ornamented` counts as evidence.
+ */
+describe('facade: ornamentation provenance (D15)', () => {
+  /** Every note of every part, which is the flat list the D15 consumers work from. */
+  const notesOf = (input: { msm: string; mpm: string }, options?: PerformOptions) =>
+    performMsmToData(input, options).parts.flatMap((p) => p.notes);
+
+  it('stamps the full sextet on every note a v3 ornament generated', () => {
+    // `turn-atstart`: principal `P` (pitch 64, date 0, dur 1440), pool n2 = +1, n3 = −1, and
+    // note.order "#n2 #P #n3 #P" — four tokens, no repeat group, so four slots numbered 0..3
+    // whose sources are exactly those four tokens in order and whose pass is null throughout.
+    // The ornament carries xml:id="orn1", so every generated note refs it; every one anchors
+    // on "P", the id the principal had before the ornament replaced it.
+    const notes = notesOf(v3('turn-atstart'));
+    const generated = notes.filter((n) => n.ornamented);
+
+    expect(generated).toHaveLength(4);
+    expect(
+      generated.map((n) => [
+        n.ornamentRef,
+        n.ornamentSource,
+        n.ornamentSlot,
+        n.ornamentPass,
+        n.ornamentAnchor,
+      ]),
+    ).toEqual([
+      ['orn1', 'n2', 0, null, 'P'],
+      ['orn1', 'P', 1, null, 'P'],
+      ['orn1', 'n3', 2, null, 'P'],
+      ['orn1', 'P', 3, null, 'P'],
+    ]);
+
+    // The two notes the ornament never named come through untouched: false and five nulls.
+    const untouched = notes.filter((n) => !n.ornamented);
+    expect(untouched.map((n) => n.id)).toEqual(['q', 'r']);
+    for (const note of untouched)
+      expect(note).toMatchObject({
+        ornamented: false,
+        ornamentRef: null,
+        ornamentSource: null,
+        ornamentSlot: null,
+        ornamentPass: null,
+        ornamentAnchor: null,
+      });
+  });
+
+  it('reports the repetition pass, which is what separates two notes of the same source', () => {
+    // `trill-repetitions`: note.order "|: #n1 #P :|" with repetitions="3" — the group is
+    // played 4× (3 EXTRA passes), so 8 slots numbered 0..7, sources alternating n1/P, and
+    // passes 0,0,1,1,2,2,3,3. Without `ornamentPass` the eight notes would carry only two
+    // distinct sources between them, which is the join the stakeholders asked to be widened.
+    const generated = notesOf(v3('trill-repetitions')).filter((n) => n.ornamented);
+
+    expect(generated.map((n) => n.ornamentSlot)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(generated.map((n) => n.ornamentSource)).toEqual([
+      'n1',
+      'P',
+      'n1',
+      'P',
+      'n1',
+      'P',
+      'n1',
+      'P',
+    ]);
+    expect(generated.map((n) => n.ornamentPass)).toEqual([0, 0, 1, 1, 2, 2, 3, 3]);
+    for (const note of generated)
+      expect(note).toMatchObject({ ornamentRef: 'orn3', ornamentAnchor: 'P' });
+  });
+
+  it('marks the carved head leftover ornamented, with ornamentRef and nothing else', () => {
+    // `turn-atend` is `turn-atstart` with `alignment="at end"`, and it is the only fixture that
+    // produces a **head leftover**: the frame is 50% of the principal's 1440 ticks anchored at
+    // its end, so it occupies [720, 1440] and the principal survives, shortened to the 720
+    // ticks in front of it — halved by the ornament, and still carrying its own id `P`.
+    //
+    // The ruling (D10/D15, LOG.md 2026-08-09): that note is altered, so it is `ornamented`, and
+    // the renderer marks it `ornament.carved="true"` + `ornament.ref`. It gets no source, slot
+    // or pass — it is not part of the expansion — and no anchor, because it *is* the anchor.
+    const input = v3('turn-atend');
+    const notes = notesOf(input);
+    const head = notes.find((n) => n.id === 'P');
+
+    // The alteration itself, measured rather than assumed: 1440 unexpanded, 720 expanded.
+    expect(notesOf(input, { expandOrnaments: false }).find((n) => n.id === 'P')?.duration).toBe(
+      1440,
+    );
+    expect(head?.duration).toBe(720);
+
+    expect(head).toMatchObject({
+      ornamented: true,
+      ornamentRef: 'orn2',
+      ornamentSource: null,
+      ornamentSlot: null,
+      ornamentPass: null,
+      ornamentAnchor: null,
+    });
+
+    // The four generated notes keep the shape the sextet has everywhere else. `P` survives, so
+    // D10 hands its id to nobody: every generated note here carries a fresh `meico_` id.
+    const generated = notes.filter((n) => n.ornamentSlot !== null);
+    expect(generated).toHaveLength(4);
+    expect(
+      generated.map((n) => [
+        n.ornamented,
+        n.ornamentRef,
+        n.ornamentSource,
+        n.ornamentSlot,
+        n.ornamentPass,
+        n.ornamentAnchor,
+      ]),
+    ).toEqual([
+      [true, 'orn2', 'n2', 0, null, 'P'],
+      [true, 'orn2', 'P', 1, null, 'P'],
+      [true, 'orn2', 'n3', 2, null, 'P'],
+      [true, 'orn2', 'P', 3, null, 'P'],
+    ]);
+    for (const note of generated) expect(note.id).toMatch(/^meico_[0-9a-f-]{36}$/);
+
+    // And the notes the ornament never reached are still untouched, so `ornamented` has not
+    // simply become true everywhere.
+    expect(notes.filter((n) => !n.ornamented).map((n) => n.id)).toEqual(['q', 'r']);
+  });
+
+  it('marks a carved head whose ornament has no xml:id, where only ornament.carved says so', () => {
+    // The case above does not actually test `ornament.carved`: the renderer co-writes
+    // `ornament.ref` there, and `ornament.ref` is in the marker list too, so `ornamented` would
+    // come out true even if `ornament.carved` were missing from it. (Measured — dropping the
+    // name from the list leaves the whole suite green.)
+    //
+    // `ornament.carved` is load-bearing on exactly one document: an ornament with **no**
+    // `xml:id`, where the renderer writes `ornament.carved="true"` and nothing else onto the
+    // leftover. That is this case, and it is the negative control for the list entry.
+    const { msm, mpm } = v3('turn-atend');
+    const anonymous = mpm.replace(' xml:id="orn2"', '');
+    // Not vacuous: the id really was there and really is gone.
+    expect(anonymous).not.toBe(mpm);
+    expect(anonymous).not.toContain('orn2');
+
+    const head = notesOf({ msm, mpm: anonymous }).find((n) => n.id === 'P');
+
+    // Still shortened by the ornament, still reported as ornamented — but now with all six
+    // narrowing values absent, because an ornament with no id has no ref to give either.
+    expect(head).toMatchObject({
+      duration: 720,
+      ornamented: true,
+      ornamentRef: null,
+      ornamentSource: null,
+      ornamentSlot: null,
+      ornamentPass: null,
+      ornamentAnchor: null,
+    });
+  });
+
+  it('marks a note a v2 ornament merely altered, with the five v3 fields null', () => {
+    // The semantics D15 asks for is "generated by OR altered by", and a v2 ornament only ever
+    // alters: `v2-passthrough`'s two arpeggios write `ornament.date.offset` and
+    // `ornament.dynamics` onto the six notes the score already had, and generate none. So all
+    // six are `ornamented` — and all five narrowing fields are null, because a v2 ornament has
+    // no pool, no slots and no passes to name.
+    const notes = notesOf(v3('v2-passthrough'));
+
+    expect(notes.map((n) => n.id)).toEqual(['a1', 'a2', 'a3', 'b1', 'b2', 'b3']);
+    for (const note of notes)
+      expect(note).toMatchObject({
+        ornamented: true,
+        ornamentRef: null,
+        ornamentSource: null,
+        ornamentSlot: null,
+        ornamentPass: null,
+        ornamentAnchor: null,
+      });
+  });
+
+  it('reads the sextet back out of a serialized MSM identically (extract == perform)', () => {
+    // The two readers must not drift: `ornament.*` lives in the augmented MSM as text, so the
+    // serialize/re-parse route has to produce the provenance the direct route does. The two
+    // renders draw different `meico_<uuid>` ids, so those are canonicalised by first
+    // occurrence — and only `id` needs it, because not one of the six is derived from a
+    // generated id, which is exactly the property the ML stakeholders key on.
+    const input = v3('multi-ornament');
+    const canonicalise = (data: PerformanceData) => {
+      const seen = new Map<string, string>();
+      const canon = (id: string | null) => {
+        if (id === null || !id.startsWith('meico_')) return id;
+        if (!seen.has(id)) seen.set(id, `generated-${seen.size + 1}`);
+        return seen.get(id)!;
+      };
+      return data.parts.flatMap((part) =>
+        part.notes.map((note) => ({ ...note, id: canon(note.id) })),
+      );
+    };
+
+    const viaText = canonicalise(extractPerformanceData(performMsm(input)));
+    expect(viaText).toEqual(canonicalise(performMsmToData(input)));
+    expect(viaText.some((n) => n.ornamented)).toBe(true);
+    expect(viaText.some((n) => n.id === 'generated-1')).toBe(true);
+  });
+});
+
+describe('facade: expandOrnaments (D15)', () => {
+  it('generates nothing and writes no marker when expansion is off', () => {
+    const on = performMsmToData(v3('turn-atstart')).parts.flatMap((p) => p.notes);
+    const off = performMsmToData(v3('turn-atstart'), { expandOrnaments: false }).parts.flatMap(
+      (p) => p.notes,
+    );
+
+    // With expansion on: four generated notes replace the principal, so six notes in all.
+    expect(on).toHaveLength(6);
+    // With it off the score is the score — the principal and its two neighbours, and not one
+    // `ornament.*` attribute anywhere, so no note reports itself ornamented.
+    expect(off.map((n) => n.id)).toEqual(['P', 'q', 'r']);
+    expect(off.some((n) => n.ornamented)).toBe(false);
+    expect(performMsm(v3('turn-atstart'), { expandOrnaments: false })).not.toContain('ornament.');
+  });
+
+  it('leaves MPM v2 ornaments alone, whichever way it is set', () => {
+    // The flag switches off *expansion*, and a v2 ornament expands nothing — it modifies notes
+    // that already exist. Turning it off must therefore not silently strip v2 ornamentation,
+    // which would be a different and much larger promise.
+    const input = v3('v2-passthrough');
+    expect(performMsm(input, { expandOrnaments: false })).toBe(
+      performMsm(input, { expandOrnaments: true }),
+    );
+    expect(performMsm(input, { expandOrnaments: false })).toBe(performMsm(input));
+  });
+
+  it('defaults to expanding, so omitting it renders the MPM as written', () => {
+    // Compared as whole documents rather than as note counts: that catches a default which
+    // expands the right number of notes with the wrong dates. The generated ids differ between
+    // renders and are canonicalised away; nothing else in this fixture is random.
+    const input = v3('turn-atstart');
+    const render = (options?: PerformOptions) =>
+      canonicaliseGeneratedIds(performMsm(input, options));
+
+    expect(render({ expandOrnaments: true })).toBe(render());
+    expect(render({})).toBe(render());
+    expect(render()).toContain('ornament.generated="true"');
+  });
+
+  it('rejects a non-boolean rather than coercing it', () => {
+    // `0` is the case that matters: coerced it would read as "expand", the opposite of what a
+    // caller writing `0` for false meant.
+    for (const bad of [0, 1, 'false', null]) {
+      expect(() =>
+        performMsmToData(v3('turn-atstart'), {
+          expandOrnaments: bad as unknown as boolean,
+        }),
+      ).toThrow(InvalidOptionError);
+    }
+    expect(() =>
+      performMsm(v3('turn-atstart'), { expandOrnaments: 'yes' as unknown as boolean }),
+    ).toThrow(/expandOrnaments must be a boolean/);
+  });
+
+  it('is rejected with no MPM to apply, exactly as the other PerformOptions fields are', () => {
+    expect(() =>
+      renderExpressiveMidi({ msm: augmented('dynamics') }, { expandOrnaments: false }),
+    ).toThrow(InvalidOptionError);
   });
 });
 

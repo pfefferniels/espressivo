@@ -1,13 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { OrnamentationMap } from '../../../src/mpm/elements/maps/OrnamentationMap.js';
+import { Performance } from '../../../src/mpm/elements/Performance.js';
 import { OrnamentData } from '../../../src/mpm/elements/maps/data/OrnamentData.js';
+import { OrnamentNote } from '../../../src/mpm/elements/maps/data/OrnamentNote.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
-import { Element, Attribute } from '../../../src/xml/XomTypes.js';
+import { Element, Attribute, Builder } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Header } from '../../../src/mpm/elements/Header.js';
 import { OrnamentationStyle } from '../../../src/mpm/elements/styles/OrnamentationStyle.js';
 import { OrnamentDef } from '../../../src/mpm/elements/styles/defs/OrnamentDef.js';
 import { FrameDomain, NoteOffShift } from '../../../src/mpm/elements/styles/defs/TemporalSpread.js';
+import type { RenderContext } from '../../../src/mpm/RenderOptions.js';
 
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 
@@ -1317,6 +1323,788 @@ describe('OrnamentationMap', () => {
       const clone = od.clone();
       expect(clone.style).toBe(od.style);
       expect(clone.ornamentDef).toBe(od.ornamentDef);
+    });
+  });
+});
+
+// ==========================================================================
+//  MPM v3 — note pool, repetitions, noteid (DESIGN.md D1, D7, D9, D12)
+//
+//  ADDITIVE. Nothing above was weakened; the first suite here pins the v2 writer
+//  byte for byte, which is the contract the v3 additions had to fit around.
+// ==========================================================================
+
+const MPM_NS = 'http://www.cemfi.de/mpm/ns/1.0';
+
+/** parse an XML string into an element, the way a real document reaches the parser */
+function parseElement(xml: string): Element {
+  return new Builder().build(xml).getRootElement();
+}
+
+/** parse an `<ornament>` given as source text */
+function ornamentElement(body: string): Element {
+  return parseElement(`<ornament xmlns="${MPM_NS}" ${body}</ornament>`);
+}
+
+/** silence and capture console.error for one call */
+function captureErrors(run: () => void): string[] {
+  const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    run();
+    return spy.mock.calls.map((args) => String(args[0]));
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
+  // Captured from the committed behaviour (branch ornamentation-v3 @ cd140e1, before W3).
+  // Whole-string assertions, so attribute ORDER is pinned along with the values.
+  const CASES: readonly (readonly [string, () => Element, string])[] = [
+    [
+      'required parameters only',
+      () => {
+        const m = OrnamentationMap.createOrnamentationMap()!;
+        m.addOrnament(0.0, 'arpeggio');
+        return m.getElement(0)!;
+      },
+      `<ornament xmlns="${MPM_NS}" date="0" name.ref="arpeggio" />`,
+    ],
+    [
+      'scale, an ID list and an xml:id',
+      () => {
+        const m = OrnamentationMap.createOrnamentationMap()!;
+        m.addOrnament(720.0, 'arpeggio', 20.0, ['n96', 'n97', 'n98'], 'orn1');
+        return m.getElement(0)!;
+      },
+      `<ornament xmlns="${MPM_NS}" date="720" name.ref="arpeggio" scale="20" note.order="#n96 #n97 #n98" xml:id="orn1" />`,
+    ],
+    [
+      'scale 1.0 omitted, empty id omitted, pitch keyword',
+      () => {
+        const m = OrnamentationMap.createOrnamentationMap()!;
+        m.addOrnament(1440.0, 'trill', 1.0, ['ascending pitch'], '');
+        return m.getElement(0)!;
+      },
+      `<ornament xmlns="${MPM_NS}" date="1440" name.ref="trill" note.order="ascending pitch" />`,
+    ],
+    [
+      'scale 0.0 written',
+      () => {
+        const m = OrnamentationMap.createOrnamentationMap()!;
+        m.addOrnament(2160.0, 'trill', 0.0, ['descending pitch'], null);
+        return m.getElement(0)!;
+      },
+      `<ornament xmlns="${MPM_NS}" date="2160" name.ref="trill" scale="0" note.order="descending pitch" />`,
+    ],
+    [
+      'ids normalised on write',
+      () => {
+        const m = OrnamentationMap.createOrnamentationMap()!;
+        m.addOrnament(2880.0, 'trill', 1.0, ['#n1', ' n2 '], 'orn5');
+        return m.getElement(0)!;
+      },
+      `<ornament xmlns="${MPM_NS}" date="2880" name.ref="trill" note.order="#n1 #n2" xml:id="orn5" />`,
+    ],
+  ];
+
+  for (const [label, build, expected] of CASES) {
+    it(`should write the v2 element byte-identically — ${label}`, () => {
+      expect(build().toXML()).toBe(expected);
+    });
+  }
+
+  it('should keep addOrnamentFromData on the v2 path for v2 data', () => {
+    // an OrnamentData with no v3 field must produce exactly what the positional call does
+    const data = new OrnamentData();
+    data.date = 720.0;
+    data.ornamentDefName = 'arpeggio';
+    data.scale = 20.0;
+    data.noteOrder = ['n96', 'n97', 'n98'];
+    data.xmlId = 'orn1';
+
+    const m = OrnamentationMap.createOrnamentationMap()!;
+    m.addOrnamentFromData(data);
+    expect(m.getElement(0)!.toXML()).toBe(
+      `<ornament xmlns="${MPM_NS}" date="720" name.ref="arpeggio" scale="20" note.order="#n96 #n97 #n98" xml:id="orn1" />`,
+    );
+  });
+});
+
+describe('OrnamentData — v3 fields', () => {
+  it('should default the v3 fields for a v2 ornament', () => {
+    const od = new OrnamentData(
+      ornamentElement('date="0.0" name.ref="arpeggio" note.order="#n1 #n2"/>'),
+    );
+    expect(od.notes).toEqual([]);
+    expect(od.repetitions).toBe(0);
+    expect(od.noteid).toBeNull();
+    expect(od.getPrincipalNoteId()).toBeNull();
+  });
+
+  it('should read a note pool in document order', () => {
+    // note.xml:60-64, the "upper turn"
+    const od = new OrnamentData(
+      ornamentElement(
+        'noteid="#princNote1" date="0.0" name.ref="upper turn" note.order="#n2 #princNote1 #n3 #princNote1">' +
+          '<note xml:id="n2" interval.chromatic="1.0"/>' +
+          '<note xml:id="n3" interval.chromatic="-1.0"/>',
+      ),
+    );
+    expect(od.notes.map((n) => n.id)).toEqual(['n2', 'n3']);
+    expect(od.notes[0].pitchSpec).toEqual({ kind: 'chromatic', value: 1.0 });
+    expect(od.notes[1].pitchSpec).toEqual({ kind: 'chromatic', value: -1.0 });
+  });
+
+  it('should store noteid raw and strip the # only for resolution', () => {
+    // the schematron asserts @noteid[starts-with(., '#')], so the two spellings are not
+    // interchangeable in the document; normalising on read would repair what a validator
+    // rejects, and would change bytes the author wrote
+    const withHash = new OrnamentData(
+      ornamentElement('date="0.0" name.ref="trill" noteid="#princNote"/>'),
+    );
+    expect(withHash.noteid).toBe('#princNote');
+    expect(withHash.getPrincipalNoteId()).toBe('princNote');
+
+    const withoutHash = new OrnamentData(
+      ornamentElement('date="0.0" name.ref="trill" noteid="princNote"/>'),
+    );
+    expect(withoutHash.noteid).toBe('princNote');
+    expect(withoutHash.getPrincipalNoteId()).toBe('princNote');
+  });
+
+  it('should read repetitions', () => {
+    // ornament.xml:66-72: repetitions="3" means the group is played FOUR times
+    const od = new OrnamentData(ornamentElement('date="720.0" name.ref="trill" repetitions="3"/>'));
+    expect(od.repetitions).toBe(3);
+  });
+
+  it('should accept the -1 fill-the-frame extension', () => {
+    // schema-invalid (minInclusive 0) but an established meico extension, DESIGN.md D9
+    const od = new OrnamentData(ornamentElement('date="0.0" name.ref="trill" repetitions="-1"/>'));
+    expect(od.repetitions).toBe(-1);
+  });
+
+  it('should fall back to 0 for an unusable repeat count, and say so every time', () => {
+    // W9 (D16 ruling, PARITY.md §6.8): `''` used to parse as 0 through `Number` and take the
+    // default **silently** — the one unusable value that reported nothing. `parseJavaDouble`
+    // rejects it as Java does, so every row here now logs. The values are unchanged; what
+    // changed is that the empty attribute stopped being a quiet special case.
+    for (const value of ['many', '', '-2', 'NaN', '0x10']) {
+      let od: OrnamentData | null = null;
+      const messages = captureErrors(() => {
+        od = new OrnamentData(
+          ornamentElement(`date="0.0" name.ref="trill" repetitions="${value}"/>`),
+        );
+      });
+      expect(od!.repetitions).toBe(0);
+      expect(messages.join('\n')).toContain('no usable repeat count');
+    }
+  });
+
+  it('should read Java’s own numeric spellings of a repeat count', () => {
+    // `3d` is a legal Java double literal and `Number('3d')` is NaN, so this row moved from
+    // "unusable, default 0" to "three extra passes" with the D16 switch.
+    const od = new OrnamentData(ornamentElement('date="0.0" name.ref="trill" repetitions="3d"/>'));
+    expect(od.repetitions).toBe(3);
+  });
+
+  it('should skip a pool note without an xml:id and log it', () => {
+    let od: OrnamentData | null = null;
+    const messages = captureErrors(() => {
+      od = new OrnamentData(
+        ornamentElement(
+          'date="0.0" name.ref="turn" note.order="#n2">' +
+            '<note xml:id="n2" interval.chromatic="1.0"/>' +
+            '<note interval.chromatic="-1.0"/>',
+        ),
+      );
+    });
+    expect(od!.notes.map((n) => n.id)).toEqual(['n2']);
+    expect(messages.join('\n')).toContain('no xml:id');
+  });
+
+  it('should ignore children that are not notes', () => {
+    const od = new OrnamentData(
+      ornamentElement(
+        'date="0.0" name.ref="turn"><note xml:id="n2"/><comment/><note xml:id="n3"/>',
+      ),
+    );
+    expect(od.notes.map((n) => n.id)).toEqual(['n2', 'n3']);
+  });
+
+  it('should read a large pool without pathological cost', { timeout: 2000 }, () => {
+    // one forward pass over the children, so the cost is linear; pinned with a timeout
+    // because it is a loop. The element is BUILT rather than parsed, so the measurement is
+    // of the pool reader and not of the XML parser. Measured at ~2 ms for these 2000 notes;
+    // the timeout is what caught the XPath-based first draft, which took 3158 ms here
+    // because `allChildElements` serializes and re-parses the subtree (see the PERFORMANCE
+    // NOTE on parseOrnamentNotePool).
+    const ornament = new Element('ornament', MPM_NS);
+    ornament.addAttribute(new Attribute('date', '0.0'));
+    ornament.addAttribute(new Attribute('name.ref', 'trill'));
+    for (let i = 0; i < 2000; ++i) {
+      const child = new Element('note', MPM_NS);
+      child.addAttribute(new Attribute('xml:id', XML_NS, `n${i}`));
+      child.addAttribute(new Attribute('interval.chromatic', String(i % 12)));
+      ornament.appendChild(child);
+    }
+
+    const od = new OrnamentData(ornament);
+    expect(od.notes.length).toBe(2000);
+    expect(od.notes[1999].id).toBe('n1999');
+  });
+
+  it('should keep note.order as written alongside the flat v2 view', () => {
+    // the flat array is lossy by construction: stripping every '#' makes an id and a
+    // repeat mark indistinguishable, so re-prefixing on the way out would write "#:|"
+    const od = new OrnamentData(
+      ornamentElement('date="0.0" name.ref="trill" note.order="|: #n1 #princNote :|"/>'),
+    );
+    expect(od.noteOrderText).toBe('|: #n1 #princNote :|');
+    expect(od.noteOrder).toEqual(['|:', 'n1', 'princNote', ':|']);
+    expect(od.clone().noteOrderText).toBe('|: #n1 #princNote :|');
+  });
+
+  it('should leave noteOrderText null when the attribute is absent', () => {
+    const od = new OrnamentData(ornamentElement('date="0.0" name.ref="trill"/>'));
+    expect(od.noteOrderText).toBeNull();
+  });
+
+  it('should keep note.order verbatim, untrimmed', () => {
+    const od = new OrnamentData(
+      ornamentElement('date="0.0" name.ref="trill" note.order=" #n1 #n2 "/>'),
+    );
+    expect(od.noteOrderText).toBe(' #n1 #n2 ');
+    expect(od.noteOrder).toEqual(['n1', 'n2']); // the v2 view trims, as it always has
+  });
+
+  it('should carry the v3 fields through clone', () => {
+    const od = new OrnamentData(
+      ornamentElement('date="0.0" name.ref="turn" noteid="#p" repetitions="2"><note xml:id="n2"/>'),
+    );
+    const c = od.clone();
+    expect(c.noteid).toBe('#p');
+    expect(c.repetitions).toBe(2);
+    expect(c.notes.map((n) => n.id)).toEqual(['n2']);
+    // the array is copied, the notes are shared — the same depth as style/ornamentDef
+    expect(c.notes).not.toBe(od.notes);
+    expect(c.notes[0]).toBe(od.notes[0]);
+  });
+});
+
+describe('OrnamentationMap — reading v3 ornaments', () => {
+  function v3Map(): OrnamentationMap {
+    const map = OrnamentationMap.createOrnamentationMap()!;
+    map.setHeaders(null, makeHeader([arpeggioDef()]));
+    map.addStyleSwitch(0, 'orn style');
+    return map;
+  }
+
+  it('should surface the v3 fields through getOrnamentDataOf', () => {
+    const map = v3Map();
+    map.addOrnament({
+      date: 720,
+      nameRef: 'arpeggio',
+      noteid: '#princNote',
+      repetitions: 3,
+      noteOrder: '|: #n1 #princNote :|',
+      notes: [new OrnamentNote('n1', { kind: 'chromatic', value: 1.0 })],
+      id: 'orn-v3',
+    });
+
+    const od = map.getOrnamentDataOf(map.size() - 1)!;
+    expect(od.noteid).toBe('#princNote');
+    expect(od.getPrincipalNoteId()).toBe('princNote');
+    expect(od.repetitions).toBe(3);
+    expect(od.notes.map((n) => n.id)).toEqual(['n1']);
+    expect(od.noteOrder).toEqual(['|:', 'n1', 'princNote', ':|']);
+  });
+
+  it('should leave the v3 fields at their defaults for a v2 ornament', () => {
+    const map = v3Map();
+    map.addOrnament(0, 'arpeggio', 2.0, ['n1', 'n2']);
+
+    const od = map.getOrnamentDataOf(map.size() - 1)!;
+    expect(od.notes).toEqual([]);
+    expect(od.repetitions).toBe(0);
+    expect(od.noteid).toBeNull();
+  });
+
+  /**
+   * INVERTED by W5, and its predecessor's own comment said it would be. W3 pinned that an
+   * ornament carrying v3 attributes still produced exactly the v2 arpeggio markers, because
+   * "nothing downstream consumes them yet — that is the renderer wave". W5 is that wave: the
+   * DESIGN.md D6 gate now diverts such an ornament off the v2 path entirely, so the v2 markers
+   * are precisely what must NOT appear.
+   *
+   * Assertion strength is preserved rather than reduced: where the old test named the three
+   * `date.perf` values and two velocities the v2 path produces, this one asserts that none of
+   * them moved *and* that no marker was written *and* that the ornament was skipped rather
+   * than half-rendered — and the case that used to be untestable, the same ornament with a
+   * `note.order` it can actually play, is pinned next to it.
+   */
+  it('should divert an ornament with v3 attributes off the v2 path (D6)', () => {
+    const n1 = makePerformedNote('n1', 0, 60);
+    const n2 = makePerformedNote('n2', 0, 64);
+    const n3 = makePerformedNote('n3', 0, 67);
+    const score = makeScore([n1, n2, n3]);
+
+    const map = OrnamentationMap.createOrnamentationMap()!;
+    map.setHeaders(null, makeHeader([arpeggioDef()]));
+    map.addStyleSwitch(0, 'orn style');
+    map.addOrnament({
+      date: 0,
+      nameRef: 'arpeggio',
+      scale: 2.0,
+      noteid: '#n1',
+      repetitions: 3,
+      notes: [new OrnamentNote('aux', { kind: 'chromatic', value: 1.0 })],
+    });
+
+    map.renderOrnamentationToMap(score);
+
+    // none of the v2 arpeggio's numbers (-22 / 0 / +22 and 98 / 102) was produced
+    for (const note of [n1, n2, n3]) {
+      expect(note.getAttributeValue('ornament.date.offset')).toBeNull();
+      expect(note.getAttributeValue('ornament.dynamics')).toBeNull();
+      expect(num(note, 'velocity')).toBeCloseTo(100.0);
+    }
+    expect(num(n1, 'date.perf')).toBeCloseTo(0.0);
+    expect(num(n2, 'date.perf')).toBeCloseTo(0.0);
+    expect(num(n3, 'date.perf')).toBeCloseTo(22.0 - 22.0);
+    // and it generated nothing either: with a pool but no note.order there is no sequence to
+    // play, so the v3 renderer logs and skips (D7/D9)
+    expect(score.getAllElementsOfType('note').length).toBe(3);
+  });
+
+  it('should render the same ornament as notes once it names a v3 note.order', () => {
+    // arpeggioDef's frame is v2: frame.start -22, frameLength 44, ticks, noteoff.shift false.
+    // Principal n1 (60, date 0, duration 1440): start = -22, length = 44, two slots,
+    // intensity 1 ⇒ onsets 0 + (-22) = -22 and 0 + (-22 + 44) = 22. The first ends at
+    // 1440 (noteoff.shift false) so it straddles tick 0 and is clamped to [0, 1440); the
+    // second runs [22, 1440). The pool note aux is +1 chromatic ⇒ 61.
+    const n1 = makePerformedNote('n1', 0, 60);
+    const score = makeScore([n1, makePerformedNote('n2', 0, 64)]);
+
+    const map = OrnamentationMap.createOrnamentationMap()!;
+    map.setHeaders(null, makeHeader([arpeggioDef()]));
+    map.addStyleSwitch(0, 'orn style');
+    map.addOrnament({
+      date: 0,
+      nameRef: 'arpeggio',
+      scale: 2.0,
+      noteid: '#n1',
+      noteOrder: '[ #aux ] #n1',
+      notes: [new OrnamentNote('aux', { kind: 'chromatic', value: 1.0 })],
+    });
+
+    map.renderOrnamentationToMap(score);
+
+    const notes = score.getAllElementsOfType('note').map((e) => e.getValue());
+    // n2 is untouched, n1 is replaced by the two generated notes
+    expect(notes.map((note) => note.getAttributeValue('midi.pitch'))).toEqual(['64', '61', '60']);
+    expect(notes.map((note) => note.getAttributeValue('date'))).toEqual(['0', '0', '22']);
+    expect(notes[2].getAttributeValue('xml:id')).toBe('n1');
+    expect(notes[1].getAttributeValue('ornament.generated')).toBe('true');
+  });
+});
+
+/**
+ * `RenderOptions.expandOrnaments` (DESIGN.md D15) at its point of use.
+ *
+ * The default is resolved here, inside `src/mpm/`, and not at the facade
+ * (ARCHITECTURE.md §2.4) — which is exactly why it needs a test here: a caller that hands
+ * over no context at all, as every existing call site and every fixture does, must still
+ * expand. `movementSampleMaxStep` is the precedent this follows.
+ */
+describe('OrnamentationMap — expandOrnaments (D15)', () => {
+  /** The score + map of the v3 case above, which generates two notes out of one principal. */
+  function v3Case(): { score: GenericMap; map: OrnamentationMap } {
+    const score = makeScore([makePerformedNote('n1', 0, 60), makePerformedNote('n2', 0, 64)]);
+    const map = OrnamentationMap.createOrnamentationMap()!;
+    map.setHeaders(null, makeHeader([arpeggioDef()]));
+    map.addStyleSwitch(0, 'orn style');
+    map.addOrnament({
+      date: 0,
+      nameRef: 'arpeggio',
+      scale: 2.0,
+      noteid: '#n1',
+      noteOrder: '[ #aux ] #n1',
+      notes: [new OrnamentNote('aux', { kind: 'chromatic', value: 1.0 })],
+    });
+    return { score, map };
+  }
+
+  const ctx = (expandOrnaments?: boolean): RenderContext => ({
+    options: expandOrnaments === undefined ? {} : { expandOrnaments },
+    streamOrdinal: 0,
+  });
+
+  it('should expand with no context, which is what every existing call site passes', () => {
+    const { score, map } = v3Case();
+    map.renderOrnamentationToMap(score);
+    expect(score.getAllElementsOfType('note').length).toBe(3);
+  });
+
+  it('should expand for a context that does not mention the option', () => {
+    const { score, map } = v3Case();
+    map.renderOrnamentationToMap(score, ctx());
+    expect(score.getAllElementsOfType('note').length).toBe(3);
+  });
+
+  it('should expand for expandOrnaments: true', () => {
+    const { score, map } = v3Case();
+    map.renderOrnamentationToMap(score, ctx(true));
+    expect(score.getAllElementsOfType('note').length).toBe(3);
+  });
+
+  it('should leave the score untouched for expandOrnaments: false', () => {
+    const { score, map } = v3Case();
+    const warnings = captureErrors(() => map.renderOrnamentationToMap(score, ctx(false)));
+
+    // The two score notes and nothing else, with the principal still carrying its own id and
+    // pitch: the ornament did not run at all rather than running and being undone.
+    const notes = score.getAllElementsOfType('note').map((e) => e.getValue());
+    expect(notes.map((note) => note.getAttributeValue('xml:id'))).toEqual(['n1', 'n2']);
+    expect(notes.map((note) => note.getAttributeValue('midi.pitch'))).toEqual(['60', '64']);
+    // Not one marker of either generation, and no complaint logged: skipping is the
+    // instruction being followed, not a failure to render.
+    for (const note of notes) {
+      expect(note.getAttributeValue('ornament.generated')).toBeNull();
+      expect(note.getAttributeValue('ornament.date.offset')).toBeNull();
+      expect(note.getAttributeValue('ornament.dynamics')).toBeNull();
+    }
+    expect(warnings).toEqual([]);
+  });
+
+  it('should not write note.order.perf back onto a skipped ornament', () => {
+    // The gate sits *before* prepareOrnament, which writes `note.order.perf` onto the
+    // `<ornament>` element for downstream visibility (D7). Suppressed means the MPM comes back
+    // exactly as it went in.
+    const { score, map } = v3Case();
+    map.renderOrnamentationToMap(score, ctx(false));
+    const ornament = map.getAllElementsOfType('ornament')[0].getValue();
+    expect(ornament.getAttributeValue('note.order.perf')).toBeNull();
+
+    const expanded = v3Case();
+    expanded.map.renderOrnamentationToMap(expanded.score, ctx(true));
+    expect(
+      expanded.map
+        .getAllElementsOfType('ornament')[0]
+        .getValue()
+        .getAttributeValue('note.order.perf'),
+    ).not.toBeNull();
+  });
+
+  it('should leave a v2 ornament alone whichever way the option is set', () => {
+    // The flag suppresses *expansion*, and a v2 ornament expands nothing — it writes markers
+    // onto notes that already exist. Both renders must produce the v2 arpeggio's own numbers.
+    const markers = (expandOrnaments: boolean) => {
+      const notes = [
+        makePerformedNote('n1', 0, 60),
+        makePerformedNote('n2', 0, 64),
+        makePerformedNote('n3', 0, 67),
+      ];
+      const score = makeScore(notes);
+      const map = OrnamentationMap.createOrnamentationMap()!;
+      map.setHeaders(null, makeHeader([arpeggioDef()]));
+      map.addStyleSwitch(0, 'orn style');
+      map.addOrnament(0, 'arpeggio', 2.0, null, null);
+      map.renderOrnamentationToMap(score, ctx(expandOrnaments));
+      return notes.map((note) => [num(note, 'date.perf'), num(note, 'velocity')]);
+    };
+
+    expect(markers(false)).toEqual(markers(true));
+    // and it really did ornament: the arpeggio's -22 / 0 / +22 spread, folded into date.perf
+    expect(markers(false).map(([date]) => date)).toEqual([-22, 0, 22]);
+  });
+});
+
+describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
+  function firstElement(build: (m: OrnamentationMap) => void): Element {
+    const m = OrnamentationMap.createOrnamentationMap()!;
+    build(m);
+    return m.getElement(0)!;
+  }
+
+  it('should write the canonical v3 shape', () => {
+    // ornament.xml:70-72, the trill exemplum — attribute order is the v2 order with
+    // noteid after name.ref and repetitions after note.order
+    const e = firstElement((m) =>
+      m.addOrnament({
+        date: 720.0,
+        nameRef: 'trill',
+        noteid: '#princNote',
+        noteOrder: '|: #n1 #princNote :|',
+        repetitions: 3,
+        notes: [new OrnamentNote('n1', { kind: 'chromatic', value: 1.0 })],
+      }),
+    );
+    expect(e.toXML()).toBe(
+      `<ornament xmlns="${MPM_NS}" date="720" name.ref="trill" noteid="#princNote" scale="0" note.order="|: #n1 #princNote :|" repetitions="3">` +
+        `<note xmlns="${MPM_NS}" xml:id="n1" interval.chromatic="1" />` +
+        `</ornament>`,
+    );
+  });
+
+  it('should always write scale, defaulting to the spec value 0.0', () => {
+    // ≠ the v2 writer, which omits scale="1.0" while every reader defaults a missing
+    // scale to 0.0 — writing 1.0 and reading it back would silently mute the gradient
+    expect(firstElement((m) => m.addOrnament({ date: 0, nameRef: 'trill' })).toXML()).toBe(
+      `<ornament xmlns="${MPM_NS}" date="0" name.ref="trill" scale="0" />`,
+    );
+    expect(
+      firstElement((m) => m.addOrnament({ date: 0, nameRef: 'trill', scale: 1.0 })).toXML(),
+    ).toBe(`<ornament xmlns="${MPM_NS}" date="0" name.ref="trill" scale="1" />`);
+  });
+
+  it('should omit repetitions when it is 0', () => {
+    // ≠ the reference implementation, which stamps repetitions="0" onto every ornament
+    const e = firstElement((m) => m.addOrnament({ date: 0, nameRef: 'trill', repetitions: 0 }));
+    expect(e.getAttribute('repetitions')).toBeNull();
+  });
+
+  it('should write repetitions="-1" for the fill-the-frame extension', () => {
+    const e = firstElement((m) => m.addOrnament({ date: 0, nameRef: 'trill', repetitions: -1 }));
+    expect(e.getAttributeValue('repetitions')).toBe('-1');
+  });
+
+  it('should accept the v2 array shape for note.order', () => {
+    const e = firstElement((m) =>
+      m.addOrnament({ date: 0, nameRef: 'arpeggio', noteOrder: ['n1', '#n2'] }),
+    );
+    expect(e.getAttributeValue('note.order')).toBe('#n1 #n2');
+  });
+
+  it('should accept a pitch keyword through the array shape', () => {
+    const e = firstElement((m) =>
+      m.addOrnament({ date: 0, nameRef: 'arpeggio', noteOrder: ['ascending pitch'] }),
+    );
+    expect(e.getAttributeValue('note.order')).toBe('ascending pitch');
+  });
+
+  it('should omit note.order for an empty list', () => {
+    const e = firstElement((m) => m.addOrnament({ date: 0, nameRef: 'arpeggio', noteOrder: [] }));
+    expect(e.getAttribute('note.order')).toBeNull();
+  });
+
+  it('should write the pool in the given order', () => {
+    const e = firstElement((m) =>
+      m.addOrnament({
+        date: 0,
+        nameRef: 'turn',
+        notes: [
+          new OrnamentNote('n3', { kind: 'chromatic', value: -1.0 }),
+          new OrnamentNote('n2', { kind: 'midi', value: 64 }),
+        ],
+      }),
+    );
+    const children = e.getChildElements('note');
+    expect(children.size()).toBe(2);
+    expect(children.get(0).getAttribute('id', XML_NS)!.getValue()).toBe('n3');
+    expect(children.get(1).getAttribute('id', XML_NS)!.getValue()).toBe('n2');
+  });
+
+  it('should keep the map sorted by date like the v2 form', () => {
+    const m = OrnamentationMap.createOrnamentationMap()!;
+    m.addOrnament({ date: 1440, nameRef: 'trill' });
+    m.addOrnament({ date: 0, nameRef: 'trill' });
+    m.addOrnament(720, 'trill');
+    expect([0, 1, 2].map((i) => m.getElement(i)!.getAttributeValue('date'))).toEqual([
+      '0',
+      '720',
+      '1440',
+    ]);
+  });
+
+  it('should round-trip a v3 ornament through OrnamentData', () => {
+    const m = OrnamentationMap.createOrnamentationMap()!;
+    m.addOrnament({
+      date: 720,
+      nameRef: 'trill',
+      noteid: '#princNote',
+      noteOrder: '|: #n1 #princNote :|',
+      repetitions: 3,
+      scale: 20.0,
+      notes: [new OrnamentNote('n1', { kind: 'chromatic', value: 1.0 })],
+      id: 'orn3',
+    });
+    const source = m.getElement(0)!.toXML();
+
+    const od = new OrnamentData(m.getElement(0)!);
+    const m2 = OrnamentationMap.createOrnamentationMap()!;
+    m2.addOrnamentFromData(od);
+
+    expect(m2.getElement(0)!.toXML()).toBe(source);
+  });
+
+  it('should route addOrnamentFromData to the v3 form for each v3 marker on its own', () => {
+    const base = (): OrnamentData => {
+      const d = new OrnamentData();
+      d.date = 0;
+      d.ornamentDefName = 'trill';
+      return d;
+    };
+
+    const withNoteid = base();
+    withNoteid.noteid = '#p';
+    const withRepetitions = base();
+    withRepetitions.repetitions = 2;
+    const withPool = base();
+    withPool.notes = [new OrnamentNote('n1', { kind: 'midi', value: 60 })];
+
+    for (const data of [withNoteid, withRepetitions, withPool]) {
+      const m = OrnamentationMap.createOrnamentationMap()!;
+      m.addOrnamentFromData(data);
+      // the v3 form always writes scale; the v2 form would have omitted it at 0.0... no:
+      // the v2 form omits it only at 1.0, so the discriminating marker is the v3 attribute
+      // itself plus scale being present for a default-constructed (scale 0.0) data object
+      expect(m.getElement(0)!.getAttributeValue('scale')).toBe('0');
+    }
+  });
+});
+
+// ---------------------------------------------------------------
+// The two copies of renderMillisecondsModifiersToMap
+// ---------------------------------------------------------------
+describe('OrnamentationMap — the duplicated millisecond pass', () => {
+  /**
+   * `Performance` carries a private static copy of
+   * {@link OrnamentationMap.renderMillisecondsModifiersToMap}, and **that copy is the one the
+   * pipeline runs** — this class's is Java-parity code no fixture reaches (architecture brief
+   * §2.5, `refactor/log.md:2376-2401`). T19 measured the two bodies character-identical and
+   * ruled the duplication stays, noting that nothing keeps them in step.
+   *
+   * W5 had to edit both (the MPM v3 `ornament.milliseconds.fromend.offset` branch of the D5
+   * amendment), so it leaves this behind: the drift guard that was missing. It is deliberately
+   * two assertions, because either alone can pass while the copies have diverged —
+   * source-text equality would not notice `parseFloat` vs `Number`-shaped semantics if both
+   * were spelled the same way, and behavioural equality on one input would not notice a branch
+   * neither input reaches.
+   */
+  describe('parity between the two copies of renderMillisecondsModifiersToMap', () => {
+    /** A method body, brace to brace, cut out of the TypeScript source. */
+    const methodBody = (relativePath: string, signature: string): string => {
+      const source = readFileSync(
+        join(dirname(fileURLToPath(import.meta.url)), '../../..', relativePath),
+        'utf-8',
+      );
+      const at = source.indexOf(signature);
+      expect(at, `${signature} not found in ${relativePath}`).toBeGreaterThanOrEqual(0);
+      const start = source.indexOf('{', source.indexOf('): void', at));
+      let depth = 0;
+      let end = start;
+      for (; end < source.length; ++end) {
+        if (source[end] === '{') ++depth;
+        else if (source[end] === '}' && --depth === 0) {
+          ++end;
+          break;
+        }
+      }
+      return source.slice(start, end);
+    };
+
+    const performanceCopy = (): string =>
+      methodBody(
+        'src/mpm/elements/Performance.ts',
+        'private static renderMillisecondsModifiersToMap',
+      );
+    const ornamentationCopy = (): string =>
+      methodBody(
+        'src/mpm/elements/maps/OrnamentationMap.ts',
+        'static renderMillisecondsModifiersToMap',
+      );
+
+    it('has the same body in both files, token for token', () => {
+      const collapse = (body: string) => body.replace(/\s+/g, ' ').trim();
+      expect(collapse(performanceCopy())).toBe(collapse(ornamentationCopy()));
+    });
+
+    it('has the v3 fromend branch in both, character for character', () => {
+      const branch = (body: string) => {
+        const at = body.indexOf('const ornamentMillisecondsFromEndAtt');
+        expect(at).toBeGreaterThanOrEqual(0);
+        return body.slice(at, body.indexOf('const millisecondsDateEndAtt', at));
+      };
+      expect(branch(performanceCopy())).toBe(branch(ornamentationCopy()));
+    });
+
+    it('computes the same result from both, on an input that reaches every branch', () => {
+      // One note per branch of the pass: a plain onset offset, an absolute duration, a
+      // note-off shift, the v3 end-anchored offset, and one with no marker at all.
+      const build = (): GenericMap => {
+        const map = GenericMap.createGenericMap('score')!;
+        const note = (id: string, markers: Record<string, string>) => {
+          const n = makeNote(id, 0, 60, {
+            'milliseconds.date': '1000',
+            'milliseconds.date.end': '2000',
+            ...markers,
+          });
+          map.addElement(n);
+          return n;
+        };
+        note('plain', {});
+        note('offset', { 'ornament.milliseconds.date.offset': '-30' });
+        note('absolute', {
+          'ornament.milliseconds.date.offset': '-30',
+          'ornament.milliseconds.duration': '250',
+        });
+        note('shift', {
+          'ornament.milliseconds.date.offset': '-30',
+          'ornament.noteoff.shift': 'true',
+        });
+        note('fromEnd', { 'ornament.milliseconds.fromend.offset': '-90' });
+        note('fromEndShift', {
+          'ornament.milliseconds.fromend.offset': '-90',
+          'ornament.noteoff.shift': 'true',
+        });
+        note('fromEndAbsolute', {
+          'ornament.milliseconds.fromend.offset': '-90',
+          'ornament.milliseconds.duration': '250',
+        });
+        return map;
+      };
+      const read = (map: GenericMap): string[] =>
+        map
+          .getAllElementsOfType('note')
+          .map(
+            (e) =>
+              `${e.getValue().getAttributeValue('xml:id')}:` +
+              `${e.getValue().getAttributeValue('milliseconds.date')}/` +
+              `${e.getValue().getAttributeValue('milliseconds.date.end')}`,
+          );
+
+      const viaOrnamentationMap = build();
+      OrnamentationMap.renderMillisecondsModifiersToMap(
+        viaOrnamentationMap,
+        OrnamentationMap.createOrnamentationMap(),
+      );
+
+      const viaPerformance = build();
+      // `private static`, so the cast is the only way in; it is a member of the emitted class
+      // like any other, and reaching it here is the whole point of the test.
+      (
+        Performance as unknown as {
+          renderMillisecondsModifiersToMap: (
+            map: GenericMap,
+            ornamentationMap: OrnamentationMap | null,
+          ) => void;
+        }
+      ).renderMillisecondsModifiersToMap(viaPerformance, OrnamentationMap.createOrnamentationMap());
+
+      expect(read(viaPerformance)).toEqual(read(viaOrnamentationMap));
+      // and the values are the ones the semantics call for, so the test is not just
+      // "two wrongs agree"
+      expect(read(viaOrnamentationMap)).toEqual([
+        'plain:1000/2000',
+        'offset:970/2000',
+        'absolute:970/1220',
+        'shift:970/1970',
+        'fromEnd:1910/2000',
+        'fromEndShift:1910/2910',
+        'fromEndAbsolute:1910/2160',
+      ]);
     });
   });
 });

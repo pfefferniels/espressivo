@@ -110,8 +110,19 @@ describe('Mpm', () => {
       const mpm = Mpm.createMpm();
       expect(mpm.isInNamespace('nonExistentElement')).toBe(false);
       expect(mpm.isInNamespace('div')).toBe(false);
-      expect(mpm.isInNamespace('note')).toBe(false);
+      expect(mpm.isInNamespace('score')).toBe(false);
       expect(mpm.isInNamespace('')).toBe(false);
+    });
+
+    // INVERTED by W5, deliberately. This assertion used to read `isInNamespace('note')` ===
+    // false, which was right for MPM v2 — the name existed only in MSM. MPM v3 gives an
+    // `<ornament>` a pool of `<note>` children (DESIGN.md D1, spec `note.xml`), so the name is
+    // now part of the MPM vocabulary and reporting it as foreign would be the bug. The
+    // rejection above keeps its strength with `score`, an MSM map name MPM genuinely does not
+    // have. Journaled in ornamentation/LOG.md under "W5 implementer".
+    it('should recognize the MPM v3 ornament pool note', () => {
+      const mpm = Mpm.createMpm();
+      expect(mpm.isInNamespace('note')).toBe(true);
     });
 
     // Two names in the Java vocabulary are typos: a trailing space in 'accentuation '

@@ -480,7 +480,7 @@ export class Performance extends AbstractXmlSubtree {
     const pedalMap = Performance.addMsmMapToList('pedalMap', globalDated, maps);
     const collected: CollectedMaps = { maps, timeSignatureMap, pedalMap };
 
-    this.renderGlobalOrnamentation(clone, mpm.ornamentation);
+    this.renderGlobalOrnamentation(clone, mpm.ornamentation, ctx);
     Performance.renderGlobalMilliseconds(this.renderGlobalTiming(collected, mpm), mpm, ctx);
 
     return timeSignatureMap;
@@ -503,7 +503,11 @@ export class Performance extends AbstractXmlSubtree {
    * where this skips it when the map is null; that method only reads, so nothing depends
    * on it running.
    */
-  private renderGlobalOrnamentation(clone: Msm, ornamentationMap: OrnamentationMap | null): void {
+  private renderGlobalOrnamentation(
+    clone: Msm,
+    ornamentationMap: OrnamentationMap | null,
+    ctx: RenderContext,
+  ): void {
     if (ornamentationMap !== null) {
       const affectedParts = this.getAllMsmPartsAffectedByGlobalMap(clone, ORNAMENTATION_MAP);
       const mapsToOrnament: GenericMap[] = [];
@@ -517,7 +521,7 @@ export class Performance extends AbstractXmlSubtree {
           }
         }
       }
-      ornamentationMap.renderGlobalOrnamentationMap(mapsToOrnament);
+      ornamentationMap.renderGlobalOrnamentationMap(mapsToOrnament, ctx);
     }
   }
 
@@ -712,7 +716,7 @@ export class Performance extends AbstractXmlSubtree {
 
     for (const m of collected.maps) if (mpm.rubato !== null) mpm.rubato.renderRubatoToMap(m);
 
-    if (mpm.ornamentation !== null) mpm.ornamentation.renderOrnamentationToMap(score);
+    if (mpm.ornamentation !== null) mpm.ornamentation.renderOrnamentationToMap(score, ctx);
 
     return { ...collected, channelVolumeMap, positionMap };
   }
@@ -862,6 +866,13 @@ export class Performance extends AbstractXmlSubtree {
    * 1. `ornament.milliseconds.date.offset` shifts `milliseconds.date` by the offset.
    *    `millisecondsDate` keeps the value read *before* that write, and every case below
    *    uses that pre-shift value plus the offset — never the re-read attribute.
+   * 1b. `ornament.milliseconds.fromend.offset` — the one addition MPM v3 makes to this pass
+   *    (DESIGN.md's D5 amendment, journaled in ornamentation/LOG.md). It states the onset
+   *    relative to the note's millisecond END, which is the only way to express a frame
+   *    aligned `at end` in a domain that does not exist yet when the ornament is rendered.
+   *    It resolves to an ordinary onset shift, so cases 2–4 are untouched by it. The branch
+   *    is character-identical to `OrnamentationMap`'s copy and a test pins that (see the
+   *    copy note below).
    * 2. `ornament.milliseconds.duration` sets an **absolute** end:
    *    `date + offset + duration`, written to `milliseconds.date.end` if it exists and
    *    *added* to the note if it does not. This is the add-attribute-if-absent case; the
@@ -888,6 +899,28 @@ export class Performance extends AbstractXmlSubtree {
       if (ornamentMillisecondsDateAtt !== null) {
         ornamentMillisecondsDateOffset = parseFloat(ornamentMillisecondsDateAtt.getValue());
         millisecondsDateAtt.setValue(String(millisecondsDate + ornamentMillisecondsDateOffset));
+      }
+
+      // MPM v3 (DESIGN.md D5 amendment): a millisecond frame aligned "at end" is anchored at
+      // this note's millisecond END, which the symbolic phase cannot know, so it writes an
+      // end-anchored marker instead of an onset offset. Resolving it into
+      // ornamentMillisecondsDateOffset is what keeps the rest of this method v2: the absolute
+      // duration and the note-off shift below go on reading one offset and mean by it exactly
+      // what they meant before. The end is read BEFORE anything writes to it, like every other
+      // value in this loop, and a note without one cannot be placed from its end at all.
+      const ornamentMillisecondsFromEndAtt = attribute(
+        'ornament.milliseconds.fromend.offset',
+        note,
+      );
+      if (ornamentMillisecondsFromEndAtt !== null) {
+        const millisecondsDateEndBeforeAtt = attribute('milliseconds.date.end', note);
+        if (millisecondsDateEndBeforeAtt !== null) {
+          const millisecondsDateFromEnd =
+            parseFloat(millisecondsDateEndBeforeAtt.getValue()) +
+            parseFloat(ornamentMillisecondsFromEndAtt.getValue());
+          ornamentMillisecondsDateOffset = millisecondsDateFromEnd - millisecondsDate;
+          millisecondsDateAtt.setValue(String(millisecondsDateFromEnd));
+        }
       }
 
       const millisecondsDateEndAtt = attribute('milliseconds.date.end', note);

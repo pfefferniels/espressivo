@@ -168,8 +168,10 @@ Options, all optional:
 - **`ConvertOptions`** — `ppq` (tick grid floor, default 720, raised automatically if the source
   needs a finer grid), `dontUseChannel10`, `ignoreExpansions`, `cleanup`, `sourceName` (the name
   written into the MPM metadata's related-resource entry; set it to reproduce byte for byte what
-  the file-based Java path produces).
-- **`PerformOptions`** — `performance` (name or index), `seed`, `movementSampleMaxStep`.
+  the file-based Java path produces), `expandOrnaments` (write MEI trills, mordents and turns into
+  the MPM as ornaments — default true; see below).
+- **`PerformOptions`** — `performance` (name or index), `seed`, `movementSampleMaxStep`,
+  `expandOrnaments` (let the MPM's ornaments generate their notes — default true).
 - **`MidiOptions`** — `generateProgramChanges`; `renderMidi` also takes `bpm` (default 120).
 
 > **`seed` is not a promise of reproducible output.** Where two imprecision offsets land on the
@@ -207,6 +209,54 @@ and returns `null`** instead of throwing, and its XML tree is mutable. The facad
 to keep that inside. Mixing the two is fine — the facade is additive, and both were proven to
 produce identical bytes.
 
+## Ornamentation: MEI signs become real notes
+
+A `<trill>`, `<mordent>` or `<turn>` in the MEI is not a note, and most tools leave it that way.
+espressivo implements the **MPM v3 ornamentation model**, so an ornament sign becomes an MPM
+`<ornament>` carrying the notes it plays — a note pool, the playing order (`|: #a #b :|` for a
+repeated figure), and an `<ornamentDef>` saying where in time the figure sits and how it is
+spaced — and the renderer then generates those notes into the performance.
+
+Nothing extra is needed to get it. `convertMeiToMsmMpm` writes the ornaments, `performMsm` plays
+them, and the trill in `composite_advanced.mei` comes out of `performMsmToData` as three sounding
+notes where the score had one:
+
+| `id`      | `pitch` | `milliseconds` | `ornamented` | `ornamentSource` | `ornamentSlot` | `ornamentAnchor` |
+| --------- | ------- | -------------- | ------------ | ---------------- | -------------- | ---------------- |
+| `n20`     | 74      | 7500 → 7767.94 | `true`       | `tr1_n0`         | 0              | `n20`            |
+| `meico_…` | 76      | 7767.94 → 8000 | `true`       | `tr1_n1`         | 1              | `n20`            |
+| `meico_…` | 74      | 8000 → 8125    | `true`       | `tr1_n0`         | 2              | `n20`            |
+
+All three also carry `ornamentRef: "tr1"`, the `xml:id` of the ornament that produced them.
+
+Every generated note says where it came from, so you can join a performance back to the score
+without parsing the ornament yourself: `ornamentRef` names the `<ornament>`, `ornamentSource` the
+token in its playing order, `ornamentSlot` the position in the expanded figure, `ornamentPass` the
+repetition it belongs to, and **`ornamentAnchor` the score note the whole figure decorates** —
+which is the field to key on, because generated `id`s are fresh per run. `ornamented` is also true
+for a note an ornament merely _altered_: the head of the original note that survives in front of
+an end-aligned figure, and any note an MPM v2 ornament shifts or shades.
+
+Hand-written MPM gets the whole model, not just what the MEI signs use: note pools with absolute
+pitches or chromatic and diatonic intervals (resolved against the score's key signature), chords
+and repetition groups in `note.order`, `repetitions`, `alignment="at end"`, frame values in ticks,
+milliseconds or percent of the note's duration, all three `noteoff.shift` modes, and dynamics
+gradients across the figure.
+
+Two switches, both defaulting to on, and they compose:
+
+```ts
+convertMeiToMsmMpm(mei, { expandOrnaments: false }); // don't write ornaments into the MPM
+performMsm(movement, { expandOrnaments: false }); // keep them in the MPM, don't play them
+```
+
+**This is the one feature not covered by the equivalence claim below**: Java meico does not
+implement MPM v3, so there is nothing to be byte-identical to. It is verified against the
+specification and hand-computed vectors instead, and every decision that goes beyond what the spec
+fixes — including where this deliberately differs from the unmerged Java branch that also
+implements v3 — is written up in [PARITY.md §6](PARITY.md). MPM **v2** ornamentation is unchanged
+and stays inside the equivalence claim.
+
 ## Equivalence with Java meico
 
 The port's correctness criterion is not "passes its tests", it is **"produces what meico
@@ -222,9 +272,9 @@ produces"**. That is enforced mechanically:
   equivalence event by event, and the MIDI export pipeline. They auto-discover every `.mei` fixture, so a missing reference is
   a **failure, not a skip**, and they canonicalize generated `meico_<uuid>` identifiers by
   first-occurrence order — which keeps `goto` → `marker` wiring verifiable rather than deleting it.
-- **2338 tests across 59 files**, run as a gate (`npm run verify` = clean build + typecheck of the
+- **3064 tests across 68 files**, run as a gate (`npm run verify` = clean build + typecheck of the
   test sources + the full suite) before every single commit of the refactor that produced this
-  codebase.
+  codebase, and of the ornamentation work that followed it.
 - **Byte probes for every refactor.** Beyond the suite, each structural change was proven with a
   pipeline probe: all fixtures pushed through MSM, MPM, augmented MSM, raw MIDI and expressive
   MIDI on both the old and the new tree, hashed, and compared — plus emitted-JavaScript diffs to
@@ -237,9 +287,13 @@ produces"**. That is enforced mechanically:
   truth regenerated from it.
 
 What this does **not** claim: imprecision output is nondeterministic by design and is never
-byte-compared (see [PARITY.md §4](PARITY.md)), and a short list of behaviours on malformed or
+byte-compared (see [PARITY.md §4](PARITY.md)); a short list of behaviours on malformed or
 unreachable input still differs from the reference — those are enumerated in
-[PARITY.md §2](PARITY.md) rather than fixed.
+[PARITY.md §2](PARITY.md) rather than fixed; and **MPM v3 ornamentation is not covered by the
+equivalence claim at all**, because the Java library does not implement it. That feature is
+verified against the specification and hand-computed vectors instead, in its own fixture
+directory, and it is documented separately in [PARITY.md §6](PARITY.md) — including the proof
+that it moves no byte of anything above.
 
 ### Where this deliberately differs from Java
 

@@ -8,3 +8,9 @@ tests/integration/fixtures/
 
 # Swarm coordination journal — hand-formatted, reflowing it would churn the log.
 refactor/
+
+# The MPM v3 ornamentation programme's journal, charter, design doc, research reports and
+# probe tools. Same rationale as refactor/ above, and one more: LOG.md is append-only, so a
+# reformat would rewrite ~400 lines inside already-committed waves' entries. The two probe
+# tools are byte gates — they are copies of the refactor swarm's and must stay comparable.
+ornamentation/

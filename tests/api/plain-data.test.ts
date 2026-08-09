@@ -31,11 +31,33 @@ const movementInput = { msm: allMaps('movement', 'msm'), mpm: allMaps('movement'
 const meiMovement = () => convertMeiToMsmMpm(mei('comprehensive'), { sourceName: 'x.mei' })[0];
 
 /**
+ * An MPM v3 document whose ornament generates notes, so that the walks below actually visit
+ * the six ornamentation fields (D15) carrying values rather than the six nulls every
+ * unornamented note reports. `turn-atstart` puts four generated notes and two untouched ones
+ * in the same part, which covers both shapes in one value.
+ */
+const V3_FIXTURES = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'integration',
+  'fixtures-v3',
+);
+const ornamentedInput = {
+  msm: readFileSync(join(V3_FIXTURES, 'turn-atstart.msm'), 'utf-8'),
+  mpm: readFileSync(join(V3_FIXTURES, 'turn-atstart.mpm'), 'utf-8'),
+};
+
+/**
  * Every facade return type, each produced by a fresh call so the "two calls" tests can ask
  * for the same value twice. `json` is false for the `Uint8Array` payloads, which RULE F3
  * exempts from the JSON leg.
+ *
+ * `freshIds` marks a sample whose *values* legitimately differ between two calls: a generated
+ * ornament note draws a `meico_<uuid>` id per render. That is a property of the renderer, not
+ * of the plain-data contract — every leg here still applies, and only the value-equality
+ * comparison of two separate calls has to canonicalise those ids first.
  */
-const samples: { name: string; call: () => unknown; json: boolean }[] = [
+const samples: { name: string; call: () => unknown; json: boolean; freshIds?: true }[] = [
   { name: 'convertMeiToMsmMpm', call: () => convertMeiToMsmMpm(mei('simple_notes')), json: true },
   { name: 'listPerformances', call: () => listPerformances(meiMovement().mpm), json: true },
   { name: 'performMsm', call: () => performMsm(movementInput), json: true },
@@ -47,7 +69,31 @@ const samples: { name: string; call: () => unknown; json: boolean }[] = [
   },
   { name: 'renderMidi', call: () => renderMidi({ msm: movementInput.msm }), json: false },
   { name: 'renderExpressiveMidi', call: () => renderExpressiveMidi(movementInput), json: false },
+  {
+    name: 'performMsmToData (MPM v3 ornamentation)',
+    call: () => performMsmToData(ornamentedInput),
+    json: true,
+    freshIds: true,
+  },
 ];
+
+/**
+ * The same value with every `meico_<uuid>` id replaced by `generated-N` in first-occurrence
+ * order — the convention `ornamentation-v3.test.ts` established.
+ *
+ * It goes through JSON rather than walking the tree because the value is plain data by the
+ * time it is called (every caller runs `checkPlainData` first), and a string round trip
+ * cannot accidentally preserve a reference the comparison is meant to distinguish.
+ */
+function canonicaliseGeneratedIds(value: unknown): unknown {
+  const seen = new Map<string, string>();
+  return JSON.parse(
+    JSON.stringify(value).replace(/meico_[0-9a-f-]{36}/g, (id) => {
+      if (!seen.has(id)) seen.set(id, `generated-${seen.size + 1}`);
+      return seen.get(id)!;
+    }),
+  ) as unknown;
+}
 
 /**
  * Every node of a facade value, with a readable path for the failure message.
@@ -155,6 +201,8 @@ describe('facade outputs are plain data (RULE F1)', () => {
         expect(structuredClone(value)).toEqual(value);
       });
 
+      // A single call's own value is stable, so `freshIds` does not weaken any leg above.
+
       it('survives postMessage to another thread unchanged', async () => {
         const value = call();
         checkPlainData(value);
@@ -179,6 +227,33 @@ describe('facade outputs are plain data (RULE F1)', () => {
     expect(cloned).toEqual(bytes);
   });
 
+  it('walks the ornamentation fields with values in them, not six nulls (D15)', () => {
+    // A control for the v3 sample above. Every leg of this suite would pass for a note whose
+    // six ornamentation fields were all null or all absent, so this pins that the value being
+    // walked actually contains a populated string, a populated number and a boolean `true` —
+    // and that the flag/`null` shape of an *un*ornamented note is present in the same value.
+    const notes = performMsmToData(ornamentedInput).parts.flatMap((p) => p.notes);
+    const generated = notes.filter((n) => n.ornamented);
+    const untouched = notes.filter((n) => !n.ornamented);
+
+    expect(generated.length).toBeGreaterThan(0);
+    expect(untouched.length).toBeGreaterThan(0);
+    for (const note of generated) {
+      expect(typeof note.ornamentRef).toBe('string');
+      expect(typeof note.ornamentSource).toBe('string');
+      expect(typeof note.ornamentAnchor).toBe('string');
+      expect(Number.isInteger(note.ornamentSlot)).toBe(true);
+    }
+    for (const note of untouched)
+      expect([
+        note.ornamentRef,
+        note.ornamentSource,
+        note.ornamentSlot,
+        note.ornamentPass,
+        note.ornamentAnchor,
+      ]).toEqual([null, null, null, null, null]);
+  });
+
   it('never exposes an XomTypes node, not even one level down', () => {
     // The failure this forbids: a `readonly` wrapper around a live XML node would satisfy the
     // type system, pass a shallow eyeball check, and fail both tests above.
@@ -194,11 +269,15 @@ describe('facade outputs are plain data (RULE F1)', () => {
 });
 
 describe('facade outputs support referential-equality memoization (RULE I3)', () => {
-  for (const { name, call } of samples) {
+  for (const { name, call, freshIds } of samples) {
     it(`${name}: two calls with equal inputs are value-equal but share no references`, () => {
       const first = call();
       const second = call();
-      expect(second).toEqual(first);
+      if (freshIds === true)
+        expect(canonicaliseGeneratedIds(second)).toEqual(canonicaliseGeneratedIds(first));
+      else expect(second).toEqual(first);
+      // Unconditional, and the point of the case: the reference check reads the raw values,
+      // so a canonicalised comparison never stands in for it.
       checkNoSharedReferences(first, second);
     });
   }

@@ -30,6 +30,8 @@ export default defineConfig({
         'src/mei/Mei.ts',
         'src/mei/mpmNoteIds.ts',
         'src/mei/Mei2MsmMpmConverter.ts',
+        'src/mei/MeiOrnamentExpander.ts',
+        'src/mei/ornamentsDict.ts',
         'src/msm/**/*.ts',
         'src/mpm/**/*.ts',
         'src/midi/Midi.ts',

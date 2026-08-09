@@ -141,6 +141,14 @@ function checkConvertOptions(options: ConvertOptions | undefined): void {
     throw new InvalidOptionError(
       'sourceName must be a non-empty name; omit it for the file-less variant',
     );
+
+  // Checked rather than coerced, for the same reason as the render-side flag next door: a
+  // falsy-but-not-false value from an untyped caller would read as "expand" and silently author
+  // ornaments the caller meant to suppress.
+  if (options.expandOrnaments !== undefined && typeof options.expandOrnaments !== 'boolean')
+    throw new InvalidOptionError(
+      `expandOrnaments must be a boolean, got ${String(options.expandOrnaments)}`,
+    );
 }
 
 function checkPerformOptions(options: PerformOptions | undefined): void {
@@ -157,12 +165,23 @@ function checkPerformOptions(options: PerformOptions | undefined): void {
       `movementSampleMaxStep must be a positive finite number, got ${String(options.movementSampleMaxStep)}` +
         ' — the movement subdivision compares against it and never terminates at zero',
     );
+
+  // Checked rather than coerced: `expandOrnaments: 0` from an untyped caller would otherwise
+  // read as "expand", the opposite of what was meant, and silently render the ornaments.
+  if (options.expandOrnaments !== undefined && typeof options.expandOrnaments !== 'boolean')
+    throw new InvalidOptionError(
+      `expandOrnaments must be a boolean, got ${String(options.expandOrnaments)}`,
+    );
 }
 
 /** The interior's own options object (§2.4). Defaults are resolved inside `src/mpm/`, not here. */
 function toRenderOptions(options: PerformOptions | undefined): RenderOptions {
   checkPerformOptions(options);
-  return { seed: options?.seed, movementSampleMaxStep: options?.movementSampleMaxStep };
+  return {
+    seed: options?.seed,
+    movementSampleMaxStep: options?.movementSampleMaxStep,
+    expandOrnaments: options?.expandOrnaments,
+  };
 }
 
 function selectPerformance(mpm: Mpm, which: string | number | undefined): Performance {
@@ -214,6 +233,57 @@ function optionalNumber(name: string, e: Element): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+/** A string attribute that may be absent, as RULE N4 wants it: absence spelled `null`. */
+function optionalString(name: string, e: Element): string | null {
+  const a = attribute(name, e);
+  return a === null ? null : a.getValue();
+}
+
+/**
+ * Every `ornament.*` attribute the ornamentation renderer can leave on a `<note>` — the
+ * complete evidence behind {@link PerformedNote.ornamented}.
+ *
+ * Enumerated rather than matched by prefix because `Element` offers no way to iterate an
+ * element's attributes, and a closed list is the better bargain here anyway: it is what a
+ * reader can check against the writers, which are exactly five.
+ *
+ * - `ornament.dynamics` — `DynamicsGradient.apply`, the velocity offset.
+ * - `ornament.date.offset` / `ornament.duration` — `TemporalSpread.apply` in the tick domain,
+ *   folded into `date.perf` / `duration.perf` by `OrnamentationMap`'s second pass.
+ * - `ornament.milliseconds.date.offset` / `ornament.milliseconds.duration` — the same pair in
+ *   the millisecond domain, folded by the third pass.
+ * - `ornament.noteoff.shift` — `TemporalSpread.apply` and the v3 renderer, on the notes whose
+ *   note-off travels with their onset.
+ * - `ornament.milliseconds.fromend.offset` — the v3 renderer's end-anchored millisecond
+ *   marker, the one branch MPM v3 adds to the third pass.
+ * - `ornament.carved` — the v3 renderer's `carve`, on the **head leftover**: the surviving
+ *   principal of an end-aligned ornament, shortened so the generated notes fit after it. It is
+ *   the one alteration v3 makes to a note the score already had, and the only reason this list
+ *   is not simply "the markers a *generated* note carries". Ruled in (D10/D15, LOG.md
+ *   2026-08-09) because without it a demonstrably shortened note reported `ornamented: false`
+ *   while this module's own type promised the opposite.
+ * - the last six — the v3 renderer's provenance stamp on a generated note.
+ *
+ * Reading them here rather than in an ornament-shaped mirror of the notes is deliberate: §2's
+ * rule against a second representation applies to ornaments as much as to notes.
+ */
+const ORNAMENT_MARKER_ATTRIBUTES: readonly string[] = [
+  'ornament.dynamics',
+  'ornament.date.offset',
+  'ornament.duration',
+  'ornament.noteoff.shift',
+  'ornament.milliseconds.date.offset',
+  'ornament.milliseconds.duration',
+  'ornament.milliseconds.fromend.offset',
+  'ornament.carved',
+  'ornament.generated',
+  'ornament.ref',
+  'ornament.source',
+  'ornament.slot',
+  'ornament.pass',
+  'ornament.anchor',
+];
+
 /** The parts of an MSM, in document order — the order that decides MIDI track order. */
 function partElements(msm: Msm): Element[] {
   const root = msm.getRootElement();
@@ -249,6 +319,15 @@ function readNote(note: Element): PerformedNote {
     duration: duration as Ticks,
     velocity: (optionalNumber('velocity', note) ?? 100) as Midi7Bit,
     milliseconds: { date: msDate as Milliseconds, end: msEnd as Milliseconds },
+    ornamented: ORNAMENT_MARKER_ATTRIBUTES.some((name) => attribute(name, note) !== null),
+    ornamentRef: optionalString('ornament.ref', note),
+    ornamentSource: optionalString('ornament.source', note),
+    // `optionalNumber` rather than a parse of the raw text: the renderer writes plain
+    // integers, and a hand-edited MSM that writes something else reports null rather than the
+    // `NaN` that would not survive RULE F1's JSON round trip.
+    ornamentSlot: optionalNumber('ornament.slot', note),
+    ornamentPass: optionalNumber('ornament.pass', note),
+    ornamentAnchor: optionalString('ornament.anchor', note),
   };
 }
 
@@ -382,6 +461,12 @@ export function convertMeiToMsmMpm(
     options?.dontUseChannel10 ?? true,
     options?.ignoreExpansions ?? false,
     options?.cleanup ?? true,
+    // Defaulted to true HERE and to false in the converter, deliberately. The facade is this
+    // library's product surface and mirrors PR #32's CLI, where expansion is on unless
+    // `--ignore-ornaments` says otherwise; the converter's own default keeps the direct
+    // `new Mei2MsmMpmConverter(…).convert(…)` path — the one the MEI equivalence suites drive,
+    // and the one Java's converter corresponds to — free of MPM the Java reference never wrote.
+    options?.expandOrnaments ?? true,
   );
   const converted = converter.convert(document);
   const msms = converted.getKey();
@@ -530,7 +615,12 @@ export function renderExpressiveMidi(
 
   let midi;
   if (input.mpm === undefined) {
-    for (const field of ['performance', 'seed', 'movementSampleMaxStep'] as const)
+    for (const field of [
+      'performance',
+      'seed',
+      'movementSampleMaxStep',
+      'expandOrnaments',
+    ] as const)
       if (options?.[field] !== undefined)
         throw new InvalidOptionError(
           `${field} has no effect without an MPM: with no performance to apply, the MSM is rendered as it stands`,
