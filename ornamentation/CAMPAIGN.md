@@ -72,6 +72,15 @@ fallback but its own schematron requires it. Policy direction: lenient reader (a
 v2 `frame.start`, suffix-less values, `time.unit` fallback), canonical v3 writer —
 final call in DESIGN.md after research lands.
 
+## Stakeholder obligations (mpmify ML program, settled 2026-08-09)
+
+The mpmify session (ListAgents name `mpmify-32`; socket uds:/tmp/cc-socks/16120.sock)
+consumes this work for ML supervision (their v5 wave). Settled: D10 provenance
+extension (ornament.source/slot/pass — their label set); they key supervision on
+provenance attrs + (part,date,pitch,slot), never generated ids; they emit
+spec-strict+suffixed v3. OWED PINGS: (1) when W7's facade fields land on the branch,
+(2) when the merge to main happens. Keep these promises.
+
 ## Invariants
 
 1. Never write outside this worktree + scratchpad (exceptions: memory dir; nothing else).
