@@ -11919,3 +11919,370 @@ satisfied: strict tightening, verifier-signed, conductor-applied. Verify green 2
 NOTED for T23: the all-maps suite still carries `if (!existsSync(...)) return;` skips
 (lines ~182/193) — the missing-reference-is-a-failure hardening from the proof-harness
 era covered the MEI-driven suites only; T23 should record a disposition.
+
+## [T23] FINAL AUDIT — PASS, with five non-blocking findings (2026-08-09)
+
+Fresh adversarial context, no inherited assumptions. Every number below was measured by me on
+this tree; where an earlier entry claimed a figure I re-derived it rather than quoting it. The
+question this audit exists to answer is not "was each diff safe" — 28 verifiers already answered
+that — but **"is the composition of 28 safe diffs still the Java reference's behaviour"**, and
+separately whether the record tells the truth about how it got here.
+
+**Verdict: the tree is certified.** One aggregate behaviour change exists across the whole
+program, it is TD3's accentuation fix, and it is exactly the change the ground-truth regeneration
+encodes. Nothing else moved.
+
+---
+
+### 1. Aggregate behaviour: a differential over both builds, not a re-read of both diffs
+
+`git diff 62c125f HEAD -- src/` is ~40 000 lines and reading it proves nothing about
+composition, so I built the **baseline commit** into a scratch tree
+(`t23audit/basebuild`, `tsc` exit 0, 72 emitted `.js`) and ran an identical probe against both
+builds. The legacy class API (`Mei.fromXml` → `Mei2MsmMpmConverter` → `KeyValue` →
+`perform` → `exportMidi`/`exportExpressiveMidi`) survives at HEAD, so one probe runs unmodified
+on both — `t23audit/pipeprobe.mjs`, 180 recorded values:
+
+| group | values |
+|---|---|
+| 16 MEI fixtures × {convert, MSM xml, MPM xml, perf count, augmented MSM, raw MIDI bytes, expressive MIDI bytes} | 112 |
+| 8 all-maps fixtures × {augmented MSM, expressive MIDI bytes} | 16 |
+| every `.msm`/`.mpm` in `reference/` + `performance-reference/`, parse→serialize round trip | 48 |
+| manifest keys | 4 |
+
+XML is hashed after canonicalizing `meico_<uuid>` by first-occurrence order and collapsing the
+metadata comment (which carries the file name and the version the rename changed); MIDI is hashed
+raw. **Result: 176 identical, 2 differing, 2 run-unstable.**
+
+- **0 THREW on either build.** Not one input that worked at baseline fails at HEAD.
+- **The 2 run-unstable values are `maps/imprecision_timing#{augmented, midi.expressive}`, and
+  they are unstable on BOTH builds** (each probe run twice). That is PARITY.md §4's documented
+  Java-faithful nondeterminism (`ImprecisionMap.java:845,894`), unchanged in kind or extent.
+- **The 2 differing values are `maps/all_maps#augmented` and
+  `maps/metrical_accentuation#augmented`** — TD3, and nothing else. T20b, TD1, TD2's four fixes
+  and T9b are all invisible here, each for a reason I verified rather than assumed (§2).
+
+**Era-matched ground truth (`t23audit/accprobe.mjs`) — the check that closes TD3.** Each build
+was run against *its own era's* fixtures:
+
+| build | fixtures | `metrical_accentuation` velocities | mismatches vs that era's reference |
+|---|---|---|---|
+| baseline | `62c125f` | 100.0003471017008, …6942034016, …104130510239, …138840680319 | **0 / 8** |
+| HEAD | current | 100.00138888888888, …277777777778, …416666666666, …555555555556 | **0 / 8** |
+
+The buggy and fixed values are exactly the pair TD3's javaFix line predicts. Each build
+reproduces its own reference **exactly**, so the regeneration tracks the source change and does
+not paper over it. `all_maps` disagrees with its reference by ~1.5 velocity units in *both* eras
+— the Java-vs-TS gaussian PRNG divergence the suite filters, present at baseline, not a
+regression; the base→head delta riding on top of it is ~1e-3, i.e. TD3 again.
+
+### 2. Why the other divergences are invisible in §1 — verified, not assumed
+
+- **T20b's `controller` parse fix**: the regenerated `movement.mpm` *does* carry
+  `controller="sustain"`, but `MovementData.controller` defaults to `'sustain'`, so parsing it
+  yields the default. Behaviourally a no-op **on this fixture** — which is what the item claimed
+  and what `MovementMap.test.ts:641` pins with a non-default value.
+- **T20b's fixture churn** (26 files, incl. `movement_expressive.mid` 5074 → 254 bytes) comes
+  from the *generator* switching to normalized 0..1 positions, not from a rendering change; both
+  builds read the same current fixture, hence identical output.
+- **TD1, TD2's four fixes, T9b**: no fixture reaches them, exactly as each item proved. The
+  differential is the aggregate confirmation of four separate per-item claims.
+
+### 3. The three highest-churn surviving files, read semantically
+
+Churn ranked over the 28 `refactor(...)` commits, restricted to files present at HEAD:
+`Mei2MsmMpmConverter.ts` (8734 lines, 6 items), `EventMaker.ts` (3765, 4), `Msm.ts` (3301, 8).
+
+**`Mei2MsmMpmConverter.ts` — the T15 restructure is provably routing-equivalent.** A raw diff
+read is worthless here (a `switch` became a table), so I extracted both dispatch structures and
+compared them as data:
+
+- **118 case labels at baseline, 118 table keys at HEAD, set-identical** — no element gained or
+  lost dispatch.
+- **Per element, the handler-call set AND the descend/skip decision are identical for all 118.**
+  Baseline semantics are `continue` = do not descend, `break` = fall out and run the trailing
+  `this.convertElement(e)`; HEAD is `IGNORE`/`'done'` vs `DESCEND`/`'descend'`. Zero mismatches.
+  (My first pass reported 28 "mismatches" because I read `break` as non-descending — a detector
+  bug, corrected before drawing any conclusion. Worth naming: this census is only as good as its
+  model of the old control flow.)
+- **The null-prototype fix survived T17/T19/T20/T21/TD2/TD3.** Re-ran the routing probe with
+  results stored in a `Map` (so `__proto__` cannot poison the probe, the trap [T15] worker
+  named): all 9 prototype-colliding names — `toString`, `valueOf`, `hasOwnProperty`,
+  `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `constructor`, `__proto__`,
+  `zzUnknownElement` — convert **identically to baseline** (1 MSM, 8 notes, no throw).
+
+**`EventMaker.ts` — the class→module conversion is behaviourally identical.** A token diff is
+2692/3754 lines here and proves nothing, so I ran a differential over the actual surface
+(`t23audit/emprobe.mjs`): every constant by name, every function over an 18×18 numeric grid with
+results rendered structurally.
+
+- **299 shared constants: every value identical.** No mis-transcription survived anywhere in the
+  table (the kind of defect [T20]'s seeded `CC_Sustenuto 66→65` negative control was designed to
+  catch — this confirms none was real).
+- **17 shared functions: identical on every grid point.**
+- **3 symbols absent at HEAD, all accounted**: `byteToShort` deleted by T21 (§8.10 table, its 2
+  tests, its re-export entry — journaled); `TICKS_PER_METER_CLICK` and
+  `THIRTY_SECOND_NOTES_PER_QUARTER` are not deleted but **module-private**, still present at
+  `EventMaker.ts:354-355`, still used at 594-595, and the file documents the choice at 741.
+- The one apparent difference — `byteArrayToInt(-1)` returns a number at baseline and throws at
+  HEAD (`for (let i…)` → `for…of`) — occurs only when a `number` is passed where the signature
+  says `Uint8Array`, which TS forbids. On 9 real `Uint8Array` inputs the two agree exactly,
+  including sign-overflow cases (`-1`, `-2147483648`).
+
+**`Msm.ts` — 851 format-cancelled diff lines, 583 JSDoc-pruned token-diff lines, all classified.**
+Mechanical: T14's local `Helper` class dissolved into module functions (`Helper.getAttribute` →
+`getAttribute`, ~14 sites), T20's `import * as EventMaker`, template literals, optional catch
+binding, non-null-assertion removal, `as Element | null` casts dropped. Deliberate and journaled:
+T9b's `Math.trunc(ppq / …)` at two sites, T19a's `RenderOptions` threaded through
+`exportExpressiveMidi` → `perform`. Three hunks carried real logic and I checked each:
+
+1. **`getFirstChildElement`'s `string | Element` overload deleted** — file-local, never exported;
+   under `strict` the type system guarantees no call site passed an `Element`.
+2. **`cloneElement`'s dead prologue removed** — baseline built a `clone`, ran an **empty**
+   `for` loop over the attribute count, then discarded both and returned `cloneElementImpl(e)`.
+   HEAD is that impl inlined (`fullCopy` → `clone`). The removed `new Element(...)` mints no id,
+   and the suites canonicalize UUIDs by first-occurrence *order*, so an id-order shift would have
+   shown; §1 shows none.
+3. **`origFile`/`dotIdx`/`substring` → `getFilenameWithoutExtension`** — equivalent on all three
+   branches (`i>0` → same substring; `i===0` → whole name; `i===-1` → whole name). Not a rename,
+   a real substitution, and it holds.
+4. **`exportMidi` overloads**: the boolean-first overload is *preserved* (`Msm.ts:983`); only the
+   zero-arg and `bpm`-first declarations merged into `(bpm?, generateProgramChanges?)`. The
+   implementation body is unchanged, `typeof` dispatch included. No narrowing.
+
+**Scaffolding sweep**: `TODO|FIXME|XXX|HACK` across `src/` + `tests/` went **26 → 2**, and both
+survivors are prose *about Java's* TODOs (`Mei2MsmMpmConverter.ts:322`,
+`data/OrnamentData.ts:77`), not leftovers. Nothing was parked and forgotten.
+
+### 4. Fixtures integrity — reproduced from the fork, not merely unchanged
+
+- `git log 62c125f..HEAD -- tests/integration/fixtures/` = **exactly two commits**: `304e90a`
+  (T20b, 26 files) and `9914fd4` (TD3, 4 files, a strict subset of T20b's set). Aggregate diff:
+  26 files, 24+/24− plus 2 binaries. Nothing else, ever.
+- `git diff 62c125f HEAD -- tests/integration/fixtures/mei/` is **empty**. All 16 inputs are the
+  baseline's bytes.
+- Both fixture commits map to authority: T20b to the user's explicit "yes, regenerate"
+  (2026-08-08, recorded in its queue entry), TD3 to the ungating Java commit `meico@1d662105`
+  plus the conductor ruling that escalated it out of TD2.
+
+**Then I regenerated the ground truth myself.** The fork is at `1d662105` — the exact provenance
+recorded in project memory. Per that memory's better recipe I compiled the fork into **my own
+scratch dir** (`javac -d t23audit/javacls`, plus `src/resources`) and ran all three generators
+into scratch outputs. The fork was not modified: `git status` there is the same three untracked
+paths before and after.
+
+| family | files | reproduce bit-exactly |
+|---|---|---|
+| `reference/` | 32 | **32** |
+| `performance-reference/` | 48 | **48** |
+| `all-maps-reference/` | 40 | **38** |
+| | **120** | **118** |
+
+(XML compared after UUID/comment canonicalization; `.mid` compared raw.) The **2 exceptions are
+`imprecision_timing_augmented.msm` and `imprecision_timing_expressive.mid`** — and generating
+all-maps **twice from Java** reproduces every other file but those same two. Java cannot
+reproduce them either. That is the same pair, identified independently, that §1 found unstable in
+the TS port on both builds: three separate measurements converging on one documented cause.
+
+> **Craft note for the memory file — this cost me a false positive.** Compiling only
+> `src/meico/**` into a scratch dir leaves `/resources/instuments.dict` off the classpath;
+> `InstrumentsDictionary` then loads an empty dictionary and **every program change silently
+> becomes 0**. That reported 14 `.mid` mismatches (repo `c0 28` "Violin" vs fresh `c0 00`) which
+> vanished once `src/resources` was copied in. The scratch-compile recipe must copy resources, or
+> it produces confident, wrong parity failures.
+
+### 5. Test-suite health
+
+**Integration suites (invariant 3).** Raw diff is 2358 changed lines; cancelling formatting
+exactly (archive `62c125f`, run the project's prettier config over it, diff that) leaves **45**.
+Every one classified:
+
+| suite | residual | verdict |
+|---|---|---|
+| `midi-export` | 0 | — |
+| `full-xml-equivalence`, `midi-byte-equivalence` | 2 each | `tolerance: number = 0.001` → `tolerance = 0.001` (inference) |
+| `cross-validation` | 2 | `beforeAll` added to the import list; it was already used at line 70 via `globals: true` |
+| `performance-equivalence` | 22 | `Array<T>`→`T[]`, and `parseFloat(x!)` dropped where `x` is already `number` (`normalizeNum` returns `parseFloat`) — same value, no assertion touched |
+| `all-maps-equivalence` | 17 | the TD3 tolerance, **0.01 → 1e-9**, extracted to `NUMERIC_TOLERANCE` with an 11-line rationale |
+
+**The only assertion-strength change in the entire program is a tightening by seven orders of
+magnitude.** No normalization weakened, no filter widened, no glob narrowed: all four
+`readdirSync` suites carry byte-identical discovery predicates to baseline.
+
+**The `existsSync` early-return skips — disposition.** `all-maps-equivalence.test.ts` lines
+182, 193, 212, 249, 265 do `if (!existsSync(...)) return;`. They are **inherited from baseline**
+(they are context, not changed lines, in the cancelled diff) and **cannot fire today** — I
+verified every referenced file exists. But they are silent-pass hazards: delete a reference and
+the test goes green. The other three suites already use the hard form
+(`expect(existsSync(refPath), 'missing Java reference').toBe(true)`).
+**Recommendation: ACCEPT-WITH-NOTE, fix in a follow-up** — it is a five-line mechanical change to
+the strong form, but it is an integration-test edit and belongs under invariant 3 with a
+verifier, not smuggled into a closing audit.
+
+**Test-count ledger (invariant 7c) — reconciles to the digit:**
+
+```
+2113 baseline
+ −1  T3   exportMusicXml test of a removed method
+ −4  T3   correction: 2 Midi.exportMsm + 2 Msm.exportChroma/exportPitches   → 2108
+ +7  T9b                        +9  T20b        +6  TD1        +13 T14
+ +0  T18  +16 T19a  +109 T13  +4  T16  +0 T15/T17/T19  +4  T20              → 2276
+ −8  T21  (6 compat/unsupported + 2 byteToShort, per-test table at log.md:215-218)
+ +1  T22 fix round  +65 TD2  +4  TD3                                        → 2338
+```
+
+Both decreases are journaled with per-test justification and both were verifier-confirmed. No
+test of surviving behaviour was ever removed; T21's three *retargeted* count assertions record
+old and new numbers at the site. Independent run: **59 files / 2338 tests, exit 0**, matching
+README.md:225 exactly.
+
+**Facade and cycles, verified independently of the suite:**
+
+- **Plain data (charter acceptance).** `structuredClone`, a real `MessageChannel.postMessage`
+  hop, and `JSON` round-trip all succeed on `convertMeiToMsmMpm`, `listPerformances`,
+  `performMsm`, `extractPerformanceData`, `performMsmToData`, `renderExpressiveMidi`. A second
+  call returns a **new** value, so referential-equality memoization works.
+- **Cycles.** Every module imported **alone** in its own process: HEAD **79/79 clean**; baseline
+  **1 failure — `mpm/elements/styles/GenericStyle.js`, "Cannot access 'GenericStyle' before
+  initialization"**, precisely the hazard the charter warned about. T18 did what it claimed.
+- **Seed determinism.** Two `{seed: 7}` renders of `imprecision_timing` differ in 9 of 103 data
+  lines. **This is correct, not a defect**: where two imprecision offsets land on the same
+  `milliseconds.date` the interior picks the survivor with a bare `Math.random()`
+  (`ImprecisionMap.java:845,894`), and a `seed` in the MPM outranks `options.seed` anyway — both
+  pinned by `tests/api/determinism.test.ts` and both documented at PARITY.md:415-420. I went
+  looking for a broken contract and found a documented one. Facade battery: **109/109**.
+
+### 6. The [T15] 27 never-dispatched elements — final disposition
+
+Still uncovered at HEAD; no later item added dispatch tests. The 27 arrows are exactly
+`app arpeg artic beatRpt breath bTrem choice del dot fTrem halfmRpt keySig layerDef meterSig
+mRpt mRpt2 multiRpt oLayer oStaff pedal phrase reh restore space syl tie tupletSpan`,
+alongside their 26 uncovered `process*` targets.
+
+**Recommendation: ACCEPT, and treat §3's census as the standing evidence.** The risk that
+mattered — that T15 silently re-wired an element no test would catch — is now **disproven
+statically for all 27**: same handler, same descend/skip decision as the baseline switch, and
+table misses behave like `default: continue`. What remains is not a T15 risk at all but a
+**pre-existing ground-truth gap**: these MEI elements appear in no fixture, so the Java port
+never exercised them either. Closing it means new MEI fixtures carrying `app`/`choice`/`del`/
+`restore`/`pedal`/`phrase`/`tie`/`tupletSpan`/… **and Java-generated references for them** —
+a fixture-expansion project requiring the T20b/TD3 approval discipline, not a refactor item.
+Recording it here as the program's largest known coverage gap, with the routing census as the
+compensating control.
+
+### 7. Final numbers
+
+| gate | value | threshold | verdict |
+|---|---|---|---|
+| `npm run verify` | 59 files / **2338 tests**, both `tsc` stages | green | **PASS** |
+| functions (7a) | **92.6993 %** (965/1041) | ≥ 92.0 | **PASS** |
+| uncovered scoped statements (7b) | **2094** | ≤ 2318 | **PASS** (−199 vs phase-2 start) |
+| test count (7c) | **2338** | decreases justified | **PASS** |
+| statements (indicator) | 86.5786 % (13508/15602) | — | up from 85.0072 |
+| branch (indicator) | 88.0897 % (4164/4727) | — | up from 85.7204 |
+| lint | **1017 errors / 2 warnings** | — | matches lint-debt.md's TD2 row exactly |
+
+Lint composition: 819 `no-non-null-assertion`, 56 `no-unnecessary-condition`, 55
+`no-empty-function`, 39 `no-unused-vars`, 34 `unified-signatures`, 12 `no-explicit-any`, 2
+`no-unsafe-function-type`; 2 `no-param-reassign` warnings. Zero of any rule the program retired.
+
+**Perf smoke vs [T1] — no regression; measured against a same-machine control, because [T1]'s
+absolute numbers are not comparable.** [T1] recorded 4.8 s for the suite; this machine is under a
+different load today, so I timed the **baseline tree right now** as the control:
+
+| | baseline (today) | HEAD (today) | [T1] (2026-08-08) |
+|---|---|---|---|
+| `vitest run` wall | 19.16 s / 2113 tests | **19.70 s / 2338 tests** | 4.8 s / 2113 |
+| cold `tsc` | 16.18 s | **5.59 s** | 2.96 s |
+| 16-fixture full pipeline ×3 | 46.3–51.1 ms/fixture | **31.9–36.8 ms/fixture** | — |
+
+HEAD runs **10.6 % more tests in 2.8 % more wall time**, builds faster, and renders the pipeline
+**~30 % faster per fixture** (identical 681 notes). [T1]'s own caveat — order-of-magnitude sanity,
+not a budget — is satisfied with room to spare.
+
+### 8. Retrospective invariant audit
+
+- **28 `refactor(...)` commits = 28 `done` items**, and every one has both a worker (or architect)
+  and a verifier entry in this journal. **No gaps.**
+- **Zero commits on `main`** — `62c125f..main` is empty; `main` *is* the baseline.
+- **The three known incidents are journaled honestly, and git agrees with the journal:**
+  - **T3's unreviewed post-READY delta.** The correction entry says the commit is "13 D + 9 M"
+    against a verifier manifest of "13 D + 7 M", with `tests/midi/Midi.test.ts` −33 and
+    `tests/msm/Msm.test.ts` −12 never reviewed. `git show --name-status 67b407e` returns
+    **exactly 13 D + 9 M**, and `--numstat` returns **exactly 0/33 and 0/12**. The entry also
+    corrects three documents it had already invalidated, declines to lower the floor it had
+    consumed, and names the process lesson that became the charter's TREE FREEZE rule. This is
+    the strongest entry in the journal precisely because it is against interest.
+  - **T15's routing defect.** Found by the verifier, not the worker; fixed with the verifier's own
+    validated hunk; re-verified. Independently re-confirmed alive at HEAD (§3).
+  - **TD2's escalation.** The worker measured that the brief's premise ("no fixture reaches it")
+    was **false** before touching the tree, escalated, and the conductor re-scoped it to a gated
+    TD3 rather than accepting a fix that would have silently invalidated a reference. The commits
+    match: TD2 ships four fixes and no fixture change; TD3 ships the fifth *with* its regeneration.
+- **Both fixture-touching commits carry authority** (§4), and the 0.01→1e-9 tolerance change
+  carries the invariant-3 verifier sign-off it required.
+
+### 9. Findings — five, none blocking
+
+- **F1 · `tests/midi/Midi.test.ts` fails `prettier --check`.** The tree's *only* formatting
+  deviation, and it is **one stray trailing blank line**. Origin traced: the file is prettier-clean
+  at T2 (`01315c8`) under the project config, T3 is its last toucher, and T3's hunk deletes the
+  file's closing lines. So the program's single leftover cosmetic defect is a direct fingerprint of
+  its single process incident — the post-READY edit that never got a prettier re-run. One
+  `prettier --write` fixes it; not done here, because a final auditor editing `src/`-adjacent files
+  after certification is the same mistake in miniature.
+- **F2 · the five `existsSync` early-return skips** — accept-with-note, fix in follow-up (§5).
+- **F3 · ARCHITECTURE.md §6.3's parity ledger is stale.** It records P1, P2 and P4 as "frozen",
+  which was true *in Phase 3*; TD2 fixed all three in Phase 4. §6.3 carries no forward pointer to
+  PARITY.md as the live ledger (its only mention is "T22 writes all five into a PARITY.md /
+  README section"). A reader landing on §6.3 alone would draw the wrong conclusion about the
+  current tree. One sentence would fix it.
+- **F4 · T16b was never dispositioned.** The architect proposed it (§8.1: reconcile the three
+  XML-navigation implementations), two verifier rounds refined its scope, and T14 and T18 left
+  handoff notes explicitly addressed to it — but it is not in `state.json`'s queue and no entry
+  records a decision to drop it. The duplication is still there at HEAD: `Msm.ts:53,65` and
+  `Mpm.ts:25,37` each keep private `getFirstChildElement`/`getAllChildElements` alongside
+  `xml/tree.ts`. Harmless (~150 lines, no correctness cost, as the architect said) but it should be
+  **explicitly closed or explicitly deferred**, not left as notes addressed to an item that does
+  not exist.
+- **F5 · `lint-debt.md`'s headline is stale, its body is not.** The top block stops at T21's
+  "1011 errors / 2 warnings" and the title still reads "as of T13", while the TD2 section at
+  line 1152 correctly records "1013 → 1019 (1017 errors, 2 warnings)" — which is exactly what I
+  measured. The **number in the file is right**; only the headline is behind.
+
+### 10. Certification
+
+**PASS T23.** The tree delivers the mission on all four counts:
+
+- **Byte-equivalent to Java on the current ground truth.** 2338 tests green; 118/120 references
+  regenerate bit-exactly from fork HEAD `1d662105` and the 2 that do not are ones Java itself
+  cannot reproduce; the all-maps comparison now runs at **1e-9**, where the deviation is measured
+  at **0**.
+- **No aggregate drift.** 180 pipeline values across both builds: 176 identical, 2 identically
+  nondeterministic, 2 explained by TD3 and confirmed against both eras of ground truth.
+- **Idiomatic and architecturally clean.** Zero import cycles (79/79 isolated imports, against a
+  baseline that fails); a plain-data facade that survives `postMessage`; a 118-entry dispatch table
+  proven routing-identical to the switch it replaced; out-of-scope modules excised; 26 → 2
+  scaffolding markers; coverage, lint and test count all better than baseline.
+- **Every divergence documented.** PARITY.md carries all eight fixed bugs with Java citations,
+  the frozen divergences, the bug-for-bug preservations, the nondeterminism, and — the part most
+  ledgers omit — a "what is *not* a divergence" section. I went looking for an undocumented
+  contract break (the seed) and found it already written down, correctly, with the Java line
+  numbers.
+
+**Reservations, stated for the record:** the five findings above are documentation-currency and
+cosmetic items, none affecting behaviour, correctness or the equivalence claim. The one
+substantive gap is not a defect of this program but its inheritance — **27 converter elements no
+fixture has ever exercised** (§6), now covered by a static routing proof rather than by tests.
+If the program has a successor, that is where it should start.
+
+
+## [TD4] conductor — sibling-reported detach no-op, verified and queued (2026-08-09)
+
+The ornamentation-v3 session reported Attribute.detach() as a silent no-op for
+parser-sourced attributes. Verified directly: Element.wrap pushes attributes without
+setting _xomParent (child elements get it; attributes don't), and detach only checks
+that field. This is the unfinished half of the proof-harness-era detach fix. Queued
+as TD4 under the user's fix-all-obvious-bugs directive; sequenced AFTER the in-flight
+T23 verdict with a focused audit addendum before the merge, so the certification
+stays honest.

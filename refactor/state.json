@@ -222,6 +222,14 @@
       "details": "The TD2 wave's fix 2, deferred by conductor ruling (see [TD2] worker finding + conductor ruling in log.md): AccentuationPatternDef.getAccentuationAt segment-end bug IS exercised by the metrical_accentuation all-maps fixture, whose Java-generated reference pins the buggy velocity (100.0003471017008 vs fixed 100.00138888888888; delta 0.00104 hidden by the 0.01 all-maps tolerance). Plan (T20b pattern): (1) mpmify session applies + commits the one-character Java fix in the fork (requested 2026-08-09; ping expected with SHA); (2) TD3 worker mirrors the fix in TS exactly (cite final Java lines), regenerates the metrical_accentuation reference set (GenerateAllMapsReference; only accentuation-related files may change — categorize the diff), inverts the pinning tests with hand-computed FIXED values, PARITY.md Fixed-bugs entry updated from 'pending' to done; (3) evaluate tightening the all-maps numeric tolerance (DISCOVERED: 0.01 hides 1e-3 drift; port currently matches reference exactly, so tightening is safe — propose the value with evidence, needs verifier sign-off under invariant 3). Full TD1-discipline evidence."
     },
     {
+      "id": "TD4",
+      "phase": 4,
+      "status": "pending",
+      "title": "Fix Attribute.detach silent no-op for parser-sourced attributes",
+      "details": "Reported by the ornamentation-v3 sibling (verified by conductor in source, 2026-08-09): Element.wrap fills _attributes with new Attribute(...) without setting _xomParent (child elements DO get it, ~XomTypes.ts:420); Attribute.detach() (XomTypes.ts:259) only acts if _xomParent is set — so detach on any parser-sourced attribute is a silent no-op. Live consequence: TemporalSpread.setId(null)/DynamicsGradient.setId(null) leave stale xml:id in serialized XML for parser-sourced elements. This is the unfinished half of the proof-harness-era detach fix (which covered constructed elements only). Fix: set the attribute's parent in wrap (or route through addAttribute if its semantics are side-effect-identical — worker verifies which is behavior-safe); tests: parser-sourced setId(null) round-trip (serialize, assert no stale xml:id) for both def classes + a direct wrap+detach unit test; byte-probe: serialization of all fixtures unchanged (the fix only ENABLES detach, must not alter any other serialization path — argue and prove); PARITY.md Fixed-bugs entry. SEQUENCING: runs AFTER T23's verdict; auditor-T23 then does a focused addendum on the TD4 delta before the merge. Small item, TD1 discipline.",
+      "order": "after T23 verdict, before merge"
+    },
+    {
       "id": "T23",
       "phase": 4,
       "status": "in_progress",
