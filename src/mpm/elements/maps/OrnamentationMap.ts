@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, firstChildElement, getAttributeValue } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE, ORNAMENTATION_STYLE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { OrnamentData } from './data/OrnamentData.js';
@@ -54,7 +54,7 @@ export class OrnamentationMap extends GenericMap {
     noteOrder: string[] | null = null,
     id: string | null = null,
   ): number {
-    const ornament = new Element('ornament', Mpm.MPM_NAMESPACE);
+    const ornament = new Element('ornament', MPM_NAMESPACE);
     ornament.addAttribute(new Attribute('date', String(date)));
     ornament.addAttribute(new Attribute('name.ref', nameRef));
     if (scale !== 1.0) ornament.addAttribute(new Attribute('scale', String(scale)));
@@ -114,7 +114,7 @@ export class OrnamentationMap extends GenericMap {
         break;
       }
     }
-    od.style = this.getStyle(Mpm.ORNAMENTATION_STYLE, od.styleName) as OrnamentationStyle | null;
+    od.style = this.getStyle(ORNAMENTATION_STYLE, od.styleName) as OrnamentationStyle | null;
     if (od.style === null) return null;
     od.ornamentDef = od.style.getDef(od.ornamentDefName) ?? null;
     if (od.ornamentDef === null) return null;
@@ -230,12 +230,12 @@ export class OrnamentationMap extends GenericMap {
       if (ornamentXml.getLocalName() === 'style') {
         if (this.getLocalHeader() !== null)
           style = this.getLocalHeader()!.getStyleDef(
-            Mpm.ORNAMENTATION_STYLE,
+            ORNAMENTATION_STYLE,
             getAttributeValue('name.ref', ornamentXml),
           ) as OrnamentationStyle | null;
         if (style === null && this.getGlobalHeader() !== null)
           style = this.getGlobalHeader()!.getStyleDef(
-            Mpm.ORNAMENTATION_STYLE,
+            ORNAMENTATION_STYLE,
             getAttributeValue('name.ref', ornamentXml),
           ) as OrnamentationStyle | null;
         continue;

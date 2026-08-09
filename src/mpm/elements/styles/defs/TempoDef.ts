@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
-import { Mpm } from '../../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../../names.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /**
@@ -21,7 +21,7 @@ export class TempoDef extends AbstractDef {
 
   private static fromNameValue(name: string, value: number): TempoDef {
     const td = new TempoDef();
-    const e = new Element('tempoDef', Mpm.MPM_NAMESPACE);
+    const e = new Element('tempoDef', MPM_NAMESPACE);
     e.addAttribute(new Attribute('name', name));
     e.addAttribute(new Attribute('value', String(value)));
     td.parseDataInternal(e);

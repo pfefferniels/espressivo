@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { allChildElements } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { GenericStyle } from './GenericStyle.js';
 import { AccentuationPatternDef } from './defs/AccentuationPatternDef.js';
 
@@ -25,7 +25,7 @@ export class MetricalAccentuationStyle extends GenericStyle<AccentuationPatternD
     try {
       const mas = new MetricalAccentuationStyle();
       if (typeof nameOrXml === 'string') {
-        const e = new Element('styleDef', Mpm.MPM_NAMESPACE);
+        const e = new Element('styleDef', MPM_NAMESPACE);
         e.addAttribute(new Attribute('name', nameOrXml));
         mas.parseData(e);
         if (id !== undefined) mas.setId(id);

@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { METRICAL_ACCENTUATION_STYLE, MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { MetricalAccentuationData } from './data/MetricalAccentuationData.js';
@@ -40,7 +40,7 @@ export class MetricalAccentuationMap extends GenericMap {
     loop?: boolean,
     stickToMeasures?: boolean,
   ): number {
-    const e = new Element('accentuationPattern', Mpm.MPM_NAMESPACE);
+    const e = new Element('accentuationPattern', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('name.ref', accentuationPatternDefName));
     e.addAttribute(new Attribute('scale', String(scale)));
@@ -86,7 +86,7 @@ export class MetricalAccentuationMap extends GenericMap {
       }
     }
     const gStyle = this.getStyle(
-      Mpm.METRICAL_ACCENTUATION_STYLE,
+      METRICAL_ACCENTUATION_STYLE,
       md.styleName,
     ) as MetricalAccentuationStyle | null;
     if (gStyle !== null) {

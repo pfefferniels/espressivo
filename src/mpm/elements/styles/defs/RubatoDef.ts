@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
-import { Mpm } from '../../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../../names.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { AbstractDef } from './AbstractDef.js';
 
@@ -99,7 +99,7 @@ export class RubatoDef extends AbstractDef {
     try {
       const rd = new RubatoDef();
       if (typeof nameOrXml === 'string') {
-        const e = new Element('rubatoDef', Mpm.MPM_NAMESPACE);
+        const e = new Element('rubatoDef', MPM_NAMESPACE);
         e.addAttribute(new Attribute('name', nameOrXml));
         e.addAttribute(new Attribute('frameLength', String(frameLength)));
         if (intensity !== undefined) {

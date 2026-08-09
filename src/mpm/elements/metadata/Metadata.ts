@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { allChildElements, firstChildElement } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { Author } from './Author.js';
 import { Comment } from './Comment.js';
 import { RelatedResource } from './RelatedResource.js';
@@ -63,15 +63,15 @@ export class Metadata extends AbstractXmlSubtree {
       if (arg1 instanceof Element) {
         m.parseData(arg1);
       } else if (Array.isArray(arg1)) {
-        const metadata = new Element('metadata', Mpm.MPM_NAMESPACE);
+        const metadata = new Element('metadata', MPM_NAMESPACE);
         if (arg1.length > 0) {
-          const rrElt = new Element('relatedResources', Mpm.MPM_NAMESPACE);
+          const rrElt = new Element('relatedResources', MPM_NAMESPACE);
           metadata.appendChild(rrElt);
           for (const r of arg1) rrElt.appendChild(r.getXml()!);
         }
         m.parseData(metadata);
       } else {
-        const metadata = new Element('metadata', Mpm.MPM_NAMESPACE);
+        const metadata = new Element('metadata', MPM_NAMESPACE);
         // All three arms of the ternary this replaces evaluated to `arg1`; only the
         // asserted type differed, and assertions erase. In the multi-argument form
         // reached below, `arg1` *is* the author position.
@@ -99,7 +99,7 @@ export class Metadata extends AbstractXmlSubtree {
           if (author !== null && author !== undefined) metadata.appendChild(author.getXml()!);
           if (comment !== null && comment !== undefined) metadata.appendChild(comment.getXml()!);
           if (relatedResources !== null && relatedResources.length > 0) {
-            const rrElt = new Element('relatedResources', Mpm.MPM_NAMESPACE);
+            const rrElt = new Element('relatedResources', MPM_NAMESPACE);
             metadata.appendChild(rrElt);
             for (const r of relatedResources) rrElt.appendChild(r.getXml()!);
           }
@@ -218,7 +218,7 @@ export class Metadata extends AbstractXmlSubtree {
     if (relatedResource === null) return -1;
     let rrElt = firstChildElement('relatedResources', this.getXml()!);
     if (rrElt === null) {
-      rrElt = new Element('relatedResources', Mpm.MPM_NAMESPACE);
+      rrElt = new Element('relatedResources', MPM_NAMESPACE);
       this.getXml()!.appendChild(rrElt);
     }
     rrElt.appendChild(relatedResource.getXml()!);

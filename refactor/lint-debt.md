@@ -661,6 +661,32 @@ In `tests/`, `tests/mei/Helper.test.ts`'s 7 `no-empty-function` moved with their
 blocks: **5** to `tests/compat/unsupported.test.ts`, **2** to `tests/music/pitch.test.ts`.
 Repo test-side total is unchanged.
 
+### T18 — cycles eliminated — repo 1246 → **1245** errors (warnings unchanged at 5)
+
+One error cleared, and it is the one the item names: `no-require-imports` **3 → 2**. The
+site closed is `src/mei/Mei.ts`'s `require('./Mei2MsmMpmConverter.js')` inside
+`exportMsmMpm`. Every other rule count is bit-identical to the T14 tree —
+`no-non-null-assertion` 1079, `no-unused-vars` 54, `no-empty-function` 54,
+`unified-signatures` 41, `no-explicit-any` 12, `no-unsafe-function-type` 2,
+`no-extraneous-class` 1 — so nothing was traded for it.
+
+**The two survivors are both in `src/compat/unsupported.ts` (`:75`, `:76`, the
+`writeStringToFile` stub).** T14's note above says "T18 closes those"; T18 deliberately did
+**not**, on the conductor's instruction: §8.10 has T21 deleting that file wholesale, so
+rewriting a stub that is scheduled for deletion buys nothing. The count therefore goes to
+zero at T21, not here.
+
+**Two rules added, both green at zero and both proven live.** `import/no-cycle` (new
+`eslint-plugin-import` dependency + `eslint-import-resolver-typescript`) and
+`@typescript-eslint/no-restricted-imports`, the latter configured as four per-layer zones
+encoding RULE M1. They contribute 0 to the totals above, which is the point — but a
+zero from either rule is only meaningful with its negative control, because **both fail
+silently**: `no-cycle` reports nothing when it cannot resolve or parse the graph, and it
+needed `settings['import/parsers']` as well as the resolver before it saw anything at all.
+The [T18] log entry records the four controls (synthetic 2-file cycle, the real
+`GenericStyle → Mpm` cycle, four layer violations, and the `allowTypeImports` split) and
+they should be re-run by anyone who touches that config block.
+
 ### tests — 86
 `no-empty-function` 54, `no-unused-vars` 18, `no-explicit-any` 12,
 `no-unsafe-function-type` 2. Concentrated in `tests/mei/Mei.test.ts` (24),

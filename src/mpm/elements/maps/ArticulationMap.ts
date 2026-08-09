@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { ARTICULATION_STYLE, MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { ArticulationData } from './data/ArticulationData.js';
@@ -46,7 +46,7 @@ export class ArticulationMap extends GenericMap {
     noteid: string | null,
     id: string | null,
   ): number {
-    const e = new Element('articulation', Mpm.MPM_NAMESPACE);
+    const e = new Element('articulation', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     if (articulationDefName === null) return -1;
     e.addAttribute(new Attribute('name.ref', articulationDefName));
@@ -57,7 +57,7 @@ export class ArticulationMap extends GenericMap {
   }
 
   addArticulationFromData(data: ArticulationData): number {
-    const e = new Element('articulation', Mpm.MPM_NAMESPACE);
+    const e = new Element('articulation', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(data.date)));
     if (data.xmlId !== null)
       e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
@@ -79,7 +79,7 @@ export class ArticulationMap extends GenericMap {
     defaultArticulation?: string | null,
     id?: string | null,
   ): number {
-    const e = new Element('style', Mpm.MPM_NAMESPACE);
+    const e = new Element('style', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('name.ref', styleName));
     if (defaultArticulation !== null && defaultArticulation !== undefined)
@@ -126,7 +126,7 @@ export class ArticulationMap extends GenericMap {
       const s = this.elements[j].getValue();
       if (s.getLocalName() === 'style') {
         ad.styleName = getAttributeValue('name.ref', s);
-        ad.style = this.getStyle(Mpm.ARTICULATION_STYLE, ad.styleName) as ArticulationStyle | null;
+        ad.style = this.getStyle(ARTICULATION_STYLE, ad.styleName) as ArticulationStyle | null;
         const att = attribute('defaultArticulation', s);
         if (att !== null) {
           ad.defaultArticulation = att.getValue();
@@ -201,7 +201,7 @@ export class ArticulationMap extends GenericMap {
     const styleSwitchList = this.getAllElementsOfType('style');
     for (const styleEntry of styleSwitchList) {
       const aStyle = this.getStyle(
-        Mpm.ARTICULATION_STYLE,
+        ARTICULATION_STYLE,
         getAttributeValue('name.ref', styleEntry.getValue()),
       ) as ArticulationStyle | null;
       if (aStyle === null) continue;

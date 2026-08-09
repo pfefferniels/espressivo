@@ -279,6 +279,16 @@ export class Mei extends XmlBase {
    *   MSM before returning, and restore this MEI to its pre-conversion state. Pass false
    *   to inspect the intermediate state.
    * @return the MSMs and the matching MPMs, index-aligned
+   *
+   * NOT YET USABLE — construct the converter yourself, as `tests/integration` does:
+   * `new Mei2MsmMpmConverter(ppq, …).convert(mei)`. `Mei2MsmMpmConverter` imports this
+   * module for `Mei.getLayer`/`getStaff` and for the `instanceof Mei` that discriminates
+   * its two `convert` overloads, so a top-level import here would close a value cycle
+   * between the two modules. T18 removed the `Mpm` ⇄ `GenericStyle` cycle and the
+   * CommonJS `require` that used to stand in for this import, but not this cycle:
+   * untangling it means editing the converter's overload dispatch, which is T15's item
+   * and the highest-risk change in the project. Until T15 lands, this method throws
+   * rather than pretending — same observable behaviour the `require` had.
    */
   exportMsmMpm(
     ppq = 720,
@@ -286,13 +296,12 @@ export class Mei extends XmlBase {
     ignoreExpansions = false,
     cleanup = true,
   ): KeyValue<Msm[], Mpm[]> {
-    // Lazy import to avoid circular dependency: Mei2MsmMpmConverter imports Mei eagerly,
-    // so a top-level import here would close the cycle. This `require` is left exactly as
-    // it is — it is CommonJS in an ESM build and therefore throws at runtime (see the note
-    // in tests/mei/Mei.test.ts); the pipeline reaches the converter directly instead.
-    // Breaking the cycle properly, and with it this call, is T18's job.
-    const { Mei2MsmMpmConverter } = require('./Mei2MsmMpmConverter.js');
-    return new Mei2MsmMpmConverter(ppq, dontUseChannel10, ignoreExpansions, cleanup).convert(this);
+    throw new Error(
+      'Mei.exportMsmMpm is not available: importing Mei2MsmMpmConverter from Mei would close a ' +
+        'module cycle between the two. Run the conversion directly instead — ' +
+        `new Mei2MsmMpmConverter(${ppq}, ${dontUseChannel10}, ${ignoreExpansions}, ${cleanup})` +
+        '.convert(mei)',
+    );
   }
 
   /**

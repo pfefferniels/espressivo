@@ -6150,3 +6150,435 @@ files" *is* right (36 files carry call sites, minus the deleted `Helper.ts`). Se
 
 **Verdict: PASS T14.** Equivalence is anchored by an identical byte-probe, and every module-level
 move is proven pure at the AST level rather than argued.
+
+## [T18] worker
+
+**Cycles: 31 runtime → 0.** Every runtime cycle in the tree ran through `Mpm.ts`, exactly as
+§1.1 predicted, and RULE M3's `src/mpm/names.ts` removed all 31 at once. The charter's
+known hazard — "importing `GenericStyle.js` deeply throws — import `Mpm` first" — is now
+**unreachable rather than avoided**, and I measured that rather than asserting it.
+
+### What changed
+
+**RULE M3.** New leaf `src/mpm/names.ts`: the 20 constants `Mpm` published
+(`MPM_NAMESPACE`, six `*_STYLE`, thirteen `*_MAP` — §1.2 says "twelve", the tree has
+thirteen; `IMPRECISION_MAP` plus its four sub-names is five, not four). It imports nothing.
+All **31** modules under `src/mpm/elements/**` now import `names.js` instead of `Mpm.js`,
+and `Mpm.X` became bare `X` in each. `Mpm` keeps all 20 as `static readonly … : string`
+re-exports reading `names.X`, so `Mpm.TEMPO_MAP` and friends are untouched for callers
+outside `src/mpm/` — the annotation is kept explicitly `: string` so the class's public
+type surface does not narrow to literal types.
+
+Worth recording because it made the change purely mechanical: **not one of those 31 files
+used `Mpm` for anything but a constant.** No `instanceof`, no type position, no static
+call. Verified by grepping every `\bMpm\b` occurrence and classifying the remainder — the
+only survivors are seven prose mentions in comments.
+
+**RULE M4.** `Mpm.ts`'s nine side-effect imports became one
+`import './elements/maps/index.js'`. The barrel lists the same nine in the same order, and
+its comment says why an import is the registration mechanism and why the registry must not
+become a `switch`.
+
+**`Mei.ts`'s `require`.** Removed; `no-require-imports` 3 → 2.
+
+**Comments.** The three stale `src/mei/Helper.ts` references T14 flagged (`Msm.ts:20,155`,
+`Mpm.ts:30`) now name `src/xml/tree.ts` / `src/xml/ids.ts` and hand the dedup question to
+T16b. The IMPORT-ORDER HAZARD notes on `GenericStyle` and `Performance` were rewritten —
+leaving a warning that is no longer true is worse than no warning.
+
+**Enforcement.** `eslint.config.js` gains `import/no-cycle` plus four `no-restricted-imports`
+zones encoding RULE M1's table as data (`LAYER_ZONES`). Both green at zero. New devDeps:
+`eslint-plugin-import`, `eslint-import-resolver-typescript`.
+
+### §8.3 IS WRONG ABOUT `Mei.exportMsmMpm`, AND THIS IS THE ONE JUDGEMENT CALL
+
+§8.3 says the `require` "becomes a normal top-level import" after M3, "so
+`Mei.exportMsmMpm` starts working", and instructs me to journal that behaviour change.
+**The premise does not hold.** The cycle blocking that import was never the `Mpm` one:
+`Mei2MsmMpmConverter.ts:16` imports `Mei` as a **value**, for `meiOrRoot instanceof Mei`
+(`:174`, the discriminator between `convert`'s two overloads) and for the static
+`Mei.getLayer`/`getLayerId`/`getStaff`/`getStaffId` (7 call sites). So `Mei ⇄
+Mei2MsmMpmConverter` is a genuine two-way value cycle that M3 does not touch, and a
+top-level import would have **created** a cycle in the item whose job is removing them.
+
+Removing it means either moving four statics out of `Mei` *and* rewriting the `instanceof`
+discriminator, or inverting the test to `instanceof Element` — which changes what
+`convert(<garbage>)` does for untyped callers, on the dispatch §8.5 calls the highest-risk
+change in the project and assigns to **T15**. Out of scope, and not a call a cycle item
+should make quietly.
+
+**What I did instead:** `exportMsmMpm` throws an explicit `Error` naming the converter and
+echoing the caller's four arguments as a copy-pasteable
+`new Mei2MsmMpmConverter(720, true, false, true).convert(mei)`. This clears the lint site,
+adds no cycle, adds no suppression, and — the point — **changes no observable behaviour**:
+it threw before (esbuild's "Dynamic require ... is not supported") and throws now, still
+matching the `/Mei2MsmMpmConverter/` that `tests/mei/Mei.test.ts:791,795` pin. Those two
+tests pass unedited. **T15 should delete this throw** and restore the delegation once the
+converter no longer imports `Mei` as a value; the method comment says so.
+
+Two smaller notes on that method: the arguments are echoed into the message rather than
+underscore-prefixed because this config does **not** set `argsIgnorePattern`, so `_ppq`
+still trips `no-unused-vars` (measured — 4 new errors) and the charter forbids new
+suppressions.
+
+### Evidence
+
+**Cycles, two ways.** madge default mode 35 → **4**; madge counting runtime edges only
+(`skipTypeImports`) 31 → **0**. The two numbers differ because madge counts `import type`,
+which tsc erases. The four survivors are `Global ⇄ Dated`, `Dated ⇄ Part`,
+`Global → Dated → Part`, `Performance ⇄ Msm`, and each is closed by an `import type` —
+**proven from the emitted JS**, where `Dated.js` imports neither `Global.js` nor `Part.js`,
+`Part.js` does not import `Global.js`, and `Performance.js`/`Msm.js` do not import each
+other. All four are *architecturally intended*: §1.2 permits sideways imports inside a
+directory, and RULE M1 permits `src/msm/** → src/mpm/**` "except `import type`" by name.
+**Default-mode zero is therefore not reachable without violating RULE M1**, and 4 is the
+floor, not residual debt. `import/no-cycle` ignores type imports by construction, which is
+why the lint rule and the runtime measurement agree at zero.
+
+**Deep-import battery** (`tools/deepimport.mjs`): every emitted module `import()`ed alone
+in a **fresh node process**, no warm-up import of `Mpm`.
+- baseline: 83 modules, 82 clean, **1 throws** — `mpm/elements/styles/GenericStyle.js`,
+  `ReferenceError: Cannot access 'GenericStyle' before initialization`. The charter's
+  hazard, reproduced exactly.
+- work: 85 modules, **85 clean, 0 throws**.
+
+**EQ-RISK negative control** (the one §1.2 demands, both directions). The pipeline probe
+rewritten to import `GenericStyle.js` *first*: on the baseline it dies in
+`ArticulationStyle.js:10` at the `extends GenericStyle` clause; on the work tree it runs to
+completion and produces **the same transcript SHA** as the `Mpm`-first run. Import order is
+no longer observable.
+
+**Pipeline byte-probe** (T8 verifier's `pipe.mjs`, 5 deterministic all-maps fixtures + all
+16 MEI fixtures → MSM/MPM/augmented-MSM/raw-MIDI/expressive-MIDI hashes): transcripts
+**byte-identical**, 8182 bytes each, 24 entries, 0 throws, 21 non-vacuous sections,
+`sha=169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` on both builds and
+on the GenericStyle-first run.
+
+**Emitted JS.** 2 added (`mpm/names.js`, `mpm/elements/maps/index.js`), 34 changed, 0
+removed. Classified by comment-free token stream (`tools/jsclassify.mjs`):
+- **32 of 34 are body-identical** once `Mpm.<CONST>` is collapsed to `<CONST>` on the base
+  side — i.e. import plumbing and comments only. `msm/Msm.js` is comment-only even without
+  the collapse (its import prologue is untouched).
+- `mpm/Mpm.js`: prologue 13 → 6 imports, and a token-level diff shows the **only** other
+  change is the 20 static initialisers switching from inline literals to `names.X`.
+  `isInNamespace`, the constructor, `parseData` and `init` are token-identical.
+- `mei/Mei.js`: the `require` → `throw`. The one deliberate code change in the item.
+
+**Constant equivalence** (`tools/constcheck.mjs`): all **20** statics identical in value and
+type across both builds, and `names.js` exports exactly that set — no drift, nothing added.
+
+### Evaluation-order argument (the thing this item could have broken)
+
+I inventoried every top-level side effect in the emitted tree by AST
+(`tools/sideeffects.mjs`), rather than reasoning from memory. **31 top-level statements**,
+and all but one group are self-contained — TS `enum` IIFEs in `Mei2MusicXmlConverter`,
+`MusicXml`, `OrnamentDef`; `const MPM_NAMES = new Set([…string literals])` in `GenericMap`;
+two object literals in `index.js`. None reads another module's binding, so their position in
+any import graph is irrelevant.
+
+**The only cross-module load-time side effect in the whole tree is
+`GenericMap.registerMapFactory` — 13 calls across the nine map modules.** The argument for
+those, concretely:
+
+1. **Nothing is reordered.** Evaluation order computed per spec (DFS post-order over each
+   module's imports in source order — `tools/evalorder.mjs`, deterministic, unlike the
+   loader's racy fetch order, which I initially mismeasured). Diff of the two orders is
+   **exactly two insertions**: `names.js` at position 3 and `maps/index.js` at the end. Every
+   pre-existing module keeps its relative position; the nine map modules and `GenericMap`
+   shift by +1 together.
+2. **`GenericMap` is evaluated before every registration** — position 23 against 33–50 — on
+   both builds. Before T18 that held by luck of ordering inside a cycle; now it is
+   structural, because an acyclic graph guarantees a dependency's body completes before its
+   importer's begins. This is a strengthening, not a risk.
+3. **Order among the 13 is unobservable**: 13 distinct keys, no collisions.
+4. **Nothing reads the registry at load time.** `createTypedMap` runs only from
+   `Dated.addMapFromXml`, at parse time.
+5. **Outcome checked, not just argued** (`tools/registry.mjs`): after importing `Mpm`, the
+   registry holds the same 13 keys mapped to the same factories on both builds.
+
+**Verify:** green, exit 0 — **53 files / 2143 tests**, identical to T14. No test added,
+removed or edited; the import repoint needed none, since tests import `Mpm` and the statics
+still exist.
+
+**Coverage:** bit-identical to T14 — functions **94.2348 %** (floor 94.0 ✓), uncovered
+scoped statements **2217 → 2217** (charter 7b ✓). Both new files are 100 %. `names.ts` and
+`maps/index.ts` fall under the existing `src/mpm/**` glob, so `vitest.config.ts` needed no
+edit.
+
+**Lint:** 1246 → **1245** errors, warnings unchanged at 5; the −1 is the `require`. Details
+and the two-rules-added accounting are in `lint-debt.md`.
+
+### The trap in this item, for whoever touches the lint config next
+
+`import/no-cycle` **failed silently for me first**, reporting zero on a tree that still had
+the cycle in it. Resolution was fine (`no-unresolved` was quiet on real paths and loud on
+fake ones); what was missing was `settings['import/parsers']`. Without it the rule hands
+`.ts` *dependencies* to espree, which cannot parse them, so every dependency looks
+import-free and the graph is empty. **A green `no-cycle` proves nothing on its own.** Four
+negative controls, all re-runnable:
+
+1. synthetic 2-file cycle in `src/` → reported;
+2. the real one — re-point `GenericStyle.ts` at `Mpm.js` → `Dependency cycle via
+   ./elements/Performance.js:4=>./maps/GenericMap.js:27`;
+3. one deliberate import per layer zone (`mpm→mei`, `msm→mpm`, `midi→msm`, `xml→mei`) →
+   all four reported, each with its own RULE M1 message;
+4. the `allowTypeImports` split: `import type` from `msm→mpm` is silent (§1.2 permits it),
+   `import type` from `mpm→mei` still errors (§1.2 does not).
+
+I also nearly banked two other false passes and mention them so a verifier does not repeat
+them: the deep-import battery first "failed" 52/83 modules on missing `uuid`/`@xmldom/xmldom`
+because the dist copies sat outside `node_modules` reach (fixed with a symlink), and a
+load-order comparison first came out "identical" because both sides were the same
+`ERR_MODULE_NOT_FOUND` text. Every measurement above is one that produces a *non-vacuous*
+result — the baseline runs are what prove that.
+
+### DISCOVERED
+
+- **DISCOVERED (latent, T16/T21):** the map-factory registry is populated **only** by
+  `Mpm.ts`. Nothing else imports the map modules for their side effects, so any consumer
+  reaching `Dated.addMapFromXml` without having imported `Mpm` gets plain `GenericMap`s
+  instead of typed ones — silently, no throw. Every current path goes through `new Mpm(...)`,
+  and the deep-import battery cannot see it because degradation is not an exception. The
+  structurally right home for `import './maps/index.js'` is `Dated.ts`, the module that
+  *consumes* the registry; RULE M4 pins it to `Mpm.ts`, so I left it and did not change
+  evaluation order further. Worth a ruling before T13's facade gives users a second entry
+  point.
+- **DISCOVERED (§8.3 is wrong, needs an ARCHITECTURE.md amendment):** as detailed above,
+  `Mei.exportMsmMpm` is blocked by `Mei ⇄ Mei2MsmMpmConverter`, not by the `Mpm` cycle. The
+  "starts working / behaviour change" paragraph in §8.3 should be struck and the work
+  reassigned to **T15**, which owns the `instanceof` dispatch that causes it.
+- **DISCOVERED (T16, now unblocked):** §8.7's bullet "`TemporalSpread` and
+  `DynamicsGradient` move out of `defs/OrnamentDef.ts` … coordinate with T18" has nothing
+  left to coordinate: the split is a plain module move now, and `import/no-cycle` will catch
+  it if it goes wrong. Same for §8.5's note on `Performance`'s private
+  `renderTempoToMap`/`renderMillisecondsModifiersToMap` duplicates — the cycle no longer
+  forces them to exist, but collapsing them into the map classes still moves code on the
+  byte-compared rendering path and still owes a behavioural probe. I updated the comment on
+  `Performance` to say exactly that instead of blaming the cycle.
+- **DISCOVERED (pre-existing, cosmetic):** `src/mpm/{elements` is an empty stray directory
+  (a shell-brace-expansion accident). Out of scope; a `rmdir` for whoever is nearest.
+
+### Out of scope, deliberately
+
+- `src/compat/unsupported.ts`'s two `no-require-imports` — T21 deletes the file (conductor's
+  instruction; T14's note that "T18 closes those" is superseded).
+- The four type-only cycles: removing them needs interface extraction, which is T13/T16
+  design work, and RULE M1 sanctions the `msm → mpm` one outright.
+- `Msm.ts`'s eight and `Mpm.ts`'s two module-local navigation helpers are untouched (RULE
+  M2a). I edited only their comments, and `msm/Msm.js`'s emitted body is token-identical.
+- `tests/**` and `tests/integration/fixtures/**`: not one file touched.
+
+## [T18] verifier — PASS (2026-08-09)
+
+**PASS.** Baseline src-identical to the last green confirmed first: `f43746f` touches only
+`refactor/state.json` against `e31877b`. Two clean out-of-tree builds (`t18verify/base` from
+`git archive f43746f`, `t18verify/work` rsynced from the repo), work `src/` byte-confirmed
+equal to the repo before and after every probe. `src/` was never touched by me — the ESLint
+negative controls all ran in the scratch copy and the tree was diffed back to the repo
+afterwards. Manifest at start and at end: **exactly 39 M / 2 ??**.
+
+### 1. Cycles — reproduced both ways, and the 31-vs-35 delta is real
+
+The worker's two madge modes reproduce **exactly** on my trees: baseline `DEFAULT=35`
+(T14's handoff number) / `RUNTIME=31` (the worker's), work `DEFAULT=4` / `RUNTIME=0`. The
+delta is not an accounting choice: 35 − 31 = the 4 cycles closed by an `import type`, and
+those 4 are precisely the survivors in default mode — `Global ⇄ Dated`, `Dated ⇄ Part`,
+`Global → Dated → Part`, `Performance ⇄ Msm`. Verified type-only at **both** levels: at
+source (`Dated.ts:6,7`, `Part.ts:7`, `Msm.ts:10`, `Performance.ts:28` are all `import
+type`) and in the emitted JS (`Dated.js` imports neither `Global.js` nor `Part.js`,
+`Part.js` does not import `Global.js`, `Msm.js` and `Performance.js` do not import each
+other). RULE M1 sanctions the `msm → mpm` one by name and §1.2 permits the sideways ones,
+so 4 is the floor, as claimed.
+
+**Second, independent method** (`t18verify/tools/graph.mjs`): my own DFS enumerating
+*elementary* cycles over the emitted-JS import graph, built by parsing each `dist/**/*.js`
+with the TS compiler API and collecting import/export/dynamic-import/`require` specifiers.
+Baseline **68 modules, 275 edges, 65 elementary cycles**; work tree **70 modules, 276
+edges, 0 cycles**. (65 ≠ 31 because madge reports one path per cycle-closing traversal
+while I enumerate every elementary cycle; the two agree on the only thing that matters —
+baseline positive, work **zero**.) The same pass reports `require` call sites: baseline has
+`mei/Mei.js`, work does not; `compat/unsupported.js`'s two are present in both, untouched.
+
+### 2. Deep-import battery — mine, on clean builds, non-vacuous in both directions
+
+`t18verify/tools/battery.mjs`, written independently (serial spawns, full stderr captured,
+`--input-type=module`): every emitted module imported alone in a fresh process.
+
+- baseline: **68 modules, 67 clean, 1 throws** — `mpm/elements/styles/GenericStyle.js`,
+  `ReferenceError: Cannot access 'GenericStyle' before initialization`. The battery can
+  fail, so its zero means something.
+- work: **70 modules, 70 clean, 0 throws.**
+
+**FINDING (methodological, not blocking).** The worker's battery reports 83 and 85 modules.
+Those dists are **stale**: `t18/dist-base` carries T14-era modules (`xml/tree.js`) *and* 15
+orphans from source files that no longer exist anywhere in the tree — `mei/Helper.js`,
+`Meico.js`, `audio/Audio.js`, `mei/Mei2MusicXmlConverter.js`, `midi/Midi2MsmConverter.js`,
+`musicxml/*` (2), `pitches/*` (4), `supplementary/ColorCoding.js`,
+`supplementary/InputStream2StringConverter.js`, `svg/*` (2). A clean `tsc` emits 68/70. The
+conclusion is unaffected — the tested set is a strict superset of the real one and every
+real module was covered — but the counts in the worker's entry are wrong, and the same
+stale dist inflates its side-effect inventory (below). Nothing was hidden by it: orphan
+files can only add throws, not remove them.
+
+**EQ-RISK negative control (§1.2's, both directions).** T8's `t11-pipe.mjs` with the
+`Mpm`-first warm-up replaced by a deep `GenericStyle.js` import: on the baseline it dies at
+`ArticulationStyle.js:10`'s `extends GenericStyle`; on the work tree it runs to completion
+with a transcript **byte-identical** to the `Mpm`-first run. Import order is no longer
+observable.
+
+### 3. Evaluation order — inventory and order recomputed from scratch
+
+`t18verify/tools/sidefx.mjs` walks every emitted module's top-level statements by AST and
+flags anything that is not a pure declaration (a `const` counts as impure iff its
+initialiser contains a call/`new`/`await`). Base and work inventories are **identical**:
+**16 statements**, namely the **13 `GenericMap.registerMapFactory` calls** across the nine
+map modules, `GenericMap`'s `const MPM_NAMES = new Set([…literals])`, and two TS `enum`
+IIFEs in `OrnamentDef`. The last three read no other module's binding, so only the
+registrations are cross-module — the worker's central claim, confirmed. (Its "31
+statements … enum IIFEs in `Mei2MusicXmlConverter`, `MusicXml`" counts modules that do not
+exist in this tree — the stale-dist artefact again.)
+
+Spec evaluation order (DFS post-order over each module's imports in source order) computed
+for **six entrypoints** — `index.js`, `mpm/Mpm.js`, `msm/Msm.js`, `mei/Mei.js`,
+`mei/Mei2MsmMpmConverter.js`, `midi/Midi.js`. For every one of them, deleting `names.js`
+and `maps/index.js` from the work order yields a sequence **equal to the baseline order**:
+no pre-existing module changes its relative position, from any entrypoint. `Msm.js`,
+`Mei.js` and `Midi.js` do not reach the two new modules at all and their orders are
+identical outright. `GenericMap` precedes all 13 registrations on both builds, and after
+T18 it does so structurally (acyclic graph ⇒ a dependency's body completes before its
+importer's) rather than by luck inside a cycle. Nothing reads the registry at load time:
+`createTypedMap` has exactly two call sites, both in `Dated.addMapFromXml` (`Dated.ts:74,82`),
+which runs at parse time. Outcome checked, not just argued — after importing only `Mpm`,
+the registry holds the **same 13 keys** on both builds (`tools/registry.mjs`, diff clean).
+
+### 4. Pipeline byte-probe — identical
+
+T8's independently-written `t11-pipe.mjs` (5 deterministic all-maps fixtures + all 16 MEI
+fixtures → MSM/MPM/augmented-MSM/raw-MIDI/expressive-MIDI) on both clean dists:
+`entries=24 threw=0 nonVacuous=21`, **8182 bytes each, `diff` clean**, sha
+`169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` — the same sha as the
+[T14], [TD1] and [T20b] verifier runs. Chain unbroken. The GenericStyle-first run produces
+the same sha.
+
+### 5. `names.ts` — 20 constants, and the doc really is wrong
+
+All **20** names in `names.ts` match baseline `Mpm.ts`'s statics one-for-one in name and
+value. Checked at runtime too (`tools/consts.mjs`): every own upper-case static string
+property of `Mpm` is identical across builds in **name, value, `typeof`, and property
+descriptor flags** — count 20 on both, diff clean. The explicit `: string` annotation is
+load-bearing and was kept: the **only** `.d.ts` change in the entire tree that is not a
+comment is `Mpm.d.ts`'s import prologue (9 side-effect imports → 1 barrel); the declared
+member types are untouched, so the public surface does not narrow to literal types. The
+other three changed `.d.ts` (`Mei`, `Performance`, `GenericStyle`) are JSDoc only.
+
+**The worker's reading of the doc discrepancy is correct.** ARCHITECTURE.md:158 says "the
+six `*_STYLE`, the twelve `*_MAP`"; the tree has **thirteen** — eight plain maps plus
+`IMPRECISION_MAP` *and* its four sub-names, which is five, not four. The doc is also
+internally inconsistent, since §1.1 and RULE M3 both say "~20 constants" and 1 + 6 + 13 =
+20. Doc bug, not a code bug; worth an ARCHITECTURE.md correction.
+
+RULE M4 holds: `maps/index.ts` lists the **same nine modules in the same order** as
+baseline `Mpm.ts`'s side-effect imports, and `Mpm.ts` now has the single barrel import.
+Repoint is complete and exact: 31 files under `src/mpm/elements/**` imported `Mpm.js` at
+baseline, **0** do now, **31** import `names.js`, and no `Mpm.` value reference survives
+under that tree.
+
+### 6. Emitted JS — 32 of 34 body-identical, verified after catching my own vacuous pass
+
+My first token-stream tool used `ts.createScanner`, which desynchronises on the first `/`
+and starts emitting whole raw lines; three files then looked like they differed. Worse, my
+first *run* of it never word-split the command, so every invocation failed with the same
+error text on both sides and reported a triumphant **34 of 34** on two identical error
+messages. Recording it because it is exactly the failure mode the worker's entry warns
+about. Replaced with an AST canonicaliser (`tools/ast.mjs`, comment-free by construction,
+parse-error-checked) and validated with two negative controls: it distinguishes two
+different modules, and it catches a single-identifier mutation.
+
+With that: **32 of 34 changed modules are AST-identical** once top-level imports are
+stripped and the baseline's `Mpm.<CONST>` is collapsed to `<CONST>`. The two that differ
+are the two the worker names, and each is exactly what it claims:
+
+- `mpm/Mpm.js` — **20 hunks, nothing else**: each replaces one `StringLiteral` with
+  `names.<CONST>`. Every removed line is a `StringLiteral`; every added line is
+  `PropertyAccessExpression` / `Identifier names` / `Identifier <CONST>`. `isInNamespace`,
+  the constructor, `parseData` and `init` are untouched.
+- `mei/Mei.js` — one contiguous region (the `exportMsmMpm` body), `require` → `throw`.
+
+`msm/Msm.js` is **AST-identical including its import prologue, with no normalisation at
+all** — proof that `Msm.ts`'s change is comment-only, as claimed. Its stale `mei/Helper`
+pointers and `Mpm.ts`'s now name `src/xml/tree.ts` / `src/xml/ids.ts`; the `mei/Helper`
+mentions left in `src/` are T14 provenance notes ("moved verbatim out of"), which are
+correct, not stale.
+
+### 7. `Mei.exportMsmMpm` — the judgement call is right; its supporting detail is not
+
+The worker's refusal to implement §8.3 checks out. `Mei2MsmMpmConverter.ts:16` imports
+`Mei` as a **value**, used at `:174` for `meiOrRoot instanceof Mei` and at 10 further sites
+for `Mei.getLayer`/`getLayerId`/`getStaff`/`getStaffId`. A top-level import in `Mei.ts`
+would therefore have **created** a cycle in the item whose job is removing them. Deferring
+to T15 is right, and `tests/` is byte-identical to baseline — **not one test was edited**,
+so there is no test-weakening question to adjudicate. The two pinned tests
+(`tests/mei/Mei.test.ts:791,795`) pass unedited against the new message.
+
+**FINDING (precision, not blocking).** "Changes no observable behaviour" is overstated, and
+the message the entry attributes to the baseline is not the one that occurs. Measured:
+- vitest/esbuild, baseline: `Error: Cannot find module './Mei2MsmMpmConverter.js'` — **not**
+  esbuild's "Dynamic require … is not supported".
+- tsc/`dist` build, baseline: `ReferenceError: require is not defined` — which does **not**
+  contain "Mei2MsmMpmConverter" and would not have satisfied the pinned regex.
+- both builds, work tree: an explicit `Error` naming the converter, matching the regex.
+
+So the error *class* and *text* did change, and in the `dist` build the change is a strict
+improvement (the old error did not even name the converter). What is genuinely unchanged is
+the contract the tests pin and the pipeline relies on: the method was unusable and threw,
+and it is unusable and throws. No `src/` caller exists. Not a behaviour change worth
+blocking on, but the entry should not have called it none.
+
+### 8. Lint gates — probed, and they fire
+
+Rules present and green on the work tree: `import/no-cycle` **0**,
+`@typescript-eslint/no-restricted-imports` **0**. Six negative controls, all run by me in
+the scratch copy, tree restored and diffed clean afterwards:
+
+1. synthetic 2-file cycle in `src/` → **2 errors, "Dependency cycle detected"**;
+2. the real one — `GenericStyle.ts` re-pointed at `Mpm.js` → **"Dependency cycle via
+   ./elements/Performance.js:4=>./maps/GenericMap.js:27"**, the worker's exact message;
+3–6. one deliberate import per layer zone — `xml→mei`, `midi→msm`, `msm→mpm` (value),
+   `mpm→mei` → **all four fire**, each with its own RULE M1 message; and the
+   `allowTypeImports` split behaves: `import type` from `msm→mpm` is **silent** (§1.2
+   permits it), `import type` from `mpm→mei` still **errors** (§1.2 does not).
+
+A gate that cannot fail is not a gate; this one can.
+
+### 9. Standard gates
+
+- **`npm run verify` independently green, exit 0** — both `tsc` stages (`build` +
+  `typecheck:tests`), **53 files / 2143 tests**, identical to [T14]. No test added, removed
+  or edited; `tests/` is byte-identical to the baseline archive, integration tests included.
+- **Coverage**: functions **94.23 %** (floor 94.0 ✓); uncovered scoped statements **2217**
+  from the coverage JSON (12905/15122 covered), unchanged from [T14] and far inside the
+  2318 budget ✓; both new files 100 %.
+- **Lint reconciles exactly**: 1246 → **1245** errors, warnings 5 → 5. Per-rule diff across
+  the two trees: **one** rule moves, `no-require-imports` **3 → 2**; the other 8 rule counts
+  are bit-identical. No new suppressions — the only `eslint-disable`/`@ts-*` comment in
+  `src/` is the pre-existing one in `Mei2MsmMpmConverter.ts`, present in both trees.
+  `lint-debt.md` updated with the shrink and the two added rules.
+- **Dependencies**: `package.json` adds only `eslint-plugin-import` and
+  `eslint-import-resolver-typescript` to devDependencies. The 3260-line `package-lock`
+  churn is npm rewriting: parsed both lockfiles — **0 packages removed, 0 versions changed,
+  159 added**, all the two plugins' transitive closure. Runtime `dependencies` untouched.
+- **`log.md` append-only**: 217 insertions, **0 deletions**, appended at the end.
+- Pre-existing empty stray `src/mpm/{elements` confirmed dated 20 March, long before the
+  swarm — the worker's DISCOVERED note is right and it is untracked (git ignores empty
+  directories), so it does not affect the manifest.
+
+### Verdict
+
+**PASS T18.** Every load-bearing claim reproduced independently, and the two strongest ones
+came out stronger than stated: my own DFS puts the emitted-JS graph at **0 cycles** (not
+merely "madge says 0"), and the evaluation-order argument holds from **six** entrypoints,
+not one. Three imprecisions in the worker's entry, none affecting the outcome, all recorded
+above: the stale-dist module counts (83/85 vs 68/70) and the side-effect count (31 vs 16),
+and the overstated "no observable behaviour change" on `Mei.exportMsmMpm`. Recommend the
+conductor also file the ARCHITECTURE.md §1.2 "twelve `*_MAP`" → **thirteen** correction and
+the worker's §8.3 amendment.

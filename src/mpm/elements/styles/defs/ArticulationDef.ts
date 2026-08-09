@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
-import { Mpm } from '../../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../../names.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /**
@@ -81,7 +81,7 @@ export class ArticulationDef extends AbstractDef {
     try {
       const ad = new ArticulationDef();
       if (typeof nameOrXml === 'string') {
-        const e = new Element('articulationDef', Mpm.MPM_NAMESPACE);
+        const e = new Element('articulationDef', MPM_NAMESPACE);
         e.addAttribute(new Attribute('name', nameOrXml));
         ad.parseDataInternal(e);
       } else {

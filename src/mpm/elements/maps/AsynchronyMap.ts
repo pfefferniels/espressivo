@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { addToListAttribute } from '../../../xml/ids.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 
@@ -31,7 +31,7 @@ export class AsynchronyMap extends GenericMap {
   }
 
   addAsynchrony(date: number, millisecondsOffset: number): number {
-    const e = new Element('asynchrony', Mpm.MPM_NAMESPACE);
+    const e = new Element('asynchrony', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('milliseconds.offset', String(millisecondsOffset)));
     return this.insertElement(new KeyValue(date, e), false);

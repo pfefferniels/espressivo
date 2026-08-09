@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { AbstractDef } from './defs/AbstractDef.js';
 
 /**
@@ -13,12 +13,13 @@ import { AbstractDef } from './defs/AbstractDef.js';
  * {@link defs} map is only a lookup index over the element's def children; {@link addDef}
  * and {@link removeDef} keep the two in step, so never insert into the map directly.
  *
- * IMPORT-ORDER HAZARD: this module and `Mpm` form an import cycle. Importing this file
- * *deeply* — that is, before `Mpm` has been evaluated — throws while the module is being
- * evaluated. Import `Mpm` first, or go through the package entry point. Do not reorder,
- * merge or split the imports above, and do not turn any of them into `import type`: an
- * elided import changes module evaluation order and can move the failure somewhere else.
- * Breaking the cycle properly is item T18.
+ * This module used to carry an IMPORT-ORDER HAZARD: it imported `Mpm` for the namespace
+ * constant while `Mpm` imported it back, so importing this file *deeply* — before `Mpm`
+ * had been evaluated — threw. T18 removed the cycle by moving the constants to the leaf
+ * module `mpm/names.ts` (RULE M3), and every module here is now importable in isolation.
+ * Keep it that way: import names from `names.js`, never from `Mpm.js`, or the cycle and
+ * its order-dependent failure come back. `import/no-cycle` in `eslint.config.js` guards
+ * this now, so a regression is a lint error rather than a runtime surprise.
  */
 export class GenericStyle<E extends AbstractDef = AbstractDef> extends AbstractXmlSubtree {
   private nameAttr!: Attribute;
@@ -56,7 +57,7 @@ export class GenericStyle<E extends AbstractDef = AbstractDef> extends AbstractX
     try {
       const gs = new GenericStyle();
       if (typeof nameOrXml === 'string') {
-        const styleDef = new Element('styleDef', Mpm.MPM_NAMESPACE);
+        const styleDef = new Element('styleDef', MPM_NAMESPACE);
         styleDef.addAttribute(new Attribute('name', nameOrXml));
         gs.parseData(styleDef);
         if (id !== undefined) gs.setId(id);

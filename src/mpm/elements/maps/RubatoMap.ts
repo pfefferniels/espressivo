@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE, RUBATO_STYLE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { RubatoData } from './data/RubatoData.js';
@@ -52,7 +52,7 @@ export class RubatoMap extends GenericMap {
   ): number {
     if (typeof dateOrData !== 'number') {
       const data = dateOrData;
-      const e = new Element('rubato', Mpm.MPM_NAMESPACE);
+      const e = new Element('rubato', MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', String(data.startDate)));
       if (data.rubatoDefString !== null)
         e.addAttribute(new Attribute('name.ref', data.rubatoDefString));
@@ -69,7 +69,7 @@ export class RubatoMap extends GenericMap {
       return this.insertElement(new KeyValue(data.startDate, e), false);
     }
     const date = dateOrData;
-    const e = new Element('rubato', Mpm.MPM_NAMESPACE);
+    const e = new Element('rubato', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     if (typeof arg2 === 'string') {
       e.addAttribute(new Attribute('name.ref', arg2));
@@ -116,7 +116,7 @@ export class RubatoMap extends GenericMap {
         break;
       }
     }
-    rd.style = this.getStyle(Mpm.RUBATO_STYLE, rd.styleName) as RubatoStyle | null;
+    rd.style = this.getStyle(RUBATO_STYLE, rd.styleName) as RubatoStyle | null;
     if (rd.style !== null) {
       const nrAtt = attribute('name.ref', e);
       if (nrAtt !== null) {

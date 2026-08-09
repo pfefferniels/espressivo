@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { allChildElements } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { GenericStyle } from './GenericStyle.js';
 import { ArticulationDef } from './defs/ArticulationDef.js';
 
@@ -22,7 +22,7 @@ export class ArticulationStyle extends GenericStyle<ArticulationDef> {
     try {
       const style = new ArticulationStyle();
       if (typeof nameOrXml === 'string') {
-        const e = new Element('styleDef', Mpm.MPM_NAMESPACE);
+        const e = new Element('styleDef', MPM_NAMESPACE);
         e.addAttribute(new Attribute('name', nameOrXml));
         style.parseData(e);
         if (id !== undefined) style.setId(id);

@@ -10,17 +10,18 @@ import { EventMaker } from '../midi/EventMaker.js';
 import type { Performance } from '../mpm/elements/Performance.js';
 
 /**
- * `mei/Helper` in miniature, private to this module.
+ * Java's `Helper` in miniature, private to this module.
  *
  * `Msm.java` calls exactly eight `Helper` methods and no others; these are those eight,
  * reimplemented here rather than imported. The same arrangement is used in `Mpm.ts`, and
  * `getFirstChildElement`/`getAllChildElements` below are deliberately byte-identical to
  * their counterparts there.
  *
- * Do **not** "deduplicate" these against `src/mei/Helper.ts` on sight: that module is the
- * MEI half of the port and its copies are not everywhere equivalent to these (see the
- * note on {@link cloneElement}). Merging the two sets is T14/T18 business, and it needs a
- * behavioural comparison per method, not a textual one.
+ * Do **not** "deduplicate" these against the shared helpers in `src/xml/tree.ts` and
+ * `src/xml/ids.ts` on sight — T14 moved `mei/Helper`'s statics there, and its copies are
+ * not everywhere equivalent to these (see the note on {@link cloneElement}). Merging the
+ * two sets is T16b's business, and it needs a behavioural comparison per method, not a
+ * textual one.
  */
 function getAttribute(name: string, ofThis: Element): Attribute | null {
   if (ofThis === null) return null;
@@ -152,7 +153,7 @@ function getFilenameWithoutExtension(filename: string): string {
  * Give `toThis` a fresh `xml:id` of the form `meico_<uuid>` and return it.
  *
  * Its only caller is {@link Msm.addIds}, which nothing in the conversion pipeline invokes
- * — the `meico_` ids in the reference MSM files come from `mei/Helper.addUUID`, not from
+ * — the `meico_` ids in the reference MSM files come from `xml/ids.addUUID`, not from
  * here. So this copy is not itself pinned by the equivalence fixtures; the same discipline
  * still applies to it, because the moment a caller does put it on that path, the number
  * and order of these calls become part of the compared output (the tests canonicalise

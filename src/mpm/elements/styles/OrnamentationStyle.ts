@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { allChildElements } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { GenericStyle } from './GenericStyle.js';
 import { OrnamentDef } from './defs/OrnamentDef.js';
 
@@ -22,7 +22,7 @@ export class OrnamentationStyle extends GenericStyle<OrnamentDef> {
     try {
       const os = new OrnamentationStyle();
       if (typeof nameOrXml === 'string') {
-        const e = new Element('styleDef', Mpm.MPM_NAMESPACE);
+        const e = new Element('styleDef', MPM_NAMESPACE);
         e.addAttribute(new Attribute('name', nameOrXml));
         os.parseData(e);
         if (id !== undefined) os.setId(id);

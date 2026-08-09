@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { allChildElements, attribute, firstChildElement } from '../../../../xml/tree.js';
-import { Mpm } from '../../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../../names.js';
 import { AbstractDef } from './AbstractDef.js';
 
 /** Unit the frame of a {@link TemporalSpread} is measured in (MPM's `time.unit`). */
@@ -180,7 +180,7 @@ export class TemporalSpread {
    * a neutral spread serializes as a bare `<temporalSpread/>`.
    */
   generateXML(): Element {
-    const ts = new Element('temporalSpread', Mpm.MPM_NAMESPACE);
+    const ts = new Element('temporalSpread', MPM_NAMESPACE);
     if (this.frameStart !== 0.0)
       ts.addAttribute(new Attribute('frame.start', String(this.frameStart)));
     if (this.frameLength !== 0.0)
@@ -307,7 +307,7 @@ export class DynamicsGradient {
    * restores it from there.
    */
   generateXML(): Element {
-    const dg = new Element('dynamicsGradient', Mpm.MPM_NAMESPACE);
+    const dg = new Element('dynamicsGradient', MPM_NAMESPACE);
     if (this.transitionFrom !== 0.0)
       dg.addAttribute(new Attribute('transition.from', String(this.transitionFrom)));
     if (this.transitionTo !== this.transitionFrom)
@@ -397,7 +397,7 @@ export class OrnamentDef extends AbstractDef {
     try {
       const od = new OrnamentDef();
       if (typeof nameOrXml === 'string') {
-        const e = new Element('ornamentDef', Mpm.MPM_NAMESPACE);
+        const e = new Element('ornamentDef', MPM_NAMESPACE);
         e.addAttribute(new Attribute('name', nameOrXml));
         od.parseDataInternal(e);
       } else {

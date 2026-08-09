@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { DYNAMICS_STYLE, MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { DynamicsData } from './data/DynamicsData.js';
@@ -43,7 +43,7 @@ export class DynamicsMap extends GenericMap {
     subNoteDynamics?: boolean,
     id?: string,
   ): number {
-    const e = new Element('dynamics', Mpm.MPM_NAMESPACE);
+    const e = new Element('dynamics', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('volume', volume));
     if (transitionTo !== undefined) e.addAttribute(new Attribute('transition.to', transitionTo));
@@ -57,7 +57,7 @@ export class DynamicsMap extends GenericMap {
   }
 
   addDynamicsFromData(data: DynamicsData): number {
-    const e = new Element('dynamics', Mpm.MPM_NAMESPACE);
+    const e = new Element('dynamics', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(data.startDate)));
     if (data.volumeString !== null) e.addAttribute(new Attribute('volume', data.volumeString));
     else if (data.volume !== null) e.addAttribute(new Attribute('volume', String(data.volume)));
@@ -115,7 +115,7 @@ export class DynamicsMap extends GenericMap {
         break;
       }
     }
-    dd.style = this.getStyle(Mpm.DYNAMICS_STYLE, dd.styleName) as DynamicsStyle | null;
+    dd.style = this.getStyle(DYNAMICS_STYLE, dd.styleName) as DynamicsStyle | null;
     const volAtt = attribute('volume', e);
     if (volAtt === null) return null;
     dd.volumeString = volAtt.getValue();

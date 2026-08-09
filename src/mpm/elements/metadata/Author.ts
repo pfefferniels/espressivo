@@ -1,7 +1,7 @@
 import { Attribute, Element, Text } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../names.js';
 
 /**
  * An MPM `<author>` element inside {@link Metadata}.
@@ -31,7 +31,7 @@ export class Author extends AbstractXmlSubtree {
   ): Author | null {
     try {
       if (typeof xmlOrName === 'string') {
-        const authorElt = new Element('author', Mpm.MPM_NAMESPACE);
+        const authorElt = new Element('author', MPM_NAMESPACE);
         const a = new Author();
         a.parseData(authorElt);
         a.setName(xmlOrName);

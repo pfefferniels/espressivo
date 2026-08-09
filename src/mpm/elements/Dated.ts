@@ -1,6 +1,6 @@
 import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
-import { Mpm } from '../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../names.js';
 import { GenericMap } from './maps/GenericMap.js';
 import { Header } from './Header.js';
 import type { Global } from './Global.js';
@@ -39,7 +39,7 @@ export class Dated extends AbstractXmlSubtree {
     try {
       const d = new Dated();
       if (xml !== undefined) d.parseData(xml);
-      else d.parseData(new Element('dated', Mpm.MPM_NAMESPACE));
+      else d.parseData(new Element('dated', MPM_NAMESPACE));
       return d;
     } catch (e) {
       console.error(e);

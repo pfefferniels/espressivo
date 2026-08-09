@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { MovementData } from './data/MovementData.js';
@@ -59,7 +59,7 @@ export class MovementMap extends GenericMap {
   ): number {
     if (typeof dateOrData !== 'number') {
       const data = dateOrData;
-      const e = new Element('movement', Mpm.MPM_NAMESPACE);
+      const e = new Element('movement', MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', String(data.startDate)));
       if (data.position !== null) e.addAttribute(new Attribute('position', String(data.position)));
       if (data.transitionTo !== null)
@@ -78,7 +78,7 @@ export class MovementMap extends GenericMap {
       return this.insertElement(new KeyValue(data.startDate, e), false);
     }
     const date = dateOrData;
-    const e = new Element('movement', Mpm.MPM_NAMESPACE);
+    const e = new Element('movement', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('position', String(position)));
     e.addAttribute(new Attribute('transition.to', String(transitionTo)));

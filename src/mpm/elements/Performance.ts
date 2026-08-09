@@ -6,7 +6,21 @@ import {
   firstChildElement,
   getAttributeValue,
 } from '../../xml/tree.js';
-import { Mpm } from '../../mpm/Mpm.js';
+import {
+  ARTICULATION_MAP,
+  ASYNCHRONY_MAP,
+  DYNAMICS_MAP,
+  IMPRECISION_MAP_DYNAMICS,
+  IMPRECISION_MAP_TIMING,
+  IMPRECISION_MAP_TONEDURATION,
+  IMPRECISION_MAP_TUNING,
+  METRICAL_ACCENTUATION_MAP,
+  MOVEMENT_MAP,
+  MPM_NAMESPACE,
+  ORNAMENTATION_MAP,
+  RUBATO_MAP,
+  TEMPO_MAP,
+} from '../names.js';
 import { KeyValue } from '../../supplementary/KeyValue.js';
 import { Global } from './Global.js';
 import { Part } from './Part.js';
@@ -32,14 +46,16 @@ import type { MovementMap } from './maps/MovementMap.js';
  * carrying millisecond timing, velocities and articulation — see that method's comment for
  * the stage order, which is the load-bearing part of this class.
  *
- * NOTE ON THE `import type` BLOCK ABOVE: every map class is imported *for its type only*.
- * That is deliberate — a value import would close an import cycle through `Mpm` (see the
- * IMPORT-ORDER HAZARD note on `GenericStyle`). The price is that this file cannot call the
- * maps' **static** methods, which is why {@link renderTempoToMap} and
- * {@link renderMillisecondsModifiersToMap} exist here as private re-implementations of
- * `TempoMap.renderTempoToMap` and `OrnamentationMap.renderMillisecondsModifiersToMap`.
- * Keep them in sync with their originals; do not "simplify" them into the map classes
- * without breaking the cycle first (item T18).
+ * NOTE ON THE `import type` BLOCK ABOVE: every map class is imported *for its type only*,
+ * originally because a value import would have closed an import cycle through `Mpm`. T18
+ * removed that cycle (RULE M3), so the constraint is gone — but the *consequence* is still
+ * here: this file cannot call the maps' **static** methods, which is why
+ * {@link renderTempoToMap} and {@link renderMillisecondsModifiersToMap} exist as private
+ * re-implementations of `TempoMap.renderTempoToMap` and
+ * `OrnamentationMap.renderMillisecondsModifiersToMap`. Collapsing them into the map
+ * classes is now merely *possible*, not free: it moves code on the byte-compared rendering
+ * path and owes a behavioural comparison, so it is left to the item that owns this file.
+ * Until then, keep the two copies in sync with their originals.
  */
 export class Performance extends AbstractXmlSubtree {
   private nameAttr: Attribute | null = null;
@@ -71,7 +87,7 @@ export class Performance extends AbstractXmlSubtree {
     try {
       const p = new Performance();
       if (typeof nameOrXml === 'string') {
-        const performance = new Element('performance', Mpm.MPM_NAMESPACE);
+        const performance = new Element('performance', MPM_NAMESPACE);
         performance.addAttribute(new Attribute('name', nameOrXml));
         p.parseData(performance);
         if (pulsesPerQuarter !== undefined) p.setPulsesPerQuarter(pulsesPerQuarter);
@@ -346,40 +362,38 @@ export class Performance extends AbstractXmlSubtree {
     clone.convertPPQ(this.getPPQ());
 
     // get global mpm maps
-    const globalRubatoMap = this.getGlobal()!
-      .getDated()!
-      .getMap(Mpm.RUBATO_MAP) as RubatoMap | null;
-    const globalTempoMap = this.getGlobal()!.getDated()!.getMap(Mpm.TEMPO_MAP) as TempoMap | null;
+    const globalRubatoMap = this.getGlobal()!.getDated()!.getMap(RUBATO_MAP) as RubatoMap | null;
+    const globalTempoMap = this.getGlobal()!.getDated()!.getMap(TEMPO_MAP) as TempoMap | null;
     const globalAsynchronyMap = this.getGlobal()!
       .getDated()!
-      .getMap(Mpm.ASYNCHRONY_MAP) as AsynchronyMap | null;
+      .getMap(ASYNCHRONY_MAP) as AsynchronyMap | null;
     const globalImprecisionMap_timing = this.getGlobal()!
       .getDated()!
-      .getMap(Mpm.IMPRECISION_MAP_TIMING) as ImprecisionMap | null;
+      .getMap(IMPRECISION_MAP_TIMING) as ImprecisionMap | null;
     const globalImprecisionMap_dynamics = this.getGlobal()!
       .getDated()!
-      .getMap(Mpm.IMPRECISION_MAP_DYNAMICS) as ImprecisionMap | null;
+      .getMap(IMPRECISION_MAP_DYNAMICS) as ImprecisionMap | null;
     const globalImprecisionMap_toneduration = this.getGlobal()!
       .getDated()!
-      .getMap(Mpm.IMPRECISION_MAP_TONEDURATION) as ImprecisionMap | null;
+      .getMap(IMPRECISION_MAP_TONEDURATION) as ImprecisionMap | null;
     const globalImprecisionMap_tuning = this.getGlobal()!
       .getDated()!
-      .getMap(Mpm.IMPRECISION_MAP_TUNING) as ImprecisionMap | null;
+      .getMap(IMPRECISION_MAP_TUNING) as ImprecisionMap | null;
     const globalDynamicsMap = this.getGlobal()!
       .getDated()!
-      .getMap(Mpm.DYNAMICS_MAP) as DynamicsMap | null;
+      .getMap(DYNAMICS_MAP) as DynamicsMap | null;
     const globalMovementMap = this.getGlobal()!
       .getDated()!
-      .getMap(Mpm.MOVEMENT_MAP) as MovementMap | null;
+      .getMap(MOVEMENT_MAP) as MovementMap | null;
     const globalMetricalAccentuationMap = this.getGlobal()!
       .getDated()!
-      .getMap(Mpm.METRICAL_ACCENTUATION_MAP) as MetricalAccentuationMap | null;
+      .getMap(METRICAL_ACCENTUATION_MAP) as MetricalAccentuationMap | null;
     const globalOrnamentationMap = this.getGlobal()!
       .getDated()!
-      .getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
+      .getMap(ORNAMENTATION_MAP) as OrnamentationMap | null;
     const globalArticulationMap = this.getGlobal()!
       .getDated()!
-      .getMap(Mpm.ARTICULATION_MAP) as ArticulationMap | null;
+      .getMap(ARTICULATION_MAP) as ArticulationMap | null;
     let maps: GenericMap[] = [];
 
     // process global data
@@ -412,7 +426,7 @@ export class Performance extends AbstractXmlSubtree {
     // where this skips it when the map is null; that method only reads, so nothing depends
     // on it running.
     if (globalOrnamentationMap !== null) {
-      const affectedParts = this.getAllMsmPartsAffectedByGlobalMap(clone, Mpm.ORNAMENTATION_MAP);
+      const affectedParts = this.getAllMsmPartsAffectedByGlobalMap(clone, ORNAMENTATION_MAP);
       const mapsToOrnament: GenericMap[] = [];
       for (const part of affectedParts) {
         const s = firstChildElement('dated', part);
@@ -471,32 +485,28 @@ export class Performance extends AbstractXmlSubtree {
       let imprecisionMap_toneduration: ImprecisionMap | null = null;
       let imprecisionMap_tuning: ImprecisionMap | null = null;
       if (mpmPart !== null) {
-        rubatoMap = mpmPart.getDated()!.getMap(Mpm.RUBATO_MAP) as RubatoMap | null;
-        tempoMap = mpmPart.getDated()!.getMap(Mpm.TEMPO_MAP) as TempoMap | null;
-        asynchronyMap = mpmPart.getDated()!.getMap(Mpm.ASYNCHRONY_MAP) as AsynchronyMap | null;
-        dynamicsMap = mpmPart.getDated()!.getMap(Mpm.DYNAMICS_MAP) as DynamicsMap | null;
-        movementMap = mpmPart.getDated()!.getMap(Mpm.MOVEMENT_MAP) as MovementMap | null;
+        rubatoMap = mpmPart.getDated()!.getMap(RUBATO_MAP) as RubatoMap | null;
+        tempoMap = mpmPart.getDated()!.getMap(TEMPO_MAP) as TempoMap | null;
+        asynchronyMap = mpmPart.getDated()!.getMap(ASYNCHRONY_MAP) as AsynchronyMap | null;
+        dynamicsMap = mpmPart.getDated()!.getMap(DYNAMICS_MAP) as DynamicsMap | null;
+        movementMap = mpmPart.getDated()!.getMap(MOVEMENT_MAP) as MovementMap | null;
         metricalAccentuationMap = mpmPart
           .getDated()!
-          .getMap(Mpm.METRICAL_ACCENTUATION_MAP) as MetricalAccentuationMap | null;
-        ornamentationMap = mpmPart
-          .getDated()!
-          .getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
-        articulationMap = mpmPart
-          .getDated()!
-          .getMap(Mpm.ARTICULATION_MAP) as ArticulationMap | null;
+          .getMap(METRICAL_ACCENTUATION_MAP) as MetricalAccentuationMap | null;
+        ornamentationMap = mpmPart.getDated()!.getMap(ORNAMENTATION_MAP) as OrnamentationMap | null;
+        articulationMap = mpmPart.getDated()!.getMap(ARTICULATION_MAP) as ArticulationMap | null;
         imprecisionMap_timing = mpmPart
           .getDated()!
-          .getMap(Mpm.IMPRECISION_MAP_TIMING) as ImprecisionMap | null;
+          .getMap(IMPRECISION_MAP_TIMING) as ImprecisionMap | null;
         imprecisionMap_dynamics = mpmPart
           .getDated()!
-          .getMap(Mpm.IMPRECISION_MAP_DYNAMICS) as ImprecisionMap | null;
+          .getMap(IMPRECISION_MAP_DYNAMICS) as ImprecisionMap | null;
         imprecisionMap_toneduration = mpmPart
           .getDated()!
-          .getMap(Mpm.IMPRECISION_MAP_TONEDURATION) as ImprecisionMap | null;
+          .getMap(IMPRECISION_MAP_TONEDURATION) as ImprecisionMap | null;
         imprecisionMap_tuning = mpmPart
           .getDated()!
-          .getMap(Mpm.IMPRECISION_MAP_TUNING) as ImprecisionMap | null;
+          .getMap(IMPRECISION_MAP_TUNING) as ImprecisionMap | null;
       }
 
       if (rubatoMap === null) rubatoMap = globalRubatoMap;

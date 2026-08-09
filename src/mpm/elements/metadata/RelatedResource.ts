@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../names.js';
 
 /**
  * An MPM `<resource>` element: a pointer to a file this performance description relates to
@@ -27,7 +27,7 @@ export class RelatedResource extends AbstractXmlSubtree {
     try {
       if (typeof xmlOrUri === 'string') {
         if (type === undefined) return null;
-        const resourceElt = new Element('resource', Mpm.MPM_NAMESPACE);
+        const resourceElt = new Element('resource', MPM_NAMESPACE);
         const r = new RelatedResource();
         r.parseData(resourceElt);
         r.setUri(xmlOrUri);

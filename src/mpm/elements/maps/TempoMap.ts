@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE, TEMPO_STYLE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { TempoData } from './data/TempoData.js';
@@ -58,7 +58,7 @@ export class TempoMap extends GenericMap {
   ): number {
     if (typeof dateOrData !== 'number') {
       const data = dateOrData;
-      const e = new Element('tempo', Mpm.MPM_NAMESPACE);
+      const e = new Element('tempo', MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', String(data.startDate)));
       if (data.bpmString !== null) e.addAttribute(new Attribute('bpm', data.bpmString));
       else if (data.bpm !== null) e.addAttribute(new Attribute('bpm', String(data.bpm)));
@@ -78,7 +78,7 @@ export class TempoMap extends GenericMap {
       return this.insertElement(new KeyValue(data.startDate, e), false);
     }
     const date = dateOrData;
-    const e = new Element('tempo', Mpm.MPM_NAMESPACE);
+    const e = new Element('tempo', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('bpm', bpm!));
     if (typeof transitionToOrBeatLength === 'string') {
@@ -133,7 +133,7 @@ export class TempoMap extends GenericMap {
           break;
         }
       }
-      const gStyle = this.getStyle(Mpm.TEMPO_STYLE, td.styleName) as TempoStyle | null;
+      const gStyle = this.getStyle(TEMPO_STYLE, td.styleName) as TempoStyle | null;
       if (gStyle !== null) td.style = gStyle;
       td.bpmString = bpmAtt.getValue();
       td.bpm = TempoStyle.getNumericBpmValueStatic(td.bpmString, td.style);

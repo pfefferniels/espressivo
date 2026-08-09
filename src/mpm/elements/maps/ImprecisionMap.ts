@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { RandomNumberProvider } from '../../../supplementary/RandomNumberProvider.js';
 import { GenericMap } from './GenericMap.js';
@@ -100,7 +100,7 @@ export class ImprecisionMap extends GenericMap {
     upperLimit: number,
     seed?: number | null,
   ): number {
-    const e = new Element(DistributionData.UNIFORM, Mpm.MPM_NAMESPACE);
+    const e = new Element(DistributionData.UNIFORM, MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('limit.lower', String(lowerLimit)));
     e.addAttribute(new Attribute('limit.upper', String(upperLimit)));
@@ -115,7 +115,7 @@ export class ImprecisionMap extends GenericMap {
     upperLimit: number,
     seed?: number | null,
   ): number {
-    const e = new Element(DistributionData.GAUSSIAN, Mpm.MPM_NAMESPACE);
+    const e = new Element(DistributionData.GAUSSIAN, MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('deviation.standard', String(standardDeviation)));
     e.addAttribute(new Attribute('limit.lower', String(lowerLimit)));
@@ -133,7 +133,7 @@ export class ImprecisionMap extends GenericMap {
     upperClip: number,
     seed?: number | null,
   ): number {
-    const e = new Element(DistributionData.TRIANGULAR, Mpm.MPM_NAMESPACE);
+    const e = new Element(DistributionData.TRIANGULAR, MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('limit.lower', String(lowerLimit)));
     e.addAttribute(new Attribute('limit.upper', String(upperLimit)));
@@ -152,7 +152,7 @@ export class ImprecisionMap extends GenericMap {
     millisecondsTimingBasis: number,
     seed?: number | null,
   ): number {
-    const e = new Element(DistributionData.BROWNIAN, Mpm.MPM_NAMESPACE);
+    const e = new Element(DistributionData.BROWNIAN, MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('stepWidth.max', String(maxStepWidth)));
     e.addAttribute(new Attribute('limit.lower', String(lowerLimit)));
@@ -172,7 +172,7 @@ export class ImprecisionMap extends GenericMap {
     millisecondsTimingBasis: number,
     seed?: number | null,
   ): number {
-    const e = new Element(DistributionData.COMPENSATING_TRIANGLE, Mpm.MPM_NAMESPACE);
+    const e = new Element(DistributionData.COMPENSATING_TRIANGLE, MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(
       new Attribute('degreeOfCorrelation', String(Math.max(degreeOfCorrelation, 0.0))),

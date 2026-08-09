@@ -1,7 +1,15 @@
 import { Attribute, Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { allChildElements, attribute } from '../../xml/tree.js';
-import { Mpm } from '../../mpm/Mpm.js';
+import {
+  ARTICULATION_STYLE,
+  DYNAMICS_STYLE,
+  METRICAL_ACCENTUATION_STYLE,
+  MPM_NAMESPACE,
+  ORNAMENTATION_STYLE,
+  RUBATO_STYLE,
+  TEMPO_STYLE,
+} from '../names.js';
 import { GenericStyle } from './styles/GenericStyle.js';
 import { ArticulationStyle } from './styles/ArticulationStyle.js';
 import { TempoStyle } from './styles/TempoStyle.js';
@@ -43,7 +51,7 @@ export class Header extends AbstractXmlSubtree {
     try {
       const h = new Header();
       if (xml !== undefined) h.parseData(xml);
-      else h.parseData(new Element('header', Mpm.MPM_NAMESPACE));
+      else h.parseData(new Element('header', MPM_NAMESPACE));
       return h;
     } catch (e) {
       console.error(e);
@@ -86,7 +94,7 @@ export class Header extends AbstractXmlSubtree {
   addStyleType(typeOrXml: string | Element): Map<string, GenericStyle> | null {
     if (typeof typeOrXml === 'string') {
       if (!typeOrXml) return null;
-      return this.addStyleType(new Element(typeOrXml, Mpm.MPM_NAMESPACE));
+      return this.addStyleType(new Element(typeOrXml, MPM_NAMESPACE));
     }
     const xml = typeOrXml;
     const type = xml.getLocalName();
@@ -98,22 +106,22 @@ export class Header extends AbstractXmlSubtree {
     for (const styleDef of styleDefElements) {
       let sd: GenericStyle | null;
       switch (type) {
-        case Mpm.ARTICULATION_STYLE:
+        case ARTICULATION_STYLE:
           sd = ArticulationStyle.createArticulationStyle(styleDef);
           break;
-        case Mpm.TEMPO_STYLE:
+        case TEMPO_STYLE:
           sd = TempoStyle.createTempoStyle(styleDef);
           break;
-        case Mpm.DYNAMICS_STYLE:
+        case DYNAMICS_STYLE:
           sd = DynamicsStyle.createDynamicsStyle(styleDef);
           break;
-        case Mpm.METRICAL_ACCENTUATION_STYLE:
+        case METRICAL_ACCENTUATION_STYLE:
           sd = MetricalAccentuationStyle.createMetricalAccentuationStyle(styleDef);
           break;
-        case Mpm.RUBATO_STYLE:
+        case RUBATO_STYLE:
           sd = RubatoStyle.createRubatoStyle(styleDef);
           break;
-        case Mpm.ORNAMENTATION_STYLE:
+        case ORNAMENTATION_STYLE:
           sd = OrnamentationStyle.createOrnamentationStyle(styleDef);
           break;
         default:
@@ -134,7 +142,7 @@ export class Header extends AbstractXmlSubtree {
 
   removeStyleType(type: string): void {
     if (this.styleDefs.delete(type)) {
-      const typeElt = this.getXml()!.getFirstChildElement(type, Mpm.MPM_NAMESPACE);
+      const typeElt = this.getXml()!.getFirstChildElement(type, MPM_NAMESPACE);
       if (typeElt) this.getXml()!.removeChild(typeElt);
     }
   }
@@ -167,22 +175,22 @@ export class Header extends AbstractXmlSubtree {
     if (typeof styleDefOrName === 'string') {
       let styleDef: GenericStyle | null;
       switch (type) {
-        case Mpm.DYNAMICS_STYLE:
+        case DYNAMICS_STYLE:
           styleDef = DynamicsStyle.createDynamicsStyle(styleDefOrName);
           break;
-        case Mpm.ARTICULATION_STYLE:
+        case ARTICULATION_STYLE:
           styleDef = ArticulationStyle.createArticulationStyle(styleDefOrName);
           break;
-        case Mpm.METRICAL_ACCENTUATION_STYLE:
+        case METRICAL_ACCENTUATION_STYLE:
           styleDef = MetricalAccentuationStyle.createMetricalAccentuationStyle(styleDefOrName);
           break;
-        case Mpm.TEMPO_STYLE:
+        case TEMPO_STYLE:
           styleDef = TempoStyle.createTempoStyle(styleDefOrName);
           break;
-        case Mpm.RUBATO_STYLE:
+        case RUBATO_STYLE:
           styleDef = RubatoStyle.createRubatoStyle(styleDefOrName);
           break;
-        case Mpm.ORNAMENTATION_STYLE:
+        case ORNAMENTATION_STYLE:
           styleDef = OrnamentationStyle.createOrnamentationStyle(styleDefOrName);
           break;
         default:
@@ -197,12 +205,12 @@ export class Header extends AbstractXmlSubtree {
     if (!type || styleDef === null) return;
     let styleCollection = this.styleDefs.get(type);
     if (styleCollection === undefined) {
-      this.getXml()!.appendChild(new Element(type, Mpm.MPM_NAMESPACE));
+      this.getXml()!.appendChild(new Element(type, MPM_NAMESPACE));
       styleCollection = new Map();
       this.styleDefs.set(type, styleCollection);
     }
     if (styleCollection.has(styleDef.getName())) this.removeStyleDef(type, styleDef.getName());
-    this.getXml()!.getFirstChildElement(type, Mpm.MPM_NAMESPACE)!.appendChild(styleDef.getXml()!);
+    this.getXml()!.getFirstChildElement(type, MPM_NAMESPACE)!.appendChild(styleDef.getXml()!);
     styleCollection.set(styleDef.getName(), styleDef);
   }
 
@@ -213,7 +221,7 @@ export class Header extends AbstractXmlSubtree {
     const styleDef = styleCollection.get(name);
     if (styleDef !== undefined) {
       styleCollection.delete(name);
-      this.getXml()!.getFirstChildElement(type, Mpm.MPM_NAMESPACE)!.removeChild(styleDef.getXml()!);
+      this.getXml()!.getFirstChildElement(type, MPM_NAMESPACE)!.removeChild(styleDef.getXml()!);
     }
   }
 

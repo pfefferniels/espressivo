@@ -1,7 +1,7 @@
 import { Attribute, Element, Text } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute } from '../../../xml/tree.js';
-import { Mpm } from '../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../names.js';
 
 /**
  * An MPM `<comment>` element inside {@link Metadata} — free prose about the performance.
@@ -24,7 +24,7 @@ export class Comment extends AbstractXmlSubtree {
   static createComment(xmlOrText: Element | string, id?: string | null): Comment | null {
     try {
       if (typeof xmlOrText === 'string') {
-        const commentElt = new Element('comment', Mpm.MPM_NAMESPACE);
+        const commentElt = new Element('comment', MPM_NAMESPACE);
         const c = new Comment();
         c.parseData(commentElt);
         c.setText(xmlOrText);

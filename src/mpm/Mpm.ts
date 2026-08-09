@@ -1,31 +1,23 @@
 import { Element, Attribute, Nodes, Elements, Document } from '../xml/XomTypes.js';
 import { AbstractMsm } from '../msm/AbstractMsm.js';
+import * as names from './names.js';
 import { Performance } from './elements/Performance.js';
 import { Metadata } from './elements/metadata/Metadata.js';
-// Side-effect imports: ensure map type factories are registered for Dated.addMapFromXml
-import './elements/maps/DynamicsMap.js';
-import './elements/maps/TempoMap.js';
-import './elements/maps/RubatoMap.js';
-import './elements/maps/AsynchronyMap.js';
-import './elements/maps/ArticulationMap.js';
-import './elements/maps/ImprecisionMap.js';
-import './elements/maps/MetricalAccentuationMap.js';
-import './elements/maps/OrnamentationMap.js';
-import './elements/maps/MovementMap.js';
-// Type-only imports: erased at compile time, so they add no module edge to the
-// import cycle the value imports above are carefully ordered around.
+// Side-effect import: registers the typed-map factories for Dated.addMapFromXml. See the
+// barrel's own comment for why an import is the registration mechanism (RULE M4).
+import './elements/maps/index.js';
 import type { Author } from './elements/metadata/Author.js';
 import type { Comment } from './elements/metadata/Comment.js';
 import type { RelatedResource } from './elements/metadata/RelatedResource.js';
 
 /**
- * `mei/Helper` in miniature, private to this module.
+ * Java's `Helper` in miniature, private to this module.
  *
- * `Mpm` deliberately does **not** import `mei/Helper`: that module pulls in the MEI half
- * of the port, and `Mpm` is the hub every mpm element imports (see the IMPORT-ORDER
- * HAZARD note on `GenericStyle`). These two local copies keep that edge from existing.
- * They behave exactly like their `mei/Helper` namesakes — do not "deduplicate" them
- * until the cycle is broken (item T18).
+ * These two are byte-identical to their namesakes in `Msm.ts`, and behave like the shared
+ * `src/xml/tree.ts` versions T14 moved `mei/Helper`'s statics into. Do not "deduplicate"
+ * them against `tree.ts` on sight: that set has behaviourally drifted from these
+ * module-local copies, and reconciling them needs a per-method behavioural comparison
+ * (RULE M2a; T16b owns it).
  *
  * Java's `Mpm.java` calls exactly these two Helper methods and no others
  * (Mpm.java:160,165).
@@ -67,30 +59,33 @@ function getAllChildElements(name: string, ofThis: Element): Element[] {
  * indices kept in step by the add/remove methods, never written to directly.
  */
 export class Mpm extends AbstractMsm {
-  static readonly MPM_NAMESPACE: string = 'http://www.cemfi.de/mpm/ns/1.0';
+  // The MPM vocabulary lives in `./names.ts`, which imports nothing — see RULE M3 and that
+  // file's comment. These statics re-export it under the names Java's `Mpm` published, so
+  // `Mpm.TEMPO_MAP` and friends keep working; inside `src/mpm/` import `names.js` directly.
+  static readonly MPM_NAMESPACE: string = names.MPM_NAMESPACE;
 
   // type constants of style definitions in the header environment
-  static readonly ARTICULATION_STYLE: string = 'articulationStyles';
-  static readonly ORNAMENTATION_STYLE: string = 'ornamentationStyles';
-  static readonly DYNAMICS_STYLE: string = 'dynamicsStyles';
-  static readonly METRICAL_ACCENTUATION_STYLE: string = 'metricalAccentuationStyles';
-  static readonly TEMPO_STYLE: string = 'tempoStyles';
-  static readonly RUBATO_STYLE: string = 'rubatoStyles';
+  static readonly ARTICULATION_STYLE: string = names.ARTICULATION_STYLE;
+  static readonly ORNAMENTATION_STYLE: string = names.ORNAMENTATION_STYLE;
+  static readonly DYNAMICS_STYLE: string = names.DYNAMICS_STYLE;
+  static readonly METRICAL_ACCENTUATION_STYLE: string = names.METRICAL_ACCENTUATION_STYLE;
+  static readonly TEMPO_STYLE: string = names.TEMPO_STYLE;
+  static readonly RUBATO_STYLE: string = names.RUBATO_STYLE;
 
   // map type constants that occur in the dated environment
-  static readonly ARTICULATION_MAP: string = 'articulationMap';
-  static readonly ORNAMENTATION_MAP: string = 'ornamentationMap';
-  static readonly DYNAMICS_MAP: string = 'dynamicsMap';
-  static readonly MOVEMENT_MAP: string = 'movementMap';
-  static readonly METRICAL_ACCENTUATION_MAP: string = 'metricalAccentuationMap';
-  static readonly TEMPO_MAP: string = 'tempoMap';
-  static readonly RUBATO_MAP: string = 'rubatoMap';
-  static readonly ASYNCHRONY_MAP: string = 'asynchronyMap';
-  static readonly IMPRECISION_MAP: string = 'imprecisionMap';
-  static readonly IMPRECISION_MAP_TIMING: string = 'imprecisionMap.timing';
-  static readonly IMPRECISION_MAP_DYNAMICS: string = 'imprecisionMap.dynamics';
-  static readonly IMPRECISION_MAP_TONEDURATION: string = 'imprecisionMap.toneduration';
-  static readonly IMPRECISION_MAP_TUNING: string = 'imprecisionMap.tuning';
+  static readonly ARTICULATION_MAP: string = names.ARTICULATION_MAP;
+  static readonly ORNAMENTATION_MAP: string = names.ORNAMENTATION_MAP;
+  static readonly DYNAMICS_MAP: string = names.DYNAMICS_MAP;
+  static readonly MOVEMENT_MAP: string = names.MOVEMENT_MAP;
+  static readonly METRICAL_ACCENTUATION_MAP: string = names.METRICAL_ACCENTUATION_MAP;
+  static readonly TEMPO_MAP: string = names.TEMPO_MAP;
+  static readonly RUBATO_MAP: string = names.RUBATO_MAP;
+  static readonly ASYNCHRONY_MAP: string = names.ASYNCHRONY_MAP;
+  static readonly IMPRECISION_MAP: string = names.IMPRECISION_MAP;
+  static readonly IMPRECISION_MAP_TIMING: string = names.IMPRECISION_MAP_TIMING;
+  static readonly IMPRECISION_MAP_DYNAMICS: string = names.IMPRECISION_MAP_DYNAMICS;
+  static readonly IMPRECISION_MAP_TONEDURATION: string = names.IMPRECISION_MAP_TONEDURATION;
+  static readonly IMPRECISION_MAP_TUNING: string = names.IMPRECISION_MAP_TUNING;
 
   private metadata: Metadata | null = null;
   private readonly performances: Performance[] = [];

@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { allChildElements, attribute } from '../../../../xml/tree.js';
-import { Mpm } from '../../../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../../../names.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { AbstractDef } from './AbstractDef.js';
 
@@ -82,7 +82,7 @@ export class AccentuationPatternDef extends AbstractDef {
     try {
       const apd = new AccentuationPatternDef();
       if (typeof nameOrXml === 'string') {
-        const e = new Element('accentuationPatternDef', Mpm.MPM_NAMESPACE);
+        const e = new Element('accentuationPatternDef', MPM_NAMESPACE);
         e.addAttribute(new Attribute('name', nameOrXml));
         e.addAttribute(new Attribute('length', String(length)));
         apd.parseDataInternal(e);
@@ -108,7 +108,7 @@ export class AccentuationPatternDef extends AbstractDef {
     transitionTo: number,
     id?: string | null,
   ): number {
-    const accElt = new Element('accentuation', Mpm.MPM_NAMESPACE);
+    const accElt = new Element('accentuation', MPM_NAMESPACE);
     accElt.addAttribute(new Attribute('beat', String(beat)));
     accElt.addAttribute(new Attribute('value', String(value)));
     accElt.addAttribute(new Attribute('transition.from', String(transitionFrom)));

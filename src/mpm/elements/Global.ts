@@ -1,7 +1,7 @@
 import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { firstChildElement } from '../../xml/tree.js';
-import { Mpm } from '../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../names.js';
 import { Header } from './Header.js';
 import { Dated } from './Dated.js';
 
@@ -32,7 +32,7 @@ export class Global extends AbstractXmlSubtree {
     try {
       const g = new Global();
       if (xml !== undefined) g.parseData(xml);
-      else g.parseData(new Element('global', Mpm.MPM_NAMESPACE));
+      else g.parseData(new Element('global', MPM_NAMESPACE));
       return g;
     } catch (e) {
       console.error(e);

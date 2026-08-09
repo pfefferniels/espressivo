@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { attribute, firstChildElement } from '../../xml/tree.js';
-import { Mpm } from '../../mpm/Mpm.js';
+import { MPM_NAMESPACE } from '../names.js';
 import { Header } from './Header.js';
 import { Dated } from './Dated.js';
 import type { Global } from './Global.js';
@@ -56,7 +56,7 @@ export class Part extends AbstractXmlSubtree {
     try {
       const p = new Part();
       if (typeof nameOrXml === 'string') {
-        const part = new Element('part', Mpm.MPM_NAMESPACE);
+        const part = new Element('part', MPM_NAMESPACE);
         part.addAttribute(new Attribute('name', nameOrXml));
         part.addAttribute(new Attribute('number', String(number)));
         part.addAttribute(new Attribute('midi.channel', String(midiChannel)));
