@@ -91,3 +91,34 @@ v3 design:
   change together); TS String(x) vs Java Double.toString formatting ("-22" vs "-22.0")
   — invisible to numeric tests, visible in bytes.
 ORN-1 complete.
+
+## 2026-08-09 — P0: GitHub design-rationale report landed (orn-research-github)
+
+ornamentation/research/github-v3-design.md (367 lines). Decisive facts:
+- NO version marker in MPM documents (same namespace v1-v3, no version attr) →
+  v2/v3 detection is structural. Markers enumerated in report §1.
+- Zero GitHub review discussion on the v3 PRs — semantics live ONLY in ODD prose,
+  schematrons, and Lars' implementation. Issue #55 (arpeggiation, opened by
+  pfefferniels = the user!) fixed v2 intent; #73 (defaultOrnamentation, pfefferniels,
+  still open) was declined by Berndt for now.
+- The 10-item consolidated ambiguity table (§6) — headline rulings the reference impl
+  makes: alignment read from temporalSpread (spec says ornamentDef — accept both);
+  unit suffix optional in practice, fall back time.unit then ticks (real corpus incl.
+  the repo's own samples is NOT schema-valid); '%' resolves against principal note's
+  MILLISECOND duration (both offset and length); multi-ornament overflow →
+  proportional scaling (rule was commented out of spec but implemented); plays =
+  repetitions+1; repetitions=-1 undocumented meico extension (fill frame @150ms/note);
+  ':|:'normalized to ':| |:'; consecutive duplicate pitches dropped unless whole pool
+  same-pitch (tremolo preservation); expansion writes derived note.order.perf attr
+  back onto the ornament; impl implements ONLY noteid principal resolution (spec lists
+  a 3-step fallback; unfound principal → ornament skipped + note.order.perf copied).
+- frameLength suffix parsing is BROKEN in the reference impl (bare parseDouble throws
+  on "100%"/"200ms" → domain only via time.unit or default 100 Relative). Spec-vs-impl
+  divergence #1 for DESIGN.md.
+- ornaments.dict ships standard ornament tables (trill, turns, mordents, cadence
+  prefixes) as DIATONIC step sequences with |: :| tokens; diatonic resolution happens
+  in MEI layer (Helper shifts diatonically, writes intm="...hs" halfstep attr on MSM
+  notes).
+- v3.0.1 is the only published release (rng/rnc/xsd/pdf assets); v3.0.2 (noteid) is
+  develop+gh-pages only — published schema would reject @noteid.
+ORN-2 complete.
