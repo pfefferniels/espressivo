@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "7a1b86f",
-  "phase": 3,
-  "currentItem": "T20",
-  "counters": { "completed": 23, "blocked": 0, "reverted": 0 },
+  "lastGreenCommit": "83e6d0a",
+  "phase": 4,
+  "currentItem": "T21",
+  "counters": { "completed": 24, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 92.0,
@@ -180,7 +180,7 @@
     {
       "id": "T20",
       "phase": 3,
-      "status": "in_progress",
+      "status": "done",
       "title": "MIDI generation layer cleanup",
       "details": "EventMaker/Midi restructure per ARCHITECTURE.md; event ordering and byte layout must stay identical (midi-byte-equivalence suite proves it)."
     },
@@ -195,7 +195,7 @@
     {
       "id": "T21",
       "phase": 4,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Dead-code sweep + coverage audit",
       "details": "Remove now-dead code (ts-prune or knip), re-run scoped coverage, must be >= baseline floor. Update vitest.config.ts include list if module paths moved (mechanical only)."
     },
