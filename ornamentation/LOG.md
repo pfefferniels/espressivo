@@ -122,3 +122,29 @@ ornamentation/research/github-v3-design.md (367 lines). Decisive facts:
 - v3.0.1 is the only published release (rng/rnc/xsd/pdf assets); v3.0.2 (noteid) is
   develop+gh-pages only — published schema would reject @noteid.
 ORN-2 complete.
+
+## 2026-08-09 — P0: fixture-harness feasibility (ORN-7 probe)
+
+ornamentation/research/fixture-harness-feasibility.md. Verdict: harness WORKS
+(Lars' branch compiles with one jar addition; Niels' tools graft with a 90-line
+adaptation; probe workspace kept warm), but 3deb141c CANNOT source fixtures:
+- v2 ornamentation is a complete silent no-op on Lars' branch (apply() calls
+  commented out; applyNotesToMaps skips ornaments without noteid). v2 parity target
+  stays Niels' meico@1d662105 + committed fixtures — unchanged.
+- v3 works end-to-end ONLY when child elements are named `note` (spec-correct);
+  Lars' own OrnamentData parses `ornamentNote` (spec deviation + internal
+  inconsistency → transformers silently no-op). frameLength unit suffix throws
+  (swallowed). Ticks-domain .perf never updated for ornament notes (ms-only spread).
+  Principal split (n3_split0) timing looks defective. interval.chromatic ignored by
+  renderer (midi.pitch + intm only).
+- When firing, math confirms design: 50% relative frame of principal's ms duration,
+  even spacing, linear gradient × scale, monophonic seamless. Landing-note rule and
+  (2+1)×group expansion confirmed live.
+STRATEGIC RULING (journaled before design): meico-ts implements the SPEC faithfully
+(with documented real-world lenience), consults Lars' impl where spec is silent
+(% base, overflow scaling, note.order.perf, landing note, dedup, ':|:'), and does
+NOT port PR defects. v3 fixtures: hand-authored MSM+MPM input pairs + expected
+outputs derived from spec math (cross-checked against patched Lars build where
+useful), stamped spec-derived. GenerateFromMsmMpm tool shape adopted.
+Consider (user decision, not autonomous): reporting the PR defects upstream as a
+review on cemfi/meico#31 — valuable to the ecosystem, outward-facing, so parked.
