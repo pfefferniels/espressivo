@@ -1261,6 +1261,143 @@ describe('v2-passthrough: a v2 ornamentation document is untouched by v3 (D6)', 
 });
 
 // ---------------------------------------------------------------------------------------
+// A degenerate frame end to end: the finiteness guard (W9 hardening, finding O2)
+// ---------------------------------------------------------------------------------------
+
+describe('a negative intensity reaches neither the augmented MSM nor the MIDI export', () => {
+  /**
+   * The guard in `createChords` exists for one measured failure, and its docblock names it:
+   * a negative `intensity` made the renderer emit a real `<note date="Infinity"
+   * duration="NaN">` "into the augmented MSM and on into the MIDI export". Every test that
+   * pins the guard drives `renderOrnamentationToMap` directly, so nothing asserted that the
+   * two documents the docblock names come out clean. This closes that.
+   *
+   * The construction is the W5 verifier's, unchanged: intensity −1,
+   * `frame.offset="-1000ticks"`, `frameLength="100ticks"`, `noteoff.shift="monophonic"`,
+   * four slots over a principal at date 0 with duration 1440. It is carried by an in-memory
+   * variant of `turn-atstart`'s MPM rather than by a tenth fixture pair — the MSM, the pool
+   * and `note.order` are reused unchanged and only the `<temporalSpread>` differs, so the
+   * arithmetic below is that fixture's with one frame substituted.
+   *
+   * `pow(0, −1)` is `Infinity`, one of the two unguarded edges this renderer inherits from
+   * the v2 spacing engine on purpose:
+   *   i=0: pow(0/3, −1) * 100 − 1000 = Infinity
+   *   i=1: pow(1/3, −1) = 3   ⇒  300 − 1000 = −700
+   *   i=2: pow(2/3, −1) = 1.5 ⇒  150 − 1000 = −850
+   *   last, pinned:                −1000 + 100 = −900
+   * One ornament of raw length 100 on a 1440-tick principal, so D11's overflow factor is
+   * min(1, 1440/100) = 1 and does not perturb any of it.
+   *
+   * `monophonic` measures each duration to the next onset — −700 − Infinity = −Infinity,
+   * −850 − (−700) = −150, −900 − (−850) = −50, all of which clamp to 0 — and the last to the
+   * principal's end, 1440 − (−900) = 2340. So the ends are Infinity, −700, −850 and 1440.
+   *
+   * What survives: slot 0 is the guard's case — its end is `Infinity`, so D14's `end <= 0`
+   * is false and the clamp would then compute `Infinity − Infinity` = `NaN` for its
+   * duration; slots 1 and 2 are D14's, their ends being at or before tick 0. Slot 3
+   * straddles 0 and is clamped there: date max(0, −900) = 0, duration 1440 − 0 = 1440,
+   * pitch 64 (it is the `#P` token, so the principal's own pitch). At 500/720 ms per tick
+   * that is 0 ms to 1000 ms.
+   *
+   * The score therefore holds three notes: that survivor in place of the principal, plus the
+   * fixture's two untouched neighbours q (1440, 67) and r (2160, 65).
+   */
+  const DEGENERATE_SPREAD =
+    '<temporalSpread frame.offset="-1000.0ticks" frameLength="100.0ticks" intensity="-1.0" noteoff.shift="monophonic" />';
+
+  /**
+   * `turn-atstart` with its frame replaced, built in memory: the fixtures are immutable
+   * (CHARTER §15-17), and a tenth pair would commit a document nobody would ever author.
+   * The substitution is asserted rather than assumed — without that, a fixture edit or a
+   * changed attribute order would quietly turn this into a second `turn-atstart` run.
+   */
+  function loadDegenerate(): { msm: Msm; performance: Performance } {
+    const msm = new Msm(readFileSync(join(FIXTURE_DIR, 'turn-atstart.msm'), 'utf-8'));
+    const authored = readFileSync(join(FIXTURE_DIR, 'turn-atstart.mpm'), 'utf-8');
+    const patched = authored.replace(/<temporalSpread[^>]*\/>/, DEGENERATE_SPREAD);
+    expect(patched).not.toBe(authored);
+    expect(patched).toContain(DEGENERATE_SPREAD);
+    expect(patched).not.toContain('frameLength="50%"');
+    const performances = new Mpm(patched).getAllPerformances();
+    expect(performances).toHaveLength(1);
+    return { msm, performance: performances[0] };
+  }
+
+  it(
+    'drops the non-finite slot and writes no Infinity or NaN into the augmented score',
+    () => {
+      const { msm, performance } = loadDegenerate();
+      const warnings: string[] = [];
+      const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        warnings.push(args.map(String).join(' '));
+      });
+      let augmented: Msm;
+      try {
+        augmented = performance.perform(msm);
+      } finally {
+        spy.mockRestore();
+      }
+
+      const notes = scoreNotes(augmented);
+      expect(notes).toHaveLength(3);
+      for (const note of notes) {
+        expect(Number.isFinite(note.date)).toBe(true);
+        expect(Number.isFinite(note.duration)).toBe(true);
+        expect(Number.isFinite(note.datePerf)).toBe(true);
+        expect(Number.isFinite(note.durationPerf)).toBe(true);
+        expect(Number.isFinite(note.ms)).toBe(true);
+        expect(Number.isFinite(note.msEnd)).toBe(true);
+      }
+
+      // the strongest form of the same statement: not one non-finite literal anywhere in the
+      // serialized document, whichever attribute might have carried it
+      const xml = augmented.getRootElement()!.toXML();
+      expect(xml).not.toMatch(/Infinity/);
+      expect(xml).not.toMatch(/NaN/);
+
+      const generated = notes.filter((note) => note.generated === 'true');
+      expect(generated).toHaveLength(1);
+      expect([generated[0].date, generated[0].duration, generated[0].pitch]).toEqual([0, 1440, 64]);
+      expect(generated[0].slot).toBe('3');
+      expectMilliseconds([generated[0].ms, generated[0].msEnd], [0, 1440 * MS_PER_TICK]);
+
+      // and the drop announces itself once, counted over what the expansion planned
+      const warning = warnings.find((line) => line.includes('not a finite number'));
+      expect(warning).toBeDefined();
+      expect(warning).toContain('ornament "orn1"');
+      expect(warning).toContain('1 of its 4 ornament notes');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'exports to MIDI with three note-ons, three note-offs and no event at an unreal tick',
+    () => {
+      const { msm, performance } = loadDegenerate();
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      let midi: Midi | null;
+      try {
+        midi = msm.exportExpressiveMidi(performance);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(midi).not.toBeNull();
+
+      const events = noteEvents(midi!);
+      expect(events.filter((event) => event.command === NOTE_ON)).toHaveLength(3);
+      expect(events.filter((event) => event.command === NOTE_OFF)).toHaveLength(3);
+      // an Infinity date used to arrive here; a tick has to be a real, non-negative number
+      expect(events.filter((event) => !Number.isFinite(event.tick) || event.tick < 0)).toEqual([]);
+
+      const bytes = midi!.exportMidi();
+      expect(bytes).not.toBeNull();
+      expect(String.fromCharCode(bytes![0], bytes![1], bytes![2], bytes![3])).toBe('MThd');
+    },
+    TIMEOUT,
+  );
+});
+
+// ---------------------------------------------------------------------------------------
 // Cross-cutting: MIDI export and determinism
 // ---------------------------------------------------------------------------------------
 

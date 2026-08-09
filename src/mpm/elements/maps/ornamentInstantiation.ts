@@ -1318,10 +1318,11 @@ function fifthsFromMap(keySignatureMap: Element | null, date: number): number | 
 /**
  * A numeric MSM attribute, or null when it is absent or unreadable.
  *
- * `parseFloat`, the reading every other renderer in this port uses for MSM note attributes —
- * DESIGN.md D16's `parseJavaDouble` requirement is about *MPM v3 parse code*, and that module
- * does not exist on this branch yet in any case (see `OrnamentNote.readPitchValue`'s
- * TODO(W10)).
+ * `parseFloat`, the reading every other renderer in this port uses for MSM note attributes.
+ * DESIGN.md D16's `parseJavaDouble` requirement is about *MPM v3 parse code* — the pool note's
+ * pitch attributes and `@repetitions`, which read through it — and this is an MSM read, so the
+ * requirement does not reach here. PARITY.md §6.8 records the split and names this family as
+ * one `P1` already left open.
  */
 function readNumber(element: Element, name: string): number | null {
   const att = attribute(name, element);

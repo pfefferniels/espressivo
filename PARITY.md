@@ -950,4 +950,7 @@ there is no note at an infinite date — and it follows the shape of the existin
 note ending at or before tick 0. The guard is per note, not per ornament: with an unreadable
 `intensity` the pinned last slot still lands at `start + length`, which never touches intensity,
 and it is kept. _Pinned:_ `ornamentInstantiation.test.ts`, "non-finite positions are dropped, not
-written into the score (W9)".
+written into the score (W9)", at the renderer; and `tests/integration/ornamentation-v3.test.ts`,
+"a negative intensity reaches neither the augmented MSM nor the MIDI export", which drives the
+same construction through the real pipeline and asserts the two documents named above — the
+augmented MSM and the exported MIDI — come out clean.

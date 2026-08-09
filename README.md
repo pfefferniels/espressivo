@@ -272,7 +272,7 @@ produces"**. That is enforced mechanically:
   equivalence event by event, and the MIDI export pipeline. They auto-discover every `.mei` fixture, so a missing reference is
   a **failure, not a skip**, and they canonicalize generated `meico_<uuid>` identifiers by
   first-occurrence order — which keeps `goto` → `marker` wiring verifiable rather than deleting it.
-- **3062 tests across 68 files**, run as a gate (`npm run verify` = clean build + typecheck of the
+- **3064 tests across 68 files**, run as a gate (`npm run verify` = clean build + typecheck of the
   test sources + the full suite) before every single commit of the refactor that produced this
   codebase, and of the ornamentation work that followed it.
 - **Byte probes for every refactor.** Beyond the suite, each structural change was proven with a

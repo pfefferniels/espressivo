@@ -3374,3 +3374,220 @@ caps (parser + renderer), legacy-timeunit fixture, sentinel pins (incl. the
 landing-past-budget discovery), .prettierignore, bookkeeping corrections.
 W10 inherits: NC3's one-line integration assertion (verifier-recommended, adopted);
 then final audit, merge sequence, cleanup.
+
+### W9 verifier — confirmation pass: PASS W9 (2026-08-09)
+
+Heading for the confirmation pass recorded above at "W9 verifier — confirmation pass" — it was
+appended as a bold paragraph under the re-check entry, so a heading-level scan of this journal
+still ended on the re-check's FAIL verdict and read as though W9 were open. It is not: **W9
+passes.** Detail is in that paragraph; re-confirmed on a second run after the conductor's query —
+all five prescribed lines still read as prescribed (`PARITY:744` "2 of the 62 `it(`", `:747`
+"12 of 85", `:908` the D16 citation, `README:275` 3062, `noteOrder.ts:44` "~100 000 brackets",
+`ornamentInstantiation.ts:167` "other 660 hits"), the two denominators re-counted **62** and
+**85**, and `npm run verify` green again at **68 files / 3062 tests / 0 failures**. Nothing in
+the tree changed between the two runs. **W9 is closed green; NC3's integration assertion carries
+to W10.**
+
+## W10 final audit — NOT-READY (2026-08-09)
+
+Adversarial whole-branch audit plus the one sanctioned addition. Everything below is measured
+on this tree; nothing is quoted from an earlier wave's report. **One blocker, and it is
+mechanical: two fixture files that the suite depends on were never committed.** Every
+engineering gate — byte parity, the parity suites, coverage, suppressions, prettier, the
+stakeholder contract — passes. Fix the blocker and this is READY.
+
+### PART 1 — the sanctioned addition (NC3), done
+
+`tests/integration/ornamentation-v3.test.ts` gains one describe, **2 cases**, closing the gap
+the W9 verifier named: the finiteness guard's docblock says a negative `intensity` "materialised
+a real `<note date="Infinity" duration="NaN">` … into the augmented MSM and on into the MIDI
+export", yet all four of its reds were unit-level, so nothing pinned either document.
+
+- The construction is the W5 verifier's verbatim (intensity −1, `frame.offset="-1000ticks"`,
+  `frameLength="100ticks"`, monophonic, four slots, principal at date 0 duration 1440), carried
+  by an **in-memory variant of `turn-atstart`'s MPM** — `String.replace` on the
+  `<temporalSpread>` element, with the substitution asserted three ways so a fixture edit cannot
+  make it vacuous. **No fixture was added, edited or touched**; `git status -- tests/integration/`
+  shows no fixture change, and the Java-verified corpus is untouched.
+- Case 1 asserts every note in the augmented score has finite `date`, `duration`, `date.perf`,
+  `duration.perf`, `milliseconds.date`, `milliseconds.date.end`; that the serialized document
+  contains **no `Infinity` and no `NaN` literal anywhere**; that the one arithmetically finite
+  slot survives (date 0, duration 1440, pitch 64, `ornament.slot="3"`, ms 0 → 1000); and that the
+  guard logs once, `1 of its 4 ornament notes`. Case 2 exports expressive MIDI and asserts 3
+  note-ons / 3 note-offs, no event at a negative **or non-finite** tick, and `MThd` bytes out.
+- Arithmetic hand-derived in the docblock before running, in the suite's convention (§5-style
+  derivation, explicit `TIMEOUT` on both cases). **Every number was right on the first run** —
+  nothing was adjusted to make a test pass.
+- **Negative control**: deleting the four-line finiteness guard from `createChords` ⇒ **exactly
+  2 red, the two new cases**, with the other 61 green — the direct evidence that the pre-existing
+  integration suite could not see this. Source restored and md5-verified
+  (`c73b3ab677bdb936c7602506a2f16b7a` before ≡ after).
+
+Three consequential doc corrections, all comment/prose-only, all caused by or found through this
+addition: `README:275` **3062 → 3064** (my own two tests made the published count stale — the
+exact discipline W9 failed on twice, so it is fixed rather than inherited); PARITY §6.9's
+_Pinned:_ line now names the integration coverage beside the unit one; and the stale docblock at
+`ornamentInstantiation.ts:1321` rewritten (below, finding N5).
+
+### PART 2 — the audit
+
+**(a) Gates, final tree.** `npm run verify` **exit 0, 68 files / 3064 tests, 0 failures**.
+Coverage functions **93.54 %** (invariant ≥ 92.0 ✓), statements 87.96, branch 89.04.
+**Zero suppressions repo-wide** — `eslint-disable` / `@ts-ignore` / `@ts-expect-error` /
+`@ts-nocheck` / `prettier-ignore` / coverage-ignore over all of `src/` and `tests/`: **0**.
+`prettier --check .` repo-wide: **1 warning, `tests/midi/Midi.test.ts`** — and I built main from
+`git archive` and ran prettier there: **main reports the same single warning**, so it is
+pre-existing and not this branch's.
+
+**eslint, and the journal's baseline is the wrong one.** Measured myself, both sides, with
+`dist/**` ignored by the config so the builds cannot pollute either count:
+**main@da24612 = 1019**, **branch final = 1048**, delta **+29**. The journal reasons from "1031",
+which is not main's number — it is the *branch's* at 2f82def, and 1019 + 12 = 1031 identifies the
+missing 12 exactly. Per-file the delta is: `Mei2MsmMpmConverter.ts` **508 → 525 (+17)**, the
+journaled `no-non-null-assertion` mirroring of `processArpeg` the W8 verifier ruled justified;
+plus **+12 never journaled as a delta from main** — `ornamentation/tools/probe.mjs` +5,
+`probe2.mjs` +5, `toks2.mjs` +2, being 9 `no-undef` on Node globals (`process`, `console`,
+`Buffer`) and 3 `no-unused-vars`. Those tools landed in the campaign's **first** commit
+(e7b940c), so they sat inside every wave's own baseline and no wave ever compared against main.
+Non-blocking: 1048 is under T21's 1080 ceiling, the findings are in dev instruments rather than
+product, and the delta is now journaled here. See N1 for the recommendation.
+
+**(b) BYTE parity vs main — PASS, and this is the campaign's central claim.** dist built by me
+from `git archive main` (316 files, tsc exit 0) and from this tree; both probes run against both:
+
+| probe | main | branch | differing values |
+|---|---|---|---|
+| `probe.mjs` (1284 checks) | `ed158a07d553f9346b958e8943b98c3b8c55a046f4fb4061654567e864e8757f` | identical | **0 / 1284** |
+| `probe2.mjs` (83 checks) | `0b58d5a4c281914e605de46eb44be54e223d1eb7b08724702eca1ac703ca8c7c` | identical | **0 / 83** |
+
+Compared label by label as well as by transcript hash, and both hashes equal the standing values
+recorded since W3. **Re-run after my own edits** (the docblock fix moves `dist/**/*.js` bytes):
+still 0/1284 and 0/83. The v2 pipeline has not moved.
+
+**(c) Parity suites + fixture immutability — PASS.** The four Java-parity suites, the two
+remaining integration suites, and facade-equivalence, run together: **9 files / 356 tests, 0
+failures** (cross-validation 48, midi-byte 43, performance 116, full-xml 19, all-maps 11,
+midi-export 14, mei-ornament-expansion 15, ornamentation-v3 63, facade-equivalence 27).
+`git diff main --stat -- tests/integration/fixtures/` is **empty** and `git diff --quiet` exits
+**0**: the Java-verified corpus is byte-identical to main.
+
+**(d) DIFF audit vs main — PASS, every file attributable.** 63 tracked files, +22 473 / −95.
+Sources: `src/mpm` ornamentation (W1–W5, W9) + `Performance.ts` (W5 ms pass, W7 threading) +
+`Mpm.ts` (W5, `note` in `isInNamespace`, one case line) + `RenderOptions.ts` (W7); `src/mei`
+expansion (W8); `src/api` additive (W7). Tests: the matching wave suites. Config:
+`vitest.config.ts` **+2 lines only** (the two W8 coverage-include entries — read the diff),
+`.prettierignore` +6 (W9 item 8). Docs: PARITY/README (W9), `ornamentation/**` (campaign).
+**Nothing outside the declared surfaces.** The 95 deletions are spread over 16 files; the
+test-side ones (8 in facade-equivalence, 1 pipeline, 3 plain-data, 1 Mpm.test, 2
+OrnamentationMap.test, 1 OrnamentDef.test) are each accounted for by a journaled settings
+alignment, import expansion or documented inversion.
+
+**(e) DOCS — PASS, five claims spot-checked by measurement, not by reading.** PARITY §6 present
+with all nine subsections (6.1–6.9) and §2's fourth `getOrnamentDataOf` bullet present; DESIGN.md
+D16 carries its **AMENDED W9** block (`:177-186`); CAMPAIGN.md carries the end-state directive
+(P6) and all three stakeholders' owed pings, and the merge-day precondition is satisfied —
+main@da24612 *is* "Merge ts-idiomatic: E1/E2 map-read fixes", so mpmify's pair is already in.
+The five:
+1. §6.8 "the MSM attribute reads inside the renderer stay on `parseFloat`" — `ornamentInstantiation.ts`
+   has 4 `parseFloat` call sites and **0** `parseJavaDouble` calls (its single mention is JSDoc);
+   `OrnamentNote.ts` 5 `parseJavaDouble` / 0 `parseFloat`; `OrnamentData.ts` 1; `TemporalValue.ts`
+   parses with `Number(` and mentions `parseJavaDouble` only in the exemption JSDoc. Exactly as written.
+2. §6.8's three pinned malformed-input differences, driven through the **built dist facade**:
+   `interval.chromatic=""` ⇒ note skipped (3 generated, not 4) with `attribute interval.chromatic=""
+   … is no number; the note is skipped`; `"0x10"` ⇒ same; `"1d"` ⇒ **accepted**, 4 generated. All three reproduce.
+3. §6.9 "with an unreadable `intensity` the pinned last slot … is kept" — `intensity="abc"` ⇒
+   exactly **1** generated note, `ornament.slot="3"`, and the guard logs `3 of its 4`. Reproduces.
+4. §6.7 "expansion and rendering draw no random values" — 0 hits for `Math.random`/`randomUUID`/
+   `crypto` across `ornamentInstantiation.ts`, `ornamentExpansion.ts`, `noteOrder.ts`; the sole id
+   source is `addUUID` at `:1025`.
+5. §2's bullet — checked read-only against the Java fork: `OrnamentationMap.java:205` is
+   `return null;` and **`return od;` occurs 0 times in the file**. Correct.
+README's `expandOrnaments` documentation and the v3 provenance table both match the facade's
+measured behaviour (part g).
+
+**(f) LOOSE ENDS.** Every marker swept. **Discharged:** `note` in `isInNamespace` (W5); D16 at all
+three sites (W9, and see N5 — the last dangling `TODO(W10)` in the tree is closed by this wave);
+`.prettierignore` (W9 item 8); the five exact-ms sites (conductor, post-W6); `getOrnamentDataOf`
+(W9 item 13); `<ornam>`/`@altsym` recorded at `PARITY:868`; the single-staff part-map assertion
+(W9 item 7); `hasDateEnd` (W9 item 6); NC3 (this wave). **Open, and none blocks:**
+`carve`'s `Math.min(...dates)` at `:1139` (advisory, unfixed by design; the sibling site at `:791`
+already uses `reduce`, and the crash needs ~10⁵ generated note *elements*) and its twin, the
+documented `~100 000`-bracket stack cliff in `parseNoteOrder` — **post-merge follow-up, paired, as
+the W9 verifier recommended**; `allChildElements` quadratic (I confirmed the ornamentation path
+makes **zero** calls to it — the only hit in those files is the PERFORMANCE NOTE recording the
+avoidance — so this is a repo-wide refactor item, **post-merge**); `ornamentExpansion.ts`'s
+unbounded `warnings` array (bounded by input length, console already capped at the renderer —
+**post-merge or drop**); derived-ids-for-determinism (`PARITY:6.7` states it as a real, untaken
+option belonging in a release note — **drop, it is a decision not a defect**); the
+`ornament.anchor` On-column prose placement (the `xml:id` condition sits at `:824-826` rather than
+in the column — **drop, cosmetic**). I concur with the conductor's grading on all six.
+
+**(g) STAKEHOLDER contract — PASS, measured on the built dist through the public facade.**
+- Provenance sextet on `trill-repetitions`: 8 generated notes, `ornamentSlot` `0…7`,
+  `ornamentPass` `0,0,1,1,2,2,3,3`, `ornamentSource` `n1,P,n1,P,n1,P,n1,P`, `ornamentAnchor` `P`
+  on all eight, `ornamentRef` `orn3` on all eight — DESIGN §5.3's vector exactly. Types
+  `boolean / string / string / number / number / string`; **no `undefined` anywhere** in any of
+  the six fields across every note (RULE F1's leg).
+- `ornament.carved` on `turn-atend`: exactly one note, `id="P"`, duration **720** (halved from
+  1440), `ornamented: true`, `ornamentRef: "orn2"`, and `source`/`slot`/`pass`/`anchor` all
+  `null` — the D10/D15 ruling as shipped. **Zero notes carry a ref while reporting
+  `ornamented: false`.**
+- `expandOrnaments`, both flags: on **perform**, default ⇒ 6 notes, `false` ⇒ 3 notes and **0**
+  ornamented; on **convert**, default writes an `ornamentationMap` for `composite_advanced`,
+  `false` does not. Both promises hold.
+
+### THE BLOCKER — B1: two fixtures the suite needs are not in the commit
+
+`tests/integration/fixtures-v3/legacy-timeunit.mpm` and `.msm` (W9 item 5) are **untracked**.
+They are not ignored (`git check-ignore` exits 1), they are simply absent from 6bcda9b — W9's
+commit staged the suite that reads them but not the data.
+
+Measured, not inferred: `git archive HEAD | tar -t | grep -c legacy-timeunit` is **0**, and the
+archive holds **17** `fixtures-v3` entries where the tree has 19. `ornamentation-v3.test.ts`
+references the pair at six sites, and it is row 8 of `FIXTURES`, so it also feeds the MIDI-smoke
+and perform-twice loops. **Simulated a clean checkout** by moving the two files aside and
+re-running the suite: **7 failed / 56 passed**. Files moved back and verified byte-identical
+(md5 `30aab87a3e79ba2bc739fde7cc8cf10d`, `811064c9dd4d2ae588645401628a2698`).
+
+So merging 6bcda9b as it stands puts a branch on main whose own test suite fails on a fresh
+clone, while every gate run in this worktree stays green — precisely because the worktree has
+the files and the commit does not. **Fix: `git add tests/integration/fixtures-v3/legacy-timeunit.mpm
+tests/integration/fixtures-v3/legacy-timeunit.msm` in the W10 commit.** Then re-run
+`git archive HEAD` into a scratch tree and run the suite there once, which is the check that
+would have caught it and the one I recommend adding to the merge protocol.
+
+### Non-blocking findings
+
+- **N1 — the +12 lint delta from `ornamentation/tools/*.mjs` is real but was never journaled**
+  (above). Recommendation: it is journaled now; optionally add `ornamentation/tools/` to
+  eslint's `ignores` beside the `.prettierignore` entry that already exempts `ornamentation/`.
+  **Post-merge or drop** — it does not change the ceiling ruling.
+- **N2 — the committed probe tools hardcode an absolute path.** `probe2.mjs:13` (and probe.mjs)
+  pin `const PROJ = '/Users/nielspfeffer/Projects/meico-ts'`, so they only run on this machine
+  with that checkout present. They are excluded from the npm tarball (`files` is
+  `["dist","src","PARITY.md"]`, and `npm pack --dry-run` lists no `ornamentation/` entry), so
+  nothing ships broken — but a byte gate that cannot be re-run by anyone else is worth an argv
+  fallback. **Post-merge follow-up.**
+- **N3 — README's count was stale**; fixed to 3064 in this wave.
+- **N4 — PARITY §6.9's _Pinned:_ line** named only the renderer test; extended to name the new
+  integration coverage.
+- **N5 — a stale docblock, and the tree's last `TODO(W10)`.** `ornamentInstantiation.ts:1321-1324`
+  claimed `parseJavaDouble`'s "module does not exist on this branch yet in any case" and pointed
+  at "`OrnamentNote.readPitchValue`'s TODO(W10)". Both halves are false on this tree, measured:
+  `src/supplementary/parseJavaDouble.ts` exists here **and on main** (it arrived with TD2,
+  `8283853`), and `grep TODO` on `OrnamentNote.ts` returns nothing — W9's D16 ruling removed the
+  marker and left the reference to it dangling. Rewritten to state the real split (MSM reads stay
+  on `parseFloat`; the v3 MPM parse sites use `parseJavaDouble`) and cite PARITY §6.8.
+  Comment-only; prettier and eslint clean, byte probes re-run unchanged.
+
+### Verdict
+
+**NOT-READY**, on B1 alone — and B1 is a `git add`, not an engineering defect. Everything the
+campaign set out to prove holds under independent measurement: the v2 pipeline is byte-frozen
+against main across 1367 probe checks, the Java-verified fixture corpus is untouched, the four
+parity suites are green, the facade honours all three stakeholder contracts, coverage clears its
+floor, there are no suppressions anywhere, and every file in a 63-file diff is attributable to a
+journaled wave. Stage the two fixtures, re-run the suite from a clean `git archive` of the
+resulting commit, and this branch is READY-TO-MERGE.
+
+Tree frozen at this entry.
