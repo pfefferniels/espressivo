@@ -116,14 +116,17 @@ describe('OrnamentNote', () => {
     });
 
     it('should skip a note whose pitch value is empty', () => {
-      // Number('') is 0, so this is the one case the finiteness check does NOT catch —
-      // pinned so the behaviour is a decision and not a surprise. An empty attribute
-      // reads as 0, i.e. "no alteration".
+      // INVERTED in W9, deliberately, by the D16 ruling (PARITY.md §6.8): this used to assert
+      // the opposite of its own title. `Number('')` is 0, so an empty attribute silently read
+      // as "no alteration" — a pitch the document never stated, invented from nothing.
+      // `parseJavaDouble` rejects the empty string exactly as `Double.parseDouble` does, so the
+      // note now takes the same route as every other unreadable pitch: logged and skipped.
       let n: OrnamentNote | null = null;
-      captureErrors(() => {
+      const messages = captureErrors(() => {
         n = note('xml:id="empty" interval.chromatic=""');
       });
-      expect(n!.pitchSpec).toEqual({ kind: 'chromatic', value: 0 });
+      expect(n).toBeNull();
+      expect(messages.join('\n')).toContain('no number');
     });
 
     it('should never throw on malformed input', () => {
@@ -132,6 +135,41 @@ describe('OrnamentNote', () => {
         expect(() => note('xml:id="a" midi.pitch="Infinity"')).not.toThrow();
         expect(() => note('xml:id="b" interval.diatonic="1 2 3"')).not.toThrow();
       });
+    });
+
+    /**
+     * The three spellings where `parseJavaDouble` and the `Number` this used to call disagree
+     * (D16's W9 ruling — `midi.pitch` has no grammar, so the choice of parser is observable):
+     *
+     * | value    | `Number`   | `Double.parseDouble` | here |
+     * | -------- | ---------- | -------------------- | ---- |
+     * | `""`     | 0          | throws               | skipped (above) |
+     * | `"0x10"` | 16         | throws               | skipped |
+     * | `"1d"`   | NaN        | 1.0                  | 1 |
+     *
+     * `"NaN"` and `"Infinity"` are accepted by both parsers and rejected by this port's own
+     * finiteness check instead — a pitch must be a number a note can sound at.
+     */
+    it('should follow Double.parseDouble where it and Number disagree (D16)', () => {
+      let hex: OrnamentNote | null = null;
+      let suffixed: OrnamentNote | null = null;
+      let nan: OrnamentNote | null = null;
+      let infinite: OrnamentNote | null = null;
+      const messages = captureErrors(() => {
+        hex = note('xml:id="hex" midi.pitch="0x10"');
+        suffixed = note('xml:id="suffixed" interval.chromatic="1d"');
+        nan = note('xml:id="nan" midi.pitch="NaN"');
+        infinite = note('xml:id="inf" midi.pitch="Infinity"');
+      });
+
+      // Java rejects hexadecimal integer literals; Number would have read 16 as a pitch
+      expect(hex).toBeNull();
+      // Java's own type suffix: a value Number could not read at all
+      expect(suffixed!.pitchSpec).toEqual({ kind: 'chromatic', value: 1 });
+      // parsed by both, and refused here — the finiteness check is what refuses them
+      expect(nan).toBeNull();
+      expect(infinite).toBeNull();
+      expect(messages.filter((line) => line.includes('no number'))).toHaveLength(3);
     });
   });
 

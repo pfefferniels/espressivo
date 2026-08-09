@@ -2806,3 +2806,571 @@ pre-seam-test figure — the anchored tree measures 3039; the per-file lint pair
 W9 obligations from this wave: single-staff part-map assertion (one line);
 .prettierignore entry for ornamentation/; PARITY §v3 expansion-asymmetry +
 composite_advanced dual-status entry (already in the FOR W9 block).
+
+## W9 implementer — 2026-08-09
+
+Hardening + documentation. SOLO. Eleven briefed items plus README and PARITY §v3; two further
+W9-tagged items found in the LOG sweep are dealt with at the end of this entry. Every figure
+below was measured on this tree; the baseline is HEAD (eec95ce), built by me from `git archive`
+into a scratchpad worktree, not taken from an earlier wave's report.
+
+**Footprint — 12 files, 2 new, no existing fixture touched.** Sources:
+`ornamentInstantiation.ts`, `data/noteOrder.ts`, `data/OrnamentNote.ts`, `data/OrnamentData.ts`,
+`styles/defs/TemporalValue.ts` (doc only). Tests: `ornamentInstantiation.test.ts`,
+`noteOrder.test.ts`, `OrnamentNote.test.ts`, `OrnamentationMap.test.ts`,
+`ornamentation-v3.test.ts`, `mei-ornament-expansion.test.ts`. New:
+`fixtures-v3/legacy-timeunit.{msm,mpm}`. Plus `PARITY.md`, `README.md`, `.prettierignore`, this
+journal. `git status -- tests/integration/fixtures/` is empty.
+
+### The eleven items
+
+1. **PARITY.md §6** — new top-level section, 337 lines, "MPM v3 ornamentation — spec-derived,
+   not Java-verified", in nine subsections: provenance (spec @ 1de00bb, reference PR @ 3deb141c
+   consulted but not followed where defective, with the audit cited); the ≠Lars divergences
+   adopted by design (D1, D3, D4, D5, D9's `r+1` and its two dedup rulings, D8's key-signature
+   resolution, D12's two writer divergences, the `-1` sentinel, structural termination); the
+   semantics the spec leaves open (at-end-ms head loss with the considered-and-rejected
+   alternative, the zero-length final note, the id-uniqueness xor, `ornament.carved`, attribute
+   order and the `xml:id` position, `String(x)` number formatting); the provenance family as a
+   table; the converter/facade expansion asymmetry and composite_advanced's dual status; the two
+   `expandOrnaments` flags; generated-id nondeterminism and the derived-id option; the D16
+   ruling; and the non-finite guard. The intro paragraph gained a sentence putting §6 outside
+   the equivalence frame, since §1–§5's "one of three things" no longer covers the file.
+2. **Finiteness guard in `createChords`.** The verifier's construction (intensity −1, offset
+   −1000, length 100, monophonic, four slots) materialised `<note date="Infinity"
+   duration="NaN">`; a note whose computed date or end is non-finite is now dropped, counted,
+   and reported once per ornament. Pinned by a four-case describe carrying the verifier's exact
+   vector. **Correction to that vector's other half:** with the guard, its slot 0 no longer
+   survives, so the interior-drop note in the D14 test's comment (which said survivors keep
+   slots "0" and "3") is corrected to name slots 1 and 2 as the dropped run; the D14 test's own
+   assertions are untouched.
+3. **The at-end-ms head-loss span.** The message now names the first onset the spread actually
+   produces, recomputed through `earliestSpacingOffset` from the same function that writes the
+   markers, clamped at 0. For the existing vector that is still 90 ms, so **no pinned expectation
+   moved** (measured, not assumed); at `intensity="0"` it is 30 ms where the old
+   `frameLength − frame.offset` said 90. `PlannedOrnament` gained `start`/`length` and `carve`
+   the built chord counts, so the number is the real one rather than a second formula.
+4. **W2's two advisories.** The trailing-`]` peel is an index scan: same tokens, same warning,
+   same order — 200 025 inputs through both implementations, **0 mismatches** — and 64 000
+   brackets cost 0.99 ms against 2414.7 ms (my measurement of the quadratic version; the
+   verifier's was 2702 ms). The parser's diagnostics are capped at
+   `MAX_NOTE_ORDER_WARNINGS = 100` plus one tally entry. **That alone was half a fix, and
+   measuring said so:** a 50 000-item `note.order` produces 100 000 diagnostics from the
+   *expansion* module, which the renderer logged one by one. The console cap therefore sits
+   where E1 puts the decision — the renderer, `MAX_LOGGED_DIAGNOSTICS = 20` plus a count — and
+   covers both producers. `ornamentExpansion.ts` was not modified; see the advisories.
+5. **D3 lenient-read integration fixture.** `fixtures-v3/legacy-timeunit`, three ornaments on
+   three non-overlapping principals: legacy `time.unit="milliseconds"` with suffix-less values
+   (the same def as `spread-ms`, so the markers must come out −30/−15/+30), suffix-less with no
+   `time.unit` at all (⇒ ticks: dates 0/360, durations 720/360, ms 0/250), and `frame.start` as
+   the offset alias with a `%` length (⇒ dates 1620/1980, durations 540/180, ms 1125/1375). Five
+   cases, arithmetic in the describe, plus one asserting the canonical-v3 re-serialization of
+   all three. The fixture joins the MIDI smoke and the perform-twice determinism list.
+6. **`hasDateEnd`** documented at the interface field with my own scan: 56 `.msm` files under
+   `tests/`, `date.end` on **56 `<section>` elements and 0 `<note>`s** (the other 330 hits are
+   `milliseconds.date.end`). Kept, with what it protects against.
+7. **Single-staff part-map assertion** added to the facade-expansion test: the map lands in the
+   Oboe part, not in the Bassoon and not on `<global>`, asserted by slicing the document at its
+   `<part` boundaries.
+8. **`.prettierignore`** gained `ornamentation/`. Repo-wide `prettier --check` goes **11 warnings
+   → 1**, and that one (`tests/midi/Midi.test.ts`) is pre-existing at HEAD — verified by checking
+   HEAD's own copy of the file.
+9. **The dead `NOT_INHERITED` entry** is documented — and is no longer dead. Within one render it
+   cannot fire (createChords copies before markCarved writes), which is what the W7 verifier
+   measured; one step outside that window it is load-bearing, because a principal read back from
+   an already-augmented MSM does arrive carrying the mark. `ornament.carved` was added to the
+   existing stale-provenance test, and removing the entry now turns that test red.
+10. **Lint bookkeeping, with the cause of the discrepancy.** `Mei2MsmMpmConverter.ts` at 2f82def:
+    **508 findings total, of which 494 `no-non-null-assertion`**; at HEAD: **525 total, 511
+    `no-non-null-assertion`** (the remainder is 9 `no-unnecessary-condition` + 5
+    `no-unused-vars`, unchanged). So the journal's "508 → 525" is the correct **file-total** pair
+    mislabelled as the rule pair; the verifier's 494 → 511 is the rule pair. Both deltas are +17.
+11. **D16 ruled and implemented.** `TemporalValue` keeps `Number` — exempt, because the spec's
+    regex admits only the forms all three parsers agree on, and W1's 481-input Java differential
+    measured that rather than arguing it; the exemption is now written at the site and in PARITY
+    §6.8 instead of standing as an unexplained deviation. The pool note's pitch reads switch to
+    `parseJavaDouble`, and so does `@repetitions` — **one file beyond the two the brief
+    enumerated**, because it carried the same `TODO(W10)` for the same reason and leaving it
+    would have left a TODO citing a decision W9 had made. Three observable differences, all
+    pinned: `""` is rejected instead of reading as 0, `0x10` is rejected instead of reading as
+    16, and Java's `1d`/`1f` suffixes are accepted. `NaN`/`Infinity` are accepted by the parser
+    as Java accepts them and rejected by the finiteness check.
+
+**The one pinned expectation that moved, flagged to the conductor before it was touched.**
+`OrnamentNote.test.ts`'s "should skip a note whose pitch value is empty" asserted the *opposite*
+of its title — `interval.chromatic=""` read as chromatic 0 — with a comment pinning that as a
+decision. Item 11 inverts it. I sent the question to the conductor with both options before
+editing, and proceeded on the brief's own recommendation ("for OrnamentNote switch to
+parseJavaDouble + tests for the malformed-input difference"), which anticipates exactly this
+class of change; the test carries an INVERTED comment citing the ruling, in the W5 convention.
+Trivially revertible if the conductor rules otherwise. A second, weaker case: the repetitions
+test's comment claimed `''` was "silently the default" — now every unusable value logs, and the
+test was strengthened to require it.
+
+### Gates (all re-measured on this tree)
+
+- `npm run verify` **green: 68 files / 3059 tests** (baseline 68 / 3039; **+20**, none removed or
+  weakened). Per file: `noteOrder` 98→103, `ornamentInstantiation` 76→82, `ornamentation-v3`
+  54→61, `OrnamentNote` 20→21, `OrnamentationMap` 136→137, `mei-ornament-expansion` 15→15
+  (assertions added inside an existing case).
+- **Byte gates**, against a dist I built myself from `git archive HEAD`: `probe.mjs` 1284 checks
+  `ed158a07d553f9346b958e8943b98c3b8c55a046f4fb4061654567e864e8757f`, `probe2.mjs` 83 checks
+  `0b58d5a4c281914e605de46eb44be54e223d1eb7b08724702eca1ac703ca8c7c` — both identical, and equal
+  to the standing values. Call tracer over the eight all-maps fixtures: **557 calls, transcripts
+  byte-identical** (`fc09712269e2cbb267f3351fa572f854a850b6e7b7883213717be064c0bb10fd`).
+- **dist delta: exactly 20 files** = the five touched sources × {js, d.ts, js.map, d.ts.map}.
+  `dist/api` is **byte-identical**, and `TemporalValue.js`'s delta is its JSDoc and nothing else
+  (diffed with comments stripped).
+- **Predicate sweep re-run over nine fixtures** (the W7 verifier's instrument): 9 altered score
+  notes, all 9 `ornamented: true` with a ref, **0 altered-but-unmarked**.
+- `prettier --check` clean on every touched file; repo-wide 1 pre-existing warning (above).
+  `eslint` repo-wide **1048 = 1048** against the baseline tree, per-file unchanged
+  (`OrnamentData` 5, `OrnamentationMap` 2, `OrnamentDef` 1, `TemporalSpread` 1 — all
+  pre-existing); **0 findings** on `noteOrder.ts`, `ornamentInstantiation.ts`, `OrnamentNote.ts`
+  and all six test files. **Zero suppressions** added (`git diff -U0` over `src/` and `tests/`).
+- Coverage functions **93.53 %** (invariant ≥ 92.0; W6 measured 93.23). `OrnamentNote.ts` is at
+  100/100/100/100 — the `instanceof` re-throw in the first draft of its `parseJavaDouble`
+  adapter left two permanently uncovered lines, so it became the bare `catch` the five def
+  factories already use for the same call.
+- `vitest.config.ts` untouched: no new source file, and the new fixtures are data.
+
+### Negative controls — nine mutations, nine kills (each restored and md5-verified)
+
+| # | mutation | result |
+|---|---|---|
+| 1 | quadratic `slice` peel restored | 1 red — the 64 000-bracket case, on its 1000 ms timeout |
+| 2 | `MAX_NOTE_ORDER_WARNINGS` cap removed | 3 red (the whole cap describe) |
+| 3 | finiteness guard removed | 4 red across unit + integration |
+| 4 | span reverted to `frameLength − frame.offset` | 1 red — the intensity-0 case only, the 90 ms case still green (which is the point) |
+| 5 | `'ornament.carved'` off `NOT_INHERITED` | 1 red — the stale-provenance test |
+| 6 | legacy `time.unit` fallback ignored | 2 red in `ornamentation-v3` |
+| 7 | single-staff sign routed to the global map | 2 red — the multi-staff case **and** the new part-map assertion |
+| 8 | `parseJavaDouble` reverted to `Number` | 4 red across `OrnamentNote` + `OrnamentationMap` |
+| 9 | `MAX_LOGGED_DIAGNOSTICS` uncapped | 1 red |
+
+Control 7 is worth a note on method: my first two attempts mutated the *wrong* `if (att ===
+null || …)` — that idiom occurs **9 times** in `Mei2MsmMpmConverter.ts`, and both a
+first-occurrence and a last-occurrence replacement hit `processArpeg` and a later block instead
+of `processOrnamentSign`. Both runs came back green and would have read as "the new assertion is
+vacuous". It is not; targeted at line 2381 it kills two tests. A mutation that does not fire is
+not evidence of anything, and I nearly recorded it as if it were.
+
+### Two W9-tagged items from the LOG beyond the brief's list
+
+- **`note` in `Mpm.isInNamespace`** (flagged for W9 by the W3 verifier): already discharged in
+  W5 under the D5 amendment. Verified present, and pinned by `Mpm.test.ts`. Nothing to do.
+- **`allChildElements` is quadratic, 16 call sites** (W3 implementer, "worth a wider look in
+  W9"): **not done, deliberately**. It is a repo-wide L1 concern touching files no ornamentation
+  wave owns, the ornamentation path already avoids it (`parseOrnamentNotePool`'s PERFORMANCE
+  NOTE), and a change there would need its own byte-gate discipline across every map class. It
+  belongs in a refactor item, not in this wave; recorded here so it is not lost.
+
+### Advisories for the conductor (nothing blocking, nothing touched)
+
+1. **`carve` spreads an array into `Math.min(...dates)`.** With the expansion ceiling at 10⁶
+   slots that is a stack overflow rather than a wrong answer. A `reduce` is behaviour-identical
+   on every input that does not crash, but I could not pin it cheaply (the crash needs ~10⁵
+   generated note *elements* first, so the test would be slower than it is worth) and it is not
+   one of the briefed items. Left alone rather than changed silently.
+2. **`ornamentExpansion.ts`'s `warnings` array is still unbounded in memory** — bounded by the
+   input's length, ~2 entries per `note.order` item. The console is now capped at the renderer,
+   which is what the advisory was about; capping the array itself would mean threading a counter
+   through six push sites in a committed W4 module. W10's call.
+3. **`getOrnamentDataOf` is alive here and dead in Java** (ORN-1's §5.3 finding) and is still
+   **not** in PARITY.md. It is a v2-side divergence, so it belongs in §1–§3 rather than in the
+   §6 I wrote, and I did not want to invent an entry outside my brief.
+4. **`tests/mei/*` carry no per-test timeouts** (W8 verifier advisory 4). Still true; they do not
+   drive the repetition engine, so D16 is satisfied.
+
+### D16 ruling — the three v3 numeric parse sites (conductor-confirmed, 2026-08-09)
+
+Journaled as one block at the conductor's request; the ruling arrived after the work landed and
+matches it exactly, so nothing was reverted or re-edited. The question W1 deferred ("Number vs
+parseJavaDouble in new v3 parse code") is closed for all three sites at once, because the answer
+turns on one distinction — **does the attribute have a grammar that makes the two parsers the
+same function?**
+
+| site | ruling | why |
+|---|---|---|
+| `TemporalValue.parseTemporalValueStrict/Lenient` (`frame.offset`, `frameLength`) | **exempt, stays on `Number`** | the spec's own regex admits only plain decimal literals, which is exactly the set on which `Number`, `parseFloat` and `Double.parseDouble` agree. Proven, not argued: W1's Java 17 differential over 481 inputs — 443 accepted values bit-compared, **0 acceptance mismatches, 0 bit mismatches**. The exemption is now stated at the site and in PARITY §6.8, so it reads as a decision rather than an oversight. |
+| `OrnamentNote.readPitchValue` (`midi.pitch`, `interval.chromatic`, `interval.diatonic`) | **switched to `parseJavaDouble`** | no grammar at all — an unconstrained attribute value — so the parser is observable. Three differences pinned: `""` rejected (was 0), `0x10` rejected (was 16), `1d`/`1f` accepted (were `NaN`). |
+| `OrnamentData.parseOrnamentRepetitions` (`@repetitions`) | **switched to `parseJavaDouble`** | same shape, same reason, same `TODO(W10)`. The value for `""` is still 0, but now through the explicit default-on-reject path **with its log**, not through `Number('') === 0` in silence. |
+
+`"NaN"` and `"Infinity"` spelled out are accepted by `parseJavaDouble` exactly as Java accepts
+them, and rejected afterwards by this port's own finiteness checks: a pitch must be a number a
+note can sound at, and a repeat count must be a number a loop can run.
+
+**The inversion, confirmed.** `OrnamentNote.test.ts`'s "should skip a note whose pitch value is
+empty" asserted the opposite of its own title and now asserts the title. The conductor's
+grounds, recorded because they are stronger than the ones I flagged with: an empty attribute
+minting a chromatic-0 note **duplicates the principal's pitch**, which is the class of invented
+value D16 exists to prevent, and `Double.parseDouble("")` throws, so log-and-skip is also the
+parity-faithful reading. `OrnamentationMap.test.ts`'s repetitions case was strengthened rather
+than inverted: same values, but every malformed spelling must now log, `''` included.
+
+**Footprint, restated explicitly:** the D16 ruling touches **three** source files —
+`styles/defs/TemporalValue.ts` (documentation only, no behaviour), `maps/data/OrnamentNote.ts`
+and `maps/data/OrnamentData.ts` — plus their two test files. `OrnamentData.ts` is the file
+beyond the brief's enumerated two, and it is in the wave's footprint list above.
+
+Negative control for the block as a whole (re-run, not quoted): reverting the shared adapter to
+`Number` ⇒ **4 red** across `OrnamentNote.test.ts` and `OrnamentationMap.test.ts`. The v2 path
+cannot reach any of the three — both `repetitions` call sites are guarded on the attribute's
+presence and a v2 `<ornament>` has no `<note>` children — and the byte gates say so: `probe.mjs`
+`ed158a07…`, `probe2.mjs` `0b58d5a4…`, call tracer transcript-identical, measured after this
+change with a rebuilt dist.
+
+## W9 verifier — FAIL (2026-08-09)
+
+Adversarial. Everything re-measured on this tree from my own `git archive` baseline; nothing
+quoted from the implementer's report. **Every engineering gate passes. The wave FAILS on its
+own primary deliverable: PARITY §6 contains three statements that are false against the
+record, and README ships a wrong test count.** All defects are localized paragraph edits.
+
+**Gates — all green, all re-measured.** `npm run verify` 68 files / **3059** tests / 0 failures.
+`probe.mjs` 1284 `ed158a07…`, `probe2.mjs` 83 `0b58d5a4…`, call tracer 557 calls
+`fc097122…` — baseline and current identical on all three. Dist delta **exactly 20 files** =
+the 5 sources × 4 artifacts, nothing off-list; `dist/api` byte-identical (16/16);
+`TemporalValue.js` differs only in JSDoc (token streams 171 = 171). eslint repo-wide
+**1048 = 1048**, per-rule breakdown identical, same 159 files; zero suppressions added.
+Converter lint pair reproduced exactly — 508/494 @2f82def, 525/511 @HEAD: the implementer's
+file-total-vs-rule-pair thesis is **exactly right**. prettier 11 → 1, survivor
+`tests/midi/Midi.test.ts` confirmed pre-existing in HEAD's own copy; the 10 that went are all
+under `ornamentation/`. Per-file test counts all six confirmed; the one deleted title is a
+rename with strictly stronger assertions. Coverage functions **93.54 %** (LOG:2931 says 93.53).
+
+**Mutations — 8 run, 8 killed, no vacuous test.** Including NC7 in its targeted form
+(`Mei2MsmMpmConverter.ts:2381`, disambiguated by the unique `buildOrnamentData` call — the
+vacuity trap is real and I avoided it the same way). Mutation 6 kills **4**, not 2 (2 extra in
+`TemporalSpread.test.ts`) — under-claimed. Mutation 7 confirmed on **both** halves: intensity-0
+red, 90 ms case still green. Items A–I all reproduced: the finiteness guard's verbatim message
+and its once-per-ornament firing; a **10,395-case cross-tree sweep** showing **zero** behaviour
+change for intensity ≥ 0 (all 4,725 differences have intensity < 0, every new survivor set a
+subset) — the finite-case interior-drop behaviour is untouched, and only comments changed in
+that test file; all three legacy-timeunit vectors re-derived by hand from D3 and confirmed.
+
+**FAIL 1 — `PARITY.md:577-578` is false about a third-party repository.** "Its ornamentation
+classes differ from the verified fork only by a dead-code fix." I diffed fork vs
+`upstream/master`: `OrnamentationMap.java`, `OrnamentData.java`, `OrnamentationStyle.java` are
+byte-identical; the sole delta is a 10-line `OrnamentDef.clone()` that **upstream has and the
+fork lacks**. Upstream *added* it in `4d7cf1cb` (v0.11.11), nine releases after the fork's
+branch point — the fork never removed anything — and it is **live code**, called at
+`GenericStyle.java:270,279` inside `GenericStyle.merge()`, which the fork does not have at all.
+Both halves of the sentence are wrong. (The conclusion it supports — upstream does not
+implement v3 — is independently true and separately evidenced.)
+
+**FAIL 2 — `PARITY.md:624-626` inverts the record's causality.** "the reference's own MEI
+converter never writes one, so its pool is always empty and its transformers silently no-op."
+`lars-v3-implementation.md:1544-1546` says the empty `od.notes` "**does not matter
+operationally**, because `applyNotesToMaps` reads children directly" — the transformers no-op in
+the *opposite* case, when children **are** named `ornamentNote`
+(`fixture-harness-feasibility.md:133,149`). Two unrelated facts welded into a consequence the
+record denies.
+
+**FAIL 3 — `PARITY.md:629-630` states the wrong failure mode and contradicts §6.1.** "the
+exception is swallowed, so every suffixed frame value silently becomes a default." The record
+(`lars-v3-implementation.md:417-422`, catalogue #1): the exception destroys the whole
+`ornamentDef` and **every ornament referencing it is skipped** — "*a spec-valid v3 file loses all
+its ornaments*". It also prints a stack trace, so not "swallowed". §6.1 four lines earlier says
+"throws". The ledger contradicts itself about one defect and the §6.2 version makes the
+reference's worst bug read as benign.
+
+**FAIL 4 — `README.md:275` says "3056 tests across 68 files"; it is 3059**, contradicting the
+wave's own journal. (The `composite_advanced` example table, by contrast, is **real** — I ran it:
+pitches 74/76/74, ms 7500 → 7767.943… → 8000 → 8125, sources `tr1_n0`/`tr1_n1`/`tr1_n0`, slots
+0/1/2, anchor `n20`, all three `ornamentRef: "tr1"`. Every published value reproduces. Both
+flags are documented correctly.)
+
+**Should-fix before publication (not individually fatal).**
+1. Intro (`:20-21`) "Nothing in §6 can move a byte in §1–§5's fixtures, and that is measured
+   rather than argued" vs §6.5's admission that `composite_advanced.mei` **does** diverge from
+   its Java reference at the facade default. True only under "fixture files unedited"; the
+   ledger elsewhere (`:9-10`, `:47`) uses the phrase in the output sense. The measurement
+   (`probe2.mjs:102`, the four MEI suites) drives the **direct converter only** — not the path
+   where the divergence lives. Needs the §6.5 qualifier hoisted into the intro.
+2. §6.8 "all **443 accepted** values": W1 (`LOG.md:413`) wrote "443 values **bit-compared**";
+   accepted = 481 − 37 = 444, and 443 + 37 = 480 ≠ 481. The corpus list also drops W1's "spec
+   examples" while reading as exhaustive. Conclusion (0 mismatches) unaffected.
+3. `DESIGN.md:175` (D16) still reads "new parse code uses parseJavaDouble for numeric attrs"
+   unamended, which §6.8 exempts `TemporalValue` from; §6.8 cites neither D16 nor the amending
+   entry. DESIGN.md:3 requires amendments be journaled — the LOG entry exists, DESIGN.md was
+   never updated.
+4. §6.2 "the expansion tests carry explicit per-test timeouts" — **2 of 62** do.
+5. §6.2's D9/D17 tick/`%` sentinel skip sits under a "pinned by tests" umbrella but **no test
+   passes `repetitions="-1"` with a tick or `%` frame**. I measured the behaviour and it is
+   correct; it is simply unpinned.
+6. §6.5 "byte-identical with the flag on, off, or absent" — only *absent* vs *off* is asserted.
+7. §6.4 "all six" dangles off a **seven**-row table, and "with `null` for absence" is wrong for
+   `ornamented`, which is `false`. `ornament.anchor`'s "On" also omits that the principal must
+   carry an `xml:id`.
+8. §6.9 quotes its pinned test as a prefix, not verbatim.
+
+**Code documentation W9 authored that is false.**
+- `noteOrder.ts` docblock: "The parser never throws either" and "bounded memory".
+  `parseNoteOrder` throws `RangeError: Maximum call stack size exceeded` at **105,719** brackets
+  in one token (`tokens.push(...parts)`). Pre-existing, but W9 rewrote this docblock, and the new
+  64,000 test sits 1.65× below the cliff.
+- `noteOrder.ts:113-117` misattributes the old cost to `slice` copying the remainder. It was
+  `tail.unshift(']')`. A `slice`-shaped peel of 64,000 `]` runs in 70 ms; the verifier's first
+  mutation used exactly the comment's described shape and came back **green**. The fix is real
+  (~140–450×) but "0.99 ms" is not reproducible — 5.8–23.6 ms measured against 1265–2689 ms.
+- `hasDateEnd` docblock says 56 `.msm` / 56 `<section>`; it is **57/57** — W9 added the 57th
+  fixture in this same wave.
+
+**Bookkeeping.** LOG:2925 "4 red across unit + integration" for the finiteness guard: all 4 are
+unit tests, and **no integration test pins that `<note date="Infinity">` stays out of the
+augmented MSM** — the guard's own docblock names that as the motivating failure. Worth one
+assertion. Of 23 W9-tagged obligations in the log, 22 are discharged or reasoned-deferred; the
+`<ornam>`/`@altsym` note (`LOG.md:2675-2676`) is **silently dropped** from the journal — the
+deliverable exists at `PARITY.md:813-814` but is never claimed. `ornamentation/CAMPAIGN.md` was
+modified mid-verification — **the conductor's own edit**, recording the user's continuous-backup-
+push directive as charter invariant 6; confirmed by the conductor after I flagged it. Doc-only,
+outside W9's footprint, no gate affected. Separately, W9's own footprint header (`LOG:2817`)
+says "**12 files**, 2 new"; the enumeration under it is 5 sources + 6 tests = **11** code files,
+and the working tree carries **15** modified (those 11 + `PARITY.md`, `README.md`,
+`.prettierignore`, this journal) + 2 new fixtures. "12" matches neither count. The conductor's
+declared set — 15 modified + 2 new — is the correct one, and it is what I audited.
+
+**On the three advisories.** (1) `carve`'s `Math.min(...dates)` spread — advisory is right, and
+I found the same shape is already a *live* crash in `parseNoteOrder` (above); worth pairing in
+W10. (2) expansion `warnings` array — advisory correct; note the parser's own tally at index 100
+never reaches the console, since the renderer prints only 0–19, so "49,900 suppressed" is
+invisible. (3) `getOrnamentDataOf`: **the implementer's scoping is right** (§1–§3, outside W9's
+§6 brief) **and the conclusion is that it is now the last undocumented divergence** — flagged
+since ORN-1 §5.3, still absent, which makes `PARITY.md:14`'s "Nothing is undocumented" false as
+it stands. Recommend the conductor discharge it in W10 as a one-paragraph §2 addition.
+
+**Verdict: FAIL W9.** The implementation is sound and every measurable gate holds; the failure is
+entirely in the prose this wave existed to write. Four corrections (three §6 paragraphs + one
+README number), plus the eight should-fixes, and this is a PASS on re-verification.
+
+### W9 fix round — 2026-08-09
+
+Verifier ruled FAIL on the prose, and the ruling is right: every engineering gate held and the
+three §6 paragraphs it names were false against the record. Everything below is documentation or
+comments except one test addition (item 9, which pins behaviour that already shipped) and one
+README number. No source behaviour changed; the byte gates say so.
+
+**The four fatal items.**
+
+1. `PARITY:577-578` rewritten. The old sentence ("its ornamentation classes differ from the
+   verified fork only by a dead-code fix") was wrong in both halves and in its direction. The
+   record now states what the verifier measured: `OrnamentationMap.java`, `OrnamentData.java` and
+   `OrnamentationStyle.java` are byte-identical between upstream master and the fork, and the one
+   difference runs the other way — a ten-line `OrnamentDef.clone()` that **upstream has and the
+   fork lacks**, added upstream in `4d7cf1cb` (v0.11.11) nine releases after the branch point,
+   and live rather than dead, called from `GenericStyle.merge()` (`GenericStyle.java:270,279`).
+   I confirmed the fork side myself, read-only, at its verified commit `1d662105`: no `clone()`
+   in `OrnamentDef.java`, no `merge` in `GenericStyle.java`. The conclusion the sentence supports
+   — upstream implements no v3 — is untouched and separately evidenced.
+2. `PARITY:624-626` (D1) reversed to the record's own causality
+   (`lars-v3-implementation.md:1544-1546`, `fixture-harness-feasibility.md:133,149`): the empty
+   `od.notes` "does not matter operationally", because the reference's renderer reads children
+   directly. The no-op happens in the *opposite* case — children that really are named
+   `ornamentNote` are cloned under that name, the transformer phase indexes only `note` and
+   `rest`, both transformers are skipped, and the elements never reach MIDI export: a seven-note
+   cluster on one instant, silent.
+3. `PARITY:629-630` (D3) restated at full strength from catalogue #1
+   (`lars-v3-implementation.md:417-422`). Not "swallowed, silently defaults": the
+   `NumberFormatException` propagates into `createOrnamentDef`'s catch, which **prints a stack
+   trace and returns null**, so the whole `ornamentDef` is dropped and every `<ornament>`
+   referencing it is skipped (`OrnamentationMap.java:593-595`) — a spec-valid v3 file loses all
+   of its ornaments. §6.1 four lines earlier already said "throws"; the two now agree.
+4. `README:275` 3056 → **3059**. My own number, written before the last tests landed and never
+   re-measured; the wave's journal had it right.
+
+**The eight should-fixes, plus the two the conductor added.**
+
+5. Intro byte claim scoped. "Nothing in §6 can move a byte" is true for fixture *files* and for
+   the path the equivalence suites drive (the converter built directly); the facade default does
+   change `composite_advanced`'s MPM against its Java reference, which is §6.5's subject. The
+   intro now says both, and points at §6.5 rather than contradicting it.
+6. §6.8 quotes W1 exactly: **443 values bit-compared** of the 481-input corpus, 0 acceptance and
+   0 bit mismatches, with the spec examples restored to the corpus list. (481 − 37 rejects = 444
+   accepted, so "all 443 accepted" was both the wrong figure and the wrong denominator.)
+7. `DESIGN.md` D16 amended **in place**, as `DESIGN.md:3` requires, citing the LOG ruling block
+   and PARITY §6.8. The register now carries the three-site outcome instead of a flat rule that
+   §6.8 quietly exempts a module from.
+8. The per-test-timeout claim replaced with the census I measured: 2 of 66 in the pure expansion
+   suite, 6 of 48 in the parser's, 12 of 82 in the renderer's, **45 of 45** in the integration
+   suite; the rest inherit the 30 s global. ("The expansion tests carry explicit per-test
+   timeouts" read as universal and was not.)
+9. **The one test addition.** `repetitions="-1"` with a tick or `%` frame had no test at all,
+   though §6.2 described it under a "pinned by tests" umbrella. Three cases now: `%` and `ticks`
+   are skipped with `needs a frame note budget of at least 1 slot; got null` and the score keeps
+   its own principal untouched; a 600 ms frame fills as designed. My hand-arithmetic for the
+   third was **wrong and the implementation caught it** — I expected four notes (budget 4, group
+   of 2, one extra pass) and got five, because the landing rule appends a principal-pitch copy
+   *past* the budget. That overshoot is =Lars and was already recorded as W4 verifier finding 4;
+   the test now pins it with the reasoning, which makes it the only coverage the sentinel has.
+10. §6.4 corrected: the table has **seven** rows and the facade exposes **six** fields, because
+    `ornament.generated` and `ornament.carved` are two markers behind one boolean; `ornamented`
+    is `false` on absence, never `null`; and `ornament.anchor` is written only when the principal
+    has an `xml:id`. §6.5's "on, off, or absent" narrowed to what is actually asserted — off vs
+    the default, which *is* the on state. §6.9's test name quoted in full.
+11. `noteOrder.ts` docblock: both false claims fixed, each re-measured by me rather than taken
+    from the verifier. The **known limit** is documented with the bisected number — `parseNoteOrder`
+    throws `RangeError` at **105 989** brackets in one token (105 988 parses) because
+    `tokens.push(...parts)` spreads them as call arguments — and deliberately not fixed here,
+    since `carve`'s `Math.min(...dates)` is the same shape and one wave should change both. The
+    cost attribution is corrected to the operation that actually caused it: at 64 000 brackets,
+    `tail.unshift(']')` alone ~975 ms, a `slice`-only variant ~8 ms, the original pair ~1150 ms,
+    the parse today 6–21 ms across five runs. **My "0.99 ms" was a best-of run reported as the
+    figure**, and my "2.4 s" attribution pointed at `slice`, which is why the verifier's
+    slice-shaped mutation stayed green. The test comment now says which mutation is a real
+    control for this fix, and that 64 000 sits below the stack cliff on purpose.
+12. `hasDateEnd` comment: **57 `.msm` files, 57 `<section>`, 0 `<note>`** — re-scanned. My 56/56
+    predated the fixture this same wave added.
+13. **New scope, conductor override:** `getOrnamentDataOf` is now documented, as a fourth bullet
+    in §2. Java builds the whole `OrnamentData` and returns `null` unconditionally at
+    `OrnamentationMap.java:205` with no caller anywhere; the port returns it. Placed in §2 rather
+    than §1 because there is no Java bug to fix — the code is unreachable there — and it is
+    unreachable from rendering here too, since `apply()` re-reads the same data inline. 18 unit
+    cases in `OrnamentationMap.test.ts` pin the returned shape (ORN-1 §5.3 said 10; I counted).
+    §2's intro was adjusted, because this one is a choice and its other three are capability
+    gaps. `PARITY.md:14`'s "Nothing is undocumented" is now true at commit time.
+14. **`<ornam>`/`@altsym`, claimed at last.** W8 left them unwired on purpose and its note asked
+    for the fact to be recorded; the deliverable shipped in my §6.5 ("Out of scope, and named so
+    the absence is not mistaken for a defect") but my journal entry never said so. It does now.
+
+**Bookkeeping correction to my own W9 entry.** The finiteness-guard control is "**4 red**, all
+four unit" — my table said "across unit + integration", which is wrong: no integration test pins
+that a non-finite note stays out of the augmented MSM, and the guard's docblock names exactly
+that as the motivating failure. The verifier's suggested extra assertion is **not** in this round
+(item 9 was the sanctioned test addition); flagged for the conductor as a one-line addition to
+`ornamentation-v3.test.ts` if wanted.
+
+**Gates, re-measured after the round.** `npm run verify` **68 files / 3062 tests green** (3059 +
+the three sentinel cases). `probe.mjs` 1284 `ed158a07…`, `probe2.mjs` 83 `0b58d5a4…`, call tracer
+557 calls transcript-identical to the same baseline — unchanged, as a prose round must be. dist
+delta still exactly 20 files, `dist/api` byte-identical. `prettier --check` clean everywhere
+except the pre-existing `tests/midi/Midi.test.ts`; `eslint` **1048 = 1048** repo-wide and 0
+findings on every file this round touched; **0 suppressions**. Coverage unmeasured this round —
+no source logic changed, and the verifier's 93.54 % stands (my 93.53 was a stale reading).
+
+### W9 verifier — re-check (2026-08-09)
+
+Second adversarial pass over the fix round. Re-measured from my own `git archive` baseline; the
+fork half re-checked read-only at `meico@1d662105`. **The four FATALs are genuinely fixed.**
+**FAIL stands, on a smaller and entirely arithmetic footing: three false counts in public
+documents, one uncited amendment, one over-precise docblock figure.**
+
+**FATAL 1 — FIXED, and it now reproduces exactly.** `PARITY:601-611` reverses the direction and
+states the liveness. I re-verified every element independently: `OrnamentationMap.java`,
+`OrnamentData.java`, `OrnamentationStyle.java` byte-identical fork↔upstream; the sole delta is a
+**ten-line** `OrnamentDef.clone()` upstream lacks-in-fork, added in `4d7cf1cb` (v0.11.11), **nine**
+releases past the `e50d5684` (v0.11.2) branch point; live, called at `GenericStyle.java:270,279`;
+the fork has **no** `merge(` and **no** `clone()` at `1d662105` (both greps return 0). Every
+adjective in that paragraph now checks out.
+
+**FATAL 2 — FIXED.** `PARITY:654-664` runs the causality the record's way: the empty `od.notes`
+"costs it nothing by itself", and the no-op is relocated to the case where children really are
+`ornamentNote`. Matches `lars-v3-implementation.md:1544-1546` + `fixture-harness-feasibility.md:133,149`.
+
+**FATAL 3 — FIXED.** `PARITY:665-678` restates catalogue #1 at full strength — stack trace,
+`createOrnamentDef` returns null, whole def dropped, every referencing `<ornament>` skipped
+(`OrnamentationMap.java:593-595`), "a spec-valid v3 file loses all of its ornaments". §6.1's
+"throws" and §6.2 now agree.
+
+**FATAL 4 — FIXED, THEN RE-BROKEN BY THIS SAME ROUND.** `README:275` went 3056 → **3059**. The
+suite is now **3062** (`npm run verify`, my run), and the round's own gate line (`LOG:3243`) says
+3062. Item 9 added three tests after item 4 corrected the number, and README was never re-touched.
+
+**Item 9 — VERIFIED, and the discovery is real.** I re-derived it without reference to their
+arithmetic: 600 ms frame ⇒ `ceil(600/150)` = budget **4**; `|: #P #u :|` gives S=2, G=2 ⇒
+`passes = floor((4−2)/2) = 1` ⇒ 4 slots (64/66/64/66); the landing rule appends **one more**
+principal-pitch copy ⇒ **5 notes, 64/66/64/66/64**. Confirmed by running it, and by a sweep
+(budgets 1/2/3 → 3 notes; 4/5 → 5; 6 → 7; 8 → 9). The append is at
+`ornamentExpansion.ts:559-560`, structurally **outside** the `for (pass …)` loop, and the ceiling
+guard's own comment at `:312` concedes it. The test comment
+(`ornamentInstantiation.test.ts:1375-1381`) names the overshoot out loud — "one over the budget",
+"the budget bounds the repetition, not the landing" — and attributes it to the reference (W4
+finding 4). **Truthful; it does not paper over the error it caught.** Tick and `%` legs skip with
+one verbatim line: `…repetitions="-1" needs a frame note budget of at least 1 slot; got null.`
+
+**Item 11 — attribution FIXED, controls now valid.** I re-ran both: a **slice**-shaped peel is
+**GREEN** (103/103, 99 ms) — correctly no longer offered as the control; the real pre-W9 shape
+with `tail.unshift(']')` is **RED**, exactly one test, `peels a long trailing bracket run in
+linear time`, on its 1000 ms timeout. The docblock now names `unshift` as the cost and says in
+terms that a slice-only mutation "is **not** a control for this fix, which is how one was
+measured passing". A reader knows what to restore.
+
+**REMAINING — 1. The timeout census in `PARITY:744-746` is false on two of four denominators.**
+"2 of the **66** cases in the pure expansion suite": `ornamentExpansion.test.ts` has **62** plain
+`it(`, **72** declarations counting its 10 `it.each(`, and **125** runtime cases — 66 matches no
+convention, and that file is unmodified since `eec95ce`, so it is not staleness. "12 of **82** in
+the renderer's": `ornamentInstantiation.test.ts` has **85** — 82 + the round's own three sentinel
+tests. The numerators (2, 6, 12, 45) are all correct.
+
+**2. `README:275` states 3059; the suite is 3062** — contradicted by this round's own journal line.
+
+**3. Should-fix #3 is half done.** DESIGN.md is properly amended (`DESIGN.md:177-186`, citing the
+LOG ruling and the site) — but `grep -c D16 PARITY.md` returns **0**. §6.8 still cites neither
+D16 nor the amending entry, which was the other half of the defect.
+
+**4. The cliff figure is stated as an exact constant and is wrong on my machine.**
+`noteOrder.ts:43-44`: "**105 989 brackets** on Node 23 (105 988 still parses; bisected)". I
+bisected against the built dist: largest passing **105 982**, first throw **105 983** — i.e.
+`105988` **throws** for me, refuting the parenthetical. Four values now exist for this one
+number, three of them from this machine (105 555 plain node, 105 701 in-worker, 105 719 first
+pass, 105 983 mine) — it tracks stack headroom, not Node's major version. The honesty fix is
+real and welcome ("never throws" is gone, the mechanism and the 64 000 headroom are named); only
+the false precision needs to go. `~100 000, hardware- and harness-dependent` carries the whole
+load-bearing point.
+
+**Minor, not blocking.** §6.4's `ornament.anchor` **On** column still reads "generated notes with
+a principal"; the `xml:id` condition moved into prose at `:825-826` rather than into the column
+the defect named. `hasDateEnd`'s 57/57 is now right, but "the other 330 hits" still undercounts —
+there are 330 `milliseconds.date.end` **and** 330 `date.end.perf`.
+
+**Gates — all green, re-measured.** verify **68 files / 3062 tests**, 0 failures. `probe.mjs`
+1284 `ed158a07…`, `probe2.mjs` 83 `0b58d5a4…` — baseline and current identical, as a round that
+adds only prose and tests requires. Dist delta exactly **20** files = 5 sources × 4; `dist/api`
+**16/16 byte-identical**. eslint **1048 = 1048**, per-rule identical, zero suppressions. prettier
+1 pre-existing. Coverage functions **93.54 %**. `LOG.md` **strictly append-only — 0 deleted
+lines**; DESIGN.md 0 deleted; PARITY.md 2 deleted, both the §2 preamble rewrite that makes room
+for the new fourth bullet — no committed wave entry touched. Footprint = the declared set plus
+`DESIGN.md` (expected, item 5); `CAMPAIGN.md` excluded as the conductor's. §2's new bullet checks
+out: **18** `it(` blocks in `OrnamentationMap.test.ts` call `getOrnamentDataOf` — exactly as
+claimed — so `PARITY:14`'s "Nothing is undocumented" is now true.
+
+**On NC3's offered one-line integration assertion: TAKE IT, in W10.** The finiteness guard's own
+docblock names the augmented MSM and the MIDI export as the motivating failure — a real
+`<note date="Infinity">` reached both — yet all four of its reds are unit-level, so nothing pins
+the failure that justified the guard. The fixture machinery already exists (nine v3 pairs, the
+perform-twice list), the cost is one assertion, and it closes the only gap this round left open
+by its own admission (`LOG:3236-3241`). Not W9: the round is closed and this is additive scope.
+
+**Verdict: FAIL W9 (re-check).** Substantively the ledger is now correct — the three rewritten §6
+passages match the record, and FATAL 1 reproduces to the adjective. It fails on the same
+discipline as last time, one notch smaller: counts published without being re-measured after the
+round's own tests landed. Four edits — `66`→62/72, `82`→85, README `3059`→3062, one `~` on the
+cliff — plus the D16 citation, and this passes.
+
+**W9 verifier — confirmation pass (2026-08-09): PASS W9.** All five prescribed edits read as
+prescribed and their numbers re-measured true on this tree: census now "2 of the 62 `it(`
+declarations — 125 runtime cases via `it.each`" and "12 of 85" (I re-counted: **62** and **85**);
+§6.8 now cites the D16 ruling at `PARITY:908` (`grep -c D16` 0 → 1); `README:275` **3062**;
+the cliff is now `**~100 000 brackets**` with the 105 555–105 989 range and "tracks stack
+headroom, not the runtime version" — my own bisection (first throw **105 983**) falls inside it,
+which is the point of stating a range; `hasDateEnd` now reads "other 660 hits split evenly", which
+matches the 330 + 330 measurement. Gates: `npm run verify` **68 files / 3062 tests / 0 failures**;
+`eslint` clean on both touched sources (exit 0); `prettier --check` clean on all four files;
+`LOG.md` still strictly append-only (**0** deleted lines); footprint unchanged — no new file, the
+declared set plus `DESIGN.md`, with `CAMPAIGN.md` the conductor's. The two source edits are JSDoc
+only. Nothing in the fix round or this pass moved a byte gate. NC3's integration assertion is
+adopted for W10, as recommended. **W9 closes green.**
+
+## 2026-08-09 — Conductor: W9 committed
+
+Final verdict PASS after two fix rounds (prose discipline: the ledger's claims now
+all reproduce under measurement; the conductor applied the verifier's five
+prescribed count/citation edits directly per the O1 precedent). W9 ships: PARITY §6
+(nine subsections, spec-derived provenance clearly split from Java-verified),
+PARITY §2's getOrnamentDataOf bullet (last undocumented divergence discharged),
+README v3 section, D16 three-site ruling (DESIGN amended), finiteness guard,
+warning-arithmetic fix, noteOrder perf fix + honest cliff documentation, warnings
+caps (parser + renderer), legacy-timeunit fixture, sentinel pins (incl. the
+landing-past-budget discovery), .prettierignore, bookkeeping corrections.
+W10 inherits: NC3's one-line integration assertion (verifier-recommended, adopted);
+then final audit, merge sequence, cleanup.

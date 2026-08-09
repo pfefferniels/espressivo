@@ -73,6 +73,21 @@ import type { TemporalValue } from '../styles/defs/TemporalValue.js';
  *   already-augmented MSM a second time cannot smuggle stale times in.
  * - `ornament.*` — markers a *previous* ornament left on the principal. Inheriting them would
  *   apply that ornament's offset a second time, to a note it never named.
+ *
+ * `ornament.carved` is on that list for a reason worth writing down, because **within one
+ * render it cannot fire**: it is written by {@link markCarved}, which runs inside
+ * {@link carve}, and {@link createChords} has already copied the principal by then — so at
+ * copy time the principal is not carrying the mark and there is nothing to strip. The W7
+ * verifier measured exactly that (removing the entry flipped zero tests) and reported it as an
+ * advisory: what keeps the mark off generated notes *inside* a render is that only
+ * `markCarved` writes it, and only onto the principal.
+ *
+ * The entry earns its place one step outside that window, and W9 pinned the case rather than
+ * leaving it argued: a principal read back from an **already augmented** MSM — the second
+ * performance of one document, which is the same scenario the `milliseconds.*` entries exist
+ * for — really does arrive carrying the mark, and every note generated from it would then
+ * claim to be a carved head. It also guards the *other* order, carve before build, which is a
+ * two-line change here and one the D10 id-uniqueness ruling already made once.
  */
 const NOT_INHERITED: readonly string[] = [
   'id',
@@ -143,7 +158,22 @@ interface PrincipalGeometry {
   readonly perfDelta: number;
   /** Whether the principal has `.perf` attributes yet — the global stage runs before they exist. */
   readonly hasPerf: boolean;
-  /** Whether the principal carries a symbolic `date.end` that generated notes should mirror. */
+  /**
+   * Whether the principal carries a symbolic `date.end` that generated notes should mirror.
+   *
+   * **Currently false for every document in the repository, and kept anyway.** A scan of all
+   * 57 `.msm` files under `tests/` — the 24 Java-verified ones included, and the one this wave
+   * added — finds `date.end` on 57 `<section>` elements and on **no `<note>` at all** (the
+   * other 660 hits split evenly between
+   * `milliseconds.date.end` and `date.end.perf` — different attributes; the former is stripped
+   * from generated notes by {@link NOT_INHERITED} in any case). So neither this flag's `true` branch here nor
+   * the ones in {@link createNote} and {@link carve} is exercised by a fixture, and the W6
+   * verifier's mutation "never write `date.end` on generated notes" correctly survived the
+   * suite. It stays because MSM's schema permits the attribute on a note, and a generated note
+   * that inherited a *stale* `date.end` from its principal — or a carved leftover that kept one
+   * while its `duration` shrank — would be an inconsistent document. The cost of the branch is
+   * one attribute lookup; the cost of removing it is a corruption nobody would see coming.
+   */
   readonly hasDateEnd: boolean;
 }
 
@@ -223,7 +253,7 @@ export function prepareOrnament(
     );
     return null;
   }
-  for (const warning of order.warnings) console.error(`Warning: ${label}: ${warning}`);
+  logDiagnostics(label, order.warnings);
 
   const principal = resolvePrincipal(od, order, notes, label);
   const principalPitch = principal === null ? null : readNumber(principal, 'midi.pitch');
@@ -268,7 +298,7 @@ export function prepareOrnament(
     },
     frameNoteBudget: frameNoteBudget(od, values),
   });
-  for (const warning of expansion.warnings) console.error(`Warning: ${label}: ${warning}`);
+  logDiagnostics(label, expansion.warnings);
   if (!expansion.ok) {
     console.error(`Warning: ${label} cannot be rendered: ${expansion.reason}`);
     return null;
@@ -574,6 +604,15 @@ interface PlannedOrnament {
    * a tick-domain frame, whose dates are already final.
    */
   readonly spacing: ((chords: Element[][]) => void) | null;
+  /**
+   * Where this ornament's frame begins, relative to the principal's date: the layout cursor
+   * plus the ornament's own `frame.offset`. Kept because it and {@link length} are the two
+   * numbers the spacing is computed from, and {@link carve} needs to recompute the first
+   * onset from them for its head-loss warning.
+   */
+  readonly start: number;
+  /** The frame's length after D11's overflow scaling — 1× in the millisecond domain. */
+  readonly length: number;
 }
 
 /**
@@ -608,7 +647,7 @@ function renderGroup(
     // 2026-08-09): a surviving head leftover *is* the principal and keeps its own id, and only
     // when the principal is consumed whole does the id move to a generated note. Never both —
     // two elements sharing an xml:id is not a valid document.
-    if (!carve(principal, planned, geometry, owners))
+    if (!carve(principal, planned, built, geometry, owners))
       assignPrincipalId(principal, planned[0].ornament.principalPitch, built);
   }
 
@@ -700,6 +739,8 @@ function planOrnament(
       ),
       spacing: (chords) =>
         applyMillisecondSpacing(chords, start, length, frame, frame.alignment === 'at end'),
+      start,
+      length,
     };
 
   const dates = spacingOffsets(slots.length, start, length, frame.intensity).map(
@@ -718,6 +759,8 @@ function planOrnament(
       })),
     ),
     spacing: null,
+    start,
+    length,
   };
 }
 
@@ -737,6 +780,26 @@ function spacingOffsets(count: number, start: number, length: number, intensity:
     offsets.push(Math.pow(i / (count - 1), intensity) * length + start);
   offsets.push(start + length);
   return offsets;
+}
+
+/**
+ * The first onset {@link spacingOffsets} produces for these numbers — which is not `start`
+ * whenever `intensity` bends the spacing away from it, and is `start + length` at
+ * `intensity === 0`.
+ *
+ * Derived from the array rather than from a formula of its own, so that a change to the
+ * spacing cannot leave this behind; `reduce` rather than `Math.min(...offsets)` because the
+ * expansion engine's ceiling permits a million slots and a spread that wide overflows the
+ * call stack. {@link spacingOffsets} always yields at least the pinned last slot, so the
+ * reduction never sees an empty array.
+ */
+function earliestSpacingOffset(
+  count: number,
+  start: number,
+  length: number,
+  intensity: number,
+): number {
+  return spacingOffsets(count, start, length, intensity).reduce((a, b) => Math.min(a, b));
 }
 
 /**
@@ -852,6 +915,22 @@ function applyMillisecondSpacing(
  *
  * A slot that loses all of its notes loses its place in the sequence, so the dynamics gradient
  * ramps across what actually sounds.
+ *
+ * **A note whose position is not a finite number is dropped too** (W9 hardening, from the W5
+ * verifier's finding O2). The v2 spacing engine has two unguarded edges that this one inherits
+ * on purpose (`intensity === 0` piles every slot at the frame end, a negative one sends the
+ * first slot to `Infinity` — see {@link spacingOffsets}), and `intensity="abc"` reads as `NaN`
+ * the way every other numeric MSM/MPM attribute in this port does. In v2 such an input could
+ * only ever write a marker *attribute* onto a note the score already had; v3 turns positions
+ * into elements, so the same input materialised a real `<note date="Infinity" duration="NaN">`
+ * that flowed on into the augmented MSM and the MIDI export. `Infinity − Infinity` is where
+ * the `NaN` came from: the clamp below computes the duration as `end − date`.
+ *
+ * Dropping is the only defensible reading — there is no note at an infinite date, and no
+ * rounding that would invent one — and it follows D14's own shape, which already drops what
+ * cannot sound. It is announced once per ornament rather than once per note: the cause is a
+ * frame value, so when it fires at all it usually fires for every slot at once, and a
+ * per-note log would be as unbounded as the input.
  */
 function createChords(
   plan: PlannedOrnament,
@@ -860,10 +939,18 @@ function createChords(
 ): BuiltOrnament {
   const chords: Element[][] = [];
   const notes: BuiltNote[] = [];
+  let planCount = 0;
+  let nonFinite = 0;
+
   for (const slot of plan.slots) {
     const chord: Element[] = [];
     for (const planned of slot) {
+      ++planCount;
       const end = planned.date + Math.max(0.0, planned.duration);
+      if (!Number.isFinite(planned.date) || !Number.isFinite(end)) {
+        ++nonFinite;
+        continue;
+      }
       if (end <= 0.0) continue;
       const date = Math.max(0.0, planned.date);
       const element = createNote(planned, date, end - date, geometry, principal, plan.ornament);
@@ -872,6 +959,14 @@ function createChords(
     }
     if (chord.length > 0) chords.push(chord);
   }
+
+  if (nonFinite > 0)
+    console.error(
+      `Warning: ${describeOrnament(plan.ornament.ornamentId, plan.ornament.od.date)} would place ` +
+        `${nonFinite} of its ${planCount} ornament notes at a date or duration that is not a ` +
+        `finite number — a negative or unreadable intensity, or a frame value that is not ` +
+        `finite, does that; those notes are dropped.`,
+    );
   return { chords, notes };
 }
 
@@ -1013,10 +1108,17 @@ function assignPrincipalId(
  *
  * That last case is the only one where this function throws away sounding music the author
  * asked for, so it **says so** (RULE E1's log-and-carry-on, and the voice every other
- * unrenderable combination in this module already uses). The span it names is the part of the
- * frame that *is* rendered — `frameLength − frame.offset` milliseconds measured back from the
- * principal's end — because that is the only quantity here that exists before the tempo pass:
- * how much of the principal precedes it depends on a millisecond duration nobody knows yet.
+ * unrenderable combination in this module already uses). The span it names is how much of the
+ * principal still sounds, measured back from its end — the only quantity here that exists
+ * before the tempo pass, since how much of the note *precedes* the frame depends on a
+ * millisecond duration nobody knows yet.
+ *
+ * That span is the first onset the spread actually produces, not the frame's own length. The
+ * two differ: the line used to say `frameLength − frame.offset`, which is right only while the
+ * first slot sits at the frame's start, and at `intensity === 0` every slot lands at the frame
+ * *end* instead, so the message overstated by a whole `frameLength` (W5 verifier's re-check
+ * nit, LOG.md 2026-08-09). {@link earliestSpacingOffset} recomputes it from the same function
+ * that writes the markers, so the two cannot drift apart.
  *
  * @returns whether the principal survived as a head leftover. That is also the answer to "does
  *   the principal's `xml:id` still exist in the document", which is why the caller runs this
@@ -1026,6 +1128,7 @@ function assignPrincipalId(
 function carve(
   principal: Element,
   planned: readonly PlannedOrnament[],
+  built: readonly BuiltOrnament[],
   geometry: PrincipalGeometry,
   owners: ReadonlyMap<Element, GenericMap>,
 ): boolean {
@@ -1047,13 +1150,22 @@ function carve(
     return true;
   }
 
-  for (const plan of planned) {
+  for (const [index, plan] of planned.entries()) {
     const { frame, ornamentId, od } = plan.ornament;
     if (frame.domain !== 'milliseconds' || frame.alignment !== 'at end') continue;
+    const earliest = earliestSpacingOffset(
+      built[index].chords.length,
+      plan.start,
+      plan.length,
+      frame.intensity,
+    );
+    // Clamped: a frame offset past the principal's end puts every onset after the note is
+    // over, and "the last −10ms" is not a sentence. Nothing of the principal sounds then.
+    const span = Math.max(0.0, -earliest);
     console.error(
       `Warning: ${describeOrnament(ornamentId, od.date)} is a millisecond frame aligned "at end", ` +
         `so the principal note it replaces cannot be carved before the tempo pass has run: only ` +
-        `the last ${frame.length - frame.offset}ms of it are rendered and its head is dropped. ` +
+        `the last ${span}ms of it are rendered and its head is dropped. ` +
         `A tick or % frame keeps the head.`,
     );
   }
@@ -1223,6 +1335,33 @@ function setNumber(element: Element, name: string, value: number): void {
   const att = attribute(name, element);
   if (att !== null) att.setValue(String(value));
   else element.addAttribute(new Attribute(name, String(value)));
+}
+
+/**
+ * How many of one diagnostic array's entries reach the console before the rest are counted.
+ *
+ * The two pure modules this reads from *return* their diagnostics rather than logging them
+ * (RULE E1: they have no opinion about the console), which makes this the place where "how much
+ * of it does a human want" is decided. Both arrays grow with the length of the value: a 50 000
+ * item `note.order` of unresolvable references produces 100 000 expansion diagnostics —
+ * measured, not estimated — and printing them buries every other line the render emits.
+ * `noteOrder` additionally caps its own array so the memory is bounded too; the expansion's
+ * array is bounded by the input's length, and this bounds what is said about it.
+ *
+ * Twenty is a reading number, not a tuning constant: past the first few, a malformed value is
+ * repeating itself, and the count that follows says how much was left out.
+ */
+const MAX_LOGGED_DIAGNOSTICS = 20;
+
+/** Report a pure module's returned diagnostics, up to {@link MAX_LOGGED_DIAGNOSTICS} of them. */
+function logDiagnostics(label: string, warnings: readonly string[]): void {
+  for (const warning of warnings.slice(0, MAX_LOGGED_DIAGNOSTICS))
+    console.error(`Warning: ${label}: ${warning}`);
+  if (warnings.length > MAX_LOGGED_DIAGNOSTICS)
+    console.error(
+      `Warning: ${label}: and ${String(warnings.length - MAX_LOGGED_DIAGNOSTICS)} further ` +
+        `diagnostics about the same value, not listed.`,
+    );
 }
 
 /** How an ornament is named in a log line: its `xml:id` if it has one, else its date. */

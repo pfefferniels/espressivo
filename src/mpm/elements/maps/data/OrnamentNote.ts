@@ -1,5 +1,6 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
+import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 
 /**
@@ -64,30 +65,63 @@ const XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace';
 /**
  * Read one pitch attribute.
  *
- * TODO(W10) — DESIGN.md D16 requires `parseJavaDouble` for numeric attributes in new v3 parse
- * code, and `src/supplementary/parseJavaDouble.ts` does not exist on this branch yet; it
- * arrives with the W10 rebase. `Number` stands in, following W1's precedent (LOG.md "W1
- * implementer", the `Number()` bullet) — but note the difference that makes this a real
- * switch rather than a formality: W1 could argue the deviation away because its grammar
- * (`^-?[0-9]+(\.[0-9]+)?(ms|%|ticks)$`) excludes every string on which `Number`,
- * `parseFloat` and `Double.parseDouble` disagree. There is no such grammar here — `midi.pitch`
- * is an unconstrained attribute value — so `Number` and `parseJavaDouble` genuinely differ on
- * malformed input (`"64abc"`: `NaN` here, a `NumberFormatError` there). The `NaN` is caught
- * below and reported, which is the E1-shaped behaviour either way.
+ * **The parse is `parseJavaDouble`, DESIGN.md D16's rule for new v3 parse code** (the W9 ruling
+ * on the deferred D16 question; PARITY.md §6.8). Unlike `TemporalValue`, which is exempt
+ * because the spec's own regex admits only the decimal literals every parser agrees on, there
+ * is no grammar here at all — `midi.pitch` is an unconstrained attribute value — so the choice
+ * of parser is observable, and three differences from the `Number` this used to call are real:
+ *
+ * - `""` was `0`, i.e. an empty attribute silently meant "at the principal's pitch". Java
+ *   rejects it and so does this now; a pool note with an unreadable pitch is skipped, which is
+ *   the same answer the other malformed spellings already got.
+ * - `"0x10"` was 16. Java rejects hexadecimal integer literals, and so does the grammar here.
+ * - `"1d"` / `"1f"` were `NaN` and are now 1 — Java's own type suffixes, which its
+ *   `Double.parseDouble` accepts.
+ *
+ * `"NaN"` and `"Infinity"` spelled out *are* accepted by the parser, exactly as Java accepts
+ * them, and are then rejected by the finiteness check below: a pitch has to be a number a note
+ * can sound at. The error is caught rather than propagated because there is no factory above
+ * this to catch it and D16 forbids throwing on malformed v3 input.
  *
  * @returns null after logging when the value is not a usable number; the note is then skipped
  *   rather than silently sounding at the principal's pitch, which would invent a note the
  *   document did not ask for.
  */
 function readPitchValue(kind: OrnamentPitchSpec['kind'], att: Attribute): OrnamentPitchSpec | null {
-  const value = Number(att.getValue());
-  if (!Number.isFinite(value)) {
+  const value = readJavaDouble(att.getValue());
+  if (value === null || !Number.isFinite(value)) {
     console.error(
       `Warning: attribute ${att.toXML()} of an ornament pool note is no number; the note is skipped.`,
     );
     return null;
   }
   return { kind, value };
+}
+
+/**
+ * `parseJavaDouble` as a log-free `number | null`, since RULE E1 leaves the reporting to the
+ * caller — each of them says something different about what it could not read.
+ *
+ * Exported for the one sibling with the same problem, `OrnamentData.parseOrnamentRepetitions`:
+ * both read a v3 attribute that has no grammar to lean on, both must not throw, and keeping one
+ * adapter keeps the two from drifting into different ideas of what a number is. It lives here
+ * because this is where the D16 ruling behind it is written down; `OrnamentData` already
+ * imports this module, so it adds no edge to the import graph.
+ *
+ * The bare `catch` is the shape the five def factories use for the same call (`TempoDef.ts:68`
+ * and its four siblings, which mirror Java's `catch`), and it is exactly a `NumberFormatError`
+ * catch: `parseJavaDouble` is the only thing inside the `try`, and it throws nothing else. An
+ * `instanceof` test would be a branch no input can take and a permanently uncovered line.
+ */
+export function readJavaDouble(text: string): number | null {
+  try {
+    // The label goes into a message this discards on purpose — the callers each write their
+    // own, naming the attribute and what they did about it — so it is kept neutral rather
+    // than made to say "pitch" on behalf of a caller that is reading a repeat count.
+    return parseJavaDouble(text, 'an MPM v3 numeric attribute');
+  } catch {
+    return null;
+  }
 }
 
 /**

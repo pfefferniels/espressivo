@@ -435,6 +435,19 @@ describe('expansion is asymmetric between the converter and the facade, on purpo
 
       // The ornament, on the part that owns staff 1, pointing at the note the MEI named.
       expect(mpm).toContain('ornamentationMap');
+      // …and *only* there. `@staff="1"` names one staff, and the expander's per-staff loop is
+      // the only thing keeping a single-staff sign off the global map, where it would reach
+      // across into the Bassoon. The multi-staff case above is what caught that in W8; the
+      // single-staff shape is the commoner one and had nothing pinning it (W8 verifier
+      // advisory 3). Slicing at the `<part` boundaries is what makes "in the Oboe" an assertion
+      // rather than a substring that happens to appear somewhere in the document.
+      const [beforeParts, oboe, bassoon] = mpm.split(/(?=<part )/);
+      expect(oboe).toContain('name="Oboe"');
+      expect(oboe).toContain('number="1"');
+      expect(bassoon).toContain('name="Bassoon"');
+      expect(oboe).toContain('ornamentationMap');
+      expect(bassoon).not.toContain('ornamentationMap');
+      expect(beforeParts).not.toContain('ornamentationMap'); // i.e. not on <global>
       expect(mpm).toContain('name.ref="trill"');
       expect(mpm).toContain('noteid="#n20"');
       // The pool the dict's trill prescribes: |: 0 1 :| over two distinct steps.

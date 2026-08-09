@@ -29,12 +29,24 @@
  * too, so unspaced brackets are salvaged (split off as their own tokens) with a warning
  * rather than skipped.
  *
- * TERMINATION. The reference tokenizer loops over a mutable index that it fails to advance
- * for a token without `#`, so a bare id hangs it forever (lars report §4.2, bug 2). This
- * parser makes non-termination unrepresentable instead of merely unlikely: tokenization is
- * one forward pass over a fixed array, bracket salvage strictly shrinks its input each
- * step, and no branch can revisit a token. The parser never throws either — malformed
- * input degrades to a warning plus a skip (DESIGN.md D9, D16).
+ * TERMINATION AND COST. The reference tokenizer loops over a mutable index that it fails to
+ * advance for a token without `#`, so a bare id hangs it forever (lars report §4.2, bug 2).
+ * This parser makes non-termination unrepresentable instead of merely unlikely: tokenization
+ * is one forward pass over a fixed array, bracket salvage is two monotone index scans over a
+ * fixed string, and no branch can revisit a token. Cost is linear in the input's length, the
+ * diagnostics are capped ({@link MAX_NOTE_ORDER_WARNINGS}), and malformed input degrades to a
+ * warning plus a skip rather than an exception (DESIGN.md D9, D16).
+ *
+ * KNOWN LIMIT, measured rather than assumed. "Degrades rather than throws" is a statement about
+ * the *grammar*, not about every input a hostile caller can construct: `tokens.push(...parts)`
+ * spreads the salvaged tokens of one glued value as call arguments, so a single token holding
+ * enough brackets overflows the call stack — `RangeError: Maximum call stack size exceeded`, at
+ * **~100 000 brackets** (measured thresholds ranged 105 555–105 989 across runs on one
+ * machine — it tracks stack headroom, not the runtime version). It is pre-existing, it is
+ * two orders of magnitude past any authored `note.order`, and the pathological test in the suite
+ * deliberately sits below it at 64 000. It is documented here rather than fixed because the fix
+ * (push in a loop, or `concat`) belongs with the same shape elsewhere in this codebase —
+ * `ornamentInstantiation`'s `Math.min(...dates)` has it too — and one wave should change both.
  *
  * PARITY NOTE. **v2 had no grammar here beyond a whitespace-split list of IDs**:
  * `OrnamentData` stores `note.order` as either one magic string or `value.replace(/#/g,
@@ -88,28 +100,52 @@ const KEYWORD_ASCENDING = 'ascending pitch';
 const KEYWORD_DESCENDING = 'descending pitch';
 
 /**
+ * How many diagnostics one value may collect before the rest are counted instead of kept.
+ *
+ * A malformed value's warnings are proportional to its length — a 100 000-character token run
+ * of `]` produced 100 000 strings, all of them the same sentence, and the caller logs every one
+ * (W2 verifier advisory, LOG.md 2026-08-09). The cap bounds both the array and the console; the
+ * suppressed ones are summarised in a final entry so the count is never silently lost. 100 is
+ * far past the point where a reader learns anything new: no hand-written `note.order` has that
+ * many distinct problems, and a machine-written one has the same problem 100 000 times.
+ */
+export const MAX_NOTE_ORDER_WARNINGS = 100;
+
+/** Character codes of the two bracket tokens, for the index scan in {@link splitUnspacedBrackets}. */
+const OPEN_BRACKET = 0x5b;
+const CLOSE_BRACKET = 0x5d;
+
+/**
  * Split a token that carries brackets glued to an id — `[#id1`, `#id2]`, `[#id]` — into the
  * separate tokens the schematron demands. A token that is already well-formed comes back
  * unchanged, so `parts.length > 1` is exactly the "salvaged something" signal.
  *
- * Peeling is repeated (`[[#a]]` yields five tokens) and each step removes one character
- * from a string of length > 1, so this terminates for every input.
+ * Both bracket runs are located by an index scan, so a glued token costs time linear in its
+ * length. The first draft peeled the string with `slice` **and collected the peeled brackets
+ * with `tail.unshift(']')`**, and the second of those is what made it quadratic: `unshift`
+ * re-indexes the whole array on every call. Isolated at 64 000 brackets on this machine, the
+ * old pair costs ~1150 ms, the `unshift` alone ~975 ms of it, and a `slice`-only variant just
+ * ~8 ms — so a mutation that restores only the `slice` shape is **not** a control for this fix,
+ * which is how one was measured passing. The whole parse of that input now takes 6–21 ms across
+ * runs. Same tokens out, same warning, same order; only the cost changed (W2 verifier advisory,
+ * LOG.md 2026-08-09).
+ *
+ * Termination is structural rather than argued: two monotone index scans over a fixed string,
+ * no loop over a value it also mutates.
  */
 function splitUnspacedBrackets(token: string): readonly string[] {
-  const head: string[] = [];
-  const tail: string[] = [];
-  let rest = token;
+  let start = 0;
+  let end = token.length;
 
-  while (rest.length > 1 && rest.startsWith('[')) {
-    head.push('[');
-    rest = rest.slice(1);
-  }
-  while (rest.length > 1 && rest.endsWith(']')) {
-    tail.unshift(']');
-    rest = rest.slice(0, -1);
-  }
+  while (end - start > 1 && token.charCodeAt(start) === OPEN_BRACKET) ++start;
+  while (end - start > 1 && token.charCodeAt(end - 1) === CLOSE_BRACKET) --end;
+  if (start === 0 && end === token.length) return [token];
 
-  return [...head, rest, ...tail];
+  const parts: string[] = [];
+  for (let i = 0; i < start; ++i) parts.push('[');
+  parts.push(token.slice(start, end));
+  for (let i = end; i < token.length; ++i) parts.push(']');
+  return parts;
 }
 
 /**
@@ -144,9 +180,20 @@ export function parseNoteOrder(raw: string): NoteOrder | null {
   const groups: RepeatGroup[] = [];
   const warnings: string[] = [];
 
+  /**
+   * Collect a diagnostic, up to {@link MAX_NOTE_ORDER_WARNINGS} of them. Past the cap only the
+   * count survives, and {@link summariseSuppressed} turns it into the array's last entry — so
+   * the array is bounded, and "there was more" is still said out loud.
+   */
+  let suppressed = 0;
+  const warn = (message: string): void => {
+    if (warnings.length < MAX_NOTE_ORDER_WARNINGS) warnings.push(message);
+    else ++suppressed;
+  };
+
   const pushChord = (ids: readonly string[]): void => {
     if (ids.length === 0) {
-      warnings.push('note.order: empty chord "[ ]"; dropped.');
+      warn('note.order: empty chord "[ ]"; dropped.');
       return;
     }
     items.push({ ids: [...ids] });
@@ -155,7 +202,7 @@ export function parseNoteOrder(raw: string): NoteOrder | null {
   const closeGroup = (start: number): void => {
     const end = items.length - 1;
     if (end < start) {
-      warnings.push('note.order: empty repeat group; dropped.');
+      warn('note.order: empty repeat group; dropped.');
       return;
     }
     groups.push({ start, end });
@@ -164,8 +211,7 @@ export function parseNoteOrder(raw: string): NoteOrder | null {
   const tokens: string[] = [];
   for (const rawToken of trimmed.replace(/:\|:/g, ':| |:').split(/\s+/)) {
     const parts = splitUnspacedBrackets(rawToken);
-    if (parts.length > 1)
-      warnings.push(`note.order: token "${rawToken}" has unspaced brackets; split.`);
+    if (parts.length > 1) warn(`note.order: token "${rawToken}" has unspaced brackets; split.`);
     tokens.push(...parts);
   }
 
@@ -177,12 +223,12 @@ export function parseNoteOrder(raw: string): NoteOrder | null {
   for (const token of tokens) {
     switch (token) {
       case '[':
-        if (chord !== null) warnings.push('note.order: "[" inside an open chord; ignored.');
+        if (chord !== null) warn('note.order: "[" inside an open chord; ignored.');
         else chord = [];
         break;
 
       case ']':
-        if (chord === null) warnings.push('note.order: "]" without a matching "["; ignored.');
+        if (chord === null) warn('note.order: "]" without a matching "["; ignored.');
         else {
           pushChord(chord);
           chord = null;
@@ -190,16 +236,15 @@ export function parseNoteOrder(raw: string): NoteOrder | null {
         break;
 
       case '|:':
-        if (chord !== null) warnings.push('note.order: "|:" inside a chord; ignored.');
+        if (chord !== null) warn('note.order: "|:" inside a chord; ignored.');
         else if (groupStart !== null)
-          warnings.push('note.order: "|:" inside an open repeat group; ignored.');
+          warn('note.order: "|:" inside an open repeat group; ignored.');
         else groupStart = items.length;
         break;
 
       case ':|':
-        if (chord !== null) warnings.push('note.order: ":|" inside a chord; ignored.');
-        else if (groupStart === null)
-          warnings.push('note.order: ":|" without a matching "|:"; ignored.');
+        if (chord !== null) warn('note.order: ":|" inside a chord; ignored.');
+        else if (groupStart === null) warn('note.order: ":|" without a matching "|:"; ignored.');
         else {
           closeGroup(groupStart);
           groupStart = null;
@@ -213,9 +258,7 @@ export function parseNoteOrder(raw: string): NoteOrder | null {
 
       default: {
         if (!token.startsWith('#')) {
-          warnings.push(
-            `note.order: token "${token}" is not an ID reference (no leading "#"); skipped.`,
-          );
+          warn(`note.order: token "${token}" is not an ID reference (no leading "#"); skipped.`);
           break;
         }
         // Only the *leading* `#` is the reference marker (the schematron says
@@ -224,7 +267,7 @@ export function parseNoteOrder(raw: string): NoteOrder | null {
         // token the grammar accepts.
         const id = token.slice(1);
         if (id.length === 0) {
-          warnings.push('note.order: token "#" is an empty ID reference; skipped.');
+          warn('note.order: token "#" is an empty ID reference; skipped.');
           break;
         }
         if (chord !== null) chord.push(id);
@@ -235,17 +278,31 @@ export function parseNoteOrder(raw: string): NoteOrder | null {
   }
 
   if (chord !== null) {
-    warnings.push('note.order: chord opened with "[" was never closed; closed at end of input.');
+    warn('note.order: chord opened with "[" was never closed; closed at end of input.');
     pushChord(chord);
   }
   if (groupStart !== null) {
-    warnings.push(
-      'note.order: repeat group opened with "|:" was never closed; closed at the last item.',
-    );
+    warn('note.order: repeat group opened with "|:" was never closed; closed at the last item.');
     closeGroup(groupStart);
   }
+  summariseSuppressed(warnings, suppressed);
 
   return { kind: 'list', items, groups, warnings };
+}
+
+/**
+ * Append the tally of the diagnostics {@link MAX_NOTE_ORDER_WARNINGS} kept out, if any.
+ *
+ * It is pushed past the cap on purpose — the cap bounds what is *collected*, and one more
+ * entry saying how much was dropped is what keeps the array honest. So a capped result holds
+ * exactly `MAX_NOTE_ORDER_WARNINGS + 1` entries and never more.
+ */
+function summariseSuppressed(warnings: string[], suppressed: number): void {
+  if (suppressed === 0) return;
+  warnings.push(
+    `note.order: ${String(suppressed)} further diagnostics suppressed; the value is malformed ` +
+      `well past the first ${String(MAX_NOTE_ORDER_WARNINGS)}.`,
+  );
 }
 
 function trimmedKeywordWarning(keyword: string): string {

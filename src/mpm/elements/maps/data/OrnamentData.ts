@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
-import { OrnamentNote } from './OrnamentNote.js';
+import { OrnamentNote, readJavaDouble } from './OrnamentNote.js';
 import type { OrnamentationStyle } from '../../styles/OrnamentationStyle.js';
 import type { OrnamentDef } from '../../styles/defs/OrnamentDef.js';
 
@@ -46,12 +46,14 @@ export function parseOrnamentNotePool(xml: Element): OrnamentNote[] {
  * passed through untouched — rounding them would invent a rule no source states, and the
  * expansion engine owns what a fractional repeat count means.
  *
- * TODO(W10) — `Number` stands in for `parseJavaDouble` here for the reason given at
- * `OrnamentNote.readPitchValue`; DESIGN.md D16.
+ * The parse is `parseJavaDouble`, for the reason spelled out at `OrnamentNote.readPitchValue`
+ * (DESIGN.md D16, the W9 ruling; PARITY.md §6.8): this attribute has no grammar either, so
+ * `Number` differed from Java on real spellings — `repetitions=""` read as `0` and took the
+ * default **silently**, where every other unusable value said so.
  */
 export function parseOrnamentRepetitions(raw: string): number {
-  const repetitions = Number(raw);
-  if (!Number.isFinite(repetitions) || repetitions < -1) {
+  const repetitions = readJavaDouble(raw);
+  if (repetitions === null || !Number.isFinite(repetitions) || repetitions < -1) {
     console.error(
       `Warning: repetitions="${raw}" of an ornament element is no usable repeat count; 0 is used instead.`,
     );

@@ -3,6 +3,7 @@ import {
   parseNoteOrder,
   formatNoteOrder,
   formatNoteOrderPerf,
+  MAX_NOTE_ORDER_WARNINGS,
   type NoteOrder,
 } from '../../../../../src/mpm/elements/maps/data/noteOrder.js';
 
@@ -435,6 +436,77 @@ describe('parseNoteOrder — pathological input terminates', () => {
     expect(order.items).toHaveLength(10000);
     expect(order.warnings).toEqual([]);
   }, 2000);
+
+  // W9, from the W2 verifier's non-blocking advisory. The old salvage peeled the string with
+  // `slice` AND collected the peeled brackets with `tail.unshift(']')`, and the `unshift` is
+  // the quadratic half — it re-indexes the array on every call. Isolated at this size:
+  // ~975 ms for the unshift, ~8 ms for a slice-only variant, ~1150 ms for the original pair,
+  // against 6–21 ms for the whole parse today. So a mutation restoring only the `slice` shape
+  // does NOT fail this test — the W9 verifier measured exactly that — and a control for this
+  // fix has to restore both halves. The explicit timeout is the gate.
+  //
+  // 64 000 is also deliberately below the limit documented on `parseNoteOrder`: at 105 989
+  // brackets in one token the spread in `tokens.push(...parts)` overflows the call stack.
+  it('peels a long trailing bracket run in linear time', () => {
+    const closers = 64000;
+    const order = asList(parseNoteOrder(`#a${']'.repeat(closers)}`));
+
+    // One item, and every peeled ']' reported as a stray close — the salvage itself is
+    // unchanged, which is the other half of the claim.
+    expect(idsOf(order)).toEqual([['a']]);
+    expect(order.warnings[0]).toBe(W.unspaced(`#a${']'.repeat(closers)}`));
+    expect(order.warnings[1]).toBe(W.strayChordEnd);
+  }, 1000);
+});
+
+describe('parseNoteOrder — the diagnostics are capped (W9)', () => {
+  // Also from the W2 verifier: `warnings` grew with the input, so a 100 000-character malformed
+  // value produced 100 000 strings and the caller logged every one. The cap bounds the array;
+  // the tally entry is what keeps "there was more" from being lost.
+  const cap = MAX_NOTE_ORDER_WARNINGS;
+
+  /** `n` stray `]` tokens, i.e. `n` copies of one and the same warning. */
+  function strays(n: number): string {
+    return Array.from({ length: n }, () => ']').join(' ');
+  }
+
+  it('keeps every diagnostic while there are at most as many as the cap', () => {
+    const order = asList(parseNoteOrder(strays(cap)));
+    expect(order.warnings).toHaveLength(cap);
+    expect(order.warnings.every((line) => line === W.strayChordEnd)).toBe(true);
+  });
+
+  it('replaces the overflow with one tally entry', () => {
+    const order = asList(parseNoteOrder(strays(cap + 7)));
+
+    expect(order.warnings).toHaveLength(cap + 1);
+    expect(order.warnings.slice(0, cap).every((line) => line === W.strayChordEnd)).toBe(true);
+    expect(order.warnings[cap]).toBe(
+      `note.order: 7 further diagnostics suppressed; the value is malformed well past the ` +
+        `first ${String(cap)}.`,
+    );
+  });
+
+  it('stays at cap + 1 for an input three orders of magnitude past it', () => {
+    // 100 000 diagnostics before the cap, 101 after it. The parse still describes the value
+    // correctly — the cap is about what is *reported*, never about what is read.
+    const order = asList(parseNoteOrder(`#a ${strays(100000)}`));
+
+    expect(order.warnings).toHaveLength(cap + 1);
+    expect(order.warnings[cap]).toContain('99900 further diagnostics suppressed');
+    expect(idsOf(order)).toEqual([['a']]);
+  }, 2000);
+
+  it('does not cap a value that is merely long and well formed', () => {
+    const raw = Array.from({ length: 500 }, (_, i) => `n${String(i)}`).join(' ');
+    const order = asList(parseNoteOrder(raw));
+
+    // 500 tokens without a '#' — 500 distinct warnings, so the cap bites here too and that is
+    // deliberate: a value with 500 problems is malformed however varied its problems are.
+    expect(order.warnings).toHaveLength(cap + 1);
+    expect(order.warnings[0]).toBe(W.notARef('n0'));
+    expect(order.warnings[cap - 1]).toBe(W.notARef(`n${String(cap - 1)}`));
+  });
 });
 
 describe('formatNoteOrder', () => {

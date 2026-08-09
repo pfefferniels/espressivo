@@ -174,6 +174,16 @@ impl; "(≠Lars)" a deliberate divergence from it, which lands in PARITY.md §v3
   parse code uses parseJavaDouble for numeric attrs (it is NEW code — P1 note does
   not protect it); no throws on malformed v3 input, log + skip the ornament;
   per-test timeouts on expansion tests (repetition loops).
+  **AMENDED W9** (conductor-confirmed 2026-08-09; LOG.md "D16 ruling — the three v3
+  numeric parse sites", PARITY.md §6.8). The parseJavaDouble requirement holds where
+  the attribute has no grammar: `OrnamentNote`'s three pitch attributes and
+  `@repetitions` switched, with the malformed-input differences pinned (`""` rejected
+  rather than read as 0, `0x10` rejected, Java's `1d`/`1f` accepted; `NaN`/`Infinity`
+  parsed as Java parses them and then refused by a finiteness check). `TemporalValue`
+  is **exempt**: the spec's own regex admits only the decimal literals on which
+  `Number`, `parseFloat` and `Double.parseDouble` are the same function, measured by
+  W1's Java 17 differential (481-input corpus, 443 values bit-compared, 0 acceptance
+  and 0 bit mismatches). The exemption is documented at the site, not implicit.
 - **D17 — MEI expansion wave**: port `ornaments.dict` (verbatim resource) +
   MeiOrnamentExpander semantics: MEI `trill|mordent|turn` (+ SMuFL/`@altsym` names
   via dict aliases) expand to MPM ornaments with pool notes; diatonic steps resolved

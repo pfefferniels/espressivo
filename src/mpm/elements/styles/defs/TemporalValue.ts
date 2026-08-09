@@ -129,7 +129,12 @@ const DOMAIN_BY_SUFFIX: Readonly<Record<TemporalSuffix, TemporalDomain>> = {
  * the nearest double by the same rule. The grammar excludes every form on which they
  * differ (hex, `1e3`, trailing `d`/`f`, `Infinity`), which is why this module does not need
  * `parseJavaDouble` even though DESIGN.md D16 requires it for numeric attributes in
- * general. The sign of zero survives: `-0.0ticks` parses to `-0`.
+ * general. **That exemption is a ruling, not an oversight** (W9; PARITY.md §6.8), and it is
+ * measured rather than argued: a Java 17 harness running this same regex plus
+ * `Double.parseDouble` over a 481-input corpus agrees with this module on all 443 accepted
+ * values bit for bit, with zero acceptance mismatches. The v3 attributes that have *no*
+ * grammar — a pool note's pitch, `@repetitions` — do read through `parseJavaDouble`, and there
+ * the difference is observable. The sign of zero survives: `-0.0ticks` parses to `-0`.
  *
  * The result is not guaranteed finite. A number too large for a double is still spelled
  * legally — 309 digits satisfy the schematron — and overflows to `Infinity`, which is

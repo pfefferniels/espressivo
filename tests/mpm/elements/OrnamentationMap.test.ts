@@ -1485,18 +1485,28 @@ describe('OrnamentData — v3 fields', () => {
     expect(od.repetitions).toBe(-1);
   });
 
-  it('should fall back to 0 for an unusable repeat count', () => {
-    for (const value of ['many', '', '-2', 'NaN']) {
+  it('should fall back to 0 for an unusable repeat count, and say so every time', () => {
+    // W9 (D16 ruling, PARITY.md §6.8): `''` used to parse as 0 through `Number` and take the
+    // default **silently** — the one unusable value that reported nothing. `parseJavaDouble`
+    // rejects it as Java does, so every row here now logs. The values are unchanged; what
+    // changed is that the empty attribute stopped being a quiet special case.
+    for (const value of ['many', '', '-2', 'NaN', '0x10']) {
       let od: OrnamentData | null = null;
       const messages = captureErrors(() => {
         od = new OrnamentData(
           ornamentElement(`date="0.0" name.ref="trill" repetitions="${value}"/>`),
         );
       });
-      // '' parses as 0 through Number and is therefore silently the default; the rest log
       expect(od!.repetitions).toBe(0);
-      if (value !== '') expect(messages.join('\n')).toContain('no usable repeat count');
+      expect(messages.join('\n')).toContain('no usable repeat count');
     }
+  });
+
+  it('should read Java’s own numeric spellings of a repeat count', () => {
+    // `3d` is a legal Java double literal and `Number('3d')` is NaN, so this row moved from
+    // "unusable, default 0" to "three extra passes" with the D16 switch.
+    const od = new OrnamentData(ornamentElement('date="0.0" name.ref="trill" repetitions="3d"/>'));
+    expect(od.repetitions).toBe(3);
   });
 
   it('should skip a pool note without an xml:id and log it', () => {

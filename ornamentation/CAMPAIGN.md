@@ -117,8 +117,11 @@ through, (3) merge, push, then release the hold in the same ping thread.
    a documented DESIGN.md decision, not an accident.
 5. One logical wave = one commit, message `feat(orn): …` (or `docs(orn):`, `test(orn):`).
    Commit early, commit often — the branch is private until final integration.
-6. No pushes to origin until integration is coordinated (branch may be pushed as backup
-   with `git push origin ornamentation-v3` — allowed, it touches no shared branch).
+6. CONTINUOUS BACKUP PUSHES (user directive, 2026-08-09, supersedes the old
+   push-restraint): push ornamentation-v3 to origin after EVERY verified wave commit
+   (`git push origin ornamentation-v3`). Never push main or any shared branch until
+   the coordinated final merge. First backup push done at eec95ce (through W8; W9
+   uncommitted work follows with its wave commit).
 7. Worker/verifier discipline for implementation waves: implementer agent writes, an
    independent verifier agent reviews diff + runs verify before commit (adversarial).
 8. Tests-first bias: spec-derived expected values are computed BY HAND in test comments

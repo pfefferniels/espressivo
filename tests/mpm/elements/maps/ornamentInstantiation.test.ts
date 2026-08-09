@@ -609,8 +609,13 @@ describe('MPM v3 ornament instantiation', () => {
     it('says out loud that the principal’s head is dropped', () => {
       // The one case where carving throws away music the author wrote: the frame is anchored
       // at a millisecond end that does not exist yet, so the principal cannot be shortened and
-      // is removed whole. The rendered span is frameLength − frame.offset = 60 − (−30) = 90 ms
-      // back from its end; everything before that is silently gone unless this fires.
+      // is removed whole. Everything before the first onset is silently gone unless this fires.
+      //
+      // The span named is the FIRST ONSET the spread produces, measured back from the note's
+      // end — here the i=0 marker, −90, so 90 ms. For this vector that coincides with
+      // frameLength − frame.offset = 60 − (−30) = 90, which is what the line used to compute;
+      // the intensity-0 case below is where the two part company (W9, from the W5 verifier's
+      // re-check nit).
       const logged: string[] = [];
       const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
         logged.push(args.map(String).join(' '));
@@ -624,6 +629,55 @@ describe('MPM v3 ornament instantiation', () => {
       expect(warning).toBeDefined();
       expect(warning).toContain('ornament "ornMsEnd"');
       expect(warning).toContain('only the last 90ms of it are rendered');
+    });
+
+    it('names the span the spread really produces, not the frame’s length (W9)', () => {
+      /**
+       * `intensity === 0` is one of the v2 engine's two unguarded edges (`pow(i/(n−1), 0)` is
+       * 1 for every i, including i = 0), so **every** slot lands at the frame's end rather than
+       * spreading across it:
+       *   i=0: pow(0/2,0)*60 = 60 ⇒ 60 + (−30) − 60 = −30
+       *   i=1: pow(1/2,0)*60 = 60 ⇒ −30
+       *   last (pinned):      60 ⇒ −30
+       * All three onsets sit 30 ms before the note's end, so 30 ms of the principal is what
+       * survives — not the 90 ms that `frameLength − frame.offset` claims. The old arithmetic
+       * overstated by exactly one frameLength, and a reader who trusted it would look for 60 ms
+       * of music that was never rendered.
+       */
+      const logged: string[] = [];
+      const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        logged.push(args.map(String).join(' '));
+      });
+      let notes: ReturnType<typeof notesOf> = [];
+      try {
+        const score = makeScore([makeNote('P', 0, 64)]);
+        const map = makeMap([
+          makeDef('spreadMsEndFlat', {
+            frameOffset: { value: -30, domain: 'milliseconds' },
+            frameLength: { value: 60, domain: 'milliseconds' },
+            intensity: 0,
+            alignment: 'at end',
+          }),
+        ]);
+        map.addOrnament({
+          date: 0,
+          nameRef: 'spreadMsEndFlat',
+          noteid: '#P',
+          noteOrder: '#n1 #P #n2',
+          notes: [new OrnamentNote('n1', chromatic(-2)), new OrnamentNote('n2', chromatic(2))],
+          id: 'ornMsFlat',
+        });
+        map.renderOrnamentationToMap(score);
+        notes = notesOf(score);
+      } finally {
+        spy.mockRestore();
+      }
+
+      // the markers are what the message is about, so they are asserted next to it
+      expect(notes.map((note) => note.msFromEnd)).toEqual([-30, -30, -30]);
+      const warning = logged.find((line) => line.includes('head is dropped'));
+      expect(warning).toContain('ornament "ornMsFlat"');
+      expect(warning).toContain('only the last 30ms of it are rendered');
     });
 
     it('stays quiet for the same frame aligned at start', () => {
@@ -1073,10 +1127,15 @@ describe('MPM v3 ornament instantiation', () => {
      * next onset), so `end <= 0` holds only for an initial run. A NEGATIVE intensity reverses
      * that ordering (pow(i/(n−1), intensity) decreases in i while the last slot stays pinned),
      * so it CAN drop an interior run — verified by construction (W5 verifier re-check,
-     * ornamentation/LOG.md): intensity −1, offset −1000, length 100, monophonic, 4 slots ⇒
-     * slots 1 and 2 drop, survivors keep `ornament.slot` "0" and "3". The same rule covers both
-     * shapes. This prefix vector is the strongest form against survivor-renumbering: the
-     * survivors' first index is non-zero, which is exactly what renumbering would destroy.
+     * ornamentation/LOG.md): intensity −1, offset −1000, length 100, monophonic, 4 slots drops
+     * slots 1 and 2. The same rule covers both shapes. This prefix vector is the strongest form
+     * against survivor-renumbering: the survivors' first index is non-zero, which is exactly
+     * what renumbering would destroy.
+     *
+     * That construction's slot 0 used to survive as well, at `pow(0/3, −1) = Infinity`; the
+     * finiteness guard added in W9 drops it, so it now yields a single survivor at slot 3. The
+     * describe below is where that is pinned, and it does not weaken this one: the two vectors
+     * agree that a survivor keeps the index the expansion gave it.
      */
     it('keeps the expansion’s slot numbering when D14 drops the notes before it', () => {
       const score = makeScore([makeNote('P', 0, 64)]);
@@ -1111,6 +1170,270 @@ describe('MPM v3 ornament instantiation', () => {
       expect(notes.map((note) => note.slot)).toEqual(['2', '3']);
       expect(notes.map((note) => note.source)).toEqual(['c', 'd']);
     });
+  });
+
+  // -------------------------------------------------------------------------------------
+  // non-finite positions (W9 hardening — the W5 verifier's finding O2)
+  // -------------------------------------------------------------------------------------
+  describe('non-finite positions are dropped, not written into the score (W9)', () => {
+    /**
+     * The verifier's construction, verbatim: intensity −1, `frame.offset="-1000ticks"`,
+     * `frameLength="100ticks"`, `noteoff.shift="monophonic"`, four slots, principal P at date 0
+     * with duration 1440.
+     *
+     * A negative intensity is one of the two unguarded edges this renderer inherits from the v2
+     * spacing engine on purpose, and `pow(0, −1)` is `Infinity`:
+     *   i=0: pow(0/3,−1)*100 − 1000 = Infinity
+     *   i=1: pow(1/3,−1) = 3   ⇒  300 − 1000 = −700
+     *   i=2: pow(2/3,−1) = 1.5 ⇒  150 − 1000 = −850
+     *   last (pinned):            −1000 + 100 = −900
+     * monophonic durations are the gaps to the next onset — −700 − Infinity = −Infinity,
+     * −850 − (−700) = −150, −900 − (−850) = −50 — and the tail 1440 − (−900) = 2340. Negative
+     * durations clamp to 0, so the ends are Infinity, −700, −850 and −900 + 2340 = 1440.
+     *
+     * D14 drops slots 1 and 2 (their ends are at or before tick 0). Slot 0 is the one this
+     * describe is about: its end is `Infinity`, D14's `end <= 0` does not hold, and the clamp
+     * then computes `duration = end − date = Infinity − Infinity = NaN` — so before W9 the
+     * renderer emitted a real `<note date="Infinity" duration="NaN">` into the augmented MSM
+     * and on into the MIDI export. In MPM v2 the same input could only ever write a marker
+     * *attribute* onto an existing note; v3 turns positions into elements, which is what
+     * materialised it.
+     *
+     * Only slot 3 survives: date max(0, −900) = 0, duration 1440 − 0 = 1440, pitch 68.
+     */
+    const render = () => {
+      const score = makeScore([makeNote('P', 0, 64)]);
+      const map = makeMap([
+        makeDef('degenerate', {
+          frameOffset: { value: -1000, domain: 'ticks' },
+          frameLength: { value: 100, domain: 'ticks' },
+          intensity: -1,
+          noteOffShift: NoteOffShift.Monophonic,
+        }),
+      ]);
+      map.addOrnament({
+        date: 0,
+        nameRef: 'degenerate',
+        noteid: '#P',
+        noteOrder: '#a #b #c #d',
+        notes: [
+          new OrnamentNote('a', chromatic(1)),
+          new OrnamentNote('b', chromatic(2)),
+          new OrnamentNote('c', chromatic(3)),
+          new OrnamentNote('d', chromatic(4)),
+        ],
+        id: 'ornInf',
+      });
+      map.renderOrnamentationToMap(score);
+      return notesOf(score);
+    };
+
+    it('emits no note at an infinite date or a NaN duration', () => {
+      const notes = render();
+      for (const note of notes) {
+        expect(Number.isFinite(note.date)).toBe(true);
+        expect(Number.isFinite(note.duration)).toBe(true);
+      }
+    });
+
+    it('keeps the one slot whose arithmetic is finite, with its expansion index', () => {
+      const notes = render();
+      expect(notes).toHaveLength(1);
+      expect(notes[0].date).toBe(0);
+      expect(notes[0].duration).toBe(1440);
+      expect(notes[0].pitch).toBe(68);
+      expect(notes[0].slot).toBe('3');
+      expect(notes[0].source).toBe('d');
+    });
+
+    it('says how many notes it dropped and why', () => {
+      const logged: string[] = [];
+      const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        logged.push(args.map(String).join(' '));
+      });
+      try {
+        render();
+      } finally {
+        spy.mockRestore();
+      }
+      const warning = logged.find((line) => line.includes('not a finite number'));
+      expect(warning).toBeDefined();
+      expect(warning).toContain('ornament "ornInf"');
+      // one of the four, counted over what the expansion planned rather than what survived
+      expect(warning).toContain('1 of its 4 ornament notes');
+    });
+
+    it('drops only the notes an unreadable intensity spoils, and keeps the pinned one', () => {
+      /**
+       * `intensity="abc"` reads as `NaN` the way every numeric MSM/MPM attribute in this port
+       * does, and `pow(x, NaN)` is `NaN`. But the **last** slot is placed outside the spacing
+       * loop at `start + length`, which never touches `intensity` — so a NaN intensity spoils
+       * every slot except that one, and the guard is per note rather than per ornament.
+       *
+       * Principal P at date 0, duration 1440; `frameLength="50%"` ⇒ frame [0, 720]; two slots:
+       *   i=0: pow(0/1, NaN) * 720 + 0 = NaN   ⇒ dropped
+       *   last (pinned):        0 + 720 = 720  ⇒ kept
+       * noteoff.shift is `false` by default, so the survivor ends where the principal would
+       * have: 1440 − 720 = 720. It is the only generated note, so it inherits the principal's
+       * `xml:id` under D10 — the score is not left empty, and the one dropped note is reported.
+       */
+      const score = makeScore([makeNote('P', 0, 64)]);
+      const map = makeMap([
+        makeDef('unreadable', {
+          frameLength: { value: 50, domain: 'relative' },
+          intensity: Number.NaN,
+        }),
+      ]);
+      map.addOrnament({
+        date: 0,
+        nameRef: 'unreadable',
+        noteid: '#P',
+        noteOrder: '#a #b',
+        notes: [new OrnamentNote('a', chromatic(1)), new OrnamentNote('b', chromatic(2))],
+        id: 'ornNaN',
+      });
+
+      const logged: string[] = [];
+      const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        logged.push(args.map(String).join(' '));
+      });
+      try {
+        map.renderOrnamentationToMap(score);
+      } finally {
+        spy.mockRestore();
+      }
+
+      const notes = notesOf(score);
+      expect(notes).toHaveLength(1);
+      expect(notes[0].date).toBe(720);
+      expect(notes[0].duration).toBe(720);
+      expect(notes[0].pitch).toBe(66);
+      expect(notes[0].slot).toBe('1');
+      expect(logged.find((line) => line.includes('not a finite number'))).toContain(
+        '1 of its 2 ornament notes',
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------------------
+  // the -1 fill sentinel needs a millisecond frame (D9 refinement, W5 ruling)
+  // -------------------------------------------------------------------------------------
+  describe('repetitions="-1" outside the millisecond domain (W9)', () => {
+    /**
+     * `repetitions="-1"` is meico's undocumented "fill the frame" sentinel, and the count it
+     * stands for is `ceil(frameLength_ms / 150)`. A tick or `%` frame has no millisecond length
+     * before the tempo pass, so `frameNoteBudget` returns null for it and the expansion refuses
+     * the ornament rather than inventing a count — the D9 refinement recorded with the D5
+     * amendment. The behaviour shipped in W5 and PARITY §6.2 described it under a "pinned by
+     * tests" umbrella, but no test passed `-1` with a non-millisecond frame (W9 verifier's
+     * should-fix 5). These pin the behaviour that already exists; none of it changed.
+     */
+    const renderWithFrame = (frameLength: TemporalValue) => {
+      const score = makeScore([makeNote('P', 0, 64)]);
+      const map = makeMap([makeDef('fill', { frameLength })]);
+      map.addOrnament({
+        date: 0,
+        nameRef: 'fill',
+        noteid: '#P',
+        noteOrder: '|: #P #u :|',
+        notes: [new OrnamentNote('u', chromatic(2))],
+        repetitions: -1,
+        id: 'ornFill',
+      });
+
+      const logged: string[] = [];
+      const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        logged.push(args.map(String).join(' '));
+      });
+      try {
+        map.renderOrnamentationToMap(score);
+      } finally {
+        spy.mockRestore();
+      }
+      return { notes: notesOf(score), logged };
+    };
+
+    it('skips a % frame, says it has no budget, and leaves the score alone', () => {
+      const { notes, logged } = renderWithFrame({ value: 50, domain: 'relative' });
+
+      // nothing generated, and the principal is still the score's own note
+      expect(notes).toHaveLength(1);
+      expect(notes[0].id).toBe('P');
+      expect(notes[0].generated).toBeNull();
+      expect(logged.join('\n')).toContain('needs a frame note budget of at least 1 slot; got null');
+    });
+
+    it('skips a ticks frame the same way', () => {
+      const { notes, logged } = renderWithFrame({ value: 720, domain: 'ticks' });
+
+      expect(notes).toHaveLength(1);
+      expect(notes[0].id).toBe('P');
+      expect(logged.join('\n')).toContain('needs a frame note budget of at least 1 slot; got null');
+    });
+
+    it('fills a millisecond frame, which is the case the sentinel exists for', () => {
+      // 600 ms / 150 ⇒ a 4-slot budget; the group holds 2 slots, so the extra passes are
+      // floor((4 − 2) / 2) = 1 ⇒ 2 + 2 = 4 slots, pitches 64/66/64/66. The landing rule then
+      // appends **one more** principal-pitch slot, because the group opens on the principal's
+      // own pitch — so the figure is five notes, 64/66/64/66/64, one over the budget. That
+      // overshoot is deliberate and matches the reference, which also appends its landing copy
+      // after the fill loop (W4 verifier, finding 4); the budget bounds the repetition, not the
+      // landing. Pinned here because this is the only test that exercises the sentinel at all.
+      const { notes, logged } = renderWithFrame({ value: 600, domain: 'milliseconds' });
+
+      expect(notes.map((note) => note.pitch)).toEqual([64, 66, 64, 66, 64]);
+      expect(notes.every((note) => note.generated === 'true')).toBe(true);
+      expect(logged.join('\n')).not.toContain('frame note budget');
+    });
+  });
+
+  // -------------------------------------------------------------------------------------
+  // diagnostics volume (W9 hardening — the W2 verifier's unbounded-warnings advisory)
+  // -------------------------------------------------------------------------------------
+  describe('a malformed note.order does not flood the console (W9)', () => {
+    it(
+      'reports the first diagnostics and counts the rest',
+      () => {
+        // The two pure modules return their diagnostics instead of logging them, and both
+        // arrays grow with the length of the value: 2000 references to notes that do not
+        // exist produce 2000 expansion diagnostics (at 50 000 references, 100 000 — measured).
+        // The renderer is where E1 decides what a human sees, so the cap sits there; the
+        // parser additionally caps its own array, so the memory is bounded as well.
+        const references = 2000;
+        const score = makeScore([makeNote('P', 0, 64)]);
+        const map = makeMap([makeDef('fig', { frameLength: { value: 50, domain: 'relative' } })]);
+        map.addOrnament({
+          date: 0,
+          nameRef: 'fig',
+          noteid: '#P',
+          // every reference resolves to nothing, and the brackets keep it on the v3 path
+          noteOrder: `[ ${Array.from({ length: references }, (_, i) => `#ghost${String(i)}`).join(' ')} ]`,
+          notes: [],
+          id: 'ornNoisy',
+        });
+
+        const logged: string[] = [];
+        const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+          logged.push(args.map(String).join(' '));
+        });
+        try {
+          map.renderOrnamentationToMap(score);
+        } finally {
+          spy.mockRestore();
+        }
+
+        // 2001 diagnostics in the array: one per unresolvable reference, plus the one saying
+        // the chord lost every reference it had. Twenty are printed and 1981 are counted.
+        const unresolved = logged.filter((line) => line.includes('neither a pool note'));
+        expect(unresolved).toHaveLength(20);
+        expect(logged.find((line) => line.includes('further diagnostics'))).toContain(
+          `and ${String(references + 1 - 20)} further diagnostics about the same value`,
+        );
+        // bounded, and still nowhere near the number of things that went wrong
+        expect(logged.length).toBeLessThan(30);
+      },
+      TIMEOUT,
+    );
   });
 
   // -------------------------------------------------------------------------------------
@@ -1450,8 +1773,16 @@ describe('MPM v3 ornament instantiation', () => {
       // the principal of the second ornament is a plain score note that the first never
       // touched, so nothing stale can reach it; the guard is that a generated note's copy
       // source never carries ornament.* through (NOT_INHERITED)
+      //
+      // W9: `ornament.carved` joins the stale set here. Within a single render it cannot be on
+      // a principal — createChords copies before carve marks — but this is the case that makes
+      // the deny-list entry load-bearing rather than defensive: a principal read back from an
+      // *already augmented* MSM (the second performance of one document, the same scenario the
+      // `milliseconds.*` entries exist for) really does arrive carrying the mark, and without
+      // the entry every note generated from it would claim to be a carved head.
       const first = makeNote('P', 0, 64);
       first.addAttribute(new Attribute('ornament.generated', 'true'));
+      first.addAttribute(new Attribute('ornament.carved', 'true'));
       first.addAttribute(new Attribute('ornament.ref', 'stale'));
       first.addAttribute(new Attribute('ornament.anchor', 'staleAnchor'));
       first.addAttribute(new Attribute('ornament.slot', '9'));
@@ -1472,6 +1803,9 @@ describe('MPM v3 ornament instantiation', () => {
       expect(notes.map((note) => note.anchor)).toEqual(['P', 'P']);
       expect(notes.map((note) => note.slot)).toEqual(['0', '1']);
       expect(notes.map((note) => note.pass)).toEqual([null, null]);
+      // the stale mark does not survive the copy — this ornament carves nothing, and a
+      // generated note is never a carved head
+      expect(notes.map((note) => note.carved)).toEqual([null, null]);
     });
   });
 

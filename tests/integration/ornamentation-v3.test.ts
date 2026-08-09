@@ -38,6 +38,7 @@
  * | `atend-ms` | the D5 AMENDMENT — the end-anchored marker, and the head loss it costs |
  * | `multi-ornament` | D11 — two ornaments on one principal, and the overflow scale factor |
  * | `diatonic-key` | D8 — `interval.diatonic` against the MSM key signature |
+ * | `legacy-timeunit` | D3 — the lenient read: legacy `time.unit`, suffix-less values, the `frame.start` alias |
  * | `v2-passthrough` | D6 — a v2 document still takes the v2 path through the v3 build |
  *
  * ## Timeouts
@@ -53,7 +54,8 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
-import { ORNAMENTATION_MAP } from '../../src/mpm/names.js';
+import { ORNAMENTATION_MAP, ORNAMENTATION_STYLE } from '../../src/mpm/names.js';
+import type { OrnamentDef } from '../../src/mpm/elements/styles/defs/OrnamentDef.js';
 import { firstChildElement } from '../../src/xml/tree.js';
 import type { Element } from '../../src/xml/XomTypes.js';
 import type { Midi } from '../../src/midi/Midi.js';
@@ -233,7 +235,7 @@ function noteEvents(midi: Midi): { tick: number; command: number }[] {
 }
 
 /**
- * The eight fixtures and the number of sounding notes each must end up with. Every count is
+ * The nine fixtures and the number of sounding notes each must end up with. Every count is
  * derived in the fixture's own describe block; they are restated here so the MIDI smoke can
  * check that the export sees exactly the notes the augmented MSM has.
  */
@@ -245,6 +247,7 @@ const FIXTURES: readonly { name: string; notes: number }[] = [
   { name: 'atend-ms', notes: 4 }, // 3 generated + one neighbour
   { name: 'multi-ornament', notes: 5 }, // 2 + 2 generated + one neighbour
   { name: 'diatonic-key', notes: 5 }, // 4 generated + one neighbour
+  { name: 'legacy-timeunit', notes: 8 }, // 3 + 2 + 2 generated + one neighbour
   { name: 'v2-passthrough', notes: 6 }, // unchanged: the v2 path generates nothing
 ];
 
@@ -991,6 +994,160 @@ describe('diatonic-key: scale steps resolved against the key signature (D8)', ()
       const { notes } = render('diatonic-key');
       const untouched = notes.filter((note) => note.generated === null);
       expect(untouched.map((note) => [note.id, note.date, note.pitch])).toEqual([['q', 1440, 69]]);
+    },
+    TIMEOUT,
+  );
+});
+
+// ---------------------------------------------------------------------------------------
+// D3 — the lenient reading: legacy time.unit, suffix-less values, the frame.start alias
+// ---------------------------------------------------------------------------------------
+
+describe('legacy-timeunit: frame values written the pre-v3 way (D3)', () => {
+  /**
+   * D3's lenient reader had unit coverage only (W6 verifier's third secondary finding), so
+   * nothing proved that a document written the way real documents are written *plays*. All
+   * three readings are in one fixture, on three principals that do not overlap.
+   *
+   * **legacyMs — `time.unit="milliseconds"` with suffix-less values.**
+   * `<temporalSpread time.unit="milliseconds" frame.offset="-30" frameLength="60"
+   * intensity="2.0" noteoff.shift="true"/>`, i.e. `spread-ms`'s def in the older spelling.
+   * The element is v3 because `frame.offset` is a v3 attribute *name*; both values then take
+   * the legacy element-level unit, so the frame is [−30 ms, +30 ms] around the principal's
+   * onset. Principal A: date 2880 = 2000 ms, duration 1440 = 1000 ms, pitch 64; pool +3 / +7
+   * ⇒ 67 / 71; `note.order="#A #n2 #n3"` ⇒ three slots.
+   *   i=0: pow(0/2,2)*60 − 30 = −30
+   *   i=1: pow(1/2,2)*60 − 30 = 15 − 30 = −15
+   *   last (pinned):    −30 + 60 = +30
+   * `noteoff.shift="true"` shifts the ends with the onsets, so the notes sound
+   * 1970..2970, 1985..2985, 2030..3030 — the −30 / −15 / +30 the Java reference wrote for
+   * the chord this def came from.
+   *
+   * **legacyTicks — suffix-less with no `time.unit` at all ⇒ ticks (D3's default).**
+   * `<temporalSpread frame.offset="0" frameLength="360"/>` over principal B (date 0,
+   * duration 720, pitch 60), `note.order="#B #u1"`, u1 = +2 ⇒ 62. Two slots, intensity 1:
+   *   i=0: pow(0/1,1)*360 + 0 =   0
+   *   last (pinned):     0 + 360 = 360
+   * `noteoff.shift` defaults to `false`, so both notes end where B would have, at 720:
+   * durations 720 and 360, milliseconds 0 and 250, both ending at 500.
+   *
+   * **legacyAlias — `frame.start` read as `frame.offset`.**
+   * `<temporalSpread frame.start="180" frameLength="50%"/>` over principal C (date 1440,
+   * duration 720, pitch 72), `note.order="#C #d1"`, d1 = +1 ⇒ 73. The `%` suffix is the only
+   * v3 marker in the element; the alias then carries the offset, suffix-less and with no
+   * `time.unit`, so ticks. Frame: 50 % of 720 = 360 ticks, offset 180 ⇒ [1620, 1980] absolute.
+   *   i=0: pow(0/1,1)*360 + 180 = 180 ⇒ 1440 + 180 = 1620
+   *   last (pinned):      180 + 360 = 540 ⇒ 1440 + 540 = 1980
+   * `false` note-offs again ⇒ ends at C's own end 2160, durations 540 and 180; milliseconds
+   * 1620 * 500/720 = 1125 and 1980 * 500/720 = 1375, both ending at 1500.
+   */
+  it(
+    'reads suffix-less values against the legacy time.unit and renders the markers of the canonical spelling',
+    () => {
+      const { notes, generated, warnings } = render('legacy-timeunit');
+      const fromA = generated.filter((note) => note.ref === 'ornMsLegacy');
+
+      expect(notes).toHaveLength(8); // 2 + 2 + 3 generated, plus the untouched `pre`
+      expect(fromA.map((note) => note.pitch)).toEqual([64, 67, 71]);
+      expect(fromA.map((note) => note.msOffset)).toEqual([-30, -15, 30]);
+      expect(fromA.map((note) => note.noteoffShift)).toEqual(['true', 'true', 'true']);
+      expectMilliseconds(
+        fromA.map((note) => note.ms),
+        [1970, 1985, 2030],
+      );
+      expectMilliseconds(
+        fromA.map((note) => note.msEnd),
+        [2970, 2985, 3030],
+      );
+      // a millisecond frame leaves the tick geometry alone: the notes sit on the principal's
+      expect(fromA.map((note) => note.date)).toEqual([2880, 2880, 2880]);
+      expect(warnings).toEqual([]);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'defaults a suffix-less value to ticks when the element states no unit',
+    () => {
+      const { generated } = render('legacy-timeunit');
+      const fromB = generated.filter((note) => note.ref === 'ornTicks');
+
+      expect(fromB.map((note) => note.pitch)).toEqual([60, 62]);
+      expect(fromB.map((note) => note.date)).toEqual([0, 360]);
+      expect(fromB.map((note) => note.duration)).toEqual([720, 360]);
+      expectMilliseconds(
+        fromB.map((note) => note.ms),
+        [0, 250],
+      );
+      expectMilliseconds(
+        fromB.map((note) => note.msEnd),
+        [500, 500],
+      );
+      // read as milliseconds instead, these would be markers on one date rather than dates
+      expect(fromB.map((note) => note.msOffset)).toEqual([null, null]);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'accepts frame.start as the name of frame.offset',
+    () => {
+      const { generated } = render('legacy-timeunit');
+      const fromC = generated.filter((note) => note.ref === 'ornAlias');
+
+      expect(fromC.map((note) => note.pitch)).toEqual([72, 73]);
+      expect(fromC.map((note) => note.date)).toEqual([1620, 1980]);
+      expect(fromC.map((note) => note.duration)).toEqual([540, 180]);
+      expectMilliseconds(
+        fromC.map((note) => note.ms),
+        [1125, 1375],
+      );
+      // the alias is what places them: dropped, the frame would start at the principal's date
+      expect(fromC.map((note) => note.source)).toEqual(['C', 'd1']);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'keeps the untouched neighbour and each principal’s id',
+    () => {
+      const { notes } = render('legacy-timeunit');
+
+      // `pre` is named by no ornament and comes through as itself
+      const untouched = notes.filter((note) => note.generated === null);
+      expect(untouched.map((note) => [note.id, note.date, note.pitch])).toEqual([
+        ['pre', 2160, 55],
+      ]);
+      // every principal is consumed ("at start" leaves no head), so each id lands on the note
+      // the expansion sourced from it — and lands exactly once
+      for (const id of ['A', 'B', 'C'])
+        expect(notes.filter((note) => note.id === id)).toHaveLength(1);
+      expect(notes.filter((note) => note.id === 'A')[0].source).toBe('A');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'is read leniently and written canonically (D12)',
+    () => {
+      // The other half of D3: what comes back out carries per-value suffixes and no
+      // `time.unit`, whatever the document was written with. `generateXML` is what a caller
+      // reaches through `Mpm.toXml`, so this is the shape a re-saved document has.
+      const { performance } = load('legacy-timeunit');
+      const style = performance
+        .getGlobal()!
+        .getHeader()!
+        .getStyleDef(ORNAMENTATION_STYLE, 'orn style');
+      const spreadOf = (name: string) =>
+        (style!.getDef(name) as OrnamentDef).getTemporalSpread()!.generateXML().toXML();
+
+      expect(spreadOf('legacyTicks')).toContain('frame.offset="0ticks" frameLength="360ticks"');
+      expect(spreadOf('legacyAlias')).toContain('frame.offset="180ticks" frameLength="50%"');
+      expect(spreadOf('legacyMs')).toContain('frame.offset="-30ms" frameLength="60ms"');
+      for (const name of ['legacyTicks', 'legacyAlias', 'legacyMs']) {
+        expect(spreadOf(name)).not.toContain('time.unit');
+        expect(spreadOf(name)).not.toContain('frame.start');
+      }
     },
     TIMEOUT,
   );

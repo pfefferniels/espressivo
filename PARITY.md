@@ -14,6 +14,17 @@ difference deliberately left in place (§2, §3), or a behaviour that reads as a
 (§5). Nothing is undocumented, and this file is the audit trail for
 [README.md](README.md#equivalence-with-java-meico)'s equivalence claim.
 
+**One part of the library is outside that frame entirely**, and it is separated out for exactly
+that reason: **MPM v3 ornamentation** (§6) implements a specification the Java reference does not
+implement, so there is no output to be equivalent to. Its correctness standard is the spec plus
+hand-computed vectors, not a reference file. Every fixture file in `tests/integration/fixtures/`
+is untouched by it, and on the path the equivalence suites drive — `Mei2MsmMpmConverter` built
+directly, which is where their references come from — nothing in §6 moves a byte, measured rather
+than argued. There is exactly one place where §6 does change output against a Java reference, and
+it is a default rather than a divergence: through the **facade**, `composite_advanced.mei`'s
+`<trill>` becomes an ornament the reference has no counterpart for. §6.5 states that in full, and
+states what makes the two paths agree again.
+
 Java citations are `File.java:line` in
 [pfefferniels/meico](https://github.com/pfefferniels/meico) (a fork of cemfi/meico); TypeScript
 citations are paths in this repository. The refactor journal entries referenced as `[T…]` live
@@ -459,8 +470,10 @@ lists as open.
 
 ## 2. Frozen divergences
 
-Known, journaled, and deliberately **not** repaired. All three come from capability gaps in the
-XML layer rather than from choices, and none is reachable from the MEI/MSM ⇒ MIDI pipeline.
+Known, journaled, and deliberately **not** repaired. None is reachable from the MEI/MSM ⇒ MIDI
+pipeline. The first three come from capability gaps in the XML layer rather than from choices;
+the last is a choice, and is the one place where this port returns something Java's own code
+computes and then throws away.
 
 - **The `setLocalName` family.** Java renames an element in place when parsing a foreign one
   (`GenericMap.setType`, `ImprecisionMap.setDomain`, and the `tempoDef` / `rubatoDef` /
@@ -480,6 +493,23 @@ XML layer rather than from choices, and none is reachable from the MEI/MSM ⇒ M
   through at the site: with no ornament entries the apply loop runs zero times, and the one
   observable difference (an error logged when neither header is set) cannot occur for a global
   map, because a `Global` always has a `Header`.
+- **`OrnamentationMap.getOrnamentDataOf` returns the data Java computes and discards.**
+  `OrnamentationMap.java:144-206` clamps the index, resolves the style by scanning backwards for
+  the nearest `<style>` switch, looks up the def, and fills in `name.ref`, date, `note.order`,
+  `scale` and `xml:id` — and then, at `:205`, **returns `null` unconditionally**. There is no
+  `return od;` anywhere in the method, and no Java caller exists; the whole body is dead. The
+  port (`src/mpm/elements/maps/OrnamentationMap.ts`) returns the object instead.
+
+  Reproducing "always null" would mean shipping a public method that cannot do anything, and the
+  method is genuinely useful to a consumer editing MPM — which is what the class API is for. It
+  is left as a divergence rather than promoted to §1 because there is no bug to fix on the Java
+  side: the code is unreachable there, so nothing observable in meico is wrong. **Unreachable
+  from rendering here too** — `apply()` re-reads the same data inline so that it can carry the
+  style forward across entries — so no fixture, probe or performance can see it; it is visible
+  only to a caller who invokes it. Eighteen unit tests in
+  `tests/mpm/elements/OrnamentationMap.test.ts` pin the returned shape, including the v3 fields.
+  Flagged by the ornamentation programme's v2 semantics survey (ORN-1 §3.2/§5.3) as the last
+  ornamentation divergence this ledger had not recorded; recorded now.
 
 ---
 
@@ -557,3 +587,367 @@ Two behaviours that reliably read as bugs on first encounter and are neither:
   failure into typed errors — see `src/api/errors.ts`. The two interior errors §1 introduces do
   not weaken that rule: `NumberFormatError` is thrown exactly where Java throws, and
   `OutOfRangeError` only for an index no series can have.
+
+---
+
+## 6. MPM v3 ornamentation — spec-derived, not Java-verified
+
+Everything above compares two implementations of the same thing. This section describes the one
+feature where there is no second implementation to compare against: the **MPM v3 ornamentation
+model** — discrete auxiliary notes, note pools, the `note.order` grammar with chords and
+repetition groups, `repetitions`, `alignment`, per-value unit suffixes, and MEI ornament-sign
+expansion.
+
+Upstream cemfi/meico does not implement it either, so there is nothing on that side to compare
+against and nothing the fork removed: `OrnamentationMap.java`, `OrnamentData.java` and
+`OrnamentationStyle.java` are **byte-identical between upstream master and the verified fork**.
+The single difference anywhere in the ornamentation classes runs the other way — upstream has a
+ten-line `OrnamentDef.clone()` that the fork lacks, added upstream in `4d7cf1cb` (v0.11.11), nine
+releases after the fork's branch point. It is live code, not a dead-code fix: upstream calls it
+from `GenericStyle.merge()` (`GenericStyle.java:270,279`), a method the fork does not have at
+all. Neither side reads a note pool, and a `<trill>` in an MEI file reaches its MPM as nothing at
+all in both. So for this feature the port is not behind its reference or ahead of it — it is
+somewhere the reference does not go, and **"produces the same bytes" is unavailable as a
+criterion**.
+
+**What replaces it.** Every number this feature produces is derived by hand from the
+specification before it is asserted, and the derivation is written above the assertion — the
+arithmetic in `tests/integration/ornamentation-v3.test.ts` and
+`tests/mpm/elements/maps/ornamentInstantiation.test.ts` is the readable part of this section's
+claim. The v3 inputs live in their own directory, `tests/integration/fixtures-v3/` (nine
+hand-authored MSM + MPM pairs), kept apart from the Java-generated ground truth in
+`tests/integration/fixtures/`, which the whole feature leaves untouched.
+
+The one thing that _is_ measured against the old standard is that **v3 changes nothing about
+v2**, and it is measured at every wave rather than argued: the pipeline byte probe returns
+`ed158a07d553f9346b958e8943b98c3b8c55a046f4fb4061654567e864e8757f` over 1284 checks and its
+companion `0b58d5a4c281914e605de46eb44be54e223d1eb7b08724702eca1ac703ca8c7c` over 83, both
+identical to the values the pre-ornamentation tree produced; and a call tracer wrapping every
+map class's render entry points over the eight all-maps fixtures produces a byte-identical
+557-call transcript on both builds. A v2 document takes the v2 code path untouched — the
+detection that decides this triggers only on features v2 cannot express — and
+`fixtures-v3/v2-passthrough` is a v2 document performed through the v3 build to prove the gate
+is not vacuous.
+
+### 6.1 Provenance: which documents this implements
+
+|                    |                                                                                                                                                 |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Specification      | [axelberndt/MPM](https://github.com/axelberndt/MPM) `develop` @ **`1de00bb`** (v3.0.2). Pinned, because v3.0.1 is the only published release    |
+| Order of authority | schematrons > attribute-definition tables > ODD prose > figures                                                                                 |
+| Reference impl     | LarsEngeln/meico `develop` @ **`3deb141c`** = open PR [cemfi/meico#31](https://github.com/cemfi/meico/pull/31) — unmerged, unreviewed, no tests |
+| How it is used     | consulted where the spec is silent, adopted formula by formula, **never wholesale**                                                             |
+| Corpus             | real MPM encodings decide reader lenience — the strict schematrons reject the format's own sample files                                         |
+
+The reference implementation was audited before any of it was adopted (24-item spec-fidelity
+table, 29-item defect catalogue, in `ornamentation/research/lars-v3-implementation.md`), and the
+audit's headline is why §6.2 exists at all: **the PR cannot read a spec-conformant v3 file**. Its
+pool child element is `ornamentNote`, which no spec release defines; its `frameLength` parser
+throws on the unit suffix the schematron requires; and its v2 ornamentation path is commented
+out. Adopting it as ground truth would have meant reproducing that.
+
+### 6.2 Where this deliberately diverges from the reference implementation
+
+Each of these is a decision recorded in `ornamentation/DESIGN.md` (the `D…` numbers below) and
+pinned by tests. They are divergences from an unreviewed pull request, not from a release.
+
+- **D1 — the pool child is `<note>`, not `<ornamentNote>`.** The spec's `note.xml` names `note`;
+  `ornamentNote` is a pre-release name that was reverted and appears in no release. The reference
+  reads the pool under that old name while its own MEI converter writes `<note>`, so its
+  `od.notes` is always empty — which costs it nothing by itself, because its renderer reads the
+  children directly rather than through that field. The damage appears in the case the name is
+  actually used: a document whose children really are `ornamentNote` has them cloned under that
+  name, and the transformer phase indexes only `note` and `rest`, so every lookup returns null,
+  both transformers are skipped, and the generated elements never reach MIDI export either —
+  a seven-note cluster stacked on one instant, silent. `note` is also now accepted by
+  `Mpm.isInNamespace`, which was already a deliberate superset of Java's vocabulary (§1).
+  _Pinned:_ `tests/mpm/elements/maps/data/OrnamentNote.test.ts`, `tests/mpm/Mpm.test.ts`.
+- **D3 — unit suffixes are parsed, and a suffix-less value still reads.** This is the reference's
+  worst defect, and it is worth stating at full strength: `frameLength="80%"` — the spec's own
+  spelling — reaches a bare `Double.parseDouble`, whose `NumberFormatException` propagates out of
+  the `TemporalSpread` constructor and out of `OrnamentDef.parseData` into
+  `createOrnamentDef`'s `catch` (`OrnamentDef.java:62-71`). That prints a stack trace and returns
+  null, so the **whole `ornamentDef` is dropped and every `<ornament>` referencing it is skipped**
+  (`OrnamentationMap.java:593-595`): a spec-valid v3 file loses all of its ornaments. Here the
+  suffix is the grammar (`^-?[0-9]+(\.[0-9]+)?(ms|%|ticks)$`),
+  with three documented leniencies for the corpus the schematron rejects: a suffix-less value
+  takes the legacy `time.unit` if the element still carries one and ticks otherwise, and
+  `frame.start` is accepted as the old name of `frame.offset`. Reading is lenient, writing is
+  canonical v3. _Pinned:_ `tests/mpm/elements/styles/defs/TemporalValue.test.ts`,
+  `tests/mpm/elements/styles/defs/OrnamentDef.test.ts`, and end to end on
+  `fixtures-v3/legacy-timeunit`.
+- **D4 — `%` resolves against the principal note's TICK duration**, where the reference uses its
+  millisecond duration. Three reasons, in the order they carry weight: the ODD's pipeline
+  assigns only "milliseconds modifiers" to the post-tempo pass and a percentage is not one;
+  Berndt's ruling on MPM issue #55 is that tick-domain ornaments are "tempo dependent … we can
+  use the tempo and rubato models to refine its timing", which only tick-domain placement gives;
+  and the guidelines' own figure derives the percentage from notated duration. The audible
+  consequence is that a `50%` trill breathes with rubato instead of being pinned to wall-clock
+  time. _Pinned:_ `fixtures-v3/turn-atstart` and the `%`-frame vectors.
+- **D5 — two phases, not one.** The reference moved all ornamentation after tempo rendering. Here
+  note _instantiation_ and tick/`%` spacing happen in the symbolic phase, and only millisecond
+  frames go through the existing v2 millisecond pass. This is what lets generated notes flow
+  through tempo, articulation, asynchrony and imprecision like any other note, and what lets a
+  dynamics gradient reach `velocity` at all — in the reference it cannot, because velocity is
+  already fixed by then. One millisecond marker is new (`ornament.milliseconds.fromend.offset`,
+  for an end-aligned millisecond frame whose anchor does not exist before the tempo pass); it
+  lands in both copies of the duplicated millisecond pass, and three tests compare the two copies
+  token for token so they cannot drift. _Pinned:_ `tests/mpm/elements/maps/ornamentInstantiation.test.ts`,
+  `fixtures-v3/atend-ms`.
+- **D9 — `repetitions` plays every group `r + 1` times.** The reference reuses its
+  fill-the-frame loop with a note budget and charges the non-repeated slots against it, so
+  `#a |: #b #c :| #d` with `repetitions="2"` gives six slots where the spec's own wording ("three
+  times … so it is played four times") gives eight. Multiple repeat groups each expand; the
+  reference supports one. _Pinned:_ `tests/mpm/elements/maps/data/ornamentExpansion.test.ts`.
+- **D9 — dedup never reaches inside a chord.** Consecutive duplicate pitches are dropped (unless
+  the whole sequence is one pitch, which preserves tremolos), but the reference's "last note"
+  cursor persists across `[` and `]`, so it mutilates chords. Ours treats a chord as one slot
+  throughout. The one consequence worth knowing: `[ #x #x ]` keeps both notes, i.e. two identical
+  pitches at one onset survive into the MIDI.
+- **D9 — the tremolo exception is decided over the expanded sequence**, not over the pool. The
+  reference's pool-based test misfires whenever the pool holds notes `note.order` never uses, and
+  the spec says pool order and membership carry no meaning.
+- **D8 — `interval.diatonic` is resolved against the MSM key signature**, at render time, where
+  the reference resolves diatonic steps up in the MEI layer and writes halftones. Ours does both:
+  the MEI expander keeps the steps diatonic in the MPM (so an MPM-authored document works too),
+  and the renderer resolves them against the part's own `keySignatureMap`, falling back to the
+  global one and then to C major. _Pinned:_ `fixtures-v3/diatonic-key` (two sharps ⇒ D major:
+  74 − 1 ⇒ 73, 74 + 2 ⇒ 78, 74 + 7 ⇒ 86; a key-blind reading gives 77 for the middle one).
+  **PARITY NOTE at the site:** this reading counts sharps with `> 0`, not the `> 1.0` of
+  `Msm.parseKeySignatureMap`, whose comparison is a Java-inherited bug that counts no sharp at
+  all (`Msm.java:1148-1157`). That bug is preserved where it is, because the reference MIDI was
+  generated with it; reproducing it here would put a trill in the wrong key, and no fixture and
+  no Java output binds this new code.
+- **D12 — serialization is generation-preserving**, and the two writer divergences below follow
+  from it. A document parsed as v2 (or built through the v2 API) serializes exactly as it does
+  today — that is what keeps the all-maps fixtures byte-green — while anything v3 serializes
+  canonically.
+  - **`scale` is always written.** The reference omits it at `1.0`, but the attribute's schema
+    default is `0.0`, which multiplies every dynamics gradient to nothing — so its omission is a
+    round-trip bug that silently deletes the gradient it just wrote.
+  - **`repetitions` is written only when it is not `0`.** The reference stamps `repetitions="0"`
+    onto ornaments that have no repeat group at all, including v2 ones.
+- **D9/D17 — the `repetitions="-1"` fill sentinel is accepted but never authored.** It is an
+  undocumented meico extension (schema-invalid: the attribute's minimum is 0) meaning "fill the
+  frame", one note per 150 ms. It is honoured on read, and only for a frame whose length is in
+  milliseconds — a tick or `%` frame has no millisecond budget before the tempo pass, so the
+  sentinel is logged and the ornament skipped. Two further nuances: the budget is measured over
+  the **frame**, where the reference measures the principal's millisecond duration; and the MEI
+  expander does **not** emit the sentinel the way the reference does for every repeat barline,
+  because every def it authors is `ticks` or `%`, where the sentinel would silence the ornament
+  it was meant to fill.
+- **Termination is structural, not defensive.** The reference's `note.order` tokenizer fails to
+  advance its index on a token without `#` and hangs forever; its expansion loop can allocate
+  without bound. Here the tokenizer is one forward pass over a fixed array, the expansion
+  computes pass counts arithmetically and refuses anything over a million slots before allocating,
+  the diagnostics per value are capped, and the cases that can actually loop carry explicit
+  per-test timeouts so that a regression fails the suite instead of hanging it: 2 of the 62 `it(`
+  declarations in the pure expansion suite — 125 runtime cases via `it.each` — (the two that
+  expand to the million-slot ceiling), 6 of 48 in the
+  `note.order` parser's, 12 of 85 in the renderer's, and **all 45** of the integration suite's,
+  which times every case on principle. The rest inherit the 30-second global timeout.
+
+### 6.3 Semantics the specification does not fix, decided here
+
+- **An end-aligned MILLISECOND frame drops its principal's head, deliberately.** A tick or `%`
+  frame aligned `at end` shortens the principal and leaves it sounding up to where the figure
+  starts. A millisecond frame cannot: it is anchored at a millisecond end that does not exist
+  until the tempo pass, so the principal is removed whole and only the figure sounds. On the
+  fixture, 90 of the principal's 1000 ms survive as the figure and 910 are dropped.
+  **The alternative was considered and rejected:** leave the principal at its full length and let
+  the figure overlay its end. That reading doubles the pitch for most of the note and contradicts
+  what every other alignment does — an ornament _replaces_ its principal here. Carving the head
+  properly would need a second new millisecond marker (a duration measured back from an end
+  nobody knows yet); the option is documented and left open. What the code does instead is
+  **say so**: it logs which ornament, and how much of the note is left, computed from the same
+  spacing function that writes the markers rather than from a formula of its own. _Pinned:_
+  `ornamentInstantiation.test.ts` (the warning fires for `at end`, is silent for `at start`, and
+  names 90 ms for the standard vector and 30 ms at `intensity="0"`, where every slot piles at the
+  frame's end).
+- **A frame that abuts its principal's end produces a zero-length final note.** In
+  `fixtures-v3/turn-atend` the last slot is pinned at the frame end, the frame ends where the
+  principal ends, and `monophonic` measures the last duration to that same point: 1440 − 1440 = 0.
+  It is the spec's own arithmetic rather than a defect, so it is pinned as `0` rather than
+  tolerated as a range. MIDI export emits the note-on and note-off at the same tick; nothing is
+  dropped and every synthesizer reads it as an immediate release.
+- **The principal's `xml:id` goes to the head leftover or to the heir — never to both.** When an
+  end-aligned tick frame leaves a head, that leftover _is_ the principal and keeps its id; when
+  the principal is consumed whole, the id moves to the first generated note the expansion sourced
+  from it, so `goto`/`marker` wiring and MEI id links survive. An earlier draft gave it to both,
+  which produced two elements with the same `xml:id` — not a valid document. The ruling is
+  structural: carving reports whether the principal survived, and the id assignment is the
+  exclusive branch of that answer. _Pinned at both levels_, and in both directions:
+  `ornamentInstantiation.test.ts` and `ornamentation-v3.test.ts`.
+- **A carved head is marked.** The surviving leftover is the one note an ornament _alters_
+  without generating, and it used to carry nothing to say so — which made the facade's
+  `ornamented` contract ("generated by **or altered by** an ornament") false on exactly that
+  path. It now carries `ornament.carved="true"` plus `ornament.ref` when the ornament has an id,
+  and deliberately none of the positional provenance below: it occupies no slot in the expanded
+  sequence, and it is the anchor rather than pointing at one. That the predicate is complete is
+  measured rather than reasoned: performing all nine v3 fixtures with `expandOrnaments` off and
+  on, and comparing every surviving score note's pitch, date, duration, velocity and millisecond
+  times between the two runs, finds **nine altered notes, all nine reporting `ornamented: true`
+  with a ref, and no altered-but-unmarked note anywhere**.
+- **Attribute order on a generated note is fixed here, not inherited.** Nothing in Java writes
+  these elements, so nothing binds the order; it is `date`, `midi.pitch`, `duration`, the
+  performance attributes, then the provenance family last. One visible consequence: a generated
+  note's `xml:id` sits where the principal's copy had it — after inherited attributes such as
+  `velocity` — while a hand-authored MSM note carries it first. No fixture and no schema cares,
+  and the alternative (rebuilding the attribute list) would reorder attributes the copy is meant
+  to preserve.
+- **Numbers are written the way this port writes every number.** `String(x)` gives `"0ticks"` and
+  `"50%"` where Java's `Double.toString` would give `"0.0ticks"` and `"50.0%"`. Both satisfy the
+  schematron. This is the port-wide textual divergence (`research/java-ts-v2-ornamentation.md`
+  §5.3), applied consistently rather than specially.
+
+### 6.4 The provenance attributes
+
+Generated notes carry their own bookkeeping, so that a consumer can join a performed note back to
+the score without parsing `note.order` and without depending on generated identifiers. None of
+these exists in MPM v2 or in the reference implementation, and none can appear in a v2 document's
+output. They are additive, and two downstream projects (an ML supervision pipeline and a
+score-performance alignment tool) key on them by agreement.
+
+| Attribute            | On                               | Value                                                                                                |
+| -------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `ornament.generated` | every generated note             | `"true"` — this note did not exist in the score                                                      |
+| `ornament.carved`    | a surviving head leftover only   | `"true"` — this note was in the score and an ornament shortened it                                   |
+| `ornament.ref`       | both of the above                | the `<ornament>`'s `xml:id`, when it has one                                                         |
+| `ornament.source`    | generated notes                  | the `note.order` token this note resolved from — a pool id, the principal's, or another score note's |
+| `ornament.slot`      | generated notes                  | 0-based position in the **expanded** sequence, after dedup and landing                               |
+| `ornament.pass`      | repeat-group notes only          | 0-based repetition pass; absent elsewhere, which is how "not repeated" is spelled                    |
+| `ornament.anchor`    | generated notes with a principal | the `xml:id` the principal had **before** the ornament replaced it                                   |
+
+Two of them are worth a sentence each. `ornament.slot` numbers the expansion, not the survivors:
+when a note is dropped for ending at or before tick 0, the remaining notes keep their original
+indices and the sequence has a gap — provenance has to stay true to what it describes.
+`ornament.anchor` exists because the join would otherwise not be total: an ornament whose
+`note.order` never names its principal, and which leaves no leftover, would erase that id from
+the document entirely. `ornament.anchor` is written only when the principal has an `xml:id` of
+its own — with nothing to point at, the attribute is absent rather than empty.
+
+The seven attributes reach the facade as six plain fields on `PerformedNote`: `ornamented` is a
+`boolean` and is `false`, never `null`, when a note carries none of the markers (it answers "did
+an ornament touch this note", and the answer is no); `ornamentRef`, `ornamentSource`,
+`ornamentSlot`, `ornamentPass` and `ornamentAnchor` are `null` for absence. Six rather than seven
+because `ornament.generated` and `ornament.carved` are two of the markers behind the one boolean,
+not fields of their own. _Pinned:_ `tests/api/pipeline.test.ts`, `tests/api/plain-data.test.ts`.
+
+### 6.5 MEI ornament signs: expanded by the facade, not by the converter
+
+`<trill>`, `<mordent>` and `<turn>` (with their SMuFL and `@altsym` aliases) expand into MPM v3
+ornaments — a pool, a `note.order` from the standard ornament dictionary, and an `<ornamentDef>`
+in an `"MEI export"` style. **Which entry point you use decides whether that happens:**
+
+- `new Mei2MsmMpmConverter(…).convert(mei)` — the class API — does **not** expand. Default `false`.
+- `convertMeiToMsmMpm(mei, options)` — the facade — **does**, unless `expandOrnaments: false`.
+
+That asymmetry mirrors Java's own layering, where expansion is a document pre-pass in
+`Mei.exportMsmMpm` and the converter itself never expands. It is also what keeps the four
+auto-discovering MEI equivalence suites meaningful: they all drive the converter directly, and
+they compare against Java references that contain no expansion. **State the setting on both sides
+and the two paths agree byte for byte** — that is asserted, with a non-vacuity check that they
+genuinely diverge at the facade default (`tests/integration/mei-ornament-expansion.test.ts`, the
+last describe; and the round-trip gate `tests/api/facade-equivalence.test.ts`).
+
+**One fixture is therefore Java-verified on one path and spec-derived on the other.**
+`tests/integration/fixtures/mei/composite_advanced.mei:105` carries
+`<trill xml:id="tr1" staff="1" startid="#n20"/>`, and its Java reference
+`fixtures/reference/composite_advanced.mpm` has **no `ornamentationMap`** — upstream meico ignores
+the sign. Through the direct converter this port agrees with that reference exactly, as it always
+has. Through the facade it writes an ornament the reference has no counterpart for, on the part
+that owns staff 1 (`Oboe`, `n=1`) rather than on the global map. It is the one place in the corpus
+where the two paths diverge, and it does so by design.
+
+`<arpeg>` is **not** governed by any of this: it has always converted to a **v2** ornament and
+still does. What is asserted, on a purpose-built arpeggio MEI because no fixture has one, is that
+the whole MPM and the whole MSM are byte-identical with the flag **off** and with it **left at
+its default** — which is the on state, since the facade reads `?? true` — with generated ids
+canonicalized and a non-vacuity check that the arpeggio is really in both.
+
+Out of scope, and named so the absence is not mistaken for a defect: `<ornam>` and `@altsym` are
+not wired to the dictionary (the dictionary module already normalizes the names they would use).
+
+### 6.6 Two flags named `expandOrnaments`
+
+They act at different stages and compose, and the shared name is deliberate — it is the same
+question asked twice.
+
+- **`ConvertOptions.expandOrnaments`** (default `true` at the facade) decides whether MEI ornament
+  signs are ever _written into the MPM_.
+- **`PerformOptions.expandOrnaments`** (default `true`) decides whether the v3 ornaments already
+  in an MPM _generate their notes_ during rendering. With it off, the ornaments stay in the
+  document — a consumer still reads them — and the score performs without them; no
+  `note.order.perf` is written either, so nothing records an expansion that did not happen.
+
+Neither flag touches MPM **v2** ornaments. A v2 ornament generates no notes in the first place —
+it shifts and shades notes the score already has — so there is nothing to suppress, and those
+notes still report `ornamented: true`. Suppressing them would be a much larger promise ("perform
+the score without its ornamentation") and is not what either flag says.
+
+### 6.7 Generated identifiers are not reproducible across runs
+
+Every generated ornament note draws a fresh `meico_<uuid>` (`addUUID`, the codebase's own
+generator), so **any ornament-bearing input renders to MIDI that differs run to run in its note
+identifiers** — the same property §4 records for the converter's generated ids, now reachable from
+performance rather than only from conversion. Tests canonicalize the ids by first-occurrence
+order, which is strictly stronger than deleting them: it keeps id-to-id wiring verifiable. Nothing
+else about the output moves; expansion and rendering draw no random values, and the provenance
+attributes above are id-independent by construction, which is why the two downstream consumers
+were asked to key on them.
+
+Deriving the ids from the ornament and slot instead (`<ornament id>_<slot>`, say) would make
+renders reproducible byte for byte. It is a real option, it is not taken here, and taking it later
+would be a small isolated change — but it is a change to identifiers that consumers may already
+have stored, so it belongs in a release note rather than in a patch.
+
+### 6.8 `parseJavaDouble` in v3 parse code, and the one exemption
+
+§1's `P1` entry replaced `parseFloat` with `parseJavaDouble` in the five def classes, because
+`parseFloat` and `Double.parseDouble` disagree about _failure_. New v3 parse code follows the same
+rule — the D16 ruling, amended into DESIGN.md and journaled in `ornamentation/LOG.md` — with one
+deliberate exemption:
+
+- **Exempt: `TemporalValue`** (`frame.offset`, `frameLength`). Its grammar is the spec's own
+  regex, which admits only plain decimal literals — no hex, no exponent, no `d`/`f` suffix, no
+  spelled-out `Infinity`. That is exactly the set of forms on which `Number`, `parseFloat` and
+  `Double.parseDouble` differ, so on this grammar the three are the same function. Not argued but
+  measured: a Java 17 harness running the same regex plus `Double.parseDouble` over a 481-input
+  corpus (pseudo-random decimals up to 18 integer and 20 fractional digits, the 2^53 tie
+  neighbourhood, 1e308/1e309, 309- and 1000-digit strings, 324-digit subnormals, the classic
+  `2.2250738585072012e-308` hang input, signed zeros, the spec's own examples, and 37 rejects)
+  agrees with this module on **443 values bit-compared, with 0 acceptance mismatches and 0 bit
+  mismatches**. Swapping the parser here would change nothing except the number of code paths.
+- **Not exempt: the pool note's pitch attributes and `@repetitions`.** These have no grammar to
+  lean on — `midi.pitch` is an unconstrained attribute value — so the choice of parser is
+  observable on malformed input, and they read through `parseJavaDouble`. The differences are
+  real and pinned: an **empty** attribute (`midi.pitch=""`) is rejected instead of reading as
+  `0`, which had been silently inventing the principal's own pitch; `0x10` is rejected as Java
+  rejects it, where `Number` would have read 16; and Java's own `1d`/`1f` type suffixes are
+  accepted. `NaN` and `Infinity` spelled out are accepted by the parser, exactly as Java accepts
+  them, and then rejected by this port's own finiteness check — a pitch or a repeat count must be
+  a number a note can be played at. A rejected pool note is logged and skipped (never thrown, per
+  the v3 error policy); a rejected `repetitions` falls back to the schema default `0` with a log.
+  _Pinned:_ `tests/mpm/elements/maps/data/OrnamentNote.test.ts`,
+  `tests/mpm/elements/OrnamentationMap.test.ts`.
+
+The MSM attribute reads inside the renderer stay on `parseFloat`, which is what every other
+renderer in this port uses for MSM note attributes; `P1`'s closing note lists that family as open
+and this feature does not change it.
+
+### 6.9 Degenerate frames produce no notes, rather than impossible ones
+
+The v3 renderer feeds the **v2** spacing engine, and inherits its two unguarded edges on purpose:
+`intensity="0"` puts every slot at the end of the frame (`pow(0, 0)` is 1), and a negative
+intensity sends the first slot to `Infinity`. In v2 those inputs could only ever write a marker
+_attribute_ onto a note the score already had. v3 turns positions into elements, so the same input
+materialized a real `<note date="Infinity" duration="NaN">` that flowed into the augmented MSM and
+on into the MIDI export.
+
+A note whose computed date or end is not finite is now dropped at creation, with one log line per
+ornament naming how many of its notes went and why. Dropping is the only available reading —
+there is no note at an infinite date — and it follows the shape of the existing rule that drops a
+note ending at or before tick 0. The guard is per note, not per ornament: with an unreadable
+`intensity` the pinned last slot still lands at `start + length`, which never touches intensity,
+and it is kept. _Pinned:_ `ornamentInstantiation.test.ts`, "non-finite positions are dropped, not
+written into the score (W9)".
