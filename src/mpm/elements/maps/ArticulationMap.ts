@@ -101,10 +101,9 @@ export class ArticulationMap extends GenericMap {
    * (`#note123`) while the map is keyed by bare IDs.
    */
   getArticulationDataOf(index: number): ArticulationData | null {
-    if (this.elements.length === 0 || index < 0) return null;
-    const i = index >= this.elements.length ? this.elements.length - 1 : index;
-    const e = this.getElement(i);
-    if (!e || e.getLocalName() !== 'articulation') return null;
+    const i = this.resolveEntryIndex(index, 'articulation');
+    if (i < 0) return null;
+    const e = this.elements[i].getValue();
     const ad = new ArticulationData();
     ad.xml = e;
     ad.date = this.elements[i].getKey();
@@ -121,20 +120,20 @@ export class ArticulationMap extends GenericMap {
     return ad;
   }
 
+  /**
+   * Unlike the other maps' style lookup this also reads `defaultArticulation` off the
+   * switch element, which is why it takes the element rather than just the name.
+   */
   private findStyle(index: number, ad: ArticulationData): void {
-    for (let j = index; j >= 0; --j) {
-      const s = this.elements[j].getValue();
-      if (s.getLocalName() === 'style') {
-        ad.styleName = getAttributeValue('name.ref', s);
-        ad.style = this.getStyle(ARTICULATION_STYLE, ad.styleName) as ArticulationStyle | null;
-        const att = attribute('defaultArticulation', s);
-        if (att !== null) {
-          ad.defaultArticulation = att.getValue();
-          if (ad.style !== null)
-            ad.defaultArticulationDef = ad.style.getDef(ad.defaultArticulation) ?? null;
-        }
-        return;
-      }
+    const s = this.findStyleSwitchAt(index);
+    if (s === null) return;
+    ad.styleName = getAttributeValue('name.ref', s);
+    ad.style = this.getStyle(ARTICULATION_STYLE, ad.styleName) as ArticulationStyle | null;
+    const att = attribute('defaultArticulation', s);
+    if (att !== null) {
+      ad.defaultArticulation = att.getValue();
+      if (ad.style !== null)
+        ad.defaultArticulationDef = ad.style.getDef(ad.defaultArticulation) ?? null;
     }
   }
 

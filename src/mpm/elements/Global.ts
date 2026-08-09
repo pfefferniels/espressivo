@@ -53,18 +53,18 @@ export class Global extends AbstractXmlSubtree {
     if (xml === null) throw new Error('Cannot generate Global object. XML Element is null.');
     this.setXml(xml);
 
-    const headerElt = firstChildElement('header', this.getXml()!);
+    const headerElt = firstChildElement('header', this.getXml());
     if (headerElt === null) {
       this.header = Header.createHeader()!;
-      this.getXml()!.appendChild(this.header.getXml()!);
+      this.getXml().appendChild(this.header.getXml());
     } else {
       this.header = Header.createHeader(headerElt);
     }
 
-    const datedElt = firstChildElement('dated', this.getXml()!);
+    const datedElt = firstChildElement('dated', this.getXml());
     if (datedElt === null) {
       this.dated = Dated.createDated()!;
-      this.getXml()!.appendChild(this.dated.getXml()!);
+      this.getXml().appendChild(this.dated.getXml());
     } else {
       this.dated = Dated.createDated(datedElt);
     }

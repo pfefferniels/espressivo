@@ -51,12 +51,12 @@ export class RelatedResource extends AbstractXmlSubtree {
     this.uri = attribute('uri', xml);
     if (this.uri === null) {
       this.uri = new Attribute('uri', '');
-      this.getXml()!.addAttribute(this.uri);
+      this.getXml().addAttribute(this.uri);
     }
     this.type = attribute('type', xml);
     if (this.type === null) {
       this.type = new Attribute('type', '');
-      this.getXml()!.addAttribute(this.type);
+      this.getXml().addAttribute(this.type);
     }
   }
 

@@ -6,11 +6,8 @@ import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Header } from '../../../src/mpm/elements/Header.js';
 import { OrnamentationStyle } from '../../../src/mpm/elements/styles/OrnamentationStyle.js';
-import {
-  OrnamentDef,
-  FrameDomain,
-  NoteOffShift,
-} from '../../../src/mpm/elements/styles/defs/OrnamentDef.js';
+import { OrnamentDef } from '../../../src/mpm/elements/styles/defs/OrnamentDef.js';
+import { FrameDomain, NoteOffShift } from '../../../src/mpm/elements/styles/defs/TemporalSpread.js';
 
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 

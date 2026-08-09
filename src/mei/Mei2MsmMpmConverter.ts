@@ -42,8 +42,6 @@ import { Author } from '../mpm/elements/metadata/Author.js';
 import { Comment } from '../mpm/elements/metadata/Comment.js';
 import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 /**
  * Converts MEI into MSM (the score, as written) plus MPM (the performance instructions
  * that make it expressive). This is where essentially all the musical knowledge in the
@@ -644,13 +642,10 @@ export class Mei2MsmMpmConverter {
 
     const mpm = Mpm.createMpm();
 
-    // Add metadata.
-    // This stays `any[]`, and with it the file-level no-explicit-any suppression, for one
-    // reason: `RelatedResource.createRelatedResource` returns `RelatedResource | null`
-    // while `Mpm.addMetadata` takes `RelatedResource[] | null`, so the honest element type
-    // does not fit the consumer. Closing that needs either a non-null return there or a
-    // nullable parameter here — both in mpm/, i.e. outside this item.
-    const relatedResources: any[] = [];
+    // `RelatedResource.createRelatedResource` reports failure with null, and
+    // `Mpm.addMetadata` now says it accepts such an array (T16 closed T10's DISCOVERED
+    // note by widening the consumer, which is what retired this file's `any`).
+    const relatedResources: (RelatedResource | null)[] = [];
     const meiFile = this.mei!.getFile();
     if (meiFile !== null) {
       relatedResources.push(RelatedResource.createRelatedResource(meiFile, 'mei'));

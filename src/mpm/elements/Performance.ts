@@ -63,7 +63,6 @@ export class Performance extends AbstractXmlSubtree {
   private pulsesPerQuarter = 720;
   private global: Global | null = null;
   private readonly parts: Part[] = [];
-  private id: Attribute | null = null;
 
   private constructor() {
     super();
@@ -120,27 +119,27 @@ export class Performance extends AbstractXmlSubtree {
     if (name === null || name.getValue() === '')
       throw new Error('Cannot generate Performance object. Attribute name is missing or empty.');
     this.setXml(xml);
-    this.nameAttr = attribute('name', this.getXml()!);
-    this.id = attribute('id', this.getXml()!);
+    this.nameAttr = attribute('name', this.getXml());
+    this.id = attribute('id', this.getXml());
 
-    let ppqAtt = attribute('pulsesPerQuarter', this.getXml()!);
+    let ppqAtt = attribute('pulsesPerQuarter', this.getXml());
     if (ppqAtt === null) {
       ppqAtt = new Attribute('pulsesPerQuarter', '720');
-      this.getXml()!.addAttribute(ppqAtt);
+      this.getXml().addAttribute(ppqAtt);
       this.pulsesPerQuarter = 720;
     } else {
       this.pulsesPerQuarter = parseInt(ppqAtt.getValue());
     }
 
-    const globalElt = firstChildElement('global', this.getXml()!);
+    const globalElt = firstChildElement('global', this.getXml());
     if (globalElt === null) {
       this.global = Global.createGlobal()!;
-      this.getXml()!.appendChild(this.global.getXml()!);
+      this.getXml().appendChild(this.global.getXml());
     } else {
       this.global = Global.createGlobal(globalElt);
     }
 
-    const parts = allChildElements(this.getXml()!, 'part');
+    const parts = allChildElements(this.getXml(), 'part');
     for (const element of parts) {
       const part = Part.createPart(element);
       if (part === null) continue;
@@ -152,7 +151,7 @@ export class Performance extends AbstractXmlSubtree {
   size(): number {
     return this.parts.length;
   }
-  getAllParts(): Part[] {
+  getAllParts(): readonly Part[] {
     return this.parts;
   }
 
@@ -181,10 +180,10 @@ export class Performance extends AbstractXmlSubtree {
 
   addPart(part: Part): boolean {
     if (part === null || this.parts.includes(part)) return false;
-    const parent = part.getXml()!.getParent();
+    const parent = part.getXml().getParent();
     if (parent === null || parent !== this.getXml()) {
-      part.getXml()!.detach();
-      this.getXml()!.appendChild(part.getXml()!);
+      part.getXml().detach();
+      this.getXml().appendChild(part.getXml());
     }
     part.setGlobal(this.getGlobal());
     return this.parts.push(part) > 0;
@@ -193,7 +192,7 @@ export class Performance extends AbstractXmlSubtree {
   removePartByNumber(number: number): void {
     for (let i = this.parts.length - 1; i >= 0; i--) {
       if (this.parts[i].getNumber() === number) {
-        this.getXml()!.removeChild(this.parts[i].getXml()!);
+        this.getXml().removeChild(this.parts[i].getXml());
         this.parts.splice(i, 1);
       }
     }
@@ -202,7 +201,7 @@ export class Performance extends AbstractXmlSubtree {
   removePartByName(name: string): void {
     for (let i = this.parts.length - 1; i >= 0; i--) {
       if (this.parts[i].getName() === name) {
-        this.getXml()!.removeChild(this.parts[i].getXml()!);
+        this.getXml().removeChild(this.parts[i].getXml());
         this.parts.splice(i, 1);
       }
     }
@@ -211,7 +210,7 @@ export class Performance extends AbstractXmlSubtree {
   removePart(part: Part): void {
     const idx = this.parts.indexOf(part);
     if (idx !== -1) {
-      this.getXml()!.removeChild(part.getXml()!);
+      this.getXml().removeChild(part.getXml());
       this.parts.splice(idx, 1);
     }
   }
@@ -233,7 +232,7 @@ export class Performance extends AbstractXmlSubtree {
   }
   setPulsesPerQuarter(ppq: number): void {
     this.pulsesPerQuarter = ppq;
-    attribute('pulsesPerQuarter', this.getXml()!)!.setValue(String(ppq));
+    attribute('pulsesPerQuarter', this.getXml())!.setValue(String(ppq));
   }
   setPPQ(ppq: number): void {
     this.setPulsesPerQuarter(ppq);
@@ -545,14 +544,14 @@ export class Performance extends AbstractXmlSubtree {
         channelVolumeMap = null;
       }
       if (channelVolumeMap !== null) {
-        dated.appendChild(channelVolumeMap.getXml()!);
+        dated.appendChild(channelVolumeMap.getXml());
         Performance.addPerformanceTimingAttributes(channelVolumeMap);
         Performance.addModifiedAttributes(channelVolumeMap);
       }
 
       const positionMap = movementMap !== null ? movementMap.renderMovementToMap(ctx) : null;
       if (positionMap !== null) {
-        dated.appendChild(positionMap.getXml()!);
+        dated.appendChild(positionMap.getXml());
         Performance.addPerformanceTimingAttributes(positionMap);
         Performance.addModifiedAttributes(positionMap);
       }
@@ -744,24 +743,5 @@ export class Performance extends AbstractXmlSubtree {
         } // else, ornament.noteoff.shift="false", so milliseconds.date.end remains unaltered
       }
     }
-  }
-
-  setId(id: string | null): void {
-    if (id === null) {
-      if (this.id !== null) {
-        this.id.detach();
-        this.id = null;
-      }
-      return;
-    }
-    if (this.id === null) {
-      this.id = new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id);
-      this.getXml()!.addAttribute(this.id);
-      return;
-    }
-    this.id.setValue(id);
-  }
-  getId(): string | null {
-    return this.id === null ? null : this.id.getValue();
   }
 }

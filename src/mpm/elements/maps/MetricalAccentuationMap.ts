@@ -57,10 +57,9 @@ export class MetricalAccentuationMap extends GenericMap {
    * in scope, and — implicitly — a def that the style can resolve.
    */
   getMetricalAccentuationDataOf(index: number): MetricalAccentuationData | null {
-    if (this.elements.length === 0 || index < 0) return null;
-    const i = index >= this.elements.length ? this.elements.length - 1 : index;
+    const i = this.resolveEntryIndex(index, 'accentuationPattern');
+    if (i < 0) return null;
     const e = this.elements[i].getValue();
-    if (e.getLocalName() !== 'accentuationPattern') return null;
     const md = new MetricalAccentuationData();
     const nameRefAtt = attribute('name.ref', e);
     if (nameRefAtt === null) return null;
@@ -77,14 +76,7 @@ export class MetricalAccentuationMap extends GenericMap {
     if (loopAtt !== null) md.loop = loopAtt.getValue() === 'true';
     const stmAtt = attribute('stickToMeasures', e);
     if (stmAtt !== null) md.stickToMeasures = stmAtt.getValue() === 'true';
-    md.styleName = '';
-    for (let j = i; j >= 0; --j) {
-      const s = this.elements[j].getValue();
-      if (s.getLocalName() === 'style') {
-        md.styleName = getAttributeValue('name.ref', s);
-        break;
-      }
-    }
+    md.styleName = this.findStyleNameAt(i) ?? '';
     const gStyle = this.getStyle(
       METRICAL_ACCENTUATION_STYLE,
       md.styleName,

@@ -21,14 +21,14 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 
 ## Headline numbers
 
-| | count | after T3 | after T4 | after T5 | after T6 | after T7 | after T8 | after T9 | after T10 | after T11 | after T20b |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Violations before T2 | 2104 | | | | | | | | | | |
-| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | | | | | | | |
-| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** | **1368** | **1347** | **1336** | **1306** | **1294** | **1292** |
-| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** | **20** | 20 | **18** | 18 | **5** | 5 |
-| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | **74 of 105** | **73 of 105** |
-| Still auto-fixable | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| | count | after T3 | after T4 | after T5 | after T6 | after T7 | after T8 | after T9 | after T10 | after T11 | after T20b | after T13 | after T16 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Violations before T2 | 2104 | | | | | | | | | | | | |
+| Auto-fixed in T2 (semantics-preserving only) | 345 | | | | | | | | | | | | |
+| **Remaining debt (errors)** | **1759** | **1437** | **1437** | **1431** | **1389** | **1368** | **1347** | **1336** | **1306** | **1294** | **1292** | **1245** | **1083** |
+| `no-param-reassign` warnings (separate, see below) | 40 | 35 | **30** | 30 | **28** | **20** | 20 | **18** | 18 | **5** | 5 | 5 | **2** |
+| Files affected (≥1 error) | 90 of 118 | 81 of 105 | 81 of 105 | 81 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | 75 of 105 | **74 of 105** | **73 of 105** | 76 of 136 | **77 of 140** |
+| Still auto-fixable | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 > The T8 and T9 columns were added in T9; before that the table stopped at T7 while the
 > prose below already carried the T8 numbers. Both columns are measured with
@@ -38,6 +38,52 @@ debt is near zero — a red gate that everyone learns to ignore is worse than no
 >
 > T9b is not a column: it moved nothing (1294/5 on both trees, per-rule histogram
 > identical). T20b is, because it did.
+
+T16 (model layer) is the largest single payment so far: **1245 → 1083 errors (−162)** and
+**5 → 2 warnings (−3)**, measured `eslint . -f json` on a `git archive` of `efbfdf7` versus
+the working tree. Two rules move and no others — the full per-rule histogram is otherwise
+identical, and `no-empty-function` (54), `no-explicit-any` (12), `no-extraneous-class` (1),
+`no-require-imports` (2), `no-unsafe-function-type` (2), `no-unused-vars` (54) and
+`unified-signatures` (41) are all unchanged.
+
+- **`no-non-null-assertion` 1079 → 917 (−162).** ARCHITECTURE.md §3 predicted **−153** for
+  RULE N3 (retire the 154 `getXml()!` sites, pay 1 back inside the narrowed accessor). That
+  part landed exactly: 154 removed, 1 added at `AbstractXmlSubtree.getXml`. The extra **−9**
+  is RULE C3's doing, which §3 did not model — extracting the Bézier arithmetic into
+  `maps/data/bezier.ts` retired **10** more (`DynamicsData` −5, `MovementData` −5: each
+  `this.x1!`/`this.x2!`/`this.endDate!`/`this.volume!` read inside the moved bodies became a
+  plain parameter) — against **+1** paid deliberately in `Metadata.createMetadata`, where a
+  null in the resources array must keep throwing (see the T10-`DISCOVERED` row below).
+  −154 − 10 + 1 + 1 = −162. A further **2** assertions *moved* rather than changed:
+  `TemporalSpread`/`DynamicsGradient` took their `return this.xml!` with them out of
+  `OrnamentDef.ts` into their own modules, which is why those two files read +1 each.
+- **`no-param-reassign` 5 → 2, and `src/` is now at ZERO.** All three `src/` sites RULE I2
+  enumerated are gone, two of them for free: `DynamicsData.ts` and `MovementData.ts` both
+  reassigned `date` inside `getTForDate`, and that line moved into `bezier.tForDate` as a
+  local `offsetDate`; `OrnamentationMap.getOrnamentDataOf` reassigned `index`, and the
+  `resolveEntryIndex` rewrite replaced it with a local. **This retires the rule for `src/`
+  ahead of schedule — T21 inherits an empty list and can promote it to `error` without
+  editing anything.** The 2 that remain are the integration-test sites no source item may
+  touch, so the column above is now purely a test-side record.
+- **The tree's last `eslint-disable` is gone.** `Mei2MsmMpmConverter.ts`'s file-level
+  `/* eslint-disable @typescript-eslint/no-explicit-any */` and the `any[]` it covered are
+  both deleted (§8.6's T10-`DISCOVERED` item, resolved the way the doc ruled — nullable
+  element type on the consumer, `Mpm.addMetadata` and `Metadata.createMetadata` now take
+  `readonly (RelatedResource | null)[] | null`). **This does not move the
+  `no-explicit-any` count**, and that is the point: the suppression meant the violation was
+  never counted. All 12 remaining hits are in `tests/`, so **`src/` is now at zero for
+  `no-explicit-any`, zero for `no-empty-function`, and carries no suppression of any kind.**
+- **`no-unused-vars` held at 54.** The dedups orphaned two imports mid-item
+  (`getAttributeValue` in `RubatoMap.ts`, `Attribute` in `Comment.ts`); both were removed
+  before the final measurement rather than left to T21.
+- **Files affected went UP, 76 → 77, and that is not a regression.** `GenericStyle.ts` and
+  `AbstractDef.ts` reached **zero** (the id/name accessors that carried their assertions
+  moved to the base), but three files enter the list purely because code was *split out* of
+  files that keep other errors: `TemporalSpread.ts` and `DynamicsGradient.ts` each carry the
+  one `return this.xml!` they brought with them from `OrnamentDef.ts`, and
+  `AbstractXmlSubtree.ts` carries N3's single paid-back assertion. Files linted rose
+  136 → 140 (three new modules plus `tests/xml/AbstractXmlSubtree.test.ts`). No file gained
+  an error that was not relocated into it.
 
 T20b (movement fixes + ground-truth regeneration) cleared **2 errors incidentally**:
 `tests/mpm/elements/MovementMap.test.ts` imported `Element` and `Attribute` without using

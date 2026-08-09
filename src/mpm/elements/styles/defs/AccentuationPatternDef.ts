@@ -122,7 +122,7 @@ export class AccentuationPatternDef extends AbstractDef {
       [beat, value, transitionFrom, transitionTo],
       accElt,
     );
-    this.getXml()!.insertChild(accElt, index);
+    this.getXml().insertChild(accElt, index);
     return index;
   }
 
@@ -148,7 +148,7 @@ export class AccentuationPatternDef extends AbstractDef {
     else accentuation[3] = accentuation[2];
 
     const index = this.addAccentuationToArrayList(accentuation, xml);
-    this.getXml()!.insertChild(xml, index);
+    this.getXml().insertChild(xml, index);
     return index;
   }
 
@@ -175,7 +175,7 @@ export class AccentuationPatternDef extends AbstractDef {
    * the repeated remove/insert is what keeps serialization order identical to Java's.
    */
   private sortXml(): void {
-    const xml = this.getXml()!;
+    const xml = this.getXml();
     for (let i = 0; i < this.accentuations.length; ++i) {
       const accentuation = this.accentuations[i].getValue();
       xml.removeChild(accentuation);
@@ -191,7 +191,7 @@ export class AccentuationPatternDef extends AbstractDef {
    */
   removeAccentuation(index: number): void {
     if (index >= this.accentuations.length) return;
-    this.getXml()!.removeChild(this.accentuations[index].getValue());
+    this.getXml().removeChild(this.accentuations[index].getValue());
     this.accentuations.splice(index, 1);
   }
 
@@ -271,6 +271,6 @@ export class AccentuationPatternDef extends AbstractDef {
 
   setLength(length: number): void {
     this.length = length;
-    this.getXml()!.getAttribute('length')!.setValue(String(length));
+    this.getXml().getAttribute('length')!.setValue(String(length));
   }
 }

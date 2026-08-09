@@ -255,7 +255,7 @@ export class Mpm extends AbstractMsm {
   addMetadata(
     author: Author | null,
     comment: Comment | null,
-    relatedResources: RelatedResource[] | null,
+    relatedResources: readonly (RelatedResource | null)[] | null,
   ): boolean {
     if (this.metadata !== null) {
       if (author !== null) this.metadata.addAuthor(author);
@@ -269,7 +269,7 @@ export class Mpm extends AbstractMsm {
     this.metadata = Metadata.createMetadata(author, comment, relatedResources);
     if (this.metadata === null) return false;
 
-    this.getRootElement()!.appendChild(this.metadata.getXml()!);
+    this.getRootElement()!.appendChild(this.metadata.getXml());
     return true;
   }
 
@@ -277,8 +277,8 @@ export class Mpm extends AbstractMsm {
    * remove the complete metadata part from this MPM
    */
   removeMetadata(): void {
-    if (this.metadata !== null && this.metadata.getXml() !== null) {
-      this.getRootElement()!.removeChild(this.metadata.getXml()!);
+    if (this.metadata !== null) {
+      this.getRootElement()!.removeChild(this.metadata.getXml());
     }
     this.metadata = null;
   }
@@ -338,7 +338,7 @@ export class Mpm extends AbstractMsm {
    * this returns all performances in this mpm as an array
    * @returns
    */
-  getAllPerformances(): Performance[] {
+  getAllPerformances(): readonly Performance[] {
     return this.performances;
   }
 
@@ -375,7 +375,7 @@ export class Mpm extends AbstractMsm {
    */
   private addPerformanceObject(performance: Performance): boolean {
     if (performance === null) return false;
-    if (performance.getXml() !== null) this.getRootElement()!.appendChild(performance.getXml()!);
+    if (performance.getXml() !== null) this.getRootElement()!.appendChild(performance.getXml());
     this.performances.push(performance);
     return true;
   }
@@ -389,7 +389,7 @@ export class Mpm extends AbstractMsm {
       const p = this.performances[i];
       if (p.getName() === name) {
         this.performances.splice(i, 1);
-        if (p.getXml() !== null) this.getRootElement()!.removeChild(p.getXml()!);
+        if (p.getXml() !== null) this.getRootElement()!.removeChild(p.getXml());
       }
     }
   }
@@ -412,8 +412,7 @@ export class Mpm extends AbstractMsm {
       const idx = this.performances.indexOf(performance);
       if (idx !== -1) {
         this.performances.splice(idx, 1);
-        if (performance.getXml() !== null)
-          this.getRootElement()!.removeChild(performance.getXml()!);
+        this.getRootElement()!.removeChild(performance.getXml());
       }
     }
   }

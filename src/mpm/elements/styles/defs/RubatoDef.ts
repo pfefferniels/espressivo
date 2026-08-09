@@ -123,7 +123,7 @@ export class RubatoDef extends AbstractDef {
   }
   setFrameLength(frameLength: number): void {
     this.frameLength = Math.max(frameLength, 0.0);
-    this.getXml()!.getAttribute('frameLength')!.setValue(String(this.frameLength));
+    this.getXml().getAttribute('frameLength')!.setValue(String(this.frameLength));
   }
 
   getIntensity(): number {
@@ -131,7 +131,7 @@ export class RubatoDef extends AbstractDef {
   }
   setIntensity(intensity: number): void {
     this.intensity = RubatoDef.ensureIntensityBoundaries(intensity);
-    this.getXml()!.getAttribute('intensity')!.setValue(String(this.intensity));
+    this.getXml().getAttribute('intensity')!.setValue(String(this.intensity));
   }
 
   getLateStart(): number {
@@ -149,7 +149,7 @@ export class RubatoDef extends AbstractDef {
       value = 0.0;
     }
     this.lateStart = value;
-    this.getXml()!.getAttribute('lateStart')!.setValue(String(this.lateStart));
+    this.getXml().getAttribute('lateStart')!.setValue(String(this.lateStart));
   }
 
   getEarlyEnd(): number {
@@ -167,7 +167,7 @@ export class RubatoDef extends AbstractDef {
       value = 1.0;
     }
     this.earlyEnd = value;
-    this.getXml()!.getAttribute('earlyEnd')!.setValue(String(this.earlyEnd));
+    this.getXml().getAttribute('earlyEnd')!.setValue(String(this.earlyEnd));
   }
 
   /**
@@ -177,9 +177,9 @@ export class RubatoDef extends AbstractDef {
   setLateStartAndEarlyEnd(lateStart: number, earlyEnd: number): void {
     const le = RubatoDef.ensureLateStartEarlyEndBoundaries(lateStart, earlyEnd);
     this.earlyEnd = le.getValue();
-    this.getXml()!.getAttribute('earlyEnd')!.setValue(String(this.earlyEnd));
+    this.getXml().getAttribute('earlyEnd')!.setValue(String(this.earlyEnd));
     this.lateStart = le.getKey();
-    this.getXml()!.getAttribute('lateStart')!.setValue(String(this.lateStart));
+    this.getXml().getAttribute('lateStart')!.setValue(String(this.lateStart));
   }
 
   /** Intensity must be non-zero and positive: 0 becomes 0.01, negatives are inverted. */

@@ -87,10 +87,9 @@ export class MovementMap extends GenericMap {
    * a chain of movements is continuous by default.
    */
   getMovementDataOf(index: number): MovementData | null {
-    if (this.elements.length === 0 || index < 0) return null;
-    const i = index >= this.elements.length ? this.elements.length - 1 : index;
+    const i = this.resolveEntryIndex(index, 'movement');
+    if (i < 0) return null;
     const e = this.elements[i].getValue();
-    if (e.getLocalName() !== 'movement') return null;
     const md = new MovementData();
     md.startDate = this.elements[i].getKey();
     md.endDate = this.getEndDate(i);
@@ -190,7 +189,7 @@ export class MovementMap extends GenericMap {
       DEFAULT_MOVEMENT_SAMPLE_MAX_STEP) as Normalized;
     const movementSegment = movementData.getMovementSegment(maxStepSize);
     for (const event of movementSegment) {
-      const e = new Element('position', movementMap.getXml()!.getNamespaceURI());
+      const e = new Element('position', movementMap.getXml().getNamespaceURI());
       e.addAttribute(new Attribute('date', String(event[0])));
       e.addAttribute(new Attribute('value', String(event[1])));
       e.addAttribute(new Attribute('controller', movementData.controller));

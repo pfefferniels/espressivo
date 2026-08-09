@@ -77,7 +77,6 @@ export class GenericMap extends AbstractXmlSubtree {
   elements: KeyValue<number, Element>[] = [];
   private globalHeader: Header | null = null;
   private localHeader: Header | null = null;
-  protected id: Attribute | null = null;
 
   protected constructor(typeOrXml: string | Element) {
     super();
@@ -139,7 +138,7 @@ export class GenericMap extends AbstractXmlSubtree {
     this.elements = [];
     this.setXml(xml);
 
-    const es = this.getXml()!.getChildElements();
+    const es = this.getXml().getChildElements();
     for (let i = 0; i < es.size(); ++i) {
       const e = es.get(i);
       const d = attribute('date', e);
@@ -156,7 +155,7 @@ export class GenericMap extends AbstractXmlSubtree {
       this.elements.splice(index, 0, new KeyValue(date, e));
     }
     this.sortXml();
-    this.id = attribute('id', this.getXml()!);
+    this.id = attribute('id', this.getXml());
   }
 
   /**
@@ -166,7 +165,7 @@ export class GenericMap extends AbstractXmlSubtree {
    * be rejected by the XOM emulation.
    */
   private sortXml(): void {
-    const xml = this.getXml()!;
+    const xml = this.getXml();
     for (let i = 0; i < this.elements.length; ++i) {
       const e = this.elements[i].getValue();
       xml.removeChild(e);
@@ -204,7 +203,7 @@ export class GenericMap extends AbstractXmlSubtree {
   }
 
   getType(): string {
-    return this.getXml()!.getLocalName();
+    return this.getXml().getLocalName();
   }
   /**
    * PARITY NOTE — a stub. Java's `GenericMap.setType` calls `Element.setLocalName()`,
@@ -223,25 +222,6 @@ export class GenericMap extends AbstractXmlSubtree {
     }
   }
 
-  getId(): string | null {
-    return this.id === null ? null : this.id.getValue();
-  }
-  setId(id: string | null): void {
-    if (id === null) {
-      if (this.id !== null) {
-        this.id.detach();
-        this.id = null;
-      }
-      return;
-    }
-    if (this.id === null) {
-      this.id = new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id);
-      this.getXml()!.addAttribute(this.id);
-      return;
-    }
-    this.id.setValue(id);
-  }
-
   setHeaders(globalHeader: Header | null, localHeader: Header | null): void {
     this.globalHeader = globalHeader;
     this.localHeader = localHeader;
@@ -253,13 +233,14 @@ export class GenericMap extends AbstractXmlSubtree {
     return this.localHeader;
   }
 
-  getAllElements(): KeyValue<number, Element>[] {
+  /** The live index, exposed read-only — the map keeps it in step with the XML itself. */
+  getAllElements(): readonly KeyValue<number, Element>[] {
     return this.elements;
   }
-  getAllElementsOfType(type: string): KeyValue<number, Element>[] {
+  getAllElementsOfType(type: string): readonly KeyValue<number, Element>[] {
     return this.elements.filter((e) => e.getValue().getLocalName() === type);
   }
-  getAllElementsAt(date: number): KeyValue<number, Element>[] {
+  getAllElementsAt(date: number): readonly KeyValue<number, Element>[] {
     const results: KeyValue<number, Element>[] = [];
     let index = this.getElementIndexAtAfter(date);
     if (index >= 0) {
@@ -417,7 +398,7 @@ export class GenericMap extends AbstractXmlSubtree {
       for (let i = 0; i < this.elements.length; ++i) {
         if (this.elements[i].getKey() >= element.getKey()) {
           this.elements.splice(i, 0, element);
-          this.getXml()!.insertChild(element.getValue(), i);
+          this.getXml().insertChild(element.getValue(), i);
           return i;
         }
       }
@@ -426,13 +407,13 @@ export class GenericMap extends AbstractXmlSubtree {
         if (this.elements[i].getKey() <= element.getKey()) {
           const index = i + 1;
           this.elements.splice(index, 0, element);
-          this.getXml()!.insertChild(element.getValue(), index);
+          this.getXml().insertChild(element.getValue(), index);
           return index;
         }
       }
     }
     this.elements.splice(0, 0, element);
-    this.getXml()!.insertChild(element.getValue(), 0);
+    this.getXml().insertChild(element.getValue(), 0);
     return 0;
   }
 
@@ -441,12 +422,12 @@ export class GenericMap extends AbstractXmlSubtree {
   removeElement(indexOrXml: number | Element): void {
     if (typeof indexOrXml === 'number') {
       if (indexOrXml >= this.elements.length) return;
-      this.getXml()!.removeChild(this.elements[indexOrXml].getValue());
+      this.getXml().removeChild(this.elements[indexOrXml].getValue());
       this.elements.splice(indexOrXml, 1);
     } else {
       for (let i = 0; i < this.elements.length; i++) {
         if (this.elements[i].getValue() === indexOrXml) {
-          this.getXml()!.removeChild(indexOrXml);
+          this.getXml().removeChild(indexOrXml);
           this.elements.splice(i, 1);
           return;
         }
@@ -461,6 +442,57 @@ export class GenericMap extends AbstractXmlSubtree {
     if (id !== undefined && id !== null)
       e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
     return this.insertElement(new KeyValue(date, e), true);
+  }
+
+  /**
+   * The entry a `get*DataOf` accessor should read for `index`, or -1 when there is none.
+   *
+   * The shared opening of all eight of those accessors, and deliberately asymmetric: an
+   * index past the end reads the LAST entry, while a negative index (or an empty map)
+   * means "nothing".
+   *
+   * An index rather than the entry itself, so the per-instruction render path allocates
+   * nothing (RULE I6), and -1 rather than null to match the four `getElementIndex*`
+   * searches this class already answers that way.
+   */
+  protected clampEntryIndex(index: number): number {
+    if (this.elements.length === 0 || index < 0) return -1;
+    return index >= this.elements.length ? this.elements.length - 1 : index;
+  }
+
+  /**
+   * {@link clampEntryIndex} plus the kind test the accessor applies to the entry it lands
+   * on: -1 when that entry is not the instruction the caller can parse — a `<style>`
+   * switch above all. `ImprecisionMap` matches on a name *prefix* instead and so uses the
+   * clamp directly.
+   */
+  protected resolveEntryIndex(index: number, localName: string): number {
+    const i = this.clampEntryIndex(index);
+    if (i < 0) return -1;
+    return this.elements[i].getValue().getLocalName() === localName ? i : -1;
+  }
+
+  /**
+   * The `<style>` switch in scope at entry `index`: the nearest one at or before it, or
+   * null when no style has been switched on yet. Note the scan starts *at* `index`, so a
+   * style switch is in scope for an instruction sharing its position.
+   */
+  protected findStyleSwitchAt(index: number): Element | null {
+    for (let j = index; j >= 0; --j) {
+      const s = this.elements[j].getValue();
+      if (s.getLocalName() === 'style') return s;
+    }
+    return null;
+  }
+
+  /**
+   * The name the {@link findStyleSwitchAt} switch refers to, or null when there is no
+   * switch in scope. A switch without a `name.ref` yields '' — the same empty string the
+   * `*Data` classes default `styleName` to, which {@link getStyle} then resolves to null.
+   */
+  protected findStyleNameAt(index: number): string | null {
+    const s = this.findStyleSwitchAt(index);
+    return s === null ? null : getAttributeValue('name.ref', s);
   }
 
   getStyleNameAt(date: number): string | null {

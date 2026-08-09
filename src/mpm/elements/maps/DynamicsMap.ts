@@ -98,23 +98,16 @@ export class DynamicsMap extends GenericMap {
    * code path instead of having it branch on null.
    */
   getDynamicsDataOf(index: number): DynamicsData | null {
-    if (this.elements.length === 0 || index < 0) return null;
-    const i = index >= this.elements.length ? this.elements.length - 1 : index;
+    const i = this.resolveEntryIndex(index, 'dynamics');
+    if (i < 0) return null;
     const e = this.elements[i].getValue();
-    if (e.getLocalName() !== 'dynamics') return null;
     const dd = new DynamicsData();
     dd.startDate = this.elements[i].getKey();
     dd.endDate = this.getEndDate(i);
     dd.xml = e;
     const att = attribute('id', e);
     if (att !== null) dd.xmlId = att.getValue();
-    for (let j = i; j >= 0; --j) {
-      const s = this.elements[j].getValue();
-      if (s.getLocalName() === 'style') {
-        dd.styleName = getAttributeValue('name.ref', s);
-        break;
-      }
-    }
+    dd.styleName = this.findStyleNameAt(i) ?? dd.styleName;
     dd.style = this.getStyle(DYNAMICS_STYLE, dd.styleName) as DynamicsStyle | null;
     const volAtt = attribute('volume', e);
     if (volAtt === null) return null;
@@ -188,7 +181,7 @@ export class DynamicsMap extends GenericMap {
           chanVolMap.isEmpty() ||
           getAttributeValue('value', chanVolMap.getLastElement()!) !== '100.0'
         ) {
-          const volE = new Element('volume', chanVolMap.getXml()!.getNamespaceURI());
+          const volE = new Element('volume', chanVolMap.getXml().getNamespaceURI());
           volE.addAttribute(new Attribute('date', String(dd.startDate)));
           volE.addAttribute(new Attribute('value', '100.0'));
           volE.addAttribute(new Attribute('mandatory', 'true'));
@@ -219,7 +212,7 @@ export class DynamicsMap extends GenericMap {
     const subNoteDynamicsSegment = dynamicsData.getSubNoteDynamicsSegment(2.0);
     const es: Element[] = [];
     for (const event of subNoteDynamicsSegment) {
-      const e = new Element('volume', channelVolumeMap.getXml()!.getNamespaceURI());
+      const e = new Element('volume', channelVolumeMap.getXml().getNamespaceURI());
       e.addAttribute(new Attribute('date', String(event[0])));
       e.addAttribute(new Attribute('value', String(event[1])));
       channelVolumeMap.addElement(e);

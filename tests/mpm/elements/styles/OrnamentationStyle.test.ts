@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { OrnamentationStyle } from '../../../../src/mpm/elements/styles/OrnamentationStyle.js';
+import { OrnamentDef } from '../../../../src/mpm/elements/styles/defs/OrnamentDef.js';
 import {
-  OrnamentDef,
   FrameDomain,
   NoteOffShift,
-} from '../../../../src/mpm/elements/styles/defs/OrnamentDef.js';
+} from '../../../../src/mpm/elements/styles/defs/TemporalSpread.js';
 import { Element, Attribute } from '../../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../../src/mpm/Mpm.js';
 

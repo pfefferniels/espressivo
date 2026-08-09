@@ -98,27 +98,19 @@ export class OrnamentationMap extends GenericMap {
    * outside the rendering path.
    */
   getOrnamentDataOf(index: number): OrnamentData | null {
-    if (this.elements.length === 0 || index < 0) return null;
-    if (index >= this.elements.length) index = this.elements.length - 1;
-    const xml = this.elements[index].getValue();
-    if (xml.getLocalName() !== 'ornament') return null;
+    const i = this.resolveEntryIndex(index, 'ornament');
+    if (i < 0) return null;
+    const xml = this.elements[i].getValue();
     const od = new OrnamentData();
     const nameRefAtt = attribute('name.ref', xml);
     if (nameRefAtt === null) return null;
     od.ornamentDefName = nameRefAtt.getValue();
-    od.styleName = '';
-    for (let j = index; j >= 0; --j) {
-      const s = this.elements[j].getValue();
-      if (s.getLocalName() === 'style') {
-        od.styleName = getAttributeValue('name.ref', s);
-        break;
-      }
-    }
+    od.styleName = this.findStyleNameAt(i) ?? '';
     od.style = this.getStyle(ORNAMENTATION_STYLE, od.styleName) as OrnamentationStyle | null;
     if (od.style === null) return null;
     od.ornamentDef = od.style.getDef(od.ornamentDefName) ?? null;
     if (od.ornamentDef === null) return null;
-    od.date = this.elements[index].getKey();
+    od.date = this.elements[i].getKey();
     od.xml = xml;
     const noteOrderAtt = xml.getAttribute('note.order');
     if (noteOrderAtt !== null) {

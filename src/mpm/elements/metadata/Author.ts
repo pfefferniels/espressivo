@@ -16,7 +16,6 @@ import { MPM_NAMESPACE } from '../../names.js';
 export class Author extends AbstractXmlSubtree {
   private nameText: Text | null = null;
   private number: Attribute | null = null;
-  private id: Attribute | null = null;
 
   private constructor() {
     super();
@@ -88,7 +87,7 @@ export class Author extends AbstractXmlSubtree {
     }
     if (this.number === null) {
       this.number = new Attribute('number', String(number));
-      this.getXml()!.addAttribute(this.number);
+      this.getXml().addAttribute(this.number);
       return;
     }
     this.number.setValue(String(number));
@@ -97,25 +96,5 @@ export class Author extends AbstractXmlSubtree {
   getNumber(): number | null {
     if (this.number === null) return null;
     return parseInt(this.number.getValue());
-  }
-
-  setId(id: string | null): void {
-    if (id === null) {
-      if (this.id !== null) {
-        this.id.detach();
-        this.id = null;
-      }
-      return;
-    }
-    if (this.id === null) {
-      this.id = new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id);
-      this.getXml()!.addAttribute(this.id);
-      return;
-    }
-    this.id.setValue(id);
-  }
-
-  getId(): string | null {
-    return this.id === null ? null : this.id.getValue();
   }
 }

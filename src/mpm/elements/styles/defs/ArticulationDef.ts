@@ -106,9 +106,9 @@ export class ArticulationDef extends AbstractDef {
    * programmatically without touching the XML.
    */
   resetAttribute(name: string): void {
-    const a = attribute(name, this.getXml()!);
+    const a = attribute(name, this.getXml());
     if (a === null) return;
-    this.getXml()!.removeAttribute(a);
+    this.getXml().removeAttribute(a);
     switch (name) {
       case 'absoluteDuration':
         this.absoluteDuration = null;
@@ -154,84 +154,84 @@ export class ArticulationDef extends AbstractDef {
   }
   setAbsoluteDuration(v: number): void {
     this.absoluteDuration = v;
-    this.getXml()!.addAttribute(new Attribute('absoluteDuration', String(v)));
+    this.getXml().addAttribute(new Attribute('absoluteDuration', String(v)));
   }
   getAbsoluteDurationChange(): number {
     return this.absoluteDurationChange;
   }
   setAbsoluteDurationChange(v: number): void {
     this.absoluteDurationChange = v;
-    this.getXml()!.addAttribute(new Attribute('absoluteDurationChange', String(v)));
+    this.getXml().addAttribute(new Attribute('absoluteDurationChange', String(v)));
   }
   getAbsoluteDurationMs(): number | null {
     return this.absoluteDurationMs;
   }
   setAbsoluteDurationMs(v: number): void {
     this.absoluteDurationMs = v;
-    this.getXml()!.addAttribute(new Attribute('absoluteDurationMs', String(v)));
+    this.getXml().addAttribute(new Attribute('absoluteDurationMs', String(v)));
   }
   getAbsoluteDurationChangeMs(): number {
     return this.absoluteDurationChangeMs;
   }
   setAbsoluteDurationChangeMs(v: number): void {
     this.absoluteDurationChangeMs = v;
-    this.getXml()!.addAttribute(new Attribute('absoluteDurationChangeMs', String(v)));
+    this.getXml().addAttribute(new Attribute('absoluteDurationChangeMs', String(v)));
   }
   getRelativeDuration(): number {
     return this.relativeDuration;
   }
   setRelativeDuration(v: number): void {
     this.relativeDuration = v;
-    this.getXml()!.addAttribute(new Attribute('relativeDuration', String(v)));
+    this.getXml().addAttribute(new Attribute('relativeDuration', String(v)));
   }
   getAbsoluteDelay(): number {
     return this.absoluteDelay;
   }
   setAbsoluteDelay(v: number): void {
     this.absoluteDelay = v;
-    this.getXml()!.addAttribute(new Attribute('absoluteDelay', String(v)));
+    this.getXml().addAttribute(new Attribute('absoluteDelay', String(v)));
   }
   getAbsoluteDelayMs(): number {
     return this.absoluteDelayMs;
   }
   setAbsoluteDelayMs(v: number): void {
     this.absoluteDelayMs = v;
-    this.getXml()!.addAttribute(new Attribute('absoluteDelayMs', String(v)));
+    this.getXml().addAttribute(new Attribute('absoluteDelayMs', String(v)));
   }
   getAbsoluteVelocity(): number | null {
     return this.absoluteVelocity;
   }
   setAbsoluteVelocity(v: number): void {
     this.absoluteVelocity = v;
-    this.getXml()!.addAttribute(new Attribute('absoluteVelocity', String(v)));
+    this.getXml().addAttribute(new Attribute('absoluteVelocity', String(v)));
   }
   getRelativeVelocity(): number {
     return this.relativeVelocity;
   }
   setRelativeVelocity(v: number): void {
     this.relativeVelocity = v;
-    this.getXml()!.addAttribute(new Attribute('relativeVelocity', String(v)));
+    this.getXml().addAttribute(new Attribute('relativeVelocity', String(v)));
   }
   getAbsoluteVelocityChange(): number {
     return this.absoluteVelocityChange;
   }
   setAbsoluteVelocityChange(v: number): void {
     this.absoluteVelocityChange = v;
-    this.getXml()!.addAttribute(new Attribute('absoluteVelocityChange', String(v)));
+    this.getXml().addAttribute(new Attribute('absoluteVelocityChange', String(v)));
   }
   getDetuneCents(): number {
     return this.detuneCents;
   }
   setDetuneCents(v: number): void {
     this.detuneCents = v;
-    this.getXml()!.addAttribute(new Attribute('detuneCents', String(v)));
+    this.getXml().addAttribute(new Attribute('detuneCents', String(v)));
   }
   getDetuneHz(): number {
     return this.detuneHz;
   }
   setDetuneHz(v: number): void {
     this.detuneHz = v;
-    this.getXml()!.addAttribute(new Attribute('detuneHz', String(v)));
+    this.getXml().addAttribute(new Attribute('detuneHz', String(v)));
   }
 
   /**

@@ -7458,3 +7458,435 @@ fork's renderer, CC streams structurally identical (controller=soft -> CC67,
 curvature/protraction honored). Their v4 synthetic-data generator will be built on
 this facade, Java fork retained as cross-check renderer; seeded imprecision to be
 exercised heavily in their v5 wave. First real downstream consumer confirmed.
+
+---
+
+## [T16] worker
+
+**Model layer: composition & types (msm/mpm).** Baseline `efbfdf7` (src-identical to the
+last green `c432849`). Five sub-rounds, each type-checked, tested and pipeline-byte-probed
+before the next started; the probe was identical at every one.
+
+### What landed, and against which ruling
+
+**A — RULE N3, the `getXml()` narrowing.** `AbstractXmlSubtree.getXml(): Element`,
+`getXmlOrNull(): Element | null` added as §3's block specifies, and `setXml` narrowed to
+`(xml: Element)` — that last bit is not in the doc and is the point: it makes N3's
+unreachability argument type-enforced instead of grep-enforced, so nobody can reintroduce
+`setXml(null)` without the compiler objecting. **All 154 `getXml()!` sites deleted**, the
+figure §3 predicted, all under `src/mpm/`.
+
+The §3 gate, executed:
+- `grep -rn "setXml(null)" src tests` → **empty** (re-run on this tree, as EQ-RISK (N3)
+  requires).
+- **Every `AbstractXmlSubtree` subclass enumerated.** `setXml` has exactly **12** call
+  sites in `src/`, one per `parseData` (`Dated`, `Global`, `Header`, `GenericMap`, `Author`,
+  `Comment`, `Metadata`, `RelatedResource`, `Part`, `Performance`, `AbstractDef`,
+  `GenericStyle`); every other class in the hierarchy inherits one of those. In each,
+  `this.setXml(xml)` precedes the first `getXml()` read — the `ImprecisionMap.parseData`
+  pattern §3 names as the thing to confirm. `Part` and `Performance` do read *attributes off
+  the parameter* before the assignment, but never `getXml()`. The two `setXml` definitions
+  in `OrnamentDef.ts` are `TemporalSpread`/`DynamicsGradient`'s own and are outside the
+  hierarchy by RULE C1a.
+- **Emitted-JS classification**: removing a `!` emits nothing, so the only runtime changes
+  from N3 are the **two** dead `if (x === null)` guards §3 anticipated, both in `Mpm.ts` —
+  `removeMetadata` (`this.metadata !== null && this.metadata.getXml() !== null` → the first
+  conjunct alone) and `removePerformance` (`if (performance.getXml() !== null)` deleted).
+  Both objects reach those lines only through a factory that ran `parseData`. Confirmed by
+  diffing `dist/`: after sub-round A **exactly two `.js` files differed**, `Mpm.js` (those
+  two guards) and `AbstractXmlSubtree.js` (the new method + JSDoc); the other 20 touched
+  files produced byte-identical `.js` and only `.js.map` moved.
+- **Negative control**: deleted `this.setXml(xml)` from `GenericMap.parseData` in a scratch
+  copy of the tree (`t16work/negctl`, never in `src/`) → `GenericMap.test.ts` fails to
+  collect at all. Restored and re-verified.
+
+`getXmlOrNull` has **no `src/` caller** by design — after the narrowing nothing in the
+interior needs to distinguish. It is covered by a new unit test rather than left dead.
+
+**B — the four scouted deduplications (§8.6).**
+1. `GenericStyle.parseDefs(xml, childName, create)` — the six style subclasses' `parseData`
+   drops from 8 lines to 1–3. Signature takes `xml` explicitly rather than reading
+   `getXml()`: identical after `super.parseData`, and it keeps the helper honest about what
+   it parses.
+2. `GenericMap.clampEntryIndex` / `resolveEntryIndex` / `findStyleSwitchAt` /
+   `findStyleNameAt`, applied to **all eight** `get*DataOf` accessors. **Judgment calls, as
+   the doc invites**: (a) the doc named one helper `resolveEntry(index, localName)`; I split
+   it in two because `ImprecisionMap` matches a name *prefix* (`distribution.`) and so needs
+   the clamp without the equality test — with one helper it would have kept a duplicated
+   clamp. (b) It returns the **index**, not the entry: returning an object would allocate
+   once per instruction in the render path (RULE I6), and `-1` is the idiom this class
+   already uses in its four `getElementIndex*` searches. Renamed to `resolveEntryIndex` so
+   the name does not lie. (c) `findStyleSwitchAt` (returning the element) is the shared
+   primitive under `findStyleNameAt`, because `ArticulationMap.findStyle` also reads
+   `defaultArticulation` off the switch element and would otherwise have kept its own loop.
+   Equivalence of the style lookup rests on a measured fact: **`styleName` defaults to `''`
+   in all six `*Data` classes** and `getAttributeValue` returns `''` for a missing
+   attribute, so `x.styleName = this.findStyleNameAt(i) ?? x.styleName` reproduces
+   "leave the default when no switch is in scope" exactly.
+3. **The id/name base — and it is seven copies, not two.** §8.6 says `setId`/`getId`/
+   `getName`/`setName` are byte-identical in `GenericStyle` and `AbstractDef`. Fingerprinting
+   every class in the layer found `setId`/`getId` byte-identical (same SHA of the extracted
+   body) in **seven**: those two plus `GenericMap`, `Part`, `Performance`, `Author`,
+   `Comment` — six sharing one hash exactly, `AbstractDef`'s differing only in blank lines
+   and `if` spelling. The `id` field and both accessors moved to **`AbstractXmlSubtree`
+   itself**, deleting all seven copies.
+   **Why the base and not a new intermediate class**: an intermediate would have been the
+   tidier API (only classes with an `xml:id` would gain the accessors) but it deepens
+   `TempoDef → AbstractDef → … → AbstractXmlSubtree` by a layer, which is the opposite of
+   this item's own "reduce inheritance depth". The five classes that gain `getId`/`setId`
+   (`Header`, `Dated`, `Global`, `Metadata`, `RelatedResource`) gain a *working* accessor,
+   not a stub — every MPM element may carry an `xml:id`, and `setId` writes it to their
+   element like anywhere else. Field-init order is unaffected: `id` now initialises to null
+   one step earlier (in the base) and still before any `parseData` assigns it.
+   **The `getName`/`setName` half is deliberately NOT done**, and this is the one place I
+   declined a doc bullet: `GenericStyle` backs it with `nameAttr`, `AbstractDef` with
+   `name`, and `Part`/`Performance`/`Author` have different visibility or a `Text` backing
+   node. Unifying two one-line methods would need exactly the extra inheritance layer the
+   previous paragraph rejects. Net effect of the bullet is still −14 methods instead of −4.
+4. `TemporalSpread` and `DynamicsGradient` moved out of `defs/OrnamentDef.ts` into
+   `defs/TemporalSpread.ts` (with the `FrameDomain`/`NoteOffShift` enums) and
+   `defs/DynamicsGradient.ts`. No re-export from `OrnamentDef.ts` — a re-export would
+   preserve exactly the "importing a transformer drags `OrnamentDef` in" problem the move
+   exists to fix. **RULE C1a is respected**: both keep their lazy generate-and-cache
+   `getXml()` and stay outside `AbstractXmlSubtree`; each carries a class-doc paragraph
+   saying why, so the next reader does not "fix" it. Three unit-test files had their imports
+   redirected (mechanical). `import/no-cycle` still passes.
+   **Proof the move changed nothing**: comment-stripped emitted JS of the moved region in
+   the baseline `OrnamentDef.js` is **line-for-line identical** to the two new modules'
+   emitted JS (imports aside) — scripted comparison, both classes True.
+
+**C — RULE C3, the shared `bezier` module.** `src/mpm/elements/maps/data/bezier.ts` with
+`innerControlPointsXPositions`, `tForDate`, `bezierPoint`, `sampleSegment`. `bezierPoint`
+is not in §4's three-function list but is the actual fourth duplicate
+(`getDateDynamics`/`getDatePosition` differ only in the constant-movement early return).
+Per RULE U4a the return stays `number[]`, not a readonly tuple — the callers splice and
+multiply it in place. **Endpoint handling and the ×127 scale stayed in the caller**, as the
+EQ-RISK gate demands: `MovementData.getMovementSegment` still does its own `unshift`/`push`
+and its own scaling loop. The in-place defaulting of null `curvature`/`protraction` also
+stayed in the classes, because a later `clone()` has to see it.
+
+The C3 gate, executed (`t16work/bezier-probe.mjs`):
+- **10 000 pseudo-random `(curvature, protraction, from, to)` cases** — seeded mulberry32,
+  100 deliberate edge combinations first (`0`, `-0`, `±1`, `±1e-12`, `±1e6`), 15 % of the
+  random ones with null curvature/protraction so the in-place defaulting is exercised —
+  fed to the **baseline build** and the **working build** in one process. Each case compares
+  ~45 scalars plus three whole series (`getDynamicsAt` swept over dates,
+  `getSubNoteDynamicsSegment`, `getPositionAt` swept, `getMovementSegment`, and a
+  constant-movement `getMovementSegment` for the early-return branch), plus the
+  post-defaulting `curvature`/`protraction`. Comparison is on **raw IEEE-754 bits**
+  (`DataView.getBigUint64`), so `-0` and `0` are distinct. Result: **BIT-IDENTICAL**.
+- **Negative control, and a finding worth recording.** The gate's suggested control —
+  regrouping `(3 - 2t) * t * t * X` to `(3 - 2t) * (t * t) * X` in a *copy of `dist/`* —
+  **did not fire**: 10 000 cases, zero mismatches. That is not the probe being blind; a
+  1e-13 additive poison on the same line fails **500 of 500**. The explanation is that every
+  `t` reaching `bezierPoint` is a dyadic rational (0, 1 and repeated midpoints), so that
+  particular regrouping is exact. Expanding Horner's scheme instead —
+  `((u*t+v)*t+w)*t*s` → `(u*t*t*t + v*t*t + w*t)*s`, the reassociation §4 explicitly warns
+  about — **does fire: 2 of 10 000**. So the probe has real bit-level power, and the
+  sensitivity is strongly input-dependent: **"the probe passed" is only meaningful together
+  with the control that fires**, which is why both are recorded here rather than just the
+  pass.
+
+**E — the last `any` and the last suppression (§8.6's T10 `DISCOVERED`).** Resolved the way
+the doc ruled ("nullable element type on the parameter is the smaller change"):
+`Mpm.addMetadata` and `Metadata.createMetadata`'s 3-arg overload now take
+`readonly (RelatedResource | null)[] | null`, and `Metadata.addRelatedResource` takes
+`RelatedResource | null` — which is what its own `if (relatedResource === null) return -1;`
+guard has always said. `Mei2MsmMpmConverter.ts`'s `any[]` and its file-level
+`/* eslint-disable @typescript-eslint/no-explicit-any */` are both gone; **`src/` now
+contains no suppression of any kind and no `any`.** One `!` was added deliberately, at
+`Metadata.createMetadata`'s `rrElt.appendChild(r!.getXml())`, with the RULE N2a-style
+one-line comment: a null there must keep throwing into the enclosing `try` so the factory
+keeps returning null, and a guard would silently accept a malformed array instead.
+
+**I4 — readonly where it is free.** `getAllElements`, `getAllElementsOfType`,
+`getAllElementsAt` → `readonly KeyValue<number, Element>[]`; `GenericStyle.getAllDefs` →
+`ReadonlyMap`; `Dated.getAllMaps` → `ReadonlyMap`; `Performance.getAllParts` and
+`Mpm.getAllPerformances` → `readonly T[]`. **Both tsconfigs compile unchanged**, which is
+the evidence that no caller was mutating them (`AsynchronyMap` already spread its copy).
+`GenericMap.elements` stays mutable — I4 says working state does not get `readonly`, and
+`sort`/`insertElement` splice it. **Measured and worth recording: the "readonly private
+fields" surface in `msm/`+`mpm/` is already empty** — a scan for never-reassigned
+initialised private fields returns nothing there (T6–T11 cleared it), so I4's field clause
+has no work left in this layer. The `x1`/`x2` memos are reassigned and correctly excluded.
+
+### Evidence
+
+- **Pipeline byte-probe, five times** (after A, B1+B2, B3, B4, C, E), `t13verify/paths.mjs
+  classic` over **all 16 MEI fixtures × every movement** (MSM, MPM, augmented MSM, raw MIDI,
+  expressive MIDI digests) **and the 6 deterministic all-maps sets** — the two imprecision
+  sets excluded per the charter. **Identical to the baseline build at every sub-round**,
+  byte-for-byte on the digest JSON.
+- **Facade both-paths probe green**: `paths.mjs both` → 174 checks, 0 failures. Plus
+  `plaindata` 488/0, `contract` 33/0, `rulings` 49/0, `typesurface` 0 forbidden names,
+  `postmessage` 8/8 round-tripped.
+- **FACADE FREEZE verified structurally**: `diff -r` of `dist/api/` (excluding maps) between
+  baseline and working build is **empty** — every emitted `.js` and `.d.ts` in the facade is
+  byte-identical, so no facade type or behaviour moved.
+- **Emitted-JS classification, all of it.** 28 `.js` files differ; 12 new artifacts, all
+  belonging to the three new modules; **nothing removed**. Each changed file was re-emitted
+  through `ts.transpileModule` with `removeComments` and diffed, so JSDoc cannot hide a code
+  change. **Two files have a zero-token code diff and are therefore comments-only**:
+  `Mei2MsmMpmConverter.js` (the `any[]` annotation and the eslint-disable both erase) and
+  `Metadata.js` (`r!` erases). Every hunk in the other 26 is one of: a deleted duplicate
+  `setId`/`getId` (7 files), a `parseData` loop replaced by `parseDefs` (6), a `get*DataOf`
+  prologue replaced by `resolveEntryIndex`/`findStyleNameAt` (8), the bezier extraction (2),
+  the two N3 guards (`Mpm.js`), the moved transformer classes (`OrnamentDef.js`), the new
+  helpers appearing on `GenericMap`/`GenericStyle`/`AbstractXmlSubtree`, or an import line
+  losing a now-unused name.
+- **`npm run verify` green, exit 0**: build + tests typecheck + **59 files / 2272 tests**
+  (baseline 58/2268). +4 tests, all new (`tests/xml/AbstractXmlSubtree.test.ts`); no existing
+  test lost an assertion. Charter 7c satisfied by increase.
+- **Coverage (v3 gates)**, from `coverage-final.json`: **functions 931/983 = 94.7101 %**
+  (floor 94.0 ✓, and up from T13's 94.4162); **uncovered scoped statements 2179** of 15330
+  (phase-2 budget 2318 ✓, and *down* from T13's 2201); test count up. New code:
+  `bezier.ts` 73/73 statements, 4/4 functions; `DynamicsGradient.ts` 87/87, 10/10;
+  `TemporalSpread.ts` 168/172, 12/12; `AbstractXmlSubtree.ts` 37/37, **7/7** — so
+  `getXmlOrNull` is exercised, not dead weight.
+- **Lint re-measured** on a `git archive` of the baseline and on the working tree:
+  **1245 → 1083 errors, 5 → 2 warnings**. Only two rules move; full accounting, including
+  why the −162 exceeds §3's predicted −153, is in `lint-debt.md`'s new T16 section.
+  **Predicted vs actual, stated plainly: §3 predicted −153 for N3 and got exactly that
+  (−154 sites, +1 paid back in the base); the remaining −9 is RULE C3's uncounted bonus
+  (−10) net of one deliberate `!` (+1).**
+- `npx prettier --check .` clean except `tests/midi/Midi.test.ts`, which is **equally dirty
+  at `efbfdf7`** and untouched by this item (the T13 verifier already flagged it).
+- **No new suppressions**; the suppression count went the other way (1 → 0 repo-wide).
+- `tests/integration/**` and `tests/integration/fixtures/**`: **`git diff` empty, no
+  untracked files**. The ground-truth gate was not touched.
+
+### REMAINING for T16b — RULE C6 (`KeyValue` → tuples), NOT done, with the measurement
+
+This is the one ruling of §8.6 I did not implement, and it is deferred on evidence rather
+than on feel. Changing just the one field `GenericMap.elements` from
+`KeyValue<number, Element>[]` to `[number, Element][]` produces **142 compile errors across
+10 files** before a single consumer signature is touched; carrying it out to
+`getAllElements`/`getAllElementsOfType`/`getAllElementsAt`/`insertElement`/`addStyleSwitch`
+pulls in `Mei2MsmMpmConverter.ts` (14 occurrences), `Msm.ts`, `Mei.ts`, `Performance.ts`,
+four unit-test files, and — through `Mei2MsmMpmConverter.convert()`'s
+`KeyValue<Msm[], Mpm[]>` return — **24 lines across six `tests/integration/*.test.ts`
+files**, which needs verifier sign-off under charter invariant 3. Notes for whoever picks
+it up:
+
+- **Do not attempt it textually.** `.getValue()` has **529** hits in `src/` and all but ~99
+  are `Attribute.getValue()`. The conversion has to be type-driven: change the type, then
+  fix each compile error individually.
+- **There is a real semantic difference, and it needs a per-site audit.** `GenericMap.sort()`
+  mutates each entry in place (`e.setKey(date)`), and `getAllElementsOfType`/`getAllElementsAt`
+  hand out **fresh arrays holding the same KeyValue objects**. A caller holding such an array
+  across a `sort()` sees updated keys today; with tuples, `sort()` would have to replace
+  entries in `this.elements` and the caller's array would go stale. I checked the one site
+  that sorts (`ArticulationMap.renderArticulationToMap`) and it is **safe** — its
+  `defaultArticulations` are freshly constructed pairs, its `styleSwitchList` belongs to a
+  different map, and `map.sort()` runs after the loop — but the other holders were not
+  audited, and that audit is the actual work of the item, not the sed.
+- **A clean seam exists**: convert the *map entries* only, and leave
+  `Mei2MsmMpmConverter.convert()`'s `KeyValue<Msm[], Mpm[]>` return alone. That is a
+  different use of the type (a pair of lists, not a dated entry), and leaving it untouched
+  keeps `tests/integration/**` out of the diff entirely.
+- The 8 mutating sites §4 enumerates are confirmed present and unchanged:
+  `GenericMap.ts:190` (now, after this item's edits), `ImprecisionMap.ts:545,582,588`,
+  `RubatoDef.ts:210,214,218,219`.
+
+Also not done, and deliberately: **RULE C4's optional half** ("T16 *may* replace the 9
+`string | Element` overload pairs with two differently named functions"). `unified-signatures`
+is unchanged at 41. It is discretionary in the doc's own wording, it is pure API churn on a
+package a downstream project is about to adopt, and it would have shared a diff with the
+factory bodies this item already restructured. T16b or T21 can take it.
+
+### Handoff
+
+- `t16work/base/` is the built baseline tree; `t16work/bezier-probe.mjs` takes
+  `<baselineDist> <workDist> [N]` and is reusable for any future change to
+  `bezier.ts`/`DynamicsData`/`MovementData` — with the caveat recorded above that a passing
+  run must be paired with a control that fires.
+- `t16work/negctl/` is the scratch source tree used for the N3 negative control (restored to
+  match `src/`); `t16work/distctl3/` is the Horner-expanded `dist` that makes the bezier
+  probe go red, kept so the control can be re-run without touching `src/`.
+- `t16work/strip.mjs` re-emits any `dist/*.js` with comments removed — the instrument behind
+  the "comments-only" claims above.
+- **DISCOVERED (for T21):** `no-param-reassign` in `src/` is at **zero** and
+  `no-explicit-any` in `src/` is at **zero**; both can be promoted to `error` without any
+  code change. §8.10's audits should re-measure rather than assume the counts in §5/§3.
+
+### Manifest (for the conductor's reconciliation step)
+
+**46 paths**: `M` 37 under `src/`, `M` 3 under `tests/`, `M` 2 under `refactor/`
+(`lint-debt.md`, `log.md`), `??` 4 new files —
+`src/mpm/elements/maps/data/bezier.ts`,
+`src/mpm/elements/styles/defs/TemporalSpread.ts`,
+`src/mpm/elements/styles/defs/DynamicsGradient.ts`,
+`tests/xml/AbstractXmlSubtree.test.ts`.
+Nothing under `tests/integration/**` or `tests/integration/fixtures/**`.
+
+**`git diff -- tests/` is import redirection and nothing else** — three files, each losing
+`TemporalSpread`/`DynamicsGradient`/`FrameDomain`/`NoteOffShift` from the `OrnamentDef.js`
+import and gaining them from the new modules. Not one assertion, `describe`, `it` or helper
+changed; no test was deleted, skipped or loosened. The only new test file is additive
+(+4 tests, 2268 → 2272).
+
+## [T16] verifier — model layer composition & types (2026-08-09)
+
+**PASS.** Baseline `29a4f93` (= `efbfdf7` + log text; `git diff c432849 efbfdf7 -- src tests` is
+empty, so the tree really is src-identical to the last green `c432849`). Every number below was
+re-measured on my own trees in `t16verify/`; none is taken from the worker's entry.
+
+### 1. Pipeline byte-probe — independent, and stronger than digests
+
+Wrote `t16verify/dump.mjs`, which does not emit hashes: it writes the **full canonicalized
+artifact** for every deterministic fixture (MSM XML, MPM XML, augmented MSM XML, raw MIDI bytes,
+expressive MIDI bytes) into a tree, so a mismatch shows the offending bytes. **16 MEI fixtures ×
+every movement + the 6 deterministic all-maps sets = 131 artifacts, 180 384 bytes**; the two
+imprecision sets stay excluded per the charter.
+
+- **`diff -r` baseline-build vs working-build: EMPTY.** Byte-identical.
+- **Self-determinism control**: two runs of the *same* build are also byte-identical, so a diff
+  would have been signal rather than run noise.
+- **Negative control (it fires)**: a `+1e-12` poison on `bezierPoint`'s value component in a copy
+  of `dist/` changes `allmaps/movement/augmented.xml`. The probe has real bit-level power.
+- All 22 augmented documents are non-NULL, i.e. the probe exercises rendering rather than
+  short-circuiting.
+
+### 2. Facade freeze — frozen at the strongest available granularity
+
+`git diff`/`git status` over `src/api/`, `src/index.ts`, `src/units.ts`: **untouched**. Emitted
+`dist/api/**` (`.js` *and* `.d.ts`), `dist/index.*`, `dist/units.*`: **byte-identical**. The
+facade `.d.ts` import only `../units.js`, `./types.js`, `../version.js`, `../xml/errors.js` — no
+model-layer type reaches the surface, so the frozen `.d.ts` cannot be hiding a changed interior
+type. T13 battery re-run on the new tree, all green and at T13's own counts: `plaindata` **488/0**,
+`paths both` **174/0**, `contract` **33/0**, `rulings` **49/0**, `seed` **12/0**, `imprecision`
+**18/0**, `typesurface` **0** forbidden names, `postmessage` **8/8** round-tripped.
+
+### 3. RULE N3 and the `setXml` doc-plus deviation — ACCEPTED, it tightens
+
+- `getXml()!` in `src/`: **154 → 0**, exactly §3's figure. `grep setXml(null) src tests` empty.
+- **(a) No assertion was traded in.** All **17** `setXml` call sites pass a plain `xml` already
+  typed `Element`; **zero** carry `!`, `as`, or a new guard. Per-file `no-non-null-assertion`
+  counts (eslint `-f json`) rise in exactly **three** files: `AbstractXmlSubtree.ts` +1 (the one
+  `return this.xml!` the narrowing costs, journaled), and `TemporalSpread.ts`/`DynamicsGradient.ts`
+  +1 each — and those two are **moves, not additions**: baseline `OrnamentDef.ts:198,318` are
+  literally `return this.xml!`. Every other file goes down or stays flat. `as`-style assertions in
+  `src/` are **flat at 159**, and `@ts-expect-error`/`@ts-ignore`/`eslint-disable` in `src/` go
+  **1 → 0**. Nothing was traded anywhere.
+- **(b) No behaviour change.** Comment-stripped emitted JS classifies **26 of 28** differing files
+  as real code change and **2** (`Mei2MsmMpmConverter.js`, `Metadata.js`) as comments-only —
+  reproducing the worker's split. The only runtime effect of N3 is the two dead guards in `Mpm.ts`
+  (`removeMetadata`, `removePerformance(performance)`); both classes have **private constructors**
+  reachable only through factories that `setXml` inside `parseData` and return null on failure, so
+  the guarded case is unreachable — and is now unreachable *by type*. In all **12** `parseData`,
+  `setXml` precedes the first `getXml()` read (checked mechanically, not by eye). Two structurally
+  identical guards were conservatively **kept**; harmless, and `no-unnecessary-condition` is a T21
+  concern.
+- **Negative control, run independently**: deleting `this.setXml(xml)` from `GenericMap.parseData`
+  in a scratch copy (never `src/`) turns `GenericMap.test.ts` red; the unpoisoned copy is green.
+- **(c) RULING on the deviation.** Narrowing `setXml(xml: Element | null)` → `(xml: Element)` is
+  not in §3. **As the conductor's delegate I ACCEPT it: it tightens N3 and cannot loosen it.**
+  N3's whole safety argument is "no caller ever stores null", which the doc enforces by *grep* — a
+  point-in-time check any later edit can silently break. The narrowed parameter converts that into
+  a compile-time invariant: `setXml(null)` can never typecheck again. Narrowing a parameter is a
+  restriction on callers, never a relaxation; it deletes no guard and widens no type. And it was
+  free — see (a). The worker flags it explicitly ("not in the doc and is the point"), which is the
+  honest journaling this kind of deviation requires.
+
+### 4. Attribute-write order — verified structurally, not just by the byte probe
+
+Extracted from **emitted JS** (comments stripped, so JSDoc cannot fake it) the ordered sequence of
+every `addAttribute` / `new Attribute` / `getAttribute` / `attribute()` / `getAttributeValue()` /
+`appendChild` / `insertChild` / `removeChild` / `detach` / `addElement` / `insertElement` / uuid
+call, per file, and diffed. **Every difference is a pure deletion; not one token is reordered.**
+Whole-dist multiset delta is four entries and all four are the dedup: `addAttribute(this.id)`
+**7 → 1**, `detach` **20 → 14**, `newAttribute('xml:id')` **37 → 31** (the seven `setId`/`getId`
+copies collapsing to one, and `AbstractXmlSubtree.js` gains *exactly* the 5-token block each donor
+lost), and `getAttrValFn('name.ref')` **10 → 6** (five style loops folded into `findStyleNameAt`,
++1 for the helper itself; `ArticulationMap` correctly keeps its own because it also reads
+`defaultArticulation`). Everything else in the dist is conserved exactly.
+
+### 5. Null-policy accounting — reconciles, no gap
+
+`eslint . -f json` on a `git archive` of the baseline and on the working tree: **1245 → 1083
+errors (−162), 5 → 2 warnings (−3)** — the worker's figures exactly. **Only two rules move**;
+`no-empty-function` 54, `no-explicit-any` 12, `no-extraneous-class` 1, `no-require-imports` 2,
+`no-unsafe-function-type` 2, `no-unused-vars` 54, `unified-signatures` 41 are all unchanged.
+§3 predicted −153 for N3 (154 sites, 1 paid back); measured exactly that. The remaining −9 is
+C3's uncounted bonus (−10: `DynamicsData` −5, `MovementData` −5) net of the one deliberate `!` in
+`Metadata.createMetadata`. **The one discrepancy I chased — three files gaining assertions where
+the log's summary accounts for two — is fully journaled in `lint-debt.md`, which records the two
+*moved* assertions explicitly. No unexplained gap.** All 12 remaining `no-explicit-any` are in
+`tests/`; `src/` is at zero for both `no-explicit-any` and `no-param-reassign`. The latter went to
+zero as a *byproduct* and I checked it is benign: `date = date - this.startDate` became
+`const offsetDate` inside `bezier.tForDate`, and `index` reassignment became a local in
+`resolveEntryIndex` — no semantics moved.
+
+### 6. Danger zones
+
+- **Rendering arithmetic.** Wrote my own bit-exact probe (`t16verify/bezier.mjs`): 10 000 cases
+  (144 deliberate edge combinations first, 15 % with null curvature/protraction), driving
+  `DynamicsData`/`MovementData` on both builds and comparing on raw IEEE-754 bits so `-0` and `0`
+  are distinct. **1 577 118 scalars compared, 0 mismatches.** Negative control — expanding
+  Horner's scheme in `bezierPoint`, the reassociation §4 warns about — **fires at 1 ulp within 146
+  cases**. Read the extraction line by line as well: `innerControlPointsXPositions`, `tForDate`,
+  `bezierPoint`, `sampleSegment` preserve operation order exactly, and endpoint handling and the
+  ×127 scale stayed in the callers as the C3 gate demands.
+- **RNG.** `RandomNumberProvider.ts` untouched; `RandomNumberProvider.js` and `KeyValue.js`
+  byte-identical. `ImprecisionMap`'s RNG call sequence is token-for-token unchanged
+  (`setSeed setSeed getValue×4 setInitialValue setInitialValue`), and it is absent from the
+  attribute/child-mutation diff entirely.
+- **UUID order.** 26 `uuidv4()` mint sites, **identical in content and order** (only line numbers
+  shift); no uuid token moved in any call sequence.
+- **AccentuationPatternDef bug.** `getAccentuationAt` differs from baseline by one erased `!` and
+  nothing else, and `AccentuationPatternDef.js` is **byte-identical emitted**. Bug intact.
+- **RULE C1a.** `TemporalSpread`/`DynamicsGradient` are standalone classes (no `extends`), keep
+  `if (this.xml === null) return this.generateXML();`, and `OrnamentDef.ts` imports rather than
+  re-exports them. The split is provably **verbatim**: comment-stripped emitted code-line multiset
+  of baseline `OrnamentDef.js` (355 lines) equals work `OrnamentDef.js + TemporalSpread.js +
+  DynamicsGradient.js` (355 lines), exactly.
+- **RULE C6 (KeyValue) — NOT DONE, and this is the item's one real scope shortfall.** §4/§8.6
+  assign C6 to T16; the worker deferred it to a T16b with a measurement (142 compile errors from
+  the first field alone; the blast radius reaches 24 lines across six `tests/integration/*.test.ts`
+  files, which charter invariant 3 gates; and a genuine aliasing hazard — `GenericMap.sort()`
+  mutates entries in place, so tuple callers would go stale). I verified the 8 mutating sites are
+  present and unchanged (`GenericMap.ts:190`, `ImprecisionMap.ts:545,582,588`,
+  `RubatoDef.ts:210,214,218,219`), `KeyValue.ts` is untouched, no *new* signature takes a
+  `KeyValue`, and none crosses the facade (RULE F6). **I judge the deferral legitimate rather than
+  a dodge** — it is journaled under its own heading with evidence, it identifies a clean seam, and
+  deferring leaves the tree in its proven state instead of making a risky change under time
+  pressure. **It does mean §8.6 is not fully discharged: the conductor should queue T16b.**
+  C4's optional half (`string | Element` overload pairs) is discretionary in the doc's own wording
+  and stays undone; `unified-signatures` is correspondingly flat at 41.
+
+### 7. Standard gate
+
+Manifest **exactly 4 `??` / 42 `M`** (37 src + 3 tests + 2 refactor), matching the worker's list.
+Independent `npm run verify` **exit 0**, both tsc stages present (`tsc`, `tsc -p
+tsconfig.tests.json`), **59 files / 2272 tests** — up from 58/2268, the +4 being the new
+`tests/xml/AbstractXmlSubtree.test.ts`, so charter 7c is satisfied by increase. The three
+redirected test files are **identical outside their import blocks** (1075 / 197 / 670 non-import
+lines, byte-equal); repo-wide `it(` 1948→1952, `expect(` 4236→4243, `describe(` 441→442, and
+`.skip`/`.only`/`.todo` all **0 → 0** — no assertion weakened anywhere. `tests/integration/**`
+and its fixtures: untouched, 136 fixture files. `vitest.config.ts`, both tsconfigs,
+`eslint.config.js`, `package.json`, prettier config: **unchanged**. No new suppressions (1 → 0
+repo-wide). `log.md` append-only (266 added, 0 deleted, prefix byte-identical); `lint-debt.md`
+updated and its ledger reconciles with my numbers, its 8 deleted lines being the headline table
+re-emitted with two new columns and every historical value preserved. `prettier --check` flags
+only `tests/midi/Midi.test.ts`, which is untouched by this item and **equally dirty at the
+baseline** (verified on the extracted tree). Coverage: **functions 931/983 = 94.7101 %** (floor
+94.0), **uncovered scoped statements 2179** (phase-2 budget 2318), statements 85.786 %.
+
+### Craft note for the next verifier
+
+My first comment-stripping instrument imported `typescript` from the scratchpad and could not
+resolve it; with stderr redirected it emitted **empty output for both sides and reported every one
+of 28 files as "comments-only"** — a textbook silent pass, and it briefly corroborated a claim it
+had not tested. Fixed by importing via an absolute `pathToFileURL` into the repo's
+`node_modules`, and by self-testing the instrument on a file *known* to differ before trusting a
+single result. Any probe whose failure mode is "empty == empty" needs that self-test.
+
+### Reusable artefacts (`t16verify/`)
+
+`dump.mjs <dist> <outDir>` — full-artifact byte dump, the strongest pipeline probe in the
+scratchpad; `bezier.mjs <distA> <distB> [N]` — bit-exact rendering-arithmetic differ with a
+control that fires; `callseq.mjs` / `attrseq.mjs <distA> <distB>` — ordered call-sequence and
+attribute-write-order differs over emitted JS (these two generalise to any future item touching
+serialization); `lintdelta.mjs` / `assertsites.mjs` — per-rule, per-file and per-site lint
+accounting; `strip.mjs` — comment-stripping re-emit, now self-testing. `base/` is the built
+baseline tree; `negctl/` the N3 negative-control tree.

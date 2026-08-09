@@ -60,7 +60,7 @@ export class Dated extends AbstractXmlSubtree {
     if (xml === null) throw new Error('Cannot generate Dated object. XML Element is null.');
     this.setXml(xml);
 
-    const maps = this.getXml()!.query(
+    const maps = this.getXml().query(
       "descendant::*[contains(local-name(), 'Map') or local-name()='score']",
     );
     for (let s = 0; s < maps.size(); ++s) {
@@ -79,7 +79,7 @@ export class Dated extends AbstractXmlSubtree {
     if (!type) return null;
     const generic = GenericMap.createGenericMap(type); // build the correctly named and namespaced map element
     if (generic === null) return null;
-    const m = GenericMap.createTypedMap(type, generic.getXml()!); // if the map is of a known type, generate the corresponding object type
+    const m = GenericMap.createTypedMap(type, generic.getXml()); // if the map is of a known type, generate the corresponding object type
     return this.addMap(m);
   }
 
@@ -98,11 +98,11 @@ export class Dated extends AbstractXmlSubtree {
 
     this.maps.set(map.getType(), map);
 
-    const parent = map.getXml()!.getParent();
-    if (parent === null) this.getXml()!.appendChild(map.getXml()!);
+    const parent = map.getXml().getParent();
+    if (parent === null) this.getXml().appendChild(map.getXml());
     else if (parent !== this.getXml()) {
-      map.getXml()!.detach();
-      this.getXml()!.appendChild(map.getXml()!);
+      map.getXml().detach();
+      this.getXml().appendChild(map.getXml());
     }
 
     return map;
@@ -112,18 +112,18 @@ export class Dated extends AbstractXmlSubtree {
     const m = this.maps.get(type);
     if (m !== undefined) {
       this.maps.delete(type);
-      this.getXml()!.removeChild(m.getXml()!);
+      this.getXml().removeChild(m.getXml());
     }
   }
 
   clear(): void {
-    this.getXml()!.removeChildren();
+    this.getXml().removeChildren();
     this.maps.clear();
   }
   getMap(type: string): GenericMap | null {
     return this.maps.get(type) ?? null;
   }
-  getAllMaps(): Map<string, GenericMap> {
+  getAllMaps(): ReadonlyMap<string, GenericMap> {
     return this.maps;
   }
 

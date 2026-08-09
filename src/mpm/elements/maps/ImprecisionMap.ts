@@ -62,7 +62,7 @@ export class ImprecisionMap extends GenericMap {
 
   protected parseData(xml: Element): void {
     super.parseData(xml);
-    const localname = this.getXml()!.getLocalName();
+    const localname = this.getXml().getLocalName();
     if (!localname.includes('imprecisionMap'))
       throw new Error(
         `Cannot generate ImprecisionMap object. Local name "${xml.getLocalName()}" must contain "imprecisionMap".`,
@@ -82,18 +82,18 @@ export class ImprecisionMap extends GenericMap {
   }
 
   getDomain(): string {
-    const parts = this.getXml()!.getLocalName().split('.');
+    const parts = this.getXml().getLocalName().split('.');
     return parts.length < 2 ? '' : parts[1];
   }
 
   /** `"Hertz"` is normalised to `"Hz"`; any other spelling is stored verbatim. */
   setDetuneUnit(unit: string): void {
     const value = unit === 'Hertz' ? 'Hz' : unit;
-    this.getXml()!.addAttribute(new Attribute('detuneUnit', value));
+    this.getXml().addAttribute(new Attribute('detuneUnit', value));
   }
 
   getDetuneUnit(): string {
-    return this.getXml()!.getAttributeValue('detuneUnit') ?? '';
+    return this.getXml().getAttributeValue('detuneUnit') ?? '';
   }
 
   addDistributionUniform(
@@ -204,8 +204,8 @@ export class ImprecisionMap extends GenericMap {
    * distribution.
    */
   getDistributionDataOf(index: number): DistributionData | null {
-    if (this.elements.length === 0 || index < 0) return null;
-    const i = index >= this.elements.length ? this.elements.length - 1 : index;
+    const i = this.clampEntryIndex(index);
+    if (i < 0) return null;
     const e = this.getElement(i);
     if (e !== null && e.getLocalName().startsWith('distribution.')) {
       const dd = new DistributionData(e);

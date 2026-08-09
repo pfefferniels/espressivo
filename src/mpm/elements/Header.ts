@@ -73,7 +73,7 @@ export class Header extends AbstractXmlSubtree {
     if (xml === null) throw new Error('Cannot generate Header object. XML Element is null.');
     this.setXml(xml);
 
-    const styles = this.getXml()!.query("descendant::*[contains(local-name(), 'Styles')]");
+    const styles = this.getXml().query("descendant::*[contains(local-name(), 'Styles')]");
     for (let s = 0; s < styles.size(); ++s) {
       this.addStyleType(styles.get(s) as Element);
     }
@@ -134,7 +134,7 @@ export class Header extends AbstractXmlSubtree {
     const parent = xml.getParent();
     if (parent === null || parent !== this.getXml()) {
       xml.detach();
-      this.getXml()!.appendChild(xml);
+      this.getXml().appendChild(xml);
     }
     this.styleDefs.set(type, styleDefsMap);
     return styleDefsMap;
@@ -142,8 +142,8 @@ export class Header extends AbstractXmlSubtree {
 
   removeStyleType(type: string): void {
     if (this.styleDefs.delete(type)) {
-      const typeElt = this.getXml()!.getFirstChildElement(type, MPM_NAMESPACE);
-      if (typeElt) this.getXml()!.removeChild(typeElt);
+      const typeElt = this.getXml().getFirstChildElement(type, MPM_NAMESPACE);
+      if (typeElt) this.getXml().removeChild(typeElt);
     }
   }
 
@@ -205,12 +205,12 @@ export class Header extends AbstractXmlSubtree {
     if (!type || styleDef === null) return;
     let styleCollection = this.styleDefs.get(type);
     if (styleCollection === undefined) {
-      this.getXml()!.appendChild(new Element(type, MPM_NAMESPACE));
+      this.getXml().appendChild(new Element(type, MPM_NAMESPACE));
       styleCollection = new Map();
       this.styleDefs.set(type, styleCollection);
     }
     if (styleCollection.has(styleDef.getName())) this.removeStyleDef(type, styleDef.getName());
-    this.getXml()!.getFirstChildElement(type, MPM_NAMESPACE)!.appendChild(styleDef.getXml()!);
+    this.getXml().getFirstChildElement(type, MPM_NAMESPACE)!.appendChild(styleDef.getXml());
     styleCollection.set(styleDef.getName(), styleDef);
   }
 
@@ -221,7 +221,7 @@ export class Header extends AbstractXmlSubtree {
     const styleDef = styleCollection.get(name);
     if (styleDef !== undefined) {
       styleCollection.delete(name);
-      this.getXml()!.getFirstChildElement(type, MPM_NAMESPACE)!.removeChild(styleDef.getXml()!);
+      this.getXml().getFirstChildElement(type, MPM_NAMESPACE)!.removeChild(styleDef.getXml());
     }
   }
 
@@ -246,14 +246,14 @@ export class Header extends AbstractXmlSubtree {
       return null;
     }
     allStyleDefs.delete(newName);
-    attribute('name', styleDef.getXml()!)!.setValue(newName);
+    attribute('name', styleDef.getXml())!.setValue(newName);
     allStyleDefs.delete(currentName);
     allStyleDefs.set(newName, styleDef);
     return styleDef;
   }
 
   clear(): void {
-    this.getXml()!.removeChildren();
+    this.getXml().removeChildren();
     this.styleDefs.clear();
   }
 }

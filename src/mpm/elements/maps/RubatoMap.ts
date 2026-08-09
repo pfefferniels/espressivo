@@ -1,5 +1,5 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { attribute, getAttributeValue } from '../../../xml/tree.js';
+import { attribute } from '../../../xml/tree.js';
 import { MPM_NAMESPACE, RUBATO_STYLE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
@@ -99,23 +99,16 @@ export class RubatoMap extends GenericMap {
    * degenerate transformation.
    */
   getRubatoDataOf(index: number): RubatoData | null {
-    if (this.elements.length === 0 || index < 0) return null;
-    const i = index >= this.elements.length ? this.elements.length - 1 : index;
+    const i = this.resolveEntryIndex(index, 'rubato');
+    if (i < 0) return null;
     const e = this.elements[i].getValue();
-    if (e.getLocalName() !== 'rubato') return null;
     const rd = new RubatoData();
     rd.startDate = this.elements[i].getKey();
     rd.endDate = this.getEndDate(i);
     rd.xml = e;
     const att = attribute('id', e);
     if (att !== null) rd.xmlId = att.getValue();
-    for (let j = i; j >= 0; --j) {
-      const s = this.elements[j].getValue();
-      if (s.getLocalName() === 'style') {
-        rd.styleName = getAttributeValue('name.ref', s);
-        break;
-      }
-    }
+    rd.styleName = this.findStyleNameAt(i) ?? rd.styleName;
     rd.style = this.getStyle(RUBATO_STYLE, rd.styleName) as RubatoStyle | null;
     if (rd.style !== null) {
       const nrAtt = attribute('name.ref', e);

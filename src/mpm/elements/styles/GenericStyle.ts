@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
-import { attribute } from '../../../xml/tree.js';
+import { allChildElements, attribute } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { AbstractDef } from './defs/AbstractDef.js';
 
@@ -23,7 +23,6 @@ import { AbstractDef } from './defs/AbstractDef.js';
  */
 export class GenericStyle<E extends AbstractDef = AbstractDef> extends AbstractXmlSubtree {
   private nameAttr!: Attribute;
-  protected id: Attribute | null = null;
   protected defs = new Map<string, E>();
 
   protected constructor() {
@@ -44,6 +43,23 @@ export class GenericStyle<E extends AbstractDef = AbstractDef> extends AbstractX
     this.setXml(xml);
     this.id = attribute('id', xml);
     this.defs = new Map();
+  }
+
+  /**
+   * Index the def children of one kind, which is all any subclass's `parseData` adds on
+   * top of this class's. Called after `super.parseData`, so {@link defs} is the fresh map
+   * that call installed.
+   *
+   * A def that fails to parse is skipped rather than fatal, so one malformed child cannot
+   * lose the whole style; and with two defs of the same name the LAST one wins, because
+   * they are inserted in document order.
+   */
+  protected parseDefs(xml: Element, childName: string, create: (def: Element) => E | null): void {
+    for (const def of allChildElements(xml, childName)) {
+      const d = create(def);
+      if (d === null) continue;
+      this.defs.set(d.getName(), d);
+    }
   }
 
   /**
@@ -78,28 +94,8 @@ export class GenericStyle<E extends AbstractDef = AbstractDef> extends AbstractX
     this.nameAttr.setValue(name);
   }
 
-  /** Set, replace or (with null) remove the `xml:id`, in the object and in the element. */
-  setId(id: string | null): void {
-    if (id === null) {
-      if (this.id !== null) {
-        this.id.detach();
-        this.id = null;
-      }
-      return;
-    }
-    if (this.id === null) {
-      this.id = new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id);
-      this.getXml()!.addAttribute(this.id);
-      return;
-    }
-    this.id.setValue(id);
-  }
-
-  getId(): string | null {
-    return this.id === null ? null : this.id.getValue();
-  }
-  /** The live lookup index, not a copy — mutating it desynchronises the style from its XML. */
-  getAllDefs(): Map<string, E> {
+  /** The live lookup index, not a copy — hence read-only; use {@link addDef}/{@link removeDef}. */
+  getAllDefs(): ReadonlyMap<string, E> {
     return this.defs;
   }
   getDef(name: string): E | undefined {
@@ -114,14 +110,14 @@ export class GenericStyle<E extends AbstractDef = AbstractDef> extends AbstractX
     }
     this.removeDef(def.getName());
     this.defs.set(def.getName(), def);
-    this.getXml()!.appendChild(def.getXml()!);
+    this.getXml().appendChild(def.getXml());
   }
 
   removeDef(name: string): void {
     const ad = this.defs.get(name);
     if (ad === undefined) return;
     this.defs.delete(name);
-    this.getXml()!.removeChild(ad.getXml()!);
+    this.getXml().removeChild(ad.getXml());
   }
 
   size(): number {

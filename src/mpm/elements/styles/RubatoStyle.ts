@@ -1,5 +1,4 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { allChildElements } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { GenericStyle } from './GenericStyle.js';
 import { RubatoDef } from './defs/RubatoDef.js';
@@ -33,13 +32,8 @@ export class RubatoStyle extends GenericStyle<RubatoDef> {
     }
   }
 
-  /** Defs that fail to parse are skipped, so one malformed child cannot lose the style. */
   protected parseData(xml: Element): void {
     super.parseData(xml);
-    for (const def of allChildElements(xml, 'rubatoDef')) {
-      const rd = RubatoDef.createRubatoDef(def);
-      if (rd === null) continue;
-      this.defs.set(rd.getName(), rd);
-    }
+    this.parseDefs(xml, 'rubatoDef', (def) => RubatoDef.createRubatoDef(def));
   }
 }

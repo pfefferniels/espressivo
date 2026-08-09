@@ -48,15 +48,20 @@ export class Metadata extends AbstractXmlSubtree {
   static createMetadata(author: Author): Metadata | null;
   static createMetadata(comment: Comment): Metadata | null;
   static createMetadata(relatedResources: RelatedResource[]): Metadata | null;
+  /**
+   * The resources may individually be null, because the callers build the array out of
+   * `RelatedResource.createRelatedResource` results and that factory reports failure with
+   * null. A null in the array is a caller error, and it stays one — see the loop below.
+   */
   static createMetadata(
     author: Author | null,
     comment: Comment | null,
-    relatedResources: RelatedResource[] | null,
+    relatedResources: readonly (RelatedResource | null)[] | null,
   ): Metadata | null;
   static createMetadata(
     arg1: Element | Author | Comment | RelatedResource[] | null,
     arg2?: Comment | null,
-    arg3?: RelatedResource[] | null,
+    arg3?: readonly (RelatedResource | null)[] | null,
   ): Metadata | null {
     try {
       const m = new Metadata();
@@ -67,7 +72,7 @@ export class Metadata extends AbstractXmlSubtree {
         if (arg1.length > 0) {
           const rrElt = new Element('relatedResources', MPM_NAMESPACE);
           metadata.appendChild(rrElt);
-          for (const r of arg1) rrElt.appendChild(r.getXml()!);
+          for (const r of arg1) rrElt.appendChild(r.getXml());
         }
         m.parseData(metadata);
       } else {
@@ -89,19 +94,23 @@ export class Metadata extends AbstractXmlSubtree {
           if (arg1 !== null && arg1 !== undefined) {
             if ('getName' in arg1 && 'getNumber' in arg1) {
               // It's an Author
-              metadata.appendChild((arg1 as Author).getXml()!);
+              metadata.appendChild((arg1 as Author).getXml());
             } else if ('getText' in arg1) {
               // It's a Comment
-              metadata.appendChild((arg1 as unknown as Comment).getXml()!);
+              metadata.appendChild((arg1 as unknown as Comment).getXml());
             }
           }
         } else {
-          if (author !== null && author !== undefined) metadata.appendChild(author.getXml()!);
-          if (comment !== null && comment !== undefined) metadata.appendChild(comment.getXml()!);
+          if (author !== null && author !== undefined) metadata.appendChild(author.getXml());
+          if (comment !== null && comment !== undefined) metadata.appendChild(comment.getXml());
           if (relatedResources !== null && relatedResources.length > 0) {
             const rrElt = new Element('relatedResources', MPM_NAMESPACE);
             metadata.appendChild(rrElt);
-            for (const r of relatedResources) rrElt.appendChild(r.getXml()!);
+            // `!` deliberately kept: a null here throws, the enclosing `try` logs it and
+            // this factory returns null. That is the pre-existing behaviour for a caller
+            // that passes a failed `createRelatedResource` result, and it is preserved
+            // rather than repaired — a guard here would silently accept the bad array.
+            for (const r of relatedResources) rrElt.appendChild(r!.getXml());
           }
         }
         m.parseData(metadata);
@@ -125,7 +134,7 @@ export class Metadata extends AbstractXmlSubtree {
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate Metadata object. XML Element is null.');
     this.setXml(xml);
-    const children = this.getXml()!.getChildElements();
+    const children = this.getXml().getChildElements();
     for (let i = 0; i < children.size(); ++i) {
       const child = children.get(i);
       switch (child.getLocalName()) {
@@ -155,7 +164,7 @@ export class Metadata extends AbstractXmlSubtree {
 
   addAuthor(author: Author): number {
     if (author === null) return -1;
-    this.getXml()!.appendChild(author.getXml()!);
+    this.getXml().appendChild(author.getXml());
     this.authors.push(author);
     return this.authors.length - 1;
   }
@@ -171,7 +180,7 @@ export class Metadata extends AbstractXmlSubtree {
   removeAuthorByName(name: string): void {
     const auts = this.getAuthorByName(name);
     for (const aut of auts) {
-      this.getXml()!.removeChild(aut.getXml()!);
+      this.getXml().removeChild(aut.getXml());
       const idx = this.authors.indexOf(aut);
       if (idx !== -1) this.authors.splice(idx, 1);
     }
@@ -179,14 +188,14 @@ export class Metadata extends AbstractXmlSubtree {
   removeAuthor(author: Author): void {
     const idx = this.authors.indexOf(author);
     if (idx !== -1) {
-      this.getXml()!.removeChild(author.getXml()!);
+      this.getXml().removeChild(author.getXml());
       this.authors.splice(idx, 1);
     }
   }
 
   addComment(comment: Comment): number {
     if (comment === null) return -1;
-    this.getXml()!.appendChild(comment.getXml()!);
+    this.getXml().appendChild(comment.getXml());
     this.comments.push(comment);
     return this.comments.length - 1;
   }
@@ -198,13 +207,13 @@ export class Metadata extends AbstractXmlSubtree {
   }
   removeCommentByIndex(index: number): void {
     const c = this.getComment(index);
-    this.getXml()!.removeChild(c.getXml()!);
+    this.getXml().removeChild(c.getXml());
     this.comments.splice(index, 1);
   }
   removeComment(comment: Comment): void {
     const idx = this.comments.indexOf(comment);
     if (idx !== -1) {
-      this.getXml()!.removeChild(comment.getXml()!);
+      this.getXml().removeChild(comment.getXml());
       this.comments.splice(idx, 1);
     }
   }
@@ -214,14 +223,15 @@ export class Metadata extends AbstractXmlSubtree {
    * this creates on demand — and {@link removeRelatedResource} deletes again once it is
    * empty, so the container never lingers without children.
    */
-  addRelatedResource(relatedResource: RelatedResource): number {
+  /** Null is accepted and ignored — the guard below has always said so; now the type does. */
+  addRelatedResource(relatedResource: RelatedResource | null): number {
     if (relatedResource === null) return -1;
-    let rrElt = firstChildElement('relatedResources', this.getXml()!);
+    let rrElt = firstChildElement('relatedResources', this.getXml());
     if (rrElt === null) {
       rrElt = new Element('relatedResources', MPM_NAMESPACE);
-      this.getXml()!.appendChild(rrElt);
+      this.getXml().appendChild(rrElt);
     }
-    rrElt.appendChild(relatedResource.getXml()!);
+    rrElt.appendChild(relatedResource.getXml());
     this.relatedResources.push(relatedResource);
     return this.relatedResources.length - 1;
   }
@@ -236,11 +246,11 @@ export class Metadata extends AbstractXmlSubtree {
   }
   removeRelatedResource(relatedResource: RelatedResource | null): void {
     if (relatedResource === null) return;
-    const rrElt = firstChildElement('relatedResources', this.getXml()!);
+    const rrElt = firstChildElement('relatedResources', this.getXml());
     if (rrElt === null) return;
-    rrElt.removeChild(relatedResource.getXml()!);
+    rrElt.removeChild(relatedResource.getXml());
     const idx = this.relatedResources.indexOf(relatedResource);
     if (idx !== -1) this.relatedResources.splice(idx, 1);
-    if (rrElt.getChildCount() === 0) this.getXml()!.removeChild(rrElt);
+    if (rrElt.getChildCount() === 0) this.getXml().removeChild(rrElt);
   }
 }

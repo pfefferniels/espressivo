@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import { OrnamentDef } from '../../../../../src/mpm/elements/styles/defs/OrnamentDef.js';
+import { DynamicsGradient } from '../../../../../src/mpm/elements/styles/defs/DynamicsGradient.js';
 import {
-  OrnamentDef,
   TemporalSpread,
-  DynamicsGradient,
   FrameDomain,
   NoteOffShift,
-} from '../../../../../src/mpm/elements/styles/defs/OrnamentDef.js';
+} from '../../../../../src/mpm/elements/styles/defs/TemporalSpread.js';
 import { Element, Attribute } from '../../../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../../../src/mpm/Mpm.js';
 

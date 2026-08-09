@@ -1,4 +1,4 @@
-import { Attribute, Element, Text } from '../../../xml/XomTypes.js';
+import { Element, Text } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
@@ -13,7 +13,6 @@ import { MPM_NAMESPACE } from '../../names.js';
  */
 export class Comment extends AbstractXmlSubtree {
   private text: Text | null = null;
-  private id: Attribute | null = null;
 
   private constructor() {
     super();
@@ -64,25 +63,5 @@ export class Comment extends AbstractXmlSubtree {
   }
   getText(): string {
     return this.text!.getValue();
-  }
-
-  setId(id: string | null): void {
-    if (id === null) {
-      if (this.id !== null) {
-        this.id.detach();
-        this.id = null;
-      }
-      return;
-    }
-    if (this.id === null) {
-      this.id = new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id);
-      this.getXml()!.addAttribute(this.id);
-      return;
-    }
-    this.id.setValue(id);
-  }
-
-  getId(): string | null {
-    return this.id === null ? null : this.id.getValue();
   }
 }

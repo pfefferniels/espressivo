@@ -68,7 +68,7 @@ export class DynamicsDef extends AbstractDef {
 
   setValue(value: number): void {
     this.value = value;
-    this.getXml()!.getAttribute('value')!.setValue(String(value));
+    this.getXml().getAttribute('value')!.setValue(String(value));
   }
 
   static createDefaultDynamicsDef(name: string): DynamicsDef | null {

@@ -1,5 +1,6 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import type { Normalized } from '../../../../units.js';
+import { bezierPoint, innerControlPointsXPositions, sampleSegment, tForDate } from './bezier.js';
 
 /**
  * All data needed to compute a continuous controller movement (pedal, and anything
@@ -85,60 +86,24 @@ export class MovementData {
   }
 
   /**
-   * Byte-for-byte the same computation as
-   * {@link DynamicsData.computeInnerControlPointsXPositions}, including the in-place
-   * defaulting of null `curvature`/`protraction` to 0.0. Kept duplicated rather than
-   * shared because the two classes are independent ports; unifying them is a
-   * model-layer decision (T16), not a local idiom.
+   * Cache the x-positions of the Bézier's two inner control points in `x1`/`x2`, and
+   * default null `curvature`/`protraction` to 0.0 in place on the way — see the note on
+   * {@link DynamicsData.computeInnerControlPointsXPositions}, which this mirrors exactly.
    */
   private computeInnerControlPointsXPositions(): void {
     if (this.curvature === null) this.curvature = 0.0;
     if (this.protraction === null) this.protraction = 0.0;
 
-    if (this.protraction === 0.0) {
-      this.x1 = this.curvature;
-      this.x2 = 1.0 - this.curvature;
-      return;
-    }
-
-    this.x1 =
-      this.curvature +
-      ((Math.abs(this.protraction) + this.protraction) / (2.0 * this.protraction) -
-        (Math.abs(this.protraction) / this.protraction) * this.curvature) *
-        this.protraction;
-    this.x2 =
-      1.0 -
-      this.curvature +
-      ((this.protraction - Math.abs(this.protraction)) / (2.0 * this.protraction) +
-        (Math.abs(this.protraction) / this.protraction) * this.curvature) *
-        this.protraction;
+    [this.x1, this.x2] = innerControlPointsXPositions(this.curvature, this.protraction);
   }
 
-  /**
-   * Invert the Bézier's x-component to find the curve parameter `t` for `date`.
-   * Identical in form and in floating-point behaviour to
-   * {@link DynamicsData.getTForDate} — see the note there. RENDERING MATH: Horner's
-   * scheme, evaluation order load-bearing, do not expand or reassociate.
-   */
+  /** Invert the Bézier's x-component to find the curve parameter `t` for `date`. */
   private getTForDate(date: number): number {
     if (date === this.startDate) return 0.0;
     if (date === this.endDate) return 1.0;
     if (this.x1 === null) this.computeInnerControlPointsXPositions();
 
-    const s = this.endDate! - this.startDate;
-    date = date - this.startDate;
-    const u = 3.0 * this.x1! - 3.0 * this.x2! + 1.0;
-    const v = -6.0 * this.x1! + 3.0 * this.x2!;
-    const w = 3.0 * this.x1!;
-
-    let t = 0.5;
-    let diffX = ((u * t + v) * t + w) * t * s - date;
-    for (let tt = 0.25; Math.abs(diffX) >= 1.0; tt *= 0.5) {
-      if (diffX > 0.0) t -= tt;
-      else t += tt;
-      diffX = ((u * t + v) * t + w) * t * s - date;
-    }
-    return t;
+    return tForDate(this.x1!, this.x2!, this.startDate, this.endDate!, date);
   }
 
   getPositionAt(date: number): number {
@@ -153,21 +118,19 @@ export class MovementData {
     return (3.0 - 2.0 * t) * t * t * (this.transitionTo! - this.position!) + this.position!;
   }
 
+  /** A constant movement has no curve to evaluate: every `t` yields the start point. */
   private getDatePosition(t: number): number[] {
     if (this.transitionTo === null) return [this.startDate, this.position!];
 
-    const result = [0.0, 0.0];
-    const x1_3 = 3.0 * this.x1!;
-    const x2_3 = 3.0 * this.x2!;
-    const u = x1_3 - x2_3 + 1.0;
-    const v = -6.0 * this.x1! + x2_3;
-    const frameStart = this.startDate;
-    const frameLength = this.endDate! - this.startDate;
-
-    result[0] = ((u * t + v) * t + x1_3) * t * frameLength + frameStart;
-    result[1] = (3.0 - 2.0 * t) * t * t * (this.transitionTo - this.position!) + this.position!;
-
-    return result;
+    return bezierPoint(
+      this.x1!,
+      this.x2!,
+      this.startDate,
+      this.endDate!,
+      this.position!,
+      this.transitionTo,
+      t,
+    );
   }
 
   /**
@@ -192,18 +155,7 @@ export class MovementData {
   getMovementSegment(maxStepSize: Normalized): number[][] {
     if (this.x1 === null) this.computeInnerControlPointsXPositions();
 
-    const ts: number[] = [0.0, 1.0];
-    const series: number[][] = [];
-    series.push(this.getDatePosition(0.0));
-    series.push(this.getDatePosition(1.0));
-
-    for (let i = 0; i < ts.length - 1; ++i) {
-      while (Math.abs(series[i + 1][1] - series[i][1]) > maxStepSize) {
-        const t = (ts[i] + ts[i + 1]) * 0.5;
-        ts.splice(i + 1, 0, t);
-        series.splice(i + 1, 0, this.getDatePosition(t));
-      }
-    }
+    const series = sampleSegment(maxStepSize, (t) => this.getDatePosition(t));
 
     const beginning: number[] = [this.startDate, this.position!];
     series.unshift(beginning);

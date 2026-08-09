@@ -26,7 +26,6 @@ export class Part extends AbstractXmlSubtree {
   private number = 0;
   private midiChannel = 0;
   private midiPort = 0;
-  private id: Attribute | null = null;
 
   private constructor() {
     super();
@@ -109,20 +108,20 @@ export class Part extends AbstractXmlSubtree {
     this.number = parseInt(numberAttr.getValue());
     this.midiChannel = parseInt(midiChannelAtt.getValue());
     this.midiPort = parseInt(midiPortAtt.getValue());
-    this.id = attribute('id', this.getXml()!);
+    this.id = attribute('id', this.getXml());
 
-    const headerElt = firstChildElement('header', this.getXml()!);
+    const headerElt = firstChildElement('header', this.getXml());
     if (headerElt === null) {
       this.header = Header.createHeader()!;
-      this.getXml()!.appendChild(this.header.getXml()!);
+      this.getXml().appendChild(this.header.getXml());
     } else {
       this.header = Header.createHeader(headerElt);
     }
 
-    const datedElt = firstChildElement('dated', this.getXml()!);
+    const datedElt = firstChildElement('dated', this.getXml());
     if (datedElt === null) {
       this.dated = Dated.createDated()!;
-      this.getXml()!.appendChild(this.dated.getXml()!);
+      this.getXml().appendChild(this.dated.getXml());
     } else {
       this.dated = Dated.createDated(datedElt);
     }
@@ -149,21 +148,21 @@ export class Part extends AbstractXmlSubtree {
   }
   setNumber(number: number): void {
     this.number = number;
-    attribute('number', this.getXml()!)!.setValue(String(this.number));
+    attribute('number', this.getXml())!.setValue(String(this.number));
   }
   getMidiChannel(): number {
     return this.midiChannel;
   }
   setMidiChannel(midiChannel: number): void {
     this.midiChannel = midiChannel;
-    attribute('midi.channel', this.getXml()!)!.setValue(String(this.midiChannel));
+    attribute('midi.channel', this.getXml())!.setValue(String(this.midiChannel));
   }
   getMidiPort(): number {
     return this.midiPort;
   }
   setMidiPort(midiPort: number): void {
     this.midiPort = midiPort;
-    attribute('midi.port', this.getXml()!)!.setValue(String(this.midiPort));
+    attribute('midi.port', this.getXml())!.setValue(String(this.midiPort));
   }
   setGlobal(global: Global | null): void {
     this.global = global;
@@ -171,24 +170,5 @@ export class Part extends AbstractXmlSubtree {
   }
   getGlobal(): Global | null {
     return this.global;
-  }
-
-  setId(id: string | null): void {
-    if (id === null) {
-      if (this.id !== null) {
-        this.id.detach();
-        this.id = null;
-      }
-      return;
-    }
-    if (this.id === null) {
-      this.id = new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id);
-      this.getXml()!.addAttribute(this.id);
-      return;
-    }
-    this.id.setValue(id);
-  }
-  getId(): string | null {
-    return this.id === null ? null : this.id.getValue();
   }
 }

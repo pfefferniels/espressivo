@@ -1,5 +1,4 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { allChildElements } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { GenericStyle } from './GenericStyle.js';
 import { AccentuationPatternDef } from './defs/AccentuationPatternDef.js';
@@ -39,13 +38,10 @@ export class MetricalAccentuationStyle extends GenericStyle<AccentuationPatternD
     }
   }
 
-  /** Defs that fail to parse are skipped, so one malformed child cannot lose the style. */
   protected parseData(xml: Element): void {
     super.parseData(xml);
-    for (const maDef of allChildElements(xml, 'accentuationPatternDef')) {
-      const apd = AccentuationPatternDef.createAccentuationPatternDef(maDef);
-      if (apd === null) continue;
-      this.defs.set(apd.getName(), apd);
-    }
+    this.parseDefs(xml, 'accentuationPatternDef', (def) =>
+      AccentuationPatternDef.createAccentuationPatternDef(def),
+    );
   }
 }

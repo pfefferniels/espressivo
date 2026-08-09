@@ -1,5 +1,4 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { allChildElements } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { GenericStyle } from './GenericStyle.js';
 import { OrnamentDef } from './defs/OrnamentDef.js';
@@ -36,13 +35,8 @@ export class OrnamentationStyle extends GenericStyle<OrnamentDef> {
     }
   }
 
-  /** Defs that fail to parse are skipped, so one malformed child cannot lose the style. */
   protected parseData(xml: Element): void {
     super.parseData(xml);
-    for (const def of allChildElements(xml, 'ornamentDef')) {
-      const od = OrnamentDef.createOrnamentDef(def);
-      if (od === null) continue;
-      this.defs.set(od.getName(), od);
-    }
+    this.parseDefs(xml, 'ornamentDef', (def) => OrnamentDef.createOrnamentDef(def));
   }
 }

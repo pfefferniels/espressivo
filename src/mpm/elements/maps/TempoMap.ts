@@ -111,10 +111,9 @@ export class TempoMap extends GenericMap {
    * ramp (0.5 / exponent 1.0).
    */
   getTempoDataOf(index: number): TempoData | null {
-    if (this.elements.length === 0 || index < 0) return null;
-    const i = index >= this.elements.length ? this.elements.length - 1 : index;
-    const e = this.elements[i].getValue();
-    if (e.getLocalName() === 'tempo') {
+    const i = this.resolveEntryIndex(index, 'tempo');
+    if (i >= 0) {
+      const e = this.elements[i].getValue();
       const td = new TempoData();
       const bpmAtt = attribute('bpm', e);
       if (bpmAtt === null) return null;
@@ -126,13 +125,7 @@ export class TempoMap extends GenericMap {
       td.beatLength = parseFloat(beatLengthAtt.getValue());
       const att = attribute('id', e);
       if (att !== null) td.xmlId = att.getValue();
-      for (let j = i; j >= 0; --j) {
-        const s = this.elements[j].getValue();
-        if (s.getLocalName() === 'style') {
-          td.styleName = getAttributeValue('name.ref', s);
-          break;
-        }
-      }
+      td.styleName = this.findStyleNameAt(i) ?? td.styleName;
       const gStyle = this.getStyle(TEMPO_STYLE, td.styleName) as TempoStyle | null;
       if (gStyle !== null) td.style = gStyle;
       td.bpmString = bpmAtt.getValue();
