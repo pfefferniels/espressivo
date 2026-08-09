@@ -1111,3 +1111,13 @@ called out to the W5 verifier explicitly. All three new attrs are v3-only output
 (byte gates unaffected). Determinism note for the record: expansion and rendering
 draw NO random values; the only nondeterminism on generated notes is the meico_<uuid>
 id scheme (pre-existing, canonicalized by tests); provenance attrs are id-independent.
+
+## 2026-08-09 — Conductor: D10/D15 addendum — ornament.anchor (MLign join guarantee)
+
+MLign needs (score position, performed time) pairs for GENERATED notes. The
+transitive join generated→principal→score breaks in one corner: when note.order
+never references the principal and no leftover survives, the original principal id
+vanishes from the note list. RULING: every generated note additionally carries
+ornament.anchor="<original principal note id>" (the score-side anchor), making the
+join total; W7 exposes it as PerformedNote.ornamentAnchor (string|null). No-principal
+ornaments (D7 step 3) carry no anchor (null). Journaled before amending W5.
