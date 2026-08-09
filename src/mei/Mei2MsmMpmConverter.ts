@@ -14,6 +14,11 @@ import {
   parentElement,
 } from '../xml/tree.js';
 import { Mei } from './Mei.js';
+import {
+  buildOrnamentData,
+  createMeiOrnamentDef,
+  resolveOrnamentSign,
+} from './MeiOrnamentExpander.js';
 import { VERSION } from '../version.js';
 import { KeyValue } from '../supplementary/KeyValue.js';
 import { Goto } from '../msm/Goto.js';
@@ -137,6 +142,23 @@ export class Mei2MsmMpmConverter {
   /** Both are constructor options and neither is touched again — RULE I4, `prefer-readonly`. */
   private readonly ignoreExpansions: boolean = false;
   private readonly cleanup: boolean = true;
+  /**
+   * Whether `<trill>`, `<mordent>` and `<turn>` are expanded into MPM ornaments
+   * ({@link MeiOrnamentExpander}). **Defaults to false, and that default is load-bearing.**
+   *
+   * Expansion authors MPM the Java reference does not author, so a converter that expanded by
+   * default would change the output of every fixture carrying an ornament sign and break the
+   * MEI equivalence suites against their Java references. The layering that avoids this is the
+   * reference's own: in Java the expansion is a pre-pass in `Mei.exportMsmMpm`, and
+   * `new Mei2MsmMpmConverter(…).convert(mei)` — which is what those suites call, and what
+   * `Mei.exportMsmMpm` throws in favour of here (see {@link Mei.exportMsmMpm}) — never expands.
+   *
+   * The facade turns it on: `convertMeiToMsmMpm` passes `ConvertOptions.expandOrnaments ?? true`,
+   * mirroring PR #32's `ignoreOrnaments` CLI flag, whose default is likewise "expansion on".
+   * So the *product* expands by default and the *parity harness* does not, which is the split
+   * the two callers want.
+   */
+  private readonly expandOrnaments: boolean = false;
 
   /** the tick grid; raised during {@link convertMei} if the source needs finer resolution */
   protected ppq = 720;
@@ -177,17 +199,25 @@ export class Mei2MsmMpmConverter {
   /**
    * constructor with fully specified settings
    */
-  constructor(ppq: number, dontUseChannel10: boolean, ignoreExpansions: boolean, cleanup: boolean);
+  constructor(
+    ppq: number,
+    dontUseChannel10: boolean,
+    ignoreExpansions: boolean,
+    cleanup: boolean,
+    expandOrnaments?: boolean,
+  );
   constructor(
     ppq: number,
     dontUseChannel10?: boolean,
     ignoreExpansions?: boolean,
     cleanup?: boolean,
+    expandOrnaments?: boolean,
   ) {
     this.ppq = ppq;
     this.dontUseChannel10 = dontUseChannel10 ?? true;
     this.ignoreExpansions = ignoreExpansions ?? false;
     this.cleanup = cleanup ?? true;
+    this.expandOrnaments = expandOrnaments ?? false;
   }
 
   /**
@@ -318,9 +348,13 @@ export class Mei2MsmMpmConverter {
    * `reg`, `sic`, `subst`, `supplied` and `unclear` are descended into (their content is
    * music), while `abbr`, `damage` and `gap` are skipped.
    *
-   * `trill`, `mordent` and `turn` are deliberately `IGNORE`: meico does not read ornaments
-   * from MEI (Java carries a TODO saying so). MPM ornamentation reaches the output through
-   * `arpeg` and through MPM styles, not through these.
+   * `trill`, `mordent` and `turn` route to {@link processOrnamentSign}, which expands them
+   * into MPM v3 ornaments — but only when {@link expandOrnaments} is on, and it is off by
+   * default. Upstream meico ignores all three (its Java carries a TODO saying so), so with the
+   * flag off this dispatch behaves exactly as `IGNORE` did and the MEI equivalence suites keep
+   * comparing against their Java references. See {@link expandOrnaments} for why the default
+   * lives here rather than at the facade. `arpeg` is untouched by any of this: it keeps its own
+   * v2 path through {@link processArpeg} (DESIGN.md D6).
    *
    * **The null prototype is load-bearing, not a style choice.** On a plain object literal the
    * lookup below inherits from `Object.prototype`, so an element named `valueOf`,
@@ -464,7 +498,10 @@ export class Mei2MsmMpmConverter {
       },
       meterSigGrp: DESCEND,
       midi: IGNORE,
-      mordent: IGNORE,
+      mordent: (c, e) => {
+        c.processOrnamentSign(e);
+        return 'done';
+      },
       mRest: (c, e) => {
         c.processMeasureRest(e);
         return 'done';
@@ -585,7 +622,10 @@ export class Mei2MsmMpmConverter {
         return 'done';
       },
       timeline: IGNORE,
-      trill: IGNORE,
+      trill: (c, e) => {
+        c.processOrnamentSign(e);
+        return 'done';
+      },
       tuplet: (c, e) => {
         if (c.processTuplet(e)) return 'done';
         return 'descend';
@@ -594,7 +634,10 @@ export class Mei2MsmMpmConverter {
         c.processTupletSpan(e);
         return 'done';
       },
-      turn: IGNORE,
+      turn: (c, e) => {
+        c.processOrnamentSign(e);
+        return 'done';
+      },
       unclear: DESCEND,
       uneume: IGNORE,
       verse: DESCEND,
@@ -2270,6 +2313,111 @@ export class Mei2MsmMpmConverter {
 
         multiIDs = true;
       }
+    }
+  }
+
+  /**
+   * Expand one `<trill>`, `<mordent>` or `<turn>` into an MPM v3 ornament (DESIGN.md D17).
+   *
+   * A no-op unless {@link expandOrnaments} is on — see that field for why it is off by default.
+   *
+   * The shape of this method is {@link processArpeg}'s, deliberately: an ornament sign and an
+   * arpeggio need the same three things — a date from {@link computeControlEventTiming}, an
+   * `ornamentDef` in a global `"MEI export"` style, and an `ornamentationMap` on each part the
+   * event applies to, created on demand with a style switch at date 0. Following the existing
+   * method keeps one idiom for authoring MPM out of MEI. What differs is *what* is authored:
+   * {@link buildOrnamentData} produces a v3 ornament with a note pool and a `note.order`, where
+   * an arpeggio produces a v2 one with neither.
+   *
+   * `processArpeg`'s multi-staff handling is reproduced, including the `_meico_<uuid>` suffix
+   * that keeps ids unique when one sign applies to several staves; its arpeggio-specific
+   * pitch-sorting postprocessing has no counterpart here, because a dictionary sequence already
+   * fixes the playing order.
+   */
+  private processOrnamentSign(sign: Element): void {
+    if (!this.expandOrnaments) return;
+
+    const resolved = resolveOrnamentSign(sign);
+    if (resolved === null) return;
+
+    // The principal must be a note of this movement. `computeControlEventTiming` below would
+    // also fail to find it, but silently and by a different route (it would fall through to a
+    // tstamp of null and date the ornament at the part's current position), so the reference is
+    // checked explicitly and the ornament dropped with a message that names the missing id.
+    if (!this.allNotesAndChords.has(resolved.principalId)) {
+      console.error(
+        `Warning: ${sign.toXML()} names no note of this movement in its startid; the ornament is skipped.`,
+      );
+      return;
+    }
+
+    // Null means the event carried a startid but no tstamp and has just been moved next to its
+    // principal note; the walk will reach it again there, where the date resolves. Same contract
+    // as processArpeg.
+    const timingData = this.computeControlEventTiming(sign, this.currentPart);
+    if (timingData === null) return;
+
+    const idAtt = attribute('id', sign);
+    const idBase = idAtt === null ? `meico_${uuidv4()}` : idAtt.getValue();
+    const date = timingData[0];
+
+    // make sure that the ornament is defined in a global ornamentation style
+    let ornamentationStyle = this.currentPerformance!.getGlobal()!
+      .getHeader()!
+      .getStyleDef(Mpm.ORNAMENTATION_STYLE, 'MEI export') as OrnamentationStyle | null;
+    if (ornamentationStyle === null)
+      ornamentationStyle = this.currentPerformance!.getGlobal()!
+        .getHeader()!
+        .addStyleDef(Mpm.ORNAMENTATION_STYLE, 'MEI export') as OrnamentationStyle | null;
+    if (ornamentationStyle!.getDef(resolved.defName) === undefined) {
+      const def = createMeiOrnamentDef(resolved.defName);
+      if (def !== null) ornamentationStyle!.addDef(def);
+    }
+
+    // parse the staff attribute
+    let ornamentationMap: OrnamentationMap | null;
+    let att = sign.getAttribute('part');
+    if (att === null) att = sign.getAttribute('staff');
+    if (att === null || att.getValue() === '' || att.getValue() === '%all') {
+      ornamentationMap = this.currentPerformance!.getGlobal()!
+        .getDated()!
+        .getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
+      if (ornamentationMap === null) {
+        ornamentationMap = this.currentPerformance!.getGlobal()!
+          .getDated()!
+          .addMap(OrnamentationMap.createOrnamentationMap()) as OrnamentationMap;
+        ornamentationMap.addStyleSwitch(0.0, 'MEI export');
+      }
+      ornamentationMap.addOrnamentFromData(
+        buildOrnamentData(resolved.shape, resolved.defName, resolved.principalId, date, idBase),
+      );
+      return;
+    }
+
+    let multiIDs = false;
+    for (const staff of att.getValue().split(/\s+/)) {
+      const part = this.currentPerformance!.getPart(parseInt(staff));
+      if (part === null) continue;
+
+      ornamentationMap = part.getDated()!.getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
+      if (ornamentationMap === null) {
+        ornamentationMap = part
+          .getDated()!
+          .addMap(OrnamentationMap.createOrnamentationMap()) as OrnamentationMap;
+        ornamentationMap.addStyleSwitch(0.0, 'MEI export');
+      }
+
+      // Built per part rather than cloned from one shared object. Cloning would carry the pool
+      // notes' `xml:id`s along with it, so a sign naming two staves would emit `<note
+      // xml:id="tr1_n0">` twice in one MPM. Deriving the whole ornament from a per-part id stem
+      // keeps every generated id unique. The stem itself follows processArpeg's `_meico_<uuid>`
+      // convention for the second and later staves, so the first staff keeps the readable id.
+      const stem = multiIDs ? `${idBase}_meico_${uuidv4()}` : idBase;
+      ornamentationMap.addOrnamentFromData(
+        buildOrnamentData(resolved.shape, resolved.defName, resolved.principalId, date, stem),
+      );
+
+      multiIDs = true;
     }
   }
 

@@ -141,6 +141,14 @@ function checkConvertOptions(options: ConvertOptions | undefined): void {
     throw new InvalidOptionError(
       'sourceName must be a non-empty name; omit it for the file-less variant',
     );
+
+  // Checked rather than coerced, for the same reason as the render-side flag next door: a
+  // falsy-but-not-false value from an untyped caller would read as "expand" and silently author
+  // ornaments the caller meant to suppress.
+  if (options.expandOrnaments !== undefined && typeof options.expandOrnaments !== 'boolean')
+    throw new InvalidOptionError(
+      `expandOrnaments must be a boolean, got ${String(options.expandOrnaments)}`,
+    );
 }
 
 function checkPerformOptions(options: PerformOptions | undefined): void {
@@ -453,6 +461,12 @@ export function convertMeiToMsmMpm(
     options?.dontUseChannel10 ?? true,
     options?.ignoreExpansions ?? false,
     options?.cleanup ?? true,
+    // Defaulted to true HERE and to false in the converter, deliberately. The facade is this
+    // library's product surface and mirrors PR #32's CLI, where expansion is on unless
+    // `--ignore-ornaments` says otherwise; the converter's own default keeps the direct
+    // `new Mei2MsmMpmConverter(…).convert(…)` path — the one the MEI equivalence suites drive,
+    // and the one Java's converter corresponds to — free of MPM the Java reference never wrote.
+    options?.expandOrnaments ?? true,
   );
   const converted = converter.convert(document);
   const msms = converted.getKey();

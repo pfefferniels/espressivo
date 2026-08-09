@@ -48,6 +48,28 @@ export interface ConvertOptions {
    * file-less variant of both, byte for byte.
    */
   readonly sourceName?: string;
+  /**
+   * Whether MEI ornament signs become MPM ornaments. Default true.
+   *
+   * `<trill>`, `<mordent>` and `<turn>` are signs: they mark that an ornament is played without
+   * writing its notes. With this on, each one is expanded into an MPM `<ornament>` carrying the
+   * notes it plays, plus the `<ornamentDef>` describing its shape in time, in an `"MEI export"`
+   * style — see `src/mei/MeiOrnamentExpander.ts`. With `false` the three elements are ignored,
+   * which is what upstream meico does and what the MPM in this library's Java-reference fixtures
+   * contains.
+   *
+   * `<arpeg>` is **not** governed by this flag. It has always been converted, into a v2 ornament,
+   * and stays converted whatever this is set to.
+   *
+   * NOT THE SAME FLAG as {@link PerformOptions.expandOrnaments}, despite the shared name — they
+   * act at different stages and compose. This one decides whether ornaments are ever *written
+   * into the MPM* by a conversion; that one decides whether the ornaments already in an MPM
+   * *generate their notes* during rendering. Turning this off leaves nothing for the renderer to
+   * expand, and it also silences ornaments authored by hand in the MPM. Turning that one off
+   * keeps the ornaments in the MPM document — a consumer still reads them — but performs the
+   * score without them.
+   */
+  readonly expandOrnaments?: boolean;
 }
 
 /** One `mdiv` of the source: the score and the performance instructions for it. */

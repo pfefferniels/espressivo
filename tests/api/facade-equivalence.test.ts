@@ -62,7 +62,31 @@ function structure(xml: string): string {
     .join(',')}`;
 }
 
-const hex = (bytes: Uint8Array) => Buffer.from(bytes).toString('hex');
+/**
+ * The same quotient as {@link canonicalise}, taken over MIDI bytes instead of XML.
+ *
+ * meico writes each note's `xml:id` into the track as a text meta event, so a note that got a
+ * generated `meico_<uuid>` id puts that uuid in the byte stream — and a v3 ornament's generated
+ * notes get exactly those (DESIGN.md D10; the same nondeterminism W6 canonicalises in
+ * `tests/integration/ornamentation-v3.test.ts`). Two runs of the same conversion therefore
+ * differ in those bytes by design, and only in those bytes.
+ *
+ * The replacement is **length-preserving** — `meico_` plus 36 characters, in and out — because a
+ * meta event is length-prefixed (`ff 01 2a …`). Renumbering to a shorter string would leave the
+ * prefix lying about the payload and desynchronise every following byte, turning a normalisation
+ * into corruption. The `latin1` round trip is what makes that byte-for-character equivalence
+ * hold for the non-ASCII bytes around it.
+ */
+const hex = (bytes: Uint8Array) => {
+  const seen = new Map<string, string>();
+  const canonical = Buffer.from(bytes)
+    .toString('latin1')
+    .replace(/meico_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, (id) => {
+      if (!seen.has(id)) seen.set(id, `meico_${String(seen.size).padStart(36, '0')}`);
+      return seen.get(id)!;
+    });
+  return Buffer.from(canonical, 'latin1').toString('hex');
+};
 
 describe('facade == classic class API (RULE F2 round trip)', () => {
   for (const fixture of meiFixtures) {
@@ -72,7 +96,15 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
       // --- classic: objects all the way through, no serialization in between
       const mei = Mei.fromXml(meiText);
       mei.setFile(`${fixture}.mei`);
-      const converted = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
+      // The fifth argument is `expandOrnaments`, and it is spelled out because the two sides
+      // default it differently ON PURPOSE: the facade turns MEI ornament expansion on, the bare
+      // converter leaves it off so that tests/integration can keep comparing against Java
+      // references that contain no expansion (Mei2MsmMpmConverter.expandOrnaments). This gate
+      // asks whether the same settings produce the same bytes across the serialization boundary,
+      // so both sides state the setting rather than inheriting two different defaults. Passing
+      // `true` is also what makes composite_advanced's trill — a v3 ornament with a note pool and
+      // a repeat group in note.order — actually travel through this round trip.
+      const converted = new Mei2MsmMpmConverter(720, true, false, true, true).convert(mei);
       const classicMsm = converted.getKey()[0];
       const classicMpm = converted.getValue()[0];
       const classicPerformance = classicMpm.getAllPerformances()[0];
@@ -101,9 +133,37 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
     });
   }
 
+  it('the MIDI canonicalisation erases generated ids and nothing else', () => {
+    // A guard on the helper above, in W6's shape ("the canonicalisation is not vacuous"): a
+    // normalisation strong enough to hide a real regression would make every comparison in this
+    // file pass for the wrong reason.
+    const expressiveMidiOf = (fixture: string) =>
+      renderExpressiveMidi(
+        convertMeiToMsmMpm(readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8'), {
+          sourceName: `${fixture}.mei`,
+        })[0],
+      );
+    const raw = (bytes: Uint8Array) => Buffer.from(bytes).toString('hex');
+
+    // composite_advanced carries a <trill>, so the facade expands it and its generated notes draw
+    // a fresh uuid on every run — the raw bytes of two identical conversions really do differ.
+    const first = expressiveMidiOf('composite_advanced');
+    const second = expressiveMidiOf('composite_advanced');
+    expect(raw(first)).not.toBe(raw(second));
+    expect(hex(first)).toBe(hex(second));
+
+    // The quotient is still fine enough to separate two genuinely different performances, and
+    // length-preserving enough to leave the streams the size they were.
+    expect(hex(first)).not.toBe(hex(expressiveMidiOf('simple_notes')));
+    expect(hex(first)).toHaveLength(raw(first).length);
+  });
+
   it('reproduces the file-less converter branch when sourceName is omitted', () => {
     const meiText = readFileSync(join(MEI_DIR, 'dynamics.mei'), 'utf-8');
-    const classic = new Mei2MsmMpmConverter(720, true, false, true).convert(Mei.fromXml(meiText));
+    // Fifth argument as above: match the facade's setting rather than the converter's default.
+    const classic = new Mei2MsmMpmConverter(720, true, false, true, true).convert(
+      Mei.fromXml(meiText),
+    );
 
     expect(canonicalise(convertMeiToMsmMpm(meiText)[0].mpm)).toBe(
       canonicalise(classic.getValue()[0].getRootElement()!.toXML()),
@@ -116,12 +176,21 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
     // Each option is checked against a classic converter built with the same flag, which
     // proves the threading without needing a fixture that exercises the flag's semantics —
     // no fixture has the ten parts `dontUseChannel10` would need, for instance.
+    //
+    // Every row states `expandOrnaments` explicitly, in fifth place. The facade always passes it
+    // (defaulting it to true) while the bare converter defaults it to false, so a row that left
+    // it off would be comparing two different configurations and would only pass by the accident
+    // that repeats_endings.mei carries no ornament sign.
     for (const [options, args] of [
-      [{ ppq: 480 }, [480, true, false, true]],
-      [{ dontUseChannel10: false }, [720, false, false, true]],
-      [{ ignoreExpansions: true }, [720, true, true, true]],
-      [{ cleanup: false }, [720, true, false, false]],
-    ] as [Parameters<typeof convertMeiToMsmMpm>[1], [number, boolean, boolean, boolean]][]) {
+      [{ ppq: 480 }, [480, true, false, true, true]],
+      [{ dontUseChannel10: false }, [720, false, false, true, true]],
+      [{ ignoreExpansions: true }, [720, true, true, true, true]],
+      [{ cleanup: false }, [720, true, false, false, true]],
+      [{ expandOrnaments: false }, [720, true, false, true, false]],
+    ] as [
+      Parameters<typeof convertMeiToMsmMpm>[1],
+      [number, boolean, boolean, boolean, boolean],
+    ][]) {
       const mei = Mei.fromXml(meiText);
       mei.setFile('repeats_endings.mei');
       const classic = new Mei2MsmMpmConverter(...args).convert(mei);
