@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { Midi } from '../midi/Midi.js';
 import { Sequence, Track, MidiEvent } from '../midi/MidiTypes.js';
-import { EventMaker } from '../midi/EventMaker.js';
+import * as EventMaker from '../midi/EventMaker.js';
 import type { Performance } from '../mpm/elements/Performance.js';
 import type { RenderOptions } from '../mpm/RenderOptions.js';
 

@@ -9369,3 +9369,341 @@ millisecond stage is currently unprotected by the suite.
    ordering *within* the millisecond stage (NC1 compiles). That is the correct scope for a
    phantom type and no more is asked for; recording it so T21 does not over-claim what the
    mechanism guarantees.
+
+## [T20] worker — MIDI layer: EventMaker becomes a module, the dictionary's table becomes `as const` (2026-08-09)
+
+**Scope, exactly as §8.9 states it.** `EventMaker` → module functions (RULE C2, and the last
+`no-extraneous-class` site); `InstrumentsDictionary`'s table → `as const` (RULE I4);
+`Midi`/`Sequence`/`Track`/`MidiEvent`/`ShortMessage`/`MetaMessage` stay classes, untouched
+except for one import line in `Midi.ts`. `EventMaker.byteToShort` kept — §8.10 owns it.
+
+Working tree: **5 M**, no untracked files. `src/midi/EventMaker.ts`,
+`src/midi/InstrumentsDictionary.ts`, `src/midi/Midi.ts` (1 line), `src/msm/Msm.ts` (1 line),
+`tests/midi/EventMaker.test.ts` (+4 tests). `src/api/**` **not touched**, and
+`dist/api/**` is byte-identical including every `.d.ts`.
+
+### What landed
+
+| | |
+|---|---|
+| `EventMaker.ts` | the class's 317 public statics became 299 exported `const`s + 18 exported `function`s; the 2 `private static` constants became module-private `const`s. `export const EventMaker = {…} as const` re-exports the 317 in their original declaration order. |
+| `Msm.ts`, `Midi.ts` | `import { EventMaker }` → `import * as EventMaker`. **No call site changed**, deliberately (below). |
+| `InstrumentsDictionary.ts` | `DefaultNames` gets `as const`; the 11 distance-method constants lose their widening `: number`. `DICT_DATA` stays a plain `string`. |
+| `tests/midi/EventMaker.test.ts` | +4 tests, 0 removed, 0 weakened. |
+
+### Three judgment calls, journalled
+
+1. **The `EventMaker` object survives as a re-export table, and it is not optional.**
+   `src/api/pipeline.ts` — frozen — does `import { EventMaker }` from this exact module and
+   reads three `CC_*` constants from it, and `src/index.ts` re-exports the same name as
+   published API. A module that only exported the 317 names would break both. This is T14's
+   `Helper`-shim pattern, one directory lower.
+2. **Call sites keep the `EventMaker.` qualification, via a namespace import.** Converting
+   `Msm.ts`'s 26 references to named imports was the alternative. Against it: `Midi.ts` uses
+   `EventMaker.NOTE_OFF` and `ShortMessage.NOTE_OFF` **in the same statement**
+   (`noteOns2NoteOffs`), and the file comment documents that the two tables are deliberately
+   independent declarations of the same MIDI numbers; a bare `NOTE_OFF` would erase exactly
+   the distinction the code is careful about. `import * as` is the ordinary ESM idiom for a
+   constants-plus-factories module, it routes interior callers to the module bindings rather
+   than through the compat object, and it leaves the emitted bodies of the two most
+   byte-sensitive files in the project **token-identical**. Cheap to revisit in T21.
+3. **The table is a plain object literal — not frozen, not null-prototype.** T15's lesson is
+   about tables looked up by *data*; this one has no computed-key access anywhere in `src/`
+   or `tests/` (`grep -n 'EventMaker\['` is empty), so there is no unknown-key path to
+   harden. And the two hardenings would each *introduce* a difference rather than remove one:
+   the class inherited `Object.prototype` (through `Function.prototype`), which a plain
+   object also does and a null-prototype object does not; and writing to a class static
+   succeeded, where writing to a frozen object throws in ESM's strict mode. The plain object
+   is the form closest to what it replaces. Measured, not assumed — see the host-difference
+   table the surface probe prints.
+
+### Evidence
+
+Two clean out-of-tree builds (`git archive HEAD` → `t20work/base`, working tree →
+`t20work/work`), same `tsc`, same `node_modules`.
+
+- **The anchor — MIDI bytes.** `t19work/dump.mjs` over every deterministic fixture (16 MEI
+  fixtures end to end + 6 all-maps sets; the 2 imprecision sets are charter-exempt):
+  **131 artifacts, `diff -r` clean**. File-level **sha256 of all 44 `.mid` files** (22 raw +
+  22 expressive) identical one by one; combined digest
+  `6dee52ca195c2ef866c53d3b1a95d990084d5fc336a4299443e5b7d2f1e752ff`.
+- **Pipeline MSM/MPM.** The same 131 artifacts include every MSM, MPM and augmented-MSM
+  serialization. Independently, `t11-pipe.mjs` reports transcript sha
+  `169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` on **both** builds —
+  the same value TD1's verifier and T14's worker recorded, so the chain is unbroken.
+- **Write order, measured rather than inferred** (T19's verifier asked T20 to budget for a
+  tracer). `t20work/writetrace.mjs` wraps `Sequence.createTrack`, `Track.add` and
+  `Midi.exportMidi` in `MidiTypes.js` — a file this item does not touch, so the instrument is
+  identical on both sides by construction — and records every call in **call order** with the
+  event's tick, its full message bytes and the index the stable sort put it at. **2230 calls
+  over 22 scenarios (2088 adds, 98 createTrack, 44 exportMidi), sha
+  `5fdf760d0ea51378f42f103c5b07b32f633af689ebaae7a0c1341d8a143b90e0`, identical.**
+- **Emitted-JS classification.** `diff -rq dist/` → exactly **4** source files (plus maps).
+  `index.js`, `MidiTypes.js`, all of `api/**` and every other `.js` byte-identical;
+  `Midi.d.ts` and `Msm.d.ts` byte-identical, so no public type moved.
+  - `Midi.js`, `Msm.js`: **one line each**, the import statement. JSDoc-pruned token streams
+    (`t19work/toks2.mjs`) differ by **4 token lines each, all inside that import** (`{` →
+    `* as`, closing `}` dropped). Every one of the 26 + 6 call sites and every
+    event-generation body is token-identical.
+  - `InstrumentsDictionary.js`: **comments only** — token stream sha `7f005bc5e9b528a0` on
+    both sides, **0** token-diff lines. `as const` and the dropped annotations are provably
+    type-level.
+  - `EventMaker.js`: restructured, so classified member by member instead — next bullet.
+- **`EventMaker` surface probe** (`t20work/surface.mjs`, run against both builds' emitted JS).
+  Old class own statics **319** → new module exports **317** + table **317**; the only
+  absentees are the two former `private static` constants. Name sets equal, **table key order
+  == the old class's source declaration order** (317 members), every constant equal under
+  `Object.is` (**299** compared), every function body equal after canonicalizing away the
+  `EventMaker.` qualification (**18** compared), arities equal, and every table property is
+  **identity-equal** to the module's own export rather than a copy. The probe also prints the
+  host differences: `typeof` `function` → `object`, `Object.prototype` members unchanged,
+  `Function.prototype` members (`name`, `length`, `prototype`, `call`, `apply`, `bind`) gone.
+- **`npm run verify` exit 0**: **59 files / 2276 tests** (baseline 2272; +4, none removed,
+  none weakened — charter 7c owes nothing for an increase). Facade suite green with T19's
+  counts (`pipeline` 38, `plain-data` 37, `facade-equivalence` 26, `determinism` 8); all six
+  integration suites green.
+- **Coverage v3.** Functions **969/1048 = 92.4618 %** (floor 92.0 ✓). Uncovered scoped
+  statements **2138 → 2138, zero delta** (budget ≤ 2318 ✓). The function total moves by −1
+  and covered by −1: the lost function is `<static_initializer>`, the synthetic function V8
+  attributes to a class's static-field block, which has no analogue once the fields are
+  module-level `const`s. `src/midi/EventMaker.ts` is the **only** file in the scoped set whose
+  function total changes (19 → 18); uncovered functions unchanged at **79**; EventMaker's
+  uncovered statements unchanged at **41**. No rebase of the 7a anchor is needed or asked for.
+- **Lint 1047/2 → 1046/2**, full per-rule and per-file histogram over both trees with one
+  config: the only rule that moves is **`no-extraneous-class` 1 → 0**, the only file that
+  moves is `src/midi/EventMaker.ts`, no rule increased anywhere. **RULE C2's measurable form
+  is now met repo-wide.** RULE I5's audit command returns nothing before and after. Zero
+  suppressions (`@ts-ignore`/`@ts-expect-error`/`@ts-nocheck`/`eslint-disable`/coverage-ignore)
+  in `src` + `tests`, before and after. `prettier --check` clean. `refactor/lint-debt.md` has
+  a `### T20` section with these numbers.
+
+### Negative controls — four, and the first one is the reason this item needed a probe
+
+| # | injected defect | byte anchor | surface probe | test suite |
+|---|---|---|---|---|
+| NC1 | one **unused** constant mis-transcribed (`CC_Sustenuto` 66 → 65) | **GREEN — blind** | **RED** | **GREEN — blind** (2274/2274 passed) |
+| NC2 | `createNoteOff` builds `ShortMessage(NOTE_OFF, chan, velocity, pitch)` | RED, all 44 `.mid` differ | RED (body) | RED, 47 tests |
+| NC3 | one member dropped from the re-export table (`PC_Violin`) | GREEN — blind | **RED** (after a fix, below) | RED, 5 tests |
+| NC4 | a **write reorder** in `Msm.exportMidi`: the noteOn is added after its own noteOff | RED | n/a | RED, **1** test |
+
+**NC1 is the finding.** Moving ~299 constants is precisely the operation that can silently
+corrupt one of them, and roughly 290 of them are unreachable from any fixture — so neither the
+byte anchor nor the 2274-test suite noticed a wrong value. Only the surface probe did. Since
+probes live in the scratchpad and do not survive the commit, I closed the gap the way T14
+closed its NC-B: `tests/midi/EventMaker.test.ts` now asserts that the `CC_*` block and the
+`PC_*` block each run **0..127 with no gaps, in declaration order** — the MIDI specification's
+own numbering, which is an independent statement rather than a copy of the table. That pins
+**256** of the 299 constants permanently, and re-running NC1 against it fails on exactly that
+test and no other. The other two new tests pin the table's membership and its binding
+identity, and NC3 fails on both of them.
+
+**NC3 also caught a hole in my own instrument**: the first version of `surface.mjs` reported a
+dropped member as a *note* and still printed `SURFACE OK`. Fixed to fail on any absentee other
+than the two known private constants, then re-run against all four trees — work OK, NC1/NC2/NC3
+RED. Recorded because the failure mode was a probe that looked like it passed.
+
+**NC4** exists because §8.9 freezes *event ordering*, and the byte anchor could in principle be
+satisfied by a reordering that `Track.add`'s stable sort undoes. It turned out to be visible in
+the bytes after all (the reorder breaks ties at equal ticks), so the anchor is a live ordering
+gate — but the write tracer moves by **1126** lines on it and by **1204** on NC2, so the tracer
+is demonstrably sensitive, not vacuous.
+
+### One measured behavioural difference — not a divergence, but say it out loud
+
+The old `createProgramChangeByName` reached its sibling through the class object
+(`EventMaker.createProgramChange`), resolved at call time; the module form calls the lexical
+binding. So **replacing `EventMaker.createProgramChange` on the exported object is observable
+to `createProgramChangeByName` on the old build and not on the new one** — measured with
+`t20work/monkey.mjs`: `inner call intercepted: true` (base) / `false` (work). Nothing in
+`src/`, `tests/` or the facade does this, and Java's static call is likewise not interceptable
+(`EventMaker.java`), so the module form is the *closer* parity. Journalled rather than
+"fixed": routing the internal call back through the table to preserve patchability would be
+adding a hazard to imitate an accident.
+
+### DISCOVERED
+
+- **`tests/integration/midi-byte-equivalence.test.ts` is thin on event ordering.** NC4 — a
+  real write-order regression in `Msm.exportMidi` — is caught by exactly **one** test in the
+  whole 2276 (`composite_advanced: expressive MIDI events match Java reference`). Every other
+  fixture's ties survive the reorder. T21 may want a fixture or an assertion that makes
+  same-tick ordering explicit; the tracer at `t20work/writetrace.mjs` (`<distDir> <out.txt>`)
+  is the ready-made instrument.
+- **§8.10's `EventMaker.byteToShort` deletion is now a three-site edit**: the exported
+  function, its entry in the re-export table, and its test. Deleting only the function leaves
+  the table referring to a missing binding, which `tsc` does catch.
+- **§8.10's audit 2 (`no-extraneous-class` = 0) is already met** as of this item, repo-wide.
+- **`npm run format:check` is red at HEAD**, on `tests/midi/Midi.test.ts` — a file T20 does
+  not touch (`git diff HEAD -- tests/midi/Midi.test.ts` is empty), and the same warning
+  reproduces on a clean `git archive HEAD` tree. `format:check` is not part of `npm run
+  verify`, so it has been sitting there unnoticed. Left alone deliberately: reformatting a
+  byte-sensitive area's test file inside a logic item is exactly what charter 10 separates.
+  T21 should either run `prettier --write` on it as a standalone formatting commit or add
+  `format:check` to `verify` so it cannot drift again.
+
+## [T20] verifier — PASS (2026-08-09)
+
+Independent context, own probes, worker's numbers reproduced rather than trusted. Verdict
+**PASS**. Every claim in the `[T20] worker` entry that I checked came out true, including
+the two it was most tempting to overstate (the NC1 blindness and the patchability
+difference). Scratch: `t20verify/`.
+
+**src-identity first.** `git diff 7a1b86f 5804581 -- src/ tests/` is empty — the bookkeeping
+commit touched only `refactor/state.json`, so HEAD's `src/` is the verified T19 tree.
+
+**Manifest: exactly 7 M**, no untracked files — `src/midi/EventMaker.ts`,
+`src/midi/InstrumentsDictionary.ts`, `src/midi/Midi.ts`, `src/msm/Msm.ts`,
+`tests/midi/EventMaker.test.ts`, `refactor/log.md`, `refactor/lint-debt.md`. Matches the
+worker's declared set path for path.
+
+### 1. MIDI byte anchor — reproduced independently
+
+Two clean out-of-tree builds (`git archive HEAD` → `base`, base + the 5 changed files →
+`work`; same `tsc`, same `node_modules`). `t19work/dump.mjs` over 16 MEI fixtures + 6
+all-maps sets: **131 artifacts, `diff -r` clean**.
+
+- **Per-file sha256 of all 44 `.mid`** (22 raw + 22 expressive): identical one by one.
+  Digest of the sha-list `6dee52ca195c2ef866c53d3b1a95d990084d5fc336a4299443e5b7d2f1e752ff`
+  — the worker's value, arrived at independently. Concatenated-bytes digest
+  `16acec0e2cf24164348bdadaa91fd1a60dc702036831ab08be6a9aedfa0d2af2` on both.
+- **MSM/MPM/augmented XML**: 54 files, concat digest
+  `70360cca2b19bb4d89f8227cc17cb51c6aa9c53f5565421bca6bfee7d58da36b` on both. Serialization
+  unchanged.
+
+### 2. EventMaker class → module
+
+`t20verify/surface.mjs` (mine, not the worker's) loads both builds' emitted JS and compares
+member by member. Old class own statics **319** (minus `length`/`name`/`prototype`) → module
+exports **317** + table **317**; the only absentees are the two former `private static`
+constants, and the probe *fails* on any other absentee. **0 value/body divergences**: 299
+constants equal under `Object.is`, 18 function bodies equal after canonicalising away the
+`EventMaker.` qualification and collapsing whitespace, arities equal, and every table
+property identity-equal to the module's own export. Tick/tempo arithmetic is inside that
+comparison — `createTempo`, `createTimeSignature`, `createKeySignature`, `createChannelPrefix`,
+`createMidiPortEvent`, `intToByteArray`, `byteArrayToInt`, `shortToByteArray`, `byteToShort`
+are 9 of the 18 and all are token-equal.
+
+**Table order.** My first run reported an order divergence; the probe was wrong, not the
+code. `Object.getOwnPropertyNames` on a class yields static *methods* before static *fields*,
+which is not source order. Compared against the real source declaration order extracted from
+`base/src/midi/EventMaker.ts`, the table's 317 keys match **exactly**. Recorded because it is
+the same class of instrument error the worker hit with NC3.
+
+**Static state: a non-question, and provably so.** The base class has no constructor, no
+instance members, and `new EventMaker` appears nowhere in the repo; all 319 statics are
+`readonly` and every initialiser is a plain number literal. There is no state to share, so
+the module form cannot change state semantics. The work module adds no `let`/`var` at module
+level; the two former private constants are module-private `const`s.
+
+**Call sites enumerated.** `EventMaker` is referenced in 7 `src/` files and 4 test files.
+Changed: `Midi.ts` and `Msm.ts`, **one import line each** — confirmed in the emitted JS,
+where `dist/midi/Midi.js` and `dist/msm/Msm.js` differ from base by exactly **1 line**, the
+import, with all 5 + 25 call sites and every body byte-identical. Unchanged and still using
+the named import: `src/index.ts` (re-export), `src/api/pipeline.ts` (3 `CC_*` reads),
+`tests/midi/Midi.test.ts`, `tests/midi/MidiTypes.test.ts`, `tests/msm/Msm.test.ts`.
+`src/midi/MidiTypes.ts` and `src/midi/InstrumentsDictionary.ts` mention it only in comments.
+Nothing assigns to an `EventMaker` member and nothing does computed-key access
+(`EventMaker[…]`) anywhere in `src/` or `tests/` — so the re-export table needs no hardening,
+as the worker argued.
+
+**Type surface preserved exactly.** Extracting every member from both `.d.ts` files and
+normalising away `static [readonly]` vs `export declare function|const`: **317 members with
+byte-identical signatures**, parameter names, parameter types and return types included. The
+only differences are the added `EventMaker: {…}` table type and the two `private` constants,
+which were never public. (My first attempt at this comparison matched 0 members on both sides
+and printed a pass — caught and rewritten; noting it for the same reason as above.)
+
+**The one behavioural difference reproduces.** `t20verify/monkey.mjs`: replacing
+`EventMaker.createProgramChange` on the exported object is seen by
+`createProgramChangeByName` on base (`intercepted: true`) and not on work (`false`). The
+table property is writable and unfrozen on both, so nothing else moves. Nothing in the repo
+patches it; the worker's reasoning (Java's static call is not interceptable either, so the
+module form is the closer parity) holds.
+
+### 3. InstrumentsDictionary `as const`
+
+Stronger than a probe result: re-emitting both trees with `--removeComments` makes
+`dist/midi/InstrumentsDictionary.js` **byte-identical**, so the change is provably comments +
+type-level. The `.d.ts` narrows the 11 distance constants from `number` to their literals and
+`DefaultNames` from `readonly string[]` to a readonly 128-tuple of literals — narrowing, so
+existing readers still compile; `getInstrumentName`'s signature is unchanged.
+
+Ran the T11-era lookup probe anyway (`t20verify/dictprobe.mjs`, 2755 lines): the 11 constants,
+all 128 `DefaultNames` entries, `getInstrumentName` over pc −3..130 × both flags × the
+default-argument path, and `getProgramChange` over 60 inputs (exact hits, case variants,
+whitespace variants, real fuzzy names like `Klarinette in B`/`Horn in F`, substrings,
+misses, unicode, degenerate input) × all 11 distance methods × 5 out-of-range method
+selectors, plus repeat-call and fresh-instance ordering for the four documented tie cases
+(`tenore` → 53, `lead 5 charang` → 84). Transcript sha
+`dde34d93ad965eb40e360455a78ea70bb6479ef6e9aeccbbf2648ec1ed14864f` on **both** builds;
+0 throws, and the value spread confirms the probe is live rather than uniformly null.
+First-match and tie behaviour identical.
+
+### 4. Negative controls — my own three, and they change the verdict on what matters
+
+| # | injected defect | byte anchor | my surface probe | **committed** suite |
+|---|---|---|---|---|
+| A | `CC_Sustenuto` 66 → 65 (unused constant) | **GREEN — blind** | RED (`VALUE 66 -> 65`) | **RED, 1 test** |
+| B | `PC_Violin` dropped from the re-export table | **GREEN — blind** | RED (`table DROPPED member`) | **RED, 6 tests** |
+| C | `createNoteOff` builds `ShortMessage(NOTE_OFF, chan, velocity, pitch)` | RED — **all 44** `.mid` differ | RED (body) | RED, 4 tests |
+
+NC-A independently confirms the worker's NC1 finding: the byte anchor and the pre-T20
+2272-test suite are both blind to a corrupted unreachable constant. The part that matters for
+the commit is the last column — probes do not survive it. **The four new tests do.** NC-A
+fails on exactly `should number the CC_* controller constants 0..127 in declaration order`,
+NC-B on 6 tests of which 3 are new including the membership and binding-identity ones. The
+gap the worker said it closed is closed, verified against the committed tests rather than
+against the probe. NC-C also confirms the anchor is a live ordering/layout gate, not vacuous.
+
+The four new tests assert real behaviour and are not tautological: the CC_/PC_ runs assert
+the MIDI specification's own 0..127 numbering, which is an independent statement rather than
+a re-reading of the table, and the membership test carries a hard-coded 317.
+
+### 5. Facade freeze
+
+`git diff HEAD -- src/api/` **empty**; `diff -rq base/dist/api work/dist/api` **identical**,
+`.d.ts` included. `dist/index.js`, `dist/midi/MidiTypes.js`, `Midi.d.ts`, `Msm.d.ts` and every
+other emitted file byte-identical — exactly 4 source files' JS move. The six classes §8.9
+freezes (`Midi`, `Sequence`, `Track`, `MidiEvent`, `ShortMessage`, `MetaMessage`) are all
+still `export class`.
+
+### 6. Standard checks
+
+- **`npm run verify` exit 0**, run by me: `tsc` ✓, `tsc -p tsconfig.tests.json` ✓,
+  **59 files / 2276 tests, 0 failed**. Baseline measured on the `base` tree: **2272**. +4,
+  none removed — charter 7c owes nothing for an increase, and the worker's journal states the
+  same. (The stderr stack traces in the log are a pre-existing malformed-goto test's output:
+  8 occurrences at HEAD, 8 in the worktree.)
+- **`tests/integration/**`, fixtures, `vitest.config.ts`, both `tsconfig`s, `eslint.config.js`,
+  `package.json`: 0 files changed.**
+- **Suppressions 0 → 0** (`@ts-ignore`/`@ts-expect-error`/`@ts-nocheck`/`eslint-disable`/
+  coverage-ignore) across `src` + `tests`.
+- **log.md and lint-debt.md append-only**: +170/−0 and +33/−0, zero deleted lines.
+- **Lint reconciles.** Full per-rule and per-file histograms over both trees, one config:
+  **1047/2 → 1046/2**. The only rule that moves is `no-extraneous-class` **1 → 0**; the only
+  file that moves is `src/midi/EventMaker.ts`; no rule increased anywhere. RULE C2's
+  measurable form is met repo-wide, and `no-extraneous-class` is **0 in `src/`** as §8.10's
+  audit 2 requires.
+- **Coverage v3, both trees measured.** Functions base 970/1049 = 92.4690 % → work
+  969/1048 = **92.4618 %** (floor 92.0 ✓). Uncovered scoped statements **2138 → 2138, zero
+  delta** (budget ≤ 2318 ✓); uncovered functions 79 → 79. The −1/−1 function accounting is
+  confirmed by name, not inferred: `src/midi/EventMaker.ts`'s `fnMap` loses exactly
+  `<static_initializer>` and keeps all 18 real functions; it is the only file in the scoped
+  set whose numbers move. No rebase of anchor 7a needed.
+
+### Observations for T21 — neither is a defect
+
+1. **25 of the 299 constants are pinned by no assertion.** The CC_/PC_ runs pin 256 and 18
+   more are named individually in `EventMaker.test.ts`, leaving 25: the 16 system-realtime/
+   system-common types (`SYSEX_START` … `SYSTEM_RESET`) and 9 `META_*` types
+   (`META_Sequence_Number`, `META_Copyright_Notice`, `META_Sequence_Name`, `META_Lyric`,
+   `META_Cue_Point`, `META_Program_Name`, `META_Device_Name`, `META_SMTPE_Offset`,
+   `META_Sequence_specific_Meta_event`). My surface probe proves all 25 are correct **now**,
+   so there is no live defect — it is a future-protection gap, and the worker's "pins 256 of
+   the 299" is honest about it. Both blocks are contiguous specification runs and could be
+   pinned the same way the CC_/PC_ tests do it.
+2. **`format:check` red at HEAD confirmed pre-existing.** `npx prettier --check .` warns on
+   `tests/midi/Midi.test.ts` identically on the `base` tree and the worktree, and T20 does not
+   touch that file. The worker's DISCOVERED note is accurate, including that `format:check` is
+   not part of `npm run verify`.
+
+**PASS T20.**

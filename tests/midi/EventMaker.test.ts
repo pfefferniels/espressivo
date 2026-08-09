@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventMaker } from '../../src/midi/EventMaker.js';
+import * as EventMakerModule from '../../src/midi/EventMaker.js';
 import { ShortMessage, MetaMessage, MidiEvent } from '../../src/midi/MidiTypes.js';
 
 describe('EventMaker', () => {
@@ -495,6 +496,51 @@ describe('EventMaker', () => {
       expect(Array.from(msg.getData())).toEqual([1]);
       expect(Array.from(msg.getMessage())).toEqual([0xff, 0x21, 0x01, 1]);
       expect(event.getTick()).toBe(240);
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // the re-export table
+  //
+  // T20 dissolved the static-only `EventMaker` class into module functions and
+  // constants; `EventMaker` is now a re-export table over them. Most of the 299
+  // constants are not reachable from any fixture, so the byte-equivalence suite
+  // cannot see a member that is dropped from the table or wired to the wrong
+  // binding — these two tests are what does.
+  // ---------------------------------------------------------------
+  describe('the EventMaker re-export table', () => {
+    const moduleExports = Object.keys(EventMakerModule).filter((name) => name !== 'EventMaker');
+
+    it('should expose exactly the module’s exports', () => {
+      expect([...Object.keys(EventMaker)].sort()).toEqual([...moduleExports].sort());
+      // 299 constants + 18 functions, the public surface of the former class
+      expect(Object.keys(EventMaker)).toHaveLength(317);
+    });
+
+    it('should hold the module’s own bindings, not copies of them', () => {
+      const table = EventMaker as unknown as Record<string, unknown>;
+      const module_ = EventMakerModule as unknown as Record<string, unknown>;
+
+      for (const name of moduleExports) {
+        expect(table[name]).toBe(module_[name]);
+      }
+    });
+
+    // The two blocks below are the MIDI specification's own numbering: controller
+    // numbers and program change numbers each run 0..127 with no gaps, in the order
+    // the spec lists them. Asserting the whole run (rather than the handful of
+    // constants named above) is what pins the 250-odd values that no fixture reaches.
+    const valuesOfPrefix = (prefix: string) =>
+      Object.entries(EventMaker)
+        .filter(([name]) => name.startsWith(prefix))
+        .map(([, value]) => value);
+
+    it('should number the CC_* controller constants 0..127 in declaration order', () => {
+      expect(valuesOfPrefix('CC_')).toEqual([...Array(128).keys()]);
+    });
+
+    it('should number the PC_* program change constants 0..127 in declaration order', () => {
+      expect(valuesOfPrefix('PC_')).toEqual([...Array(128).keys()]);
     });
   });
 });

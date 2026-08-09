@@ -895,6 +895,39 @@ statics" sweep: T19 adds **no** module-level binding of any kind. `declare const
 unique symbol` is a type-only declaration and emits nothing; the four new `interface`s are
 module-local and do not appear in `Performance.d.ts`.
 
+### T20 — MIDI layer — repo 1047 → **1046** errors (warnings unchanged at 2)
+
+The last `no-extraneous-class` site is gone, so RULE C2's measurable form is met.
+
+| n | rule | how |
+|---|---|---|
+| 1 | `no-extraneous-class` | 1 → **0**, in `src/midi/EventMaker.ts`. The static-only class became module constants and functions; the `EventMaker` name survives as a plain re-export object, which the rule (correctly) does not consider a class. |
+
+Measured as a full per-rule and per-file histogram over a `git archive HEAD` baseline
+(5804581) and the working tree, one config across both: **1047/2 → 1046/2**, the *only* rule
+that moves is `no-extraneous-class`, the *only* file whose count moves is
+`src/midi/EventMaker.ts`, and **no rule increased anywhere** — in particular the four new
+unit tests in `tests/midi/EventMaker.test.ts` add no `no-explicit-any` (they cast through
+`unknown` to `Record<string, unknown>`) and no `no-unused-vars`. No new suppressions
+(`eslint-disable` / `@ts-ignore` / `@ts-expect-error` / `@ts-nocheck` / coverage-ignore all
+still **0** repo-wide).
+
+**Input for T21's audit 2** (`no-extraneous-class` = 0): met, repo-wide, as of this item.
+It stays met only if nobody reintroduces a static-only class; `Helper` and `Meico` were the
+other two and T14 dissolved both.
+
+**Input for T21's audit 3** (no non-`readonly` static fields): T20 *removes* 319 static
+fields from `src/` — the whole `EventMaker` constant surface — and adds no static field
+anywhere. RULE I5's audit command returns nothing before and after. The 317 public ones are
+now module-level `const`s, which is not a static field at all; the two former `private
+static` ones (`TICKS_PER_METER_CLICK`, `THIRTY_SECOND_NOTES_PER_QUARTER`) are module-private
+`const`s.
+
+**Input for T21's `EventMaker.byteToShort` deletion** (§8.10's table): the function is now
+`export function byteToShort` in `src/midi/EventMaker.ts` plus one entry in the re-export
+table, and its only caller is still `tests/midi/EventMaker.test.ts`. Deleting it means
+removing both, not just the function.
+
 ### tests — 86
 `no-empty-function` 54, `no-unused-vars` 18, `no-explicit-any` 12,
 `no-unsafe-function-type` 2. Concentrated in `tests/mei/Mei.test.ts` (24),

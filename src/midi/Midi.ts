@@ -46,7 +46,7 @@ import {
   MetaMessage,
   SysexMessage,
 } from './MidiTypes.js';
-import { EventMaker } from './EventMaker.js';
+import * as EventMaker from './EventMaker.js';
 
 export class Midi {
   private file: string | null = null; // the midi filename

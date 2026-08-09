@@ -58,24 +58,33 @@
  */
 
 export class InstrumentsDictionary {
-  // Distance method constants
-  static readonly Levenshtein: number = 0x00;
-  static readonly NormalizedLevenshtein: number = 0x01;
-  static readonly Damerau: number = 0x02;
-  static readonly JaroWinkler: number = 0x03;
-  static readonly LongestCommonSubsequence: number = 0x04;
-  static readonly MetricLCS: number = 0x05;
-  static readonly NGram: number = 0x06;
-  static readonly QGram: number = 0x07;
-  static readonly Cosine: number = 0x08;
-  static readonly Jaccard: number = 0x09;
-  static readonly SorensenDice: number = 0x0a;
+  // Distance method constants. The `: number` annotations they used to carry widened
+  // them away from their own values for no gain (RULE I4); without them each constant
+  // types as its literal, and `getProgramChange`'s `distanceMethod: number` parameter
+  // still accepts every one of them.
+  static readonly Levenshtein = 0x00;
+  static readonly NormalizedLevenshtein = 0x01;
+  static readonly Damerau = 0x02;
+  static readonly JaroWinkler = 0x03;
+  static readonly LongestCommonSubsequence = 0x04;
+  static readonly MetricLCS = 0x05;
+  static readonly NGram = 0x06;
+  static readonly QGram = 0x07;
+  static readonly Cosine = 0x08;
+  static readonly Jaccard = 0x09;
+  static readonly SorensenDice = 0x0a;
 
   /**
    * the default instrument names of General MIDI, indexed by program change number
    * (used by `getInstrumentName`, e.g. for MIDI-to-MSM conversion)
+   *
+   * `as const` per RULE I4: a fixed 128-entry table indexed by program change number,
+   * so the tuple length and the literal names are worth having in the type. The other
+   * table in this file, `DICT_DATA`, deliberately stays a plain `string` — see the
+   * class comment on why it stays data, and note that `as const` on a 20 KB template
+   * literal buys a 20 KB literal type and nothing else.
    */
-  static readonly DefaultNames: readonly string[] = [
+  static readonly DefaultNames = [
     'Acoustic Grand Piano',
     'Bright Acoustic Piano',
     'Electric Grand Piano',
@@ -204,7 +213,7 @@ export class InstrumentsDictionary {
     'Helicopter',
     'Applause',
     'Gunshot',
-  ];
+  ] as const;
 
   /** name (lower case) → program change number, in `DICT_DATA` line order */
   private readonly dict: Map<string, number>;
