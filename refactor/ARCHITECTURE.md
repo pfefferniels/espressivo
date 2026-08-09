@@ -490,12 +490,16 @@ reference down. Nothing is stored on a class, a module, or `globalThis`.
 `render*ToMap` entry points and so could not actually deliver a seed to the facade's headline
 MIDI function. `Performance.perform` has exactly **one** `src/` caller:
 
+Line numbers below are **as implemented**, re-derived from the committed T19a tree
+(`f947836`); the first draft's were pre-implementation guesses and matched neither the
+baseline nor the work tree.
+
 | # | hop | file:line |
 |---|---|---|
-| 1 | `Msm.exportExpressiveMidi(performance?, generateProgramChanges?, options?)` → `performance.perform(this, options)` | `src/msm/Msm.ts:1023` |
-| 2 | `Performance.perform(msm, options?)` builds the `RenderContext` | `src/mpm/elements/Performance.ts` |
-| 3 | → `MovementMap.renderMovementToMap(ctx?)` | called at `Performance.ts:533` |
-| 4 | → `ImprecisionMap.renderImprecisionToMap(map, shakePolyphonicPart, ctx?)` | called at `Performance.ts:433,558,575,577,579,580` |
+| 1 | `Msm.exportExpressiveMidi(performance?, generateProgramChanges?, options?)` → `performance.perform(this, options)` | `src/msm/Msm.ts:1033` (the pass-through; the method signature is a few lines above) |
+| 2 | `Performance.perform(msm, options?)` builds the `RenderContext` | `src/mpm/elements/Performance.ts:354` (signature) |
+| 3 | → `MovementMap.renderMovementToMap(ctx)` | called at `Performance.ts:553` |
+| 4 | → `ImprecisionMap.renderImprecisionToMap(map, shakePolyphonicPart, ctx)` | called at `Performance.ts:457` (global) and `578, 596, 598, 600, 602` (per part) |
 
 Hop 1 is the one that matters and the one that was missing: without it,
 `renderExpressiveMidi` — the facade function the downstream consumer actually calls — cannot
@@ -511,7 +515,7 @@ A worker who finds themselves wanting to import the constant into `Msm.ts` has t
 turn.
 
 Inside `ImprecisionMap.renderImprecisionToMap`, the seed decision becomes exactly this, at
-`src/mpm/elements/maps/ImprecisionMap.ts:336`:
+`src/mpm/elements/maps/ImprecisionMap.ts:352-354`:
 
 ```ts
 if (dd.seed !== null) random.setSeed(dd.seed);                        // unchanged, MPM wins
@@ -521,9 +525,9 @@ else if (ctx?.options.seed !== undefined)                             // new bra
 ```
 
 **`impIndex` is not a new variable** — it already exists, under that exact name, as the loop
-index declared at `ImprecisionMap.ts:271`
+index declared at `ImprecisionMap.ts:285`
 (`for (let impIndex = 0; impIndex < this.size(); ++impIndex)`), the per-distribution loop that
-constructs `random` and owns the `if (dd.seed !== null)` line at :336. One
+constructs `random` and owns the `if (dd.seed !== null)` line at :352. One
 `RandomNumberProvider` is constructed per distribution entry, so `impIndex` distinguishes the
 distributions *within* one map, and `ordinal` distinguishes the maps *within* one render.
 Together they are unique per provider.
@@ -563,7 +567,14 @@ today.
 > + same `seed` twice ⇒ byte-identical MIDI; same input + different `seed` ⇒ different MIDI;
 > same input + no `seed` twice ⇒ different MIDI (proving the default path was not
 > accidentally made deterministic); (d) **negative control** — make the derivation apply even
-> when `options.seed` is undefined and prove (a) goes red.
+> when `options.seed` is undefined, and prove the **third leg of gate (c)** goes red (the
+> no-seed pair becomes byte-identical where it must differ).
+>
+> **Gate (d) must name gate (c), not gate (a)** — T19a's verifier proved by sabotage that
+> naming (a) makes the control vacuous: (a)'s fixture set is by definition the
+> imprecision-free one, and both imprecision fixtures carry `seed="42"`, so F7's *first*
+> branch fires and the sabotaged `else` is never reached. A control that cannot fail is not a
+> control, and this one silently could not.
 
 ---
 
@@ -1034,9 +1045,16 @@ export type Bpm          = Branded<'bpm'>;
 It is **not** true that this module "emits nothing", and the gate below depends on knowing
 exactly what it does emit. Compiled under this repo's `tsconfig.json` (measured, not assumed:
 `declaration`, `declarationMap` and `sourceMap` are all on) it produces **four** new files —
-`dist/units.js`, `dist/units.js.map`, `dist/units.d.ts`, `dist/units.d.ts.map` — where
-`dist/units.js` is 44 bytes: the single statement `export {};` followed by nothing but the
-`//# sourceMappingURL=units.js.map` comment.
+`dist/units.js`, `dist/units.js.map`, `dist/units.d.ts`, `dist/units.d.ts.map`.
+
+**The "44 bytes" figure holds only for a comment-free module.** 44 = `export {};\n` (11) +
+`//# sourceMappingURL=units.js.map` (33), and `tsconfig.json` does not set `removeComments`,
+so any JSDoc in `src/units.ts` is emitted verbatim into `dist/units.js`. As actually shipped
+by T19a the file is **1483 bytes: 1439 of doc header plus that same 44-byte tail.** The
+invariant to check is therefore the *code* content, not the size — strip comments and the
+output must be exactly `export {};`. (Measured on the committed tree; the T19a verifier's
+"1483 bytes of doc header + the same 44" reads as 1527 total, which is off by the header —
+1483 is the whole file.)
 
 **RULE U2 (no runtime converters).** There are **no** `asTicks(n)` helper functions —
 a helper function *emits*, and then "type-level only" can no longer be proven by a zero-line
@@ -1082,25 +1100,38 @@ sampling loop. Brand the **parameter** and the two **field** declarations; leave
 type `number[][]` and document the units in its JSDoc. Likewise `DynamicsData.
 getSubNoteDynamicsSegment` — same shape, same exemption.
 
-Budget check for U3(b), so a worker knows this is within U4's threshold: branding `position`
-and `transitionTo` costs `as` casts at `MovementData.ts:38,43,150,165,197,201` and
-`MovementMap.ts:110,111,113` — **9 sites**, above U4's "~5" heuristic. It is applied anyway
-and this is the one documented override: these two fields are the *origin* of the 16129 bug,
-the casts are all at parse/construct boundaries rather than inside arithmetic, and U4's
-threshold exists to protect arithmetic-dense code, which these sites are not. No other
-declaration gets this override.
+Budget check for U3(b), so a worker knows this is within U4's threshold. The real cost is
+**8 `as Normalized` casts**, enumerated from the committed T19a tree (`f947836`):
+`MovementData.ts:21,41,46`, `MovementMap.ts:101,102,104,190`, `RenderOptions.ts:42`.
+That is above U4's "~5" heuristic, and it is applied anyway as the one documented override:
+these two fields are the *origin* of the 16129 bug, every cast sits at a parse or construct
+boundary rather than inside arithmetic, and U4's threshold exists to protect arithmetic-dense
+code, which these sites are not. No other declaration gets this override.
+
+*(This paragraph's earlier "9 sites" figure was a pre-implementation estimate and wrong in
+both directions: it listed `MovementData.ts:150,165,197,201`, which are **read** positions
+where a branded number widens to `number` freely — the tree compiles with no cast at any of
+them — and it omitted the two declaration initializers that do need one. U4's override
+verdict is unaffected either way.)*
 
 > **EQ-RISK (U1–U4a).** None, *if* the rules are followed — which is why the gate is a bright
 > line. **GATE, stated so it can actually pass:**
-> **(i)** a **zero-line diff over every pre-existing `dist/` file** — not `diff -r dist/`,
-> which is non-empty by construction;
+> **(i)** a **zero *code* diff over every pre-existing `dist/` file** — measured with a
+> comment-immune instrument, not `diff`. Re-emit each `dist/*.js` through
+> `ts.transpileModule` with `removeComments: true` (or the equivalent JSDoc-pruned token
+> stream, `t8verify/toks2.mjs`) and require zero differences. **"Zero-*line* diff" is wrong
+> and was unsatisfiable**: RULE U4a *orders* the `getMovementSegment` JSDoc, `tsconfig.json`
+> does not set `removeComments`, so that JSDoc necessarily lands in the emitted
+> `MovementData.js` — the first draft's wording told the worker to revert exactly the
+> documentation another rule required. Comments in emitted JS are not the hazard this gate
+> exists for; runtime constructs are.
 > **(ii)** the only permitted **new** emitted artifacts are `dist/units.js` and its three
-> siblings (`units.js.map`, `units.d.ts`, `units.d.ts.map`), and `dist/units.js`'s code
-> content must be exactly `export {};` — i.e. that statement followed by nothing but the
-> `sourceMappingURL` comment;
+> siblings (`units.js.map`, `units.d.ts`, `units.d.ts.map`), and `dist/units.js`'s **code**
+> content — after the same comment stripping — must be exactly `export {};` (see the byte
+> note under RULE U1: the shipped file is much larger than 44 bytes because of its header);
 > **(iii)** `.d.ts` diffs on pre-existing files are expected and are the point of the change.
-> Any *other* new file, or any change to a pre-existing `.js`, means a runtime construct crept
-> in (almost certainly a converter function against RULE U2) — revert it.
+> Any *other* new file, or any **code** change to a pre-existing `.js`, means a runtime
+> construct crept in (almost certainly a converter function against RULE U2) — revert it.
 >
 > **OWNER — decided, not left open.** U1, U2, U3(b), U4 and U4a belong to **T19a**, whose
 > file scope in §8.1 is amended to name them; U3(a) and U3a belong to **T13**, which creates
@@ -1238,7 +1269,8 @@ Two changes to the queue's current order:
 >
 > **Two separate evidence measurements, in this order** (RULE U1–U4a's gate explains why a
 > single combined one cannot work): **(M-a)** units-only — brands alone, gated by the
-> pre-existing-`dist/`-files diff; **(M-b)** RenderOptions on top, gated by §2.4's EQ-RISK
+> pre-existing-`dist/`-files **code** diff (comment-immune, per RULE U1–U4a's gate (i));
+> **(M-b)** RenderOptions on top, gated by §2.4's EQ-RISK
 > block and RULE I5's.
 
 The rest of the order is dependency-driven: T16's `getXml()` narrowing (N3) touches the same
@@ -1575,7 +1607,7 @@ the applying item produced the right evidence.
 | **N2b guard deletion** | "returns null → caller's `?? []` skips the work" becomes an unguarded `TypeError` — a *worse* failure mode than N2a's | per-site unreachability argument (from the parameter type, or from an enumeration of all call sites where the guard tests a value) + byte-probe + negative control passing the guarded value |
 | N3 `getXml()` narrowing | same, ×**154** sites | global `setXml(null)` check + per-subclass audit that **no `getXml()` read precedes the assignment** + emitted-JS classification of every deleted guard + negative control |
 | C3 shared Bézier module | float reassociation while moving arithmetic | full byte-probe + 10⁴-triple bit-identity probe incl. sign of zero + reassociation negative control |
-| U1–U4a branded units | a runtime converter creeping in | **zero-line diff over every pre-existing `dist/` file**; the only permitted new artifacts are `dist/units.js` (content exactly `export {};`) and its three siblings. Plain `diff -r dist/` is non-empty by construction and is **not** the gate |
+| U1–U4a branded units | a runtime converter creeping in | **zero *code* diff over every pre-existing `dist/` file**, measured comment-immune (re-emit with `removeComments: true`, or the JSDoc-pruned token stream); the only permitted new artifacts are `dist/units.js` (stripped content exactly `export {};`) and its three siblings. A *line* diff is **not** the gate — RULE U4a's mandated JSDoc lands in the emitted JS, so a line-based gate contradicts it |
 | **F2 round trip** (T13) | serialize/re-parse between facade stages could be lossy | per-fixture byte identity of `convert → serialize → re-parse → perform` vs `convert → perform`; measured at 0 divergences over 16 fixtures during T12 review, so a failure means T13 introduced it |
 | T15 dispatch table | a case silently changes descend/finish | mechanical dispatch census, zero-line diff before vs after + per-group verify + case-flip negative control |
 | T17 XomTypes parse removal | serialization bytes change | full-suite byte equality + recorded runtime measurement |

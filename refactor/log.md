@@ -7041,3 +7041,30 @@ provider construction is untouched, and `ctx.streamOrdinal++` draws nothing.
 
 **Verdict: PASS T19a.** Commit the eleven paths as they stand; items 1–5 above are a
 conductor doc-amendment, not a fix round.
+
+## [T12] architect — amendment round 2 (2026-08-09)
+
+Applied the five doc defects T19a's verification confirmed, each re-measured against the
+committed tree (`f947836`) rather than transcribed: (1) §2.4 gate (d) now names the **third
+leg of gate (c)** as its control and states why naming gate (a) was vacuous — (a)'s fixture
+set is imprecision-free and both imprecision fixtures carry `seed="42"`, so the sabotaged
+`else` never executes; (2) §7's cast budget is **8** with the inventory
+`MovementData.ts:21,41,46`, `MovementMap.ts:101,102,104,190`, `RenderOptions.ts:42`, and
+records that the old "9" both over-counted four read positions and omitted two declaration
+initializers; (3) §7 caveats that "44 bytes" holds **only comment-free** (11 + 33) and that
+the shipped file is 1483 = 1439 header + that 44-byte tail; (4) §2.4's hop table is
+re-derived — `Msm.ts:1033`, `Performance.ts:354`, `:553`, `:457/578/596/598/600/602` — plus
+the two in-body references `ImprecisionMap.ts:285` (impIndex loop) and `:352` (seed
+decision); (5) gate (i) is now **"zero *code* diff"** with the comment-immune instrument
+named (`ts.transpileModule` + `removeComments`, or `t8verify/toks2.mjs`), resolving the
+RULE U4a contradiction — the old line-based wording told a worker to revert the very JSDoc
+U4a mandates. §9's risk row and §8.1's M-a description were updated to match, so the gate
+reads identically in all three places.
+
+One correction to the verifier's item 3 worth recording: "1483 bytes of doc header + the
+same 44" reads as 1527 total; measured, `dist/units.js` is **1483 in total**, of which 1439
+is header. Gates: `npm run verify` green (**54 files / 2159 tests**), prettier clean,
+`git diff -- src tests` empty, `log.md` append-only. My writes are exactly
+`M refactor/ARCHITECTURE.md` + `M refactor/log.md`; `refactor/state.json` also shows as
+modified but is the conductor's own post-T19a bookkeeping (`lastGreenCommit` → `f947836`,
+`currentItem` → T13, completed 17 → 18), not mine. **Frozen.**

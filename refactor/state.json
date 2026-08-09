@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "75e5ff1",
+  "lastGreenCommit": "f947836",
   "phase": 3,
-  "currentItem": "T19a",
-  "counters": { "completed": 17, "blocked": 0, "reverted": 0 },
+  "currentItem": "T13",
+  "counters": { "completed": 18, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 94.0,
@@ -122,7 +122,7 @@
     {
       "id": "T19a",
       "phase": 3,
-      "status": "in_progress",
+      "status": "done",
       "title": "Units brands + RenderOptions (ARCHITECTURE.md §7, §2)",
       "details": "Per ARCHITECTURE.md: src/units.ts (type-only brands: Ticks, Milliseconds, Normalized, Midi7Bit, Bpm — RULE U1-U3, zero emitted JS, proven by zero-line emitted-JS diff) and src/mpm/RenderOptions.ts (seed + sampling knobs incl. movementSampleMaxStep relocation from the mutable static, per the immutability policy). Runs after T18, before T13 (architect's order).",
       "order": "T14 -> T18 -> T19a -> T13 -> T16 -> T15 -> T17 -> T19 -> T20 -> T21 (architect §8, conductor-adopted)"
@@ -130,7 +130,7 @@
     {
       "id": "T13",
       "phase": 3,
-      "status": "pending",
+      "status": "in_progress",
       "title": "Public facade + index exports",
       "details": "Implement the ARCHITECTURE.md facade (e.g. parseMei/convertToMsmMpm/perform/renderMidi) as additive API; index.ts exports curated; old entry points kept working. Integration tests may switch to facade only mechanically. ACCEPTANCE (charter, facade-plain-data bullet): facade outputs are plain JSON-serializable/structured-clone-safe data — survives postMessage, supports referential-equality memoization; XomTypes/XML types never appear in facade signatures. DOWNSTREAM CONSUMER REQUESTS (mpmify ML session, 2026-08-08): (a) batch path MSM+MPM-as-objects/JSON -> per-note {id, date, duration, milliseconds.date, milliseconds.date.end, velocity} + CC streams (movement/sub-note dynamics), no file I/O; (b) expose the imprecision RNG seed so synthetic datasets are reproducible."
     },
