@@ -176,7 +176,7 @@ Options, all optional:
 > same millisecond date, the interior picks which one keeps its value with a bare `Math.random()`
 > and re-rolls the rest through an unseeded generator — faithfully, from
 > `ImprecisionMap.java:845,894`. A seeded render is reproducible only while no two offsets share a
-> date, which for polyphonic input is often false. See [PARITY.md §5](PARITY.md).
+> date, which for polyphonic input is often false. See [PARITY.md §4](PARITY.md).
 
 ### The class API underneath
 
@@ -222,7 +222,7 @@ produces"**. That is enforced mechanically:
   equivalence event by event, and the MIDI export pipeline. They auto-discover every `.mei` fixture, so a missing reference is
   a **failure, not a skip**, and they canonicalize generated `meico_<uuid>` identifiers by
   first-occurrence order — which keeps `goto` → `marker` wiring verifiable rather than deleting it.
-- **2334 tests across 59 files**, run as a gate (`npm run verify` = clean build + typecheck of the
+- **2338 tests across 59 files**, run as a gate (`npm run verify` = clean build + typecheck of the
   test sources + the full suite) before every single commit of the refactor that produced this
   codebase.
 - **Byte probes for every refactor.** Beyond the suite, each structural change was proven with a
@@ -232,13 +232,14 @@ produces"**. That is enforced mechanically:
 - **Negative controls.** Where a claim was load-bearing, the inverse was tested too: deliberately
   mutating the new code had to _break_ the probe, so that a green result proves the probe can see
   the thing it claims to check. Roughly a dozen such mutations are recorded in the journal, and the
-  first `AccentuationPatternDef` control is why we know a one-character "fix" there moves fixture
-  bytes.
+  `AccentuationPatternDef` control is why we know a one-character "fix" there moves fixture bytes —
+  which is why that fix shipped only once the Java fork had been patched and the affected ground
+  truth regenerated from it.
 
 What this does **not** claim: imprecision output is nondeterministic by design and is never
-byte-compared (see [PARITY.md §5](PARITY.md)), and a short list of behaviours on malformed or
+byte-compared (see [PARITY.md §4](PARITY.md)), and a short list of behaviours on malformed or
 unreachable input still differs from the reference — those are enumerated in
-[PARITY.md §3](PARITY.md) rather than fixed.
+[PARITY.md §2](PARITY.md) rather than fixed.
 
 ### Where this deliberately differs from Java
 
@@ -262,20 +263,25 @@ any reference fixture:
    `NullPointerException` and the port used to render it at position 0.
 7. **The random-number provider rejects an unusable index** — `NaN`, infinite, or absurdly large —
    instead of overflowing the stack or allocating without bound, as both Java and the port did.
+8. **`AccentuationPatternDef.getAccentuationAt` ramps each segment to the next accentuation**,
+   where a guard that can never hold (`i > size - 1`) made every segment ramp to the end of the
+   whole pattern. This is the one fix that moves fixture bytes, so it shipped the way entry 2 did:
+   the fork was patched first and the affected ground truth regenerated from it.
 
 Full accounts, with Java line citations and the evidence for each, are in [PARITY.md](PARITY.md) —
-along with the differences left in place, the Java bugs reproduced on purpose, and one further fix
-that is approved but held back because correcting it provably moves fixture bytes — it needs the
-Java reference patched and the ground truth regenerated in the same step.
+along with the differences left in place and the Java bugs reproduced on purpose.
 
 ## Provenance
 
 - **Upstream**: [cemfi/meico](https://github.com/cemfi/meico) by Axel Berndt (Paderborn
   University), the Java original this is a port of.
 - **Reference used for verification**: the fork
-  [pfefferniels/meico](https://github.com/pfefferniels/meico), specifically commit **`1b3711f0`**
-  ("Fix movementMap XML round-trip and rendering fidelity"). All current ground-truth fixtures were
-  generated from that commit.
+  [pfefferniels/meico](https://github.com/pfefferniels/meico), specifically commit **`1d662105`**
+  ("Fix getAccentuationAt segment-end selection (dead condition)"). All current ground-truth
+  fixtures reproduce from that commit. The `reference/` and `performance-reference/` sets were
+  generated at its parent **`1b3711f0`** ("Fix movementMap XML round-trip and rendering fidelity")
+  and are unaffected by the segment-end fix — no MEI fixture reaches an accentuation pattern, which
+  the pipeline probe confirms by moving only the two all-maps entries.
 - **`VERSION`** (exported, and written into MPM metadata by the converter) is `0.11.2` and tracks
   the _meico_ version whose behaviour is reproduced. It is deliberately **not** the npm package
   version: it is serialization-visible, so changing it changes fixture bytes.

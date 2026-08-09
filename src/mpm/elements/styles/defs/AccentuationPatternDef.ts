@@ -234,27 +234,26 @@ export class AccentuationPatternDef extends AbstractDef {
    * in between it is linearly interpolated from the preceding accentuation's
    * `transition.from` towards its `transition.to`.
    *
-   * DELIBERATE JAVA BUG, STILL PORTED AS IS — do not correct it here on its own; the fix is
-   * approved and belongs to item TD3. `segmentEnd` is meant to become the *next*
-   * accentuation's beat, so that each transition ramps to its own segment's end. The guard
-   * that would do it reads `i > this.accentuations.length - 1` (Java
-   * AccentuationPatternDef.java:317, where the comment says "if it is between two
-   * accentuations"), but the loop starts at `length - 1` and only ever counts down, so the
-   * condition can never hold. `segmentEnd` therefore stays at `length + 1.0` and EVERY ramp
-   * runs to the end of the whole pattern, flattening the interpolation of all but the last
-   * accentuation. The intended test is `i < this.accentuations.length - 1`.
+   * The segment-end guard mirrors `AccentuationPatternDef.java:316-320` as fixed in
+   * `pfefferniels/meico@1d662105`, and the asymmetry in it is deliberate:
    *
-   * Correcting that one character in isolation moves fixture bytes: the Java-generated
-   * `all-maps-reference/metrical_accentuation_augmented.msm` stores the value this spelling
-   * produces. TD3 patches the Java fork, regenerates that ground truth and changes this line
-   * together. PARITY.md §2 carries the measurement, including why a green test suite does
-   * not certify the change.
+   * - for an accentuation that has a successor, `segmentEnd` becomes the *next* one's beat,
+   *   so each transition ramps to its own segment's end (`i < this.accentuations.length - 1`);
+   * - for the **last** accentuation the guard does not fire, so `segmentEnd` keeps its initial
+   *   `length + 1.0` and the final segment ramps to the end of the whole pattern.
+   *
+   * Upstream cemfi/meico spells that guard `i > this.accentuations.length - 1`, which can never
+   * hold — the loop starts at `length - 1` and only counts down — so every segment ran to the
+   * pattern end and all but the last accentuation's interpolation was flattened. Fixing it
+   * moved Java-generated ground truth, so item TD3 patched the fork, regenerated the affected
+   * fixtures and changed this line together; PARITY.md §1 carries the measurement.
    *
    * Consequences worth knowing before touching anything here: the comparison chain and the
    * loop direction are load-bearing, `accentuation` is deliberately read after the loop via
    * non-null assertions (it is always assigned, because the first guard proves at least the
    * first accentuation is at or before `beatPosition`), and unit tests in
-   * `tests/mpm/elements/styles/defs/AccentuationPatternDef.test.ts` pin the buggy values.
+   * `tests/mpm/elements/styles/defs/AccentuationPatternDef.test.ts` pin both halves of the
+   * asymmetry — reverting the guard fails them.
    *
    * Throws if the pattern has no accentuations at all — callers such as
    * `MetricalAccentuationMap` only reach it through parsed patterns that have some.
@@ -270,7 +269,7 @@ export class AccentuationPatternDef extends AbstractDef {
       accentuation = this.accentuations[i].getKey();
       if (beatPosition === accentuation[0]) return accentuation[1];
       if (beatPosition > accentuation[0]) {
-        if (i > this.accentuations.length - 1) segmentEnd = this.accentuations[i + 1].getKey()[0];
+        if (i < this.accentuations.length - 1) segmentEnd = this.accentuations[i + 1].getKey()[0];
         break;
       }
     }

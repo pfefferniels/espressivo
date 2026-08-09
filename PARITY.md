@@ -7,10 +7,11 @@ its reference cannot be verified against it.
 
 That rule has one carve-out, added on the maintainer's instruction in August 2026: an **obvious
 bug** gets fixed rather than reproduced, provided the fix is proven not to move the bytes of any
-reference fixture. Everything below is therefore one of four things — a bug fixed under that
-carve-out (§1), one whose fix is approved but waits on the reference being patched first (§2), a
-difference deliberately left in place (§3, §4), or a behaviour that reads as a bug and is not
-(§6). Nothing is undocumented, and this file is the audit trail for
+reference fixture — or, where it does, provided the Java fork is patched and the affected ground
+truth regenerated in the same step, so the port is never silently ahead of its reference.
+Everything below is therefore one of three things — a bug fixed under that carve-out (§1), a
+difference deliberately left in place (§2, §3), or a behaviour that reads as a bug and is not
+(§5). Nothing is undocumented, and this file is the audit trail for
 [README.md](README.md#equivalence-with-java-meico)'s equivalence claim.
 
 Java citations are `File.java:line` in
@@ -21,9 +22,16 @@ in `refactor/log.md`.
 **The evidence standard every "fixed" entry below meets.** A pipeline byte-probe — 5 deterministic
 all-maps fixtures and all 16 MEI fixtures, each through MSM, MPM, augmented MSM, raw MIDI and
 expressive MIDI, with generated UUIDs canonicalized — produces a transcript hash of
-`169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e`. Every fix here was measured on
-a clean build against a clean build of the commit before it and **left that hash unchanged**. A
-fix that moves it is not shipped; §2 holds the one that does.
+`169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` through the `TD2` wave. Every
+fix here was measured on a clean build against a clean build of the commit before it, and all but
+one **left that hash unchanged**.
+
+The exception is the segment-end fix (`TD3`), which moves it by construction — it changes rendered
+velocities. A fix in that class is shipped only with the reference moved underneath it in the same
+step: the Java fork is patched, the affected ground truth is regenerated from the patched fork, and
+the port's agreement with the _new_ reference is then measured directly. `TD3`'s entry below states
+what that measurement returned, and the standing hash from `TD3` onwards is
+`6e0124f58aa5375e7123d860d35d5116a52470efe1db7175159b9b2076d7b24b`.
 
 ---
 
@@ -214,7 +222,7 @@ map renders. This is the interior's house policy for malformed input (ARCHITECTU
 logs-and-returns-null) and the same shape the def factories use, which is why it was preferred
 over a typed throw: an aborted render is Java's behaviour and is worse than a skipped movement.
 
-Note what did **not** change: the `j > 0` scan still never examines entry 0 (§4).
+Note what did **not** change: the `j > 0` scan still never examines entry 0 (§3).
 
 ### P4 — `RandomNumberProvider` rejects an index it cannot serve
 
@@ -270,55 +278,70 @@ hangs-or-overflows.
 
 ---
 
-## 2. Approved, pending ground-truth regeneration
-
-One bug is **approved for repair and not yet shipped**, because fixing it in the port alone would
-put the port out of agreement with the reference on a fixture that exists. It is listed separately
-from §1 and from §4 on purpose: it is neither fixed nor preserved.
-
 ### `AccentuationPatternDef.getAccentuationAt` — the segment-end bug
 
-|            |                                                                                                                                                          |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status     | **FIX APPROVED, pending Java-side patch + ground-truth regeneration (`TD3`)**                                                                            |
-| Java       | `AccentuationPatternDef.java:317`                                                                                                                        |
-| TypeScript | `src/mpm/elements/styles/defs/AccentuationPatternDef.ts` — `getAccentuationAt` at `:262`, the guard to correct at `:273`; both unchanged, comment intact |
-| Blocked by | `tests/integration/fixtures/all-maps-reference/metrical_accentuation_augmented.msm`                                                                      |
+|                           |                                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Item                      | `TD3`, ground-truth regeneration approved 2026-08-09                                                                                  |
+| Java                      | `pfefferniels/meico@1d662105`, "Fix getAccentuationAt segment-end selection (dead condition)" — `AccentuationPatternDef.java:316-320` |
+| TypeScript                | `src/mpm/elements/styles/defs/AccentuationPatternDef.ts` — `getAccentuationAt` at `:261`, the corrected guard at `:272`               |
+| Guard tests               | `tests/mpm/elements/styles/defs/AccentuationPatternDef.test.ts`, `tests/mpm/elements/styles/Styles.test.ts`                           |
+| Reachable from a fixture? | **Yes** — `metrical_accentuation` and `all_maps`, both regenerated                                                                    |
 
 `segmentEnd` is meant to become the _next_ accentuation's beat, so that each transition ramps to
-its own segment's end. The guard that would do it reads `i > this.accentuations.length - 1`, but
-the loop starts at `length - 1` and only counts down, so **the condition can never hold**.
-`segmentEnd` therefore stays at `length + 1.0` and every ramp runs to the end of the whole
-pattern, flattening the interpolation of all but the last accentuation. The intended test was
-`i < this.accentuations.length - 1`; the Java comment on that line ("if it is between two
-accentuations") says as much.
+its own segment's end. Upstream's guard reads `i > this.accentuations.size() - 1`, but the loop
+starts at `size - 1` and only counts down, so **the condition can never hold**. `segmentEnd`
+therefore stayed at `length + 1.0` and every ramp ran to the end of the whole pattern, flattening
+the interpolation of all but the last accentuation. The Java comment on that line — "if it is
+between two accentuations" — describes the test the code fails to make.
 
-**Why it is not simply fixed here, measured rather than argued.** The one-character correction —
-`i < this.accentuations.length - 1` — was applied on a scratch tree and put
-through the pipeline probe: the transcript hash moves from `169e964b…` to
-`63c7faa5485217e78dc214b439a5b0ec106a5901b2728d4f509368810580921c`, with exactly one differing
-entry — the `metrical_accentuation` all-maps fixture. Its Java-generated ground truth
-`tests/integration/fixtures/all-maps-reference/metrical_accentuation_augmented.msm` stores
-`velocity="100.0003471017008"`, which is `100 + 1/2881` — the buggy `segmentEnd` of
-`length + 1 = 2881`. The corrected code produces `100.00138888888888`, which is `100 + 1/720`,
-the next accentuation's beat. **The reference fixture pins the bug**, so fixing it would put the
-port out of agreement with the reference on a document that exists.
+**The asymmetry in the fix is deliberate, and is the part worth reading twice.** Only an
+accentuation that _has_ a successor gets the next one's beat; for the **last** accentuation the
+guard does not fire and `segmentEnd` keeps `length + 1.0`, so the final segment still ramps to the
+pattern end. That is not an oversight left in the correction — it is what `i < size - 1` means, and
+the fork's probe (`mpmify/ml/java/AccentFixProbe.java`) prints the same
+`0.05547850208044383` = 40/**721** for the last segment before and after the patch, where 721 is
+`2880 + 1 - 2160` and not `2880 - 2160`. A "tidier" fix that also moved the last segment's end
+would diverge from the reference.
 
-Note for anyone who re-runs this: the full suite stays **green** with the fix applied, because
+**Why this one needed the fork patched first.** Unlike every other entry in §1, this fix moves
+fixture bytes, and the pre-existing ground truth stored the _buggy_ value:
+`all-maps-reference/metrical_accentuation_augmented.msm` contained `velocity="100.0003471017008"`
+= `100 + 1/2881`, against the corrected `100.00138888888888` = `100 + 1/720`. So the repair is the
+`T20b` pattern — patch the fork, regenerate, mirror — landing as one gated item. The Java side is
+`meico@1d662105`; the ground truth was regenerated from that commit by `GenerateAllMapsReference`.
+
+**What the regeneration moved, categorized.** Of the 40 generated all-maps files, 23 were
+byte-identical, 13 differed only in UUIDs, two were the charter-exempt nondeterministic
+`imprecision_timing_augmented.msm` and `imprecision_timing_expressive.mid`, and exactly **two**
+carried a semantic change — and in both it was `note@velocity` and nothing else:
+
+- `metrical_accentuation_augmented.msm`: four distinct values, `100 + k/2881` → `100 + k/720` for
+  k = 1..4 (the pattern's anchors are 720 ticks apart).
+- `all_maps_augmented.msm`: eight values, each moved by exactly `k/720 - k/2881` for k = 1..4,
+  matching to within 1e-14. `all_maps` carries its own four-anchor pattern, so it is the same bug
+  in a second document.
+
+Both were confirmed to be the fix rather than run-to-run noise by generating twice from the same
+classes (identical apart from UUIDs) and once from a rebuilt pre-fix `AccentuationPatternDef`
+(reproducing exactly the committed values).
+
+**Agreement with the new reference, measured.** Running the equivalence gate's own comparison over
+all eight all-maps fixtures, the maximum absolute deviation between the port and the regenerated
+Java reference across the 863 attributes it compares is **exactly 0** — the suite passes even with
+the tolerance set to zero. Reverting the one character reintroduces eight `note@velocity`
+diffs of 1.04e-3 to 4.17e-3 in `metrical_accentuation`.
+
+**The tolerance blind spot this bug exposed, stated because it outlived the bug.**
 `tests/integration/all-maps-equivalence.test.ts` compares numeric attributes with a tolerance of
-0.01 and the divergence is 0.00104. A green verify is therefore _not_ evidence that this fix is
-safe. The istanbul branch map is not either — it shows the guard as a dead branch, which proves
-only that the _buggy_ condition never fires, not that no fixture reaches the _fixed_ one.
+**0.01**, and the largest divergence this bug produced is 4.17e-3. The **equivalence gate** is
+therefore green on a tree with the bug reintroduced and the corrected ground truth in place —
+measured, not hypothesized. A green verify was never evidence for this fix, and the istanbul branch map was
+not either: it showed the guard as a dead branch, which proves only that the _buggy_ condition
+never fires, not that no fixture reaches the _fixed_ one. What does the work is the unit tests: the
+same reverted tree fails four of them, in both the direct and the parse path.
 
-**What happens next.** The repair is the `T20b` pattern: patch the Java fork,
-regenerate the affected ground truth from it, then apply the one-character change here — three
-steps that have to land together, which is why they are their own gated item rather than a
-sub-round of `TD2`. Until `TD3` lands, the port keeps the buggy spelling, and the site comment in
-`AccentuationPatternDef.ts` still says so.
-
----
-
-## 3. Frozen divergences
+## 2. Frozen divergences
 
 Known, journaled, and deliberately **not** repaired. All three come from capability gaps in the
 XML layer rather than from choices, and none is reachable from the MEI/MSM ⇒ MIDI pipeline.
@@ -344,9 +367,9 @@ XML layer rather than from choices, and none is reachable from the MEI/MSM ⇒ M
 
 ---
 
-## 4. Bug-for-bug preservations
+## 3. Bug-for-bug preservations
 
-Behaviours that look like defects and are reproduced anyway. Unlike §2's entry these are not
+Behaviours that look like defects and are reproduced anyway. Unlike §1's entries these are not
 queued for repair: either the Java source leaves the intent genuinely ambiguous, or the "defect"
 costs nothing. Several are pinned by unit tests that assert the wrong-looking value on purpose.
 
@@ -384,7 +407,7 @@ diverge.
 
 ---
 
-## 5. Nondeterminism — why some outputs are never byte-compared
+## 4. Nondeterminism — why some outputs are never byte-compared
 
 Not divergences, but part of the equivalence claim's shape, and the reason two fixture families
 are excluded from byte comparison.
@@ -403,7 +426,7 @@ are excluded from byte comparison.
 
 ---
 
-## 6. What is _not_ a divergence
+## 5. What is _not_ a divergence
 
 Two behaviours that reliably read as bugs on first encounter and are neither:
 

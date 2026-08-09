@@ -339,7 +339,12 @@ describe('MetricalAccentuationStyle', () => {
     const mas = MetricalAccentuationStyle.createMetricalAccentuationStyle(
       styleDefElement('default', [
         element('accentuationPatternDef', { name: '4/4', length: '4.0' }, [
-          element('accentuation', { beat: '1.0', value: '1.0' }),
+          element('accentuation', {
+            beat: '1.0',
+            value: '1.0',
+            'transition.from': '0.0',
+            'transition.to': '1.0',
+          }),
           element('accentuation', { beat: '3.0', value: '0.5' }),
         ]),
         element('accentuationPatternDef', { name: '3/4', length: '3.0' }),
@@ -351,6 +356,11 @@ describe('MetricalAccentuationStyle', () => {
     expect(fourFour.getLength()).toBe(4.0);
     expect(fourFour.size()).toBe(2);
     expect(fourFour.getAccentuationAt(1.0)).toBe(1.0);
+    // Reaches getAccentuationAt's segment-end logic through the PARSE path, which is the route
+    // the reference fixtures take. Beat 1 has a successor at beat 3, so segmentEnd = 3 and
+    // ((2-1) * (1-0)) / (3-1) + 0 = 0.5 (AccentuationPatternDef.java:316-320, fixed in
+    // meico@1d662105). The upstream spelling would leave segmentEnd at length + 1 = 5 => 0.25.
+    expect(fourFour.getAccentuationAt(2.0)).toBe(0.5);
     expect(mas.getDef('3/4')!.size()).toBe(0);
   });
 

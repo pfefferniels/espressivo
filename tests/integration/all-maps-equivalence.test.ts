@@ -152,6 +152,18 @@ function loadAndPerform(name: string): { tsXml: string; refXml: string } {
   return { tsXml, refXml };
 }
 
+// Numeric agreement with the Java reference is EXACT: over all eight all-maps fixtures the
+// largest deviation across every attribute compared here is 0 ([TD3] measurement). This
+// tolerance is headroom for last-ulp divergence in Math.pow/Math.log, which Java specifies
+// to 1 ulp and does not guarantee across implementations (only StrictMath is reproducible);
+// at these magnitudes that lives near 1e-12. It is not headroom for formatting — the
+// comparison parses both sides to doubles, and both platforms' number-to-string is
+// round-trip exact. It was 0.01 until [TD3], which is 2.4x wider than the worst error the
+// AccentuationPatternDef segment-end bug caused (4.17e-3): the suite was green while the
+// port disagreed with the reference. Tighten this freely; widening it requires the same
+// evidence a parity divergence does.
+const NUMERIC_TOLERANCE = 1e-9;
+
 // Deterministic tests (no imprecision randomness)
 const deterministicFixtures = [
   'rubato',
@@ -170,7 +182,7 @@ describe('All map types: full XML equivalence (TS vs Java)', () => {
       if (!existsSync(join(REF_DIR, `${name}_augmented.msm`))) return;
       const { tsXml, refXml } = loadAndPerform(name);
       const diffs: string[] = [];
-      compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, 0.01, false);
+      compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, NUMERIC_TOLERANCE, false);
       if (diffs.length > 0)
         expect.fail(`${diffs.length} differences:\n${diffs.map((d) => `  - ${d}`).join('\n')}`);
     });
@@ -182,7 +194,7 @@ describe('All map types: full XML equivalence (TS vs Java)', () => {
       const { tsXml, refXml } = loadAndPerform(name);
       const diffs: string[] = [];
       // Skip imprecision-affected attributes but compare everything else
-      compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, 0.01, true);
+      compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, NUMERIC_TOLERANCE, true);
       // Filter out milliseconds.date and velocity diffs (these are shifted by imprecision)
       const structuralDiffs = diffs.filter(
         (d) =>
@@ -237,7 +249,7 @@ describe('All map types: full XML equivalence (TS vs Java)', () => {
     if (!existsSync(join(REF_DIR, 'all_maps_augmented.msm'))) return;
     const { tsXml, refXml } = loadAndPerform('all_maps');
     const diffs: string[] = [];
-    compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, 0.01, true);
+    compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, NUMERIC_TOLERANCE, true);
     // Filter diffs caused by imprecision RNG differences
     const structuralDiffs = diffs.filter(
       (d) =>

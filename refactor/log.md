@@ -11365,3 +11365,557 @@ ledger rather than discovering it against the source.
 
 Manifest unchanged from the verified set: 22 modified + 2 new. `tests/integration/**` and fixtures
 untouched, no suppressions.
+
+## [TD3] worker — the segment-end fix, its ground truth, and what the 0.01 tolerance was hiding (2026-08-09)
+
+The one-character fix TD2 escalated is now shipped, together with the ground truth it moves. Java
+side, TypeScript side and fixtures land as one item, as the ruling required. `npm run verify` is
+green at **59 files / 2338 tests** (2334 + 4), and the port now agrees with the regenerated
+reference **exactly** — the equivalence gate passes with its numeric tolerance set to zero.
+
+### 1. The Java fix, confirmed rather than assumed
+
+`meico@1d662105` is the fork's HEAD (`git log` in `/Users/nielspfeffer/Projects/meico`:
+`1d662105` on top of `1b3711f0`, working tree clean apart from three untracked non-source files).
+`AccentuationPatternDef.java:316-320` reads:
+
+```java
+if (beatPosition > accentuation[0]) {
+    if (i < (this.accentuations.size() - 1))
+        segmentEnd = this.accentuations.get(i+1).getKey()[0];
+    break;
+}
+```
+
+I did **not** trust the class files in the fork's `out/production/meico`. Their timestamps are
+equal to the second to the source's, which is not evidence, and invariant 8 says the Java repo is
+read-only. So instead of recompiling into the fork (T20b's approach), I compiled all 90 `src/meico`
+sources plus `GenerateAllMapsReference` into **my own scratch output tree**
+(`td3/javaout`, `javac -nowarn -cp "externals/*"`, OpenJDK 17.0.1). That removes the classpath
+gotcha entirely rather than working around it — there are no shadowing tool classes in a directory
+I just created — and it leaves the fork untouched, which `git status` there confirms.
+
+`AccentFixProbe` (the fork's own probe, `mpmify/ml/java/AccentFixProbe.java`) against those classes:
+
+```
+accentuation at 1.0 = 0.001388888888888889  (velocity 100+v = 100.00138888888888)
+last segment, at 2200.0 = 0.05547850208044383
+ACCENT_FIX_PROBE_PASS
+```
+
+**Negative control on the Java side**, which is the part that makes the above mean something: I
+extracted `AccentuationPatternDef.java` at `1b3711f0` (pre-fix), compiled it over a *copy* of the
+same class tree, and re-ran the same probe:
+
+```
+accentuation at 1.0 = 3.471017007983339E-4  (velocity 100+v = 100.0003471017008)
+last segment, at 2200.0 = 0.05547850208044383     <-- identical
+ACCENT_FIX_PROBE_FAIL
+```
+
+Two things follow, both load-bearing. The fix is genuinely in the classes I generate fixtures with;
+and **the last segment's value is byte-identical across the fix**, which is the independent
+confirmation of the asymmetry the item brief specified. 40/**721**, not 40/720 — the last
+accentuation keeps `patternLength + 1` as its segment end because `i < size - 1` does not fire for
+it. A "tidier" correction that also moved the last segment would have diverged from the reference,
+and nothing in the unit tests alone would have caught it.
+
+### 2. The TypeScript mirror
+
+`src/mpm/elements/styles/defs/AccentuationPatternDef.ts:272`, `i >` → `i <`. The site comment is
+rewritten: it no longer says "DELIBERATE JAVA BUG, do not correct", it cites
+`AccentuationPatternDef.java:316-320` and `meico@1d662105`, and it spends its length on the
+asymmetry rather than on the bug, because the asymmetry is what a future reader will be tempted to
+"clean up".
+
+**Independent confirmation that this is the same change TD2 measured:** built clean against the
+*old* fixtures, the T8 verifier's pipeline probe (`t21verify/pipe.mjs`) returns
+`63c7faa5485217e78dc214b439a5b0ec106a5901b2728d4f509368810580921c` — TD2's escalation hash,
+character for character. The baseline build first reproduced `169e964b…` on the same probe.
+
+### 3. Regeneration, and the whole diff categorized
+
+`GenerateAllMapsReference` run from `td3/javaout` into a scratch directory, then compared to the
+committed fixtures with a classifier that canonicalizes every UUID (bare *and* `meico_`-prefixed)
+in first-occurrence order and then diffs attribute by attribute (`td3/classify.py`).
+
+| category | files | detail |
+| --- | --- | --- |
+| byte-identical | 23 | including **all four** `metrical_accentuation` non-augmented files |
+| UUID-only noise | 13 | the single root `xml:id` per file; zero other tokens |
+| nondeterministic (charter-exempt) | 2 | `imprecision_timing_augmented.msm`, `imprecision_timing_expressive.mid` |
+| **semantic** | **2** | `metrical_accentuation_augmented.msm`, `all_maps_augmented.msm` — `note@velocity` and **nothing else** |
+
+No file changed for any reason outside those categories, so the fork has not drifted beyond the
+approved one-character fix.
+
+**Attribution of the two semantic files, measured three ways** rather than inferred:
+
+- *Two runs, same classes.* Everything is identical-or-UUID-only except the two
+  `imprecision_timing` files. So `all_maps`' velocity column is **run-stable** in Java — its
+  imprecision is seeded — and the change there cannot be RNG noise. (`imprecision_dynamics` is
+  run-stable too; only *timing* imprecision is nondeterministic, which matches
+  `ImprecisionMap.java:845,894`.)
+- *Fixed classes vs rebuilt pre-fix classes, both fresh runs.* Reproduces exactly the same two
+  files with exactly the same values as the comparison against the committed fixtures.
+- *Arithmetic.* `metrical_accentuation` moves `100 + k/2881` → `100 + k/720` for k = 1..4. Every
+  one of `all_maps`' eight velocities moves by exactly `k/720 - k/2881` for k = 1..4, matching to
+  within 1e-14 — i.e. its own four-anchor pattern, same bug, second document.
+
+**I adopted `all_maps_augmented.msm` as well as the `metrical_accentuation` group, which is wider
+than the brief's literal "copy ONLY the metrical_accentuation files".** The brief's gate is "only
+accentuation-related files may change, and within them only velocity values"; `all_maps` satisfies
+both clauses, and leaving it would have been the worse mistake. Its stale reference pins the bug in
+a second place, the fixed port disagrees with it by 1.04e-3 to 4.17e-3, and
+`all-maps-equivalence.test.ts` filters `velocity` out of the `all_maps` comparison entirely — so
+nothing in the suite would ever have said so. That is the same shape of silent divergence this item
+exists to close.
+
+Adopted as complete file groups (`metrical_accentuation*`, `all_maps*`, 10 files) so that each
+input `.msm` and its `_augmented.msm` keep the same root `xml:id`; copying only the two augmented
+files would have left the ground truth internally inconsistent about which run produced it. Of the
+ten, **four** actually change bytes; the other six are byte-identical and invisible to `git status`.
+Fixtures are verbatim generator output — nothing was hand-edited.
+
+`tests/integration/fixtures/mei/**`, `reference/**`, `performance-reference/**` and every
+`tests/integration/*.test.ts` are untouched. No MEI fixture reaches an accentuation pattern
+(`grep -rl accentuationPattern` over `reference/` and `performance-reference/` ⇒ 0 files;
+`grep -ril accent` over `mei/` ⇒ 0 files), which is also why the pipeline probe moved only all-maps
+entries.
+
+### 4. Tests — +4, and the inversions
+
+The brief expected the `[T6]`-era tests to be inverted. **The finding is that none of them pinned
+the bug numerically** — I checked each before editing:
+
+| test | before | after | why |
+| --- | --- | --- | --- |
+| `returns 0 before the first accentuation` | 0.0 | 0.0 | early return, unaffected |
+| `returns an accentuation value exactly at its beat` | 1.0 / 0.5 | same | exact-hit return, unaffected |
+| `returns the last transition.to at or beyond length + 1` | 0.25 | same | early return, unaffected |
+| `interpolates … over the rest of the pattern` | 0.25/0.5/0.75 | same | **one** accentuation, so it *is* the last one — `segmentEnd` legitimately stays `length + 1` |
+| `interpolates from the nearest preceding accentuation` | 0.3 | same | queries beat 4, *after* the last accentuation — same reason |
+| `yields a flat value when transition.from equals transition.to` | 0.7 | same | `from == to`, segment end cancels |
+| `Styles.test.ts` `getAccentuationAt(1.0)` | 1.0 | 1.0 | exact hit |
+
+So not one existing assertion changed value, and **at HEAD no test would have failed if the guard
+were reverted** — the tests pinned the bug only in their *comments*, which asserted that the guard
+can never hold. Both such comments are rewritten to state the real reason their value is what it is
+(the queried anchor is the last one), because leaving "the condition can never hold" next to a
+condition that now holds is how the next reader concludes the fix was botched.
+
+The real work was therefore adding the coverage that was missing, all with values hand-computed
+from Java's formula at `AccentuationPatternDef.java:324` and cross-checked against the Java probe
+and the regenerated fixture strings — never read off the TypeScript:
+
+1. `ramps to the next accentuation's beat, not to the pattern end` — beat 2 of the two-anchor 4/4
+   pattern: `((2-1)·(1-0))/(3-1) + 0 = 0.5` fixed, `0.25` buggy. `toBe`, not `toBeCloseTo`.
+2. A nested block reproducing **`GenerateAllMapsReference.java:126-130`'s pattern verbatim**
+   (length 2880, anchors 0/720/1440/2160): beats 1..4 yield exactly `k/720`
+   (`0.001388888888888889` …), where upstream yields `k/2881`.
+3. The **last-segment** invariant: beat 2200 yields `0.05547850208044383` = 40/721, with the
+   denominator called out. This one passes on the reverted build too, deliberately — it pins the
+   half of the semantics the fix does *not* change, so the two halves cannot be conflated later.
+4. The four velocity **strings** the regenerated fixture stores (`'100.00138888888888'` …), so the
+   unit test and the ground truth are pinned to each other rather than merely agreeing today.
+5. `Styles.test.ts`'s parse test gained explicit `transition.from`/`transition.to` on its first
+   accentuation and an assertion at beat 2, so the fix is also pinned **through the XML parse
+   path** — the route the fixtures actually take. Its existing assertions are untouched.
+
+**Negative control (charter bug policy (c)).** The working tree was rsync'd to `td3/negctl`, the
+one character reverted there, and the full suite run: **4 tests fail in 2 files**, across both the
+direct and the parse path. `2334 passed, 4 failed`.
+
+### 5. Agreement with the new reference
+
+- **`npm run verify` exit 0**, 59 files / **2338 tests**, re-run on the shipped bytes after the
+  documentation edits.
+- **Direct measurement against the regenerated reference** (`td3/tolsweep.mjs`, which copies
+  `parseXml`/`compareElements` **verbatim** out of `all-maps-equivalence.test.ts` so it measures the
+  real gate): across all eight all-maps fixtures and the **863** attributes the gate compares, the
+  number of non-zero deviations is **0**. Not "below tolerance" — exactly zero, on every fixture.
+- **Pipeline probe**, shipped build: `6e0124f58aa5375e7123d860d35d5116a52470efe1db7175159b9b2076d7b24b`.
+  It moved from `63c7faa5…` purely because the adopted input fixtures carry new root UUIDs, which
+  `pipe.mjs` does not canonicalize (it handles `meico_<uuid>` only, and these are bare). Proven, not
+  asserted: with a probe that canonicalizes **all** UUIDs, the shipped build over the old fixtures
+  and over the new fixtures produce the identical transcript
+  (`eac952bda25273039cf3db6d69f9e661156eb6a2442a4f4ffa96c6af09ff769f`), while the baseline build
+  gives `e53818ef…`, differing in exactly two entries — `metrical_accentuation` and `all_maps`.
+  **Adopting the fixtures changed nothing about what the port produces.**
+- **Coverage v3**: functions **965/1041 = 92.6993 %** (floor 92.0, unchanged from TD2 to the digit);
+  uncovered scoped statements **2094**, equal to TD2's and far under the 2318 budget; test count
+  2334 → **2338**, an increase (7c gates decreases). `AccentuationPatternDef.ts` is 17/17 functions
+  and 169/169 statements. Indicator: statements 86.5786 %.
+- **Lint**: `eslint .` on a `git archive HEAD` tree and on the working tree, same command —
+  **1017 errors / 2 warnings on both**, delta **0**. (That is 1019 *problems*, which is exactly what
+  `lint-debt.md`'s TD2 row records; the two numbers are the same measurement.) `lint-debt.md`
+  therefore needs no new row. **No suppressions added** anywhere.
+- `prettier --check` clean on all five edited text files.
+
+### 6. Tolerance evaluation — PROPOSAL ONLY, not applied (invariant 3)
+
+The measurement the brief asked for, taken with the gate's own comparison code on the shipped build
+and on the reverted build, over all eight fixtures (post-filter, i.e. what the suite actually
+gates):
+
+| tolerance | shipped build: surviving diffs | reverted build: surviving diffs |
+| --- | --- | --- |
+| **0.01 (current)** | 0 | **0 — the blind spot** |
+| 1e-3 | 0 | 8 (`metrical_accentuation` `note@velocity`) |
+| 1e-6 | 0 | 8 |
+| 1e-9 | 0 | 8 |
+| 1e-12 | 0 | 8 |
+| 0 | 0 | 8 |
+
+Two conclusions. The measured maximum deviation on the shipped build is **exactly 0**, not "1e-12
+noise" — both sides emit shortest-round-trip doubles and `parseFloat` reads them back bit-exactly.
+And the current 0.01 is **2.4× wider** than the largest error this bug produced (4.17e-3), which is
+why the suite stayed green on a tree that disagreed with its own ground truth.
+
+**Proposed change, for the verifier to sign off and the conductor to apply** — one added constant
+and three call sites in `tests/integration/all-maps-equivalence.test.ts`:
+
+```diff
+@@ tests/integration/all-maps-equivalence.test.ts
++// Numeric agreement with the Java reference is EXACT: over all eight all-maps fixtures the
++// largest deviation across every attribute compared here is 0 ([TD3] measurement). This
++// tolerance is headroom against double-to-string formatting drift only — at these magnitudes
++// that lives near 1e-12 — and is not licence for real divergence. It was 0.01 until [TD3],
++// which is 2.4x wider than the worst error the AccentuationPatternDef segment-end bug caused
++// (4.17e-3): the suite was green while the port disagreed with the reference. Tighten this
++// freely; widening it requires the same evidence a parity divergence does.
++const NUMERIC_TOLERANCE = 1e-9;
++
+ const deterministicFixtures = [
+@@
+-      compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, 0.01, false);
++      compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, NUMERIC_TOLERANCE, false);
+@@
+-      compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, 0.01, true);
++      compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, NUMERIC_TOLERANCE, true);
+@@
+-    compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, 0.01, true);
++    compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, NUMERIC_TOLERANCE, true);
+```
+
+**Why 1e-9 and not 0**, since 0 also passes today: the deviation being 0 is a property of both
+serializers printing shortest-round-trip doubles, not a guarantee. A future JDK or V8 that prints
+an equally valid neighbouring digit string would fail a zero tolerance for no behavioural reason,
+and the failure would look like a parity regression. 1e-9 sits ~3 orders above the worst plausible
+formatting noise at these magnitudes and ~6 orders below the class of error this item just fixed.
+**Why not 1e-3**, which also catches this bug: it is only a factor of 4 from the observed error,
+i.e. it would have caught *this* instance and not a slightly smaller one. This is a strict
+tightening (invariant 3 permits only that direction), it weakens nothing, and it is measured on
+both sides — it changes no verdict on the shipped tree and changes the verdict on the reverted one.
+
+### DISCOVERED — out of scope, each left alone deliberately
+
+- **`CHARTER.md:70-71` is now false.** "Known parity subtleties (do not 'fix' these)" still opens
+  with "e.g. `AccentuationPatternDef.getAccentuationAt` segment-end behavior". That is the one this
+  item just fixed. Governance document, so it goes to the conductor (TD1/TD2 precedent); it wants
+  the example swapped for one that is still true, or a pointer to PARITY.md §1.
+- **`ARCHITECTURE.md §6.3` is still stale** in the way TD2 flagged (P1/P2/P4 rows read "frozen",
+  RULE E1 does not know about the charter's bug-policy amendment). Unchanged by this item, still
+  open, still the conductor's.
+- **`t21verify/pipe.mjs`'s deterministic list omits `all_maps`**, so the standard probe reports
+  *one* moved entry where *two* moved. That is why TD2's escalation — correctly, for its probe —
+  named only `metrical_accentuation`. Any future item whose change can touch a map that `all_maps`
+  also exercises should add it to that list or use `td3/allmapsprobe.mjs`, which covers all six
+  deterministic fixtures and canonicalizes bare UUIDs as well.
+- **`pipe.mjs` canonicalizes only `meico_`-prefixed UUIDs.** The `<msm>` root `xml:id` is a bare
+  UUID, so any item that adopts a regenerated fixture will see the probe hash move for a reason that
+  is not its change. Worth fixing in the probe rather than re-deriving each time.
+
+### HANDOFF
+
+- Scratch: `td3/` — `javaout/` (fork classes at `1d662105`), `javaout-buggy/` (same, with a pre-fix
+  `AccentuationPatternDef`), `regen/` `regen2/` `regen-buggy/` (three generator runs),
+  `classify.py`, `tolsweep.mjs` (the gate's own comparison, parameterized by tolerance),
+  `allmapsprobe.mjs`, `bytecmp.mjs`, `negctl/` (the reverted tree). Each script takes a dist dir as
+  argv, so all of it re-runs against an independent build.
+- Ground-truth provenance: the all-maps set now reproduces from **`meico@1d662105`**. The
+  `reference/` and `performance-reference/` sets remain at `1b3711f0` and are provably unaffected.
+  README's Provenance section says both.
+
+## [TD3] verifier — PASS. Every claim reproduced independently; two PARITY.md corrections required; tolerance signed off at 1e-9 with an amended rationale (2026-08-09)
+
+Verdict **PASS**. I reproduced the worker's claims from my own compile, my own classifier and my
+own probes, and every load-bearing number came out identical. Two defects are in PARITY.md — one
+miscount and one statement that is false as written and contradicts its own paragraph — both
+documentation-only, neither touching code, fixtures or tests. Scratch: `td3verify/`.
+
+### 1. Java-mirror exactness — matches, including the asymmetry
+
+`meico@1d662105` exists, is the fork's HEAD, and changes one file by 2+/2−. Its
+`AccentuationPatternDef.java` reads `if (i < (this.accentuations.size() - 1))` at **:317**, inside
+the `beatPosition > accentuation[0]` block spanning **:316-320**; the interpolation is at **:324**.
+The TS at `AccentuationPatternDef.ts:261-282` mirrors it statement for statement — same guard
+chain, same descending loop, same `break`, same expression with the same association
+(`(((bp − a₀)·(a₃ − a₂)) / (segEnd − a₀)) + a₂`). The site comment's citations
+(`:316-320`, `meico@1d662105`) are correct.
+
+The **last-anchor case is preserved**: for `i == size − 1` the guard does not fire, so `segmentEnd`
+keeps `length + 1.0`. I did not take that on trust from either side:
+
+- *Hand-computed from the Java source*, for `AccentFixProbe`'s pattern (length 2880, anchors
+  0/720/1440/2160, transition 0→1): beat 1.0 breaks at `i = 0 < 3`, so `segmentEnd = 720` and the
+  value is `1/720 = 0.001388888888888889`, velocity `100.00138888888888`. Beat 2200.0 breaks at
+  `i = 3`, the guard does **not** fire, `segmentEnd = 2881`, and the value is
+  `40/721 = 0.05547850208044383` — denominator **721**, as the queue item specifies.
+- *Executed against Java classes I compiled myself* — all 90 `src/meico` sources plus the tool and
+  the probe, `javac -nowarn -cp "externals/*"` into `td3verify/javaout`, OpenJDK 17.0.1, nothing
+  written into the fork. `AccentFixProbe` prints exactly those two values and
+  `ACCENT_FIX_PROBE_PASS`.
+
+Both match the values recorded in the queue item and the TS runtime. **On the classpath question
+the brief raised**: the fork's own `out/production/meico` classes are *not* stale — running the
+probe against them (read-only, my probe class supplied from a separate directory) also prints the
+fixed values. So the FAIL condition does not trigger, and my scratch compile is the stronger
+evidence anyway.
+
+### 2. Independent regeneration — every committed fixture reproduces from `1d662105`
+
+`GenerateAllMapsReference` run from my own class tree into `td3verify/regen` (40 files), compared
+to the **committed** fixtures by my own classifier (`td3verify/cmp.py`, canonicalizing bare and
+`meico_`-prefixed UUIDs in first-occurrence order, then diffing attribute tokens):
+
+| category | files |
+| --- | --- |
+| byte-identical | 23 |
+| UUID-only | 15 (includes all four adopted-and-changed files) |
+| nondeterministic, charter-exempt | 2 — `imprecision_timing_augmented.msm`, `imprecision_timing_expressive.mid` |
+| **semantic** | **0** |
+
+Zero semantic differences against the committed tree: the shipped ground truth *is* what
+`meico@1d662105` produces. The only file with content differences is the timing-imprecision pair,
+and there only `milliseconds.date*`. That the non-accentuation fixtures still match their pre-TD3
+versions is settled more directly by git: `git diff 8283853` touches exactly four fixture files.
+`tests/integration/fixtures/mei/**`, `reference/**` and `performance-reference/**` are untouched,
+as is every `tests/integration/*.test.ts`.
+
+### 3. Fixture diff categorization — velocity and UUID only, all four files
+
+Token-level diff against `8283853` (equal token counts on all four, so nothing was added or
+removed):
+
+- `metrical_accentuation.msm`, `all_maps.msm` — root `xml:id` only, 1 token each.
+- `metrical_accentuation_augmented.msm` — root `xml:id` + **8** `note@velocity`, nothing else.
+  `100 + k/2881 → 100 + k/720`, k = 1..4, twice.
+- `all_maps_augmented.msm` — root `xml:id` + **8** `note@velocity`, nothing else. Each moves by
+  `k/720 − k/2881`; I checked all eight against that expression and the largest residual is
+  2.0e-14, so the attribution to this bug rather than to noise is arithmetic, not inference.
+
+Nothing outside those two categories in any file. The worker's decision to adopt `all_maps` as well
+as `metrical_accentuation` is **correct and I endorse it**: `all_maps` carries its own four-anchor
+pattern (`GenerateAllMapsReference.java:291-292`), its stale reference pinned the bug a second
+time, and the gate filters `velocity` out of the `all_maps` comparison, so nothing in the suite
+would ever have reported the disagreement. Leaving it would have shipped a known-wrong fixture.
+
+### 4. Pinning tests — expected values recomputed from Java, not read off the port
+
+I recomputed four independently from the fixed Java semantics before looking at what the tests
+assert; all four match:
+
+1. `fourFour()` (anchors beat 1 `from 0.0 to 1.0`, beat 3; length 4) at beat 2 — breaks at `i = 0`,
+   `0 < 1` fires, `segmentEnd = 3`: `((2−1)·(1−0))/(3−1) + 0 = 0.5`. Asserted `toBe(0.5)`, in both
+   the direct test and, through the parse path, in `Styles.test.ts`. Upstream gives 0.25.
+2. The reference pattern at beats 1..4 — `k/720`, i.e.
+   `0.001388888888888889 / 0.002777777777777778 / 0.004166666666666667 / 0.005555555555555556`.
+   Asserted exactly, `toBe` not `toBeCloseTo`.
+3. The last segment at 2200 — `40/721 = 0.05547850208044383`, matching my own Java probe run.
+4. The four velocity strings — `String(100 + k/720)` = `100.00138888888888`, `100.00277777777778`,
+   `100.00416666666666`, `100.00555555555556`, which are **byte-for-byte the strings the
+   regenerated `metrical_accentuation_augmented.msm` now stores**. Unit test and ground truth are
+   pinned to each other, not merely in agreement.
+
+The worker's finding that **no pre-existing assertion pinned the bug numerically** is correct — I
+checked each changed test: one is renamed with its assertions untouched (`0.25`, `0.75`), the rest
+gained comments only. `Styles.test.ts` gained `transition.from`/`transition.to` on its first
+accentuation, which is what makes that parse-path test discriminating at all (without them the
+accentuation is flat and the segment end cancels); its existing `getAccentuationAt(1.0) === 1.0`
+still holds because an exact hit returns `value`, unaffected. No assertion was deleted or loosened.
+
+**Test count 2334 → 2338**, an increase: invariant 7c gates decreases, so nothing to justify, and
+the +4 is journaled. **Negative control reproduced independently**: I copied the working tree,
+reverted the one character, rebuilt and ran the suite — `4 failed | 2334 passed`, in exactly the
+two files claimed, across both the direct and the parse path. The last-segment test passes on the
+reverted tree by design, which is what keeps the two halves of the asymmetry from being conflated.
+
+### 5. Standard battery
+
+- **`npm run verify` exit 0**, run by me on the shipped bytes: build + `typecheck:tests` + **59
+  files / 2338 tests**, all green. Facade battery (`tests/api/{plain-data,pipeline,
+  facade-equivalence,determinism}.test.ts`) included and green.
+- **Manifest exactly 10 M**, unchanged after all my builds and coverage runs.
+- **Pipeline byte-probe.** `t21verify/pipe.mjs` on the shipped build returns
+  `6e0124f58aa5375e7123d860d35d5116a52470efe1db7175159b9b2076d7b24b` — the hash PARITY.md now
+  publishes as the standing value. The baseline build (`8283853`) over the *same* fixtures differs
+  in exactly **one** entry, `allmaps/metrical_accentuation`; all 16 MEI fixtures are identical, so
+  the MEI pipeline is provably unaffected. With my own probe (`td3verify/probe2.mjs`, which adds
+  `all_maps` and canonicalizes bare UUIDs too), shipped-over-new-fixtures and
+  shipped-over-old-fixtures give the *same* hash `12487f40…`, and baseline gives `3156e598…` on
+  both — so **adopting the fixtures changed nothing about what the port produces**, and exactly two
+  entries move between the builds: `metrical_accentuation` and `all_maps`.
+- **No suppressions**: zero `eslint-disable` / `@ts-ignore` / `@ts-expect-error` / `istanbul
+  ignore` in `src/` and `tests/` repo-wide, so none was added.
+- **Lint reconciles**: `eslint .` gives **1017 errors / 2 warnings** on the working tree and the
+  identical count on an archive of `8283853` — delta **0**. `lint-debt.md`'s TD2 row already
+  records 1019 problems; no new row is due.
+- **Coverage v3**: functions **965/1041 = 92.6993 %** (floor 92.0); uncovered scoped statements
+  **2094** of 15602 (budget 2318); statements 86.5786 % as indicator. All computed by me from
+  `coverage-final.json`.
+- **log.md is append-only**: the first 11367 lines are byte-identical to `8283853`'s copy.
+- **PARITY.md**: the entry is now the last subsection of **§1 Fixed bugs** (§2 was dissolved and
+  §3-§6 renumbered to §2-§5); citations `AccentuationPatternDef.java:316-320` and `meico@1d662105`
+  are correct, and I found no stale cross-reference in PARITY.md or README.md. README's test count
+  is updated to 2338 and its Provenance section now names `1d662105` for the all-maps set and
+  `1b3711f0` for the other two — both accurate.
+
+### 6. TOLERANCE RULING (invariant 3) — **sign off 1e-9, with the rationale corrected**
+
+I reproduced the measurement with my own re-implementation of the gate
+(`td3verify/tolmeasure.mjs`, instrumented to report the maximum deviation rather than pass/fail),
+over all eight all-maps fixtures, on the shipped build and on the reverted build:
+
+| build | gated numeric comparisons | max absolute deviation |
+| --- | --- | --- |
+| shipped | **863** | **exactly 0** |
+| reverted (one character) | 863 | **4.167148752372896e-3** (all in `metrical_accentuation`) |
+
+The 863 matches the worker's count exactly, and so does the zero. Structural differences: 0 on
+every fixture, both builds.
+
+**I sign off `NUMERIC_TOLERANCE = 1e-9`, applied at the three call sites as proposed. The
+justification in the proposed comment must be changed before it lands.** As written it says the
+tolerance is "headroom against double-to-string formatting drift"; that is mechanically wrong and
+would mislead the next person to touch this line. The gate compares `parseFloat(refV)` against
+`parseFloat(tsV)` — doubles, not strings — and both `Double.toString` and JavaScript's
+number-to-string are **round-trip exact by specification**. Whatever digit string either side
+chooses, `parseFloat` recovers the identical double, so a change in formatting policy on either
+platform (a new JDK's shortest-representation rules, say) cannot produce a nonzero deviation here
+at all. I verified the premise as well as the argument: no attribute in these fixtures is a
+non-numeric string that `parseFloat` would silently reduce to a leading number, so nothing escapes
+into the string branch either.
+
+The residual risk that *does* justify non-zero headroom is **last-ulp arithmetic divergence**.
+Gated attributes flow through `Math.pow` and `Math.log` (`RubatoMap.ts:169`, `TempoMap.ts:178,221`,
+`TemporalSpread.ts:98`), and Java specifies `Math.pow`/`Math.log` as permitted up to 1 ulp of error
+and explicitly *not* reproducible across implementations — only `StrictMath` is — while V8's are
+likewise its own. At the largest gated magnitude here (~5.8e3) one ulp is ~9.1e-13, and a few
+accumulated ulps stay under ~1e-11. So:
+
+- **1e-9** sits ~2 orders above that noise ceiling and ~6 orders below the class of error this item
+  just fixed (4.17e-3). It changes no verdict on the shipped tree (max deviation 0) and flips the
+  verdict on the reverted one (8 `note@velocity` diffs, smallest 1.04e-3).
+- **Not 0**, though 0 passes today: zero turns an unspecified platform property into a
+  build-breaking failure that would present as a parity regression. The measured zero is the
+  *observation*; it is not a guarantee either language gives.
+- **Not 1e-3**, which also catches this bug but only by a factor of 4 — it would have caught this
+  instance and not a slightly smaller one.
+
+This is a strict tightening by 7 orders of magnitude, weakens nothing, and is measured on both
+sides. **Suggested replacement for the comment's second sentence:** "This tolerance is headroom for
+last-ulp divergence in `Math.pow`/`Math.log`, which Java specifies to 1 ulp and does not guarantee
+across implementations (only `StrictMath` is reproducible); at these magnitudes that lives near
+1e-12. It is not headroom for formatting — the comparison parses both sides to doubles, and both
+platforms' number-to-string is round-trip exact."
+
+**What this ruling does not fix, and the conductor should know it.** Tightening the tolerance does
+**not** close the `all_maps` hole. That test filters out every diff containing `velocity`,
+`milliseconds.date` or `date.end.perf` before asserting, so on the reverted build `all_maps`'
+gated maximum deviation is **0 at any tolerance** — the filter, not the tolerance, is what hid the
+second copy of this bug. Worth its own item: the filter exists for the imprecision RNG, but
+`all_maps`' *velocity* is only partly imprecision-driven. Out of scope here; I changed nothing.
+
+**Other suites' tolerances — reported, not changed, as instructed.** `full-xml-equivalence.test.ts`
+already compares every attribute at **0.001** (10× tighter than all-maps' current value), against
+the same `performance-reference/*_augmented.msm` documents. `performance-equivalence.test.ts` uses
+`< 1.0` ms for `milliseconds.date`/`.end` (`:215`) and `< 2.0` for velocity (`:241`) — far looser,
+but **redundant rather than blind**: they assert over the same documents that the 0.001 comparison
+already covers attribute-by-attribute, so any deviation above 0.001 fails there first. I would not
+spend an item on them; if one is spent, it is a readability fix, not a coverage fix.
+
+### 7. Defects requiring correction (documentation only — PASS is not contingent on code)
+
+- **`PARITY.md:314-317` miscounts the regeneration.** "Of the 40 generated all-maps files, 23 were
+  byte-identical, 13 differed only in UUIDs, one was the charter-exempt nondeterministic
+  `imprecision_timing_expressive.mid`, and exactly two carried a semantic change" totals **39**.
+  The missing file is `imprecision_timing_augmented.msm`, which is also charter-exempt
+  nondeterministic — my own classification finds **two** files in that category, not one. Fix:
+  "…two were the charter-exempt nondeterministic `imprecision_timing_augmented.msm` and
+  `imprecision_timing_expressive.mid`…".
+- **`PARITY.md:337-338` states something false and self-contradictory.** "The full suite is
+  therefore **green on a tree with the bug reintroduced and the corrected ground truth in place** —
+  measured, not hypothesized" is contradicted three lines later by "the same reverted tree fails
+  four of them", and my negative control settles it: that tree is **red**, `4 failed | 2334
+  passed`. What is green on it is the *equivalence gate* — `all-maps-equivalence.test.ts`, 11/11.
+  Fix: "The **equivalence gate** is therefore green on a tree with the bug reintroduced…". The
+  paragraph's point survives the correction intact; as written it invites a reader to conclude the
+  unit tests do not pin the fix, which is the opposite of the truth.
+- Cosmetic, log only: the `[TD3] worker` regeneration table says the 23 byte-identical files
+  include "**all four** `metrical_accentuation` non-augmented files". `metrical_accentuation.msm`
+  is UUID-only, not byte-identical — three of the four. No consequence.
+
+### 8. DISCOVERED — endorsed, all the conductor's
+
+I confirm both governance-document items the worker raised. **`CHARTER.md:70-71` is now false**: the
+"Known parity subtleties (do not 'fix' these)" list still opens with
+`AccentuationPatternDef.getAccentuationAt` segment-end behaviour as its example — the bug this item
+fixed. **`ARCHITECTURE.md §6.3` remains stale** in the way TD2 flagged. Both are governance docs and
+neither is a worker's to edit. The worker's two probe-hygiene notes are also accurate and I verified
+them directly: `t21verify/pipe.mjs`'s deterministic list omits `all_maps`, and its `canon()` matches
+only `meico_`-prefixed UUIDs, so any future fixture adoption will move its hash for a reason that is
+not the item's change. `td3verify/probe2.mjs` fixes both and takes the fixture directory as an
+argument.
+
+## [TD3] worker — doc round (2026-08-09)
+
+Both verifier defects applied to `PARITY.md`. **Documentation only — no code, fixture or test byte
+moved**, which `git status` shows directly: the manifest is unchanged at 10 files and the only two
+with new content are `PARITY.md` and this journal.
+
+I re-derived both from my own measurements before editing, rather than applying them on the
+verdict's authority — a fix round that propagates a wrong correction is worse than the defect.
+
+**1. The regeneration count (`PARITY.md:314-317`).** Confirmed against my classifier's own tally:
+`IDENTICAL: 23`, `UUID-ONLY: 13`, `BINARY-DIFF: 1`, `SEMANTIC: 3`. The verifier is right, and the
+arithmetic shows where the error came from: `imprecision_timing_augmented.msm` lands in my
+classifier's *semantic* bucket, because the classifier sorts by what moved, not by why. Three of
+those four `imprecision_timing` observations are one story — timing imprecision is nondeterministic
+(`ImprecisionMap.java:845,894`), which my own two-runs-same-classes experiment demonstrated — so
+the prose should have moved that `.msm` into the charter-exempt category alongside the `.mid` and
+did not. Now: 23 + 13 + **2** charter-exempt nondeterministic + 2 semantic = **40**, which totals.
+
+**2. The false sentence (`PARITY.md:337-338`).** Confirmed and worse than a wording slip. My own
+negative control measured `4 failed | 2334 passed` — the reverted tree is **red**, so "the full
+suite is therefore green on a tree with the bug reintroduced" is simply false, and it contradicted
+the sentence three lines below it that says four tests fail. What is green there is the
+*equivalence gate*: `all-maps-equivalence.test.ts` passes 11/11 while the port disagrees with its
+own ground truth. Applied the verifier's wording verbatim ("The **equivalence gate** is therefore
+green on a tree with the bug reintroduced…"). The paragraph's argument is intact and now points the
+right way — as written it invited the conclusion that nothing pins the fix, which inverts the
+finding this item is built on.
+
+**3. The verifier's third defect is cosmetic and log-only, and I am leaving the historical entry as
+written** (the conductor scoped this round to the two `PARITY.md` corrections). Recording the
+correction here instead, where it is discoverable: the `[TD3] worker` entry's regeneration table
+says the 23 byte-identical files include "**all four** `metrical_accentuation` non-augmented files".
+That is **three of the four** — `metrical_accentuation.msm` is UUID-only, not byte-identical. It
+carries no consequence for any claim: the file was adopted as part of a complete group precisely
+so its root `xml:id` would stay paired with its `_augmented.msm`, and it is one of the four
+byte-changing fixtures in the manifest.
+
+**Gates re-run rather than carried over**, since "documentation only" is a claim like any other:
+`npm run verify` exit 0 at 59 files / **2338 tests**, `prettier --check` clean on `PARITY.md`,
+manifest unchanged at 10 modified files. `tests/integration/**`, `fixtures/**` and `src/**` are
+byte-identical to the verified tree.
+
+## [TD3] conductor — tolerance applied per verifier sign-off (2026-08-09)
+
+Applied NUMERIC_TOLERANCE = 1e-9 at the three all-maps-equivalence call sites with the
+verifier's corrected rationale in the comment (last-ulp Math.pow/Math.log divergence,
+not formatting — formatting is round-trip exact by spec on both platforms). Invariant 3
+satisfied: strict tightening, verifier-signed, conductor-applied. Verify green 2338.
+NOTED for T23: the all-maps suite still carries `if (!existsSync(...)) return;` skips
+(lines ~182/193) — the missing-reference-is-a-failure hardening from the proof-harness
+era covered the MEI-driven suites only; T23 should record a disposition.

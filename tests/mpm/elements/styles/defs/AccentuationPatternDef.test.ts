@@ -319,10 +319,11 @@ describe('AccentuationPatternDef', () => {
       expect(apd.getAccentuationAt(9.0)).toBe(0.25);
     });
 
-    it('interpolates between transition.from and transition.to over the rest of the pattern', () => {
-      // Java keeps segmentEnd at length + 1.0 (AccentuationPatternDef.java:317 tests
-      // i > size-1, which can never hold), so the ramp always runs to the pattern end.
-      // beat 1, transition.from 0.0, transition.to 1.0, length 4 => segmentEnd 5.
+    it('runs the last accentuation’s ramp to the pattern end', () => {
+      // The last accentuation has no successor, so segmentEnd keeps its initial length + 1.0
+      // (AccentuationPatternDef.java:316-320 — the `i < size-1` guard does not fire for it).
+      // Here the only accentuation is also the last one: beat 1, transition.from 0.0,
+      // transition.to 1.0, length 4 => segmentEnd 5.
       // at 2.0: ((2-1) * (1-0)) / (5-1) + 0 = 0.25
       const apd = AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0)!;
       apd.addAccentuation(1.0, 1.0, 0.0, 1.0);
@@ -331,9 +332,19 @@ describe('AccentuationPatternDef', () => {
       expect(apd.getAccentuationAt(4.0)).toBeCloseTo(0.75, 10);
     });
 
+    it('ramps to the next accentuation’s beat, not to the pattern end', () => {
+      // The fix mirrored from meico@1d662105 (AccentuationPatternDef.java:316-320): for an
+      // accentuation that HAS a successor, segmentEnd becomes that successor's beat.
+      // fourFour: beat 1 (transition.from 0.0, transition.to 1.0), next accentuation at beat 3,
+      // length 4. Fixed segmentEnd = 3 => at 2.0: ((2-1) * (1-0)) / (3-1) + 0 = 0.5.
+      // The upstream spelling `i > size-1` never fires, leaving segmentEnd at length + 1 = 5
+      // and yielding 0.25 — so this assertion fails if the guard is reverted.
+      expect(fourFour().getAccentuationAt(2.0)).toBe(0.5);
+    });
+
     it('interpolates from the nearest preceding accentuation', () => {
-      // Between beat 3 and the pattern end the ramp of the beat-3 accentuation applies:
-      // transition.from 0.5, transition.to 0.1, segmentEnd 5 => at 4.0:
+      // Beat 4 lies after the LAST accentuation (beat 3), so that one's ramp applies and its
+      // segmentEnd is the pattern end: transition.from 0.5, transition.to 0.1, segmentEnd 5 =>
       // ((4-3) * (0.1-0.5)) / (5-3) + 0.5 = -0.2 + 0.5 = 0.3
       const apd = AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0)!;
       apd.addAccentuation(1.0, 1.0, 1.0, 1.0);
@@ -345,6 +356,55 @@ describe('AccentuationPatternDef', () => {
       const apd = AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0)!;
       apd.addAccentuation(1.0, 1.0, 0.7, 0.7);
       expect(apd.getAccentuationAt(2.5)).toBeCloseTo(0.7, 10);
+    });
+
+    describe('the reference pattern, both halves of the segment-end asymmetry', () => {
+      // This is GenerateAllMapsReference.generateMetricalAccentuationTest's pattern verbatim
+      // (meico src/tools/GenerateAllMapsReference.java:126-130), i.e. the one behind
+      // tests/integration/fixtures/all-maps-reference/metrical_accentuation_augmented.msm.
+      // Every expected value below is hand-computed from Java's formula
+      // (AccentuationPatternDef.java:324), not read off the TypeScript.
+      function referencePattern(): AccentuationPatternDef {
+        const apd = AccentuationPatternDef.createAccentuationPatternDef('4/4 pattern', 2880.0)!;
+        apd.addAccentuation(0.0, 20.0, 0.0, 1.0);
+        apd.addAccentuation(720.0, -10.0, 0.0, 1.0);
+        apd.addAccentuation(1440.0, 10.0, 0.0, 1.0);
+        apd.addAccentuation(2160.0, -10.0, 0.0, 1.0);
+        return apd;
+      }
+
+      it('ramps a middle segment to the next anchor: beat k yields k/720', () => {
+        // Anchor 0 (beat 0, transition 0 -> 1) has a successor at beat 720, so segmentEnd = 720:
+        // ((k-0) * (1-0)) / (720-0) + 0 = k/720.
+        // Upstream's dead guard leaves segmentEnd at 2880 + 1 = 2881 and yields k/2881, e.g.
+        // 0.0003471017007983339 at beat 1 — the value the pre-TD3 reference stored.
+        const apd = referencePattern();
+        expect(apd.getAccentuationAt(1.0)).toBe(0.001388888888888889); // 1/720
+        expect(apd.getAccentuationAt(2.0)).toBe(0.002777777777777778); // 2/720
+        expect(apd.getAccentuationAt(3.0)).toBe(0.004166666666666667); // 3/720
+        expect(apd.getAccentuationAt(4.0)).toBe(0.005555555555555556); // 4/720
+      });
+
+      it('keeps the last anchor’s segment running to length + 1', () => {
+        // Anchor 3 (beat 2160) is last, so segmentEnd stays 2880 + 1 = 2881, NOT 2880:
+        // ((2200-2160) * (1-0)) / (2881-2160) + 0 = 40/721.
+        // The denominator being 721 rather than 720 is the fix's deliberate asymmetry; the
+        // Java probe (mpmify/ml/java/AccentFixProbe.java) prints this same value before and
+        // after meico@1d662105.
+        expect(referencePattern().getAccentuationAt(2200.0)).toBe(0.05547850208044383); // 40/721
+      });
+
+      it('scales to the velocities the regenerated reference fixture stores', () => {
+        // The map applies the pattern at scale 1.0 over notes at velocity 100, so the
+        // augmented MSM's velocity is 100 + the accentuation value. These four strings are
+        // exactly what metrical_accentuation_augmented.msm contains after TD3's regeneration.
+        const apd = referencePattern();
+        const velocity = (beat: number): string => String(100 + apd.getAccentuationAt(beat));
+        expect(velocity(1.0)).toBe('100.00138888888888');
+        expect(velocity(2.0)).toBe('100.00277777777778');
+        expect(velocity(3.0)).toBe('100.00416666666666');
+        expect(velocity(4.0)).toBe('100.00555555555556');
+      });
     });
   });
   // PARITY.md, "Fixed bugs", P1. Java reads length and all four accentuation attributes with
