@@ -7449,3 +7449,12 @@ Reusable, each taking a dist dir as argv[1] so they work against any build:
 `t13verify/distctl/` is the gate-(d) sabotaged build, kept so the control can be re-run
 without touching `src/`. Nothing under `src/` or `tests/` was written by this verification;
 my only write is this entry.
+
+## [T13] conductor — external validation (2026-08-09)
+
+mpmify independently validated the facade within an hour of landing: their
+MovementFixTest fixture through performMsmToData — all 8 notes 0.0-diff vs the Java
+fork's renderer, CC streams structurally identical (controller=soft -> CC67,
+curvature/protraction honored). Their v4 synthetic-data generator will be built on
+this facade, Java fork retained as cross-check renderer; seeded imprecision to be
+exercised heavily in their v5 wave. First real downstream consumer confirmed.
