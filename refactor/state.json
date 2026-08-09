@@ -2,10 +2,10 @@
   "project": "meico-ts idiomatic refactor",
   "branch": "ts-idiomatic",
   "baselineCommit": "62c125f",
-  "lastGreenCommit": "8551a55",
+  "lastGreenCommit": "7a1b86f",
   "phase": 3,
-  "currentItem": "T19",
-  "counters": { "completed": 22, "blocked": 0, "reverted": 0 },
+  "currentItem": "T20",
+  "counters": { "completed": 23, "blocked": 0, "reverted": 0 },
   "coverageBaseline": {
     "invariant": "v3 — see charter invariant 7",
     "functionsFloorPct": 92.0,
@@ -173,14 +173,14 @@
     {
       "id": "T19",
       "phase": 3,
-      "status": "in_progress",
+      "status": "done",
       "title": "Performance rendering pipeline cleanup",
       "details": "Performance.perform + map-rendering flow into clearly composed stages per ARCHITECTURE.md. Floating-point operation order must not change. Ornamentation ms-domain rendering (Java OrnamentationMap.java:477-509 parity) is especially sensitive."
     },
     {
       "id": "T20",
       "phase": 3,
-      "status": "pending",
+      "status": "in_progress",
       "title": "MIDI generation layer cleanup",
       "details": "EventMaker/Midi restructure per ARCHITECTURE.md; event ordering and byte layout must stay identical (midi-byte-equivalence suite proves it)."
     },
