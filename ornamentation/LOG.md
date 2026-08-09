@@ -1602,3 +1602,14 @@ the negative-intensity construction materializes) queued into W9 hardening, toge
 with: PARITY §v3 at-end-ms head-loss entry (F3 obligation), the intensity==0 log-span
 nit, the W2 verifier's advisories (quadratic bracket peel, unbounded warnings), and
 the W1 F3 parseJavaDouble decision (W10). W5 commit follows this entry.
+
+## 2026-08-09 — Conductor: rebased onto main@da24612, verify green
+
+Rebase crossed the refactor endgame (TD2 corrected-spelling superset, TD3 fixture
+regeneration, TD4 Attribute.detach fix — our W3 report, their fix) plus mpmify's
+E1/E2. Three conflicts, all additive-overlap: OrnamentDef.test.ts (TD4 setId tests +
+our v3 suites — both kept, 129 green), Mpm.ts doc ("three additions" merged text),
+Mpm.test.ts (note test + TD2 typo test — both kept). Full verify on the rebased
+tree: 64 files / 2904 tests green. Post-rebase facts: parseJavaDouble now exists
+(W1-F3/D16 decision due in W9/W10); W3's removeAttribute workaround now redundant
+but harmless (TD4 fixed the underlying no-op).
