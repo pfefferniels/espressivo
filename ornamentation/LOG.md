@@ -2337,3 +2337,128 @@ update) to the W5 author; facade half (list + turn-atend API test) to the W7 aut
 disjoint files, parallel. Also journaled: W7's NC1 claim (49/4) did not reproduce
 (measured 99/5, stronger direction) — third non-reproducing gate claim; the
 re-measure-everything policy stays.
+
+### carved-leftover fix (W5 half)
+
+`carve`'s leavesHead branch now marks the note it keeps. Two attributes, written after the
+timing ones so a leftover reads as a note first and as bookkeeping after:
+`ornament.carved="true"` and `ornament.ref` when the carving ornament has an `xml:id` (several
+may carve one principal under D11; the first `at end` tick ornament in map order is named, the
+same "first in the group speaks for it" the layout already uses for the group's geometry).
+
+Deliberately **not** the other four, and the JSDoc says why at the site: `source` / `slot` /
+`pass` describe a position in the expanded sequence, and the leftover occupies none — it has no
+`note.order` token, no onset in the spread, no repetition pass; and `anchor` names the score
+note a generated note came from, which the leftover **is** — it keeps the principal's `xml:id`
+under the D10 id-uniqueness ruling, so pointing it at itself would be noise. `ornament.carved`
+joins `NOT_INHERITED`, so re-performing an augmented MSM cannot carry a stale mark onto a
+generated note.
+
+Ordering note for the reviewer: `createChords` copies the principal *before* `carve` runs, so
+the mark cannot leak into the generated notes by construction, independently of the deny-list.
+
+**Pins.** Unit level, worked vector §5.2: the leftover carries `carved` + `ref="orn2"` and none
+of the four positional attributes; `carved` appears on the leftover **only** across the whole
+five-note result. Negative pins where no leftover exists: vector §5.1 (`at start`) and the
+at-end **millisecond** vector (which consumes its principal whole — the case the head-dropped
+warning is about) both assert `ornament.carved` is absent from every note. W6's `turn-atend`
+gains the same assertions at document level, plus "exactly one carved note in the document".
+
+**Controls.** `markCarved` neutered ⇒ 3 red (2 unit + 1 integration), 127 green. The opposite
+error — `ornament.carved` written on generated notes too ⇒ 4 red, hitting all three negative
+pins plus the leftover-only assertion, 126 green. Source restored and md5-verified after each
+(`3341440587a615c6dae4718064770d0b`).
+
+**Gates, and an isolation note that matters.** The shared worktree currently also holds W7's
+in-flight `expandOrnaments` threading (`RenderOptions.ts`, `Performance.ts`,
+`OrnamentationMap.ts` — a `ctx` parameter). A dist built from the tree therefore mixes both
+waves, and the first tracer run against it *did* move: `Performance.renderGlobalOrnamentation`
+gained a third argument. That is W7's signature change, not this one, and rather than assert it
+I measured it: two trees extracted with `git archive HEAD`, one left alone and one with **only**
+`ornamentInstantiation.ts` overlaid, built separately against the same `node_modules`. Both give
+`probe.mjs` 1284 checks `ed158a07…`, `probe2.mjs` 83 checks `0b58d5a4…`, call tracer 557 calls
+`8e761347…`, deterministic augmented MSM `41026799…` — **identical in all four**, which is the
+claim this change is entitled to make and the tree-level run was not.
+
+`npm run verify` green in the shared tree: 65 files / 2986 tests. The ornamentation unit suites
+plus `tests/integration` together: 12 files / 760 green. `prettier --check` clean, `eslint`
+silent, zero suppressions on all three touched files.
+
+**Correction to the dispatch note.** The non-reproducing control numbers (claimed 49 failures
+across 4 files, measured 99/5) are from the **W7** entries — `DEFAULT_EXPAND_ORNAMENTS` over the
+api suites, LOG.md line ~2262 — not from a W5 report. W5's controls have been 2 red, 5 red, and
+this round 3 red and 4 red, each re-measured at the time of writing. Noted only because the
+standing policy is that claims are checked, which cuts both ways.
+
+### carved-leftover fix (W7 half)
+
+Conductor's D10/D15 ruling implemented on the facade side. Three files:
+`src/api/pipeline.ts`, `src/api/types.ts`, `tests/api/pipeline.test.ts`. I did not touch
+`ornamentInstantiation.ts` or its unit suite, and did not touch any fixture.
+
+**1. The marker list is 14 names.** `'ornament.carved'` added, with its own bullet in the doc
+comment saying what it is (the shortened surviving principal of an end-aligned ornament), why
+it exists separately from the generated-note stamp, and that it is the one alteration v3 makes
+to a note the score already had. Writer count in the comment corrected from four to five.
+
+**2. The `types.ts` wording needed fixing on TWO fields, not one.** The brief flagged the
+`ornamented` clause; checking it turned up a second, worse one.
+- `ornamented` said "shortening … (**MPM v2**, which writes modifier markers onto existing
+  notes)" — the parenthetical made the whole altered-branch v2-exclusive, which the ruling now
+  contradicts. It also said a note that is merely altered has "all five `null`", untrue of the
+  carved head, which carries `ornamentRef`. Rewritten as the three shapes the field actually
+  comes in (generated / v2-altered / carved head), each with what it carries.
+- **`ornamentRef` was flatly wrong under the ruling**: "the `xml:id` of the `<ornament>` that
+  **generated** this note. Null on **every note the score already had**." The carved head is a
+  note the score already had and it does carry `ornamentRef`. A consumer reading the published
+  type would have been told the opposite of what it gets — the same class of defect as FAIL 1,
+  one field over. Rewritten to "came out of, or was altered by", with the v2 case (markers but
+  never a ref) spelled out.
+
+**3. The obvious negative control is NOT diagnostic, and the ruling's test as briefed would not
+have caught a regression.** Measured: with `'ornament.carved'` deleted from the list, the
+`turn-atend` head still reports `ornamented: true` and **the whole suite stays green**. The
+reason is that `carve` co-writes `ornament.ref` on the leftover whenever the ornament has an
+`xml:id`, and `ornament.ref` is already in the list — so on `turn-atend` (`xml:id="orn2"`) the
+new name is redundant. `'ornament.carved'` is load-bearing on exactly one shape of document:
+**an ornament with no `xml:id`**, where the renderer writes `ornament.carved="true"` and
+nothing else. Nothing pinned that, so I added a second case that does: the same `turn-atend`
+pair with ` xml:id="orn2"` stripped from the MPM in-test (fixtures untouched; the test asserts
+the strip really happened, so a fixture edit cannot make it vacuous). Measured both ways
+against a correctly rebuilt dist: with the list entry the anonymous carved head reads
+`ornamented: true` + five nulls; without it, `ornamented: false` — the original FAIL-1 defect,
+surviving in the corner the briefed test does not reach.
+
+**4. Measurements — full suite, scope stated, per the standing policy.**
+- `npm run verify` (build + typecheck:tests + **whole** vitest run): **65 files / 2986 tests,
+  green.**
+- Isolating NC, **whole suite**: `'ornament.carved'` removed ⇒ **1 failed / 2985 passed, 65
+  files** — and the one failure is the new anonymous-ornament case, nothing else. Source
+  restored, `src/api/pipeline.ts` md5 `a434a1721e036d40071a4f69289afaac` before ≡ after.
+- Gates on my three files: **prettier clean**, **eslint 0 findings each**, **0 suppressions**
+  (`git diff -U0` over exactly those three paths).
+- `dist/api` discipline still holds: against the pre-campaign baseline only `pipeline.js` and
+  `types.d.ts` differ; `pipeline.d.ts`, `errors.{js,d.ts}`, `index.{js,d.ts}` and `types.js`
+  are **byte-identical**. The `pipeline.js` delta for this fix is exactly the array entry and
+  its doc bullet.
+
+**5. Two process notes, both against my own earlier reporting.**
+- The verifier is right about NC1 and I accept the correction. The cause: I ran the control over
+  a **6-file subset** (`OrnamentationMap.test.ts`, `tests/api/`, `ornamentation-v3.test.ts`) and
+  reported "49 failures / 4 files" as though it were the suite. Every control in this entry was
+  run over the full suite and is labelled as such.
+- **Shared-worktree hazard, worth a house rule.** The W5 author is editing this same worktree in
+  parallel, as the split intends. Consequences I hit and had to work around: (a) total test
+  counts drift under me between runs (2984 → 2985 → 2986; the increments are their tests, not
+  mine); (b) a `dist` rebuild of theirs landed **during my mutation window** and left `dist`
+  built from my temporarily-mutated source, which made a probe read `ornamented: false` and
+  briefly look like a real defect. I caught it only by checking `dist` against `src` before
+  believing the result. Suggestion: dist-reading evidence in this worktree should state the
+  build it was taken from, or the two halves should build into separate dirs.
+
+## 2026-08-09 — Conductor: correction of my own dispatch note
+
+The '49/4 did not reproduce' remark in my carved-leftover dispatch to the W5 author
+misattributed the claim: it was the W7 entry's NC1 (DEFAULT_EXPAND_ORNAMENTS over
+the api suites), not a W5 report. The W5 author's control numbers have reproduced
+under verification in every round. Recorded per the same standard I hold the waves to.
