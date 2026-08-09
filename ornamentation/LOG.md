@@ -538,3 +538,526 @@ The fix round closes the single FAIL finding. Verdict flips FAIL → **PASS W2**
   four DECISION rulings, termination, and the 50 000-case fuzz invariants. The two non-blocking
   notes for W3/W5 (quadratic trailing-`]` peel in `splitUnspacedBrackets`; unbounded `warnings`
   array) are unaffected by this fix and remain open as advisories, not gates.
+
+## W4 implementer — 2026-08-09
+
+Built `src/mpm/elements/maps/data/ornamentExpansion.ts` (pure module; imports only W2's AST
+types, no XML, no logging — diagnostics returned) and
+`tests/mpm/elements/maps/data/ornamentExpansion.test.ts` (118 tests, table-driven).
+Nothing else created or modified. Implements the expansion half of D9 plus the whole of D8.
+
+`expandOrnament(input): {ok:true, slots, warnings} | {ok:false, reason, warnings}` over
+`{order (list variant only, enforced by type), pool, principal|null, msmNotes, repetitions,
+diatonicContext, frameNoteBudget|null}`. `Slot = {notes: ResolvedNote[]}` (chord ⇔ >1),
+`ResolvedNote = {ref, midiPitch, source:'pool'|'msm'|'principal', landing?:true}`.
+
+- DECISION (D8 ruling, spec says only "context-sensitive"): `interval.diatonic` resolves
+  as tonic = 7·keyFifths mod 12, major scale sorted ASCENDING inside 0…11 (so the octave
+  carry lands on C, where MIDI octaves begin — carrying at the tonic transposes every key
+  but C by an octave); anchor = greatest scale pitch ≤ principal, `chromaticDelta` =
+  principal − anchor kept and re-applied after the step. Exported as
+  `resolveDiatonicPitch(principalPitch, steps, keyFifths)` — W8 needs the same arithmetic
+  MEI-side. 24-row hand-computed matrix in the tests (C/D/F/C♯/C♭/past-the-circle, notes
+  outside the key, microtones, below MIDI 0). `steps === 0` returns the principal exactly,
+  which is the spec's default for a pitch-attribute-less `<note>`.
+- DECISION (landing placement, brief said "append to the sequence"): the landing copy is
+  inserted BEHIND ITS OWN GROUP, which is where the reference splices it (`notesToAdd` at
+  `rptEnd`) and where its own "might add doubles -> need to sanitize" comment points. For a
+  trailing group — the common case and the only one the brief's wording describes — the two
+  readings coincide; they differ for `|: 0 1 :| 0 -1 0` (trill with mordent), pinned as a
+  test. Trigger is D9's pitch test (group's first slot is a single note at the principal's
+  pitch), which generalises the reference's pool-only `intm=="0.0hs"` lookup to a direct
+  `#principal` reference. Fires on group presence, not on `repetitions > 0` (=Lars).
+- DECISION (tremolo exception): computed over the EXPANDED SEQUENCE (D9's wording), not
+  over the pool as the reference does — its pool test misfires whenever the pool holds
+  notes the order never uses, and pool membership carries no meaning per the spec.
+  Consequence pinned by test: a one-note group inside a longer figure collapses to one
+  slot, the same group alone survives as a tremolo.
+- DECISION: `warnings` on BOTH result variants (same widening W2 made, same reason —
+  diagnostics collected before a fatal are still worth logging).
+- DECISION: a well-formed order that resolves to zero slots is `{ok:false}`, not an empty
+  success, so W5 gets one reason to log instead of a length check.
+- ≠Lars, deliberate: `repetitions >= 0` expands each group (r+1)× in place with NO budget
+  arithmetic — the reference reuses its fill-the-frame loop with `maxNotes=(r+1)·groupLen`
+  and charges the non-repeated slots against it, so `#a |: #b #c :| #d` with r=2 gives it 6
+  slots where the spec wants 8 (test pins 8). Multiple groups each expand with the same
+  count (reference supports one). For `repetitions === -1` the extra-pass count is
+  `max(0, floor((budget − S)/G))`, which is what the reference's append-while-it-fits loop
+  computes for its single group, minus the loop.
+- Guard (≠Lars bug 9): `MAX_EXPANDED_SLOTS = 1_000_000` (exported), checked ARITHMETICALLY
+  before allocation; over it → `{ok:false}`, never a throw and never an OOM. It bounds the
+  expansion; the ≤1 landing slot per group may sit above it. `repetitions` non-integer or
+  < −1 → `{ok:false}`; `-1` without a group, without a budget, or with a budget < 1 or
+  non-integer → `{ok:false}`.
+- Termination is structural: pass counts are computed, never discovered by a `while`; every
+  loop runs a precomputed length; repeated slots are SHARED frozen-by-type objects, so a
+  million-slot budget is an array of pointers (documented — W5 must key bookkeeping on slot
+  INDEX, not identity). Two 10⁶-slot tests with explicit 10 s timeouts complete in ms.
+- Group re-indexing: `note.order` groups are item-indexed, but rule 1 can drop slots, so
+  groups are re-mapped onto surviving slot indices (a group that loses everything is
+  dropped with a warning). Tested both ways.
+- Handoff to W5, verified by `tsc` in the scratchpad: W3's `OrnamentPitchSpec` (three-member
+  discriminated union, `OrnamentNote.ts`) is assignable to this module's widened
+  `PitchSpec`, and `Map<string, OrnamentPitchSpec>` to `ReadonlyMap<string, PitchSpec>` —
+  no converter needed. W3's bare-`<note>` default `{chromatic, 0.0}` lands on D7 correctly:
+  such a note without a principal makes the ornament `{ok:false}`.
+- Gates: prettier clean (source unchanged by `--write`), `npx eslint` exit 0 and silent on
+  both files, ZERO suppressions (grepped), `tsc --noEmit --strict` clean on source and on
+  the test file. 118/118 green. Did NOT run `npm run verify`/`build`/repo-wide `tsc` (W3 is
+  concurrently dirty in the same tree), did NOT commit.
+- Negative controls (7, all caught; source restored and md5-verified
+  `715aeab5307700dc16077a3d8439b66f` after each): NC1 plays = r instead of r+1 → 34 red;
+  NC2 landing keyed on the group's last slot → 6 red; NC3 diatonic scale left in tonic
+  order → 10 red (the C-major rows stay green, exactly the hazard the JSDoc names);
+  NC4 dedup without the chord guard → 5 red; NC5 fill budget rounded up → 4 red;
+  NC6 tremolo exception removed → 10 red; NC7 pool looked up after the MSM notes → 1 red.
+- Note for the verifier: three test vectors I hand-computed were WRONG on first run and the
+  implementation caught them (dedup applies to repeated single-note groups; the ceiling
+  check double-counted landings at the boundary). The ceiling check was fixed in the
+  source; the other two were my arithmetic. No expectation was relaxed to make a test pass.
+
+## W4 verifier — PASS (2026-08-09)
+
+Adversarial review of `src/mpm/elements/maps/data/ornamentExpansion.ts` +
+`tests/mpm/elements/maps/data/ornamentExpansion.test.ts` against DESIGN.md D8/D9 (D7/D10 as
+consumer context). Footprint exact: the two W4 files + this append; everything else dirty in
+the tree is W3's (OrnamentDef/TemporalSpread/OrnamentData/OrnamentationMap/OrnamentNote +
+tests) and was ignored. `git diff --numstat ornamentation/LOG.md` = 77/0 before this entry, so
+the implementer appended and rewrote nothing. Gates re-run by me: 118/118 green (171 ms),
+prettier clean, `eslint` exit 0 and silent, `tsc --noEmit --strict` clean, zero suppressions
+(the `any` grep hits are the English word). No importers yet — W5 wires it.
+
+**(a) The diatonic algorithm — all 24 matrix rows recomputed by hand, not 12.** Scale =
+`7·keyFifths mod 12` plus `0 2 4 5 7 9 11`, sorted ascending inside 0…11; anchor = greatest
+scale pitch ≤ principal; step by index with the carry at C; delta re-applied. C major
+`[0,2,4,5,7,9,11]`: 60+0→60; 60+1→deg0→deg1(2)→62; 64+1→deg2→deg3(5)→65; **71+1→deg6→target 7
+→octave 1, index 0 → base(71−11=60)+12+0 = 72 — the C-octave-carry claim holds**; 60−1→target
+−1→floor(−1/7)=−1, index 6 → 60−12+11 = 59; 65−1→64; 62+2→65; 60±7→72/48; 60+15→octave 2,
+index 1 → 60+24+2 = 86. Off-scale: 63→anchor 62 δ1→64+1 = 65; 63−1→60+1 = 61; 61+1→62+1 = 63;
+60.5+1→62.5; −1+1→pc 11, anchor −1, base −12 → −12+12+0 = 0. D major `[1,2,4,6,7,9,11]`:
+66+1→deg3→deg4(7)→67; 74+1→deg1→deg2(4)→72+4 = 76; 73+1→deg0→deg1(2)→74; 72+1→**deg −1
+branch**: anchor = 72−0+11−12 = 71, δ1, target 7 → 60+12+1+1 = 74. F major `[0,2,4,5,7,9,10]`:
+70+1→deg6→72; 71+1→anchor 70 δ1→72+1 = 73. Circle ends: k=7 tonic 1 `[0,1,3,5,6,8,10]`,
+61+1→63; k=−7 tonic 11 `[1,3,4,6,8,10,11]`, 71+1→60+12+1 = 73; k=8 tonic 8
+`[0,1,3,5,7,8,10]`, 68+1→deg5→deg6(10)→70. All 24 rows reproduce.
+
+**No counterexample to the ascending-from-C sort exists, and I tried to build one.** Proof:
+for pitch classes `s0<…<s6` in [0,12), the absolute scale pitches `12m + s_j` enumerate in
+ascending order exactly as `(m, j)` lexicographic, so index `i+k` *is* the k-th scale note
+above the anchor in every key — the sort choice is what makes that true, and sorting from the
+tonic would desynchronise the octave index from the pitch-class order (the implementer's NC3).
+E major (k=4, `[1,3,4,6,8,9,11]`) B4=71 +1 → 60+12+1 = **73 = C♯5**, musically right.
+Exhaustive sweep, 25 signatures (−12…+12) × 165 pitches (−24…140): **0 violations** of
+`steps=0 ⇒ identity`, `steps=±7/±14 ⇒ exact octave`, and strict monotonicity with every step
+in {1,2} semitones (histogram per key: ten whole steps, two half steps per chromatic octave —
+exactly a major scale's two half steps plus the five chromatic anchors, and never a 3-semitone
+step). Two properties I invented *do* fail — seven single `+1` calls ≠ one `+7` call, and
+`+1` then `−1` is not the identity for an altered principal (63→65→64) — but both are inherent
+to the delta absorption D8 *mandates* ("accidentals of the principal preserved"), unreachable
+by any pitch-class scheme without spelling, and claimed nowhere. Not findings.
+
+**(b) Landing placement — the implementer is right, from the reference's own code.** lars §4.2:
+the landing copy is added to `notesToAdd`, and the splice is `for(String n : notesToAdd) {
+chords.add(rptEnd, n); rptEnd++; }` — inserted at the group's end, ahead of any tail. Behind
+its own group is the reference's placement, confirmed. One correction to the implementer's LOG:
+in-place vs append-at-end do **not** differ in the *output* for the pinned trill-with-mordent
+`|: 0 1 :| 0 -1 0` — both give `60 62 60 62 60 59 60`, because dedup absorbs the landing copy
+either way (my M4 mutation leaves that dict row green). The real discriminator is the two-group
+test, which does catch it. The source comment states this correctly; only the LOG sentence
+overstates.
+
+**(c) Tremolo over the expanded sequence.** D9's words are "unless the whole *sequence* is
+single-pitch", so the pinned consequence (a one-note group inside a longer figure collapses to
+one slot; the same group alone survives) follows literally. The reference's pool-based
+`hasSamePitches` genuinely misfires on unused pool notes, and §3.5 confirms pool membership
+and order carry no meaning. Divergence correctly sourced.
+
+**(d) The 8-slot exemplum, re-derived from the reference rather than taken on trust.**
+`maxNotes=(r+1)·G`, loop `while(maxNotes >= notesToAdd.size() + chords.size() + G)`. For
+`#a |: #b #c :| #d`, r=2: maxNotes=6, S=4, G=2 → first append passes (6 ≥ 0+4+2), second does
+not (6 < 2+4+2) → the reference emits **6** slots, i.e. the group played twice. Spec wants r+1=3
+plays → 3·2 + 2 = **8**; the test pins 8. Cross-check that the divergence is confined to the
+non-trailing case: for §5 vector 3 (`|: #n1 #P :|`, S=G=2, r=3) the reference's loop appends
+three times → 8, identical to ours, and the test pins 8 with no landing (group opens on n1).
+
+**(e) The −1 formula is exactly the reference's loop.** The m-th append fires iff
+`budget ≥ S + m·G`, so the largest m is `floor((budget−S)/G)` — the implementation's formula,
+not an approximation of it. Off-by-ones: budget=S → 0 passes, total S; budget=S+G → 1 pass,
+total exactly the budget; budget=S+G−1 → 0 passes. Verified against the pinned rows (S=G=2:
+budgets 2/3/4/9/1000 → 2/2/4/8/1000). W5's side: `ceil(frameMs/150)` gives 2 at 300 ms, 3 at
+301 ms, 7 at 1000 ms; note D9 measures the **frame**, while the reference measures the
+principal's ms duration (`ceil((ms.date.end − ms.date)/150)`) — a ≠Lars for W5 to honour.
+
+**Mutation analysis: 12 mutations, 0 survivors**, ten of them outside the implementer's NC set.
+M1 nearest-anchor instead of greatest-≤ (2 red) · M2 chromaticDelta dropped (6) · M3 dedup
+across a chord boundary (5) · M4 landing appended at sequence end (1) · M5 repetitions applied
+to the first group only (6) · M6 `mod12` loses its sign correction (4) · M7 landing fires for a
+chord (1) · M8 budget `floor(budget/G)` (9) · M9 tremolo decided from the pool, i.e. the
+reference's rule (10) · M10 group re-indexing removed (3) · M11 plays=r (34) · M12 MSM looked up
+before the pool (2). M4 and M7 are pinned by a single test each — thin, but pinned.
+
+**Probes** (~50, scratchpad runner over a compiled copy; no throw, no hang, no crash anywhere):
+msm-only order with an empty pool and no principal → ok; `#abs` without a principal → ok,
+`#up` without one → `ok:false` (D7 step 3 both ways, and one non-absolute note fails the whole
+ornament, which is D7's "all `note`s need an explicit `midi.pitch`"); keyFifths ±8/±15 resolve
+as enharmonic keys; steps ±70 → exactly ±120 with the delta intact; `[ ]` and `|: :|` →
+`ok:false` "lists no notes" (the reference's OOM case, terminated); `#up |: :| #dn` → 2 slots;
+unclosed `|:` and nested `|: … |: … :| … :|` both terminate correctly; ceiling exactly at 10⁶
+→ ok in 81 ms, one over → rejected in 0.1 ms with no allocation, `r=2³¹−1` rejected in 0.0 ms.
+
+**Seven non-blocking findings, none a D8/D9 violation, all for W5/W9 rather than W4:**
+1. Non-finite pitches pass through silently — `midi.pitch` NaN/Infinity reaches the slots with
+   no warning and no drop, while `repetitions` and `frameNoteBudget` *are* validated. The
+   asymmetry is defensible (only the latter two can hurt termination) and W3 owns the XML
+   boundary, but Java's `Double.parseDouble` accepts "NaN"/"Infinity" literally, so W3/W5 must
+   guarantee finite pitches or an MSM note gets `midi.pitch="NaN"`.
+2. `[ #up #up ]` → `[61,61]`: a duplicate pitch inside one chord slot survives. The reference
+   collapses it (its dedup runs across chord brackets). Two identical pitches at one onset on
+   one channel is a MIDI stuck-note hazard — W5 must decide. Untested either way.
+3. Related: "chords never collapse" is a real ≠Lars divergence that the source does not label
+   as one (the reference's `lastNote` persists across `[`/`]`, so it *does* mutilate chords —
+   ours is better). PARITY.md §v3 owes it, W9.
+4. The landing copy can exceed the −1 fill budget by one slot (budget 2 → 3 slots). This is
+   =Lars — the reference appends its landing copy after the while-loop too — but W5 should
+   expect budget+1 notes in the frame.
+5. `|: #P :|` r=0 → **two** principal-pitch slots (landing fires, tremolo exception blocks
+   dedup). =Lars for the pool-unison spelling `|: #uni :|`; for the direct `#P` spelling it
+   follows from the implementer's documented generalisation of the trigger. Degenerate input,
+   worth knowing.
+6. W2's parser warnings are *not* merged into the expansion warnings — W5 must log both the
+   AST's and the engine's.
+7. Slot objects are shared across passes (`slots[0] === slots[2]` confirmed) and are readonly
+   by type only, not frozen. Documented; restating it because it is W5's sharpest trap.
+
+Verdict: **PASS W4.** Every DECISION in the implementer's log is defensible on spec grounds, the
+two contested ones ((b) and (d)) are confirmed against the reference's own source, the D8 ruling
+survives an exhaustive search for a counterexample, and no mutation escaped the suite.
+
+## W3 implementer — 2026-08-09
+
+Model layer: `TemporalSpread` v3, `OrnamentDef.alignment`, the new `OrnamentNote`, the v3
+fields on `OrnamentData`, and `OrnamentationMap`'s v3 read/write. Five source files, three
+test files, nothing else. Did NOT run `npm run verify` or `npm run build`, did NOT commit.
+
+**Shape.** The load-bearing choice is that a `temporalSpread` has **two readings of one
+element**, picked by a per-instance `getSourceFormat()`, rather than one reading that
+converts. v2-sourced: `frameStart`/`getFrameLength()`/`frameDomain`, parsed and written by
+exactly today's statements. v3-sourced: `getFrameOffset()`/`getFrameLengthValue()`, each a
+`TemporalValue` with its own domain, written canonical. INVARIANT (pinned): the two never
+both hold state — v2 leaves the v3 accessors null, v3 leaves the v2 numbers at their
+initialisers. No mirror, because `relative` has no `FrameDomain` counterpart and
+`frame.offset="22ms" frameLength="90%"` has no single one either; any mirror would have to
+invent a number, and D5 puts frame resolution in the renderer anyway. `OrnamentDef` and
+`OrnamentationMap.addOrnament` carry the same v2/v3 split.
+
+**Rulings exercised, all documented at the site.**
+- D3 detection: `frame.offset` present, or a unit suffix on `frame.start`/`frameLength`. The
+  suffix probe is a *format* test (`/(?:ms|%|ticks)$/`), not a validity test, so
+  `frameLength="abc%"` is a malformed v3 value that logs and defaults, rather than sliding
+  back onto v2's `parseFloat`. `alignment` is deliberately NOT a marker for the spread (it is
+  not a frame value and the spread never writes it) but IS one for the def.
+- The brief's mixed-spelling RULING is pinned both ways: `frame.start="-22.0"
+  frameLength="44%"` is v3, and the offset re-emits as `frame.offset="-22ticks"`.
+- D3 defaults: `frame.offset` → `0.0ticks`, `frameLength` → `100%`, both applied on the v3
+  path so that "v3-sourced" and "the v3 accessors carry the state" are the same statement.
+- D12: v3 writes BOTH frame attributes unconditionally. Omitting a default would lose the
+  domain (`frameLength="0%"` vs absent-means-`100%`) — the reference's own omission bug.
+  Same reasoning makes the v3 `addOrnament` always write `scale` and default it to the spec's
+  `0.0` instead of `1.0`, and write `repetitions` only when ≠ 0.
+- D2: `ornamentDef` wins over `temporalSpread`; a *malformed* def value is logged and treated
+  as absent, so a well-formed spread value still wins over it rather than the default.
+- D7: `noteid` stored raw (the schematron distinguishes `#p` from `p`), with
+  `getPrincipalNoteId()` as the stripped accessor.
+- D8: `midi.pitch` > `interval.chromatic` > `interval.diatonic`, warning when >1; zero pitch
+  attributes → `{chromatic, 0}`. All three read as doubles (MSM carries fractional pitch).
+- D16: `Number` + `TODO(W10)` at both new numeric sites, with the honest difference from W1's
+  case written down — W1 could argue the deviation away because its grammar excludes every
+  string on which `Number` and `Double.parseDouble` differ, and `midi.pitch` has no grammar,
+  so the W10 switch is a real behaviour change on malformed input, not a formality.
+
+**Decisions the brief left open.**
+1. *Parsing never mutates the caller's tree.* A reference-style def carrying `alignment` on
+   its `temporalSpread` is READ per D2 but keeps the attribute where it was written;
+   `setAlignment` is what canonicalises it onto `ornamentDef`. Moving it at parse time would
+   be a side effect nothing else in this port has. `setTemporalSpread` re-asserts an adopted
+   alignment, because a regenerated spread drops it (no-op for every v2 def).
+2. *`OrnamentData.noteOrderText` (new field).* Forced by a failing round-trip test: the flat
+   `noteOrder` array strips every `#`, so `|: #n1 #princNote :|` came back out as
+   `#|: #n1 #princNote #:|`. The raw text is now kept beside the v2 view; the v2 array is
+   untouched, and W4/W5 want the raw string for `parseNoteOrder` anyway.
+3. *`addOrnamentFromData` routes to the v3 writer* when the data shows any v3 marker,
+   otherwise it is byte-unchanged. Without it, `getOrnamentDataOf` → `addOrnamentFromData`
+   silently drops pool, `repetitions` and `noteid`.
+4. *Non-finite v3 values are treated as absent*, closing W1's finding F2 at the level W1
+   nominated: a 309-digit `frameLength` parses successfully to `Infinity` and would serialize
+   as the unreadable `"Infinityticks"`.
+5. *v3 attribute order* extends the v2 order rather than the spec exemplum's `noteid`-first:
+   `date`, `name.ref`, `noteid`, `scale`, `note.order`, `repetitions`, `xml:id`. New element
+   shapes (`<note>`: `xml:id` then the one pitch attribute) have no Java byte precedent, and
+   that is said at the site.
+
+**Surprises.**
+- `Attribute.detach()` is a silent no-op for any attribute that came out of the parser:
+  `Element.wrap` fills `_attributes` directly and never sets `_xomParent`, which is the only
+  branch `Attribute.detach` has. `setAlignment` therefore uses `Element.removeAttribute`.
+  **This is a live pre-existing bug in `TemporalSpread.setId(null)` and
+  `DynamicsGradient.setId(null)`** — verified: on a Builder-parsed spread, `setId(null)`
+  clears the field and leaves `xml:id="ts-1"` in the XML. The existing tests miss it because
+  they build their elements with `new Element` + `addAttribute`. NOT fixed here: it is a
+  behaviour change on a v2-frozen method and `DynamicsGradient` is outside this wave's file
+  set. Conductor's call.
+- `allChildElements(parent, name)` is **quadratic**: it runs an XPath, and `Element.query`
+  serializes the subtree to text, re-parses it and maps hits back by position. Measured on a
+  built pool: 250 notes 74 ms, 500 190 ms, 1000 795 ms, 2000 3158 ms. My first draft used it,
+  which would have put a serialize-and-reparse of *every* ornament — v2 ones included, since
+  the pool read runs on the render path — into a path that had none. `getChildElements('note')`
+  is the same matching in a plain array scan: 2000 notes, 2 ms. PERFORMANCE NOTE at the site.
+  Worth a wider look in W9: `allChildElements` has 16 call sites.
+- `GenericMap.setHeaders(global, local)` — global first. Cost me a test.
+
+**Tests: additive, no existing assertion weakened or deleted.**
+`OrnamentDef.test.ts` 71 → 117 `it`s (v2 byte stability as whole-string comparisons; the v3
+parse matrix incl. suffix-less/legacy `time.unit`/`relative`/alias/failure/overflow/clamp; v3
+canonical serialization + fixpoint; the v3 API; alignment on both hosts with precedence).
+`OrnamentationMap.test.ts` 93 → 122 (v2 `addOrnament` byte stability; `OrnamentData` v3 fields
+incl. `repetitions` lenience and `noteOrderText`; pool child without `xml:id` skipped+logged;
+`getOrnamentDataOf`; the v3 `addOrnament` shape; a NEGATIVE CONTROL proving an ornament
+carrying pool+`noteid`+`repetitions` still renders the v2 arpeggio markers unchanged and
+generates no notes). New `tests/mpm/elements/maps/data/OrnamentNote.test.ts`, 20 tests.
+Per-test timeout on the one loop test (2000 ms over a 2 ms body — it is what caught the
+quadratic draft at 3158 ms).
+
+**Negative controls — 10 mutations, all caught** (applied to the worktree, suites run, source
+restored and md5-verified after each; `md5 -q` of all five sources identical to the pre-NC
+backup). NC1 detection forced to v2 → 9 red. NC2 forced to v3 → **18 red including
+`all-maps-equivalence` "ornamentation: all elements and attributes match Java reference"** and
+four pre-existing v2 tests — the byte gate bites. NC3 `frame.start` alias dropped → 2. NC4 D2
+precedence inverted → 2. NC5 `repetitions` always stamped → 2. NC6 pool not read → 7. NC7
+frameLength default 0 instead of 100% → 4. NC8 pitch priority reversed → 4. NC9 `noteid`
+normalised on read → 4. NC10 v3 writer omits a 0 frameLength like v2 → 1.
+
+**Gates.** Mandated set green: `all-maps-equivalence` + `OrnamentationMap` + `OrnamentDef` +
+`OrnamentationStyle` + `OrnamentNote` = 298/298. `tests/integration` = 251/251. Whole suite
+2723/2723 (62 files). `tsc --noEmit` clean on `tsconfig.json` and `tsconfig.tests.json`.
+`prettier --check` clean on all eight touched files. `eslint`: the three test files are
+**silent**; the new `OrnamentNote.ts` is **silent**; the four modified source files report 9
+findings, every one of them on a line byte-identical to HEAD (`this.getLocalHeader()!` ×2,
+`xml.getAttribute('date')!` ×2, `getDynamicsGradient()!` ×2, the unused `Attribute` import,
+`createOrnamentDef`'s `unified-signatures`, `return this.xml!`) — pre-existing lint debt, zero
+new findings, and the new `addOrnament` overload pair does not trip `unified-signatures`.
+ZERO suppressions in all eight files.
+
+**Left for later waves.** `note` is not registered in `Mpm.isInNamespace` (that file is
+outside this wave's set) — a v3 pool note will be reported as foreign until someone adds it;
+flagged for W9. `OrnamentData.noteOrder` stays v2's flat array on purpose, so the AST from
+`noteOrder.ts` is not wired in yet — that is W4/W5's seam, and `noteOrderText` is what they
+should parse. `OrnamentData.apply` still returns `[]`; the dead loop is still dead.
+
+## W3 verifier — FAIL (2026-08-09)
+
+Adversarial verification of the model layer. **One finding, and it is a test gap, not a
+defect**: the shipped behaviour is correct everywhere I could reach it, and the v2 byte gate —
+the thing this wave actually risked — is clean under every instrument I could build. Verdict is
+FAIL only because the protocol rules a surviving mutation a FAIL finding, and one survived.
+
+**Footprint.** Exactly the declared set: four modified sources (`TemporalSpread.ts`,
+`OrnamentDef.ts`, `OrnamentData.ts`, `OrnamentationMap.ts`), one new (`OrnamentNote.ts`), three
+test files, and this LOG. W4's `ornamentExpansion.*` are present and were built but not reviewed.
+Nothing outside. `vitest.config.ts` needed no edit — coverage globs `src/mpm/**/*.ts`.
+
+**Test-weakening audit: clean.** `git diff HEAD -- tests/` removes 4 lines total, all of them
+import statements expanded in place (`vitest` + `vi`, `XomTypes` + `Builder`, and two added
+import lines). Every other hunk appends after the final `});` (OrnamentationMap @1323+473,
+OrnamentDef @840+480). No existing assertion modified or deleted.
+
+**Byte gate — v2 is frozen. Four independent instruments, all green.**
+- `npm run verify` exit 0: 62 files, **2723/2723**.
+- Baseline = `git archive cd140e1` + own `tsc`; WIP = worktree `tsc`.
+- `probe.mjs` 1284 checks — baseline and WIP both
+  `ed158a07d553f9346b958e8943b98c3b8c55a046f4fb4061654567e864e8757f`.
+- `probe2.mjs` 83 checks — both
+  `0b58d5a4c281914e605de46eb44be54e223d1eb7b08724702eca1ac703ca8c7c`.
+  (The JSON files differ only in the recorded `dist` path key; `sha` and `results` are equal.)
+- **dist diff**: 8 added files (`OrnamentNote.*`, `ornamentExpansion.*` × js/d.ts/+maps) and 16
+  changed = the four W3 sources × {js, d.ts, js.map, d.ts.map}. **Every other compiled file in
+  dist/ is byte-identical.** No collateral emission anywhere.
+
+**v2 serialization spot-probe (new instrument — `scratchpad/w3verify/v2probe.mjs`).** The two
+pipeline probes never drive the MPM ornamentation model classes on `.mpm` input: their pipeline
+block runs on `mei/` inputs only, and `ref/*.mpm` is exercised at the generic XomTypes level.
+So this wave's actual surface was untested by them. 78 checks driving `Mpm`/`OrnamentDef`/
+`TemporalSpread`/`OrnamentationMap`/`OrnamentData` directly — full `ornamentation.mpm`
+parse-and-reserialize, each of the three `ornamentDef`s (incl. both `time.unit` forms), 14
+`temporalSpread` forms, the v2 programmatic API per the §6 fixture recipe
+(`setTemporalSpreadValues(-22, 44, Ticks, 1.0, False)` etc.), `createDefaultOrnamentDef`,
+15 `addOrnament` argument shapes, `getOrnamentDataOf` → `addOrnamentFromData`, and a
+render-path probe writing real `ornament.date.offset`/`ornament.dynamics` markers.
+Baseline and WIP both `058e92c4cc08ef21f3b9187d24c6e491822a19426dac15c402680d227660fb0e`,
+0 throws, 0 differing checks.
+
+**D12/D3 matrix (WIP): all correct.** v2/v3 discriminator (`frame.start`→v2, `frame.offset`→v3,
+bare→v2); the pinned mixed ruling `frame.start="-22.0" frameLength="44%"` → v3 re-emitting
+`frame.offset="-22ticks" frameLength="44%"`; `time.unit` fallback (`frame.offset="5"` +
+`milliseconds` → `5ms`, no `time.unit` written); suffix-less → ticks. Malformed v3
+(`abc%`, `Infinityticks`, 309-digit, negative) → logged exactly once, attribute defaults, **def
+survives with gradient and `intensity` intact**. D2: def wins over spread both ways; a malformed
+def value yields to a well-formed spread value; alignment-only spread stays **v2** and
+re-serializes as v2 bytes while the def reads `at end`.
+
+*On the alignment question the brief flagged:* **no information is lost.** A reference-style
+`<temporalSpread … alignment="at end">` round-trips with the attribute still in place (the def
+wraps the live subtree; `getXml()` returns the parsed element, `generateXML()` is not called),
+re-parsing that output is a **fixpoint**, and the def carries the behaviour. `setTemporalSpread`
+re-asserts the adopted alignment onto `ornamentDef` — verified: the attribute survives a spread
+replacement, and the re-assert is a no-op on a v2 def (`sourceFormat` stays `v2`, bytes
+unchanged). Also verified: **parse and write never mutate the caller's tree** — a source
+`<ornament>` carrying a non-spec attribute is byte-unchanged after `addOrnamentFromData`.
+
+D7/D9/D1/D8: `noteid` stored raw and rewritten verbatim for both `#p` and `p`, stripped only by
+`getPrincipalNoteId`; pool child without `xml:id` skipped + logged once; >1 pitch attr → 
+`midi.pitch` > `chromatic` > `diatonic` + warning; zero pitch attrs → `chromatic 0`;
+unparseable pitch → note skipped + logged; `repetitions="-1"` accepted, `"-2"`/`"abc"` → 0 +
+log, `"2.5"` passed through; `repetitions="0"` not serialized; `scale` always serialized
+(0.0, 1.0 and 2.0 all written). A full v3 document is a **round-trip fixpoint** with alignment,
+frame values, `noteoff.shift`, `noteid`, `repetitions`, pool and `note.order` text all intact.
+
+**Negative control (mine, independent of the implementer's).** Two identical arpeggio ornaments,
+one bare and one carrying `noteid` + `repetitions="3"` + a pool `<note>`, rendered through
+`renderOrnamentationToMap`: **byte-identical marker output**, markers actually present (probe is
+not vacuous), and no notes generated — the W5 seam is still correctly dead.
+
+**Mutations: 10 applied on a scratch copy, 9 killed, 1 SURVIVED.**
+
+| # | mutation | verdict | killer |
+|---|---|---|---|
+| M1 | `V3_UNIT_SUFFIX` made a *validity* test → `frameLength="abc%"` slides to v2 | **SURVIVED** | — |
+| M2 | v3 writer omits `frameLength` at the 100% default | killed (2) | OrnamentDef.test |
+| M3 | `alignment` written on `temporalSpread` | killed (2) | OrnamentDef.test |
+| M4 | `noteid` normalised (`#` stripped) at parse | killed (3) | OrnamentationMap.test |
+| M5 | `addOrnamentFromData` never routes to v3 | killed (1) | OrnamentationMap.test |
+| M6 | `detectSourceFormat` ignores a suffix on `frameLength` | killed (4) | OrnamentDef.test |
+| M7 | `OrnamentNote.generateXML` omits the chromatic-0 pitch attr | killed (1) | OrnamentNote.test |
+| M8 | negative v3 `frameLength` not clamped | killed (2) | OrnamentDef.test |
+| M9 | v3 writer omits `scale` when 1.0 | killed (1) | OrnamentationMap.test |
+| M10 | pool returned in reverse document order | killed (3) | OrnamentationMap.test |
+
+M6–M10 go beyond anything the implementer pinned; all five died. Sources restored and
+md5-verified against the pre-mutation backup. **The worktree was never mutated** — all mutation
+work ran in `scratchpad/w3verify/mut/`.
+
+**THE FINDING — M1: the `abc%` ruling is documented but not pinned.**
+The LOG entry and the `V3_UNIT_SUFFIX` doc comment both state the ruling that the suffix probe
+is a *format* test, so `frameLength="abc%"` is a malformed **v3** value (log + default) and must
+not slide back onto v2's `parseFloat`. **No test enforces it.** Every malformed-value test uses
+`frame.offset=…`, which is detected by attribute *name*, so the suffix probe is never the thing
+under test; the 309-digit case still matches a strict numeric regex. Measured difference on the
+mutant, with the full 2723-test suite green:
+
+    <temporalSpread frameLength="abc%" />
+      shipped: v3, logs 1, -> <temporalSpread frame.offset="0ticks" frameLength="100%" />
+      mutant : v2, logs 0, -> <temporalSpread frameLength="NaN" />
+
+A silent `NaN` into a frame length, with no diagnostic. Same for
+`frame.start="xx ticks" frameLength="44.0"` → `frame.start="NaN"`.
+**Remedy (small, additive):** one `it` in `OrnamentDef.test.ts` asserting that
+`spread('frameLength="abc%"')` has `getSourceFormat() === 'v3'`, `getFrameLengthValue()`
+`{value:100, domain:'relative'}`, and logs `no MPM v3 temporal value` — i.e. the existing
+"unparseable v3 value" test repeated with the suffix, not the attribute name, as the marker.
+
+**Gates.** `prettier --check` clean on all eight touched files. **Zero** `@ts-ignore` /
+`@ts-expect-error` / `eslint-disable` in the five sources and the three test files. Lint debt
+**930 baseline = 930 WIP**, per-file identical (OrnamentationMap 2, OrnamentData 5, OrnamentDef 1,
+TemporalSpread 1 — the implementer's "9 pre-existing findings" confirmed against baseline);
+`OrnamentNote.ts` and `ornamentExpansion.ts` contribute **zero**. No growth.
+
+**Verdict: FAIL W3** on the single M1 test gap. Everything else — footprint, additive tests, the
+v2 byte freeze across four instruments, the full D12/D3/D2/D7/D8/D9 matrix, round-trip
+fixpoints, tree non-mutation, the negative control, and every gate — passes. Add the one test
+and this is a PASS; I found nothing else to hold it back.
+
+### W3 fix round — M1 (2026-08-09)
+
+Verifier ruled FAIL W3 on one surviving mutation, M1: the *suffix* half of
+`detectSourceFormat` had no test that could see it. The implementation was right; the suite
+was blind, in the same shape as W2's M11. Root cause: my "unparseable v3 value" test spells
+`frame.offset="abcticks"`, and `frame.offset` is a v3 marker by ATTRIBUTE NAME — so the
+element was v3 with or without the suffix probe, and every other malformed-value test sat
+behind the same name. Nothing pinned the ruling that the probe is a *format* test rather than
+a validity test.
+
+- Two tests added to `TemporalSpread — v3 parsing`, test file only. `frameLength="abc%"` —
+  the trailing `%` the only marker in the whole element — must give `getSourceFormat()` `'v3'`,
+  `getFrameLengthValue()` `{100, relative}` (the default, the attribute treated as absent),
+  `getFrameOffset()` `{0, ticks}`, the `no MPM v3 temporal value` log, `getFrameLength()`
+  still `0.0`, and the canonical output. Plus the twin on the offset side,
+  `frame.start="xx ticks" frameLength="44.0"`.
+- What the mutant would have done, and why it is not cosmetic: without the probe, `abc%` falls
+  onto the v2 path, where `parseFloat("abc%")` is `NaN`, `setFrameLength`'s `Math.max(0, NaN)`
+  is `NaN`, and `NaN !== 0.0` so `generateXML` writes a **silent `frameLength="NaN"` with zero
+  diagnostics** — an unreadable frame in an otherwise valid document.
+- Negative control, the verifier's mutant reproduced exactly (probe narrowed to accept only
+  well-formed suffixed values, so `abc%` slides to v2): **2 red, precisely the two new tests**,
+  123 others still green — which is the direct evidence that the old suite could not see it.
+  A broader variant (suffix probe neutered entirely) takes 6 red, the two new ones among them.
+  Source restored and md5-verified after each run.
+- 125/125 green (was 123; +2, none removed or weakened). `prettier --check` clean, `eslint` on
+  the test file exit 0 and silent, zero suppressions. The mandated gate and `tests/integration`
+  re-run green.
+- **All five source files byte-identical to the pre-fix-round freeze** — this round touched
+  tests and this journal only. `md5 -q`: `TemporalSpread.ts eb7bc72b6faca5c4a1202a8dfcb2a4c8`,
+  `OrnamentDef.ts 39b1c87d3d30b104d13b23922e3a1cd1`,
+  `OrnamentNote.ts 7b8bbd909166428dc6e36d1e526b2de1`,
+  `OrnamentData.ts aea1f424f20526eaaeac55cd9fd833cf`,
+  `OrnamentationMap.ts 6d1c1ebe8cf3a4793b96228b7bb637d5`.
+
+### W3 verifier — re-check (2026-08-09)
+
+Independent re-run of M1 against the fix round. **Verdict flips FAIL → PASS W3.**
+
+**The fix is test-only, verified independently.** All five sources are md5-identical to the
+snapshot I took before the first verification — I did not take the implementer's word for it:
+`TemporalSpread.ts eb7bc72b…`, `OrnamentDef.ts 39b1c87d…`, `OrnamentNote.ts 7b8bbd90…`,
+`OrnamentData.ts aea1f424…`, `OrnamentationMap.ts 6d1c1ebe…`, each measured per file and each
+matching the fix-round entry's attribution exactly. `git diff HEAD -- tests/` still removes
+**exactly the same 4 import lines** as before the fix round and nothing else; the
+`OrnamentDef.test.ts` hunk grew `+480 → +520` and remains a single append after the final
+`});`. LOG.md remains a pure append (0 deletions), so no earlier entry was edited.
+
+**M1 is dead.** Sandbox re-synced with the updated test file, control green at **2725/2725**
+(was 2723; +2, none removed). Applying M1 verbatim — `V3_UNIT_SUFFIX` narrowed from a format
+probe to a validity probe — now gives **2 failed / 2723 passed**, and the two failures are
+precisely the two new tests:
+
+    × TemporalSpread — v3 parsing (D3) > should treat a malformed value marked v3 by its SUFFIX ALONE as absent
+    × TemporalSpread — v3 parsing (D3) > should treat a malformed frame.start marked v3 by its suffix as absent
+
+The implementer's broader variant reproduces too: with the suffix probe removed entirely,
+**6 red**, the two new tests among them, alongside the `frame.start` alias, the frameLength-only
+default, the out-of-range case and the alias re-emission — matching their reported count exactly.
+Sandbox sources restored and md5-verified after each run; the worktree was never mutated.
+
+**The tests pin the right thing.** Both assert the full chain, not just the format flag:
+`getSourceFormat() === 'v3'`, the defaulted `TemporalValue`, the `no MPM v3 temporal value` log,
+**and** that no `NaN` leaked into the v2 reading (`getFrameLength()` / `frameStart` still `0.0`)
+plus the exact canonical output string. That last pair is what makes them a real guard rather
+than a restatement of the discriminator — they would catch the silent `frameLength="NaN"` even
+if the format flag were somehow right for the wrong reason. The comments state the distinction
+from the pre-existing `frame.offset="abcticks"` test (marker by attribute NAME vs by SUFFIX),
+which is the gap I reported.
+
+**The rest of the verdict stands, re-measured rather than assumed.** Sources being byte-identical
+means added tests can only add kills, never remove them, so the other 9 mutations remain killed a
+fortiori. Re-run against the freshly rebuilt dist: `npm run verify` exit 0 at **2725/2725** across
+62 files; `probe.mjs` 1284 checks `ed158a07…`, `probe2.mjs` 83 checks `0b58d5a4…`, and my
+`v2probe.mjs` 78 checks `058e92c4…` — **all three identical to the baseline `cd140e1` hashes**.
+dist delta unchanged: 8 added, 0 removed, 16 changed = the four W3 sources × {js, d.ts, +maps};
+every other compiled file byte-identical. Gates: `prettier --check` clean on the changed test
+file, `eslint` **0 findings** on it, zero suppressions, `src/` lint debt still **930 = 930**, and
+the repo-wide prettier warn count still **11 = 11** (pre-existing; `ornamentation/` is not in
+`.prettierignore` although `refactor/` is — worth closing in W9, not a W3 matter).
+
+**Verdict: PASS W3.** The v2 byte freeze holds under four instruments, the v3 matrix is correct,
+round-trips are fixpoints, parse never mutates the caller's tree, and every mutation I could
+devise now dies. Two items remain open for the conductor, both pre-existing and both correctly
+left alone by this wave: the `setId(null)` no-op on parser-built attributes in `TemporalSpread`
+and `DynamicsGradient`, and `note` not yet registered in `Mpm.isInNamespace` (flagged for W9).
