@@ -7890,3 +7890,298 @@ attribute-write-order differs over emitted JS (these two generalise to any futur
 serialization); `lintdelta.mjs` / `assertsites.mjs` — per-rule, per-file and per-site lint
 accounting; `strip.mjs` — comment-stripping re-emit, now self-testing. `base/` is the built
 baseline tree; `negctl/` the N3 negative-control tree.
+
+## [T15] worker — converter dispatch: the switch cascade becomes a handler table (2026-08-09)
+
+**READY, 5 of 5 element groups completed, 0 BLOCKED-group.** Baseline `e2a7456` (src-identical
+to the last green `979c391`). One source file changed: `src/mei/Mei2MsmMpmConverter.ts`
+(+356/−342). ARCHITECTURE.md §8.5 built as specified, including its `Traversal` type, its
+`IGNORE`/`DESCEND` sentinels and its mechanical translation table.
+
+**Every gate this item owns is green except one, and that one is not a behaviour finding:
+scoped FUNCTION coverage falls from 94.7101 % to 92.3598 %, under charter 7a's 94.0 % floor.**
+It is a unit-of-measure effect with a complete mechanical explanation and no lost test power —
+full accounting in section 7, which is written for the conductor to rule on.
+
+### 1. What was built
+
+```ts
+type Traversal = 'done' | 'descend';
+type ElementHandler = (c: Mei2MsmMpmConverter, e: Element) => Traversal;
+const IGNORE: ElementHandler = () => 'done';
+const DESCEND: ElementHandler = () => 'descend';
+
+// inside the class, so the handlers can reach the private process* methods:
+private static readonly ELEMENT_HANDLERS: Readonly<Record<string, ElementHandler | undefined>>
+
+// the walker, in full:
+this.checkEndid(e);
+const handler = Mei2MsmMpmConverter.ELEMENT_HANDLERS[e.getLocalName()];
+if (handler === undefined) continue;
+if (handler(this, e) === 'descend') this.convertElement(e);
+```
+
+The table lives **inside** the class as a `private static readonly` field. That is the one
+shape decision §8.5 leaves open, and it is forced: the doc's `c.processX(e)` bodies call
+**private** methods, which only typecheck inside the class body. It costs nothing — the field
+is `readonly`, its values are stateless pure functions, and it holds no conversion state, so
+the charter's "no shared mutable statics" directive is satisfied rather than dodged.
+
+`ElementHandler | undefined` as the value type (rather than the doc's bare `Record`) is
+deliberate: `noUncheckedIndexedAccess` is off in this tsconfig, so a bare `Record` would type
+the lookup as always-present and make `handler === undefined` look dead. The union makes the
+unknown-element branch — which *is* the old `default: continue` — honest to the type checker.
+
+### 2. Sub-rounds, exactly as the census groups them
+
+The doc's translation table has five rows; those are the five element groups. After each,
+`npm run build` + full `npx vitest run` + a pipeline byte-probe over all 16 MEI fixtures plus
+the 6 deterministic all-maps sets (131 artifacts). The probe writes **full canonicalized
+artifacts**, not digests (`t16verify/dump.mjs`), so a mismatch would show the offending bytes;
+the "tree hash" column is a digest *of that whole dump* for compact recording.
+
+| # | group | elements | census | tests | probe (131 artifacts) | tree hash | status |
+|---|---|---|---|---|---|---|---|
+| g0 | scaffold only (types, sentinels, empty table, transitional loop) | 0 | 0-line diff | 59/2272 | all byte-identical | `79a83f34a0bb53a1` | **GREEN** |
+| g1 | `x: IGNORE` | 53 | 0-line diff | 59/2272 | all byte-identical | `79a83f34a0bb53a1` | **GREEN** |
+| g2 | `x: DESCEND` | 17 | 0-line diff | 59/2272 | all byte-identical | `79a83f34a0bb53a1` | **GREEN** |
+| g3 | `x: handler; 'done'` | 36 | 0-line diff | 59/2272 | all byte-identical | `79a83f34a0bb53a1` | **GREEN** |
+| g4 | `x: handler; 'descend'` | 10 | 0-line diff | 59/2272 | all byte-identical | `79a83f34a0bb53a1` | **GREEN** |
+| g5 | conditional (`chord`, `tuplet`) | 2 | 0-line diff | 59/2272 | all byte-identical | `79a83f34a0bb53a1` | **GREEN** |
+| g6 | collapse the emptied `switch` into the doc's loop | — | 0-line diff | 59/2272 | all byte-identical | `79a83f34a0bb53a1` | **GREEN** |
+| g7 | drop the dead `convert(root: Element)` overload (gate 6) | — | 0-line diff | 59/2272 | all byte-identical | `79a83f34a0bb53a1` | **GREEN** |
+| g8 | rewrite the comments the switch left stale | — | 0-line diff | 59/2272 | all byte-identical | `79a83f34a0bb53a1` | **GREEN** |
+
+118 elements = 53 + 17 + 36 + 10 + 2. The baseline dump has the same hash, i.e. **every round
+was byte-identical to the pre-item build, not merely to the previous round**. No group was
+reverted; no `BLOCKED-group` was recorded.
+
+**The migration itself was mechanical, not hand-typed** (`t15work/apply-group.mjs`): each
+handler BODY is generated from the *baseline* case body by exactly three substitutions —
+`this.` → `c.`, `continue;` → `return 'done';`, `break;` → `return 'descend';` — plus the two
+whole-body shorthands, and each case clause is deleted from the live file by AST source range.
+The table is re-emitted every round in the **baseline switch's own order**, so the finished
+table reads in the same order as the cascade it replaces. Arguments, guards and their order
+were never retyped, so they could not drift.
+
+### 3. The census — §8.5's evidence gates 1 and 2
+
+`t15work/census.mjs` emits, per element name, a normalized token stream of its dispatch:
+`this`/`c` → `SELF`, `continue`/`return 'done'`/`IGNORE` → `DONE`,
+`break`/`return 'descend'`/`DESCEND` → `DESCEND`, semicolons dropped, **every other token —
+call names, arguments, guards, braces, parens, literals — kept verbatim**. It reads the
+`switch` and the table *both*, merging them, which is what let it run unchanged at all nine
+intermediate stages; a name appearing in both would abort as `DUPLICATE`.
+
+- Baseline: **118 entries + `*unknown*  DONE`**.
+- After every round including the last: **zero-line diff**.
+- The `*unknown*` line is not cosmetic: while the switch existed it came from
+  `default: continue`, and in the final tree it comes from `if (handler === undefined)
+  continue;`. It matching across g6 is the proof that the unknown-element policy survived the
+  collapse.
+
+**The census gate has power (it is not a gate that never fails).** Four source poisons, applied
+to scratch copies and never built:
+
+| poison | census diff | verdict |
+|---|---|---|
+| terminator flip: `keySig` `'descend'` → `'done'` | 2 lines | CAUGHT |
+| dropped guard: delete `chord`'s grace-skip line | 2 lines | CAUGHT |
+| retargeted call: `bTrem` `processChord` → `processNote` | 2 lines | CAUGHT |
+| deleted entry: remove `staffGrp` | 3 lines | CAUGHT |
+
+Two trap notes for whoever reuses the tool. It must be scoped to `convertElement`: this file
+has **two other** `switch (x.getLocalName())` statements (`processSpace`, `processDynam`), and
+an unscoped first draft died on `processSpace`'s `case 'refrain':` fallthrough — a useful
+failure, because it also proves the tool refuses empty fallthrough clauses rather than
+silently merging them. And `tuplet` had to be written as the doc's *if*-form, not its ternary
+sketch: `(c, e) => (c.processTuplet(e) ? 'done' : 'descend')` is behaviourally identical but
+**not token-equal** to `if (this.processTuplet(e)) continue; break;`, so the ternary would have
+cost the zero-line diff. Where the doc sketches and the "verbatim move" rule disagree, the
+verbatim move wins.
+
+### 4. Emitted-JS story — classified at the handler level, as required
+
+The census tool parses JavaScript as happily as TypeScript, so the strongest available form of
+this evidence was simply to **run the same census over the emitted `dist/` of both builds**:
+
+- `basedist/mei/Mei2MsmMpmConverter.js` (switch) vs `dist/mei/Mei2MsmMpmConverter.js` (table):
+  **118 entries, zero-line diff.** Every handler body is token-equal to its source cascade
+  block *in the code that actually runs*, not merely in the TypeScript.
+- Per-member classification of the same two files (`t15work/jsmembers.mjs`): **105 members,
+  102 token-identical**, 3 moved and they are exactly the three this item is allowed to move:
+  `ELEMENT_HANDLERS` (ADDED), `convert` (33 → 14 tokens, the overload collapse),
+  `convertElement` (1018 → 94 tokens, the loop). **No `process*` method, builder or
+  computation changed by a single token.**
+- Whole-`dist` diff: **exactly four files differ**, all four being this one module's `.js`,
+  `.d.ts`, `.js.map`, `.d.ts.map`. `dist/api/**`, `dist/index.*` and every other module are
+  byte-identical, so the T13 facade is frozen at the emitted level.
+- The `.d.ts` delta is the dropped overload plus `private static readonly ELEMENT_HANDLERS;`
+  (type-erased). No public type changed except the removal.
+
+**UUID / xml:id order is frozen, provably.** 19 `uuidv4()` mint sites in the emitted converter
+before and after. All 19 live in members that are token-identical, and the three changed
+members contain **zero** `uuidv4()`, `addAttribute` and `setValue` tokens between them. The
+order those mint sites run in is decided by the dispatch, and the census proves the dispatch
+unchanged — so the first-occurrence canonicalization the tests depend on cannot have moved.
+The byte probe confirms it end to end: canonicalized MSM/MPM ids match across all 22 movements.
+
+### 5. §8.5's six gates, one by one
+
+1. **Census before** — generated mechanically from the current source before anything was
+   touched. `t15work/census-base.txt`.
+2. **Census after, zero-line diff** — yes, and at every intermediate round, and again over
+   emitted JS.
+3. **Sub-round per element group, verify green after each** — table in section 2.
+4. **Negative control** — `staffGrp` moved from `DESCEND` to `IGNORE` in the finished table
+   and built: the integration suite goes **hard red** (12+ failures across
+   `cross-validation.test.ts`, MSM *and* MPM outputs, in `articulations`,
+   `composite_advanced`, `comprehensive`, `dynamics`, `instruments`, `keys_accidentals`,
+   `layers_beams`, `multi_part`, `repeats_endings`, `rests_meters`, `tempo`). The element is
+   fixture-covered and the change is *proven*, not merely unfalsified. Tree restored and
+   re-verified green afterwards.
+5. **Do not split the cursor** — obeyed. No `ConversionContext` type was introduced, no field
+   was renamed, no `reset()` semantics or drain point was touched; the doc permits the rename
+   but does not require it, and the fixture suite cannot prove a lifetime change. This is why
+   handlers take the converter itself, which is also §8.5's own design.
+6. **Keep `convert(mei: Mei)`, drop the `convert(root: Element)` overload** — done, and the
+   doc's prediction held exactly: **zero integration test edits**. Verified first that no
+   caller anywhere passes an `Element`: the 19 `.convert(` call sites are 10 in
+   `tests/integration/**`, 3 in `tests/api/**`, 1 in `src/api/pipeline.ts`, all passing a
+   `Mei`; the remaining hits are prose in `Mei.ts`. `instanceof` dispatch is gone with it.
+
+### 6. Deliberately NOT done (and why), so the next item does not re-litigate
+
+- **RULE N1/N2 inside the converter.** §5's ownership table calls these "opportunistic … but
+  never as part of a dispatch-table hunk", and N2a carries an EQ-RISK gate demanding a
+  per-site unreachability argument plus its own negative control. Applying them here would
+  have mixed *changed exception types on unreachable paths* into the one item whose entire
+  value is a provably verbatim move. Left for T21 or a T15b; the 917
+  `no-non-null-assertion` sites are untouched.
+- **The loop form.** §8.5 sketches `for (const e of childElements(root))`. Kept as
+  `for (let i = 0; i < es.size(); ++i)`: `Elements` is not iterable, and converting it would
+  mean either `toArray()` (an allocation per node) or making `Elements` iterable (an
+  `src/xml/**` change, out of scope). `prefer-for-of` does not fire on it — the rule wants
+  `.length`, this is a method call — so nothing is being suppressed. The doc's sketch is
+  illustrative of the *dispatch*, which is what was built.
+- **`checkEndid` stays before the dispatch and outside it**, running for every element
+  including unknown ones. Moving it into the handlers would have changed behaviour for all
+  53 `IGNORE` elements and every unknown element.
+
+### 7. Coverage — the one gate that does not hold, with the mechanism
+
+Measured with one instrument over `coverage-final.json` on both trees (the baseline run
+reproduces T16's figures **exactly**, so the comparison is apples to apples):
+
+| charter 7 sub-gate | baseline `e2a7456` | after T15 | gate | verdict |
+|---|---|---|---|---|
+| a. functions | **931/983 = 94.7101 %** | **955/1034 = 92.3598 %** | ≥ 94.0 % | **FAILS by 1.64 pt** |
+| b. uncovered scoped statements | 2179 | **2138 (−41)** | ≤ 2318 | **PASSES, improves** |
+| c. test count | 2272 | 2272 | no decrease | **PASSES, flat** |
+| d. statements % (indicator) | 85.7860 % | 86.0316 % | — | improves |
+
+**Mechanism, fully traced.** The restructure mints **+51 functions** in this file, and the
+arithmetic closes exactly: 48 per-element arrows + `IGNORE` + `DESCEND` + the table's
+`<static_initializer>`. **+24 are covered** (21 fixture-reached handlers + both sentinels +
+the initializer, which runs at import) and **27 are not**. The 27 uncovered ones are named, and they are exactly the elements that never appear at
+a dispatched position in any fixture:
+
+`app arpeg artic beatRpt breath bTrem choice del dot fTrem halfmRpt keySig layerDef meterSig
+mRpt mRpt2 multiRpt oLayer oStaff pedal phrase reh restore space syl tie tupletSpan`
+
+**These are the same untested paths as before, re-counted in a different unit.** In the
+baseline those 27 were uncovered *statements* inside the switch; the converter's uncovered
+statements fall 1578 → 1537 as they move. The proof that no test power was lost is that the
+list lines up with the file's uncovered `process*` methods — `processApp`, `processChoice`,
+`processDel`, `processPhrase`, `processMeterSig`, `processKeySig`, `processDot`, `processSyl`,
+`processTupletSpan`, `processArpeg`, `processBreath`, `processTie`, `processReh`,
+`processBeatRpt`, `processMRpt`, `processMRpt2`, `processMultiRpt`, `processHalfmRpt`,
+`processSpace`, `processPedal`, `processLayerDef`, `processRestore` — which were **already
+uncovered before this item and are untouched by it**. The five handlers in the list whose
+method *is* covered (`artic`, `bTrem`, `fTrem`, `oLayer`, `oStaff`) are the informative case:
+their methods are reached through *another* element (`processArtic` from inside
+`processNote`, `bTrem`/`fTrem`/`oLayer`/`oStaff` sharing `processChord`/`processLayer`/
+`processStaff`), so the top-level dispatch entry genuinely never fires. Nothing regressed;
+a metric changed its unit.
+
+**Why I did not "fix" it.** Two remedies exist and both are worse than the finding:
+
+- Encoding the 46 uniform entries as data (`{ run: 'processAccid', then: 'done' }`) removes
+  the functions and holds the floor — but it is not §8.5's design, and it destroys this
+  item's central evidence: the census could no longer compare token streams, only an
+  *interpretation* of them. That is exactly the improvisation the doc's "apply these, do not
+  improvise" forbids, done to satisfy a ratio.
+- Adding unit tests for the 27 handlers would raise the number honestly, but the brief scopes
+  unit-test work to "mechanical adaptation only", and tests asserting behaviour I would have
+  to *derive from the code under test* (there is no Java ground truth for these elements) are
+  worse than no tests.
+
+**This needs a conductor ruling, not a worker's judgement** (CHARTER: invariants bind workers
+absolutely; only the conductor may grant a scoped, journaled exemption). The substantive case
+for one: charter 7's own rationale adopted the function floor as a *"bit-stable,
+format-insensitive anchor"* against ratio floors that "punish honest … rewrites", and v3 was
+written before any item minted functions in bulk. The deletion-immune sub-gate (7b) improves
+by 41, test count is flat, and the byte probe says the behaviour is identical to the bit.
+If the ruling goes the other way, the clean revert point is the whole item — there is no
+partial shape that keeps the design and the floor. **Recommendation: exempt, and have T21
+re-anchor 7a on a phase-start function *count* delta (like 7b) rather than a ratio, since
+every later dispatch-table or handler-extraction item will hit this same edge.**
+
+### 8. Lint
+
+`eslint . -f json` over a `git archive e2a7456` baseline and the working tree: **1083 → 1083
+errors, 2 → 2 warnings**. Every rule flat; **not one file's count moved**, including the
+rewritten file. No new suppressions (zero repo-wide, unchanged). `refactor/lint-debt.md`
+updated with a T15 section — no column, per the T9b precedent for items that move nothing.
+`prettier --check` clean on the touched file; `import/no-cycle` and the four layer zones stay
+green (no import changed).
+
+### 9. Standard gate + manifest
+
+`npm run verify` **exit 0**: `tsc`, `tsc -p tsconfig.tests.json`, **59 files / 2272 tests**,
+unchanged from T16. The T13 acceptance battery is in that suite and green at its own counts —
+`tests/api/plain-data.test.ts` 37, `pipeline.test.ts` 38, `facade-equivalence.test.ts` 26,
+`determinism.test.ts` 8. `tests/integration/**` and its fixtures untouched; no test file was
+edited at all, mechanically or otherwise.
+
+**Manifest — 2 paths**: `M src/mei/Mei2MsmMpmConverter.ts`, plus `M refactor/lint-debt.md`
+and `M refactor/log.md` (bookkeeping). Nothing else.
+
+### 10. Handoff — reusable artefacts in `t15work/`
+
+- `census.mjs <file.ts|file.js>` — **the dispatch census**, and the instrument any future
+  change to `convertElement` should be gated on. Works on source and on emitted JS, and on a
+  half-migrated file. Scoped to `convertElement` by method name; if the walker is ever
+  renamed, that string must be updated or the tool will silently find nothing.
+- `apply-group.mjs <names…>` — the mechanical migrator, kept for the record of *how* the
+  handler bodies were produced.
+- `jsmembers.mjs <a.js> <b.js>` — per-member emitted-JS token classification. Generalises to
+  any item that rewrites part of a large class and needs to prove the rest did not move.
+- `round.sh <label>` — the per-group gate (prettier → census → build → suite → 131-artifact
+  byte probe) with a compact verdict line.
+- `basedist/` (baseline build), `out-base/` (baseline artifact dump), `basetree/` (baseline
+  `git archive` used for lint and coverage), `Converter.base.ts` (baseline source).
+- Trap re-confirmed for the next agent: a `dist` tree run from the scratchpad needs its own
+  `node_modules` symlink, and `cd` inside a compound bash command silently moves later stages
+  into the wrong tree (`git archive HEAD` failed exactly that way here).
+
+**DISCOVERED (for T21, not done here):** charter 7a's function-*ratio* floor is structurally
+hostile to handler-extraction refactors — see section 7's recommendation.
+
+## [T15] conductor — ruling on the functions-floor breach (2026-08-09)
+
+The worker's §7 accounting is accepted PENDING verifier confirmation: the +51 minted
+functions are dispatch arrows; the 27 uncovered ones map 1:1 onto process* paths that
+were already uncovered at baseline (a pre-existing, documented gap — converter
+coverage has been the known weak spot since the proof-harness session). Statements%
+improved, uncovered statements improved (2179→2138), tests flat. This is the same
+phenomenon that retired the statements ratio floor in invariant 7 v3: a restructure
+changed the METRIC'S unit, not the coverage. Rejecting the alternative (encoding
+handlers as data to game the ratio) as metric-driven design damage.
+
+RULING (governance authority): if verifier-T15 confirms the accounting, invariant 7a
+rebases to functions ≥ 92.0 (basis 92.36 post-restructure, same guard-band logic as
+the original rebase), with a charter note that function-minting restructures rebase
+7a only with a full per-function accounting like [T15] worker §7. The uncovered-
+statement budget (7b) remains the primary anti-drift gate. The 27 never-dispatched
+elements are journaled as a candidate for test additions in T21's audit, not now.
