@@ -7068,3 +7068,384 @@ is header. Gates: `npm run verify` green (**54 files / 2159 tests**), prettier c
 `M refactor/ARCHITECTURE.md` + `M refactor/log.md`; `refactor/state.json` also shows as
 modified but is the conductor's own post-T19a bookkeeping (`lastGreenCommit` → `f947836`,
 `currentItem` → T13, completed 17 → 18), not mine. **Frozen.**
+
+## [T13] worker — the public facade (ARCHITECTURE.md §2), additive (2026-08-09)
+
+`src/api/{types,errors,pipeline,index}.ts` — the four files §2.1 names, no fifth — plus four
+new test files under `tests/api/`. The only edits to existing files are **purely additive and
+measured as such**: `git diff --stat` reports `src/index.ts +41/-0` (the facade export block)
+and `vitest.config.ts +6/-0` (the authorized coverage-include edit: `src/api/**/*.ts` and
+`src/units.ts`, the latter closing T19a's DISCOVERED note). **Zero deleted lines in either.**
+
+`npm run verify` green: **58 files / 2268 tests** (baseline 54/2159, +4 files/+109 tests, all
+new — charter 7c: an increase, no test removed or weakened anywhere).
+
+### What is implemented
+
+Every signature of §2.2 verbatim, with §2.3's field mapping, §8.4's three rulings, RULE N4
+(no `undefined` in output), RULE I3, and U3(a)/U3a's brands (outputs branded, options plain
+`number`). Q1's nested `milliseconds: {date, end}` as the conductor ruled. Q6 is **not**
+implemented — no ruling arrived, and §2.2's signature block is normative, so `datePerf`/
+`durationPerf` are absent by the doc rather than by oversight; adding them later is additive
+and breaks nothing.
+
+Decisions where §2 left a choice, so the next reader does not have to re-derive them:
+
+1. **`ConvertOptions.sourceName` is `mei.setFile(name)`** — the single branch the converter
+   keys on, which is why setting it makes facade output byte-identical to the classic path
+   and why §8.4's "both or neither" holds by construction rather than by care.
+2. **A `positionMap` becomes one stream per distinct `controller`**, in first-appearance
+   order, because `ControlChangeStream` carries exactly one controller and one `ccNumber`
+   while a map may mix them. **A map with no entries yields no stream**, not an empty one.
+   No fixture mixes controllers — they are all `sustain` — so this is pinned by a hand-built
+   MSM covering `sustain`/`soft`/unknown/absent (64/67/0/0).
+3. **CC points are the MSM's own values**: document order, unrounded, and *not* thinned by
+   `CONTROL_CHANGE_DENSITY`. That thinning belongs to MIDI event generation, not to data.
+4. **`PerformedPart.index` is the position in `parts`**, not the MSM part's `number`
+   attribute — consistent with `MovementDocuments.index` and `PerformanceInfo.index`.
+5. **RULE E3's fallbacks are the interior's**: `milliseconds.date` → `date`,
+   `.end` → that + `duration`, `velocity` → 100, mirroring
+   `Msm.readMillisecondsDateFromElement` and `Msm.processScore`. Reported, never repaired.
+6. **A blank `sourceName`, `ppq <= 0`, a non-integer `ppq`, a non-finite `seed`, a
+   non-positive `movementSampleMaxStep` and a negative/fractional performance index are
+   `InvalidOptionError`**; an absent performance is `PerformanceNotFoundError`. The
+   `movementSampleMaxStep > 0` check is not cosmetic — see the hazard note below.
+7. **`MissingNodeError` for a `<note>` without `date`/`duration`/`midi.pitch`** (via
+   `requireAttribute`, N2a's accessor), **`ParseError` for one that will not parse as a
+   number**. Never `NaN`: `JSON.stringify` writes `null` for it and RULE F1's JSON leg would
+   silently lose the field.
+8. `src/api/errors.ts` **re-exports** `MeicoError`/`MissingNodeError` from `src/xml/errors.ts`
+   as T14's entry instructed, and a test pins the identity — a redeclared root would be
+   invisible to `instanceof` across the boundary.
+
+### The bug the tests found (worth knowing about, it is not mine)
+
+**`@xmldom/xmldom` exports its own class named `ParseError`, and a fatal parse error escapes
+as that.** `XmlBase.parseXmlString` catches only the XOM layer's `ParsingException`, so
+`new Msm('not xml')` leaves an empty document while `new Msm('<msm><unclosed></msm>')`
+*throws a foreign error with the same name as the facade's own*. A consumer catching
+`ParseError` by identity would have missed exactly half the malformed-input cases. Every
+document construction now goes through `parseOrThrow`, which converts anything thrown into
+this module's `ParseError` (with `cause` preserved).
+
+### Evidence
+
+- **Pipeline equivalence + §8.4's required RULE F2 round-trip gate.**
+  `scratchpad/t13/probe.mjs` (takes a dist dir): **148 checks, 0 failures.** All 16 MEI
+  fixtures — converted MSM, converted MPM, augmented MSM, expressive MIDI, raw MIDI,
+  movement count, titles, and the file-less `sourceName`-omitted MPM — plus all 9 all-maps
+  fixtures. Facade output is **byte-identical** to the classic path after `meico_<uuid>`
+  canonicalisation; the two imprecision fixtures are compared structurally, per the charter.
+  Since the facade serializes and re-parses between stages and the classic path does not,
+  this *is* `convert → serialize → re-parse → perform == convert → perform`: **0
+  divergences**, reproducing T12's measurement. The same comparison ships as
+  `tests/api/facade-equivalence.test.ts` so it cannot silently rot.
+- **Emitted-JS / new-file classification.** Baseline = `git archive HEAD` built in
+  `scratchpad/t13/base`. Of **288** pre-existing `dist/` files, **4 differ** and they are all
+  `dist/index.*`; the `index.js` diff is two `export … from './api/…'` lines plus a comment
+  block, nothing removed or rewritten. The only **new** artifacts are the 16 files of
+  `dist/api/`. Nothing else in the tree emits differently — which is the mechanical form of
+  "additive".
+- **No XomTypes in the facade's signatures.** Comment-stripped grep over all four
+  `dist/api/*.d.ts` for `Element|Attribute|Document|Nodes|Elements|Text|Builder|Msm|Mpm|Mei|
+  Midi|Performance|KeyValue|XmlBase`: **none**, in any of them. The XML types appear only in
+  module-private readers inside `pipeline.ts`, which is why they cannot reach a `.d.ts`.
+- **RULE F4**: `grep -rE "from '(fs|path|process|node:|url)|require\("` over `src/api/` →
+  clean. **RULE N4**: every `?:` in `src/api/` (16 hits) is inside an `*Options` type or an
+  inline input-object parameter — checked over both files, as N4 demands, not just `types.ts`.
+- **Plain-data acceptance (charter + RULE F1/I3/F3).** For all seven return types:
+  structural check (only `string|number|boolean|null|Uint8Array`|plain object|array, no
+  getters, no `undefined`, no `NaN`, no `Map`/`Set`, no class instance), `structuredClone`
+  round trip, a **real `postMessage` hop through a `MessageChannel`**, a JSON round trip for
+  everything but the byte payloads, and "two calls with equal inputs are value-equal but
+  share no reference at any level" (§2's exact wording for the memoization criterion), plus
+  "a changed input is not `toEqual`".
+- **Determinism trio at the facade (RULE F7) and `movementSampleMaxStep` (RULE I5)**, through
+  `renderExpressiveMidi` and `performMsm`: same seed ⇒ identical bytes; different seed ⇒
+  different bytes; **no seed twice ⇒ still different**; MPM `seed` beats `options.seed`. The
+  fixture keeps T19a's half-length durations *and* its warning comment — with
+  `duration = ppq` the shake path's unseeded `Math.random()` takes over and the seed stops
+  deciding anything.
+- **Six negative controls, each run and each red** (`scratchpad/t13/negative-controls.sh`,
+  restores verified by checksum; the tree is clean of all of them):
+
+  | # | sabotage | gate that fired |
+  |---|---|---|
+  | 1 | serialize via `Document.toXML()` (RULE F2a) | 29 failures across equivalence + pipeline |
+  | 2 | `sourceName` no longer calls `setFile` | 17 failures |
+  | 3 | one live XomTypes node into `PerformedNote.milliseconds` | 9 failures, in 9s |
+  | 4 | memoize the result across calls | 3 failures ("`$` is a fresh object…") |
+  | 5 | `toRenderOptions` returns `{}` | 4 failures — the two knobs, both output forms; correctly **not** the MPM-seed or no-seed legs |
+  | 6 | §2.4 gate (d): derive a seed even when `options.seed` is undefined (in `ImprecisionMap.ts`, restored, `git diff` empty) | exactly 1 failure: the no-seed leg |
+
+  Control 3 is the one that earned its keep. It first ran for **10 minutes without
+  failing**: a live XML node's parent/child cycle makes a `yield*` walk allocate generator
+  frames forever without ever overflowing the stack, so the gate *hung* instead of reporting.
+  Both walkers now carry a cycle guard and the three round-trip legs open with the structural
+  check as a fail-fast precondition. A gate that hangs is worse than no gate — and this one
+  would have hung on a real regression, not only on a sabotage.
+
+### Gates
+
+- `npm run verify` **green**, 58 files / 2268 tests.
+- **Lint: 1245 errors / 5 warnings — identical to the T19a baseline, per-rule histogram
+  identical** (no rule moved by ±1). All eight new files are lint-clean. No new suppressions;
+  no RULE U2 cast at any unsanctioned site (the facade's `as Ticks`/`as Milliseconds`/
+  `as Midi7Bit` casts are U3(a)'s prescribed brand application at the boundary, one per field).
+- **Coverage: functions 94.4162 %** (floor 94.0 ✓, up from T19a's 94.2348); **uncovered scoped
+  statements 2201**, down from 2217 even though the include list grew by two globs (scoped
+  total 15478) — the phase-2 budget of 2318 is untouched. `src/api/pipeline.ts` is **312/314
+  statements and 29/29 functions**; the two uncovered are the defensive index-alignment throw
+  below.
+- Prettier clean; `tests/integration/fixtures/**` untouched; `tests/integration/*.test.ts`
+  **untouched** (see below).
+
+### Integration tests: deliberately left on the classic path
+
+§8.4 permits a mechanical switch "only if the switch is genuinely mechanical". It is not:
+every integration test threads the *objects* (`converter.convert(mei)` → `result.getKey()[0]`
+→ `performance.perform(msm)`) and reads them again afterwards, so switching means rewriting
+the data flow, not renaming calls. They are also the ground-truth gate. The facade is
+additive and §8.4 says it does not need them as proof — and `facade-equivalence.test.ts`
+now proves the facade against the classic path over every fixture, which is the same
+coverage without touching the gate.
+
+### DISCOVERED (not fixed here)
+
+- **`MovementData.getMovementSegment` never terminates for `maxStepSize <= 0`**
+  (`while (Math.abs(Δ) > maxStepSize)` subdividing forever, `MovementData.ts:200-206`). Same
+  family as parity-ledger P1/P2/P4 — a malformed *input* hanging the renderer — reachable
+  today only through `RenderOptions.movementSampleMaxStep`, which T19a made settable. The
+  facade shields it with `InvalidOptionError`, which is the conductor's own Q2 reasoning
+  ("the facade's boundary validation is the right long-term shield"), but **the class API is
+  still exposed**: `perform(msm, { movementSampleMaxStep: 0 })` hangs. Candidate for the
+  ledger and for T19/T21; not touched here, since a guard in `src/mpm/` is a behaviour change
+  outside this item.
+- **`convertMeiToMsmMpm` cannot report a partially failed conversion precisely.**
+  `makeMovement` pushes the MSM before it builds the MPM and returns early if
+  `Performance.createPerformance` fails, so the two arrays can misalign. RULE E2 has no error
+  class for "the interior skipped a movement"; the facade throws `EmptyDocumentError` naming
+  both counts. Those two statements (`pipeline.ts:398-399`) are the *only* uncovered ones in
+  the facade — unreachable without breaking the converter first. T16 could close it properly
+  by making that path fail loudly.
+- **`generateProgramChanges` is silently inert on the `mpm`-omitted path**, because
+  `Msm.exportExpressiveMidi` hard-codes `true` there (Java `Msm.java:667`). §8.4 rules only on
+  `PerformOptions` for that path, so the facade documents the inertness rather than inventing
+  a seventh error case. If a later item wants it honest, `InvalidOptionError` is the shape.
+
+### Handoff
+
+`src/api/index.ts` is the one-import entry point for mpm-desk/mpmify; `src/index.ts` also
+re-exports every facade member individually (not `export *`, which would make
+`MeicoError`/`MissingNodeError` ambiguous against the existing `./xml/errors.js` export).
+The reusable probe is `scratchpad/t13/probe.mjs <distDir>`; the controls are
+`scratchpad/t13/negative-controls.sh` (run them one at a time, they patch `src/` and restore).
+
+## [T13] verifier — the public facade (2026-08-09)
+
+**PASS.** Every claim reproduced with probes written from CHARTER.md + ARCHITECTURE.md §2,
+not from the worker's tests; the worker's four test files were read only after my own probes
+had run, and none of them is load-bearing for this verdict. Scratch: `t13verify/`.
+**782 independent checks, 0 failures**, across seven probes, each with a negative control.
+
+Baseline first: `git diff f947836 2d288dd` touches `refactor/` only — `2d288dd` is
+src-identical to the last green commit, so `HEAD` is a sound comparison base.
+
+### 1. Plain-data acceptance, probed independently (`t13verify/plaindata.mjs`)
+
+**488 checks, 0 failures.** Every entry point on real fixture inputs — all 16 MEI fixtures
+(convert → listPerformances → performMsm → extractPerformanceData → performMsmToData →
+renderMidi → renderExpressiveMidi → renderExpressiveMidi with `mpm` omitted), all 8 all-maps
+sets both performed and straight from the Java `_augmented.msm`, and all 16
+`performance-reference/*_augmented.msm`. For every return value: (a) `structuredClone`
+deep-equal, including byte-wise comparison of the `Uint8Array` payloads; (b) `JSON.stringify`
+→ `parse` value-equal for everything except the two byte payloads (RULE F3's documented
+exclusion, and the probe *proves* the exclusion is needed — a `Uint8Array` field fails that
+leg); (c) a graph walk asserting no value is `instanceof` any of the **18 constructors**
+exported by `XomTypes`, `XmlBase`, `Msm`, `Mpm`, `Mei`, `Midi` or `KeyValue` (enumerated at
+runtime from the built modules, so the list cannot go stale: `Attribute`, `Builder`,
+`DOMParser`, `Document`, `Element`, `Elements`, `Nodes`, `ParsingException`, `Text`,
+`ValidityException`, `XMLSerializer`, `XomNode`, `XmlBase`, `Msm`, `Mpm`, `Mei`, `Midi`,
+`KeyValue`), and every
+object's prototype is `Object.prototype` or `Array.prototype` (plus `Uint8Array.prototype`
+under F3) — with getters, symbol keys, `undefined`, `NaN`, `Map`/`Set`/`Date`/`RegExp` and
+cycles each their own rejection. Walker carries a cycle guard and a depth cap, so the hang
+the worker hit cannot recur.
+
+**The probe is proven able to fail**: `SELFTEST=1` feeds it eight poisoned values (a live
+`Element` nested three levels into a `PerformedNote.milliseconds`, a `Map`, a `Date`, an
+`Msm` instance, a getter, `undefined`, `NaN`, a `Uint32Array`) — **8/8 rejected**.
+
+**Real `postMessage`** (`t13verify/postmessage.mjs`): all eight payload kinds sent through a
+`node:worker_threads` `Worker` and echoed back — **8/8 intact**, `Uint8Array` still a
+`Uint8Array` on the far side. That is the charter's concrete test (a), not a stand-in.
+Referential freshness (test (b)): two calls with equal inputs share **no** object reference
+at any depth, checked by graph traversal, while being value-equal. Inputs unmutated (RULE I3).
+
+**Type surface, transitively** (`t13verify/typesurface.mjs`). The emitted declarations are
+the authority — TypeScript keeps an import in a `.d.ts` only if an exported declaration
+references it. Starting from the four `dist/api/*.d.ts` and following every module specifier,
+the reachable closure is exactly **7 files**: the four api declarations plus `units.d.ts`,
+`version.d.ts`, `xml/errors.d.ts`. Comment-stripped, **zero** occurrences of
+`XomTypes|XmlBase|Element|Elements|Attribute|Document|Nodes|Text|Builder|ParsingException|
+Msm|Mpm|Mei|Midi|Performance|KeyValue`. In source, `Element`/`XmlBase` appear only as
+`import type` on module-private helpers (`pipeline.ts:29-30,66,124,199,210,218,224,232,255,
+282,318,331`), which is why they cannot reach a declaration file. RULE F4 clean: no `fs`,
+`path`, `process`, `node:*`, `require(` or dynamic `import(` anywhere under `src/api/`.
+
+### 2. Contract completeness vs state.json (`t13verify/contract.mjs`, 33 checks, 0 failures)
+
+- **Batch path** takes a plain object of two strings; the *whole call* is JSON-safe — input
+  and options round-tripped through `JSON.parse(JSON.stringify(...))` produce byte-identical
+  output. §2.2's "text, not parsed objects" reading of the recorded contract is cited as
+  intended; what the contract actually requires (in-memory, no file I/O) holds, proven above.
+- **Per-note fields**, measured over **227 notes across 16 fixtures**: exactly one key set,
+  `{id, date, duration, milliseconds, pitch, velocity}` with `milliseconds` = `{date, end}` —
+  ruling Q1's nested form, every recorded field present. `pitch` is the one field beyond
+  state.json's list; §2.2's signature block is normative and names it, so this is a
+  documented superset, not drift. `id` is `string|null`, every numeric field finite.
+- **CC streams.** `all_maps`: a `channelVolume` stream, `controller` null, `ccNumber` 7,
+  point count equal to the MSM's `<volume>` count. `movement`: a `position` stream,
+  `controller` `sustain` → `ccNumber` 64, **17 points for 17 `<position>` elements**, and
+  point-for-point equal to the raw attribute values scraped from the MSM with an independent
+  regex reader — `date`, `value` and `milliseconds.date` all match in document order,
+  **0 mismatches**, confirming the worker's "unrounded, unthinned, document order" decision.
+  `sustain`/`soft`/other → 64/67/0 asserted per stream.
+- **Seed** — see gate (c) below.
+
+### 3. Both-paths equivalence + the classic path vs baseline (`t13verify/paths.mjs`)
+
+**174 checks, 0 failures** over all 16 MEI fixtures and the 6 deterministic all-maps sets. For
+each: converted MSM and MPM, the augmented MSM, expressive MIDI bytes, raw MIDI bytes, movement
+count, index and title — facade **byte-identical** to the classic path after canonicalizing
+both `meico_<uuid>` and the bare root `xml:id` uuid. Since the facade serializes and re-parses
+between every stage and the classic path threads objects, this **is** §8.4's required RULE F2
+round-trip gate: `convert → serialize → re-parse → perform` == `convert → perform`,
+**0 divergences**, reproducing T12's measurement independently.
+
+The `PerformanceData` comparison does **not** go through the facade's own reader: I derive
+notes and CC streams from the *classic* augmented MSM with a separate regex-based reader and
+compare structures. **Negative control**: adding 1 ms to one derived note's
+`milliseconds.end` turns that comparison red on **16/16** MEI fixtures — the comparison is
+real, not vacuous. Also asserted: `extractPerformanceData(performMsm(x))` ≡ `performMsmToData(x)`.
+
+**Classic path vs baseline build.** `git archive HEAD` → `t13verify/base`, built with the same
+`tsc`. Classic-path digests (16 MEI movements + 6 all-maps sets; MSM/MPM/augmented hashes and
+MIDI byte hashes) are **identical between the two builds**, and stable across two runs of the
+working tree. The facade did not perturb the classic pipeline.
+
+### 4. Additivity
+
+`src/index.ts` **+41/-0**, `vitest.config.ts` **+6/-0**, single hunk each, exactly the blocks
+claimed. `git diff --stat -- src/ ':(exclude)src/api/'` lists `src/index.ts` and nothing else.
+`git diff -- tests/` is **empty**; the only untracked test path is `tests/api/`.
+
+**dist story, measured**: 288 pre-existing files, **284 byte-identical**, **4 differ** — all
+`dist/index.*` — and their diffs are pure insertions (the comment block plus the export
+lines; nothing removed, nothing rewritten). New artifacts: exactly the **16** files of
+`dist/api/`. Nothing removed.
+
+### 5. §2.4 gates as amended — all four executed
+
+- **(a)** pipeline byte-probe over every deterministic fixture, work vs baseline build:
+  identical (§3 above).
+- **(b)** the two imprecision fixtures gated structurally (`t13verify/imprecision.mjs`,
+  18 checks, 0 failures): classic vs facade have identical element-count maps and identical
+  per-tag attribute-name sets; no value that looks numeric is non-finite; and each note's
+  offset against an unperturbed render (same MPM with the imprecision map stripped) lies
+  inside the declared limits — timing within [-20, 20] ms, dynamics within [-15, 15], **0 of
+  8 out of range in each**, with "any offset at all" asserted so the gate cannot pass vacuously.
+- **(c)** the determinism trio, on a fixture I built myself (`t13verify/seed.mjs`, 12 checks,
+  0 failures) — notes 720 apart with duration 360, so no note end coincides with the next
+  note's start. Same `options.seed` twice ⇒ **byte-identical** MIDI; different seeds ⇒
+  different; **no seed twice ⇒ different**; MPM `seed` beats `options.seed` and equals the
+  no-option render. Same trio through `performMsmToData` and `performMsm`.
+  `movementSampleMaxStep` is honoured end to end: 0.1 → 17 CC points, 0.5 → 5.
+- **(d)** the negative control, named against **the third leg of gate (c)** as the amendment
+  requires. I applied it to a **copy of `dist/`**, not to `src/` — deriving a seed even when
+  `options.seed` is undefined — and the sabotaged build fails **exactly one** check, the
+  no-seed leg, with the other eleven still green. `git status` unchanged throughout; no
+  file under `src/` was written at any point in this verification.
+
+### 6. Integration tests
+
+`git diff -- tests/integration/` is empty and no file under it is untracked — the ground-truth
+gate is untouched, so §8.4's "only if genuinely mechanical" question never arises. The worker's
+reason for not switching them (the tests thread objects across stages, so a switch is a data-flow
+rewrite, not a rename) is correct on inspection, and `facade-equivalence.test.ts` covers the same
+ground additively.
+
+### 7. Standard gates
+
+- Manifest exactly as specified: `?? src/api/`, `?? tests/api/`, `M src/index.ts`,
+  `M vitest.config.ts`, `M refactor/lint-debt.md`, `M refactor/log.md`.
+- Independent `npm run verify` **green, exit 0**: `tsc` build, `tsc -p tsconfig.tests.json`,
+  then **58 files / 2268 tests passed**. Baseline measured by me on the archived tree:
+  **54 / 2159**. Delta +4 files / +109 tests, all new; no existing test file differs by a
+  byte, so nothing was removed or weakened (charter 7c satisfied by increase). No `.skip`,
+  `.only`, `.todo` anywhere in `tests/api/`.
+- **Suppressions: zero** — no `eslint-disable`, `@ts-ignore`, `@ts-expect-error`,
+  `@ts-nocheck`, `as any`, `as unknown` or non-null assertion anywhere in `src/api/` or
+  `tests/api/`. The brand casts number **exactly 10**, one per field RULE U3(a) enumerates:
+  `pipeline.ts:247,248,249,250,251` (two on :251, `milliseconds.date` and `.end`),
+  `:258,259,260`, `:351`. None sits inside arithmetic — RULE U4's condition. §7's budget of 8
+  is scoped to U3(b)'s interior brands and is untouched.
+- **Lint reconciles**: `eslint . -f json` on both trees — **1245 errors / 5 warnings** on each,
+  and the **per-rule histogram is identical** (computed as a full `ruleId` → count map; no rule
+  moved by ±1). Linted files 128 → 136; the eight new ones are `src/api/*.ts` and
+  `tests/api/*.test.ts`, **all at 0 messages**. `lint-debt.md`'s T13 section matches what I
+  measured, including the ten-cast inventory.
+- **Coverage** (`coverage-final.json`, not the rounded table): **functions 930/985 =
+  94.4162 %** (floor 94.0 ✓), **uncovered scoped statements 2201** of 15478 (phase-2 budget
+  2318 ✓ — and *down* from T19a's 2217 despite two new globs). New code per file:
+  `api/pipeline.ts` **312/314 statements, 29/29 functions** (the two uncovered are
+  `:398-399`, the index-alignment throw the worker journalled as unreachable without breaking
+  the converter), `api/errors.ts` 6/6, `api/index.ts` 2/2; `api/types.ts` and `units.ts`
+  contribute 0/0 statements, so the type-only additions do not dilute the budget.
+- **`log.md` append-only**: +172/-0, and the first 7070 lines are byte-identical to `HEAD`'s.
+- §8.4's three rulings all verified (`t13verify/rulings.mjs`, 49 checks, 0 failures):
+  `index` == array position and `title` == `Msm.getTitle()` of that movement (compared against
+  the converter's own arrays); `sourceName` sets the `RelatedResource` **and** the generated
+  `<comment>` together, with the omitted case byte-identical to the classic no-file variant and
+  the named case byte-identical to the classic `setFile` variant; the `mpm`-omitted path renders,
+  throws `EmptyDocumentError` on an unperformed MSM, and rejects all three `PerformOptions`
+  fields with `InvalidOptionError` while leaving `generateProgramChanges` inert. RULE F2a
+  confirmed at the output (no `<?xml` prefix on MSM, MPM or augmented text) and at the input
+  (a declared document is accepted equivalently). Error policy: 18 failure modes each throw the
+  right class and each `instanceof MeicoError`; `api.MeicoError === xml/errors.MeicoError` and
+  likewise `MissingNodeError`, so `instanceof` works across the boundary.
+
+### Findings — none blocking, all for the conductor's ledger
+
+1. **The seed contract is weaker than "reproducible", and the shipped fixtures show it.**
+   `renderExpressiveMidi` on `imprecision_timing` with the MPM's own `seed="42"` gives a
+   **different result on every call — 7 of its 8 notes differ between two identical calls**.
+   Cause is interior and pre-existing: `ImprecisionMap.shakeTimingOffsets` /
+   `shakeOffsets` / `doHandover` tie-break with a bare `Math.random()` (`ImprecisionMap.ts:
+   531,540,554`, byte-identical at `HEAD`; T13 changed no interior file). It fires whenever
+   two offsets share a `milliseconds.date`, which that fixture triggers because
+   `duration == ppq` makes every note end meet the next note's start. `imprecision_dynamics`
+   is stable. The facade *documents* this precisely on `PerformOptions.seed`, and the seed
+   plumbing itself is proven bit-exact where the shake path does not fire — so this is
+   honest, not broken. But state.json's downstream request (b) asks for the seed "so
+   synthetic datasets are reproducible", and for polyphonic input that is only partly
+   delivered. **Recommend the conductor relay this to mpmify explicitly** rather than let the
+   JSDoc carry it, and consider a ledger entry: seeding the tie-break is a behaviour change
+   in `src/mpm/`, correctly outside T13's scope, and a natural T19 candidate.
+2. **`pitch` exceeds state.json's per-note list** — §2.2 normative, useful, no action.
+3. **Q6 (`datePerf`/`durationPerf`) is absent**; the architect recommended adding them and no
+   ruling arrived. The worker followed §2.2's normative block. Purely additive later.
+4. **Pre-existing prettier dirt, not T13's**: `npx prettier --check .` flags
+   `tests/midi/Midi.test.ts`. That file is untouched by this item and is **equally dirty at
+   `HEAD`** (checked on the archived tree). All ten files in T13's manifest are clean. Someone's
+   earlier "prettier clean" claim went stale; worth a sweep before the phase-end audit.
+
+### Handoff
+
+Reusable, each taking a dist dir as argv[1] so they work against any build:
+`t13verify/plaindata.mjs` (`SELFTEST=1` runs its own poison controls), `typesurface.mjs`,
+`contract.mjs`, `seed.mjs`, `paths.mjs` (`both` | `classic <out.json>`), `imprecision.mjs`,
+`rulings.mjs`, `postmessage.mjs`. `t13verify/base/` is the built baseline tree;
+`t13verify/distctl/` is the gate-(d) sabotaged build, kept so the control can be re-run
+without touching `src/`. Nothing under `src/` or `tests/` was written by this verification;
+my only write is this entry.

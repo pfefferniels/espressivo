@@ -1,0 +1,558 @@
+/**
+ * The public facade: MEI ⇒ MSM+MPM ⇒ performed data / MIDI (ARCHITECTURE.md §2).
+ *
+ * It is **additive** — every existing entry point keeps working exactly as before, and
+ * nothing in `src/` calls anything here. What it adds is a boundary:
+ *
+ * - **documents cross it as XML text** (RULE F2), which is what makes every other guarantee
+ *   free: text is plain data, so inputs cannot be mutated (RULE I3a) and outputs are
+ *   `structuredClone`-safe (RULE F1). The XML interior stays genuinely interior — no
+ *   XomTypes type appears in any exported signature here, only in the module-private
+ *   readers below, which never escape into a return type;
+ * - **document text is produced by `getRootElement().toXML()`** (RULE F2a), never
+ *   `Document.toXML()`: the declaration-free form is the exact byte sequence the equivalence
+ *   suite compares against the Java fixtures;
+ * - **failures throw** (RULE E2). The interior logs and returns null, bug-for-bug with Java
+ *   (RULE E1); every one of those nulls becomes a typed error here, and no function in this
+ *   module returns `null`;
+ * - **there is no file I/O and no process access** (RULE F4). Nothing here imports `fs`,
+ *   `path` or `process`, and no function takes or returns a path.
+ */
+import { EventMaker } from '../midi/EventMaker.js';
+import { Mei } from '../mei/Mei.js';
+import { Mei2MsmMpmConverter } from '../mei/Mei2MsmMpmConverter.js';
+import { Msm } from '../msm/Msm.js';
+import { Mpm } from '../mpm/Mpm.js';
+import type { Performance } from '../mpm/elements/Performance.js';
+import type { RenderOptions } from '../mpm/RenderOptions.js';
+import type { Midi7Bit, Milliseconds, Ticks } from '../units.js';
+import type { Element } from '../xml/XomTypes.js';
+import type { XmlBase } from '../xml/XmlBase.js';
+import { allChildElements, attribute, firstChildElement, requireAttribute } from '../xml/tree.js';
+import {
+  EmptyDocumentError,
+  InvalidOptionError,
+  ParseError,
+  PerformanceNotFoundError,
+} from './errors.js';
+import type {
+  ControlChangePoint,
+  ControlChangeStream,
+  ConvertOptions,
+  MidiOptions,
+  MovementDocuments,
+  PerformanceData,
+  PerformanceInfo,
+  PerformOptions,
+  PerformedNote,
+  PerformedPart,
+  XmlText,
+} from './types.js';
+
+/** The library version. It is serialization-visible — the converter writes it into MPM metadata. */
+export { VERSION } from '../version.js';
+
+// ---------------------------------------------------------------------------
+// Input parsing. Everything below this line is module-private.
+// ---------------------------------------------------------------------------
+
+type DocumentKind = 'MEI' | 'MSM' | 'MPM';
+
+/**
+ * Parse-and-check, shared by the three entry types. A document that did not parse is
+ * indistinguishable from an empty one at the class API (`XmlBase` swallows the
+ * `ParsingException` and leaves `data` null), so both land on the same error here.
+ */
+function checkParsed(doc: XmlBase, kind: DocumentKind, rootName: string): void {
+  if (doc.isEmpty()) throw new ParseError(`${kind}: the input is not well-formed XML`);
+
+  const root = doc.getRootElement();
+  if (root === null || root.getLocalName() !== rootName)
+    throw new ParseError(
+      `${kind}: expected a <${rootName}> root element, found <${root === null ? 'nothing' : root.getLocalName()}>`,
+    );
+}
+
+function requireXmlText(kind: DocumentKind, text: XmlText): void {
+  // The `typeof` guard is for untyped callers: a plain-JS `null` would otherwise fail with a
+  // `TypeError` from inside the parser instead of this module's own error type.
+  if (typeof text !== 'string' || text.trim() === '')
+    throw new ParseError(`${kind}: expected XML text, got nothing`);
+}
+
+/**
+ * The XML layer is lenient in two different ways at two different depths, and only one of
+ * them is visible as an empty document: `XmlBase` catches the XOM layer's own
+ * `ParsingException` and leaves `data` null, but a fatal parser error escapes as
+ * **`@xmldom/xmldom`'s `ParseError`** — a foreign class that happens to share its name with
+ * this module's, so a consumer catching `ParseError` by identity would miss it entirely.
+ * Every construction of a document therefore goes through here.
+ */
+function parseOrThrow<T>(kind: DocumentKind, parse: () => T): T {
+  try {
+    return parse();
+  } catch (cause) {
+    throw new ParseError(
+      `${kind}: ${cause instanceof Error ? cause.message : String(cause)}`.replace(/\s+/g, ' '),
+      { cause },
+    );
+  }
+}
+
+function parseMei(mei: XmlText): Mei {
+  requireXmlText('MEI', mei);
+  const doc = parseOrThrow('MEI', () => Mei.fromXml(mei));
+  checkParsed(doc, 'MEI', 'mei');
+  return doc;
+}
+
+function parseMsm(msm: XmlText): Msm {
+  requireXmlText('MSM', msm);
+  const doc = parseOrThrow('MSM', () => new Msm(msm));
+  checkParsed(doc, 'MSM', 'msm');
+  return doc;
+}
+
+function parseMpm(mpm: XmlText): Mpm {
+  requireXmlText('MPM', mpm);
+  const doc = parseOrThrow('MPM', () => new Mpm(mpm));
+  checkParsed(doc, 'MPM', 'mpm');
+  return doc;
+}
+
+/** RULE F2a: the declaration-free serialization, which is what the fixtures are compared as. */
+function serialize(doc: XmlBase, kind: DocumentKind): XmlText {
+  const root = doc.getRootElement();
+  if (root === null) throw new EmptyDocumentError(`${kind}: nothing to serialize`);
+  return root.toXML();
+}
+
+// ---------------------------------------------------------------------------
+// Option validation (RULE E2's InvalidOptionError)
+// ---------------------------------------------------------------------------
+
+function checkConvertOptions(options: ConvertOptions | undefined): void {
+  if (options === undefined) return;
+
+  if (options.ppq !== undefined && !(Number.isInteger(options.ppq) && options.ppq > 0))
+    throw new InvalidOptionError(`ppq must be a positive integer, got ${String(options.ppq)}`);
+
+  if (options.sourceName !== undefined && options.sourceName.trim() === '')
+    throw new InvalidOptionError(
+      'sourceName must be a non-empty name; omit it for the file-less variant',
+    );
+}
+
+function checkPerformOptions(options: PerformOptions | undefined): void {
+  if (options === undefined) return;
+
+  if (options.seed !== undefined && !Number.isFinite(options.seed))
+    throw new InvalidOptionError(`seed must be a finite number, got ${String(options.seed)}`);
+
+  if (
+    options.movementSampleMaxStep !== undefined &&
+    !(Number.isFinite(options.movementSampleMaxStep) && options.movementSampleMaxStep > 0)
+  )
+    throw new InvalidOptionError(
+      `movementSampleMaxStep must be a positive finite number, got ${String(options.movementSampleMaxStep)}` +
+        ' — the movement subdivision compares against it and never terminates at zero',
+    );
+}
+
+/** The interior's own options object (§2.4). Defaults are resolved inside `src/mpm/`, not here. */
+function toRenderOptions(options: PerformOptions | undefined): RenderOptions {
+  checkPerformOptions(options);
+  return { seed: options?.seed, movementSampleMaxStep: options?.movementSampleMaxStep };
+}
+
+function selectPerformance(mpm: Mpm, which: string | number | undefined): Performance {
+  const selector = which ?? 0;
+
+  if (typeof selector === 'number') {
+    if (!Number.isInteger(selector) || selector < 0)
+      throw new InvalidOptionError(
+        `performance index must be a non-negative integer, got ${String(selector)}`,
+      );
+    const byIndex = mpm.getPerformance(selector);
+    if (byIndex === null)
+      throw new PerformanceNotFoundError(
+        `MPM: no performance at index ${selector}; the document has ${mpm.size()}`,
+      );
+    return byIndex;
+  }
+
+  const byName = mpm.getPerformance(selector);
+  if (byName === null)
+    throw new PerformanceNotFoundError(`MPM: no performance named '${selector}'`);
+  return byName;
+}
+
+// ---------------------------------------------------------------------------
+// Reading an augmented MSM (§2.3). XomTypes types appear here and nowhere else.
+// ---------------------------------------------------------------------------
+
+/**
+ * A numeric attribute the MSM must carry. Absent → `MissingNodeError` from the `require*`
+ * accessor; present but unparseable → `ParseError`. Never `NaN`: `JSON.stringify` turns that
+ * into `null` and the value would not survive RULE F1's round trip.
+ */
+function requiredNumber(name: string, e: Element): number {
+  const raw = requireAttribute(name, e).getValue();
+  const value = parseFloat(raw);
+  if (!Number.isFinite(value))
+    throw new ParseError(
+      `MSM: attribute '${name}' of <${e.getLocalName()}> is not a number: '${raw}'`,
+    );
+  return value;
+}
+
+/** A numeric attribute that may be absent. `null` for absent or unparseable — never `NaN`. */
+function optionalNumber(name: string, e: Element): number | null {
+  const a = attribute(name, e);
+  if (a === null) return null;
+  const value = parseFloat(a.getValue());
+  return Number.isFinite(value) ? value : null;
+}
+
+/** The parts of an MSM, in document order — the order that decides MIDI track order. */
+function partElements(msm: Msm): Element[] {
+  const root = msm.getRootElement();
+  return root === null ? [] : allChildElements(root, 'part');
+}
+
+/** `<part><dated><score><note>`, guarded exactly as `Msm.processScore` guards it. */
+function noteElements(part: Element): Element[] {
+  const dated = firstChildElement('dated', part);
+  if (dated === null) return [];
+  const score = firstChildElement('score', dated);
+  if (score === null) return [];
+  return allChildElements(score, 'note');
+}
+
+function readNote(note: Element): PerformedNote {
+  const date = requiredNumber('date', note);
+  const duration = requiredNumber('duration', note);
+
+  // The three fallbacks are the interior's own, not repairs of it (RULE E3): an unperformed
+  // note reads its milliseconds date from `date` (`Msm.readMillisecondsDateFromElement`), its
+  // end from date + duration and its velocity as 100 (`Msm.processScore`). Unlike the MIDI
+  // renderer nothing is rounded here — the MSM's own values are what a consumer asked for.
+  const msDate = optionalNumber('milliseconds.date', note) ?? date;
+  const msEnd = optionalNumber('milliseconds.date.end', note) ?? msDate + duration;
+
+  const id = attribute('id', note);
+
+  return {
+    id: id === null ? null : id.getValue(),
+    pitch: requiredNumber('midi.pitch', note) as Midi7Bit,
+    date: date as Ticks,
+    duration: duration as Ticks,
+    velocity: (optionalNumber('velocity', note) ?? 100) as Midi7Bit,
+    milliseconds: { date: msDate as Milliseconds, end: msEnd as Milliseconds },
+  };
+}
+
+function readControlChangePoint(e: Element): ControlChangePoint {
+  const date = requiredNumber('date', e);
+  return {
+    date: date as Ticks,
+    milliseconds: (optionalNumber('milliseconds.date', e) ?? date) as Milliseconds,
+    value: requiredNumber('value', e) as Midi7Bit,
+  };
+}
+
+/** `sustain` → 64, `soft` → 67, anything else → 0. Mirrors `Msm.parsePositionMap`. */
+function ccNumberOf(controller: string | null): number {
+  if (controller === 'sustain') return EventMaker.CC_Damper_Pedal;
+  if (controller === 'soft') return EventMaker.CC_Soft_Pedal;
+  return 0;
+}
+
+/**
+ * The part's control-change streams: sub-note dynamics from the `channelVolumeMap`, movement
+ * (pedalling) from the `positionMap`.
+ *
+ * Two readings §2 leaves open, decided here. A `positionMap` may mix controllers while a
+ * stream carries exactly one, so entries are grouped by their `controller` value in
+ * first-appearance order. And a map with no entries yields no stream at all rather than an
+ * empty one. The entries are reported as the MSM holds them, in document order: the
+ * `CONTROL_CHANGE_DENSITY` thinning that `Msm.parseChannelVolumeMap` applies belongs to MIDI
+ * event generation, not to the data.
+ */
+function readControlChanges(part: Element): ControlChangeStream[] {
+  const dated = firstChildElement('dated', part);
+  if (dated === null) return [];
+
+  const streams: ControlChangeStream[] = [];
+
+  const volumeMap = firstChildElement('channelVolumeMap', dated);
+  if (volumeMap !== null) {
+    const points = allChildElements(volumeMap, 'volume').map(readControlChangePoint);
+    if (points.length > 0)
+      streams.push({
+        kind: 'channelVolume',
+        controller: null,
+        ccNumber: EventMaker.CC_Channel_Volume,
+        points,
+      });
+  }
+
+  const positionMap = firstChildElement('positionMap', dated);
+  if (positionMap !== null) {
+    const byController = new Map<string | null, ControlChangePoint[]>();
+    for (const position of allChildElements(positionMap, 'position')) {
+      const controllerAttribute = attribute('controller', position);
+      const controller = controllerAttribute === null ? null : controllerAttribute.getValue();
+      const point = readControlChangePoint(position);
+      const points = byController.get(controller);
+      if (points === undefined) byController.set(controller, [point]);
+      else points.push(point);
+    }
+    for (const [controller, points] of byController)
+      streams.push({ kind: 'position', controller, ccNumber: ccNumberOf(controller), points });
+  }
+
+  return streams;
+}
+
+function readPart(part: Element, index: number): PerformedPart {
+  const name = attribute('name', part);
+  return {
+    index,
+    name: name === null ? null : name.getValue(),
+    midiChannel: optionalNumber('midi.channel', part),
+    midiPort: optionalNumber('midi.port', part),
+    notes: noteElements(part).map(readNote),
+    controlChanges: readControlChanges(part),
+  };
+}
+
+/** RULE E3's test: an MSM nobody performed has `milliseconds.date` on no note at all. */
+function isPerformed(msm: Msm): boolean {
+  for (const part of partElements(msm))
+    for (const note of noteElements(part))
+      if (attribute('milliseconds.date', note) !== null) return true;
+  return false;
+}
+
+/**
+ * The shared reader behind {@link extractPerformanceData} and {@link performMsmToData}, so
+ * the two cannot drift: one goes through a serialize/re-parse round trip and the other does
+ * not, and they must produce the same value.
+ */
+function readPerformanceData(msm: Msm): PerformanceData {
+  if (!isPerformed(msm))
+    throw new EmptyDocumentError(
+      'MSM: this MSM carries no performance attributes; call performMsm first',
+    );
+
+  return {
+    title: msm.getTitle(),
+    ppq: msm.getPPQ() as Ticks,
+    parts: partElements(msm).map(readPart),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The facade
+// ---------------------------------------------------------------------------
+
+/**
+ * MEI ⇒ one MSM + MPM pair per `mdiv`, index-aligned.
+ *
+ * @throws {ParseError} the text is not a well-formed `<mei>` document
+ * @throws {EmptyDocumentError} the MEI holds no convertible movement
+ * @throws {InvalidOptionError} `ppq` is not a positive integer, or `sourceName` is blank
+ */
+export function convertMeiToMsmMpm(
+  mei: XmlText,
+  options?: ConvertOptions,
+): readonly MovementDocuments[] {
+  checkConvertOptions(options);
+
+  const document = parseMei(mei);
+  // `sourceName` is the file name the class API would have derived from a path: it drives the
+  // converter's `getFile() !== null` branch, and with it BOTH the MPM metadata's
+  // `RelatedResource` URI and the generated `<comment>` text (§8.4). Setting it is what makes
+  // facade output byte-identical to the classic path for the same source name.
+  if (options?.sourceName !== undefined) document.setFile(options.sourceName);
+
+  const converter = new Mei2MsmMpmConverter(
+    options?.ppq ?? 720,
+    options?.dontUseChannel10 ?? true,
+    options?.ignoreExpansions ?? false,
+    options?.cleanup ?? true,
+  );
+  const converted = converter.convert(document);
+  const msms = converted.getKey();
+  const mpms = converted.getValue();
+
+  if (msms.length === 0)
+    throw new EmptyDocumentError('MEI: no convertible movement (mdiv) in this document');
+
+  // Index alignment is the converter's contract, one pair per mdiv. It can only break if the
+  // interior logged a failure and skipped a movement half-way, which would make every index
+  // after it wrong — better a typed error than silently mismatched pairs.
+  if (msms.length !== mpms.length)
+    throw new EmptyDocumentError(
+      `MEI: the conversion produced ${msms.length} MSM(s) but ${mpms.length} MPM(s); see the log for the movement it failed on`,
+    );
+
+  return msms.map((msm, index) => ({
+    index,
+    title: msm.getTitle(),
+    msm: serialize(msm, 'MSM'),
+    mpm: serialize(mpms[index], 'MPM'),
+  }));
+}
+
+/**
+ * The performances an MPM offers, so a caller can pick one by name.
+ *
+ * @throws {ParseError} the text is not a well-formed `<mpm>` document
+ */
+export function listPerformances(mpm: XmlText): readonly PerformanceInfo[] {
+  return parseMpm(mpm)
+    .getAllPerformances()
+    .map((performance, index) => ({
+      index,
+      name: performance.getName(),
+      ppq: performance.getPulsesPerQuarter(),
+    }));
+}
+
+/**
+ * Apply an MPM performance to an MSM. Returns the augmented (performed) MSM as text.
+ *
+ * The input MSM is not touched: the interior performs on a clone (`Performance.perform`
+ * opens with `msm.clone()`), and the caller's value is a string anyway (RULE I3a).
+ *
+ * @throws {ParseError} either input is not well-formed, or has the wrong root element
+ * @throws {PerformanceNotFoundError} `options.performance` names/indexes nothing
+ * @throws {InvalidOptionError} a non-finite `seed`, a non-positive `movementSampleMaxStep`,
+ *   or a performance index that is not a non-negative integer
+ */
+export function performMsm(
+  input: { readonly msm: XmlText; readonly mpm: XmlText },
+  options?: PerformOptions,
+): XmlText {
+  const msm = parseMsm(input.msm);
+  const mpm = parseMpm(input.mpm);
+  const renderOptions = toRenderOptions(options);
+  const performance = selectPerformance(mpm, options?.performance);
+
+  return serialize(performance.perform(msm, renderOptions), 'MSM');
+}
+
+/**
+ * Read the performance data out of an already-augmented MSM.
+ *
+ * @throws {ParseError} the text is not a well-formed `<msm>` document, or a required numeric
+ *   attribute does not parse
+ * @throws {EmptyDocumentError} no note in the document carries `milliseconds.date`, i.e. this
+ *   MSM was never performed (RULE E3)
+ * @throws {MissingNodeError} a `<note>` lacks `date`, `duration` or `midi.pitch`
+ */
+export function extractPerformanceData(augmentedMsm: XmlText): PerformanceData {
+  return readPerformanceData(parseMsm(augmentedMsm));
+}
+
+/**
+ * The batch path: MSM+MPM in, plain per-note data out. One parse, no file I/O.
+ *
+ * Equivalent to `extractPerformanceData(performMsm(input, options))` and deliberately tested
+ * as such — it just skips the serialize/re-parse in between.
+ *
+ * @throws {ParseError} either input is not well-formed, or has the wrong root element
+ * @throws {PerformanceNotFoundError} `options.performance` names/indexes nothing
+ * @throws {InvalidOptionError} see {@link performMsm}
+ */
+export function performMsmToData(
+  input: { readonly msm: XmlText; readonly mpm: XmlText },
+  options?: PerformOptions,
+): PerformanceData {
+  const msm = parseMsm(input.msm);
+  const mpm = parseMpm(input.mpm);
+  const renderOptions = toRenderOptions(options);
+  const performance = selectPerformance(mpm, options?.performance);
+
+  return readPerformanceData(performance.perform(msm, renderOptions));
+}
+
+/**
+ * The score as written: symbolic timing, one tempo event, a fixed velocity of 100.
+ *
+ * @throws {ParseError} the text is not a well-formed `<msm>` document
+ * @throws {EmptyDocumentError} the MSM is empty, so there is no MIDI to write
+ * @throws {InvalidOptionError} `bpm` is not a positive finite number
+ */
+export function renderMidi(
+  input: { readonly msm: XmlText },
+  options?: MidiOptions & { readonly bpm?: number },
+): Uint8Array {
+  if (options?.bpm !== undefined && !(Number.isFinite(options.bpm) && options.bpm > 0))
+    throw new InvalidOptionError(
+      `bpm must be a positive finite number, got ${String(options.bpm)}`,
+    );
+
+  const msm = parseMsm(input.msm);
+  const midi = msm.exportMidi(options?.bpm ?? 120, options?.generateProgramChanges ?? true);
+  if (midi === null) throw new EmptyDocumentError('MSM: nothing to render');
+
+  const bytes = midi.exportMidi();
+  if (bytes === null) throw new EmptyDocumentError('MSM: the rendered MIDI sequence is empty');
+  return bytes;
+}
+
+/**
+ * The score as performed: millisecond timing, dynamics, articulation, CC streams.
+ *
+ * With `mpm` omitted the MSM is rendered as it stands and must already carry the performance
+ * attributes — mirroring `Msm.exportExpressiveMidi`'s own no-performance path. Nothing is
+ * performed on that path, so `PerformOptions` fields have nothing to act on and passing one
+ * is an error rather than a silent no-op. `generateProgramChanges` is likewise inert there:
+ * the interior hard-codes `true` when no performance is given (Java `Msm.java:667`), and
+ * that behaviour is reproduced rather than corrected.
+ *
+ * @throws {ParseError} either input is not well-formed, or has the wrong root element
+ * @throws {EmptyDocumentError} the MSM is empty, or — with `mpm` omitted — carries no
+ *   performance attributes (RULE E3)
+ * @throws {PerformanceNotFoundError} `options.performance` names/indexes nothing
+ * @throws {InvalidOptionError} an out-of-domain option, or a `PerformOptions` field with
+ *   `mpm` omitted
+ */
+export function renderExpressiveMidi(
+  input: { readonly msm: XmlText; readonly mpm?: XmlText },
+  options?: PerformOptions & MidiOptions,
+): Uint8Array {
+  const generateProgramChanges = options?.generateProgramChanges ?? true;
+  const msm = parseMsm(input.msm);
+
+  let midi;
+  if (input.mpm === undefined) {
+    for (const field of ['performance', 'seed', 'movementSampleMaxStep'] as const)
+      if (options?.[field] !== undefined)
+        throw new InvalidOptionError(
+          `${field} has no effect without an MPM: with no performance to apply, the MSM is rendered as it stands`,
+        );
+
+    if (!isPerformed(msm))
+      throw new EmptyDocumentError(
+        'MSM: this MSM carries no performance attributes; pass an MPM or call performMsm first',
+      );
+
+    midi = msm.exportExpressiveMidi();
+  } else {
+    const mpm = parseMpm(input.mpm);
+    const renderOptions = toRenderOptions(options);
+    const performance = selectPerformance(mpm, options?.performance);
+
+    midi = msm.exportExpressiveMidi(performance, generateProgramChanges, renderOptions);
+  }
+
+  if (midi === null) throw new EmptyDocumentError('MSM: nothing to render');
+
+  const bytes = midi.exportMidi();
+  if (bytes === null) throw new EmptyDocumentError('MSM: the rendered MIDI sequence is empty');
+  return bytes;
+}

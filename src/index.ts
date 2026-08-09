@@ -52,6 +52,47 @@ import {
 } from './compat/unsupported.js';
 import { VERSION } from './version.js';
 
+// The public facade (T13, ARCHITECTURE.md §2): plain data in, plain data out.
+//
+// Additive — everything below this block is exactly what it was. The facade is listed
+// member by member rather than star-exported because `./api/index.js` re-exports
+// `MeicoError`/`MissingNodeError`, which this file already exports from `./xml/errors.js`,
+// and two star exports of one name are ambiguous. `src/api/index.ts` is the one-import
+// entry point for consumers who only want the facade.
+export {
+  convertMeiToMsmMpm,
+  listPerformances,
+  performMsm,
+  extractPerformanceData,
+  performMsmToData,
+  renderMidi,
+  renderExpressiveMidi,
+} from './api/pipeline.js';
+export {
+  ParseError,
+  EmptyDocumentError,
+  PerformanceNotFoundError,
+  InvalidOptionError,
+} from './api/errors.js';
+export type {
+  XmlText,
+  ConvertOptions,
+  MovementDocuments,
+  PerformanceInfo,
+  PerformOptions,
+  MidiOptions,
+  PerformedNote,
+  ControlChangeKind,
+  ControlChangePoint,
+  ControlChangeStream,
+  PerformedPart,
+  PerformanceData,
+} from './api/types.js';
+
+// The compile-time units the facade's output types are branded with (RULE U1/U3(a)).
+// Type-only: `src/units.ts` compiles to `export {};` and these erase completely.
+export type { Ticks, Milliseconds, Normalized, Midi7Bit, Bpm } from './units.js';
+
 // Core XML types
 export {
   Element,

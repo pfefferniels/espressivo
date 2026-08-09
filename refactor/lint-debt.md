@@ -1,10 +1,11 @@
-# Lint debt (as of T19a)
+# Lint debt (as of T13)
 
-> Updated after **T19a** (branded units + render options): **1245 errors / 5 warnings**,
-> unchanged from T18 and per-rule identical. The headline table below stops at T20b and was
-> not extended by T14/T18/T19a — read the per-item sections at the end for the chain
-> 1292 → 1246 (T14) → 1245 (T18) → 1245 (T19a). Counts in the prose are the *current*
-> `npm run lint` output; the T2 baseline is kept in the headline table for comparison.
+> Updated after **T13** (the public facade): **1245 errors / 5 warnings**, unchanged from
+> T19a and per-rule identical — eight new files, all clean. The headline table below stops at
+> T20b and was not extended by T14/T18/T19a/T13 — read the per-item sections at the end for
+> the chain 1292 → 1246 (T14) → 1245 (T18) → 1245 (T19a) → 1245 (T13). Counts in the prose
+> are the *current* `npm run lint` output; the T2 baseline is kept in the headline table for
+> comparison.
 
 Snapshot of every ESLint violation left in the tree after T2's safe auto-fixes, grouped by
 the Phase 2/3 item that owns the files. This is **input for those items**, not a to-do list
@@ -638,9 +639,35 @@ keywords appear only in the `.d.ts`.
 > `no-explicit-any`, so the file-level suppression there reports as unused. Whoever
 > counted messages got 9, whoever filtered by `ruleId` got 8. Filter by `ruleId`.
 
-### T13 — facade — 1
+### T13 — facade — 1 → **0 inherited, 0 added, DONE**
 `no-extraneous-class` 1 — `src/Meico.ts`. **Cleared by T14**: RULE M6 turned `Meico` into
-`src/version.ts`'s `export const VERSION`, so this row is at **0** and T13 inherits nothing.
+`src/version.ts`'s `export const VERSION`, so this row was at **0** and T13 inherited nothing.
+
+**Repo 1245 → 1245 errors / 5 warnings, per-rule histogram identical** (measured as a full
+histogram over the same `eslint . -f json` on both trees, not as a totals comparison — no
+rule moved by ±1). All four new source files and all four new test files lint **clean at
+zero**: `src/api/{types,errors,pipeline,index}.ts`,
+`tests/api/{pipeline,plain-data,determinism,facade-equivalence}.test.ts`. The linted file
+count goes 128 → 136, which is those eight files and nothing else.
+
+**No new suppressions** — zero `eslint-disable`, `@ts-ignore`, `@ts-expect-error` across the
+item. The facade's `as Ticks` / `as Milliseconds` / `as Midi7Bit` casts are RULE U3(a)'s
+prescribed brand application at the one boundary where a parsed attribute becomes an output
+field (RULE U2 forbids converter *functions* precisely so that this happens through `as`);
+like T19a's eight, they are invisible to this config, since `no-unnecessary-type-assertion`
+is type-aware and off until T21. Inventory for that audit, all in `src/api/pipeline.ts`:
+`pipeline.ts:247-251` (six, in `readNote` — the nested `milliseconds` line carries two),
+`:258-260` (three, in `readControlChangePoint`), `:351` (`PerformanceData.ppq`). Ten in all,
+one per branded output field, and none inside arithmetic — exactly RULE U4's condition.
+
+One genuine finding was introduced and **fixed rather than suppressed**: `prefer-template` in
+`tests/api/pipeline.test.ts`'s hand-built MSM helper (string concatenation where a template
+literal belongs). It never reached the recorded number.
+
+`import/no-cycle` and the four `no-restricted-imports` layer zones stay green at zero.
+`src/api/**` is L6 and imports only downward (`mei`, `msm`, `mpm`, `midi`, `xml`, `units`,
+`version`), so it needs no zone of its own — but note that nothing in `src/` imports *it*,
+which is what keeps the facade additive and cycle-free by construction.
 
 ### T14 — Helper dissolved — repo 1292 → **1246** errors (warnings unchanged at 5)
 `src/mei/Helper.ts` (70 errors) and `src/Meico.ts` (1) no longer exist; their debt either

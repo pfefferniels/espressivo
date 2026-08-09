@@ -12,8 +12,14 @@ export default defineConfig({
       // `mei/Helper.ts` dissolved into `xml/`, `music/`, `msm/dateMap.ts`,
       // `mei/mpmNoteIds.ts` and `compat/` (§8.2). Same code, same scope — the `xml/**`
       // and `msm/**` globs already cover their share.
+      // T13 mechanical additions: `src/api/**` is the new public facade (§2) and
+      // `src/units.ts` is the brand module T19a added, which matched no glob (its
+      // DISCOVERED note asked for exactly this). Both are in scope by definition — the
+      // facade IS the MEI/MSM+MPM => MIDI surface.
       include: [
         'src/version.ts',
+        'src/units.ts',
+        'src/api/**/*.ts',
         'src/mei/Mei.ts',
         'src/mei/mpmNoteIds.ts',
         'src/mei/Mei2MsmMpmConverter.ts',
