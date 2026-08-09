@@ -1,5 +1,11 @@
 # Lint debt (as of T13)
 
+> Re-measured after **T19** (performance pipeline): **1047 errors / 2 warnings** — the
+> largest single drop of the project so far, **−33, every one of them
+> `no-non-null-assertion`, every one in `src/mpm/elements/Performance.ts`**, and none of them
+> "fixed": they disappeared because the stage decomposition stopped re-deriving the same two
+> objects. See the T19 section under "By owning item".
+
 > Re-measured after **T17** (XML layer): **1080 errors / 2 warnings** — the first drop since
 > T14, and it comes entirely from the three items T5 parked on T17 (2 `unified-signatures`,
 > 1 `no-unused-vars`). Only the two files T17 touches move. See the T17 section under
@@ -861,6 +867,33 @@ Two notes for T21's audit:
 - **`adoptDomNode` is `@internal`, not public API.** It follows `_xomParent`'s precedent:
   TypeScript has no package-private, so the seam is a documented internal method rather
   than the bracket access (`text['_domNode'] = child`) it replaces.
+
+### T19 — performance pipeline — repo 1080 → **1047** errors (warnings unchanged at 2)
+
+The whole delta is one rule in one file, and it is worth recording *why*, because it is the
+first time this project has cleared non-null assertions without touching the null policy.
+
+| n | rule | how |
+|---|---|---|
+| 33 | `no-non-null-assertion` | 917 → **884**; `Performance.ts` 48 → **15**. Nothing was rewritten to be null-safe. `perform` used to write `this.getGlobal()!.getDated()!` **twelve** times to read twelve global maps (24 assertions) and `mpmPart.getDated()!` **twelve** times to read the part's (12 more). `resolveGlobalMaps` and `resolvePartMaps` each bind that receiver once, so 36 assertions become 3. The remaining 15 in the file are unrelated pre-existing sites. |
+
+Measured as a full per-rule and per-file histogram over a `git archive 60369c0` baseline and
+the working tree, one config across both: **1080/2 → 1047/2**, the *only* rule that moves is
+`no-non-null-assertion`, the *only* file whose count moves is `src/mpm/elements/Performance.ts`,
+and **no rule increased anywhere**. No new suppressions (`eslint-disable` / `@ts-ignore` /
+`@ts-expect-error` / `@ts-nocheck` / coverage-ignore comments all still **0** repo-wide) — and
+note that the structural ordering guarantee this item adds was deliberately *not* pinned with
+a `@ts-expect-error` compile test for exactly that reason; the negative control lives in the
+scratchpad instead (`t19work/nc/`).
+
+**Input for T21's audit 8** (`no-non-null-assertion` strictly below 1080): the rule is now at
+**884** repo-wide, so the target is already met with room, and the mechanism above is
+reusable — the remaining large clusters are receiver re-derivation of the same shape.
+
+**Input for T21's audit 3** (no non-`readonly` static fields) and its "no shared mutable
+statics" sweep: T19 adds **no** module-level binding of any kind. `declare const timed:
+unique symbol` is a type-only declaration and emits nothing; the four new `interface`s are
+module-local and do not appear in `Performance.d.ts`.
 
 ### tests — 86
 `no-empty-function` 54, `no-unused-vars` 18, `no-explicit-any` 12,

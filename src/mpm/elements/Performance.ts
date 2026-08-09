@@ -38,6 +38,68 @@ import type { ArticulationMap } from './maps/ArticulationMap.js';
 import type { MovementMap } from './maps/MovementMap.js';
 
 /**
+ * The symbolic → millisecond domain boundary, expressed as a type.
+ *
+ * Every pass after the tempo pass reads `milliseconds.date`, and the tempo pass is the only
+ * thing that writes it. Until T19 nothing said so except the order of the statements in
+ * {@link Performance.perform}: T7 and T8 both recorded that `ArticulationMap`'s two passes
+ * and `OrnamentationMap`'s three are sequenced by that convention alone. Now the
+ * millisecond-domain stages take a `Timed<…>`, and the only things that produce one are
+ * {@link Performance.renderGlobalTiming} and {@link Performance.renderPartTiming}, so
+ * hoisting a millisecond pass above the tempo pass is a compile error rather than a silent
+ * change of output.
+ *
+ * The marker is a phantom property in the sense of `src/units.ts`: `timed` is `declare`d, so
+ * it has no runtime existence and no value can carry it. The mechanism therefore emits
+ * nothing at all — the two `as Timed<…>` assertions in the timing stages are the only, and
+ * deliberately conspicuous, way across the boundary.
+ */
+declare const timed: unique symbol;
+type Timed<T> = T & { readonly [timed]: true };
+
+/**
+ * The twelve MPM instruction maps in effect for one render scope: either the {@link Global}
+ * environment, or one {@link Part} with the global maps as its per-field fallback (a local
+ * map shadows the global one of the same type — see {@link Performance.resolvePartMaps}).
+ */
+interface MpmMaps {
+  readonly rubato: RubatoMap | null;
+  readonly tempo: TempoMap | null;
+  readonly asynchrony: AsynchronyMap | null;
+  readonly imprecisionTiming: ImprecisionMap | null;
+  readonly imprecisionDynamics: ImprecisionMap | null;
+  readonly imprecisionToneduration: ImprecisionMap | null;
+  readonly imprecisionTuning: ImprecisionMap | null;
+  readonly dynamics: DynamicsMap | null;
+  readonly movement: MovementMap | null;
+  readonly metricalAccentuation: MetricalAccentuationMap | null;
+  readonly ornamentation: OrnamentationMap | null;
+  readonly articulation: ArticulationMap | null;
+}
+
+/** The MSM maps of one scope, collected and primed for the render passes. */
+interface CollectedMaps {
+  /**
+   * Every collected map, in collection order. Rubato and tempo run over this whole list;
+   * the individually named maps below are the ones later stages also address on their own.
+   */
+  readonly maps: readonly GenericMap[];
+  readonly timeSignatureMap: GenericMap | null;
+  readonly pedalMap: GenericMap | null;
+}
+
+/** {@link CollectedMaps} for a part, which additionally has a `score`. */
+interface PartMaps extends CollectedMaps {
+  readonly score: GenericMap | null;
+}
+
+/** {@link PartMaps} plus the two maps the part's render passes create. */
+interface PartRender extends PartMaps {
+  readonly channelVolumeMap: GenericMap | null;
+  readonly positionMap: GenericMap | null;
+}
+
+/**
  * An MPM `<performance>` element: one complete interpretation of a piece.
  * Port of meico.mpm.elements.Performance
  *
@@ -53,10 +115,19 @@ import type { MovementMap } from './maps/MovementMap.js';
  * here: this file cannot call the maps' **static** methods, which is why
  * {@link renderTempoToMap} and {@link renderMillisecondsModifiersToMap} exist as private
  * re-implementations of `TempoMap.renderTempoToMap` and
- * `OrnamentationMap.renderMillisecondsModifiersToMap`. Collapsing them into the map
- * classes is now merely *possible*, not free: it moves code on the byte-compared rendering
- * path and owes a behavioural comparison, so it is left to the item that owns this file.
- * Until then, keep the two copies in sync with their originals.
+ * `OrnamentationMap.renderMillisecondsModifiersToMap`.
+ *
+ * T19 RULING ON COLLAPSING THE TWO COPIES — declined, deliberately, and not to be reopened
+ * without the evidence named here. Both copies' **bodies** are currently character-identical
+ * to their originals — 907 and 2140 characters, brace to brace, against `TempoMap.ts:335-357`
+ * and `OrnamentationMap.ts:406-448`; only the `private` keyword and the line wrapping it
+ * forces differ. So the "keep them in sync" hazard is discharged as a measured fact as of
+ * T19, and is re-checkable in one diff. Removing them
+ * would require a **value** import of `TempoMap` and `OrnamentationMap` here, which changes
+ * this module's ESM evaluation order on the byte-compared rendering path — a module-graph
+ * risk, for no behavioural gain, inside the item whose own charter freezes that path.
+ * §8.8 does not ask for it. It belongs with T21's audits, where the load-order tooling
+ * (`import/no-cycle`, the deep-import battery) is already being run for other reasons.
  */
 export class Performance extends AbstractXmlSubtree {
   private nameAttr: Attribute | null = null;
@@ -311,39 +382,19 @@ export class Performance extends AbstractXmlSubtree {
    *
    * Every pass mutates the `.perf` / `milliseconds.*` attributes that the *previous* pass
    * produced, so reordering any two of them silently changes the output. Java runs exactly
-   * this order (Performance.java:385-548) and so must this. Reading it as a pipeline:
+   * this order (Performance.java:385-548) and so must this. The pipeline is these four
+   * stages, and each stage's own comment says what it owes the next one:
    *
-   * 1. **Clone + PPQ conversion.** `convertPPQ` rescales every symbolic `date`,
-   *    `date.end` and `duration` to this performance's resolution. Everything downstream
-   *    assumes it has already happened.
-   * 2. **Global maps are resolved once** (rubato, tempo, asynchrony, the four imprecision
-   *    maps, dynamics, movement, metrical accentuation, ornamentation, articulation) and
-   *    reused as the per-part fallback in stage 4.
-   * 3. **Global data.** The MSM's global maps get `.perf` attributes, then global
-   *    ornamentation is distributed to the parts it affects, then rubato and tempo turn
-   *    symbolic dates into milliseconds, then asynchrony and timing imprecision shift them.
-   * 4. **Per MSM part**, in this order and for these reasons:
-   *    - *dynamics first*, because it reads symbolic dates and later passes move them; it
-   *      also yields the sub-note `channelVolumeMap`, a **new** map appended to the MSM.
-   *    - *movement* likewise yields a new `positionMap`.
-   *    - *metrical accentuation*, before rubato, because rubato shifts the symbolic dates
-   *      the accentuation pattern is measured against.
-   *    - *articulation without its millisecond modifiers* — the millisecond half cannot run
-   *      until milliseconds exist, i.e. not before the tempo pass. This split is the reason
-   *      `ArticulationMap` has two entry points, and nothing but this ordering enforces it.
-   *    - *rubato*, over every map collected for timing processing.
-   *    - *ornamentation*, still symbolic; its millisecond effects are deferred the same way.
-   *    - *tempo*, which is where symbolic time finally becomes `milliseconds.date` /
-   *      `milliseconds.date.end`. Everything after this point works in milliseconds.
-   *    - *pedal, channelVolume and position maps* get their own tempo/asynchrony treatment
-   *      — note `channelVolumeMap` and `positionMap` deliberately skip rubato, which would
-   *      put rubato's high-frequency wobble into the dynamics and position curves.
-   *    - *score*: asynchrony, then articulation's millisecond modifiers, then
-   *      ornamentation's ({@link renderMillisecondsModifiersToMap}) — the deferred halves,
-   *      in that order — and finally the four imprecision maps.
+   * 1. {@link cloneForRender} — clone, rename, and rescale to this performance's PPQ.
+   * 2. {@link resolveGlobalMaps} — the global MPM maps, read once here and reused as the
+   *    per-part fallback in stage 4.
+   * 3. {@link renderGlobal} — the MSM's global maps.
+   * 4. {@link renderParts} — every MSM part, one at a time, via {@link renderPart}.
    *
-   * A part with no `<dated>` is skipped entirely; a part with no `<score>` still gets its
-   * pedal/volume/position maps rendered before being skipped.
+   * Stages 3 and 4 have the same internal shape: collect the MSM maps, run the symbolic
+   * passes, cross into the millisecond domain with the tempo pass, then run the millisecond
+   * passes. That crossing used to be a convention held up by statement order; it is now
+   * carried by the type system — see {@link Timed}.
    *
    * @param msm the score to perform; left unmodified
    * @param options render knobs (§2.4). Omitting them, or passing `{}`, renders exactly
@@ -357,6 +408,21 @@ export class Performance extends AbstractXmlSubtree {
     // never stored anywhere that outlives this method (RULE I1, boundary 6).
     const ctx: RenderContext = { options: options ?? {}, streamOrdinal: 0 };
 
+    const clone = this.cloneForRender(msm);
+    const globalMaps = this.resolveGlobalMaps();
+    const globalTimeSignatureMap = this.renderGlobal(clone, globalMaps, ctx);
+    this.renderParts(clone, globalMaps, globalTimeSignatureMap, ctx);
+
+    console.log('Performance rendering finished.');
+    return clone;
+  }
+
+  /**
+   * Stage 1. The copy every later stage mutates, named after the performance and rescaled:
+   * `convertPPQ` rewrites every symbolic `date`, `date.end` and `duration` to this
+   * performance's resolution, and everything downstream assumes that has already happened.
+   */
+  private cloneForRender(msm: Msm): Msm {
     const clone = msm.clone();
     if (clone.getFile() !== null) {
       const origFile = clone.getFile()!;
@@ -366,72 +432,79 @@ export class Performance extends AbstractXmlSubtree {
     }
 
     clone.convertPPQ(this.getPPQ());
+    return clone;
+  }
 
-    // get global mpm maps
-    const globalRubatoMap = this.getGlobal()!.getDated()!.getMap(RUBATO_MAP) as RubatoMap | null;
-    const globalTempoMap = this.getGlobal()!.getDated()!.getMap(TEMPO_MAP) as TempoMap | null;
-    const globalAsynchronyMap = this.getGlobal()!
-      .getDated()!
-      .getMap(ASYNCHRONY_MAP) as AsynchronyMap | null;
-    const globalImprecisionMap_timing = this.getGlobal()!
-      .getDated()!
-      .getMap(IMPRECISION_MAP_TIMING) as ImprecisionMap | null;
-    const globalImprecisionMap_dynamics = this.getGlobal()!
-      .getDated()!
-      .getMap(IMPRECISION_MAP_DYNAMICS) as ImprecisionMap | null;
-    const globalImprecisionMap_toneduration = this.getGlobal()!
-      .getDated()!
-      .getMap(IMPRECISION_MAP_TONEDURATION) as ImprecisionMap | null;
-    const globalImprecisionMap_tuning = this.getGlobal()!
-      .getDated()!
-      .getMap(IMPRECISION_MAP_TUNING) as ImprecisionMap | null;
-    const globalDynamicsMap = this.getGlobal()!
-      .getDated()!
-      .getMap(DYNAMICS_MAP) as DynamicsMap | null;
-    const globalMovementMap = this.getGlobal()!
-      .getDated()!
-      .getMap(MOVEMENT_MAP) as MovementMap | null;
-    const globalMetricalAccentuationMap = this.getGlobal()!
-      .getDated()!
-      .getMap(METRICAL_ACCENTUATION_MAP) as MetricalAccentuationMap | null;
-    const globalOrnamentationMap = this.getGlobal()!
-      .getDated()!
-      .getMap(ORNAMENTATION_MAP) as OrnamentationMap | null;
-    const globalArticulationMap = this.getGlobal()!
-      .getDated()!
-      .getMap(ARTICULATION_MAP) as ArticulationMap | null;
-    let maps: GenericMap[] = [];
+  /**
+   * Stage 2. The global environment's instruction maps, read once per render. Every part
+   * that does not bring its own map of a given type falls back to the one collected here
+   * ({@link resolvePartMaps}), so this runs before any rendering.
+   */
+  private resolveGlobalMaps(): MpmMaps {
+    const dated = this.getGlobal()!.getDated()!;
+    return {
+      rubato: dated.getMap(RUBATO_MAP) as RubatoMap | null,
+      tempo: dated.getMap(TEMPO_MAP) as TempoMap | null,
+      asynchrony: dated.getMap(ASYNCHRONY_MAP) as AsynchronyMap | null,
+      imprecisionTiming: dated.getMap(IMPRECISION_MAP_TIMING) as ImprecisionMap | null,
+      imprecisionDynamics: dated.getMap(IMPRECISION_MAP_DYNAMICS) as ImprecisionMap | null,
+      imprecisionToneduration: dated.getMap(IMPRECISION_MAP_TONEDURATION) as ImprecisionMap | null,
+      imprecisionTuning: dated.getMap(IMPRECISION_MAP_TUNING) as ImprecisionMap | null,
+      dynamics: dated.getMap(DYNAMICS_MAP) as DynamicsMap | null,
+      movement: dated.getMap(MOVEMENT_MAP) as MovementMap | null,
+      metricalAccentuation: dated.getMap(
+        METRICAL_ACCENTUATION_MAP,
+      ) as MetricalAccentuationMap | null,
+      ornamentation: dated.getMap(ORNAMENTATION_MAP) as OrnamentationMap | null,
+      articulation: dated.getMap(ARTICULATION_MAP) as ArticulationMap | null,
+    };
+  }
 
-    // process global data
+  /**
+   * Stage 3. The MSM's *global* maps: they get their `.perf` attributes, global
+   * ornamentation is distributed to the parts it affects, rubato and tempo turn symbolic
+   * dates into milliseconds, and asynchrony and timing imprecision then shift them.
+   *
+   * @returns the global `timeSignatureMap`, which stage 4 needs as the fallback for parts
+   *   that have none of their own.
+   */
+  private renderGlobal(clone: Msm, mpm: MpmMaps, ctx: RenderContext): GenericMap | null {
     console.log('Processing global data.');
     const globalDated = firstChildElement('dated', clone.getGlobal()!);
+    const maps: GenericMap[] = [];
     Performance.addMsmMapToList('keySignatureMap', globalDated, maps);
-    const globalTimeSignatureMap = Performance.addMsmMapToList(
-      'timeSignatureMap',
-      globalDated,
-      maps,
-    );
+    const timeSignatureMap = Performance.addMsmMapToList('timeSignatureMap', globalDated, maps);
     Performance.addMsmMapToList('sectionMap', globalDated, maps);
     Performance.addMsmMapToList('sequencingMap', globalDated, maps);
     Performance.addMsmMapToList('markerMap', globalDated, maps);
-    const globalPedalMap = Performance.addMsmMapToList('pedalMap', globalDated, maps);
+    const pedalMap = Performance.addMsmMapToList('pedalMap', globalDated, maps);
+    const collected: CollectedMaps = { maps, timeSignatureMap, pedalMap };
 
-    // Global ornamentation, inlined from OrnamentationMap.renderGlobalOrnamentationToParts
-    // because this file only type-imports the map classes (see the class comment). It adds
-    // modifier attributes to the affected parts' notes; those become performance attributes
-    // in the per-part processing further down.
-    //
-    // PARITY NOTE (divergence, benign, do not "fix" without a decision): the reference
-    // guard is `(ornamentationMap == null) || ornamentationMap.isEmpty()`
-    // (OrnamentationMap.java:215); this tests only for null. An *empty* global
-    // ornamentationMap therefore reaches `renderGlobalOrnamentationMap` here where Java
-    // returns early. The reachable behaviour is identical — with no ornament entries the
-    // apply loop runs zero times — and the one observable difference, an error logged when
-    // neither header is set, cannot occur for a global map, since a `Global` always has a
-    // `Header`. Java also evaluates `getAllMsmPartsAffectedByGlobalMap` unconditionally
-    // where this skips it when the map is null; that method only reads, so nothing depends
-    // on it running.
-    if (globalOrnamentationMap !== null) {
+    this.renderGlobalOrnamentation(clone, mpm.ornamentation);
+    Performance.renderGlobalMilliseconds(this.renderGlobalTiming(collected, mpm), mpm, ctx);
+
+    return timeSignatureMap;
+  }
+
+  /**
+   * Global ornamentation, inlined from OrnamentationMap.renderGlobalOrnamentationToParts
+   * because this file only type-imports the map classes (see the class comment). It adds
+   * modifier attributes to the affected parts' notes; those become performance attributes
+   * in the per-part processing further down.
+   *
+   * PARITY NOTE (divergence, benign, do not "fix" without a decision): the reference
+   * guard is `(ornamentationMap == null) || ornamentationMap.isEmpty()`
+   * (OrnamentationMap.java:215); this tests only for null. An *empty* global
+   * ornamentationMap therefore reaches `renderGlobalOrnamentationMap` here where Java
+   * returns early. The reachable behaviour is identical — with no ornament entries the
+   * apply loop runs zero times — and the one observable difference, an error logged when
+   * neither header is set, cannot occur for a global map, since a `Global` always has a
+   * `Header`. Java also evaluates `getAllMsmPartsAffectedByGlobalMap` unconditionally
+   * where this skips it when the map is null; that method only reads, so nothing depends
+   * on it running.
+   */
+  private renderGlobalOrnamentation(clone: Msm, ornamentationMap: OrnamentationMap | null): void {
+    if (ornamentationMap !== null) {
       const affectedParts = this.getAllMsmPartsAffectedByGlobalMap(clone, ORNAMENTATION_MAP);
       const mapsToOrnament: GenericMap[] = [];
       for (const part of affectedParts) {
@@ -444,18 +517,46 @@ export class Performance extends AbstractXmlSubtree {
           }
         }
       }
-      globalOrnamentationMap.renderGlobalOrnamentationMap(mapsToOrnament);
+      ornamentationMap.renderGlobalOrnamentationMap(mapsToOrnament);
     }
+  }
 
-    for (const m of maps) {
-      if (globalRubatoMap !== null) globalRubatoMap.renderRubatoToMap(m);
-      Performance.renderTempoToMap(m, this.getPPQ(), globalTempoMap);
+  /**
+   * The global symbolic → millisecond crossing. Rubato and tempo are interleaved in one
+   * pass over the collected maps, exactly as the reference has them: rubato shifts a map's
+   * symbolic dates and tempo immediately converts that map, so splitting the loop in two
+   * would change which dates tempo sees.
+   */
+  private renderGlobalTiming(collected: CollectedMaps, mpm: MpmMaps): Timed<CollectedMaps> {
+    for (const m of collected.maps) {
+      if (mpm.rubato !== null) mpm.rubato.renderRubatoToMap(m);
+      Performance.renderTempoToMap(m, this.getPPQ(), mpm.tempo);
     }
-    if (globalAsynchronyMap !== null) globalAsynchronyMap.renderAsynchronyToMap(globalPedalMap);
-    if (globalImprecisionMap_timing !== null)
-      globalImprecisionMap_timing.renderImprecisionToMap(globalPedalMap, true, ctx);
+    return collected as Timed<CollectedMaps>;
+  }
 
-    // process the msm parts
+  /** The global millisecond-domain passes: both act on the pedal map, in this order. */
+  private static renderGlobalMilliseconds(
+    collected: Timed<CollectedMaps>,
+    mpm: MpmMaps,
+    ctx: RenderContext,
+  ): void {
+    if (mpm.asynchrony !== null) mpm.asynchrony.renderAsynchronyToMap(collected.pedalMap);
+    if (mpm.imprecisionTiming !== null)
+      mpm.imprecisionTiming.renderImprecisionToMap(collected.pedalMap, true, ctx);
+  }
+
+  /**
+   * Stage 4. Every MSM part in document order. A part with no MPM counterpart is still
+   * performed — it just falls back to the global maps throughout — but a part with no
+   * `<dated>` is skipped entirely, since there is nothing to render into.
+   */
+  private renderParts(
+    clone: Msm,
+    globalMaps: MpmMaps,
+    globalTimeSignatureMap: GenericMap | null,
+    ctx: RenderContext,
+  ): void {
     const parts = clone.getParts();
     for (let p = 0; p < parts.size(); ++p) {
       const msmPart = parts.get(p);
@@ -468,141 +569,212 @@ export class Performance extends AbstractXmlSubtree {
 
       const dated = firstChildElement('dated', msmPart);
       if (dated === null) continue;
-      maps = [];
-      const score = Performance.addMsmMapToList('score', dated, maps);
-      Performance.addMsmMapToList('keySignatureMap', dated, maps);
-      const timeSignatureMap = Performance.addMsmMapToList('timeSignatureMap', dated, maps);
-      Performance.addMsmMapToList('sectionMap', dated, maps);
-      Performance.addMsmMapToList('sequencingMap', dated, maps);
-      Performance.addMsmMapToList('markerMap', dated, maps);
-      Performance.addMsmMapToList('programChangeMap', dated, maps);
-      const pedalMap = Performance.addMsmMapToList('pedalMap', dated, maps);
+      this.renderPart(dated, mpmPart, globalMaps, globalTimeSignatureMap, ctx);
+    }
+  }
 
-      let rubatoMap: RubatoMap | null = null;
-      let tempoMap: TempoMap | null = null;
-      let asynchronyMap: AsynchronyMap | null = null;
-      let dynamicsMap: DynamicsMap | null = null;
-      let movementMap: MovementMap | null = null;
-      let metricalAccentuationMap: MetricalAccentuationMap | null = null;
-      let ornamentationMap: OrnamentationMap | null = null;
-      let articulationMap: ArticulationMap | null = null;
-      let imprecisionMap_timing: ImprecisionMap | null = null;
-      let imprecisionMap_dynamics: ImprecisionMap | null = null;
-      let imprecisionMap_toneduration: ImprecisionMap | null = null;
-      let imprecisionMap_tuning: ImprecisionMap | null = null;
-      if (mpmPart !== null) {
-        rubatoMap = mpmPart.getDated()!.getMap(RUBATO_MAP) as RubatoMap | null;
-        tempoMap = mpmPart.getDated()!.getMap(TEMPO_MAP) as TempoMap | null;
-        asynchronyMap = mpmPart.getDated()!.getMap(ASYNCHRONY_MAP) as AsynchronyMap | null;
-        dynamicsMap = mpmPart.getDated()!.getMap(DYNAMICS_MAP) as DynamicsMap | null;
-        movementMap = mpmPart.getDated()!.getMap(MOVEMENT_MAP) as MovementMap | null;
-        metricalAccentuationMap = mpmPart
-          .getDated()!
-          .getMap(METRICAL_ACCENTUATION_MAP) as MetricalAccentuationMap | null;
-        ornamentationMap = mpmPart.getDated()!.getMap(ORNAMENTATION_MAP) as OrnamentationMap | null;
-        articulationMap = mpmPart.getDated()!.getMap(ARTICULATION_MAP) as ArticulationMap | null;
-        imprecisionMap_timing = mpmPart
-          .getDated()!
-          .getMap(IMPRECISION_MAP_TIMING) as ImprecisionMap | null;
-        imprecisionMap_dynamics = mpmPart
-          .getDated()!
-          .getMap(IMPRECISION_MAP_DYNAMICS) as ImprecisionMap | null;
-        imprecisionMap_toneduration = mpmPart
-          .getDated()!
-          .getMap(IMPRECISION_MAP_TONEDURATION) as ImprecisionMap | null;
-        imprecisionMap_tuning = mpmPart
-          .getDated()!
-          .getMap(IMPRECISION_MAP_TUNING) as ImprecisionMap | null;
-      }
+  /** One part, as the four phases named in {@link perform}. */
+  private renderPart(
+    dated: Element,
+    mpmPart: Part | null,
+    globalMaps: MpmMaps,
+    globalTimeSignatureMap: GenericMap | null,
+    ctx: RenderContext,
+  ): void {
+    const collected = Performance.collectPartMaps(dated);
+    const mpm = Performance.resolvePartMaps(mpmPart, globalMaps);
+    const rendered = this.renderPartSymbolic(dated, collected, mpm, globalTimeSignatureMap, ctx);
+    this.renderPartMilliseconds(this.renderPartTiming(rendered, mpm), mpm, ctx);
+  }
 
-      if (rubatoMap === null) rubatoMap = globalRubatoMap;
-      if (tempoMap === null) tempoMap = globalTempoMap;
-      if (asynchronyMap === null) asynchronyMap = globalAsynchronyMap;
-      if (dynamicsMap === null) dynamicsMap = globalDynamicsMap;
-      if (movementMap === null) movementMap = globalMovementMap;
-      if (metricalAccentuationMap === null) metricalAccentuationMap = globalMetricalAccentuationMap;
-      if (ornamentationMap === null) ornamentationMap = globalOrnamentationMap;
-      if (articulationMap === null) articulationMap = globalArticulationMap;
-      if (imprecisionMap_timing === null) imprecisionMap_timing = globalImprecisionMap_timing;
-      if (imprecisionMap_dynamics === null) imprecisionMap_dynamics = globalImprecisionMap_dynamics;
-      if (imprecisionMap_toneduration === null)
-        imprecisionMap_toneduration = globalImprecisionMap_toneduration;
-      if (imprecisionMap_tuning === null) imprecisionMap_tuning = globalImprecisionMap_tuning;
+  /**
+   * The instruction maps in effect for one part: its own where it has them, the global one
+   * of that type otherwise. A part with no MPM counterpart at all inherits the global set
+   * wholesale, which is what the per-field fallback degenerates to.
+   *
+   * The lookups keep the reference's per-part order (which differs from
+   * {@link resolveGlobalMaps}'s — the imprecision maps come last here); `Dated.getMap` is a
+   * map read with no side effects, so the order is a readability matter only.
+   */
+  private static resolvePartMaps(mpmPart: Part | null, globalMaps: MpmMaps): MpmMaps {
+    if (mpmPart === null) return globalMaps;
+    const dated = mpmPart.getDated()!;
+    return {
+      rubato: (dated.getMap(RUBATO_MAP) as RubatoMap | null) ?? globalMaps.rubato,
+      tempo: (dated.getMap(TEMPO_MAP) as TempoMap | null) ?? globalMaps.tempo,
+      asynchrony: (dated.getMap(ASYNCHRONY_MAP) as AsynchronyMap | null) ?? globalMaps.asynchrony,
+      dynamics: (dated.getMap(DYNAMICS_MAP) as DynamicsMap | null) ?? globalMaps.dynamics,
+      movement: (dated.getMap(MOVEMENT_MAP) as MovementMap | null) ?? globalMaps.movement,
+      metricalAccentuation:
+        (dated.getMap(METRICAL_ACCENTUATION_MAP) as MetricalAccentuationMap | null) ??
+        globalMaps.metricalAccentuation,
+      ornamentation:
+        (dated.getMap(ORNAMENTATION_MAP) as OrnamentationMap | null) ?? globalMaps.ornamentation,
+      articulation:
+        (dated.getMap(ARTICULATION_MAP) as ArticulationMap | null) ?? globalMaps.articulation,
+      imprecisionTiming:
+        (dated.getMap(IMPRECISION_MAP_TIMING) as ImprecisionMap | null) ??
+        globalMaps.imprecisionTiming,
+      imprecisionDynamics:
+        (dated.getMap(IMPRECISION_MAP_DYNAMICS) as ImprecisionMap | null) ??
+        globalMaps.imprecisionDynamics,
+      imprecisionToneduration:
+        (dated.getMap(IMPRECISION_MAP_TONEDURATION) as ImprecisionMap | null) ??
+        globalMaps.imprecisionToneduration,
+      imprecisionTuning:
+        (dated.getMap(IMPRECISION_MAP_TUNING) as ImprecisionMap | null) ??
+        globalMaps.imprecisionTuning,
+    };
+  }
 
-      // performance rendering of the part
-      let channelVolumeMap: GenericMap | null;
-      if (dynamicsMap !== null) {
-        channelVolumeMap = dynamicsMap.renderDynamicsToMap(score);
-      } else {
-        // fallback: add default velocity to all notes
-        if (score !== null) {
-          for (let i = 0; i < score.size(); ++i) {
-            const e = score.getElement(i)!;
-            if (e.getLocalName() === 'note') e.addAttribute(new Attribute('velocity', '100.0'));
-          }
+  /**
+   * The part's MSM maps, registered for timing processing and primed with the `.perf` and
+   * `modified` attributes. `score` comes first because {@link addMsmMapToList} appends in
+   * call order and the render passes walk that list.
+   */
+  private static collectPartMaps(dated: Element): PartMaps {
+    const maps: GenericMap[] = [];
+    const score = Performance.addMsmMapToList('score', dated, maps);
+    Performance.addMsmMapToList('keySignatureMap', dated, maps);
+    const timeSignatureMap = Performance.addMsmMapToList('timeSignatureMap', dated, maps);
+    Performance.addMsmMapToList('sectionMap', dated, maps);
+    Performance.addMsmMapToList('sequencingMap', dated, maps);
+    Performance.addMsmMapToList('markerMap', dated, maps);
+    Performance.addMsmMapToList('programChangeMap', dated, maps);
+    const pedalMap = Performance.addMsmMapToList('pedalMap', dated, maps);
+    return { maps, score, timeSignatureMap, pedalMap };
+  }
+
+  /**
+   * The part's symbolic-domain passes, in this order and for these reasons:
+   *
+   * - *dynamics first*, because it reads symbolic dates and later passes move them; it also
+   *   yields the sub-note `channelVolumeMap`, a **new** map appended to the MSM. With no
+   *   dynamicsMap anywhere, every note gets the default velocity instead.
+   * - *movement* likewise yields a new `positionMap`.
+   * - *metrical accentuation*, before rubato, because rubato shifts the symbolic dates the
+   *   accentuation pattern is measured against.
+   * - *articulation without its millisecond modifiers* — the millisecond half cannot run
+   *   until milliseconds exist, i.e. not before the tempo pass. This split is the reason
+   *   `ArticulationMap` has two entry points; {@link Timed} is what now enforces it.
+   * - *rubato*, over every map collected for timing processing.
+   * - *ornamentation*, still symbolic; its millisecond effects are deferred the same way,
+   *   to {@link renderMillisecondsModifiersToMap}.
+   *
+   * Neither of the two maps this creates is added to `collected.maps`, so neither is
+   * reached by the rubato loop above or by the tempo loop of {@link renderPartTiming} —
+   * {@link renderPartMilliseconds} gives them their own treatment.
+   */
+  private renderPartSymbolic(
+    dated: Element,
+    collected: PartMaps,
+    mpm: MpmMaps,
+    globalTimeSignatureMap: GenericMap | null,
+    ctx: RenderContext,
+  ): PartRender {
+    const { score } = collected;
+
+    // performance rendering of the part
+    let channelVolumeMap: GenericMap | null;
+    if (mpm.dynamics !== null) {
+      channelVolumeMap = mpm.dynamics.renderDynamicsToMap(score);
+    } else {
+      // fallback: add default velocity to all notes
+      if (score !== null) {
+        for (let i = 0; i < score.size(); ++i) {
+          const e = score.getElement(i)!;
+          if (e.getLocalName() === 'note') e.addAttribute(new Attribute('velocity', '100.0'));
         }
-        channelVolumeMap = null;
       }
-      if (channelVolumeMap !== null) {
-        dated.appendChild(channelVolumeMap.getXml());
-        Performance.addPerformanceTimingAttributes(channelVolumeMap);
-        Performance.addModifiedAttributes(channelVolumeMap);
-      }
-
-      const positionMap = movementMap !== null ? movementMap.renderMovementToMap(ctx) : null;
-      if (positionMap !== null) {
-        dated.appendChild(positionMap.getXml());
-        Performance.addPerformanceTimingAttributes(positionMap);
-        Performance.addModifiedAttributes(positionMap);
-      }
-
-      if (metricalAccentuationMap !== null)
-        metricalAccentuationMap.renderMetricalAccentuationToMap(
-          score,
-          timeSignatureMap !== null ? timeSignatureMap : globalTimeSignatureMap,
-          this.getPPQ(),
-        );
-      if (articulationMap !== null)
-        articulationMap.renderArticulationToMap_noMillisecondModifiers(score);
-
-      for (const m of maps) if (rubatoMap !== null) rubatoMap.renderRubatoToMap(m);
-
-      if (ornamentationMap !== null) ornamentationMap.renderOrnamentationToMap(score);
-
-      for (const m of maps) Performance.renderTempoToMap(m, this.getPPQ(), tempoMap);
-
-      // pedalMap
-      if (asynchronyMap !== null) asynchronyMap.renderAsynchronyToMap(pedalMap);
-      if (imprecisionMap_timing !== null)
-        imprecisionMap_timing.renderImprecisionToMap(pedalMap, true, ctx);
-
-      // channelVolumeMap
-      Performance.renderTempoToMap(channelVolumeMap, this.getPPQ(), tempoMap);
-      if (asynchronyMap !== null) asynchronyMap.renderAsynchronyToMap(channelVolumeMap);
-
-      // positionMap
-      Performance.renderTempoToMap(positionMap, this.getPPQ(), tempoMap);
-      if (asynchronyMap !== null) asynchronyMap.renderAsynchronyToMap(positionMap);
-
-      // score
-      if (score === null) continue;
-      if (asynchronyMap !== null) asynchronyMap.renderAsynchronyToMap(score);
-      if (articulationMap !== null)
-        articulationMap.renderArticulationToMap_millisecondModifiers(score);
-      Performance.renderMillisecondsModifiersToMap(score, ornamentationMap);
-
-      if (imprecisionMap_timing !== null)
-        imprecisionMap_timing.renderImprecisionToMap(score, true, ctx);
-      if (imprecisionMap_dynamics !== null)
-        imprecisionMap_dynamics.renderImprecisionToMap(score, true, ctx);
-      if (imprecisionMap_toneduration !== null)
-        imprecisionMap_toneduration.renderImprecisionToMap(score, true, ctx);
-      if (imprecisionMap_tuning !== null)
-        imprecisionMap_tuning.renderImprecisionToMap(score, true, ctx);
+      channelVolumeMap = null;
+    }
+    if (channelVolumeMap !== null) {
+      dated.appendChild(channelVolumeMap.getXml());
+      Performance.addPerformanceTimingAttributes(channelVolumeMap);
+      Performance.addModifiedAttributes(channelVolumeMap);
     }
 
-    console.log('Performance rendering finished.');
-    return clone;
+    const positionMap = mpm.movement !== null ? mpm.movement.renderMovementToMap(ctx) : null;
+    if (positionMap !== null) {
+      dated.appendChild(positionMap.getXml());
+      Performance.addPerformanceTimingAttributes(positionMap);
+      Performance.addModifiedAttributes(positionMap);
+    }
+
+    if (mpm.metricalAccentuation !== null)
+      mpm.metricalAccentuation.renderMetricalAccentuationToMap(
+        score,
+        collected.timeSignatureMap !== null ? collected.timeSignatureMap : globalTimeSignatureMap,
+        this.getPPQ(),
+      );
+    if (mpm.articulation !== null)
+      mpm.articulation.renderArticulationToMap_noMillisecondModifiers(score);
+
+    for (const m of collected.maps) if (mpm.rubato !== null) mpm.rubato.renderRubatoToMap(m);
+
+    if (mpm.ornamentation !== null) mpm.ornamentation.renderOrnamentationToMap(score);
+
+    return { ...collected, channelVolumeMap, positionMap };
+  }
+
+  /**
+   * The part's symbolic → millisecond crossing: where symbolic time finally becomes
+   * `milliseconds.date` / `milliseconds.date.end`. Everything after this point works in
+   * milliseconds, which is what the {@link Timed} return type states.
+   */
+  private renderPartTiming(rendered: PartRender, mpm: MpmMaps): Timed<PartRender> {
+    for (const m of rendered.maps) Performance.renderTempoToMap(m, this.getPPQ(), mpm.tempo);
+    return rendered as Timed<PartRender>;
+  }
+
+  /**
+   * The part's millisecond-domain passes. Every one of them reads `milliseconds.date`, so
+   * none may run before {@link renderPartTiming} — hence the {@link Timed} parameter.
+   *
+   * - *pedal, channelVolume and position maps* get their own tempo/asynchrony treatment —
+   *   note `channelVolumeMap` and `positionMap` deliberately skip rubato, which would put
+   *   rubato's high-frequency wobble into the dynamics and position curves.
+   * - *score*: asynchrony, then articulation's millisecond modifiers, then ornamentation's
+   *   ({@link renderMillisecondsModifiersToMap}) — the deferred halves, in that order — and
+   *   finally the four imprecision maps.
+   *
+   * A part with no `<score>` still gets its pedal/volume/position maps rendered; only the
+   * score block is skipped.
+   */
+  private renderPartMilliseconds(
+    rendered: Timed<PartRender>,
+    mpm: MpmMaps,
+    ctx: RenderContext,
+  ): void {
+    // pedalMap
+    if (mpm.asynchrony !== null) mpm.asynchrony.renderAsynchronyToMap(rendered.pedalMap);
+    if (mpm.imprecisionTiming !== null)
+      mpm.imprecisionTiming.renderImprecisionToMap(rendered.pedalMap, true, ctx);
+
+    // channelVolumeMap
+    Performance.renderTempoToMap(rendered.channelVolumeMap, this.getPPQ(), mpm.tempo);
+    if (mpm.asynchrony !== null) mpm.asynchrony.renderAsynchronyToMap(rendered.channelVolumeMap);
+
+    // positionMap
+    Performance.renderTempoToMap(rendered.positionMap, this.getPPQ(), mpm.tempo);
+    if (mpm.asynchrony !== null) mpm.asynchrony.renderAsynchronyToMap(rendered.positionMap);
+
+    // score
+    const { score } = rendered;
+    if (score === null) return;
+    if (mpm.asynchrony !== null) mpm.asynchrony.renderAsynchronyToMap(score);
+    if (mpm.articulation !== null)
+      mpm.articulation.renderArticulationToMap_millisecondModifiers(score);
+    Performance.renderMillisecondsModifiersToMap(score, mpm.ornamentation);
+
+    if (mpm.imprecisionTiming !== null)
+      mpm.imprecisionTiming.renderImprecisionToMap(score, true, ctx);
+    if (mpm.imprecisionDynamics !== null)
+      mpm.imprecisionDynamics.renderImprecisionToMap(score, true, ctx);
+    if (mpm.imprecisionToneduration !== null)
+      mpm.imprecisionToneduration.renderImprecisionToMap(score, true, ctx);
+    if (mpm.imprecisionTuning !== null)
+      mpm.imprecisionTuning.renderImprecisionToMap(score, true, ctx);
   }
 
   /**

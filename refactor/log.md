@@ -8992,3 +8992,380 @@ magnitude corroborated. The win is real.
   names still throwing from the constructor) are gated only by scratchpad probes. They are
   now gated by *two* independent sets of them, but still none in `tests/`. Three cheap tests
   in `tests/xml/XomTypes.test.ts` would fix that — worth a line in **T21**.
+
+## [T19] worker — performance pipeline: the stage order stops being a convention (2026-08-09)
+
+Item: ARCHITECTURE.md §8.8. Baseline `60369c0` (src-identical to the last green `8551a55`;
+`git diff 8551a55 60369c0 -- src tests` is empty, so the code baseline is unambiguous).
+Scratch `t19work/`, baseline extracted with `git archive 60369c0` and spot-checked against
+`git show <sha>:<path>` on three files.
+
+**Manifest — 3 paths**, and no untracked files anywhere:
+`src/mpm/elements/Performance.ts`, `refactor/lint-debt.md`, `refactor/log.md`.
+No test file changed, and none needed to: the change is entirely interior to one class, every
+new member is `private`, and `perform`'s signature is untouched.
+
+### 1. What §8.8 asks for, and what it got
+
+> "compose `Performance.perform` into named stages (global preprocessing → per-part map
+> collection → render passes → ms-domain passes) and make the pass ordering **structural**
+> rather than a convention held up by the order of calls."
+
+`perform` was 254 lines of straight-line statements. It is now 15, dispatching four named
+stages, and the 13 new private methods carry the documentation that used to sit in one
+40-line JSDoc block at the top:
+
+| stage | member | was |
+|---|---|---|
+| 1 | `cloneForRender` | clone + rename + `convertPPQ` |
+| 2 | `resolveGlobalMaps` | the twelve `this.getGlobal()!.getDated()!.getMap(…)` reads |
+| 3 | `renderGlobal` → `renderGlobalOrnamentation`, `renderGlobalTiming`, `renderGlobalMilliseconds` | the global block |
+| 4 | `renderParts` → `renderPart` → `collectPartMaps`, `resolvePartMaps`, `renderPartSymbolic`, `renderPartTiming`, `renderPartMilliseconds` | the per-part loop body |
+
+Four module-local interfaces carry the state between them: `MpmMaps` (the twelve instruction
+maps in effect for one scope), `CollectedMaps`, `PartMaps`, `PartRender`. None is exported and
+none appears in `Performance.d.ts`.
+
+**The "structural" half is the part worth reviewing.** §8.8's complaint is specific — T7 and
+T8 both recorded that `ArticulationMap`'s two passes and `OrnamentationMap`'s three are
+sequenced by call order alone, with nothing preventing a caller from running the millisecond
+pass before the tempo map. That is now a **compile error**, via a phantom type in the idiom
+`src/units.ts` already established:
+
+```ts
+declare const timed: unique symbol;
+type Timed<T> = T & { readonly [timed]: true };
+```
+
+`renderPartTiming` (and `renderGlobalTiming`) is the only producer of a `Timed<…>`;
+`renderPartMilliseconds` (and `renderGlobalMilliseconds`) is the only consumer. `declare`
+erases and the property is phantom, so **the mechanism emits nothing at all** — the entire
+guarantee costs one `as` per timing stage, each sitting alone on the line that legitimately
+crosses the domain boundary.
+
+**Negative control, run and recorded** (`t19work/nc/`): patch `renderPart` to call
+`renderPartMilliseconds(rendered, …)` *before* `renderPartTiming` — the exact reordering §8.8
+says nothing prevents — and `tsc` fails with
+
+```
+src/mpm/elements/Performance.ts(586,33): error TS2345: Argument of type 'PartRender' is not
+assignable to parameter of type 'Timed<PartRender>'.
+  Property '[timed]' is missing in type 'PartRender' but required in type '{ readonly [timed]: true; }'.
+```
+
+The guarantee is therefore load-bearing rather than decorative. Note it is deliberately **not**
+pinned by a `@ts-expect-error` test in `tests/`: that would be a new suppression, which the
+charter forbids and which every verifier since T8 has counted.
+
+**What was NOT extended, and why.** Carrying `Timed` onto the map classes' own entry points
+(`ArticulationMap.renderArticulationToMap_millisecondModifiers`, `OrnamentationMap`'s pass 3)
+would close §8.8's sentence at its literal subject — "nothing *in the maps* prevents…" — but
+it changes public method signatures that unit tests call directly, i.e. it converts a
+zero-test-change item into one that edits a dozen test files on the most parity-sensitive path
+in the repo. Declined; the ordering decision lives in the pipeline, and that is where it is now
+enforced. Recorded for **T21** as an option, not a debt.
+
+### 2. Float-operation order: frozen, and measured to be frozen
+
+No arithmetic was touched anywhere. The instrument is a **per-method emitted-JS comparison**
+(`t19work/methods.mjs`): strip comments from `dist/mpm/elements/Performance.js` on both builds,
+split the class body by brace matching, normalise leading indentation only, hash each method.
+
+**24 of the 25 pre-existing methods are byte-identical.** The 25th is `perform`. In particular
+`renderTempoToMap` and `renderMillisecondsModifiersToMap` — the two arithmetic-bearing statics,
+the second being the `OrnamentationMap.java:477-509` mirror the item charter freezes — hash
+identical, so their operand order, their `parseFloat` sites and their `String(…)` coercions are
+provably unchanged. `addMsmMapToList`, `addPerformanceTimingAttributes`, `addModifiedAttributes`,
+`getAllMsmPartsAffectedByGlobalMap`, `parseData` and the rest: identical.
+
+`renderMillisecondsModifiersToMap` received **no edit of any kind, not even a comment**.
+
+### 3. The pass sequence itself — traced, not argued
+
+Byte-identical output over fixtures proves the fixtures' paths. It does not prove that the
+stage order survived on inputs no fixture reaches, which for a restructure of this method is
+the actual risk. So `t19work/passtrace.mjs` wraps **every** render entry point on every map
+class, plus `Performance`'s own statics and the two map-priming helpers, and records an ordered
+transcript of `<Class>.<method>(<stable map id>|n=<size>, …)`.
+
+Over **31 scenarios — 8 all-maps fixtures, 16 MEI fixtures end to end, and 7 synthetic
+performances** aimed at the branches the fixtures miss (no MPM part at all, global maps only,
+local-shadows-global, a part with no `<dated>`, a part with no `<score>`, two parts with a
+global ornamentationMap that one of them shadows) — **2114 traced calls, transcript sha256
+`84185039ebea8788…`, identical on both builds.** Every section is non-vacuous (no section has
+zero calls, none threw). Same passes, same maps, same order, same map sizes at each call.
+
+### 4. The standard byte anchors
+
+- **Full-artifact dump** (`t16verify/dump.mjs`, unmodified, both builds): **131 artifacts,
+  `diff -r` clean** — MSM, MPM, augmented MSM, raw MIDI and expressive MIDI over every
+  deterministic fixture.
+- **Pipeline probe** (`t19a/pipe.mjs`): 24 entries, transcript sha
+  `169e964bd492bc6a…`, **identical**.
+- **RNG call-sequence probe** (`t19averify/rngprobe.mjs`, `Math.random` pinned so the
+  imprecision fixtures become comparable): **identical** — the `RandomNumberProvider`
+  factory/`setSeed`/`getValue` sequence is call-for-call unchanged, as is the rendered output
+  on the all-maps fixtures.
+- **Seed determinism** (`t19a/seedprobe.mjs`): a fixed MPM seed reproduces **bit-identically**
+  across builds and across three runs; the unseeded runs differ run-to-run on both builds,
+  which is the third leg of §2.4's gate (c) still holding — the default path was not
+  accidentally made deterministic. `tests/api/determinism.test.ts` covers the `options.seed`
+  half and is green.
+- **`dist/` as a whole**: exactly **4** files differ — `Performance.js`, `Performance.d.ts` and
+  their two source maps. `dist/api/**` is byte-identical including every `.d.ts`, so the
+  **facade freeze holds**. `TempoMap.js` and `OrnamentationMap.js` are untouched.
+- **Module graph**: the import block is byte-identical to baseline (`diff` of lines 1-39 is
+  empty), the emitted `import` statements are identical, and the set of top-level statements is
+  unchanged — no value import was added, so evaluation order cannot have moved.
+- **`Performance.d.ts`**: the only additions are `private <name>;` lines and JSDoc. No public
+  member added, removed or changed; no module-local type leaked.
+
+### 5. RenderOptions — nothing owed
+
+§8.1 assigns the whole `RenderOptions`/`RenderContext` plumbing to **T19a**, which shipped it
+(brands, `movementSampleMaxStep`, all four hops of §2.4's table, RULE F7's seed branch).
+§8.8's one sentence about it is "after T19a has taken the options plumbing out of it" — i.e.
+T19 inherits it and owes no further integration. It is threaded through the new stages
+unchanged: `perform` still builds exactly one `RenderContext`, `renderMovementToMap(ctx)` and
+all six `renderImprecisionToMap(…, ctx)` call sites still receive that same object by
+reference, and `streamOrdinal` still counts calls within one render. The RNG probe above is
+what proves this rather than the reading.
+
+### 6. Two behavioural equivalences that are not textual, argued explicitly
+
+These are the only two places where the new code is not a verbatim move, so a verifier should
+attack them here rather than hunt:
+
+1. **`?? ` replaces `if (x === null) x = global`** in `resolvePartMaps` (12 sites). These differ
+   only if `Dated.getMap` can return `undefined`. It cannot: its whole body is
+   `return this.maps.get(type) ?? null;` (`src/mpm/elements/Dated.ts:123-125`). Airtight by
+   construction, not by measurement.
+2. **The receiver is bound once instead of twelve times** — `this.getGlobal()!.getDated()!` and
+   `mpmPart.getDated()!`. Both `Global.getDated` and `Part.getDated` are bare field reads
+   (`Global.ts:80`, `Part.ts:137`), and `getGlobal` likewise, so twelve evaluations and one are
+   indistinguishable — including in the throwing case, where the first `!` on a null receiver
+   throws at the same point either way. This is also where all 33 cleared
+   `no-non-null-assertion` violations come from.
+
+Everything else moved verbatim, including `resolvePartMaps` keeping the reference's *per-part*
+lookup order (which differs from the global block's: imprecision last rather than fourth). That
+order is behaviourally irrelevant for the reason in (1), but preserving it costs nothing and
+keeps the diff readable.
+
+### 7. Gates
+
+- **`npm run verify` exit 0**: 59 files / **2272 tests**, identical to baseline. No charter-7c
+  justification owed.
+- **Coverage v3**: functions **970/1049 = 92.4690 %** (floor 92.0 ✓, and *above* the 92.3745 %
+  the T17 verifier measured). The 13 minted functions are exactly the 13 new private methods and
+  **all 13 are covered** — `Performance.ts` is 39/39. **Uncovered scoped statements 2138, zero
+  delta** against T17's 2138, well inside the ≤ 2318 budget. The single uncovered statement in
+  the file is the pre-existing one at the `else note.addAttribute('milliseconds.date.end', …)`
+  branch of `renderMillisecondsModifiersToMap` — T7's verifier already flagged that renderer as
+  partly unreached by fixtures; untouched here.
+- **Lint 1080/2 → 1047/2**, per-rule and per-file histogram over both trees with one config.
+  One rule moves (`no-non-null-assertion` 917 → 884), one file moves (`Performance.ts` 48 → 15),
+  **no rule increased anywhere**. `lint-debt.md` gains a T19 section with the accounting.
+- **Zero suppressions repo-wide**, before and after.
+- **`prettier --check` clean** on the changed file. **`log.md` is a pure append.**
+- `tests/**`, `tests/integration/**`, fixtures, both tsconfigs, `vitest.config.ts`,
+  `eslint.config.js`, `package.json`, `src/api/**`, `refactor/ARCHITECTURE.md`,
+  `refactor/CHARTER.md`, `refactor/state.json`: **untouched**.
+
+### 8. Ruling recorded in the code: the two duplicated statics stay
+
+The class comment has said since T18 that collapsing `Performance.renderTempoToMap` and
+`Performance.renderMillisecondsModifiersToMap` into their map classes is "left to the item that
+owns this file". That is this item, so it is now ruled rather than deferred again, in the file
+itself:
+
+- Both copies' **bodies** are character-identical to `TempoMap.ts:335-357` and
+  `OrnamentationMap.ts:406-448` today — **907 and 2140 characters, brace to brace**, measured
+  with a brace-matching extractor, not eyeballed; only the `private` keyword and the line
+  wrapping it forces differ. The "keep the two copies in sync" hazard is therefore discharged
+  as a measured fact, not a hope.
+- Collapsing them requires a **value** import of `TempoMap` and `OrnamentationMap` here, which
+  moves this module's position in the ESM evaluation order on the byte-compared rendering path.
+  That is a module-graph risk for zero behavioural gain, taken inside the item whose own charter
+  freezes that path — and §8.8 does not ask for it.
+- Routed to **T21**, which already runs the load-order tooling (`import/no-cycle`, the
+  deep-import battery) for other reasons.
+
+### DISCOVERED (out of scope, for whoever wants them)
+
+- **`passtrace.mjs` is reusable and belongs to T20.** The MIDI layer has the same shape of risk
+  — event ordering enforced by call order — and this instrument answers it directly. It takes
+  `<distDir> <out.json>` and writes a `.txt` transcript beside it.
+- **The 7 synthetic scenarios in `passtrace.mjs` cover perform-branches no fixture reaches**
+  (part with no `<score>`, global-only maps, local-shadows-global). They are scratchpad probes,
+  not tests. Two or three of them would be cheap, honest additions to
+  `tests/mpm/elements/Performance.test.ts` — a **T21** line.
+- **`Timed` generalises.** The same three lines would make `renderArticulationToMap_*`'s two-pass
+  contract and `OrnamentationMap`'s three-pass contract structural at the map level, at the cost
+  of touching unit-test call sites. Declined here (§1); worth a decision in T21 rather than a
+  silent drop.
+
+## [T19] verifier — PASS (2026-08-09)
+
+Independent verification against last green `8551a55` (src-identical to the worker's baseline
+`60369c0`: `git diff 8551a55 60369c0 -- src tests` empty). Scratch `t19verify/`; two trees
+extracted with `git archive`, spot-checked against `git show`, built separately with the same
+`tsc`. Every instrument below is mine, not the worker's, except `t16verify/dump.mjs` (reused
+unmodified, read first).
+
+**Verdict: PASS.** Every claim in the worker entry reproduced. Two notes for the conductor at
+the end — neither is a defect in T19, and one is a gap in the *fixtures*, not the change.
+
+### 1. Src-identity and manifest
+
+`git diff --name-only 8551a55 -- src` is exactly `src/mpm/elements/Performance.ts`. Working
+tree is exactly **3 M** — `Performance.ts`, `refactor/log.md`, `refactor/lint-debt.md` — with
+**no untracked files** (`--untracked-files=all`). `tests/**`, `tests/integration/fixtures/**`,
+both tsconfigs, `vitest.config.ts`, `eslint.config.js`, `package.json`, `package-lock.json`,
+the prettier configs, `CHARTER.md`, `ARCHITECTURE.md` and `state.json`: **diff empty**.
+
+### 2. Byte anchors — both builds
+
+- **Full artifact dump** over every deterministic fixture (MSM, MPM, augmented MSM, raw MIDI,
+  expressive MIDI): **131 artifacts, `diff -r` clean**.
+- **`dist/` as a whole**: exactly **4** files differ (`Performance.js`, `.d.ts`, two maps).
+  `dist/api/**` **byte-identical including every `.d.ts`** — facade freeze holds at the
+  emitted level, not just the source level. `TempoMap.js`/`OrnamentationMap.js` untouched.
+- **`Performance.d.ts`, declarations only** (comments stripped): the *entire* delta is 13
+  `private <name>;` lines. Restricted to non-private declarations the file is **identical** —
+  public type surface unchanged, no module-local type leaked.
+- **Type erasure**: `[timed]` occurs **0** times in the emitted JS; `MpmMaps`/`CollectedMaps`/
+  `PartMaps`/`PartRender` appear in no emitted artifact as types (the only hits are substrings
+  of the *method* names `resolvePartMaps`/`collectPartMaps`). Emitted `import` statements and
+  the source import block are **identical**, so ESM evaluation order cannot have moved.
+
+### 3. Arithmetic — AST-level, not textual
+
+Every class member re-printed from the **TypeScript AST** with `removeComments: true` and
+whitespace collapsed, then hashed — immune to reformatting *and* to JSDoc, which a token
+scanner is not (my first attempt used `ts.createScanner` and silently mis-tokenized template
+literals; recorded here because the failure mode looked like a clean pass).
+
+**28 of the 29 pre-existing members hash identical**; the 29th is `perform`. Exactly **13**
+members are new, matching the 13 private methods. `renderTempoToMap` and
+`renderMillisecondsModifiersToMap` — the two arithmetic-bearing statics — hash **identical**,
+so operand order, `parseFloat` sites and `String(…)` coercions are provably unchanged. **Zero
+refolds.**
+
+The class comment's new ruling is **measured and correct**: extracting both method bodies by
+AST (not by `indexOf`, which finds call sites — my first attempt did exactly that and reported
+nonsense), the copies are **byte-identical** to their originals at **907** and **2140**
+characters brace-to-brace. The "keep the two copies in sync" hazard is genuinely discharged.
+
+### 4. §8.8's ms-domain ornament renderer
+
+§8.8 says of `OrnamentationMap.java:477-509` parity: *"treat it as unprotected and change
+nothing in it without a purpose-built probe."* It **did not rule a restructure**, and
+`renderMillisecondsModifiersToMap` received **no edit of any kind** — no hunk in `git diff`,
+AST hash identical, body byte-identical to its original. Nothing to re-derive against Java.
+
+### 5. Stage order — the item's actual risk, attacked two ways
+
+**Runtime.** Own tracer wrapping every render entry point on every map class, `Performance`'s
+statics, the two priming helpers **and `Dated.getMap`** (so the map-*resolution* read order is
+compared too, which the worker only argued was irrelevant). **37 scenarios** — 8 all-maps sets,
+16 MEI fixtures end to end, 13 synthetic — **6264 traced calls**, no section vacuous, none
+threw, each carrying a per-scenario canonicalized output hash. Transcript sha256
+`d9f9053048c11f69…`, **identical on both builds**.
+
+**Static.** Both revisions reduced to a rename-canonicalized, linearized *effect sequence*
+(every call in execution order, with `if`/`for`/`else`/`continue` context, the new stages
+inlined at their call sites and the two map-resolution object literals expanded so the twelve
+reads are compared in order). The sequences are **identical line-for-line** apart from exactly
+the three transformations the worker documented, and **nothing else**:
+
+1. `if (mpmPart !== null){…}` + 12 × `if (X === null) X = global` → `if (mpmPart === null)
+   return globalMaps` + 12 × `??`. Sound: `Dated.getMap` is `return this.maps.get(type) ??
+   null` (`Dated.ts:123-125`), so it never yields `undefined` and `??` ≡ `=== null`. Verified
+   in the source, not taken on trust.
+2. Receiver bound once. `Performance.getGlobal`, `Global.getDated`, `Part.getDated` are all
+   bare field reads (`Performance.ts:289`, `Global.ts:80`, `Part.ts:137`), so 12 evaluations
+   and 1 are indistinguishable, throwing case included.
+3. `continue` → `return` at the score-null guard — nothing follows it in the loop body.
+
+The global block's read order and the per-part read order (imprecision last) are **preserved
+exactly**, and the argument-evaluation order of
+`renderPartMilliseconds(renderPartTiming(…), …)` puts the tempo pass first, as required.
+
+**Instrument sensitivity — three negative controls, and this is the part worth reading.**
+
+| control | what | tsc | fixture byte probe | my tracer |
+|---|---|---|---|---|
+| NC1 | swap asynchrony/imprecision in `renderGlobalMilliseconds` | passes | **misses** | **catches** (after §7) |
+| NC2 | hoist the ms pass above the tempo pass (§8.8's exact reorder) | **fails TS2345** | — | — |
+| NC3 | swap ornamentation and the rubato loop in `renderPartSymbolic` | passes | **misses** | **catches** |
+
+NC2 reproduces the worker's claimed compile error independently — `Timed` is **load-bearing,
+not decorative**. NC1 and NC3 are the important result: **the fixture byte probe misses two of
+the three reorderings**, so byte-identical output alone would *not* have been sufficient
+evidence for this item. The tracer is what carries it.
+
+### 6. RNG and seeds
+
+Own probe wrapping every `RandomNumberProvider` factory plus `setSeed`, `setInitialValue`,
+`getValue`, `getValueDouble`:
+
+- **Call sequence identical call-for-call** across both builds over 5 sequences (mpm-seeded
+  fixtures and seedless global imprecision maps, with and without `options.seed`) — same
+  provider identities, same seeds, same values, same order.
+- **Seed determinism**: a fixed `options.seed` reproduces **bit-identically** over three runs
+  and across both builds; two different seeds give different output, so the option is live.
+- **Unseeded stays nondeterministic** (3/3 distinct), on both builds — the default path was
+  not accidentally frozen.
+- RULE F7 confirmed intact: an MPM `seed` beats `options.seed` (which is why a seeded run over
+  `imprecision_timing` matches the unseeded one — expected, not a defect).
+
+### 7. A fixtures gap I had to close, and that the worker's evidence also missed
+
+**No fixture anywhere places an `asynchronyMap` or an `imprecisionMap` in `<global>`** —
+checked across all 8 all-maps MPMs, whose global blocks hold only `tempoMap`, `rubatoMap`,
+`metricalAccentuationMap`, `ornamentationMap`. So the two calls in the newly extracted
+`renderGlobalMilliseconds` **never both fire** in the suite, and NC1 was invisible to my first
+tracer run exactly as it is invisible to the byte probe. The worker's `passtrace.mjs`
+(31 scenarios / 2114 calls) has the same hole — its conclusion stands, but its evidence did not
+cover that stage's ordering.
+
+Closed with 5 synthetic global-scope scenarios (global asynchrony alone, global imprecision
+alone, both, all four imprecision types, and the same with no MPM part so the per-part fallback
+runs for all twelve fields at once). With those in place both builds still agree exactly, and
+NC1 becomes detectable in both the transcript and the output hashes. **For T21**: two or three
+of these belong in `tests/mpm/elements/Performance.test.ts` as real tests — the global
+millisecond stage is currently unprotected by the suite.
+
+### 8. Standard gates — all reproduced independently
+
+- **`npm run verify` exit 0**: both tsc stages silent, **59 files / 2272 tests**, zero failure
+  markers. `tests/**` diff empty, so no charter-3/4/7c justification is owed. Facade suite
+  green (`pipeline` 38, `plain-data` 37, `facade-equivalence` 26, `determinism` 8) as are all
+  six integration suites and `Performance.test.ts` (47).
+- **Coverage v3**, recomputed from `coverage-final.json`, not read off the reporter: functions
+  **970/1049 = 92.4690 %** (floor 92.0 ✓). Uncovered scoped statements **2138** — **zero
+  delta** vs T17, budget ≤ 2318 ✓. `Performance.ts` **39/39 functions**, 1 uncovered statement
+  (the pre-existing `else` branch T7 flagged). The +13/+13 function accounting is exact:
+  T17's 957/1036 = 92.3745 % → 970/1049, uncovered functions unchanged at 79.
+- **Lint**, full per-rule and per-file histogram over both trees with one config: **1080/2 →
+  1047/2**. The only rule that moves is `no-non-null-assertion` (917 → 884); the only file that
+  moves is `Performance.ts` (48 → 15); **no rule increased anywhere**. `lint-debt.md`'s T19
+  section matches these numbers exactly.
+- **Zero suppressions** (`@ts-ignore`/`@ts-expect-error`/`@ts-nocheck`/`eslint-disable`/
+  coverage-ignore) in `src` + `tests`, before **and** after. No `any` introduced.
+- **`log.md` is a pure append**: the old file is an exact **byte prefix** of the new one
+  (609176 → 622750), single hunk at EOF, zero deletions.
+- **`prettier --check`** clean on the changed file.
+
+### Notes for the conductor
+
+1. Not a T19 defect, but the swarm should know: **for this file, byte-identical fixture output
+   is not sufficient evidence** — §7's table shows it misses real reorderings. T20 inherits the
+   same shape of risk (§8.9, event ordering by call order) and should budget for a tracer
+   rather than relying on the byte probe. The tracer is at `t19verify/passtrace.mjs`
+   (`<distDir> <out.txt>`) and already covers the global-scope gap.
+2. The `Timed` marker separates the symbolic and millisecond domains but says nothing about
+   ordering *within* the millisecond stage (NC1 compiles). That is the correct scope for a
+   phantom type and no more is asked for; recording it so T21 does not over-claim what the
+   mechanism guarantees.
