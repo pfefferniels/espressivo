@@ -434,3 +434,20 @@ rest on program-authored documents (corpus blind spots per §7.7) — state what
 that does and does not establish. DEFERRED with rationale (conductor):
 beatsUnverifiable refinement (the third renderer replication) — the
 three-state nulls already tell callers the truth; cost/benefit journals out.
+
+## 2026-08-10 W4 — external consumer validation (mlign)
+
+Within an hour of the usable-commit ping, mlign wired exaggerateMpm into
+their corpus generator (--exaggerate; log-uniform s-vectors, conservative
+ranges; pinned to worktree @ 3432d25), composed it with ornament sampling +
+their robustness layer, and verified: all corpus invariants green, id-set
+invariance confirmed on renders (tempo 1.6 → 30% span stretch, same note
+set). Verbatim: "Clean API — nothing surprised me." They repoint to main on
+our merge. First downstream consumer live.
+
+## 2026-08-10 — user directive: push cadence + merge authority
+
+User (mid-W4): push progress regularly to the GitHub remote; the final merge
+into main is the conductor's call. Branch pushed (origin/exaggeration @
+3432d25); every wave commit is pushed from now on. Merge decision remains
+gated on the W5 final audit.
