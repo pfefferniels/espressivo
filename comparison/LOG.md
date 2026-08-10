@@ -952,3 +952,65 @@ maps, TWO any-entry maps (imprecision + asynchrony). Code/tests were fixed
 first (74c83f1, renderer-cited); the committed W2b had followed the wrong
 half of the spec. Also reaffirmed here as ruling: the split-commit cadence
 supersedes AD-28.3's two-commit wording (green, gated, pushed increments).
+
+## 2026-08-10 — W2c part 2b: dynamics curve and distance (task #14, survey-code)
+
+Task #14 still open; rubato and asynchrony remain, plus the decomposition,
+invariance modes and the rest of the property suite. Split-commit cadence per
+the conductor's message of this date, which supersedes AD-28.3's two-commit
+wording.
+
+DESIGN §10's P-C3 wording patched in this commit under the conductor's
+instruction: `d(A,C) <= d(A,B) + d(B,C) + 3ε` becomes the RELATIVE form
+`<= (d(A,B) + d(B,C))·(1 + 1e−9)`, with the reason — quadrature error scales
+with the magnitude of the integral, so an absolute epsilon is the wrong shape
+and fails correct code. The Telemann measurement is quoted as the evidence:
+pointwise-ordered curves sit at the triangle's equality case and the slack was
+7.3e-7 absolute on ≈5975, i.e. 1.2e-10 relative.
+
+`dynamicsCurve.ts` integrates the IDEAL Bézier (§5.0 rule 3 / R20), not
+`tForDate`. `idealCurveParameter` inverts the same cubic by 50 bisections to
+machine precision where `tForDate` stops at a ONE-TICK tolerance in the date
+domain — on a 4-bar transition at 720 ppq that is 1 part in 11 520, and the
+resulting staircase is what rule 3 forbids integrating against.
+
+Conductor's watch-item honoured: the tForDate agreement test asserts the
+documented bound AND separately asserts that the two really do differ, so it
+cannot pass by accident of a coarse fixture. P-C4's encoding test builds its
+dense steps by sampling the IDEAL curve, so it measures encoding invariance
+rather than the renderer's staircase.
+
+[FINDING, real property not defect] With `protraction = 0` the inner control
+points are `(c, 1−c)`, the cubic is antisymmetric about `t = 0.5`, and
+`x(0.5) = 0.5` EXACTLY for every curvature — so the date-midpoint volume is
+invariant under curvature and cannot move however hard the curve is bent. This
+file's first draft probed exactly there and its curvature test passed for the
+wrong reason. Now pinned as its own test, and the bending test probes a quarter
+of the span instead.
+
+[FINDING, conditioning limit, measured and bounded] At `curvature = 1` — an
+admissible boundary value — control points are `(1, 0)`, so
+`x'(t) = 3(2t−1)²` VANISHES at `t = 0.5`. `x` is still matched to machine
+precision but the inverse is stationary, so a cube-root loss leaves `t` good to
+~1e-5 and the value fraction carries that into ~6e-4 volume units. More
+iterations do not help. In JND terms ~2e-5, far below the metric's resolution,
+so it is documented in the module and pinned as a bound rather than chased.
+Every interior curvature is exact to 1e-9.
+
+`@subNoteDynamics` is implemented as §5.3 requires — structural, never a curve
+difference: the date-axis curves are identical, the distance is exactly 0, the
+mechanism switch is reported, and it is inert on the map's last instruction.
+Also pinned: trailing transitions inert (AD-8), curvature/protraction default
+0.0 and NOT movement's 0.4 (AD-13), clamps on the way in, neutral velocity 100
+before the first instruction and for an absent map, right-continuity.
+
+[LIMITATION, recorded not hidden] `dynamicsDistance` supplies no structural
+split points. Two Bézier segments over one span can in principle cross more than
+once, and `integrateAbsolute` resolves one crossing per sub-interval. Unlike
+tempo there is no closed-form critical point and §5.0 mandates the bracketing
+device only for the power-vs-power family, so a multi-crossing dynamics cell
+integrates slightly low. Stated in the module doc; if it matters the remedy is
+tempo's, at the difference's stationary point, and it needs a ruling.
+
+Gate: `npm run verify` GREEN before committing, 96 files / 4230 passed + 1
+skipped (was 4199). 31 new dynamics tests. eslint and prettier clean.

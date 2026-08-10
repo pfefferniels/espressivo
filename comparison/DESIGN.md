@@ -32,17 +32,17 @@ questions about them, and keeps them separate because they are different
 questions:
 
 1. **How far apart are the performances, and where, and in what?** — the
-   *semantic* level. Every expressive dimension is evaluated into the function
+   _semantic_ level. Every expressive dimension is evaluated into the function
    over score time that **the renderer would perform**, and distances are
    computed between those functions. Two documents that encode the same tempo
    gesture as one continuous transition and as five steps tracing the same
    curve are CLOSE here, by construction.
 2. **What sequence of edits turns document A into document B?** — the
-   *syntactic* level: a typed edit script over instructions, priced
+   _syntactic_ level: a typed edit script over instructions, priced
    semantically and **sequentially** (§6). The same two documents are FAR here
    — and the report says so, because the gap between the two levels is itself a
    finding ("differently encoded, near-identically performed").
-3. **How does a set of N performances organize?** — the *corpus* level:
+3. **How does a set of N performances organize?** — the _corpus_ level:
    distance matrices, clustering, embedding, all derived from level 1.
 
 "The function the renderer would perform" is a promise with teeth, and the W1
@@ -71,7 +71,7 @@ PPQ-normalized score timeline, measured in **JND units per quarter note**
   `c_{k,s} = ∫_{S_s} p_k` satisfies row sums = `d_k`, weighted column sums =
   segment contributions, grand total = `D`, with **zero residual** — because
   integration is additive over disjoint intervals and the aggregate is a
-  weighted SUM, not a norm. Closure holds for *any* partition; the thresholding
+  weighted SUM, not a norm. Closure holds for _any_ partition; the thresholding
   in §7.3 only decides which partition is reported (AD-19, M9). This exactness
   is the module's headline capability; no audio- or MIDI-based comparison can
   decompose its distance by expressive dimension at all, let alone exactly.
@@ -90,9 +90,9 @@ local metric of §4 prices it; where the renderer has no performed value the
 span reads `⊥` and is reported as a `renderer-error` note.
 
 **Two headline numbers, and which is which** (AD-23, C10). `D` in JND·quarters
-is the *additive* figure: it is what the attribution table decomposes and what
+is the _additive_ figure: it is what the attribution table decomposes and what
 the clustering consumes, and it **scales with piece length**, so it is not
-comparable across pieces of different length. `D / L` in JND is the *human*
+comparable across pieces of different length. `D / L` in JND is the _human_
 figure: "these two performances are on average 1.4 JND apart" is a sentence a
 musicologist can write, and it transfers across pieces. The report carries both,
 the docs say which is which, and the length-dependence of `distance` is stated
@@ -113,7 +113,7 @@ One lemma serves twice (survey-algo §2.B.7): for curves in T-space over
 - distributions: the same three terms are the W₂ decomposition
   (location / spread / distributional shape).
 
-**Which measure** (AD-18, M8). The lemma needs a *probability* measure and
+**Which measure** (AD-18, M8). The lemma needs a _probability_ measure and
 §5.0's default weight `w ≡ 1` is not one. The decomposition is therefore
 computed on the **normalized** measure `dμ = w dt / ∫_W w dt` (recomputed per
 window and per invariance mode); the headline density is computed on the
@@ -126,7 +126,7 @@ neper·√quarters.
 **Four fields, not three** (AD-18). The report carries `level = |ℓ_A − ℓ_B|`,
 `gain = |σ_A − σ_B|`, `shape = √(2(1−r))` **or null**, and `r` **or null**,
 plus the closing check `‖h_A − h_B‖₂²`. `level`, `gain` and `shape` are
-square-*roots*; the identity is in squares. The degenerate convention is written
+square-_roots_; the identity is in squares. The degenerate convention is written
 down rather than left to an implementer: **the shape term := 0 when
 `σ_A σ_B = 0`**, so the identity stays exact while `shape` and `r` are `null`
 and the window is marked `shapeless` — a boolean companion so consumers branch
@@ -182,8 +182,8 @@ easily be mistaken for (AD-26.6, survey-lit §7):
    gap). A large `D` means two performances differ, never that one is worse. No
    product ranks performances by merit and none ever will.
 2. **Not a perceptual-similarity model.** Nothing in the literature supports one
-   for whole performances. JND normalization makes the units *perceptually
-   scaled* — a difference below one JND is not a difference (survey-lit L5) — and
+   for whole performances. JND normalization makes the units _perceptually
+   scaled_ — a difference below one JND is not a difference (survey-lit L5) — and
    that is a much weaker claim than predicting what a listener would call similar.
    The §7.3 equivalence block is the honest form of the strong claim: it says
    what fraction of the deviation is below threshold, not what anyone will hear.
@@ -195,7 +195,7 @@ easily be mistaken for (AD-26.6, survey-lit §7):
    heterogeneous feature vector against 0.40–0.42 for the two best single
    families**. That is the evidence base for this design's shape: per-dimension
    distances first, the aggregate second and always beside its decomposition, and
-   per-family disagreement reported as a *result* rather than averaged away. A
+   per-family disagreement reported as a _result_ rather than averaged away. A
    caller who quotes `aggregate.distance` alone has discarded the finding.
 
 Dimension-level non-goals are stated where the dimension is defined — §5.7 for
@@ -219,19 +219,19 @@ From the charter (U1–U6) and the standing constraints (G1–G6), refined:
   §7.3, §8). Symmetry is bit-exact: `compare(a,b)` and `compare(b,a)` agree to
   the last bit on every number (sorted-union grids, |x−y| cells, date-ordered
   Neumaier summation). Three mechanical conditions make that true rather than
-  hoped-for: the sign-change bracket update is written as a sign *comparison*
+  hoped-for: the sign-change bracket update is written as a sign _comparison_
   (`sign(f(m)) === sign(f(a))`), never `f(m) > 0`, since `f ↦ −f` is exact in
   IEEE754 and inverts both tests consistently (M16); `-0` is normalized to `+0`
   at the report boundary (AD-21, A20); and every array and record in the report
   has a total order independent of which document is `a` (§9, A9).
 
-- **R3 Metric honesty, conditionally stated.** The *defined* per-dimension `d_k`
+- **R3 Metric honesty, conditionally stated.** The _defined_ per-dimension `d_k`
   and any fixed-weight aggregate satisfy identity, symmetry and the triangle
   inequality on the space of documents (modulo semantic equivalence) **given a
   piece-derived window** (AD-4): an MSM score end, an explicit `options.window`,
   or the corpus-shared window. The no-MSM pairwise fallback (max last dated
   instruction over both documents) is retained for convenience and is
-  *not* metric: with `A = {60@0}`, `B = {60@0, 120@100}`, `C = {60@0, 60@200}`
+  _not_ metric: with `A = {60@0}`, `B = {60@0, 120@100}`, `C = {60@0, 60@200}`
   the three windows differ and `d(B,C) ≤ d(A,B) + d(A,C)` reads `100·ln2 ≤ 0`
   (M2). Such runs are stamped `windowRule: 'pair-derived'` and
   `metricGuarantee: 'window-restricted'`, and the docs state plainly that those
@@ -242,7 +242,7 @@ From the charter (U1–U6) and the standing constraints (G1–G6), refined:
   The local metric on every row is **capped**, `min(|T(x)−T(y)|/jnd, 2δ_row)`,
   with `⊥` at distance `δ_row` from everything and 0 from itself (§4, AD-2).
   Pair-dependent normalization is forbidden and unimplemented; corpus-level
-  normalization is opt-in and stamps its derived constants. The *computed*
+  normalization is opt-in and stamps its derived constants. The _computed_
   values are quadrature evaluations of the defined objects with a **per-family**
   accuracy record, not one global ε (§5.0, AD-17).
 
@@ -257,7 +257,7 @@ From the charter (U1–U6) and the standing constraints (G1–G6), refined:
   theorems of the L¹ triangle inequality rather than aspirations; revision 1's
   pricing-against-A rule made both false, and the DP actively preferred the
   scripts that broke them (M3). A no-op encoding difference costs 0 by pricing,
-  not by special-casing — but "no-op" now means zero *sequential* cost, which is
+  not by special-casing — but "no-op" now means zero _sequential_ cost, which is
   the only reading consistent with what the renderer performs.
 
 - **R6 Absence is neutral, not missing.** A map absent on one side compares
@@ -273,7 +273,7 @@ From the charter (U1–U6) and the standing constraints (G1–G6), refined:
     pre-first-instruction constants — tempo 100 qbpm on `[0, firstValidTempo)`,
     dynamics velocity 100 before the first `<dynamics>`. A left-extension of the
     first instruction, the obvious implementation, is wrong.
-  The asymmetry is reported as a structural note.
+    The asymmetry is reported as a structural note.
 
 - **R7 MSM optional.** All core products work from MPM text alone. An optional
   `msm` input adds: the piece-derived window, note-density weighting,
@@ -287,13 +287,13 @@ From the charter (U1–U6) and the standing constraints (G1–G6), refined:
 
 - **R8 Renderer-faithful resolution** (AD-1; **this reverses revision 1**).
   Style-name levels resolve through the expression `styleScope`
-  (def / literal / unresolvable). An *unresolvable* tempo or dynamics level
+  (def / literal / unresolvable). An _unresolvable_ tempo or dynamics level
   resolves to **the renderer's own fabricated constant** — 100.0 for `bpm`
   (before the `beatLength·4` normalization) and velocity 100.0 for `volume` —
   and is reported as a `renderer-default-level` note carrying the span length.
   No span is excluded. Revision 1 forbade exactly this, quoting `styleScope`'s
   refusal to invent a level the author never wrote; that refusal is correct for
-  a *write* transform and importing it into a *read* product was the error
+  a _write_ transform and importing it into a _read_ product was the error
   (R2). The renderer literally returns 100.0
   (`TempoStyle.getNumericBpmValueStatic:49-58`,
   `DynamicsStyle.getNumericValueStatic:49-57`), so `volume="?"` and
@@ -314,7 +314,7 @@ From the charter (U1–U6) and the standing constraints (G1–G6), refined:
   registry. Inertness is **not always a static property of a row** (AD-11, R4):
   on an inline `<articulation>` exactly one duration lever is live and the
   others are inert, while on an `<articulationDef>` they compose, so the
-  registry carries element-keyed *conditional liveness* alongside the static
+  registry carries element-keyed _conditional liveness_ alongside the static
   inert bucket.
 
 - **R10 Scale.** N up to **256** performances (AD-23, C17 — the `Daten` corpus
@@ -337,19 +337,19 @@ already integrates what expression splits into level and shape knobs (the tempo
 curve contains `meanTempoAt`'s effect), and the §1.2 decomposition recovers the
 interpretive split analytically. Eleven contributing dimensions:
 
-| dimension | primary object | space of the curve | notes |
-|---|---|---|---|
-| `tempo` | quarter-bpm curve over score time | log (nepers) | `bpm·beatLength·4` normalization; power transitions, skip re-timing and the degenerate table per §5.1 |
-| `rubato` | displacement curve `warp(t) − t` | gain, quarters | transliterated cyclic warp, **gated by `@loop`**; PPQ-normalized |
-| `dynamics` | volume curve per part | log (nepers) | ideal cubic Bézier (§5.0); renderer-default levels per R8 |
-| `accentuation` | resolved per-beat accent contribution | gain, velocity units | phase anchored at the **time signature**; exact without an MSM |
-| `articulation` | per-attribute step/event profiles with atom shadowing | per-row space | multi-attribute dimension; conditional row liveness (R9) |
-| `ornamentation` | date-matched discrete events | per-row space | the alignment DP *is* the distance (§5.6) |
-| `asynchrony` | ms-offset step curve per part | gain, ms | NaN-poisoned spans read `⊥` |
-| `pedal` | movement position curve + shape | gain on [0,1] (`ratio`) | flat span structure across controllers (§5.8) |
-| `imprecisionTiming` | distribution-valued curve | native ms | W₁ density; W₂ interpretive |
-| `imprecisionDynamics` | distribution-valued curve | native velocity | same |
-| `imprecisionDuration` | distribution-valued curve | native (ratio/ms per attribute) | same |
+| dimension             | primary object                                        | space of the curve              | notes                                                                                                 |
+| --------------------- | ----------------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `tempo`               | quarter-bpm curve over score time                     | log (nepers)                    | `bpm·beatLength·4` normalization; power transitions, skip re-timing and the degenerate table per §5.1 |
+| `rubato`              | displacement curve `warp(t) − t`                      | gain, quarters                  | transliterated cyclic warp, **gated by `@loop`**; PPQ-normalized                                      |
+| `dynamics`            | volume curve per part                                 | log (nepers)                    | ideal cubic Bézier (§5.0); renderer-default levels per R8                                             |
+| `accentuation`        | resolved per-beat accent contribution                 | gain, velocity units            | phase anchored at the **time signature**; exact without an MSM                                        |
+| `articulation`        | per-attribute step/event profiles with atom shadowing | per-row space                   | multi-attribute dimension; conditional row liveness (R9)                                              |
+| `ornamentation`       | date-matched discrete events                          | per-row space                   | the alignment DP _is_ the distance (§5.6)                                                             |
+| `asynchrony`          | ms-offset step curve per part                         | gain, ms                        | NaN-poisoned spans read `⊥`                                                                           |
+| `pedal`               | movement position curve + shape                       | gain on [0,1] (`ratio`)         | flat span structure across controllers (§5.8)                                                         |
+| `imprecisionTiming`   | distribution-valued curve                             | native ms                       | W₁ density; W₂ interpretive                                                                           |
+| `imprecisionDynamics` | distribution-valued curve                             | native velocity                 | same                                                                                                  |
+| `imprecisionDuration` | distribution-valued curve                             | native (ratio/ms per attribute) | same                                                                                                  |
 
 **Row aggregation is SUM** (AD-20, M12). A multi-attribute dimension's `d_k` is
 the sum over its rows and over its atoms — stated here as a rule, not as an
@@ -368,7 +368,7 @@ Plus two non-contributing channels:
   `ImprecisionMap.ts:438-441`, read by nothing) **and**
   `articulation@detuneCents` / `@detuneHz`, which revision 1 wrongly gave live
   comparison rows and wrongly called neutral-less — they default to 0.0 and are
-  written onto the MSM note and read by nothing (R14). Also inert *by position*:
+  written onto the MSM note and read by nothing (R14). Also inert _by position_:
   the transition attributes of a map's last instruction (§5.1, AD-8) and
   `@subNoteDynamics` on a map's last instruction (§5.3).
 
@@ -380,7 +380,7 @@ gains a term, so **every previously reported distance changes**, including
 P-C9's pinned regression anchors and any published figure. The correct contract:
 promoting an inert row to a dimension is **additive in the list and breaking for
 consumers**, scheduled as a major version with the anchors regenerated. What the
-exported list buys is that the change is *mechanically enumerable* — one test
+exported list buys is that the change is _mechanically enumerable_ — one test
 walks `COMPARISON_DIMENSIONS` and no consumer hard-codes eleven names.
 
 Correspondence to the 15 expression dimensions (for the §1.3 test):
@@ -470,7 +470,7 @@ error on the document (§9), not a distance.
   onset asynchrony is the Vernon 1936 → Goebl 2001 tradition, and the field's
   operational definition of "simultaneous" — the 35 ms chord-clustering window —
   sits just above it (survey-lit §1.1, §2). **Every other default ships
-  [convention]** per AD-24, with survey-lit's *partial* support named in the
+  [convention]** per AD-24, with survey-lit's _partial_ support named in the
   row's `notes` rather than promoted to a citation: for tempo, the >2 %
   local-slowing threshold that Widmer's rule learner uses to call a ritardando,
   and Sundberg, Friberg & Frydén (1991)'s finding that musicians' preferred
@@ -535,7 +535,7 @@ and carry `metricGuarantee: 'unconditional'`; the fourth carries
 `'window-restricted'` and the documented prohibition on assembling such numbers
 into a matrix (R3). One window per pair, and one window per CORPUS (§8), so
 matrix entries are values of one function. The corpus window is
-*corpus*-dependent — adding an item moves `end` and therefore every entry — the
+_corpus_-dependent — adding an item moves `end` and therefore every entry — the
 same reproducibility caveat already carried for `normalization: 'corpus'`. The
 window and the rule that chose it are stamped in the report.
 
@@ -552,8 +552,8 @@ sums both; everything still closes exactly. Prose says "density" throughout; the
 report schema calls the atoms `events`.
 
 **Refinement grid.** Sorted union of both documents' breakpoints for the
-dimension — instruction dates, transition ends *where a transition is actually
-performed* (AD-8), skip dates and the first valid instruction date (AD-9),
+dimension — instruction dates, transition ends _where a transition is actually
+performed_ (AD-8), skip dates and the first valid instruction date (AD-9),
 rubato frame boundaries subject to §5.2's cap, imprecision span edges under the
 next-entry-of-any-kind rule (AD-14) — deduplicated exactly in integer lcm-ticks.
 The grid is bounded below by the tick.
@@ -562,7 +562,7 @@ The grid is bounded below by the tick.
 cells use fixed-order Gauss–Legendre (order 10) under three rules that revision 1
 lacked:
 
-1. *Tempo cells are integrated on an equal-mass graded mesh* (**AD-28.1**, which
+1. _Tempo cells are integrated on an equal-mass graded mesh_ (**AD-28.1**, which
    supersedes AD-17's substitution). `e = ln 0.5 / ln(meanTempoAt)` ranges over
    `(0, ∞)` on legal input, and GL-10 on `ln(bpm₀ + Δ·u^e)` loses accuracy at
    **both** ends — measured relative error 1.9·10⁻⁵ at `e = 0.5` and 2.7·10⁻⁴ at
@@ -570,7 +570,7 @@ lacked:
    the one AD-17 prescribed was **measured and falsified**. The substitution
    `u = z^{1/e}`, `du = (1/e) z^{1/e−1} dz` does remove the singularity for
    `e < 1`, but for `e > 1` it drives the Jacobian exponent `1/e − 1` negative
-   and *creates* a `z → 0` singularity the original integrand never had:
+   and _creates_ a `z → 0` singularity the original integrand never had:
    measured relative error 3.5·10⁻² at `meanTempoAt = 0.7`, **3.9·10⁻¹ at 0.9**,
    9.2·10⁻¹ at 0.99, and at `e = 150` a result outside the bounds of the
    function being integrated. That is the entire late-weighted-ritardando half
@@ -590,7 +590,7 @@ lacked:
    The falsified substitution is retained in `quadrature.ts` **solely** as a
    pinned counterexample, under failing-by-design assertions, so that it cannot
    quietly return.
-2. *Sign changes are bracketed by structure, not by endpoint signs.* Bisection
+2. _Sign changes are bracketed by structure, not by endpoint signs._ Bisection
    can only find a crossing it has a bracket for, and `g_A − g_B` can cross
    **twice** inside one cell with equal endpoint signs — two legal tempo
    transitions (72.6→132.6 at `e = 2` versus 60→120 at `e = 1`) cross at
@@ -600,10 +600,10 @@ lacked:
    critical point `u* = (qΔ_b / pΔ_a)^{1/(p−q)}` (for `p ≠ q`); split there and
    the two branches are monotone, so the existing bisection (fixed 50 iterations,
    sign-comparison bracket update per R2) is complete and correct.
-3. *The defined dynamics/pedal curve is the ideal cubic Bézier.* `tForDate`
+3. _The defined dynamics/pedal curve is the ideal cubic Bézier._ `tForDate`
    (`bezier.ts:57-78`) stops at a **1-tick tolerance in the date domain**, so
    `date ↦ volume` is a staircase with thousands of treads across a long cell and
-   GL-10 cannot approach 1e−12 against it (R20). The *defined* object is the
+   GL-10 cannot approach 1e−12 against it (R20). The _defined_ object is the
    smooth ideal Bézier, on which GL-10 converges; `tForDate` is the renderer's
    approximation of that object and is used only in the §6.3 replay, with the
    divergence bounded and documented as `|Δvolume| ≤ |v′(t)| · 1 tick / |x′(t)|`.
@@ -611,7 +611,7 @@ lacked:
 Accuracy is reported as a **per-family record over five families**, not one
 global ε (AD-17; five rather than the ruling's four per AD-25.6): a single
 constant cannot be true of `step` dimensions (exact), `tempo` (quadrature after
-the substitution above), `bezier` (quadrature against the *ideal* object, whose
+the substitution above), `bezier` (quadrature against the _ideal_ object, whose
 error model is the `tForDate` divergence bound of rule 3 and not tempo's
 substitution — which is why it is its own family), `imprecision`
 (special-function — the Φ/Φ⁻¹ rational approximations, currently Acklam at
@@ -629,7 +629,7 @@ strictly-before, `DynamicsMap.getDynamicsDataAt` is at-or-before,
 all three.
 
 **Per-part resolution** (A-Q6, AD-3). Every dimension is evaluated per part after
-global/part map resolution. A global-vs-part-local *encoding* difference with
+global/part map resolution. A global-vs-part-local _encoding_ difference with
 identical resolved curves is distance 0 plus a structural note — which is
 correct: it is not performed. Parts are matched by `@number` (with `@name`
 reported when it disagrees); **unmatched parts are compared against the neutral
@@ -637,11 +637,11 @@ curve** and reported as structural notes (R6), and the document-level rule is a
 SUM over the union of parts. Documents that are global-only on both sides
 evaluate once, not per part.
 
-**Two shadowing rules, not one** (AD-16, R22). *Maps* shadow wholesale: a
+**Two shadowing rules, not one** (AD-16, R22). _Maps_ shadow wholesale: a
 part-local map replaces the global one entirely, and an **empty** part-local
 `<dynamicsMap/>` is non-null and shadows too (`Performance.resolvePartMaps:603-632`;
 a part with no MPM counterpart inherits the global set entire; a part with no
-`<dated>` is skipped). *Style defs* do not: `GenericMap.getStyle:506-514` falls
+`<dated>` is skipped). _Style defs_ do not: `GenericMap.getStyle:506-514` falls
 back local → global **per style name**, so a part header declaring
 `styleDef name="A"` hides the global `"A"` entirely, defs and all, with no
 per-def merge, while leaving the global `"B"` visible. Resolution **must** go
@@ -649,7 +649,7 @@ through `styleScope` (`styleScope.findStyleDef:103-120`), never through a direct
 header scan; `levels.ts:38-46` documents the trap verbatim.
 
 **Span ends resolve per map type** (AD-14ii, R12; corrected AD-29). **Five**
-maps scan forward for the next element of their *own* local name (`TempoMap`,
+maps scan forward for the next element of their _own_ local name (`TempoMap`,
 `DynamicsMap`, `RubatoMap`, `MetricalAccentuationMap`, `MovementMap` — each
 tests `getLocalName()`, e.g. `TempoMap.getEndDate:166-175`), and `<style>`
 switches never terminate their spans. **Two** maps end a span on **any** next
@@ -687,7 +687,7 @@ same piece — is untestable and is not made an error; refusing to compare would
 be worse. Instead the report ships the evidence:
 `comparability { lastDateA, lastDateB, lengthRatio, ppqA, ppqB, partCountA,
 partCountB, partNumbersMatched, instructionCountA, instructionCountB }`, plus a
-`length-mismatch` note *worded as a question* when `lengthRatio` falls outside a
+`length-mismatch` note _worded as a question_ when `lengthRatio` falls outside a
 documented `[0.8, 1.25]` band, and the same check against the score end when an
 MSM is supplied. Without this, the pair-derived window silently absorbs a length
 mismatch: a 30-bar piece against a 200-bar piece is compared against neutral for
@@ -705,16 +705,16 @@ instruction span: constant, or the renderer's power transition
 
 **Base and direction, pinned** (AD-26.1). The internal `T` stays the **natural**
 logarithm — coherence with `expression/transforms.ts`'s closed forms is a design
-invariant, and JND normalization makes the reported *distances* base-free anyway
+invariant, and JND normalization makes the reported _distances_ base-free anyway
 — so every reported log quantity is tagged `'nepers'` in §9's result shapes. The
 literature's own primitive is log₂ (Desain & Honing 1993 endorse log explicitly
 as "a first step towards the use of subjective magnitudes"; partitura and
 Cancino-Chacón 2018 use base 2), so the docs give the conversion once and
 plainly: **multiply a nepers figure by `1/ln 2 ≈ 1.4427` to read it as log₂**
 (survey-lit L2). Direction is pinned in the type docs, because the field mixes
-the two conventions freely: **MPM stores BPM, a *rate*, so a positive log
+the two conventions freely: **MPM stores BPM, a _rate_, so a positive log
 difference means A is FASTER**. A beat period is a duration, so in the
-seconds-per-beat convention partitura uses, positive means *slower*; the two are
+seconds-per-beat convention partitura uses, positive means _slower_; the two are
 reciprocal and Cancino-Chacón et al. 2018 §4.3 names the resulting
 incomparability outright (survey-lit L3). Stating it once here and in the
 `DimensionComparison` doc comment is the whole fix.
@@ -742,30 +742,30 @@ intervening note at the no-tempo default via
 `computeDiffTiming(date, ppq, null)` — 100 quarter-bpm, as an absolute time from
 zero. Executed, the performance goes **backwards**: with instructions at 0
 (60 qbpm), 720 (`bpm=180`, no `beatLength`) and 1440 (60 qbpm), the note at tick
-1080 sounds 200 ms *before* the note at tick 720. So: **a skipped `<tempo>` ends
+1080 sounds 200 ms _before_ the note at tick 720. So: **a skipped `<tempo>` ends
 the preceding span, and `[skipDate, nextValidDate)` performs at 100 qbpm**; the
 same constant governs `[0, firstValidTempoDate)` (AD-9ii, R11). Both are in the
 curve and in the grid. Revision 1's "a skipped instruction contributes nothing"
 and §6.2's "inserting one costs exactly 0 and is `free`" were both false; §6.2's
 sequential pricing now gets this right automatically (AD-5).
 
-The renderer's *absolute-time* quirk — the non-monotone millisecond dates that
+The renderer's _absolute-time_ quirk — the non-monotone millisecond dates that
 this mechanism produces — is reproduced **only** in the `cumulativeDrift`
 secondary, never in the tempo curve.
 
 **Degenerate table** (AD-9iii, R10). Revision 1 said "collapses to constant",
 which is wrong on half the cases by a factor of 2 in the obvious example:
 
-| case | performed |
-|---|---|
-| `@transition.to` equal to `@bpm` | constant at **`bpm`** |
-| `meanTempoAt ≤ 0` | constant at **`transition.to`** (`TempoMap.ts:144-151` reassigns `bpm := transitionTo`) |
-| `meanTempoAt ≥ 1` | constant at **`bpm`** |
-| `@meanTempoAt` absent, `@transition.to` present and differing | **linear ramp**, `meanTempoAt = 0.5`, `e = 1.0` (`TempoMap.ts:155-158`) |
+| case                                                          | performed                                                                               |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `@transition.to` equal to `@bpm`                              | constant at **`bpm`**                                                                   |
+| `meanTempoAt ≤ 0`                                             | constant at **`transition.to`** (`TempoMap.ts:144-151` reassigns `bpm := transitionTo`) |
+| `meanTempoAt ≥ 1`                                             | constant at **`bpm`**                                                                   |
+| `@meanTempoAt` absent, `@transition.to` present and differing | **linear ramp**, `meanTempoAt = 0.5`, `e = 1.0` (`TempoMap.ts:155-158`)                 |
 
 Each is pinned by a fixture (§10). A `<tempo>` carrying no `@transition.to` at
 all is simply a constant span; a `<tempo>` missing `@bpm` or `@beatLength` is a
-*skip*, not a collapse.
+_skip_, not a collapse.
 
 **`cumulativeDrift`** is a clearly-labelled secondary output computed with the
 renderer's own Simpson integration (`computeMillisecondsForTempoTransition:392-409`)
@@ -790,7 +790,7 @@ from the instruction's date,
 **`@loop` gates the cycle** (AD-10, R3). `RubatoData.loop` defaults to **false**
 (`RubatoData.ts:37`) and `renderRubatoToMap` breaks out of the span at the first
 frame boundary when it is off (`RubatoMap.ts:199-203`). The `mod` in the formula
-above *is* the repetition `@loop` controls. So: **when `@loop` is off, the warp
+above _is_ the repetition `@loop` controls. So: **when `@loop` is off, the warp
 applies on `[t₀, t₀ + frameLength)` and `δ ≡ 0` on the remainder of the span.**
 Executed on a 1440-tick span with `frameLength = 360`, `intensity = 2`: loop
 absent warps only the first frame, `loop="true"` warps all four. The repo's own
@@ -821,7 +821,7 @@ reset to the full frame `0..1`) are applied **before** the curve is evaluated, o
 `earlyEnd < lateStart` documents compare as inverted warps the renderer never
 performs. The edit path prices `(lateStart, earlyEnd)` as L1 on the endpoints
 (A-Q10), NOT the joint-trim parametrization — two windows with equal total trim
-but different placement are different performances — but the *density* uses the
+but different placement are different performances — but the _density_ uses the
 clamped pair.
 
 **The neutral warp is special-cased** (AD-21, M18). When
@@ -921,7 +921,7 @@ span reads `⊥` on that side and is reported `renderer-error`. Separately, an
 `accentuationPattern` before the map's first `<style>` switch is silently skipped
 even with a perfectly good `name.ref` (`:89`) — a renderer skip, reported as one.
 This is the one place revision 1's exclusion instinct was right, and the design
-must say *which* unresolvables are which: tempo and dynamics levels have a
+must say _which_ unresolvables are which: tempo and dynamics levels have a
 performed value (R8), accentuation patterns do not.
 
 Pattern def internals (`accentuation@beat` / `@value` / `@transition.from` /
@@ -937,14 +937,14 @@ Multi-attribute dimension. Rows and spaces: relative factors in log-around-1
 **Atoms shadow the styled default; they do not add to it** (AD-11ii, R5).
 `ArticulationMap.renderArticulationToMap_noMillisecondModifiers:262-284`
 `continue`s after applying a note's explicit articulations, and the class doc says
-so: *"a note with explicit articulations gets those and only those — the default
-is deliberately not also applied"*. Executed with `defaultArticulation="stacc"`
+so: _"a note with explicit articulations gets those and only those — the default
+is deliberately not also applied"_. Executed with `defaultArticulation="stacc"`
 (×0.5) and an explicit `ten` (×1.2) at date 360, durations are 50 / **120** / 50 —
 not 60. Revision 1's model was `profile = step(t) ⊕ atoms`; the renderer's is
 `profile(t) = atoms(t) where atoms exist, else step(t)`, so revision 1
 double-charged at exactly the dates the composer bothered to mark. The default's
 step function is built from the resolved style-switch list and includes its two
-non-obvious mechanics: an unresolvable style switch leaves the *previous* default
+non-obvious mechanics: an unresolvable style switch leaves the _previous_ default
 in force (`:231-236`), and a switch carrying **no** `@defaultArticulation` pushes
 a `null` that **cancels** the default from that date (`:239-243`).
 
@@ -972,11 +972,11 @@ renderer's map is nonlinear and note-dependent: it applies only when
 three-state) since `k` depends on the note; the negative branch cannot be refined
 without one at all.
 
-**Two kinds of atom** (AD-7, R16). *Date-targeted*: an atom at `@date` applying
+**Two kinds of atom** (AD-7, R16). _Date-targeted_: an atom at `@date` applying
 to all notes there (`getAllElementsAt`, exact equality), charged to the span it
-opens (§5.0). *`noteid`-targeted*: the attribute is `noteid` (not `noteid.ref`),
+opens (§5.0). _`noteid`-targeted_: the attribute is `noteid` (not `noteid.ref`),
 its value has its **first character stripped unconditionally** (it assumes
-`#id`), the articulation lands on the *note* wherever the note is — a date
+`#id`), the articulation lands on the _note_ wherever the note is — a date
 mismatch is a warning and it is applied anyway — and an id resolving to nothing
 is **dropped entirely**. So: without an MSM, compare by id and report
 `datePositionKnown: false`; with an MSM, place the atom at the referenced note's
@@ -1009,8 +1009,8 @@ breaks the triangle inequality for any `λ_date > 0` (M5's three-document
 counterexample survives every value of the constant). It is deleted: an
 exact-date match is already free of date cost, so the DP selects it whenever it
 is optimal, and where it is not optimal the pin was wrong. Revision 1 also
-defined the matched-event contribution *without* a date term while §6.2 priced
-event ops *with* one — a non-minimal functional evaluated at the argmin of a
+defined the matched-event contribution _without_ a date term while §6.2 priced
+event ops _with_ one — a non-minimal functional evaluated at the argmin of a
 different one, which has no metric argument at all, and which priced a matched
 ornament displaced by half a bar at zero. `λ_date` is now stated here, in §5.6,
 as part of the semantic definition.
@@ -1039,9 +1039,9 @@ R18); `@intensity` log-around-1; `dynamicsGradient@transition.from` /
 
 **`ornament@scale` is a linear velocity-unit row with neutral 0.0** (AD-15,
 R19) — not a log gain. `DEFAULT_ORNAMENT_SCALE = 0.0` and
-`OrnamentData.scale = 0.0` are the port's documented, deliberate choice: *"an
+`OrnamentData.scale = 0.0` are the port's documented, deliberate choice: _"an
 `<ornament>` without a `scale` is specified to produce no dynamics effect at all,
-which reads as a bug and is not one."* A gain space maps neutral to 1.0 and sends
+which reads as a bug and is not one."_ A gain space maps neutral to 1.0 and sends
 0.0 to −∞, so revision 1's classification was wrong twice. R6's absence-is-neutral
 resolves to **0.0** here. Fixture caution: the v2 writer omits `scale` when it is
 1.0 while every reader defaults a missing `scale` to 0.0, so a v2 round trip
@@ -1055,7 +1055,7 @@ finding without an MSM, and is resolved against the principal note's duration
 with one.
 
 v3 note-generating ornaments are compared by the same attribute rows; the
-*generated notes* are a render artifact with per-render random ids and are never
+_generated notes_ are a render artifact with per-render random ids and are never
 compared (R5b lesson from the expression campaign; verified — note generation
 lives on the render path only, so a pure reader never sees them, R28).
 
@@ -1070,7 +1070,7 @@ and `getAttributeValue` returns `''` for a missing attribute, so the offset is
 `NaN`; executed, every note in the span gets `milliseconds.date="NaN"` and
 vanishes from the MIDI export. The map also takes the next dated child with **no
 local-name test**, so any non-`<asynchrony>` entry ends the span. R6's
-absence-is-neutral covers an absent *map*, not a present instruction with an
+absence-is-neutral covers an absent _map_, not a present instruction with an
 absent offset, and treating it as 0 would compute a performance the renderer does
 not produce: the span reads **`⊥`** and is reported `renderer-error` (AD-2).
 
@@ -1102,7 +1102,7 @@ expression assigns (boundary-power-low / logit(−1,1)), finite under §4's cap.
 **Spans are flat, not per-controller** (AD-13, R9). `MovementMap.getEndDate:153-159`
 scans for the next element named `movement` with **no `@controller` test**, so a
 `soft` entry terminates a `sustain` span. The curve is therefore evaluated on the
-map's **flat** span structure — the next `<movement>` of *any* controller ends a
+map's **flat** span structure — the next `<movement>` of _any_ controller ends a
 span — with each span tagged by its own `@controller`. Revision 1's independent
 per-controller curves compute a sustain gesture the renderer never performs
 whenever the two pedals interleave in one map, which is the natural encoding.
@@ -1126,7 +1126,7 @@ sections side by side will take one for a typo of the other, and both citations
 are here so that reading is closed off.
 
 Three further reading rules (AD-13): `@curvature` defaults to **0.4**
-(`MovementData.ts:29`), *not* dynamics' 0.0 — the shared Bézier machinery must
+(`MovementData.ts:29`), _not_ dynamics' 0.0 — the shared Bézier machinery must
 not share a default; a `<movement>` with no `@position` inherits the previous
 movement's `@transition.to`, and the inheritance loop is `j > 0` so entry 0 is
 never examined and the inherited value is 0 (PARITY-noted as deliberate); a
@@ -1150,19 +1150,19 @@ another distribution at 1080, the notes at 360 and 720 are unperturbed.
 `deviation.standard` or `mode` anywhere in the read path — absent attributes stay
 `null` and flow into the provider — so three families degrade three different
 ways, and revision 1 computed ~8.3 ms of density per quarter between two
-triangular distributions that the renderer performs as *no imprecision
-whatsoever*:
+triangular distributions that the renderer performs as _no imprecision
+whatsoever_:
 
-| family | missing attribute | law actually performed |
-|---|---|---|
-| `distribution.uniform` | `limit.lower` / `limit.upper` | **δ₀** (the draw is `0·(null−null)+null` = 0) |
-| `distribution.correlated.brownianNoise` | `limit.*` | **δ₀** |
-| `distribution.triangular` | `clip.lower` / `clip.upper` | **δ₀** (the clip swallows every draw) |
-| `distribution.correlated.compensatingTriangle` | `clip.*` | **δ₀** |
-| `distribution.gaussian` | `limit.*` | **untruncated `N(0, σ)`** (rejection never accepts; the 10 000-attempt escape hatch returns a plain draw) |
-| any | `deviation.standard` | **δ₀** |
+| family                                         | missing attribute             | law actually performed                                                                                    |
+| ---------------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `distribution.uniform`                         | `limit.lower` / `limit.upper` | **δ₀** (the draw is `0·(null−null)+null` = 0)                                                             |
+| `distribution.correlated.brownianNoise`        | `limit.*`                     | **δ₀**                                                                                                    |
+| `distribution.triangular`                      | `clip.lower` / `clip.upper`   | **δ₀** (the clip swallows every draw)                                                                     |
+| `distribution.correlated.compensatingTriangle` | `clip.*`                      | **δ₀**                                                                                                    |
+| `distribution.gaussian`                        | `limit.*`                     | **untruncated `N(0, σ)`** (rejection never accepts; the 10 000-attempt escape hatch returns a plain draw) |
+| any                                            | `deviation.standard`          | **δ₀**                                                                                                    |
 
-Each collapse is a *law*, so the W₁/W₂ machinery handles it: this is a reading
+Each collapse is a _law_, so the W₁/W₂ machinery handles it: this is a reading
 rule, not new mathematics.
 
 **The Gaussian is modelled as the mixture it is** (AD-14iv, M13):
@@ -1210,12 +1210,12 @@ not characterize the process (A-B3).
 Revision 1 excluded the span on a mismatch; but `timingBasis` enters only as
 `index = msDate / basis` handed to the provider, and for `uniform`, `gaussian`,
 `triangular` and `list` the draws are i.i.d. along that index — so the basis
-changes *which* pseudorandom value a note gets (a per-render artifact this module
+changes _which_ pseudorandom value a note gets (a per-render artifact this module
 refuses to model) and leaves the **marginal law identical**. So: i.i.d. families
 compare marginals and report the basis difference as an **inert** note;
 correlated families, where the basis genuinely sets the step rate per unit time,
 fold it into `processParameters` as a numeric row. No exclusion anywhere. Note
-also that an absent `timingBasis` is *derived* — from `upper − lower` (uniform /
+also that an absent `timingBasis` is _derived_ — from `upper − lower` (uniform /
 gaussian / brownian), `upperClip − lowerClip` (both triangles), or the list's
 range — **only in the timing domain**, else 100.0, and 100.0 also when the
 derivation is ≤ 0; so "absent on one side" is usually not a mismatch at all.
@@ -1251,10 +1251,10 @@ rules; a DP alignment produces a typed script of ops
       costRank: number }                            // position in cost order
 
 **The array is delivered in application (date) order, and every op carries both
-orders** (AD-23, C5). U2 asks for an edit *path*, and a path is ordered by where
+orders** (AD-23, C5). U2 asks for an edit _path_, and a path is ordered by where
 you walk it: a reader following along in the score walks it in score order, while
 revision 1's single cost-descending sort scattered bar 3, bar 47, bar 12, bar 9
-down the page. Since §6.2 now prices the script *as applied in date order*
+down the page. Since §6.2 now prices the script _as applied in date order_
 (AD-5), date order is also the order in which the numbers mean something. U3's
 "what matters most" is served by `costRank` on each op and by `topByCost`,
 indices into the date-ordered array in cost-descending order. Both views cost one
@@ -1263,11 +1263,11 @@ integer per op.
 Ops carry concrete values, so the script is machine-applicable in principle; an
 `applyEditScript` writer is deliberately NOT shipped until a consumer asks
 (YAGNI; mpm-desk is the expected asker; journaled as future work). That the
-script is a *reading* artifact rather than an executable one is what makes its
+script is a _reading_ artifact rather than an executable one is what makes its
 legibility the product rather than a nicety.
 
 `site` is a declared `ComparisonSiteRef` (A18), not the "SiteRef-like locator" of
-revision 1 — "*X*-like" is not a specification.
+revision 1 — "_X_-like" is not a specification.
 
 ### 6.2 Pricing is sequential
 
@@ -1281,9 +1281,9 @@ L¹ integral the semantic level uses (AD-5, M3). This telescopes correctly, so
 - `reworking = scriptCost − d_curve ≥ 0` is a theorem too.
 
 Revision 1 priced each op against the **original** A-context and called that an
-upper bound on the shortest-path cost. It is not; it can strictly *under*-estimate,
+upper bound on the shortest-path cost. It is not; it can strictly _under_-estimate,
 because an op that is a no-op in A's context does real work once earlier ops have
-been applied. The math lens's counterexample is minimal and the DP *prefers* it:
+been applied. The math lens's counterexample is minimal and the DP _prefers_ it:
 `A = {I@0 bpm=60, J@5 bpm=60}` (a legal no-op restatement — exactly the case A-B2
 elevates to a principle) against `B = {I@0 bpm=120}`. Substituting `I` in A's
 context changes only `[0,5)`, priced `5·ln2`; deleting `J` in A's context changes
@@ -1295,7 +1295,7 @@ date) is determined by the DP cell, so this stays inside the `O(nm·q)` budget.
 
 Consequences, all tested:
 
-- **`free` means zero *sequential* cost** — not zero cost against A. A-B2's
+- **`free` means zero _sequential_ cost** — not zero cost against A. A-B2's
   guarantee ("a no-op encoding difference costs 0 by pricing, not by
   special-casing") survives with the correct referent.
 - **Inserting a renderer-skipped tempo instruction is NOT free** (AD-5, AD-9):
@@ -1313,7 +1313,7 @@ Consequences, all tested:
 After traceback the engine replays the script against A's curve representation
 and reports `replayedDelta` = **the sequential total** actually achieved (AD-5).
 Revision 1 called it "achieved distance to B", which for a complete script is
-*identically* `d_curve` — a recomputation, not a third quantity, so the reported
+_identically_ `d_curve` — a recomputation, not a third quantity, so the reported
 "triple" advertised two numbers as three. The triple is now genuinely three
 numbers: `(d_k` — the lower bound; `scriptCost` — the DP's estimate;
 `replayedDelta` — the achieved sequential total`)`, all three exact up to the
@@ -1326,7 +1326,7 @@ is a statement about the renderer's own arithmetic.
 Traceback precedence `substitute > delete > insert`, then lowest source index.
 That precedence is deterministic but **not transposition-covariant**: transposing
 the inputs maps "delete `a_i`" to "insert `a_i`", so at a tied cell the `A→B` run
-takes its delete branch and the `B→A` run takes *its* delete branch, which is the
+takes its delete branch and the `B→A` run takes _its_ delete branch, which is the
 mirror of the first run's **insert** branch — and survey-algo §2.H is explicit
 that equal-cost `insert-then-delete` vs `delete-then-insert` ties are structural,
 not accidental (M16). So the script is **computed once in a canonical
@@ -1340,7 +1340,7 @@ each selected performance's document, then the performance selector as a string 
 in lexicographic (code-unit) order, and compute the script in that orientation.
 Equal bytes mean identical documents, so the orientation is irrelevant. This is
 deterministic and needs no labels, which matters because `compareMpm(a, b)` and
-`compareMpm(b, a)` present the *same* role names in both directions: a rule keyed
+`compareMpm(b, a)` present the _same_ role names in both directions: a rule keyed
 on the roles `'a'` and `'b'` would not distinguish the two calls at all, and the
 pairwise entry point takes no caller labels to key on instead.
 
@@ -1375,13 +1375,13 @@ survey-lit provides a citation, else [convention]; all overridable via
 `options.jnd` (a closed key vocabulary, §4) while the defaults stay the
 documented reference. The defaults, with their AD-26.2 tags:
 
-| row | default | tag |
-|---|---|---|
-| `asynchrony` | **30 ms** | **[literature]** — the onset-asynchrony detection threshold of the Vernon 1936 → Goebl 2001 tradition; the 35 ms chord-clustering window the field uses as its operational "simultaneous" sits just above it |
-| `tempo` | ln(1.05) ≈ 0.049 nepers | [convention]; partial support noted in the row — the >2 % local-slowing threshold used to classify a ritardando, and Sundberg/Friberg/Frydén 1991's near-threshold preferred k-values |
-| `dynamics` | ln(1.10) nepers | [convention] — survey-lit L6 records that four loudness conventions coexist in the literature with no shared scale, so this is a declared choice, not a measurement |
-| `rubato` displacement | ~1/16 quarter | [convention] |
-| `velocity` | ~3 MIDI units | [convention] |
+| row                   | default                 | tag                                                                                                                                                                                                          |
+| --------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `asynchrony`          | **30 ms**               | **[literature]** — the onset-asynchrony detection threshold of the Vernon 1936 → Goebl 2001 tradition; the 35 ms chord-clustering window the field uses as its operational "simultaneous" sits just above it |
+| `tempo`               | ln(1.05) ≈ 0.049 nepers | [convention]; partial support noted in the row — the >2 % local-slowing threshold used to classify a ritardando, and Sundberg/Friberg/Frydén 1991's near-threshold preferred k-values                        |
+| `dynamics`            | ln(1.10) nepers         | [convention] — survey-lit L6 records that four loudness conventions coexist in the literature with no shared scale, so this is a declared choice, not a measurement                                          |
+| `rubato` displacement | ~1/16 quarter           | [convention]                                                                                                                                                                                                 |
+| `velocity`            | ~3 MIDI units           | [convention]                                                                                                                                                                                                 |
 
 Revision 2 carried `asynchrony 20 ms` as a guess; 30 ms is the literature's
 figure and supersedes it. The general principle behind the whole column is
@@ -1401,8 +1401,8 @@ revision 1.
 `D = Σ_k ω_k d_k`; default `ω_k = 1` for every dimension. **The justification is
 corrected** (AD-20, M12). Revision 1 said JND normalization "has already made
 dimensions commensurable, so unequal default weights would be a second, hidden
-opinion". JND normalization makes each *row* commensurable; it does not make each
-*dimension* commensurable, because `d_k` is a SUM over the dimension's rows and
+opinion". JND normalization makes each _row_ commensurable; it does not make each
+_dimension_ commensurable, because `d_k` is a SUM over the dimension's rows and
 atoms (§3). `d_articulation` accumulates over seven rows and every note-anchored
 atom in the piece while `d_tempo` accumulates over one curve, so two documents
 differing by one JND uniformly in every attribute produce `d_k` proportional to
@@ -1442,7 +1442,7 @@ of `p_D − τ_D` join the grid for the segment pass, reusing §5.0's bracketing
 machinery.
 
 **Ruzzo–Tompa, and what it does and does not decide.** Its maximal segments are
-canonical as a *set* — a segment extended by a zero-score cell contains a proper
+canonical as a _set_ — a segment extended by a zero-score cell contains a proper
 subsequence of equal score and therefore fails maximality, so boundary zeros are
 never absorbed and the set is unique (the math lens attacked this and it held).
 But the **ranking** is by a different functional from the score that produced the
@@ -1455,21 +1455,21 @@ possible).
 **Zero-weight dimensions** (AD-19). A dimension with `ω_k = 0` is excluded from
 `p_D` — the aggregate density it does not contribute to — but its `d_k`, mean and
 per-row breakdown are still computed and reported, and the table still closes,
-because the table closes over *weighted* rows. This is what makes §7.4's
+because the table closes over _weighted_ rows. This is what makes §7.4's
 dimension-selective recipe work.
 
 **The table closes for any partition** (AD-19, R4). Stated plainly because
 revision 1's "because" proved less than it claimed: for **any** partition
 `{S_s}` of the window, `Σ_s ∫_{S_s} p_k = d_k` by countable additivity, and
 `Σ_k ω_k Σ_s c_{k,s} = D` because `D` is a weighted sum. Ruzzo–Tompa only decides
-*which* partition is reported. Saying this protects the headline capability from
+_which_ partition is reported. Saying this protects the headline capability from
 being entangled with the thresholding. Rows = dimensions, columns = ranked
 segments + one below-threshold remainder column; residual pinned numerically to
 ~1e−12·D with compensated summation.
 
 **Segment shape** (AD-23, C4). U3's word is "complexity/difficulty/distance", and
-mass — `length × mean excess` — is a defensible reading of *distance* and an
-indefensible reading of *difficulty*: a forty-bar drift at 1.2 JND outranks a
+mass — `length × mean excess` — is a defensible reading of _distance_ and an
+indefensible reading of _difficulty_: a forty-bar drift at 1.2 JND outranks a
 two-bar shock at 6 JND, always. Revision 1 left the per-segment shape undefined,
 so `peak` — precisely the statistic the "biggest moment" reading needs — was
 recoverable from no shipped product. Each segment therefore carries
@@ -1501,7 +1501,7 @@ sample actually distinguishable?" is `aboveThresholdLengthFraction > 0`.
 ### 7.4 Invariance modes
 
 Reproducing-roll corpora carry structural uncertainty: absolute roll speed is
-often unknowable (Hall, *Pianola Journal* 22; Hagmann 1984 — see
+often unknowable (Hall, _Pianola Journal_ 22; Hagmann 1984 — see
 survey-lit-welte.md), which multiplies tempo by an unknown constant = adds an
 unknown constant in log space. Comparing such sources at face value invents level
 differences no scholar can defend. Per dimension,
@@ -1531,8 +1531,8 @@ cheap (AD-20).
 (AD-20). There is no curve to center.
 
 **`σ = 0` under `'level-gain'`** (AD-20): the canonical curve is identically 0
-and the dimension is marked `shapeless`. A constant curve is *completely
-ordinary* in this data, so revision 1's silence here was a division by zero on
+and the dimension is marked `shapeless`. A constant curve is _completely
+ordinary_ in this data, so revision 1's silence here was a division by zero on
 the most common input in the corpus.
 
 **`'level-gain'` and P-C5 are mutually exclusive** and documented as such: under
@@ -1541,17 +1541,17 @@ the most common input in the corpus.
 **What each mode removes, per scale space** (AD-23, C9) — because §7.4's
 justification is exactly right for log spaces and silently wrong elsewhere:
 
-| space | `'level'` removes | `'level-gain'` removes |
-|---|---|---|
-| log (tempo, dynamics) | a multiplicative factor (roll speed, volume calibration) | additionally a dilation of the gesture |
-| linear / gain (asynchrony ms, imprecision ms, `absoluteDelayMs`, `absoluteDurationChangeMs`, pedal ratio) | an additive **offset only** — the factor survives, since `c·x − mean(c·x) = c(x − mean x)` | the multiplicative factor |
+| space                                                                                                     | `'level'` removes                                                                          | `'level-gain'` removes                 |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------- |
+| log (tempo, dynamics)                                                                                     | a multiplicative factor (roll speed, volume calibration)                                   | additionally a dilation of the gesture |
+| linear / gain (asynchrony ms, imprecision ms, `absoluteDelayMs`, `absoluteDurationChangeMs`, pedal ratio) | an additive **offset only** — the factor survives, since `c·x − mean(c·x) = c(x − mean x)` | the multiplicative factor              |
 
 A roll read 10 % slower has all its inter-onset offsets stretched 10 %, so the
 same physical uncertainty that `'level'` removes from tempo stays in asynchrony
 and imprecision-timing while the report stamps `invariance: 'level'` on all of
 them as though they were equivalent. The report therefore emits a note when
-`'level'` is applied to a linear-space dimension, in plain words: *this removed
-an offset, not a scale factor*. Given that asynchrony-as-artifact is one of the
+`'level'` is applied to a linear-space dimension, in plain words: _this removed
+an offset, not a scale factor_. Given that asynchrony-as-artifact is one of the
 three questions survey-lit-welte flags as design-shaping, this is the wrong
 dimension to get quietly wrong. The W4 Welte cookbook recipe spells out the
 roll-pair setting: `'level'` on tempo and dynamics, and either `'level-gain'` or
@@ -1569,7 +1569,7 @@ Every quantity above is `|Δ|`, and a researcher's sentences are directional:
 Hall's central question is whether a roll is "an eccentric old-fashioned
 interpretation at the correct speed, or a conventional approach at the wrong
 one". Revision 1 computed `g_A − g_B` at every cell and discarded the sign at
-every level except §1.2's single global `d_level`, which cannot answer *where*
+every level except §1.2's single global `d_level`, which cannot answer _where_
 one is faster: a performance slower in the first half and faster in the second
 reports `level ≈ 0` and large segments, indistinguishable from one that disagrees
 in magnitude but agrees in direction everywhere.
@@ -1598,16 +1598,16 @@ applies to the decomposition.
 ## 8. Corpus level (L5)
 
 - **Input.** `items: readonly { mpm: XmlText; performance?: string | number;
-  label?: string }[]`. An item naming no performance in a multi-performance
+label?: string }[]`. An item naming no performance in a multi-performance
   document EXPANDS to one item per performance (labels `«docLabel»:«perfName»`)
   — the natural reading of the official multi-performance samples. `docLabel` is
-  `label ?? \`items[${i}]\`` (AD-22, A8); labels are **required unique after
-  expansion**, and duplicates are an `InvalidOptionError` naming every colliding
-  label and the item indices that produced it. Uniqueness is not pedantry: PAM
-  medoids are the one product whose entire value is naming a real performer, and
-  two documents legitimately labelled `"Welte 1905"` each holding a performance
-  called `"default"` make "the most typical Hofmann" ambiguous. `N ≤ 256` (R10),
-  as the explicit `maxItems` option.
+  `label ?? \`items[${i}]\``(AD-22, A8); labels are **required unique after
+expansion**, and duplicates are an`InvalidOptionError`naming every colliding
+label and the item indices that produced it. Uniqueness is not pedantry: PAM
+medoids are the one product whose entire value is naming a real performer, and
+two documents legitimately labelled`"Welte 1905"`each holding a performance
+called`"default"`make "the most typical Hofmann" ambiguous.`N ≤ 256`(R10),
+as the explicit`maxItems` option.
 - **Every cross-reference in `CorpusResult` is by index into `labels`** (A8) —
   `dendrogram`, `medoids`, `clusters`, `seriationOrder`, `profiles`, `scape` —
   and `labels` is the only place a string appears; a consumer joins them itself.
@@ -1621,7 +1621,7 @@ applies to the decomposition.
   pair. One MSM for the whole matrix. All stamped in the result via the shared
   `ComparisonSettings` echo (§9).
 - **Matrices** (AD-22, A4). **Full row-major `N²`**, `Record<ComparisonDimension,
-  readonly number[]>` plus an aggregate, with an explicit `n` field; index
+readonly number[]>` plus an aggregate, with an explicit `n` field; index
   arithmetic `m[i*n + j]`, and the pinned assertions
   `m[i*n+j] === m[j*n+i]` bit-for-bit and `m[i*n+i] === 0`. Revision 1 said
   "packed row-major, symmetric", which names two incompatible layouts — packed
@@ -1643,12 +1643,12 @@ applies to the decomposition.
 - **Every tie rule is LABEL-based, and the corpus products are therefore
   permutation-invariant** (AD-25.2, reversing AD-22's first branch in favour of
   the panel's second). Index-based tie rules are a function of the caller's item
-  order, and exact ties are *structural* here, not measure-zero: P-C1 guarantees
+  order, and exact ties are _structural_ here, not measure-zero: P-C1 guarantees
   `compare(A, A)` is exactly 0, R6's never-drop rule makes `both-neutral`
   dimensions produce large blocks of exactly-equal distances, and item expansion
   makes duplicate content easy to introduce by accident. Under index rules a tie
   that resolved to `(0,3)` before a permutation can resolve to `(1,2)` after — a
-  *different merge*, not a relabeling. Since labels are already required unique
+  _different merge_, not a relabeling. Since labels are already required unique
   after expansion, keying every tie on the label instead — merge ties, child
   order, PAM BUILD/SWAP, and the eigenvector sign ties below — makes the products
   genuinely permutation-invariant, so P-C6's corpus clause is **full
@@ -1683,16 +1683,16 @@ applies to the decomposition.
   mistakes it for a performance. Sapp (2007) is the precedent — the average
   absorbs "minor and random relationships between performances" so only genuinely
   distinctive matches survive — and it converts the corpus into the
-  *deviation-from-norm* comparison that survey-lit L4 records as the single most
+  _deviation-from-norm_ comparison that survey-lit L4 records as the single most
   replicated methodological result in the field (Stamatatos & Widmer 2005:
   82.5 % identification against the norm versus 52.5 % against the score). Plain
   data, off by default, and stamped in the settings echo when on.
 - **Per-piece percentile context (opt-in, AD-26.3).** `noiseFloor?: boolean`
-  annotates each pair distance with where it sits in *this corpus's* own
+  annotates each pair distance with where it sits in _this corpus's_ own
   distribution: `{ percentile, corpusMedian, corpusIqr, noiseFloor }`, the noise
   floor being the bottom half of the ranked distances in Sapp's sense. The
   motivation is survey-lit L10 — a raw number is **not portable across pieces**;
-  the modal correlation between two *random* performances is 0.67 for Mazurka
+  the modal correlation between two _random_ performances is 0.67 for Mazurka
   17/4 and 0.87 for 68/3, so "two MPM files alone cannot tell you whether 0.8 is
   close." This is context, never a rescaling: the matrices themselves are
   untouched, so R3 and every metric guarantee stand.
@@ -1707,7 +1707,7 @@ applies to the decomposition.
 
   i.e. each dimension is rescaled so that its **median nonzero distance is 1**,
   which is what makes a corpus-normalized aggregate compare dimensions on the
-  spread they actually exhibit in *this* corpus rather than on their JND scales.
+  spread they actually exhibit in _this_ corpus rather than on their JND scales.
   A dimension whose nonzero set is **empty** — `pedal` across a corpus of
   harpsichord rolls, say — yields `normalizationConstants[k] = null` and falls
   back to the fixed default `ω_k`, stamped (AD-22, A3d). Default remains fixed
@@ -1737,15 +1737,24 @@ declares the surface.
 
 ```ts
 export const COMPARISON_DIMENSIONS = Object.freeze([
-  'tempo', 'rubato', 'dynamics', 'accentuation', 'articulation',
-  'ornamentation', 'asynchrony', 'pedal',
-  'imprecisionTiming', 'imprecisionDynamics', 'imprecisionDuration',
+  'tempo',
+  'rubato',
+  'dynamics',
+  'accentuation',
+  'articulation',
+  'ornamentation',
+  'asynchrony',
+  'pedal',
+  'imprecisionTiming',
+  'imprecisionDynamics',
+  'imprecisionDuration',
 ] as const);
 export type ComparisonDimension = (typeof COMPARISON_DIMENSIONS)[number];
 
 /** `${dimension}/${element}@${attribute}` — §4. The closed override vocabulary. */
 export const COMPARISON_JND_KEYS = Object.freeze([
-  'tempo/tempo@bpm', 'tempo/tempo@transition.to', /* … */
+  'tempo/tempo@bpm',
+  'tempo/tempo@transition.to' /* … */,
 ] as const);
 export type ComparisonJndKey = (typeof COMPARISON_JND_KEYS)[number];
 
@@ -1756,18 +1765,18 @@ export type DimensionState = 'compared' | 'both-neutral';
 export type TimeSignatureSource = 'msm' | 'renderer-default';
 
 export type ComparisonNoteKind =
-  | 'structural'              // §3: unmatched part, encoding mismatch, mechanism switch
-  | 'renderer-default-level'  // R8/AD-1: unresolvable level performed at 100.0
-  | 'renderer-error'          // R8/AD-1: ⊥ span — renderer aborts or emits NaN
-  | 'renderer-skip'           // AD-9: instruction the renderer skips
-  | 'inert-difference'        // R9b: documents differ in an attribute nothing reads
-  | 'capped'                  // AD-2: the local metric's cap bound
-  | 'grid-truncated'          // AD-10: rubato frame-boundary cap bound
-  | 'estimate-degradation'    // R7: an MSM-dependent refinement was unavailable
-  | 'option-unusable'         // A10: an explicitly-set option could not be honoured
-  | 'invariance-space'        // C9: 'level' on a linear-space dimension
-  | 'plausibility'            // C6: a resolved value outside its plausible range
-  | 'length-mismatch';        // C7: the same-piece heuristic fired
+  | 'structural' // §3: unmatched part, encoding mismatch, mechanism switch
+  | 'renderer-default-level' // R8/AD-1: unresolvable level performed at 100.0
+  | 'renderer-error' // R8/AD-1: ⊥ span — renderer aborts or emits NaN
+  | 'renderer-skip' // AD-9: instruction the renderer skips
+  | 'inert-difference' // R9b: documents differ in an attribute nothing reads
+  | 'capped' // AD-2: the local metric's cap bound
+  | 'grid-truncated' // AD-10: rubato frame-boundary cap bound
+  | 'estimate-degradation' // R7: an MSM-dependent refinement was unavailable
+  | 'option-unusable' // A10: an explicitly-set option could not be honoured
+  | 'invariance-space' // C9: 'level' on a linear-space dimension
+  | 'plausibility' // C6: a resolved value outside its plausible range
+  | 'length-mismatch'; // C7: the same-piece heuristic fired
 ```
 
 `COMPARISON_DIMENSIONS` is **frozen** (AD-22, A25), for the reason
@@ -1786,8 +1795,8 @@ table.
 export interface ComparisonSettings {
   /** Quarters. `start < end`, both finite, `start >= 0` (A16). Omit for §5.0's rule. */
   readonly window?: { readonly start: number; readonly end: number };
-  readonly weights?: Partial<Record<ComparisonDimension, number>>;   // ≥ 0, finite
-  readonly jnd?: Partial<Record<ComparisonJndKey, number>>;          // > 0, finite
+  readonly weights?: Partial<Record<ComparisonDimension, number>>; // ≥ 0, finite
+  readonly jnd?: Partial<Record<ComparisonJndKey, number>>; // > 0, finite
   readonly plausibleRange?: Partial<Record<ComparisonJndKey, readonly [number, number]>>;
   readonly invariance?: Partial<Record<ComparisonDimension, InvarianceMode>>;
   /** Requires `msm`; setting it true without one is reported (A10). */
@@ -1798,20 +1807,20 @@ export interface CompareMpmOptions extends ComparisonSettings {
   readonly a: XmlText;
   /** Omit to compare two performances **inside `a`** (C16). */
   readonly b?: XmlText;
-  readonly performanceA?: string | number;   // required if the document is multi-perf
+  readonly performanceA?: string | number; // required if the document is multi-perf
   readonly performanceB?: string | number;
   /** Part of the metric, not a report-only side input: it moves the window,
    *  the weight function and articulation resolution (A11). */
   readonly msm?: XmlText;
   /** Opt-in retention of the evaluated curves and densities (C1). */
   readonly profile?: {
-    readonly dimensions?: readonly ComparisonDimension[];   // default: all
-    readonly grid?: 'refinement' | { readonly step: number };  // quarters; step-capped
+    readonly dimensions?: readonly ComparisonDimension[]; // default: all
+    readonly grid?: 'refinement' | { readonly step: number }; // quarters; step-capped
   };
 }
 
 export interface DiffMpmOptions extends CompareMpmOptions {
-  readonly moves?: boolean;   // fragment/consolidate ops; W3+, default true
+  readonly moves?: boolean; // fragment/consolidate ops; W3+, default true
 }
 
 export interface CompareCorpusOptions extends ComparisonSettings {
@@ -1820,17 +1829,17 @@ export interface CompareCorpusOptions extends ComparisonSettings {
     readonly performance?: string | number;
     readonly label?: string;
   }[];
-  readonly msm?: XmlText;                            // one MSM for the whole matrix
-  readonly maxItems?: number;                        // default 256 (R10, C17)
-  readonly normalization?: 'fixed' | 'corpus';       // default 'fixed'
+  readonly msm?: XmlText; // one MSM for the whole matrix
+  readonly maxItems?: number; // default 256 (R10, C17)
+  readonly normalization?: 'fixed' | 'corpus'; // default 'fixed'
   readonly linkage?: 'average' | 'single' | 'complete' | 'weighted' | 'ward.D2';
-  readonly k?: number;                               // PAM clusters; omit = none
-  readonly embeddingAxes?: number;                   // default 2
-  readonly scape?: { readonly bins: number };        // omit for no scape (A2)
+  readonly k?: number; // PAM clusters; omit = none
+  readonly embeddingAxes?: number; // default 2
+  readonly scape?: { readonly bins: number }; // omit for no scape (A2)
   /** Add the corpus-average pseudo-performance as an extra item (AD-26.3). */
-  readonly corpusAverage?: boolean;                  // default false
+  readonly corpusAverage?: boolean; // default false
   /** Annotate pair distances with this corpus's own percentile context (AD-26.3). */
-  readonly noiseFloor?: boolean;                     // default false
+  readonly noiseFloor?: boolean; // default false
 }
 
 export function compareMpm(options: CompareMpmOptions): ComparisonResult;
@@ -1841,12 +1850,12 @@ export function compareMpmCorpus(options: CompareCorpusOptions): CorpusResult;
 export function neutralMpm(options?: { readonly ppq?: number }): XmlText;
 ```
 
-`scape` loses revision 1's `| null` (AD-22, A2): RULE N4 says every *input*
+`scape` loses revision 1's `| null` (AD-22, A2): RULE N4 says every _input_
 option is `?:` and never `null`, and RULE N1 forbids `null` meaning "use the
 default" — `k` on the neighbouring line already used the compliant spelling.
 
 `b` is optional and defaults to `a` (AD-23, C16). The campaign's own P-C9
-fixtures — Telemann *Grave*, Vulpius, Albert — are the only real
+fixtures — Telemann _Grave_, Vulpius, Albert — are the only real
 multi-performance documents in existence, and revision 1 made the pairwise entry
 point stricter than its corpus sibling for exactly the case the fixtures are
 built on. The multi-performance-without-selector error still covers the ambiguous
@@ -1859,14 +1868,15 @@ export interface ComparisonSiteRef {
   readonly document: 'a' | 'b';
   readonly scope: 'global' | 'part';
   readonly partIndex: number | null;
-  readonly container: string;          // 'dynamicsMap', 'dynamicsStyles/MEI export', …
-  readonly date: number | null;        // quarters; null when absent/unparseable
-  readonly index: number;              // position among element children, document order
+  readonly container: string; // 'dynamicsMap', 'dynamicsStyles/MEI export', …
+  readonly date: number | null; // quarters; null when absent/unparseable
+  readonly index: number; // position among element children, document order
   readonly attribute: string;
   readonly xmlId: string | null;
 }
 
-export interface MeasurePosition {     // C3; null everywhere without an MSM
+export interface MeasurePosition {
+  // C3; null everywhere without an MSM
   readonly number: number;
   readonly beat: number;
 }
@@ -1875,65 +1885,69 @@ export interface ComparisonNote {
   readonly kind: ComparisonNoteKind;
   readonly dimension: ComparisonDimension | null;
   readonly document: 'a' | 'b' | null;
-  readonly itemIndex: number | null;   // corpus level
+  readonly itemIndex: number | null; // corpus level
   readonly site: ComparisonSiteRef | null;
   readonly startQuarters: number | null;
   readonly endQuarters: number | null;
   readonly message: string;
 }
 
-export interface Decomposition {       // AD-18; interpretive, non-summing
+export interface Decomposition {
+  // AD-18; interpretive, non-summing
   /** The T-space unit of `level`/`levelSigned`/`gain`: 'nepers' for the log
    *  dimensions (tempo, dynamics), 'quarters'/'ms'/'velocity'/'ratio' elsewhere.
    *  Natural log throughout; ×1/ln 2 ≈ 1.4427 to read as log₂ (AD-26.1). */
   readonly unit: string;
-  readonly level: number;              // |ℓ_A − ℓ_B|, in `unit`
-  readonly levelSigned: number;        // ℓ_A − ℓ_B, in `unit`; > 0 ⇒ A faster/louder
-  readonly gain: number;               // |σ_A − σ_B|, in `unit`
-  readonly shape: number | null;       // √(2(1−r)), dimensionless; null iff shapeless
-  readonly r: number | null;           // dimensionless; null iff shapeless
-  readonly shapeless: boolean;         // σ_A·σ_B === 0 (C14)
-  readonly l2Squared: number;          // in `unit`²; shape term := 0 when shapeless
+  readonly level: number; // |ℓ_A − ℓ_B|, in `unit`
+  readonly levelSigned: number; // ℓ_A − ℓ_B, in `unit`; > 0 ⇒ A faster/louder
+  readonly gain: number; // |σ_A − σ_B|, in `unit`
+  readonly shape: number | null; // √(2(1−r)), dimensionless; null iff shapeless
+  readonly r: number | null; // dimensionless; null iff shapeless
+  readonly shapeless: boolean; // σ_A·σ_B === 0 (C14)
+  readonly l2Squared: number; // in `unit`²; shape term := 0 when shapeless
 }
 
 export interface DimensionComparison {
-  readonly state: DimensionState;      // 'excluded' no longer exists (AD-1)
-  readonly distance: number;           // JND·quarters
-  readonly mean: number | null;        // JND; null iff L === 0 (A3)
+  readonly state: DimensionState; // 'excluded' no longer exists (AD-1)
+  readonly distance: number; // JND·quarters
+  readonly mean: number | null; // JND; null iff L === 0 (A3)
   /** The T-space unit of `meanSigned` — 'nepers' for tempo/dynamics (natural
    *  log; ×1/ln 2 for log₂). MPM stores BPM, a RATE: on tempo a positive
    *  `meanSigned` means A is faster, the opposite of the seconds-per-beat
    *  convention partitura and much of the literature use (AD-26.1). */
   readonly unit: string;
-  readonly meanSigned: number | null;  // in `unit`; descriptor, never a distance (C2)
+  readonly meanSigned: number | null; // in `unit`; descriptor, never a distance (C2)
   readonly weight: number;
   readonly invariance: InvarianceMode;
-  readonly rows: readonly {            // the per-row breakdown ω=1 needs (AD-20)
+  readonly rows: readonly {
+    // the per-row breakdown ω=1 needs (AD-20)
     readonly key: ComparisonJndKey;
-    readonly distance: number;         // JND·quarters
-    readonly unit: string;             // the row's own unit — 'nepers', 'ms', …
-    readonly jnd: number;              // in `unit`
-    readonly delta: number;            // δ_row, in JND units
+    readonly distance: number; // JND·quarters
+    readonly unit: string; // the row's own unit — 'nepers', 'ms', …
+    readonly jnd: number; // in `unit`
+    readonly delta: number; // δ_row, in JND units
   }[];
   readonly events: {
-    readonly matched: number; readonly unmatchedA: number;
-    readonly unmatchedB: number; readonly mass: number;
+    readonly matched: number;
+    readonly unmatchedA: number;
+    readonly unmatchedB: number;
+    readonly mass: number;
   };
-  readonly bottomLengthQuarters: number;   // window length reading ⊥ on either side
+  readonly bottomLengthQuarters: number; // window length reading ⊥ on either side
   readonly cappedCells: number;
-  readonly decomposition: Decomposition | null;  // null iff the dimension has no curve
-  readonly timeSignatureSource: TimeSignatureSource | null;   // accentuation only (AD-12)
-  readonly datePositionKnown: boolean;  // false when noteid atoms lack an MSM (AD-7)
+  readonly decomposition: Decomposition | null; // null iff the dimension has no curve
+  readonly timeSignatureSource: TimeSignatureSource | null; // accentuation only (AD-12)
+  readonly datePositionKnown: boolean; // false when noteid atoms lack an MSM (AD-7)
 }
 
 export interface ComparisonSegment {
-  readonly startQuarters: number; readonly endQuarters: number;
+  readonly startQuarters: number;
+  readonly endQuarters: number;
   readonly lengthQuarters: number;
-  readonly measure: { readonly start: MeasurePosition;
-                      readonly end: MeasurePosition } | null;
-  readonly mass: number;               // JND·quarters
-  readonly peak: number;               // JND per quarter
-  readonly mean: number;               // JND per quarter
+  readonly measure: { readonly start: MeasurePosition; readonly end: MeasurePosition } | null;
+  readonly mass: number; // JND·quarters
+  readonly peak: number; // JND per quarter
+  readonly mean: number; // JND per quarter
   readonly peakAtQuarters: number;
   /** Aggregate-derived (AD-19), so this is in JND per quarter, NOT a T-space
    *  unit; the per-dimension signed figure with its own unit is on
@@ -1943,21 +1957,22 @@ export interface ComparisonSegment {
   readonly rank: number;
 }
 
-export interface AttributionTable {    // rows × (segments + remainder), row-major
-  readonly dimensions: readonly ComparisonDimension[];  // COMPARISON_DIMENSIONS order
-  readonly columnCount: number;        // segments.length + 1
-  readonly cells: readonly number[];   // unweighted c_{k,s}; length = 11 × columnCount
+export interface AttributionTable {
+  // rows × (segments + remainder), row-major
+  readonly dimensions: readonly ComparisonDimension[]; // COMPARISON_DIMENSIONS order
+  readonly columnCount: number; // segments.length + 1
+  readonly cells: readonly number[]; // unweighted c_{k,s}; length = 11 × columnCount
   readonly rowSums: readonly number[]; // = d_k
-  readonly columnSums: readonly number[];  // weighted
-  readonly total: number;              // = D
-  readonly residual: number;           // pinned ≤ 1e−12·D
+  readonly columnSums: readonly number[]; // weighted
+  readonly total: number; // = D
+  readonly residual: number; // pinned ≤ 1e−12·D
 }
 
 export interface ComparisonReport {
   /** Provenance: the fully resolved settings, never the documents (A12). */
   readonly inputs: {
-    readonly settings: Required<ComparisonSettings>;   // defaults filled in
-    readonly jnd: Record<ComparisonJndKey, number>;    // the effective vector (A1/A11)
+    readonly settings: Required<ComparisonSettings>; // defaults filled in
+    readonly jnd: Record<ComparisonJndKey, number>; // the effective vector (A1/A11)
     readonly msmUsed: boolean;
     /**
      * The per-family accuracy record, in BOTH units (AD-28.2). `relative` is the classical
@@ -1974,64 +1989,95 @@ export interface ComparisonReport {
     >;
   };
   readonly window: {
-    readonly startQuarters: number; readonly endQuarters: number;
-    readonly rule: WindowRule; readonly metricGuarantee: MetricGuarantee;
+    readonly startQuarters: number;
+    readonly endQuarters: number;
+    readonly rule: WindowRule;
+    readonly metricGuarantee: MetricGuarantee;
   };
-  readonly ppq: { readonly a: number; readonly b: number; readonly lcm: number;
-                  readonly fallbackUsed: boolean; readonly assumed: number | null };
-  readonly parts: readonly { readonly numberA: number | null;
-                             readonly numberB: number | null;
-                             readonly nameA: string | null;
-                             readonly nameB: string | null;
-                             readonly matched: boolean }[];
-  readonly comparability: {            // C7
-    readonly lastDateA: number; readonly lastDateB: number;
+  readonly ppq: {
+    readonly a: number;
+    readonly b: number;
+    readonly lcm: number;
+    readonly fallbackUsed: boolean;
+    readonly assumed: number | null;
+  };
+  readonly parts: readonly {
+    readonly numberA: number | null;
+    readonly numberB: number | null;
+    readonly nameA: string | null;
+    readonly nameB: string | null;
+    readonly matched: boolean;
+  }[];
+  readonly comparability: {
+    // C7
+    readonly lastDateA: number;
+    readonly lastDateB: number;
     readonly lengthRatio: number;
-    readonly ppqA: number; readonly ppqB: number;
-    readonly partCountA: number; readonly partCountB: number;
+    readonly ppqA: number;
+    readonly ppqB: number;
+    readonly partCountA: number;
+    readonly partCountB: number;
     readonly partNumbersMatched: boolean;
-    readonly instructionCountA: number; readonly instructionCountB: number;
+    readonly instructionCountA: number;
+    readonly instructionCountB: number;
   };
-  readonly measures: readonly {        // C3; null without an MSM
-    readonly number: number; readonly startQuarters: number;
-    readonly timeSignature: { readonly numerator: number;
-                              readonly denominator: number };
-  }[] | null;
+  readonly measures:
+    | readonly {
+        // C3; null without an MSM
+        readonly number: number;
+        readonly startQuarters: number;
+        readonly timeSignature: { readonly numerator: number; readonly denominator: number };
+      }[]
+    | null;
   readonly dimensions: Record<ComparisonDimension, DimensionComparison>;
   readonly aggregate: {
-    readonly distance: number;         // D, JND·quarters — additive, length-dependent
-    readonly mean: number | null;      // D / L, JND — the human headline (C10)
+    readonly distance: number; // D, JND·quarters — additive, length-dependent
+    readonly mean: number | null; // D / L, JND — the human headline (C10)
     readonly weights: Record<ComparisonDimension, number>;
     readonly normalization: 'fixed' | 'corpus';
   };
   readonly segments: readonly ComparisonSegment[];
-  readonly remainder: { readonly mass: number };      // the below-threshold column
+  readonly remainder: { readonly mass: number }; // the below-threshold column
   readonly table: AttributionTable;
-  readonly equivalence: {              // C11
+  readonly equivalence: {
+    // C11
     readonly subThresholdMassFraction: number;
     readonly aboveThresholdLengthFraction: number;
-    readonly byDimension: Record<ComparisonDimension, {
-      readonly subThresholdMassFraction: number;
-      readonly aboveThresholdLengthFraction: number;
-    }>;
+    readonly byDimension: Record<
+      ComparisonDimension,
+      {
+        readonly subThresholdMassFraction: number;
+        readonly aboveThresholdLengthFraction: number;
+      }
+    >;
   };
-  readonly cumulativeDrift: {          // C13; null iff tempo is ⊥ on both sides
-    readonly secondsA: number; readonly secondsB: number;
-    readonly difference: number; readonly ratio: number;
+  readonly cumulativeDrift: {
+    // C13; null iff tempo is ⊥ on both sides
+    readonly secondsA: number;
+    readonly secondsB: number;
+    readonly difference: number;
+    readonly ratio: number;
     readonly maxAbsMs: number;
   } | null;
-  readonly profiles: Record<ComparisonDimension, {    // C1; null unless requested
-    readonly dates: readonly number[];      // quarters, left edges
-    readonly density: readonly number[];    // p_k, JND per quarter
-    readonly signed: readonly number[];     // C2
-    readonly valueA: readonly number[] | null;   // T-space curve; null for
-    readonly valueB: readonly number[] | null;   //   event/distribution dimensions
-    readonly space: string; readonly unit: string;
-  }> | null;
+  readonly profiles: Record<
+    ComparisonDimension,
+    {
+      // C1; null unless requested
+      readonly dates: readonly number[]; // quarters, left edges
+      readonly density: readonly number[]; // p_k, JND per quarter
+      readonly signed: readonly number[]; // C2
+      readonly valueA: readonly number[] | null; // T-space curve; null for
+      readonly valueB: readonly number[] | null; //   event/distribution dimensions
+      readonly space: string;
+      readonly unit: string;
+    }
+  > | null;
   readonly notes: readonly ComparisonNote[];
 }
 
-export interface ComparisonResult { readonly report: ComparisonReport; }
+export interface ComparisonResult {
+  readonly report: ComparisonReport;
+}
 ```
 
 **Null-conditions, each stated** (AD-22, A22): `decomposition` is null exactly
@@ -2049,46 +2095,58 @@ export interface EditOp {
   readonly map: string;
   readonly part: number | null;
   readonly site: ComparisonSiteRef;
-  readonly dateA: number | null; readonly dateB: number | null;
+  readonly dateA: number | null;
+  readonly dateB: number | null;
   readonly measureA: MeasurePosition | null;
   readonly measureB: MeasurePosition | null;
   readonly attributes: readonly {
-    readonly key: ComparisonJndKey; readonly name: string;
+    readonly key: ComparisonJndKey;
+    readonly name: string;
     readonly valueA: number | string | null;
     readonly valueB: number | string | null;
     readonly deltaJnd: number;
   }[];
-  readonly cost: number;               // JND·quarters, sequential (§6.2)
-  readonly free: boolean;              // cost === 0 *by pricing* (§6.2)
-  readonly applicationIndex: number;   // position in date order (C5)
-  readonly costRank: number;           // position in cost-descending order (C5)
+  readonly cost: number; // JND·quarters, sequential (§6.2)
+  readonly free: boolean; // cost === 0 *by pricing* (§6.2)
+  readonly applicationIndex: number; // position in date order (C5)
+  readonly costRank: number; // position in cost-descending order (C5)
 }
 
 export interface EditScript {
   readonly part: number | null;
   readonly map: string;
-  readonly ops: readonly EditOp[];     // date order (C5)
-  readonly topByCost: readonly number[];   // indices into `ops`, cost desc
-  readonly opCounts: { readonly insert: number; readonly delete: number;
-                       readonly substitute: number; readonly fragment: number;
-                       readonly consolidate: number; readonly free: number };  // C12
+  readonly ops: readonly EditOp[]; // date order (C5)
+  readonly topByCost: readonly number[]; // indices into `ops`, cost desc
+  readonly opCounts: {
+    readonly insert: number;
+    readonly delete: number;
+    readonly substitute: number;
+    readonly fragment: number;
+    readonly consolidate: number;
+    readonly free: number;
+  }; // C12
 }
 
 export interface DiffReport {
-  readonly inputs: ComparisonReport['inputs'];     // same provenance block (A14)
+  readonly inputs: ComparisonReport['inputs']; // same provenance block (A14)
   readonly window: ComparisonReport['window'];
   readonly ppq: ComparisonReport['ppq'];
   readonly parts: ComparisonReport['parts'];
   readonly scripts: readonly EditScript[];
-  readonly dimensions: Record<ComparisonDimension, {
-    readonly dCurve: number | null;    // null for the event-shaped dimensions
-    readonly scriptCost: number;
-    readonly replayedDelta: number;
-    readonly reworking: number;        // ≥ 0 by theorem (AD-5)
-  }>;
+  readonly dimensions: Record<
+    ComparisonDimension,
+    {
+      readonly dCurve: number | null; // null for the event-shaped dimensions
+      readonly scriptCost: number;
+      readonly replayedDelta: number;
+      readonly reworking: number; // ≥ 0 by theorem (AD-5)
+    }
+  >;
   readonly notes: readonly ComparisonNote[];
 }
-export interface DiffResult { readonly report: DiffReport; }
+export interface DiffResult {
+  readonly report: DiffReport;
+}
 ```
 
 `free` is defined precisely (A14): **cost 0 by pricing**, i.e. the op's sequential
@@ -2100,48 +2158,60 @@ dimensions.
 
 ```ts
 export interface CorpusResult {
-  readonly n: number;                                    // A4
-  readonly labels: readonly string[];                    // unique, A8
-  readonly items: readonly { readonly itemIndex: number;
-                             readonly performance: string;
-                             readonly synthetic: boolean }[];   // AD-26.3
+  readonly n: number; // A4
+  readonly labels: readonly string[]; // unique, A8
+  readonly items: readonly {
+    readonly itemIndex: number;
+    readonly performance: string;
+    readonly synthetic: boolean;
+  }[]; // AD-26.3
   readonly matrices: {
-    readonly aggregate: readonly number[];               // N², row-major
+    readonly aggregate: readonly number[]; // N², row-major
     readonly byDimension: Record<ComparisonDimension, readonly number[]>;
   };
-  readonly dendrogram: { readonly merges: readonly { readonly left: number;
-                          readonly right: number; readonly height: number;
-                          readonly size: number }[];
-                         readonly order: readonly number[] };
-  readonly medoids: readonly number[] | null;            // indices into labels
-  readonly clusters: readonly number[] | null;           // per item, cluster index
+  readonly dendrogram: {
+    readonly merges: readonly {
+      readonly left: number;
+      readonly right: number;
+      readonly height: number;
+      readonly size: number;
+    }[];
+    readonly order: readonly number[];
+  };
+  readonly medoids: readonly number[] | null; // indices into labels
+  readonly clusters: readonly number[] | null; // per item, cluster index
   readonly silhouette: readonly number[] | null;
-  readonly silhouetteReliable: boolean;                  // false at N < 20 (A22)
+  readonly silhouetteReliable: boolean; // false at N < 20 (A22)
   readonly embedding: {
-    readonly coordinates: readonly number[];             // N × axes, row-major
+    readonly coordinates: readonly number[]; // N × axes, row-major
     readonly eigenvalues: readonly number[];
-    readonly explainedVariance: readonly (number | null)[];   // null iff Σ|λ| = 0
-    readonly degenerate: boolean;                        // A3b
+    readonly explainedVariance: readonly (number | null)[]; // null iff Σ|λ| = 0
+    readonly degenerate: boolean; // A3b
     readonly negativeEigenvalueMass: number;
     readonly axes: number;
   };
   readonly seriationOrder: readonly number[];
-  readonly profiles: readonly { readonly toMedoid: Record<ComparisonDimension, number>;
-                                readonly toMedoidSigned: Record<ComparisonDimension, number>;
-                                readonly toMeanDistance: number }[];
+  readonly profiles: readonly {
+    readonly toMedoid: Record<ComparisonDimension, number>;
+    readonly toMedoidSigned: Record<ComparisonDimension, number>;
+    readonly toMeanDistance: number;
+  }[];
   readonly normalizationConstants: Record<ComparisonDimension, number | null> | null;
   /** AD-26.3; null unless `noiseFloor` was requested. Context, not a rescaling —
    *  `matrices` is unaffected, so R3's guarantees are untouched. */
   readonly context: {
-    readonly percentile: readonly number[];    // N², row-major, aggregate distances
+    readonly percentile: readonly number[]; // N², row-major, aggregate distances
     readonly corpusMedian: number;
     readonly corpusIqr: number;
-    readonly noiseFloor: number;               // Sapp's bottom-half boundary
+    readonly noiseFloor: number; // Sapp's bottom-half boundary
   } | null;
-  readonly suspectPairs: readonly { readonly i: number; readonly j: number;
-                                    readonly reason: ComparisonNoteKind }[];   // C7
+  readonly suspectPairs: readonly {
+    readonly i: number;
+    readonly j: number;
+    readonly reason: ComparisonNoteKind;
+  }[]; // C7
   readonly scape: { readonly bins: number; readonly cells: readonly number[] } | null;
-  readonly settings: Required<ComparisonSettings>;       // the echo, documents excluded
+  readonly settings: Required<ComparisonSettings>; // the echo, documents excluded
   readonly notes: readonly ComparisonNote[];
 }
 ```
@@ -2156,8 +2226,8 @@ New typed classes extending `MeicoError`, in `src/api/errors.ts`:
   play (AD-22, A6).
 - **`ComparisonEngineError`** (new, empty body per the house pattern) — the
   attribution table fails to close, symmetry is violated. Revision 1 reused
-  `EngineInvariantError`, whose shipped documentation promises *"no document can
-  provoke it"* and names `minRubatoWindow` as the only input that can; under
+  `EngineInvariantError`, whose shipped documentation promises _"no document can
+  provoke it"_ and names `minRubatoWindow` as the only input that can; under
   comparison a pathological pair absolutely can, so reuse would ship two false
   sentences in the file consumers read to decide what to catch — and P-C5 runs
   both engines in one expression, where a caught error must say which engine
@@ -2180,24 +2250,24 @@ definition of legality) and the facade wraps their throws in `InvalidOptionError
 with `{ cause }`; the interior option object is built **field by field**, never a
 spread.
 
-| option | domain | on violation |
-|---|---|---|
-| `window` | `{start, end}` both finite, `0 ≤ start < end` | `InvalidOptionError` |
-| `weights` keys | in `COMPARISON_DIMENSIONS` | `InvalidOptionError` naming all offenders |
-| `weights` values | finite, ≥ 0 | `InvalidOptionError` |
-| `jnd` / `plausibleRange` keys | in `COMPARISON_JND_KEYS` | `InvalidOptionError` naming all offenders |
-| `jnd` values | finite, > 0 (a zero JND divides) | `InvalidOptionError` |
-| `invariance` values | in the union; `'level'`/`'level-gain'` on an event dimension | `InvalidOptionError` (AD-20) |
-| `performanceA` / `performanceB` / `items[].performance` | non-negative integer, or a name; index in bounds | `InvalidOptionError` / `PerformanceNotFoundError`, spelled exactly as `selectPerformance` spells it (A17) |
-| multi-performance document, no selector | — | `InvalidOptionError` naming the candidates |
-| document with **zero** performances | — | `PerformanceNotFoundError` (C8 — users hand-building neutral documents hit this) |
-| `k` | integer, `1 ≤ k ≤ N` | `InvalidOptionError` |
-| `embeddingAxes` | integer, `1 ≤ axes ≤ N−1` | `InvalidOptionError` |
-| `scape.bins` | integer, `1 ≤ bins ≤ 256` | `InvalidOptionError` |
-| `maxItems` / `items.length` | integer ≥ 0; `items.length ≤ maxItems` | `InvalidOptionError` |
-| duplicate labels after expansion | — | `InvalidOptionError` naming every collision and its item indices (A8) |
-| `linkage` / `normalization` | in their unions (JS callers) | `InvalidOptionError` |
-| resolved `qbpm ≤ 0` | — | `InvalidOptionError` on the document (M11) |
+| option                                                  | domain                                                       | on violation                                                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `window`                                                | `{start, end}` both finite, `0 ≤ start < end`                | `InvalidOptionError`                                                                                      |
+| `weights` keys                                          | in `COMPARISON_DIMENSIONS`                                   | `InvalidOptionError` naming all offenders                                                                 |
+| `weights` values                                        | finite, ≥ 0                                                  | `InvalidOptionError`                                                                                      |
+| `jnd` / `plausibleRange` keys                           | in `COMPARISON_JND_KEYS`                                     | `InvalidOptionError` naming all offenders                                                                 |
+| `jnd` values                                            | finite, > 0 (a zero JND divides)                             | `InvalidOptionError`                                                                                      |
+| `invariance` values                                     | in the union; `'level'`/`'level-gain'` on an event dimension | `InvalidOptionError` (AD-20)                                                                              |
+| `performanceA` / `performanceB` / `items[].performance` | non-negative integer, or a name; index in bounds             | `InvalidOptionError` / `PerformanceNotFoundError`, spelled exactly as `selectPerformance` spells it (A17) |
+| multi-performance document, no selector                 | —                                                            | `InvalidOptionError` naming the candidates                                                                |
+| document with **zero** performances                     | —                                                            | `PerformanceNotFoundError` (C8 — users hand-building neutral documents hit this)                          |
+| `k`                                                     | integer, `1 ≤ k ≤ N`                                         | `InvalidOptionError`                                                                                      |
+| `embeddingAxes`                                         | integer, `1 ≤ axes ≤ N−1`                                    | `InvalidOptionError`                                                                                      |
+| `scape.bins`                                            | integer, `1 ≤ bins ≤ 256`                                    | `InvalidOptionError`                                                                                      |
+| `maxItems` / `items.length`                             | integer ≥ 0; `items.length ≤ maxItems`                       | `InvalidOptionError`                                                                                      |
+| duplicate labels after expansion                        | —                                                            | `InvalidOptionError` naming every collision and its item indices (A8)                                     |
+| `linkage` / `normalization`                             | in their unions (JS callers)                                 | `InvalidOptionError`                                                                                      |
+| resolved `qbpm ≤ 0`                                     | —                                                            | `InvalidOptionError` on the document (M11)                                                                |
 
 **An explicitly-set option that cannot be honoured splits by knowability**
 (AD-25.1, resolving A10):
@@ -2205,7 +2275,7 @@ spread.
 - **Unusable given the OTHER OPTIONS alone ⇒ `InvalidOptionError`.** The caller
   could have known without reading a document: `noteDensityWeight: true` with no
   `msm` is the case, and it throws. The expression facade's reason applies
-  unchanged — a caller who *set* the option asked a question, and answering it
+  unchanged — a caller who _set_ the option asked a question, and answering it
   with a full, plausible, differently-weighted report hides a typo behind a
   valid-looking result.
 - **Unusable only given DOCUMENT CONTENT ⇒ a typed `option-unusable` note.**
@@ -2248,7 +2318,7 @@ rule rather than by hope (AD-22, A3):
   with a typed note. A caller-supplied zero-length window is an
   `InvalidOptionError` instead (§9.4).
 - `Σ|λ| = 0` ⇒ `explainedVariance` entries `null` and `embedding.degenerate` true.
-- `normalization: 'corpus'` with an empty nonzero set for dimension *k* ⇒
+- `normalization: 'corpus'` with an empty nonzero set for dimension _k_ ⇒
   `normalizationConstants[k] = null`, `ω_k` falls back to the fixed default,
   stamped.
 - `max(a,b) = 0` in the silhouette ⇒ `s(i) = 0`.
@@ -2260,8 +2330,8 @@ corpora through the same finiteness walker as `tests/api/plain-data.test.ts`.
 
 Stated here so W2 does not rediscover it. The new `comparison` eslint zone must
 be fenced in **both** directions — `eslint.config.js:35-38` states the rule
-itself: *"Fencing only the downward direction would leave the new layer
-half-enforced."* So the zone forbids `**/midi/**`, `**/msm/**`, `**/mei/**`,
+itself: _"Fencing only the downward direction would leave the new layer
+half-enforced."_ So the zone forbids `**/midi/**`, `**/msm/**`, `**/mei/**`,
 `**/musicxml/**`, `**/mpm/**` **with two negations** — `!**/mpm/names.js` and
 `!**/mpm/elements/maps/data/bezier.js` — it **permits** `**/expression/**`, and
 `'**/comparison/**'` is added to the `forbidden` list of all six existing zones,
@@ -2298,11 +2368,19 @@ exports `ReportNote`, `ReportNoteKind`, `SiteRef`, `SiteState` and
   name, an unmatched part, a present-vs-absent replacement attribute, a
   `timingBasis` mismatch, a renderer-error span — plus M5's shared-date event
   triples, with the three windows asserted equal (or the test run under a
-  piece-derived window). `d(A,C) ≤ d(A,B) + d(B,C) + 3ε`, per dimension and
-  aggregate. Revision 1's version drew triples from a corpus run, which shares one
-  window and therefore could not express the failures it was meant to catch.
+  piece-derived window). The assertion is
+  `d(A,C) ≤ (d(A,B) + d(B,C))·(1 + 1e−9)`, per dimension and aggregate —
+  **relative, not the additive `+ 3ε` revision 2 carried**. Quadrature error
+  scales with the magnitude of the integral, so an absolute epsilon is the wrong
+  shape and fails correct code: measured on the Telemann anchors, whose three
+  tempo curves are pointwise ordered and therefore sit at the triangle's
+  _equality_ case, the slack is 7.3·10⁻⁷ absolute on a quantity of ≈ 5975 —
+  1.2·10⁻¹⁰ relative, pure quadrature. Any `3ε` small enough to be meaningful on
+  a short window fails on a long one. Revision 1's version additionally drew its
+  triples from a corpus run, which shares one window and therefore could not
+  express the failures it was meant to catch.
 - **P-C3b zero-set transitivity** (AD-21): `d(A,B) = 0 ∧ d(B,C) = 0 ⟹
-  d(A,C) = 0`. The cheapest possible detector for every M1-class defect; it would
+d(A,C) = 0`. The cheapest possible detector for every M1-class defect; it would
   have caught all four.
 - **P-C4 encoding invariance**: a transition re-encoded as dense steps from the
   same curve: semantic distance ≤ the documented staircase bound, shrinking with
@@ -2328,7 +2406,7 @@ exports `ReportNote`, `ReportNoteKind`, `SiteRef`, `SiteState` and
   intensity 1, lateStart 0, earlyEnd 1; asynchrony 0 ms) ≡ absent map: dimension
   distance exactly 0 — exactly, thanks to §5.2's special case (M18) — plus the
   structural note.
-- **P-C9 real-data sanity**: Telemann *Grave* — d(Baroque, Romantic) <
+- **P-C9 real-data sanity**: Telemann _Grave_ — d(Baroque, Romantic) <
   d(Baroque, Fast) and < d(Fast, Romantic); Vulpius similar; values pinned as
   regression anchors (not as truths).
 - **P-C10 registry coverage**: superset-of-expression property; full attribute
@@ -2420,11 +2498,11 @@ under `tests/comparison/fixtures/` (NEW tree; the immutable
   Four further documentation obligations from the literature (AD-26.4), recorded
   here so they cannot be dropped:
   - **The P1 interpolation answer.** Desain & Honing's standing objection —
-    never interpolate between measured events — targets *measured event data*.
+    never interpolate between measured events — targets _measured event data_.
     MPM curves are **parametric specifications**, continuous by definition, so
     this module compares shape functions and interpolates nothing. That is
     exactly the representation Todd's kinematic models, Repp's parabolic ritard
-    and Molina-Solana's (w, q) fitting all have to *recover* by fitting, and it
+    and Molina-Solana's (w, q) fitting all have to _recover_ by fitting, and it
     is free here (survey-lit G5). One paragraph, in the README, before anyone
     raises it.
   - **The G2 framing paragraph.** Performer identity is carried first by
@@ -2446,7 +2524,7 @@ under `tests/comparison/fixtures/` (NEW tree; the immutable
   - **Provenance trust profiles as documented weight presets.** A roll-derived
     document's dynamics are unreliable while its note ordering is not (Bausch;
     Hall's six-factor decomposition), and its melody lead is confounded by
-    velocity (Goebl 2001; Hagmann's *künstliches Arpeggio*). Ship named weight
+    velocity (Goebl 2001; Hagmann's _künstliches Arpeggio_). Ship named weight
     presets — meico export / hand-authored / roll-derived / alignment-fitted —
     as documented data over the existing `weights` and `invariance` knobs, with
     no new mechanism. TimeToAlign's `MatchClaim` certainty field (TISMIR 2026) is
