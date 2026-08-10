@@ -476,3 +476,47 @@ Not copied, deliberately: the .mp3 renderings, .pdf/.png scores, .mid, one
 .mei and the MPM-Toolbox .mpr project files. None is needed to compare
 performances and the audio/scores are large; source path is recorded so a
 later item can fetch them.
+
+## 2026-08-10 — W1: flag resolutions AD-25 [BINDING]
+
+design-rewrite delivered rev 2 (2222 lines) with 9 flags. Rulings:
+
+AD-25.1 (flag 1, A10): split by knowability. An option unusable given the
+OTHER OPTIONS alone (noteDensityWeight without msm) is InvalidOptionError —
+the caller could have known. An option unusable only given DOCUMENT CONTENT
+(invariance 'level' on a dimension absent from both documents) degrades with
+a typed note per R7's philosophy.
+
+AD-25.2 (flag 2, A7): REVERSED to the panel's second option — label-based
+tie-breaking everywhere in corpus products (lexicographic label order for
+merge ties, PAM ties, eigenvector sign ties; labels are already required
+unique). P-C6's corpus clause is RESTORED to full permutation-equivariance:
+permuting items permutes matrices and relabels the dendrogram, nothing else.
+
+AD-25.3 (flag 3, A12): confirmed as transcribed (one option bag; echo
+enumerates scalar fields, never document texts).
+
+AD-25.4 (flag 4): canonical orientation for the pairwise edit path is
+CONTENT-DERIVED: compare the canonical serializations (canonicalMpm bytes of
+the selected performance's document, then the performance selector as a
+string) lexicographically; equal bytes ⇒ identical documents, orientation
+irrelevant. Deterministic, no labels needed.
+
+AD-25.5 (flag 5, M19): corpus normalization is ω_k = 1 / median(nonzero
+d_k over the matrix), i.e. dimensions are rescaled so their median nonzero
+distance is 1; empty nonzero set ⇒ ω_k = fixed default and
+normalizationConstants[k] = null. Written out in §8.
+
+AD-25.6 (flag 6): APPROVED — five epsilon families (step, tempo, bezier,
+imprecision, drift); the bezier family's error model is the ideal-curve
+divergence, correctly split from tempo's substitution quadrature.
+
+AD-25.7 (flag 7): APPROVED — δ_row and κ are non-overridable documented
+constants in v1 of the module; revisit on consumer demand.
+
+AD-25.8 (flag 8): APPROVED — plausibleRange keyed on ComparisonJndKey.
+
+AD-25.9 (flag 9): both rules stand as ruled; DESIGN gains one sentence at
+the movement section noting the trailing-instruction asymmetry (tempo/
+dynamics constant vs movement no-span) is the RENDERER's own asymmetry,
+with both code citations, so no future editor "fixes" it.
