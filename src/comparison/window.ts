@@ -58,13 +58,12 @@ function guaranteeOf(rule: WindowRule): MetricGuarantee {
 /**
  * §5.0's precedence chain.
  *
- * **The MSM outranks an explicit window, as written.** That ordering is surprising — most
- * option systems let an explicit value win — and it is implemented literally because §5.0
- * states it as a precedence list and R7 makes the MSM "part of the metric here, not a
- * report-only side input". A caller who supplies both gets the score end and an
- * `explicit` window that did nothing; §9.4's knowability split would make that an
- * `option-unusable` note at the facade rather than a silent override, and that note is the
- * facade's to emit.
+ * **An explicit window outranks the MSM** (AD-27.1, which reordered §5.0's list). W2b
+ * implemented the list literally, MSM first; the conductor reversed it on report, because an
+ * explicit caller choice winning is what every other option in this codebase does and a
+ * silently ignored `window` is the worse surprise. When an MSM is *also* present and its end
+ * differs, the facade records the score end as a note rather than dropping it — the value is
+ * still information, it just does not decide the window.
  *
  * A non-finite or non-positive candidate is skipped rather than propagated: an end that is
  * not a real number would make every integral `NaN`, and the chain has a well-defined floor
@@ -74,8 +73,8 @@ export function computeWindow(inputs: WindowInputs): ComparisonWindow {
   const start = inputs.explicit?.start ?? 0;
 
   const candidates: readonly { readonly rule: WindowRule; readonly end: number | null }[] = [
-    { rule: 'msm', end: inputs.msmEndQuarters ?? null },
     { rule: 'explicit', end: inputs.explicit?.end ?? null },
+    { rule: 'msm', end: inputs.msmEndQuarters ?? null },
     { rule: 'corpus', end: inputs.corpusEndQuarters ?? null },
   ];
 

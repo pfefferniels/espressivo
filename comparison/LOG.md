@@ -835,3 +835,69 @@ Gate: 41/41 tests, eslint and prettier clean on both files, `tsc` clean.
 `npm run verify` deliberately not re-run for this commit — the module imports
 nothing and nothing imports it yet, so it cannot affect another suite; the full
 gate runs on the W2c part 2 commit that wires it in.
+
+## 2026-08-10 — W2c part 2a: grid + tempo end to end (task #14, survey-code)
+
+Task #14 STAYS OPEN. This is the tempo dimension complete — curve, grid,
+density, distance, real anchors — plus the two owed edits. Dynamics, rubato and
+asynchrony are NOT in it; see "what remains" below. Splitting again rather than
+holding a large half-finished commit: tempo is the dimension the other three
+are shaped against, and the anchors it produces are the campaign's first real
+numbers, so landing it separately makes the next three reviewable against
+something concrete.
+
+AD-27.1 applied: `window.ts` precedence is now explicit > msm > corpus >
+pair-derived, and the W2b test that pinned MSM-first is swapped for two — one
+pinning that explicit wins, one pinning that the MSM still wins when no explicit
+window is given.
+
+DESIGN §9.3's epsilon record rewritten per AD-28.2: each of the five families
+now carries `{ relative, jnd }` rather than one number, with the reason stated —
+reporting only `relative` invites a reader to think 1e-6 is a requirement rather
+than a comfort, when the requirement is JND-scale exactness.
+
+`tempoCurve.ts` implements §5.1's four renderer behaviours, each pinned:
+(1) trailing transitions inert (AD-8) — the last `<tempo>` performs as a
+constant and inserts NO synthetic breakpoint, so `all_maps.mpm`'s trailing
+`transition.to="90"` from 120 is not read as a ritardando; (2) a skipped
+instruction still ends the previous span and opens a 100-qbpm gap to the next
+VALID instruction (AD-9i); (3) `[0, firstValidDate)` at 100 qbpm (AD-9ii);
+(4) the degenerate table (AD-9iii) including the row that matters — `meanTempoAt
+<= 0` is a constant at TRANSITION.TO, not at bpm, which "collapses to a
+constant" gets wrong by a factor of two.
+
+`tempoDistance.ts` is the grid and the integral. The lead's integration note is
+implemented and commented at the point of use: when a cell covers only part of a
+transition because the other document's breakpoint splits it, the graded mesh is
+computed in the TRANSITION's u-coordinate and then intersected with the cell —
+grading in the cell's coordinate would put the panels away from the boundary
+layer they exist to track and silently lose AD-28.1's accuracy. Only the row's
+`jnd` is consumed; `localDistance` is not summed over curve rows (w2a's note and
+§4's own wording).
+
+FIRST REAL NUMBERS — Telemann Grave, tempo, window 198 quarters, pair-derived:
+  Baroque <-> Fast      5975.4491 JND*qn   (147.5494 nepers*qn)  mean 30.18 JND
+  Baroque <-> Romantic   556.5371 JND*qn   ( 13.7424 nepers*qn)  mean  2.81 JND
+  Fast    <-> Romantic  5418.9120 JND*qn   (133.8071 nepers*qn)  mean 27.37 JND
+P-C9's shape holds: Baroque/Romantic is the near pair by an order of magnitude.
+The mean reads as ln(123/58) sustained, which is the right physical size for
+58 vs 123 qbpm. Anchors are pinned in BOTH units — the nepers figure survives a
+JND revision, and TEMPO_JND_NEPERS has already halved once under AD-27.6.
+
+[FINDING, method not defect] P-C3's triangle test needs a RELATIVE tolerance.
+The three Telemann curves are pointwise ordered, so the true relation is exact
+EQUALITY, and the measured slack is 7.3e-7 absolute on a quantity of ~5975 —
+1.2e-10 relative, i.e. pure quadrature error. An absolute epsilon of 1e-9 fails
+a correct implementation. Both triangle tests use `<= (sum) * (1 + 1e-9)`.
+
+Gate: `npm run verify` GREEN, 95 files / 4198 passed + 1 skipped (was 4126).
+30 new tempo tests + 1 net new window test. eslint and prettier clean on all six
+files touched.
+
+WHAT REMAINS in task #14: dynamics (ideal Bézier via bezier.ts, 0.0 defaults and
+clamps, trailing-constant, subNoteDynamics structural finding), rubato
+(transliterated warp, @loop gating + frame cap + gridTruncated, clamps before
+evaluation, skip-gap neutral spans), asynchrony (step curve, NaN-poisoned spans
+to ⊥ renderer-error); the level/gain/shape decomposition (AD-18) and invariance
+modes (AD-20); and the rest of the property suite — P-C3b zero-set transitivity,
+loop on/off, capped-metric/⊥ behaviour. The substrate they need is now in.

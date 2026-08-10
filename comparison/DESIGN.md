@@ -1952,10 +1952,19 @@ export interface ComparisonReport {
     readonly settings: Required<ComparisonSettings>;   // defaults filled in
     readonly jnd: Record<ComparisonJndKey, number>;    // the effective vector (A1/A11)
     readonly msmUsed: boolean;
-    readonly epsilon: {
-      readonly step: number; readonly tempo: number; readonly bezier: number;
-      readonly imprecision: number; readonly drift: number;
-    };
+    /**
+     * The per-family accuracy record, in BOTH units (AD-28.2). `relative` is the classical
+     * quadrature figure; `jnd` is the same error expressed on the dimension's own perceptual
+     * scale, and it is the one that states whether the number is fit for purpose — the metric
+     * requirement is JND-scale exactness, and the relative figures are numerical hygiene
+     * above it. Naive GL-10 was already at 9.7e-3 JND on tempo before AD-28 replaced it; the
+     * graded mesh is at 5.4e-4. Reporting only `relative` invites a reader to think 1e-6 is
+     * a requirement rather than a comfort.
+     */
+    readonly epsilon: Record<
+      'step' | 'tempo' | 'bezier' | 'imprecision' | 'drift',
+      { readonly relative: number; readonly jnd: number }
+    >;
   };
   readonly window: {
     readonly startQuarters: number; readonly endQuarters: number;

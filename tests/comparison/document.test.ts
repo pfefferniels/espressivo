@@ -433,15 +433,24 @@ describe('window rules and stamps (AD-4)', () => {
     expect(window.metricGuarantee).toBe('unconditional');
   });
 
-  it('gives the MSM score end the highest precedence, as §5.0 lists it', () => {
+  it('lets an EXPLICIT window outrank the MSM score end (AD-27.1)', () => {
+    // W2b implemented §5.0's list literally, MSM first; AD-27.1 reversed it on report,
+    // because an explicit caller choice winning is what every other option here does.
     const window = computeWindow({
       ...base,
       msmEndQuarters: 32,
       explicit: { start: 0, end: 8 },
       corpusEndQuarters: 64,
     });
+    expect(window.rule).toBe('explicit');
+    expect(window.endQuarters).toBe(8);
+  });
+
+  it('still uses the MSM score end when no explicit window is given', () => {
+    const window = computeWindow({ ...base, msmEndQuarters: 32, corpusEndQuarters: 64 });
     expect(window.rule).toBe('msm');
     expect(window.endQuarters).toBe(32);
+    expect(window.metricGuarantee).toBe('unconditional');
   });
 
   it('stamps the real fixture pair as window-restricted with no MSM', () => {
