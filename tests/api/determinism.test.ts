@@ -1,6 +1,6 @@
 /**
  * The render knobs, exercised through the facade: the imprecision seed (RULE F7, the
- * downstream consumer's request (b) in state.json) and the movement sampling step (RULE I5).
+ * downstream consumer's request (b) in docs/history/refactor/state.json) and the movement sampling step (RULE I5).
  *
  * T19a proved the plumbing through the four hops of §2.4 at the class level; what is proved
  * here is that `PerformOptions` actually reaches it — the facade is the layer the consumer

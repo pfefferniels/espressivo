@@ -1973,7 +1973,7 @@ describe('OrnamentationMap — the duplicated millisecond pass', () => {
    * `Performance` carries a private static copy of
    * {@link OrnamentationMap.renderMillisecondsModifiersToMap}, and **that copy is the one the
    * pipeline runs** — this class's is Java-parity code no fixture reaches (architecture brief
-   * §2.5, `refactor/log.md:2376-2401`). T19 measured the two bodies character-identical and
+   * §2.5, `docs/history/refactor/log.md:2376-2401`). T19 measured the two bodies character-identical and
    * ruled the duplication stays, noting that nothing keeps them in step.
    *
    * W5 had to edit both (the MPM v3 `ornament.milliseconds.fromend.offset` branch of the D5

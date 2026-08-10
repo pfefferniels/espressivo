@@ -510,7 +510,7 @@ describe('turn-atend: the figure-2 turn (DESIGN.md §5.2)', () => {
       // xml:id="P", on the renderer's reading that "the leftover *is* the principal". The W6
       // verifier caught what that means for the output: an augmented MSM with two elements
       // sharing an xml:id, which is not a valid document. The conductor's **D10 id-uniqueness
-      // ruling** (ornamentation/LOG.md, 2026-08-09) settled it the other way — the id goes to
+      // ruling** (docs/history/ornamentation/LOG.md, 2026-08-09) settled it the other way — the id goes to
       // the head leftover when one survives, else to the heir, never to both. D10's original
       // wording was exclusive and was never amended, and `ornament.anchor` sits on every
       // generated note precisely so that no consumer needs the id there to find its way home.

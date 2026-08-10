@@ -73,7 +73,7 @@ export abstract class MidiMessage {
  *
  * The four constructor overloads are the JDK's four construction modes and are
  * **not** collapsible onto optional parameters, which is why this class carries two
- * `unified-signatures` entries in `refactor/lint-debt.md`. `(status, data1, data2)`
+ * `unified-signatures` entries in `docs/history/refactor/lint-debt.md`. `(status, data1, data2)`
  * and `(command, channel, data1, data2)` differ in what the *first* argument means —
  * a complete status byte versus a command nibble that is then OR-ed with the
  * channel — and merging them would additionally make a 2-argument call typecheck,

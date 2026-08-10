@@ -46,7 +46,7 @@ Strategic consequences (journaled before acting):
 
 ## 2026-08-09 — P0: architecture brief landed (orn-research-arch)
 
-ornamentation/research/architecture-brief.md (571 lines, cited). The five facts that
+docs/history/ornamentation/research/architecture-brief.md (571 lines, cited). The five facts that
 will shape DESIGN.md most:
 1. `OrnamentData.apply` always returns [] (Java TODO); the consuming loop in
    OrnamentationMap.apply is dead by construction — THAT is the discrete-note seam.
@@ -65,7 +65,7 @@ will shape DESIGN.md most:
 
 ## 2026-08-09 — P0: v2 exact-semantics report landed (orn-research-java)
 
-ornamentation/research/java-ts-v2-ornamentation.md (861 lines). Facts most relevant to
+docs/history/ornamentation/research/java-ts-v2-ornamentation.md (861 lines). Facts most relevant to
 v3 design:
 - v2 never creates notes: it writes ornament.* marker attrs on existing notes; two
   passes fold them in (tick pass before tempo, ms pass after; markers never deleted —
@@ -94,7 +94,7 @@ ORN-1 complete.
 
 ## 2026-08-09 — P0: GitHub design-rationale report landed (orn-research-github)
 
-ornamentation/research/github-v3-design.md (367 lines). Decisive facts:
+docs/history/ornamentation/research/github-v3-design.md (367 lines). Decisive facts:
 - NO version marker in MPM documents (same namespace v1-v3, no version attr) →
   v2/v3 detection is structural. Markers enumerated in report §1.
 - Zero GitHub review discussion on the v3 PRs — semantics live ONLY in ODD prose,
@@ -125,7 +125,7 @@ ORN-2 complete.
 
 ## 2026-08-09 — P0: fixture-harness feasibility (ORN-7 probe)
 
-ornamentation/research/fixture-harness-feasibility.md. Verdict: harness WORKS
+docs/history/ornamentation/research/fixture-harness-feasibility.md. Verdict: harness WORKS
 (Lars' branch compiles with one jar addition; Niels' tools graft with a 90-line
 adaptation; probe workspace kept warm), but 3deb141c CANNOT source fixtures:
 - v2 ornamentation is a complete silent no-op on Lars' branch (apply() calls
@@ -151,10 +151,10 @@ review on cemfi/meico#31 — valuable to the ecosystem, outward-facing, so parke
 
 ## 2026-08-09 — P1: DESIGN.md adopted (ORN-5); blueprint landed (ORN-6)
 
-orn-research-lars delivered ornamentation/research/lars-v3-implementation.md (1976
+orn-research-lars delivered docs/history/ornamentation/research/lars-v3-implementation.md (1976
 lines): full algorithm walkthrough, 24-item spec-fidelity audit (headline: the PR
 cannot read a spec-conformant v3 file), 29-item bug catalogue, port recommendations,
-and the finding that the PR ships ZERO tests. ornamentation/DESIGN.md adopted with
+and the finding that the PR ships ZERO tests. docs/history/ornamentation/DESIGN.md adopted with
 17 binding decisions (D1–D17), module map, 6 normative worked examples
 (figure-derived), test strategy, and waves W1–W10. Headline rulings: spec-first with
 documented lenience; two-phase architecture keeping note INSTANTIATION + tick/%
@@ -622,7 +622,7 @@ Adversarial review of `src/mpm/elements/maps/data/ornamentExpansion.ts` +
 `tests/mpm/elements/maps/data/ornamentExpansion.test.ts` against DESIGN.md D8/D9 (D7/D10 as
 consumer context). Footprint exact: the two W4 files + this append; everything else dirty in
 the tree is W3's (OrnamentDef/TemporalSpread/OrnamentData/OrnamentationMap/OrnamentNote +
-tests) and was ignored. `git diff --numstat ornamentation/LOG.md` = 77/0 before this entry, so
+tests) and was ignored. `git diff --numstat docs/history/ornamentation/LOG.md` = 77/0 before this entry, so
 the implementer appended and rewrote nothing. Gates re-run by me: 118/118 green (171 ms),
 prettier clean, `eslint` exit 0 and silent, `tsc --noEmit --strict` clean, zero suppressions
 (the `any` grep hits are the English word). No importers yet — W5 wires it.
@@ -1753,7 +1753,7 @@ plus one test edit; no fixture and no renderer change is implied.
 
 ### Footprint + immutability (re-measured)
 
-`git status --porcelain` is exactly `M ornamentation/LOG.md`, `?? tests/integration/fixtures-v3/`,
+`git status --porcelain` is exactly `M docs/history/ornamentation/LOG.md`, `?? tests/integration/fixtures-v3/`,
 `?? tests/integration/ornamentation-v3.test.ts` — nothing else. **`git diff -- src/` is empty**
 before and after my mutation round (md5s restored: ornamentInstantiation `099e981f…`,
 ornamentExpansion `91f5ab08…`, Performance `4cc9f457…`). `git status/diff -- tests/integration/fixtures/`
@@ -2188,7 +2188,7 @@ this is all it is.
   source/test files.** **Zero suppressions** — `git diff -U0 | grep '^+'` finds no
   `eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck` or coverage-ignore.
   - **Stated precisely, because a "prettier clean" claim from this campaign has been wrong
-    before:** `ornamentation/LOG.md` (this file) is **not** prettier-clean, and was not at HEAD
+    before:** `docs/history/ornamentation/LOG.md` (this file) is **not** prettier-clean, and was not at HEAD
     either — all eight `ornamentation/**/*.md` files fail `--check` on the baseline tree, since
     `.prettierignore` exempts `refactor/` as a "hand-formatted journal" and nobody added
     `ornamentation/` beside it. I did not reformat: prettier wants **399 changed lines** in
@@ -2791,7 +2791,7 @@ only by the multi-staff test. I confirmed by direct measurement that it does (co
 → part "Oboe", n=1); a one-line assertion would close it. (4) `tests/mei/*` carry no per-test
 timeouts. They are bounded by the config's global `testTimeout: 30000` and do not drive the
 repetition engine, so D16 is satisfied; the integration suite's explicit 15 s is still the
-better discipline. (5) `ornamentation/LOG.md` fails `prettier --check`, but it already did at
+better discipline. (5) `docs/history/ornamentation/LOG.md` fails `prettier --check`, but it already did at
 2f82def — `.prettierignore` exempts `refactor/` as a hand-formatted journal and never got the
 same entry for `ornamentation/`. Adding it would stop this recurring false signal.
 
@@ -3122,7 +3122,7 @@ unit tests, and **no integration test pins that `<note date="Infinity">` stays o
 augmented MSM** — the guard's own docblock names that as the motivating failure. Worth one
 assertion. Of 23 W9-tagged obligations in the log, 22 are discharged or reasoned-deferred; the
 `<ornam>`/`@altsym` note (`LOG.md:2675-2676`) is **silently dropped** from the journal — the
-deliverable exists at `PARITY.md:813-814` but is never claimed. `ornamentation/CAMPAIGN.md` was
+deliverable exists at `PARITY.md:813-814` but is never claimed. `docs/history/ornamentation/CAMPAIGN.md` was
 modified mid-verification — **the conductor's own edit**, recording the user's continuous-backup-
 push directive as charter invariant 6; confirmed by the conductor after I flagged it. Doc-only,
 outside W9's footprint, no gate affected. Separately, W9's own footprint header (`LOG:2817`)
@@ -3445,7 +3445,7 @@ pre-existing and not this branch's.
 which is not main's number — it is the *branch's* at 2f82def, and 1019 + 12 = 1031 identifies the
 missing 12 exactly. Per-file the delta is: `Mei2MsmMpmConverter.ts` **508 → 525 (+17)**, the
 journaled `no-non-null-assertion` mirroring of `processArpeg` the W8 verifier ruled justified;
-plus **+12 never journaled as a delta from main** — `ornamentation/tools/probe.mjs` +5,
+plus **+12 never journaled as a delta from main** — `docs/history/ornamentation/tools/probe.mjs` +5,
 `probe2.mjs` +5, `toks2.mjs` +2, being 9 `no-undef` on Node globals (`process`, `console`,
 `Buffer`) and 3 `no-unused-vars`. Those tools landed in the campaign's **first** commit
 (e7b940c), so they sat inside every wave's own baseline and no wave ever compared against main.

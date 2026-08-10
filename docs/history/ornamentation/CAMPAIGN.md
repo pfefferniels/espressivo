@@ -18,27 +18,27 @@ context compaction) reads it FIRST.
   only then integrate. Conductor's conflict forecast: no remaining refactor item
   touches ornamentation files or Performance.ts; rebase surface is Mpm.ts + the def
   classes (TD2 malformed-numeric handling) + AccentuationPatternDef/metrical fixtures
-  (TD3). Conductor house rules accepted: refactor/ARCHITECTURE.md is LAW (dispatch §3,
+  (TD3). Conductor house rules accepted: ARCHITECTURE.md is LAW (dispatch §3,
   null §5, immutability §7, brands §8.5); the facade is FROZEN — v3 data is exposed via
   ADDITIVE facade fields only; v2 ornamentation ms-rendering (mirrors Java
   OrnamentationMap.java:477-509) is byte-load-bearing; PARITY.md post-integration needs
   a v3 section separating 'Java-verified' from 'spec-derived'; their probe tools are
   copied to ornamentation/tools/ (probe.mjs, probe2.mjs take a dist dir as argv[1];
-  toks2.mjs emits JSDoc-pruned token streams); refactor/log.md [T7]/[T19] entries hold
-  the parity traps (distilled into ornamentation/research/architecture-brief.md).
+  toks2.mjs emits JSDoc-pruned token streams); docs/history/refactor/log.md [T7]/[T19] entries hold
+  the parity traps (distilled into docs/history/ornamentation/research/architecture-brief.md).
 - **Java reference (v2 parity)** /Users/nielspfeffer/Projects/meico — READ-ONLY, always.
 - **Java reference (v3)**: LarsEngeln/meico branch `develop` @ 3deb141c = open PR
   cemfi/meico#31 "v0.12.0" (unmerged, unreviewed — pin the SHA, track review changes).
   Implements the full v3 model incl. MeiOrnamentExpander (MEI ornament → MPM
   expansion; in scope as a late wave). Blueprint report:
-  ornamentation/research/lars-v3-implementation.md (ORN-6).
+  docs/history/ornamentation/research/lars-v3-implementation.md (ORN-6).
 - **MPM spec clone** (develop @ 1de00bb): scratchpad/mpm-develop
   (/private/tmp/claude-501/-Users-nielspfeffer-Projects-meico-ts/5d7ca67d-74f7-491c-a4c3-06867b04b872/scratchpad/mpm-develop).
   If missing (scratchpad is ephemeral): `git clone --branch develop
   https://github.com/axelberndt/MPM.git`.
 - Research reports: `ornamentation/research/` (committed copies of agent findings).
-- Design doc: `ornamentation/DESIGN.md` (written in ORN-5).
-- Journal: `ornamentation/LOG.md` — append-only; every wave/decision/verdict goes there
+- Design doc: `docs/history/ornamentation/DESIGN.md` (written in ORN-5).
+- Journal: `docs/history/ornamentation/LOG.md` — append-only; every wave/decision/verdict goes there
   BEFORE acting on it.
 
 ## The v3 model in one paragraph (verified against spec sources)

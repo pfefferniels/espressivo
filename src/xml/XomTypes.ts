@@ -26,7 +26,7 @@
  *   emit their children back to back with no added whitespace or indentation.
  * - `Document.toXML()` prefixes exactly `<?xml version="1.0" encoding="UTF-8"?>\n`.
  *
- * The tree is deliberately mutable — see CHARTER.md, "Explicit mutation boundaries":
+ * The tree is deliberately mutable — see docs/history/refactor/CHARTER.md, "Explicit mutation boundaries":
  * the immutable-friendly direction applies to the layers above this one, not to the
  * document tree itself.
  *
@@ -52,7 +52,7 @@ export { DOMParser, XMLSerializer };
  * by parsing `<dummy/>`, so constructing a document cost one full XML parse *per node* —
  * 48 037 parses to convert the 16 MEI fixtures. One shared document removes all but the
  * first, which is worth ~30 % of the end-to-end conversion pipeline and makes node
- * construction 9–33× cheaper (measured; log.md's T17 entry).
+ * construction 9–33× cheaper (measured; docs/history/refactor/log.md's T17 entry).
  *
  * Sharing is unobservable. `createElement`, `createElementNS`, `createAttribute` and
  * `createTextNode` return unattached nodes and leave the document itself at `<dummy/>`,
@@ -62,7 +62,7 @@ export { DOMParser, XMLSerializer };
  * from the same call, which is why the placeholder is still created eagerly rather than
  * on demand: the throw is part of the constructors' observable behavior.
  *
- * The one thing this *is* — a module-level mutable binding, which CHARTER.md's
+ * The one thing this *is* — a module-level mutable binding, which docs/history/refactor/CHARTER.md's
  * immutable-friendly direction otherwise rules out — is a memo of a constant, assigned
  * once and never reassigned. It is built on first use rather than at module load so that
  * importing this module stays side-effect-free (T18's load-order work depends on that).

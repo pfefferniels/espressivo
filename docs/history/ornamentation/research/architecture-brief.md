@@ -1,10 +1,10 @@
 # Architecture brief for the MPM-v3-ornamentation implementer
 
-Distilled from `refactor/ARCHITECTURE.md` (all 1661 lines), `refactor/CHARTER.md`,
-`refactor/log.md` ([T7] worker/verifier, [T8] worker/verifier, [T19] worker/verifier, every
+Distilled from `ARCHITECTURE.md` (all 1661 lines), `docs/history/refactor/CHARTER.md`,
+`docs/history/refactor/log.md` ([T7] worker/verifier, [T8] worker/verifier, [T19] worker/verifier, every
 `ornament` hit), `PARITY.md`, and the frozen facade in `src/api/`.
 
-**Citation convention.** `refactor/ARCHITECTURE.md:NNN` and `refactor/log.md:NNN` line numbers are
+**Citation convention.** `ARCHITECTURE.md:NNN` and `docs/history/refactor/log.md:NNN` line numbers are
 valid in *both* checkouts — `ARCHITECTURE.md` is byte-identical (1661 lines) and the four log
 entries sit at the same offsets (`[T7]` worker 1948, verifier 2202; `[T19]` worker 8996, verifier
 9208) in `meico-ts` and `meico-ts-orn`. Source citations (`src/…`) are the **worktree**
@@ -18,7 +18,7 @@ entries sit at the same offsets (`[T7]` worker 1948, verifier 2202; `[T19]` work
 > copy; re-check after the conductor merges `ts-idiomatic` into `main`. All PARITY citations below
 > are by **section heading**, not line, for that reason.
 
-**Order of authority** (`refactor/ARCHITECTURE.md:25-27`): `CHARTER.md` wins over `ARCHITECTURE.md`
+**Order of authority** (`ARCHITECTURE.md:25-27`): `CHARTER.md` wins over `ARCHITECTURE.md`
 wins over anything else. Where this brief and those disagree, they are right and this brief has a
 bug.
 
@@ -28,7 +28,7 @@ bug.
 
 ### 1.1 Layering — where an ornamentation module may live, and what it may import
 
-The layer table is `refactor/ARCHITECTURE.md:63-95`. **An import may only go to a strictly lower
+The layer table is `ARCHITECTURE.md:63-95`. **An import may only go to a strictly lower
 layer, or sideways within the same directory** (`:59-61`). Relevant layers:
 
 | layer | contents |
@@ -42,7 +42,7 @@ layer, or sideways within the same directory** (`:59-61`). Relevant layers:
 | L6 | `src/api/**` (the facade) |
 | L7 | `src/index.ts` (barrel) |
 
-- **RULE M1** (`refactor/ARCHITECTURE.md:97-102`): `src/mpm/**` **must not import anything from
+- **RULE M1** (`ARCHITECTURE.md:97-102`): `src/mpm/**` **must not import anything from
   `src/mei/**`**. `src/msm/**` must not import from `src/mpm/**` except `import type`.
   `src/midi/**` must not import from `msm/mpm/mei` at all. `import/no-cycle` plus a
   path-restriction rule encode this in lint (T18/T21), so a violation is a build-visible failure,
@@ -51,19 +51,19 @@ layer, or sideways within the same directory** (`:59-61`). Relevant layers:
   are all **L4 `src/mpm/**`**. They may import `src/msm/**` (L3) and `src/xml/**` (L1) freely.
   A renderer that needs an MSM helper takes it from `src/msm/`, never the reverse.
 - **RULE M3 — new MPM names go in `src/mpm/names.ts`, never on `Mpm`**
-  (`refactor/ARCHITECTURE.md:157-165`). That file imports nothing and must stay a leaf:
+  (`ARCHITECTURE.md:157-165`). That file imports nothing and must stay a leaf:
   `src/mpm/names.ts:9-10` states that adding *any* import there re-opens the `Mpm ⇄ maps/styles`
   cycle for all 31 element modules at once. `Mpm` re-exports each name as a static of the same
   name and value (`src/mpm/names.ts:12-13`).
 - **RULE M4 — registration stays a registry, never a `switch`**
-  (`refactor/ARCHITECTURE.md:167-171`). A new typed map registers itself at the bottom of its own
+  (`ARCHITECTURE.md:167-171`). A new typed map registers itself at the bottom of its own
   module (`GenericMap.registerMapFactory(localName, factory)` — pattern at
   `src/mpm/elements/maps/OrnamentationMap.ts:464-466`, machinery at
   `src/mpm/elements/maps/GenericMap.ts:67-71`) **and** must be added to the side-effect barrel
   `src/mpm/elements/maps/index.ts` (see its header, `:1-19`: an unregistered name silently falls
   back to a plain `GenericMap` in `Dated.addMapFromXml`). Converting the registry to a `switch`
   re-creates the removed cycle.
-- **`Mpm.isInNamespace` is a membership table, not dispatch** (`refactor/log.md:2429-2438`): 54
+- **`Mpm.isInNamespace` is a membership table, not dispatch** (`docs/history/refactor/log.md:2429-2438`): 54
   empty fall-through cases mirroring `Mpm.java:193-255`. New v3 element names must be added
   there or the library will report them as foreign. Two Java typos in that table
   (`'accentuation '` with a trailing space, `'dynamcisGradient'`) are deliberately accepted
@@ -72,7 +72,7 @@ layer, or sideways within the same directory** (`:59-61`). Relevant layers:
 
 ### 1.2 Null vs undefined (§3)
 
-- **RULE N1** (`refactor/ARCHITECTURE.md:588-594`): `null` = "the domain says there is nothing
+- **RULE N1** (`ARCHITECTURE.md:588-594`): `null` = "the domain says there is nothing
   here"; `undefined` = "the caller did not supply this". Never interchangeable. Domain absence in
   a **return type or stored state** is `| null`; optional parameters and optional object
   properties are `?:`. Grandfathered exception: `ImprecisionMap.addDistribution*`'s
@@ -147,7 +147,7 @@ layer, or sideways within the same directory** (`:59-61`). Relevant layers:
   records an approved divergence. Only two interior throws exist today and both are narrowly
   argued: `NumberFormatError` (thrown exactly where Java throws) and `OutOfRangeError` (for an
   index no series can have) — PARITY.md §6.
-- **CHARTER bug policy amendment** (`refactor/CHARTER.md:54-66`, user directive 2026-08-09):
+- **CHARTER bug policy amendment** (`docs/history/refactor/CHARTER.md:54-66`, user directive 2026-08-09):
   obvious bugs — Java-inherited or port-born — **get fixed** as documented TD1-discipline
   divergences: (a) prove no fixture exercises the path or that the fix cannot move fixture bytes
   (pipeline byte-probe mandatory), (b) pinning tests for the fixed behaviour, inverting any test
@@ -183,18 +183,18 @@ ground-truth regeneration (`:1025-1029`).
 ### 1.7 Style, naming, hygiene
 
 - **Zero new suppressions.** `@ts-ignore` / `@ts-expect-error` / `@ts-nocheck` / `eslint-disable`
-  are at **0 repo-wide** and every verifier since [T8] counts them (`refactor/log.md:9169`,
+  are at **0 repo-wide** and every verifier since [T8] counts them (`docs/history/refactor/log.md:9169`,
   `:9355-9356`). T19 explicitly declined to pin its phantom type with a `@ts-expect-error` test
   for this reason (`:9056-9058`).
 - **Document the trap at the site.** The house style established by [T7]/[T8] is a class-level
   doc saying what the MPM element *is*, where it sits in the pipeline, and every parity trap
-  written down where the code is (`refactor/log.md:1965-1969`). `PARITY NOTE` is the marker for a
+  written down where the code is (`docs/history/refactor/log.md:1965-1969`). `PARITY NOTE` is the marker for a
   known divergence (`:2001-2002`).
 - `prettier --check` clean; `log.md`-style journals are pure appends.
 - Enums are load-bearing where tests import them: `OrnamentDef`'s `FrameDomain`/`NoteOffShift`
   were left as enums because converting them would change emitted JS (enum IIFE → const object)
   and they are imported by `tests/mpm/elements/OrnamentationMap.test.ts`
-  (`refactor/log.md:1728-1730`).
+  (`docs/history/refactor/log.md:1728-1730`).
 
 ---
 
@@ -204,7 +204,7 @@ ground-truth regeneration (`:1025-1029`).
 
 `Performance.perform` is 15 lines dispatching four named stages
 (`src/mpm/elements/Performance.ts:404-418`; the restructure is journaled at
-`refactor/log.md:9014-9027`).
+`docs/history/refactor/log.md:9014-9027`).
 
 | stage | member | what it owns |
 |---|---|---|
@@ -222,15 +222,15 @@ ground-truth regeneration (`:1025-1029`).
 `declare const timed: unique symbol; type Timed<T> = T & { readonly [timed]: true };`
 (`src/mpm/elements/Performance.ts:57-58`). The only producers are `renderPartTiming` /
 `renderGlobalTiming`; the only consumers are `renderPartMilliseconds` /
-`renderGlobalMilliseconds` (`refactor/log.md:9040-9044`). Hoisting a millisecond pass above the
+`renderGlobalMilliseconds` (`docs/history/refactor/log.md:9040-9044`). Hoisting a millisecond pass above the
 tempo pass is now a **compile error** (`TS2345`, reproduced independently at
-`refactor/log.md:9046-9054` and `:9300`).
+`docs/history/refactor/log.md:9046-9054` and `:9300`).
 
-Scope limits, recorded so they are not over-claimed (`refactor/log.md:9368-9371`): `Timed` says
+Scope limits, recorded so they are not over-claimed (`docs/history/refactor/log.md:9368-9371`): `Timed` says
 nothing about ordering *within* the millisecond stage, and it was deliberately **not** extended
 onto the map classes' own entry points (`OrnamentationMap`'s pass 3,
 `ArticulationMap.renderArticulationToMap_millisecondModifiers`) because that changes public
-signatures unit tests call (`refactor/log.md:9060-9066`, and again as an open option at `:9203-9206`).
+signatures unit tests call (`docs/history/refactor/log.md:9060-9066`, and again as an open option at `:9203-9206`).
 **A new ms-domain ornamentation pass called from `Performance` must take `Timed<PartRender>`.**
 
 ### 2.3 Where ornamentation sits, exactly
@@ -253,17 +253,17 @@ empty-map divergence (see §3.4).
 
 - `RenderContext` is created **once per `perform` call** and passed by reference; never stored on
   a class, module, or `globalThis` (`Performance.ts:407-409`; spec at
-  `refactor/ARCHITECTURE.md:478-488`).
-- The option path is **four hops** (`refactor/ARCHITECTURE.md:497-503`):
+  `ARCHITECTURE.md:478-488`).
+- The option path is **four hops** (`ARCHITECTURE.md:497-503`):
   `Msm.exportExpressiveMidi` → `Performance.perform` → `MovementMap.renderMovementToMap(ctx)` /
   `ImprecisionMap.renderImprecisionToMap(…, ctx)`. Hop 1 crosses a layer boundary, so `src/msm/`
   may only `import type { RenderOptions }` — **every default must be resolved inside `src/mpm/`,
   at the point of use** (`:509-515`). Wanting to import a default constant into `Msm.ts` means you
   took a wrong turn.
-- **RULE F7 — seed semantics** (`refactor/ARCHITECTURE.md:557-559`): a `seed` in the MPM always
+- **RULE F7 — seed semantics** (`ARCHITECTURE.md:557-559`): a `seed` in the MPM always
   wins; `options.seed` supplies one only where the MPM supplies none; omitting `options.seed` must
   be **bit-identical** to today. Any new random stream derives its sub-seed with the exact
-  `deriveSeed(base, ...parts)` at `refactor/ARCHITECTURE.md:542-555` (argument order is normative)
+  `deriveSeed(base, ...parts)` at `ARCHITECTURE.md:542-555` (argument order is normative)
   and takes its ordinal from `ctx.streamOrdinal++`, read **once** per call, not per entry
   (`:535-538`).
 
@@ -274,29 +274,29 @@ empty-map divergence (see §3.4).
 deliberate copy at `:116-118`) is a
 **character-identical copy** of `OrnamentationMap.renderMillisecondsModifiersToMap`
 (`src/mpm/elements/maps/OrnamentationMap.ts:419`), measured brace-to-brace at **2140 characters**
-(`refactor/log.md:9182-9186`, verified independently at `:9255-9258`). The same holds for
+(`docs/history/refactor/log.md:9182-9186`, verified independently at `:9255-9258`). The same holds for
 `Performance.renderTempoToMap` vs `TempoMap`'s (907 characters).
 
 - **The pipeline runs `Performance`'s copy, never `OrnamentationMap`'s**
-  (`refactor/log.md:2376-2401`). Editing `OrnamentationMap.renderMillisecondsModifiersToMap`
+  (`docs/history/refactor/log.md:2376-2401`). Editing `OrnamentationMap.renderMillisecondsModifiersToMap`
   changes nothing at runtime — a [T7] negative control that mutated it flipped **0** checks
   (`:2265`, explained at `:2386-2388`).
 - The duplication was **ruled to stay** by T19, because collapsing it needs a *value* import of
   `OrnamentationMap` into `Performance.ts`, which moves this module's ESM evaluation position on
-  the byte-compared rendering path; routed to T21 (`refactor/log.md:9175-9192`).
+  the byte-compared rendering path; routed to T21 (`docs/history/refactor/log.md:9175-9192`).
 - **Therefore: any change to ms-domain ornamentation rendering must be applied to both copies, or
   applied to `Performance`'s and journaled.** Nothing in the test suite keeps them in step
-  (`refactor/log.md:2398-2401`, `:2683-2688`).
+  (`docs/history/refactor/log.md:2398-2401`, `:2683-2688`).
 
 ### 2.6 The evidence lesson for this file
 
 **Byte-identical fixture output is not sufficient evidence for changes to `Performance.ts`.** The
-T19 verifier's three negative controls (`refactor/log.md:9295-9306`): swapping asynchrony and
+T19 verifier's three negative controls (`docs/history/refactor/log.md:9295-9306`): swapping asynchrony and
 imprecision inside `renderGlobalMilliseconds` (NC1) and swapping ornamentation with the rubato loop
 in `renderPartSymbolic` (NC3) both **pass the fixture byte probe** and are caught only by a call
 tracer. Budget for a tracer (`t19verify/passtrace.mjs` shape: wrap every render entry point on
 every map class, plus `Dated.getMap`, and hash the ordered transcript) — the conductor's note at
-`refactor/log.md:9363-9367` says so explicitly.
+`docs/history/refactor/log.md:9363-9367` says so explicitly.
 
 ---
 
@@ -307,7 +307,7 @@ every map class, plus `Dated.getMap`, and hash the ordered transcript) — the c
 `OrnamentData.apply(chordSequence)` **always returns an empty array**, in Java too (a TODO marks
 the spot), which makes the `for (const chord of od.apply(...))` loop in `OrnamentationMap.apply`
 **dead by construction** — documented "so nobody 'simplifies' the contract away"
-(`refactor/log.md:1992-1995`; the code and its comment at
+(`docs/history/refactor/log.md:1992-1995`; the code and its comment at
 `src/mpm/elements/maps/data/OrnamentData.ts:80-99`, the consuming loop in
 `src/mpm/elements/maps/OrnamentationMap.ts:196`).
 
@@ -319,17 +319,17 @@ any fixture or test; whatever it returns will be inserted into the MSM score, wh
 
 ### 3.2 The ms-domain ornament renderer is unprotected code
 
-- **Unreachable from `Performance.perform`** (`refactor/log.md:2376-2388`), so the suite cannot
-  catch a regression in it. `refactor/ARCHITECTURE.md:1538-1542` says outright: "treat it as
+- **Unreachable from `Performance.perform`** (`docs/history/refactor/log.md:2376-2388`), so the suite cannot
+  catch a regression in it. `ARCHITECTURE.md:1538-1542` says outright: "treat it as
   unprotected and change nothing in it without a purpose-built probe", and §8.10 rules it
   **keep, and mark** rather than delete, because it is a Java-parity path
-  (`refactor/ARCHITECTURE.md:1569`).
+  (`ARCHITECTURE.md:1569`).
 - The `ornament.milliseconds.duration` branch is reached by **no fixture and no test**
-  (`refactor/log.md:2689-2693`); a [T8] probe blind-spot analysis found the same
+  (`docs/history/refactor/log.md:2689-2693`); a [T8] probe blind-spot analysis found the same
   (`:2597-2599`). One uncovered statement in `Performance.ts` is exactly that renderer's `else`
-  branch (`refactor/log.md:9162-9165`).
+  branch (`docs/history/refactor/log.md:9162-9165`).
 - **Its exact semantics, verified against `OrnamentationMap.java:477-509`**
-  (`refactor/log.md:2279-2287`, corroborated `:2741-2744`): the `offset` shifts
+  (`docs/history/refactor/log.md:2279-2287`, corroborated `:2741-2744`): the `offset` shifts
   `milliseconds.date`; `ornament.milliseconds.duration` sets an **absolute** end as
   `millisecondsDate + offset + duration` (setting the attribute if present, **adding** it if not);
   `ornament.noteoff.shift` is only ever written with the value `"true"`, so its **presence alone**
@@ -338,22 +338,22 @@ any fixture or test; whatever it returns will be inserted into the MSM score, wh
   the **tick** domain that final "otherwise" additionally subtracts the offset from `duration.perf`
   ("duration absorbs the shift"). The single `millisecondsDateEnd` local is the expression Java
   evaluates twice, same operand order, so the sum is bit-identical either way
-  (`refactor/log.md:2461-2467`).
-- Float operation order in this neighbourhood is frozen (`refactor/ARCHITECTURE.md:1538-1542`).
+  (`docs/history/refactor/log.md:2461-2467`).
+- Float operation order in this neighbourhood is frozen (`ARCHITECTURE.md:1538-1542`).
 
 ### 3.3 Call-order-enforced structures and byte-load-bearing sections
 
 - `ArticulationMap`'s two passes and `OrnamentationMap`'s three passes were, before T19, enforced
-  **only** by call order in `perform` (`refactor/log.md:2174-2178`). `Timed` now enforces the
+  **only** by call order in `perform` (`docs/history/refactor/log.md:2174-2178`). `Timed` now enforces the
   symbolic/ms split at the pipeline level only — **not** at the map level
-  (`refactor/log.md:9060-9066`).
+  (`docs/history/refactor/log.md:9060-9066`).
 - `OrnamentationMap.getOrnamentDataOf`'s index clamp is the **one** of eight accessors [T7]
   deliberately left unconverted, so that file's method bodies stay byte-identical
-  (`refactor/log.md:2139-2141`). Do not "finish" that cleanup as a drive-by.
+  (`docs/history/refactor/log.md:2139-2141`). Do not "finish" that cleanup as a drive-by.
 - `OrnamentDef.createDefaultOrnamentDef` sets the **gradient before the spread**, and that order is
-  recorded as load-bearing (`refactor/log.md:1606`).
+  recorded as load-bearing (`docs/history/refactor/log.md:1606`).
 - XomTypes **attribute ordering and namespace handling are load-bearing for byte-identical
-  serialization** (`refactor/CHARTER.md:79-80`). Precedent for new attributes: the movement fix
+  serialization** (`docs/history/refactor/CHARTER.md:79-80`). Precedent for new attributes: the movement fix
   serializes `controller` *after* `protraction` and *before* `xml:id` (PARITY.md §1, "The movement
   fixes, mirrored from the Java fork", item 2). A new v3 attribute must be written in the position
   the Java reference writes it.
@@ -361,7 +361,7 @@ any fixture or test; whatever it returns will be inserted into the MSM score, wh
 ### 3.4 Known divergences already sitting in the ornamentation path
 
 - **Global ornamentation guard** (PARITY.md §3, third bullet; site comment at
-  `src/mpm/elements/Performance.ts:495-499`; journaled at `refactor/log.md:2672-2682`):
+  `src/mpm/elements/Performance.ts:495-499`; journaled at `docs/history/refactor/log.md:2672-2682`):
   `Performance.renderGlobalOrnamentation` tests only `!== null` where
   `OrnamentationMap.java:215` tests `(map == null) || map.isEmpty()`. An empty global
   `ornamentationMap` therefore reaches the render path here and returns early there. Benign and
@@ -376,39 +376,39 @@ any fixture or test; whatever it returns will be inserted into the MSM score, wh
 - **`TemporalSpread` / `DynamicsGradient` now live in their own modules**
   (`src/mpm/elements/styles/defs/TemporalSpread.ts`, `…/DynamicsGradient.ts`), moved out of
   `OrnamentDef.ts` with **no re-export**, deliberately, so that importing a transformer no longer
-  drags `OrnamentDef` in (`refactor/log.md:7546-7555`). Do not add a convenience re-export.
+  drags `OrnamentDef` in (`docs/history/refactor/log.md:7546-7555`). Do not add a convenience re-export.
 
 ### 3.5 RNG sequence identity discipline
 
 - **The number and order of `RandomNumberProvider.getValue` calls is part of the output.**
   `ImprecisionMap` carries a "RANDOMNESS CONTRACT" section saying the test suite **cannot** catch a
   desync, because that map is charter-exempt from byte comparison — so it must be reasoned through
-  (`refactor/log.md:2003-2005`).
+  (`docs/history/refactor/log.md:2003-2005`).
 - `P4`'s index guards are **pure preconditions** — they allocate nothing, draw nothing, touch no
   field — proven by a 7,673-value probe hashing identically on guarded and unguarded builds
   (PARITY.md §1, "P4 — `RandomNumberProvider` rejects an index it cannot serve").
-- Imprecision output is **never byte-compared** (`refactor/CHARTER.md:72-73`, PARITY.md §5) and is
+- Imprecision output is **never byte-compared** (`docs/history/refactor/CHARTER.md:72-73`, PARITY.md §5) and is
   nondeterministic *even with a fixed seed*, because colliding `milliseconds.date` values are
   re-rolled through an unseeded `Math.random()` (`ImprecisionMap.java:845,894`). **If ornamentation
   ever draws random values, it inherits this whole problem** — seed it through `RenderContext`
   per RULE F7, and expect its fixtures to need structural rather than byte comparison
-  (`refactor/ARCHITECTURE.md:561-571`).
+  (`ARCHITECTURE.md:561-571`).
 
 ### 3.6 Generated ids and document order
 
 Generated `meico_<uuid>` identifiers differ per run by construction; the equivalence suites
 canonicalize them **by first-occurrence order**, which is stronger than deleting them because it
 keeps `goto` → `marker` wiring verifiable. **"Keep ID-generation call order stable, or the tests
-will say so"** (PARITY.md §5; `refactor/CHARTER.md:74-75`). A note-generating renderer mints ids —
+will say so"** (PARITY.md §5; `docs/history/refactor/CHARTER.md:74-75`). A note-generating renderer mints ids —
 its insertion order is therefore test-visible.
 
 ### 3.7 Ground truth, and the only two ways to change bytes
 
 - **Nothing under `tests/integration/fixtures/**` may be modified, deleted, or added to**
-  (`refactor/CHARTER.md:15-17`). If a fixture looks wrong: STOP and write a `BLOCKED` entry.
+  (`docs/history/refactor/CHARTER.md:15-17`). If a fixture looks wrong: STOP and write a `BLOCKED` entry.
 - The pipeline byte-probe transcript hash is
   `169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` (PARITY.md, "The evidence
-  standard every 'fixed' entry below meets"; reproduced at `refactor/log.md:9103-9104` and
+  standard every 'fixed' entry below meets"; reproduced at `docs/history/refactor/log.md:9103-9104` and
   `:9431-9433`). **A fix that moves it is not shipped** — it goes to the pending section instead.
 - The only sanctioned route for a change that *does* move bytes is the `T20b`/`TD3` pattern: patch
   the Java fork, regenerate the affected ground truth from it, then apply the change here — three
@@ -419,7 +419,7 @@ its insertion order is therefore test-visible.
 
 ### 3.8 Behaviours that read as bugs and are not
 
-`refactor/CHARTER.md:68-80` and PARITY.md §4/§6. Nearest to ornamentation: the last movement in a
+`docs/history/refactor/CHARTER.md:68-80` and PARITY.md §4/§6. Nearest to ornamentation: the last movement in a
 `movementMap` is not rendered by design; `ArticulationData`'s duration modifiers **overwrite rather
 than compose** (preserved on design-intent grounds, pinned by a test asserting 130); the library
 **logs to the console** during conversion and rendering, which is Java's logs-and-returns-null
@@ -450,12 +450,12 @@ Four files, ~770 lines: `src/api/types.ts` (153), `src/api/pipeline.ts` (558), `
 
 **The facade is FROZEN, and the freeze is measured at the emitted level**: T19 and T20 both report
 `dist/api/**` byte-identical **including every `.d.ts`** as a standing gate
-(`refactor/log.md:9114-9116`, `:9231-9233`, `:9382-9383`). New data may only be exposed
+(`docs/history/refactor/log.md:9114-9116`, `:9231-9233`, `:9382-9383`). New data may only be exposed
 **additively**.
 
 ### 4.2 The rules any addition must satisfy
 
-- **RULE F1 — plain data** (`refactor/ARCHITECTURE.md:206-220`): permitted types are `string`,
+- **RULE F1 — plain data** (`ARCHITECTURE.md:206-220`): permitted types are `string`,
   `number`, `boolean`, `null`, `Uint8Array`, plain object literals, and arrays of those. **No class
   instances, no `Map`/`Set`, no functions, no getters, and no XomTypes type may appear in any
   facade signature, not even behind `readonly`.** Three mechanical tests exist and any new field
@@ -474,7 +474,7 @@ Four files, ~770 lines: `src/api/types.ts` (153), `src/api/pipeline.ts` (558), `
 
 1. **`PerformedNote` — additive readonly fields** (`src/api/types.ts:97-112`, built by `readNote`
    at `src/api/pipeline.ts:232-253`). Adding a field here is the architecture's own precedent:
-   **Q6** (`refactor/ARCHITECTURE.md:456-462` and `:1654-1661`) proposes adding
+   **Q6** (`ARCHITECTURE.md:456-462` and `:1654-1661`) proposes adding
    `datePerf`/`durationPerf` and calls it "additive and cheap", with the architect recommending
    it. An ornamentation field (e.g. an ornament id, or a flag marking a generated note) has exactly
    that shape. Constraints: always present, absence spelled `null` (N4); read from an MSM attribute
@@ -502,7 +502,7 @@ Four files, ~770 lines: `src/api/types.ts` (153), `src/api/pipeline.ts` (558), `
    re-exports member by member, deliberately, to avoid a duplicate `MeicoError` star export).
 
 **What the facade must *not* grow:** a second representation of the same notes. §2.3's own note
-(`refactor/ARCHITECTURE.md:445-447`, echoed at `src/api/types.ts:143-148`) rejects a flat all-notes
+(`ARCHITECTURE.md:445-447`, echoed at `src/api/types.ts:143-148`) rejects a flat all-notes
 list because "a second representation of the same notes would only invite the two to drift". The
 same reasoning applies to an ornament-shaped mirror of data already in `notes`.
 
@@ -512,45 +512,45 @@ same reasoning applies to an ornament-shaped mirror of data already in `notes`.
 
 - **The gate**: `npm run verify` = `npm run build && npm run typecheck:tests && vitest run`
   (`package.json`), green before every commit, **no exceptions, no `--skip`, no test exclusion**
-  (`refactor/CHARTER.md:13-14`). Current baseline: 59 files / 2272 tests
-  (`refactor/log.md:9157`, `:9342`).
+  (`docs/history/refactor/CHARTER.md:13-14`). Current baseline: 59 files / 2272 tests
+  (`docs/history/refactor/log.md:9157`, `:9342`).
 - **Layout**: unit tests mirror `src/` paths under `tests/` (`tests/mpm/elements/…`,
   `tests/mpm/elements/styles/defs/…`, `tests/api/…`, `tests/xml/…`, `tests/supplementary/…`).
   Six integration suites live in `tests/integration/`: `all-maps-equivalence`, `cross-validation`,
   `full-xml-equivalence`, `midi-byte-equivalence`, `midi-export`, `performance-equivalence`.
   The facade's own suites are `pipeline` (38), `plain-data` (37), `facade-equivalence` (26) and
-  `determinism` (8) (`refactor/log.md:9344-9345`).
+  `determinism` (8) (`docs/history/refactor/log.md:9344-9345`).
 - **Integration tests may change only mechanically** — imports, renamed API calls. Never weaken
   normalization, assertions, or auto-discovery; any change needs explicit verifier sign-off with
-  logged justification (`refactor/CHARTER.md:18-21`).
+  logged justification (`docs/history/refactor/CHARTER.md:18-21`).
 - **Unit tests may be rewritten to fit new APIs, but assertion strength must be preserved** — same
-  behaviours checked, not fewer (`refactor/CHARTER.md:22-23`). The worked example: T19a had to
+  behaviours checked, not fewer (`docs/history/refactor/CHARTER.md:22-23`). The worked example: T19a had to
   migrate a static-reading test and keep **both** of its assertions
-  (`refactor/ARCHITECTURE.md:923-928`).
-- **Coverage invariant v3** (`refactor/CHARTER.md:32-46`): functions **≥ 92.0 %**; uncovered scoped
+  (`ARCHITECTURE.md:923-928`).
+- **Coverage invariant v3** (`docs/history/refactor/CHARTER.md:32-46`): functions **≥ 92.0 %**; uncovered scoped
   statements must not grow beyond phase-start + 25 without per-hunk justification; test-count
   decreases need journaled justification; statements % and branch % are indicators only (branch
   carries ±0.02 RNG run-noise). Latest measured: 970/1049 = 92.4690 %, uncovered scoped statements
-  2138 (`refactor/log.md:9159-9162`).
+  2138 (`docs/history/refactor/log.md:9159-9162`).
 - **`vitest.config.ts`'s `include` list is the coverage scope, and a new directory outside it is
   invisible** (`vitest.config.ts:21-38`; the obligation to update it mechanically is
-  `refactor/ARCHITECTURE.md:1588-1590`). `src/mpm/**/*.ts` and `src/api/**/*.ts` are already in
+  `ARCHITECTURE.md:1588-1590`). `src/mpm/**/*.ts` and `src/api/**/*.ts` are already in
   scope, so a module under either needs no config change; a genuinely new top-level directory does.
-- **The four evidence instruments** (`refactor/ARCHITECTURE.md:11-23`): emitted-JS diff;
-  JSDoc-pruned token-stream proof (`ornamentation/tools/toks2.mjs` in this worktree); pipeline
-  byte-probe (`ornamentation/tools/probe.mjs`, `probe2.mjs`; each takes a dist dir as `argv[1]`);
+- **The four evidence instruments** (`ARCHITECTURE.md:11-23`): emitted-JS diff;
+  JSDoc-pruned token-stream proof (`docs/history/ornamentation/tools/toks2.mjs` in this worktree); pipeline
+  byte-probe (`docs/history/ornamentation/tools/probe.mjs`, `probe2.mjs`; each takes a dist dir as `argv[1]`);
   and the **negative control** — "deliberately break the thing you claim is load-bearing and prove
   the gate goes red. **A gate that never fails is not a gate.**"
 - **For anything touching `Performance.ts`, add a call tracer** — the byte probe demonstrably
-  misses real reorderings (§2.6, `refactor/log.md:9295-9306`).
+  misses real reorderings (§2.6, `docs/history/refactor/log.md:9295-9306`).
 - **Per-test timeouts where non-termination is possible.** `vitest.config.ts` sets a 30 s global
   `testTimeout`; TD1 requires an *explicit* per-test timeout on every case in its family so a
-  regression fails the suite instead of hanging it (`refactor/ARCHITECTURE.md:1216-1221`).
+  regression fails the suite instead of hanging it (`ARCHITECTURE.md:1216-1221`).
 - **Blind spots are found, not assumed.** Both [T7] and [T8] verifiers shipped controls that
-  flipped 0 and then proved *why* (`refactor/log.md:2267-2271`, `:2597-2599`,
-  `refactor/log.md:9323-9338`). A zero-flip control is a claim about your probe until you show
+  flipped 0 and then proved *why* (`docs/history/refactor/log.md:2267-2271`, `:2597-2599`,
+  `docs/history/refactor/log.md:9323-9338`). A zero-flip control is a claim about your probe until you show
   otherwise.
-- **Java repo is read-only** (`refactor/CHARTER.md:48`); **use `git rm`, never bare `rm`**
+- **Java repo is read-only** (`docs/history/refactor/CHARTER.md:48`); **use `git rm`, never bare `rm`**
   (`:49-50`); **one work item = one commit** on the campaign branch (`:24-28`).
 
 ---
@@ -559,13 +559,13 @@ same reasoning applies to an ornament-shaped mirror of data already in `notes`.
 
 | # | fact | citation |
 |---|---|---|
-| 1 | `Performance`'s private copy of `renderMillisecondsModifiersToMap` is what actually runs; `OrnamentationMap`'s is dead | `refactor/log.md:2376-2401`, `:9175-9192` |
-| 2 | `OrnamentData.apply` always returns `[]`; the consuming loop is dead by construction | `refactor/log.md:1992-1995`, `src/mpm/elements/maps/data/OrnamentData.ts:80-99` |
-| 3 | ms-domain ornament rendering is unreachable and unprotected; change nothing without a purpose-built probe | `refactor/ARCHITECTURE.md:1538-1542` |
-| 4 | `Timed<T>` makes the symbolic→ms crossing a compile error to violate | `src/mpm/elements/Performance.ts:57-58`, `refactor/log.md:9040-9054` |
-| 5 | `perform` opens with `msm.clone()`; that call **is** mutation boundary 3 | `refactor/ARCHITECTURE.md:869-871` |
-| 6 | New render knobs go on `RenderOptions`, never a static; the audit must return nothing | `refactor/ARCHITECTURE.md:905-940` |
-| 7 | Facade is frozen; additions must be plain data, output-`null`-not-`undefined`, and are gated by `dist/api/**` byte identity | `refactor/ARCHITECTURE.md:206-220`, `:685-693`, `refactor/log.md:9114-9116` |
-| 8 | Fixtures are immutable; byte-moving fixes take the Java-patch → regenerate → apply route | `refactor/CHARTER.md:15-17`, PARITY.md §2 |
-| 9 | Pipeline transcript hash `169e964b…` must not move | PARITY.md evidence-standard paragraph, `refactor/log.md:9103-9104` |
-| 10 | Byte-identical fixture output is insufficient evidence for `Performance.ts`; use a tracer | `refactor/log.md:9295-9306`, `:9363-9367` |
+| 1 | `Performance`'s private copy of `renderMillisecondsModifiersToMap` is what actually runs; `OrnamentationMap`'s is dead | `docs/history/refactor/log.md:2376-2401`, `:9175-9192` |
+| 2 | `OrnamentData.apply` always returns `[]`; the consuming loop is dead by construction | `docs/history/refactor/log.md:1992-1995`, `src/mpm/elements/maps/data/OrnamentData.ts:80-99` |
+| 3 | ms-domain ornament rendering is unreachable and unprotected; change nothing without a purpose-built probe | `ARCHITECTURE.md:1538-1542` |
+| 4 | `Timed<T>` makes the symbolic→ms crossing a compile error to violate | `src/mpm/elements/Performance.ts:57-58`, `docs/history/refactor/log.md:9040-9054` |
+| 5 | `perform` opens with `msm.clone()`; that call **is** mutation boundary 3 | `ARCHITECTURE.md:869-871` |
+| 6 | New render knobs go on `RenderOptions`, never a static; the audit must return nothing | `ARCHITECTURE.md:905-940` |
+| 7 | Facade is frozen; additions must be plain data, output-`null`-not-`undefined`, and are gated by `dist/api/**` byte identity | `ARCHITECTURE.md:206-220`, `:685-693`, `docs/history/refactor/log.md:9114-9116` |
+| 8 | Fixtures are immutable; byte-moving fixes take the Java-patch → regenerate → apply route | `docs/history/refactor/CHARTER.md:15-17`, PARITY.md §2 |
+| 9 | Pipeline transcript hash `169e964b…` must not move | PARITY.md evidence-standard paragraph, `docs/history/refactor/log.md:9103-9104` |
+| 10 | Byte-identical fixture output is insufficient evidence for `Performance.ts`; use a tracer | `docs/history/refactor/log.md:9295-9306`, `:9363-9367` |
