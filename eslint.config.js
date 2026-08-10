@@ -141,6 +141,7 @@ const LAYER_ZONES = [
     // `mpm/elements/GenericMap.js`, `mpm/elements/maps/TempoMap.js` and
     // `mpm/elements/maps/data/TempoData.js` all still error.
     forbidden: [
+      '**/api/**',
       '**/midi/**',
       '**/msm/**',
       '**/mei/**',
@@ -161,7 +162,10 @@ const LAYER_ZONES = [
       'the MPM name constants and the dependency-free Bézier math, and nothing else. The ban ' +
       'on the renderer classes is the same one the expression zone carries and for the same ' +
       'reason — `new Mpm(text)` runs the mutating def parsers in its CONSTRUCTOR, so merely ' +
-      'parsing a document rewrites it, and a comparison that mutates its input is not one.',
+      'parsing a document rewrites it, and a comparison that mutates its input is not one. ' +
+      '`**/api/**` is banned for the same reason at one remove (MINOR-5): src/api/index.ts ' +
+      'transitively reaches Mpm.js, and it is an upward import besides — W3 builds the facade ' +
+      'and creates the temptation.',
   },
 ];
 export default tseslint.config(

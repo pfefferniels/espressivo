@@ -41,6 +41,8 @@ import { attribute } from '../xml/tree.js';
 import { readAttributeValue, readNumericAttributeValue } from '../expression/attributes.js';
 import type { MpmEnvironment } from '../expression/mpmTree.js';
 import { resolveComparisonLevel } from './values.js';
+import { TEMPO_MAP } from '../mpm/names.js';
+import { assertSpanEndRule } from './spanEnds.js';
 import type { OrderedMapView } from './document.js';
 
 /** MPM's no-tempo default, in quarter-bpm: `computeMillisecondsForNoTempo` is `600·date/ppq`. */
@@ -248,6 +250,8 @@ export function readTempoSegments(
   environment: MpmEnvironment,
   globalEnvironment: MpmEnvironment,
 ): TempoCurve {
+  assertSpanEndRule(TEMPO_MAP, 'same-local-name');
+
   if (view === null) return neutralTempoCurve();
 
   const raws: RawTempo[] = [];

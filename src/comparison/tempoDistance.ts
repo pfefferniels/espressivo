@@ -24,7 +24,7 @@
 import { comparisonRowFor } from './registry.js';
 import {
   CompensatedSum,
-  gradedPanelCount,
+  gradedPanelBounds,
   integrateAbsolute,
   powerCriticalPoint,
 } from './quadrature.js';
@@ -93,11 +93,12 @@ function gradedBoundariesIn(
   const span = segment.endTicks - segment.startTicks;
   if (!Number.isFinite(span) || span <= 0) return [];
 
-  const panels = gradedPanelCount(segment.exponent);
-  const inverse = 1 / segment.exponent;
+  // Shared with `integrateGradedPower` (MINOR-3): the mesh AD-28.1 measured and the mesh
+  // shipped here are now the same code, so an edit to one cannot silently diverge.
+  const unit = gradedPanelBounds(segment.exponent);
   const boundaries: number[] = [];
-  for (let k = 1; k < panels; ++k) {
-    const t = segment.startTicks + Math.pow(k / panels, inverse) * span;
+  for (let k = 1; k < unit.length - 1; ++k) {
+    const t = segment.startTicks + unit[k] * span;
     if (t > cellStart && t < cellEnd) boundaries.push(t);
   }
   return boundaries;

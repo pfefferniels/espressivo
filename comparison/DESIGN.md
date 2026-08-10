@@ -536,8 +536,8 @@ thing: a document declared no `@pulsesPerQuarter` and the documented default was
 assumed; the assumed value is stamped alongside it.
 
 **Window** (AD-4). The comparison window is `[start, end]`, `start = 0` unless
-the caller supplies one. `end` is, in precedence order: the MSM score end
-(`windowRule: 'msm'`); an explicit `options.window` (`'explicit'`); the
+the caller supplies one. `end` is, in precedence order (AD-27.1): an explicit `options.window`
+(`'explicit'`); the MSM score end (`windowRule: 'msm'`); the
 corpus-shared window (`'corpus'`); otherwise the max over both documents of the
 last dated instruction (`'pair-derived'`). The first three are **piece-derived**
 and carry `metricGuarantee: 'unconditional'`; the fourth carries

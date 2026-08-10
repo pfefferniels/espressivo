@@ -39,6 +39,8 @@ import { innerControlPointsXPositions } from '../mpm/elements/maps/data/bezier.j
 import { readAttributeValue, readNumericAttributeValue } from '../expression/attributes.js';
 import type { MpmEnvironment } from '../expression/mpmTree.js';
 import { resolveComparisonLevel } from './values.js';
+import { DYNAMICS_MAP } from '../mpm/names.js';
+import { assertSpanEndRule } from './spanEnds.js';
 import type { OrderedMapView } from './document.js';
 
 /** `DynamicsMap.renderDynamicsToMap`'s pin for notes with no dynamics in force. */
@@ -177,6 +179,8 @@ export function readDynamicsSegments(
   environment: MpmEnvironment,
   globalEnvironment: MpmEnvironment,
 ): DynamicsCurve {
+  assertSpanEndRule(DYNAMICS_MAP, 'same-local-name');
+
   if (view === null) return neutralDynamicsCurve();
 
   const raws: RawDynamics[] = [];

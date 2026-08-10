@@ -1329,3 +1329,54 @@ measurements.
 Gate: `npm run verify` green before committing, 4286 passed + 1 skipped. eslint
 and prettier clean.
 
+## 2026-08-10 — W2 fix wave 3/3: tests and hygiene (MAJOR-2/3/4, MINOR-1/3/5) [survey-code]
+
+MAJOR-2. The inverted-window clamp test was unfalsifiable: ls=0.8/ee=0.2 sum to
+exactly 1, and the UNCLAMPED warp is then also exactly 0 at the midpoint the test
+probed. Now ls=0.9/ee=0.3 (which gives −72 unclamped) and it asserts across the
+whole frame rather than one interior point.
+
+MAJOR-3. Added a rubato distance family varying lateStart/earlyEnd. The old
+family left ls=0/ee=1 throughout, which is the ONE parameter family in which
+CAPITAL-4's cancellation cannot occur — the blind spot and the defect were the
+same shape. The new test pins the report's own repro: it loops the same warp over
+4 quarters, so the expected value is 4 × the report's single-frame 1.5876 =
+6.3503, which the repaired integrator reports; before the repair it read 0.00126,
+three and a half orders low.
+
+MAJOR-4. Promoted the adversarial family into
+tests/comparison/adversarialFamily.ts + metricProperties.test.ts as the standing
+P-C3/P-C3b family (AD-33.5), under an EXPLICIT shared window so R3's guarantee is
+unconditional. EIGHT members, not the seven specified: criticalPointTicks fires
+only when BOTH sides are transitions, so one power member leaves that path
+unreached by every PAIR in the family. I found this by negative control — with
+seven members, reverting AD-33.2 did NOT fail the family, only the dedicated
+test. With the eighth it does. That is the difference between a family that
+covers the path and one that merely contains a member which touches it.
+39 tests: P-C1/P-C2/P-C3/P-C3b across tempo, dynamics and asynchrony, plus a
+non-degeneracy test (every pair distinguishable) so the file cannot pass on an
+implementation returning 0.
+
+MINOR-1. Removed the two assertions that restate their implementation
+(non-negative variance, typeof boolean) and replaced the second with one that
+pins what actually needed pinning — that `shapeless` tracks the DATA rather than
+the argument position, checked on both orders.
+
+MINOR-3. spanEnds.ts is now load-bearing rather than a dead end: it gains
+assertSpanEndRule, and the three curve readers call it at entry, so the table and
+the readers cannot diverge silently — which is what "the span rule is taken from
+spanEnds.ts" claimed while nothing imported it. Stale header rewritten for
+AD-29/AD-33.1 (five same-name maps, two any-entry, and what the foreign entry
+DOES). integrateGradedPower and the shipped tempo path now share
+gradedPanelBounds, so AD-28.1's measured function and the shipped mesh are one
+piece of code — they agreed by inspection before, and agreement by inspection is
+not a property. DESIGN §5.0's window paragraph corrected to AD-27.1's order.
+
+MINOR-5. '**/api/**' added to the comparison eslint zone, negative-controlled
+both ways: a src/comparison file importing '../api/index.js' now errors with the
+zone's own rationale, and everything else still lints clean.
+
+Gate: `npm run verify` green before committing, 4326 passed + 1 skipped (was
+4285). eslint and prettier clean. W2 fix wave complete across 0dc3e39, ebc2c4f
+and this commit.
+

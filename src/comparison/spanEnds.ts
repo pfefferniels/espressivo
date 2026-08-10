@@ -1,11 +1,17 @@
 /**
  * Where one instruction's span stops — as data, because it is not one rule.
  *
- * DESIGN.md §5.0 ("Span ends resolve per map type", AD-14ii / R12): six maps scan forward
- * for the next element of their **own local name**, and a `<style>` switch never terminates
- * their spans. `ImprecisionMap` is the exception — a distribution is ended by **any** entry
- * in the map, whatever it is — so gaps in an imprecision map are real and carry no law at
- * all (§5.9).
+ * DESIGN.md §5.0 ("Span ends resolve per map type", AD-14ii / R12, as corrected by AD-29):
+ * **five** maps scan forward for the next element of their **own local name**, and a
+ * `<style>` switch never terminates their spans. **Two** end on ANY next entry —
+ * `ImprecisionMap`, whose gaps are real and carry no law at all (§5.9), and `AsynchronyMap`,
+ * whose span end is `this.elements[asynIndex + 1].getKey()` with no local-name test. Rev 2 of
+ * DESIGN listed `AsynchronyMap` on the same-name side; the renderer settles it the other way
+ * and the contradiction is journaled as AD-29.
+ *
+ * Under AD-33.1 the asynchrony case goes further still: the foreign entry does not merely end
+ * the span, it opens a `⊥` one, because the map reads an offset off it, gets `NaN`, and every
+ * note in that span vanishes from the MIDI export.
  *
  * The distinction is load-bearing rather than pedantic. Under the same-local-name rule a
  * `<style>` sitting between two `<tempo>` elements is invisible to the span, so the first
@@ -113,6 +119,27 @@ const RULES: ReadonlyMap<string, SpanEndRule> = new Map<string, SpanEndRule>([
  */
 export function spanEndRuleOf(mapLocalName: string): SpanEndRule | null {
   return RULES.get(mapLocalName) ?? null;
+}
+
+/**
+ * Assert that a curve reader's hard-coded span scan matches this table — AD-33.6's "wire it
+ * or remove it".
+ *
+ * Each reader implements its rule inline, because the scan is woven into how it walks its own
+ * instruction list and factoring that out would obscure more than it shares. What the readers
+ * must not do is *diverge* from the table silently, which is what "the span rule is taken
+ * from `spanEnds.ts`" claimed while nothing imported it. This makes the table load-bearing:
+ * change a rule here and the reader that disagrees fails loudly at its first call.
+ *
+ * @throws {Error} when the table and the reader disagree — a programmer error, not data.
+ */
+export function assertSpanEndRule(mapLocalName: string, expected: SpanEndRule): void {
+  const actual = spanEndRuleOf(mapLocalName);
+  if (actual !== expected)
+    throw new Error(
+      `span-end rule mismatch for <${mapLocalName}>: spanEnds.ts says ${String(actual)}, ` +
+        `the reader implements ${expected}`,
+    );
 }
 
 /** Every map local name this module has a rule for, in declaration order. */

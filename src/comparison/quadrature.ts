@@ -221,17 +221,28 @@ export function gradedPanelCount(e: number): number {
  * that naive GL-10 already met.
  */
 export function integrateGradedPower(f: (u: number) => number, e: number): number {
+  const bounds = gradedPanelBounds(e);
+  const total = new CompensatedSum();
+  for (let k = 0; k < bounds.length - 1; ++k)
+    total.add(gaussLegendre10(f, bounds[k], bounds[k + 1]));
+  return total.total;
+}
+
+/**
+ * The graded mesh's panel boundaries on the unit interval, `0 … 1` inclusive.
+ *
+ * Factored out so that {@link integrateGradedPower} — the function AD-28.1's 3.3·10⁻⁶ figure
+ * was measured on — and `tempoDistance`'s shipped path place their panels through the *same*
+ * code. They agreed by inspection before; MINOR-3 is the observation that agreement by
+ * inspection is not a property, and that an edit to one would not be caught by the other's
+ * test.
+ */
+export function gradedPanelBounds(e: number): readonly number[] {
   if (!Number.isFinite(e) || e <= 0)
     throw new RangeError(`power-curve exponent must be finite and positive, got ${String(e)}`);
-
   const panels = gradedPanelCount(e);
   const inverse = 1 / e;
-  const total = new CompensatedSum();
-  for (let k = 0; k < panels; ++k)
-    total.add(
-      gaussLegendre10(f, Math.pow(k / panels, inverse), Math.pow((k + 1) / panels, inverse)),
-    );
-  return total.total;
+  return Array.from({ length: panels + 1 }, (_, k) => Math.pow(k / panels, inverse));
 }
 
 /**

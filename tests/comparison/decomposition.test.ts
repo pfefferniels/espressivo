@@ -39,13 +39,6 @@ describe('curveMoments', () => {
     expect(moments.sigma).toBe(0);
   });
 
-  it('never returns a negative variance or a NaN sigma', () => {
-    // Round-off on a constant curve can make the raw integral a tiny negative.
-    const moments = curveMoments(() => Math.log(60), GRID);
-    expect(moments.variance).toBeGreaterThanOrEqual(0);
-    expect(Number.isNaN(moments.sigma)).toBe(false);
-  });
-
   it('matches the closed form on a linear ramp', () => {
     // h(t) = t/span on [0, span]: mean 1/2, variance 1/12.
     const moments = curveMoments((t) => t / SPAN, GRID);
@@ -156,13 +149,14 @@ describe('the shapeless convention (§1.2 / C14)', () => {
     ).toBeNull();
   });
 
-  it('gives a consumer a boolean to branch on rather than a null', () => {
-    const result = decomposeCurves(
-      () => 1,
-      (t) => t,
-      GRID,
-    );
-    expect(typeof result.shapeless).toBe('boolean');
+  it('flags shapeless on the CONSTANT side whichever side it is', () => {
+    // The field's type already guarantees it is a boolean; what needs pinning is that the
+    // flag tracks the data rather than the argument position.
+    const constant: SampledCurve = () => 1;
+    const varying: SampledCurve = (t) => t / SPAN;
+    expect(decomposeCurves(constant, varying, GRID).shapeless).toBe(true);
+    expect(decomposeCurves(varying, constant, GRID).shapeless).toBe(true);
+    expect(decomposeCurves(varying, varying, GRID).shapeless).toBe(false);
   });
 });
 

@@ -147,12 +147,15 @@ describe('rubato: the neutral parametrization is EXACTLY zero (M18)', () => {
 
 describe('rubato: clamps run before evaluation (RubatoMap.ts:136-141)', () => {
   it('resets an inverted window to the full frame, performing no warp', () => {
+    // The bounds must NOT sum to 1. With ls=0.8/ee=0.2 the unclamped warp is
+    // 0.5*L*(ee + ls - 1) = 0 at the midpoint, so the original probe passed whether or not
+    // the reset existed — the one rule the module doc calls "the final rule that matters
+    // most" was untested. ls=0.9/ee=0.3 gives -72 unclamped at t=360.
     const curve = rubatoFor(
-      '<rubato date="0.0" frameLength="720.0" lateStart="0.8" earlyEnd="0.2" loop="true"/>' +
+      '<rubato date="0.0" frameLength="720.0" lateStart="0.9" earlyEnd="0.3" loop="true"/>' +
         '<rubato date="2880.0" frameLength="720.0"/>',
     );
-    // lateStart >= earlyEnd resets to (0, 1), which with intensity 1 is the identity.
-    expect(displacementTicksAt(curve, 360)).toBe(0);
+    for (const ticks of [0, 180, 360, 540, 719]) expect(displacementTicksAt(curve, ticks)).toBe(0);
   });
 
   it('floors lateStart at 0 and caps earlyEnd at 1', () => {
@@ -220,6 +223,33 @@ describe('rubato: distance', () => {
     expect(
       distanceBetween(WARPED, WARPED.replace('intensity="2.0"', 'intensity="3.0"')),
     ).toBeGreaterThan(0);
+  });
+
+  it('varies lateStart/earlyEnd, the family that hid CAPITAL-4 (MAJOR-3)', () => {
+    // Every distance test in the first draft left lateStart=0 / earlyEnd=1, and in exactly
+    // that family delta-delta vanishes at both frame ends and is single-signed between them
+    // — the ONE parameter family in which the sign-cancellation defect cannot occur. The
+    // blind spot and the defect were the same shape.
+    const windowed = (i: string, ls: string, ee: string) =>
+      `<rubato date="0.0" frameLength="720.0" intensity="${i}" lateStart="${ls}" earlyEnd="${ee}" loop="true"/>` +
+      '<rubato date="2880.0" frameLength="720.0"/>';
+
+    const d = distanceBetween(windowed('0.6', '0.10', '0.50'), windowed('2.5', '0.15', '0.85'));
+    // The verification report's repro is the SAME pair over a single 1-quarter frame, where
+    // the unsplit reading gave 0.000315 against a true 1.5876 JND*quarters. This fixture
+    // loops the same warp over the 4-quarter span, so the expected value is 4x that —
+    // 6.3503, which is what the repaired integrator reports. Before the repair it read
+    // 0.00126, three and a half orders low.
+    expect(d).toBeCloseTo(4 * 1.587576, 2);
+  });
+
+  it('stays symmetric on a windowed pair (R2)', () => {
+    const windowed = (i: string, ls: string, ee: string) =>
+      `<rubato date="0.0" frameLength="720.0" intensity="${i}" lateStart="${ls}" earlyEnd="${ee}" loop="true"/>` +
+      '<rubato date="2880.0" frameLength="720.0"/>';
+    const a = windowed('0.6', '0.10', '0.50');
+    const b = windowed('2.5', '0.15', '0.85');
+    expect(Object.is(distanceBetween(a, b), distanceBetween(b, a))).toBe(true);
   });
 
   it('P-C3 triangle with the relative tolerance', () => {

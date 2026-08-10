@@ -39,6 +39,8 @@
 import type { Element } from '../xml/XomTypes.js';
 import { readAttributeValue } from '../expression/attributes.js';
 import { bottom, valued, type Valued } from './values.js';
+import { ASYNCHRONY_MAP } from '../mpm/names.js';
+import { assertSpanEndRule } from './spanEnds.js';
 import type { OrderedMapView } from './document.js';
 
 /** One constant-offset span. `offset` is `⊥` where the renderer would emit NaN. */
@@ -77,6 +79,8 @@ export function readAsynchronySegments(
   view: OrderedMapView | null,
   scaleFactor: number,
 ): AsynchronyCurve {
+  assertSpanEndRule(ASYNCHRONY_MAP, 'any-entry');
+
   if (view === null) return neutralAsynchronyCurve();
 
   const entries = view.entries.filter((entry) => Number.isFinite(entry.date));
