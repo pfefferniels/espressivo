@@ -2401,3 +2401,46 @@ NOTHING — an attribute whose presence deletes the performance. The
 decide-without-stopping route taken there was correct (renderer
 determines, DESIGN silent, pipeline evidence attached).
 Cut 4 (imprecision ×3) proceeds.
+
+## 2026-08-10 — AD-45.2/45.3 executed; cut 3 fully discharged (w3-dims)
+
+The two items AD-45 delegated to this commit, so that nothing ruled is left undone before cut 4.
+
+**AD-45.2 — equal-intensity frames now compose.** `TemporalSpread.apply` writes slot `i` of `n`
+at `(i/(n−1))^intensity·L + s` and ADDS it to any offset already there, so with one shared
+exponent the sum is `(i/(n−1))^intensity·(L₁+L₂) + (s₁+s₂)` — another frame of the same shape.
+`composedSpread` sums `frameStart` and `frameLength` across an anchor when `@intensity` AND the
+domain match, and declines otherwise. The residual test INVERTS accordingly: the two documents
+that perform onsets −122/0/122 either way now compare at distance 0, where the shipped version
+pinned them unequal. Unequal intensities keep the documented limitation, and its test now pins
+the mechanism directly — two frames survive composition rather than one sum and one neutral —
+so the evidence survives the constant becoming correct, which is the move RG-2 and the K=4 pin
+established.
+
+**AD-45.3 — the two §5.6 edits**, executed under the explicit delegation and no wider. §5.6 gains
+the shape paragraph, stating out loud that `@repetitions`/`@noteid` presence makes an ornament
+v3-shaped and that a v3-shaped ornament without `@note.order` performs NOTHING, with the measured
+80/100/120 → 100/100/100. And the three-unit-case paragraph is rescoped to v3-shaped ornaments,
+carrying why: `TemporalSpread.apply` reads the v2 fields, so on a v2-shaped ornament a v3 frame
+spreads nothing (measured −22/0/22 against 0/0/0 for the same numbers), and v3 detection is the
+renderer's own rule — `@frame.offset` OR a unit suffix on either frame attribute.
+
+Negative controls: removing the intensity guard fails 1 test, disabling frame composition fails 1.
+
+Gate: `npm run verify` green before committing — 4553 passed + 1 skipped (was 4552). 47 tests in
+the ornamentation suite. eslint and prettier clean.
+
+[CUT 4 HANDOFF NOTE — the renderer study is done and recorded so it is not repeated.] §5.9's
+degenerate table is confirmed against `RandomNumberProvider` by execution on five of six rows,
+and ONE ROW'S MECHANISM IS DIFFERENT FROM WHAT THE TABLE SAYS. Measured, eight draws each:
+uniform with `limit.*` absent gives `[0,0,0,…]`; gaussian with `deviation.standard` absent gives
+`[0,…]`; brownian with `limit.*` absent gives `[0,…]`; compensatingTriangle with `clip.*` absent
+gives `[0,…]`; gaussian with `limit.*` absent gives real unconditioned draws
+(`2.99, −2.32, −6.3, …`), which is AD-14iv's untruncated `N(0,σ)` exactly. But **triangular with
+`clip.*` absent returns `null`, not `0`** — `clip(d)` compares against `highCut`/`lowCut`, which
+are `null`, so every draw takes a branch returning `null`, and the field is typed `number` while
+holding it. The performed effect is still δ₀ because `ms + null` is `ms` in JS arithmetic, so the
+table's CONCLUSION stands; the mechanism does not, and it is a trap for exactly the finite-guard
+discipline AD-42.4 just imposed — a reader checking `Number.isFinite` sees `null`, not a number,
+and must not route it to `⊥`. Whether any path stringifies it (`parseFloat(String(null))` = NaN)
+is unverified and is the first thing cut 4 should check in `ImprecisionMap.applyTo`.

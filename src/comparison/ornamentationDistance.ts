@@ -258,6 +258,37 @@ function poolKey(atom: OrnamentAtom, index: number): string {
  * only a gradient therefore collapses away for free, which is what makes the two encodings of
  * one performed ramp compare equal.
  */
+/**
+ * AD-45.2 — stacked frames compose too, but ONLY when `@intensity` matches.
+ *
+ * `TemporalSpread.apply` writes slot `i` of `n` at `(i/(n−1))^intensity·L + s` and ADDS it to any
+ * offset already there, so with one shared exponent the sum is `(i/(n−1))^intensity·(L₁+L₂) +
+ * (s₁+s₂)` — another frame of the same shape. Measured: `(-22,44)` stacked with `(-100,200)`
+ * performs onsets −122/0/122, exactly the single frame `(-122,244)`. With different exponents no
+ * single frame reproduces the sum — measured −22/45/382 for `(-22,44)` against
+ * `(0,360, intensity 3)` — and those stay individual events with the documented limitation.
+ *
+ * @returns the composed frame, or null where the group does not compose and each member keeps
+ *   its own.
+ */
+function composedSpread(
+  spreads: readonly Valued<PerformedSpread>[],
+): Valued<PerformedSpread> | null {
+  if (spreads.some(isBottom)) return bottom('renderer-error');
+  const frames = spreads.filter((spread) => !isBottom(spread)).map((spread) => spread.value);
+  if (frames.length === 0) return null;
+  const first = frames[0];
+  const uniform = frames.every(
+    (frame) => frame.intensity === first.intensity && frame.domain === first.domain,
+  );
+  if (!uniform) return null;
+  return valued({
+    ...first,
+    frameStart: frames.reduce((sum, frame) => sum + frame.frameStart, 0),
+    frameLength: frames.reduce((sum, frame) => sum + frame.frameLength, 0),
+  });
+}
+
 export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly OrnamentAtom[] {
   const groups = new Map<string, number[]>();
   atoms.forEach((atom, index) => {
@@ -283,6 +314,7 @@ export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly Ornamen
       to += reversed ? gradient.value.from : gradient.value.to;
     }
     const [head, ...rest] = members;
+    const frame = composedSpread(members.map((index) => spreadOf(atoms[index])));
     // One poisoned member makes the whole anchor's velocity NaN, which is the anchor's effect.
     composed[head] = {
       ...atoms[head],
@@ -293,9 +325,14 @@ export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly Ornamen
         : valued(
             atoms[head].noteOrderKind === 'descending' ? { from: to, to: from } : { from, to },
           ),
+      spread: frame ?? atoms[head].spread,
     };
     for (const index of rest)
-      composed[index] = { ...atoms[index], gradient: valued(NEUTRAL_GRADIENT) };
+      composed[index] = {
+        ...atoms[index],
+        gradient: valued(NEUTRAL_GRADIENT),
+        spread: frame === null ? atoms[index].spread : valued(NEUTRAL_SPREAD),
+      };
   }
   return composed;
 }

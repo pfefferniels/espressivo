@@ -1234,12 +1234,38 @@ orderings sort the pool by pitch in opposite directions, so they decide which
 note receives which step of the ramp (executed: ascending performs 80/100/120
 where descending performs 120/100/80 over velocity 100).
 
-**Three unit cases, not two** (AD-16, R18). `TemporalValue`'s domains are
-`ticks | milliseconds | relative`, and `%` ⇒ `relative` has **no** absolute
-length without the MSM note it ornaments. So: `%`-vs-`%` compares **in percent**
-(a genuine common unit, `unit: 'percent'`); `%`-vs-absolute is a structural
-finding without an MSM, and is resolved against the principal note's duration
-with one.
+**The ornament's SHAPE decides which engine runs, and one attribute's mere
+presence can delete the performance** (AD-45.3). `isV3Ornament` fires on a
+`<note>` pool, on `@noteid`, on the **presence** of `@repetitions` — any value,
+the schema default `0` included — or on the v3 `note.order` grammar
+`[ … ]` / `|: … :|`. A v3-shaped ornament leaves the v2 transformer path for
+`ornamentInstantiation`, and one with **no `@note.order` at all is skipped
+outright**: executed through `Performance.perform`, adding `repetitions="0"` to
+an ornament takes it from performing 80/100/120 to performing nothing. The
+comparison therefore carries the shape, and a skipped ornament contributes no
+event — pricing its rows would price a figure the renderer never plays.
+
+**Three unit cases, not two — on a v3-SHAPED ornament** (AD-16, R18; rescoped by
+AD-44.3). `TemporalValue`'s domains are `ticks | milliseconds | relative`, and
+`%` ⇒ `relative` has **no** absolute length without the MSM note it ornaments.
+So: `%`-vs-`%` compares **in percent** (a genuine common unit,
+`unit: 'percent'`); `%`-vs-absolute is a structural finding without an MSM, and
+is resolved against the principal note's duration with one.
+
+The rescope is forced by what the renderer performs. `TemporalSpread.apply`
+reads the **v2** fields, and a v3-sourced spread leaves them at their `0.0`
+initialisers — so on a **v2-shaped** ornament a v3 frame **spreads nothing at
+all**, which the renderer logs in so many words. Executed:
+`frame.start="-22.0" frameLength="44.0"` performs onsets −22/0/22, while
+`frame.offset="-22ticks" frameLength="44ticks"` — the same numbers — performs
+0/0/0. Comparing those as a −22/44 frame would price an attribute tuple against
+a performance that does not exist, which AD-40.2 forbids; the dead cell is
+compared as the neutral frame, because that is measurably what it performs. The
+unit question is therefore real exactly where the frame is: on a v3-shaped
+ornament. **v3 detection is the renderer's own rule** — `@frame.offset` present,
+**or a unit suffix on either frame attribute** — so `frame.start="-22ticks"`
+with a bare `frameLength="44"` is a v3 element too, and inert on a v2-shaped
+ornament.
 
 v3 note-generating ornaments are compared by the same attribute rows; the
 _generated notes_ are a render artifact with per-render random ids and are never

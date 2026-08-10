@@ -574,7 +574,7 @@ describe('stacked ornaments at one date (AD-44.1, AD-44.2)', () => {
     expect(chordOnsets(`${s}${u}`, stacked)).toEqual([-22, 45, 382]);
   });
 
-  it('so stacked spreads stay individual events, and the encoding residual is REAL', () => {
+  it('AD-45.2 — equal-intensity spreads now COMPOSE, so the encodings compare equal', () => {
     const s =
       '<ornamentDef name="s"><temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
     const t =
@@ -582,13 +582,21 @@ describe('stacked ornaments at one date (AD-44.1, AD-44.2)', () => {
     const both =
       '<ornamentDef name="s"><temporalSpread frame.start="-122.0" frameLength="244.0"/></ornamentDef>';
     const stacked = `${STYLE0}<ornament date="0.0" name.ref="s" scale="1.0"/><ornament date="0.0" name.ref="t" scale="1.0"/>`;
-    // The two documents PERFORM identically (the test above) and compare unequal: AD-44.2's
-    // documented limitation, pinned with its measurement rather than left as prose.
-    expect(
-      distance(
-        atomsOf(`${s}${t}`, stacked),
-        atomsOf(both, `${STYLE0}<ornament date="0.0" name.ref="s" scale="1.0"/>`),
-      ),
-    ).toBeGreaterThan(0);
+    const single = `${STYLE0}<ornament date="0.0" name.ref="s" scale="1.0"/>`;
+    // They perform identically (the test above), and now they compare identically.
+    expect(distance(atomsOf(`${s}${t}`, stacked), atomsOf(both, single))).toBe(0);
+  });
+
+  it('but UNEQUAL intensities stay individual, with the limitation still pinned', () => {
+    const s =
+      '<ornamentDef name="s"><temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
+    const u =
+      '<ornamentDef name="u"><temporalSpread frame.start="0" frameLength="360" intensity="3"/></ornamentDef>';
+    const stacked = `${STYLE0}<ornament date="0.0" name.ref="s" scale="1.0"/><ornament date="0.0" name.ref="u" scale="1.0"/>`;
+    const composedFrames = composeAnchors(atomsOf(`${s}${u}`, stacked).atoms).map((atom) =>
+      atom.spread !== null && !isBottom(atom.spread) ? atom.spread.value.frameLength : null,
+    );
+    // Two frames survive rather than one sum and one neutral: no single frame reproduces them.
+    expect(composedFrames).toEqual([44, 360]);
   });
 });
