@@ -15,10 +15,25 @@ paper itself. Anything that could not be confirmed at source is marked **[unveri
 and must not be cited without re-checking. Citation errors that are in circulation are
 marked **⚠** with the correction.
 
-The session's WebSearch budget was exhausted partway through; later verification was by
-direct fetch, bibliographic APIs and proceedings archives. Coverage of very recent
-(late-2025 / 2026) work is therefore thinner than the rest, and is flagged as such
-in §6.
+The session's WebSearch budget was exhausted partway through (200/200); everything after
+that point was verified by direct fetch, DOI resolution, Crossref/PubMed/DBLP APIs and
+proceedings archives, all of which work without search. Coverage of very recent
+(late-2025 / 2026) work is therefore thinner than the rest, and is flagged as such in §6.
+
+**Where to find what the design work asked for:**
+
+- **§4.0** — perceptual thresholds and JND constants, each tagged **[literature]** with a
+  verified citation or **[convention]** where the literature supplies none. Answers
+  SURVEY.md **A-Q3**.
+- **§6.0** — verdicts on the three open questions: **A-Q11** (novelty claim: confirmed in
+  the narrow form, with what was searched), **A-Q8** (scapes: confirmed central, promote
+  from stretch), **A-Q3** (weights: partially grounded).
+- **§3** — research questions of working musicologists; **§5** — gaps and opportunities.
+
+**Welte-Mignon roll scholarship is incorporated by reference.** The full verified
+bibliography for that strand lives in `comparison/survey-lit-welte.md` and is **not
+duplicated here**. §1.6 carries only its six design-shaping implications (W-1…W-6), which
+feed §4 and §5.
 
 **Corrections to premises this survey started with** — carry these forward:
 
@@ -1330,150 +1345,70 @@ writing — do not quote it.
 *Lesson:* **do not use total duration as a tempo feature.** And "tempo tolerance" is a
 useful framing for a per-piece calibration band.
 
-### Welte-Mignon and the roll-fidelity debate
+### Welte-Mignon and the roll-fidelity debate — see `survey-lit-welte.md`
 
-**Hagmann, Peter (1984). *Das Welte-Mignon-Klavier, die Welte-Philharmonie-Orgel und die
-Anfänge der Reproduktion von Musik.* Bern: Peter Lang. ISBN 3-261-03464-5.
-FULL TEXT FREE (264 pp.): `https://freidok.uni-freiburg.de/data/608`.**
-⚠ **Submitted at the University of *Basel***; Freiburg UB hosts the 2002 digital edition,
-which is the source of the common misattribution.
-The foundational sceptical study; its chapter titles are its research programme:
-"*Getreue Wiedergabe des Künstlerspiels?*" (46), "Zum Problem der Manipulation" (67), "Zum
-Tempo-Problem" (81), "Zum Problem der Anschlagsdifferenzierung" (107), "Nochmals: *Getreue
-Wiedergabe des Künstlerspiels?*" (149). Evidence: hands-on measurement of two Welte-Mignon
-pianos and the Philharmonie organ at Seewen over three sessions (1978–80), plus trade press
-and patents. Five relativising findings: the recording method is unknown and editing "muss
-auch für Welte angenommen werden"; **roll speed is not reliably normed — the same roll on
-the same correctly-set instrument plays at different tempi**; the "**künstliches
-Arpeggio**" — because the keyboard is split into two dynamic zones, asynchrony may be a
-technical necessity rather than the pianist's intention, **and the two are aurally
-indistinguishable**; the same problem on the organ; the Seewen organ's 1937 rebuild. He
-relays Roman Flury's finding that Welte transfers ran **~12% longer** than discs of the
-same interpretations. **He nonetheless rejects the conclusion that rolls are worthless for
-interpretation history.**
-*Lesson:* ⚠⚠ **the "künstliches Arpeggio" is the single most dangerous fact for an
-asynchrony metric on Welte data.** Combined with Goebl's velocity-artifact result (§1.1),
-there are now *two independent mechanisms* by which measured asynchrony can be an artefact
-of dynamics rather than an expressive choice.
+The full verified bibliography for this strand (Hagmann 1984; Denis Hall's *Pianola
+Journal* articles; Rex Lawson; Mark Reinhart; the Hänggi & Köpp *«Recording the Soul of
+Music»* Seewen volume incl. Bärtsch on Busoni; Köpp 2023 on Debussy; Howat; Gottschewski;
+Bausch; Dangel/Augustinermuseum) was produced by the Welte sub-survey and is **archived
+verbatim at `comparison/survey-lit-welte.md`**. It is not duplicated here. What follows is
+only what that strand *implies for the metric*, since those implications drive §4 and §5.
 
-**Hall, Denis (2001). "The Reproducing Piano — What Can It Really Do?" *The Pianola
-Journal* 14, 3–26.**
-`https://www.pianola.org/pdfs/Pianola%20Journal%2014%20-%202001hd.pdf` (all back issues
-free).
-Decomposes performance into **six measurable factors** — pitch, duration, placing,
-dynamics, sustaining pedal, una corda — and asks how many a reproducing piano can recreate.
-Central claim: **notes, timing and pedalling were captured automatically; dynamics were
-not** — roll production "required musical as well as technical decisions to be made by the
-roll editor." Decisively for anyone reading asynchrony off a roll: no pneumatic action can
-play more than one dynamic level per half-keyboard at a time, so melody/accompaniment
-separation "**has to be faked**" by microscopic time offsets — "**this deception does take
+**W-1. Tempo uncertainty is structural, not incidental.** Red Welte rolls were cut for one
+nominal speed, but over-long rolls were later cut with shortened perforations and labelled
+"*Tempo langsamer stellen*" — telling the owner the speed is wrong but not by how much; and
+the same roll on the same correctly-set instrument plays at different tempi (Hagmann's
+Seewen measurements). Hall's formulation: "**If you do suspect the speed of a performance,
+how do you tell if it is an eccentric old-fashioned interpretation playing at the correct
+speed, or a more conventional approach at the wrong one?**"
+⇒ **Level-invariant (shape-only) comparison is a musicological requirement for roll
+corpora, not an optional product.** This independently confirms the conductor's
+level/gain/shape decomposition (SURVEY.md A-Q2).
+
+**W-2. Dynamics may be editorial.** Hall's position is that notes, timing and pedalling
+were captured automatically but dynamics were not; Lawson argues the opposite; Reinhart
+takes the middle — whatever was captured, "the raw data required a highly skilled editor to
+interpret and translate it," and "**the role of the editor is one area which is never
+addressed in any of the published accounts.**" The debate is unresolved.
+⇒ **Dimension-selective comparison, including weight 0, must be first-class**, so an
+analyst can run timing-only comparisons on roll corpora. A fixed weight vector that always
+includes dynamics would produce results this community will reject on source-critical
+grounds.
+
+**W-3. Asynchrony may be an artefact of the mechanism.** Hagmann's "**künstliches
+Arpeggio**": because the keyboard is split into two dynamic zones, melody/accompaniment
+separation *must* be faked with microscopic time offsets, and Hagmann states the intentional
+and the forced versions are **aurally indistinguishable**. Hall: "**this deception does take
 place almost all the time in a reproducing piano roll recording.**"
-**Hall's explicit prohibition, aimed squarely at this kind of work:** "it can be misleading
-to attack a music roll with a ruler, and make pronouncements as to how Debussy may have
-played a note 2 millimetres earlier than Gieseking… one should not construct a whole
-learned paper on the use of the sustaining pedal by pupils of Liszt based on measuring the
-rolls of Lamond, Friedheim and Siloti."
-**Hall, Denis (2012). "Piano Roll Speeds." *The Pianola Journal* 22, 3–9.**
-`https://www.pianola.org/pdfs/Pianola%20Journal%2022%20-%202012hd.pdf`
-Red Welte rolls were designed for one "Normal" speed (3 m/min), but over-long rolls were
-later cut with shortened perforations and labelled "*Tempo langsamer stellen*" — telling
-the owner the speed is wrong **but not how much**, and the required reduction is not
-constant. Two copies of Busoni's *Don Juan* Fantasy (roll 1323) are cut to different
-lengths. His sharpest formulation of the tempo problem: "**If you do suspect the speed of a
-performance, how do you tell if it is an eccentric old-fashioned interpretation playing at
-the correct speed, or a more conventional approach at the wrong one?**"
+⇒ Combined with Goebl (2001) in §1.1 — melody lead largely vanishes at the finger–key level
+and is a **velocity artifact even on a real piano** — there are now **two independent
+mechanisms** by which measured asynchrony is confounded with dynamics. An asynchrony
+distance on roll data must be reported as a difference *in the encoding*, never as an
+expressive finding, and the provenance must be attached to the number.
 
-**Lawson, Rex (2009). "On the Right Track — Dynamic Recording for the Reproducing Piano
-(Part One)." *The Pianola Journal* 20, 3–58.**
-`https://www.pianola.org/pdfs/Pianola%20Journal%2020%20-%202009hd.pdf` (Parts Two–Five in
-*PJ* 21, 22, 23, 26; ⚠ page ranges unverified.)
-The **pro-automation** position, framed as a disagreement with Hall: either Welte had "an
-enormous team of genius roll-editors," for which "there is absolutely no evidence," or an
-automatic system produced the dynamic coding directly.
-**Reinhart, Mark (2005). "The Welte-Mignon Recording Process in Germany." *The Pianola
-Journal* 16, 3–32.** The best map of the camps — "polar opposite camps… those who believe
-that Welte and Bockisch had no means to record dynamics, and those who believe that the
-process was fully automated" — and the middle position: whatever was captured, "the raw
-data required a highly skilled editor to interpret and translate it," and "**the role of
-the editor is one area which is never addressed in any of the published accounts.**"
-Two arguments for *some* automatic capture: inner voices on Ravel's own roll 2888 are
-accented **inconsistently**, where editorial coding would have been uniform; and Welte
-issued 1,000+ recordings in 1905–6.
+**W-4. Every roll copy and every transfer is a different object.** Gottschewski documented
+substantial differences between copies of Welte roll No. 548 — the origin of the Global
+Piano Roll Meeting rule that multiple copies of a title must be scanned
+(`https://gprm.net/projects/roll-digitisation/`: "**Digitization is much more than just
+capturing the punched holes**," and "**every roll is unique**").
+⇒ **The noise floor is empirical and must be measured, not assumed** (see W-5 and V5).
 
-**Hänggi, C. E. & Köpp, K. (eds.) (2017/2018). *«Recording the Soul of Music»:
-Welte-Künstlerrollen für Orgel und Klavier als authentische Interpretationsdokumente?
-Symposium Seewen 2013.* ISBN 978-3-9523397-4-9. Open access:**
-`https://www.hkb-interpretation.ch/publikationen/monographien-und-sammelbaende/recording-the-soul-of-music`
-**The volume's subtitle is the field's central research question, posed as a question.**
-Contains **Bärtsch, Manuel, "Welte vs. Audio: Chopins vielbesprochenes Nocturne Fis-Dur
-op. 15/2 im intermedialen Vergleich," 106–131** — the cleanest control experiment in the
-literature: Busoni recorded the same nocturne for Welte (1905) and on disc 17 years later,
-and the strange rubato and text deviations prove "**keineswegs medienspezifisch oder
-zufällig**". But he refuses to generalise: "es wäre verfrüht, nun sowohl Welte- wie die
-frühe akustische Aufnahme als 'authentisch' zu behandeln," since this covers four
-recordings of one piece and such tests are habitually run on slow, agogically rich music.
-Also **Bärtsch, M. (2020). *Klavierspiel um 1905 im Spiegel des Welte-Mignon-Systems.*
-PhD diss., Bern. DOI 10.48549/4302** [full text behind an Anubis wall — **body
-unverified**].
+**W-5. Howat's four-tier taxonomy for roll variants** — (1) clear corrections into the text;
+(2) musically sensible variants; (3) barely plausible variants; (4) obvious fluffs —
+⇒ is a **ready-made severity scale for the ranked deviation list** (charter U3). The module
+does not have to invent a rhetoric for "how important is this difference"; this one is
+already current in the source-critical literature.
 
-**Köpp, Kai (2023). "Interpretationsanalyse an Welte-Mignon Klavierrollen – Ein
-quellenkritischer Versuch am Beispiel von Debussys Einspielungen." In Popović & Mutter
-(eds.), *Claude Debussy: die Klavieraufnahmen*, 127–162. Wolke Verlag.
-ISBN 978-3-95593-407-1. Open access PDF:**
-`https://www.wolke-verlag.de/wp-content/uploads/230811_Debussy.pdf`
-The most systematic source-critical treatment. Pins the scepticism on a named origin —
-Harold C. Schonberg, "From Leschetizky to Gabrilovitch," *High Fidelity* 14 (1964) no. 3 —
-whose verdict was "**Basically, then, piano rolls are to be distrusted**… What they can do
-is to give the scholar and professional musician an **index of style**." Köpp's rebuttal is
-a **periodisation argument**: before the electric microphone (1925/26), discs are no more
-reliable than rolls for dynamics, nuance and pedalling.
+**W-6. Bausch's three framing claims** — a roll is a *Tonsteuerungsträger* (control-command
+carrier), not a *Tonträger*; roll and playback are two "Aggregatszustände" that must not be
+equated; and conversion to MIDI is not transcription — with his methodological rule that
+empirical procedure should be **restricted to the aspects that count as reliable,
+"insbesondere die zeitliche Anordnung der Töne."**
+⇒ **The trust mask is provenance-keyed and inverts the identity ranking.** For
+studio-recorded MIDI, Stamatatos & Widmer rank articulation and asynchrony above tempo above
+dynamics; **for roll-derived documents the ordering is nearly reversed** — trust note
+ordering, distrust dynamics, treat asynchrony as confounded. This is §5 G7.
 
-**Howat, Roy (1994). "Debussy and Welte." *The Pianola Journal* 7, 3–18.**
-"The first systematic use — as far as I know — of piano rolls to help establish an accurate
-edition of music already well known", with a **four-tier taxonomy for roll variants**:
-(1) clear corrections into the text; (2) musically sensible variants on auxiliary staves
-marked "R" for *Rouleau*; (3) barely plausible variants listed at the back; (4) obvious
-fluffs ignored. Candid about limits — the roll releases the soft pedal against Debussy's own
-footnote: "**Did Debussy disobey his own instruction?… Or did Welte's editor, hearing *f* in
-the original performance, decide to edit out this counterproductive-seeming soft pedal?**"
-Conclusion: "**we have to be very careful about what we conclude musically from the
-rolls.**" (In 2023 he redates the Debussy rolls' recording from 1 Nov 1913 to summer 1912.)
-*Lesson:* Howat's four-tier taxonomy is a **ready-made severity scale for a ranked
-deviation list** — a difference is a correction, a considered variant, a whim, or a fluff.
-
-**Gottschewski, Hermann (1996). *Die Interpretation als Kunstwerk: Musikalische
-Zeitgestaltung und ihre Analyse am Beispiel von Welte-Mignon-Klavieraufnahmen aus dem Jahre
-1905.* Laaber. ISBN 3-89007-309-3.** The most substantial musicological study built on
-Welte rolls: a theory and analytic method for musical **time-shaping (*Zeitgestaltung*)**.
-See also his "**Tempoarchitektur.** Ansätze zu einer speziellen Tempotheorie, oder: Was
-macht das 'Klassische' in Carl Reineckes Mozartspiel aus?" *Musiktheorie* 1993/2, 99–117.
-**Gottschewski documented substantial differences between different copies of Welte-Mignon
-roll No. 548** — the origin of the Global Piano Roll Meeting rule that multiple copies of a
-title must be scanned (`https://gprm.net/projects/roll-digitisation/`: "**Digitization is
-much more than just capturing the punched holes**," and "**every roll is unique**").
-
-**Bausch, Sebastian (2019). "Klavierrollen als Interpretationsdokumente: Ein
-Erfahrungsbericht als Leitfaden für Einsteiger." In *Rund um Beethoven*, 71–91.
-DOI 10.26045/kp64-6178-005. Open access; read in full.**
-**The best methodological orientation in the field, and the right first reading for this
-campaign.** Three claims that should govern any encoding work:
-- **A roll is not a sound carrier.** Endorsing Martin Elste's term **"Tonsteuerungsträger"**
-  against *Tonträger*: "Die Rolle speichert keine akustischen Informationen (Schwingungen),
-  sondern enthält **Steuerbefehle** für ein mechanisches Musikinstrument."
-- **Roll and playback are two distinct "Aggregatszustände" of the interpretation and must
-  not be equated.**
-- **Conversion is not transcription:** "**Allerdings resultiert die einfache Wandlung der
-  Lochinformationen in MIDI-Befehle nicht unmittelbar in einem digitalen Abbild der
-  klanglichen Realität**" — dynamic control commands and continuous playback acceleration
-  must be modelled afterwards in software.
-- The epistemic payoff of measurement: empirical procedure gives researchers who lack
-  pianistic experience "einen objektiveren Zugang," because it can be **restricted to those
-  aspects that count as reliable — "insbesondere die zeitliche Anordnung der Töne."**
-*Lesson:* an MPM derived from a roll is a **Tonsteuerungsträger encoding**. Say so in the
-report. And Bausch's own restriction — **trust the temporal ordering of notes, distrust the
-dynamics** — is the correct default weighting for roll-sourced documents, and it is the
-*opposite* of what Stamatatos & Widmer's identity ranking would suggest for
-studio-recorded MIDI.
 
 **Leech-Wilkinson, *The Changing Sound of Music*, §3.4 "Piano rolls"** (read in full) is
 the best short statement of the fidelity problem in English:
@@ -2134,6 +2069,128 @@ passages to listen to**.
 Concrete, attributed, actionable. These are the constraints the design document should
 either adopt or explicitly argue against.
 
+## 4.0 Perceptual thresholds and JND constants
+
+Written to answer SURVEY.md **A-Q3** ("fixed JND-unit constants by default … JND values to
+be grounded in survey-lit's perception citations where they exist, else labelled
+[convention]"). Each row is tagged **[literature]** with a citation verified at source, or
+**[convention]** where the literature does not supply a usable constant. **Nothing here is
+invented; where a number could not be verified it says so.**
+
+| Dimension | Threshold | Status | Source |
+|---|---|---|---|
+| **Timing / IOI perturbation** | **≈ 6 ms absolute** for IOI < ~240 ms; **≈ 2.5% relative** for IOI > ~240 ms | **[literature]** | Friberg & Sundberg 1995 |
+| Timing, earlier estimate by the same authors | ~10 ms below ~240 ms; ~5% above | [literature, superseded] | Friberg & Sundberg 1993 (conference abstract) |
+| **Onset asynchrony — temporal order** | **15–20 ms** to report *which* of two sounds came first | **[literature]** | Hirsh 1959 |
+| **Onset asynchrony — musical working threshold** | **30 ms**, used as "the typical perceptual threshold" in corpus analysis | **[literature]** | Goebl, Flossmann & Widmer 2010 |
+| **Chord simultaneity window** | **35 ms** — notes within it are clustered as one chord | **[literature]** | Nakamura, Yoshii & Katayose 2017 |
+| **Dynamics / intensity** | no musically-validated JND constant found | **[convention]** | see note below |
+| **Articulation (duration ratio)** | no JND constant found | **[convention]** | — |
+| **Tempo-curve shape parameters** | no JND constant exists (shape parameters are not a perceptual scale) | **[convention]** | — |
+
+**The timing constant, verbatim from the source** (Friberg, A. & Sundberg, J. (1995), "Time
+discrimination in a monotonic, isochronous sequence," *JASA* 98(5), 2524–2531,
+DOI 10.1121/1.413218): "The absolute jnd was found to be approximately constant at **6 ms**
+for tone interonset intervals shorter than about 240 ms and the relative jnd constant at
+**2.5% of the tone interonsets above 240 ms**. Subjects' musical training did not affect
+these values. Comparison with previous work showed that a constant absolute jnd below
+250 ms and constant relative jnd above 250 ms tend to appear regardless of the perturbation
+type."
+⇒ **This is the one solid constant we have**, and it has exactly the shape the metric needs:
+**absolute below a breakpoint, relative above it.** A pure log/ratio timing metric (L2) is
+correct in the region that dominates musical IOIs, but becomes over-sensitive at very short
+IOIs (grace notes, ornaments, arpeggio spread), where the JND floors out at ~6 ms absolute.
+Recommend a **soft floor at 6 ms** on timing differences rather than pure ratio all the way
+down. Note also that musical training did **not** affect the threshold — so we cannot excuse
+a looser threshold by appeal to a lay audience.
+
+**The asynchrony band.** Three independently verified anchors bracket it: **15–20 ms**
+(Hirsh 1959, verbatim: "a longer separation time of between 15 and 20 msec is required for
+the listener to report correctly which of the two sounds preceded the other… independent of
+the kinds of sounds used"), **30 ms** as the working analytic threshold (Goebl et al. 2010),
+and **35 ms** as the chord-clustering window (Nakamura et al. 2017). **Recommend 30 ms** as
+the default asynchrony unit: it is the value already used in the one corpus study that
+detects a *musicological* category (earlier rubato) from asynchrony, so adopting it makes
+our output directly comparable to theirs. Note for scale: typical melody lead is ~30 ms and
+bass anticipation ≥70 ms (Goebl et al. 2010), so a 30 ms unit puts melody lead at ~1 JND and
+dislocation at 2–3 JND — musically sensible.
+
+**Dynamics — the honest position.** No verified, musically-validated dynamics JND was found.
+What exists: the classic psychoacoustic intensity-discrimination reference is **Jesteadt,
+W., Wier, C. C. & Green, D. M. (1977), "Intensity discrimination as a function of frequency
+and sensation level," *JASA* 61(1), 169–177, DOI 10.1121/1.381278** — citation verified, but
+**the numeric threshold could not be read at source [unverified]**, so no dB value is
+asserted here. The musically-contextualised study is **Repp (1995)** (below), which reports
+*positional variation* in detectability rather than a single threshold. The nearest usable
+constraint from the performance literature is **Sundberg, Friberg & Frydén (1991)**, who
+found musicians' preferred KTH rule quantities sit **close to the threshold of
+perceptibility** — an argument that the perceptible range of an expressive parameter is
+roughly the range performers actually use. ⇒ **Derive the dynamics unit from the corpus
+(observed per-attribute spread), label it [convention], and stamp the derived constant into
+the report** — which is exactly the opt-in corpus-normalisation path A-Q3 already provides.
+Do not fabricate a dB-based JND.
+
+### The critical caveat: the JND is not constant across the score
+
+Two verified Repp studies show the detection threshold for a timing perturbation **varies
+systematically with position in the music**, and varies in the worst possible way for us.
+
+**Repp, B. H. (1992). "Probing the cognitive representation of musical time: structural
+constraints on the perception of timing perturbations." *Cognition* 44(3), 241–281.
+DOI 10.1016/0010-0277(92)90003-z.** Listeners heard physically regular eight-bar excerpts
+with one or two intervals lengthened. Verbatim from the abstract: "**The resulting detection
+accuracy profile across all positions in each musical excerpt showed pronounced dips in
+places where lengthening would typically occur in an expressive (temporally modulated)
+performance.**" Detection accuracy correlated significantly "with the temporal
+microstructure of expert performances, as measured from sound recordings by famous artists".
+Conclusion: "**the perception of musical time is not veridical but 'warped' by the
+structural representation.**"
+
+**Repp, B. H. (1995). "Detectability of duration and intensity increments in melody tones: a
+partial connection between music perception and performance." *Perception & Psychophysics*
+57(8), 1217–1232. DOI 10.3758/bf03208378.** Verbatim: "Percent correct scores for increments
+in tone duration **correlated significantly with the average timing profile of pianists'
+expressive performances**… For intensity increments, the analogous perception-performance
+correlation was **weak**, and the bottom-up factors of relative pitch height and/or direction
+of pitch change accounted for some of the perceptual variation." And again: "Subjects'
+musical training increased overall detection accuracy but **did not affect the positional
+variation**."
+
+⇒ **Design consequences, and they are sharp:**
+1. **A uniform JND weight systematically over-reports difference exactly where performances
+   legitimately differ most** — at phrase ends and other sites of expected lengthening,
+   where listeners are *least* able to detect deviation. A large computed distance at a
+   phrase boundary may be perceptually invisible.
+2. This is the perceptual mechanism behind Repp's structural finding in §1.1 (divergence
+   grows down the hierarchy) and behind Sapp's smoothed/residual split: **the same physical
+   deviation means different things at different structural positions.**
+3. A position-weighted JND is the better-grounded design, but the literature gives a
+   *correlation with the average performance profile*, not a formula. The honest, and
+   cheap, implementation: **compare against the corpus norm** (L4) — the norm profile is
+   itself an estimate of where deviation is expected, so norm-relative comparison partially
+   absorbs the effect without needing a perceptual model.
+4. At minimum, **report the phrase/structural position alongside each ranked deviation** so
+   a reader can discount boundary-located differences themselves.
+5. Timing and dynamics behave **differently** here — timing detectability is top-down
+   (expectation-driven), dynamics detectability is bottom-up (pitch-related). Another
+   argument against a single fused weight across dimensions.
+
+**Related, verified, and useful for the smoothing decision:** Cambouropoulos, E., Dixon, S.,
+Goebl, W. & Widmer, G. (2001), "Human preferences for tempo smoothness," *Proc. VII Int.
+Symposium on Systematic and Comparative Musicology*, Jyväskylä, 18–26 — listener preference
+data on how smooth a tempo curve should be. [Citation verified from Goebl's publication
+list; **contents unverified**.]
+
+**Also relevant but unverified:** Goebl, W. & Parncutt, R. (2001), "Perception of onset
+asynchronies: Acoustic piano versus synthesized complex versus pure tones," SMPC 2001;
+(2002), "The influence of loudness on the perception of onset asynchronies," ICMPC7,
+613–616; (2003), "Asynchrony versus intensity as cues for melody perception in chords and
+real music," ESCOM5, 376–380. **Titles and venues verified from Goebl's own publication
+list; the PDFs 404'd and no threshold values are asserted [unverified].** These are the
+right papers to obtain if a better asynchrony constant is wanted — in particular the 2003
+paper directly addresses whether asynchrony or intensity carries melody perception, which is
+the perceptual counterpart to Goebl (2001)'s production-side result.
+
 ## 4.1 Normalisation
 
 **L1. Normalise timing as a ratio of performance duration to score duration ("duration
@@ -2462,6 +2519,85 @@ number (Peter et al. 2023; Sapp; Liebman et al.).
 
 # §6 Recent trends, 2018–2026 (verified, with URLs)
 
+## 6.0 Verdicts on the conductor's open questions
+
+Direct answers to the three items SURVEY.md left open pending this survey.
+
+### A-Q11 — Novelty claim: **CONFIRMED, in the narrow form.**
+
+**Verdict: no prior work computes a distance between symbolic performance-*directive*
+encodings.** The claim "first exact, additively-decomposable comparison of symbolic
+performance-directive encodings" is supportable as stated.
+
+What was searched, so the claim can be defended: the MPM specification repository and all
+Berndt publications traceable through DBLP and Crossref (ISMIR 2021, *editio* 2018, Audio
+Mostly 2010/2018, NIME 2010, ICMC 2011, Audio Mostly 2011); the MPM-Toolbox and meico source
+trees; the Cancino-Chacón et al. (2018) review's §3.1.1.2, which is the field's own roll-call
+of parameter-space comparison methods (Sapp 2007/2008; Liem & Hanjalic 2011/2015; Peperkamp
+et al. 2017; Liebman et al. 2012; Grachten et al. 2017); the ISMIR/TISMIR/DLfM archives for
+performance-similarity and performer-identification work; and the KTH rule-system literature
+including forward-citation sweeps (~60 citing works each) of the two papers that come closest
+to fitting rule parameters to real performances (Zanon & De Poli 2003).
+
+**The distinction that carries the claim.** Everything found compares either (a) **rendered
+parameter sequences** — per-onset or per-beat values of tempo, loudness, articulation
+(Sapp; the performance worm; basis-function models; partitura's codec; Peter et al.'s
+reconstruction error) — or (b) **audio**. Nothing compares the *directives*: the
+instructions with their shape parameters, scopes, styles and defaults. The nearest misses,
+and why each falls short:
+- **Sapp 2007/2008** — rendered beat-level series; no instruction layer exists in his data.
+- **Widmer's performance alphabet / Saunders' string kernels** — a symbolic *alphabet*, but
+  derived by clustering rendered trajectory segments, and its authors state it is not
+  distance-preserving and has no principled alphabet size.
+- **KTH k-vectors** — genuinely a directive-space, and Bresin & Friberg (2000) even run PCA
+  on rule parameters. But **no one has ever computed a distance on fitted k-vectors**
+  (verified by forward-citation sweep), and the literature gives three reasons why it would
+  be unsound: collinear dimensions, non-identifiable fits (Zanon & De Poli's k values differ
+  substantially from Sundberg et al.'s *for the same performance of the same piece*), and
+  region-scoped rather than global parameters. Notably, **fitted per-performer palettes do
+  exist** as machine-readable `.pal` files shipped in Director Musices 3.1.6 (Friberg, Gulz
+  & Wettebrandt 2023) — a set of k-vectors in a shared coordinate system that nobody has
+  measured a distance on.
+- **Liebman et al. 2012** — per-category distances over hand-coded performance features, but
+  the features are analyst annotations, not a machine-readable directive encoding, and their
+  headline result is that the *concatenated* distance fails (r = 0.12).
+- **MPM-Toolbox** — has unpublished MPM *extraction* code but no comparison of any kind.
+
+**Two honesty caveats to attach to any published version of the claim.** (1) The search
+budget ran out before a sweep of German-language theses (Detmold/Paderborn
+Hochschulschriften, Edirom Summer School reports) was possible; a student thesis doing MPM
+analysis would not appear in DBLP or Crossref. (2) The 2025–26 ISMIR/TISMIR corner was not
+systematically swept. Both are recorded in §7. Treat the claim as **strongly supported, not
+exhaustively proven**, and re-sweep before publication.
+
+### A-Q8 — Scape / multi-scale product: **CONFIRMED as central; promote from stretch.**
+
+Multi-scale localised comparison is not a nice-to-have in this field; it is the field's own
+answer to its own methodological crisis. Sapp built the scape *because* a scalar correlation
+"is virtually meaningless, and two mostly random sequences could also generate a similar
+correlation value"; Repp's foundational result is that divergence grows as you descend the
+structural hierarchy; Widmer & Tobudic and VirtuosoNet both independently arrive at
+multi-level decomposition; and — the strongest argument — **the live historiographical
+question in the Welte/CHARM world is itself a multi-scale question**: Leech-Wilkinson's
+claim, citing Sapp, that "expressivity operated typically from moment to moment earlier in
+the 20th century, and at the next level up, from phrase to phrase more commonly later on."
+That claim is *only* testable with a scape. Recommend committing it as a W4 deliverable.
+
+### A-Q3 — Weights: **partially grounded; see §4.0.**
+
+One dimension has a real, verified constant (timing: 6 ms absolute below ~240 ms IOI, 2.5%
+relative above — Friberg & Sundberg 1995). One has a defensible working value with a corpus
+precedent (asynchrony: 30 ms — Goebl et al. 2010, bracketed by Hirsh's 15–20 ms and
+Nakamura's 35 ms). **Dynamics and articulation have none that could be verified**, and
+§4.0 recommends deriving them from the corpus and labelling them [convention] rather than
+fabricating a value. The most important finding for A-Q3 is not a constant at all: **the
+timing JND is not uniform across the score** — detection accuracy dips exactly where
+expressive lengthening is expected (Repp 1992, 1995), so a flat JND weight over-reports
+difference at phrase boundaries. Norm-relative comparison partially absorbs this; §4.0 lists
+the options.
+
+## 6.1 Recent trends
+
 **Large transcribed corpora replace hand-annotated ones.**
 - ATEPP — 11,742 tracks, ~1,000 h, 49 pianists, automatically transcribed.
   `https://archives.ismir.net/ismir2022/paper/000053.pdf` · `https://github.com/BetsyTang/ATEPP`
@@ -2597,6 +2733,18 @@ Reported so they are not silently propagated.
   repo and Batik corpus have **no LICENCE file**.
 - Liebman et al. 2012 pagination: article's running header 215–242; several secondary
   sources including the Frontiers review give 195–222.
+- **Jesteadt, Wier & Green (1977), *JASA* 61(1), 169–177, DOI 10.1121/1.381278** — citation
+  verified (PubMed 833368) but **the numeric intensity-discrimination threshold could not be
+  read at source**. No dB JND is asserted in §4.0.
+- **Goebl & Parncutt (2001 SMPC; 2002 ICMPC7, 613–616; 2003 ESCOM5, 376–380)** on the
+  perception of onset asynchronies — titles and venues verified from Goebl's own publication
+  list, but **the PDFs 404'd and no threshold values are asserted.** These are the papers to
+  obtain if a better-grounded asynchrony constant is wanted.
+- **Cambouropoulos, Dixon, Goebl & Widmer (2001), "Human preferences for tempo smoothness"**
+  — citation verified from Goebl's list; **contents unverified.**
+- **Friberg & Sundberg (1993)**, JASA 94(3 Suppl.), 1859, DOI 10.1121/1.407650 gives ~10 ms /
+  ~5%; the 1995 full paper gives ~6 ms / ~2.5%. **Cite the 1995 values**; the 1993 conference
+  abstract is superseded by the same authors.
 - ASAP internal inconsistencies: README totals 1067/519 vs. paper's 1068/520; prose says
   "236 distinct scores" vs. table's 222; prose 15 composers vs. table's 16.
 

@@ -628,3 +628,47 @@ the shared worktree and passes). eslint and prettier clean on all eight files I
 touched; `src/comparison/registry.ts` currently reports one unused-variable
 error and one prettier warning, both w2a's and deliberately not touched by me.
 Staged file by file rather than by directory for the same reason.
+
+## 2026-08-10 — AD-27: W2b rulings, JND upgrade, session-limit restart [BINDING]
+
+Session limit interrupted w2a mid-item (uncommitted registry/transforms/
+config work preserved in tree) and survey-code post-delivery; user directed
+continuation after reset. survey-lit's final quality pass (post-commit)
+added §4.0 (JND provenance table) and §6.0 (open-question verdicts);
+committed now.
+
+Rulings on W2b's four open questions + one decision (survey-code report,
+commit 518fc89):
+AD-27.1 Window precedence REORDERED: options.window > MSM end >
+pair-derived fallback. An explicit window is the caller's deliberate,
+fixed choice (metric-safe); when an MSM is also present and its end
+differs, a note records the MSM end. §5.0's MSM-first ordering is
+superseded.
+AD-27.2 ppq third state APPROVED as implemented (declared-but-unusable:
+falls back to 720, declared=true, unusableDeclaration carries raw text);
+field joins §9.3's report shape.
+AD-27.3 Number-less parts as one-unmatched-row-each with A-before-B
+symmetric ordering: APPROVED.
+AD-27.4 Two-performance document with b omitted and no selectors: STRICT
+(ambiguity error) — explicitness over cuteness; a typo'd selector must
+never silently become "compare the two".
+AD-27.5 CONFIRMED: parts the renderer discards at parse (missing
+number/channel/port) are excluded with a structural note, NOT
+neutral-compared — AD-1's what-is-performed principle governs; R6's
+neutral rule applies only to parts the renderer accepts.
+
+JND upgrade from survey-lit §4.0 (supersedes the AD-26.2 values):
+AD-27.6 tempo JND = ln(1.025) ≈ 0.0247 nepers [literature: Friberg &
+Sundberg 1995, relative regime >240ms IOI, training-independent]. The 6ms
+absolute floor below ~240ms becomes a registry-note + docs obligation for
+ms-domain timing rows (no new W2 machinery). Asynchrony 30ms [literature]
+stands (Hirsh 15-20 / Goebl 30 / Nakamura 35 band documented). Dynamics
+stays [convention] with the corpus-derivation path named as the honest
+alternative (Jesteadt cited but unread-at-source; no fabricated dB JND).
+AD-27.7 Repp 1992/1995 position-variance caveat ("perception of musical
+time is warped by structure" — thresholds dip exactly where expressive
+lengthening typically occurs) becomes a docs obligation: constant-JND
+thresholding is a stated simplification; position-dependent thresholds are
+enumerated future work, not silently absent.
+AD-27.8 Scapes PROMOTED from stretch to committed W4 deliverable
+(survey-lit §6.0 A-Q8 verdict: central to the field's practice).
