@@ -325,7 +325,7 @@ describe('MPM v3 ornament instantiation', () => {
     });
 
     /**
-     * The **D10 id-uniqueness ruling** (ornamentation/LOG.md, 2026-08-09), pinned at the level
+     * The **D10 id-uniqueness ruling** (docs/history/ornamentation/LOG.md, 2026-08-09), pinned at the level
      * that decides it. Nothing in this suite used to constrain the heir when a leftover
      * survives, so the renderer's original reading — leftover *and* heir both carrying the id —
      * passed here and was only caught downstream, in W6's augmented document. The rule is an
@@ -1127,7 +1127,7 @@ describe('MPM v3 ornament instantiation', () => {
      * next onset), so `end <= 0` holds only for an initial run. A NEGATIVE intensity reverses
      * that ordering (pow(i/(n−1), intensity) decreases in i while the last slot stays pinned),
      * so it CAN drop an interior run — verified by construction (W5 verifier re-check,
-     * ornamentation/LOG.md): intensity −1, offset −1000, length 100, monophonic, 4 slots drops
+     * docs/history/ornamentation/LOG.md): intensity −1, offset −1000, length 100, monophonic, 4 slots drops
      * slots 1 and 2. The same rule covers both shapes. This prefix vector is the strongest form
      * against survivor-renumbering: the survivors' first index is non-zero, which is exactly
      * what renumbering would destroy.

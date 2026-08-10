@@ -119,7 +119,7 @@ describe('Mpm', () => {
     // `<ornament>` a pool of `<note>` children (DESIGN.md D1, spec `note.xml`), so the name is
     // now part of the MPM vocabulary and reporting it as foreign would be the bug. The
     // rejection above keeps its strength with `score`, an MSM map name MPM genuinely does not
-    // have. Journaled in ornamentation/LOG.md under "W5 implementer".
+    // have. Journaled in docs/history/ornamentation/LOG.md under "W5 implementer".
     it('should recognize the MPM v3 ornament pool note', () => {
       const mpm = Mpm.createMpm();
       expect(mpm.isInNamespace('note')).toBe(true);

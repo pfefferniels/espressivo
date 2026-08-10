@@ -3,7 +3,7 @@
  *
  * SOURCE. A verbatim port of `src/resources/ornaments.dict` from LarsEngeln/meico branch
  * `develop` @ `3deb141c` (open PR cemfi/meico#31), described in
- * `ornamentation/research/lars-v3-implementation.md` §7.3. The seven entries and their step
+ * `docs/history/ornamentation/research/lars-v3-implementation.md` §7.3. The seven entries and their step
  * sequences below are exactly that file's seven entries, in its order; the header comments of
  * the dict are reproduced as documentation where they carry a rule.
  *

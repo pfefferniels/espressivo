@@ -33,7 +33,7 @@ states what makes the two paths agree again.
 Java citations are `File.java:line` in
 [pfefferniels/meico](https://github.com/pfefferniels/meico) (a fork of cemfi/meico); TypeScript
 citations are paths in this repository. The refactor journal entries referenced as `[T…]` live
-in `refactor/log.md`.
+in `docs/history/refactor/log.md`.
 
 **The evidence standard every "fixed" entry below meets.** A pipeline byte-probe — 5 deterministic
 all-maps fixtures and all 16 MEI fixtures, each through MSM, MPM, augmented MSM, raw MIDI and
@@ -672,7 +672,7 @@ is not vacuous.
 | Corpus             | real MPM encodings decide reader lenience — the strict schematrons reject the format's own sample files                                         |
 
 The reference implementation was audited before any of it was adopted (24-item spec-fidelity
-table, 29-item defect catalogue, in `ornamentation/research/lars-v3-implementation.md`), and the
+table, 29-item defect catalogue, in `docs/history/ornamentation/research/lars-v3-implementation.md`), and the
 audit's headline is why §6.2 exists at all: **the PR cannot read a spec-conformant v3 file**. Its
 pool child element is `ornamentNote`, which no spec release defines; its `frameLength` parser
 throws on the unit suffix the schematron requires; and its v2 ornamentation path is commented
@@ -680,7 +680,7 @@ out. Adopting it as ground truth would have meant reproducing that.
 
 ### 6.2 Where this deliberately diverges from the reference implementation
 
-Each of these is a decision recorded in `ornamentation/DESIGN.md` (the `D…` numbers below) and
+Each of these is a decision recorded in `docs/history/ornamentation/DESIGN.md` (the `D…` numbers below) and
 pinned by tests. They are divergences from an unreviewed pull request, not from a release.
 
 - **D1 — the pool child is `<note>`, not `<ornamentNote>`.** The spec's `note.xml` names `note`;
@@ -937,7 +937,7 @@ have stored, so it belongs in a release note rather than in a patch.
 
 §1's `P1` entry replaced `parseFloat` with `parseJavaDouble` in the five def classes, because
 `parseFloat` and `Double.parseDouble` disagree about _failure_. New v3 parse code follows the same
-rule — the D16 ruling, amended into DESIGN.md and journaled in `ornamentation/LOG.md` — with one
+rule — the D16 ruling, amended into DESIGN.md and journaled in `docs/history/ornamentation/LOG.md` — with one
 deliberate exemption:
 
 - **Exempt: `TemporalValue`** (`frame.offset`, `frameLength`). Its grammar is the spec's own
@@ -1051,7 +1051,7 @@ particular choice, each of the fifteen dimensions additionally carries an expect
 at the strongest deterministically observable level — rendered where the rendered effect is
 deterministic, written-attribute where a PRNG stands in the way. The reasoning behind every
 inclusion, exclusion and metric choice is in
-[expression/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/expression/DESIGN.md) —
+[docs/history/expression/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/expression/DESIGN.md) —
 a repository document, not part of the npm package; §5 of that document is the prototype-feature
 ledger this section summarizes, and §9 records the adversarial review that shaped it.
 

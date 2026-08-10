@@ -380,7 +380,7 @@ the admissible range is the caller's job; §8 of the design document has the per
 
 The full model, the per-attribute registry, and the reasoning behind every inclusion and exclusion
 are in
-[expression/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/expression/DESIGN.md)
+[docs/history/expression/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/docs/history/expression/DESIGN.md)
 (a repository document — the npm package does not carry it); the relationship to the Java-era
 prototype these ideas came from is in [PARITY.md](PARITY.md).
 

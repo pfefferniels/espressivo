@@ -4,7 +4,7 @@ Autonomous program, started 2026-08-09. Conductor session: this file's author.
 User directive: integrate the mpm-renderer exaggeration mechanism ("shader") into
 espressivo — **rethought, generalized, idiomatic** — without the prototype's dead
 ends and magic numbers. Full autonomous authority per [[meico-swarm-governance]]
-(journal invariant-touching calls in expression/LOG.md before executing).
+(journal invariant-touching calls in docs/history/expression/LOG.md before executing).
 
 ## Mission
 
@@ -55,7 +55,7 @@ transform an MPM performance parametrically:
    `Element.toXML` re-emits it, so parse→serialize inflates a real 2444-byte
    fixture to 3972 bytes before the applier is reached. Property-tested against
    the canonical baseline, never against the input.
-7. **Idiomatic per house rules**: refactor/CHARTER.md conventions apply (readonly,
+7. **Idiomatic per house rules**: docs/history/refactor/CHARTER.md conventions apply (readonly,
    no input mutation at the facade, typed errors, RULE F1/F2 plain-data facade).
 8. **Adversarial verification** per wave before its commit.
 
@@ -70,5 +70,5 @@ transform an MPM performance parametrically:
 
 ## State
 
-Journal: expression/LOG.md (append-only). Waves: W0 survey → W1 design →
+Journal: docs/history/expression/LOG.md (append-only). Waves: W0 survey → W1 design →
 W2 core engine → W3 facade → W4 spotlight/presets/docs → W5 audit+report.

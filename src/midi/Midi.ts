@@ -300,7 +300,7 @@ export class Midi {
    * this getter returns the midi sequence
    *
    * Asserts non-null. The field is only null between construction and the first
-   * assignment, which no public path exposes; see `refactor/lint-debt.md` — the `!`s
+   * assignment, which no public path exposes; see `docs/history/refactor/lint-debt.md` — the `!`s
    * in this file are T12's null-policy debt, not oversights.
    *
    * @return the midi sequence
