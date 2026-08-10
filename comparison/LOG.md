@@ -139,3 +139,25 @@ surveys' own recommendations:
   construction (semantic pricing), appear in the script anyway, and are
   reported — the two levels stay consistent without a special case.
 
+
+## 2026-08-10 — W1: DESIGN.md draft complete; panel convened
+
+DESIGN.md committed (f29179e), 662 lines: 11 map-domain dimensions,
+deviation-density formalization (measures: continuous + atoms), exact
+attribution table, L1-headline/L2-interpretive family separation, semantic
+edit pricing with replay verification, corpus products, API sketch,
+P-C1..P-C10, wave plan. [PENDING-LIT]: JND constants, product priorities,
+novelty claim, W5 evaluation design.
+
+[DECISION] Invariance modes added (§7.4): per-dimension
+'none'|'level'|'level-gain' via PER-DOCUMENT canonicalization (metric-safe —
+never pair-dependent). Motivated directly by the Welte fidelity literature
+(roll speed structurally uncertain ⇒ level-invariant tempo comparison is a
+musicological requirement; archived in survey-lit-welte.md). Zero-weight
+dimensions remain computed+reported, excluded only from D.
+
+[DECISION] W1 panel convened NOW, before survey-lit closes, because the
+structural design is lit-independent; a focused second pass will cover
+lit-dependent slots if the lit survey moves anything. Four lenses:
+math-rigor, renderer-fidelity, api-house-rules, consumer-musicology.
+Findings → REVIEW-FINDINGS.md verbatim; conductor adjudication binding.
