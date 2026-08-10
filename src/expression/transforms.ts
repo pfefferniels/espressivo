@@ -435,6 +435,128 @@ export function isInValueDomain(space: ScaleSpace, x: number): boolean {
   return Number.isFinite(x) && scalar.contains(x);
 }
 
+// --- The forward maps themselves (comparison/DESIGN.md §4) -------------------------------
+//
+// Everything above composes `T` with `T⁻¹` and never exposes the bijection in between. A
+// *distance* needs the bijection alone: comparison/DESIGN.md §4's local metric is
+// `d_row(x,y) = min(|T(x) − T(y)| / jnd_row, 2·δ_row)`, and `T` is the only part of it this
+// module owns. These exports live here — their sole consumer is `src/comparison/**` —
+// because they must sit beside the closed forms they are property-tested against
+// (comparison §4/§9.7, A24): `T(C(x,s)) = s·T(x)` is the statement that a forward map and a
+// closed form are the same space, and it is checked over both in one file.
+//
+// **This block is the one place in this module that returns a non-finite number on legal
+// input, and deliberately so.** The invariant above is that the engine never *writes* a
+// non-finite value; nothing here writes anything. `T` is genuinely infinite at the boundary
+// fixed points §7.5 declares admissible — `curvature = 1`, `protraction = ±1`, a volume of
+// 0 — and comparison §4 prices that with the cap above, which is registry data the caller
+// holds and this module does not. So the boundaries return ±Infinity and **the caller
+// caps**. Enumerated there and reproduced here so no reader has to derive them:
+// `boundary-power-low` at `x = 1`, `boundary-power-high` and the logarithms at `x = 0`,
+// `logit` at both bounds.
+//
+// **These maps do not gate their input.** A refusal is a decision about a value, and the
+// decision belongs to the registry row's own predicate (comparison §4's `valueDomain`), not
+// to the map; {@link isInValueDomain} is the space-level form of the same gate. Out of
+// domain, a log-space map returns `NaN` (`ln` of a negative) — comparison §4's one case the
+// cap cannot rescue, a typed document error there rather than a distance — while a
+// boundary-power map returns a finite number with no signal at all, which is precisely why
+// the gate runs first.
+
+/**
+ * `T = ln x` — the forward map of {@link logAroundOne}, and the one comparison uses for the
+ * level spaces too (comparison §4).
+ *
+ * `log-around-center`'s own map is {@link forwardLogAroundCenter}, but the center cancels in
+ * every *difference* — `ln(x/μ) − ln(y/μ) = ln(x/y)` — so the two induce the same metric and
+ * comparison drops the center rather than carrying it. That is not a simplification but a
+ * correctness requirement: the center is a property of one performance (§7.1's geometric
+ * mean over that document's population), so two documents bring two centers and
+ * `|T_A(x) − T_B(y)|` would not be symmetric under swapping them.
+ *
+ * `ln 0 = −∞`; `ln x` for `x < 0` is `NaN`.
+ */
+export function forwardLogAroundOne(x: number): number {
+  return Math.log(x);
+}
+
+/**
+ * `T = ln(x/μ)` — the forward map of {@link logAroundCenter}, center and all.
+ *
+ * Exported for completeness of the space table and because it is what makes
+ * `T(C(x,s)) = s·T(x)` true of this space: with the bare logarithm that identity picks up a
+ * `(1 − s)·ln μ` term and fails. Comparison uses {@link forwardLogAroundOne} instead, for
+ * the reason given there.
+ */
+export function forwardLogAroundCenter(x: number, center: number): number {
+  return Math.log(x / center);
+}
+
+/**
+ * `T = ln((x − a)/(b − x))` — the forward map of {@link logit}, zero at the interval's
+ * midpoint and infinite at both bounds (`meanTempoAt = 0`, `protraction = ±1`).
+ */
+export function forwardLogit(x: number, lower: number, upper: number): number {
+  return Math.log((x - lower) / (upper - x));
+}
+
+/**
+ * `T = ln(1 − x)` — the forward map of {@link boundaryPowerLow}, zero at the lower bound and
+ * `−∞` at `x = 1` (`curvature = 1`, a value §7.5 admits and comparison §4 caps).
+ */
+export function forwardBoundaryPowerLow(x: number): number {
+  return Math.log(1 - x);
+}
+
+/**
+ * `T = ln x` — the forward map of {@link boundaryPowerHigh}, zero at the upper bound and
+ * `−∞` at `x = 0`. Numerically the same expression as {@link forwardLogAroundOne}; a
+ * distinct name because it is a different space with a different neutral, and a reader
+ * checking one against its closed form should not have to notice the coincidence.
+ */
+export function forwardBoundaryPowerHigh(x: number): number {
+  return Math.log(x);
+}
+
+/**
+ * `T = x` — the forward map of {@link gain} and {@link orderedGain}, finite everywhere on
+ * the space's domain. Asynchrony milliseconds, signed articulation deltas.
+ *
+ * The identity is a real entry in this table, not a placeholder: it is what makes a gain
+ * row's JND a quantity in the attribute's own unit (ms, velocity) rather than in nepers.
+ */
+export function forwardGain(x: number): number {
+  return x;
+}
+
+/**
+ * The forward map of a registry-supplied scale space — the `T` of `|T(x) − T(y)|`.
+ *
+ * Throws on an unknown space tag, exactly as {@link transformInSpace} does and for the same
+ * reason: a space this module does not implement is a programmer error, not data.
+ */
+export function forwardInSpace(space: ScaleSpace, x: number): number {
+  switch (space.kind) {
+    case 'log-around-center':
+      return forwardLogAroundCenter(x, space.center);
+    case 'log-around-1':
+      return forwardLogAroundOne(x);
+    case 'logit':
+      return forwardLogit(x, space.lower, space.upper);
+    case 'boundary-power-low':
+      return forwardBoundaryPowerLow(x);
+    case 'boundary-power-high':
+      return forwardBoundaryPowerHigh(x);
+    case 'gain':
+    case 'gain-ordered':
+      return forwardGain(x);
+    default: {
+      const unhandled: never = space;
+      throw new Error(`unknown scale space: ${JSON.stringify(unhandled)}`);
+    }
+  }
+}
+
 /** A rubato window: the fraction of the frame that is late-started and early-ended. */
 export interface RubatoWindow {
   readonly lateStart: number;

@@ -36,6 +36,10 @@ import importPlugin from 'eslint-plugin-import';
  * transform sits above the whole renderer and reads raw XML, so no renderer module may reach up
  * into it. Fencing only the downward direction would leave the new layer half-enforced — the
  * edge count is zero today, and these entries are what keeps it there.
+ *
+ * A `comparison` glob appears in every zone below it for the same reason, the `expression` zone
+ * included: the comparison module (comparison/DESIGN.md §9.7, A24) sits above the expression
+ * transform, which it reads for the forward scale-space maps and nothing else.
  */
 const LAYER_ZONES = [
   {
@@ -48,33 +52,41 @@ const LAYER_ZONES = [
       '**/mei/**',
       '**/musicxml/**',
       '**/expression/**',
+      '**/comparison/**',
     ],
-    why: 'L0/L1 leaf modules import nothing from a higher layer, the expression transform at the top of the tree included (ARCHITECTURE.md RULE M1).',
+    why: 'L0/L1 leaf modules import nothing from a higher layer, the expression transform and the comparison module at the top of the tree included (ARCHITECTURE.md RULE M1).',
   },
   {
     layer: 'midi',
     files: ['src/midi/**/*.ts'],
-    forbidden: ['**/msm/**', '**/mpm/**', '**/mei/**', '**/musicxml/**', '**/expression/**'],
-    why: 'src/midi/** is L2 and must not know about MSM, MPM, MEI, or the expression transform above them (RULE M1).',
+    forbidden: [
+      '**/msm/**',
+      '**/mpm/**',
+      '**/mei/**',
+      '**/musicxml/**',
+      '**/expression/**',
+      '**/comparison/**',
+    ],
+    why: 'src/midi/** is L2 and must not know about MSM, MPM, MEI, or the two document layers above them (RULE M1).',
   },
   {
     layer: 'msm',
     files: ['src/msm/**/*.ts'],
-    forbidden: ['**/mpm/**', '**/mei/**', '**/musicxml/**', '**/expression/**'],
+    forbidden: ['**/mpm/**', '**/mei/**', '**/musicxml/**', '**/expression/**', '**/comparison/**'],
     typeOk: true,
-    why: 'src/msm/** is L3: MPM, MEI and the expression transform are above it, so only `import type` may cross (RULE M1).',
+    why: 'src/msm/** is L3: MPM, MEI, the expression transform and the comparison module are above it, so only `import type` may cross (RULE M1).',
   },
   {
     layer: 'mpm',
     files: ['src/mpm/**/*.ts'],
-    forbidden: ['**/mei/**', '**/musicxml/**', '**/expression/**'],
-    why: 'src/mpm/** is L4 and must not import the MEI layer or the expression transform above it — T14 removed the last 33 such MEI edges (RULE M1/M2).',
+    forbidden: ['**/mei/**', '**/musicxml/**', '**/expression/**', '**/comparison/**'],
+    why: 'src/mpm/** is L4 and must not import the MEI layer or the two document layers above it — T14 removed the last 33 such MEI edges (RULE M1/M2).',
   },
   {
     layer: 'mei',
     files: ['src/mei/**/*.ts'],
-    forbidden: ['**/expression/**'],
-    why: "src/mei/** is the renderer's top interior layer, still below the expression transform.",
+    forbidden: ['**/expression/**', '**/comparison/**'],
+    why: "src/mei/** is the renderer's top interior layer, still below the expression transform and the comparison module.",
   },
   {
     layer: 'expression',
@@ -90,6 +102,7 @@ const LAYER_ZONES = [
       '**/mei/**',
       '**/musicxml/**',
       '**/mpm/**',
+      '**/comparison/**',
       '!**/mpm/names.js',
     ],
     why:
@@ -97,6 +110,58 @@ const LAYER_ZONES = [
       'src/supplementary/** and the MPM name constants, and nothing else. Importing a renderer ' +
       'class would reintroduce exactly what DESIGN.md D-A/A1 forbids — `new Mpm(text)` runs the ' +
       'mutating def parsers in its CONSTRUCTOR, so merely parsing a document rewrites it.',
+  },
+  {
+    layer: 'comparison',
+    files: ['src/comparison/**/*.ts'],
+    // comparison/DESIGN.md §9.7 (A24) specifies this zone, negations included. It PERMITS
+    // `**/expression/**`, which is the whole point of §4's placement decision: the forward
+    // scale-space maps `T` live in `expression/transforms.ts` so they sit beside the closed
+    // forms they are property-tested against, and comparison is their only consumer.
+    //
+    // Two carve-outs, both narrow, both measured:
+    //   - `mpm/names.js`, exactly as the expression zone carves it out — the format's
+    //     spelling, from a leaf that imports nothing.
+    //   - `mpm/elements/maps/data/bezier.js`, the ideal-curve math §5.3 compares against
+    //     rather than transliterating a fourth copy of. Safe for the same reason: it imports
+    //     nothing, so it drags in neither `Mpm.js` nor the map modules whose
+    //     `registerMapFactory` side effects exist. And it is outside `package.json`'s
+    //     `sideEffects` list — that glob is `./dist/mpm/elements/maps/*.js` and the compiled
+    //     module is one directory deeper, so bundlers are told it is side-effect-free.
+    //
+    // THE STAIRCASE IS NOT DECORATION. This rule matches with gitignore semantics (ESLint
+    // builds an `ignore` matcher from the group, `no-restricted-imports.js:311`), and
+    // gitignore cannot re-include a file whose parent directory is excluded. DESIGN §9.7
+    // specifies the carve-out as one negation, `!**/mpm/elements/maps/data/bezier.js`, and
+    // that form is silently INERT: `**/mpm/**` excludes `mpm/elements` as a directory, so the
+    // negation never fires and the import stays blocked. Re-including each ancestor and
+    // re-excluding its contents is gitignore's own idiom for "everything under here except
+    // this one file". Verified by negative control: with the single negation the bezier
+    // import errored; with the staircase it is allowed while `mpm/Mpm.js`,
+    // `mpm/elements/GenericMap.js`, `mpm/elements/maps/TempoMap.js` and
+    // `mpm/elements/maps/data/TempoData.js` all still error.
+    forbidden: [
+      '**/midi/**',
+      '**/msm/**',
+      '**/mei/**',
+      '**/musicxml/**',
+      '**/mpm/**',
+      '!**/mpm/names.js',
+      '!**/mpm/elements',
+      '**/mpm/elements/*',
+      '!**/mpm/elements/maps',
+      '**/mpm/elements/maps/*',
+      '!**/mpm/elements/maps/data',
+      '**/mpm/elements/maps/data/*',
+      '!**/mpm/elements/maps/data/bezier.js',
+    ],
+    why:
+      'src/comparison/** reads two MPM documents and writes none: it may use src/xml/**, ' +
+      'src/supplementary/**, src/expression/** (the forward maps of comparison/DESIGN.md §4), ' +
+      'the MPM name constants and the dependency-free Bézier math, and nothing else. The ban ' +
+      'on the renderer classes is the same one the expression zone carries and for the same ' +
+      'reason — `new Mpm(text)` runs the mutating def parsers in its CONSTRUCTOR, so merely ' +
+      'parsing a document rewrites it, and a comparison that mutates its input is not one.',
   },
 ];
 export default tseslint.config(

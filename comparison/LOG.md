@@ -672,3 +672,96 @@ thresholding is a stated simplification; position-dependent thresholds are
 enumerated future work, not silently absent.
 AD-27.8 Scapes PROMOTED from stretch to committed W4 deliverable
 (survey-lit §6.0 A-Q8 verdict: central to the field's practice).
+
+## 2026-08-10 — W2a: forward `T`, comparison registry subset, layer config
+
+Built (one commit):
+
+1. **Forward maps in `src/expression/transforms.ts`** (§4's placement, A24):
+`forwardLogAroundOne`, `forwardLogAroundCenter`, `forwardLogit`,
+`forwardBoundaryPowerLow`, `forwardBoundaryPowerHigh`, `forwardGain`, and the
+`forwardInSpace` dispatch. They are the one block in that module that returns a
+non-finite number on legal input, deliberately: §4's cap is registry data the
+caller holds, so the boundaries return ±Infinity and the CALLER caps. Property
+test pins `T(C(x,s)) = s·T(x)` over the existing `SPACES` grid, at the infinite
+boundary values for every `s > 0`, and at `s = 0` as the branch it is.
+2. **`src/comparison/registry.ts`** — §4's table for the four W2 dimensions:
+17 rows (tempo 5, rubato 5, dynamics 6, asynchrony 1), the frozen eleven-name
+`COMPARISON_DIMENSIONS`, the frozen §3 correspondence table, the frozen W2
+`COMPARISON_JND_KEYS`, and §4's capped local metric `localDistance` (see flag 8).
+3. **Config**: the `comparison` eslint zone plus `'**/comparison/**'` in all six
+existing zones' forbidden lists; `'src/comparison/**/*.ts'` in vitest coverage.
+
+AD-27.6 applied: tempo rows carry `ln(1.025)` **[literature]** (Friberg &
+Sundberg 1995) in place of revision 2's `ln(1.05)` [convention]; the asynchrony
+row carries 30 ms [literature] with the Hirsh 15–20 / Goebl 30 / Nakamura 35
+band and the **6 ms absolute floor** stated as a note obligation (that row is
+already absolute, so it costs no machinery — the obligation binds any future row
+that reads a timing difference as a ratio); the dynamics rows stay [convention]
+with corpus derivation named as the honest alternative and no dB figure asserted.
+
+Flagged, not resolved silently:
+
+1. **§4's two sentences about `log-around-center` cannot both be literal.**
+"A property test pins `T(C(x,s)) = s·T(x)` for every space" and "log-around-center
+collapses to the bare logarithm" are jointly false for bare `ln`: with `T = ln`
+the identity picks up a `(1−s)·ln μ` term. Implemented both in their own sense —
+`forwardLogAroundCenter` is the space's true bijection `ln(x/μ)` and satisfies
+the identity; the collapse is pinned as a property of *differences*
+(`T_μ(x) − T_μ(y) = ln x − ln y` for every μ), which is what §4's own qualifier
+says. Comparison's level rows therefore carry `log-around-1`, i.e. the operational
+collapse, for survey-code §2.2's reason: two documents bring two centers.
+2. **§4's superset property, "the same scale space", cannot be literal for two
+families.** Expression's level rows are `log-around-center` and its rubato window
+rows are `joint-trim`; comparison uses `log-around-1` (flag 1) and `gain`
+(§5.2/A-Q10 prices the window as L1 on the ENDPOINTS, not through the trim
+reparametrization). The test carries both substitutions as named, cited
+equivalences rather than normalizing them away.
+3. **§4's row shape has no representation for a boolean evaluator input.**
+AD-10 mandates a row for `@loop` — filing it structural made two documents
+differing only in it score `d_rubato = 0` — but a boolean has no scale space, no
+unit and no JND. Implemented as `gain` over `{0,1}` with `jnd 1 [convention]` and
+a note that the row carries no independent metric (its difference is priced
+through the displacement curve it opens). W3 meets the same problem with
+`@stickToMeasures` and should either ratify this or add a gate role. Note
+`@subNoteDynamics` is NOT this case: §5.3 makes it `structural` explicitly.
+4. **§9.7's bezier carve-out as written is INERT.** ESLint builds an `ignore`
+(gitignore) matcher from the pattern group, and gitignore cannot re-include a
+file whose parent directory is excluded — so `'**/mpm/**'` plus
+`'!**/mpm/elements/maps/data/bezier.js'` silently keeps the import blocked.
+Measured by negative control, then fixed with gitignore's own staircase idiom
+(re-include each ancestor, re-exclude its contents). Control re-run: `Mpm.js`,
+`elements/GenericMap.js`, `maps/TempoMap.js` and `maps/data/TempoData.js` all
+error; `bezier.js`, `names.js` and `expression/transforms.js` are allowed. The
+carve-out is included this wave because §9.7 specifies it as part of the zone,
+not staged by wave; nothing imports bezier yet.
+5. **§4's infinite-`T` enumeration overlaps its own NaN case.** It lists
+"`log-around-*` and the bare logarithm at `x = 0`" among the ±∞ values and
+separately says `qbpm ≤ 0` is NaN. Mathematically `ln 0 = −∞` (capped) and
+`ln x < 0` is NaN (a typed document error). Implemented that way and documented;
+DESIGN's wording could be tightened to `qbpm < 0`.
+6. **Rows with no §7.1 constant.** meanTempoAt, curvature, protraction, rubato
+intensity/lateStart/earlyEnd and the two booleans get `jnd = 1 [convention]`,
+i.e. **reported unnormalized in their own `T`-space unit**, rather than an
+invented perceptual constant. survey-lit §4.0 supports this directly: "Tempo-curve
+shape parameters — no JND constant exists (shape parameters are not a perceptual
+scale)". None of these rows carries its dimension's curve, so the constant never
+enters a §5 density; only §6's per-attribute `deltaJnd` reads it.
+7. **A `beatLength` plausibility band would catch §5.0's own motivating example
+more directly** than `qbpm ∈ [10,400]` does — the Hofmann (1927) files write
+`beatLength` in ticks. §5.0 names exactly four [convention] bands, so a fifth was
+not invented; the `beatLength` row carries `plausibleRange: null` and the note
+explains that the unit mismatch surfaces through `@bpm`'s band. W3/lit call.
+8. **Scope addition, flagged for relocation if wanted**: §4's capped local metric
+`localDistance` is implemented here rather than left unassigned, because §4
+defines the registry and its metric as one unit and the row data is inert without
+it. It consumes W2b's `Valued<number>`/`Bottom` rather than a second spelling of
+`⊥`.
+
+Also exported: the four §7.1 JND constants by name, so an evaluator takes its
+curve JND from a symbol rather than deciding which row "is" the curve.
+
+Verify: build + typecheck:tests green; 93 test files, 4126 passed, 1 skipped
+(the skip is the W3 inventory-partition scaffold). Run excludes W2c's in-flight
+`tests/comparison/quadrature.test.ts`, which is untracked in the shared worktree
+and not part of this commit.
