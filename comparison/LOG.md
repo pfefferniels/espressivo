@@ -790,3 +790,48 @@ and the ~1e-6..1e-12 figures are numerical hygiene above it.
 AD-28.3 Commit policy: quadrature.ts + tests commit NOW standalone (green,
 import-free, licenses the table by Newton re-derivation); the rest of W2c
 lands as a second commit. Two commits for W2c, journaled here.
+
+## 2026-08-10 — W2c part 1: numerical core, under AD-28 (task #14, survey-code)
+
+First of the two commits AD-28.3 authorises. `src/comparison/quadrature.ts`
+(import-free) + 41 tests. Task #14 STAYS OPEN: the grid, the four evaluators,
+the densities and the property suite are the second commit.
+
+Delivered: Neumaier summation (array + streaming), GL-10 with the table at full
+double precision, `integrateGradedPower` (AD-28.1's ruled scheme),
+`gradedPanelCount`, `powerCriticalPoint`, sign-COMPARISON bisection at a fixed
+50 iterations (M16-safe), `integrateAbsolute` with structural split points, and
+`integrateSubstitutedPower` retained ONLY as the pinned counterexample.
+
+DESIGN §5.0 quadrature rule 1 rewritten under AD-28.1, as that ruling directs:
+the substitution text is replaced by the graded mesh, the falsification is
+recorded with its measurements, and the `max(2, ·)` floor is written into the
+spec — `⌈log₂ e⌉ + 2` is 0 at e = 0.23 and negative below it, so the bare
+formula asks for no mesh at all across the whole e < 1 regime. The floor was in
+the measured prototype, so the 3.3e-6 figure the ruling quotes is already the
+floored function's.
+
+[CORRECTION to AD-28.2's arithmetic, not to its ruling] AD-28.2 cites naive
+GL-10's worst case as 4.8e-3 JND. That was my figure and it used
+TEMPO_JND_NEPERS = ln(1.05) from DESIGN rev 2; AD-27.6 had already halved it to
+ln(1.025) (Friberg & Sundberg 1995), which doubles every JND-unit figure.
+Corrected: over meanTempoAt ∈ [0.02, 0.99] naive's worst is 9.7e-3 JND and the
+graded mesh's is 5.4e-4 JND; at 0.999 they are 4.8e-2 and 4.7e-3. The
+conclusion AD-28.2 draws — that JND-scale exactness is the requirement and both
+schemes clear it — is unchanged, and the gap between the schemes is unaffected.
+The corrected numbers are in the module docs and pinned by a test rather than
+left in prose.
+
+Auditability test as commissioned: an independent Newton re-derivation of P10's
+roots and weights from the Chebyshev initial guess, agreeing to 1e-15. That is
+what licenses hard-coding the table — one that derived itself at run time would
+be self-consistent with its own typo. Also pinned end to end: M7's
+double-crossing cell (72.6→132.6 at e=2 vs 60→120 at e=1) crosses at u=0.3 and
+0.7 with EQUAL endpoint signs, so bisection alone finds nothing; the critical
+point splits at 0.5, both roots are then found, and `integrateAbsolute` lands
+within 1e-9 relative where the naive whole-cell rule is off by >1e-3.
+
+Gate: 41/41 tests, eslint and prettier clean on both files, `tsc` clean.
+`npm run verify` deliberately not re-run for this commit — the module imports
+nothing and nothing imports it yet, so it cannot affect another suite; the full
+gate runs on the W2c part 2 commit that wires it in.

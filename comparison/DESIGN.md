@@ -562,14 +562,34 @@ The grid is bounded below by the tick.
 cells use fixed-order Gauss–Legendre (order 10) under three rules that revision 1
 lacked:
 
-1. *Tempo cells are substituted, not subdivided.* `e = ln 0.5 / ln(meanTempoAt)`
-   ranges over `(0, ∞)` on legal input, and GL-10 on `ln(bpm₀ + Δ·u^e)` loses
-   accuracy at **both** ends — measured relative error 1.9·10⁻⁵ at `e = 0.5` and
-   2.7·10⁻⁴ at `e = 150`, against a claimed 1e−12; `meanTempoAt = 0.93` (an
-   ordinary late-weighted ritardando) already costs nine digits (M6). The
-   substitution `u = z^{1/e}`, `du = (1/e) z^{1/e−1} dz`, turns `u^e` into `z`
-   and makes the integrand smooth for every `e`, killing both singular ends at
-   once and restoring machine precision across the whole legal range.
+1. *Tempo cells are integrated on an equal-mass graded mesh* (**AD-28.1**, which
+   supersedes AD-17's substitution). `e = ln 0.5 / ln(meanTempoAt)` ranges over
+   `(0, ∞)` on legal input, and GL-10 on `ln(bpm₀ + Δ·u^e)` loses accuracy at
+   **both** ends — measured relative error 1.9·10⁻⁵ at `e = 0.5` and 2.7·10⁻⁴ at
+   `e = 150` (M6). That diagnosis stands; the remedy has been replaced, because
+   the one AD-17 prescribed was **measured and falsified**. The substitution
+   `u = z^{1/e}`, `du = (1/e) z^{1/e−1} dz` does remove the singularity for
+   `e < 1`, but for `e > 1` it drives the Jacobian exponent `1/e − 1` negative
+   and *creates* a `z → 0` singularity the original integrand never had:
+   measured relative error 3.5·10⁻² at `meanTempoAt = 0.7`, **3.9·10⁻¹ at 0.9**,
+   9.2·10⁻¹ at 0.99, and at `e = 150` a result outside the bounds of the
+   function being integrated. That is the entire late-weighted-ritardando half
+   of the range, including AD-17's own cited `meanTempoAt = 0.93`.
+   The ruled scheme is a **graded mesh**: panels at `u = (k/K)^{1/e}` for
+   `k = 0 … K`, `K = max(2, ⌈log₂ e⌉ + 2)`, GL-10 on each panel. Each panel
+   carries equal mass in `z = u^e`, so the mesh concentrates into the boundary
+   layer at `u = 1` exactly when `e` is large and spreads out when it is small.
+   It transforms nothing, so it has no Jacobian and no singularity to create.
+   **One scheme for the whole legal range, no regime branching.** Measured worst
+   relative error 3.3·10⁻⁶ over `meanTempoAt ∈ [0.02, 0.99]` (2.9·10⁻⁵ at
+   0.999), against naive GL-10's 4.4·10⁻⁵ (2.9·10⁻⁴) — about a factor of ten
+   better everywhere and worse nowhere.
+   The floor in `max(2, ·)` is not cosmetic: `⌈log₂ e⌉ + 2` is 0 at `e = 0.23`
+   and negative below it, so the bare formula asks for no mesh at all across the
+   whole `e < 1` regime.
+   The falsified substitution is retained in `quadrature.ts` **solely** as a
+   pinned counterexample, under failing-by-design assertions, so that it cannot
+   quietly return.
 2. *Sign changes are bracketed by structure, not by endpoint signs.* Bisection
    can only find a crossing it has a bracket for, and `g_A − g_B` can cross
    **twice** inside one cell with equal endpoint signs — two legal tempo
