@@ -625,6 +625,24 @@ protraction 0.9` — control points in range, `x(t)` monotone — the difference
    relatively coarsest; AD-30's "negligible-by-construction" curvature argument does
    not survive it: the argument is about the smoothstep in `t`, while the
    clustering happens in `x` after the monotone reparametrization.
+   2c. _Frame-aligned rubato cells split at a structural `u*`_ (**AD-33.3b**). `δ` is a
+   saw-tooth — it rises across the frame from `L·lateStart` and drops to
+   `L·(earlyEnd − 1)` at the wrap — so `δ_A − δ_B` routinely starts and ends a
+   cell with the SAME sign while crossing zero twice between, and a cell with no
+   split is integrated as `|∫ f|` instead of `∫ |f|` with the lobes cancelling.
+   Measured over 3906 legal frame-aligned pairs, the unsplit reading was wrong by
+   > 0.1 % on **59.6 %** of them, worst case total cancellation. Within one shared
+   > frame `Δδ(x) = L·[α·x^p − β·x^q + (ls_A − ls_B)]` with `α = ee_A − ls_A`,
+   > `β = ee_B − ls_B`; its derivative has exactly one positive root, so the
+   > difference has one interior stationary point and at most two zeros — the same
+   > structure rule 2 solves for tempo. Split at
+   > `u* = (q·β / (p·α))^{1/(p−q)}` via `powerCriticalPoint`, arguments canonically
+   > ordered per AD-33.2. Where the two frames differ in length or phase there is no
+   > shared coordinate, and the fallback is fixed `K = 16` subdivision.
+   > **Fixed subdivision alone is not adequate here** — it leaves 226 pairs wrong at
+   > `K = 16` and 62 at `K = 32`, against 10 for the structural split — which is why
+   > rubato gets rule 2c rather than rule 2b's device. Residual after both repairs:
+   > 10 of 3906 pairs wrong by >0.1 %, worst 1.68·10⁻³ relative.
 3. _The defined dynamics/pedal curve is the ideal cubic Bézier._ `tForDate`
    (`bezier.ts:57-78`) stops at a **1-tick tolerance in the date domain**, so
    `date ↦ volume` is a staircase with thousands of treads across a long cell and
@@ -642,6 +660,12 @@ substitution — which is why it is its own family), `imprecision`
 (special-function — the Φ/Φ⁻¹ rational approximations, currently Acklam at
 `|err| < 1.15·10⁻⁹`) and `drift` (the renderer's own Simpson rule at one
 sub-interval per sixteenth) simultaneously.
+
+**Sign probes are half-open** (AD-33.3a). Because curves are right-continuous, a cell's
+right endpoint carries the NEXT cell's value across a discontinuity, so `bisectSignChange`
+probes it at its **left limit**; the GL-10 nodes are untouched, being strictly interior
+already. Latent in tempo and dynamics, whose curves are monotone within a span; decisive in
+rubato, where it alone takes the >0.1 % failures from 2328 of 3906 to 280.
 
 **Curve reading is right-continuous** (A-B1): the value at an instruction's date
 is that instruction's value. Divergence from `TempoMap`'s strict-before reading

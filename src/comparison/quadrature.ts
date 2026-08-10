@@ -296,11 +296,38 @@ function signOf(x: number): -1 | 0 | 1 {
  *
  * The bracket update compares signs (see {@link signOf}); it never tests `f(m) > 0`.
  */
+/**
+ * A point one ulp inside `high`, for probing a right-continuous function's LEFT limit there.
+ *
+ * A relative step rather than a fixed epsilon: these abscissae are ticks and can be 10⁵ or
+ * more, where a fixed 1e−9 would be far below the representable spacing and round back to
+ * `high`. `|high|·ε` is one ulp at that magnitude by construction.
+ *
+ * The fallback matters for correctness rather than tidiness: on an interval already about
+ * one ulp wide the step cannot land strictly inside, and returning `high` would reinstate
+ * exactly the closed probe this function exists to avoid. The midpoint always lies inside a
+ * non-degenerate interval, and on a degenerate one every probe is the same point anyway.
+ */
+function leftLimitOf(high: number, low: number): number {
+  const step = Math.max(Math.abs(high) * Number.EPSILON, Number.MIN_VALUE);
+  const inward = high - step;
+  return inward > low ? inward : (low + high) / 2;
+}
+
 export function bisectSignChange(f: (x: number) => number, a: number, b: number): number | null {
   let low = a;
   let high = b;
   const signLow = signOf(f(low));
-  const signHigh = signOf(f(high));
+  // HALF-OPEN PROBE (AD-33.3a). Every curve in this module is right-continuous (A-B1), so
+  // `f(b)` at a cell's right edge is the NEXT cell's value across a discontinuity, and
+  // bracketing on it searches this interval with a sign that does not belong to it. Probing
+  // the right endpoint at its left limit fixes that. The GL-10 nodes are untouched — they are
+  // already strictly interior, so the integral itself never sees the endpoint.
+  //
+  // Latent in tempo and dynamics, whose curves are monotone within a span; decisive in
+  // rubato, whose δ is a saw-tooth dropping at every frame wrap. Measured over 3906 legal
+  // frame-aligned rubato pairs, this repair alone takes the >0.1 % failures from 2328 to 280.
+  const signHigh = signOf(f(leftLimitOf(high, low)));
   if (signLow === 0) return low;
   if (signHigh === 0) return high;
   if (signLow === signHigh) return null;

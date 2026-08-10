@@ -111,6 +111,23 @@ function gradedBoundariesIn(
  * their breakpoints are already grid points and each cell sees at most one transition
  * developing against a constant, where the difference is monotone and needs no split.
  */
+/**
+ * The two power segments in a canonical order — AD-33.2's symmetry repair.
+ *
+ * Sorted by `(exponent, Δqbpm)`, smaller first. Both keys are needed: two segments can share
+ * an exponent and differ only in their span, and a total order is what makes the downstream
+ * `Math.pow` call independent of which document was passed as `a`.
+ */
+function orderPowerSegments(
+  a: Extract<TempoSegment, { kind: 'power' }>,
+  b: Extract<TempoSegment, { kind: 'power' }>,
+): readonly [Extract<TempoSegment, { kind: 'power' }>, Extract<TempoSegment, { kind: 'power' }>] {
+  if (a.exponent !== b.exponent) return a.exponent < b.exponent ? [a, b] : [b, a];
+  const deltaA = a.qbpm1 - a.qbpm0;
+  const deltaB = b.qbpm1 - b.qbpm0;
+  return deltaA <= deltaB ? [a, b] : [b, a];
+}
+
 function criticalPointTicks(
   a: TempoSegment,
   b: TempoSegment,
@@ -122,7 +139,21 @@ function criticalPointTicks(
   const span = a.endTicks - a.startTicks;
   if (!Number.isFinite(span) || span <= 0) return [];
 
-  const u = powerCriticalPoint(a.qbpm1 - a.qbpm0, a.exponent, b.qbpm1 - b.qbpm0, b.exponent);
+  // CANONICAL ORDER (AD-33.2). Passing the segments in document order breaks R2's
+  // bit-exact symmetry: swapping the documents computes (p·Δ_a/(q·Δ_b))^{1/(q−p)} instead of
+  // (q·Δ_b/(p·Δ_a))^{1/(p−q)}, which are algebraically equal and NOT equal in IEEE754 —
+  // separately-rounded reciprocals, and Math.pow is not reciprocal-symmetric. A 400 000-set
+  // sweep found 11.7 % of non-null results differing by one ulp, which moves the split point,
+  // which moves the GL-10 abscissae, which changes the reported bits. Ordering by
+  // (exponent, Δqbpm) smaller-first makes the call independent of which document is `a`;
+  // the same sweep then gives 0 asymmetric results.
+  const [first, second] = orderPowerSegments(a, b);
+  const u = powerCriticalPoint(
+    first.qbpm1 - first.qbpm0,
+    first.exponent,
+    second.qbpm1 - second.qbpm0,
+    second.exponent,
+  );
   if (u === null) return [];
   const t = a.startTicks + u * span;
   return t > cellStart && t < cellEnd ? [t] : [];

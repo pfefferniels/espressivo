@@ -305,6 +305,25 @@ describe('tempo distance: metric properties on the W2 subset', () => {
     expect(distance).toBeCloseTo((Math.log(120 / 100) / TEMPO_JND_NEPERS) * 4, 6);
   });
 
+  it('P-C2 symmetry on a POWER-VS-POWER cell, which is where it broke (CAPITAL-3)', () => {
+    // Every P-C2 test in the wave compared two CONSTANTS, so none reached
+    // criticalPointTicks at all. Passing the segments in document order made
+    // powerCriticalPoint compute separately-rounded reciprocals — algebraically equal, not
+    // equal in IEEE754 — and 11.7 % of argument sets differed by one ulp, which moves the
+    // split point, the GL-10 abscissae, and the reported bits. Canonical ordering fixes it.
+    const a =
+      '<tempo date="0.0" bpm="40" beatLength="0.25" transition.to="90" meanTempoAt="0.9"/>' +
+      '<tempo date="2880.0" bpm="90" beatLength="0.25"/>';
+    const b =
+      '<tempo date="0.0" bpm="45" beatLength="0.25" transition.to="85" meanTempoAt="0.1"/>' +
+      '<tempo date="2880.0" bpm="85" beatLength="0.25"/>';
+    const forward = distanceBetween(a, b);
+    const reverse = distanceBetween(b, a);
+    expect(Object.is(forward, reverse)).toBe(true);
+    // and the cell really is power-vs-power, not two collapsed constants
+    expect(forward).toBeGreaterThan(0);
+  });
+
   it('is deterministic: two runs agree bit for bit (R2)', () => {
     expect(distanceBetween(CONSTANT_60, CONSTANT_120)).toBe(
       distanceBetween(CONSTANT_60, CONSTANT_120),

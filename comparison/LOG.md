@@ -1286,3 +1286,46 @@ aimed.
 
 Gate: `npm run verify` green before committing. eslint and prettier clean.
 
+## 2026-08-10 — W2 fix wave 2/3: the integrator (CAPITAL-3, CAPITAL-4) [survey-code]
+
+The verifier's summary — "the wave tested its evaluators far harder than it
+tested its integrator" — is exactly right, and these are the two findings that
+prove it.
+
+CAPITAL-3 (AD-33.2). powerCriticalPoint's arguments are now canonically ordered
+by (exponent, Δqbpm) smaller-first, via orderPowerSegments. Document order made
+the swapped call compute (p·Δ_a/(q·Δ_b))^{1/(q−p)} instead of
+(q·Δ_b/(p·Δ_a))^{1/(p−q)} — algebraically equal, NOT equal in IEEE754, because
+they are separately-rounded reciprocals and Math.pow is not reciprocal-symmetric.
+The one-ulp difference moves the split point, the GL-10 abscissae, and the
+reported bits. Added the P-C2 power-vs-power test the wave never had: every
+existing P-C2 test compared two CONSTANTS and so never reached
+criticalPointTicks at all.
+
+CAPITAL-4 (AD-33.3), both repairs.
+(a) integrateAbsolute's sign probe is now HALF-OPEN: the right endpoint is
+probed at its left limit, because every curve here is right-continuous (A-B1) and
+the closed probe reads the next cell's value across a discontinuity. GL-10 nodes
+untouched — they are strictly interior already. leftLimitOf uses a relative step
+(|high|·eps) rather than a fixed epsilon, since tick abscissae reach 1e5 where a
+fixed 1e-9 rounds back to high; it falls back to the midpoint on an interval
+about one ulp wide, because returning `high` there would reinstate the closed
+probe this exists to avoid.
+(b) §5.0 gains rule 2c: frame-aligned rubato cells split at the structural u*,
+powerCriticalPoint on (L·(ee−ls), intensity) per side, canonically ordered per
+AD-33.2, with fixed K=16 subdivision where frames differ in length OR PHASE — the
+phase check is mine; equal frameLength alone does not give a shared x coordinate.
+
+RE-MEASURED SWEEP (my grid: 8 intensities x 7 windows per side, 3080 ordered
+pairs; the report's grid gave 3906):
+    as shipped before this commit : 59.6% wrong by >0.1%, worst 1.00e+0
+    after both repairs            : 4 of 3080 wrong by >0.1%, worst 1.778e-3
+The report's post-repair figure was 10/3906 worst 1.68e-3 — same residual, same
+order, on a slightly different grid. Recorded as the residual per AD-33.3.
+
+DESIGN: §5.0 gains rule 2c and a half-open-probe paragraph; both carry the
+measurements.
+
+Gate: `npm run verify` green before committing, 4286 passed + 1 skipped. eslint
+and prettier clean.
+
