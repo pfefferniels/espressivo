@@ -765,3 +765,28 @@ Verify: build + typecheck:tests green; 93 test files, 4126 passed, 1 skipped
 (the skip is the W3 inventory-partition scaffold). Run excludes W2c's in-flight
 `tests/comparison/quadrature.test.ts`, which is untracked in the shared worktree
 and not part of this commit.
+
+## 2026-08-10 — AD-28: quadrature ruling (supersedes AD-17's substitution) [BINDING]
+
+survey-code's W2c stop-and-report MEASURED AD-17's u = z^(1/e) substitution
+and falsified it for e > 1: the Jacobian exponent 1/e − 1 goes negative and
+creates a z→0 singularity the original integrand never had (39% error at
+meanTempoAt 0.9; result outside the integrand's own bounds at e = 150) —
+precisely the late-weighted-ritardando half that matters. The panel's
+diagnosis of naive GL-10 stands; its remedy is inverted. Full table in the
+report; failing-by-design pins keep the substitution from returning.
+
+AD-28.1 Scheme (b) adopted: equal-mass graded mesh in z — panels at
+u = (k/K)^(1/e), K = ceil(log2 e) + 2, GL-10 per panel — ONE scheme for the
+whole legal range, no regime branching; measured worst 3.3e-6 relative,
+best 6e-14. The substitution is dropped everywhere; DESIGN §5.0's
+quadrature rule 1 is amended accordingly (edit executed by survey-code in
+the W2c commit under this ruling; substitution text replaced, falsification
+noted with the measurement).
+AD-28.2 Epsilon reframing adopted: the per-family accuracy record states
+BOTH relative error and JND-unit error; docs state the metric requirement
+is JND-scale exactness (naive GL-10's worst case was already 4.8e-3 JND)
+and the ~1e-6..1e-12 figures are numerical hygiene above it.
+AD-28.3 Commit policy: quadrature.ts + tests commit NOW standalone (green,
+import-free, licenses the table by Newton re-derivation); the rest of W2c
+lands as a second commit. Two commits for W2c, journaled here.
