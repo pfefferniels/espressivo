@@ -175,9 +175,7 @@ export class XmlBase {
     let duplicates = 0;
     const uniqueIds = new Set<string>();
 
-    const attributes = this.getRootElement()!.query(
-      'descendant-or-self::node()/attribute::xml:id',
-    );
+    const attributes = this.getRootElement()!.query('descendant-or-self::node()/attribute::xml:id');
     for (let i = 0; i < attributes.size(); ++i) {
       const attribute = attributes.get(i) as unknown as Attribute;
       let duplicate = false;

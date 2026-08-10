@@ -41,22 +41,20 @@ function canonicalizeUuids(xml: string): string {
 
 /** Kept in step with `cross-validation.test.ts`'s function of the same name. */
 function normalizeXml(xml: string): string {
-  return (
-    canonicalizeUuids(xml)
-      .replace(/<\?xml[^?]*\?>/, '')
-      .replace(/ xmlns="http:\/\/www\.cemfi\.de\/mpm\/ns\/1\.0"/g, (match, offset, str) => {
-        const firstIdx = str.indexOf(' xmlns="http://www.cemfi.de/mpm/ns/1.0"');
-        return offset === firstIdx ? match : '';
-      })
-      .replace(/<comment>[^<]*<\/comment>/, '<comment>NORMALIZED</comment>')
-      .replace(
-        /xml:id="[^"]*_meico_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/g,
-        'xml:id="UUID_PLACEHOLDER"',
-      )
-      .replace(/uri="[^"]*\.(mei|msm|mpm)"/g, 'uri="NORMALIZED.$1"')
-      .replace(/="(-?\d+)\.0"/g, '="$1"')
-      .trim()
-  );
+  return canonicalizeUuids(xml)
+    .replace(/<\?xml[^?]*\?>/, '')
+    .replace(/ xmlns="http:\/\/www\.cemfi\.de\/mpm\/ns\/1\.0"/g, (match, offset, str) => {
+      const firstIdx = str.indexOf(' xmlns="http://www.cemfi.de/mpm/ns/1.0"');
+      return offset === firstIdx ? match : '';
+    })
+    .replace(/<comment>[^<]*<\/comment>/, '<comment>NORMALIZED</comment>')
+    .replace(
+      /xml:id="[^"]*_meico_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/g,
+      'xml:id="UUID_PLACEHOLDER"',
+    )
+    .replace(/uri="[^"]*\.(mei|msm|mpm)"/g, 'uri="NORMALIZED.$1"')
+    .replace(/="(-?\d+)\.0"/g, '="$1"')
+    .trim();
 }
 
 const meiFiles = readdirSync(MEI_DIR).filter((f) => f.endsWith('.mei'));
