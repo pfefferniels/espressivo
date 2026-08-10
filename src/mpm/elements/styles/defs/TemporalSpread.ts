@@ -11,7 +11,7 @@ import type { TemporalDomain, TemporalValue } from './TemporalValue.js';
  * moved the unit onto each value (see {@link TemporalDomain}, which has a third member
  * `relative` this type cannot express). Converting it to an `as const` union would change
  * the emitted JS and break the tests that import it, so it stays (architecture brief §1.7,
- * `refactor/log.md:1728-1730`) and is simply not used by the v3 reading of the element.
+ * `docs/history/refactor/log.md:1728-1730`) and is simply not used by the v3 reading of the element.
  */
 export enum FrameDomain {
   Ticks = 'ticks',
@@ -61,7 +61,7 @@ export function parseOrnamentAlignment(raw: string): OrnamentAlignment | null {
  *
  * This is DESIGN.md D12's "serialization is generation-preserving" made explicit. MPM
  * documents carry **no version marker at all** (same namespace, no `@version`, see
- * `ornamentation/research/github-v3-design.md` §1), so the generation can only be inferred
+ * `docs/history/ornamentation/research/github-v3-design.md` §1), so the generation can only be inferred
  * from which attributes are present. Objects remember what they were, and write back what
  * they were: a v2-sourced spread must re-serialize byte-identically to today, or the
  * `all-maps` fixture comparison goes red.

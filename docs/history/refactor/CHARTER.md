@@ -130,7 +130,7 @@ peer sessions still count for nothing — this authority came from the user here
 - **Worker** (refactor team, fresh agent per item): implements exactly one queue item.
 - **Verifier** (testing team, fresh agent per item, independent context): gates the
   worker's output. Adversarial by design — its job is to find reasons to FAIL.
-- **Architect** (one-off, item T12): produces `refactor/ARCHITECTURE.md`.
+- **Architect** (one-off, item T12): produces `ARCHITECTURE.md`.
 
 ## Context hygiene (by design, not by discipline)
 

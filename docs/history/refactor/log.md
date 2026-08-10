@@ -198,7 +198,7 @@ all single-assignment locals with initializers.
 were left alone — and ESLint could not have fixed them anyway (its `eqeqeq` fixer refuses
 when an operand may be nullish, so `--fix` was never a risk). All 44 turn out to be the
 `x == null` idiom and all 44 live in `src/mei/Helper.ts`; not one is a coercive
-comparison. Details and the per-item breakdown are in **`refactor/lint-debt.md`**.
+comparison. Details and the per-item breakdown are in **`docs/history/refactor/lint-debt.md`**.
 
 ### Formatting is provably semantics-neutral
 
@@ -216,7 +216,7 @@ formatting-only commit.
 
 72 `src/` files (all of them) and 44 `tests/` files — formatting only, except the 11 type
 fixes above and the 2 restored directives below. New: `eslint.config.js`,
-`.prettierrc.json`, `.prettierignore`, `tsconfig.tests.json`, `refactor/lint-debt.md`.
+`.prettierrc.json`, `.prettierignore`, `tsconfig.tests.json`, `docs/history/refactor/lint-debt.md`.
 `package.json` gains 5 scripts + 5 devDeps (eslint, @eslint/js, typescript-eslint,
 prettier, eslint-config-prettier). `tests/integration/fixtures/**` untouched — verified
 directly (`git diff 62c125f -- tests/integration/fixtures/` is empty).
@@ -269,7 +269,7 @@ that is the conductor's file.
 
 - `npm run verify` green: tsc clean, tests typecheck clean, **2113/2113 passing**,
   ~8.0s wall (was 6.6s; the added `typecheck:tests` step is the difference).
-- Phase 2 workers: read `refactor/lint-debt.md` **before** starting your cluster — it is
+- Phase 2 workers: read `docs/history/refactor/lint-debt.md` **before** starting your cluster — it is
   indexed by item id, and it flags the two things not to bulk-fix
   (`no-non-null-assertion`, `prefer-nullish-coalescing`) plus the 3 `no-fallthrough` in
   `Performance.ts` that may be a real bug rather than style.
@@ -296,7 +296,7 @@ formatting/tooling commit.
   **40 warnings, 0 new errors** (error count still exactly 1759), so the rule cannot turn
   lint red on its own. Left at the default `props: false`: `props: true` would flag
   `renderXToMap(map)`-style writes, which are the documented purpose here.
-- `refactor/lint-debt.md`: new **"Immutable-friendly direction — measured baseline"**
+- `docs/history/refactor/lint-debt.md`: new **"Immutable-friendly direction — measured baseline"**
   section with the 40 warnings by file, plus a preview of three rules that were measured
   and deliberately **not** enabled:
   - `prefer-readonly` **38** (all `src/`) — recommend enabling in Phase 2; private fields
@@ -375,7 +375,7 @@ XomTypes' `` `</${this.getQualifiedName()}>` `` serialization.
   `62c125f` for this check, not the last-green `1c3a44d` — stale hash; re-verified against
   the correct baseline, conclusion unaffected.)
 - **File count reconciles exactly**: 119 modified = 72 `src/` + 44 `tests/` +
-  `package.json` + `package-lock.json` + `refactor/log.md`; 5 untracked are the new config
+  `package.json` + `package-lock.json` + `docs/history/refactor/log.md`; 5 untracked are the new config
   files. No stray edit hiding in the count.
 
 ### Invariant 3 — SIGN-OFF GRANTED
@@ -488,7 +488,7 @@ which pin the same ESM/`require()` limitation on the **kept** converter, are unt
 
 ### Lint debt: 1759 → **1451** errors, 40 → **35** warnings
 
-`refactor/lint-debt.md` updated (re-measured with `eslint -f json`, not estimated). T2
+`docs/history/refactor/lint-debt.md` updated (re-measured with `eslint -f json`, not estimated). T2
 predicted 306 would vanish; the actual −308/−5 **reconciles exactly**: 306 from the eight
 deleted modules, +1 `InputStream2StringConverter.ts` (booked under T4), +1 `no-require-imports`
 in `Mei.ts` from the removed method; all 5 warnings were in `Mei2MusicXmlConverter.ts`.
@@ -575,7 +575,7 @@ imports is **gone**. No comment anywhere now tells a reader to re-add a deleted 
   `fc81fc5` and at HEAD were run through a quote-aware comment stripper and compared;
   both are **byte-identical after comment removal**. No executable-code change.
 - `tests/mei/Mei.test.ts` — the one removed test above.
-- `refactor/lint-debt.md`, `refactor/log.md` — bookkeeping.
+- `docs/history/refactor/lint-debt.md`, `docs/history/refactor/log.md` — bookkeeping.
 
 (The worker said "4 files edited", the dispatch said 7; both are right at different scopes —
 4 `src/` files, +1 test, +2 `refactor/` bookkeeping.)
@@ -872,8 +872,8 @@ the inverse MIDI→MSM direction, chroma/pitches is feature extraction. Nothing 
 
 Full manifest of `67b407e` is **13 D + 9 M**, reconciling exactly with the
 conductor's reconstruction: verifier-T3's 7 M (`src/index.ts`, `src/mei/Mei.ts`,
-`src/midi/Midi.ts`, `src/msm/Msm.ts`, `tests/mei/Mei.test.ts` + `refactor/lint-debt.md`,
-`refactor/log.md`) plus the 2 test files it never saw. **There is no tenth modified
+`src/midi/Midi.ts`, `src/msm/Msm.ts`, `tests/mei/Mei.test.ts` + `docs/history/refactor/lint-debt.md`,
+`docs/history/refactor/log.md`) plus the 2 test files it never saw. **There is no tenth modified
 file** — nothing else hid in the commit. `git log 62c125f..67b407e --
 tests/integration/fixtures` is empty: invariant 2 holds.
 
@@ -892,7 +892,7 @@ while I was reading, so the correct pre-change tree is 2108 tests / 1437 lint er
 ### Manifest — 4 files, no deletions, no additions
 
 `src/supplementary/KeyValue.ts`, `src/supplementary/RandomNumberProvider.ts`,
-`refactor/lint-debt.md`, `refactor/log.md`. **No test file changed** — every public member
+`docs/history/refactor/lint-debt.md`, `docs/history/refactor/log.md`. **No test file changed** — every public member
 kept its exact name and signature, so `tests/supplementary/**` needed no adaptation at all.
 Nothing outside `src/supplementary/**` was touched: no call site in any other cluster
 required an edit, because no signature that other clusters use was altered.
@@ -1045,7 +1045,7 @@ worker's baseline restatement is correct and the intervening `refactor/` commits
 ### 1. Manifest — clean
 
 `git status --porcelain` is exactly 4 ` M`: `src/supplementary/KeyValue.ts`,
-`src/supplementary/RandomNumberProvider.ts`, `refactor/lint-debt.md`, `refactor/log.md`.
+`src/supplementary/RandomNumberProvider.ts`, `docs/history/refactor/lint-debt.md`, `docs/history/refactor/log.md`.
 No untracked files (`-uall`), no deletions, no additions. Re-checked after all probe work.
 
 ### 2. Verify — green, independently run
@@ -1153,7 +1153,7 @@ against the `DISTRIBUTION_*` constants themselves. Within the stated scope of th
   fixtures untouched, config untouched.
 - No `eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `as any` or `as unknown` added
   anywhere in the `src/` diff.
-- `refactor/log.md` is purely additive (153 insertions, **0 deletions**).
+- `docs/history/refactor/log.md` is purely additive (153 insertions, **0 deletions**).
 - **Lint reconciles exactly.** Working tree `npm run lint` → `1467 problems (1437 errors,
   30 warnings)`, matching the lint-debt.md headline verbatim. Baseline measured for
   comparison: `1472 problems (1437 errors, 35 warnings)`. Errors flat, warnings −5 — precisely
@@ -1389,8 +1389,8 @@ not just spot-checked.
 
 ### 1. Manifest
 
-`git status --porcelain` = exactly 5 `M`: the 3 `src/xml` files + `refactor/lint-debt.md` +
-`refactor/log.md`. **Zero untracked files** (`--untracked-files=all` → 5 lines total).
+`git status --porcelain` = exactly 5 `M`: the 3 `src/xml` files + `docs/history/refactor/lint-debt.md` +
+`docs/history/refactor/log.md`. **Zero untracked files** (`--untracked-files=all` → 5 lines total).
 `git diff --name-only 431d944` additionally lists `refactor/state.json`, which is the
 conductor's own `f72070d` bookkeeping commit, not a working-tree modification — consistent
 with the worker's note that `431d944` and `f72070d` are the same baseline for code purposes.
@@ -1504,8 +1504,8 @@ Two supporting checks the worker asserted and I confirmed directly:
   nothing was added. (A naive `\bas X` grep reads 20 → 22 — that counts the English words
   "as returned", "as fresh", "as frozen", "as a" in the new doc comments. Recording the trap
   so the next verifier does not chase it.)
-- `refactor/log.md` is **append-only**, proven not assumed: 199 added / 0 removed, and the
-  first `wc -c` bytes of the working file are byte-identical to `HEAD:refactor/log.md`.
+- `docs/history/refactor/log.md` is **append-only**, proven not assumed: 199 added / 0 removed, and the
+  first `wc -c` bytes of the working file are byte-identical to `HEAD:docs/history/refactor/log.md`.
 - Lint reconciles **exactly**, measured on both trees: baseline `1467 problems (1437 errors,
   30 warnings)` → working `1461 (1431, 30)`. Errors −6, warnings flat. `src/xml` cluster
   15 → 9, and the residue is precisely the deferred set lint-debt.md documents (6
@@ -1575,7 +1575,7 @@ rather than inferred from the `&&` chain, **2108/2108 across 44 files**. Prettie
 The 7 styles (`GenericStyle`, `ArticulationStyle`, `DynamicsStyle`,
 `MetricalAccentuationStyle`, `OrnamentationStyle`, `RubatoStyle`, `TempoStyle`) and the 7
 defs (`AbstractDef`, `AccentuationPatternDef`, `ArticulationDef`, `DynamicsDef`,
-`OrnamentDef`, `RubatoDef`, `TempoDef`), plus `refactor/lint-debt.md` and this file.
+`OrnamentDef`, `RubatoDef`, `TempoDef`), plus `docs/history/refactor/lint-debt.md` and this file.
 **No test file changed, no fixture, no config** — `git diff --name-only dbc63eb -- tests/`
 is empty. Every public member kept its name; the only signature changes are 10 overload
 pairs collapsed onto an optional parameter (see below), which no call site can notice.
@@ -1798,7 +1798,7 @@ not touch code, tests, or equivalence, so it does not gate the commit.
 
 ### 1. Manifest — exact
 `git status --porcelain` = **16 M, zero untracked**: the 14 `src/mpm/elements/styles/**`
-files + `refactor/lint-debt.md` + `refactor/log.md`. Re-checked after all my runs (dist/ and
+files + `docs/history/refactor/lint-debt.md` + `docs/history/refactor/log.md`. Re-checked after all my runs (dist/ and
 coverage/ are gitignored, so my builds did not pollute it). `git diff --name-only dbc63eb`
 outside those two directories is **empty**; `tests/` diff is **empty**; fixtures and all
 configs (`package.json`, both tsconfigs, `vitest.config.ts`, `eslint.config.js`) untouched.
@@ -1955,7 +1955,7 @@ across 44 files**. Prettier clean over the cluster and both refactor/ files.
 
 The 10 maps (`GenericMap`, `TempoMap`, `DynamicsMap`, `RubatoMap`, `AsynchronyMap`,
 `ArticulationMap`, `MetricalAccentuationMap`, `MovementMap`, `OrnamentationMap`,
-`ImprecisionMap`) and the 8 `data/` classes, plus `refactor/lint-debt.md` and this file.
+`ImprecisionMap`) and the 8 `data/` classes, plus `docs/history/refactor/lint-debt.md` and this file.
 **No test file changed, no fixture, no config** — `git diff --name-only 3d0479d -- tests/`
 is empty. Every public member kept its name (member-identifier sets across the whole
 project: 1165 vs 1165, identical).
@@ -2417,14 +2417,14 @@ state.json only). `npm run verify` green — both tsc stages standalone, **2108/
 
 `src/mpm/Mpm.ts`, `src/mpm/elements/{Performance,Header,Dated,Global,Part}.ts`,
 `src/mpm/elements/metadata/{Metadata,Author,Comment,RelatedResource}.ts`, plus
-`refactor/lint-debt.md` and this file. **No test file, no fixture, no config** —
+`docs/history/refactor/lint-debt.md` and this file. **No test file, no fixture, no config** —
 `git diff --name-only -- tests/ vitest.config.ts tsconfig.json eslint.config.js
 package.json` is empty. Declared members across the whole project: **1154 vs 1154**,
 none added, none removed.
 
 ### The item's headline finding: the 3 `no-fallthrough` are not where the debt report says
 
-`refactor/lint-debt.md` attributed all 3 to `Performance.ts`, and my brief repeated it.
+`docs/history/refactor/lint-debt.md` attributed all 3 to `Performance.ts`, and my brief repeated it.
 **`Performance.ts` contains no `switch` statement at all.** All three are in
 `Mpm.isInNamespace`, at the three blank-line group boundaries of its case table. ESLint
 flags only cases preceded by a blank line; adjacent empty cases it accepts silently, which
@@ -2694,7 +2694,7 @@ measurement of the pre-T8 tree with the same one-rule config gives 9. Corrected 
 - **DISCOVERED (T2/T16, ESLint config):** `Mpm.writeMpmString`'s deliberately unused
   `_filename` costs a `no-unused-vars` that an `argsIgnorePattern: '^_'` would retire
   properly. Config changes are not this item's to make.
-- **DISCOVERED (bookkeeping hygiene):** two figures in `refactor/lint-debt.md` were wrong
+- **DISCOVERED (bookkeeping hygiene):** two figures in `docs/history/refactor/lint-debt.md` were wrong
   when measured — the `no-fallthrough` file attribution and the `prefer-readonly` src
   total (11 vs a measured 9). Both corrected there. Later items should re-measure the
   numbers they act on rather than inherit them; `eslint -f json` on a `git archive` of the
@@ -2832,7 +2832,7 @@ Independent `npm run verify`: **green, 44 files, 2108/2108**. Manifest exactly *
 `vitest.config.ts`, `tsconfig*.json`, `eslint.config.js`, `package.json` untouched.
 `eslint-disable` 2 → 1 (only `Mei2MsmMpmConverter.ts`, T10's); `@ts-ignore`/`@ts-expect-error`/
 `@ts-nocheck` 0 → 0; `as any` 11 → 2 (both survivors pre-existing and outside scope);
-`as unknown` 38 → 38. `refactor/log.md` **+321/−0 — append-only**. Prettier clean.
+`as unknown` 38 → 38. `docs/history/refactor/log.md` **+321/−0 — append-only**. Prettier clean.
 The stray `src/mpm/{elements` tree exists and holds **0 files**, as reported.
 
 ### 8. Lint — reconciles exactly
@@ -2893,7 +2893,7 @@ stages standalone, **2108/2108 across 44 files**. Prettier clean over the cluste
 ### Manifest — 5 files, all in scope
 
 `src/msm/Msm.ts`, `src/msm/AbstractMsm.ts`, `src/msm/Goto.ts`, plus
-`refactor/lint-debt.md` and this file. **No test file, no fixture, no config** —
+`docs/history/refactor/lint-debt.md` and this file. **No test file, no fixture, no config** —
 `git diff --name-only -- tests/ vitest.config.ts tsconfig*.json eslint.config.js
 package.json` is empty, and `git status --porcelain` is exactly those 5 `M` lines with 0
 untracked.
@@ -3128,7 +3128,7 @@ Cluster **132 → 121 (−11)** errors and **2 → 0** warnings, repo-wide **134
 `no-param-reassign` −2 in the warning column). **No lint movement anywhere outside
 `src/msm/Msm.ts`** — the whole-repo per-file comparison shows exactly one file moving.
 `prefer-readonly` in this cluster is **0 sites**; `src/` total measured 9 → 9.
-`refactor/lint-debt.md` gains T8 and T9 columns in the headline table, which had stopped at
+`docs/history/refactor/lint-debt.md` gains T8 and T9 columns in the headline table, which had stopped at
 T7 while the prose already carried T8's numbers.
 
 ### Deliberately left alone
@@ -3384,7 +3384,7 @@ each, one report.
 ### Manifest — 5 files, all in scope
 
 `src/mei/Mei.ts`, `src/mei/Helper.ts`, `src/mei/Mei2MsmMpmConverter.ts`, plus
-`refactor/lint-debt.md` and this file. `git status --porcelain` is exactly those 5 `M`
+`docs/history/refactor/lint-debt.md` and this file. `git status --porcelain` is exactly those 5 `M`
 lines, 0 untracked. **No test file, no fixture, no config** —
 `git diff --name-only -- tests/ vitest.config.ts tsconfig*.json eslint.config.js
 package.json` is empty. The full `dist/` diff touches **only** the 3 cluster files (`.js`
@@ -3848,7 +3848,7 @@ clean over `src/midi/` and both `refactor/` files.
 ### Manifest — 6 files, all in scope
 
 `src/midi/Midi.ts`, `src/midi/MidiTypes.ts`, `src/midi/EventMaker.ts`,
-`src/midi/InstrumentsDictionary.ts`, plus `refactor/lint-debt.md` and this file.
+`src/midi/InstrumentsDictionary.ts`, plus `docs/history/refactor/lint-debt.md` and this file.
 `git status --porcelain` is exactly those 6 `M` lines, **0 untracked**. No test file, no
 fixture, no config: `git diff --name-only -- tests/ vitest.config.ts tsconfig*.json
 eslint.config.js package.json package-lock.json` is empty.
@@ -4241,7 +4241,7 @@ documented trailing-whitespace divergence); `EventMaker.java`'s `byteArrayToInt`
 
 ### Two notes for the conductor, neither a defect
 
-> `refactor/lint-debt.md`'s "**74 of 105**" denominator is stale: `eslint` lints **103**
+> `docs/history/refactor/lint-debt.md`'s "**74 of 105**" denominator is stale: `eslint` lints **103**
 > files under `src` + `tests`. The row read "75 of 105" before T11, so this is inherited
 > bookkeeping drift, not something T11 introduced. Worth correcting at the next phase-end
 > audit rather than reopening this item.
@@ -4340,7 +4340,7 @@ would silently break parity; the test will catch it.
 - **Lint is bit-identical**, base (`git archive` of HEAD + symlinked `node_modules`) vs
   work: errors **1294 → 1294**, warnings **5 → 5**, 103 files linted, 74 with ≥1 error, and
   the **by-rule histogram differs in nothing**. Per-file: `src/msm/Msm.ts` 105 → 105,
-  `tests/msm/Msm.test.ts` 1 → 1. `refactor/lint-debt.md` therefore needs no update.
+  `tests/msm/Msm.test.ts` 1 → 1. `docs/history/refactor/lint-debt.md` therefore needs no update.
 - **No new escapes**: zero `eslint-disable` / `@ts-ignore` / `@ts-expect-error` /
   `@ts-nocheck` / type assertions added. (A grep for `as <Word>` hits one added line — the
   English test name "…as Java does". Prose, not a cast.)
@@ -4429,7 +4429,7 @@ the old tests are untouched in outcome as well as in text.
 - **Zero `src/` callers.** `grep -rn getMinimalPPQ src/` → the definition at
   `src/msm/Msm.ts:424` plus `src/midi/Midi.ts` 378/412/413/429, which is the unrelated
   two-arg `Midi.getMinimalPPQ`. No pipeline path reaches the changed code; no probe needed.
-- **Manifest exactly 3 M**: `src/msm/Msm.ts`, `tests/msm/Msm.test.ts`, `refactor/log.md`.
+- **Manifest exactly 3 M**: `src/msm/Msm.ts`, `tests/msm/Msm.test.ts`, `docs/history/refactor/log.md`.
   No untracked files (`--untracked-files=all` clean). `tests/integration/**`, fixtures,
   `vitest.config.ts`, `tsconfig*.json`, `eslint.config.js`, `package.json` untouched.
 - **`npm run verify` green, exit 0: 44 files, 2115/2115** = 2108 (post-T11) + 7. `tsc`
@@ -4481,7 +4481,7 @@ existing equivalence tests were left to judge it unaided.
 - `tests/mpm/elements/MovementMap.test.ts`
 - 26 regenerated fixtures: 20 in `all-maps-reference/`, 2 in `performance-reference/`,
   4 in `reference/`
-- `refactor/lint-debt.md`, `refactor/log.md` (bookkeeping)
+- `docs/history/refactor/lint-debt.md`, `docs/history/refactor/log.md` (bookkeeping)
 
 ### 1. The five Java changes, mirrored — with line citations
 
@@ -4784,7 +4784,7 @@ fixes — do not delete them as redundant.**
 ### 5. STANDARD GATES
 
 - **Manifest 30 M, 0 A, 0 D, 0 untracked** (`--untracked-files=all`). This is the worker's
-  31 minus `refactor/log.md`, which commit `068b8d6` took in mid-flight; the delta is fully
+  31 minus `docs/history/refactor/log.md`, which commit `068b8d6` took in mid-flight; the delta is fully
   explained, no unreviewed file.
 - **`npm run verify` green independently: 44 files, 2124/2124, exit 0.** Both tsc stages
   also run standalone: `npm run build` exit 0, `npm run typecheck:tests` exit 0.
@@ -4848,7 +4848,7 @@ is a real charter tension (process-global mutable static) and belongs on T12's l
 
 ## [T12] architect — ARCHITECTURE.md (2026-08-08)
 
-**READY.** One new file, `refactor/ARCHITECTURE.md`, plus this entry. No `src/`, `tests/`,
+**READY.** One new file, `ARCHITECTURE.md`, plus this entry. No `src/`, `tests/`,
 config or fixture changes — `git status --porcelain` is exactly those two paths. Prettier
 clean on both. Baseline read: `304e90a` (post-T20b).
 
@@ -5259,7 +5259,7 @@ missing plumbing hop (H3), and re-measure the numbers flagged in L1–L8 against
 ## [T12] architect — revision (2026-08-08)
 
 **READY T12-rev.** Response to `[T12] verifier`'s FAIL. `ARCHITECTURE.md` revised in place;
-this entry appended. Manifest unchanged: `M refactor/log.md` + `?? refactor/ARCHITECTURE.md`,
+this entry appended. Manifest unchanged: `M docs/history/refactor/log.md` + `?? ARCHITECTURE.md`,
 nothing else. `npm run verify` green, prettier clean. No section was rewritten — the verifier
 asked for none, and the layer map, EQ-RISK discipline and structural measurements it
 re-derived independently are untouched.
@@ -5409,8 +5409,8 @@ below; none blocks dispatch and all are one-line edits. I did not re-derive the 
 core.
 
 Tree state: `npm run verify` green independently (44 files / 2124 tests), prettier clean on
-both files, `git status --porcelain` is exactly `M refactor/ARCHITECTURE.md` +
-`M refactor/log.md`, and `git diff -- src tests` is empty. My only write is this entry.
+both files, `git status --porcelain` is exactly `M ARCHITECTURE.md` +
+`M docs/history/refactor/log.md`, and `git diff -- src tests` is empty. My only write is this entry.
 Probes: `<scratch>/t12verify/rev/`.
 
 ### Blockers — verified closed
@@ -5542,7 +5542,7 @@ re-reading would make the duration modifiers compose and silently add a third be
 change TD1 does not intend.
 
 Gates: `npm run verify` green (44 files / 2124 tests), prettier clean, manifest still exactly
-`M refactor/ARCHITECTURE.md` + `M refactor/log.md`, `git diff -- src tests` empty, `log.md`
+`M ARCHITECTURE.md` + `M docs/history/refactor/log.md`, `git diff -- src tests` empty, `log.md`
 append-only. **Hard freeze — no further writes from me.**
 
 ## [TD1] worker — DELIBERATE DIVERGENCE #1: the articulateNote hang (2026-08-08)
@@ -5651,7 +5651,7 @@ Re-run with the final bytes: `npm run verify` green (44 files / **2130 tests**),
 `169e964b…` on both builds, and all three negative controls reproduced — NC-A 6 failed / 57
 passed, NC-B killed at 45 s (exit 124), NC-C exactly the two guard cases failing on
 non-termination. Manifest: `M src/mpm/elements/maps/data/ArticulationData.ts`,
-`M tests/mpm/elements/ArticulationMap.test.ts`, `M refactor/log.md` — nothing else.
+`M tests/mpm/elements/ArticulationMap.test.ts`, `M docs/history/refactor/log.md` — nothing else.
 
 **DISCOVERED (out of scope, pre-existing):** `tests/midi/Midi.test.ts` fails
 `npx prettier --check` — and fails it identically on a clean `git archive HEAD` tree, so it is
@@ -5664,7 +5664,7 @@ to a formatting-only commit under charter invariant 10.
 myself; nothing was carried over. Item-unique scratch `td1verify/`. Src-identity confirmed
 first: `git diff 48245bd HEAD -- src tests` is empty, so the baseline under review really is
 last-green + bookkeeping. Manifest exactly **3 M** (`ArticulationData.ts`,
-`tests/mpm/elements/ArticulationMap.test.ts`, `refactor/log.md`), unchanged before and after
+`tests/mpm/elements/ArticulationMap.test.ts`, `docs/history/refactor/log.md`), unchanged before and after
 my runs.
 
 **1. The fix is the verbatim mirror — read at all three sites, then proven behaviourally.**
@@ -5751,7 +5751,7 @@ budget; total scoped statements 15132 → 15134 (+2, the guard and its block);
 **1292 errors / 5 warnings / 74 files**, zero per-file movement, `ArticulationData.ts` keeps its
 one pre-existing `no-non-null-assertion`. No new suppressions (`eslint-disable`, `@ts-ignore`,
 `@ts-expect-error`, coverage pragmas, `.skip`/`.todo`) anywhere in the diff. Integration tests,
-fixtures and every config file untouched. `refactor/log.md` is a **strict prefix** append —
+fixtures and every config file untouched. `docs/history/refactor/log.md` is a **strict prefix** append —
 HEAD's copy diffs clean against the first N lines of the working copy.
 
 **NC-B reproduced independently, and it matters.** The worker's justification for the watchdog
@@ -5852,7 +5852,7 @@ runtime import edges 33 → 0** (measured by grep on both trees).
   name lets fit on one line (charter 7d's line-derived rebasing; verified by reading
   `ArticulationMap.ts`'s diff, which is rename-only and still lost 6).
 - **Lint: 1292 → 1246 errors, 5 → 5 warnings.** Full per-rule and per-file accounting is in
-  `refactor/lint-debt.md`'s new `### T14` section; the headline is `eqeqeq` 44 → **0** (RULE
+  `docs/history/refactor/lint-debt.md`'s new `### T14` section; the headline is `eqeqeq` 44 → **0** (RULE
   N5, config-only) and `no-extraneous-class` 3 → **1** (only `EventMaker` left, T20's).
 
 ### Negative controls — three, and one of them found a real hole
@@ -6851,8 +6851,8 @@ across all nine touched files). `import/no-cycle` and T18's four layer zones sta
 `src/mpm/RenderOptions.ts` (new), `tests/mpm/RenderOptions.test.ts` (new),
 `src/mpm/elements/Performance.ts`, `src/mpm/elements/maps/MovementMap.ts`,
 `src/mpm/elements/maps/ImprecisionMap.ts`, `src/mpm/elements/maps/data/MovementData.ts`,
-`src/msm/Msm.ts`, `tests/mpm/elements/MovementMap.test.ts`, `refactor/log.md`
-(+ `refactor/lint-debt.md`). **Untouched:** `tests/integration/**`, every fixture,
+`src/msm/Msm.ts`, `tests/mpm/elements/MovementMap.test.ts`, `docs/history/refactor/log.md`
+(+ `docs/history/refactor/lint-debt.md`). **Untouched:** `tests/integration/**`, every fixture,
 `vitest.config.ts`, `eslint.config.js`, `package.json`.
 
 #### DISCOVERED
@@ -7065,7 +7065,7 @@ One correction to the verifier's item 3 worth recording: "1483 bytes of doc head
 same 44" reads as 1527 total; measured, `dist/units.js` is **1483 in total**, of which 1439
 is header. Gates: `npm run verify` green (**54 files / 2159 tests**), prettier clean,
 `git diff -- src tests` empty, `log.md` append-only. My writes are exactly
-`M refactor/ARCHITECTURE.md` + `M refactor/log.md`; `refactor/state.json` also shows as
+`M ARCHITECTURE.md` + `M docs/history/refactor/log.md`; `refactor/state.json` also shows as
 modified but is the conductor's own post-T19a bookkeeping (`lastGreenCommit` → `f947836`,
 `currentItem` → T13, completed 17 → 18), not mine. **Frozen.**
 
@@ -7378,7 +7378,7 @@ ground additively.
 ### 7. Standard gates
 
 - Manifest exactly as specified: `?? src/api/`, `?? tests/api/`, `M src/index.ts`,
-  `M vitest.config.ts`, `M refactor/lint-debt.md`, `M refactor/log.md`.
+  `M vitest.config.ts`, `M docs/history/refactor/lint-debt.md`, `M docs/history/refactor/log.md`.
 - Independent `npm run verify` **green, exit 0**: `tsc` build, `tsc -p tsconfig.tests.json`,
   then **58 files / 2268 tests passed**. Baseline measured by me on the archived tree:
   **54 / 2159**. Delta +4 files / +109 tests, all new; no existing test file differs by a
@@ -8131,7 +8131,7 @@ every later dispatch-table or handler-extraction item will hit this same edge.**
 
 `eslint . -f json` over a `git archive e2a7456` baseline and the working tree: **1083 → 1083
 errors, 2 → 2 warnings**. Every rule flat; **not one file's count moved**, including the
-rewritten file. No new suppressions (zero repo-wide, unchanged). `refactor/lint-debt.md`
+rewritten file. No new suppressions (zero repo-wide, unchanged). `docs/history/refactor/lint-debt.md`
 updated with a T15 section — no column, per the T9b precedent for items that move nothing.
 `prettier --check` clean on the touched file; `import/no-cycle` and the four layer zones stay
 green (no import changed).
@@ -8144,8 +8144,8 @@ unchanged from T16. The T13 acceptance battery is in that suite and green at its
 `determinism.test.ts` 8. `tests/integration/**` and its fixtures untouched; no test file was
 edited at all, mechanically or otherwise.
 
-**Manifest — 2 paths**: `M src/mei/Mei2MsmMpmConverter.ts`, plus `M refactor/lint-debt.md`
-and `M refactor/log.md` (bookkeeping). Nothing else.
+**Manifest — 2 paths**: `M src/mei/Mei2MsmMpmConverter.ts`, plus `M docs/history/refactor/lint-debt.md`
+and `M docs/history/refactor/log.md` (bookkeeping). Nothing else.
 
 ### 10. Handoff — reusable artefacts in `t15work/`
 
@@ -8364,8 +8364,8 @@ uncovered statements **2138**, identical).
 - **`npm run verify` exit 0**, run independently: `tsc`, then `tsc -p tsconfig.tests.json`,
   then **59 files / 2272 tests passed**. Both typecheck stages present and green.
 - **Manifest reconciles.** `git status --porcelain --untracked-files=all` = exactly
-  **`M src/mei/Mei2MsmMpmConverter.ts`** and **`M refactor/lint-debt.md`**; no untracked
-  files. `refactor/log.md` (worker entry + conductor ruling, +295/−0) is already committed in
+  **`M src/mei/Mei2MsmMpmConverter.ts`** and **`M docs/history/refactor/lint-debt.md`**; no untracked
+  files. `docs/history/refactor/log.md` (worker entry + conductor ruling, +295/−0) is already committed in
   `5b5a3aa`, so the expected 3-path set is accounted for with no unexplained delta.
 - **`tests/` diff vs 979c391 is EMPTY** — not mechanical-only, literally empty. Fixtures
   untouched. `vitest.config.ts`, both tsconfigs, `eslint.config.js`, `package.json` and
@@ -8479,8 +8479,8 @@ copy with the table renamed, which now fails loudly instead of reporting an empt
 object sets the prototype instead of recording a value, so the probe for the prototype bug had
 a prototype bug. Both are worth keeping for T21.
 
-**Manifest — 3 paths**: `M src/mei/Mei2MsmMpmConverter.ts`, `M refactor/lint-debt.md`,
-`M refactor/log.md`. `tests/` and fixtures untouched.
+**Manifest — 3 paths**: `M src/mei/Mei2MsmMpmConverter.ts`, `M docs/history/refactor/lint-debt.md`,
+`M docs/history/refactor/log.md`. `tests/` and fixtures untouched.
 
 ## [T15] verifier — re-verify after the fix round (2026-08-09)
 
@@ -8575,7 +8575,7 @@ disagreements** over the 48 own-arrow elements. The fix declares no function.
   `@ts-nocheck`, `istanbul ignore`, `v8 ignore` all 0 across `src/` and `tests/`).
 - `prettier --check` clean on the touched file.
 - **Manifest = 3 paths**, no untracked: `M src/mei/Mei2MsmMpmConverter.ts`,
-  `M refactor/lint-debt.md`, `M refactor/log.md`. `src/` diff vs `979c391` is the converter
+  `M docs/history/refactor/lint-debt.md`, `M docs/history/refactor/log.md`. `src/` diff vs `979c391` is the converter
   alone (+369/−342).
 - `tests/`, `tests/integration/fixtures/**`, `vitest.config.ts`, both tsconfigs,
   `eslint.config.js`, `package.json`, `package-lock.json` and `ARCHITECTURE.md`: **all
@@ -8764,7 +8764,7 @@ moved — `index.d.ts`, `xml/XmlBase.d.ts`, `xml/XomTypes.d.ts` are the only thr
   files that move are the two I touched. `lint-debt.md` has the T17 section.
 - **Zero suppressions** repo-wide. `prettier --check` clean on all four touched files.
 - **Manifest — 5 paths**: `M src/xml/XomTypes.ts`, `M src/xml/XmlBase.ts`, `M src/index.ts`,
-  `M tests/xml/XmlBase.test.ts`, plus `M refactor/lint-debt.md` + `M refactor/log.md`.
+  `M tests/xml/XmlBase.test.ts`, plus `M docs/history/refactor/lint-debt.md` + `M docs/history/refactor/log.md`.
   `tests/integration/**`, fixtures, `vitest.config.ts`, both tsconfigs, `eslint.config.js`,
   `package.json` and `ARCHITECTURE.md`: **untouched**.
 - **Test change is the mechanical minimum**: the two `XmlBase – validate` assertions become
@@ -8943,15 +8943,15 @@ magnitude corroborated. The win is real.
 - **T5's layer contracts intact**: the byte-compat contract at the top of `XomTypes.ts` is
   unchanged; the only header edit records §8.7's ruling in place of the stale "Reworking that
   surface is item T17". All **21** `_xomParent` lines are byte-identical to baseline.
-- `src/api/**`, `refactor/ARCHITECTURE.md`, `refactor/CHARTER.md`, `refactor/state.json`,
+- `src/api/**`, `ARCHITECTURE.md`, `docs/history/refactor/CHARTER.md`, `refactor/state.json`,
   `tests/integration/**`, fixtures, both tsconfigs, `vitest.config.ts`, `eslint.config.js`
   and `package.json`: **untouched**.
 
 ### 5. Standard gates
 
 - **Manifest: exactly 6 `M`**, matching the reviewed set — `src/xml/XomTypes.ts`,
-  `src/xml/XmlBase.ts`, `src/index.ts`, `tests/xml/XmlBase.test.ts`, `refactor/lint-debt.md`,
-  `refactor/log.md`. No untracked files.
+  `src/xml/XmlBase.ts`, `src/index.ts`, `tests/xml/XmlBase.test.ts`, `docs/history/refactor/lint-debt.md`,
+  `docs/history/refactor/log.md`. No untracked files.
 - **`npm run verify` exit 0**, run independently: `tsc`, `tsc -p tsconfig.tests.json`, then
   59 files / **2272 tests**. Baseline tree runs **2272** too — zero delta, so no charter-7c
   justification is owed.
@@ -9001,7 +9001,7 @@ Scratch `t19work/`, baseline extracted with `git archive 60369c0` and spot-check
 `git show <sha>:<path>` on three files.
 
 **Manifest — 3 paths**, and no untracked files anywhere:
-`src/mpm/elements/Performance.ts`, `refactor/lint-debt.md`, `refactor/log.md`.
+`src/mpm/elements/Performance.ts`, `docs/history/refactor/lint-debt.md`, `docs/history/refactor/log.md`.
 No test file changed, and none needed to: the change is entirely interior to one class, every
 new member is `private`, and `perform`'s signature is untouched.
 
@@ -9169,8 +9169,8 @@ keeps the diff readable.
 - **Zero suppressions repo-wide**, before and after.
 - **`prettier --check` clean** on the changed file. **`log.md` is a pure append.**
 - `tests/**`, `tests/integration/**`, fixtures, both tsconfigs, `vitest.config.ts`,
-  `eslint.config.js`, `package.json`, `src/api/**`, `refactor/ARCHITECTURE.md`,
-  `refactor/CHARTER.md`, `refactor/state.json`: **untouched**.
+  `eslint.config.js`, `package.json`, `src/api/**`, `ARCHITECTURE.md`,
+  `docs/history/refactor/CHARTER.md`, `refactor/state.json`: **untouched**.
 
 ### 8. Ruling recorded in the code: the two duplicated statics stay
 
@@ -9219,7 +9219,7 @@ the end — neither is a defect in T19, and one is a gap in the *fixtures*, not 
 ### 1. Src-identity and manifest
 
 `git diff --name-only 8551a55 -- src` is exactly `src/mpm/elements/Performance.ts`. Working
-tree is exactly **3 M** — `Performance.ts`, `refactor/log.md`, `refactor/lint-debt.md` — with
+tree is exactly **3 M** — `Performance.ts`, `docs/history/refactor/log.md`, `docs/history/refactor/lint-debt.md` — with
 **no untracked files** (`--untracked-files=all`). `tests/**`, `tests/integration/fixtures/**`,
 both tsconfigs, `vitest.config.ts`, `eslint.config.js`, `package.json`, `package-lock.json`,
 the prettier configs, `CHARTER.md`, `ARCHITECTURE.md` and `state.json`: **diff empty**.
@@ -9474,7 +9474,7 @@ Two clean out-of-tree builds (`git archive HEAD` → `t20work/base`, working tre
   moves is `src/midi/EventMaker.ts`, no rule increased anywhere. **RULE C2's measurable form
   is now met repo-wide.** RULE I5's audit command returns nothing before and after. Zero
   suppressions (`@ts-ignore`/`@ts-expect-error`/`@ts-nocheck`/`eslint-disable`/coverage-ignore)
-  in `src` + `tests`, before and after. `prettier --check` clean. `refactor/lint-debt.md` has
+  in `src` + `tests`, before and after. `prettier --check` clean. `docs/history/refactor/lint-debt.md` has
   a `### T20` section with these numbers.
 
 ### Negative controls — four, and the first one is the reason this item needed a probe
@@ -9552,7 +9552,7 @@ commit touched only `refactor/state.json`, so HEAD's `src/` is the verified T19 
 
 **Manifest: exactly 7 M**, no untracked files — `src/midi/EventMaker.ts`,
 `src/midi/InstrumentsDictionary.ts`, `src/midi/Midi.ts`, `src/msm/Msm.ts`,
-`tests/midi/EventMaker.test.ts`, `refactor/log.md`, `refactor/lint-debt.md`. Matches the
+`tests/midi/EventMaker.test.ts`, `docs/history/refactor/log.md`, `docs/history/refactor/lint-debt.md`. Matches the
 worker's declared set path for path.
 
 ### 1. MIDI byte anchor — reproduced independently
@@ -10053,13 +10053,13 @@ the cheapest, since their entire call-graph is inside `src/`.
   contains 74 lines whose *only* change is a removed type assertion. The evidence that they are
   inert is the comment-stripped emitted-JS diff (4 files differ, all deletions) and the
   converter's 0-line token diff — that is the thing to re-run, not a line-by-line read.
-- `refactor/lint-debt.md` has a T21 section with the full reconciliation.
+- `docs/history/refactor/lint-debt.md` has a T21 section with the full reconciliation.
 
 ## [T21] verifier — PASS. Every claim reproduced independently; one cosmetic log error (2026-08-09)
 
 Baseline `5085159` confirmed src-identical to the last green `83e6d0a` (`git diff --stat` over
 `src tests vitest.config.ts eslint.config.js package.json tsconfig.json` is empty; the only
-delta is `refactor/log.md` + `state.json`). All measurements below are my own, on my own
+delta is `docs/history/refactor/log.md` + `state.json`). All measurements below are my own, on my own
 out-of-tree builds (`t21verify/base`, `t21verify/work`, plus a pristine `t21verify/baseclean`
 for lint), never the worker's artifacts. Every number in the worker's entry reproduced.
 
@@ -10191,7 +10191,7 @@ pinned by name, type and identity, and `shortToByteArray`'s own `it` is unchange
 - **Manifest exactly 2 D / 27 M**, 0 untracked, nothing staged beyond the two `git rm`s.
 - `vitest.config.ts`: single mechanical deletion of `src/compat/**/*.ts`; `src/api/**`,
   `src/music/**`, `src/xml/**`, `src/units.ts` all confirmed **in** scope.
-- `refactor/log.md` **append-only** (333 insertions, 0 deletions, all after line 9723).
+- `docs/history/refactor/log.md` **append-only** (333 insertions, 0 deletions, all after line 9723).
   `lint-debt.md` has the T21 section; its 2 deleted lines are the config description and a
   section heading, both rewritten because type-aware linting is now enabled — no debt erased.
 - **Lint reconciles exactly** on a pristine baseline archive: **1046 → 955 (old config, −91)
@@ -10667,7 +10667,7 @@ Tarball unchanged at **393 files** — `tests/` is not in the `files` allowlist,
 a repo asset, not as package weight.
 
 Manifest is now 5 M / 2 untracked: `package.json`, `package-lock.json`, `src/api/index.ts`,
-`tests/mpm/Mpm.test.ts`, `refactor/log.md`, plus `README.md` and `PARITY.md`. `src/` is still the
+`tests/mpm/Mpm.test.ts`, `docs/history/refactor/log.md`, plus `README.md` and `PARITY.md`. `src/` is still the
 single comment line; `tests/integration/**` and every fixture still untouched.
 
 ## [T22] verifier — re-verify of the fix round: guard is real and complete; README's test count went stale (2026-08-09)
@@ -11009,7 +11009,7 @@ explicitly.
   its own new code.
 - **Lint**: repo total 1013 → **1019**. All +6 are `no-empty-function` on the `quiet` helper's
   `mockImplementation(() => {})`, in test files, an existing debt class; per-file table and the
-  reasoning for keeping the idiom are in `refactor/lint-debt.md`. `parseJavaDouble.ts` lints
+  reasoning for keeping the idiom are in `docs/history/refactor/lint-debt.md`. `parseJavaDouble.ts` lints
   clean. **No suppressions added** — the one place a `no-control-regex` disable was nearly needed
   was resolved by writing the trim against `charCodeAt`.
 - **Facade battery, run against the shipped build**: `plaindata` 488 checks / 0 failures,
@@ -11094,9 +11094,9 @@ documentation only: no behavioural claim in the wave is wrong, and no code chang
 are byte-identical between `f5aef95` (last green) and HEAD, so the four bookkeeping commits since
 are genuinely bookkeeping and the working-tree diff is exactly TD2. Note for the conductor: HEAD
 moved **during** this verification — `f788c93` ("journal ornamentation-v3 sibling coordination")
-committed `refactor/log.md`, which swept the `[TD2] worker` entry into it. That commit is
-+293/−0 on `refactor/log.md` alone. The manifest I reviewed is therefore **21 M / 2 ??**, not the
-22 M / 2 ?? in my brief; the one-file delta is `refactor/log.md` moving from modified to
+committed `docs/history/refactor/log.md`, which swept the `[TD2] worker` entry into it. That commit is
++293/−0 on `docs/history/refactor/log.md` alone. The manifest I reviewed is therefore **21 M / 2 ??**, not the
+22 M / 2 ?? in my brief; the one-file delta is `docs/history/refactor/log.md` moving from modified to
 committed, which is the `refactor/` bookkeeping exception. Everything else matches path for path.
 I re-built the tree comment-free at the end of the session and diffed it against my first build:
 identical, so nothing moved under me while I measured (no post-READY edits).
@@ -12475,7 +12475,7 @@ the brief asked me to confirm, and they pass unchanged on both trees.
 ### 7. Handoff
 
 - Working tree: 4 files — `src/xml/XomTypes.ts` (+14/−5, of which the semantic change is one
-  assignment), and the three test files above. Plus `PARITY.md`, `refactor/lint-debt.md` and this
+  assignment), and the three test files above. Plus `PARITY.md`, `docs/history/refactor/lint-debt.md` and this
   entry.
 - Lint: **1019 → 1019**, per-`(file, rule)` histogram identical, 0 new pairs. No suppressions
   added. `prettier --check` flags only the pre-existing `tests/midi/Midi.test.ts`, left alone per
@@ -12623,13 +12623,13 @@ documentation, one of them new *since* the T23 audit.
 
 `git log 78c657b..HEAD` is **exactly two commits**: `a67fb6e` (queue bookkeeping, 2 files) and
 `56739a2` (TD4, 7 files). Full range manifest is 8 paths: `src/xml/XomTypes.ts`, three test
-files, `PARITY.md`, `refactor/lint-debt.md`, `refactor/log.md`, `refactor/state.json`.
+files, `PARITY.md`, `docs/history/refactor/lint-debt.md`, `docs/history/refactor/log.md`, `refactor/state.json`.
 
 - **`tests/integration/` — fixtures and equivalence suites — is untouched.** `git diff
   --name-only 78c657b HEAD -- tests/integration/` is empty. Invariants 2 and 3 are not in play.
 - **`src/` is one file.** The diff is a doc paragraph on `Attribute.detach` plus, in
   `Element.wrap`, a ternary restructure and **one new assignment** (`wrapped._xomParent = elem`).
-- **My T23 entry survived intact.** `git diff 78c657b HEAD -- refactor/log.md` contains **zero
+- **My T23 entry survived intact.** `git diff 78c657b HEAD -- docs/history/refactor/log.md` contains **zero
   deleted lines** — the journal was appended to, not edited.
 
 ### 2. Verify, and the continuity probe that actually settles it

@@ -259,7 +259,7 @@ figures 1–3 + spec exempla; full arithmetic in tests):
   `tests/integration/ornamentation-v3.test.ts` driving MSM+MPM → augmented MSM →
   MIDI through the real pipeline. vitest include-list updated (coverage law).
 - v2 byte gates every wave: `npm run verify` + pipeline byte-probe
-  (ornamentation/tools/probe.mjs) + emitted-JS diff for claimed-type-only waves.
+  (docs/history/ornamentation/tools/probe.mjs) + emitted-JS diff for claimed-type-only waves.
 - Negative controls per wave (the dead-loop coming alive gets one proving the old
   suite would NOT have caught a bogus implementation; Performance.ts changes get a
   call tracer).

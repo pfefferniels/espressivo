@@ -30,7 +30,7 @@ import type { RenderContext } from '../../RenderOptions.js';
  * it, and the handover between successive correlated distributions
  * ({@link getHandoverValue} / {@link doHandover}, which draw exactly once) must keep its
  * position. Note also that output is nondeterministic by design where no `seed` is given
- * — CHARTER.md exempts this map from byte comparison for that reason, so the test suite
+ * — docs/history/refactor/CHARTER.md exempts this map from byte comparison for that reason, so the test suite
  * will *not* catch a desync here. Reason it through instead.
  *
  * Port of meico.mpm.elements.maps.ImprecisionMap
