@@ -2373,3 +2373,31 @@ ignoring pool identity fails 1; the file restores green each time.
 
 Gate: `npm run verify` green before committing — 4552 passed + 1 skipped (was 4545). 46 tests in
 the ornamentation suite. eslint and prettier clean on every touched file.
+
+## 2026-08-10 — AD-45: cut 3 closed; composition law completed [BINDING]
+
+e7ad6b7 + f9b6081 accepted (85 tests across the two, all repairs
+negative-controlled per-defect; the @note.order neutral-counterpart
+self-correction found by a failing test is noted with approval).
+
+AD-45.1 AD-44.1's law gains its measured second half: DIRECTION is part
+of the composition (descending = index reflection, swapped endpoints;
+ascending (-20,20) + descending (-10,30) = flat (10,10), performed
+110/110/110).
+AD-45.2 AD-44.2 AMENDED on the new measurement: EQUAL-INTENSITY spreads
+compose (frameStart/frameLength add when @intensity matches — measured
+(-22,44)+(-100,200) = (-122,244) exactly). The one-branch composition is
+ADOPTED for cut 4's window: the pinned residual currently violates
+encoding invariance for the commoner case, and the module's central
+promise (identical performances compare equal) outranks the convenience
+of uniform treatment. Unequal intensities stay individual events with
+the documented, evidence-carrying limitation as shipped.
+AD-45.3 §5.6 edits DELEGATED to w3-dims's next commit: the AD-44.3
+three-unit-case rescope (v3-shaped ornaments only; v3 detection =
+frame.offset OR unit suffix) AND one added sentence stating the v3 gate
+out loud: the presence of @repetitions or @noteid makes an ornament
+v3-shaped, and a v3-shaped ornament without v3 @note.order performs
+NOTHING — an attribute whose presence deletes the performance. The
+decide-without-stopping route taken there was correct (renderer
+determines, DESIGN silent, pipeline evidence attached).
+Cut 4 (imprecision ×3) proceeds.
