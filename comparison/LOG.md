@@ -1014,3 +1014,19 @@ tempo's, at the difference's stationary point, and it needs a ruling.
 
 Gate: `npm run verify` GREEN before committing, 96 files / 4230 passed + 1
 skipped (was 4199). 31 new dynamics tests. eslint and prettier clean.
+
+## 2026-08-10 — AD-30: Bézier-pair cell subdivision [BINDING]
+
+survey-code recorded (part 2b) that dynamicsDistance supplies no structural
+split points: two Bézier segments can cross twice in one cell and
+integrateAbsolute then integrates slightly LOW; §5.0 mandated bracketing
+only for the power-vs-power family, and Bézier-vs-Bézier has no closed-form
+critical point. Ruling: fixed K=4 equal subdivision of any cell where BOTH
+sides are non-constant Bézier segments, each sub-interval getting the usual
+one-crossing resolution — deterministic, structure-blind in the graded-mesh
+spirit, cost confined to those cells. A deliberately double-crossing pair
+becomes a pinned test demonstrating the subdivision catches what a
+single-interval reading misses; the residual risk (≥3 crossings inside one
+quarter of a cell) is documented as negligible-by-construction with the
+smoothstep's curvature bound. DESIGN §5.0 sentence amended by survey-code
+in the rubato/asynchrony commit under this ruling.
