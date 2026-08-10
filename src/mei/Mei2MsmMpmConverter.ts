@@ -3019,33 +3019,193 @@ export class Mei2MsmMpmConverter {
     }
   }
 
+  /**
+   * Convert a `slur` into the `slur` entries the articulation pass later reads.
+   *
+   * Three routes, in Java's order:
+   *
+   * 1. **`plist`** — the slur names its notes explicitly. They are marked directly, `im`
+   *    ("in the middle") on all but the last, `t` (terminal) on the last, and no miscMap
+   *    entry is produced at all. The bow's final note is deliberately excluded from the
+   *    `im` run: it ends the legato rather than continuing it.
+   * 2. **local** — the slur carries `part` or `staff`, so it belongs to specific staffs.
+   *    One entry per named staff, in that staff's part `miscMap`. A staff number matching
+   *    no MSM part contributes nothing, which is how a dangling reference is dropped.
+   * 3. **global** — no association, or `%all`: one entry in the global `miscMap`.
+   *
+   * Before routing, a slur with both `startid` and `endid` gets its `staff` and then its
+   * `layer` filled in from those endpoints when both sit in the same one — so a slur
+   * written without an explicit association still stays inside its voice.
+   *
+   * The `xml:id` is copied to the first entry only; every further one gets
+   * `<id>_meico_<uuid>`, since ids must stay unique across the document. That draws a UUID
+   * per extra entry and is therefore on the order-sensitive path ({@link addUUID}).
+   */
   private processSlur(slur: Element): void {
-    if (this.currentMeasure === null) return;
-    // Simplified -- the full implementation handles plist, tstamp2, endid, staff assignment, etc.
+    if (this.currentMeasure === null)
+      // we process slurs only when they are in a measure environment
+      return;
+
+    const id = attribute('id', slur);
+    const xmlid = id !== null ? id.getValue() : null;
+
+    // if a plist attribute names all affected notes/chords, mark them directly
+    const plistAtt = slur.getAttribute('plist');
+    if (plistAtt !== null) {
+      const startidAtt = slur.getAttribute('startid');
+      if (startidAtt !== null) {
+        const startid = startidAtt.getValue();
+        if (!plistAtt.getValue().includes(startid))
+          plistAtt.setValue(`${startid} ${plistAtt.getValue()}`);
+      }
+
+      const endidAtt = slur.getAttribute('endid');
+      if (endidAtt !== null) {
+        const endid = endidAtt.getValue();
+        if (!plistAtt.getValue().includes(endid))
+          plistAtt.setValue(`${plistAtt.getValue()} ${endid}`);
+      }
+
+      const plist = plistAtt.getValue().trim().replace(/#/g, '').split(/\s+/);
+      let multiIds = false;
+
+      // all but the last: the end of the legato bow is not played legato
+      for (let i = plist.length - 2; i >= 0; --i) {
+        const note = this.allNotesAndChords.get(plist[i]);
+        if (note !== undefined) {
+          note.addAttribute(new Attribute('slur', 'im'));
+          if (xmlid !== null) {
+            note.addAttribute(
+              new Attribute(
+                'xml:id',
+                'http://www.w3.org/XML/1998/namespace',
+                multiIds ? `${xmlid}_meico_${uuidv4()}` : xmlid,
+              ),
+            );
+            multiIds = true;
+          }
+        }
+      }
+
+      if (plist.length > 2) {
+        const note = this.allNotesAndChords.get(plist[plist.length - 1]);
+        if (note !== undefined) {
+          note.addAttribute(new Attribute('slur', 't'));
+          if (xmlid !== null) {
+            note.addAttribute(
+              new Attribute(
+                'xml:id',
+                'http://www.w3.org/XML/1998/namespace',
+                multiIds ? `${xmlid}_meico_${uuidv4()}` : xmlid,
+              ),
+            );
+          }
+        }
+      }
+      return;
+    }
+
     const timingData = this.computeControlEventTiming(slur, this.currentPart);
-    if (timingData === null) return;
+    if (timingData === null)
+      // the event has been repositioned in accordance to a startid attribute
+      return;
     const date = timingData[0];
     const endDate = timingData[1];
     const tstamp2 = timingData[2];
     const endid = timingData[3];
+    const startid = slur.getAttribute('startid');
 
-    const slurMisc = new Element('slur');
-    slurMisc.addAttribute(new Attribute('date', String(date)));
-    copyId(slur, slurMisc);
-    if (endid !== null) {
-      slurMisc.addAttribute(new Attribute('endid', endid.getValue()));
-      this.endids.push(slurMisc);
-    }
-    if (endDate !== null) slurMisc.addAttribute(new Attribute('date.end', String(endDate)));
-    if (tstamp2 !== null) {
-      slurMisc.addAttribute(new Attribute('tstamp2', tstamp2.getValue()));
-      this.tstamp2s.push(slurMisc);
+    // check whether startid and endid are in the same staff and layer
+    let layerId = '';
+    if (startid !== null && endid !== null) {
+      if (slur.getAttribute('staff') === null) {
+        const staffId = this.isSameStaff(startid.getValue(), endid.getValue());
+        if (staffId !== '') slur.addAttribute(new Attribute('staff', staffId));
+      }
+      // looking for the layer makes only sense if we are in a specific staff
+      if (slur.getAttribute('staff') !== null && slur.getAttribute('layer') === null) {
+        layerId = this.isSameLayerInstance(startid.getValue(), endid.getValue());
+        if (layerId !== '') slur.addAttribute(new Attribute('layer', layerId));
+      }
     }
 
-    const miscMap = this.currentMsmMovement!.getFirstChildElement('global')!
-      .getFirstChildElement('dated')!
-      .getFirstChildElement('miscMap')!;
-    addToMap(slurMisc, miscMap);
+    // MEI 4.0's part attribute wins over staff
+    // (https://github.com/music-encoding/music-encoding/issues/435)
+    let att = slur.getAttribute('part');
+    if (att === null) att = slur.getAttribute('staff');
+
+    // Both branches below append attributes in Java's order. The serialized attribute
+    // sequence is the fixture bytes, so it is a contract, not a detail.
+    if (att === null || att.getValue() === '' || att.getValue() === '%all') {
+      // no part or staff association: a global instruction
+      const slurMisc = new Element('slur');
+      slurMisc.addAttribute(new Attribute('date', String(date)));
+      copyId(slur, slurMisc);
+
+      if (endid !== null) {
+        slurMisc.addAttribute(new Attribute('endid', endid.getValue()));
+        this.endids.push(slurMisc);
+      }
+
+      if (endDate !== null) slurMisc.addAttribute(new Attribute('date.end', String(endDate)));
+
+      if (tstamp2 !== null) {
+        slurMisc.addAttribute(new Attribute('tstamp2', tstamp2.getValue()));
+        this.tstamp2s.push(slurMisc);
+      }
+
+      addToMap(
+        slurMisc,
+        this.currentMsmMovement!.getFirstChildElement('global')!
+          .getFirstChildElement('dated')!
+          .getFirstChildElement('miscMap')!,
+      );
+      return;
+    }
+
+    // there are staffs, hence a local slur
+    const staffs = att.getValue().split(/\s+/);
+    const parts = this.currentMsmMovement!.getChildElements('part');
+    let multiIds = false;
+
+    for (const staff of staffs) {
+      for (let p = 0; p < parts.size(); ++p) {
+        const part = parts.get(p);
+        if (part.getAttributeValue('number') !== staff) continue;
+
+        const slurMisc = new Element('slur');
+        slurMisc.addAttribute(new Attribute('date', String(date)));
+
+        if (xmlid !== null) {
+          slurMisc.addAttribute(
+            new Attribute(
+              'xml:id',
+              'http://www.w3.org/XML/1998/namespace',
+              multiIds ? `${xmlid}_meico_${uuidv4()}` : xmlid,
+            ),
+          );
+          multiIds = true;
+        }
+
+        slurMisc.addAttribute(new Attribute('staff', staff));
+
+        if (layerId !== '') slurMisc.addAttribute(new Attribute('layer', layerId));
+
+        if (endid !== null) {
+          slurMisc.addAttribute(new Attribute('endid', endid.getValue()));
+          this.endids.push(slurMisc);
+        }
+
+        if (endDate !== null) slurMisc.addAttribute(new Attribute('date.end', String(endDate)));
+
+        if (tstamp2 !== null) {
+          slurMisc.addAttribute(new Attribute('tstamp2', tstamp2.getValue()));
+          this.tstamp2s.push(slurMisc);
+        }
+
+        addToMap(slurMisc, part.getFirstChildElement('dated')!.getFirstChildElement('miscMap')!);
+      }
+    }
   }
 
   private processReh(reh: Element): void {

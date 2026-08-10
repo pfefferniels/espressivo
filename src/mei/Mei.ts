@@ -667,6 +667,155 @@ export class Mei extends XmlBase {
   }
 
   /**
+   * Split every multi-layer `staff` into one single-layer `staff` per layer, so that the
+   * conversion downstream emits **one MSM `part` per MEI layer** instead of one per staff.
+   *
+   * MEI keeps the voices of a keyboard or divisi staff as sibling `layer` elements inside
+   * one `staff`, and {@link Mei2MsmMpmConverter} makes one MSM part per `staffDef` — so
+   * those voices are merged into a single part, sharing one MIDI channel and one
+   * instrument. This pass rewrites the encoding so each voice arrives as its own staff,
+   * and therefore its own part, channel and instrument. It is what you want before
+   * per-voice performance rendering, and it is **not** part of the conversion pipeline:
+   * the converter never calls it, so the default behaviour is unchanged. Call it yourself
+   * before `exportMsm`/`exportMsmMpm`.
+   *
+   * **This mutates the instance**, like the other preprocessing passes — clone first if
+   * the original is still needed. Unlike them it is *not* undone by the converter's
+   * `cleanup` flag, because the converter never invokes it.
+   *
+   * The new staffs are numbered by **string concatenation** of the original `@n` values,
+   * `staff@n + layer@n` — staff 2, layer 1 becomes staff `21`. Elements missing an `@n`
+   * get a synthetic one: `1000000` for a staff, and `<layer index> * 1000000` for a layer,
+   * so the first unnumbered layer of an unnumbered staff becomes staff `10000000`. Each
+   * moved layer is renumbered `@n="1"`, since its new staff holds only it.
+   *
+   * Every `staffDef` is then regenerated: each new staff gets a deep copy of the
+   * `staffDef` its original staff referenced (so clef, key, transposition and instrument
+   * carry over), renumbered to the new `@n` and appended to the copy's original container;
+   * the originals are then detached. The copies are appended in **ascending numeric order**
+   * of the new `@n`, which is what keeps the part order in the MSM musically sensible
+   * rather than following the order the layers happened to be visited in. A score with no
+   * `scoreDef` at all gets one, appended to `score`, holding freshly minted empty
+   * `staffDef`s.
+   *
+   * Two upstream behaviours are reproduced rather than repaired, and both are recorded in
+   * PARITY.md §4:
+   *
+   * - The concatenation scheme is **ambiguous**: staff 1 / layer 11 and staff 11 / layer 1
+   *   both yield `111`, and then share a `staffDef` and a part.
+   * - `oStaff` elements are matched alongside `staff`, but only their `layer` children are
+   *   moved — an `oStaff` holding `oLayer` children yields no new staff and is **dropped**,
+   *   because the original is detached unconditionally.
+   *
+   * Backported from upstream `meico.mei.Mei.layersToStaffs()` (cemfi/meico v0.11.10, with
+   * the v0.11.12 fix that inserts the new staffs at the original's position instead of
+   * appending them to the end of the measure). It postdates the v0.11.2 reference fork this
+   * port is otherwise measured against; see PARITY.md §4.
+   */
+  layersToStaffs(): void {
+    const namespaceURI = this.getRootElement()!.getNamespaceURI();
+
+    for (const mdiv of this.getAllMdivs()) {
+      // each mdiv has to be processed individually
+      const score = firstChildElement('score', mdiv);
+      if (score === null) continue;
+
+      const origStaffDefs = new Map<string, Element>();
+      let scoreDef = firstChildElement('scoreDef', score);
+      if (scoreDef === null) {
+        // add staffDef elements here; if it is not empty at the end, add it to score
+        scoreDef = new Element('scoreDef', namespaceURI);
+      } else {
+        const staffDefs = scoreDef.query("descendant::*[local-name()='staffDef']");
+        for (let i = 0; i < staffDefs.size(); ++i) {
+          const staffDef = staffDefs.get(i) as unknown as Element;
+          const n = staffDef.getAttribute('n');
+          if (n !== null) origStaffDefs.set(n.getValue(), staffDef);
+        }
+      }
+
+      // for each new staff number, what the original staff number was, so the new
+      // staffDefs can be generated with the correct original contents
+      const newStaffOrigStaff = new Map<string, string>();
+
+      const staffsOriginal = score.query(
+        "descendant::*[local-name()='staff' or local-name()='oStaff']",
+      );
+      for (let s = 0; s < staffsOriginal.size(); ++s) {
+        const staff = staffsOriginal.get(s) as unknown as Element;
+        const staffContainer = staff.getParent();
+        if (staffContainer === null) continue;
+        let index = staffContainer.indexOf(staff);
+
+        const nStaff = staff.getAttribute('n');
+        const staffN = nStaff !== null ? nStaff.getValue() : '1000000';
+
+        const layers = staff.query("descendant::*[local-name()='layer']");
+        for (let l = 0; l < layers.size(); ++l) {
+          const layer = layers.get(l) as unknown as Element;
+          const nLayer = layer.getAttribute('n');
+          const layerN = nLayer !== null ? nLayer.getValue() : String(l * 1000000);
+
+          const newStaffN = staffN.concat(layerN);
+          newStaffOrigStaff.set(newStaffN, staffN);
+
+          layer.detach();
+          layer.addAttribute(new Attribute('n', '1')); // this staff holds only this layer
+          const newStaff = new Element('staff', namespaceURI);
+          newStaff.addAttribute(new Attribute('n', newStaffN));
+          newStaff.appendChild(layer);
+          staffContainer.insertChild(newStaff, ++index); // directly behind the original
+        }
+
+        staff.detach(); // replaced by the newly generated staffs
+      }
+
+      // generate new staffDefs, ordered by @n; the originals are deleted afterwards
+      const numberedStaffDefs = new Map<number, KeyValue<Element, Element>>();
+      const unnumberedStaffDefs: KeyValue<Element, Element>[] = [];
+      for (const [newStaffN, origStaffN] of newStaffOrigStaff) {
+        const origStaffDef = origStaffDefs.get(origStaffN);
+        let newStaffDef: Element;
+        let container: Element | null;
+        if (origStaffDef !== undefined) {
+          newStaffDef = origStaffDef.copy();
+          container = origStaffDef.getParent();
+        } else {
+          newStaffDef = new Element('staffDef', namespaceURI);
+          container = scoreDef;
+        }
+        if (container === null) continue;
+        newStaffDef.addAttribute(new Attribute('n', newStaffN));
+
+        // cannot append here — the sequence has to follow @n, not visiting order
+        const kv = new KeyValue(newStaffDef, container);
+        const sortKey = parseInt(newStaffN, 10);
+        // A non-numeric @n is out of schema (MEI types staff/@n as data.INT) and makes
+        // Java throw NumberFormatException here. Ordering the entry last is strictly more
+        // useful than crashing, and cannot affect a conforming encoding.
+        if (Number.isNaN(sortKey)) unnumberedStaffDefs.push(kv);
+        else numberedStaffDefs.set(sortKey, kv);
+      }
+
+      const ordered = [...numberedStaffDefs.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([, kv]) => kv);
+      ordered.push(...unnumberedStaffDefs);
+      for (const kv of ordered) kv.getValue().appendChild(kv.getKey());
+
+      for (const origStaffDef of origStaffDefs.values()) origStaffDef.detach();
+
+      // if a scoreDef had to be generated, and it is not empty, add it to the score
+      if (scoreDef.getParent() === null && scoreDef.getChildCount() > 0) {
+        score.appendChild(scoreDef);
+      }
+    }
+
+    // the staffDef copies carry the originals' xml:ids
+    this.fixDuplicateIds();
+  }
+
+  /**
    * The `layer` element `ofThis` sits in, or null. Walks the parent chain all the way to
    * the document root; Java stops one short of the root element, which makes no difference
    * unless the root itself is a `layer`.

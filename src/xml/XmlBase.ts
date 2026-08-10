@@ -1,4 +1,5 @@
-import { Document, Element, Builder, ParsingException } from './XomTypes.js';
+import { Document, Element, Attribute, Builder, ParsingException } from './XomTypes.js';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * What {@link XmlBase.validate} reports.
@@ -154,6 +155,43 @@ export class XmlBase {
     }
 
     return matches.size();
+  }
+
+  /**
+   * Give every `xml:id` that repeats a fresh `meico_<uuid>` value, so the document holds
+   * no id twice.
+   *
+   * The first occurrence of an id keeps it; every later one is reassigned. That
+   * asymmetry is deliberate and load-bearing for {@link Mei.layersToStaffs}, whose only
+   * caller is a pass that deep-copies `staffDef` elements: the original's references stay
+   * valid and the copies are the ones that move.
+   *
+   * The reassignment loop re-draws while the new value collides too, which cannot
+   * realistically happen with UUIDs but costs nothing to state.
+   *
+   * @return how many attributes had to be reassigned
+   */
+  fixDuplicateIds(): number {
+    let duplicates = 0;
+    const uniqueIds = new Set<string>();
+
+    const attributes = this.getRootElement()!.query(
+      'descendant-or-self::node()/attribute::xml:id',
+    );
+    for (let i = 0; i < attributes.size(); ++i) {
+      const attribute = attributes.get(i) as unknown as Attribute;
+      let duplicate = false;
+      while (uniqueIds.has(attribute.getValue())) {
+        duplicate = true;
+        attribute.setValue(`meico_${uuidv4()}`);
+      }
+      uniqueIds.add(attribute.getValue());
+      duplicates += duplicate ? 1 : 0;
+    }
+
+    console.log(`Duplicate IDs found and fixed: ${duplicates}`);
+
+    return duplicates;
   }
 
   /**
