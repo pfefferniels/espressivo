@@ -1919,3 +1919,33 @@ that id-anchored content is window-exempt, so a caller narrowing the
 window knows those atoms persist (facade/W3b picks this up in the
 report-shape work).
 Cut 3 (ornamentation) proceeds; the aligner meets its second consumer.
+
+## 2026-08-10 — AD-40: ornament @scale gates half the ornament [BINDING]
+
+Cut-3 stop-and-report (fourth §5-vs-renderer divergence in four
+dimensions; provenance note: panel R19 flagged @scale's 0.0 default and
+AD-15 ratified the row, but the rev-2 compilation absorbed it into §5.6
+incompletely — the gating behavior was never stated). Rulings:
+
+AD-40.1 @scale IS a registry row on <ornament>: linear velocity-unit
+space (per AD-15/R19 — it multiplies a velocity offset; gain-ordered per
+the shipped s-domain vocabulary), NEUTRAL 0.0, liveness "gates
+dynamicsGradient ENTIRELY, defaults to 0, does NOT gate temporalSpread".
+§5.4 and §5.6 cross-reference each other for the same-name @scale
+attributes with different dispositions (skip-whole-instruction vs
+zero-one-half), as §5.4/§5.5 already do for unresolvable names.
+AD-40.2 The gradient's COMPARED OBJECT is the resolved performed pair
+(from·scale, to·scale) — @scale is not independently priced; two
+encodings of one performed ramp compare equal. This and AD-37.3 are now
+one NAMED PRINCIPLE for the remaining work: "price the resolved performed
+effect, never the attribute tuple."
+AD-40.3 Single-note pool performs transition.to (renderer truth), priced
+as such, pool size reported. The ramp distributes over the ornamented
+POOL (notes at the ornament's date / note.order list), not score time —
+§5.6 states it with the three measured facts (single-note = to;
+date-pooling; before-first-style skip mirroring §5.4 against §5.5's
+opposite, cross-referenced).
+AD-40.4 The clean hazard check is RECORDED: no size()-1 guard in
+ornamentationMap (no AD-35 analogue), and the local-header gate resolves
+globally as measured — negative results are evidence too.
+Unblocked halves proceed meanwhile as proposed.
