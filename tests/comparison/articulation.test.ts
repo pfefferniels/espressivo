@@ -22,6 +22,12 @@ import {
   resolveDurationLever,
   type ArticulationAtoms,
 } from '../../src/comparison/articulationAtoms.js';
+import {
+  defaultArticulationAt,
+  defaultArticulationStepAt,
+  readDefaultArticulation,
+  type DefaultArticulationCurve,
+} from '../../src/comparison/articulationDefault.js';
 import { comparisonRowFor } from '../../src/comparison/registry.js';
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
@@ -29,6 +35,7 @@ const NS = 'http://www.cemfi.de/mpm/ns/1.0';
 const STYLES =
   '<articulationStyles><styleDef name="A">' +
   '<articulationDef name="stacc" relativeDuration="0.5"/>' +
+  '<articulationDef name="ten" relativeDuration="1.2"/>' +
   '<articulationDef name="both" relativeDuration="0.5" absoluteDurationChange="10"/>' +
   '</styleDef></articulationStyles>';
 
@@ -279,5 +286,133 @@ describe('the registry rows this reader resolves liveness for', () => {
   it('marks the tick-valued rows ppqSensitive and the millisecond ones not', () => {
     expect(comparisonRowFor('articulation/articulation@absoluteDelay').ppqSensitive).toBe(true);
     expect(comparisonRowFor('articulation/articulation@absoluteDelayMs').ppqSensitive).toBe(false);
+  });
+});
+
+/**
+ * The default-articulation step function — §5.5 as amended by AD-37.1/AD-37.2.
+ *
+ * Every claim is checked twice: once against the reader, once against what the renderer
+ * actually performs on a row of notes. The retroactive window is the whole point of the
+ * suite, and it is the one behaviour a careful implementer would have got wrong.
+ */
+describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
+  const defaultsOf = (map: string): DefaultArticulationCurve => {
+    const pair: ComparisonPair = readComparisonPair({ a: doc(map) });
+    const document: ComparisonDocument = pair.a;
+    const scope = document.scopes.find((candidate) => candidate.scope === 'global');
+    if (scope === undefined) throw new Error('no global scope');
+    return readDefaultArticulation(
+      readScopeMapViews(scope).get('articulationMap') ?? null,
+      document.scaleFactor,
+      scope.environment,
+      document.performance.global,
+    );
+  };
+
+  /** What the renderer performs for notes at these dates, each 100 ticks long. */
+  function performedAt(map: string, dates: readonly number[]): number[] {
+    const mpm = new Mpm(doc(map));
+    const articulationMap = mpm
+      .getPerformance(0)!
+      .getGlobal()!
+      .getDated()!
+      .getMap('articulationMap') as unknown as ArticulationMap;
+
+    const notes = GenericMap.createGenericMap('someMap')!;
+    for (const date of dates) {
+      const note = new Element('note', NS);
+      note.addAttribute(new Attribute('date', String(date)));
+      note.addAttribute(new Attribute('date.perf', String(date)));
+      note.addAttribute(new Attribute('duration.perf', '100'));
+      note.addAttribute(new Attribute('velocity', '64'));
+      notes.addElement(note);
+    }
+    articulationMap.renderArticulationToMap_noMillisecondModifiers(notes);
+    return notes
+      .getXml()
+      .getChildElements()
+      .toArray()
+      .map((note) => parseFloat(note.getAttributeValue('duration.perf')!));
+  }
+
+  const DATES = [0, 360, 720, 1080];
+
+  it('reaches BACKWARDS: the first switch’s default governs before its own date', () => {
+    const map = '<style date="720.0" name.ref="A" defaultArticulation="stacc"/>';
+    // The renderer first — this is the measurement the ruling rests on.
+    expect(performedAt(map, DATES)).toEqual([50, 50, 50, 50]);
+
+    const curve = defaultsOf(map);
+    expect(curve.firstSwitchTicks).toBe(720);
+    expect(curve.steps[0].startTicks).toBe(0);
+    expect(defaultArticulationAt(curve, 0)).not.toBeNull();
+    expect(curve.notes.some((note) => note.kind === 'retroactive')).toBe(true);
+  });
+
+  it('reaches back over the whole map, not over a window', () => {
+    const map = '<style date="1440.0" name.ref="A" defaultArticulation="stacc"/>';
+    expect(performedAt(map, [0, 720, 1440])).toEqual([50, 50, 50]);
+    expect(defaultArticulationAt(defaultsOf(map), 0)).not.toBeNull();
+  });
+
+  it('steps at every later switch, in switch order', () => {
+    const map =
+      '<style date="0.0" name.ref="A" defaultArticulation="ten"/>' +
+      '<style date="720.0" name.ref="A" defaultArticulation="stacc"/>';
+    expect(performedAt(map, DATES)).toEqual([120, 120, 50, 50]);
+    const curve = defaultsOf(map);
+    expect(curve.steps).toHaveLength(2);
+    expect(curve.steps[0].name).toBe('ten');
+    expect(curve.steps[1].startTicks).toBe(720);
+  });
+
+  it('CANCELS on a switch with no @defaultArticulation', () => {
+    const map =
+      '<style date="0.0" name.ref="A" defaultArticulation="stacc"/>' +
+      '<style date="720.0" name.ref="A"/>';
+    expect(performedAt(map, DATES)).toEqual([50, 50, 100, 100]);
+    const curve = defaultsOf(map);
+    expect(defaultArticulationAt(curve, 720)).toBeNull();
+    expect(defaultArticulationStepAt(curve, 720)?.cancelCause).toBe('no-attribute');
+  });
+
+  it('CANCELS on a switch naming an unknown def — the row §5.5 was missing', () => {
+    const map =
+      '<style date="0.0" name.ref="A" defaultArticulation="stacc"/>' +
+      '<style date="720.0" name.ref="A" defaultArticulation="nosuch"/>';
+    expect(performedAt(map, DATES)).toEqual([50, 50, 100, 100]);
+    const curve = defaultsOf(map);
+    expect(defaultArticulationAt(curve, 720)).toBeNull();
+    expect(defaultArticulationStepAt(curve, 720)?.cancelCause).toBe('unknown-def');
+  });
+
+  it('CONTINUES the previous default on an unresolvable STYLE name', () => {
+    // The disposition that looks identical to the one above and does the opposite.
+    const map =
+      '<style date="0.0" name.ref="A" defaultArticulation="stacc"/>' +
+      '<style date="720.0" name.ref="NOSTYLE" defaultArticulation="ten"/>';
+    expect(performedAt(map, DATES)).toEqual([50, 50, 50, 50]);
+    const curve = defaultsOf(map);
+    expect(curve.steps).toHaveLength(1);
+    expect(defaultArticulationAt(curve, 1080)?.getAttributeValue('name')).toBe('stacc');
+    expect(curve.notes.some((note) => note.kind === 'unresolved-style')).toBe(true);
+  });
+
+  it('is empty when no switch survives, and defaults nothing', () => {
+    const map = '<style date="0.0" name.ref="NOSTYLE" defaultArticulation="stacc"/>';
+    expect(performedAt(map, DATES)).toEqual([100, 100, 100, 100]);
+    const curve = defaultsOf(map);
+    expect(curve.steps).toHaveLength(0);
+    expect(curve.firstSwitchTicks).toBeNull();
+    expect(defaultArticulationAt(curve, 0)).toBeNull();
+  });
+
+  it('is shadowed by an atom, never added to it (AD-11ii/R5)', () => {
+    const map =
+      '<style date="0.0" name.ref="A" defaultArticulation="stacc"/>' +
+      '<articulation date="360.0" name.ref="ten"/>';
+    // 120, not 60: the note at 360 gets the atom and ONLY the atom.
+    expect(performedAt(map, DATES)).toEqual([50, 120, 50, 50]);
   });
 });

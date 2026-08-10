@@ -1769,3 +1769,36 @@ needed it first was about to become misleading. Also added 'hz' to ComparisonUni
 Gate: `npm run verify` green before committing (4465 passed + 1 skipped, was 4447);
 eslint and prettier clean. 18 new tests, every liveness claim checked against the real
 renderer over a note map rather than against the reader alone.
+
+## 2026-08-10 — W3a cut 2, part 2: the default step function (task #7, survey-code)
+
+AD-37.1 and AD-37.2 implemented as ruled, and §5.5 amended in this commit for
+AD-37.1/2/3/5 — the sections now carry the retroactive window, the three-row
+disposition table, the velocity-composition rule with its measured 47, the
+per-anchor composition rule with its encoding-invariance obligation, and the
+unresolvable-@name.ref disposition cross-referenced BOTH WAYS with §5.4 (which
+gained the reciprocal sentence), so neither section can be inferred from the other.
+
+src/comparison/articulationDefault.ts: the step function, with the first step's
+startTicks pinned at 0 rather than at its switch's date and the switch date kept
+separately as firstSwitchTicks, so the retroactive window is legible in the data
+rather than merely applied. Three dispositions distinguished by cancelCause
+('no-attribute' | 'unknown-def') against a switch that never enters the list at
+all.
+
+Eight new tests, each asserting the RENDERER first and the reader second, over a
+row of four 100-tick notes: [50,50,50,50] for the retroactive switch at 720,
+[50,50,50] for one at 1440 with notes at 0/720/1440, [120,120,50,50] for two
+switches, [50,50,100,100] for both cancelling dispositions, [50,50,50,50] for the
+unresolvable style, [100,100,100,100] when no switch survives, and [50,120,50,50]
+for the atom-shadows-default rule. The last is AD-11ii/R5 re-pinned here because
+the step function is what it shadows.
+
+Still to come in cut 2, now unblocked by AD-37.6: the dimension-neutral event
+aligner as its own module, the per-anchor composed effective modifier (AD-37.3/4),
+and the pricing that consumes both. The aligner's second consumer is cut 3's
+ornamentation, which is why it is being built to a dimension-neutral interface
+rather than to articulation's shape.
+
+Gate: `npm run verify` green before committing (4473 passed + 1 skipped, was
+4465); eslint and prettier clean.

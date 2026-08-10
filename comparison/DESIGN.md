@@ -1003,7 +1003,9 @@ not, and the render then dereferences it unguarded — executed,
 performance render throws**. There is no performed function to compare, so the
 span reads `⊥` on that side and is reported `renderer-error`. Separately, an
 `accentuationPattern` before the map's first `<style>` switch is silently skipped
-even with a perfectly good `name.ref` (`:89`) — a renderer skip, reported as one.
+even with a perfectly good `name.ref` (`:89`) — a renderer skip, reported as one,
+and **the opposite of §5.5's disposition**, where an atom whose `@name.ref` does
+not resolve keeps its own inline modifiers and compares as performed (AD-37.5).
 This is the one place revision 1's exclusion instinct was right, and the design
 must say _which_ unresolvables are which: tempo and dynamics levels have a
 performed value (R8), accentuation patterns do not.
@@ -1047,10 +1049,34 @@ is deliberately not also applied"_. Executed with `defaultArticulation="stacc"`
 not 60. Revision 1's model was `profile = step(t) ⊕ atoms`; the renderer's is
 `profile(t) = atoms(t) where atoms exist, else step(t)`, so revision 1
 double-charged at exactly the dates the composer bothered to mark. The default's
-step function is built from the resolved style-switch list and includes its two
-non-obvious mechanics: an unresolvable style switch leaves the _previous_ default
-in force (`:231-236`), and a switch carrying **no** `@defaultArticulation` pushes
-a `null` that **cancels** the default from that date (`:239-243`).
+step function is built from the resolved style-switch list.
+
+**The step function is RETROACTIVE** (AD-37.1).
+`renderArticulationToMap_noMillisecondModifiers:255-283` starts
+`defaultArticulationIndex` at **0** and never tests it against its own date — the
+`while` only advances when the NEXT switch's date has been passed — so the FIRST
+switch's default governs every note before it as well. Executed on notes at
+0/360/720/1080, each 100 ticks, with a single switch at **720** carrying
+`defaultArticulation="stacc"` (×0.5): durations **[50, 50, 50, 50]**. With the
+switch at 1440 and notes at 0/720/1440: **[50, 50, 50]**. The reach is the whole
+map, not a window. A step function with no value before its first step — the
+natural reading, and what an implementer writes unruled — is wrong by
+`|ln 0.5| = 0.693` nepers held across the entire pre-switch region. This is
+AD-35.4's hazard class in a third instance and a new shape: **"index 0 is used
+before its date has arrived"**, alongside `renderMovementToMap`'s `size() − 1`
+guard and `getPreviousPosition`'s `j > 0`.
+
+**Three dispositions, two of which cancel** (AD-37.2):
+
+| the switch                                       | the renderer                           | the default        |
+| ------------------------------------------------ | -------------------------------------- | ------------------ |
+| `@name.ref` names no `articulationStyle`         | `continue`s before the list is touched | previous CONTINUES |
+| resolvable style, no `@defaultArticulation`      | pushes `null` (`:239-243`)             | CANCELLED          |
+| resolvable style, `@defaultArticulation` unknown | pushes `null` and logs (`:245-252`)    | CANCELLED          |
+
+All three executed. Revision 2 named one canceller and one continuer; the third
+row is the one a reader guesses wrong, because an unknown _def_ name looks like
+an unknown _style_ name and does the opposite.
 
 **Exactly one duration lever is live per inline atom** (AD-11i, R4).
 `ArticulationData.articulateNote` reads `duration` once up front and every branch
@@ -1086,9 +1112,40 @@ is **dropped entirely**. So: without an MSM, compare by id and report
 `datePositionKnown: false`; with an MSM, place the atom at the referenced note's
 date; unresolvable ids are dropped, as the renderer drops them.
 
+**The VELOCITY levers COMPOSE, on both elements** (AD-37.3) — the trap, because
+the duration rule above is so nearly its opposite. `articulateNote` **re-reads**
+`@velocity` after each write, so `@absoluteVelocity`, `@relativeVelocity` and
+`@absoluteVelocityChange` chain into one affine map `v ↦ r·v + c`. Executed:
+velocity 64 with `absoluteVelocity="80"`, `relativeVelocity="0.5"`,
+`absoluteVelocityChange="7"` performs **47**. AD-11i's one-lever rule is a
+DURATION rule and does not generalise. Pricing therefore compares **effective
+modifiers** — the single live duration lever's effect, and the composed velocity
+affine `(r, c)` in their spaces — not the attributes as written.
+
+**Atoms COMPOSE ACROSS atoms, per note, in map order** (AD-37.4). One note can
+collect several (`noteArtics` is a list), and each `articulateNote` re-reads the
+note it is mutating: two `<articulation>` elements at one date with
+`relativeDuration` 0.5 and 0.25 perform **12.5**, not 25 and not 50, and a
+`noteid` atom and a date-targeted atom on the same note both apply. The semantic
+object is therefore the **per-anchor composed effective modifier**, not the
+individual atom, and the alignment operates on those. The encoding-invariance
+consequence is a test rather than a remark: two stacked `relativeDuration` atoms
+against one atom carrying their product must be distance **0**.
+
+**An atom's unresolvable `@name.ref` does NOT drop it** (AD-37.5). If no
+`<style>` is in scope, or the style has no def of that name, the def is silently
+ignored and the atom's own inline modifiers still apply — the atom compares AS
+PERFORMED, with no `⊥`. Executed both ways: `name.ref="stacc"
+relativeDuration="1.2"` performs 120 on a 100-tick note with the def missing and
+60 with it present. **This is the opposite of §5.4's disposition**, where an
+`accentuationPattern` with no style in scope is skipped entirely; the two
+sections cross-reference each other so that neither is inferred from the other.
+
 Matched atoms contribute `Σ_live-rows d_row(x_A, x_B)` under §4's capped metric;
 unmatched atoms their deviation from neutral. Matching is by the alignment DP of
-§5.6 with opportunistic id-pinning — never by an exact-date pre-pass (AD-7).
+§5.6 with opportunistic id-pinning — never by an exact-date pre-pass (AD-7) —
+and that aligner is a **dimension-neutral module of its own** (AD-37.6), with
+articulation as its first consumer and §5.6's ornamentation as its second.
 
 **Replacement attributes** `absoluteDuration`, `absoluteDurationMs` and
 `absoluteVelocity` have no neutral: present-vs-present compares in native units,
