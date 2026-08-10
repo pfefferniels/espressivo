@@ -2532,3 +2532,14 @@ contingency is dropped; after their push, compare-campaign is one merge
 behind main and the conductor will merge main in and re-measure the
 eslint.config.js/.prettierignore conflict surface personally (keep
 /ARCHITECTURE.md in .prettierignore — load-bearing).
+
+## 2026-08-11 — Coordination: main = 7709080; merge deferred to settled main
+
+docs-declutter landed (main 9974ba3 → 7709080; docs/history/ convention
+live; AD-47's contingency fully discharged). layers-to-staffs merges into
+main shortly, so main will move again — [DECISION] the conductor measures
+the compare-campaign↔main conflict surface ONCE against the settled main
+(after the layer→part ping), not against 7709080; measuring against a
+base about to go stale is the peer's twice-burned trap, adopted as our
+lesson without paying for it. Cut-4 implementation continues meanwhile
+(conductor's hand; merge and citation sweep are independent of it).
