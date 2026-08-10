@@ -194,3 +194,83 @@ describe('XmlBase – isValid', () => {
     expect(xb.isValid()).toBe(false);
   });
 });
+
+describe('XmlBase.fixDuplicateIds', () => {
+  const XML_NS = 'http://www.w3.org/XML/1998/namespace';
+
+  /** the xml:id of every element carrying one, in document order */
+  function ids(base: XmlBase): string[] {
+    return base
+      .getRootElement()!
+      .query('descendant-or-self::node()/attribute::xml:id')
+      .toArray()
+      .map((a) => (a as unknown as Attribute).getValue());
+  }
+
+  it('leaves a document whose ids are already unique untouched', () => {
+    const base = new XmlBase(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<root xml:id="r"><a xml:id="x"/><b xml:id="y"/></root>`,
+      true,
+    );
+    expect(base.fixDuplicateIds()).toBe(0);
+    expect(ids(base)).toEqual(['r', 'x', 'y']);
+  });
+
+  it('keeps the first occurrence and reassigns every later one', () => {
+    const base = new XmlBase(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<root><a xml:id="dup"/><b xml:id="dup"/><c xml:id="dup"/></root>`,
+      true,
+    );
+    expect(base.fixDuplicateIds()).toBe(2);
+
+    const after = ids(base);
+    expect(after[0]).toBe('dup');
+    expect(after[1]).toMatch(/^meico_/);
+    expect(after[2]).toMatch(/^meico_/);
+    expect(new Set(after).size).toBe(3);
+  });
+
+  it('counts each duplicated attribute once, not each duplicated value', () => {
+    const base = new XmlBase(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<root><a xml:id="p"/><b xml:id="q"/><c xml:id="p"/><d xml:id="q"/></root>`,
+      true,
+    );
+    expect(base.fixDuplicateIds()).toBe(2);
+    expect(new Set(ids(base)).size).toBe(4);
+  });
+
+  it('ignores non-xml:id attributes, including a plain id', () => {
+    const base = new XmlBase(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<root><a id="same" xml:id="one"/><b id="same" xml:id="two"/></root>`,
+      true,
+    );
+    expect(base.fixDuplicateIds()).toBe(0);
+    const root = base.getRootElement()!;
+    expect(root.getChildElements().get(0).getAttributeValue('id')).toBe('same');
+    expect(root.getChildElements().get(1).getAttributeValue('id')).toBe('same');
+  });
+
+  it('is idempotent – a second call finds nothing left to fix', () => {
+    const base = new XmlBase(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<root><a xml:id="dup"/><b xml:id="dup"/></root>`,
+      true,
+    );
+    expect(base.fixDuplicateIds()).toBe(1);
+    expect(base.fixDuplicateIds()).toBe(0);
+  });
+
+  it('sees the root element’s own id, which is why the axis is descendant-or-self', () => {
+    const base = new XmlBase(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<root xml:id="dup"><a xml:id="dup"/></root>`,
+      true,
+    );
+    expect(base.fixDuplicateIds()).toBe(1);
+    expect(base.getRootElement()!.getAttribute('id', XML_NS)!.getValue()).toBe('dup');
+  });
+});

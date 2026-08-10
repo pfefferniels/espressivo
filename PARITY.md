@@ -9,9 +9,10 @@ That rule has one carve-out, added on the maintainer's instruction in August 202
 bug** gets fixed rather than reproduced, provided the fix is proven not to move the bytes of any
 reference fixture — or, where it does, provided the Java fork is patched and the affected ground
 truth regenerated in the same step, so the port is never silently ahead of its reference.
-Everything below is therefore one of three things — a bug fixed under that carve-out (§1), a
-difference deliberately left in place (§2, §3), or a behaviour that reads as a bug and is not
-(§5). Nothing is undocumented, and this file is the audit trail for
+Everything below is therefore one of four things — a bug fixed under that carve-out (§1), a
+difference deliberately left in place (§2, §3), a behaviour that reads as a bug and is not
+(§5), or a feature measured against a Java baseline the reference fork predates (§8). Nothing is
+undocumented, and this file is the audit trail for
 [README.md](README.md#equivalence-with-java-meico)'s equivalence claim.
 
 **Two parts of the library are outside that frame entirely**, and each is separated out for
@@ -471,6 +472,33 @@ all — compare **bit-exact, 124 134 comparisons, 0 differing**.
 P1 fixed, but a def can be skipped by the factory above it and a map entry cannot, so there is
 nowhere for a `NumberFormatError` to go. These are two of the map-level reads P1's closing note
 lists as open.
+
+### `processSlur` ignored `@staff`, so every slur was a global instruction
+
+`src/mei/Mei2MsmMpmConverter.ts`'s `processSlur` carried the comment _"Simplified -- the full
+implementation handles plist, tstamp2, endid, staff assignment, etc."_ and did exactly one of the
+three things `Mei2MsmMpmConverter.java:2960-3130` does: it built a `slur` entry and put it in the
+**global** `miscMap`, unconditionally. Java routes on the association attribute — `part`, else
+`staff` — and only the unassociated (or `%all`) case is global. A `staff`-bearing slur is
+**local**: one entry per named staff, in that staff's part `miscMap`, and a staff number matching
+no MSM part contributes nothing at all. The `plist` branch, which marks the named notes directly
+and produces no map entry, was missing outright, as was the `startid`/`endid` inference that fills
+in `@staff` and then `@layer` when both endpoints share one.
+
+The consequence was that a slur confined to one staff was applied to **every** part, and that a
+slur pointing at a staff that does not exist was applied everywhere instead of being dropped.
+
+Invisible in all sixteen MEI fixtures, because each one's slurs either carry no `@staff` or carry
+a `@staff` that matches the only part present — global and local coincide there. It became visible
+the moment §8's `layersToStaffs` renumbered the staffs underneath such a slur: `articulations.mei`
+and `comprehensive.mei` then gained four `legato` articulations apiece that the Java reference does
+not have. That is what a dangling `@staff` is supposed to produce — nothing.
+
+**Fixed**, by porting the method in full. The evidence standard is met in both directions: the
+complete suite (**4062 tests, 90 files**) passes unchanged, so no reference fixture moves a byte,
+and §8's sixteen-fixture equivalence suite goes green, which is the direct measurement of the
+behaviour the fix restores. Attribute append order in both branches follows Java's exactly — it
+_is_ the fixture bytes — and is commented as such at the site.
 
 ## 2. Frozen divergences
 
@@ -1035,3 +1063,115 @@ into a tick-resolved frame, where the renderer derives the generated notes' geom
 frame those dimensions scale. That boundary is stated in the facade's own documentation, pinned in
 both directions by `tests/integration/expression-transform.test.ts`, and is a property of §6's
 model rather than of this one.
+
+---
+
+## 8. `Mei.layersToStaffs` — a backport from a newer upstream than the reference fork
+
+`Mei.layersToStaffs()` splits every multi-layer MEI `staff` into one single-layer `staff` per
+layer, so the conversion emits **one MSM `part` per MEI layer** rather than one per staff. Without
+it the voices of a keyboard or divisi staff are merged into a single part and share one MIDI
+channel and one instrument; with it each voice becomes independently addressable, which is what
+per-voice performance rendering needs.
+
+It is **not** part of the conversion pipeline. `Mei2MsmMpmConverter` never calls it, the default
+output is unchanged, and unlike the three passes in `convertMei` it is not undone by the `cleanup`
+flag — it mutates the instance, so a caller who needs the original clones first. Nothing in this
+section is reachable unless a caller invokes the method.
+
+### 8.1 Why it is not in the reference fork
+
+The method is upstream `meico.mei.Mei.layersToStaffs()`, added in **cemfi/meico v0.11.10** and
+amended in **v0.11.12** ("to ensure that the sequence of elements within a `measure` does not get
+mixed up" — the fix that inserts each new staff at the original's position instead of appending it
+to the end of the measure; upstream's superseded `appendChild` line is still there, commented out).
+The Java fork this port is measured against, [pfefferniels/meico](https://github.com/pfefferniels/meico)
+at `1d662105`, is **v0.11.2** and predates both. So there is no method in the reference to be
+byte-equivalent to, and §0's rule needed a construction rather than an exemption.
+
+### 8.2 How ground truth was obtained anyway
+
+The fork's sources were copied to a scratch directory, upstream's `layersToStaffs()` was spliced
+into that **copy** verbatim (the two files' import blocks are identical, so it compiles unchanged),
+and the copy was compiled into its own output directory per the proof-harness discipline — the
+read-only fork's git state and class files are untouched, and `src/resources` was copied alongside
+so `InstrumentsDictionary` finds `instuments.dict` and MIDI program changes are real. Everything
+_around_ the spliced method is therefore the v0.11.2 converter the rest of this ledger measures,
+not v0.11.14's; the two later converter changes in that range (grace-note handling in
+`indexNotesAndChords` and `processSlur`) are deliberately **not** in the build, so the only
+difference from the standard reference generator is the pass under test.
+
+A companion generator applies the pass and exports MSM + MPM. Its output is committed as
+`tests/integration/fixtures-layers-to-staffs/` — a **sibling** of `fixtures/`, not a child, because
+CHARTER invariant 2 freezes `tests/integration/fixtures/**` against additions as well as edits, and
+`fixtures-v3/` set the precedent for a reference set that arrives with a new feature. The frozen
+directory is bit-for-bit untouched by this work; the MEI inputs are read from it and nothing is
+written back. The new set is driven by
+`tests/integration/layers-to-staffs-equivalence.test.ts`, which auto-discovers every
+`fixtures/mei/*.mei` on the same terms as the other suites: strict string equality after the
+normalizations `cross-validation.test.ts` uses, and a missing reference is a failure, not a skip.
+
+**Result: all sixteen fixtures agree, MSM and MPM, 48 assertions.** Two MPM disagreements found on
+the first run were traced to the port's `processSlur` stub rather than to this pass — the same
+disagreement reproduces when Java's _own_ transformed MEI is fed through both converters with the
+pass applied to neither — and are fixed in §1.
+
+### 8.3 The numbering scheme, and two upstream behaviours reproduced
+
+New staffs are numbered by **string concatenation** of the original values, `staff@n + layer@n`;
+staff 2 layer 1 becomes staff `21`. A staff with no `@n` contributes `1000000`, a layer with no
+`@n` contributes `<its index> * 1000000`, and each moved layer is renumbered `@n="1"`. Every
+`staffDef` is regenerated as a deep copy of the one its original staff referenced — so clef, key,
+transposition and instrument carry over — renumbered, appended to the copy's original container,
+and the originals detached; the copies are appended in ascending **numeric** order of the new `@n`.
+
+Two consequences are reproduced rather than repaired, both pinned by unit tests:
+
+- **The scheme is ambiguous.** Staff 1 / layer 11 and staff 11 / layer 1 both yield `111`, and
+  then collide into one `staffDef` and one part. Upstream has no separator; adding one would move
+  every generated number and put the port ahead of the reference for no gain the caller asked for.
+- **An `oStaff` holding `oLayer` children is dropped.** The staff query matches `staff` and
+  `oStaff`, but the inner query moves only `layer` children, and the original is detached
+  unconditionally — so an ossia staff encoded with `oLayer` yields no replacement and disappears.
+  Callers with ossia content should not run this pass on it.
+
+Control events are **not** renumbered either: a `<slur staff="1">` still says `staff="1"` after the
+staffs become `11` and `12`, and is then dropped as a dangling reference. That is upstream's
+behaviour, it is now also this port's (§1), and it is the sharpest edge of the feature.
+
+### 8.4 The return value Java discards
+
+Java declares `public void layersToStaffs()`. It builds a `newStaffN → origStaffN` table
+internally — it needs one, to regenerate each `staffDef` from the right original — and then drops
+it when the method returns. The port **returns** that table instead, widened to carry the layer as
+well: one `Map<string, StaffProvenance>` per `mdiv`, in `getAllMdivs()` order.
+
+This changes no XML, no fixture byte and no behaviour; it stops discarding something already
+computed. The same shape of divergence is already in §2 (`OrnamentationMap.getOrnamentDataOf`
+returns the data Java computes and then unconditionally discards), and the justification is
+stronger here, because §8.3's numbering is **lossy**: `111` alone cannot tell you whether it came
+from staff 1 / layer 11 or staff 11 / layer 1, so without the table a consumer cannot map an MSM
+part back to the voice it represents. Requested by a downstream consumer whose schema codes part
+numbers as small integers with "part 1 = top voice", for which the concatenated numbers are
+otherwise uninterpretable.
+
+The maps are per-`mdiv` rather than merged for the same reason: the numbering is unique only
+within one movement, so merging would silently collapse two movements' staff `1`. An `mdiv` with
+no `score` contributes an empty map rather than being skipped, keeping the result index-aligned
+with `getAllMdivs()`.
+
+### 8.5 The one deliberate hardening
+
+Java orders the regenerated `staffDef`s through a `TreeMap<Integer, …>` keyed by
+`Integer.parseInt(newStaffN)`, which throws `NumberFormatException` on a non-integer `@n`. MEI
+types `staff/@n` and `layer/@n` as `data.INT` (`att.nInteger`), so a conforming encoding cannot
+reach it. The port sorts such entries last instead of throwing: strictly more useful than a crash,
+and unobservable on any schema-valid input.
+
+### 8.6 `XmlBase.fixDuplicateIds`
+
+`layersToStaffs` ends by calling it, because the `staffDef` copies carry the originals' `xml:id`s.
+It is a straight port of `XmlBase.java:448` — first occurrence keeps its id, every later one is
+reassigned `meico_<uuid>` — and that asymmetry is what keeps the original's references valid while
+the copies move. It draws a UUID per duplicate and so is not idempotent in the ids it produces,
+only in the property it establishes. It existed in the fork already; only this port lacked it.

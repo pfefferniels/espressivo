@@ -1,0 +1,2 @@
+<?xml version="1.0"?>
+<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><metadata><author>meico</author><comment>This MPM has been generated from 'repeats_endings.mei' using the meico MEI converter v0.11.2.</comment><relatedResources><resource uri="repeats_endings.mei" type="mei" /><resource uri="repeats_endings.msm" type="msm" /></relatedResources></metadata><performance name="MEI export performance" pulsesPerQuarter="720"><global><header /><dated /></global><part name="Piano" number="11" midi.channel="0" midi.port="0"><header /><dated /></part></performance></mpm>
