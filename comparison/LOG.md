@@ -1092,3 +1092,20 @@ measurement.
 Gate: `npm run verify` GREEN before committing — 4257 passed + 1 skipped. 25 new
 rubato/asynchrony tests, 2 new dynamics tests. eslint and prettier clean.
 
+
+## 2026-08-10 — AD-31: K=16 (supersedes AD-30's K=4); rubato cap ratified [BINDING]
+
+survey-code implemented AD-30 as ruled, then measured it insufficient:
+strong protraction clusters crossings in x after reparametrization (three
+crossings at 0.598/0.914/0.984 on an ordinary non-degenerate pair; K=4 →
+6.5e-2 relative error, K=16 → 2.7e-8). The smoothstep-curvature argument
+lives in t; the clustering lives in x — AD-30's negligibility claim did not
+reach there. AD-31.1: K = 16 for Bézier-pair cells, as measured; the K=4
+insufficiency stays pinned failing-by-design and §5.0 rule 2b carries the
+sweep. AD-31.2: RUBATO_FRAME_BOUNDARY_CAP = 1024 RATIFIED [convention]
+(clears every musical frame; pathological frameLength=1 cut three orders;
+when it bites only grid resolution degrades, never the curve, and
+gridTruncated reports it). Process note: implement-as-ruled + pin-the-
+failure + report is exactly the governance this campaign wants — twice now
+the measurement has beaten the argument (AD-28, AD-31), which is the reason
+the campaign measures.
