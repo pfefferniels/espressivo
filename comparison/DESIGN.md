@@ -600,6 +600,21 @@ lacked:
    critical point `u* = (qΔ_b / pΔ_a)^{1/(p−q)}` (for `p ≠ q`); split there and
    the two branches are monotone, so the existing bisection (fixed 50 iterations,
    sign-comparison bracket update per R2) is complete and correct.
+   2b. _Bézier-pair cells are subdivided_ (**AD-30**). Two Bézier segments over one
+   span can cross more than once and the bisection resolves one crossing per
+   sub-interval, so a single-interval reading integrates such a cell low. There is
+   no closed-form critical point as there is for power-vs-power, so completeness is
+   bought by fixed equal subdivision into `K` pieces of any cell where BOTH sides
+   are live transitions. **AD-30 rules `K = 4`; measurement shows that is
+   insufficient and an amendment to `K = 16` is pending.** For `40→80` at
+   `curvature 0.9, protraction 0.9` against `38→84` at `curvature 0,
+protraction 0.9` — control points in range, `x(t)` monotone — the difference
+   crosses at `x = 0.598, 0.914, 0.984`; the last two are 0.07 apart, land in one
+   quarter, and `K ∈ {1,2,4}` all give 6.5·10⁻² relative error, `K = 8` gives
+   4.8·10⁻², `K = 16` gives 2.7·10⁻⁸. Strong protraction skews the curve toward one
+   end and clusters the crossings there, which is where an equal subdivision is
+   relatively coarsest; AD-30's "negligible-by-construction" curvature argument does
+   not survive it.
 3. _The defined dynamics/pedal curve is the ideal cubic Bézier._ `tForDate`
    (`bezier.ts:57-78`) stops at a **1-tick tolerance in the date domain**, so
    `date ↦ volume` is a staircase with thousands of treads across a long cell and

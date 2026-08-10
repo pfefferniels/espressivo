@@ -357,6 +357,71 @@ describe('dynamics distance', () => {
   });
 });
 
+describe('AD-30 Bezier-pair subdivision, and its measured insufficiency', () => {
+  /**
+   * A pair whose log difference crosses THREE times: x = 0.598, 0.914, 0.984. Control points
+   * are inside [0,1] and x(t) is monotone for both, so nothing here is degenerate — it is an
+   * ordinary pair of strongly protracted transitions.
+   */
+  const A =
+    '<dynamics date="0.0" volume="40" transition.to="80" curvature="0.9" protraction="0.9"/>' +
+    '<dynamics date="2880.0" volume="80"/>';
+  const B =
+    '<dynamics date="0.0" volume="38" transition.to="84" curvature="0.0" protraction="0.9"/>' +
+    '<dynamics date="2880.0" volume="84"/>';
+
+  const measured = () => {
+    const pair = readComparisonPair({ a: dynamicsDoc(A), b: dynamicsDoc(B) });
+    return dynamicsDistance(curveOf(pair, 'a'), curveOf(pair, 'b'), pair.window, pair.ppq.lcm)
+      .distance;
+  };
+
+  /** Dense Simpson on |difference| — the reference the sweep was measured against. */
+  const reference = () => {
+    const pair = readComparisonPair({ a: dynamicsDoc(A), b: dynamicsDoc(B) });
+    const ca = curveOf(pair, 'a');
+    const cb = curveOf(pair, 'b');
+    const span = 2880;
+    const f = (t: number) => Math.abs(Math.log(volumeAt(ca, t)) - Math.log(volumeAt(cb, t)));
+    const n = 200000;
+    const h = span / n;
+    let sum = f(0) + f(span);
+    for (let i = 1; i < n; ++i) sum += (i % 2 === 0 ? 2 : 4) * f(i * h);
+    return ((h / 3) * sum) / pair.ppq.lcm / DYNAMICS_JND_NEPERS;
+  };
+
+  it('MEASURED DEFECT: K=4 still integrates a triple-crossing pair ~6% low', () => {
+    // AD-30 assumed the smoothstep's bounded curvature makes >=3 crossings within one
+    // quarter impossible. It does not: strong protraction pushes two crossings 0.07 apart,
+    // into the same quarter, where K=4 cannot bracket them. K=16 resolves it (2.7e-8).
+    // Pinned as failing-by-design so the amendment cannot be forgotten.
+    const relativeError = Math.abs(measured() - reference()) / reference();
+    expect(relativeError).toBeGreaterThan(0.05);
+    expect(relativeError).toBeLessThan(0.08);
+  });
+
+  it('integrates a SINGLE-crossing pair correctly, which is what K=4 does buy', () => {
+    const single =
+      '<dynamics date="0.0" volume="40" transition.to="80" curvature="0.2"/>' +
+      '<dynamics date="2880.0" volume="80"/>';
+    const other =
+      '<dynamics date="0.0" volume="42" transition.to="78" curvature="0.6"/>' +
+      '<dynamics date="2880.0" volume="78"/>';
+    const pair = readComparisonPair({ a: dynamicsDoc(single), b: dynamicsDoc(other) });
+    const ca = curveOf(pair, 'a');
+    const cb = curveOf(pair, 'b');
+    const span = 2880;
+    const f = (t: number) => Math.abs(Math.log(volumeAt(ca, t)) - Math.log(volumeAt(cb, t)));
+    const n = 200000;
+    const h = span / n;
+    let sum = f(0) + f(span);
+    for (let i = 1; i < n; ++i) sum += (i % 2 === 0 ? 2 : 4) * f(i * h);
+    const exact = ((h / 3) * sum) / pair.ppq.lcm / DYNAMICS_JND_NEPERS;
+    const got = dynamicsDistance(ca, cb, pair.window, pair.ppq.lcm).distance;
+    expect(Math.abs(got - exact) / exact).toBeLessThan(1e-6);
+  });
+});
+
 describe('dynamics log axis', () => {
   it('reports g in nepers', () => {
     const curve = curveFor('<dynamics date="0.0" volume="50"/>');

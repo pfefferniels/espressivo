@@ -18,8 +18,19 @@
  */
 import { comparisonRowFor } from './registry.js';
 import { CompensatedSum, integrateAbsolute } from './quadrature.js';
-import { volumeAt, type DynamicsCurve } from './dynamicsCurve.js';
+import { dynamicsSegmentAt, volumeAt, type DynamicsCurve } from './dynamicsCurve.js';
 import type { ComparisonWindow } from './window.js';
+
+/**
+ * AD-30's subdivision count for a cell where BOTH sides are live Bézier transitions.
+ *
+ * Four, fixed and equal. Deterministic and structure-blind, in the graded mesh's spirit:
+ * there is no closed-form critical point for a Bézier pair the way there is for
+ * power-vs-power tempo (§5.0 rule 2), so the ruling buys the same completeness by
+ * subdividing rather than by solving. `integrateAbsolute` then resolves one crossing per
+ * sub-interval, which covers every pair that crosses at most four times.
+ */
+const BEZIER_PAIR_SUBDIVISIONS = 4;
 
 export interface DynamicsCell {
   readonly startTicks: number;
@@ -57,15 +68,35 @@ export function dynamicsGridTicks(
 /**
  * `d_dynamics` over the window, cell by cell.
  *
- * No structural split points are supplied. Two Bézier segments over the same span *can*
- * cross more than once in principle, and `integrateAbsolute`'s bisection finds only one
- * crossing per sub-interval — but unlike the tempo case there is no closed-form critical
- * point to split on, and §5.0 mandates the bracketing device for the power-versus-power
- * family specifically. The honest position: a multi-crossing dynamics cell is integrated
- * with one crossing resolved, which is exact whenever the difference crosses at most once
- * and slightly low when it does not. This is recorded rather than hidden; if it matters in
- * practice the remedy is the same as tempo's — a structural split, here at the difference's
- * stationary point, which needs a conductor ruling because §5.0 does not specify one.
+ * **Bézier-pair cells are subdivided** (AD-30). Two Bézier segments over one span can cross
+ * more than once, and `integrateAbsolute` resolves only one crossing per sub-interval, so a
+ * single-interval reading integrates such a cell slightly LOW — the absolute value is
+ * evaluated with the wrong sign over part of it. Unlike the power-vs-power tempo family
+ * there is no closed-form critical point to split on, so the ruling buys completeness by
+ * fixed subdivision instead: any cell where BOTH sides are live transitions is cut into
+ * {@link BEZIER_PAIR_SUBDIVISIONS} equal pieces before integration. Cost is confined to
+ * those cells; every constant-vs-anything cell is untouched.
+ *
+ * **MEASURED: K = 4 is not sufficient, and the residual risk is not negligible.** AD-30
+ * assumed a pair cannot cross three times within one quarter of a cell because the
+ * smoothstep's curvature is bounded. Measurement refutes it. For `40→80` at
+ * `curvature 0.9, protraction 0.9` against `38→84` at `curvature 0, protraction 0.9` — both
+ * with control points inside `[0,1]` and a monotone `x(t)`, so nothing degenerate — the log
+ * difference crosses at `x = 0.598, 0.914, 0.984`. The last two are 0.07 apart and land in
+ * the SAME quarter, so `K = 4` cannot bracket them:
+ *
+ * | K | relative error |
+ * |---|---|
+ * | 1, 2, 4 | 6.5·10⁻² |
+ * | 8 | 4.8·10⁻² |
+ * | **16** | **2.7·10⁻⁸** |
+ *
+ * Strong protraction is what does it: it skews the curve toward one end and pushes the
+ * crossings together there, which is precisely where an equal subdivision has its coarsest
+ * relative resolution. `K = 4` is implemented here because AD-30 rules it; the finding is
+ * reported and an amendment to `K = 16` is pending. Until it lands, a dynamics pair with
+ * strongly protracted transitions on both sides integrates ~6 % low, which is pinned by a
+ * failing-by-design test rather than left to be discovered.
  */
 export function dynamicsDistance(
   a: DynamicsCurve,
@@ -87,7 +118,19 @@ export function dynamicsDistance(
     const difference = (ticks: number) =>
       Math.log(volumeAt(a, ticks)) - Math.log(volumeAt(b, ticks));
 
-    const mass = integrateAbsolute(difference, cellStart, cellEnd) / ticksPerQuarter / jnd;
+    // AD-30: subdivide only where both sides are live transitions. The segment governing the
+    // cell is the one at its left edge — the grid carries every breakpoint of both curves,
+    // so no segment boundary falls strictly inside a cell.
+    const bothBezier =
+      dynamicsSegmentAt(a, cellStart)?.kind === 'bezier' &&
+      dynamicsSegmentAt(b, cellStart)?.kind === 'bezier';
+    const splitPoints: number[] = [];
+    if (bothBezier)
+      for (let k = 1; k < BEZIER_PAIR_SUBDIVISIONS; ++k)
+        splitPoints.push(cellStart + ((cellEnd - cellStart) * k) / BEZIER_PAIR_SUBDIVISIONS);
+
+    const mass =
+      integrateAbsolute(difference, cellStart, cellEnd, splitPoints) / ticksPerQuarter / jnd;
     total.add(mass);
     cells.push({
       startTicks: cellStart,

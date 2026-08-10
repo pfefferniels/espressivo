@@ -1030,3 +1030,65 @@ single-interval reading misses; the residual risk (≥3 crossings inside one
 quarter of a cell) is documented as negligible-by-construction with the
 smoothstep's curvature bound. DESIGN §5.0 sentence amended by survey-code
 in the rubato/asynchrony commit under this ruling.
+
+## 2026-08-10 — W2c part 2c: rubato + asynchrony, and AD-30 measured insufficient
+
+Task #14 still open: the level/gain/shape decomposition (AD-18), invariance
+modes (AD-20) and the remaining property tests (P-C3b zero-set transitivity)
+are the final batch, which is the one thing that genuinely belongs together.
+
+RUBATO (`rubatoCurve.ts`, `rubatoDistance.ts`). Displacement δ(t) = warp(t) − t
+in quarters. All four §5.2 behaviours pinned: @loop gates the cycle and defaults
+to FALSE, so an unflagged instruction warps only its FIRST frame and δ ≡ 0
+across the rest of the span (negative-controlled — removing the gate fails
+exactly two tests); a skipped instruction leaves an unwarped gap that still
+carries a breakpoint (R23); clamps run BEFORE evaluation, so an inverted window
+resets to the full frame and performs no warp; and the neutral parametrization
+(1 / 0 / 1) returns exactly 0 without arithmetic per M18 — pinned on the (22,15)
+and (25,7) integer pairs that do not round-trip.
+
+[DECISION, needs ratification] §5.2's frame-boundary cap is a [convention] slot
+DESIGN leaves unfilled. Set to 1024, exported as RUBATO_FRAME_BOUNDARY_CAP. It
+clears every musically plausible frame — a 200-quarter piece warped on a
+sixteenth needs 800 — while cutting the pathological frameLength="1" case by
+three orders. When it bites, a grid-truncated note is emitted and the warp is
+still evaluated exactly; only the refinement grid stops subdividing, so the
+effect is quadrature resolution rather than a wrong curve.
+
+ASYNCHRONY (`asynchronyCurve.ts`, `asynchronyDistance.ts`). Step curve in ms,
+integrated EXACTLY — every cell is constant, so this dimension's epsilon is 0 in
+both units. It is the one W2 dimension that uses localDistance rather than
+integrating a curve, because ⊥ has no value to subtract: a missing
+@milliseconds.offset makes the renderer emit NaN and the notes vanish from the
+MIDI export, so the span reads ⊥ and is priced at δ_row (R24/AD-1). Pinned: ⊥
+against a value costs δ_row per quarter, ⊥ against ⊥ costs 0, and a runaway
+difference caps at 2·δ_row. The AD-29 any-entry span rule is pinned too — a
+<style> between two <asynchrony> elements ends the span and opens a neutral gap.
+
+[MEASURED DEFECT — AD-30's K = 4 IS INSUFFICIENT] AD-30 was ruled on my part-2b
+report and assumed ≥3 crossings inside one quarter of a cell to be
+negligible-by-construction from the smoothstep's bounded curvature. Measurement
+refutes that. For 40→80 at curvature 0.9 / protraction 0.9 against 38→84 at
+curvature 0 / protraction 0.9 — control points inside [0,1], x(t) monotone,
+nothing degenerate — the log difference crosses at x = 0.598, 0.914, 0.984. The
+last two are 0.07 apart and fall in the SAME quarter, so K = 4 cannot bracket
+them. Against a 4·10^5-point Simpson reference:
+
+    K = 1, 2, 4  ->  6.5e-2 relative error
+    K = 8        ->  4.8e-2
+    K = 16       ->  2.7e-8
+
+Strong protraction is the mechanism: it skews the curve toward one end and
+clusters the crossings there, which is exactly where an equal subdivision has
+its coarsest relative resolution. K = 4 is IMPLEMENTED AS RULED; the
+insufficiency is pinned by a failing-by-design test asserting the 5–8 % band, is
+written into DESIGN §5.0 rule 2b with the sweep, and an amendment to K = 16 is
+requested. A single-crossing pair is separately pinned as accurate to 1e-6, so
+the test records what K = 4 does buy as well as what it does not.
+
+DESIGN §5.0 gains rule 2b under AD-30, carrying both the ruling and the
+measurement.
+
+Gate: `npm run verify` GREEN before committing — 4257 passed + 1 skipped. 25 new
+rubato/asynchrony tests, 2 new dynamics tests. eslint and prettier clean.
+
