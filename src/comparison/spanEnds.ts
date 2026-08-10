@@ -53,13 +53,38 @@ import {
 export type SpanEndRule = 'same-local-name' | 'any-entry' | 'event';
 
 const RULES: ReadonlyMap<string, SpanEndRule> = new Map<string, SpanEndRule>([
-  // The six of AD-14ii, in §5's own section order.
+  // §5's section order. FIVE, not the six §5.0's table lists — see the asynchrony entry.
   [TEMPO_MAP, 'same-local-name'],
   [RUBATO_MAP, 'same-local-name'],
   [DYNAMICS_MAP, 'same-local-name'],
   [METRICAL_ACCENTUATION_MAP, 'same-local-name'],
-  [ASYNCHRONY_MAP, 'same-local-name'],
   [MOVEMENT_MAP, 'same-local-name'],
+
+  /**
+   * **`asynchronyMap` is `any-entry`, against §5.0's table and with §5.7.**
+   *
+   * DESIGN contradicts itself: §5.0 lists `AsynchronyMap` among the six maps that scan for
+   * their own local name, while §5.7 says the map "takes the next dated child with **no
+   * local-name test**, so any non-`<asynchrony>` entry ends the span". The renderer settles
+   * it and §5.7 is right:
+   *
+   * ```ts
+   * // AsynchronyMap.renderAsynchronyToMap
+   * const asynEndDate = asynIndex < this.elements.length - 1
+   *   ? this.elements[asynIndex + 1].getKey()   // the next ENTRY, whatever it is
+   *   : Number.MAX_VALUE;
+   * ```
+   *
+   * No name test — and `GenericMap.parseData:145-146` indexes every dated child including
+   * `<style>`, dropping only a `<style>` that carries no `@name.ref`. Contrast
+   * `TempoMap.getEndDate:166-175`, which really does test `getLocalName() === 'tempo'`; that
+   * is what the same-local-name rule looks like in a map that has it.
+   *
+   * The difference is observable rather than pedantic: a `<style>` between two
+   * `<asynchrony>` elements ends the first one's span and opens a lawless gap, where the
+   * same-local-name reading would keep the first offset applying straight through it.
+   */
+  [ASYNCHRONY_MAP, 'any-entry'],
 
   // The exception, in all five spellings the model admits. The bare `imprecisionMap` is
   // included because `Dated` parses and indexes it (`GenericMap` registers a factory for it,

@@ -901,3 +901,43 @@ evaluation, skip-gap neutral spans), asynchrony (step curve, NaN-poisoned spans
 to ⊥ renderer-error); the level/gain/shape decomposition (AD-18) and invariance
 modes (AD-20); and the rest of the property suite — P-C3b zero-set transitivity,
 loop on/off, capped-metric/⊥ behaviour. The substrate they need is now in.
+
+## 2026-08-10 — DESIGN contradiction found: asynchronyMap's span-end rule
+
+Found while starting the asynchrony evaluator. **DESIGN contradicts itself and
+W2b's committed `spanEnds.ts` followed the wrong half.** Fixed in this commit.
+
+§5.0's table lists `AsynchronyMap` among the six maps that "scan forward for the
+next element of their *own* local name". §5.7 says the opposite in the same
+document: the map "takes the next dated child with **no local-name test**, so
+any non-`<asynchrony>` entry ends the span".
+
+The renderer settles it, and §5.7 is right:
+
+    // AsynchronyMap.renderAsynchronyToMap
+    const asynEndDate = asynIndex < this.elements.length - 1
+      ? this.elements[asynIndex + 1].getKey()   // the next ENTRY, whatever it is
+      : Number.MAX_VALUE;
+
+There is no name test. `GenericMap.parseData:145-146` indexes every dated child
+including `<style>` — it drops only a `<style>` carrying no `@name.ref` — so
+`elements[i+1]` really can be a style switch. The contrast is decisive rather
+than inferential: `TempoMap.getEndDate:166-175` DOES test
+`getLocalName() === 'tempo'`, so the codebase contains both rules and they look
+different in the source.
+
+Observable consequence: a `<style>` between two `<asynchrony>` elements ends the
+first one's span and opens a gap that carries no law (the §5.9 situation), where
+the same-local-name reading keeps the first offset applying straight through it.
+On a document that switches articulation style mid-piece — ordinary in the
+official corpus — that is a real difference in what is compared.
+
+[FOR THE CONDUCTOR] §5.0's table needs amending to say FIVE maps, with
+`asynchronyMap` moved to the any-entry side alongside the imprecision maps. I
+have NOT edited §5.0 myself: unlike AD-28.1, no ruling delegates this one to me,
+and the sentence is load-bearing for AD-14ii/R12. The code and its test now
+follow §5.7; the spec is what is out of step.
+
+Gate: `npm run verify` green, 95 files / 4199 passed + 1 skipped. Full gate run
+before committing, per the conductor's standing instruction that there is no
+leaf exemption.

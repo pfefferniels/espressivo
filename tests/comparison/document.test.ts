@@ -371,16 +371,24 @@ describe('ordered instruction views', () => {
 });
 
 describe('span-end rules (AD-14ii / R12)', () => {
-  it('gives the six span maps the same-local-name rule', () => {
+  it('gives the span maps that really name-test the same-local-name rule', () => {
     for (const name of [
       'tempoMap',
       'rubatoMap',
       'dynamicsMap',
       'metricalAccentuationMap',
-      'asynchronyMap',
       'movementMap',
     ])
       expect(spanEndRuleOf(name)).toBe('same-local-name');
+  });
+
+  it('gives asynchronyMap the ANY-ENTRY rule, against §5.0 and with §5.7', () => {
+    // DESIGN contradicts itself; the renderer settles it. AsynchronyMap takes
+    // `this.elements[asynIndex + 1].getKey()` with no name test, and GenericMap indexes
+    // every dated child including <style>. TempoMap.getEndDate, by contrast, really does
+    // test getLocalName() === 'tempo'. Observable: a <style> between two <asynchrony>
+    // elements ends the first span instead of being transparent to it.
+    expect(spanEndRuleOf('asynchronyMap')).toBe('any-entry');
   });
 
   it('gives every imprecision spelling the any-entry rule', () => {
