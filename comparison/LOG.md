@@ -941,3 +941,14 @@ follow §5.7; the spec is what is out of step.
 Gate: `npm run verify` green, 95 files / 4199 passed + 1 skipped. Full gate run
 before committing, per the conductor's standing instruction that there is no
 leaf exemption.
+
+## 2026-08-10 — AD-29: §5.0 span-end contradiction resolved (five/two, not six/one)
+
+survey-code found DESIGN §5.0 and §5.7 contradicting each other on
+AsynchronyMap's span-end rule and settled it against the renderer source:
+NO local-name test (elements[asynIndex+1] directly), unlike TempoMap's
+explicit getLocalName() check. §5.0 amended by the conductor: FIVE same-name
+maps, TWO any-entry maps (imprecision + asynchrony). Code/tests were fixed
+first (74c83f1, renderer-cited); the committed W2b had followed the wrong
+half of the spec. Also reaffirmed here as ruling: the split-commit cadence
+supersedes AD-28.3's two-commit wording (green, gated, pushed increments).

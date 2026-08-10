@@ -648,12 +648,19 @@ per-def merge, while leaving the global `"B"` visible. Resolution **must** go
 through `styleScope` (`styleScope.findStyleDef:103-120`), never through a direct
 header scan; `levels.ts:38-46` documents the trap verbatim.
 
-**Span ends resolve per map type** (AD-14ii, R12). Six maps scan forward for the
-next element of their *own* local name (`TempoMap`, `DynamicsMap`, `RubatoMap`,
-`MetricalAccentuationMap`, `MovementMap`, `AsynchronyMap`), and `<style>`
-switches never terminate their spans. `ImprecisionMap` is the exception: a
-distribution is ended by **any** entry in the map, whatever it is, so gaps are
-real and carry no law at all (§5.9).
+**Span ends resolve per map type** (AD-14ii, R12; corrected AD-29). **Five**
+maps scan forward for the next element of their *own* local name (`TempoMap`,
+`DynamicsMap`, `RubatoMap`, `MetricalAccentuationMap`, `MovementMap` — each
+tests `getLocalName()`, e.g. `TempoMap.getEndDate:166-175`), and `<style>`
+switches never terminate their spans. **Two** maps end a span on **any** next
+entry, whatever it is: `ImprecisionMap` (gaps are real and carry no law at
+all, §5.9) and `AsynchronyMap` (`this.elements[asynIndex + 1].getKey()` with
+no local-name test — §5.7, verified against source). Rev 2 of this document
+listed `AsynchronyMap` on the same-name side while §5.7 stated the any-entry
+rule; the renderer settles it for §5.7, and the contradiction is journaled
+(AD-29). A `<style>` between two `<asynchrony>` entries therefore ends the
+first span and opens a neutral gap — observable on ordinary documents that
+switch styles mid-piece.
 
 **Weight.** `w(t) = 1` (score ticks) by default; `w` = MSM note density (from the
 score, never from either performance — symmetric, hence metric-safe, AD-3) as an
