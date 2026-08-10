@@ -522,3 +522,116 @@ The three CAPITAL findings share one root: **the wave tested its evaluators far 
 tested its integrator.** Every P-C2 and P-C3 test in W2 runs on constants or on the one parameter
 family where the integrator's failure modes are invisible. Fixing the four items above matters less
 than adopting the fixture family that would have found them.
+
+---
+
+# Re-verification — 2026-08-10
+
+Scoped re-gate of the fix wave (`0dc3e39`, `ebc2c4f`, `b9444cf`) against AD-33, at HEAD `b9444cf`.
+Not a re-opened audit: only the findings above, the two flagged extensions, and drift.
+
+Method: every probe from the original report was re-run unchanged against a fresh `npm run build`,
+so the numbers below are comparable line for line with the ones above. Each repair was additionally
+**negative-controlled by reverting it** — patch, run the suite, `git checkout --`, confirm clean —
+because a repair that no test protects is a repair that will not survive W3.
+
+## Must-fix items: all seven confirmed repaired
+
+| id            | evidence                                                                                                                                                                                                                                                                        | revert control                                                                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CAPITAL-1** | `d(styled, small)` = **10** (was 0.333), the same δ_row price as the `⊥`-by-missing-offset route; `d(styled, absent)` = **11**, which is exactly 2·0.3333 + 10 + 0.3333 by hand. The renderer probe is unchanged — it still NaN-poisons — and the evaluator now agrees with it. | —                                                                                                                                                  |
+| **CAPITAL-3** | All five end-to-end power-vs-power pairs now bit-exact, including the report's repro (`81.94610034543747` both directions). The new rubato structural path is symmetric too: **0 asymmetric of 3969** pairs.                                                                    | Reverting `orderPowerSegments` fails **both** the dedicated test and the family's P-C2, the latter naming the report's exact values.               |
+| **CAPITAL-4** | Repro pair now reports **1.587576** against a true 1.587576 (rel. err 4.8e−7; was 0.000315). My grid: **6 of 3906 wrong by >0.1 %, worst 1.54e−3** — cross-checks the fixer's 4/3080 worst 1.778e−3: same residual, same order, different grid.                                 | Reverting the half-open probe fails the new MAJOR-3 test (5.5559 against an expected 6.3503). Reverting rule 2c fails **nothing** — see RG-2/RG-3. |
+| **MAJOR-1**   | Evaluator now `60, 60, 100, 100, 90, 90`, matching the renderer exactly; segments carry the `[720,1440) → 100` gap, and a leading skip correctly extends the pre-first neutral.                                                                                                 | —                                                                                                                                                  |
+| **MAJOR-2**   | Bounds changed to `ls=0.9 / ee=0.3` (which do not sum to 1) and the assertion now sweeps the whole frame rather than one interior point.                                                                                                                                        | Removing the inverted-window reset fails it: `expected 648 to be +0`. The old fixture could not fail; this one does.                               |
+| **MAJOR-3**   | A `lateStart`/`earlyEnd`-varying rubato distance test exists and pins the report's own repro at 4× the single-frame value.                                                                                                                                                      | It is the test that catches the half-open revert — it earns its place twice over.                                                                  |
+| **MAJOR-4**   | `adversarialFamily.ts` + `metricProperties.test.ts`: 39 tests, eight members, one explicit shared window, a non-degeneracy test, and a self-guard on the member count.                                                                                                          | Dropping a member fails the self-guard; see extension (a) for the stronger control.                                                                |
+
+The metric properties survive the changes: the seven-member `⊥`/cap/style probe still reports **0
+triangle violations of 343 triples and 0 asymmetric pairs of 49**, now with the corrected pricing.
+
+MINOR-1, MINOR-3 and MINOR-5 are resolved as ruled. `assertSpanEndRule` genuinely bites —
+corrupting `TEMPO_MAP`'s entry throws
+`span-end rule mismatch for <tempoMap>: spanEnds.ts says any-entry, the reader implements same-local-name`
+at the reader's first call. The `**/api/**` ban is negative-controlled: an import of
+`'../api/index.js'` from `src/comparison/` now errors with the zone's own rationale. MINOR-2 (`−0`)
+and MINOR-4 (malformed values) are correctly **untouched** and left whole for W3 — no half-done drift.
+
+## The two flagged extensions
+
+**(a) The eighth family member — SOUND, and its claimed property verified in both directions.**
+This is the one claim worth checking hardest, because it is an argument about test _design_ rather
+than about code. It holds exactly as stated:
+
+- eight members + AD-33.2 reverted → the family's P-C2 **fails**, on the pair
+  `power-vs-power vs power-vs-power-2`, reporting `81.9461003454375 !== 81.94610034543747` — the
+  report's repro, arriving inside the standing family;
+- seven members + AD-33.2 reverted → the family's P-C2 **passes**. The only failure is the
+  size self-guard.
+
+So `criticalPointTicks` really is unreachable by any _pair_ of a seven-member family with one
+transition member, and the eighth member is load-bearing rather than decorative. Going beyond the
+ruled seven was the right call, and finding it by negative control rather than by argument is the
+right method.
+
+**(b) Phase-aware frame alignment — SOUND.** Equal `frameLength=720` with `startTicks` 0 against
+360 (phases 0 and 360) is correctly refused by the congruence guard, falls back to K=16, and lands
+at **1.18e−6 relative error** against an 8·10⁵-point Simpson reference over the full four-quarter
+window, bit-exact under swapping. The guard earns its place: equal frame _length_ alone does not
+give the two sides a shared `x`, so `u*` would be a split point for a coordinate neither curve is
+expressed in. This was the fixer's own addition beyond AD-33.3b's text, and it is a correct one.
+
+## New findings — four MINOR, none blocking
+
+**RG-1 (MINOR) — the fourth curve reader is not wired to `spanEnds.ts`.** MINOR-3's property holds
+for three of four readers: `tempoCurve`, `dynamicsCurve` and `asynchronyCurve` call
+`assertSpanEndRule`; **`rubatoCurve.readRubatoSegments` does not**, although `RUBATO_MAP` is in the
+table and the reader implements its rule inline exactly as the other three do. Corrupting
+`RUBATO_MAP`'s entry is caught only by `document.test.ts`'s table-content test
+(`'gives the span maps that really name-test the same-local-name rule'`) — which is the test anyone
+deliberately changing the table would update, and at that moment the rubato reader diverges
+silently. One line: `assertSpanEndRule(RUBATO_MAP, 'same-local-name')` at the top of
+`readRubatoSegments`.
+
+**RG-2 (MINOR) — AD-33.3b's structural split has no regression test.** Disabling
+`rubatoCriticalPointTicks` (so every cell takes the K=16 fallback) passes **all 28 rubato tests and
+all 39 family tests**. Rule 2c could be deleted in a refactor without a single failure.
+
+**RG-3 (MINOR) — and, measured, the structural split is worse than the fallback it is preferred
+over.** Over the same 3906 legal frame-aligned pairs, with the half-open probe in place throughout:
+
+| split strategy                   | wrong by >0.1 % | worst relative error |
+| -------------------------------- | --------------- | -------------------- |
+| `u*` only (the shipped primary)  | 4               | 1.400e−3             |
+| K=16 only (the shipped fallback) | **0**           | **2.718e−4**         |
+| `u*` + K=16                      | **0**           | **2.718e−4**         |
+
+Both worst cases are `intensity = 0.25` on one side — `x^0.25` has an infinite slope at `x = 0`, a
+boundary layer that a two-panel structural split leaves inside a single GL-10 panel and that a
+sixteen-panel mesh confines. It is the same phenomenon the tempo graded mesh exists for, arriving
+in a dimension where nobody looked for it.
+
+This is not a defect and not a regression — the shipped path is a 700× improvement on the
+pre-repair state and its worst case is far below the metric's resolution. It is that **AD-33.3b's
+preference ordering was derived from the original report's table, which was measured with the
+closed probe still in place**; once AD-33.3a landed, the ordering no longer follows from the data,
+and the residual AD-33.3 documents is avoidable. Smallest fix, and it preserves rule 2c's
+structural claim rather than retracting it: emit **both** sets of split points
+(`[...u*, ...K=16]`), which measures identically to the best option above and takes AD-33.3's
+documented residual to zero. Worth a line in the ruling either way, since the residual is recorded
+in DESIGN §5.0 as a measured property and it is now a choice rather than a limit.
+
+**RG-4 (MINOR) — a stale hazard string.** `adversarialFamily.ts:110` still describes the seventh
+member as "the ONLY member that reaches `criticalPointTicks`". The eighth member exists precisely
+because that is false, and this is the sentence a future reader would cite to justify deleting it.
+
+## Re-gate verdict
+
+**RE-GATE PASS.** All three CAPITAL and all four MAJOR findings are confirmed repaired, each by
+re-running the original probe and — where a repair could regress — by reverting it and watching a
+test fail. Both beyond-spec extensions are sound, and the eighth family member in particular is a
+better piece of test design than the ruling asked for. The four new findings are MINOR, cheap, and
+none of them affects a reported number today: RG-1 and RG-4 are one-liners, and RG-2/RG-3 are a
+ruling refinement that would improve an already-acceptable residual.
+
+Tree at `b9444cf` otherwise untouched; `npm run verify` green.

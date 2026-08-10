@@ -1380,3 +1380,25 @@ Gate: `npm run verify` green before committing, 4326 passed + 1 skipped (was
 4285). eslint and prettier clean. W2 fix wave complete across 0dc3e39, ebc2c4f
 and this commit.
 
+
+## 2026-08-10 — AD-34: RE-GATE PASS; W2 CLOSED; W3 opened [BINDING]
+
+Re-verification appended to W2-VERIFICATION.md: all 3 CAPITAL + 4 MAJOR
+confirmed repaired (probes re-run; revert-proofs where regression was
+possible). Both beyond-spec extensions RATIFIED (the eighth family member
+"better test design than the ruling asked for"; phase-aware frame
+alignment correct). Four new MINORs, none affecting a reported number:
+AD-34.1 RG-3 refinement ADOPTED — rule 2c emits BOTH split-point sets
+[u*, K=16] (measured 0/3906 wrong, worst 2.718e-4; AD-33.3b's preference
+ordering had been derived from the pre-half-open-probe table, so the
+documented residual was a choice, not a limit — it now goes to zero, and
+rule 2c's structural claim stands alongside the mesh rather than instead
+of it). RG-1/RG-2/RG-4 one-liners accepted as reported.
+AD-34.2 The RG closing item (RG-1..RG-4 + §5.0 residual sentence update)
+is the final W2 commit, assigned to survey-code.
+AD-34.3 W2 is CLOSED on that commit's green push. W3 OPENS: W3a remaining
+seven dimensions (accentuation, articulation, ornamentation aligner,
+pedal, imprecision ×3 — renderer-truth per DESIGN §5.4-§5.6/§5.8/§5.9);
+then W3b aggregation/segments/closing table/facade; then W3c property
+completion + cross-module P-C5. MINOR-2 (−0) and MINOR-4 (malformed-value
+table) are W3b scope as previously assigned.
