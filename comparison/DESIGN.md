@@ -684,7 +684,15 @@ no local-name test — §5.7, verified against source). Rev 2 of this document
 listed `AsynchronyMap` on the same-name side while §5.7 stated the any-entry
 rule; the renderer settles it for §5.7, and the contradiction is journaled
 (AD-29). A `<style>` between two `<asynchrony>` entries therefore ends the
-first span and opens a neutral gap — observable on ordinary documents that
+first span **and opens a `⊥` span, not a neutral gap** (AD-33.1, correcting
+AD-29's own amendment text). The missing name test does more than end the span:
+`asynIndex` iterates over every entry including the `<style>` and reads
+`parseFloat(getAttributeValue('milliseconds.offset', …))` off it, which is
+`parseFloat('')` = `NaN`, so `Math.max(0, ms + NaN)` is `NaN` and every note in
+that span **vanishes from the MIDI export** — bit for bit R24's condition,
+reached through a foreign element. Priced as neutral it was out by a factor of
+30 on the disputed span and emitted no note; priced as `⊥` it costs `δ_row`
+per quarter and reports `renderer-error`. Observable on ordinary documents that
 switch styles mid-piece.
 
 **Weight.** `w(t) = 1` (score ticks) by default; `w` = MSM note density (from the
@@ -880,6 +888,18 @@ trailing `volume=40 transition.to=100` performs a flat 40. `all_maps.mpm` ends
 its dynamics map with `<dynamics date="2880.0" volume="80" transition.to="110" …/>`
 and the reference rendering shows velocities scattered around 80, not a
 crescendo to 110.
+
+**A `<dynamics>` with no `@volume` is a SKIP** (AD-33.4). `getDynamicsDataOf`
+rejects it (`DynamicsMap.ts:162-163`), but `getEndDate:187-193` scans for the
+next element _named_ `dynamics` regardless of whether it parses, so the
+volume-less element still ends the previous span; `renderDynamicsToMap` then
+`continue`s past it and the next valid instruction's inner loop pins every note
+in the gap to `velocity="100.0"` (`DynamicsMap.ts:251-253`). Same shape as
+tempo's AD-9i, same constant, a different mechanism: **`[skipDate,
+nextValidDate)` performs velocity 100**, and `[0, firstValidDate)` likewise.
+Reading it as "the previous span simply continues" is wrong by
+`|ln 60 − ln 100| = 0.511` nepers — 5.36 JND — held across the whole gap. An
+unresolvable _level_ is still not a skip; R8 makes it the renderer's 100.0.
 
 **Defaults and clamps** (AD-16, R17). `@curvature` and `@protraction` both
 default to **0.0** for `<dynamics>` (`DynamicsData.computeInnerControlPointsXPositions`),
@@ -1100,7 +1120,7 @@ Per-part step curve of `milliseconds.offset`; density `|Δ| / jnd_asynchrony`
 and `getAttributeValue` returns `''` for a missing attribute, so the offset is
 `NaN`; executed, every note in the span gets `milliseconds.date="NaN"` and
 vanishes from the MIDI export. The map also takes the next dated child with **no
-local-name test**, so any non-`<asynchrony>` entry ends the span. R6's
+local-name test**, so any non-`<asynchrony>` entry ends the span **and opens a `⊥` span** (AD-33.1). R6's
 absence-is-neutral covers an absent _map_, not a present instruction with an
 absent offset, and treating it as 0 would compute a performance the renderer does
 not produce: the span reads **`⊥`** and is reported `renderer-error` (AD-2).

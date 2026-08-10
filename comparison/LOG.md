@@ -1252,3 +1252,37 @@ W3 scope explicitly.
 AD-33.7 Fix wave assigned to survey-code (code owner; findings carry
 executable repros); w2-verify re-verifies the fix commit(s) scoped to the
 findings; gate re-runs on its verdict.
+
+## 2026-08-10 — W2 fix wave 1/3: renderer truth (CAPITAL-1, MAJOR-1) [survey-code]
+
+AD-33.1 and AD-33.4, the two findings where the module computed a curve the
+renderer does not perform.
+
+CAPITAL-1. A non-<asynchrony> entry now opens a ⊥ (renderer-error) span. The
+verifier's probe is decisive: asynIndex iterates over EVERY entry including the
+<style>, reads parseFloat(getAttributeValue('milliseconds.offset', …)) off it =
+parseFloat('') = NaN, and Math.max(0, ms + NaN) is NaN — so every note in that
+span vanishes from the MIDI export, bit for bit R24's condition through a
+foreign element. Priced as neutral it was out by a factor of 30 (0.333 vs 20
+JND·quarters on the repro) and emitted no note at all. One `if` became an
+`else`. DESIGN §5.0's AD-29 paragraph and §5.7 both amended; the test that
+pinned the wrong behaviour by name now asserts isBottom and δ_row pricing.
+
+MAJOR-1. A volume-less <dynamics> is a SKIP, not a no-op. getEndDate scans for
+the next element NAMED dynamics regardless of whether it parses, so the
+volume-less element still ends the previous span, and renderDynamicsToMap then
+pins every note in the gap to velocity 100 (DynamicsMap.ts:251-253). Same shape
+as tempo's AD-9i, same constant, different mechanism. Implemented on the tempo
+reader's template line for line, including that a LEADING skip extends the
+pre-first neutral to the first VALID instruction. §5.3 gains the paragraph with
+the citation. Was wrong by |ln 60 − ln 100| = 0.511 nepers = 5.36 JND across
+every affected gap.
+
+Both were undetectable from inside the module: the evaluators were tested
+against what the spec said, and in both cases the spec said the wrong thing.
+That is the verifier's summary judgement — "the wave tested its evaluators far
+harder than it tested its integrator" — arriving one layer earlier than it was
+aimed.
+
+Gate: `npm run verify` green before committing. eslint and prettier clean.
+

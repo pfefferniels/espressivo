@@ -7,12 +7,20 @@
  *
  * ## Two renderer behaviours
  *
- * 1. **Spans end on ANY entry** (AD-29, and §5.7 against §5.0's original table).
- *    `renderAsynchronyToMap` takes `this.elements[asynIndex + 1].getKey()` with **no
- *    local-name test**, and `GenericMap` indexes every dated child including `<style>`. So a
- *    style switch between two `<asynchrony>` elements ends the first one's span. Contrast
- *    `TempoMap.getEndDate`, which really does test the local name. The span rule is taken
- *    from `spanEnds.ts` rather than re-derived here.
+ * 1. **Spans end on ANY entry, and a foreign entry opens a `⊥` span** (AD-29 as corrected by
+ *    AD-33.1). `renderAsynchronyToMap` takes `this.elements[asynIndex + 1].getKey()` with
+ *    **no local-name test**, and `GenericMap` indexes every dated child including `<style>`.
+ *    Contrast `TempoMap.getEndDate`, which really does test the local name.
+ *
+ *    The missing test does more than end the span. `asynIndex` iterates over **every** entry,
+ *    including the `<style>`, and reads
+ *    `parseFloat(getAttributeValue('milliseconds.offset', asynElement))` off it — which for a
+ *    `<style>` is `parseFloat('')` = `NaN`, so `Math.max(0, ms + NaN)` is `NaN`. Every note in
+ *    that span gets `milliseconds.date="NaN"` and **vanishes from the MIDI export**: bit for
+ *    bit the R24 condition below, reached through a different element. The span is therefore
+ *    `⊥`, not the neutral 0 ms. AD-29's own amendment text said "neutral gap" and was wrong;
+ *    priced as neutral it was out by a factor of 30 on the disputed span and emitted no note
+ *    at all.
  * 2. **A missing `@milliseconds.offset` poisons the span** (AD-1, R24). The renderer reads
  *    it with `parseFloat(getAttributeValue(…))`, and `getAttributeValue` returns `''` for a
  *    missing attribute, so the offset is `NaN`; executed, every note in the span gets
@@ -87,11 +95,11 @@ export function readAsynchronySegments(
 
     breakpoints.add(startTicks);
 
-    // A non-<asynchrony> entry (a <style>, say) ends the previous span and opens a gap. It
-    // contributes no segment, so the gap performs the neutral 0 ms.
-    if (element.getLocalName() !== 'asynchrony') continue;
-
-    const raw = readAttributeValue(element, 'milliseconds.offset');
+    // A non-<asynchrony> entry (a <style>, say) is read for an offset it does not have, so
+    // the renderer NaN-poisons its whole span — the same condition as a missing
+    // @milliseconds.offset, reached through a different element (AD-33.1).
+    const isAsynchrony = element.getLocalName() === 'asynchrony';
+    const raw = isAsynchrony ? readAttributeValue(element, 'milliseconds.offset') : null;
     const parsed = raw === null ? NaN : parseFloat(raw);
 
     if (!Number.isFinite(parsed)) {
@@ -99,9 +107,12 @@ export function readAsynchronySegments(
       notes.push({
         kind: 'renderer-error',
         dateTicks: startTicks,
-        detail:
-          'no usable @milliseconds.offset: the renderer computes NaN and every note in the ' +
-          'span vanishes from the MIDI export, so the span is ⊥ rather than 0 (R24/AD-1)',
+        detail: isAsynchrony
+          ? 'no usable @milliseconds.offset: the renderer computes NaN and every note in the ' +
+            'span vanishes from the MIDI export, so the span is ⊥ rather than 0 (R24/AD-1)'
+          : `<${element.getLocalName()}> in an asynchronyMap: the map reads an offset off it ` +
+            'with no local-name test, gets NaN, and every note in the span vanishes from the ' +
+            'MIDI export — the R24 condition through a foreign element (AD-33.1)',
       });
       continue;
     }

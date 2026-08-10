@@ -80,13 +80,26 @@ describe('dynamics curve: constants, neutrals and levels', () => {
     expect(volumeAt(curve, 719.999)).toBeCloseTo(40, 6);
   });
 
-  it('drops a <dynamics> with no @volume without re-timing anything', () => {
-    // Unlike tempo, there is no skip mechanism here: the previous span simply continues.
+  it('treats a <dynamics> with no @volume as a SKIP performing velocity 100 (AD-33.4)', () => {
+    // getEndDate scans for the next element NAMED dynamics regardless of whether it parses,
+    // so the volume-less element ends the previous span; the render then pins every note in
+    // the gap to velocity 100 (DynamicsMap.ts:251-253). Reading it as "the previous span
+    // continues" was wrong by |ln 60 - ln 100| = 0.511 nepers across the gap.
     const curve = curveFor(
       '<dynamics date="0.0" volume="40"/><dynamics date="720.0"/><dynamics date="1440.0" volume="90"/>',
     );
-    expect(volumeAt(curve, 720)).toBe(40);
+    expect(volumeAt(curve, 719)).toBe(40);
+    expect(volumeAt(curve, 720)).toBe(NEUTRAL_VELOCITY);
+    expect(volumeAt(curve, 1439)).toBe(NEUTRAL_VELOCITY);
     expect(volumeAt(curve, 1440)).toBe(90);
+    expect(curve.notes.filter((note) => note.kind === 'renderer-skip')).toHaveLength(1);
+  });
+
+  it('lets a LEADING skip extend the pre-first neutral', () => {
+    const curve = curveFor('<dynamics date="0.0"/><dynamics date="720.0" volume="40"/>');
+    expect(volumeAt(curve, 0)).toBe(NEUTRAL_VELOCITY);
+    expect(volumeAt(curve, 719)).toBe(NEUTRAL_VELOCITY);
+    expect(volumeAt(curve, 720)).toBe(40);
   });
 });
 

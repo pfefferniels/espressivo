@@ -267,23 +267,43 @@ describe('asynchrony: the step curve', () => {
   });
 });
 
-describe('asynchrony: ANY entry ends the span (AD-29 / §5.7)', () => {
-  it('lets a <style> end the span and open a neutral gap', () => {
-    // This is the behaviour §5.0's original table got wrong. Under the same-local-name
-    // reading the 50 ms offset would keep applying straight through the style switch.
-    const curve = asynchronyFor(
-      '<asynchrony date="0.0" milliseconds.offset="50.0"/>' +
-        '<style date="1440.0" name.ref="S"/>' +
-        '<asynchrony date="2880.0" milliseconds.offset="-30.0"/>',
-    );
+describe('asynchrony: ANY entry ends the span, and a foreign one is ⊥ (AD-33.1)', () => {
+  const STYLED =
+    '<asynchrony date="0.0" milliseconds.offset="50.0"/>' +
+    '<style date="1440.0" name.ref="S"/>' +
+    '<asynchrony date="2880.0" milliseconds.offset="-30.0"/>';
+
+  it('opens a ⊥ span on a <style>, not a neutral gap', () => {
+    // AD-29's amendment said "neutral gap" and was wrong. The map reads an offset off the
+    // <style> with no local-name test, gets parseFloat('') = NaN, and every note in the span
+    // vanishes from the MIDI export — the R24 condition through a foreign element. Priced as
+    // neutral it was out by a factor of 30 on the disputed span.
+    const curve = asynchronyFor(STYLED);
     const at = (ticks: number) => {
       const value = offsetAt(curve, ticks);
       return value.kind === 'value' ? value.value : NaN;
     };
     expect(at(720)).toBe(50);
-    expect(at(1440)).toBe(0); // the gap the style switch opened
-    expect(at(2000)).toBe(0);
+    expect(isBottom(offsetAt(curve, 1440))).toBe(true);
+    expect(isBottom(offsetAt(curve, 2000))).toBe(true);
     expect(at(2880)).toBe(-30);
+    expect(curve.notes.some((note) => note.kind === 'renderer-error')).toBe(true);
+  });
+
+  it('prices the styled span at δ_row, the same as a missing offset', () => {
+    const pair = readComparisonPair({
+      a: doc('asynchronyMap', STYLED),
+      b: doc('asynchronyMap', '<asynchrony date="0.0" milliseconds.offset="50.0"/>'),
+    });
+    const result = asynchronyDistance(
+      asynchronyCurveOf(pair, 'a'),
+      asynchronyCurveOf(pair, 'b'),
+      pair.window,
+      pair.ppq.lcm,
+    );
+    expect(result.capped).toBe(true);
+    // The ⊥ span runs 1440..2880 ticks = 2 quarters at δ_row each.
+    expect(result.distance).toBeGreaterThanOrEqual(DEFAULT_DELTA_JND * 2);
   });
 });
 

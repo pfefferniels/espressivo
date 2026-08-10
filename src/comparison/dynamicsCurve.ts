@@ -63,7 +63,8 @@ export type DynamicsSegment =
     };
 
 export interface DynamicsCurveNote {
-  readonly kind: 'renderer-default-level' | 'inert-transition' | 'sub-note-mechanism';
+  readonly kind:
+    'renderer-default-level' | 'inert-transition' | 'sub-note-mechanism' | 'renderer-skip';
   readonly dateTicks: number;
   readonly detail: string;
 }
@@ -143,7 +144,8 @@ function valueFraction(t: number): number {
 
 interface RawDynamics {
   readonly dateTicks: number;
-  readonly volume: number;
+  /** Null where the renderer skips the instruction — `@volume` absent (AD-33.4). */
+  readonly volume: number | null;
   readonly transitionTo: number | null;
   readonly curvature: number;
   readonly protraction: number;
@@ -158,11 +160,16 @@ interface RawDynamics {
  * next `<dynamics>`), so a `<style>` between two instructions is transparent — unlike
  * `asynchronyMap`, where it is not.
  *
- * Unlike tempo there is **no skip case**: `getDynamicsDataOf` rejects only a missing
- * `@volume` (`DynamicsMap.ts:162-163`), and an unresolvable *level* is not a rejection — R8
- * makes it the renderer's 100.0. An instruction with no `@volume` at all is dropped from the
- * curve and the previous span simply continues, because nothing re-times around it the way
- * `computeDiffTiming(date, ppq, null)` re-times tempo.
+ * **A `<dynamics>` with no `@volume` is a SKIP, not a no-op** (AD-33.4, correcting this
+ * module's first version). `getDynamicsDataOf` rejects it (`DynamicsMap.ts:162-163`), but
+ * `getEndDate:187-193` scans for the next element *named* `dynamics` regardless of whether it
+ * parses, so the volume-less element still ends the previous span; `renderDynamicsToMap` then
+ * `continue`s past it and the next valid instruction's inner loop pins every note in the gap
+ * to `velocity="100.0"` (`DynamicsMap.ts:251-253`). Same shape as tempo's AD-9i, same
+ * constant, a different mechanism. Reading it as "the previous span continues" was wrong by
+ * `|ln 60 − ln 100| = 0.511` nepers — 5.36 JND — held across the whole gap.
+ *
+ * An unresolvable *level* is still not a skip: R8 makes it the renderer's 100.0.
  */
 export function readDynamicsSegments(
   view: OrderedMapView | null,
@@ -178,10 +185,23 @@ export function readDynamicsSegments(
     if (element.getLocalName() !== 'dynamics') continue;
     if (!Number.isFinite(entry.date)) continue;
 
-    const volumeText = readAttributeValue(element, 'volume');
-    if (volumeText === null) continue;
-
     const styleName = view.styleNames[index];
+    const volumeText = readAttributeValue(element, 'volume');
+
+    if (volumeText === null) {
+      // The renderer skips it but still ends the previous span with it (AD-33.4).
+      raws.push({
+        dateTicks: entry.date * scaleFactor,
+        volume: null,
+        transitionTo: null,
+        curvature: 0,
+        protraction: 0,
+        subNoteDynamics: false,
+        rendererDefault: false,
+      });
+      continue;
+    }
+
     const volume = resolveComparisonLevel(
       volumeText,
       'dynamics',
@@ -221,11 +241,15 @@ export function readDynamicsSegments(
   const segments: DynamicsSegment[] = [];
   const notes: DynamicsCurveNote[] = [];
 
-  if (raws[0].dateTicks > 0)
+  // The neutral runs to the first VALID instruction, not the first element: a leading skip
+  // extends it, exactly as in the tempo reader.
+  const firstValid = raws.find((raw) => raw.volume !== null);
+  const firstValidDate = firstValid?.dateTicks ?? Number.POSITIVE_INFINITY;
+  if (firstValidDate > 0)
     segments.push({
       kind: 'constant',
       startTicks: 0,
-      endTicks: raws[0].dateTicks,
+      endTicks: firstValidDate,
       volume: NEUTRAL_VELOCITY,
     });
 
@@ -233,6 +257,25 @@ export function readDynamicsSegments(
     const next = raws[index + 1] as RawDynamics | undefined;
     const isTrailing = next === undefined;
     const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
+
+    if (raw.volume === null) {
+      notes.push({
+        kind: 'renderer-skip',
+        dateTicks: raw.dateTicks,
+        detail:
+          'no @volume: the renderer skips the instruction but still ends the previous span ' +
+          'with it, and pins every note up to the next valid <dynamics> to velocity 100 ' +
+          '(DynamicsMap.ts:251-253, AD-33.4)',
+      });
+      const nextValid = raws.slice(index + 1).find((candidate) => candidate.volume !== null);
+      segments.push({
+        kind: 'constant',
+        startTicks: raw.dateTicks,
+        endTicks: nextValid?.dateTicks ?? Number.POSITIVE_INFINITY,
+        volume: NEUTRAL_VELOCITY,
+      });
+      continue;
+    }
 
     const isTransition =
       raw.transitionTo !== null && raw.transitionTo !== raw.volume && !isTrailing;
