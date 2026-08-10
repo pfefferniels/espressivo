@@ -131,6 +131,15 @@ down rather than left to an implementer: **the shape term := 0 when
 `σ_A σ_B = 0`**, so the identity stays exact while `shape` and `r` are `null`
 and the window is marked `shapeless` — a boolean companion so consumers branch
 on a flag rather than on a null (C14). `r` on a constant window is never 0.
+**`σ = 0` is recognized structurally, never by float equality** (AD-32,
+M18's lesson recurring): a constant curve integrated by quadrature carries
+variance ~1e−31, not 0, so the test is variance below
+`(SPREAD_NOISE_FLOOR · scale)²` with `SPREAD_NOISE_FLOOR = 1e−12` relative to
+the curve's own scale — 17 orders of margin to the measured quadrature noise
+below and to the smallest musically meaningful spread (0.1% tempo variation,
+σ ≈ 1e−3) above. Variance is computed as `∫(h−ℓ)²`, never `∫h² − ℓ²`, whose
+cancellation catastrophically loses a small spread against a large mean —
+the ORDINARY tempo-curve case, not a corner.
 
 This table is L²-family, the headline is L1-family (A-Q4 as amended: W₁ feeds
 the aggregate, W₂ feeds this table). The two are **never mixed**: the report
@@ -814,10 +823,16 @@ fixtures carry `<rubato date="0.0" frameLength="720.0" lateStart="0.25"
 earlyEnd="0.75"/>` with no `@loop`, which revision 1 would have warped cyclically
 across its whole span.
 
-**Frame-boundary cap** (AD-10, R25). Boundaries per rubato instruction = 1 when
-`@loop` is off; `min(⌈span / frameLength⌉, cap)` when on, `cap` [convention],
-with a `grid-truncated` note when it bites. Without the cap `frameLength="1"` —
-legal — gives 1.7 M boundaries per instruction per part, and R10's budget is
+**Frame-boundary cap** (AD-10, R25; value ratified AD-31.2). Boundaries per
+rubato instruction = 1 when `@loop` is off;
+`min(⌈span / frameLength⌉, RUBATO_FRAME_BOUNDARY_CAP)` when on, with
+`RUBATO_FRAME_BOUNDARY_CAP = 1024` [convention] — it clears every musically
+plausible frame (a 200-quarter piece on a sixteenth-note frame needs 800)
+while cutting the pathological `frameLength="1"` case by three orders — and
+a `grid-truncated` note when it bites. When it bites, the warp is still
+evaluated exactly; only the grid stops subdividing, so the cost is quadrature
+resolution, never a wrong curve. Without the cap `frameLength="1"` — legal —
+gives 1.7 M boundaries per instruction per part, and R10's budget is
 expressed in instructions, which does not bound this.
 
 **Skipped instructions leave a neutral gap with a breakpoint** (AD-16, R23).

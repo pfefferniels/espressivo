@@ -1194,3 +1194,16 @@ Gate: `npm run verify` green before committing, 4283 passed + 1 skipped (was
 4258). eslint and prettier clean. W2's four evaluators, grid, quadrature,
 densities, decomposition and invariance are now all in and gated.
 
+
+## 2026-08-10 — AD-32: spread floor ratified; W2 wave gate opened [BINDING]
+
+AD-32.1 SPREAD_NOISE_FLOOR = 1e-12 (relative to the curve's own scale)
+RATIFIED — §1.2's "σ_A σ_B = 0" is a structural recognition, never a float
+equality (measured quadrature noise on a constant curve: σ ≈ 9e-16;
+smallest musical spread ≈ 1e-3 — 17 orders of margin on both sides). §1.2
+amended by the conductor, including the ∫(h−ℓ)² anti-cancellation form.
+AD-32.2 §5.2's cap slot filled with the ratified 1024 (AD-31.2).
+AD-32.3 W2c complete (1f2844c, task #14 closed; 4283 tests green). The W2
+wave gate opens: an independent adversarial verification of src/comparison/**
++ its tests against DESIGN's W2 scope, archived as W2-VERIFICATION.md, on
+whose adjudication W3 opens.
