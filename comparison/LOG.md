@@ -1905,3 +1905,17 @@ eslint and prettier clean. 13 new tests, 39 in the articulation suite overall.
 
 CUT 2 IS CLOSED. Cut 3 (ornamentation) is next, and the aligner is waiting for it as
 its second consumer — the interface does not freeze until it has served both.
+
+## 2026-08-10 — AD-39: cut 2 closed; id-anchor window exemption ratified
+
+09611f4 accepted; cut 2 closed (four commits, 59 new tests across the
+suites, skip-list at 4). The affine-with-replacement canonical form
+`x ↦ (replacement ?? x)·factor + offset` is noted as the right closed
+form — encoding invariance by construction, renderer-verified.
+AD-39.1 RATIFIED: id-anchored anchors are never dropped by the window
+(unknown date; dropping would forgive a performed difference). Symmetric,
+deterministic, conservative. One obligation added: the report must STATE
+that id-anchored content is window-exempt, so a caller narrowing the
+window knows those atoms persist (facade/W3b picks this up in the
+report-shape work).
+Cut 3 (ornamentation) proceeds; the aligner meets its second consumer.
