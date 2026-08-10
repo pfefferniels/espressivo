@@ -1468,3 +1468,49 @@ guard, and termination rule in §5.4-§5.6/§5.9 must be checked against
 (any-entry spans) and ornamentation are the likeliest recurrence sites.
 Accentuation confirmed clean against source (§5.4 matches, incl. tsDate
 anchoring and the segment-end asymmetry).
+
+## 2026-08-10 — W3a cut 1, part 1: accentuation CURVE (task #7, survey-code)
+
+PARTIAL by design, and labelled as such. This is the accentuation curve evaluator
+only: no density, no registry rows, no decomposition/invariance wiring, no
+adversarial-family extension. Those and the PEDAL half follow. Committed at this
+boundary because the curve is green, gated and verified against the renderer, and
+because pedal is blocked on a design question (below) that should not hold it.
+
+RENDERER-TRUTH VERIFIED BY DIFFERENTIAL TEST, not by hand-computed expectations.
+accentuationAt is a transliteration of AccentuationPatternDef.getAccentuationAt,
+so it is checked against the REAL class across a 0..6.02 beat sweep at 0.01
+granularity on five pattern shapes — canonical four-beat, single accentuation,
+the defaulting chain, out-of-order source, late first beat. 3015 samples, ZERO
+mismatches, exact equality (not toBeCloseTo). A transliteration tested only
+against numbers I worked out myself would pin my READING of the renderer, which
+is the failure mode behind two of W2's three CAPITALs.
+
+The renderer class is constructed on a copy() in the test, because parsing an
+accentuationPatternDef adds length="4" and reorders its children — the mutation
+R1 forbids, and exactly why the comparison reader reads the element raw.
+
+§5.4 checked against source and found CORRECT in every particular: the segment-end
+asymmetry (i < points.length - 1), tuple order [beat, value, transition.from,
+transition.to] with from falling back to value and to falling back to from, 0
+before the first accentuation, transition.to at and after length+1, @value taken
+exactly on a beat, tsDate anchoring in both stickToMeasures branches, and the
+renderer-default 4/4 initialisers. No contradiction — unlike §5.8.
+
+Two behaviours pinned that §5.4 states and that are easy to get backwards:
+stickToMeasures defaults TRUE (the one boolean here whose absent-default is not
+false), and an unresolvable pattern NAME is ⊥ because the render dereferences a
+null def and throws, while an instruction with no style in scope is a SKIP because
+nothing throws — same document, two different dispositions, and §5.4 exists partly
+to say which is which.
+
+Gate: `npm run verify` green before committing, 4352 passed + 1 skipped (was
+4331). eslint and prettier clean. 21 new tests.
+
+BLOCKED, reported as msg 40f0a55e: §5.8's "the last movement contributes no span
+at all" is conditional on the last ENTRY being that movement, because
+renderMovementToMap guards with `movementIndex < this.size() - 1` and both sides
+count every dated entry including <style>. Measured: trailing <style> gives 34
+position events over [0..1.8e308] where none gives 17 over [0..720]. Awaiting a
+ruling on the entry-index reading and on how the unbounded third state is priced.
+
