@@ -128,8 +128,16 @@ rule. Two scopes, **global** and **gesture** (A7; "local" is retired):
   dimension via `center: { tempo?, dynamics? }`; `center.tempo` is **quarter-note
   bpm**, the same space the transform works in.
 - **`gesture`**: transition pairs are scaled around their **own** geometric mean;
-  constant instructions and def values are **untouched**. Gain dimensions
+  **constant** instructions and def values are **untouched**. Gain dimensions
   attenuate toward 0 as usual. This is what `spotlight` uses (D-I).
+  **W3 amendment (LOG: "W2 — fix wave ratified"):** "untouched" describes
+  *constants*, not the prevailing-level attribute in general. `@bpm`/`@volume` on
+  a **transition** do move under `gesture` — as half of the pair, around the
+  pair's own geomean — because the gesture *is* the log-ratio between the two
+  endpoints, and shrinking it necessarily moves both. What `gesture` guarantees
+  is that the pair's geomean, and so the passage's level, stays put. §7.2/§7.4
+  previously said the prevailing level was "untouched under gesture scope", true
+  only of constants; `registry.ts` has always been right and the rows now match.
 
 Why "local" had to go: it was specified as "the prototype's behaviour", but on the
 dominant corpus it has no legal write site at all — levels are style names, D-C
@@ -172,11 +180,44 @@ From mlign-57 (adopted 2026-08-09, see LOG.md):
 - R4: a companion report says which dimensions were actually present/transformed,
   so callers can skip no-op samples. **`report.totalWrites === 0` is the exact,
   cheap contract** for "this sample is a no-op".
-- R5: symbolic invariance — the transform never touches note identities or
-  symbolic dates; unit test asserts the invariant for arbitrary s. (The transform
-  operates on the MPM only; the MSM is never a transform input. The test still
-  asserts it end-to-end: perform(msm, exaggerate(mpm, s)) yields the same note-id
-  set and symbolic dates as perform(msm, mpm).)
+- R5 **(split at W3 — the single claim was false; W3 amendment, LOG: "W3 —
+  facade complete; R5 capital finding adjudicated")**: symbolic invariance is two
+  requirements of different strength, and conflating them promised a guarantee
+  the engine cannot keep.
+  - **R5a — document-level, UNIVERSAL.** The transform never writes `@date`,
+    never adds or removes an element, and never adds or removes an attribute; it
+    only changes the numeric text of attributes already present. True for every
+    document, dimension and factor, and pinned for every fixture pair × factor.
+    This is what D-A's write discipline exists to deliver.
+  - **R5b — render-level, QUALIFIED.** `perform(msm, exaggerate(mpm, s))` yields
+    the same note ids, symbolic dates, durations and pitches as
+    `perform(msm, mpm)`. Holds for **all v2 documents** and for **v3 documents
+    whose ornament frames are millisecond-resolved**. It does **not** hold for
+    `ornamentSpread`/`ornamentSpacing` on a **v3 note-GENERATING ornament with a
+    tick-resolved frame** — including `"%"`, which resolves against the
+    principal's duration in ticks. A caller who needs R5b unconditionally holds
+    those two dimensions at 1.
+
+  The exception is structural, not a defect to fix. On a v3 generating ornament
+  the renderer derives the geometry of the notes it *creates* from the very frame
+  these two dimensions scale, so moving the frame moves generated notes' symbolic
+  dates by construction; no write discipline avoids that while still scaling the
+  frame. The §7.9 cliff is reachable here rather than theoretical — a zero-length
+  carved-head note appears at **s = 2**.
+
+  Both bounding controls are pinned and each explains itself. **v2 ornaments stay
+  invariant** because they displace *existing* notes through `date.perf`, leaving
+  symbolic dates untouched. **v3 millisecond-frames stay invariant** because they
+  are folded in *after* the tempo map, downstream of the symbolic domain
+  entirely. The breaking case is exactly the intersection v3 × generating ×
+  tick-resolved, and the two neighbouring cases are invariant for mutually
+  independent reasons.
+
+  (The transform still operates on the MPM only; the MSM is never a transform
+  input — `options.msm` reaches the reporting layer alone, §4.) mlign was
+  re-notified, since their ornament-sampling × exaggeration curriculum is
+  precisely this intersection; note also that generated notes carry random
+  `meico_<uuid>` ids and were never stable cross-render anchors anyway.
 - R6 (restated per A10/A11 — the original one-line form was unachievable):
   velocity range safety is split into what the MPM can guarantee and what only the
   caller can judge.
@@ -267,7 +308,7 @@ nothing.
 
 Explicitly excluded, each with a one-line rationale and citation in §7.16:
 movement `@position`/`@transition.to` (D-G), articulation's neutral-less
-`absolute*` replacements (D-B), pitch/interval attributes (R5's spirit; also
+`absolute*` replacements (D-B), pitch/interval attributes (R5b's spirit; also
 inert — no consumer exists), `ornament@scale` (RESOLVED-6), tuning-domain
 imprecision (inert), dates, `@beatLength`, `rubato@frameLength`, `@seed`,
 `@milliseconds.timingBasis`, `@degreeOfCorrelation`, and every enum/boolean.
@@ -306,6 +347,29 @@ export interface ExaggerateOptions {
 // factors, a factor outside its dimension's admissible s-domain (§1), or an
 // out-of-order velocityRange all throw InvalidOptionError naming the offender.
 
+/** P1's baseline as a callable contract: `parse→serialize` with no transform.
+ *  Consumers test P1 against this rather than against their input bytes, because
+ *  §1.1's canonical baseline is the only equality the serializer can satisfy.
+ *  Both P1 predicates — `factors: {}` and an all-ones record — return exactly
+ *  this, byte for byte. */
+export function canonicalMpm(mpm: XmlText): XmlText;
+
+// Errors (RULE E2). Beyond InvalidOptionError and SelectionNotFoundError:
+//
+//   PerformanceNotFoundError — options.performance names or indexes nothing.
+//     Without a selector the engine transforms ALL performances, so an empty
+//     result set is only an error when the caller *asked* for one: reporting
+//     `performances: []` and an unchanged document is already R4's no-op answer,
+//     and returning it for a typo'd selector would hide the typo behind a
+//     valid-looking result. Messages are selectPerformance's, so the expression
+//     facade and the render facade read alike.
+//   EngineInvariantError — the engine broke one of its own invariants; a bug to
+//     report, not a caller mistake. It is the facade class for the A6 assertion
+//     (§7.6's `ls' < ee'` check). Interior `src/expression/**` throws a plain
+//     Error by design — the typed hierarchy lives in src/api — and this is where
+//     it becomes catchable. REACHABLE, not defensive: `minRubatoWindow: 1e-17`
+//     rounds `1 − w` to exactly 1 and trips it.
+
 export function exaggerateMpm(mpm: XmlText, options: ExaggerateOptions): ExaggerationResult;
 
 export interface ExaggerationResult {
@@ -335,11 +399,15 @@ export type SiteState =
 
 export interface DimensionReport {
   readonly requestedFactor: number | null;
-  /** Dimension-level verdict. Precedence when sites disagree (W2, w2c #9):
-   *  transformed > partial > skipped > inert > absent — any write makes the
-   *  dimension 'transformed'; 'skipped' outranks 'inert' so a gate rejection is
-   *  never hidden behind an inert sibling. Note 'inert' with sitesSkipped > 0 is
-   *  reachable and legal (W3 carries the pinning test). */
+  /** Dimension-level verdict. Ratified reading (W2 fix wave, F8):
+   *  any write at a **fully-reachable** site makes the dimension 'transformed';
+   *  a site carrying any excluded lever beside a transformed one is 'partial';
+   *  precedence transformed > partial > skipped > inert > absent. The
+   *  fully-reachable qualifier is what keeps 'partial' reachable at all — under
+   *  the earlier "any write ⇒ transformed" wording a partial site's own write
+   *  would have promoted the dimension past 'partial' and the state could never
+   *  be observed. 'skipped' outranks 'inert' so a gate rejection is never hidden
+   *  behind an inert sibling; 'inert' with sitesSkipped > 0 is legal and pinned. */
   readonly state: SiteState;
   readonly sitesTransformed: number;
   readonly sitesSkipped: number;
@@ -370,9 +438,37 @@ export interface PerformanceReport {
    *  rubatoMaxS IS a bound, because its ceiling is mechanical (the A6 guard). */
   readonly bounds: { readonly tempoDeviationRatio: number | null; readonly rubatoMaxS: number | null };
   readonly mergedLevels: readonly (readonly [string, string])[]; // clamp-collapsed named defs
+  readonly estimates: MsmDependentEstimates;
   readonly notes: readonly ReportNote[];
   readonly totalWrites: number;
 }
+
+/** A10's R1 carve-out. Structured since W2, valued null until an MSM is given:
+ *  a field that exists and says `null` lets a consumer write the code that will
+ *  read it later, where an absent field makes every consumer guess. */
+export interface MsmDependentEstimates {
+  /** §7.4 — notes before the first instruction, and unterminated transitions. */
+  readonly unreachableLevels: number | null;
+  /** §7.7 — sites at risk of the pass-two ms commit guard discarding the note. */
+  readonly articulationCommitCliffs: number | null;
+  /** §7.9 — spreads at risk of driving `duration.perf` negative. */
+  readonly ornamentSpreadCliffs: number | null;
+  /** §7.13 — toneduration offsets at risk of ending a note before it starts. */
+  readonly imprecisionDurationCliffs: number | null;
+  /** §7.8 — true whenever accentuation's velocity coefficient came from the def's
+   *  own declared `@beat` anchors rather than rendered beat positions. Without an
+   *  MSM there are no rendered beats, so it is true whenever the dimension ran. */
+  readonly beatsUnverifiable: boolean;
+}
+// The three MILLISECOND cliff counters carry THREE states, not two (W3, ratified):
+//   0    — sites exist and none is at risk;
+//   n    — n sites at risk;
+//   null — THIS MSM cannot answer the question.
+// The distinction is load-bearing. A millisecond cliff can only be judged against
+// a PERFORMED, pre-exaggeration MSM: a raw score carries no `milliseconds.*`, so
+// the question was never asked, and reporting 0 there would claim "no risk found"
+// for a search that never ran. Callers wanting these three fields therefore pass
+// a performed MSM; passing a raw score still populates the tick-domain estimates.
 
 export interface ExaggerationReport {
   readonly appliedFactors: Record<ExpressionDimension, number>;
@@ -386,7 +482,7 @@ export function spotlightMpm(mpm: XmlText, options: SpotlightOptions): Spotlight
 export interface SpotlightOptions {
   readonly ids: readonly string[];
   readonly attenuation: number;   // (0,1], single scalar (A8)
-  readonly performance?: string | number;
+  readonly performance?: string | number;  // omitted ⇒ ALL performances, as above (A11)
 }
 
 export interface SpotlightResult {
@@ -420,7 +516,8 @@ implementation forced, all reflected in the types above:
   `transformed > partial > skipped > inert > absent` makes the verdict
   deterministic, and puts `skipped` above `inert` so that a gate rejection is
   never masked by an inert sibling. The combination `state: 'inert'` with
-  `sitesSkipped > 0` is legal and reachable — W3 pins it.
+  `sitesSkipped > 0` is legal and reachable — W3 pins it. **Superseded in the
+  promotion clause by the F8 ratification below**; the ordering is unchanged.
 - **#10 a `gradientOutsideNominalRange` note kind.** §7.11 says a transformed
   gradient endpoint leaving [−1,1] is "reported informationally"; that obligation
   had no note kind, so it was unimplementable as plain data.
@@ -428,6 +525,34 @@ implementation forced, all reflected in the types above:
   to the articulation staccato family. The implemented rule is structural: **any
   site where at least one excluded lever sits beside at least one transformed
   lever** is `partial`. Articulation is the motivating case, not the definition.
+
+**W3 amendments (LOG: "W2 — fix wave ratified" and the W3 facade batch).** Two
+corrections, both closing gaps this section left rather than reversing it:
+
+- **`estimates` is now documented, not merely shipped.** The field has existed
+  since W2, structured and valued `null`, because A10 authorised the *content*
+  (an optional `msm` input feeding report estimates only) while this section's
+  `PerformanceReport` block predated it — `report.ts` carried the divergence as a
+  header note rather than letting the type and the design drift apart silently.
+  W3's `options.msm` is what populates it. Note the deliberate asymmetry: `msm`
+  is a **facade-level** option and the interior `applyExaggeration` does not take
+  it, which is what keeps R1 intact — the transform cannot read an MSM even by
+  accident, and only the reporting layer can.
+- **The F8 state-precedence clause is reworded to its ratified reading.** The
+  ordering is unchanged; the promotion rule is sharpened. "Any write makes the
+  dimension `transformed`" was too strong: a *partial* site is written too, so
+  that wording promoted the dimension past `partial` and made the state
+  unobservable. The ratified reading qualifies the write — **any write at a
+  fully-reachable site** — so a dimension whose only writes happened at sites
+  carrying an excluded lever correctly reports `partial`.
+- **`beatsUnverifiable` is currently true even when an MSM *is* supplied**, and
+  that is a deliberate stop rather than an oversight. Refining it means computing
+  the rendered beat positions — `1 + ((noteDate − tsDate) % measureTicks) /
+  beatTicks` against the MSM's `timeSignatureMap` — which is a **third**
+  replication of renderer arithmetic inside this engine, after the date-stable
+  ordering and the style-scope scan. Two replications are load-bearing (D-A
+  cannot resolve a level without them); a third buys only a sharper report
+  number, so it is scoped as a W4 item and the flag stays honest in the meantime.
 
 Interior: `src/expression/` — transforms (pure functions on numbers), registry
 (attribute → scale space + neutral + domain predicate + s-domain + P5r verdict),
@@ -721,7 +846,7 @@ duration-weighting. Callers wanting another center pass `options.center`
 
 | attribute | transform | neutral | domain + citation | P5r | notes |
 |---|---|---|---|---|---|
-| `tempo@bpm` | map-geomean-log | performance-wide center per §7.1 | ℝ>0, enforced nowhere — SURVEY.md:49-54 | holds | classify by def-lookup-first then `parseFloat` (D-A); transform in quarter-note-normalized space; `gesture` scope leaves this untouched |
+| `tempo@bpm` | map-geomean-log | performance-wide center per §7.1 | ℝ>0, enforced nowhere — SURVEY.md:49-54 | holds | classify by def-lookup-first then `parseFloat` (D-A); transform in quarter-note-normalized space; under `gesture` scope this endpoint moves **only as half of a transition pair**, around the pair's own geomean — untouched only on a constant instruction |
 | `tempo@transition.to` | map-geomean-log, same center; `gesture`: pair geomean | `to == bpm` is the renderer's own no-effect state — SURVEY.md:101-108 | ℝ>0, unvalidated; degenerate pairs deleted at parse — SURVEY.md:96-99 | cliff | **excluded from the center population** (§7.1) but transformed; pair-collapse guard: refuse+report when `String(to')===String(bpm')` |
 | `tempoDef@value` | map-geomean-log | the same center (defs share it) | ℝ>0; strict parse, malformed def silently dropped — SURVEY.md:225-230 | holds | dedupe by def identity; part header shadows global; **skip + report** a def referenced from instructions with heterogeneous `@beatLength` — no single normalization factor exists |
 | ✔ RESOLVED-1 | — | — | — | — | one performance-wide center, shared by defs; algorithm in §7.1 |
@@ -828,7 +953,7 @@ s=2 gives 0.1 vs 0.0625). The position is the perceptually even parameter — it
 
 | attribute | transform | neutral | domain + citation | P5r | notes |
 |---|---|---|---|---|---|
-| `dynamics@volume` | map-geomean-log | performance-wide center per §7.1; `center.dynamics` may override | **ℝ>0** — the log-space intersection, not the parser's unbounded ℝ; MIDI range enforced only downstream — SURVEY.md:463-471 | saturates | values ≤ 0 are **gate-skipped**, not clamped (see below); clamp the *result* to `velocityRange` (R6a) and count; `gesture` scope leaves this untouched |
+| `dynamics@volume` | map-geomean-log | performance-wide center per §7.1; `center.dynamics` may override | **ℝ>0** — the log-space intersection, not the parser's unbounded ℝ; MIDI range enforced only downstream — SURVEY.md:463-471 | saturates | values ≤ 0 are **gate-skipped**, not clamped (see below); clamp the *result* to `velocityRange` (R6a) and count; under `gesture` scope this endpoint moves **only as half of a transition pair**, around the pair's own geomean — untouched only on a constant instruction |
 | `dynamics@transition.to` | map-geomean-log, same center; `gesture`: pair geomean | `to == volume` is `isConstantDynamics` — SURVEY.md:519-525 | as `@volume`; its **presence** is the switch into the transition branch — SURVEY.md:513-517 | saturates | **excluded from the center population**, still transformed; never materialize or drop it; the MEI end-marker duplicate moves with it (D-I) |
 | `dynamicsDef@value` | map-geomean-log | the same center (defs share it) | unbounded ℝ; malformed literal ⇒ def silently dropped — SURVEY.md:619-623 | saturates | the **correct** lever for name-valued volumes (the MEI norm); dedupe by def identity; blast radius is the whole styleDef; clamp collapse reported via `mergedLevels` |
 | ✔ RESOLVED-1 | — | — | — | — | center algorithm in §7.1 |
@@ -1113,7 +1238,12 @@ s = 1 must be "do not touch the attribute" (the §1.1 short-circuit).
 `duration.perf` with no floor, so a large s can drive a note's duration negative
 (SURVEY.md:2588-2590). The cap is note-length dependent, i.e. MSM data: without
 `options.msm` the report carries the frame magnitude and flags cliff risk rather
-than a bound.
+than a bound. **W3 amendment (LOG: R5 adjudication):** on a **v3
+note-generating** ornament with a tick-resolved frame the cliff is not merely
+possible but **reachable at s = 2**, as a zero-length carved-head note — and on
+that same intersection this dimension moves generated notes' symbolic dates, so
+it is outside R5b (§2). Both facts belong to the same mechanism: the renderer
+derives the generated notes' geometry from the frame this dimension scales.
 
 *Branch on the unit before choosing s.* `@time.unit` decides whether the frame
 numbers are PPQ-relative ticks (tempo-relative) or absolute milliseconds, folded in
@@ -1313,7 +1443,7 @@ New in v2 (A9). Same Bézier pair as §7.5, in `movementMap`.
 | attribute | transform | neutral | domain + citation | P5r | notes |
 |---|---|---|---|---|---|
 | `movement@curvature` | boundary-power(low) | 0.0 — same cancellation proof as the dynamics twin — SURVEY.md:3900-3921 | [0,1] by monotonicity; **enforced nowhere in this family** — SURVEY.md:4044-4050 | holds | this family has **no clamps of its own**, which is precisely why the domain-closed transform is required (D-D); `x = 1` is a fixed point |
-| `movement@protraction` | logit(−1,1) | 0.0 — branch condition *and* continuous limit — SURVEY.md:3945-3952 | [−1,1] by monotonicity; unenforced — SURVEY.md:3935-3943 | holds | the best-behaved attribute in the family: signed, symmetric, neutral at 0, notated dates untouched (R5-safe) |
+| `movement@protraction` | logit(−1,1) | 0.0 — branch condition *and* continuous limit — SURVEY.md:3945-3952 | [−1,1] by monotonicity; unenforced — SURVEY.md:3935-3943 | holds | the best-behaved attribute in the family: signed, symmetric, neutral at 0, notated dates untouched (R5a/R5b-safe) |
 
 *Musical reading.* These move the instant at which the pedal level crosses the
 receiver's on/off point — half-pedalling and pedal-lift speed — without touching
@@ -1419,8 +1549,8 @@ it never writes it.
 | `articulation(Def)@absoluteDuration` | D-B: a replacement, not a deviation — neutral is the attribute's **absence**, and its effective neutral lives in the MSM (R1). Drives the `partial` report state (§7.7) | SURVEY.md:1544-1560 |
 | `articulation(Def)@absoluteDurationMs` | D-B: same category error; it also short-circuits the tick-duration branch and replaces the end date outright. This is the staccato-family lopsidedness lever | SURVEY.md:1615-1631 |
 | `articulation(Def)@absoluteVelocity` | D-B: replacement, neutral = absent; the only meico default using it is sforzato = 127, already at the ceiling | SURVEY.md:1784-1798 |
-| `articulation(Def)@detuneCents` | pitch attribute per §3/R5. Linear-0 in principle, but **inert** — written onto the MSM note and read by nothing. Revisit as its own `intonation` dimension on demand, never inside `articulation` | SURVEY.md:1824-1832, SURVEY.md:2044-2049 |
-| `articulation(Def)@detuneHz` | pitch attribute per §3/R5, and weaker: Hz is not a perceptually linear pitch unit, so linear scaling exaggerates low notes far more than high ones | SURVEY.md:1855-1862 |
+| `articulation(Def)@detuneCents` | pitch attribute per §3/R5b. Linear-0 in principle, but **inert** — written onto the MSM note and read by nothing. Revisit as its own `intonation` dimension on demand, never inside `articulation` | SURVEY.md:1824-1832, SURVEY.md:2044-2049 |
+| `articulation(Def)@detuneHz` | pitch attribute per §3/R5b, and weaker: Hz is not a perceptually linear pitch unit, so linear scaling exaggerates low notes far more than high ones | SURVEY.md:1855-1862 |
 | `accentuation@value`, `@transition.from`, `@transition.to` | D-C: homogeneous degree 1 with `accentuationPattern@scale`, so scaling both is exactly s². Available only as a separate opt-in "reshape" knob, scaled atomically | SURVEY.md:2179-2188, SURVEY.md:2451-2455 |
 | `accentuationPatternDef@length` | no neutral: a loop period and ramp-segment end; scaling it moves *when* accents land. Note the parser *adds* `length="4"` when absent — a D-A baseline mutation | SURVEY.md:2262-2273 |
 | `accentuation@beat` | position, no neutral; editing it can reorder anchors and desynchronize the def from its own XML child order | SURVEY.md:2291-2299 |
@@ -1434,7 +1564,7 @@ it never writes it.
 | `distribution.*@milliseconds.timingBasis` | sampling grain, not a magnitude; 100.0 is a fallback, not a neutral. Excluded per D-F — but an absent one is derived from the scaled attributes, so scaling proceeds and the report flags the re-indexing (RESOLVED-7) | SURVEY.md:3178-3193 |
 | `…compensatingTriangle@degreeOfCorrelation` | shape parameter with neutral 1.0: it changes the temporal smoothness of the noise, not the size of any deviation. If ever exposed, log-around-1 on (0,∞) with a hard guard rejecting ≤ 0 | SURVEY.md:3480-3491 |
 | `movement@position`, `@transition.to` | D-G (unamended for these two): controller state, not a deviation. The sharper reason — canonical pedal maps are exact 0.0/1.0, where both log-around-geomean and logit have poles, so the transform is the **identity** on precisely the documents that dominate the corpus | SURVEY.md:3814-3837 |
-| `@date` on `<tempo>`, `<dynamics>`, `<rubato>`, `<articulation>`, `<accentuationPattern>`, `<ornament>`, `<asynchrony>`, `<distribution.*>`, `<movement>`, and every `<style>` switch | R5: a timeline coordinate has no neutral. Mechanically it is also the map's cached sort key, and moving one date re-partitions its neighbours' spans | SURVEY.md:209-214, SURVEY.md:2318-2321, SURVEY.md:3053-3061 |
+| `@date` on `<tempo>`, `<dynamics>`, `<rubato>`, `<articulation>`, `<accentuationPattern>`, `<ornament>`, `<asynchrony>`, `<distribution.*>`, `<movement>`, and every `<style>` switch | R5a: the transform never writes `@date`; a timeline coordinate has no neutral either. Mechanically it is also the map's cached sort key, and moving one date re-partitions its neighbours' spans | SURVEY.md:209-214, SURVEY.md:2318-2321, SURVEY.md:3053-3061 |
 | `ornament.date.offset`, `ornament.duration`, `ornament.milliseconds.*`, `ornament.dynamics`, `ornament.noteoff.shift` | renderer intermediate **markers** written onto MSM notes, not MPM inputs (R1) | SURVEY.md:2995-3001 |
 | `movementSampleMaxStep` | not an attribute — a `RenderOptions` field. Listed so it is never registered | SURVEY.md:4126-4130 |
 
@@ -1454,7 +1584,7 @@ returned in `report.bounds` rather than baked in as constants.
 | `rubato` | 0.5 … 2.5 | log-uniform | Intensity: the prototype's clamp [0.1, 5.0] is reached from a typical authored 0.5…2.0 at s ≈ 2.3. Window: the joint trim saturates smoothly, but only because of the A6 guard — the per-document cliff bound (the s at which `t'` would reach `1 − minRubatoWindow`) is restored and returned as `bounds.rubatoMaxS` |
 | `articulation` | 0.5 … 2 | log-uniform | Ratios: meico's defaults sit at 0.7…1.0; s = 2 takes 0.8 → 0.64 and 0.7 → 0.49, i.e. half the note gone. Offsets: breath −400 ms doubles to −800 ms at s = 2, where the pass-two commit cliff starts discarding whole notes. A cliff-avoidance bound, not a taste bound — and P5r `non-monotone` on the velocity pair means s is not a reliable dial there at all |
 | `accentuation` | 0 … 2.5 | uniform | s<0 flips the accent contour (inversion, not exaggeration). Fixture patterns carry ±20 velocity units at scale 1; ×2.5 = ±50, which on an mf (83) is the last step before the ceiling and the global `fitVelocities` compression. s=0 is meaningful ("flatten the metre") but must be written as `"0"`, never by deleting the mandatory attribute |
-| `ornamentSpread` | 0 … 4 | uniform | The built-in arpeggio frame is (−22, +44) ticks ≈ 37 ms at 100 bpm / PPQ 720; ×4 ≈ 147 ms, a slow but idiomatic roll. The real cap is note-length dependent (§7.9's cliff) and is reported rather than baked in. In the **milliseconds** frame domain the same s is absolute rather than tempo-relative — halve it, or sample against the value |
+| `ornamentSpread` | 0 … 4 | uniform | The built-in arpeggio frame is (−22, +44) ticks ≈ 37 ms at 100 bpm / PPQ 720; ×4 ≈ 147 ms, a slow but idiomatic roll. The real cap is note-length dependent (§7.9's cliff) and is reported rather than baked in. In the **milliseconds** frame domain the same s is absolute rather than tempo-relative — halve it, or sample against the value. **W2.5 amendment (LOG: W2.5 entry): the `relative` (%) domain.** The numeric range 0…4 stands, but its *meaning* differs: a `%` frame's magnitude is a fraction of the principal note's duration, not a duration, so s=4 on a `"100%"` frame spans **four note-lengths** — extreme but well-defined, and it scales with the note rather than against a fixed grid. Neither the tick nor the ms derivation transfers, so this bound is a **judgment call**, not a derivation. The report's `frame-time-unit` note carries the per-value domain, which is what lets a sampler range-adjust per unit instead of per document — necessary because v3 detection is per `<temporalSpread>` element, so one performance can hold all three domains at once. **R5b caveat (§2):** the tick-resolved domains — ticks *and* `%` — are the ones that move generated notes' symbolic dates on a v3 note-generating ornament, so a caller who needs R5b unconditionally holds `ornamentSpread` (and `ornamentSpacing`) at 1 rather than sampling this row at all; the ms domain is exempt |
 | `ornamentSpacing` | 0.5 … 2 | log-uniform | The fixture's authored intensity is already 2.0; s = 2 gives 4.0, at which the whole ornament piles onto its end. Separated from the frame precisely because these two bounds and distributions differ |
 | `ornamentDynamics` | 0 … 3 | uniform | Endpoints are velocity units added to velocity; the arpeggio default ±1 times a typical `@scale` of 1 is ±1 velocity unit, so even s = 3 is subtle — the range is wide because the quantity is small. **Usually inert**: `@scale` is 0.0 on every MEI arpeggio, and the report says so per §7.11 |
 | `asynchrony` | 0 … 3 | uniform | Authored offsets are ±5…±60 ms; past ≈±150 ms the part stops reading as "ahead of/behind the beat" and becomes an echo. For a document whose largest \|offset\| is m ms, prefer s ≤ 150/m; 3 holds for the typical 50 ms authoring maximum |

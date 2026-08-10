@@ -351,3 +351,86 @@ be counted as a write either.
 Open for W3/W4: §8's sampling ranges have no `relative` case — a `%` frame's
 magnitude is a fraction of the principal note rather than a duration, so neither
 the tick nor the ms bound transfers. Flagged, not decided.
+
+## 2026-08-09 W3 — kickoff (facade + design batch in parallel)
+
+W2.5 committed e12a1d2. W3 dispatched: facade implementer (exaggerateMpm,
+optional msm-for-estimates, R5 symbolic-invariance + A14 expected-direction
+integration tests, error surface) and the DESIGN W3 batch (estimates field,
+F8 rewording, gesture-scope row-note qualification, ALL-performances sweep).
+Conductor decision on W2.5's open item, journaled here: §8 gains the
+`relative` (%) frame-unit case — numeric range 0…4 stands but the magnitude
+is a fraction of the principal's duration (s=4 on "100%" spans four
+note-lengths); the frame-time-unit report note carries the unit so samplers
+range-adjust; the relative bound is a judgment call, and the row says so.
+mlign pinged (progress, not yet usable-commit); they compose ornament-sampling
+× exaggeration curriculum once the facade lands.
+
+## 2026-08-10 W3 — facade complete; R5 capital finding adjudicated
+
+w3-facade delivered: exaggerateMpm + parse.ts (single foreign-ParseError
+choke point), msmFacts/estimates (A10 carve-out, mechanical — msm has no path
+into the engine), 188 tests (3814 green), full error surface incl. a REACHABLE
+EngineInvariantError (minRubatoWindow 1e-17 rounds 1−w to exactly 1).
+
+CAPITAL FINDING, adjudicated: R5 does not hold universally. ornamentSpread/
+ornamentSpacing on a v3 note-GENERATING ornament with a TICK-RESOLVED frame
+(incl. %) move generated notes' symbolic dates — structural: the renderer
+derives note geometry from the frame the dimension scales; a zero-length
+carved-head note (the §7.9 cliff) is reachable at s=2. Controls pinned: v2
+ornaments invariant (they shift existing notes via date.perf); v3 ms-frames
+invariant (folded in after the tempo map). RULING: R5 splits — R5a universal
+(the transform never writes @date, never adds/removes elements/attributes;
+pinned for every pair × factor); R5b qualified (same note ids/symbolic dates/
+durations/pitches through a render — v2 always, v3 ms-frames always, NOT the
+two ornament-timing dimensions on v3 tick-resolved generating ornaments; hold
+them at 1 for the guarantee). Facade JSDoc carries the qualification; DESIGN
+§2 rewrite dispatched. mlign re-notified (their ornament-sampling ×
+exaggeration curriculum is exactly the breaking intersection; NB generated
+notes carry random meico_<uuid> ids and were never stable cross-render anchors
+anyway — guidance sent).
+
+Also adjudicated from the report: three-state null semantics for the ms cliff
+counters RATIFIED (0 = none at risk, n = at risk, null = this MSM cannot
+answer; callers pass the PERFORMED pre-exaggeration MSM for ms cliffs);
+beatsUnverifiable refinement = scoped W4 item (third renderer replication —
+deliberately stopped); EngineInvariantError/canonicalMpm/PerformanceNotFound
+wording = §4 lines. CORPUS BLIND SPOT journaled: every fixture has MSM ppq ==
+performance ppq == 720, so ppq-conversion bugs are invisible — w3 caught its
+own inverted ratio only by adding a differing-ppq case; W5 audit must check
+ppq-sensitivity coverage. PRE-EXISTING renderer property (report to user, not
+ours): tempo_dynamics_spans.mpm renders a non-monotone ms map under ANY tempo
+change (its beatLength-less <tempo> is skipped) — reproduced with the engine
+uninvolved.
+
+## 2026-08-10 W3 — verification adjudication (fix wave dispatched)
+
+Both lenses PASS-WITH-FIXES. MUST-FIX: (1) canonicalMpm rebuilt through
+parseRoot (typed ParseError; failure-surface tests; restores parse.ts's
+"every construction goes through here"); (2) R5 render-level pin de-vacuized
+on the v3 tick-frame fixtures; (3) R5a's two unpinned conjuncts get the
+blanked-attribute skeleton assertion + full JSDoc statement; (4) A14 extended:
+EVERY dimension gets a direction test at the strongest deterministically
+observable level (rendered where deterministic, else written-attribute
+direction), the suite documenting which level each uses. All MINORs fixed:
+null==undefined uniformity (`== null`, RULE N5 idiom); EngineInvariantError
+docstring/option-domain coherence (no unexplained constants — either a CITED
+validated floor for minRubatoWindow or a docstring that names the option);
+@throws enumeration completed; all_maps anti-vacuity rationale corrected;
+both R5-boundary dimensions pinned in the controls; it.each row order.
+DESIGN nit deferred to the W4 batch: §4 names SelectionNotFoundError, which
+is W4's spotlight class — to be marked pending until W4 lands it.
+
+## 2026-08-10 W3 — fix wave complete; W3 committed
+
+All MUST-FIX + MINORs done (+25 tests, 3839 green), negative controls run per
+MAJOR (canonicalMpm through parseRoot restores the single-choke-point
+invariant; R5 pins de-vacuized via read-time grafts — fixtures on disk
+untouched per charter; R5a skeleton sweep; A14 all 15 dimensions with a
+table-completeness guard, 12 rendered / 3 written). Ratified w3's 5b call:
+docstring reworded, domain untouched (certified options.ts + the adjudicated
+REACHABLE note win). W5 audit scope gains: 4 of 15 A14 metric validations
+rest on program-authored documents (corpus blind spots per §7.7) — state what
+that does and does not establish. DEFERRED with rationale (conductor):
+beatsUnverifiable refinement (the third renderer replication) — the
+three-state nulls already tell callers the truth; cost/benefit journals out.

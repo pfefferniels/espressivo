@@ -35,6 +35,7 @@ import {
   ParseError,
   PerformanceNotFoundError,
 } from './errors.js';
+import { parseOrThrow, requireXmlText, type DocumentKind } from './parse.js';
 import type {
   ControlChangePoint,
   ControlChangeStream,
@@ -56,8 +57,6 @@ export { VERSION } from '../version.js';
 // Input parsing. Everything below this line is module-private.
 // ---------------------------------------------------------------------------
 
-type DocumentKind = 'MEI' | 'MSM' | 'MPM';
-
 /**
  * Parse-and-check, shared by the three entry types. A document that did not parse is
  * indistinguishable from an empty one at the class API (`XmlBase` swallows the
@@ -71,32 +70,6 @@ function checkParsed(doc: XmlBase, kind: DocumentKind, rootName: string): void {
     throw new ParseError(
       `${kind}: expected a <${rootName}> root element, found <${root === null ? 'nothing' : root.getLocalName()}>`,
     );
-}
-
-function requireXmlText(kind: DocumentKind, text: XmlText): void {
-  // The `typeof` guard is for untyped callers: a plain-JS `null` would otherwise fail with a
-  // `TypeError` from inside the parser instead of this module's own error type.
-  if (typeof text !== 'string' || text.trim() === '')
-    throw new ParseError(`${kind}: expected XML text, got nothing`);
-}
-
-/**
- * The XML layer is lenient in two different ways at two different depths, and only one of
- * them is visible as an empty document: `XmlBase` catches the XOM layer's own
- * `ParsingException` and leaves `data` null, but a fatal parser error escapes as
- * **`@xmldom/xmldom`'s `ParseError`** — a foreign class that happens to share its name with
- * this module's, so a consumer catching `ParseError` by identity would miss it entirely.
- * Every construction of a document therefore goes through here.
- */
-function parseOrThrow<T>(kind: DocumentKind, parse: () => T): T {
-  try {
-    return parse();
-  } catch (cause) {
-    throw new ParseError(
-      `${kind}: ${cause instanceof Error ? cause.message : String(cause)}`.replace(/\s+/g, ' '),
-      { cause },
-    );
-  }
 }
 
 function parseMei(mei: XmlText): Mei {

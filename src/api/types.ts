@@ -20,6 +20,35 @@
  * converters, a branded input would force every caller to write `0.05 as Normalized`.
  */
 import type { Midi7Bit, Milliseconds, Ticks } from '../units.js';
+import type { CenterOverrides, ExaggerationScope, VelocityRange } from '../expression/options.js';
+import type { ExaggerationFactors } from '../expression/registry.js';
+import type { ExaggerationReport } from '../expression/report.js';
+
+/**
+ * The expression engine's vocabulary, re-exported unchanged (RULE F1).
+ *
+ * These are re-exports rather than mirrors because they are already exactly what this module
+ * requires of a facade type — plain interfaces over `string | number | boolean | null`,
+ * arrays and object literals, with every absence spelled `null` — and a parallel declaration
+ * would be a second copy to keep in step with `src/expression/report.ts` for no gain. The one
+ * type that is *not* re-exported is the interior's own `ExaggerateOptions`: the facade's
+ * (below) carries `factors` and `msm`, which DESIGN.md §4 puts in the option bag and the
+ * engine takes separately or not at all.
+ */
+export type { ExaggerationFactors, ExpressionDimension } from '../expression/registry.js';
+export type { CenterOverrides, ExaggerationScope, VelocityRange } from '../expression/options.js';
+export type {
+  DimensionReport,
+  ExaggerationReport,
+  MsmDependentEstimates,
+  PerformanceBounds,
+  PerformanceReport,
+  ReportNote,
+  ReportNoteKind,
+  SiteState,
+  VelocityCoefficients,
+} from '../expression/report.js';
+export type { SiteRef } from '../expression/siteRef.js';
 
 /**
  * MEI/MSM/MPM XML source text.
@@ -128,6 +157,65 @@ export interface PerformOptions {
 export interface MidiOptions {
   /** Synthesise a program change per part from its name. Default true. */
   readonly generateProgramChanges?: boolean;
+}
+
+/** DESIGN.md §4's option bag for {@link module:api/expression.exaggerateMpm}. */
+export interface ExaggerateOptions {
+  /**
+   * How far to exaggerate each dimension. A missing key is 1 is identity (R3), so `{}` is the
+   * no-op and `EXPRESSION_DIMENSIONS` is the complete list of keys this accepts — an unknown
+   * one is an {@link InvalidOptionError} rather than a silent identity, because the silent
+   * version is undetectable to a caller who misspelled a key while sampling.
+   */
+  readonly factors: ExaggerationFactors;
+  /**
+   * Which performance to transform. Name or 0-based index; **omitted means all of them**.
+   *
+   * This is the one place the expression facade diverges from {@link PerformOptions}, and the
+   * divergence is the difference between the two operations (A11): `performMsm` renders, and
+   * a render needs one performance, so it defaults to index 0. This one edits a document, and
+   * editing one performance while silently leaving its siblings behind produces a document
+   * that means something different from either input.
+   */
+  readonly performance?: string | number;
+  /**
+   * Where the neutral point of the level dimensions lives (§1.3). Default `'global'`.
+   *
+   * `global` exaggerates `tempo` and `dynamics` levels around a performance-wide center, so a
+   * piecewise-constant map grows section contrast; `gesture` scales each transition pair
+   * around its own geometric mean and leaves constants and def values untouched.
+   */
+  readonly scope?: ExaggerationScope;
+  /**
+   * Override the computed center of a level dimension. `tempo` is in quarter-note bpm, the
+   * space the transform works in.
+   *
+   * Passing back the center a previous run reported is what makes composition exact under
+   * clamping: with the center fixed, `exaggerate(s₁) ∘ exaggerate(s₂) = exaggerate(s₁·s₂)`
+   * again (§1.1's P2).
+   */
+  readonly center?: CenterOverrides;
+  /** R6(a)'s musical bound on dynamics *level* attributes. Default `{min: 1, max: 127}`. */
+  readonly velocityRange?: VelocityRange;
+  /** A6's IEEE saturation guard on the rubato window, in (0,1). Default `1e-6`. */
+  readonly minRubatoWindow?: number;
+  /**
+   * A score, read **only** to fill in the report's `estimates` (A10's carve-out to R1).
+   *
+   * It never reaches the transform: the interior's option object is built field by field
+   * below this one, so there is no path by which an MSM could influence a written byte. Its
+   * fields stay `null` when this is omitted, and stay `null` per field where the MSM does not
+   * determine the answer — the millisecond cliffs need a note's *rendered* length, which only
+   * an MSM that has already been performed carries.
+   */
+  readonly msm?: XmlText;
+}
+
+/** DESIGN.md §4. The transformed document, and what happened to it. */
+export interface ExaggerationResult {
+  readonly mpm: XmlText;
+  /** R4's contract: `report.totalWrites === 0` means this sample is a no-op. */
+  readonly report: ExaggerationReport;
 }
 
 export interface PerformedNote {

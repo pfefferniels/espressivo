@@ -34,7 +34,33 @@ export class PerformanceNotFoundError extends MeicoError {}
 
 /**
  * An option value is outside its domain: `ppq <= 0`, a non-finite `seed`, a
- * `movementSampleMaxStep` that is not positive, or a `PerformOptions` field passed where
- * nothing is performed.
+ * `movementSampleMaxStep` that is not positive, an unknown exaggeration dimension, an
+ * exaggeration factor outside its dimension's admissible domain, or a `PerformOptions` field
+ * passed where nothing is performed.
  */
 export class InvalidOptionError extends MeicoError {}
+
+/**
+ * The expression engine broke one of its own invariants — a guard that should have held did
+ * not, so the run was abandoned rather than allowed to write a document nobody intends.
+ *
+ * It is a distinct type because it says something different from every other error here:
+ * neither "your document is malformed" nor "your option is out of domain", but "an internal
+ * guarantee failed". **No document can provoke it**, at any factor. Exactly one input can, and
+ * naming it is the honest form of this contract:
+ *
+ * - **`ExaggerateOptions.minRubatoWindow` below about 2⁻⁵³.** DESIGN.md A6's guard clamps the
+ *   rubato joint trim to `1 − minRubatoWindow`, then asserts the resulting window is still
+ *   ordered (`lateStart < earlyEnd`) before writing it. Below the double epsilon,
+ *   `1 − minRubatoWindow` rounds to exactly 1, the clamp stops clamping, and a saturating trim
+ *   collapses the window onto a point. The option's own documentation (`options.ts`) states
+ *   the range this falls out of — the default `1e-6` is chosen "far above the ~2⁻⁵³ at which
+ *   the split's own rounding would decide the answer" — but its *validated* domain is the
+ *   whole of (0,1), so such a value is accepted and then cannot be honoured.
+ *
+ * At the documented default, and anywhere inside the guard's working range, no combination of
+ * document and factors reaches this class. Interior failures throw a plain `Error` by design —
+ * `src/expression/**` has no typed-error vocabulary of its own, because the hierarchy lives
+ * here — and this is where they become catchable.
+ */
+export class EngineInvariantError extends MeicoError {}
