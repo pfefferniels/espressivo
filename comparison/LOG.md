@@ -2140,3 +2140,43 @@ AD-43.3 survey-code's stand-down is FINAL and enforced: no further
 commits or pushes under any circumstances; anything in flight is
 abandoned; w3-dims owns all of cut 3/4 territory. Not censure —
 sequencing: two writers on one territory is the failure mode.
+
+## 2026-08-10 — AD-44: ornamentation audit rulings [BINDING]
+
+w3-dims's 404fd57 audit: AD-43.1 independently confirmed; AD-43.2(ii)
+answered by measurement (absence reproduced exactly by a neutral
+parameterization for BOTH sub-elements ⇒ deviation-from-neutral, ⊥ only
+for @time.unit domain mismatch); six new defects (transition.to defaults
+to transition.from — the writer's common encoding; the v2/v3 spread split
+with three sub-defects incl. unit-suffix v3 detection and parseFloat
+dropping "%"; @repetitions/@noteid as v3 GATES where presence of a no-op
+value changes the performance; missing finite guards; poolSize unused;
+scope-dependent unresolvable-<style> disposition — hazard instance #5:
+"failed lookup assigns over the carried value, but only when the local
+header exists"). All measured through performMsm. Rulings:
+
+AD-44.1 STACKED GRADIENTS COMPOSE per anchor: renderer-verified addition
+(setOrnamentDynamicsAtt adds; summed endpoints = summed ramp over a
+shared pool). The per-anchor composed gradient is the compared object —
+AD-37.4's articulation treatment, extended.
+AD-44.2 STACKED SPREADS stay INDIVIDUAL aligner events: no composite
+exists in the renderer's own vocabulary (two spreads of different
+intensity do not sum to a spread). Obligation: MEASURE stacked spreads
+through the pipeline once and document the finding; stacking detected ⇒
+report note; the residual encoding sensitivity (one spread vs two halves)
+is a DOCUMENTED limitation with the measurement attached, not a silent
+one.
+AD-44.3 FRAME PRICING per AD-40.2, as proposed: the compared object is
+the RESOLVED PERFORMED frame — a v3-shaped frame on a v2-shaped ornament
+performs no spread and compares as no spread; §5.6's three-unit-case
+paragraph is RESCOPED to v3-shaped ornaments (where % resolves against
+the principal's duration, MSM-dependent per R7) and gains the renderer's
+actual v3-detection rule (frame.offset OR unit suffix on either frame
+attribute). This is a §5.6-vs-renderer disagreement resolved for the
+renderer — divergence #5 by the campaign's count, correctly not coded
+around.
+AD-44.4 AD-40.3 implemented in its L=1-airtight form (id-list pool ≤ L;
+for L=1 transition.from is never performed under either reading).
+AD-44.5 The two-commit plan is RATIFIED as proposed, incl. the honest
+attribution of the adopted draft's sound parts (structure, aligner reuse,
+@scale resolution). Cut 4 after.
