@@ -1845,3 +1845,23 @@ inputs alone; bit-exact symmetry remains a property of the caller's cost, which 
 where it belongs.
 
 Gate: `npm run verify` green before committing; eslint and prettier clean. 20 new tests.
+
+## 2026-08-10 — AD-38: cut-2 ratifications (aligner defaults, JND identifiers) [BINDING]
+
+69cd5b5/23a4b41/bb57982 accepted. Ratifications:
+AD-38.1 DEFAULT_LAMBDA_DATE = 16 per quarter [convention], calibrated so a
+displacement of one rubato JND (1/16 quarter) costs one JND — coupled to an
+existing constant, not fitted to a corpus; λ_date stays a caller parameter
+with only the default in the module.
+AD-38.2 VELOCITY_JND rename ratified (one velocity JND, three consumer
+dimensions); 'hz' unit added; ARTICULATION_DURATION_JND_NEPERS = ln(1.10)
+[convention] ratified WITH its argument — Friberg & Sundberg's 2.5% is an
+IOI threshold against a tracked beat and does not transfer to single-note
+sounding length; borrowing it would overstate duration salience 3x.
+AD-38.3 Aligner sub-cases ratified as pinned: duplicated id ⇒ first
+claimant on each side; crossing pin set ⇒ WHOLESALE fallback to the
+unpinned optimum + pinsHonoured: false (partial honouring would be
+subset-order-dependent; silent resolution would be a decision in the
+dark). The objective-not-alignment test discipline (brute-force
+enumeration vs DP optimum) is noted as the correct way to test an argmin.
+Remaining in cut 2: composed effective modifiers + articulation pricing.
