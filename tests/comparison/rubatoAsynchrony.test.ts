@@ -17,7 +17,7 @@ import {
   readRubatoSegments,
   type RubatoCurve,
 } from '../../src/comparison/rubatoCurve.js';
-import { rubatoDistance } from '../../src/comparison/rubatoDistance.js';
+import { rubatoCriticalPointTicks, rubatoDistance } from '../../src/comparison/rubatoDistance.js';
 import {
   neutralAsynchronyCurve,
   offsetAt,
@@ -192,6 +192,75 @@ describe('rubato: skipped instructions and the frame cap', () => {
 
   it('is 0 everywhere for an absent map (R6)', () => {
     expect(displacementTicksAt(neutralRubatoCurve(), 500)).toBe(0);
+  });
+});
+
+describe('rubato: the structural u* split (rule 2c) — RG-2', () => {
+  /**
+   * Tested at the FUNCTION level, deliberately. AD-34.1 emits the structural split AND the
+   * K=16 mesh together, and RG-3 measured those two as identical over 3906 pairs (0 wrong,
+   * worst 2.718e-4) — so no distance-level assertion can distinguish "rule 2c is present"
+   * from "rule 2c was deleted". RG-2 asked for a regression test the refinement made
+   * impossible to write that way; the device therefore gets pinned directly, which is the
+   * same move the K=4 evidence made when the constant became correct.
+   */
+  const segment = (
+    intensity: number,
+    lateStart: number,
+    earlyEnd: number,
+    startTicks = 0,
+    frameLengthTicks = 720,
+  ) => ({
+    startTicks,
+    endTicks: startTicks + 4 * frameLengthTicks,
+    frameLengthTicks,
+    intensity,
+    lateStart,
+    earlyEnd,
+    loop: true,
+    neutral: false,
+  });
+
+  it('returns the closed-form u* for a frame-aligned pair', () => {
+    // u* = (q*beta / (p*alpha))^(1/(p-q)) with alpha = ee_A - ls_A, beta = ee_B - ls_B,
+    // scaled by L on both sides so the factor cancels.
+    const a = segment(0.6, 0.1, 0.5);
+    const b = segment(2.5, 0.15, 0.85);
+    const [t] = rubatoCriticalPointTicks(a, b, 0, 720);
+    expect(t).toBeDefined();
+    const alpha = 720 * (0.5 - 0.1);
+    const beta = 720 * (0.85 - 0.15);
+    const expected = 720 * Math.pow((2.5 * beta) / (0.6 * alpha), 1 / (0.6 - 2.5));
+    expect(t).toBeCloseTo(expected, 9);
+  });
+
+  it('is canonically ordered: swapping the sides gives the same point, bit for bit', () => {
+    const a = segment(0.6, 0.1, 0.5);
+    const b = segment(2.5, 0.15, 0.85);
+    const forward = rubatoCriticalPointTicks(a, b, 0, 720);
+    const reverse = rubatoCriticalPointTicks(b, a, 0, 720);
+    expect(forward).toHaveLength(1);
+    expect(Object.is(forward[0], reverse[0])).toBe(true);
+  });
+
+  it('declines when the two frames differ in LENGTH — no shared coordinate', () => {
+    const a = segment(0.6, 0.1, 0.5, 0, 720);
+    const b = segment(2.5, 0.15, 0.85, 0, 480);
+    expect(rubatoCriticalPointTicks(a, b, 0, 480)).toHaveLength(0);
+  });
+
+  it('declines when the frames differ in PHASE, even at equal length', () => {
+    // Equal frameLength alone does not give a shared x: two frames of the same length
+    // starting at different dates have no common u.
+    const a = segment(0.6, 0.1, 0.5, 0, 720);
+    const b = segment(2.5, 0.15, 0.85, 360, 720);
+    expect(rubatoCriticalPointTicks(a, b, 360, 720)).toHaveLength(0);
+  });
+
+  it('declines on a neutral side, which has no warp to be stationary about', () => {
+    const a = { ...segment(1, 0, 1), neutral: true };
+    const b = segment(2.5, 0.15, 0.85);
+    expect(rubatoCriticalPointTicks(a, b, 0, 720)).toHaveLength(0);
   });
 });
 

@@ -639,10 +639,19 @@ protraction 0.9` — control points in range, `x(t)` monotone — the difference
    > `u* = (q·β / (p·α))^{1/(p−q)}` via `powerCriticalPoint`, arguments canonically
    > ordered per AD-33.2. Where the two frames differ in length or phase there is no
    > shared coordinate, and the fallback is fixed `K = 16` subdivision.
-   > **Fixed subdivision alone is not adequate here** — it leaves 226 pairs wrong at
-   > `K = 16` and 62 at `K = 32`, against 10 for the structural split — which is why
-   > rubato gets rule 2c rather than rule 2b's device. Residual after both repairs:
-   > 10 of 3906 pairs wrong by >0.1 %, worst 1.68·10⁻³ relative.
+   > **BOTH split sets are emitted, not one or the other** (AD-34.1). The original
+   > preference — structural first, subdivision only as a fallback — was measured with
+   > the closed sign probe still in place, and re-measuring after AD-33.3a inverted it:
+   > `u*` alone leaves 4 of 3906 pairs wrong by >0.1 % (worst 1.400·10⁻³) where
+   > `K = 16` alone leaves **0** (worst 2.718·10⁻⁴). Both worst cases are
+   > `intensity = 0.25`, whose `x^0.25` has an infinite slope at `x = 0` — a boundary
+   > layer a two-panel structural split leaves inside one GL-10 panel and a
+   > sixteen-panel mesh confines. That is the tempo graded mesh's own phenomenon
+   > surfacing in a dimension nobody had looked for it in. Emitting `[…u*, …K=16]`
+   > together keeps rule 2c's structural claim and measures as the best of the three.
+   > **Residual: zero pairs wrong by >0.1 %** — 0 of 3906 at worst 2.718·10⁻⁴ on the
+   > verifier's grid, 0 of 3080 at worst 4.688·10⁻⁴ on the implementer's, both with the
+   > same `intensity = 0.25` worst case.
 3. _The defined dynamics/pedal curve is the ideal cubic Bézier._ `tForDate`
    (`bezier.ts:57-78`) stops at a **1-tick tolerance in the date domain**, so
    `date ↦ volume` is a staircase with thousands of treads across a long cell and

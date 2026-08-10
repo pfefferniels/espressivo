@@ -107,8 +107,9 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   {
     name: 'power-vs-power',
     hazard:
-      'two tempo transitions over one span with different exponents — the ONLY member that ' +
-      'reaches criticalPointTicks, the path CAPITAL-3 broke',
+      'two tempo transitions over one span — one of the TWO transition members, which is ' +
+      'what makes criticalPointTicks reachable: the path fires only when BOTH sides are ' +
+      'transitions, so this member and power-vs-power-2 are load-bearing as a PAIR (RG-4)',
     mpm: document(
       '<tempoMap><tempo date="0.0" bpm="40" beatLength="0.25" transition.to="90" meanTempoAt="0.9"/>' +
         '<tempo date="2880.0" bpm="90" beatLength="0.25"/></tempoMap>' +

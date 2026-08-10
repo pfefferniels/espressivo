@@ -1402,3 +1402,41 @@ pedal, imprecision ×3 — renderer-truth per DESIGN §5.4-§5.6/§5.8/§5.9);
 then W3b aggregation/segments/closing table/facade; then W3c property
 completion + cross-module P-C5. MINOR-2 (−0) and MINOR-4 (malformed-value
 table) are W3b scope as previously assigned.
+
+## 2026-08-10 — W2 RG closing commit: RG-1..RG-4 + AD-34.1 [survey-code]
+
+RG-1. rubatoCurve is the fourth reader and now calls assertSpanEndRule too, so
+MINOR-3's property holds for all four rather than three.
+
+AD-34.1 / RG-3. Rule 2c now emits BOTH split sets, [...u*, ...K=16], rather than
+preferring one. RG-3's re-measurement is decisive: the original ordering was
+derived from a table taken with the CLOSED sign probe still in place, and once
+AD-33.3a landed the ordering inverted — u* alone leaves 4 of 3906 wrong by >0.1%
+(worst 1.400e-3) where K=16 alone leaves 0 (worst 2.718e-4). Both worst cases are
+intensity = 0.25, whose x^0.25 has an infinite slope at x=0: a boundary layer a
+two-panel structural split leaves inside one GL-10 panel and a sixteen-panel mesh
+confines. That is the tempo graded mesh's own phenomenon arriving in a dimension
+nobody had looked for it in.
+Re-measured on my grid after the change: 0 of 3080 wrong by >0.1%, worst
+4.688e-4, worst case intensity=0.25 — same conclusion and same diagnosis as the
+verifier's 0/3906 at 2.718e-4. DESIGN §5.0 rule 2c's residual sentence now reads
+zero, with both grids quoted.
+
+RG-2, with one deviation reported rather than worked around. RG-2 asked for a
+regression test that fails if the structural split is deleted. AD-34.1 makes that
+impossible AT THE DISTANCE LEVEL: emitting both sets means u* changes no reported
+number, which is precisely RG-3's finding. So the device is pinned DIRECTLY —
+rubatoCriticalPointTicks is exported and tested for its closed-form value, its
+bit-exact canonical ordering under swapping, and its three declines (differing
+frame LENGTH, differing PHASE, neutral side). Same move as the K=4 evidence when
+the constant became correct: when a property stops being observable at one layer,
+the evidence goes down a layer rather than away.
+
+RG-4. adversarialFamily.ts's seventh-member hazard string no longer claims to be
+"the ONLY member that reaches criticalPointTicks" — the eighth member exists
+precisely because that is false, and it now says the two are load-bearing as a
+PAIR.
+
+Gate: `npm run verify` green before committing, 4331 passed + 1 skipped (was
+4326). eslint and prettier clean.
+

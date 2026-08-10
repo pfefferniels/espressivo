@@ -43,10 +43,11 @@
  */
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
-import { RUBATO_STYLE } from '../mpm/names.js';
+import { RUBATO_MAP, RUBATO_STYLE } from '../mpm/names.js';
 import { readAttributeValue, readNumericAttributeValue } from '../expression/attributes.js';
 import { findStyleDef } from '../expression/styleScope.js';
 import type { MpmEnvironment } from '../expression/mpmTree.js';
+import { assertSpanEndRule } from './spanEnds.js';
 import type { OrderedMapView } from './document.js';
 
 /**
@@ -201,6 +202,8 @@ export function readRubatoSegments(
   environment: MpmEnvironment,
   globalEnvironment: MpmEnvironment,
 ): RubatoCurve {
+  assertSpanEndRule(RUBATO_MAP, 'same-local-name');
+
   if (view === null) return neutralRubatoCurve();
 
   const raws: { dateTicks: number; element: Element; styleName: string | null }[] = [];

@@ -22,13 +22,12 @@ import {
 import type { ComparisonWindow } from './window.js';
 
 /**
- * Fallback subdivision where the two sides' frames do not align — §5.0 rule 2c (AD-33.3b).
+ * Subdivision count for rubato cells — §5.0 rule 2c (AD-33.3b as refined by AD-34.1).
  *
- * 16, matching AD-31's Bézier constant. It is a fallback and not the primary device: measured
- * over 3906 legal frame-aligned rubato pairs, fixed subdivision ALONE leaves 226 pairs wrong
- * by >0.1 % even at K=16 (and 62 at K=32), where the structural split leaves 10. Rubato needs
- * the structural device; subdivision only covers the case where there is no shared frame to
- * be structural about.
+ * 16, matching AD-31's Bézier constant. It was specified as a *fallback* for cells whose
+ * frames do not align, on a table measured before the half-open probe existed; RG-3 re-measured
+ * with the probe in place and found the ordering inverted, so it is now emitted **alongside**
+ * the structural split rather than instead of it. See the call site for the numbers.
  */
 const RUBATO_FALLBACK_SUBDIVISIONS = 16;
 
@@ -45,7 +44,7 @@ const RUBATO_FALLBACK_SUBDIVISIONS = 16;
  * AD-33.2 gives: `Math.pow` is not reciprocal-symmetric, so document order would leak into
  * the reported bits and break R2.
  */
-function rubatoCriticalPointTicks(
+export function rubatoCriticalPointTicks(
   a: RubatoSegment,
   b: RubatoSegment,
   cellStart: number,
@@ -162,13 +161,21 @@ export function rubatoDistance(
     // §5.0 rule 2c: structural split for frame-aligned cells, fixed subdivision otherwise.
     const segmentA = rubatoSegmentAt(a, cellStart);
     const segmentB = rubatoSegmentAt(b, cellStart);
-    const splitPoints: number[] =
-      segmentA === null || segmentB === null
-        ? []
-        : [...rubatoCriticalPointTicks(segmentA, segmentB, cellStart, cellEnd)];
-    if (splitPoints.length === 0 && segmentA !== null && segmentB !== null)
+    // AD-34.1: emit BOTH sets, not one or the other. RG-3 measured the original preference
+    // ordering — structural first, subdivision only as a fallback — and found it INVERTED
+    // once AD-33.3a's half-open probe landed: u* alone left 4 of 3906 pairs wrong by >0.1 %
+    // (worst 1.400e-3) where K=16 alone left 0 (worst 2.718e-4). Both worst cases are
+    // `intensity = 0.25`, whose x^0.25 has an infinite slope at x = 0 — a boundary layer a
+    // two-panel structural split leaves inside one GL-10 panel and a sixteen-panel mesh
+    // confines. That is the tempo graded mesh's own phenomenon, surfacing in a dimension
+    // nobody had looked for it in. Emitting both keeps rule 2c's structural claim and takes
+    // the documented residual to zero: 0 of 3906, worst 2.718e-4.
+    const splitPoints: number[] = [];
+    if (segmentA !== null && segmentB !== null) {
+      splitPoints.push(...rubatoCriticalPointTicks(segmentA, segmentB, cellStart, cellEnd));
       for (let k = 1; k < RUBATO_FALLBACK_SUBDIVISIONS; ++k)
         splitPoints.push(cellStart + ((cellEnd - cellStart) * k) / RUBATO_FALLBACK_SUBDIVISIONS);
+    }
 
     const mass =
       integrateAbsolute(difference, cellStart, cellEnd, splitPoints) / ticksPerQuarter / jnd;
