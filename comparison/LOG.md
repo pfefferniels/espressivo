@@ -1440,3 +1440,31 @@ PAIR.
 Gate: `npm run verify` green before committing, 4331 passed + 1 skipped (was
 4326). eslint and prettier clean.
 
+
+## 2026-08-10 — AD-35: §5.8 trailing-movement rule is conditional [BINDING]
+
+survey-code's renderer-source-first reading (W3a cut 1) falsified §5.8's
+"the last movement contributes no span": renderMovementToMap's guard
+`movementIndex < size() - 1` counts EVERY dated entry, <style> included, so
+a TRAILING <style> resurrects the final <movement> with getEndDate =
+MAX_VALUE — a real performed transition across the entire remaining
+timeline (executed: 17 vs 34 position events; leading <style> changes
+nothing, confirming index arithmetic as the mechanism). Same hazard class
+as CAPITAL-1/AD-29: musical-object wording vs entry-index computation.
+
+Rulings, all three as proposed:
+AD-35.1 The pedal reader excludes the LAST ENTRY of the map, not the last
+<movement> — renderer-exact.
+AD-35.2 A resurrected span is a real performed transition, compared as
+one; the comparison window bounds it naturally (every integral runs over
+[start, end]).
+AD-35.3 §5.8's AD-25.9 contrast paragraph gains the THIRD state — span
+exists AND is unbounded — so the tempo/dynamics ("pinned at start") vs
+movement ("no span") dichotomy cannot be over-generalized. §5.8 amendments
+delegated to survey-code in the cut-1 commit under this ruling.
+AD-35.4 STANDING HAZARD CLASS named for the remaining cuts: every span,
+guard, and termination rule in §5.4-§5.6/§5.9 must be checked against
+"does the renderer count entries or musical objects here?" — imprecision
+(any-entry spans) and ornamentation are the likeliest recurrence sites.
+Accentuation confirmed clean against source (§5.4 matches, incl. tsDate
+anchoring and the segment-end asymmetry).
