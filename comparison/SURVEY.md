@@ -172,3 +172,53 @@ Slots to fill when the literature survey lands:
 - Validation practice: how the field would evaluate this metric (agreement
   with known schools/eras clustering, performer identity, etc.) — shapes the
   W5 evaluation-on-real-corpora section.
+
+---
+
+## §4 (filled 2026-08-10) Musicological synthesis — from survey-lit.md
+
+The full evidence base is comparison/survey-lit.md (2,600 lines, verified
+per its §0 standard) + survey-lit-welte.md. Adjudication AD-26 (LOG.md)
+disposes of its lessons; the load-bearing outcomes:
+
+1. **Novelty (A-Q11 CONFIRMED, G1):** no MPM–MPM distance, no MPM-based
+   analytical study, no musical analogue of SSIM for any performance
+   representation. The narrow claim stands: first exact, additively-
+   decomposable comparison of symbolic performance-directive encodings.
+   Caveat: 2025–26 ISMIR/TISMIR sweep incomplete (PianoBind, Pianist
+   Transformer unverified) — W5 re-sweeps before the README ships the claim.
+2. **The scientific argument (G2):** performer identity is carried most by
+   articulation and melody lead, then tempo, dynamics last (Stamatatos &
+   Widmer 2005 line of work) — the top two are precisely what audio-derived
+   tempo/loudness traditions cannot see and MPM carries losslessly.
+3. **Interpolation objection pre-answered (P1/G5):** Desain & Honing's
+   "never interpolate between events" targets measured event data; MPM
+   curves are parametric SPECIFICATIONS, continuous by definition — the
+   module compares shape functions, exactly the representation Todd/Repp/
+   Molina-Solana had to recover by fitting. Docs must state this.
+4. **Corpus calibration (L4/L10/L15/G8):** raw pairwise numbers are not
+   portable across pieces; the corpus product gains a noise-floor/percentile
+   context and an optional corpus-average pseudo-performance; deviation-
+   from-corpus-norm beats deviation-from-score for discrimination.
+5. **Units (L2/L3):** internal T stays natural-log (coherence with
+   exaggerateMpm is a design invariant); every reported log quantity is
+   unit-tagged ('nepers') with the ×1/ln 2 conversion documented
+   (partitura's log₂ convention); BPM = rate (positive = faster) pinned in
+   the type docs against the beat-period convention.
+6. **JND grounding (L5):** asynchrony 30 ms is [literature]-grade
+   (Vernon 1936 → Goebl 2001 tradition; 35 ms chord-clustering as the
+   operational "simultaneous"); the remaining defaults ship [convention]
+   per AD-24 with the survey's partial support cited in registry notes.
+7. **Roll scholarship alignment (L8/L9):** scale-invariant timing for
+   roll-derived documents + global tempo as its own reported channel —
+   exactly the invariance-mode + drift-channel design; validated.
+8. **New W4-scope products from the field's own questions:** the
+   Hudson-typology "earlier vs later rubato" report note (Goebl-Flossmann-
+   Widmer detector; highest-value Welte deliverable, G4); provenance trust
+   profiles as documented weight presets (roll-derived ⇒ dynamics
+   distrusted; TimeToAlign MatchClaim certainty as citable precedent, G7);
+   scape priority confirmed (L16, Sapp).
+9. **What the module must NOT claim to be:** a quality judge, a perceptual
+   similarity model, or a single number (Peter et al. 2023 DLfM shows MSE
+   comparison of performances is experimentally unreliable; the per-family
+   vector with consensus views is the defensible shape — L11/L12).

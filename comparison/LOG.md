@@ -520,3 +520,35 @@ AD-25.9 (flag 9): both rules stand as ruled; DESIGN gains one sentence at
 the movement section noting the trailing-instruction asymmetry (tempo/
 dynamics constant vs movement no-span) is the RENDERER's own asymmetry,
 with both code citations, so no future editor "fixes" it.
+
+## 2026-08-10 — W0 closed: survey-lit delivered; lit adjudication AD-26 [BINDING]
+
+survey-lit.md landed (2,600 lines, verified-per-item standard, honest §7
+unverified list; the resumed agent triaged exactly as instructed). SURVEY.md
+§4 filled. Rulings on its lessons:
+
+AD-26.1 Units: internal T stays NATURAL LOG (coherence with expression
+transforms is a design invariant; JND normalization makes distances
+base-free). Every reported log quantity carries an explicit unit tag
+('nepers'); docs give the log₂ conversion and pin BPM-as-rate direction
+(L2/L3).
+AD-26.2 JND registry tags: asynchrony 30 ms [literature]; all other
+defaults [convention] with survey-lit's partial support cited in row notes.
+[PENDING-LIT] markers in DESIGN close accordingly.
+AD-26.3 §8 corpus enrichments: optional corpus-average pseudo-performance
+item (L15); per-piece percentile/noise-floor context on pair distances in
+corpus reports (L10); both opt-in, plain data.
+AD-26.4 Docs obligations added to W4: the P1 interpolation answer (curves
+are specifications, not interpolated measurements — G5's argument); the G2
+framing paragraph; the Hudson earlier-vs-later-rubato recipe (G4, W4
+cookbook; a derived report note if cheap); provenance trust profiles as
+documented weight presets citing TimeToAlign MatchClaim certainty (G7).
+AD-26.5 README novelty claim: the narrow claim as A-Q11 phrased it,
+citing G1; W5 MUST re-sweep 2025–26 (PianoBind, arXiv:2512.02652) before
+shipping it.
+AD-26.6 Non-goals paragraph gains the survey's three prohibitions (quality
+judge, perceptual model, single number — with the Peter et al. 2023 and
+Liebman et al. 2012 citations).
+
+W0 is now fully closed (tasks #1, #4). W2 in flight (w2a registry/config,
+survey-code document layer).
