@@ -2019,3 +2019,34 @@ LOG-first, renderer-source-first with stop-and-report, AD-35.4 hazard
 check, AD-40.2 performed-effect principle, negative controls +
 differential tests, capped density for ⊥-capable dimensions (AD-36.2),
 green/gated/pushed serial cadence.
+
+## 2026-08-10 — AD-42: handoff state correction; draft adoption; unmatched-ornament pricing [BINDING]
+
+w3-dims found two untracked post-handoff drafts (ornamentAtoms.ts,
+ornamentationDistance.ts, mtimes 2 min after the AD-41 commit) — AD-41.2's
+"tree clean" was true at commit time and stale two minutes later; the
+predecessor wrote briefly past its own handoff. Corrections and rulings:
+
+AD-42.1 survey-code is STOOD DOWN explicitly (no further writes under
+src/comparison/**); w3-dims OWNS both draft files as of this ruling.
+AD-42.2 Adoption-as-unverified-input RATIFIED: audit every claim against
+the renderer, keep what survives, rewrite what does not, attribute the
+draft in the LOG entry. Zero tests + the four-of-four divergence record
+make any other treatment indefensible.
+AD-42.3 UNMATCHED-ORNAMENT PRICING RULED (the draft's flat ⊥ is wrong on
+both design and metric grounds): an absent ornament has a GENUINE NEUTRAL
+— no ornament performs nothing — so unmatched events price at
+deviation-from-neutral PER ROW in the row's own space (|T(x)|/jnd;
+gradient's performed pair vs (0,0); frame vs no-frame), which is both
+§5.6's original text and the construction under which the alignment is a
+metric (gap(a) ≤ sub(a,b) + gap(b) is the T-space triangle inequality
+anchored at neutral). ⊥ stays reserved for AD-2's narrow incomparable
+list; a missing <temporalSpread> is neutral, not incomparable. Content-
+dependent drop costs restore what the flat constant destroyed: the
+alignment's sensitivity to what the dropped ornament actually performs.
+AD-42.4 NaN GUARD NOW, not W3b: every numeric read in the ornament path
+takes a finite-guard; unusable values go the skip-and-report route (the
+expression gate's philosophy). MINOR-4's full malformed-value TABLE stays
+W3b scope; NaN reaching localDistance is not a table question.
+AD-42.5 @note.order and @repetitions land per AD-41.1 as already ruled;
+the draft's finding-channel-only treatment of note.order is superseded.
