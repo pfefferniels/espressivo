@@ -45,6 +45,7 @@ const COVERED_DIMENSIONS: readonly ComparisonDimension[] = [
   'rubato',
   'dynamics',
   'accentuation',
+  'articulation',
   'asynchrony',
   'pedal',
 ];
@@ -57,7 +58,6 @@ const COVERED_DIMENSIONS: readonly ComparisonDimension[] = [
  * removed `accentuation` and `pedal` from it, which is what the gate is for.
  */
 const UNCOVERED_DIMENSIONS: readonly ComparisonDimension[] = [
-  'articulation',
   'ornamentation',
   'imprecisionTiming',
   'imprecisionDynamics',
@@ -231,7 +231,15 @@ describe('the columns §4 adds to the expression shape', () => {
 
   it('marks exactly the tick-valued row ppqSensitive (§5.0)', () => {
     const sensitive = COMPARISON_REGISTRY_ROWS.filter((row) => row.ppqSensitive).map((r) => r.key);
-    expect(sensitive).toEqual(['rubato/rubato@frameLength']);
+    // Every row whose value is a TICK count, and no other. §5.5's four are the articulation
+    // levers written in ticks at the performance ppq; its millisecond siblings are not, which
+    // is the distinction the column exists to keep.
+    expect(sensitive).toEqual([
+      'rubato/rubato@frameLength',
+      'articulation/articulation@absoluteDurationChange',
+      'articulation/articulation@absoluteDelay',
+      'articulation/articulation@absoluteDuration',
+    ]);
     // `*Ms` and whole-note fractions never rescale — beatLength is the one a reader expects
     // to, and §5.0 says it does not.
     expect(rowFor('tempo/tempo@beatLength').ppqSensitive).toBe(false);
@@ -248,6 +256,9 @@ describe('the columns §4 adds to the expression shape', () => {
     // is a different mechanism with a different outcome and reaches all four pedal rows.
     const conditional = COMPARISON_REGISTRY_ROWS.filter((row) => row.liveness !== 'always');
     expect(conditional.map((row) => row.key).sort()).toEqual([
+      'articulation/articulation@absoluteDuration',
+      'articulation/articulation@absoluteDurationChange',
+      'articulation/articulation@relativeDuration',
       'dynamics/dynamics@curvature',
       'dynamics/dynamics@protraction',
       'dynamics/dynamics@subNoteDynamics',
@@ -318,6 +329,18 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     'accentuation/accentuation@value': [-20, 0, 20],
     'accentuation/accentuation@transition.from': [-10, 0, 10],
     'accentuation/accentuation@transition.to': [-10, 0, 10],
+    'articulation/articulation@relativeDuration': [1e-6, 0.5, 1, 1.2],
+    'articulation/articulation@relativeVelocity': [1e-6, 0.75, 1, 2],
+    'articulation/articulation@absoluteDurationChange': [-720, 0, 10, 720],
+    'articulation/articulation@absoluteDurationChangeMs': [-400, 0, 40],
+    'articulation/articulation@absoluteDelay': [-360, 0, 30],
+    'articulation/articulation@absoluteDelayMs': [-25, 0, 25],
+    'articulation/articulation@absoluteVelocityChange': [-40, 0, 20.5],
+    'articulation/articulation@absoluteDuration': [0, 600, 1440],
+    'articulation/articulation@absoluteDurationMs': [0, 160],
+    'articulation/articulation@absoluteVelocity': [0, 88.5, 127],
+    'articulation/articulation@detuneCents': [-50, 0, 14],
+    'articulation/articulation@detuneHz': [-3.5, 0, 3.5],
     'asynchrony/asynchrony@milliseconds.offset': [-1e6, -30, 0, 30, 1e6],
     // 0.0 and 1.0 are the canonical authored pedal positions, which is why §5.8 refuses a logit.
     'pedal/movement@position': [0, 0.4, 1],
@@ -355,6 +378,20 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     'accentuation/accentuation@value': [NaN, Infinity],
     'accentuation/accentuation@transition.from': [NaN, -Infinity],
     'accentuation/accentuation@transition.to': [NaN, Infinity],
+    // A relative factor is a RATIO: 0 and below leave the logarithm's domain, and a
+    // relativeVelocity of 0 is a silenced note rather than a neutral one.
+    'articulation/articulation@relativeDuration': [0, -0.5, NaN, Infinity],
+    'articulation/articulation@relativeVelocity': [0, -1, NaN, Infinity],
+    'articulation/articulation@absoluteDurationChange': [NaN, Infinity, -Infinity],
+    'articulation/articulation@absoluteDurationChangeMs': [NaN, Infinity],
+    'articulation/articulation@absoluteDelay': [NaN, -Infinity],
+    'articulation/articulation@absoluteDelayMs': [NaN, Infinity],
+    'articulation/articulation@absoluteVelocityChange': [NaN, Infinity],
+    'articulation/articulation@absoluteDuration': [NaN, Infinity],
+    'articulation/articulation@absoluteDurationMs': [NaN, -Infinity],
+    'articulation/articulation@absoluteVelocity': [NaN, Infinity],
+    'articulation/articulation@detuneCents': [NaN, Infinity],
+    'articulation/articulation@detuneHz': [NaN, -Infinity],
     'asynchrony/asynchrony@milliseconds.offset': [NaN, Infinity, -Infinity],
     // Outside [0,1] the MIDI export clamps, so the RESOLVED value never leaves the domain;
     // these are the unresolvable ones, and NaN is the one the clamp cannot repair.
@@ -554,6 +591,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
         'dynamics',
         'dynamicsShape',
         'accentuation',
+        'articulation',
         'asynchrony',
         'pedalShape',
       ]),

@@ -25,6 +25,8 @@
  * them explicitly so each cut shrinks that list rather than discovering it.
  */
 import {
+  ARTICULATION_MAP,
+  ARTICULATION_STYLE,
   ASYNCHRONY_MAP,
   DYNAMICS_MAP,
   DYNAMICS_STYLE,
@@ -110,7 +112,15 @@ export const EXPRESSION_DIMENSION_CORRESPONDENCE: Readonly<
  * attribute's own.
  */
 export type ComparisonUnit =
-  'nepers' | 'quarters' | 'ms' | 'velocity' | 'cents' | 'ratio' | 'percent' | 'dimensionless';
+  | 'nepers'
+  | 'quarters'
+  | 'ms'
+  | 'velocity'
+  | 'cents'
+  | 'hz'
+  | 'ratio'
+  | 'percent'
+  | 'dimensionless';
 
 /**
  * How the row participates in the comparison (§4).
@@ -295,12 +305,14 @@ export const RUBATO_DISPLACEMENT_JND_QUARTERS = 1 / 16;
 export const UNNORMALIZED_JND = 1;
 
 /**
- * Metrical accentuation, in MIDI velocity units: **3** [convention] — §7.1's `velocity` row.
+ * MIDI velocity: **3** units [convention] — §7.1's `velocity` row, and there is only one.
  *
- * The compared object is the per-beat velocity contribution `scale · getAccentuationAt(beat)`
- * (§5.4), which the renderer adds straight onto a note's velocity, so this dimension is the one
- * whose curve is already in the unit its JND is stated in: `T` is the identity and no logarithm
- * is involved. Three velocity units out of 127 is ~2.4 % of the full range.
+ * Named for the quantity rather than for a dimension because §7.1 states a single velocity JND
+ * and three dimensions draw on it: §5.4's per-beat accentuation contribution
+ * `scale · getAccentuationAt(beat)` (added straight onto a note's velocity), and §5.5's
+ * `@absoluteVelocityChange` and `@absoluteVelocity`. Accentuation is the dimension whose curve
+ * is already in the unit its JND is stated in — `T` is the identity, no logarithm is involved.
+ * Three velocity units out of 127 is ~2.4 % of the full range.
  *
  * [convention] and not [literature], for the reason {@link DYNAMICS_JND_NEPERS} spells out at
  * length: survey-lit L6 records four coexisting loudness conventions with no shared scale, and
@@ -308,7 +320,21 @@ export const UNNORMALIZED_JND = 1;
  * is the same one — derive it from the corpus's own per-attribute spread, which §8's opt-in
  * normalization path already provides.
  */
-export const ACCENTUATION_VELOCITY_JND = 3;
+export const VELOCITY_JND = 3;
+
+/**
+ * Note duration as a RATIO: `ln(1.10)` — a 10 % change in a note's sounding length
+ * [convention].
+ *
+ * Not the tempo constant, and the difference is the point. Friberg & Sundberg 1995's verified
+ * 2.5 % is a threshold on *inter-onset intervals*, whose deviations accumulate across a
+ * sequence and are judged against the beat the listener is tracking. A single note's sounding
+ * length carries no such reference: legato and staccato are heard as categories, not as a
+ * scale, and borrowing the IOI threshold would report a duration difference as three times more
+ * salient than the evidence supports. 10 % is a declared choice with the corpus-derivation path
+ * (§8) named, exactly as {@link DYNAMICS_JND_NEPERS} is.
+ */
+export const ARTICULATION_DURATION_JND_NEPERS = Math.log(1.1);
 
 /**
  * Pedal position, in fractions of full travel: **0.1** [convention].
@@ -438,6 +464,18 @@ export const COMPARISON_JND_KEYS = Object.freeze([
   'accentuation/accentuation@value',
   'accentuation/accentuation@transition.from',
   'accentuation/accentuation@transition.to',
+  'articulation/articulation@relativeDuration',
+  'articulation/articulation@relativeVelocity',
+  'articulation/articulation@absoluteDurationChange',
+  'articulation/articulation@absoluteDurationChangeMs',
+  'articulation/articulation@absoluteDelay',
+  'articulation/articulation@absoluteDelayMs',
+  'articulation/articulation@absoluteVelocityChange',
+  'articulation/articulation@absoluteDuration',
+  'articulation/articulation@absoluteDurationMs',
+  'articulation/articulation@absoluteVelocity',
+  'articulation/articulation@detuneCents',
+  'articulation/articulation@detuneHz',
   'asynchrony/asynchrony@milliseconds.offset',
   'pedal/movement@position',
   'pedal/movement@transition.to',
@@ -898,7 +936,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     space: { kind: 'gain-ordered' },
     valueDomain: anyFinite,
     unit: 'velocity',
-    jnd: ACCENTUATION_VELOCITY_JND,
+    jnd: VELOCITY_JND,
     delta: DEFAULT_DELTA_JND,
     plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
     role: 'curve-level',
@@ -1016,7 +1054,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     space: { kind: 'gain' },
     valueDomain: anyFinite,
     unit: 'velocity',
-    jnd: ACCENTUATION_VELOCITY_JND,
+    jnd: VELOCITY_JND,
     delta: DEFAULT_DELTA_JND,
     plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
     role: 'curve-level',
@@ -1039,7 +1077,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     space: { kind: 'gain' },
     valueDomain: anyFinite,
     unit: 'velocity',
-    jnd: ACCENTUATION_VELOCITY_JND,
+    jnd: VELOCITY_JND,
     delta: DEFAULT_DELTA_JND,
     plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
     role: 'curve-level',
@@ -1060,7 +1098,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     space: { kind: 'gain' },
     valueDomain: anyFinite,
     unit: 'velocity',
-    jnd: ACCENTUATION_VELOCITY_JND,
+    jnd: VELOCITY_JND,
     delta: DEFAULT_DELTA_JND,
     plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
     role: 'curve-level',
@@ -1074,6 +1112,313 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
       '`i > length - 1`, which can never hold, so every segment ran to the pattern end; the ' +
       'fork fixed it (TD3) and this table follows the fixed form. 3 velocity units ' +
       '[convention].',
+  },
+];
+
+// --- §5.5 articulation -------------------------------------------------------------------
+//
+// EVENT rows, not curve rows: an articulation is an atom charged to the note or the date it
+// names (§5.0's atom rule), so each row's own `localDistance` is what prices a matched pair —
+// unlike §5.1–§5.4 and §5.8, where the rows are inputs to one integral.
+//
+// Every row carries BOTH sites, as expression's do, because the same attribute is legal on the
+// instruction and on the def — and the two are not interchangeable. `articulateNote` applies
+// the referenced def FIRST and the inline modifiers on top of the def's result, and the
+// LIVENESS rule differs between them: on an inline `<articulation>` exactly one duration lever
+// fires, while on an `<articulationDef>` they compose. Both halves executed on a 100-tick note:
+// `relativeDuration="0.5" absoluteDurationChange="10"` performs **110** inline (the factor
+// inert) and **60** on a def (0.5 then +10).
+
+/**
+ * §5.5/AD-11i/R4: the inline duration precedence, as a liveness rule keyed on the ELEMENT.
+ *
+ * `ArticulationData.articulateNote` reads `duration` once up front and every branch computes
+ * from that original value, overwriting the previous branch's write — so the three tick-domain
+ * levers do not compose and the LAST to fire wins. Written in the source's own order, the
+ * winner is `absoluteDurationChange`, then `relativeDuration`, then `absoluteDuration`; and
+ * `absoluteDurationMs` short-circuits the whole tick branch before any of them.
+ */
+const inlineDurationRule = (attribute: string): ComparisonLiveness => ({
+  element: 'articulation',
+  rule:
+    `on an inline <articulation> @${attribute} is live only when no lever of higher ` +
+    'precedence is present — the order is absoluteDurationChange > relativeDuration > ' +
+    'absoluteDuration, and NONE of them fires when @absoluteDurationMs is present ' +
+    '(ArticulationData.articulateNote reads duration once and each branch overwrites from that ' +
+    'original value). On an <articulationDef> the same attributes COMPOSE, so the rule is keyed ' +
+    'on the element and never on the attribute name (§5.5, AD-11i, R4).',
+});
+
+/** The two sites every articulation attribute is legal at, in expression's own order. */
+const articulationSites: readonly ComparisonSite[] = [
+  instructionSite(ARTICULATION_MAP, 'articulation'),
+  defSite(ARTICULATION_STYLE, 'articulationDef'),
+];
+
+const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
+  {
+    key: 'articulation/articulation@relativeDuration',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'relativeDuration',
+    sites: articulationSites,
+    space: { kind: 'log-around-1' },
+    valueDomain: positive,
+    unit: 'nepers',
+    jnd: ARTICULATION_DURATION_JND_NEPERS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: inlineDurationRule('relativeDuration'),
+    ppqSensitive: false,
+    notes:
+      '§5.5 — the staccato/tenuto lever, neutral at 1.0 (the renderer’s guard is ' +
+      '`!== 1.0`, so an authored 1.0 is a no-op rather than a write). Executed: with a ' +
+      'sibling @absoluteDurationChange it is entirely INERT inline, which revision 1 charged ' +
+      '0.59 nepers for. ln(1.10) [convention] — NOT the tempo constant, see the JND’s own ' +
+      'note: 2.5 % is an inter-onset threshold and a note’s sounding length has no such ' +
+      'reference.',
+  },
+  {
+    key: 'articulation/articulation@relativeVelocity',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'relativeVelocity',
+    sites: articulationSites,
+    space: { kind: 'log-around-1' },
+    valueDomain: positive,
+    unit: 'nepers',
+    jnd: DYNAMICS_JND_NEPERS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.5 — a velocity RATIO, so it takes the velocity-ratio JND (§5.3’s ln(1.10), "a 10 % ' +
+      'velocity change") rather than a velocity-unit one. THE VELOCITY LEVERS COMPOSE, unlike ' +
+      'the duration levers: articulateNote re-reads @velocity after each write, so ' +
+      '@absoluteVelocity then @relativeVelocity then @absoluteVelocityChange chain. Executed: ' +
+      '64 with absoluteVelocity=80, relativeVelocity=0.5, absoluteVelocityChange=7 performs ' +
+      '47. AD-11i’s one-lever rule is a DURATION rule and does not generalise here. ' +
+      '[convention].',
+  },
+  {
+    key: 'articulation/articulation@absoluteDurationChange',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'absoluteDurationChange',
+    sites: articulationSites,
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'quarters',
+    jnd: RUBATO_DISPLACEMENT_JND_QUARTERS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: inlineDurationRule('absoluteDurationChange'),
+    ppqSensitive: true,
+    notes:
+      '§5.5/AD-11iii/R15 — signed TICKS at the performance ppq, hence ppqSensitive, and priced ' +
+      'on its RAW value as a document-level quantity: the renderer’s map is nonlinear and ' +
+      'note-dependent, applying only when duration > 0 and then halving the change until the ' +
+      'result is positive (durNew = duration + change / 2^k). Executed, −200 on a 100-tick ' +
+      'note performs 50 — not −100 and not 0. An MSM refinement hook is noted (§9’s ' +
+      'three-state estimate); the negative branch cannot be refined without one at all. ' +
+      '1/16 quarter [convention], the displacement unit §7.1 gives.',
+  },
+  {
+    key: 'articulation/articulation@absoluteDurationChangeMs',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'absoluteDurationChangeMs',
+    sites: articulationSites,
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'ms',
+    jnd: ASYNCHRONY_JND_MS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.5 — a millisecond duration change, parked on the note by pass one and consumed by ' +
+      'pass two, so it survives the tick-domain precedence entirely (it is NOT one of the ' +
+      'three levers @absoluteDurationMs short-circuits). 30 ms [convention]: the constant is ' +
+      'asynchrony’s [literature] onset threshold, and borrowing it for a DURATION change is the ' +
+      'borrowing rather than the measurement — stated so the tag travels with the reuse.',
+  },
+  {
+    key: 'articulation/articulation@absoluteDelay',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'absoluteDelay',
+    sites: articulationSites,
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'quarters',
+    jnd: RUBATO_DISPLACEMENT_JND_QUARTERS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: true,
+    notes:
+      '§5.5 — signed ticks added to @date.perf, neutral at 0.0. It moves BOTH note edges (the ' +
+      'ms sibling moves only the onset and therefore shortens the note), and a large value ' +
+      'triggers the map sort, which can reorder simultaneous instructions — executed. ' +
+      '1/16 quarter [convention]: the same displacement quantity §5.2 prices, in the same unit.',
+  },
+  {
+    key: 'articulation/articulation@absoluteDelayMs',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'absoluteDelayMs',
+    sites: articulationSites,
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'ms',
+    jnd: ASYNCHRONY_JND_MS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.5 — a millisecond onset shift, which IS the asynchrony quantity, so the 30 ms ' +
+      '[literature] threshold applies directly rather than by analogy (AD-26.2/AD-27.6). It ' +
+      'moves the onset but not the end, so it shortens the note; past the remaining length the ' +
+      'shared pass-two commit guard discards it.',
+  },
+  {
+    key: 'articulation/articulation@absoluteVelocityChange',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'absoluteVelocityChange',
+    sites: articulationSites,
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'velocity',
+    jnd: VELOCITY_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.5 — the idiomatic accent lever: signed, neutral at 0.0, added to whatever the two ' +
+      'velocity levers before it left. Never clamped by the renderer, because velocity is a ' +
+      'shared bus and the final value depends on MSM note data (R1). 3 velocity units ' +
+      '[convention], §7.1’s velocity row.',
+  },
+  {
+    key: 'articulation/articulation@absoluteDuration',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'absoluteDuration',
+    sites: articulationSites,
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'quarters',
+    jnd: RUBATO_DISPLACEMENT_JND_QUARTERS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: inlineDurationRule('absoluteDuration'),
+    ppqSensitive: true,
+    notes:
+      '§5.5/AD-2 — a REPLACEMENT attribute: it has no neutral, so present-vs-present compares ' +
+      'in native units and present-vs-absent reads ⊥ rather than being a structural finding. ' +
+      'A structural finding contributes 0, which gives A=2, B=absent, C=100 the zero-set ' +
+      'violation d(A,B) = d(B,C) = 0 < d(A,C) — M1c, and the reason ⊥ exists. With an MSM the ' +
+      'present-vs-absent case refines to a real magnitude against the note’s own duration ' +
+      '(R7). Lowest inline precedence of the three tick levers. 1/16 quarter [convention].',
+  },
+  {
+    key: 'articulation/articulation@absoluteDurationMs',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'absoluteDurationMs',
+    sites: articulationSites,
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'ms',
+    jnd: ASYNCHRONY_JND_MS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.5/AD-2 — a REPLACEMENT attribute (⊥ against absent, as @absoluteDuration) and the ' +
+      'inline SHORT-CIRCUIT: its mere presence takes the whole tick-domain duration branch out ' +
+      'of play, so all three tick levers on the same element are inert beside it. Always live ' +
+      'itself, which is why its own liveness is unconditional while theirs is not. 30 ms ' +
+      '[convention], borrowed from the asynchrony row rather than measured for it.',
+  },
+  {
+    key: 'articulation/articulation@absoluteVelocity',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'absoluteVelocity',
+    sites: articulationSites,
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'velocity',
+    jnd: VELOCITY_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: PLAUSIBLE_VELOCITY,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.5/AD-2 — the third REPLACEMENT attribute (⊥ against absent). Unlike the duration ' +
+      'replacement it does NOT short-circuit its siblings: it is the first link of the ' +
+      'velocity chain, and @relativeVelocity and @absoluteVelocityChange then apply on top of ' +
+      'it — executed. 3 velocity units [convention].',
+  },
+  {
+    key: 'articulation/articulation@detuneCents',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'detuneCents',
+    sites: articulationSites,
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'cents',
+    jnd: UNNORMALIZED_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'inert',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.5/AD-15/R14 — INERT, and a row precisely so that the inertness is stated rather ' +
+      'than inferred from an absence. articulateNote writes @detuneCents onto the note, and ' +
+      'nothing downstream reads it: the MIDI export has no pitch-bend path for it. R9b’s rule ' +
+      'applies — zero density, reported when the two documents differ. The jnd is unused; a ' +
+      'row that carries no distance has nothing to normalize. [convention], and moot.',
+  },
+  {
+    key: 'articulation/articulation@detuneHz',
+    dimension: 'articulation',
+    element: 'articulation',
+    attribute: 'detuneHz',
+    sites: articulationSites,
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'hz',
+    jnd: UNNORMALIZED_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'inert',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.5/AD-15/R14 — INERT, as @detuneCents, and written onto the note by the same branch. ' +
+      'Its unit is the one place this table needs hertz, and it is a frequency OFFSET rather ' +
+      'than a frequency, which is why it is a gain and not a log space. [convention], and moot.',
   },
 ];
 
@@ -1263,6 +1608,7 @@ export const COMPARISON_REGISTRY_ROWS: readonly ComparisonRegistryRow[] = Object
   ...RUBATO_ROWS,
   ...DYNAMICS_ROWS,
   ...ACCENTUATION_ROWS,
+  ...ARTICULATION_ROWS,
   ...ASYNCHRONY_ROWS,
   ...PEDAL_ROWS,
 ]);

@@ -1688,3 +1688,84 @@ AD-37.6 Sequencing option (a) RATIFIED: the event aligner moves INTO cut
 2 as its own module (dimension-neutral interface, W4-diff reuse in mind),
 articulation is its first consumer, ornamentation (cut 3) its second —
 two consumers before the interface freezes. No throwaway matcher.
+
+## 2026-08-10 — W3a cut 2, part 1: articulation rows + atom liveness (task #7, survey-code)
+
+PARTIAL by design. This is §5.5's first half only: the twelve registry rows and the
+per-atom liveness resolution. NOT here, and both blocked on rulings reported as msg
+e71940cd: the default-articulation step function (the renderer's default reaches
+BACKWARDS, below) and the matching of atoms between documents (§5.5 delegates it to
+§5.6's alignment DP, which is cut 3's module — the dependency runs the wrong way
+round and I asked for a sequencing ruling).
+
+RENDERER-SOURCE-FIRST READING, per the standing directive, and it found a
+contradiction before a line was written. renderArticulationToMap_noMillisecondModifiers
+walks the note map with a forward-only `defaultArticulationIndex` that starts at 0 and
+is NEVER TESTED AGAINST ITS OWN DATE: the `while` only advances when the NEXT switch's
+date has passed. So defaultArticulations[0] governs every note before the first
+<style> switch. Executed on notes at 0/360/720/1080 with a single switch at 720
+carrying defaultArticulation="stacc" (x0.5): durations [50,50,50,50]. With the switch
+at 1440 and notes at 0/720/1440: [50,50,50]. The first switch's default is retroactive
+over the whole map. §5.5's "step function built from the resolved style-switch list"
+reads as having no value before its first step — the natural implementation, and wrong
+by |ln 0.5| = 0.693 nepers held over the entire pre-switch region. AD-35.4's hazard
+class in a third instance and a new shape: not "entries or musical objects" but "index
+0 is used without checking that its date has arrived".
+
+THREE MORE RENDERER FACTS §5.5 DOES NOT STATE, all executed:
+(1) A switch naming an UNKNOWN def CANCELS the default — [50,50,100,100], identical to
+    the no-@defaultArticulation case and opposite to the unresolvable-STYLE case, which
+    leaves the previous default in force ([50,50,50,50]). §5.5 enumerates two of the
+    three dispositions; two of the three cancel.
+(2) The VELOCITY levers COMPOSE while the duration levers do not. articulateNote
+    re-reads @velocity after each write: 64 with absoluteVelocity=80,
+    relativeVelocity=0.5, absoluteVelocityChange=7 performs 47. AD-11i's one-lever rule
+    is a DURATION rule and does not generalise.
+(3) Atoms compose ACROSS atoms in map order: two <articulation> at one date with
+    relativeDuration 0.5 and 0.25 perform 12.5, not 25 or 50; a noteid atom and a
+    date-targeted atom on the same note both apply.
+And one that bears on ⊥: an atom whose @name.ref cannot resolve is NOT dropped — the
+def is ignored and the inline modifiers still apply (120 on a 100-tick note for
+name.ref="stacc" relativeDuration="1.2" with the def missing, 60 with it present).
+That is the OPPOSITE disposition from §5.4's accentuation, where no style in scope
+skips the whole instruction.
+
+Re-confirmed unchanged from §5.5: inline precedence absoluteDurationChange >
+relativeDuration > absoluteDuration with absoluteDurationMs short-circuiting all three
+(0.5 with +10 performs 110 inline, 60 on a def); absoluteDurationChange=-200 on a
+100-tick note performs 50; noteid strips its first character unconditionally, so
+noteid="n0" addresses "0"; an unresolvable noteid is dropped; a noteid whose note sits
+at another date is applied anyway with a warning; absoluteDelay moves date.perf and the
+map is re-sorted.
+
+TWELVE ROWS, and the skip-list shrank again in the same commit: UNCOVERED_DIMENSIONS is
+5 -> 4 (ornamentation and the three imprecision domains). Seven rows mirror expression's
+articulation rows one-for-one (so the superset property holds with both sites on each,
+as expression has them); three are §5.5's REPLACEMENT attributes, which have no
+expression row because they are not exaggerable and whose present-vs-absent case is ⊥
+(AD-2/M1c); two are the detune pair, filed role 'inert' (R14) so that the inertness is
+stated rather than inferred from an absence. All twelve are role 'event', the first rows
+in the table that are.
+
+[DECISION, reported] Two JND reuses and one new constant. ARTICULATION_DURATION_JND_
+NEPERS = ln(1.10) [convention] for @relativeDuration, and deliberately NOT the tempo
+constant: Friberg & Sundberg's verified 2.5% is a threshold on INTER-ONSET intervals,
+whose deviations accumulate against a tracked beat, while a single note's sounding
+length has no such reference — borrowing it would report duration differences as three
+times more salient than the evidence supports. @relativeVelocity takes DYNAMICS_JND_
+NEPERS because it is a velocity RATIO and that constant is exactly "a 10% velocity
+change". The tick-valued rows take RUBATO_DISPLACEMENT_JND_QUARTERS (1/16 quarter) and
+are ppqSensitive; the ms rows take ASYNCHRONY_JND_MS, which is [literature] for
+@absoluteDelayMs (it IS the onset-shift quantity) and [convention] for the two duration
+ms rows, where the tag travels with the borrowing.
+
+[DECISION, reported] Identifier rename: ACCENTUATION_VELOCITY_JND -> VELOCITY_JND.
+AD-36.3 ratified the constant's value and calibration, both unchanged; §7.1 states ONE
+velocity JND and three dimensions now draw on it (§5.4's contribution, §5.5's
+@absoluteVelocityChange and @absoluteVelocity), so naming it for the dimension that
+needed it first was about to become misleading. Also added 'hz' to ComparisonUnit, for
+@detuneHz.
+
+Gate: `npm run verify` green before committing (4465 passed + 1 skipped, was 4447);
+eslint and prettier clean. 18 new tests, every liveness claim checked against the real
+renderer over a note map rather than against the reader alone.
