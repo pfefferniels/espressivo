@@ -1993,3 +1993,29 @@ Not invented at the tail of a session — asked.
 
 Gate: `npm run verify` green before committing (4506 passed + 1 skipped); eslint and
 prettier clean.
+
+## 2026-08-10 — AD-41: @note.order ruling; cut-3 handoff [BINDING]
+
+c477433 accepted (7 ornamentation rows, skip-list at 3; the liveness
+asymmetry of transition.from/to in the table where a future editor trips).
+AD-41.1 @note.order: the two enumerated orderings ("ascending pitch" /
+"descending pitch") are a boolean01 gain row — a genuine binary that
+changes which note receives which gradient step; an EXPLICIT ID LIST is a
+structural finding, not a row value — naming notes is an identity claim,
+not a magnitude (the @controller argument, AD-36.3). @repetitions lands
+with the reader as planned.
+AD-41.2 HANDOFF GRANTED with thanks on the record: survey-code (W0 §code
+survey, BOM fix, fixtures, W2b, W2c, the whole W2 fix wave, W3a cuts 1-3a
+— and four renderer-truth divergences caught before a wrong number ever
+shipped) hands cut 3's remainder to a fresh context. State: everything
+committed/pushed/green at c477433, tree clean, LOG carries the full
+remaining spec. Successor scope: cut 3 remainder (ornament reader with
+pool resolution + performed pair per AD-40.2, before-first-style skip,
+distance through the aligner AS SECOND CONSUMER with an interface-change
+report if neutrality fails, §5.6/§5.4 cross-reference, @note.order per
+AD-41.1, @repetitions row, adversarial-family + skip-list updates), then
+cut 4 (imprecision ×3 per §5.9 + AD-14), under ALL standing policies:
+LOG-first, renderer-source-first with stop-and-report, AD-35.4 hazard
+check, AD-40.2 performed-effect principle, negative controls +
+differential tests, capped density for ⊥-capable dimensions (AD-36.2),
+green/gated/pushed serial cadence.
