@@ -29,20 +29,36 @@ import { parseMpmRoot, serializeMpmRoot } from '../expression/mpmDocument.js';
 import { readPerformances } from '../expression/mpmTree.js';
 import { parseMsmRoot, readMsmFacts, type MsmFacts } from '../expression/msmFacts.js';
 import {
+  IDENTITY_FACTOR,
   resolveFactors,
   resolveOptions,
   type ExaggerateOptions as EngineOptions,
 } from '../expression/options.js';
+import {
+  EXPRESSION_DIMENSIONS,
+  type ExaggerationFactors,
+  type ExpressionDimension,
+} from '../expression/registry.js';
 import type { ExaggerationReport } from '../expression/report.js';
+import { resolveSelection, type Selection } from '../expression/selection.js';
+import { weightedFactors as computeWeightedFactors } from '../expression/weights.js';
+import type { ExaggerationWeights } from '../expression/weights.js';
 import type { Element } from '../xml/XomTypes.js';
 import {
   EngineInvariantError,
   InvalidOptionError,
   ParseError,
   PerformanceNotFoundError,
+  SelectionNotFoundError,
 } from './errors.js';
 import { parseOrThrow, requireXmlText, type DocumentKind } from './parse.js';
-import type { ExaggerateOptions, ExaggerationResult, XmlText } from './types.js';
+import type {
+  ExaggerateOptions,
+  ExaggerationResult,
+  SpotlightOptions,
+  SpotlightResult,
+  XmlText,
+} from './types.js';
 
 /**
  * DESIGN.md §3's fifteen dimensions, in registry order — the complete set of keys
@@ -237,13 +253,26 @@ export function exaggerateMpm(mpm: XmlText, options: ExaggerateOptions): Exagger
   // meanings for one value (ARCHITECTURE RULE N5; `eqeqeq` blesses the idiom for null).
   const facts = options.msm == null ? null : readMsm(options.msm);
 
-  const report = runEngine(root, options);
-  requireSelectedPerformance(root, options.performance, report);
+  const report = transform(root, options);
 
   return {
     mpm: serializeMpmRoot(root),
     report: facts === null ? report : withEstimates(root, report, facts),
   };
+}
+
+/**
+ * Run the engine over an already-parsed tree and settle the performance selector.
+ *
+ * Shared by {@link exaggerateMpm} and {@link spotlightMpm} because spotlight resolves its
+ * selection against the same tree the engine then writes into: routing it back through
+ * `exaggerateMpm` would parse the document a second time to reach a tree it already holds, and
+ * the two parses could only ever agree.
+ */
+function transform(root: Element, options: ExaggerateOptions): ExaggerationReport {
+  const report = runEngine(root, options);
+  requireSelectedPerformance(root, options.performance, report);
+  return report;
 }
 
 function readMsm(msm: XmlText): MsmFacts {
@@ -326,3 +355,203 @@ function withEstimates(
     }),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Spotlight (DESIGN.md D-I) — the prototype's shader, with its defects designed out.
+// ---------------------------------------------------------------------------
+
+/**
+ * Bring a selection of instructions forward by damping everything else.
+ *
+ * This is `Shader.bringOut` generalized (DESIGN.md §5, D-I). It is **not** a second transform:
+ * once the selected elements' types are mapped onto dimensions, spotlight is
+ * {@link exaggerateMpm} with a derived factor vector — the spared dimensions at 1, every other
+ * dimension at `attenuation` — run in `gesture` scope. Everything the engine guarantees
+ * therefore holds here unchanged, R5a included.
+ *
+ * **Why `gesture` and not `global`.** Under `global` scope a factor below 1 pulls every level
+ * *toward the performance-wide center*, so quiet background material is re-levelled **louder**
+ * — the exact inverse of damping it (a `p` at 48 in a {48, 48, 97} map renders at 59.3 under
+ * attenuation 0.1). `gesture` holds each transition pair's geometric mean fixed and shrinks the
+ * log-ratio between its endpoints, which is what "damp the gesture, leave the level" means. The
+ * price is that on a **piecewise-constant** map — the shape mpmify and inference produce — the
+ * two level dimensions have nothing to shrink and are reported `inert` rather than silently
+ * claimed as transformed.
+ *
+ * **The selection is all-or-nothing.** Any id that resolves to nothing, or to an element type
+ * governing no dimension, aborts the run with a {@link SelectionNotFoundError} naming every
+ * offender. `ids: []` is the way to say "no selection": it returns {@link canonicalMpm} with
+ * `report.totalWrites === 0` and an all-ones `report.appliedFactors`, because an empty spare
+ * set means the identity and never total suppression.
+ *
+ * ```ts
+ * const { mpm, spared } = spotlightMpm(text, { ids: ['t2', 'dyn4'], attenuation: 0.25 });
+ * // spared === ['tempo', 'tempoShape', 'dynamics', 'dynamicsShape']
+ * ```
+ *
+ * @param options `ids` and `attenuation` are both required; see {@link SpotlightOptions}
+ * @throws {InvalidOptionError} `ids` is not an array of strings, `attenuation` is missing,
+ *   non-finite, `<= 0` or `> 1`, or `performance` is not a name or a non-negative integer
+ * @throws {ParseError} the MPM is not XML text, is not well-formed, or has the wrong root
+ * @throws {SelectionNotFoundError} an id resolves to nothing, or to an unmappable element type
+ * @throws {PerformanceNotFoundError} `options.performance` names or indexes nothing
+ * @throws {EngineInvariantError} the engine broke one of its own invariants
+ */
+export function spotlightMpm(mpm: XmlText, options: SpotlightOptions): SpotlightResult {
+  const attenuation = checkSpotlightOptions(options);
+
+  const root = parseRoot('MPM', mpm, parseMpmRoot);
+  const selection = resolveSelection(root, options.ids);
+  requireResolvedSelection(selection);
+
+  const report = transform(root, {
+    factors: spotlightFactors(selection.spared, attenuation),
+    performance: options.performance,
+    scope: 'gesture',
+  });
+
+  return {
+    mpm: serializeMpmRoot(root),
+    report,
+    spared: selection.spared,
+    // Copied out of the interior's own array (CHARTER's public-API rule): the entries are
+    // already plain data, but the arrays holding them are the resolver's.
+    resolvedIds: selection.resolved.map((entry) => ({
+      id: entry.id,
+      element: entry.element,
+      dimensions: [...entry.dimensions],
+    })),
+  };
+}
+
+/**
+ * D-I's factor vector: the spared dimensions at 1, everything else at `attenuation`.
+ *
+ * The empty-spare-set branch is the one that matters. An empty selection derives an empty
+ * spared set, and the arithmetic answer — attenuate all fifteen — is the prototype's worst
+ * defect: a `bringOut` of nothing returned a flattened performance and called it a spotlight.
+ * D-I makes it the identity instead, so "I have selected nothing" and "I have selected
+ * everything" both leave the document alone.
+ *
+ * The spared dimensions are written out as an explicit 1 rather than omitted. Both are the
+ * identity under R3, but the explicit form is what makes `report.dimensions[d].requestedFactor`
+ * read `1` instead of `null` — the run did ask for the identity there, and a caller comparing
+ * two spotlights should be able to see which dimensions were spared from the report alone.
+ */
+function spotlightFactors(
+  spared: readonly ExpressionDimension[],
+  attenuation: number,
+): ExaggerationFactors {
+  const factors: Partial<Record<ExpressionDimension, number>> = {};
+  const isSpared = new Set(spared);
+  for (const dimension of EXPRESSION_DIMENSIONS)
+    factors[dimension] =
+      spared.length === 0 || isSpared.has(dimension) ? IDENTITY_FACTOR : attenuation;
+  return factors;
+}
+
+/**
+ * §4's pre-parse validation for spotlight, returning the attenuation it accepted.
+ *
+ * `ids` and `attenuation` are read as `unknown` for the same reason `checkExaggerateOptions`
+ * reads its bag that way: the guards exist for callers arriving from JavaScript, and comparing
+ * against the declared type would let the compiler prove them dead and the linter delete them.
+ */
+function checkSpotlightOptions(options: SpotlightOptions): number {
+  const bag: unknown = options;
+  if (typeof bag !== 'object' || bag === null)
+    throw new InvalidOptionError('options must be an object carrying `ids` and `attenuation`');
+
+  const ids: unknown = (bag as SpotlightOptions).ids;
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string'))
+    throw new InvalidOptionError(
+      'options.ids must be an array of xml:id strings; pass [] for no selection',
+    );
+
+  const attenuation: unknown = (bag as SpotlightOptions).attenuation;
+  if (typeof attenuation !== 'number' || !Number.isFinite(attenuation))
+    throw new InvalidOptionError(
+      `options.attenuation is required and must be a finite number in (0,1], got ${String(attenuation)}`,
+    );
+  if (attenuation <= 0 || attenuation > 1)
+    throw new InvalidOptionError(
+      `options.attenuation must lie in (0,1] — 1 is the identity, and 0 would collapse every ` +
+        `transition pair onto its own geomean and delete the gesture — got ${attenuation}`,
+    );
+
+  if (typeof options.performance === 'number') {
+    const index = options.performance;
+    if (!Number.isInteger(index) || index < 0)
+      throw new InvalidOptionError(
+        `performance index must be a non-negative integer, got ${String(index)}`,
+      );
+  }
+  return attenuation;
+}
+
+/**
+ * A8 — every offender at once, or no run at all.
+ *
+ * The message is the whole report, one line per offender with its kind, because the alternative
+ * to naming them all is a caller fixing a stale selection one id per exception.
+ */
+function requireResolvedSelection(selection: Selection): void {
+  if (selection.offenders.length === 0) return;
+  const lines = selection.offenders.map((offender) => `  - ${offender.kind}: ${offender.detail}`);
+  throw new SelectionNotFoundError(
+    `MPM: ${selection.offenders.length} of the ${
+      selection.offenders.length + selection.resolved.length
+    } selected ids could not be spotlit, so nothing was transformed:\n${lines.join('\n')}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Weights (DESIGN.md D-H) — one scalar, fifteen factors.
+// ---------------------------------------------------------------------------
+
+/**
+ * DESIGN.md D-H's lerp: expand one scalar into a factor record, `sᵈ = 1 + wᵈ·(s − 1)`.
+ *
+ * This is the prototype's `Exaggerate.applyWeights`, which is how a single "how exaggerated?"
+ * control becomes a per-dimension vector: a weight of 1 passes the scalar through, 0 pins its
+ * dimension to the identity, and anything between damps it. `s = 1` is the identity record for
+ * **any** weights, so the neutral position of a slider is neutral whatever preset is loaded.
+ *
+ * Every dimension appears in the result, so what comes back is exactly what the run applied.
+ * See {@link PROTOTYPE_WEIGHTS} for the prototype's tuned vector and DESIGN §8 for the ranges
+ * to sample `s` from.
+ *
+ * ```ts
+ * exaggerateMpm(mpm, { factors: weightedFactors(1.6, PROTOTYPE_WEIGHTS) });
+ * ```
+ *
+ * A weight above 1 can drive a factor below 0 (`weightedFactors(0.3, {ornamentSpread: 1.5})` is
+ * −0.05), which for the dimensions whose scale spaces run over a half-line is outside the
+ * admissible domain. That is rejected by {@link exaggerateMpm}, not here, so the error names
+ * the dimension in the same words whichever way the record was built.
+ *
+ * @param s the single scalar; 1 is the identity
+ * @param weights how much of `s` each dimension takes; a missing key passes it through
+ * @throws {InvalidOptionError} `s` or a weight is not finite, or `weights` holds a key that is
+ *   not one of `EXPRESSION_DIMENSIONS`
+ */
+export function weightedFactors(s: number, weights: ExaggerationWeights): ExaggerationFactors {
+  try {
+    return computeWeightedFactors(s, weights);
+  } catch (cause) {
+    throw new InvalidOptionError(cause instanceof Error ? cause.message : String(cause), { cause });
+  }
+}
+
+/**
+ * The mpm-renderer prototype's tuned weight profile, preserved as data (D-H).
+ *
+ * A **heuristic**, not a recommendation: the numbers are one person's taste, nothing in DESIGN
+ * derives them, and no test here validates them musically. They ship because the prototype
+ * applied them to every render invisibly, and a documented constant is the difference between a
+ * reproducible baseline and a lost one. The default is no weighting.
+ *
+ * See the constant's own documentation for the correspondence onto DESIGN §3's fifteen
+ * dimensions, including the two the prototype fused and the five it could not express.
+ */
+export { PROTOTYPE_WEIGHTS } from '../expression/weights.js';

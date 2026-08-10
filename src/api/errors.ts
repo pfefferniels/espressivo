@@ -41,6 +41,25 @@ export class PerformanceNotFoundError extends MeicoError {}
 export class InvalidOptionError extends MeicoError {}
 
 /**
+ * A `spotlight` selection could not be turned into a set of spared dimensions: at least one
+ * `xml:id` names nothing in the document, or names an element type that governs no
+ * exaggeration dimension.
+ *
+ * The message lists **every** offender with its kind, `unresolved` or `unmappable`, and the run
+ * does not happen (DESIGN.md D-I/A8). Both halves of that are deliberate. Reporting only the
+ * first offender would make fixing a stale selection an iteration; running anyway on the ids
+ * that did resolve would be the prototype's worst defect, which discarded unresolvable ids with
+ * a bare `continue` and, for a selection of nothing but `<style>` switches, quietly attenuated
+ * **every** dimension — a flattened performance returned as a successful spotlight.
+ *
+ * It is a caller error rather than a document condition: an id the caller holds no longer
+ * points where they think it does, which is worth knowing before it becomes a rendered result.
+ * `spotlightMpm(mpm, { ids: [], … })` is the way to ask for no selection, and it returns the
+ * canonical document rather than raising this.
+ */
+export class SelectionNotFoundError extends MeicoError {}
+
+/**
  * The expression engine broke one of its own invariants — a guard that should have held did
  * not, so the run was abandoned rather than allowed to write a document nobody intends.
  *

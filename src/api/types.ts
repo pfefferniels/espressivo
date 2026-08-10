@@ -21,7 +21,7 @@
  */
 import type { Midi7Bit, Milliseconds, Ticks } from '../units.js';
 import type { CenterOverrides, ExaggerationScope, VelocityRange } from '../expression/options.js';
-import type { ExaggerationFactors } from '../expression/registry.js';
+import type { ExaggerationFactors, ExpressionDimension } from '../expression/registry.js';
 import type { ExaggerationReport } from '../expression/report.js';
 
 /**
@@ -37,6 +37,7 @@ import type { ExaggerationReport } from '../expression/report.js';
  */
 export type { ExaggerationFactors, ExpressionDimension } from '../expression/registry.js';
 export type { CenterOverrides, ExaggerationScope, VelocityRange } from '../expression/options.js';
+export type { ExaggerationWeights } from '../expression/weights.js';
 export type {
   DimensionReport,
   ExaggerationReport,
@@ -216,6 +217,63 @@ export interface ExaggerationResult {
   readonly mpm: XmlText;
   /** R4's contract: `report.totalWrites === 0` means this sample is a no-op. */
   readonly report: ExaggerationReport;
+}
+
+/** DESIGN.md §4/D-I's option bag for {@link module:api/expression.spotlightMpm}. */
+export interface SpotlightOptions {
+  /**
+   * The `xml:id`s of the MPM instructions to bring out. Empty means no selection, which is the
+   * identity — never "attenuate everything".
+   *
+   * Every id must name an element whose type governs at least one dimension (D-I's table:
+   * `tempo`, `dynamics`, `rubato`, `articulation`, `accentuationPattern`, `ornament`,
+   * `asynchrony`, `movement`, and a `distribution.*` under a timing, dynamics or toneduration
+   * imprecision map). Anything else — a `<style>` switch, a def, a score id, a distribution in
+   * the inert tuning domain — is a {@link SelectionNotFoundError} naming every offender.
+   */
+  readonly ids: readonly string[];
+  /**
+   * How far to damp everything the selection does **not** cover, in `(0, 1]`. Required (A8):
+   * the prototype's hardcoded 0.1 is exactly the magic constant C2 forbids.
+   *
+   * 1 is the identity — nothing is damped — and is admitted so that a caller can sweep the
+   * control through its neutral. 0 is excluded by the domain rather than by taste: under
+   * `gesture` scope it collapses a transition pair onto its own geometric mean, which is the
+   * renderer's exact-float test for a constant instruction, so the gesture would be *deleted*
+   * instead of damped. The pair-collapse guard refuses that write for small-but-nonzero values
+   * too, and reports it.
+   */
+  readonly attenuation: number;
+  /** Which performance to transform. Omitted means all of them, as {@link ExaggerateOptions}. */
+  readonly performance?: string | number;
+}
+
+/** One selected id, and what sparing it means. */
+export interface SpotlightSelection {
+  readonly id: string;
+  /** The local name of the element the id was found on — `'tempo'`, `'ornament'`, … */
+  readonly element: string;
+  /** The dimensions this element spares, in `EXPRESSION_DIMENSIONS` order. */
+  readonly dimensions: readonly ExpressionDimension[];
+}
+
+/**
+ * DESIGN.md §4. The spotlit document, what happened to it, and what the selection resolved to.
+ *
+ * `spared` and `resolvedIds` sit beside the report rather than inside it because they describe
+ * the **selection**, which is one decision for the whole run, while every field of
+ * {@link ExaggerationReport} is per performance or per dimension. Keeping the report exactly an
+ * `ExaggerationReport` also means anything that already reads an exaggeration report reads this
+ * one unchanged.
+ */
+export interface SpotlightResult {
+  readonly mpm: XmlText;
+  /** R4's contract, unchanged: `report.totalWrites === 0` means nothing moved. */
+  readonly report: ExaggerationReport;
+  /** The dimensions held at 1. Empty exactly when `ids` was empty, i.e. on the identity run. */
+  readonly spared: readonly ExpressionDimension[];
+  /** One entry per distinct id, in first-mention order. */
+  readonly resolvedIds: readonly SpotlightSelection[];
 }
 
 export interface PerformedNote {

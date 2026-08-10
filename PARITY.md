@@ -14,9 +14,13 @@ difference deliberately left in place (§2, §3), or a behaviour that reads as a
 (§5). Nothing is undocumented, and this file is the audit trail for
 [README.md](README.md#equivalence-with-java-meico)'s equivalence claim.
 
-**One part of the library is outside that frame entirely**, and it is separated out for exactly
-that reason: **MPM v3 ornamentation** (§6) implements a specification the Java reference does not
-implement, so there is no output to be equivalent to. Its correctness standard is the spec plus
+**Two parts of the library are outside that frame entirely**, and each is separated out for
+exactly that reason. The **expression module** (§7) implements a feature the Java reference does
+not have at all, and is the shorter of the two: it transforms an MPM rather than applying one, and
+touches no path the equivalence suites drive.
+
+The other is **MPM v3 ornamentation** (§6), which implements a specification the Java reference does
+not implement, so there is no output to be equivalent to. Its correctness standard is the spec plus
 hand-computed vectors, not a reference file. Every fixture file in `tests/integration/fixtures/`
 is untouched by it, and on the path the equivalence suites drive — `Mei2MsmMpmConverter` built
 directly, which is where their references come from — nothing in §6 moves a byte, measured rather
@@ -954,3 +958,72 @@ written into the score (W9)", at the renderer; and `tests/integration/ornamentat
 "a negative intensity reaches neither the augmented MSM nor the MIDI export", which drives the
 same construction through the real pipeline and asserts the two documents named above — the
 augmented MSM and the exported MIDI — come out clean.
+
+---
+
+## 7. The expression module — espressivo-only, prototype-inspired
+
+`src/expression/**` and the `exaggerateMpm` / `spotlightMpm` facade entry points are outside the
+equivalence frame for a simpler reason than §6's: **the Java reference has no such feature at all.**
+meico applies an MPM to a score; it does not transform the MPM. There is no Java output to be
+byte-identical to, so this module makes no parity claim of any kind, and nothing in it is
+reachable from the conversion or rendering paths the equivalence suites drive.
+
+**Where the ideas come from, and what that does not mean.** The design descends from a Java
+prototype outside meico — `meicotools`, in the `mpm-renderer` project — whose `ModifyService`,
+`Shader` and `PerformService` first posed the question this module answers. That prototype is the
+**idea source, not a parity target**, and the distinction was made explicitly at the start of the
+work: it is unpublished exploratory code, its numbers are undocumented, and reproducing it
+faithfully would mean reproducing decisions its own author never wrote down. Four differences are
+worth naming because each is a place where matching the prototype would have been the easier
+option:
+
+- **Articulation is implemented.** The prototype declared `relativeDuration` and
+  `relativeVelocity` fields, wired them through its weight vector, and never applied them to a
+  document. Here `articulation` is a full dimension covering both ratios and six absolute offsets —
+  which is also why the prototype's two weights collapse onto one in `PROTOTYPE_WEIGHTS`, taking
+  the lower of the two.
+- **The magic constants are gone.** `Shader.bringOut`'s hardcoded `0.1` is now the required
+  `attenuation` option; the eight tuned weights `getDefaultWeights()` applied invisibly to every
+  render that asked for exaggeration — with no parameter to inspect them or turn them off
+  (`PerformService.java:92-95`) — are now the exported `PROTOTYPE_WEIGHTS` preset, documented as
+  one person's heuristic, with no weighting as the default. Both changes are the same principle: a
+  number that changes what a caller hears is either derived, or an option, or a named preset —
+  never a literal in a private method.
+- **The preset's correspondence is documented against the prototype's _levers_, not its field
+  names.** The two diverge in three places, and reading the names would credit the prototype with
+  controls it never had: its `dynamics` field never touched `@curvature`/`@protraction`
+  (`ModifyService.java:227-245`), its `temporalSpread` field scaled `@frameLength` and never
+  `@intensity` (`:291-317`), and its `dynamicsGradient` field in fact multiplied `ornament@scale`
+  (`:320-327`), an attribute this port excludes as a dead lever. The weights on `dynamicsShape`,
+  `ornamentSpacing` and `ornamentDynamics` are therefore this port's decision — taken so a preset
+  has no invisible holes across dimensions the design split after the vector was tuned — and
+  `src/expression/weights.ts` records which of the fifteen are inherited and which are decided.
+- **Selection failures are errors.** The prototype's shader skipped an unresolvable id with a bare
+  `continue` and ignored an element type it had no mapping for. A selection of nothing but
+  `<style>` switches therefore derived an empty spare set and damped **every** dimension — a
+  flattened performance returned as a successful "bring out". `spotlightMpm` raises
+  `SelectionNotFoundError` listing every offender instead, and an empty spare set is the identity.
+- **`Isolation.contextualize` is not ported.** Isolation and excerpt rendering are out of scope,
+  and the prototype's implementation additionally confuses a date with a volume. Neither the
+  feature nor the bug is here.
+
+**What replaces byte equivalence as the standard.** The mathematics: every dimension is a monotone
+bijection into a space where the attribute's neutral maps to 0, and the properties that follow
+(identity at `s = 1`, composition, domain closure, the neutral as a fixed point) are property-tested
+rather than asserted. Because those properties hold for _any_ such bijection and so validate no
+particular choice, each of the fifteen dimensions additionally carries an expected-direction test
+at the strongest deterministically observable level — rendered where the rendered effect is
+deterministic, written-attribute where a PRNG stands in the way. The reasoning behind every
+inclusion, exclusion and metric choice is in [expression/DESIGN.md](expression/DESIGN.md); §5 of
+that document is the prototype-feature ledger this section summarizes, and §9 records the
+adversarial review that shaped it.
+
+**What it does not touch.** The transform never writes a `@date`, never adds or removes an element
+or an attribute, and is deterministic — no RNG, so §4's nondeterminism caveat does not extend here.
+The one place its output can move a symbolic date is through the renderer rather than the
+document: `ornamentSpread` and `ornamentSpacing` on an MPM **v3** ornament that generates notes
+into a tick-resolved frame, where the renderer derives the generated notes' geometry from the very
+frame those dimensions scale. That boundary is stated in the facade's own documentation, pinned in
+both directions by `tests/integration/expression-transform.test.ts`, and is a property of §6's
+model rather than of this one.

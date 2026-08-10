@@ -142,7 +142,8 @@ try {
 ```
 
 `MeicoError` is the root of all of them; `ParseError`, `EmptyDocumentError`,
-`PerformanceNotFoundError`, `InvalidOptionError` and `MissingNodeError` are its subclasses.
+`PerformanceNotFoundError`, `InvalidOptionError`, `SelectionNotFoundError`,
+`EngineInvariantError` and `MissingNodeError` are its subclasses.
 
 ## The API
 
@@ -162,8 +163,12 @@ memoization works.
 | `performMsmToData({ msm, mpm }, options?)`      | MSM + MPM text     | `PerformanceData`                           |
 | `renderMidi({ msm }, options?)`                 | MSM text           | `Uint8Array` — the score as written         |
 | `renderExpressiveMidi({ msm, mpm? }, options?)` | MSM (+ MPM) text   | `Uint8Array` — as performed                 |
+| `exaggerateMpm(mpm, options)`                   | MPM text           | `{ mpm, report }` — the same MPM, turned up |
+| `spotlightMpm(mpm, options)`                    | MPM text           | the above `+ { spared, resolvedIds }`       |
+| `canonicalMpm(mpm)`                             | MPM text           | MPM text — parsed and re-serialized         |
+| `weightedFactors(s, weights)`                   | scalar + weights   | a factor per dimension                      |
 
-Options, all optional:
+Options for the conversion and rendering entry points, all optional:
 
 - **`ConvertOptions`** — `ppq` (tick grid floor, default 720, raised automatically if the source
   needs a finer grid), `dontUseChannel10`, `ignoreExpansions`, `cleanup`, `sourceName` (the name
@@ -173,6 +178,21 @@ Options, all optional:
 - **`PerformOptions`** — `performance` (name or index), `seed`, `movementSampleMaxStep`,
   `expandOrnaments` (let the MPM's ornaments generate their notes — default true).
 - **`MidiOptions`** — `generateProgramChanges`; `renderMidi` also takes `bpm` (default 120).
+
+Options for the two expression transforms, where the first field of each is **required**:
+
+- **`ExaggerateOptions`** — `factors` (required), plus `performance` (name or index; **omitted
+  transforms all of them**, unlike `performMsm`), `scope` (`'global'`, the default, exaggerates
+  levels around a performance-wide centre so a piecewise-constant map grows section contrast;
+  `'gesture'` scales each transition pair around its own mean and leaves constants alone),
+  `center`, `velocityRange` (default `{ min: 1, max: 127 }` — the floor is 1 because velocity 0 is
+  a note-off), `minRubatoWindow`, and `msm`, which fills in the report's estimates and reaches
+  nothing else.
+- **`SpotlightOptions`** — `ids` and `attenuation` (both required), plus `performance`. There is no
+  `scope`: spotlight is always `'gesture'`, because under `'global'` damping a background level
+  pulls it _toward_ the centre and re-levels quiet material louder.
+
+See the [Expression transforms](#expression-transforms-turning-a-performance-up) section below.
 
 > **`seed` is not a promise of reproducible output.** Where two imprecision offsets land on the
 > same millisecond date, the interior picks which one keeps its value with a bare `Math.random()`
@@ -256,6 +276,59 @@ specification and hand-computed vectors instead, and every decision that goes be
 fixes — including where this deliberately differs from the unmerged Java branch that also
 implements v3 — is written up in [PARITY.md §6](PARITY.md). MPM **v2** ornamentation is unchanged
 and stays inside the equivalence claim.
+
+## Expression transforms: turning a performance up
+
+An MPM says how a piece is played. `exaggerateMpm` and `spotlightMpm` edit that document
+parametrically — **MPM text in, MPM text out**, nothing rendered and nothing extracted — so you can
+sample a family of performances from one encoding, damp everything but the phrase you are
+studying, or drive a single "how expressive?" slider.
+
+```ts
+import { exaggerateMpm, spotlightMpm } from 'espressivo';
+
+// Every tempo and dynamics deviation, further from neutral.
+const { mpm, report } = exaggerateMpm(performance, { factors: { tempo: 1.6, dynamics: 1.4 } });
+
+// Damp everything the selected instructions do not govern, to a quarter.
+const brought = spotlightMpm(performance, { ids: ['t2', 'dyn4'], attenuation: 0.25 });
+// brought.spared === ['tempo', 'tempoShape', 'dynamics', 'dynamicsShape']
+```
+
+**What `s` means.** Each exaggerable attribute is mapped into a space where its _neutral_ value is
+0, scaled by `s`, and mapped back — a log space around a mean for tempo and dynamics levels, a
+logit for bounded proportions, a plain gain for signed offsets. So `s = 1` is the identity, `s > 1`
+pushes further from neutral, `s < 1` pulls toward it, and `s = 0` writes the neutral itself.
+Fifteen dimensions scale independently (`EXPRESSION_DIMENSIONS` is the list) and a missing key
+means 1. `weightedFactors(s, weights)` expands one scalar into all fifteen, and
+`PROTOTYPE_WEIGHTS` is a documented heuristic preset rather than a default.
+
+**What is guaranteed.** Two invariances, of different strength — and the distinction matters if you
+are generating training data:
+
+- **Structural (R5a), universal.** The result has the same skeleton as `canonicalMpm(input)`: no
+  `@date` is ever written, no element and no attribute is added or removed. Only numeric attribute
+  values change, and only at the sites the report names. Compare against `canonicalMpm(input)` and
+  not against your own bytes — parsing and re-serializing re-emits an `xmlns` declaration on every
+  namespaced element, which inflates a real 2444-byte fixture to 4011 bytes before the transform
+  touches anything. That is why `canonicalMpm` is exported: it is the baseline any byte comparison
+  has to be made against, and the identity transform returns it exactly.
+- **Symbolic (R5b), qualified.** Performing the result against the same MSM yields the same notes —
+  same ids, same **symbolic** dates, durations and pitches; only milliseconds, velocities and
+  control changes move. That holds for every MPM v2 document and for every v3 document whose
+  ornament frames are in milliseconds. It does **not** hold for `ornamentSpread` or
+  `ornamentSpacing` on a v3 ornament that _generates_ notes into a tick-resolved frame, because the
+  renderer derives those notes' geometry from the very frame those two dimensions scale. Hold them
+  at 1 if you need the guarantee unconditionally.
+
+Every run returns a report beside the document: which dimensions were transformed, skipped or
+inert, which sites were clamped, the computed centers (pass one back to make composition exact),
+and per-document sampling bounds. `report.totalWrites === 0` is the exact test for "this sample is
+a no-op". The transform is deterministic — no RNG anywhere — and never writes a non-finite value.
+
+The full model, the per-attribute registry, and the reasoning behind every inclusion and exclusion
+are in [expression/DESIGN.md](expression/DESIGN.md); the relationship to the Java-era prototype
+these ideas came from is in [PARITY.md](PARITY.md).
 
 ## Equivalence with Java meico
 

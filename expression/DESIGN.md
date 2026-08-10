@@ -297,7 +297,7 @@ Why each split (panel evidence, §9):
 
 **Preset mapping (D-H).** The prototype's eight-value weight vector predates this
 set. Its documented correspondence onto v2: tempo→`tempo` (1.0, and `tempoShape`
-inherits it), dynamics→`dynamics` (1.1, `dynamicsShape` inherits),
+inherits it), dynamics→`dynamics` (1.1, `dynamicsShape` takes the same),
 rubato→`rubato` (0.2), accentuation→`accentuation` (1.3),
 temporalSpread→`ornamentSpread` **and** `ornamentSpacing` (1.5),
 dynamicsGradient→`ornamentDynamics` (0.3), relativeDuration + relativeVelocity→
@@ -305,6 +305,34 @@ dynamicsGradient→`ornamentDynamics` (0.3), relativeDuration + relativeVelocity
 `asynchrony`, the three imprecision dimensions and `pedalShape` are new and
 default to 1.0. A caller who wants one knob uses the preset; the split costs them
 nothing.
+
+**W4 amendment (verification finding; LOG: the W4 fix wave).** Three of those
+arrows are a **decision, not an inheritance**. The numbers stand — this paragraph
+owns them — but the prototype's field *names* and the levers they actually moved
+diverge in three places, and the v1 wording credited it with levers it never had.
+Verified against `ModifyService.java`:
+
+- `dynamicsShape` — the prototype had **no dynamics curve-shape lever**.
+  `exaggerateDynamics` (:227-245) writes `@volume`/`@transition.to` and nothing
+  else; `@curvature`/`@protraction` appear nowhere in its source. The split
+  dimension takes `dynamics`' 1.1 by decision. (The parallel `tempoShape` claim
+  *is* inheritance: `exaggerateTempo` :265-272 rescales `@meanTempoAt` in logit
+  space around 0.5, which is §7.3's row almost exactly.)
+- `ornamentSpacing` — `exaggerateTemporalSpread` (:291-317) reads and writes
+  `@frameLength` only. `temporalSpread@intensity`, this dimension's whole content
+  (§7.10), was never touched. Same decision.
+- `ornamentDynamics` — the prototype's `dynamicsGradient` field did not scale a
+  gradient: `exaggerateDynamicsGradient` (:320-327) walks the ornamentation MAP
+  and multiplies `ornament@scale`, the attribute §7.16/RESOLVED-6 excludes here.
+  The 0.3 is carried onto the gradient endpoints by name and by intent — both
+  shade an ornament's velocities — not by lever.
+
+The honesty rule ("a dimension the prototype could not express is 1.0, and that
+is not a tuning judgement") therefore covers the **five** new dimensions only,
+and the line sits there deliberately: no corresponding field means no evidence
+either way, so 1.0 states the absence; a dimension split off a lever the
+prototype *did* weight has evidence about its sibling, and inheriting it keeps
+the profile coherent. `weights.ts`'s table carries the distinction in a column.
 
 Explicitly excluded, each with a one-line rationale and citation in §7.16:
 movement `@position`/`@transition.to` (D-G), articulation's neutral-less
@@ -354,8 +382,19 @@ export interface ExaggerateOptions {
  *  this, byte for byte. */
 export function canonicalMpm(mpm: XmlText): XmlText;
 
-// Errors (RULE E2). Beyond InvalidOptionError and SelectionNotFoundError:
+// Errors (RULE E2). Beyond InvalidOptionError:
 //
+//   SelectionNotFoundError — thrown by spotlightMpm for a bad `ids` selection
+//     (W4 amendment: landed in W4 alongside spotlightMpm itself). It lists
+//     EVERY offender in one throw, each tagged by kind: 'unresolved' (the id
+//     matches no element in the document) or 'unmappable' (it matches an element
+//     whose type maps to no dimension — `<style>`, and anything absent from
+//     D-I's table). One throw rather than fail-fast because a batch caller
+//     fixing selections one error per run is the reason typo'd selections went
+//     unnoticed in the prototype. There is NEVER a partial run: the document is
+//     untouched when it throws. `ids: []` is NOT an error — it is identity with
+//     a report saying so (survey verdict 20), and an empty derived spare-set is
+//     likewise identity, never the prototype's flatten-everything.
 //   PerformanceNotFoundError — options.performance names or indexes nothing.
 //     Without a selector the engine transforms ALL performances, so an empty
 //     result set is only an error when the caller *asked* for one: reporting
@@ -545,14 +584,17 @@ corrections, both closing gaps this section left rather than reversing it:
   unobservable. The ratified reading qualifies the write — **any write at a
   fully-reachable site** — so a dimension whose only writes happened at sites
   carrying an excluded lever correctly reports `partial`.
-- **`beatsUnverifiable` is currently true even when an MSM *is* supplied**, and
-  that is a deliberate stop rather than an oversight. Refining it means computing
-  the rendered beat positions — `1 + ((noteDate − tsDate) % measureTicks) /
-  beatTicks` against the MSM's `timeSignatureMap` — which is a **third**
-  replication of renderer arithmetic inside this engine, after the date-stable
-  ordering and the style-scope scan. Two replications are load-bearing (D-A
-  cannot resolve a level without them); a third buys only a sharper report
-  number, so it is scoped as a W4 item and the flag stays honest in the meantime.
+- **`beatsUnverifiable` stays true even when an MSM *is* supplied — DEFERRED with
+  rationale, not scheduled** (W4 amendment; LOG: "W3 — fix wave complete").
+  Refining it means computing rendered beat positions —
+  `1 + ((noteDate − tsDate) % measureTicks) / beatTicks` against the MSM's
+  `timeSignatureMap` — a **third** replication of renderer arithmetic inside this
+  engine, after the date-stable ordering and the style-scope scan. The first two
+  are load-bearing (D-A cannot resolve a level without them); this one would buy
+  only a sharper report number, and the three-state nulls already tell callers
+  the truth about what was and was not measured. The cost/benefit journals out,
+  so it is deferred indefinitely and revisited on demand rather than carried as
+  W4 scope.
 
 Interior: `src/expression/` — transforms (pure functions on numbers), registry
 (attribute → scale space + neutral + domain predicate + s-domain + P5r verdict),
@@ -563,8 +605,8 @@ walkers (raw child-element walkers per D-A), applier.
 | prototype | fate |
 |---|---|
 | Exaggerate (tempo/dynamics/meanTempoAt/rubato/temporalSpread/gradients/accentuation) | KEPT, generalized per §1; articulation actually implemented |
-| Shader.bringOut(0.1) | KEPT as `spotlight`, attenuation explicit, `gesture` scope (D-I) |
-| getDefaultWeights() magic profile | becomes an optional named preset, documented as heuristic, mapped onto the v2 dimensions (§3); default is NO weighting |
+| Shader.bringOut(0.1) | KEPT as `spotlight`, attenuation explicit, `gesture` scope (D-I). **LANDED IN W4** as `spotlightMpm` (W4 amendment) |
+| getDefaultWeights() magic profile | became an optional named preset, documented as heuristic, mapped onto the v2 dimensions (§3); default is NO weighting. **LANDED IN W4** as `PROTOTYPE_WEIGHTS` — exported data, not a static method, per D-H. Three of its arrows are a decision rather than an inheritance; §3's W4 amendment has the corrected correspondence (W4 amendment) |
 | Increase (tempo/dynamics/imprecision plain scaling) | subsumed: plain scaling is a different operation (shifts the mean, not the contrast) — provided as `scaleMpm` ONLY if a concrete consumer needs it; else dropped (YAGNI) |
 | sketchiness curves | DROPPED from core; the exponents are a UI recipe, not library semantics. Documented as a cookbook example composing the primitives |
 | humanize (add imprecision map) | DEFERRED: it *adds* instructions rather than transforming them, and mlign needs determinism; revisit on demand |
@@ -742,12 +784,16 @@ types keep s=1, every other dimension gets the caller's required `attenuation`.
   moves with the transformed endpoint. It is the same musical value, not an
   independent lever, so D-C's one-site rule is not violated.
 - **Selection errors** (A8): `ids: []` ⇒ identity, zero writes, report says so
-  (survey verdict 20). Any id that resolves to no element, **or** resolves to an
-  element whose type maps to no dimension, ⇒ a new
-  `SelectionNotFoundError extends MeicoError` listing **every** offender. An empty
-  derived spare-set is identity, never total suppression — that was the
-  prototype's worst defect and `<movement>`/`<style>` selections reach it by an
-  ordinary caller mistake.
+  (survey verdict 20). Any id that resolves to no element (`'unresolved'`),
+  **or** resolves to an element whose type maps to no dimension
+  (`'unmappable'`), ⇒ `SelectionNotFoundError extends MeicoError` listing
+  **every** offender with its kind, in one throw, leaving the document untouched
+  — never a partial run. An empty derived spare-set is identity, never total
+  suppression — that was the prototype's worst defect, and `<style>` selections
+  reach it by an ordinary caller mistake. `<movement>` no longer does: since
+  `pedalShape` went live in W2 it has a dimension of its own, so "spotlight the
+  pedalling" spares `pedalShape` rather than erroring (see the table below).
+  Contract restated in §4's error block.
 
 Type → dimension mapping (part of this decision, updated for the §3 splits):
 

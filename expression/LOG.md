@@ -451,3 +451,18 @@ User (mid-W4): push progress regularly to the GitHub remote; the final merge
 into main is the conductor's call. Branch pushed (origin/exaggeration @
 3432d25); every wave commit is pushed from now on. Merge decision remains
 gated on the W5 final audit.
+
+## 2026-08-10 W4 — verification, fix wave, committed
+
+Verification (2 lenses): both PASS-WITH-FIXES. MAJORs fixed and spot-checked
+by the conductor: PROTOTYPE_WEIGHTS' correspondence now describes the
+prototype truthfully (3 rows were provably wrong against the Java source —
+the prototype had no dynamics-shape lever, never touched @intensity, and its
+dynamicsGradient field scaled the excluded ornament@scale; numbers kept as
+design choices, notes rewritten "by decision"/"by name, not by lever", same
+corrections in DESIGN §3 + PARITY); public weightedFactors error wrapper now
+tested. All MINORs fixed (+26 tests, 3984 green): README R5a/R5b qualifiers
+restored, never-partial-run pin de-vacuized via grafted-id pair, D-I type-
+table closure guard, four previously-unspotlighted dimensions routed through
+spotlightMpm, literal-value preset pins, future-tense sweep. W4 committed and
+pushed.

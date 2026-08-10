@@ -59,12 +59,20 @@ export {
   renderMidi,
   renderExpressiveMidi,
 } from './api/pipeline.js';
-export { exaggerateMpm, canonicalMpm, EXPRESSION_DIMENSIONS } from './api/expression.js';
+export {
+  exaggerateMpm,
+  spotlightMpm,
+  canonicalMpm,
+  weightedFactors,
+  EXPRESSION_DIMENSIONS,
+  PROTOTYPE_WEIGHTS,
+} from './api/expression.js';
 export {
   ParseError,
   EmptyDocumentError,
   PerformanceNotFoundError,
   InvalidOptionError,
+  SelectionNotFoundError,
   EngineInvariantError,
 } from './api/errors.js';
 export type {
@@ -82,7 +90,11 @@ export type {
   PerformanceData,
   ExaggerateOptions,
   ExaggerationResult,
+  SpotlightOptions,
+  SpotlightResult,
+  SpotlightSelection,
   ExaggerationFactors,
+  ExaggerationWeights,
   ExpressionDimension,
   ExaggerationScope,
   CenterOverrides,
