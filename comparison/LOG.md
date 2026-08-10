@@ -1138,3 +1138,59 @@ AD-30 got wrong, so it is recorded rather than dismissed.
 Gate: `npm run verify` green before committing, 4258 passed + 1 skipped. eslint
 and prettier clean.
 
+## 2026-08-10 — W2c closing batch: decomposition, invariance, P-C3b (task #14, survey-code)
+
+W2c COMPLETE. `decomposition.ts` + 25 tests. Task #14 can close.
+
+DECOMPOSITION (§1.2 / AD-18). level / gain / shape on the NORMALIZED measure
+dmu = w dt / int_W w dt, with the headline density left on the unnormalized
+w dt — the two are named separately in the module because reading l_X against
+the unnormalized measure silently changes d_level's unit from nepers to
+neper*sqrt(quarters). Four fields plus the closing check, and the closing
+identity is what every test asserts: if level^2 + gain^2 + 2*sigma_A*sigma_B*(1-r)
+does not equal ||h_A - h_B||_2^2 then one of the four is wrong, and a
+plausible-looking number would not reveal which.
+
+Variance is computed as int (h - l)^2 dmu, NOT as int h^2 dmu - l^2. The second
+form is shorter and catastrophically cancels on a curve whose mean dwarfs its
+spread — a tempo curve at ln 60 ~ 4.1 with a 0.01-neper spread is exactly that
+shape, and it is the common case rather than a corner.
+
+[FINDING — §1.2's degenerate test is not implementable as written] §1.2 says
+"the shape term := 0 when sigma_A sigma_B = 0". Measured: a genuinely constant
+curve integrated by quadrature has variance ~7.9e-31, so sigma ~ 8.9e-16 and the
+equality test NEVER fires. Consequences if left: shape and r reported for a
+curve with no shape, and 'level-gain' dividing by a noise term. This is M18's
+lesson recurring in a second place — an algebraically-neutral quantity has to be
+recognized structurally, not by an equality test on floating point.
+
+[DECISION, needs ratification] SPREAD_NOISE_FLOOR = 1e-12, relative to the
+curve's own scale; variance below (floor*scale)^2 snaps to exactly 0, so every
+downstream `sigma === 0` test fires as §1.2 intends. Margin is 17 orders on both
+sides: the measured floor for a ln 60 constant is 2e-16 relative, while the
+smallest musically meaningful spread — a 0.1% tempo variation — is sigma ~ 1e-3.
+Nothing real lives in between. Same shape of guard as M18's, and flagged for the
+same reason.
+
+INVARIANCE MODES (§7.4 / AD-20). 'none' / 'level' / 'level-gain', per document
+and per curve-valued row. §7.4's table is PINNED rather than merely described:
+'level' removes a multiplicative factor in a log space (a roll read 10% faster
+is distance 0 after centring) but only an additive OFFSET in a linear one, since
+c*x - mean(c*x) = c(x - mean x) leaves the factor standing — that trap gets its
+own test. 'level-gain' on a constant curve returns the zero curve rather than
+dividing by zero, and isShapelessUnder reports it; a constant curve is the most
+common input in this corpus, so that path is ordinary rather than exceptional.
+
+P-C3b ZERO-SET TRANSITIVITY (AD-21). d(A,B) = 0 and d(B,C) = 0 implies
+d(A,C) = 0, run on three genuinely different ENCODINGS of one performed curve: a
+bare constant, the same value reached through a styleDef with a <style> switch,
+and the same value written with a redundant middle instruction. All three
+pairwise distances are exactly 0. Extended to the inert trailing transition
+(AD-8), which must stay inside the zero set. Includes a NON-VACUITY test — the
+same machinery gives a nonzero distance for a real difference — without which
+every assertion would pass on an implementation that returns 0.
+
+Gate: `npm run verify` green before committing, 4283 passed + 1 skipped (was
+4258). eslint and prettier clean. W2's four evaluators, grid, quadrature,
+densities, decomposition and invariance are now all in and gated.
+
