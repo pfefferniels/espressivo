@@ -2050,3 +2050,55 @@ expression gate's philosophy). MINOR-4's full malformed-value TABLE stays
 W3b scope; NaN reaching localDistance is not a table question.
 AD-42.5 @note.order and @repetitions land per AD-41.1 as already ruled;
 the draft's finding-channel-only treatment of note.order is superseded.
+
+## 2026-08-10 — W3a cut 3, part 2: ornament reader, distance, aligner's 2nd consumer
+
+AD-40 implemented in full. THE ALIGNER'S INTERFACE SURVIVED ITS SECOND CONSUMER
+UNCHANGED — not one line of eventAlignment.ts was touched. Articulation anchors carry
+a composed affine modifier; ornaments carry a resolved gradient and frame; the aligner
+sees only { dateTicks, id } plus three cost fields and never learns the difference.
+That was AD-37.6's whole bet and it paid.
+
+AD-40.2's principle in code: the gradient arrives at the distance layer as
+(from*scale, to*scale), so @scale is unpriceable on its own by construction. The
+encoding-invariance test checks the RENDERER first — (-20,20)x1 and (-10,10)x2 write
+identical ornament.dynamics markers — and then asserts distance 0.
+
+FIFTH §5-VS-RENDERER DIVERGENCE, and the biggest so far: A GLOBAL ornamentationMap
+PERFORMS NOTHING AT ALL. renderOrnamentationToMap gates the entire application on
+getLocalHeader() !== null, and Dated.addMap:94-97 binds
+`localHeader = this.part === null ? null : this.part.getHeader()` — so a map in
+<global> has a null local header BY CONSTRUCTION and not one of its ornaments is ever
+applied. Measured with identical content and identical styles: the same ornament
+writes ornament.dynamics -20/0/+20 from a part and null/null/null from <global>. A
+part-local map works whether its styles sit in the part header or the global one; only
+the MAP's own scope decides.
+
+Reported, not resolved: the inner apply() tests `localHeader === null && globalHeader
+=== null`, which is the check the outer gate looks like it meant to make, so this may
+be a PORT BUG rather than reference behaviour. If Java applies global ornamentation
+maps this belongs in PARITY.md and the comparison must follow the reference instead —
+I cannot check the Java source from here. Implemented as renderer-truth in the
+meantime (global scope -> no atoms, cause reported as 'global-scope-inert') because
+that is what THIS renderer performs, and pinned with a test that fails the moment the
+gate changes. AD-36.1's decide-without-stopping test applies: the renderer determines
+it and DESIGN is silent. But the port-bug question is the conductor's to settle.
+
+Pool sizing is honest about the MSM: only an explicit @note.order id list sizes the
+pool from the document, so poolSize is null otherwise and BOTH gradient endpoints are
+priced. Assuming a single-note pool would silently drop @transition.from from every
+ornament in the corpus, which is the wrong direction to guess in.
+
+A <temporalSpread> or <dynamicsGradient> present on one side only reads ⊥ per family,
+not a difference from a zero-width frame: there is no "unspread frame" the document
+meant, and pricing it at 0 reopens M1c. Frames in different @time.unit domains are
+incommensurable and also read ⊥ — a millisecond frame and a tick frame are not a big
+difference, they are not comparable.
+
+Still open and NOT invented: @note.order as a row. §5.6 enumerates it, but its value is
+a NAME or an id list; §5.8's @controller precedent (AD-36.3) sends name-valued
+attributes to the finding channel. Implemented as a structural FINDING for now
+(reported, contributes 0) with the question put to the conductor.
+
+Gate: `npm run verify` green before committing (4523 passed + 1 skipped, was 4506);
+eslint and prettier clean. 17 new tests.
