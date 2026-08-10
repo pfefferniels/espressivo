@@ -17,30 +17,25 @@
  *   velocity has `null` coefficients, not `{0,0}` — the two are different answers and a
  *   caller summing R6(b) contributions must be able to tell them apart.
  *
- * ## Divergences from §4, and why
+ * ## Where this differs from §4, and why
  *
- * §4 was written before the applier existed and three of its shapes did not survive contact.
- * They are listed here rather than in a commit message because a consumer reads this file.
+ * §4 was written before the applier existed, and four of its shapes did not survive contact.
+ * Three were resolved by amending §4 to match this file — `ReportNote.site` is nullable
+ * there (W2 amendment #8), `bounds.tempoMaxS` is `bounds.tempoDeviationRatio` (W2 amendment
+ * #7), and `estimates` is declared and documented (W3 batch). Read §4 as current; this note
+ * exists because a consumer reads this file and should not have to diff the two.
  *
- * 1. **`ReportNote.site` is nullable.** §4 types it as a required `SiteRef`, but several §7
- *    obligations are dimension-level and have no site at all — the identity short-circuit,
- *    an empty center population, the tuning domain's inertness. A synthetic `SiteRef`
- *    pointing at nothing would be worse than a null.
- * 2. **`bounds.tempoMaxS` is `bounds.tempoDeviationRatio`.** §8's tempo bound is
- *    `s ≤ min(ln(hi/c), ln(c/lo)) / ln r`, which needs a musical window `[lo,hi]` — §8 uses
- *    `[10,400]` for the built-in ladder. `r` is the document's own quantity and is reported;
- *    the window is the caller's, and inventing one here would be exactly the magic constant
- *    C2 forbids. `bounds.rubatoMaxS` needs no such window and keeps its §4 name.
- * 3. **`sitesPartial` is not a field.** §4 gives three site counters and a `partial` STATE.
- *    A partial site was written, so it is counted under `sitesTransformed`, and the
- *    dimension's state reflects it; which components were unreachable is in the notes, where
- *    the detail belongs.
- * 4. **`estimates` is a field §4 does not list.** A10 authorises the content — an optional
- *    `msm` input feeding report estimates only — but §4's `PerformanceReport` block predates
- *    it. The field ships now, valued null, and §4's documentation of it is W3's batch
- *    (journaled as DECLINED-for-now in LOG's fix-wave adjudication). The mirror gap is
- *    deliberate too: `options.msm` is a facade-level option, and `applyExaggeration` does not
- *    take it.
+ * One thing is still worth stating outright, because it is a place a reader will look for a
+ * field that is deliberately absent:
+ *
+ * - **There is no `sitesPartial` counter.** §4 and this file both give exactly three site
+ *   counters and a `partial` STATE. A partial site *was written*, so it is counted under
+ *   `sitesTransformed`; the dimension's state records that something beside it was excluded,
+ *   and which components were unreachable is in the notes, where the detail belongs.
+ *
+ * A second asymmetry is deliberate rather than a divergence: `options.msm` is a facade-level
+ * option feeding `estimates` only, so `applyExaggeration` does not take it (A10's R1
+ * carve-out).
  */
 import type { ExpressionDimension } from './registry.js';
 import { EXPRESSION_DIMENSIONS } from './registry.js';

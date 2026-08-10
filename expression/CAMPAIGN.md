@@ -47,8 +47,14 @@ transform an MPM performance parametrically:
    (b) an explicit option with a documented default and rationale, or (c) a named
    preset documented as heuristic. Hard clamps only where the MPM spec or renderer
    defines a domain — cited.
-6. **s=1 is byte-identity**: exaggerating with factor 1 returns a byte-identical
-   document. Property-tested.
+6. **s=1 is canonical-baseline identity** *(amended per A2, W5 — see LOG "A2 P1
+   recontracted; Tier 2 dropped")*: exaggerating with factor 1 returns
+   `canonicalMpm(input)` byte for byte, under **both** predicates — `factors: {}`
+   and a record setting every dimension to 1. There is no `input == output` byte
+   tier and cannot be one for any MPM: `Element.wrap` drops `xmlns` at parse and
+   `Element.toXML` re-emits it, so parse→serialize inflates a real 2444-byte
+   fixture to 3972 bytes before the applier is reached. Property-tested against
+   the canonical baseline, never against the input.
 7. **Idiomatic per house rules**: refactor/CHARTER.md conventions apply (readonly,
    no input mutation at the facade, typed errors, RULE F1/F2 plain-data facade).
 8. **Adversarial verification** per wave before its commit.

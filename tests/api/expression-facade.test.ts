@@ -675,6 +675,47 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
     expect(cliffs(720)).toBe(0);
   });
 
+  it('falls back to 720 on each side when that side declares no grid', () => {
+    // Both fallbacks are 720, and every fixture declares 720 on both sides, so neither
+    // constant is observable from the corpus — each is pinned here against a counterpart
+    // that declares something else. The frames are chosen so that a fallback of 480 would
+    // give the opposite answer in both directions.
+    const ornament = (frameLength: string) =>
+      '<ornamentationStyles><styleDef name="S"><ornamentDef name="roll">' +
+      `<temporalSpread frame.start="0.0" frameLength="${frameLength}"/>` +
+      '</ornamentDef></styleDef></ornamentationStyles>';
+    const cliffs = (mpm: XmlText, msm: XmlText) =>
+      exaggerateMpm(mpm, { factors: { ornamentSpread: 2 }, msm }).report.performances[0].estimates
+        .ornamentSpreadCliffs;
+
+    // (a) The PERFORMANCE declares no `@pulsesPerQuarter`. `tempo.msm`'s shortest note is one
+    // quarter, so at the 720 fallback it is 720 performance ticks and the 600-tick scaled
+    // frame fits; a fallback of 480 would make the note 480 ticks and the frame a cliff.
+    const undeclaredPerformance = document(
+      `<performance name="P"><global><header>${ornament('300.0')}</header>` +
+        `<dated></dated></global></performance>`,
+    );
+    const declared720 = document(performance('P', '', ornament('300.0'), 720));
+    const declared480 = document(performance('P', '', ornament('300.0'), 480));
+    expect(cliffs(undeclaredPerformance, reference('tempo', 'msm'))).toBe(0);
+    expect(cliffs(undeclaredPerformance, reference('tempo', 'msm'))).toBe(
+      cliffs(declared720, reference('tempo', 'msm')),
+    );
+    expect(cliffs(declared480, reference('tempo', 'msm'))).toBe(1);
+
+    // (b) The MSM declares no `@pulsesPerQuarter` against a 360-ppq performance. At the 720
+    // fallback the shortest note is one quarter — 360 performance ticks, which the 400-tick
+    // scaled frame overruns; a fallback of 480 would make it 1.5 quarters and no cliff.
+    const undeclaredScore = reference('tempo', 'msm').replace(
+      ' pulsesPerQuarter="720"',
+      '',
+    ) as XmlText;
+    expect(undeclaredScore).not.toContain('pulsesPerQuarter');
+    const perf360 = document(performance('P', '', ornament('200.0'), 360));
+    expect(cliffs(perf360, undeclaredScore)).toBe(1);
+    expect(cliffs(perf360, undeclaredScore)).toBe(cliffs(perf360, reference('tempo', 'msm')));
+  });
+
   it('answers null — not zero — where the risk is a millisecond one and the MSM is a score', () => {
     // The distinction the field exists to keep: `0` means "sites of this family, none at
     // risk", `null` means "sites of this family whose risk this MSM does not determine". A

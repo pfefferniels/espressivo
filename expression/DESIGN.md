@@ -54,9 +54,11 @@ are restated honestly.
   μ = √(20·100); logit maps 0.3 → 0.30000000000000004).
   There is **no byte-level `input == output` contract**. `Element.wrap` drops
   `xmlns` at parse and `Element.toXML` re-emits it on every namespaced element,
-  inflating a real fixture from 2444 to 4011 bytes — strict input==output is
+  inflating a real fixture from 2444 to 3972 bytes — strict input==output is
   unreachable for *every* MPM regardless of what the applier does
-  (REVIEW-FINDINGS.md:10-14).
+  (REVIEW-FINDINGS.md:10-14; **W5 correction**: the panel's 4011 was measured
+  through `Document.toXML`, whose rewritten XML declaration RULE F2a's
+  `getRootElement().toXML()` does not emit — 39 bytes).
 - **P2 composition** — `exaggerate(s₁) ∘ exaggerate(s₂) = exaggerate(s₁·s₂)`,
   **exact only on the clamp-free subdomain and only to ~1 ULP** (A3). Property
   tests assert it numerically in the T-space with an epsilon, never on serialized
@@ -190,13 +192,18 @@ From mlign-57 (adopted 2026-08-09, see LOG.md):
     document, dimension and factor, and pinned for every fixture pair × factor.
     This is what D-A's write discipline exists to deliver.
   - **R5b — render-level, QUALIFIED.** `perform(msm, exaggerate(mpm, s))` yields
-    the same note ids, symbolic dates, durations and pitches as
-    `perform(msm, mpm)`. Holds for **all v2 documents** and for **v3 documents
-    whose ornament frames are millisecond-resolved**. It does **not** hold for
-    `ornamentSpread`/`ornamentSpacing` on a **v3 note-GENERATING ornament with a
-    tick-resolved frame** — including `"%"`, which resolves against the
-    principal's duration in ticks. A caller who needs R5b unconditionally holds
-    those two dimensions at 1.
+    the same notes at the same symbolic dates, durations and pitches as
+    `perform(msm, mpm)` — under the same ids for the notes the **score** already
+    had. Notes a v3 ornament *generates* are matched **by position and date, not
+    by id** (**W5 amendment**): every note-generating v3 ornament draws a fresh
+    random `meico_<uuid>` per render, the millisecond-frame case included, so two
+    renders of the same *untransformed* document already disagree on those ids
+    and R5b never covered them. Holds for **all v2 documents** and for **v3
+    documents whose ornament frames are millisecond-resolved**. It does **not**
+    hold for `ornamentSpread`/`ornamentSpacing` on a **v3 note-GENERATING
+    ornament with a tick-resolved frame** — including `"%"`, which resolves
+    against the principal's duration in ticks. A caller who needs R5b
+    unconditionally holds those two dimensions at 1.
 
   The exception is structural, not a defect to fix. On a v3 generating ornament
   the renderer derives the geometry of the notes it *creates* from the very frame
@@ -434,7 +441,10 @@ export type SiteState =
   | 'inert'        // present, but the renderer gives it no effect
   | 'transformed'  // written
   | 'partial'      // some levers reachable, at least one excluded (see below)
-  | 'skipped';     // every candidate site failed the gate or a site-discipline rule
+  | 'skipped';     // every candidate site failed the gate or a site-discipline rule,
+                   // OR the dimension was short-circuited at s = 1 and never walked
+                   // (W5 amendment, matching the shipped type: an `identity-factor`
+                   // note says which, and all three site counters read 0)
 
 export interface DimensionReport {
   readonly requestedFactor: number | null;
@@ -608,7 +618,7 @@ walkers (raw child-element walkers per D-A), applier.
 | Shader.bringOut(0.1) | KEPT as `spotlight`, attenuation explicit, `gesture` scope (D-I). **LANDED IN W4** as `spotlightMpm` (W4 amendment) |
 | getDefaultWeights() magic profile | became an optional named preset, documented as heuristic, mapped onto the v2 dimensions (§3); default is NO weighting. **LANDED IN W4** as `PROTOTYPE_WEIGHTS` — exported data, not a static method, per D-H. Three of its arrows are a decision rather than an inheritance; §3's W4 amendment has the corrected correspondence (W4 amendment) |
 | Increase (tempo/dynamics/imprecision plain scaling) | subsumed: plain scaling is a different operation (shifts the mean, not the contrast) — provided as `scaleMpm` ONLY if a concrete consumer needs it; else dropped (YAGNI) |
-| sketchiness curves | DROPPED from core; the exponents are a UI recipe, not library semantics. Documented as a cookbook example composing the primitives |
+| sketchiness curves | DROPPED from core; the exponents are a UI recipe, not library semantics. Documented as a cookbook example composing the primitives — **LANDED IN W5** as README's "Cookbook: one slider of your own", a `weightedFactors` weight vector marked heuristic, with the negative-factor boundary named. It sits in README rather than here because the reader who wants the dropped feature back is a consumer, and this document does not ship in the npm package (W5 amendment) |
 | humanize (add imprecision map) | DEFERRED: it *adds* instructions rather than transforming them, and mlign needs determinism; revisit on demand |
 | Isolation.* | OUT OF SCOPE (charter) |
 
@@ -1166,7 +1176,9 @@ Java-meico-written def diverges regardless of omissions. The trigger is the
 decisively, strict input==output is unreachable for *every* MPM whatever the
 applier does: `Element.wrap` drops `xmlns` at parse and `Element.toXML` re-emits
 it on every namespaced element, inflating a real Tier-2-eligible fixture from 2444
-to 4011 bytes. P1 is therefore recontracted in §1.1 around the canonical baseline
+to 3972 bytes (**W5 correction** of the panel's 4011, which included the XML
+declaration `Document.toXML` rewrites and RULE F2a's serializer omits). P1 is
+therefore recontracted in §1.1 around the canonical baseline
 alone, with **two** predicates (`{}` and every-dimension-1) and an explicit
 `s === 1` short-circuit — because the v1 justification, "a write happens only when
 the value differs", is itself false in doubles.
@@ -1263,7 +1275,9 @@ degree 1 in (`@value`, `@transition.from`, `@transition.to`), so scaling the tri
 by s is **exactly** equivalent to scaling `@scale` by s (SURVEY.md:2451-2455).
 Touching both applies s². D-C picks `@scale`: it is per-instruction, whereas one
 def is addressed from any number of instructions in any part. The triple is
-available only as a separate opt-in "reshape" knob, scaled atomically, never
+therefore **not exposed here, and deliberately so** (wording corrected W5 — the
+indicative earlier read as if a knob shipped). If a consumer ever needs it, it
+arrives as an explicit opt-in "reshape" option, scaled atomically and never
 materializing an absent attribute.
 
 *Documented no-ops the report must catch.* Real documents put raw tick values in
@@ -1562,10 +1576,12 @@ pinned against the real parser), one new write primitive
 (`gate.writeSuffixedNumber`), and one new report note kind
 (`frame-alias-shadowed`, for a v3 spread carrying both offset spellings, where
 the reader takes `frame.offset` and never looks at the alias). §8's sampling
-ranges still distinguish tick-domain from ms-domain magnitudes, and now have a
-third case they do not yet address: a `relative` frame, whose magnitude is a
-percentage of the principal note rather than a duration — flagged for §8 at W4,
-not decided here.
+ranges still distinguish tick-domain from ms-domain magnitudes, and gained a
+third case: a `relative` frame, whose magnitude is a percentage of the principal
+note rather than a duration. **Decided in §8's `ornamentSpread` row** (LOG: W3
+kickoff, journaling the W2.5 open item): the numeric range 0…4 stands, but its
+meaning is a fraction of the principal's duration rather than a duration, and the
+bound is a judgment call rather than a derivation.
 
 **The one thing the engine must never do to a v3 value: canonicalize it.** The
 renderer's `formatTemporalValue` rebuilds a value's text from its *resolved*
@@ -1597,7 +1613,7 @@ it never writes it.
 | `articulation(Def)@absoluteVelocity` | D-B: replacement, neutral = absent; the only meico default using it is sforzato = 127, already at the ceiling | SURVEY.md:1784-1798 |
 | `articulation(Def)@detuneCents` | pitch attribute per §3/R5b. Linear-0 in principle, but **inert** — written onto the MSM note and read by nothing. Revisit as its own `intonation` dimension on demand, never inside `articulation` | SURVEY.md:1824-1832, SURVEY.md:2044-2049 |
 | `articulation(Def)@detuneHz` | pitch attribute per §3/R5b, and weaker: Hz is not a perceptually linear pitch unit, so linear scaling exaggerates low notes far more than high ones | SURVEY.md:1855-1862 |
-| `accentuation@value`, `@transition.from`, `@transition.to` | D-C: homogeneous degree 1 with `accentuationPattern@scale`, so scaling both is exactly s². Available only as a separate opt-in "reshape" knob, scaled atomically | SURVEY.md:2179-2188, SURVEY.md:2451-2455 |
+| `accentuation@value`, `@transition.from`, `@transition.to` | D-C: homogeneous degree 1 with `accentuationPattern@scale`, so scaling both is exactly s². **Not shipped, deliberately** (W5 wording fix): if a consumer needs it, it arrives as an explicit opt-in "reshape" option, scaled atomically | SURVEY.md:2179-2188, SURVEY.md:2451-2455 |
 | `accentuationPatternDef@length` | no neutral: a loop period and ramp-segment end; scaling it moves *when* accents land. Note the parser *adds* `length="4"` when absent — a D-A baseline mutation | SURVEY.md:2262-2273 |
 | `accentuation@beat` | position, no neutral; editing it can reorder anchors and desynchronize the def from its own XML child order | SURVEY.md:2291-2299 |
 | `accentuationPattern@loop`, `@stickToMeasures` | booleans. **Read them** — they decide the span and which beat number the pattern is evaluated at; their absent-defaults differ (false vs **true**) | SURVEY.md:2351-2386 |

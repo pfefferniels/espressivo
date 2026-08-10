@@ -23,7 +23,7 @@
  * module does. `Element.wrap` drops `xmlns`/`xmlns:*` declarations at parse
  * (XomTypes.ts:410) and `Element.toXML` re-emits one on every namespaced element with no
  * check for an inherited declaration (XomTypes.ts:766-771), which inflates a real fixture
- * from 2444 to 4011 bytes. Comments, processing instructions and CDATA are dropped
+ * from 2444 to 3972 bytes. Comments, processing instructions and CDATA are dropped
  * (XomTypes.ts:381-383). What DOES hold, and is what the engine's P1 identity predicate
  * is asserted against, is that the round trip is **idempotent after one application**:
  * `serialize(parse(serialize(parse(t)))) === serialize(parse(t))`. The canonical baseline

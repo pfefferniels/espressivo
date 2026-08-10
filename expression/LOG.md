@@ -466,3 +466,176 @@ restored, never-partial-run pin de-vacuized via grafted-id pair, D-I type-
 table closure guard, four previously-unspotlighted dimensions routed through
 spotlightMpm, literal-value preset pins, future-tense sweep. W4 committed and
 pushed.
+
+## 2026-08-10 W5 — final audit (4 lenses) and the corrections it forced
+
+All four lenses returned MERGE-AFTER-FIXES; no lens found a defect in shipped
+behaviour. Every MAJOR and MINOR below is closed in this wave. The engine is
+untouched by all of it except two `Object.freeze` calls.
+
+**The one real gate hole: `.prettierignore`.** W2.5's `expression/` entry is a
+gitignore-style pattern with no leading slash, so it matched a directory of
+that name at ANY depth — exempting `src/expression/**` and `tests/expression/**`
+(13,141 lines, and the source half ships in the npm tarball) from
+`format:check`, not just the campaign's records. Three files had already
+drifted through the hole. **Decision: anchor it to `/expression/`** rather than
+drop it, which the `ignore` package's own semantics confirm keeps the documents
+exempt while returning the code to the formatter; then `prettier --write
+src/expression tests/expression` (20 diff lines in selection.ts,
+selection.test.ts, weights.test.ts). `refactor/` and `ornamentation/` are
+equally unanchored and were left alone: no directory of either name exists at
+any other depth, so the over-match is latent there and real only here, and
+touching them is out of this campaign's blast radius. This was the branch's one
+un-journaled pre-existing-file touch; it is journaled now.
+
+**W2.5's test count, corrected.** The 2026-08-09 W2.5 entry reads "Verify green
+at 3625 (baseline 3479, +146)". The measured count at e12a1d2 is **3626
+(+147)**, as that commit's own message states; the 3479 baseline is right. The
+audit re-ran `npm run verify` at every wave commit from `git archive`
+extractions: 6ff330a 3064, f6b224f 3479, e12a1d2 3626, 3432d25 3839, adc80d5
+3984, all exit 0.
+
+**Five dispatched items that were never journaled as landed.** All five did
+land; the record simply stopped short, which is the failure an append-only
+journal exists to prevent. Closing them by naming where each one is:
+
+- W2's DESIGN amendment batch (dispatched at "W2 — w2c integration complete")
+  landed as §4's W2 amendments block, amendments #1–#8.
+- W3's DESIGN batch (estimates field, F8 rewording, gesture-scope row-note
+  qualification, ALL-performances sweep) landed at §4's `estimates` block and
+  its W3 amendment, §4's F8 state-precedence note, the §7 gesture-scope row
+  notes, and the ALL-performances wording in §2/§4.
+- The DESIGN §2 rewrite dispatched in W3 landed as §2's R5a/R5b split.
+- W3's deferred DESIGN nit (§4 names `SelectionNotFoundError` before W4 shipped
+  it) was resolved directly rather than marked pending: §4 carries "W4
+  amendment: landed in W4 alongside `spotlightMpm` itself".
+- W2's housekeeping assignment (vitest coverage include + the eslint layer
+  zone) landed in vitest.config.ts and eslint.config.js.
+
+**Corrections to shipped documentation.** (a) The canonicalisation figure
+"2444 → 4011 bytes" was measured through `Document.toXML`; RULE F2a's shipped
+serializer is `getRootElement().toXML()`, which omits the rewritten XML
+declaration — **3972**, a 39-byte difference. Corrected in README,
+`api/expression.ts`, `expression/mpmDocument.ts` and DESIGN §1.1/§9; left
+standing in REVIEW-FINDINGS.md, where it is correctly attributed to the
+`Document.toXML` path. (b) R5b's "same note ids" is false for every
+note-generating v3 ornament, the millisecond-frame case included: the renderer
+draws a fresh `meico_<uuid>` per render, so two renders of the same
+*untransformed* document already disagree. README, DESIGN §2 and the
+`exaggerateMpm` JSDoc now say the same thing — same ids for score-derived
+notes, generated notes matched by position and date. (c) "Only at the sites the
+report names" promised a manifest the report does not carry: its notes are
+refusals, clamps, skips and inertness, and writes appear only as per-dimension
+counters. Reworded in README and the JSDoc to what the report delivers. (d)
+`report.ts`'s "Divergences from §4" block — which tsc emits verbatim into
+`dist/expression/report.d.ts` — announced three divergences, listed four, and
+was stale on three of them (§4 was amended at W2/W3 to match). Rewritten down
+to the one live point, `sitesPartial`. (e) CAMPAIGN invariant 6 still asserted
+the byte-identity the program itself falsified, an amendment DESIGN §9 assigned
+to the conductor and never made; it now states the A2 contract (canonical
+baseline, both predicates) and is marked as amended. (f) PARITY §7 said "Four
+differences" over five bullets, and named no prototype capability that is
+simply absent; it now counts correctly and names `Increase`, the sketchiness
+curves and `humanize`. (g) README and PARITY linked to `expression/DESIGN.md`,
+which `package.json` `files` does not ship; both links now point at the GitHub
+blob path. (h) DESIGN §7.15's forward reference to a decision "at W4" was
+stale — it landed at W3 kickoff, in §8's `ornamentSpread` row. (i) §7.8/§7.16
+described an opt-in accentuation "reshape" knob in the indicative; no such
+option exists, and both now say so. (j) §4's `SiteState` glossary omitted the
+identity short-circuit, so an `s = 1` dimension read `skipped` against a
+definition excluding it. (k) README's expression example used an undeclared
+`performance`, which resolves to the runtime global instead of failing loudly.
+
+**§5's sketchiness cookbook: written, not withdrawn.** The one §5 row carrying
+an unconditional deliverable ("documented as a cookbook example composing the
+primitives") had no document. Conductor's call: **write it**, in README rather
+than here, because the reader who wants the dropped feature back is a consumer
+and this document does not ship in the tarball. It is a `weightedFactors`
+weight vector driven by one slider, marked heuristic, with the negative-factor
+boundary named; every line of it was executed before it was committed to the
+page. §5's row now points at it.
+
+**Coverage the audit found missing, now pinned.** Both correlated-distribution
+families — `brownianNoise` (3 attributes) and `compensatingTriangle` (4) across
+three domains, **21 of the 83 live registry rows** — had no behavioural pin at
+all: deleting brownianNoise's whole attribute list from the registry left all
+3984 tests green, and the §7.13 shape guard did not name it. Added
+write-exercising tests for both families in all three domains, including
+`@degreeOfCorrelation` held fixed, and extended the shape guard by name rather
+than by length; both mutations now fail. Also pinned: the two articulation rows
+(`@absoluteDelay`, `@absoluteDurationChangeMs`) that were written only on
+`<articulationDef>` and never on the inline `<articulation>` whose composition
+semantics §7.7 says differ; and both ppq fallback defaults
+(`msmFacts.DEFAULT_PPQ`, `estimates.DEFAULT_PERFORMANCE_PPQ`), each of which
+could be changed to 480 with the full suite green because every fixture
+declares 720 on both sides — each is now pinned against a counterpart that
+declares something else.
+
+**Two hardening items.** `EXPRESSION_DIMENSIONS` and `PROTOTYPE_WEIGHTS` crossed
+the package boundary as unfrozen shared objects, so a consumer's
+`EXPRESSION_DIMENSIONS.push('bogus')` widened the option validator's vocabulary
+process-wide; both are now `Object.freeze`d, pinned by a mutation test through
+the public entry point. And the eslint layer zone guarded expression→renderer
+but nothing guarded renderer→expression: every renderer zone (including a new
+`mei` entry, since expression sits above it) now forbids `expression`, verified
+by negative control. Both are behaviour-neutral — the repo's total eslint count
+is 1048 before and after.
+
+**W3 and W4 verification records archived.** Charter invariant 8's per-wave
+adversarial verification ran for all five waves, but only W1's and W2's lens
+reports were archived verbatim; W3's and W4's existed only as conductor
+summaries in this journal. Both are now in `expression/W3-VERIFICATION.md` and
+`W4-VERIFICATION.md`, in the same format as `W2-VERIFICATION.md` — two lenses
+each, 13 findings each, verbatim.
+
+### Pre-existing, reported to the user, NOT this campaign's
+
+Consolidated and corrected against measurement at adc80d5. None of these is
+introduced by this branch; the campaign's own code carries zero of them.
+
+1. **Seeded correlated imprecision renders NaN.** A `@seed` on a
+   `distribution.correlated.*` renders NaN for every affected note
+   (`src/mpm/elements/maps/ImprecisionMap.ts:352`, where a declared seed is set
+   on the provider; SURVEY.md:3646-3657). Out of scope by D-F, and the reason
+   no fixture here builds on seeded correlated distributions. Recorded in
+   DESIGN §7.13 only — never in this journal until now.
+2. **`tempo_dynamics_spans.mpm` renders a non-monotone millisecond map under
+   ANY tempo change**, because its `beatLength`-less `<tempo>` is skipped by
+   the renderer. Reproduced with the expression engine uninvolved.
+3. **`npm run lint` fails on a pristine checkout: 1048 problems** (1046 errors,
+   2 warnings) across 83 files. The W2 entry above reports this as "~1017
+   errors in `tests/**`", which mis-locates 947 of them. Measured split:
+   **947 in `src/**`** (mei 557, mpm 227, msm 127, midi 22, xml 13, index.ts 1),
+   **89 in `tests/**`**, **12 in `ornamentation/tools`**. Dominant rule
+   `@typescript-eslint/no-non-null-assertion` (836); dominant file
+   `src/mei/Mei2MsmMpmConverter.ts` (525). `npm run verify` does not run lint,
+   which is why the gate is green.
+4. **`src/index.ts:184`** — `@typescript-eslint/no-unnecessary-condition`, "the
+   types have no overlap", on the `arg1 == null` test inside
+   `helperGetAllChildElements`. Present on main at line 153; this branch only
+   appended export statements above it.
+5. **`tests/midi/Midi.test.ts` fails `prettier --check`** — the only file in the
+   repo that does, and untouched by this campaign. It is the one warning
+   `npx prettier --check .` is expected to report.
+
+## 2026-08-10 W5 — final audit, fix wave, MERGE DECISION
+
+Final audit: 4 lenses, all MERGE-AFTER-FIXES (full reports archived: the two
+new W3/W4-VERIFICATION.md files close the record asymmetry). Fix wave complete
+and conductor-verified: .prettierignore anchored (/expression/) + 3 drifted
+files formatted; R5b generated-id carve-out in DESIGN/JSDoc/README (generated
+notes match by position+date, never id — ids are fresh meico_<uuid> per render
+even untransformed); report-scope wording fixed; report.ts divergence block
+refreshed; CAMPAIGN invariant 6 amended per A2; correlated-distribution
+families write-tested (21 rows); all audit MINORs incl. frozen public
+constants, corrected byte figure (3972), "Five differences", ppq pins,
+inline-articulation site tests, reverse layer guard, consolidated pre-existing
+issues with corrected locations. Gates: 3992 tests green; prettier reports
+only the pre-existing Midi.test.ts; NUL clean.
+
+MERGE DECISION (conductor, per user delegation 2026-08-10): MERGE. Grounds:
+five waves each adversarially verified with archived findings; clean-room
+reproduction exact (fresh clone, npm ci, 3992 green, zero new dependencies);
+charter invariant 2 airtight (fixtures and renderer untouched); live external
+consumer (mlign) validating the contract in production use. Protocol:
+hold-and-ping to mpmify before pushing main.

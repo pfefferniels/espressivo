@@ -192,8 +192,7 @@ function dimensionsOf(located: Located): readonly ExpressionDimension[] {
 /** The reason an `unmappable` id is unmappable, which for a distribution is its map. */
 function unmappableDetail(id: string, located: Located): string {
   const localName = located.element.getLocalName();
-  const where =
-    located.imprecisionMap === null ? '' : ` inside <${located.imprecisionMap}>`;
+  const where = located.imprecisionMap === null ? '' : ` inside <${located.imprecisionMap}>`;
   return (
     `xml:id ${JSON.stringify(id)} is on <${localName}>${where}, which governs no exaggeration ` +
     `dimension; selectable types are ${[...TYPE_DIMENSIONS.keys()].join(', ')} and a ` +
@@ -202,9 +201,7 @@ function unmappableDetail(id: string, located: Located): string {
 }
 
 /** Every resolved element's dimensions, deduplicated into registry order. */
-function unionOfDimensions(
-  resolved: readonly ResolvedSelection[],
-): readonly ExpressionDimension[] {
+function unionOfDimensions(resolved: readonly ResolvedSelection[]): readonly ExpressionDimension[] {
   const spared = new Set(resolved.flatMap((entry) => entry.dimensions));
   return EXPRESSION_DIMENSIONS.filter((dimension) => spared.has(dimension));
 }

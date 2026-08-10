@@ -63,8 +63,12 @@ import type { LevelDomain } from './styleScope.js';
  * The tuple is the exported vocabulary, not a convenience: A11 makes an unknown key in the
  * factors record an error rather than a silent identity, and this is what "unknown" is
  * measured against.
+ *
+ * Frozen because the ESM re-export hands a consumer the same object the option validator
+ * reads: unfrozen, a `push` from outside would widen this package's notion of a legal
+ * dimension process-wide. `as const` stops that at compile time only.
  */
-export const EXPRESSION_DIMENSIONS = [
+export const EXPRESSION_DIMENSIONS = Object.freeze([
   'tempo',
   'tempoShape',
   'dynamics',
@@ -80,7 +84,7 @@ export const EXPRESSION_DIMENSIONS = [
   'imprecisionDynamics',
   'imprecisionDuration',
   'pedalShape',
-] as const;
+] as const);
 
 export type ExpressionDimension = (typeof EXPRESSION_DIMENSIONS)[number];
 

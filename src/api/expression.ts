@@ -99,7 +99,7 @@ function parseRoot(kind: DocumentKind, text: XmlText, parse: (text: string) => E
  * It exists because it is the only thing an identity claim can be *tested* against.
  * `exaggerateMpm(mpm, {factors: {}}).mpm === mpm` is false for every MPM whatever the engine
  * does — `Element.wrap` drops `xmlns` at parse and `Element.toXML` re-emits it on every
- * namespaced element, which inflates a real fixture from 2444 to 4011 bytes — so §1.1's P1
+ * namespaced element, which inflates a real fixture from 2444 to 3972 bytes — so §1.1's P1
  * is contracted against this instead (A2).
  *
  * It is a function here rather than a re-export of the interior `canonicalBaseline`, and that
@@ -204,13 +204,19 @@ function resolveEngineOptions(options: ExaggerateOptions): void {
  *
  * **Structural invariance (R5a).** The returned document has the same skeleton as the input's
  * canonical form: no `@date` is ever written, no element is added or removed, and no attribute
- * is added or removed. Only attribute *values* change, and only at the sites the report names.
- * This half is universal — it holds for every document, every dimension and every factor,
- * including the ones R5b below carves out.
+ * is added or removed. Only attribute *values* change. The report says which dimensions were
+ * written and how many writes each made, and names every individual site it refused, clamped,
+ * skipped or found inert — it does not enumerate the written sites, so this half is a claim
+ * about the document's shape, not a site-level diff manifest. It is universal: it holds for
+ * every document, every dimension and every factor, including the ones R5b below carves out.
  *
  * **Symbolic invariance (R5b), and its one exception.** Performing the result against the same
- * MSM normally yields the same notes at the same symbolic dates, durations and pitches; only
- * milliseconds, velocities and control changes move. That holds for every MPM v2 document and
+ * MSM normally yields the same notes at the same symbolic dates, durations and pitches — and,
+ * for the notes the score already had, under the same ids; only milliseconds, velocities and
+ * control changes move. Notes that a v3 ornament *generates* match by position and date, never
+ * by id: the renderer draws a fresh random `meico_<uuid>` for each of them on every render, so
+ * two renders of the *same untransformed* document already disagree on those ids. That holds
+ * for every MPM v2 document and
  * for every v3 document whose ornament frames are measured in milliseconds. It does **not**
  * hold for `ornamentSpread` or `ornamentSpacing` on an MPM **v3 ornament that generates
  * notes** into a tick-resolved frame (a `ticks` suffix, a `%` of the principal, or no suffix

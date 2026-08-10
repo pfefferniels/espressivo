@@ -218,8 +218,25 @@ describe('§7.13 — the imprecision groups', () => {
       ]);
       expect(imprecisionGroupAttributes(dimension, 'distribution.triangular')).toHaveLength(5);
       expect(
+        imprecisionGroupAttributes(dimension, 'distribution.correlated.brownianNoise'),
+      ).toEqual(['stepWidth.max', 'limit.lower', 'limit.upper']);
+      expect(
         imprecisionGroupAttributes(dimension, 'distribution.correlated.compensatingTriangle'),
-      ).toHaveLength(4);
+      ).toEqual(['limit.lower', 'limit.upper', 'clip.lower', 'clip.upper']);
+    }
+  });
+
+  it('excludes @degreeOfCorrelation from the compensating triangle’s group', () => {
+    // A shape parameter with neutral 1.0, not a width. Asserted by name rather than by
+    // length, which a substitution would slip past.
+    for (const dimension of [
+      'imprecisionTiming',
+      'imprecisionDynamics',
+      'imprecisionDuration',
+    ] as const) {
+      expect(
+        imprecisionGroupAttributes(dimension, 'distribution.correlated.compensatingTriangle'),
+      ).not.toContain('degreeOfCorrelation');
     }
   });
 

@@ -115,8 +115,12 @@ export const IDENTITY_WEIGHT = 1;
  * exaggerateMpm(mpm, { factors: weightedFactors(1.6, PROTOTYPE_WEIGHTS) });
  * exaggerateMpm(mpm, { factors: weightedFactors(1.6, { ...PROTOTYPE_WEIGHTS, rubato: 1 }) });
  * ```
+ *
+ * Frozen, like {@link EXPRESSION_DIMENSIONS}: it crosses the package boundary as one shared
+ * object, so an outside mutation would silently re-tune every later run in the process. Spread
+ * it to vary it, as the third line above does.
  */
-export const PROTOTYPE_WEIGHTS: Readonly<Record<ExpressionDimension, number>> = {
+export const PROTOTYPE_WEIGHTS: Readonly<Record<ExpressionDimension, number>> = Object.freeze({
   tempo: 1.0,
   tempoShape: 1.0,
   dynamics: 1.1,
@@ -132,7 +136,7 @@ export const PROTOTYPE_WEIGHTS: Readonly<Record<ExpressionDimension, number>> = 
   imprecisionDynamics: IDENTITY_WEIGHT,
   imprecisionDuration: IDENTITY_WEIGHT,
   pedalShape: IDENTITY_WEIGHT,
-};
+});
 
 function fail(message: string): never {
   throw new Error(message);

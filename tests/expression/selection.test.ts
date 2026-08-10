@@ -113,7 +113,9 @@ describe('resolveSelection: D-I maps an element type onto the dimensions it gove
   });
 
   it('reads a bare @id as well as @xml:id, because real MPM carries both spellings', () => {
-    const bare = document('<asynchronyMap><asynchrony id="a" date="0.0" milliseconds.offset="9"/></asynchronyMap>');
+    const bare = document(
+      '<asynchronyMap><asynchrony id="a" date="0.0" milliseconds.offset="9"/></asynchronyMap>',
+    );
     expect(resolve(bare, ['a']).spared).toEqual(['asynchrony']);
   });
 
@@ -179,7 +181,7 @@ describe('D-I agrees with the registry about what each element type governs', ()
   const mapFor = (element: string) =>
     element === 'accentuationPattern' ? 'metricalAccentuationMap' : `${element}Map`;
 
-  it('the selectable vocabulary is exactly D-I\'s nine rows — no more, no fewer', () => {
+  it("the selectable vocabulary is exactly D-I's nine rows — no more, no fewer", () => {
     // The half that was missing, and the dangerous half. A test that only checks each row
     // against the registry can say nothing about a row that should not exist: a mutation adding
     // `['styleDef', ['tempo','rubato']]` to the table passed all 3958 tests, and under it a

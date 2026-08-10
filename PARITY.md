@@ -974,7 +974,7 @@ prototype outside meico — `meicotools`, in the `mpm-renderer` project — whos
 `Shader` and `PerformService` first posed the question this module answers. That prototype is the
 **idea source, not a parity target**, and the distinction was made explicitly at the start of the
 work: it is unpublished exploratory code, its numbers are undocumented, and reproducing it
-faithfully would mean reproducing decisions its own author never wrote down. Four differences are
+faithfully would mean reproducing decisions its own author never wrote down. Five differences are
 worth naming because each is a place where matching the prototype would have been the easier
 option:
 
@@ -1008,6 +1008,13 @@ option:
   and the prototype's implementation additionally confuses a date with a volume. Neither the
   feature nor the bug is here.
 
+Three prototype capabilities are simply not here at all: plain `Increase` scaling (a different
+operation — it shifts the mean rather than the contrast, so it is provided only if a concrete
+consumer asks for it), the sketchiness exponent curves (a UI recipe rather than library semantics,
+composable from `factors` by any caller that wants them), and `humanize` (it _adds_ imprecision
+instructions rather than transforming existing ones, and the consumer driving this work needs
+determinism). DESIGN §5 is the full ledger with the reasoning for each.
+
 **What replaces byte equivalence as the standard.** The mathematics: every dimension is a monotone
 bijection into a space where the attribute's neutral maps to 0, and the properties that follow
 (identity at `s = 1`, composition, domain closure, the neutral as a fixed point) are property-tested
@@ -1015,9 +1022,10 @@ rather than asserted. Because those properties hold for _any_ such bijection and
 particular choice, each of the fifteen dimensions additionally carries an expected-direction test
 at the strongest deterministically observable level — rendered where the rendered effect is
 deterministic, written-attribute where a PRNG stands in the way. The reasoning behind every
-inclusion, exclusion and metric choice is in [expression/DESIGN.md](expression/DESIGN.md); §5 of
-that document is the prototype-feature ledger this section summarizes, and §9 records the
-adversarial review that shaped it.
+inclusion, exclusion and metric choice is in
+[expression/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/expression/DESIGN.md) —
+a repository document, not part of the npm package; §5 of that document is the prototype-feature
+ledger this section summarizes, and §9 records the adversarial review that shaped it.
 
 **What it does not touch.** The transform never writes a `@date`, never adds or removes an element
 or an attribute, and is deterministic — no RNG, so §4's nondeterminism caveat does not extend here.

@@ -126,7 +126,7 @@ describe('PROTOTYPE_WEIGHTS: the correspondence §3 documents, pinned against dr
     expect(PROTOTYPE_WEIGHTS[dimension]).toBe(weight);
   });
 
-  it('collapses the prototype\'s two articulation fields onto the LOWER of the two', () => {
+  it("collapses the prototype's two articulation fields onto the LOWER of the two", () => {
     // 0.2 (relativeDuration) and 0.3 (relativeVelocity) became one dimension here, and §3 takes
     // the smaller: articulation is the most violent lever in the set — s = 2 on a
     // relativeDuration of 0.7 leaves 0.49, half the note gone — so the number that is wrong in
@@ -271,8 +271,9 @@ describe('the public weightedFactors types the interior errors (RULE E2)', () =>
   it('composes with exaggerateMpm, which is the round trip the docstring advertises', () => {
     const mpm = DOCUMENT as XmlText;
     // s = 1 through the preset is the identity, whatever the weights are…
-    expect(exaggerateMpm(mpm, { factors: publicWeightedFactors(1, PUBLIC_PROTOTYPE_WEIGHTS) }).mpm)
-      .toBe(canonicalMpm(mpm));
+    expect(
+      exaggerateMpm(mpm, { factors: publicWeightedFactors(1, PUBLIC_PROTOTYPE_WEIGHTS) }).mpm,
+    ).toBe(canonicalMpm(mpm));
     // …and s = 2 is not, with rubato damped by its 0.2 weight relative to unweighted asynchrony.
     const { mpm: moved, report } = exaggerateMpm(mpm, {
       factors: publicWeightedFactors(2, PUBLIC_PROTOTYPE_WEIGHTS),
@@ -292,5 +293,28 @@ describe('the public weightedFactors types the interior errors (RULE E2)', () =>
     expect(factors.ornamentSpread).toBeLessThan(0);
     expect(() => exaggerateMpm(DOCUMENT as XmlText, { factors })).toThrow(InvalidOptionError);
     expect(() => exaggerateMpm(DOCUMENT as XmlText, { factors })).toThrow(/ornamentSpread/);
+  });
+
+  it('hands both shared constants out frozen, so a consumer cannot widen the vocabulary', () => {
+    // The re-export test above proves these are the SAME objects the engine reads, which is
+    // exactly why this matters: unfrozen, `EXPRESSION_DIMENSIONS.push('bogus')` would make
+    // `{bogus: 2}` a legal factor record for the whole process, and a written
+    // `PROTOTYPE_WEIGHTS` would re-tune every later run. `readonly` and `as const` are
+    // compile-time only and stop neither.
+    expect(Object.isFrozen(EXPRESSION_DIMENSIONS)).toBe(true);
+    expect(Object.isFrozen(PUBLIC_PROTOTYPE_WEIGHTS)).toBe(true);
+
+    expect(() => (EXPRESSION_DIMENSIONS as unknown as string[]).push('bogus')).toThrow(TypeError);
+    expect(() => {
+      (PUBLIC_PROTOTYPE_WEIGHTS as unknown as Record<string, number>).tempo = 99;
+    }).toThrow(TypeError);
+
+    expect(EXPRESSION_DIMENSIONS).toHaveLength(15);
+    expect(PUBLIC_PROTOTYPE_WEIGHTS.tempo).toBe(1);
+    expect(() =>
+      exaggerateMpm(DOCUMENT as XmlText, {
+        factors: { bogus: 2 } as unknown as Record<ExpressionDimension, number>,
+      }),
+    ).toThrow(InvalidOptionError);
   });
 });

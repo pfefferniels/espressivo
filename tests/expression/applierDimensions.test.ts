@@ -260,6 +260,23 @@ describe('articulation — the seven live modifiers (§7.7, D-B)', () => {
     expect(noteKinds(performance)).toContain('articulation-affine-velocity-pair');
   });
 
+  it('scales @absoluteDelay and @absoluteDurationChangeMs on the INLINE element too', () => {
+    // §7.7 keys composition on the element, so def and inline are separate sites for every
+    // row. These two are the pair the rest of the suite writes only on a `<articulationDef>`;
+    // neither is in the inline duration-precedence chain, so both simply scale as gains.
+    const INLINE = globalDocument(
+      '',
+      '<articulationMap>' +
+        '<articulation id="i1" date="0.0" absoluteDelay="-120" absoluteDurationChangeMs="-45"/>' +
+        '</articulationMap>',
+    );
+    const { root, performance } = exaggerate(INLINE, { articulation: 2 });
+    expect(numberAt(root, 'i1', 'absoluteDelay')).toBe(-240);
+    expect(numberAt(root, 'i1', 'absoluteDurationChangeMs')).toBe(-90);
+    expect(performance.dimensions.articulation.writes).toBe(2);
+    expect(noteKinds(performance)).not.toContain('inline-duration-precedence');
+  });
+
   it('reports R6(b) coefficients rather than clamping the velocity', () => {
     const { performance } = exaggerate(ARTICULATION, { articulation: 2 });
     expect(performance.dimensions.articulation.velocityCoefficients).toEqual({
@@ -727,6 +744,79 @@ describe('imprecision — atomic per-distribution groups (§7.13, D-F, RESOLVED-
       additive: 24,
     });
     expect(performance.dimensions.imprecisionTiming.velocityCoefficients).toBeNull();
+  });
+});
+
+describe('imprecision — the two correlated families (§7.13, D-F)', () => {
+  // The other four distributions appear in the corpus or in the block above; these two appear
+  // in neither, so their 21 registry rows (3 + 4 attributes × 3 domains) had no behavioural
+  // pin at all until this block. Both families are declared in all three maps, so every row
+  // is written here.
+  const CORRELATED_GROUP =
+    '<distribution.correlated.brownianNoise id="%bn%" date="0.0" stepWidth.max="3.0" ' +
+    'limit.lower="-10.0" limit.upper="10.0"/>' +
+    '<distribution.correlated.compensatingTriangle id="%ct%" date="4.0" limit.lower="-8" ' +
+    'limit.upper="8" clip.lower="-6" clip.upper="6" degreeOfCorrelation="0.7"/>';
+
+  const inDomain = (suffix: string) =>
+    CORRELATED_GROUP.replaceAll('%bn%', `bn-${suffix}`).replaceAll('%ct%', `ct-${suffix}`);
+
+  const CORRELATED = globalDocument(
+    '',
+    `<imprecisionMap.timing>${inDomain('t')}</imprecisionMap.timing>` +
+      `<imprecisionMap.dynamics>${inDomain('d')}</imprecisionMap.dynamics>` +
+      `<imprecisionMap.toneduration>${inDomain('n')}</imprecisionMap.toneduration>`,
+  );
+
+  it('scales brownianNoise’s step width and both walls as one atomic triple', () => {
+    const { root, performance } = exaggerate(CORRELATED, { imprecisionTiming: 2 });
+    // The step alone would raise the wall-rejection rate and desynchronize the sequence.
+    expect(numberAt(root, 'bn-t', 'stepWidth.max')).toBe(6);
+    expect(numberAt(root, 'bn-t', 'limit.lower')).toBe(-20);
+    expect(numberAt(root, 'bn-t', 'limit.upper')).toBe(20);
+    expect(performance.dimensions.imprecisionTiming.writes).toBe(3 + 4);
+  });
+
+  it('scales compensatingTriangle’s walls and clips, and leaves @degreeOfCorrelation put', () => {
+    const { root } = exaggerate(CORRELATED, { imprecisionDynamics: 2 });
+    expect(numberAt(root, 'ct-d', 'limit.lower')).toBe(-16);
+    expect(numberAt(root, 'ct-d', 'limit.upper')).toBe(16);
+    expect(numberAt(root, 'ct-d', 'clip.lower')).toBe(-12);
+    expect(numberAt(root, 'ct-d', 'clip.upper')).toBe(12);
+    // A shape parameter whose neutral is 1.0, excluded from the group: scaling it would
+    // change how strongly consecutive values compensate, which is not a width.
+    expect(textAt(root, 'ct-d', 'degreeOfCorrelation')).toBe('0.7');
+  });
+
+  it('writes both families in all three domains, and keeps the domains independent', () => {
+    const { root, performance } = exaggerate(CORRELATED, {
+      imprecisionTiming: 2,
+      imprecisionDynamics: 2,
+      imprecisionDuration: 2,
+    });
+    for (const suffix of ['t', 'd', 'n']) {
+      expect(numberAt(root, `bn-${suffix}`, 'stepWidth.max')).toBe(6);
+      expect(numberAt(root, `ct-${suffix}`, 'clip.upper')).toBe(12);
+    }
+    // 3 + 4 attributes per domain, three domains: the 21 rows, all written.
+    expect(performance.totalWrites).toBe(21);
+
+    const { root: onlyDuration } = exaggerate(CORRELATED, { imprecisionDuration: 2 });
+    expect(textAt(onlyDuration, 'bn-t', 'stepWidth.max')).toBe('3.0');
+    expect(textAt(onlyDuration, 'bn-d', 'stepWidth.max')).toBe('3.0');
+    expect(numberAt(onlyDuration, 'bn-n', 'stepWidth.max')).toBe(6);
+  });
+
+  it('skips a correlated group whole when one of its attributes fails the gate', () => {
+    const BROKEN = globalDocument(
+      '',
+      '<imprecisionMap.timing><distribution.correlated.brownianNoise id="bn" date="0.0" ' +
+        'stepWidth.max="3.0" limit.lower="-10.0" limit.upper="wide"/></imprecisionMap.timing>',
+    );
+    const { root, performance } = exaggerate(BROKEN, { imprecisionTiming: 2 });
+    expect(textAt(root, 'bn', 'stepWidth.max')).toBe('3.0');
+    expect(noteKinds(performance)).toContain('atomic-group-skipped');
+    expect(performance.totalWrites).toBe(0);
   });
 });
 

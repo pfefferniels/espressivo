@@ -19,4 +19,6 @@ ornamentation/
 # again, and measured: reflowing DESIGN.md alone rewrites ~1000 lines of already-committed
 # prose, and LOG.md is append-only. These documents were already outside Prettier's style
 # before this entry existed; the entry records that, rather than changing it.
-expression/
+# Root-anchored: unanchored, it would also exempt src/expression/ and tests/expression/, which
+# are ordinary source and must stay under the formatter.
+/expression/
