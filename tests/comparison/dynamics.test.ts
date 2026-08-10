@@ -23,6 +23,7 @@ import {
 import { dynamicsDistance, dynamicsGridTicks } from '../../src/comparison/dynamicsDistance.js';
 import { DYNAMICS_JND_NEPERS } from '../../src/comparison/registry.js';
 import { innerControlPointsXPositions, tForDate } from '../../src/mpm/elements/maps/data/bezier.js';
+import { integrateAbsolute } from '../../src/comparison/quadrature.js';
 
 const dynamicsDoc = (map: string, header = '') =>
   '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p" pulsesPerQuarter="720">' +
@@ -390,17 +391,39 @@ describe('AD-30 Bezier-pair subdivision, and its measured insufficiency', () => 
     return ((h / 3) * sum) / pair.ppq.lcm / DYNAMICS_JND_NEPERS;
   };
 
-  it('MEASURED DEFECT: K=4 still integrates a triple-crossing pair ~6% low', () => {
-    // AD-30 assumed the smoothstep's bounded curvature makes >=3 crossings within one
-    // quarter impossible. It does not: strong protraction pushes two crossings 0.07 apart,
-    // into the same quarter, where K=4 cannot bracket them. K=16 resolves it (2.7e-8).
-    // Pinned as failing-by-design so the amendment cannot be forgotten.
+  it('integrates the triple-crossing pair accurately at K=16 (AD-31)', () => {
     const relativeError = Math.abs(measured() - reference()) / reference();
-    expect(relativeError).toBeGreaterThan(0.05);
-    expect(relativeError).toBeLessThan(0.08);
+    expect(relativeError).toBeLessThan(1e-6);
   });
 
-  it('integrates a SINGLE-crossing pair correctly, which is what K=4 does buy', () => {
+  it('pins the sweep that set the constant: K=4 would still be ~6% low', () => {
+    // AD-31 supersedes AD-30's K=4 because 4 was MEASURED insufficient. The evidence is
+    // pinned at the quadrature layer rather than the distance layer, so it survives the
+    // constant being correct: the same difference function integrated with 3 interior
+    // splits (K=4) against 15 (K=16). If someone lowers the constant again, this test is
+    // the record of why they should not.
+    const pair = readComparisonPair({ a: dynamicsDoc(A), b: dynamicsDoc(B) });
+    const ca = curveOf(pair, 'a');
+    const cb = curveOf(pair, 'b');
+    const span = 2880;
+    const difference = (t: number) => Math.log(volumeAt(ca, t)) - Math.log(volumeAt(cb, t));
+
+    const splitsFor = (k: number) => Array.from({ length: k - 1 }, (_, i) => ((i + 1) * span) / k);
+
+    const n = 200000;
+    const h = span / n;
+    let sum = Math.abs(difference(0)) + Math.abs(difference(span));
+    for (let i = 1; i < n; ++i) sum += (i % 2 === 0 ? 2 : 4) * Math.abs(difference(i * h));
+    const exact = (h / 3) * sum;
+
+    const atFour = integrateAbsolute(difference, 0, span, splitsFor(4));
+    const atSixteen = integrateAbsolute(difference, 0, span, splitsFor(16));
+
+    expect(Math.abs(atFour - exact) / exact).toBeGreaterThan(0.05);
+    expect(Math.abs(atSixteen - exact) / exact).toBeLessThan(1e-6);
+  });
+
+  it('integrates a single-crossing pair correctly too', () => {
     const single =
       '<dynamics date="0.0" volume="40" transition.to="80" curvature="0.2"/>' +
       '<dynamics date="2880.0" volume="80"/>';

@@ -22,15 +22,33 @@ import { dynamicsSegmentAt, volumeAt, type DynamicsCurve } from './dynamicsCurve
 import type { ComparisonWindow } from './window.js';
 
 /**
- * AD-30's subdivision count for a cell where BOTH sides are live Bézier transitions.
+ * The subdivision count for a cell where BOTH sides are live Bézier transitions —
+ * **16**, per AD-31, which supersedes AD-30's 4.
  *
- * Four, fixed and equal. Deterministic and structure-blind, in the graded mesh's spirit:
- * there is no closed-form critical point for a Bézier pair the way there is for
- * power-vs-power tempo (§5.0 rule 2), so the ruling buys the same completeness by
- * subdividing rather than by solving. `integrateAbsolute` then resolves one crossing per
- * sub-interval, which covers every pair that crosses at most four times.
+ * Fixed and equal: deterministic and structure-blind, in the graded mesh's spirit. There is
+ * no closed-form critical point for a Bézier pair the way there is for power-vs-power tempo
+ * (§5.0 rule 2), so completeness is bought by subdividing rather than by solving, and
+ * `integrateAbsolute` resolves one crossing per sub-interval.
+ *
+ * **16 rather than 4 because 4 was measured insufficient.** AD-30 set 4 on the argument that
+ * the smoothstep's bounded curvature makes three crossings inside one quarter-cell
+ * impossible. That argument lives in `t`; the clustering lives in `x`, after the monotone
+ * reparametrization, and strong protraction pushes crossings together there. On an ordinary
+ * non-degenerate pair — `40→80` at `curvature 0.9, protraction 0.9` against `38→84` at
+ * `curvature 0, protraction 0.9`, control points in range and `x(t)` monotone — the log
+ * difference crosses at `x = 0.598, 0.914, 0.984`, the last two 0.07 apart and inside one
+ * quarter. Measured against a 4·10⁵-point Simpson reference:
+ *
+ * | K | relative error |
+ * |---|---|
+ * | 1, 2, 4 | 6.5·10⁻² |
+ * | 8 | 4.8·10⁻² |
+ * | **16** | **2.7·10⁻⁸** |
+ *
+ * The cost is confined to cells where both sides are transitions; every constant-vs-anything
+ * cell is untouched.
  */
-const BEZIER_PAIR_SUBDIVISIONS = 4;
+const BEZIER_PAIR_SUBDIVISIONS = 16;
 
 export interface DynamicsCell {
   readonly startTicks: number;
@@ -77,26 +95,11 @@ export function dynamicsGridTicks(
  * {@link BEZIER_PAIR_SUBDIVISIONS} equal pieces before integration. Cost is confined to
  * those cells; every constant-vs-anything cell is untouched.
  *
- * **MEASURED: K = 4 is not sufficient, and the residual risk is not negligible.** AD-30
- * assumed a pair cannot cross three times within one quarter of a cell because the
- * smoothstep's curvature is bounded. Measurement refutes it. For `40→80` at
- * `curvature 0.9, protraction 0.9` against `38→84` at `curvature 0, protraction 0.9` — both
- * with control points inside `[0,1]` and a monotone `x(t)`, so nothing degenerate — the log
- * difference crosses at `x = 0.598, 0.914, 0.984`. The last two are 0.07 apart and land in
- * the SAME quarter, so `K = 4` cannot bracket them:
- *
- * | K | relative error |
- * |---|---|
- * | 1, 2, 4 | 6.5·10⁻² |
- * | 8 | 4.8·10⁻² |
- * | **16** | **2.7·10⁻⁸** |
- *
- * Strong protraction is what does it: it skews the curve toward one end and pushes the
- * crossings together there, which is precisely where an equal subdivision has its coarsest
- * relative resolution. `K = 4` is implemented here because AD-30 rules it; the finding is
- * reported and an amendment to `K = 16` is pending. Until it lands, a dynamics pair with
- * strongly protracted transitions on both sides integrates ~6 % low, which is pinned by a
- * failing-by-design test rather than left to be discovered.
+ * The count is {@link BEZIER_PAIR_SUBDIVISIONS}, whose doc carries the measurement that set
+ * it. Residual risk: a pair crossing three or more times inside a SIXTEENTH of a cell would
+ * still be under-resolved. That is not argued away here — the same style of argument is what
+ * AD-30 got wrong — it is simply far outside anything the measured sweep produced, and the
+ * quadrature-level test pins the sweep so a future change to the constant has to face it.
  */
 export function dynamicsDistance(
   a: DynamicsCurve,

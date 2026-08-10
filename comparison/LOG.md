@@ -1109,3 +1109,32 @@ gridTruncated reports it). Process note: implement-as-ruled + pin-the-
 failure + report is exactly the governance this campaign wants — twice now
 the measurement has beaten the argument (AD-28, AD-31), which is the reason
 the campaign measures.
+
+## 2026-08-10 — AD-31 applied: K = 16 in code, sweep re-pinned (task #14, survey-code)
+
+Small follow-up commit. AD-31 landed while part 2c was in flight, so c851922
+shipped the ruled-at-the-time K = 4 with the insufficiency pinned
+failing-by-design; this commit brings the code to the ruling.
+
+BEZIER_PAIR_SUBDIVISIONS is now 16. DESIGN §5.0 rule 2b updated to state K = 16
+per AD-31 and to say where AD-30's argument went wrong: the curvature bound is
+about the smoothstep in t, while the clustering happens in x after the monotone
+reparametrization, which is where the argument does not reach.
+
+The pin is RESTRUCTURED rather than deleted, per AD-31.1's "the K=4
+insufficiency stays pinned". A failing-by-design test asserting ~6% error would
+now itself fail, so the evidence moved DOWN a layer: the triple-crossing pair is
+asserted accurate at the distance layer (<1e-6), and a separate test integrates
+the same difference function directly through integrateAbsolute with 3 interior
+splits (K=4) versus 15 (K=16), asserting >5% and <1e-6 respectively. That
+survives the constant being correct and is the record a future change to it has
+to face.
+
+Residual risk is stated without being argued away: a pair crossing three or more
+times inside a SIXTEENTH of a cell would still be under-resolved. That is far
+outside anything the sweep produced, but the same style of argument is what
+AD-30 got wrong, so it is recorded rather than dismissed.
+
+Gate: `npm run verify` green before committing, 4258 passed + 1 skipped. eslint
+and prettier clean.
+
