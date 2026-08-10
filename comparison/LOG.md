@@ -1632,3 +1632,26 @@ units respectively — unlike tempo and dynamics, whose moments are in nepers.
 
 Gate: `npm run verify` green before committing (4447 passed + 1 skipped, was
 4352); eslint and prettier clean on every touched file. 95 new tests.
+
+## 2026-08-10 — AD-36: cut-1 ratifications [BINDING]
+
+d21f94b accepted (95 tests; AD-35 implemented; family 8→12; five-dimension
+metric suite, 220 triples; skip-list 7→5). Ratifications:
+AD-36.1 Outside-span pedal semantics as renderer truth: control changes
+persist — pedal 0 before the first event, last value HOLDS to window end,
+skipped movements leave holds not gaps (Msm.parsePositionMap unthinned, no
+reset). The decide-without-stopping was correct under its stated test
+(renderer determines; DESIGN merely silent).
+AD-36.2 Capped pointwise density (integrateCappedAbsolute) for ⊥-capable
+dimensions RATIFIED as forced: uncapped value-value integration alongside
+δ-priced ⊥ breaks the triangle inequality with a ⊥ middle term. Shared
+piece-splitter identity tested. W2's uncapped tempo/dynamics stand — they
+cannot reach ⊥ (AD-1 renderer-defaults) — and the rule is now structural:
+any future ⊥ route into a dimension forces the capped integrator.
+AD-36.3 ACCENTUATION_VELOCITY_JND = 3, PEDAL_POSITION_JND_RATIO = 0.1
+[convention] with stated calibrations; the accentuationPatternDef@length
+row (live twice over) is ratified scope; @controller stays a finding-
+channel, not a row (BANK SELECT fall-through documented). The 26-vs-34
+self-correction and the second entry-index instance (getPreviousPosition
+j>0, PARITY P2, now hazard-class-tagged) are noted with approval.
+Cut 2 (articulation) proceeds.
