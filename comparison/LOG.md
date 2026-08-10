@@ -1207,3 +1207,48 @@ AD-32.3 W2c complete (1f2844c, task #14 closed; 4283 tests green). The W2
 wave gate opens: an independent adversarial verification of src/comparison/**
 + its tests against DESIGN's W2 scope, archived as W2-VERIFICATION.md, on
 whose adjudication W3 opens.
+
+## 2026-08-10 — AD-33: W2 gate verdict GATE-BLOCK; fix-wave rulings [BINDING]
+
+W2-VERIFICATION.md archived (independent verifier; 3 CAPITAL, 4 MAJOR,
+5 MINOR; "the wave tested its evaluators far harder than it tested its
+integrator"). Rulings:
+
+AD-33.1 (CAPITAL-1) ACCEPTED: a non-<asynchrony> entry in an asynchronyMap
+opens a ⊥ (renderer-error) span — the renderer NaN-poisons it, the exact
+R24 condition through a different element. CONDUCTOR ERROR acknowledged:
+AD-29's own amendment text wrote "neutral gap" into §5.0/§5.7 without
+following the missing name test through to what the renderer DOES with the
+foreign entry; the verifier's probe corrects it. Both DESIGN sentences
+amended in the fix commit; test assertions flip to isBottom.
+AD-33.2 (CAPITAL-3) ACCEPTED: canonicalize powerCriticalPoint argument
+order (by (exponent, Δqbpm), smaller first) — sweep-verified 0/149729
+asymmetric; power-vs-power P-C2 test added.
+AD-33.3 (CAPITAL-4) RULED: BOTH repairs adopted — (a) integrateAbsolute
+gains the half-open convention (right endpoint sign-probed at its LEFT
+limit; curves are right-continuous per A-B1, so the closed probe reads the
+next cell's value — latent in tempo/dynamics, biting in rubato);
+(b) §5.0 gains rule 2c: frame-aligned rubato cells split at the structural
+u* (powerCriticalPoint on (L·(ee−ls), intensity) per side, canonically
+ordered per AD-33.2), fixed K=16 subdivision fallback for differing
+frames. Measured: 10/3906 pairs wrong >0.1%, worst 1.68e-3 relative —
+documented as the residual with the sweep. Changes every published rubato
+number; no real-data rubato anchors were pinned yet, so no anchor churn.
+AD-33.4 (MAJOR-1) ACCEPTED: volume-less <dynamics> = skip performing
+velocity 100 to the next valid instruction (renderer-true, tempo's AD-9i
+template); §5.3 gains the paragraph with the DynamicsMap.ts:251-253 cite.
+AD-33.5 (MAJOR-2/3/4 + MINOR-1) ACCEPTED: repair the unfalsifiable tests;
+add the lateStart/earlyEnd-varying rubato distance family; PROMOTE the
+verifier's seven-member adversarial fixture family (⊥, cap,
+renderer-default, unmatched part, timingBasis, replacement-attr,
+power-vs-power) as the standing P-C3/P-C3b family under an explicit shared
+window. STANDING TEST POLICY adopted: every future integrator-touching
+change runs against the adversarial family, not constants.
+AD-33.6 (MINOR-3/5) in the fix wave: spanEnds.ts dead-code resolution
+(wire it or remove it — no dead ends), stale headers, unused
+integrateGradedPower resolution, '**/api/**' added to the comparison
+eslint zone. MINOR-2 (−0) and MINOR-4 (malformed-value table) assigned to
+W3 scope explicitly.
+AD-33.7 Fix wave assigned to survey-code (code owner; findings carry
+executable repros); w2-verify re-verifies the fix commit(s) scoped to the
+findings; gate re-runs on its verdict.
