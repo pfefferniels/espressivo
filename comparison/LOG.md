@@ -407,3 +407,72 @@ dedicated rewrite agent under conductor review; the panel reports are the
 diff record. survey-lit remains open for JND values ([PENDING-LIT] tags
 stay); the JND defaults ship [convention] if the lit survey cannot ground
 them.
+
+## 2026-08-10 — W2 item #2: comparison fixtures + provenance (task #11, survey-code)
+
+Acting on the W1 ruling that comparison fixtures live in a new tree. Created
+`tests/comparison/fixtures/` with 11 vendored files (6 .mpm + 5 paired .msm,
+~308 KB) — the complete XML half of the MPM format's own sample-encoding
+corpus. `tests/integration/fixtures/**` untouched (charter invariant #2).
+
+[FINDING] LICENCE VERIFIED, VENDORING PERMITTED — no blocker, so I proceeded to
+commit as authorised. Upstream https://github.com/axelberndt/MPM publishes
+under BOTH BSD 2-Clause ("Copyright 2020 Axel Berndt") AND CC BY 4.0. Verified
+twice: the LICENSE file in the local checkout (a fork, pfefferniels/MPM at
+b9c9707) and the same file fetched from upstream master. Upstream README
+"License Information" states it in prose. Both are permissive, non-copyleft,
+no share-alike; both require only notice retention + attribution, which
+`fixtures/PROVENANCE.md` discharges in full (BSD notice/conditions/disclaimer
+quoted verbatim; CC BY creator, notice, licence link, disclaimer, and an
+explicit "unmodified" statement).
+
+[NOTE, pre-existing, not created by this item] espressivo itself has NO LICENSE
+file and no `license` field; README §License says meico is GPL v3, this port is
+a derivative, and the licence decision is "pending an explicit decision by the
+repository owner". That gap is unaffected here: BSD-2 is GPL-compatible, CC BY
+4.0 is one-way compatible with GPLv3, and these are test DATA — parsed by the
+suite, never linked, and excluded from the published package by package.json's
+`files` list (dist, src, PARITY.md only). Flagging for the owner, not blocking.
+
+[DECISION] Files are byte-faithful; only NAMES were changed (lowercase-hyphen
+ASCII, since the originals carry spaces/commas/mixed case). Contents verified
+with `cmp` at copy time and SHA-256 of all 11 recorded in PROVENANCE.md. The
+UTF-8 BOM on three files is PRESERVED deliberately: it is the exact byte
+pattern that made them unparseable before 4211f58, so keeping it turns these
+into a regression pin for BOM tolerance against real data rather than a
+synthetic string. PROVENANCE.md carries an explicit do-not-reformat policy.
+
+Corpus: telemann-grave (3 perf: Baroque/Fast/Romantic, BOM, ppq 720 — the
+primary fixture), vulpius-die-helle-sonn (3 perf: Baroque/Romantic/Amateur,
+BOM, ppq 480), albert-du-mein-einzig-licht (2 perf: Axel Berndt / "Like a
+robot" — expressive vs deadpan, no BOM, so it controls for the BOM variable),
+bach-bwv1007-minuet2 (1 perf, densest articulation at 204, BOM, ppq 480),
+aller-augen (1 perf, the only file with substantial xml:id coverage at 60),
+minimal.mpm (589 B, no maps — the degenerate case). Both tick grids (720 and
+480) are represented, which the cross-ppq normalization work will need.
+
+Tests: `tests/comparison/fixtures.test.ts`, 27 assertions. Per fixture — BOM
+present/absent exactly as vendored (guards the byte-faithfulness policy
+itself), performance names in document order via listPerformances, canonical
+round-trip with no stray U+FEFF plus idempotence, and the declared ppq. Plus
+three corpus-level tests: at least two genuinely multi-performance documents,
+both tick grids present, and every fixture still parsing with the BOM removed
+(tolerance, not dependence). Kept to parsing + listPerformances since no
+comparison engine exists yet.
+
+[DECISION] Added `tests/comparison/fixtures/` to `.prettierignore`, mirroring
+the existing `tests/integration/fixtures/` entry. Two reasons, both hard:
+Prettier infers no parser for .mpm/.msm and ERRORS on them, so `format:check`
+over the repo would have started failing; and a reformat would destroy the
+BOM and single-quoted attributes these fixtures exist to pin.
+
+Gate: `npm run verify` green, 4032 tests (was 4005). eslint and prettier clean
+on the new test file. One self-inflicted lint error was caught and fixed rather
+than suppressed — a literal U+FEFF inside a RegExp trips
+`no-irregular-whitespace`; replaced with a startsWith/slice that also mirrors
+the implementation under test.
+
+Not copied, deliberately: the .mp3 renderings, .pdf/.png scores, .mid, one
+.mei and the MPM-Toolbox .mpr project files. None is needed to compare
+performances and the audio/scores are large; source path is recorded so a
+later item can fetch them.

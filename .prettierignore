@@ -6,6 +6,13 @@ package-lock.json
 # Java-generated ground truth + MEI inputs. Immutable (charter invariant 2).
 tests/integration/fixtures/
 
+# Vendored third-party MPM/MSM from the MPM format's own sample corpus (BSD-2 + CC BY 4.0).
+# Two reasons, both hard: Prettier infers no parser for .mpm/.msm and errors out on them, the
+# same reason the line above exists; and these files are byte-faithful copies whose UTF-8 BOM
+# and single-quoted attributes are the point — a reformat would destroy what they pin. See
+# tests/comparison/fixtures/PROVENANCE.md.
+tests/comparison/fixtures/
+
 # Swarm coordination journal — hand-formatted, reflowing it would churn the log.
 refactor/
 
