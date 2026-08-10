@@ -161,3 +161,249 @@ structural design is lit-independent; a focused second pass will cover
 lit-dependent slots if the lit survey moves anything. Four lenses:
 math-rigor, renderer-fidelity, api-house-rules, consumer-musicology.
 Findings → REVIEW-FINDINGS.md verbatim; conductor adjudication binding.
+
+## 2026-08-10 — W1: panel adjudication AD-1..AD-24 [BINDING]
+
+All four lenses delivered (90 findings; archive: comparison/panel/*, index:
+REVIEW-FINDINGS.md). Rulings below are binding; DESIGN.md rev 2 is compiled
+from them. Finding IDs refer to panel files. NO finding is rejected; where a
+lens offered alternatives the chosen branch is stated.
+
+AD-1 (R2, R21, R24, M1a — semantic ground truth). The semantic level
+evaluates THE FUNCTION THE RENDERER PERFORMS. Unresolvable tempo/dynamics
+levels resolve to the renderer's own fabricated constant (100.0), reported as
+a `renderer-default-level` note — R8's exclusion rule is REVERSED (it imported
+a write-side constraint into a read-side product). Spans where the renderer
+has NO performed value (accentuation pattern-name failure = render abort, R21;
+asynchrony NaN poisoning, R24) read the distinguished value ⊥ (AD-2), reported
+as `renderer-error` notes. No span is ever excluded from the domain.
+
+AD-2 (M1, M11, R21, R24 — total domain, capped local metric). The local
+metric on every row is d_row(x,y) = min(|T(x)−T(y)|, 2·δ_row), with
+d_row(x,⊥) = δ_row, d_row(⊥,⊥) = 0. δ_row is registry data in JND units,
+default 10 [convention]. This (i) truncation preserves the metric axioms,
+(ii) makes T's ±∞ boundary values (curvature=1, protraction=±1) finite
+without a separate clamp, (iii) gives no-comparable-value cases a metric-safe
+price, (iv) keeps the density total so R4's exact decomposition is untouched.
+Cap events are reported (`capped` note kind). Instances: absolute replacement
+attributes present-vs-absent (narrowed by R14 to absoluteDuration/
+absoluteDurationMs/absoluteVelocity), renderer-error spans.
+
+AD-3 (M1b, A-Q6 completion — parts). Unmatched parts are NOT excluded: they
+compare against the neutral curve (R6 applied to parts), reported as
+structural notes. Document-level aggregation rule: SUM over the union of both
+documents' parts (matched pairs + unmatched-vs-neutral). MSM note-count
+weighting remains an option and is piece-derived, hence metric-safe.
+
+AD-4 (M2, M10iv — the window). Metric guarantees are conditional on a
+PIECE-DERIVED window: MSM score end, explicit options.window, or the
+corpus-shared window. The no-MSM pairwise fallback (max last instruction
+date) is retained for convenience and stamped `windowRule: 'pair-derived'`,
+`metricGuarantee: 'window-restricted'`; docs state such numbers must not be
+assembled into matrices. d_k/L mean carries the same caveat. Invariance
+modes additionally require a piece-derived/corpus-shared window for R3.
+
+AD-5 (M3 — sequential edit pricing). scriptCost = Σ_i ‖Φ(M_i) − Φ(M_{i−1})‖₁
+over the script applied in date order (M_0 = A, M_n = B). scriptCost ≥
+d_curve and reworking ≥ 0 become THEOREMS (L¹ triangle inequality).
+`free` = zero SEQUENTIAL cost. replayedDelta = the sequential total (the
+verification quantity); the reported triple is (d_k, scriptCost as DP
+estimate, replayedDelta as achieved). R6-renderer interplay: inserting a
+skipped tempo instruction is NOT free (it re-times the orphaned span at 100
+qbpm, AD-9) — the sequential price gets this right automatically.
+
+AD-6 (M4 — corrected Proposition 1). Exaggeration acts multiplicatively in
+T-space AT ROW VALUES (breakpoints); renderers interpolate in raw space, so
+the affine curve law holds exactly only for piecewise-constant spans. P-C5
+splits: (i) exact law on constant-only fixtures (factors pinning every shape
+knob to 1, s > 0, monotone in |1−s| — NOT |ln s|); (ii) breakpoint-level law
+on transition-bearing fixtures; (iii) measured d_shape bound on transitions
+pinned as regression anchor. s < 0 excluded from the invariance claims
+(r = −1 there).
+
+AD-7 (M5, M17, R16 — events). No exact-date pre-pinning: the alignment DP
+(monotone, unbalanced, neutral-gap costs) IS the semantic event distance, and
+its objective INCLUDES λ_date·|Δdate| (one functional, stated in §5.6).
+Opportunistic id-pinning stays (transitive ⇒ metric-safe). Matched events at
+different dates: mass spread uniformly over [min(dA,dB), max(dA,dB)] (M17
+option ii — symmetric, table closes, λ_date visible in the timeline). Atoms
+charge to the span they open (right-continuous, R27). noteid-targeted
+articulations (attribute is `noteid`, value `#`-stripped, note-anchored):
+without MSM compared by id with datePositionKnown: false; with MSM placed at
+the note's date; unresolvable ids dropped as the renderer drops them (R16).
+κ carries units of quarters (M17).
+
+AD-8 (R1 — trailing transitions). An instruction with no successor of its
+map-relevant kind performs as a CONSTANT; its transition/shape attributes are
+inert (reported as inert differences when they differ). No synthetic
+transition end at the window end. Fixture pinned (all_maps.mpm tail is the
+real-corpus witness). Movement: the LAST movement entry contributes no span
+at all; single-movement maps render nothing (R9).
+
+AD-9 (R6, R11, R10 — tempo curve truth). (i) A skipped <tempo> (missing
+@bpm or @beatLength) ends the previous span; [skipDate, nextValid) performs
+at 100 qbpm; same constant on [0, firstValid). Both in curve + grid. The
+renderer's absolute-time quirk (non-monotone ms) is reproduced ONLY in the
+renderer-Simpson cumulativeDrift secondary, never in the tempo curve.
+(ii) Pre-first-instruction defaults per dimension are part of the neutral
+spec: tempo 100 qbpm, dynamics velocity 100 (R11). (iii) Degenerate table
+(R10): equal transition.to ⇒ constant at bpm; meanTempoAt ≤ 0 ⇒ constant at
+TRANSITION.TO; meanTempoAt ≥ 1 ⇒ constant at bpm; meanTempoAt absent ⇒
+linear ramp (e = 1). Each pinned by fixture.
+
+AD-10 (R3, R25 — loop gating). @loop (default FALSE) gates cyclic repetition
+in rubato AND accentuationPattern: off ⇒ one frame warped/applied, identity
+after. @loop leaves the boolean-exclusion bucket and both curve evaluators.
+Loop=true frame-boundary count capped: min(⌈span/frameLength⌉, cap),
+cap [convention] with `gridTruncated` note when it bites.
+
+AD-11 (R4, R5, R15 — articulation truth). (i) Inline <articulation> duration
+levers do not compose: exactly one tick row is live per atom
+(INLINE_DURATION_PRECEDENCE: absoluteDurationChange > relativeDuration >
+absoluteDuration; none when absoluteDurationMs present); on <articulationDef>
+they compose. The registry gains conditional-liveness machinery (R9's inert
+concept, applied per element). (ii) Atoms SHADOW the styled default at their
+dates (never add); default step function includes cancel-to-null switches and
+unresolvable-switch carryover. (iii) absoluteDurationChange priced on its raw
+value, documented as a document-level quantity; MSM refinement hook noted
+(the halving loop is note-dependent).
+
+AD-12 (R8 — accentuation truth). The MSM-less approximation is DROPPED: the
+renderer's no-time-signature answer is exact (tsDate 0, 4/4, ticksPerBeat =
+ppq, patternLengthTicks = length·4·ppq/denominator); with MSM, walk the real
+timeSignatureMap forward-only. Phase anchors at the TIME SIGNATURE, never the
+instruction. Honour @stickToMeasures (default true) and @loop (default
+false). Pattern interpolation = AccentuationPatternDef.getAccentuationAt
+verbatim including the segment-end asymmetry, 0 before the first
+accentuation, value-on-beat exactness. timeSignatureSource reported.
+
+AD-13 (R9 — movement truth). Flat span structure (next <movement> of ANY
+controller ends a span), spans tagged with their controller; curvature
+default 0.4 (NOT dynamics' 0.0); missing @position inherits previous
+@transition.to (entry 0 never examined ⇒ 0); predecessor without
+@transition.to ⇒ instruction skipped; negative dates skipped.
+
+AD-14 (R7, R12, R13, M13, M14, R26 — imprecision truth). (i) Degenerate
+table keyed on attribute presence: absent limits ⇒ uniform/brownian δ₀;
+absent clips ⇒ triangular/compensating δ₀; gaussian without limits ⇒
+UNtruncated law; absent deviation.standard ⇒ δ₀. (ii) Spans end at the next
+map entry of ANY kind; gaps are δ₀ spans. (iii) timingBasis: i.i.d. families
+compare marginals, basis difference = inert note; correlated families fold
+basis into processParameters as a numeric row (no exclusion anywhere).
+(iv) Gaussian modeled as the exact mixture (1−q^N)·TruncNormal + q^N·Normal,
+N = 10000 (kills the 0/0, degrades correctly). (v) Density = W₁ between the
+laws prevailing at t, per quarter — duration-proportional; survey-algo's
+per-span normalization is superseded; fixture pins proportionality.
+(vi) §5.9 states it compares the DECLARED law (chord-shake mixture is a
+render-path artifact outside the reader's object, R26).
+
+AD-15 (R14, R19, R28, R29 — inventory corrections). detuneCents/detuneHz →
+inert bucket (written to notes, read by nothing — verified). ornament@scale:
+linear velocity-unit row with NEUTRAL 0.0 (not a log gain; absent ≡ 0.0
+produces no effect; v2 writer/reader asymmetry noted for fixtures).
+@repetitions (−1 = fill-frame extension) and @note.order (two v2/v3 read
+paths) become rows. `noteid` named explicitly in the exclusion walk (not
+covered by *.ref); accentuationPatternDef@length parse-mutation noted for
+fixture handling.
+
+AD-16 (R17, R18, R22, R23 — remaining §5 truths). subNoteDynamics: mechanism
+switch = structural finding with stated rationale; inert on the last
+instruction; leading sub-note span leaves earlier notes velocity-less
+(noted). Dynamics curvature/protraction defaults 0.0 + input clamps stated;
+movement's differ (AD-13). v3 `%` values: third unit case — %-vs-% compares
+in percent, %-vs-absolute is structural without MSM / resolved with one.
+Shadowing: maps wholesale, styleDefs whole-def-by-name via styleScope route
+(mandatory). Rubato: skipped (frameLength-less) instruction terminates the
+previous span leaving a neutral gap WITH breakpoint; defaults 1.0/0.0/1.0 =
+identity; boundary clamps applied BEFORE evaluation.
+
+AD-17 (M6, M7, R20 — quadrature spec). Tempo cells: substitution u = z^(1/e)
+makes the integrand smooth for ALL e (both singular ends die); interior
+sign-change bracketing at the closed-form critical point u* per cell, then
+bisection on monotone branches. Dynamics/pedal: the DEFINED curve is the
+ideal cubic Bézier (smooth); GL-10 converges; tForDate's 1-tick staircase is
+the renderer's approximation OF that object and is used only in replay;
+divergence bound documented. epsilon becomes a per-family record in the
+report (step: exact; tempo: quadrature; imprecision: special-function;
+drift: renderer-Simpson).
+
+AD-18 (M8 — decomposition measure). Decomposition computed on normalized
+dμ = w dt/∫w; headline on unnormalized w dt; both named. Report four fields
+(level, gain, shape|null, r|null) + the closing identity check with
+"shape term := 0 when σ_Aσ_B = 0" convention; sqrt-vs-squares stated.
+
+AD-19 (M9 — one canonical table). Segment columns from the AGGREGATE density
+p_D = Σω_k p_k vs τ_D = Σω_k τ_k; per-dimension segment lists are secondary,
+non-closing products. Cell score = (mass in cell) − τ·w(cell) (atom-correct;
+zero-width cells correct). Roots of p_D − τ_D join the grid for the segment
+pass (reusing AD-17 machinery). Ranking: mass desc, tie by earliest start,
+then shortest. Closure holds for ANY partition (stated plainly — the
+thresholding only selects which partition is reported). Zero-weight
+dimensions: excluded from p_D (weight 0) but their d_k rows still reported
+(table closes over weighted rows).
+
+AD-20 (M10, M12 — invariance + weights). Invariance defined per curve-valued
+ROW (dimension's mode applies to all its curve rows); distribution
+dimensions: 'level' = location shift of the law (subtract span-weighted mean
+of means); event dimensions: 'level'/'level-gain' is InvalidOptionError.
+'level-gain' with σ = 0 ⇒ canonical 0 curve + shapeless mark. ω = 1 default
+kept but justified honestly (it weights dimensions as JND-integrals, which
+have different row counts); row-aggregation rule = SUM stated in §3;
+per-row breakdown reported.
+
+AD-21 (M15, M16, M18, M19 — properties). P-C3 gains adversarial fixture
+families exercising every former M1 instance + P-C3b zero-set transitivity.
+Edit path computed once in canonical order sort([labelA, labelB]) and
+INVERTED for the mirror (mirroring true by construction). −0 normalized to
++0 before serialization. Degenerate-corpus guards: N=1, all-equal, zero-mass
+⇒ nulls per A3's discipline.
+
+AD-22 (A1–A25 — API). All repairs adopted as proposed. Highlights:
+jnd keys = `${dimension}/${element}@${attribute}`, exported closed vocabulary
+COMPARISON_JND_KEYS + compile-time type; ComparisonSettings shared interface
+extended by both option types; scape?: without null; finiteness discipline
+(L=0 ⇒ mean null; Σ|λ|=0 ⇒ explainedVariance nulls + degenerate flag; empty
+nonzero set ⇒ normalizationConstants[k] null with fixed-ω fallback) + P-C11
+plain-data/finiteness walker property; matrices full row-major N² with `n`
+field and pinned bit-symmetry; errors carry document identity ('a'|'b'|item
+index) — new typed classes extending MeicoError, no EngineInvariantError
+reuse (A15): ComparisonEngineError added; corpus labels required unique after
+expansion (InvalidOptionError on duplicates; defaults defined); serialized
+key order pinned (schema order; dimension records in COMPARISON_DIMENSIONS
+order — A9); P-C6's corpus clause weakened to matrix permutation-equivariance
++ dendrogram equality on tie-free inputs, index-tie dependence documented
+(A7); options echo excludes document texts (A12); dimension-set stability
+promise corrected to "additive, breaking for Record consumers, major-version
+note" (A13); DiffMpmOptions/DiffResult fully declared incl. provenance
+(A14/A19); explicitly-requested-but-unusable options get typed notes (A10);
+msm presence stamped (A11); window validated start<end finite ≥0, and
+consistency with §5.0 stated (A16); performance selector validation mirrors
+expression facade incl. index bounds (A17); no name collisions in the barrel;
+SiteRef-like replaced by a declared ComparisonSiteRef (A18); validation and
+parse order contract stated (A23); exact eslint zone text + verified
+sideEffects note for bezier.ts (A24); COMPARISON_DIMENSIONS frozen (A25).
+
+AD-23 (C1–C17 — products). All repairs adopted. Highlights: opt-in profile
+export (grid, both T-space curves, density; per-dimension; step-capped) —
+C1; signed integral + per-segment meanSigned as DESCRIPTORS never distances
+— C2; measure mapping from MSM (three-state) — C3; segments carry
+{mass, peak, mean, length, start, end} — C4; ops carry application index AND
+cost rank — C5; plausibleRange per registry row + plausibility notes (the
+Hofmann-roll defense) — C6; same-piece heuristic + suspectPairs — C7;
+neutral-baseline recipe in cookbook + defined semantics of comparing against
+a minimal MPM — C8; per-dimension invariance-applicability documented — C9;
+mean (JND) is the human headline, D the mathematical total, both reported,
+docs say which is which — C10; equivalence block (above-threshold length
+fraction etc., the anti-ruler statement as data) — C11; opCounts per
+(part,map) + boundary_prf cookbook with non-equivalence caveat — C12; drift
+{secondsA, secondsB, difference, ratio, maxAbsMs} — C13; glossary docs
+obligation in W4 — C14; asynchrony non-goals paragraph (melody lead,
+two-zone) — C15; `b` optional defaulting to `a` (within-document comparison
+of two performances) — C16; R10 scale raised to N ≤ 256 to cover the Daten
+corpus (121) — C17.
+
+AD-24 (process). DESIGN.md rev 2 is compiled from AD-1..AD-23 by a
+dedicated rewrite agent under conductor review; the panel reports are the
+diff record. survey-lit remains open for JND values ([PENDING-LIT] tags
+stay); the JND defaults ship [convention] if the lit survey cannot ground
+them.
