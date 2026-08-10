@@ -2474,3 +2474,38 @@ table's whole mechanism. (3) AD-29's any-entry span rule is in
 spanEnds.ts, but AD-35.4's hazard question has NOT been asked of §5.9's
 remaining guards — ask it of every one; ornamentation yielded two fresh
 instances.
+
+## 2026-08-10 — Capacity event: weekly limit; resumption plan
+
+Both live workers (w3-dims post-handoff, w3-imp freshly commissioned) hit
+the ACCOUNT WEEKLY limit at 20:54 (resets 2026-08-16 02:00 Europe/Berlin);
+the fresh spawn died before its first action, so new agent spawns are
+capped too — delegation is unavailable until the reset. Campaign state at
+this boundary: HEAD 2dc4d37 pushed, tree clean, verify green 4553+1;
+W3a cuts 1-3 CLOSED across ten dimensions; cut 4 (imprecision ×3) fully
+specified by AD-46's commission + inheritances and NOT started.
+
+RESUMPTION PLAN (for any future session or the conductor's own hand):
+1. Cut 4 exactly per AD-46 (the commission prompt is reproduced in the
+   w3-imp spawn; its content is AD-46 + standing policies).
+2. Then W3b: aggregation/segments/closing table (§7, AD-19), facade
+   (§9 as adjudicated incl. MINOR-2 −0 normalization and MINOR-4's
+   malformed-value table), P-C5 cross-module test, W3 wave gate
+   (independent verification agent, with EXTRA weight on any cut the
+   conductor implements personally — self-review is not review).
+3. Then W4 (diff, corpus, scape) and W5 (audit, docs obligations incl.
+   AD-26.4/AD-27.7, novelty re-sweep AD-26.5, merge per the docs-declutter
+   obligations journaled above).
+CONDUCTOR MAY implement cut 4 personally in the interim (small, frequent,
+green/gated/pushed commits; the W3 gate then audits it with independent
+eyes after the reset).
+
+## 2026-08-10 — Coordination update: docs-declutter tip moved
+
+dcdecb9 → 14edf1f (second commit repoints refactor/state.json citations
+the first pass missed; journals only, anchors hold). All four journaled
+W5 obligations stand. Repoint command CORRECTED (add state.json to the
+alternation; docs/history/README.md carries the fixed version and
+excludes itself from the sweep — mirror that exclusion). Their
+test-merge of docs-declutter into layers-to-staffs is clean (4059 green):
+the de-clutter merge waits only on the user's decision.
