@@ -1655,3 +1655,36 @@ channel, not a row (BANK SELECT fall-through documented). The 26-vs-34
 self-correction and the second entry-index instance (getPreviousPosition
 j>0, PARITY P2, now hazard-class-tagged) are noted with approval.
 Cut 2 (articulation) proceeds.
+
+## 2026-08-10 — AD-37: cut-2 rulings — articulation renderer truths [BINDING]
+
+survey-code's §5.5 stop-and-report (all measured, tree clean). Rulings:
+
+AD-37.1 The default step function is RETROACTIVE: its value on
+[0, firstSwitchDate) is the FIRST switch's default — the renderer's
+forward-only index starts at 0 unchecked against its own date (hazard
+class instance #3, new shape: "index 0 used before its date arrives").
+§5.5 amended; fixture pins the retroactive window on both switch
+positions measured.
+AD-37.2 The disposition table gains its third row: unresolvable STYLE ⇒
+previous default continues; switch WITHOUT the attribute ⇒ cancel; switch
+with UNKNOWN def name ⇒ cancel-with-warning. Two cancellers, one
+continuer — all three pinned.
+AD-37.3 Liveness precedence is a DURATION-ONLY rule; velocity levers
+COMPOSE in source order (re-read after each write: absoluteVelocity →
+relativeVelocity → absoluteVelocityChange). §5.5 states both; pricing
+compares EFFECTIVE modifiers — the single live duration lever's effect,
+and the composed velocity affine (r, c) in their spaces.
+AD-37.4 Atoms COMPOSE ACROSS atoms per note in map order; the semantic
+object is the per-anchor COMPOSED effective modifier, not the individual
+atom. Consequence pinned as an encoding-invariance test: two stacked
+relativeDuration atoms vs one atom carrying their product ⇒ distance 0.
+Alignment operates on composed per-anchor effects.
+AD-37.5 An atom's unresolvable @name.ref: def silently ignored, inline
+modifiers still apply — the atom compares AS PERFORMED (no ⊥). §5.5
+states this explicitly AGAINST §5.4's opposite accentuation disposition
+(cross-referenced both ways) so neither is inferred from the other.
+AD-37.6 Sequencing option (a) RATIFIED: the event aligner moves INTO cut
+2 as its own module (dimension-neutral interface, W4-diff reuse in mind),
+articulation is its first consumer, ornamentation (cut 3) its second —
+two consumers before the interface freezes. No throwaway matcher.
