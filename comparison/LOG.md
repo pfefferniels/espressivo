@@ -2180,3 +2180,25 @@ for L=1 transition.from is never performed under either reading).
 AD-44.5 The two-commit plan is RATIFIED as proposed, incl. the honest
 attribution of the adopted draft's sound parts (structure, aligner reuse,
 @scale resolution). Cut 4 after.
+
+## 2026-08-10 — Coordination: docs-declutter branch; W5 merge obligations
+
+Peer session delivered branch docs-declutter (dcdecb9, off main, unpushed):
+refactor/ARCHITECTURE.md → ARCHITECTURE.md (repo root, byte-identical,
+verified 100% renames); campaign records → docs/history/<campaign>/ with
+the convention written into docs/history/README.md (incl. a citation-
+repoint perl command with a load-bearing lookbehind). W5 MERGE OBLIGATIONS
+recorded now so the audit cannot miss them:
+1. Land this campaign's record at docs/history/comparison/ IF docs-
+   declutter has merged to main by then; else land at comparison/ and note
+   the pending move. Either way the record follows the stated convention.
+2. Re-point this branch's refactor/ARCHITECTURE.md and expression/*.md
+   citations (src/comparison/**, comparison/**) using the recorded perl
+   command; check Markdown links by hand (the sweep skips URLs).
+3. Keep /ARCHITECTURE.md in .prettierignore through the merge (a prettier
+   reflow would silently invalidate every line anchor while staying green).
+4. refactor/state.json now lives at docs/history/refactor/state.json
+   (kept — carries T13 acceptance criteria + mpmify consumer requests that
+   tests/api/determinism.test.ts cites).
+CONVENTION EFFECTIVE NOW for new campaign code: cite ARCHITECTURE.md BARE
+(never refactor/ARCHITECTURE.md) — correct post-merge, zero fixup.
