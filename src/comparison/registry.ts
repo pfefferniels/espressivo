@@ -479,6 +479,8 @@ export const COMPARISON_JND_KEYS = Object.freeze([
   'articulation/articulation@detuneCents',
   'articulation/articulation@detuneHz',
   'ornamentation/ornament@scale',
+  'ornamentation/ornament@note.order',
+  'ornamentation/ornament@repetitions',
   'ornamentation/dynamicsGradient@transition.from',
   'ornamentation/dynamicsGradient@transition.to',
   'ornamentation/temporalSpread@frame.start',
@@ -1474,6 +1476,73 @@ const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
       'CONTRAST §5.4’s accentuationPattern@scale, which is MANDATORY there: absent, the whole ' +
       'instruction is skipped. Same attribute name, two sections, two dispositions — hence the ' +
       'cross-reference in both. 3 velocity units [convention], §7.1’s velocity row.',
+  },
+  {
+    key: 'ornamentation/ornament@note.order',
+    dimension: 'ornamentation',
+    element: 'ornament',
+    attribute: 'note.order',
+    sites: [instructionSite(ORNAMENTATION_MAP, 'ornament')],
+    space: { kind: 'gain' },
+    valueDomain: boolean01,
+    unit: 'dimensionless',
+    jnd: UNNORMALIZED_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: {
+      element: 'ornament',
+      rule:
+        'live as a ROW only for the two enumerated orderings, encoded 0 = "ascending pitch" ' +
+        '(also the absent default) and 1 = "descending pitch". An explicit ID LIST is not a ' +
+        'value of this row: it names notes, which is an identity claim and not a magnitude, ' +
+        'and it goes to the finding channel (AD-41.1, on §5.8’s @controller precedent).',
+    },
+    ppqSensitive: false,
+    notes:
+      '§5.6/AD-41.1 — a boolean row on §4’s @loop argument, and justified by measurement rather ' +
+      'than only by ruling: the two orderings sort the pool by pitch in opposite directions ' +
+      '(`Math.sign(pitch1 - pitch2) * finalNoteOrderAscending`), so they decide WHICH note ' +
+      'receives which step of the gradient. Executed on three notes at one date with a ' +
+      '−20 → +20 gradient over velocity 100: ascending performs 80/100/120 and descending ' +
+      '120/100/80. Filing the pair as a structural finding would score two documents that ' +
+      'invert an arpeggio at d_ornamentation = 0. Absent ≡ ascending, since the renderer ' +
+      'initialises `noteOrderAscending = 1` and only "descending pitch" moves it. jnd 1 ' +
+      '[convention]: like @loop the row carries no independent metric — its difference is ' +
+      'priced through the pool ordering it selects — and the unit is the {0,1} encoding.',
+  },
+  {
+    key: 'ornamentation/ornament@repetitions',
+    dimension: 'ornamentation',
+    element: 'ornament',
+    attribute: 'repetitions',
+    sites: [instructionSite(ORNAMENTATION_MAP, 'ornament')],
+    space: { kind: 'gain' },
+    valueDomain: (x: number): boolean => Number.isFinite(x) && (x === -1 || x >= 0),
+    unit: 'dimensionless',
+    jnd: UNNORMALIZED_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: {
+      element: 'ornament',
+      rule:
+        'the repeat group plays `repetitions + 1` times (D9), and `-1` is meico’s documented ' +
+        '"fill the frame" extension. Its PRESENCE is separately load-bearing and is NOT this ' +
+        'row: `isV3Ornament` fires on the attribute existing at all, whatever it says, which ' +
+        'moves the whole ornament onto the v3 engine — and that engine SKIPS an ornament with ' +
+        'no @note.order. Executed: adding repetitions="0", the schema default, takes an ' +
+        'ornament from 80/100/120 to 100/100/100. The reader models the gate as a shape, so ' +
+        'this row prices only the count.',
+    },
+    ppqSensitive: false,
+    notes:
+      '§5.6/AD-15/AD-41.1 — a count, so the identity space and a jnd of one repetition ' +
+      '[convention]: "one more turn of the figure" is the smallest difference there is, and no ' +
+      'perceptual constant exists for it. `-1` is admitted by the domain predicate as the ' +
+      'documented extension rather than rejected as a negative count; any other unusable value ' +
+      'is logged by `parseOrnamentRepetitions` and falls back to 0, which the reader ' +
+      'reproduces rather than propagating a NaN.',
   },
   {
     key: 'ornamentation/dynamicsGradient@transition.from',

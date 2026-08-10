@@ -1,290 +1,509 @@
 /**
- * Ornamentation — DESIGN.md §5.6 as ruled by AD-40, and the event aligner's second consumer.
+ * Ornamentation — DESIGN.md §5.6 as ruled by AD-40, AD-41, AD-42 and AD-43.
  *
- * The `@scale` behaviour is checked against the RENDERER: the ornament is rendered over a real
- * note map and the `ornament.dynamics` markers it writes are what decide whether the gradient
- * performed. That is the measurement AD-40.1 rests on, and re-running it here is what stops a
- * future renderer change from quietly invalidating the ruling.
+ * **Every renderer claim here is measured through `Performance.perform`.** AD-43.1 tightened
+ * the standard after a map-level probe produced a false "global maps perform nothing" claim:
+ * "the renderer determines it" means the PIPELINE, not the nearest method. So the harness below
+ * performs a real MSM against a real MPM and reads the notes back, and the reader is asserted
+ * against those notes rather than against numbers worked out by hand.
  */
 import { describe, it, expect } from 'vitest';
-import { Attribute, Element } from '../../src/xml/XomTypes.js';
-import { Mpm } from '../../src/mpm/Mpm.js';
-import { GenericMap } from '../../src/mpm/elements/maps/GenericMap.js';
-import type { OrnamentationMap } from '../../src/mpm/elements/maps/OrnamentationMap.js';
+import { performMsm } from '../../src/api/pipeline.js';
+import { parseTemporalValueLenient } from '../../src/mpm/elements/styles/defs/TemporalValue.js';
 import { readComparisonPair, readScopeMapViews } from '../../src/comparison/document.js';
 import type { ComparisonDocument } from '../../src/comparison/document.js';
-import { readOrnamentAtoms, type OrnamentAtoms } from '../../src/comparison/ornamentAtoms.js';
-import { ornamentationDistance } from '../../src/comparison/ornamentationDistance.js';
-import { comparisonRowFor } from '../../src/comparison/registry.js';
+import {
+  parseFrameValue,
+  readOrnamentAtoms,
+  type OrnamentAtom,
+  type OrnamentAtoms,
+} from '../../src/comparison/ornamentAtoms.js';
+import {
+  ornamentationDistance,
+  deviationFromNeutral,
+} from '../../src/comparison/ornamentationDistance.js';
+import { comparisonRowFor, COMPARISON_JND_KEYS } from '../../src/comparison/registry.js';
+import { isBottom } from '../../src/comparison/values.js';
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
+const PPQ = 720;
 
-const STYLES =
-  '<ornamentationStyles><styleDef name="O">' +
-  '<ornamentDef name="arp"><temporalSpread frame.start="-120.0" frameLength="240.0"/></ornamentDef>' +
-  '<ornamentDef name="grad"><dynamicsGradient transition.from="-20.0" transition.to="20.0"/></ornamentDef>' +
-  '<ornamentDef name="half"><dynamicsGradient transition.from="-10.0" transition.to="10.0"/></ornamentDef>' +
-  '<ornamentDef name="wide"><temporalSpread frame.start="-240.0" frameLength="480.0"/></ornamentDef>' +
-  '</styleDef></ornamentationStyles>';
+/** Three notes of one chord at date 0, plus one at 360 for the style-switch cases. */
+const MSM = `<?xml version="1.0" encoding="UTF-8"?>
+<msm xmlns="http://www.cemfi.de/msm/ns/1.0" title="t" pulsesPerQuarter="${PPQ}">
+  <global><dated/></global>
+  <part name="p" number="1" midi.channel="0" midi.port="0"><dated><score>
+    <note xml:id="n1" date="0.0" midi.pitch="60.0" duration="720.0"/>
+    <note xml:id="n2" date="0.0" midi.pitch="64.0" duration="720.0"/>
+    <note xml:id="n3" date="0.0" midi.pitch="67.0" duration="720.0"/>
+    <note xml:id="m1" date="1440.0" midi.pitch="60.0" duration="720.0"/>
+    <note xml:id="m2" date="1440.0" midi.pitch="64.0" duration="720.0"/>
+  </score></dated></part>
+</msm>`;
 
-/**
- * The map lives in a PART, because a global `ornamentationMap` performs nothing at all — see
- * the gate suite at the bottom. The styles stay in the global header, which a part-local map
- * resolves against perfectly well.
- */
-const doc = (map: string) =>
-  `<mpm xmlns="${NS}"><performance name="p" pulsesPerQuarter="720">` +
-  `<global><header>${STYLES}</header><dated/></global>` +
-  '<part name="p" number="1" midi.channel="0" midi.port="0">' +
-  `<dated><ornamentationMap>${map}</ornamentationMap></dated></part>` +
-  '</performance></mpm>';
+/** An MPM whose ornamentationMap sits in the part or in `<global>`, styles always global. */
+const mpmDoc = (defs: string, map: string, where: 'part' | 'global' = 'part'): string => {
+  const mapXml = `<ornamentationMap>${map}</ornamentationMap>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mpm xmlns="${NS}"><performance name="p" pulsesPerQuarter="${PPQ}">
+  <global><header><ornamentationStyles><styleDef name="O">${defs}</styleDef></ornamentationStyles></header>
+    <dated>${where === 'global' ? mapXml : ''}</dated></global>
+  <part name="p" number="1" midi.channel="0" midi.port="0"><header/>
+    <dated>${where === 'part' ? mapXml : ''}</dated></part>
+</performance></mpm>`;
+};
 
-/** A document whose ornamentationMap sits in `<global>` instead. */
-const globalDoc = (map: string) =>
-  `<mpm xmlns="${NS}"><performance name="p" pulsesPerQuarter="720">` +
-  `<global><header>${STYLES}</header><dated><ornamentationMap>${map}` +
-  '</ornamentationMap></dated></global></performance></mpm>';
+interface PerformedNote {
+  readonly id: string;
+  readonly velocity: number;
+  readonly datePerf: number;
+}
 
-const atomsOf = (map: string): OrnamentAtoms => {
-  const document: ComparisonDocument = readComparisonPair({ a: doc(map) }).a;
-  const scope = document.scopes.find((candidate) => candidate.scope === 'part');
-  if (scope === undefined) throw new Error('no part scope');
+/** Perform the pair and read every note back — the only renderer evidence this file accepts. */
+function perform(defs: string, map: string, where: 'part' | 'global' = 'part'): PerformedNote[] {
+  const out = performMsm({ msm: MSM, mpm: mpmDoc(defs, map, where) });
+  return [...out.matchAll(/<note\b[^>]*>/g)].map((match) => {
+    const tag = match[0];
+    const read = (name: string): string =>
+      new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1] ?? 'NaN';
+    return {
+      id: /xml:id="([^"]*)"/.exec(tag)?.[1] ?? '?',
+      velocity: parseFloat(read('velocity')),
+      datePerf: parseFloat(read('date\\.perf')),
+    };
+  });
+}
+
+/** The performed velocities of the chord at date 0, in document order. */
+const chordVelocities = (defs: string, map: string, where: 'part' | 'global' = 'part'): number[] =>
+  perform(defs, map, where)
+    .filter((note) => ['n1', 'n2', 'n3'].includes(note.id))
+    .map((note) => note.velocity);
+
+const chordOnsets = (defs: string, map: string): number[] =>
+  perform(defs, map)
+    .filter((note) => ['n1', 'n2', 'n3'].includes(note.id))
+    .map((note) => note.datePerf);
+
+const atomsOf = (defs: string, map: string, where: 'part' | 'global' = 'part'): OrnamentAtoms => {
+  const document: ComparisonDocument = readComparisonPair({ a: mpmDoc(defs, map, where) }).a;
+  const scope = document.scopes.find((candidate) => candidate.scope === where);
+  if (scope === undefined) throw new Error(`no ${where} scope`);
   return readOrnamentAtoms(
     readScopeMapViews(scope).get('ornamentationMap') ?? null,
     document.scaleFactor,
     scope.environment,
     document.performance.global,
-    'part',
+    where,
   );
 };
 
-/** The `ornament.dynamics` markers the renderer writes for three notes at one date. */
-function markers(map: string, where: 'part' | 'global' = 'part'): (string | null)[] {
-  const mpm = new Mpm(where === 'part' ? doc(map) : globalDoc(map));
-  const performance = mpm.getPerformance(0)!;
-  const dated =
-    where === 'part' ? performance.getPart('p')!.getDated()! : performance.getGlobal()!.getDated()!;
-  const ornamentationMap = dated.getMap('ornamentationMap') as unknown as OrnamentationMap;
+const distance = (a: OrnamentAtoms, b: OrnamentAtoms): number =>
+  ornamentationDistance(a, b, { startQuarters: 0, endQuarters: 8 } as never, PPQ).distance;
 
-  const notes = GenericMap.createGenericMap('someMap')!;
-  for (let i = 0; i < 3; ++i) {
-    const note = new Element('note', NS);
-    note.addAttribute(new Attribute('date', '0'));
-    note.addAttribute(new Attribute('date.perf', '0'));
-    note.addAttribute(new Attribute('duration.perf', '360'));
-    note.addAttribute(new Attribute('velocity', '64'));
-    note.addAttribute(new Attribute('pitch', String(60 + i * 4)));
-    notes.addElement(note);
-  }
-  ornamentationMap.renderOrnamentationToMap(notes);
-  return notes
-    .getXml()
-    .getChildElements()
-    .toArray()
-    .map((note) => note.getAttributeValue('ornament.dynamics'));
-}
-
+const GRAD =
+  '<ornamentDef name="g"><dynamicsGradient transition.from="-20.0" transition.to="20.0"/></ornamentDef>';
 const STYLE0 = '<style date="0.0" name.ref="O"/>';
+const ORN = (extra = ''): string => `<ornament date="0.0" name.ref="g" scale="1.0"${extra}/>`;
 
-describe('@scale gates half the ornament (AD-40.1)', () => {
-  it('performs NO dynamics without @scale, and the renderer says so', () => {
-    expect(markers(`${STYLE0}<ornament date="0.0" name.ref="grad"/>`)).toEqual(['0', '0', '0']);
-    const atom = atomsOf(`${STYLE0}<ornament date="0.0" name.ref="grad"/>`).atoms[0];
-    expect(atom.scale).toBe(0);
-    expect(atom.gradient).toEqual({ from: -0, to: 0 });
+describe('AD-43.1 — a GLOBAL ornamentationMap performs', () => {
+  it('performs identically from <global> and from a <part>, through the pipeline', () => {
+    expect(chordVelocities(GRAD, `${STYLE0}${ORN()}`, 'part')).toEqual([80, 100, 120]);
+    expect(chordVelocities(GRAD, `${STYLE0}${ORN()}`, 'global')).toEqual([80, 100, 120]);
   });
 
-  it('performs the ramp with scale="1.0"', () => {
-    expect(markers(`${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0"/>`)).toEqual([
-      '-20',
-      '0',
-      '20',
-    ]);
-    const atom = atomsOf(`${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0"/>`).atoms[0];
-    expect(atom.gradient).toEqual({ from: -20, to: 20 });
+  it('reads atoms from a global scope, where 404fd57 read none', () => {
+    const global = atomsOf(GRAD, `${STYLE0}${ORN()}`, 'global');
+    expect(global.atoms).toHaveLength(1);
+    expect(global.notes.map((note) => note.kind)).not.toContain('global-scope-inert');
+    expect(global.atoms[0].gradient).toEqual({ kind: 'value', value: { from: -20, to: 20 } });
   });
+});
 
-  it('does NOT gate the temporal spread — the other half applies either way', () => {
-    const unscaled = atomsOf(`${STYLE0}<ornament date="0.0" name.ref="arp"/>`).atoms[0];
-    expect(unscaled.spread).toEqual({
-      frameStart: -120,
-      frameLength: 240,
-      intensity: 1,
-      milliseconds: false,
-      v3Offset: false,
+describe('the gradient the renderer actually performs', () => {
+  it('defaults @transition.to to @transition.from, not to 0', () => {
+    const flat = '<ornamentDef name="g"><dynamicsGradient transition.from="-20.0"/></ornamentDef>';
+    // A −20 → 0 reading predicts 80/90/100; the renderer performs a flat ramp.
+    expect(chordVelocities(flat, `${STYLE0}${ORN()}`)).toEqual([80, 80, 80]);
+    expect(atomsOf(flat, `${STYLE0}${ORN()}`).atoms[0].gradient).toEqual({
+      kind: 'value',
+      value: { from: -20, to: -20 },
     });
   });
 
-  it('reports the zeroed gradient rather than leaving it to be noticed', () => {
-    const read = atomsOf(`${STYLE0}<ornament date="0.0" name.ref="grad"/>`);
-    expect(read.notes.some((note) => note.kind === 'scale-zero')).toBe(true);
+  it('prices two encodings of one performed ramp at 0 (AD-40.2)', () => {
+    const half =
+      '<ornamentDef name="g"><dynamicsGradient transition.from="-10.0" transition.to="10.0"/></ornamentDef>';
+    const scaled = `<ornament date="0.0" name.ref="g" scale="2.0"/>`;
+    expect(chordVelocities(GRAD, `${STYLE0}${ORN()}`)).toEqual(
+      chordVelocities(half, `${STYLE0}${scaled}`),
+    );
+    expect(distance(atomsOf(GRAD, `${STYLE0}${ORN()}`), atomsOf(half, `${STYLE0}${scaled}`))).toBe(
+      0,
+    );
+  });
+
+  it('performs nothing without @scale, and the spread still applies (AD-40.1)', () => {
+    const both =
+      '<ornamentDef name="g"><dynamicsGradient transition.from="-20.0" transition.to="20.0"/>' +
+      '<temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
+    const unscaled = '<ornament date="0.0" name.ref="g"/>';
+    expect(chordVelocities(both, `${STYLE0}${unscaled}`)).toEqual([100, 100, 100]);
+    expect(chordOnsets(both, `${STYLE0}${unscaled}`)).toEqual([-22, 0, 22]);
   });
 });
 
-describe('the resolved performed effect is what is compared (AD-40.2)', () => {
-  const distanceOf = (a: string, b: string) => {
-    const pair = readComparisonPair({ a: doc(a), b: doc(b), window: { start: 0, end: 8 } });
-    const read = (side: 'a' | 'b') => {
-      const document = pair[side];
-      const scope = document.scopes.find((candidate) => candidate.scope === 'part');
-      if (scope === undefined) throw new Error('no part scope');
-      return readOrnamentAtoms(
-        readScopeMapViews(scope).get('ornamentationMap') ?? null,
-        document.scaleFactor,
-        scope.environment,
-        document.performance.global,
-        'part',
-      );
-    };
-    return ornamentationDistance(read('a'), read('b'), pair.window, pair.ppq.lcm);
-  };
+describe('absence has a NEUTRAL, measured (AD-42.3, AD-43.2ii)', () => {
+  const none = '<ornamentDef name="g"/>';
+  const neutralGradient =
+    '<ornamentDef name="g"><dynamicsGradient transition.from="0" transition.to="0"/></ornamentDef>';
+  const neutralSpread =
+    '<ornamentDef name="g"><temporalSpread frame.start="0" frameLength="0"/></ornamentDef>';
 
-  it('is 0 between two ENCODINGS of one performed ramp', () => {
-    // (-20, 20) x 1 and (-10, 10) x 2 are the same performance.
-    const one = `${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0"/>`;
-    const two = `${STYLE0}<ornament date="0.0" name.ref="half" scale="2.0"/>`;
-    expect(markers(one)).toEqual(markers(two));
-    expect(distanceOf(one, two).distance).toBe(0);
+  it('an absent <dynamicsGradient> performs what (0,0) performs', () => {
+    expect(chordVelocities(none, `${STYLE0}${ORN()}`)).toEqual(
+      chordVelocities(neutralGradient, `${STYLE0}${ORN()}`),
+    );
   });
 
-  it('is 0 against itself (P-C1) and symmetric (P-C2)', () => {
-    const a = `${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0"/>`;
-    const b = `${STYLE0}<ornament date="720.0" name.ref="arp"/>`;
-    expect(distanceOf(a, a).distance).toBe(0);
-    expect(Object.is(distanceOf(a, b).distance, distanceOf(b, a).distance)).toBe(true);
+  it('an absent <temporalSpread> performs what a zero frame performs', () => {
+    expect(chordOnsets(none, `${STYLE0}${ORN()}`)).toEqual(
+      chordOnsets(neutralSpread, `${STYLE0}${ORN()}`),
+    );
   });
 
-  it('prices a real gradient difference in velocity units', () => {
-    const strong = `${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0"/>`;
-    const weak = `${STYLE0}<ornament date="0.0" name.ref="half" scale="1.0"/>`;
-    // from: |−20 − (−10)| = 10, to: |20 − 10| = 10, each over the 3-velocity JND.
-    expect(distanceOf(strong, weak).distance).toBeCloseTo((10 + 10) / 3, 9);
-  });
-
-  it('prices a frame difference in quarters', () => {
-    const narrow = `${STYLE0}<ornament date="0.0" name.ref="arp"/>`;
-    const wide = `${STYLE0}<ornament date="0.0" name.ref="wide"/>`;
-    const jnd = comparisonRowFor('ornamentation/temporalSpread@frameLength').jnd;
-    // start: |−120 − (−240)| = 120 ticks = 1/6 quarter; length: 240 ticks = 1/3 quarter.
-    expect(distanceOf(narrow, wide).distance).toBeCloseTo((1 / 6 + 1 / 3) / jnd, 9);
-  });
-
-  it('reads a spread present on one side only as ⊥, not as a difference from zero', () => {
-    const spread = `${STYLE0}<ornament date="0.0" name.ref="arp"/>`;
-    const gradient = `${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0"/>`;
-    const row = comparisonRowFor('ornamentation/temporalSpread@frameLength');
-    // Three frame rows at δ_row each, plus the gradient's two, also ⊥ on one side.
-    expect(distanceOf(spread, gradient).distance).toBeCloseTo(row.delta * 5, 9);
-  });
-});
-
-describe('skips and findings', () => {
-  const read = (map: string) => atomsOf(map);
-
-  it('skips an ornament before the first <style> — §5.4’s disposition, not §5.5’s', () => {
-    const result = read('<ornament date="0.0" name.ref="grad" scale="1.0"/>');
-    expect(result.atoms).toHaveLength(0);
-    expect(result.notes.some((note) => note.kind === 'no-style-in-scope')).toBe(true);
-  });
-
-  it('skips an ornament naming an unknown def', () => {
-    const result = read(`${STYLE0}<ornament date="0.0" name.ref="nosuch" scale="1.0"/>`);
-    expect(result.atoms).toHaveLength(0);
-    expect(result.notes.some((note) => note.kind === 'unresolved-def')).toBe(true);
-  });
-
-  it('sizes the pool only from an explicit @note.order id list', () => {
-    const listed = read(
-      `${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0" note.order="#a #b #c"/>`,
-    ).atoms[0];
-    expect(listed.poolSize).toBe(3);
-
-    const enumerated = read(
-      `${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0" note.order="ascending pitch"/>`,
-    ).atoms[0];
-    expect(enumerated.poolSize).toBeNull();
+  it('so both compare at distance 0 rather than at ⊥', () => {
     expect(
-      read(`${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0"/>`).notes.some(
-        (note) => note.kind === 'pool-size-unknown',
-      ),
-    ).toBe(true);
+      distance(atomsOf(none, `${STYLE0}${ORN()}`), atomsOf(neutralGradient, `${STYLE0}${ORN()}`)),
+    ).toBe(0);
+    expect(
+      distance(atomsOf(none, `${STYLE0}${ORN()}`), atomsOf(neutralSpread, `${STYLE0}${ORN()}`)),
+    ).toBe(0);
+  });
+
+  it('drops cost by CONTENT, not by a flat constant (AD-42.3’s point)', () => {
+    const small = atomsOf(
+      '<ornamentDef name="g"><dynamicsGradient transition.from="-1" transition.to="1"/></ornamentDef>',
+      `${STYLE0}${ORN()}`,
+    );
+    const large = atomsOf(
+      '<ornamentDef name="g"><dynamicsGradient transition.from="-40" transition.to="40"/></ornamentDef>',
+      `${STYLE0}${ORN()}`,
+    );
+    const dropSmall = deviationFromNeutral(small.atoms[0], PPQ);
+    const dropLarge = deviationFromNeutral(large.atoms[0], PPQ);
+    expect(dropSmall).toBeGreaterThan(0);
+    expect(dropLarge).toBeGreaterThan(dropSmall);
   });
 });
 
-describe('the aligner’s SECOND consumer', () => {
-  const distanceOf = (a: string, b: string) => {
-    const pair = readComparisonPair({ a: doc(a), b: doc(b), window: { start: 0, end: 8 } });
-    const readSide = (side: 'a' | 'b') => {
-      const document = pair[side];
-      const scope = document.scopes.find((candidate) => candidate.scope === 'part');
-      if (scope === undefined) throw new Error('no part scope');
-      return readOrnamentAtoms(
-        readScopeMapViews(scope).get('ornamentationMap') ?? null,
-        document.scaleFactor,
-        scope.environment,
-        document.performance.global,
-        'part',
-      );
-    };
-    return ornamentationDistance(readSide('a'), readSide('b'), pair.window, pair.ppq.lcm);
-  };
+describe('the frame: four cells, one of them dead', () => {
+  const v2 =
+    '<ornamentDef name="g"><temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
+  const v3 =
+    '<ornamentDef name="g"><temporalSpread frame.offset="-22ticks" frameLength="44ticks"/></ornamentDef>';
+  const suffixOnly =
+    '<ornamentDef name="g"><temporalSpread frame.start="-22ticks" frameLength="44"/></ornamentDef>';
+  const none = '<ornamentDef name="g"/>';
 
-  it('aligns and drops without the aligner knowing what an ornament is', () => {
-    const two =
-      `${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0"/>` +
-      '<ornament date="1440.0" name.ref="arp"/>';
-    const one = `${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0"/>`;
-    const result = distanceOf(two, one);
-    expect(result.matched).toBe(1);
-    expect(result.unmatchedA).toBe(1);
-    expect(result.distance).toBeGreaterThan(0);
+  it('a v2 frame spreads and a v3 frame with the SAME numbers spreads nothing', () => {
+    expect(chordOnsets(v2, `${STYLE0}${ORN()}`)).toEqual([-22, 0, 22]);
+    expect(chordOnsets(v3, `${STYLE0}${ORN()}`)).toEqual([0, 0, 0]);
   });
 
-  it('honours an xml:id pin across a date displacement', () => {
-    const a = `${STYLE0}<ornament xml:id="o1" date="0.0" name.ref="grad" scale="1.0"/>`;
-    const b = `${STYLE0}<ornament xml:id="o1" date="2880.0" name.ref="grad" scale="1.0"/>`;
-    const result = distanceOf(a, b);
-    expect(result.matched).toBe(1);
-    expect(result.pinsHonoured).toBe(true);
-    // Same performed effect, so only the aligner's date term remains.
-    expect(result.distance).toBeGreaterThan(0);
+  it('a unit suffix on @frame.start alone is enough to make it v3, and inert', () => {
+    expect(chordOnsets(suffixOnly, `${STYLE0}${ORN()}`)).toEqual([0, 0, 0]);
   });
 
-  it('reports @note.order structurally, without pricing it', () => {
-    const ascending = `${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0" note.order="ascending pitch"/>`;
-    const descending = `${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0" note.order="descending pitch"/>`;
-    const result = distanceOf(ascending, descending);
-    expect(result.distance).toBe(0);
-    expect(result.findings).toEqual([
-      { kind: 'note-order', dateTicks: 0, a: 'ascending pitch', b: 'descending pitch' },
+  it('so a v3 frame on a v2-shaped ornament compares equal to NO frame', () => {
+    expect(distance(atomsOf(v3, `${STYLE0}${ORN()}`), atomsOf(none, `${STYLE0}${ORN()}`))).toBe(0);
+    expect(
+      distance(atomsOf(suffixOnly, `${STYLE0}${ORN()}`), atomsOf(none, `${STYLE0}${ORN()}`)),
+    ).toBe(0);
+  });
+
+  it('and a v2 frame does NOT compare equal to no frame', () => {
+    expect(
+      distance(atomsOf(v2, `${STYLE0}${ORN()}`), atomsOf(none, `${STYLE0}${ORN()}`)),
+    ).toBeGreaterThan(0);
+  });
+
+  it('clamps a negative v2 @frameLength to 0, which is a rigid shift', () => {
+    const negative =
+      '<ornamentDef name="g"><temporalSpread frame.start="-22.0" frameLength="-44"/></ornamentDef>';
+    expect(chordOnsets(negative, `${STYLE0}${ORN()}`)).toEqual([-22, -22, -22]);
+    const spread = atomsOf(negative, `${STYLE0}${ORN()}`).atoms[0].spread;
+    expect(spread !== null && !isBottom(spread) && spread.value.frameLength).toBe(0);
+  });
+
+  it('reports a @time.unit domain mismatch as incomparable, not as a big difference', () => {
+    const ms =
+      '<ornamentDef name="g"><temporalSpread frame.start="-22.0" frameLength="44.0" time.unit="milliseconds"/></ornamentDef>';
+    const result = ornamentationDistance(
+      atomsOf(v2, `${STYLE0}${ORN()}`),
+      atomsOf(ms, `${STYLE0}${ORN()}`),
+      { startQuarters: 0, endQuarters: 8 } as never,
+      PPQ,
+    );
+    expect(result.findings.map((finding) => finding.kind)).toContain('time-unit');
+    // Two frame rows at δ_row each, the identical intensity contributing nothing.
+    expect(result.distance).toBeCloseTo(
+      2 * comparisonRowFor('ornamentation/temporalSpread@frame.start').delta,
+      9,
+    );
+  });
+});
+
+describe('the v3 SHAPE gate (@repetitions / @noteid)', () => {
+  it('a present @repetitions deletes the whole ornament', () => {
+    expect(chordVelocities(GRAD, `${STYLE0}${ORN()}`)).toEqual([80, 100, 120]);
+    expect(chordVelocities(GRAD, `${STYLE0}${ORN(' repetitions="0"')}`)).toEqual([100, 100, 100]);
+  });
+
+  it('and @noteid does the same', () => {
+    expect(chordVelocities(GRAD, `${STYLE0}${ORN(' noteid="#n1"')}`)).toEqual([100, 100, 100]);
+  });
+
+  it('so the reader emits no atom for it, and says why', () => {
+    const read = atomsOf(GRAD, `${STYLE0}${ORN(' repetitions="0"')}`);
+    expect(read.atoms).toHaveLength(0);
+    expect(read.notes.map((note) => note.kind)).toContain('v3-shape-skipped');
+  });
+
+  it('which makes a document with the attribute differ from one without it', () => {
+    expect(
+      distance(
+        atomsOf(GRAD, `${STYLE0}${ORN()}`),
+        atomsOf(GRAD, `${STYLE0}${ORN(' repetitions="0"')}`),
+      ),
+    ).toBeGreaterThan(0);
+  });
+});
+
+describe('@note.order (AD-41.1)', () => {
+  it('the two orderings genuinely swap which note gets which step', () => {
+    expect(chordVelocities(GRAD, `${STYLE0}${ORN(' note.order="ascending pitch"')}`)).toEqual([
+      80, 100, 120,
+    ]);
+    expect(chordVelocities(GRAD, `${STYLE0}${ORN(' note.order="descending pitch"')}`)).toEqual([
+      120, 100, 80,
     ]);
   });
-});
 
-/**
- * The scope gate — a renderer fact with no counterpart anywhere in §5.6, and the fifth place
- * in this campaign where a §5 section and the renderer disagree.
- */
-describe('a GLOBAL ornamentationMap performs nothing at all', () => {
-  const ORNAMENT = `${STYLE0}<ornament date="0.0" name.ref="grad" scale="1.0"/>`;
-
-  it('is the renderer’s own answer: the same ornament works from a part and not from global', () => {
-    expect(markers(ORNAMENT, 'part')).toEqual(['-20', '0', '20']);
-    expect(markers(ORNAMENT, 'global')).toEqual([null, null, null]);
+  it('so the enumerated pair is a priced row, not a structural finding', () => {
+    const up = atomsOf(GRAD, `${STYLE0}${ORN(' note.order="ascending pitch"')}`);
+    const down = atomsOf(GRAD, `${STYLE0}${ORN(' note.order="descending pitch"')}`);
+    expect(up.atoms[0].noteOrderKind).toBe('ascending');
+    expect(down.atoms[0].noteOrderKind).toBe('descending');
+    expect(distance(up, down)).toBeCloseTo(
+      1 / comparisonRowFor('ornamentation/ornament@note.order').jnd,
+      9,
+    );
   });
 
-  it('reads as no atoms, with the cause reported rather than silently empty', () => {
-    const document: ComparisonDocument = readComparisonPair({ a: globalDoc(ORNAMENT) }).a;
-    const scope = document.scopes.find((candidate) => candidate.scope === 'global');
-    if (scope === undefined) throw new Error('no global scope');
-    const read = readOrnamentAtoms(
-      readScopeMapViews(scope).get('ornamentationMap') ?? null,
-      document.scaleFactor,
-      scope.environment,
-      document.performance.global,
-      'global',
+  it('treats an absent @note.order as ascending, which is the renderer’s own default', () => {
+    expect(chordVelocities(GRAD, `${STYLE0}${ORN()}`)).toEqual(
+      chordVelocities(GRAD, `${STYLE0}${ORN(' note.order="ascending pitch"')}`),
     );
-    expect(read.atoms).toHaveLength(0);
-    expect(read.notes.map((note) => note.kind)).toEqual(['global-scope-inert']);
+    expect(
+      distance(
+        atomsOf(GRAD, `${STYLE0}${ORN()}`),
+        atomsOf(GRAD, `${STYLE0}${ORN(' note.order="ascending pitch"')}`),
+      ),
+    ).toBe(0);
+  });
+
+  it('sends an explicit id list to the finding channel', () => {
+    const list = atomsOf(GRAD, `${STYLE0}${ORN(' note.order="#n1 #n2"')}`);
+    expect(list.atoms[0].noteOrderKind).toBe('id-list');
+    expect(list.atoms[0].poolBound).toBe(2);
+    const result = ornamentationDistance(
+      list,
+      atomsOf(GRAD, `${STYLE0}${ORN(' note.order="#n2 #n1"')}`),
+      { startQuarters: 0, endQuarters: 8 } as never,
+      PPQ,
+    );
+    expect(result.findings.map((finding) => finding.kind)).toContain('note-order-ids');
+  });
+});
+
+describe('a one-note pool collapses both families (AD-40.3)', () => {
+  it('performs @transition.to alone, so the reader flattens the ramp to it', () => {
+    const one = `${STYLE0}${ORN(' note.order="#n2"')}`;
+    const performed = perform(GRAD, one).filter((note) => note.id === 'n2');
+    expect(performed[0].velocity).toBe(120);
+    expect(atomsOf(GRAD, one).atoms[0].gradient).toEqual({
+      kind: 'value',
+      value: { from: 20, to: 20 },
+    });
+  });
+
+  it('so a def differing only in @transition.from compares equal on a one-note pool', () => {
+    const other =
+      '<ornamentDef name="g"><dynamicsGradient transition.from="5.0" transition.to="20.0"/></ornamentDef>';
+    const one = `${STYLE0}${ORN(' note.order="#n2"')}`;
+    expect(perform(GRAD, one).find((note) => note.id === 'n2')!.velocity).toBe(
+      perform(other, one).find((note) => note.id === 'n2')!.velocity,
+    );
+    expect(distance(atomsOf(GRAD, one), atomsOf(other, one))).toBe(0);
+  });
+
+  it('places a lone chord at frameStart + frameLength, so @intensity goes inert', () => {
+    const wide =
+      '<ornamentDef name="g"><temporalSpread frame.start="-22.0" frameLength="44.0" intensity="3"/></ornamentDef>';
+    const one = `${STYLE0}${ORN(' note.order="#n2"')}`;
+    expect(perform(wide, one).find((note) => note.id === 'n2')!.datePerf).toBe(22);
+    const spread = atomsOf(wide, one).atoms[0].spread;
+    expect(spread !== null && !isBottom(spread) && spread.value).toEqual({
+      frameStart: 22,
+      frameLength: 0,
+      intensity: 1,
+      domain: 'ticks',
+      source: 'v2',
+    });
+  });
+});
+
+describe('unusable values (AD-42.4)', () => {
+  it('an unusable @scale poisons every velocity, so the gradient reads ⊥', () => {
+    const map = `${STYLE0}<ornament date="0.0" name.ref="g" scale="abc"/>`;
+    expect(chordVelocities(GRAD, map).every(Number.isNaN)).toBe(true);
+    const atom = atomsOf(GRAD, map).atoms[0];
+    expect(atom.gradient).toEqual({ kind: 'bottom', cause: 'renderer-error' });
+    expect(atomsOf(GRAD, map).notes.map((note) => note.kind)).toContain('scale-unusable');
+  });
+
+  it('an unusable v2 @frameLength poisons every onset, so the frame reads ⊥', () => {
+    const bad =
+      '<ornamentDef name="g"><temporalSpread frame.start="-22.0" frameLength="abc"/></ornamentDef>';
+    expect(chordOnsets(bad, `${STYLE0}${ORN()}`).every(Number.isNaN)).toBe(true);
+    expect(atomsOf(bad, `${STYLE0}${ORN()}`).atoms[0].spread).toEqual({
+      kind: 'bottom',
+      cause: 'renderer-error',
+    });
+  });
+
+  it('never lets NaN reach the metric', () => {
+    const map = `${STYLE0}<ornament date="0.0" name.ref="g" scale="abc"/>`;
+    expect(Number.isFinite(distance(atomsOf(GRAD, map), atomsOf(GRAD, `${STYLE0}${ORN()}`)))).toBe(
+      true,
+    );
+  });
+});
+
+describe('the style is CARRIED, and a failed switch differs by scope', () => {
+  const defs = `${GRAD}<ornamentDef name="h"><dynamicsGradient transition.from="-5.0" transition.to="5.0"/></ornamentDef>`;
+  const late = '<ornament date="1440.0" name.ref="g" scale="1.0"/>';
+  const broken = `${STYLE0}${ORN()}<style date="1440.0" name.ref="NOPE"/>${late}`;
+
+  const lateVelocities = (map: string, where: 'part' | 'global'): number[] =>
+    perform(defs, map, where)
+      .filter((note) => ['m1', 'm2'].includes(note.id))
+      .map((note) => note.velocity);
+
+  it('a failed switch CANCELS the style in a part-local map', () => {
+    expect(lateVelocities(broken, 'part')).toEqual([100, 100]);
+    expect(atomsOf(defs, broken, 'part').atoms).toHaveLength(1);
+  });
+
+  it('and changes nothing in a global map', () => {
+    expect(lateVelocities(broken, 'global')).toEqual([80, 120]);
+    expect(atomsOf(defs, broken, 'global').atoms).toHaveLength(2);
+  });
+
+  it('a global map ignores EVERY switch after its first successful one', () => {
+    const reswitch = `${STYLE0}${ORN()}<style date="1440.0" name.ref="O"/>${late}`;
+    // Both styleDefs are named "O" here only in the part case; the point is the second switch
+    // is never looked up at all in a global map, which the note channel reports.
+    const read = atomsOf(defs, reswitch, 'global');
+    expect(read.notes.map((note) => note.kind)).toContain('style-switch-ignored');
+  });
+
+  it('skips an ornament before the map’s first <style>', () => {
+    const early = `${ORN()}<style date="1440.0" name.ref="O"/>${late}`;
+    expect(chordVelocities(defs, early)).toEqual([100, 100, 100]);
+    const read = atomsOf(defs, early);
+    expect(read.atoms).toHaveLength(1);
+    expect(read.notes.map((note) => note.kind)).toContain('no-style-in-scope');
+  });
+
+  it('skips an ornament naming a def the style does not have', () => {
+    const ghost = `${STYLE0}<ornament date="0.0" name.ref="ghost" scale="1.0"/>`;
+    expect(chordVelocities(defs, ghost)).toEqual([100, 100, 100]);
+    expect(atomsOf(defs, ghost).atoms).toHaveLength(0);
+  });
+});
+
+describe('the v3 temporal-value grammar, against the real parser', () => {
+  it('agrees with parseTemporalValueLenient over a shared corpus', () => {
+    const corpus = [
+      '0',
+      '-0',
+      '22',
+      '-22',
+      '22.5',
+      '-22.5',
+      '100%',
+      '-100%',
+      '22ms',
+      '-22.5ms',
+      '0ticks',
+      '360ticks',
+      '.5',
+      '1e3',
+      '+22',
+      ' 22',
+      '22 ',
+      'abc',
+      '',
+      '22th',
+      '22?',
+      'Infinity',
+      '-0.0ticks',
+    ];
+    for (const text of corpus) {
+      const mine = parseFrameValue(text);
+      const theirs = parseTemporalValueLenient(text);
+      expect(mine === null).toBe(theirs === null);
+      if (mine !== null && theirs !== null) {
+        expect(mine.value).toBe(theirs.value);
+        expect(mine.domain).toBe(theirs.domain);
+      }
+    }
+  });
+});
+
+describe('the new registry rows', () => {
+  it('exports @note.order and @repetitions in the closed vocabulary', () => {
+    expect(COMPARISON_JND_KEYS).toContain('ornamentation/ornament@note.order');
+    expect(COMPARISON_JND_KEYS).toContain('ornamentation/ornament@repetitions');
+  });
+
+  it('admits meico’s -1 fill-frame extension and rejects a real negative count', () => {
+    const row = comparisonRowFor('ornamentation/ornament@repetitions');
+    expect(row.valueDomain(-1)).toBe(true);
+    expect(row.valueDomain(0)).toBe(true);
+    expect(row.valueDomain(3)).toBe(true);
+    expect(row.valueDomain(-2)).toBe(false);
+    expect(row.valueDomain(Number.NaN)).toBe(false);
+  });
+
+  it('keeps @note.order a {0,1} row', () => {
+    const row = comparisonRowFor('ornamentation/ornament@note.order');
+    expect(row.valueDomain(0)).toBe(true);
+    expect(row.valueDomain(1)).toBe(true);
+    expect(row.valueDomain(0.5)).toBe(false);
+  });
+});
+
+describe('the aligner’s interface, unchanged by its second consumer', () => {
+  it('aligns ornaments by date and prices the optimum', () => {
+    const a = atomsOf(GRAD, `${STYLE0}${ORN()}<ornament date="1440.0" name.ref="g" scale="1.0"/>`);
+    const b = atomsOf(GRAD, `${STYLE0}${ORN()}`);
+    const result = ornamentationDistance(a, b, { startQuarters: 0, endQuarters: 8 } as never, PPQ);
+    expect(result.matched).toBe(1);
+    expect(result.unmatchedA).toBe(1);
+    expect(result.unmatchedB).toBe(0);
+    expect(result.distance).toBeCloseTo(deviationFromNeutral(a.atoms[1] as OrnamentAtom, PPQ), 9);
   });
 });

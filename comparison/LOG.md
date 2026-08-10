@@ -2202,3 +2202,120 @@ recorded now so the audit cannot miss them:
    tests/api/determinism.test.ts cites).
 CONVENTION EFFECTIVE NOW for new campaign code: cite ARCHITECTURE.md BARE
 (never refactor/ARCHITECTURE.md) — correct post-merge, zero fixup.
+
+## 2026-08-10 — W3a cut 3 audit: 404fd57 repaired against the pipeline (w3-dims)
+
+AD-43.2's commission. Nine defects found, eight repaired here, one referred. **Every renderer
+claim in this commit is measured through `Performance.perform`**, per AD-43.1's tightened
+standard — the test file's harness performs a real MSM against a real MPM and reads the notes
+back, and no assertion in it rests on a map-level probe or on arithmetic I did myself.
+
+ATTRIBUTION (AD-42.2). 404fd57's structure is kept and is good: the reader/distance split, the
+aligner reuse, the resolution of `(from·scale, to·scale)` at read time so `@scale` is
+unpriceable downstream, and the notes channel. What follows replaces its readings, not its shape.
+
+**DEFECT 1 — AD-43.1's reversal.** The `global-scope-inert` gate returned zero atoms for any map
+in `<global>`. Removed. Measured through the pipeline with identical content: a global map and a
+part-local map both perform 80/100/120. Negative-controlled — restoring the gate fails three
+tests.
+
+**DEFECT 2 — `@transition.to` defaults to `@transition.from`, not to 0.** `DynamicsGradient.ts:25`.
+Measured: a def carrying only `transition.from="-20"` performs 80/80/80, where the shipped
+reading predicts 80/90/100. This is the common encoding, not a corner — `generateXML:86` omits
+`transition.to` whenever it equals `transition.from`, so every round-tripped flat gradient is
+spelled this way.
+
+**DEFECT 3 — the v2/v3 `<temporalSpread>` split, three ways wrong.** v3-ness was detected by
+`@frame.offset` alone, where `detectSourceFormat` also fires on a UNIT SUFFIX on either frame
+attribute; `parseFloat("100%")` read 100 and dropped the unit; and — the decisive one — a
+v3-sourced spread on a v2-SHAPED ornament **performs nothing at all**, because
+`TemporalSpread.apply` reads the v2 fields and those keep their `0.0` initialisers. Measured:
+`frame.start="-22.0" frameLength="44.0"` gives onsets −22/0/22; `frame.offset="-22ticks"
+frameLength="44ticks"` gives 0/0/0, and the renderer logs that it will "spread nothing". Pricing
+that as a −22/44 frame is attribute-tuple pricing, which AD-40.2 forbids. The full table is now
+in the module doc: four cells, one of them dead, and the dead cell is modelled as the NEUTRAL
+frame because that is exactly what it performs.
+
+**DEFECT 4 — `@repetitions` and `@noteid` are v3 SHAPE GATES.** `isV3Ornament` fires on the mere
+presence of `@repetitions` (any value, the schema default `0` included) or `@noteid`, and the v3
+engine skips an ornament with no `@note.order`. Measured: adding `repetitions="0"` takes an
+ornament from 80/100/120 to 100/100/100. Two documents differing only by an attribute that reads
+as a no-op perform completely differently, and compared identical before this commit. The reader
+now carries `shape` and emits no atom for a skipped ornament.
+
+**DEFECT 5 — no finite guards (AD-42.4).** Now guarded at every numeric read.
+
+**DEFECT 6 — `⊥` for an absent sub-element (AD-42.3, AD-43.2ii).** Answered by the test AD-43.2ii
+sets: an absent `<dynamicsGradient>` performs exactly what `(0,0)` performs and an absent
+`<temporalSpread>` exactly what `frame.start="0" frameLength="0"` performs, both measured through
+the pipeline. A neutral parameterization reproduces absence, so absence has a neutral and prices
+as a deviation from it. Unmatched ornaments now cost deviation-from-neutral per row, so a drop's
+price depends on what the dropped ornament performs — a test pins that a ±40 gradient costs more
+to drop than a ±1 one, which the flat `⊥` made equal. `@time.unit` domain mismatch stays `⊥` as
+ruled.
+
+**DEFECT 7 — AD-40.3 documented but not implemented.** `poolBound` was computed and never read.
+A one-note pool now collapses BOTH families, and the second half is new: `DynamicsGradient.apply`
+hands a lone chord `transitionTo·scale` and never looks at `transitionFrom`, and
+`TemporalSpread.apply` places a lone chord at `frameStart + frameLength` OUTSIDE its loop, so the
+frame becomes a rigid shift and `@intensity` goes inert. Both pinned against the renderer; a def
+differing only in `@transition.from` now compares equal on a one-note pool, because it performs
+identically. `poolBound` is honestly named an upper bound: an id naming no note contributes
+nothing (measured — a one-ghost-id list performs nothing), so a list of length L gives a pool of
+size ≤ L. At L = 1 the collapse is sound in both worlds, which is the only case it is used in.
+
+**DEFECT 8 — the style is CARRIED, and a failed switch differs by SCOPE.** `OrnamentationMap.apply`
+assigns `style = localHeader.getStyleDef(…)` unconditionally when a local header exists, so a
+failed lookup overwrites the carried style with null; with no local header that assignment never
+runs and the guarded global lookup fires only while `style` is still null. `Part.parseData:113-118`
+creates a header for every part, so part-local maps always take the first branch and `<global>`
+maps always the second. Measured end to end: a `<style>` naming a nonexistent style SKIPS every
+later ornament in a part-local map (100/100) and changes nothing in a global one (80/120). And
+the stronger consequence, also measured: **in a global map every `<style>` after the first
+successful one is ignored outright**, valid or not. AD-35.4's hazard class in a fifth shape — a
+failed lookup assigns over the carried value, but only when the local header exists. Both
+branches are reproduced; the reader no longer resolves per entry.
+
+**DEFECT 9 — the two missing rows.** `@note.order` is now the boolean01 gain row AD-41.1 ruled,
+justified by measurement as well as by ruling: ascending performs 80/100/120 and descending
+120/100/80, so filing the pair as a structural finding scored two documents that invert an
+arpeggio at `d_ornamentation = 0`. Absent ≡ ascending, which is the renderer's own initialiser.
+An explicit id list stays a finding (naming notes is an identity claim). `@repetitions` is a
+count row admitting meico's `-1` fill-frame extension. `UNCOVERED_DIMENSIONS` is unchanged at
+three — the imprecision domains — since ornamentation already had rows.
+
+[DECISION, needs ratification] AD-42.4 routes unusable values to skip-and-report. Measured, the
+renderer does not skip for two of them: `scale="abc"` writes **velocity NaN** onto every note in
+the pool and a v2 `frameLength="abc"` writes **date.perf NaN** — R24's exact condition, which
+AD-1 and AD-33.1 price at `⊥` because the note vanishes from the MIDI export. Those two take `⊥`
+and the rest take the renderer's own fallback (`parseOrnamentRepetitions` logs and returns 0;
+`readV3FrameValue` logs and applies the v3 default). Implementing the ruling's route literally
+would price a note-destroying document at zero, so this departs from its wording and reports the
+measurement instead.
+
+[FLAGGED, implemented renderer-true pending AD-44] §5.6's three-unit-case paragraph presumes a
+`%` frame is a comparable quantity. It is — on a v3-SHAPED ornament, where the frame resolves
+against the principal note (measured: notes laid out at 0/180/360/540/720 from `frameLength="100%"`
+over a 720-tick principal). On a v2-shaped ornament a `%` frame performs nothing, so it is not a
+unit question at all. Implemented as the resolved performed effect under AD-40.2 and reported for
+rescoping rather than coded around.
+
+[REFERRED, not decided] Stacked ornaments at one date COMPOSE additively — two identical
+ornaments over one pool perform 60/100/140, because `setOrnamentDynamicsAtt` adds to the existing
+marker. That is AD-37.4's situation, and without the same treatment two documents encoding one
+ramp as one ornament or as two half-ornaments compare unequal. Gradients compose closed-form over
+a shared pool; spreads with differing `@intensity` do not. Left uncomposed pending a ruling
+rather than half-solved.
+
+A transliteration was unavoidable: the comparison zone may not import `TemporalValue.ts`, so the
+v3 value grammar is copied and differential-tested against the real `parseTemporalValueLenient`
+over a 23-case corpus including every rejection form. Same discipline as §5.4's `accentuationAt`.
+
+Every repair is negative-controlled: reverting the `transition.to` default, the dead frame cell,
+the pool collapse, the shape gate, the scope branch, the finite guard and the global gate each
+fails its own tests and nothing else (1, 1, 3, 2, 2, 2, 3 tests respectively), and the file
+restores green.
+
+Gate: `npm run verify` green before committing — 104 files, 4545 passed + 1 skipped (was 4523 +
+1). 39 tests in the ornamentation suite, replacing 17. eslint and prettier clean on all five
+touched files.

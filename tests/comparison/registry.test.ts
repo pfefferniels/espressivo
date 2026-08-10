@@ -268,6 +268,8 @@ describe('the columns §4 adds to the expression shape', () => {
       'dynamics/dynamics@subNoteDynamics',
       'dynamics/dynamics@transition.to',
       'ornamentation/dynamicsGradient@transition.from',
+      'ornamentation/ornament@note.order',
+      'ornamentation/ornament@repetitions',
       'ornamentation/ornament@scale',
       'pedal/movement@curvature',
       'pedal/movement@position',
@@ -348,6 +350,10 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     'articulation/articulation@detuneCents': [-50, 0, 14],
     'articulation/articulation@detuneHz': [-3.5, 0, 3.5],
     'ornamentation/ornament@scale': [0, 1, 20],
+    // The {0,1} encoding of the two enumerated orderings (AD-41.1).
+    'ornamentation/ornament@note.order': [0, 1],
+    // A count, plus meico's documented -1 "fill the frame" extension.
+    'ornamentation/ornament@repetitions': [-1, 0, 1, 7],
     'ornamentation/dynamicsGradient@transition.from': [-20, 0, 20],
     'ornamentation/dynamicsGradient@transition.to': [-20, 0, 20],
     'ornamentation/temporalSpread@frame.start': [-240, 0, 240],
@@ -406,6 +412,9 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     'articulation/articulation@detuneCents': [NaN, Infinity],
     'articulation/articulation@detuneHz': [NaN, -Infinity],
     'ornamentation/ornament@scale': [NaN, Infinity],
+    'ornamentation/ornament@note.order': [0.5, -1, 2, NaN],
+    // -1 is the extension; -2 is simply not a repeat count, and the renderer logs and uses 0.
+    'ornamentation/ornament@repetitions': [-2, NaN, Infinity],
     'ornamentation/dynamicsGradient@transition.from': [NaN, Infinity],
     'ornamentation/dynamicsGradient@transition.to': [NaN, -Infinity],
     'ornamentation/temporalSpread@frame.start': [NaN, Infinity],
