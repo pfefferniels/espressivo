@@ -118,3 +118,24 @@ NOT done, per the lead's instruction: no fixture work for the multi-performance
 samples. Where comparison fixtures live is a W1 ruling (charter forbids
 additions under `tests/integration/fixtures/**`), and the licensing/provenance
 of the official samples needs a design-time note.
+
+## 2026-08-10 — W0 synthesis: technical adjudications
+
+SURVEY.md written (technical synthesis complete; §4 musicology pending
+survey-lit, still running ~1h). [DECISION] block A-Q1..A-Q11 + A-B1..A-B5
+recorded there — binding for DESIGN.md. Notable conductor amendments over the
+surveys' own recommendations:
+
+- A-Q4 amended: W₁ (not W₂) enters the L1 aggregate for imprecision;
+  W₂'s three-term decomposition goes to the interpretive table. Restores
+  one-mathematics-per-table symmetry (headline = L1 family everywhere,
+  interpretive = L2 family everywhere) and dissolves survey-algo's
+  self-flagged wrinkle.
+- A-B1: comparison curves are right-continuous (inclusive at instruction
+  dates) — measure-zero divergence from TempoMap's strict-before reading,
+  which the two renderer maps don't even agree on between themselves; kills
+  the date-0 spurious-default artifact survey-code measured.
+- A-B2: renderer-skipped instructions cost zero in the edit path BY
+  construction (semantic pricing), appear in the script anyway, and are
+  reported — the two levels stay consistent without a special case.
+
