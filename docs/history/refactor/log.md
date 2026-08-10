@@ -16,7 +16,7 @@ matters lands here. Format: `## [<id>] <role> — <headline>` + body.
 ## [T1] worker — baseline metrics (2026-08-08)
 
 Added `"verify": "npm run build && vitest run"` to package.json scripts. That is the
-only change; `refactor/state.json` was already dirty from the conductor marking T1
+only change; `docs/history/refactor/state.json` was already dirty from the conductor marking T1
 `in_progress`, and untracked `.claude/` predates this item.
 
 **Verify gate is green.** `npm run verify` → tsc clean, 2113/2113 passing.
@@ -1183,7 +1183,7 @@ not independently re-measure; the headline error/warning numbers, which I did, r
 ## [T5] worker — xml local idioms (XomTypes, XmlBase, AbstractXmlSubtree) (2026-08-08)
 
 Baseline `431d944`. Note the conductor committed `f72070d` ("T4 done bookkeeping",
-`refactor/state.json` only) while this item was in flight; `git diff --stat 431d944 f72070d
+`docs/history/refactor/state.json` only) while this item was in flight; `git diff --stat 431d944 f72070d
 -- src/ tests/ tsconfig.json vitest.config.ts` is **empty**, so either commit is the same
 baseline for code purposes. Manifest: exactly `src/xml/XomTypes.ts`,
 `src/xml/XmlBase.ts`, `src/xml/AbstractXmlSubtree.ts` (+ this file and lint-debt.md).
@@ -1391,7 +1391,7 @@ not just spot-checked.
 
 `git status --porcelain` = exactly 5 `M`: the 3 `src/xml` files + `docs/history/refactor/lint-debt.md` +
 `docs/history/refactor/log.md`. **Zero untracked files** (`--untracked-files=all` → 5 lines total).
-`git diff --name-only 431d944` additionally lists `refactor/state.json`, which is the
+`git diff --name-only 431d944` additionally lists `docs/history/refactor/state.json`, which is the
 conductor's own `f72070d` bookkeeping commit, not a working-tree modification — consistent
 with the worker's note that `431d944` and `f72070d` are the same baseline for code purposes.
 
@@ -3345,7 +3345,7 @@ negative-control numbers **exactly**, which independently corroborates that tabl
 ### Manifest note for the conductor
 
 `git status --porcelain` is **6** modified, not the worker's declared 5: the extra is
-**`refactor/state.json`**, which adds a `T9b` queue item (the `getMinimalPPQ` fix) and
+**`docs/history/refactor/state.json`**, which adds a `T9b` queue item (the `getMinimalPPQ` fix) and
 rewrites `T13`'s details with downstream requests from a separate mpmify session. That is
 conductor bookkeeping, not worker output — no `src/` or test content — and the charter's
 step-3 reconciliation excepts `refactor/` bookkeeping. Flagging it only so the manifest
@@ -4102,7 +4102,7 @@ subclass outside `Meta`/`Sysex`/`Short` — and it remains uncovered in both (ba
 ## [T11] verifier — midi cluster (Midi, MidiTypes, EventMaker, InstrumentsDictionary) (2026-08-08)
 
 **PASS.** Baseline `78be486` re-confirmed src-identical to the last green `6d1678c`
-(`git diff 6d1678c 78be486 -- src/ tests/` empty; the only delta is `refactor/state.json`).
+(`git diff 6d1678c 78be486 -- src/ tests/` empty; the only delta is `docs/history/refactor/state.json`).
 Every headline number in the worker's entry was independently reproduced; nothing was
 taken on trust. Trees: `t11verify/{base,work}` (base = `git archive 78be486`, work =
 `git ls-files | tar`, both spot-checked against `git show`), built with the project `tsc`
@@ -6007,7 +6007,7 @@ predicted, and RULE M3's `src/mpm/names.ts` is what removes them.
 ## [T14] verifier
 
 **PASS.** Baseline confirmed src-identical to the last green: `f6b9afe` touches only
-`refactor/state.json` against `757948e`. Two clean out-of-tree builds (`t14verify/base`,
+`docs/history/refactor/state.json` against `757948e`. Two clean out-of-tree builds (`t14verify/base`,
 `t14verify/work`), work tree byte-confirmed equal to the repo for `src/`, `tests/` and every
 config file before anything was measured. Nothing in `src/` was touched by me.
 
@@ -6371,7 +6371,7 @@ result — the baseline runs are what prove that.
 ## [T18] verifier — PASS (2026-08-09)
 
 **PASS.** Baseline src-identical to the last green confirmed first: `f43746f` touches only
-`refactor/state.json` against `e31877b`. Two clean out-of-tree builds (`t18verify/base` from
+`docs/history/refactor/state.json` against `e31877b`. Two clean out-of-tree builds (`t18verify/base` from
 `git archive f43746f`, `t18verify/work` rsynced from the repo), work `src/` byte-confirmed
 equal to the repo before and after every probe. `src/` was never touched by me — the ESLint
 negative controls all ran in the scratch copy and the tree was diffed back to the repo
@@ -6886,7 +6886,7 @@ and the repo working tree is byte-unchanged by this verification (`git status --
 identical before and after).
 
 **Baseline identity.** `a604f4a` differs from the last green `75e5ff1` only in
-`refactor/state.json` — src-identical, so it is a legitimate measurement base.
+`docs/history/refactor/state.json` — src-identical, so it is a legitimate measurement base.
 
 ### 1. M-a reproduced from scratch, not replayed
 
@@ -7065,7 +7065,7 @@ One correction to the verifier's item 3 worth recording: "1483 bytes of doc head
 same 44" reads as 1527 total; measured, `dist/units.js` is **1483 in total**, of which 1439
 is header. Gates: `npm run verify` green (**54 files / 2159 tests**), prettier clean,
 `git diff -- src tests` empty, `log.md` append-only. My writes are exactly
-`M ARCHITECTURE.md` + `M docs/history/refactor/log.md`; `refactor/state.json` also shows as
+`M ARCHITECTURE.md` + `M docs/history/refactor/log.md`; `docs/history/refactor/state.json` also shows as
 modified but is the conductor's own post-T19a bookkeeping (`lastGreenCommit` → `f947836`,
 `currentItem` → T13, completed 17 → 18), not mine. **Frozen.**
 
@@ -8943,7 +8943,7 @@ magnitude corroborated. The win is real.
 - **T5's layer contracts intact**: the byte-compat contract at the top of `XomTypes.ts` is
   unchanged; the only header edit records §8.7's ruling in place of the stale "Reworking that
   surface is item T17". All **21** `_xomParent` lines are byte-identical to baseline.
-- `src/api/**`, `ARCHITECTURE.md`, `docs/history/refactor/CHARTER.md`, `refactor/state.json`,
+- `src/api/**`, `ARCHITECTURE.md`, `docs/history/refactor/CHARTER.md`, `docs/history/refactor/state.json`,
   `tests/integration/**`, fixtures, both tsconfigs, `vitest.config.ts`, `eslint.config.js`
   and `package.json`: **untouched**.
 
@@ -9170,7 +9170,7 @@ keeps the diff readable.
 - **`prettier --check` clean** on the changed file. **`log.md` is a pure append.**
 - `tests/**`, `tests/integration/**`, fixtures, both tsconfigs, `vitest.config.ts`,
   `eslint.config.js`, `package.json`, `src/api/**`, `ARCHITECTURE.md`,
-  `docs/history/refactor/CHARTER.md`, `refactor/state.json`: **untouched**.
+  `docs/history/refactor/CHARTER.md`, `docs/history/refactor/state.json`: **untouched**.
 
 ### 8. Ruling recorded in the code: the two duplicated statics stay
 
@@ -9548,7 +9548,7 @@ the two it was most tempting to overstate (the NC1 blindness and the patchabilit
 difference). Scratch: `t20verify/`.
 
 **src-identity first.** `git diff 7a1b86f 5804581 -- src/ tests/` is empty — the bookkeeping
-commit touched only `refactor/state.json`, so HEAD's `src/` is the verified T19 tree.
+commit touched only `docs/history/refactor/state.json`, so HEAD's `src/` is the verified T19 tree.
 
 **Manifest: exactly 7 M**, no untracked files — `src/midi/EventMaker.ts`,
 `src/midi/InstrumentsDictionary.ts`, `src/midi/Midi.ts`, `src/msm/Msm.ts`,
@@ -12623,7 +12623,7 @@ documentation, one of them new *since* the T23 audit.
 
 `git log 78c657b..HEAD` is **exactly two commits**: `a67fb6e` (queue bookkeeping, 2 files) and
 `56739a2` (TD4, 7 files). Full range manifest is 8 paths: `src/xml/XomTypes.ts`, three test
-files, `PARITY.md`, `docs/history/refactor/lint-debt.md`, `docs/history/refactor/log.md`, `refactor/state.json`.
+files, `PARITY.md`, `docs/history/refactor/lint-debt.md`, `docs/history/refactor/log.md`, `docs/history/refactor/state.json`.
 
 - **`tests/integration/` — fixtures and equivalence suites — is untouched.** `git diff
   --name-only 78c657b HEAD -- tests/integration/` is empty. Invariants 2 and 3 are not in play.
