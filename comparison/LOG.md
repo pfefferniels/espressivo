@@ -2102,3 +2102,41 @@ attributes to the finding channel. Implemented as a structural FINDING for now
 
 Gate: `npm run verify` green before committing (4523 passed + 1 skipped, was 4506);
 eslint and prettier clean. 17 new tests.
+
+## 2026-08-10 — AD-43: global ornamentation performs; 404fd57 audit commission [BINDING]
+
+survey-code's 404fd57 (pushed post-stand-down — message-crossing artifact,
+no fault; work quality otherwise high, aligner neutrality confirmed
+unchanged by its second consumer) reported a "fifth divergence": global
+ornamentationMaps perform nothing. CONDUCTOR'S JAVA CHECK INVERTS IT:
+both codebases route global maps through a DEDICATED PATH —
+OrnamentationMap.java:230/:239 renderGlobalOrnamentationMap, ported at
+Performance.ts:483 → OrnamentationMap.ts:346 — and the :268 local-header
+gate is correct in BOTH because globals take the other path ("global ones
+were already processed", Java's own comment). The probe called the
+map-level method directly and missed the pipeline. Rulings:
+
+AD-43.1 Global ornamentationMaps PERFORM (cross-part pools are their
+stated purpose); §5.6 states the global semantics; NO PARITY entry (port
+matches reference); 404fd57's contrary pin is DEFECT #1 for the audit.
+The AD-36.1 decide-without-stopping test is TIGHTENED by this case:
+"the renderer determines" means the PIPELINE, not the nearest method —
+map-level probes must be confirmed through Performance.perform before
+they license a no-op claim.
+AD-43.2 w3-dims's commission REVISED: audit 404fd57 as unverified input
+(supersedes the draft-audit commission; the drafts are subsumed by the
+commit). Known audit heads: (i) AD-43.1's reversal, with an end-to-end
+differential test through the perform pipeline; (ii) the sub-element
+absence question — decision rule: if an absent <temporalSpread>/
+<dynamicsGradient> performs identically to some neutral parameterization
+(renderer-checked, pipeline-level), price deviation-from-neutral; if no
+parameterization reproduces absence, ⊥ stands. @time.unit domain
+mismatch stays ⊥ regardless (genuinely incomparable). (iii) AD-42.3's
+whole-ornament unmatched pricing — verify 404fd57 implements
+deviation-from-neutral, not the draft's flat ⊥. (iv) @note.order
+enumerated pair as boolean01 row (AD-41.1) — 404fd57 ships finding-only.
+Fix what fails, keep what survives, attribute honestly. Then cut 4.
+AD-43.3 survey-code's stand-down is FINAL and enforced: no further
+commits or pushes under any circumstances; anything in flight is
+abandoned; w3-dims owns all of cut 3/4 territory. Not censure —
+sequencing: two writers on one territory is the failure mode.
