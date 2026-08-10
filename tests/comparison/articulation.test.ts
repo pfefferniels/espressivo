@@ -28,6 +28,7 @@ import {
   readDefaultArticulation,
   type DefaultArticulationCurve,
 } from '../../src/comparison/articulationDefault.js';
+import { anchorsOf, articulationDistance } from '../../src/comparison/articulationDistance.js';
 import { comparisonRowFor } from '../../src/comparison/registry.js';
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
@@ -414,5 +415,180 @@ describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
       '<articulation date="360.0" name.ref="ten"/>';
     // 120, not 60: the note at 360 gets the atom and ONLY the atom.
     expect(performedAt(map, DATES)).toEqual([50, 120, 50, 50]);
+  });
+});
+
+/**
+ * The composed effective modifier and `d_articulation` — §5.5 as amended by AD-37.3/AD-37.4.
+ *
+ * The load-bearing test is AD-37.4's own encoding-invariance obligation: two stacked
+ * `relativeDuration` atoms against one atom carrying their product must be distance 0. It is
+ * checked against the RENDERER first — the two documents must actually perform the same note —
+ * so that the invariance is a fact about the performance and not about my algebra.
+ */
+describe('the composed effective modifier (AD-37.3/AD-37.4)', () => {
+  const anchorsFor = (map: string) => anchorsOf(atomsOf(map));
+  const distanceOf = (a: string, b: string, endQuarters = 8) => {
+    const pair = readComparisonPair({
+      a: doc(a),
+      b: doc(b),
+      window: { start: 0, end: endQuarters },
+    });
+    const read = (side: 'a' | 'b') => {
+      const document = pair[side];
+      const scope = document.scopes.find((candidate) => candidate.scope === 'global');
+      if (scope === undefined) throw new Error('no global scope');
+      return readArticulationAtoms(
+        readScopeMapViews(scope).get('articulationMap') ?? null,
+        document.scaleFactor,
+        scope.environment,
+        document.performance.global,
+      );
+    };
+    return articulationDistance(read('a'), read('b'), pair.window, pair.ppq.lcm);
+  };
+
+  it('composes two atoms at one anchor into one affine map', () => {
+    const anchors = anchorsFor(
+      '<articulation date="0.0" relativeDuration="0.5"/>' +
+        '<articulation date="0.0" relativeDuration="0.25"/>',
+    );
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0].atomCount).toBe(2);
+    expect(anchors[0].modifier.duration).toEqual({
+      replacement: null,
+      factor: 0.125,
+      offset: 0,
+    });
+  });
+
+  it('is ENCODING-INVARIANT: stacked atoms against their product are distance 0', () => {
+    const stacked =
+      '<articulation date="0.0" relativeDuration="0.5"/>' +
+      '<articulation date="0.0" relativeDuration="0.25"/>';
+    const product = '<articulation date="0.0" relativeDuration="0.125"/>';
+    // The renderer first: both really do perform the same note.
+    expect(performed(stacked).duration).toBe(performed(product).duration);
+    expect(distanceOf(stacked, product).distance).toBe(0);
+  });
+
+  it('carries an earlier offset through a later factor, as the renderer does', () => {
+    // 100 + 10 = 110, then × 0.5 = 55.
+    const map =
+      '<articulation date="0.0" absoluteDurationChange="10"/>' +
+      '<articulation date="0.0" relativeDuration="0.5"/>';
+    expect(performed(map).duration).toBe(55);
+    expect(anchorsFor(map)[0].modifier.duration).toEqual({
+      replacement: null,
+      factor: 0.5,
+      offset: 5,
+    });
+  });
+
+  it('lets a later replacement wipe everything before it', () => {
+    const map =
+      '<articulation date="0.0" relativeDuration="0.5"/>' +
+      '<articulation date="0.0" absoluteDuration="600"/>';
+    expect(performed(map).duration).toBe(600);
+    expect(anchorsFor(map)[0].modifier.duration.replacement).toBe(600);
+    expect(anchorsFor(map)[0].modifier.duration.factor).toBe(1);
+  });
+
+  it('composes the velocity chain into one affine map', () => {
+    const map =
+      '<articulation date="0.0" absoluteVelocity="80" relativeVelocity="0.5" absoluteVelocityChange="7"/>';
+    expect(performed(map).velocity).toBe(47);
+    expect(anchorsFor(map)[0].modifier.velocity).toEqual({
+      replacement: 80,
+      factor: 0.5,
+      offset: 7,
+    });
+  });
+
+  it('keeps date anchors and id anchors apart, because merging them needs an MSM', () => {
+    const anchors = anchorsFor(
+      '<articulation date="0.0" relativeDuration="0.5"/>' +
+        '<articulation date="0.0" noteid="#n0" relativeDuration="0.5"/>',
+    );
+    expect(anchors).toHaveLength(2);
+    expect(anchors.filter((anchor) => anchor.datePositionKnown)).toHaveLength(1);
+  });
+});
+
+describe('d_articulation', () => {
+  const distanceOf = (a: string, b: string, endQuarters = 8) => {
+    const pair = readComparisonPair({
+      a: doc(a),
+      b: doc(b),
+      window: { start: 0, end: endQuarters },
+    });
+    const read = (side: 'a' | 'b') => {
+      const document = pair[side];
+      const scope = document.scopes.find((candidate) => candidate.scope === 'global');
+      if (scope === undefined) throw new Error('no global scope');
+      return readArticulationAtoms(
+        readScopeMapViews(scope).get('articulationMap') ?? null,
+        document.scaleFactor,
+        scope.environment,
+        document.performance.global,
+      );
+    };
+    return articulationDistance(read('a'), read('b'), pair.window, pair.ppq.lcm);
+  };
+
+  const STACC = '<articulation date="0.0" relativeDuration="0.5"/>';
+
+  it('is exactly 0 against itself (P-C1)', () => {
+    expect(distanceOf(STACC, STACC).distance).toBe(0);
+  });
+
+  it('is symmetric (P-C2)', () => {
+    const other = '<articulation date="720.0" relativeVelocity="1.4"/>';
+    expect(Object.is(distanceOf(STACC, other).distance, distanceOf(other, STACC).distance)).toBe(
+      true,
+    );
+  });
+
+  it('prices a ratio difference in its own space', () => {
+    // |ln 0.5 − ln 0.25| = ln 2, over the ln(1.10) JND.
+    const half = '<articulation date="0.0" relativeDuration="0.5"/>';
+    const quarter = '<articulation date="0.0" relativeDuration="0.25"/>';
+    expect(distanceOf(half, quarter).distance).toBeCloseTo(Math.LN2 / Math.log(1.1), 9);
+  });
+
+  it('prices a REPLACEMENT present on one side only at δ_row, never at 0 (AD-2/M1c)', () => {
+    const present = '<articulation date="0.0" absoluteVelocity="90"/>';
+    const absent = '<articulation date="0.0" relativeVelocity="1.0"/>';
+    const row = comparisonRowFor('articulation/articulation@absoluteVelocity');
+    expect(distanceOf(present, absent).distance).toBeCloseTo(row.delta, 9);
+    // And M1c's zero-set violation is closed: the two present values differ by a real amount.
+    const other = '<articulation date="0.0" absoluteVelocity="2"/>';
+    expect(distanceOf(present, other).distance).toBeGreaterThan(0);
+  });
+
+  it('drops an unmatched anchor at its deviation from neutral', () => {
+    const one = STACC;
+    const none = '<style date="0.0" name.ref="A"/>';
+    expect(distanceOf(one, none).distance).toBeCloseTo(Math.abs(Math.log(0.5)) / Math.log(1.1), 9);
+  });
+
+  it('reports an inert difference without pricing it (R14/R9b)', () => {
+    const a = '<articulation date="0.0" detuneCents="14"/>';
+    const b = '<articulation date="0.0" detuneCents="-9"/>';
+    const result = distanceOf(a, b);
+    expect(result.distance).toBe(0);
+    expect(result.inertFindings).toEqual([
+      { attribute: 'detuneCents', dateTicks: 0, a: 14, b: -9 },
+    ]);
+  });
+
+  it('matches by id across a date displacement, and says the pins held', () => {
+    const a = '<articulation date="0.0" noteid="#n1" relativeDuration="0.5"/>';
+    const b = '<articulation date="2880.0" noteid="#n1" relativeDuration="0.5"/>';
+    const result = distanceOf(a, b);
+    expect(result.matched).toBe(1);
+    expect(result.pinsHonoured).toBe(true);
+    // Same modifier, so all that is left is the date term the aligner charges.
+    expect(result.distance).toBeGreaterThan(0);
   });
 });

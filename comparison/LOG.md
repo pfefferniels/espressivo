@@ -1865,3 +1865,43 @@ subset-order-dependent; silent resolution would be a decision in the
 dark). The objective-not-alignment test discipline (brute-force
 enumeration vs DP optimum) is noted as the correct way to test an argmin.
 Remaining in cut 2: composed effective modifiers + articulation pricing.
+
+## 2026-08-10 — W3a cut 2, part 4: composed modifiers and d_articulation — CUT 2 CLOSED
+
+AD-37.3 and AD-37.4 implemented, and with them cut 2 is complete: rows, atom
+liveness, default step function, aligner, composed modifiers, distance.
+
+EVERY EFFECT IS AN AFFINE MAP WITH AN OPTIONAL REPLACEMENT ANCHOR —
+`x -> (replacement ?? x) * factor + offset`. @absoluteDuration/@absoluteVelocity set
+the replacement, @relativeDuration/@relativeVelocity the factor,
+@absoluteDurationChange/@absoluteVelocityChange the offset, and the composition of two
+such maps is another one. That is why this is the canonical form and not a
+convenience: AD-37.4's encoding-invariance obligation falls out BY CONSTRUCTION rather
+than by a special case, because two stacked relativeDuration atoms and one atom
+carrying their product both reduce to {null, 0.125, 0}. Pinned as a test that checks
+the RENDERER first — both documents really do perform the same note — so the
+invariance is a fact about the performance and not about my algebra.
+
+Two composition consequences pinned against the renderer rather than asserted: an
+earlier offset is carried THROUGH a later factor (change +10 then x0.5 performs 55,
+and the composed form is {null, 0.5, 5}), and a later replacement wipes everything
+before it (x0.5 then absoluteDuration=600 performs 600).
+
+Anchors are dates OR ids and do NOT merge without an MSM. Both kinds can reach the
+same note — executed, they compose there — but deciding WHICH note needs the MSM, so
+the id-anchored ones carry datePositionKnown: false, which is §5.5's own instruction.
+An id-anchored anchor is also never dropped by the window: it has no known date, and
+dropping it would silently forgive a difference the renderer performs somewhere.
+
+d_articulation IS the alignment's optimum, per §5.6 — this module's job is to supply
+the two costs and hand the argmin's value back, not to compute a second number beside
+it. Replacement attributes present on one side only are priced ⊥ = δ_row, which closes
+M1c's zero-set violation (A=2, B=absent, C=100); the detune pair is reported through
+inertFindings and contributes 0, which is R9b's rule and the reason those two rows
+exist at all.
+
+Gate: `npm run verify` green before committing (4506 passed + 1 skipped, was 4493);
+eslint and prettier clean. 13 new tests, 39 in the articulation suite overall.
+
+CUT 2 IS CLOSED. Cut 3 (ornamentation) is next, and the aligner is waiting for it as
+its second consumer — the interface does not freeze until it has served both.
