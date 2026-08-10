@@ -47,8 +47,13 @@ import type { ComparisonWindow } from './window.js';
  *
  * The cost is confined to cells where both sides are transitions; every constant-vs-anything
  * cell is untouched.
+ *
+ * **Exported for §5.8.** `<movement>` runs the same machinery — the same
+ * `innerControlPointsXPositions`, the same smoothstep value fraction — differing only in its
+ * defaults and its output range, so the measurement above transfers to the pedal curve and
+ * `pedalDistance` uses this constant rather than a second one that could drift from it.
  */
-const BEZIER_PAIR_SUBDIVISIONS = 16;
+export const BEZIER_PAIR_SUBDIVISIONS = 16;
 
 export interface DynamicsCell {
   readonly startTicks: number;

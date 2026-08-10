@@ -4,10 +4,11 @@
  *
  * The wave's original triangle tests ran on three pointwise-ordered constants, which sit at
  * the triangle's *equality* case: they could fail only on quadrature error, so they tested
- * the quadrature and not the metric. This file runs the same properties over eight members
- * that between them carry `⊥` (by two different routes), the cap, a renderer-default level,
- * a tempo skip, a dynamics skip, and a power-vs-power transition pair — the last being the
- * only member that reaches `criticalPointTicks`, the path CAPITAL-3 broke unseen.
+ * the quadrature and not the metric. This file runs the same properties over twelve members
+ * that between them carry `⊥` (by four different routes), the cap, a renderer-default level,
+ * a tempo skip, a dynamics skip, AD-35's unbounded resurrected span, and a power-vs-power
+ * transition pair — the last being the only member that reaches `criticalPointTicks`, the path
+ * CAPITAL-3 broke unseen.
  *
  * Every comparison runs under one **explicit shared window**, which §10 requires: under a
  * pair-derived window the three windows of a triple differ and R3 does not claim the triangle
@@ -29,9 +30,13 @@ import { readDynamicsSegments } from '../../src/comparison/dynamicsCurve.js';
 import { dynamicsDistance } from '../../src/comparison/dynamicsDistance.js';
 import { readAsynchronySegments } from '../../src/comparison/asynchronyCurve.js';
 import { asynchronyDistance } from '../../src/comparison/asynchronyDistance.js';
+import { readAccentuationSegments } from '../../src/comparison/accentuationCurve.js';
+import { accentuationDistance } from '../../src/comparison/accentuationDistance.js';
+import { readMovementSegments } from '../../src/comparison/pedalCurve.js';
+import { pedalDistance } from '../../src/comparison/pedalDistance.js';
 
-/** The three W2 dimensions this family exercises, each as a total distance function. */
-const DIMENSIONS = ['tempo', 'dynamics', 'asynchrony'] as const;
+/** Every dimension with a density so far, each as a total distance function. */
+const DIMENSIONS = ['tempo', 'dynamics', 'asynchrony', 'accentuation', 'pedal'] as const;
 type Dimension = (typeof DIMENSIONS)[number];
 
 const globalScopeOf = (document: ComparisonDocument) => {
@@ -86,26 +91,66 @@ function distanceFor(dimension: Dimension, pair: ComparisonPair): number {
       pair.ppq.lcm,
     ).distance;
 
-  return asynchronyDistance(
-    readAsynchronySegments(a.views.get('asynchronyMap') ?? null, a.document.scaleFactor),
-    readAsynchronySegments(b.views.get('asynchronyMap') ?? null, b.document.scaleFactor),
+  if (dimension === 'asynchrony')
+    return asynchronyDistance(
+      readAsynchronySegments(a.views.get('asynchronyMap') ?? null, a.document.scaleFactor),
+      readAsynchronySegments(b.views.get('asynchronyMap') ?? null, b.document.scaleFactor),
+      pair.window,
+      pair.ppq.lcm,
+    ).distance;
+
+  if (dimension === 'accentuation')
+    return accentuationDistance(
+      readAccentuationSegments(
+        a.views.get('metricalAccentuationMap') ?? null,
+        a.document.scaleFactor,
+        a.scope.environment,
+        a.document.performance.global,
+      ),
+      readAccentuationSegments(
+        b.views.get('metricalAccentuationMap') ?? null,
+        b.document.scaleFactor,
+        b.scope.environment,
+        b.document.performance.global,
+      ),
+      pair.window,
+      pair.ppq.lcm,
+    ).distance;
+
+  return pedalDistance(
+    readMovementSegments(a.views.get('movementMap') ?? null, a.document.scaleFactor),
+    readMovementSegments(b.views.get('movementMap') ?? null, b.document.scaleFactor),
     pair.window,
     pair.ppq.lcm,
   ).distance;
 }
 
-/** Distance between two members under the shared explicit window. */
+/**
+ * Distance between two members under the shared explicit window, memoized on the ORDERED pair.
+ *
+ * Ordered, deliberately: memoizing on an unordered key would make P-C2 tautological — it would
+ * compare a cached number with itself instead of running the two directions through the
+ * integrator. What the cache buys is that the twelve-member family's 220 triples do not reparse
+ * the same documents thousands of times; what it must not buy is a symmetry that is not real.
+ */
+const CACHE = new Map<string, number>();
+
 function distance(dimension: Dimension, x: AdversarialMember, y: AdversarialMember): number {
-  return distanceFor(
+  const key = `${dimension}|${x.name}|${y.name}`;
+  const cached = CACHE.get(key);
+  if (cached !== undefined) return cached;
+  const computed = distanceFor(
     dimension,
     readComparisonPair({ a: x.mpm, b: y.mpm, window: ADVERSARIAL_WINDOW }),
   );
+  CACHE.set(key, computed);
+  return computed;
 }
 
 describe('the adversarial family itself', () => {
-  it('has eight members with distinct hazards', () => {
-    expect(ADVERSARIAL_FAMILY).toHaveLength(8);
-    expect(new Set(ADVERSARIAL_FAMILY.map((member) => member.name)).size).toBe(8);
+  it('has twelve members with distinct hazards', () => {
+    expect(ADVERSARIAL_FAMILY).toHaveLength(12);
+    expect(new Set(ADVERSARIAL_FAMILY.map((member) => member.name)).size).toBe(12);
   });
 
   it('is not degenerate: every member differs from every other in some dimension', () => {
@@ -200,6 +245,25 @@ describe('the family reaches the paths the wave could not see', () => {
     // Both carry a ⊥ asynchrony span, so both are strictly further from `plain` than 0.
     expect(distance('asynchrony', missing!, plain!)).toBeGreaterThan(0);
     expect(distance('asynchrony', foreign!, plain!)).toBeGreaterThan(0);
+  });
+
+  it('reaches the two ⊥ routes W3a cut 1 opened, and prices both at the cap', () => {
+    const accentuation = ADVERSARIAL_FAMILY.find((member) => member.name === 'accentuation-bottom');
+    const pedal = ADVERSARIAL_FAMILY.find((member) => member.name === 'pedal-bottom');
+    const ordinary = ADVERSARIAL_FAMILY.find((member) => member.name === 'accentuation-and-pedal');
+    // An aborting accentuationPatternDef (R21) and a non-monotone date component are different
+    // failures in different dimensions; both are ⊥ and both are δ_row from a real curve.
+    expect(distance('accentuation', accentuation!, ordinary!)).toBeGreaterThan(0);
+    expect(distance('pedal', pedal!, ordinary!)).toBeGreaterThan(0);
+  });
+
+  it('reaches AD-35’s unbounded span, and the window still bounds it', () => {
+    const resurrected = ADVERSARIAL_FAMILY.find((member) => member.name === 'pedal-resurrected');
+    const plain = ADVERSARIAL_FAMILY.find((member) => member.name === 'plain');
+    const d = distance('pedal', resurrected!, plain!);
+    // A span whose end is Number.MAX_VALUE integrates over [0, 4] like any other (AD-35 b).
+    expect(Number.isFinite(d)).toBe(true);
+    expect(d).toBeGreaterThan(0);
   });
 
   it('reaches the cap', () => {

@@ -1009,7 +1009,27 @@ must say _which_ unresolvables are which: tempo and dynamics levels have a
 performed value (R8), accentuation patterns do not.
 
 Pattern def internals (`accentuation@beat` / `@value` / `@transition.from` /
-`@transition.to`) are registry rows (gain, velocity units).
+`@transition.to`) are registry rows (gain, velocity units), as are
+`accentuationPattern@loop` and `@stickToMeasures` — both change the performed
+curve, which is AD-10's test — and `accentuationPatternDef@length`, which is live
+twice over (the last accentuation's segment ends at `length + 1`, and under
+`stickToMeasures="false"` the same number is the whole cycle).
+
+**The density is exact, and the grid is what makes it so.** `c` is piecewise
+affine in score time — `beat(t)` is affine within a cycle and `getAccentuationAt`
+is affine between two accentuations — so GL-10 integrates a cell exactly once the
+refinement grid carries every breakpoint: the instruction dates, the cycle wraps,
+each accentuation's own beat, the `length + 1` switch, and the `@loop`-off cutoff
+one pattern length into the span. §9.3's epsilon for this family is therefore 0
+in both units, as asynchrony's is. The one discontinuity deliberately left off
+the grid is `getAccentuationAt`'s single-point return of `@value` exactly on a
+beat: a point has measure zero, and GL-10's nodes are strictly interior.
+
+Because `⊥` is reachable here (the unresolvable pattern above), the pointwise
+density is **capped at `2·δ_row`** before integration, exactly as in §5.8 and for
+the same reason: §4 prices `⊥` at `δ_row` from every value, so an uncapped
+value-value pair breaks the triangle inequality whenever a `⊥` document is the
+middle term.
 
 ### 5.5 articulation
 
@@ -1191,23 +1211,64 @@ span — with each span tagged by its own `@controller`. Revision 1's independen
 per-controller curves compute a sustain gesture the renderer never performs
 whenever the two pedals interleave in one map, which is the natural encoding.
 
-**The last movement contributes no span at all**, and a `movementMap` with a
+**The last ENTRY contributes no span at all**, and a `movementMap` with a
 single `<movement>` renders **zero** controller events
 (`renderMovementToMap:174-183` renders `movementIndex < size() − 1` only) — the
 same class of error as AD-8's trailing transitions, but total rather than
 partial.
 
+**The guard counts ENTRIES, so a trailing `<style>` resurrects the last
+movement** (AD-35.1/AD-35.2). `size()` counts every indexed entry, `<style>`
+switches included, so what the guard excludes is the last _entry_ and not the
+last _movement_. Put any entry after the last `<movement>` — a `<style>` switch
+at the end of a section is ordinary — and that movement is inside the guard and
+renders, with `getEndDate` returning `Number.MAX_VALUE` because there is no next
+movement to find. Measured on two movements `1.0 → 0.0` at 0 and `0.5 → 0.0` at
+720: **17 events over [0, 720]** without the trailing style, **26 events over
+[0, 1.798·10³⁰⁸]** with it. A leading `<style>`, or one between the two
+movements, changes nothing. Three rulings follow:
+
+- **(a)** the exclusion is stated over entry indices, renderer-exact;
+- **(b)** the resurrected span is a **real performed transition**, naturally
+  bounded by the comparison window since every integral runs over `[start, end]`.
+  Over any real window it sits at `u ≈ 10⁻³⁰⁵`, i.e. flat at `@position`;
+- **(c)** the contrast paragraph below gains a third state.
+
+AD-35.4 names the shape of this finding as a standing hazard class — **"entries
+or musical objects?"** — for every span, guard and termination rule in §5.4–§5.6
+and §5.9. The `@position` inheritance scan is a second instance in this same
+section: `getPreviousPosition:143-151` runs `j > 0` over entry indices, so a
+movement inheriting from the map's very first entry gets 0 instead of that
+entry's `@transition.to`, and inserting a leading `<style>` changes the inherited
+position from 0 to the authored value. Both were executed.
+
 **The asymmetry with §5.1/§5.3 is the renderer's own, and is not to be
-"fixed"** (AD-25.9). A trailing `<tempo>` or `<dynamics>` performs as a
-**constant at its own value**, because `TempoMap.getEndDate:166-175` and
-`DynamicsMap.getEndDate:187-193` return `Number.MAX_VALUE` and the transition is
-therefore evaluated at `u ≈ 0` for every real date — the span exists and is
-pinned at the start value. A trailing `<movement>` performs **nothing at all**,
-because `renderMovementToMap:174-183` guards the render loop with
-`movementIndex < size() − 1` and never enters it — the span does not exist. Two
-different mechanisms, two different outcomes; a future editor who reads the two
-sections side by side will take one for a typo of the other, and both citations
-are here so that reading is closed off.
+"fixed"** (AD-25.9, as extended by AD-35.3). Three states, not two:
+
+| trailing instruction                 | mechanism                                                | performed                                              |
+| ------------------------------------ | -------------------------------------------------------- | ------------------------------------------------------ |
+| `<tempo>` / `<dynamics>`             | `getEndDate` returns `MAX_VALUE`; `u ≈ 0` for every date | span exists, pinned at the start value                 |
+| `<movement>` as the map's last ENTRY | `renderMovementToMap` never enters the loop              | **no span at all**                                     |
+| `<movement>` with an entry after it  | inside the guard; `getEndDate` is still `MAX_VALUE`      | **span exists AND is unbounded** — flat at `@position` |
+
+Three different routes through two guards; a future editor who reads the
+sections side by side will take one for a typo of another, and all three
+citations are here so that reading is closed off.
+
+**The timeline is emitted events, and an emitted event HOLDS.**
+`renderMovementToMap` does not annotate notes: it builds a `positionMap` and
+`Msm.parsePositionMap:1422-1454` turns **every** `<position>` into a MIDI control
+change, unthinned, with no reset event anywhere. A control change persists until
+the next one on the same controller, so the performed position at `t` is the
+value of the last event at or before `t`. Three consequences: before the first
+event the pedal is **up (0)**, which is also why R6's neutral for an absent
+`movementMap` is 0 rather than a left extension; after the last rendered span the
+last emitted value **holds to the end of the window** rather than being released;
+and a **skipped** movement leaves a hold rather than a gap, because
+`getEndDate:153-159` ends the previous span at it whether or not it parses.
+Executed: a constant `position="1.0"` at 0, an unreadable movement at 360 and a
+transition at 720 emit nothing between 0 and 720, and the pedal sits at 1.0
+across the whole interval.
 
 Three further reading rules (AD-13): `@curvature` defaults to **0.4**
 (`MovementData.ts:29`), _not_ dynamics' 0.0 — the shared Bézier machinery must
@@ -1218,7 +1279,31 @@ movement whose predecessor carries no `@transition.to` is **skipped entirely**;
 and movements at negative dates are skipped.
 
 Controllers are matched by name/number for the structural channel; a mismatch is
-a structural finding.
+a structural finding and never a distance — the value is a NAME, and §4's metric
+is on numbers, so there is no `@controller` row. The name is consequential:
+`Msm.parsePositionMap:1445-1449` maps only `sustain` and `soft`, and every other
+name falls through to controller number **0**, which is bank select rather than a
+pedal.
+
+**`⊥` here is the non-monotone date component** (§4). `<movement>` has **no
+clamps** — `MovementData:50-54` parses `@curvature`/`@protraction` and uses them,
+where `DynamicsMap.ts:170-181` clamps — so out of `[0,1] × [−1,1]` the inner
+control points leave the unit square, `x(t)` stops being monotone and the sampler
+emits events whose dates go backwards. There is no `date ↦ position` function to
+compare, so §4's domain gate takes the whole span to `⊥`. Executed at
+`curvature="1.5"`: sorted by date, an authored `0 → 1` ramp no longer ascends; at
+`curvature="4"` the sampler places events at −202 and at 922 ticks for a span of
+`[0, 720]`, so the `⊥` span is a floor on the damage rather than an exact
+account of it. Position values are the opposite case:
+`EventMaker.createControlChange:530-544` **clamps** the controller value into
+0..127, so a `@position` outside [0,1] performs at the bound and compares as
+performed.
+
+Because `⊥` is reachable here, the pointwise density is **capped at `2·δ_row`**
+before integration, unlike §5.1's and §5.3's. That is forced rather than chosen:
+§4 prices `⊥` at `δ_row` from every value, so an uncapped value-value pair breaks
+the triangle inequality the moment a `⊥` document is the middle term. The same
+applies to §5.4, for the same reason.
 
 ### 5.9 imprecision (timing / dynamics / duration)
 

@@ -19,15 +19,18 @@
  *
  * **Coverage is by wave.** `COMPARISON_DIMENSIONS` is the complete eleven of §3 from the
  * first commit, because §3's stability contract turns on the exported list being the whole
- * vocabulary; rows exist so far for the four dimensions W2 evaluates (tempo, rubato,
- * dynamics, asynchrony). {@link comparisonRowsOf} therefore returns an empty list for the
- * other seven, and the registry test names them explicitly so W3 shrinks that list to zero
- * rather than discovering it.
+ * vocabulary; rows exist for the four dimensions W2 evaluated (tempo, rubato, dynamics,
+ * asynchrony) plus the two W3a cut 1 brings (accentuation, pedal). {@link comparisonRowsOf}
+ * therefore still returns an empty list for the remaining five, and the registry test names
+ * them explicitly so each cut shrinks that list rather than discovering it.
  */
 import {
   ASYNCHRONY_MAP,
   DYNAMICS_MAP,
   DYNAMICS_STYLE,
+  METRICAL_ACCENTUATION_MAP,
+  METRICAL_ACCENTUATION_STYLE,
+  MOVEMENT_MAP,
   RUBATO_MAP,
   RUBATO_STYLE,
   TEMPO_MAP,
@@ -292,6 +295,45 @@ export const RUBATO_DISPLACEMENT_JND_QUARTERS = 1 / 16;
 export const UNNORMALIZED_JND = 1;
 
 /**
+ * Metrical accentuation, in MIDI velocity units: **3** [convention] — §7.1's `velocity` row.
+ *
+ * The compared object is the per-beat velocity contribution `scale · getAccentuationAt(beat)`
+ * (§5.4), which the renderer adds straight onto a note's velocity, so this dimension is the one
+ * whose curve is already in the unit its JND is stated in: `T` is the identity and no logarithm
+ * is involved. Three velocity units out of 127 is ~2.4 % of the full range.
+ *
+ * [convention] and not [literature], for the reason {@link DYNAMICS_JND_NEPERS} spells out at
+ * length: survey-lit L6 records four coexisting loudness conventions with no shared scale, and
+ * no study measures the discriminability of a metrical accent as such. The honest alternative
+ * is the same one — derive it from the corpus's own per-attribute spread, which §8's opt-in
+ * normalization path already provides.
+ */
+export const ACCENTUATION_VELOCITY_JND = 3;
+
+/**
+ * Pedal position, in fractions of full travel: **0.1** [convention].
+ *
+ * The space is a gain on [0,1] (§5.8), so the JND is a plain fraction of pedal travel and the
+ * choice is a calibration rather than a measurement. It is fixed at a tenth because that makes
+ * the **extreme authored difference price at exactly `δ_row`**: canonical pedal maps are exact
+ * `0.0`/`1.0` (expression's §7.14 records the same fact from the write side), so full-down
+ * against full-up is `1.0 / 0.1 = 10` JND — the same price §4 puts on an incomparable value.
+ * Pedal can therefore never dominate `D = Σ ω_k d_k` on the strength of its own scale, and the
+ * one number a reader is most likely to check by hand has an interpretable value.
+ *
+ * **Performability floor, stated because this is the row it bears on.** The rendered value is
+ * `Math.round(position · 127)` (`Msm.ts:1441`), so a position difference below `1/127` of
+ * travel — 0.079 JND here — is not performed at all. It is not machinery: no clamp or snap is
+ * applied, because the *defined* object is the ideal curve (§5.0 rule 3) and quantization
+ * belongs to the §6.3 replay. It is an obligation on the docs, as the ms-domain floor is on the
+ * asynchrony row.
+ *
+ * No literature was found for pedal-depth discrimination and none is invented; corpus
+ * derivation is the named honest alternative.
+ */
+export const PEDAL_POSITION_JND_RATIO = 0.1;
+
+/**
  * `δ_row`, the metric cap, in JND units: 10 [convention] (§4, §7.1, AD-2).
  *
  * "An incomparable value counts as ten JNDs, and no single instant counts as more than
@@ -306,6 +348,13 @@ const PLAUSIBLE_QBPM: readonly [number, number] = [10, 400];
 const PLAUSIBLE_VELOCITY: readonly [number, number] = [0, 127];
 /** §5.0's [convention] band on an asynchrony offset: `|offset| ≤ 1000 ms`. */
 const PLAUSIBLE_OFFSET_MS: readonly [number, number] = [-1000, 1000];
+/**
+ * §5.0's [convention] band on a SIGNED velocity delta — an accentuation adds to a velocity
+ * rather than being one, so its plausible band is the symmetric one and not `[0,127]`.
+ */
+const PLAUSIBLE_VELOCITY_DELTA: readonly [number, number] = [-127, 127];
+/** §5.8's band on a controller position: the full travel it is a fraction of. */
+const PLAUSIBLE_POSITION: readonly [number, number] = [0, 1];
 
 // --- Value domains (§4's `valueDomain` column) -------------------------------------------
 //
@@ -360,8 +409,9 @@ const defSite = (container: string, element: string): ComparisonSite => ({
  * all, and typing them against this union is what makes a misspelling a compile error rather
  * than a silent no-op — the failure mode `ExaggerateOptions.factors` exists to prevent.
  *
- * W2's four dimensions only. W3 extends the tuple; the registry test pins that it stays in
- * exact correspondence with {@link COMPARISON_REGISTRY_ROWS} in both directions.
+ * W2's four dimensions plus W3a cut 1's two. Each further cut extends the tuple; the registry
+ * test pins that it stays in exact correspondence with {@link COMPARISON_REGISTRY_ROWS} in both
+ * directions.
  */
 export const COMPARISON_JND_KEYS = Object.freeze([
   'tempo/tempo@bpm',
@@ -380,7 +430,19 @@ export const COMPARISON_JND_KEYS = Object.freeze([
   'dynamics/dynamics@protraction',
   'dynamics/dynamics@subNoteDynamics',
   'dynamics/dynamicsDef@value',
+  'accentuation/accentuationPattern@scale',
+  'accentuation/accentuationPattern@loop',
+  'accentuation/accentuationPattern@stickToMeasures',
+  'accentuation/accentuationPatternDef@length',
+  'accentuation/accentuation@beat',
+  'accentuation/accentuation@value',
+  'accentuation/accentuation@transition.from',
+  'accentuation/accentuation@transition.to',
   'asynchrony/asynchrony@milliseconds.offset',
+  'pedal/movement@position',
+  'pedal/movement@transition.to',
+  'pedal/movement@curvature',
+  'pedal/movement@protraction',
 ] as const);
 
 export type ComparisonJndKey = (typeof COMPARISON_JND_KEYS)[number];
@@ -818,6 +880,203 @@ const DYNAMICS_ROWS: readonly ComparisonRegistryRow[] = [
   },
 ];
 
+// --- §5.4 accentuation -------------------------------------------------------------------
+//
+// The curve is `c(t) = scale · patternDef.getAccentuationAt(beat(t))` in velocity units, with
+// the beat phase anchored at the TIME SIGNATURE and never at the instruction (AD-12/R8). Two
+// of the rows below are booleans, for AD-10's reason: each of them changes the performed curve,
+// and filing such a flag as a structural finding is exactly the error that made two documents
+// differing only in `rubato@loop` score `d_rubato = 0`.
+
+const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
+  {
+    key: 'accentuation/accentuationPattern@scale',
+    dimension: 'accentuation',
+    element: 'accentuationPattern',
+    attribute: 'scale',
+    sites: [instructionSite(METRICAL_ACCENTUATION_MAP, 'accentuationPattern')],
+    space: { kind: 'gain-ordered' },
+    valueDomain: anyFinite,
+    unit: 'velocity',
+    jnd: ACCENTUATION_VELOCITY_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
+    role: 'curve-level',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.4 — THE accentuation curve: this row’s jnd is jnd_accentuation, and it is the one ' +
+      'dimension whose curve is already in the unit its JND is stated in (T is the identity). ' +
+      'What lands on a velocity is the PRODUCT scale · getAccentuationAt(beat), so which of ' +
+      'the two factors carries the velocity unit is a convention about the same number; the ' +
+      'convention here is that the instruction-level factor does, because it is the one a ' +
+      'document varies per section while the def stays fixed. MANDATORY — absent, ' +
+      'getMetricalAccentuationDataOf returns null and the whole instruction is skipped, which ' +
+      'is why expression writes neutrality as "0" rather than by deleting it. 3 velocity ' +
+      'units [convention]; corpus derivation is the named alternative (§7.1).',
+  },
+  {
+    key: 'accentuation/accentuationPattern@loop',
+    dimension: 'accentuation',
+    element: 'accentuationPattern',
+    attribute: 'loop',
+    sites: [instructionSite(METRICAL_ACCENTUATION_MAP, 'accentuationPattern')],
+    space: { kind: 'gain' },
+    valueDomain: boolean01,
+    unit: 'dimensionless',
+    jnd: UNNORMALIZED_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'curve-shape',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.4/AD-10 — a BOOLEAN with a row, on the same argument as rubato’s. It defaults to ' +
+      'FALSE, and with it off the renderer breaks out of the span one pattern length in ' +
+      '(MetricalAccentuationMap.ts:157-161), so the contribution is the pattern once and then ' +
+      '0 for the rest of the span — the identical one-frame-then-identity shape as §5.2. Its ' +
+      'difference is priced through the curve it opens, so the space, unit and jnd here are ' +
+      'carriers for the {0,1} encoding and the edit path. jnd 1 [convention].',
+  },
+  {
+    key: 'accentuation/accentuationPattern@stickToMeasures',
+    dimension: 'accentuation',
+    element: 'accentuationPattern',
+    attribute: 'stickToMeasures',
+    sites: [instructionSite(METRICAL_ACCENTUATION_MAP, 'accentuationPattern')],
+    space: { kind: 'gain' },
+    valueDomain: boolean01,
+    unit: 'dimensionless',
+    jnd: UNNORMALIZED_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'curve-shape',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.4 — the second boolean, and the one whose default is TRUE rather than false: the ' +
+      'modulus is taken against the MEASURE unless the attribute reads "false", in which case ' +
+      'it is taken against the pattern length (MetricalAccentuationMap.ts:162-165). In a ' +
+      'measure whose length differs from the pattern’s the two cycles drift apart, so this ' +
+      'flag changes the whole phase structure of the span rather than a value in it. jnd 1 ' +
+      '[convention].',
+  },
+  {
+    key: 'accentuation/accentuationPatternDef@length',
+    dimension: 'accentuation',
+    element: 'accentuationPatternDef',
+    attribute: 'length',
+    sites: [defSite(METRICAL_ACCENTUATION_STYLE, 'accentuationPatternDef')],
+    space: { kind: 'gain-ordered' },
+    valueDomain: positive,
+    unit: 'dimensionless',
+    jnd: UNNORMALIZED_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'curve-shape',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.4 — in beats, defaulting to 4.0, and live twice over: getAccentuationAt runs the ' +
+      'LAST accentuation’s segment to length + 1 and returns its @transition.to at and after ' +
+      'that point, and with @stickToMeasures="false" the same number sets the whole cycle. ' +
+      'AD-15: the parser WRITES the default onto the element, so an absent @length and an ' +
+      'authored 4.0 are indistinguishable downstream — which is also why the comparison ' +
+      'reader reads the def raw rather than constructing one (R1). Not an expression row: it ' +
+      'is not exaggerable, it is read. jnd 1 [convention], in beats.',
+  },
+  {
+    key: 'accentuation/accentuation@beat',
+    dimension: 'accentuation',
+    element: 'accentuation',
+    attribute: 'beat',
+    sites: [defSite(METRICAL_ACCENTUATION_STYLE, 'accentuation')],
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'dimensionless',
+    jnd: UNNORMALIZED_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'curve-shape',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.4 — where in the pattern the accentuation sits, in BEATS and therefore not ' +
+      'convertible to quarters without the beat grid (a beat is 4·ppq/denominator ticks), ' +
+      'which is why the unit is dimensionless and the jnd is one beat. An <accentuation> with ' +
+      'no @beat is skipped by the parser. Its difference moves a breakpoint of the curve and ' +
+      'is priced through it. jnd 1 [convention].',
+  },
+  {
+    key: 'accentuation/accentuation@value',
+    dimension: 'accentuation',
+    element: 'accentuation',
+    attribute: 'value',
+    sites: [defSite(METRICAL_ACCENTUATION_STYLE, 'accentuation')],
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'velocity',
+    jnd: ACCENTUATION_VELOCITY_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
+    role: 'curve-level',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.4 — the accentuation’s own amplitude, and the value the curve takes EXACTLY on its ' +
+      'beat: getAccentuationAt returns @value there rather than @transition.from, so the two ' +
+      'differ at a single point whenever both were authored. A single point has measure zero ' +
+      'and cannot move the integral; it is the edit path this row serves. Signed — an ' +
+      'accentuation subtracts as readily as it adds — hence the symmetric band. 3 velocity ' +
+      'units [convention], as the level row.',
+  },
+  {
+    key: 'accentuation/accentuation@transition.from',
+    dimension: 'accentuation',
+    element: 'accentuation',
+    attribute: 'transition.from',
+    sites: [defSite(METRICAL_ACCENTUATION_STYLE, 'accentuation')],
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'velocity',
+    jnd: ACCENTUATION_VELOCITY_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
+    role: 'curve-level',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.4 — the left end of the ramp towards the next accentuation. DEFAULTING CHAIN: ' +
+      '@transition.from falls back to @value and @transition.to falls back to ' +
+      '@transition.from, so a bare <accentuation beat value> is a FLAT segment at @value and ' +
+      'not a ramp to zero. 3 velocity units [convention].',
+  },
+  {
+    key: 'accentuation/accentuation@transition.to',
+    dimension: 'accentuation',
+    element: 'accentuation',
+    attribute: 'transition.to',
+    sites: [defSite(METRICAL_ACCENTUATION_STYLE, 'accentuation')],
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'velocity',
+    jnd: ACCENTUATION_VELOCITY_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
+    role: 'curve-level',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.4 — the right end of the ramp, and the value that governs at and after beat ' +
+      'length + 1 for the LAST accentuation. The segment it ramps over is the ASYMMETRY the ' +
+      'curve module transliterates: the next accentuation’s beat for every accentuation that ' +
+      'has a successor, length + 1 for the last one. Upstream cemfi/meico spells that guard ' +
+      '`i > length - 1`, which can never hold, so every segment ran to the pattern end; the ' +
+      'fork fixed it (TD3) and this table follows the fixed form. 3 velocity units ' +
+      '[convention].',
+  },
+];
+
 // --- §5.7 asynchrony ---------------------------------------------------------------------
 
 const ASYNCHRONY_ROWS: readonly ComparisonRegistryRow[] = [
@@ -856,12 +1115,156 @@ const ASYNCHRONY_ROWS: readonly ComparisonRegistryRow[] = [
   },
 ];
 
-/** DESIGN §5's live attributes for the dimensions this wave evaluates, in §5's own order. */
+// --- §5.8 pedal (movement) ---------------------------------------------------------------
+//
+// The curve is `position(t)` on [0,1] — a GAIN and deliberately not a logit, because 0 and 1
+// are the most common authored values and a logit sends them to ±∞ for a quantity whose
+// musical meaning is already linear (§5.8). The family shares `bezier.ts` with §5.3 and shares
+// nothing else: the defaults differ, the neutral differs, and this family has NO clamps.
+
+/**
+ * §5.8/AD-35: the render guard is `movementIndex < size() - 1` over ENTRIES, so what makes an
+ * instruction inert is being the map's last ENTRY — not being its last movement.
+ *
+ * Stated as its own rule rather than reusing {@link trailingTransitionRule}, because the two
+ * are different mechanisms with different outcomes and §5.8's contrast paragraph exists to keep
+ * a reader from taking one for a typo of the other. A trailing `<tempo>` or `<dynamics>` still
+ * has a span and performs flat at its own value; a trailing `<movement>` has no span at all.
+ * And under AD-35 the guard is conditional in a way neither of those is: put any entry after
+ * the last `<movement>` — a trailing `<style>` — and the movement renders after all, with
+ * `getEndDate = Number.MAX_VALUE`.
+ */
+const movementEntryIndexRule: ComparisonLiveness = {
+  element: 'movement',
+  rule:
+    'rendered unless the movement is the map’s LAST ENTRY (renderMovementToMap:173-183 guards ' +
+    'on `movementIndex < this.size() - 1`, and size() counts <style> switches too), or its ' +
+    'date is negative. AD-35: an entry after the last <movement> resurrects it with an ' +
+    'unbounded span, which over any real window performs flat at @position.',
+};
+
+/** §5.8: the shape knobs are read only where the movement is a transition, and are NOT clamped. */
+const movementShapeLiveness: ComparisonLiveness = {
+  element: 'movement',
+  rule:
+    'read only where @transition.to is present — a constant movement returns [startDate, ' +
+    'position] for every t and never touches the control points (MovementData.ts:122-134). ' +
+    'Defaults to 0.4 / 0.0, NOT dynamics’ 0.0 / 0.0 (AD-13), and unlike §5.3 the values are ' +
+    'never clamped: out of range the date component stops being monotone and the span reads ⊥.',
+};
+
+const PEDAL_ROWS: readonly ComparisonRegistryRow[] = [
+  {
+    key: 'pedal/movement@position',
+    dimension: 'pedal',
+    element: 'movement',
+    attribute: 'position',
+    sites: [instructionSite(MOVEMENT_MAP, 'movement')],
+    space: { kind: 'gain' },
+    valueDomain: unitClosed,
+    unit: 'ratio',
+    jnd: PEDAL_POSITION_JND_RATIO,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: PLAUSIBLE_POSITION,
+    role: 'curve-level',
+    liveness: movementEntryIndexRule,
+    ppqSensitive: false,
+    notes:
+      '§5.8 — THE pedal curve: this row’s jnd is jnd_pedal. A gain on [0,1] rather than a ' +
+      'logit, because 0.0 and 1.0 are the canonical authored values and a logit sends them to ' +
+      '±∞ (§5.8). Out-of-range values are CLAMPED by the MIDI export rather than refused ' +
+      '(EventMaker.ts:536), so the span performs at the bound and compares as performed. A ' +
+      '<movement> with no @position inherits the previous one’s @transition.to, and that scan ' +
+      'is `j > 0` so entry 0 is never examined and the inherited value is 0 — deliberate, ' +
+      'PARITY-noted, and observable: a leading <style> changes the inherited position. A ' +
+      'movement whose predecessor carries no @transition.to is skipped entirely and the ' +
+      'previous value holds. 0.1 of full travel [convention] — see the constant.',
+  },
+  {
+    key: 'pedal/movement@transition.to',
+    dimension: 'pedal',
+    element: 'movement',
+    attribute: 'transition.to',
+    sites: [instructionSite(MOVEMENT_MAP, 'movement')],
+    space: { kind: 'gain' },
+    valueDomain: unitClosed,
+    unit: 'ratio',
+    jnd: PEDAL_POSITION_JND_RATIO,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: PLAUSIBLE_POSITION,
+    role: 'curve-level',
+    liveness: movementEntryIndexRule,
+    ppqSensitive: false,
+    notes:
+      '§5.8 — the Bézier’s target position, and the value that HOLDS after the span: the MIDI ' +
+      'export emits one control change per sampled point and a control change persists until ' +
+      'the next one (Msm.ts:1422-1454), so the last event of a span governs until the next ' +
+      'span emits. Absent, the movement is CONSTANT — isConstantMovement tests for null, so an ' +
+      'unparseable value is a transition towards NaN and reads ⊥, not a constant. 0.1 of full ' +
+      'travel [convention], as the position row.',
+  },
+  {
+    key: 'pedal/movement@curvature',
+    dimension: 'pedal',
+    element: 'movement',
+    attribute: 'curvature',
+    sites: [instructionSite(MOVEMENT_MAP, 'movement')],
+    space: { kind: 'boundary-power-low' },
+    valueDomain: unitClosed,
+    unit: 'nepers',
+    jnd: UNNORMALIZED_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'curve-shape',
+    liveness: movementShapeLiveness,
+    ppqSensitive: false,
+    notes:
+      '§5.8/AD-13 — the same Bézier control-point curvature as §5.3 with a DIFFERENT default: ' +
+      '0.4 (MovementData.ts:28), not 0.0. The shared machinery must not share a default, and ' +
+      'reading a <movement> with dynamics’ default silently reshapes every unshaped pedal ' +
+      'gesture in the corpus. NOT clamped here: outside [0,1] the inner control points leave ' +
+      'the unit square, x(t) stops being monotone and the sampler emits events whose dates go ' +
+      'backwards, so §4’s domain gate takes the whole span to ⊥. T = ln(1 − x) is −∞ at the ' +
+      'authored value 1, which §4’s cap prices at δ_row. jnd 1 [convention], unnormalized.',
+  },
+  {
+    key: 'pedal/movement@protraction',
+    dimension: 'pedal',
+    element: 'movement',
+    attribute: 'protraction',
+    sites: [instructionSite(MOVEMENT_MAP, 'movement')],
+    space: { kind: 'logit', lower: -1, upper: 1 },
+    valueDomain: signedUnitClosed,
+    unit: 'nepers',
+    jnd: UNNORMALIZED_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'curve-shape',
+    liveness: movementShapeLiveness,
+    ppqSensitive: false,
+    notes:
+      '§5.8 — signed control-point protraction on [−1,1], defaulting to 0.0 and, like ' +
+      '@curvature, never clamped: out of range it reads ⊥ with the span. ±1 are authored ' +
+      'values where T is ∓∞ and §4’s cap applies. jnd 1 [convention], unnormalized.',
+  },
+];
+
+/**
+ * DESIGN §5's live attributes for the dimensions evaluated so far, in §5's own order.
+ *
+ * There is no `@controller` row and there deliberately will not be one: §4's metric is on
+ * numbers and the value is a NAME, so a mismatch is reported through the structural channel
+ * (`pedalDistance.controllerFindings`) exactly as §5.8 asks. The name matters — `Msm.ts:1445`
+ * maps only `sustain` and `soft`, and every other name falls through to controller number 0,
+ * which is BANK SELECT rather than a pedal — but none of that is a distance.
+ */
 export const COMPARISON_REGISTRY_ROWS: readonly ComparisonRegistryRow[] = Object.freeze([
   ...TEMPO_ROWS,
   ...RUBATO_ROWS,
   ...DYNAMICS_ROWS,
+  ...ACCENTUATION_ROWS,
   ...ASYNCHRONY_ROWS,
+  ...PEDAL_ROWS,
 ]);
 
 // --- Derived views -----------------------------------------------------------------------
@@ -876,9 +1279,9 @@ const ROWS_BY_DIMENSION = new Map<ComparisonDimension, readonly ComparisonRegist
 /**
  * Every row of one dimension, in registry order.
  *
- * **Empty for the seven dimensions W3 brings**, which is a coverage statement and not a
- * defect — see the module note. A caller must not read emptiness as "this dimension has no
- * comparable content".
+ * **Empty for the five dimensions W3's remaining cuts bring** — articulation, ornamentation
+ * and the three imprecision domains — which is a coverage statement and not a defect (see the
+ * module note). A caller must not read emptiness as "this dimension has no comparable content".
  */
 export function comparisonRowsOf(dimension: ComparisonDimension): readonly ComparisonRegistryRow[] {
   return ROWS_BY_DIMENSION.get(dimension) ?? [];

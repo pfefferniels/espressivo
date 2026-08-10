@@ -16,6 +16,7 @@ import {
   gaussLegendre10,
   gradedPanelCount,
   integrateAbsolute,
+  integrateCappedAbsolute,
   integrateGradedPower,
   integrateSubstitutedPower,
   neumaierSum,
@@ -352,6 +353,52 @@ describe('integrateAbsolute', () => {
 
   it('returns 0 on a degenerate interval', () => {
     expect(integrateAbsolute((x) => x, 3, 3)).toBe(0);
+  });
+});
+
+/**
+ * `integrateCappedAbsolute` — §4's cap under the integral, for the dimensions that can reach
+ * `⊥` and therefore must not price a value-value pair above `2·δ_row` (§5.4, §5.8).
+ */
+describe('integrateCappedAbsolute', () => {
+  it('is integrateAbsolute exactly when the cap cannot bind', () => {
+    const f = (x: number) => Math.sin(4 * x);
+    const splits = [Math.PI / 4, Math.PI / 2];
+    expect(integrateCappedAbsolute(f, 1e9, 0, 2, splits).mass).toBe(
+      integrateAbsolute(f, 0, 2, splits),
+    );
+    expect(integrateCappedAbsolute(f, 1e9, 0, 2, splits).capped).toBe(false);
+  });
+
+  it('gets the corner the cap introduces exactly, on the affine case §5.4 integrates', () => {
+    // ∫₀⁴ min(|x − 1|, 1) dx: |x−1| is 1 at x = 0 and again at x = 2, and capped beyond.
+    // Below the cap it contributes ∫₀² |x−1| = 1; above it, 2 units of length × 1 = 2.
+    const result = integrateCappedAbsolute((x) => x - 1, 1, 0, 4);
+    expect(result.mass).toBeCloseTo(3, 12);
+    expect(result.capped).toBe(true);
+    // Which is strictly less than the uncapped integral, as it must be.
+    expect(integrateAbsolute((x) => x - 1, 0, 4)).toBeCloseTo(5, 12);
+  });
+
+  it('reports the cap as bound SOMEWHERE, not everywhere', () => {
+    // A cell that is capped over a tenth of its length still reports capped: the flag drives a
+    // report note, and inferring it from the mass could only ever detect total capping.
+    const result = integrateCappedAbsolute((x) => x, 9.5, 0, 10);
+    expect(result.capped).toBe(true);
+    expect(result.mass).toBeLessThan(50);
+  });
+
+  it('is symmetric under negation, which P-C2 needs', () => {
+    const f = (x: number) => Math.sin(4 * x) * 3;
+    const g = (x: number) => -f(x);
+    expect(integrateCappedAbsolute(f, 2, 0, 2, []).mass).toBe(
+      integrateCappedAbsolute(g, 2, 0, 2, []).mass,
+    );
+  });
+
+  it('returns 0 on a degenerate interval or a non-positive cap', () => {
+    expect(integrateCappedAbsolute((x) => x, 1, 3, 3).mass).toBe(0);
+    expect(integrateCappedAbsolute((x) => x, 0, 0, 3).mass).toBe(0);
   });
 });
 

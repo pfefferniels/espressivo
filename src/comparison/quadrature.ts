@@ -365,6 +365,111 @@ export function bisectSignChange(f: (x: number) => number, a: number, b: number)
  * elsewhere — and need not be roots themselves; they only have to separate the roots so
  * each sub-interval has at most one, which is what makes {@link bisectSignChange} complete.
  */
+/**
+ * `∫ₐᵇ min(|f|, cap)` — {@link integrateAbsolute} under §4's cap, for the dimensions whose
+ * pointwise density has to be capped rather than merely accumulated.
+ *
+ * **Why a curve dimension would cap at all.** Tempo and dynamics integrate `|g_A − g_B|/jnd`
+ * uncapped and are metric doing so, because neither can produce `⊥`: an unresolvable level is
+ * performed at 100.0 (R8). Accentuation and pedal *can* — an unresolvable
+ * `accentuationPatternDef` aborts the render (R21), and an out-of-domain `@curvature` makes the
+ * date component non-monotone, so there is no `date ↦ position` function at all (§5.8/§4). §4
+ * prices `⊥` at `δ_row` from every value, so a value-value pair priced **uncapped** breaks the
+ * triangle inequality the moment a `⊥` document is the middle term:
+ * `d(x, ⊥) + d(⊥, y) = 2δ` while `d(x, y)` grows without bound. Capping the pointwise density
+ * at `2·δ_row` is what §4 already requires of `localDistance`, applied under the integral
+ * because here the quantity is a curve rather than an attribute.
+ *
+ * The cap introduces a **corner** wherever `|f|` crosses it, and a corner is exactly what
+ * GL-10 cannot represent — the same defect the absolute value has at its roots. So the
+ * crossings are resolved the same way: each sign-constant piece is searched for one cap
+ * crossing by bisection and split there, leaving pieces on which `min(|f|, cap)` is either the
+ * polynomial `±f` or the constant `cap`, both of which GL-10 integrates exactly.
+ *
+ * Completeness has the same caveat as {@link integrateAbsolute}: the caller's `splitPoints`
+ * must isolate the crossings, one per sub-interval. On a piecewise-affine difference — which
+ * is what the accentuation curve is between breakpoints — `|f|` is monotone on each
+ * sign-constant piece, so one crossing per piece is not an assumption but a fact.
+ */
+export function integrateCappedAbsolute(
+  f: (x: number) => number,
+  cap: number,
+  a: number,
+  b: number,
+  splitPoints: readonly number[] = [],
+): CappedIntegral {
+  if (!(b > a) || !(cap > 0)) return { mass: 0, capped: false };
+
+  const capped = (x: number) => Math.min(Math.abs(f(x)), cap);
+  const overCap = (x: number) => Math.abs(f(x)) - cap;
+
+  const total = new CompensatedSum();
+  let bound = false;
+
+  // Whether the cap actually bound on a piece is decided at the piece's MIDPOINT, which is
+  // sound because the pieces below are split at every cap crossing: `|f| − cap` has one sign
+  // throughout each of them, so any interior point decides it. Reporting this from inside the
+  // quadrature rather than inferring it from the mass is the difference between "the cap bound
+  // somewhere" and "the cap bound everywhere", which a mass comparison cannot tell apart.
+  const integratePiece = (low: number, high: number): void => {
+    if (overCap((low + high) / 2) >= 0) bound = true;
+    total.add(gaussLegendre10(capped, low, high));
+  };
+
+  for (const [low, high] of signConstantPieces(f, a, b, splitPoints)) {
+    const crossing = bisectSignChange(overCap, low, high);
+    if (crossing === null || crossing <= low || crossing >= high) {
+      integratePiece(low, high);
+      continue;
+    }
+    integratePiece(low, crossing);
+    integratePiece(crossing, high);
+  }
+  return { mass: total.total, capped: bound };
+}
+
+/** {@link integrateCappedAbsolute}'s result: the mass, and whether §4's cap bound anywhere. */
+export interface CappedIntegral {
+  readonly mass: number;
+  /** True where the cap replaced the raw difference on at least one piece of `[a, b]`. */
+  readonly capped: boolean;
+}
+
+/**
+ * The caller's cells, each split once more at `f`'s crossing — the piece list both
+ * {@link integrateAbsolute} and {@link integrateCappedAbsolute} work over.
+ *
+ * Factored out rather than duplicated because the two functions must agree about where the
+ * roots are: `integrateCappedAbsolute` with a cap larger than `max |f|` has to return exactly
+ * what `integrateAbsolute` returns, and that identity is tested.
+ */
+function signConstantPieces(
+  f: (x: number) => number,
+  a: number,
+  b: number,
+  splitPoints: readonly number[],
+): readonly (readonly [number, number])[] {
+  const interior = [...new Set(splitPoints.filter((point) => point > a && point < b))].sort(
+    (x, y) => x - y,
+  );
+  const bounds = [a, ...interior, b];
+
+  const pieces: (readonly [number, number])[] = [];
+  for (let i = 0; i < bounds.length - 1; ++i) {
+    const low = bounds[i];
+    const high = bounds[i + 1];
+    const root = bisectSignChange(f, low, high);
+    // A root exactly at a bound is not an interior split: the sign is constant on the rest
+    // of the sub-interval and splitting there would add a zero-width piece.
+    if (root === null || root <= low || root >= high) {
+      pieces.push([low, high]);
+      continue;
+    }
+    pieces.push([low, root], [root, high]);
+  }
+  return pieces;
+}
+
 export function integrateAbsolute(
   f: (x: number) => number,
   a: number,
@@ -373,24 +478,8 @@ export function integrateAbsolute(
 ): number {
   if (!(b > a)) return 0;
 
-  const interior = [...new Set(splitPoints.filter((point) => point > a && point < b))].sort(
-    (x, y) => x - y,
-  );
-  const bounds = [a, ...interior, b];
-
   const total = new CompensatedSum();
-  for (let i = 0; i < bounds.length - 1; ++i) {
-    const low = bounds[i];
-    const high = bounds[i + 1];
-    const root = bisectSignChange(f, low, high);
-    // A root exactly at a bound is not an interior split: the sign is constant on the rest
-    // of the sub-interval and splitting there would add a zero-width piece.
-    if (root === null || root <= low || root >= high) {
-      total.add(Math.abs(gaussLegendre10(f, low, high)));
-      continue;
-    }
-    total.add(Math.abs(gaussLegendre10(f, low, root)));
-    total.add(Math.abs(gaussLegendre10(f, root, high)));
-  }
+  for (const [low, high] of signConstantPieces(f, a, b, splitPoints))
+    total.add(Math.abs(gaussLegendre10(f, low, high)));
   return total.total;
 }

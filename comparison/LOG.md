@@ -26,7 +26,7 @@ spaces (per-attribute T with musical neutral): local attribute distance
 d(x,y) = |T(x) − T(y)| in the same space exaggeration scales. This makes
 comparison and exaggeration mathematically coherent (an exaggeration by s
 moves every attribute a predictable T-space distance, so the comparison module
-can *see* exaggeration as a uniform dilation — a testable property linking the
+can _see_ exaggeration as a uniform dilation — a testable property linking the
 two modules). W1 must confirm or amend per dimension; the surveys are tasked
 with attacking this presumption.
 
@@ -78,21 +78,21 @@ classes under D-A. `Builder.build` is the single point all three share, so it
 is the only place that covers the expression facade and the future comparison
 module as well as the pipeline. Verified by grep, not assumed.
 
-[FINDING] The fix is parity-RESTORING, not a divergence. Java hands XOM *bytes*
+[FINDING] The fix is parity-RESTORING, not a divergence. Java hands XOM _bytes_
 at every entry point (`XmlBase.java:99,128,162`; `mei/Helper.java:1042,1061`),
 and XOM's SAX/Xerces reader consumes a leading `EF BB BF` as the XML 1.0
 §4.3.3 / Appendix F encoding signature before the document entity begins. This
-port parses a decoded *string*, where the same bytes are a U+FEFF character in
+port parses a decoded _string_, where the same bytes are a U+FEFF character in
 front of the declaration, which `@xmldom/xmldom` refuses fatally. The
 divergence was an artefact of characters-vs-bytes, not a decision either side
 made. PARITY.md §1 entry `CMP1` records this with the Java citations.
 
 Scope discipline: exactly one leading mark is stripped. Interior U+FEFF is
-ZERO WIDTH NO-BREAK SPACE and is preserved; a *run* of marks is left alone
+ZERO WIDTH NO-BREAK SPACE and is preserved; a _run_ of marks is left alone
 because the second is content, content before the declaration is an error, and
 Java rejects that too — stripping the run would open a divergence while closing
 one. One test assumption of mine was wrong and was corrected against measured
-behaviour rather than kept: a stray BOM with NO xml declaration is a *non-fatal*
+behaviour rather than kept: a stray BOM with NO xml declaration is a _non-fatal_
 xmldom error (content silently dropped), so only the declaration case threw.
 
 Tests (13 new, no existing test changed): `tests/xml/XomTypes.test.ts` gains 5
@@ -110,8 +110,8 @@ touched files reports 4 errors, all proven pre-existing by re-running the same
 lint with the changes stashed — byte-identical output. The new file has zero.
 
 Real-corpus check: all four BOM-affected official sample encodings now parse;
-three of them threw before. Telemann *Grave* (Baroque/Fast/Romantic) and
-Vulpius *Die helle Sonn* (Baroque/Romantic/Amateur) are readable, so the
+three of them threw before. Telemann _Grave_ (Baroque/Fast/Romantic) and
+Vulpius _Die helle Sonn_ (Baroque/Romantic/Amateur) are readable, so the
 campaign's multi-performance inputs are unblocked.
 
 NOT done, per the lead's instruction: no fixture work for the multi-performance
@@ -138,7 +138,6 @@ surveys' own recommendations:
 - A-B2: renderer-skipped instructions cost zero in the edit path BY
   construction (semantic pricing), appear in the script anyway, and are
   reported — the two levels stay consistent without a special case.
-
 
 ## 2026-08-10 — W1: DESIGN.md draft complete; panel convened
 
@@ -371,17 +370,18 @@ reuse (A15): ComparisonEngineError added; corpus labels required unique after
 expansion (InvalidOptionError on duplicates; defaults defined); serialized
 key order pinned (schema order; dimension records in COMPARISON_DIMENSIONS
 order — A9); P-C6's corpus clause weakened to matrix permutation-equivariance
-+ dendrogram equality on tie-free inputs, index-tie dependence documented
-(A7); options echo excludes document texts (A12); dimension-set stability
-promise corrected to "additive, breaking for Record consumers, major-version
-note" (A13); DiffMpmOptions/DiffResult fully declared incl. provenance
-(A14/A19); explicitly-requested-but-unusable options get typed notes (A10);
-msm presence stamped (A11); window validated start<end finite ≥0, and
-consistency with §5.0 stated (A16); performance selector validation mirrors
-expression facade incl. index bounds (A17); no name collisions in the barrel;
-SiteRef-like replaced by a declared ComparisonSiteRef (A18); validation and
-parse order contract stated (A23); exact eslint zone text + verified
-sideEffects note for bezier.ts (A24); COMPARISON_DIMENSIONS frozen (A25).
+
+- dendrogram equality on tie-free inputs, index-tie dependence documented
+  (A7); options echo excludes document texts (A12); dimension-set stability
+  promise corrected to "additive, breaking for Record consumers, major-version
+  note" (A13); DiffMpmOptions/DiffResult fully declared incl. provenance
+  (A14/A19); explicitly-requested-but-unusable options get typed notes (A10);
+  msm presence stamped (A11); window validated start<end finite ≥0, and
+  consistency with §5.0 stated (A16); performance selector validation mirrors
+  expression facade incl. index bounds (A17); no name collisions in the barrel;
+  SiteRef-like replaced by a declared ComparisonSiteRef (A18); validation and
+  parse order contract stated (A23); exact eslint zone text + verified
+  sideEffects note for bezier.ts (A24); COMPARISON_DIMENSIONS frozen (A25).
 
 AD-23 (C1–C17 — products). All repairs adopted. Highlights: opt-in profile
 export (grid, both T-space curves, density; per-dimension; step-capped) —
@@ -448,8 +448,7 @@ BOM, ppq 480), albert-du-mein-einzig-licht (2 perf: Axel Berndt / "Like a
 robot" — expressive vs deadpan, no BOM, so it controls for the BOM variable),
 bach-bwv1007-minuet2 (1 perf, densest articulation at 204, BOM, ppq 480),
 aller-augen (1 perf, the only file with substantial xml:id coverage at 60),
-minimal.mpm (589 B, no maps — the degenerate case). Both tick grids (720 and
-480) are represented, which the cross-ppq normalization work will need.
+minimal.mpm (589 B, no maps — the degenerate case). Both tick grids (720 and 480) are represented, which the cross-ppq normalization work will need.
 
 Tests: `tests/comparison/fixtures.test.ts`, 27 assertions. Per fixture — BOM
 present/absent exactly as vendored (guards the byte-faithfulness policy
@@ -584,12 +583,13 @@ fields (`role`, `candidates`, `selector`) so W3's facade can build the
 role-prefixed message without parsing a string back apart.
 
 Renderer fidelity, verified by negative control rather than asserted:
+
 - Reversing the map-shadowing order fails exactly the empty-map-shadows test.
 - Reverting AD-1 (unresolvable level → NaN instead of 100.0) fails exactly the
   three renderer-default tests, including the one pinning that `volume="?"` and
   `volume="100"` agree.
-Both controls were run by patching, testing and restoring; neither test passes
-for the wrong reason.
+  Both controls were run by patching, testing and restoring; neither test passes
+  for the wrong reason.
 
 [DECISION, needs conductor confirmation] A `<part>` missing `@number`,
 `@midi.channel` or `@midi.port` is EXCLUDED from matching, not compared against
@@ -603,6 +603,7 @@ R6's "unmatched parts are compared against the neutral curve" does not
 distinguish the two cases and the conductor may want it spelled out.
 
 OPEN QUESTIONS for the conductor (implemented as noted, all one-line changes):
+
 1. §5.0 lists the MSM score end ABOVE `options.window` in the precedence chain,
    so an explicit window is ignored when an MSM is supplied. Implemented as
    written. Most option systems let the explicit value win, and §9.4's
@@ -678,19 +679,19 @@ AD-27.8 Scapes PROMOTED from stretch to committed W4 deliverable
 Built (one commit):
 
 1. **Forward maps in `src/expression/transforms.ts`** (§4's placement, A24):
-`forwardLogAroundOne`, `forwardLogAroundCenter`, `forwardLogit`,
-`forwardBoundaryPowerLow`, `forwardBoundaryPowerHigh`, `forwardGain`, and the
-`forwardInSpace` dispatch. They are the one block in that module that returns a
-non-finite number on legal input, deliberately: §4's cap is registry data the
-caller holds, so the boundaries return ±Infinity and the CALLER caps. Property
-test pins `T(C(x,s)) = s·T(x)` over the existing `SPACES` grid, at the infinite
-boundary values for every `s > 0`, and at `s = 0` as the branch it is.
+   `forwardLogAroundOne`, `forwardLogAroundCenter`, `forwardLogit`,
+   `forwardBoundaryPowerLow`, `forwardBoundaryPowerHigh`, `forwardGain`, and the
+   `forwardInSpace` dispatch. They are the one block in that module that returns a
+   non-finite number on legal input, deliberately: §4's cap is registry data the
+   caller holds, so the boundaries return ±Infinity and the CALLER caps. Property
+   test pins `T(C(x,s)) = s·T(x)` over the existing `SPACES` grid, at the infinite
+   boundary values for every `s > 0`, and at `s = 0` as the branch it is.
 2. **`src/comparison/registry.ts`** — §4's table for the four W2 dimensions:
-17 rows (tempo 5, rubato 5, dynamics 6, asynchrony 1), the frozen eleven-name
-`COMPARISON_DIMENSIONS`, the frozen §3 correspondence table, the frozen W2
-`COMPARISON_JND_KEYS`, and §4's capped local metric `localDistance` (see flag 8).
+   17 rows (tempo 5, rubato 5, dynamics 6, asynchrony 1), the frozen eleven-name
+   `COMPARISON_DIMENSIONS`, the frozen §3 correspondence table, the frozen W2
+   `COMPARISON_JND_KEYS`, and §4's capped local metric `localDistance` (see flag 8).
 3. **Config**: the `comparison` eslint zone plus `'**/comparison/**'` in all six
-existing zones' forbidden lists; `'src/comparison/**/*.ts'` in vitest coverage.
+   existing zones' forbidden lists; `'src/comparison/**/*.ts'` in vitest coverage.
 
 AD-27.6 applied: tempo rows carry `ln(1.025)` **[literature]** (Friberg &
 Sundberg 1995) in place of revision 2's `ln(1.05)` [convention]; the asynchrony
@@ -703,60 +704,60 @@ with corpus derivation named as the honest alternative and no dB figure asserted
 Flagged, not resolved silently:
 
 1. **§4's two sentences about `log-around-center` cannot both be literal.**
-"A property test pins `T(C(x,s)) = s·T(x)` for every space" and "log-around-center
-collapses to the bare logarithm" are jointly false for bare `ln`: with `T = ln`
-the identity picks up a `(1−s)·ln μ` term. Implemented both in their own sense —
-`forwardLogAroundCenter` is the space's true bijection `ln(x/μ)` and satisfies
-the identity; the collapse is pinned as a property of *differences*
-(`T_μ(x) − T_μ(y) = ln x − ln y` for every μ), which is what §4's own qualifier
-says. Comparison's level rows therefore carry `log-around-1`, i.e. the operational
-collapse, for survey-code §2.2's reason: two documents bring two centers.
+   "A property test pins `T(C(x,s)) = s·T(x)` for every space" and "log-around-center
+   collapses to the bare logarithm" are jointly false for bare `ln`: with `T = ln`
+   the identity picks up a `(1−s)·ln μ` term. Implemented both in their own sense —
+   `forwardLogAroundCenter` is the space's true bijection `ln(x/μ)` and satisfies
+   the identity; the collapse is pinned as a property of _differences_
+   (`T_μ(x) − T_μ(y) = ln x − ln y` for every μ), which is what §4's own qualifier
+   says. Comparison's level rows therefore carry `log-around-1`, i.e. the operational
+   collapse, for survey-code §2.2's reason: two documents bring two centers.
 2. **§4's superset property, "the same scale space", cannot be literal for two
-families.** Expression's level rows are `log-around-center` and its rubato window
-rows are `joint-trim`; comparison uses `log-around-1` (flag 1) and `gain`
-(§5.2/A-Q10 prices the window as L1 on the ENDPOINTS, not through the trim
-reparametrization). The test carries both substitutions as named, cited
-equivalences rather than normalizing them away.
+   families.** Expression's level rows are `log-around-center` and its rubato window
+   rows are `joint-trim`; comparison uses `log-around-1` (flag 1) and `gain`
+   (§5.2/A-Q10 prices the window as L1 on the ENDPOINTS, not through the trim
+   reparametrization). The test carries both substitutions as named, cited
+   equivalences rather than normalizing them away.
 3. **§4's row shape has no representation for a boolean evaluator input.**
-AD-10 mandates a row for `@loop` — filing it structural made two documents
-differing only in it score `d_rubato = 0` — but a boolean has no scale space, no
-unit and no JND. Implemented as `gain` over `{0,1}` with `jnd 1 [convention]` and
-a note that the row carries no independent metric (its difference is priced
-through the displacement curve it opens). W3 meets the same problem with
-`@stickToMeasures` and should either ratify this or add a gate role. Note
-`@subNoteDynamics` is NOT this case: §5.3 makes it `structural` explicitly.
+   AD-10 mandates a row for `@loop` — filing it structural made two documents
+   differing only in it score `d_rubato = 0` — but a boolean has no scale space, no
+   unit and no JND. Implemented as `gain` over `{0,1}` with `jnd 1 [convention]` and
+   a note that the row carries no independent metric (its difference is priced
+   through the displacement curve it opens). W3 meets the same problem with
+   `@stickToMeasures` and should either ratify this or add a gate role. Note
+   `@subNoteDynamics` is NOT this case: §5.3 makes it `structural` explicitly.
 4. **§9.7's bezier carve-out as written is INERT.** ESLint builds an `ignore`
-(gitignore) matcher from the pattern group, and gitignore cannot re-include a
-file whose parent directory is excluded — so `'**/mpm/**'` plus
-`'!**/mpm/elements/maps/data/bezier.js'` silently keeps the import blocked.
-Measured by negative control, then fixed with gitignore's own staircase idiom
-(re-include each ancestor, re-exclude its contents). Control re-run: `Mpm.js`,
-`elements/GenericMap.js`, `maps/TempoMap.js` and `maps/data/TempoData.js` all
-error; `bezier.js`, `names.js` and `expression/transforms.js` are allowed. The
-carve-out is included this wave because §9.7 specifies it as part of the zone,
-not staged by wave; nothing imports bezier yet.
+   (gitignore) matcher from the pattern group, and gitignore cannot re-include a
+   file whose parent directory is excluded — so `'**/mpm/**'` plus
+   `'!**/mpm/elements/maps/data/bezier.js'` silently keeps the import blocked.
+   Measured by negative control, then fixed with gitignore's own staircase idiom
+   (re-include each ancestor, re-exclude its contents). Control re-run: `Mpm.js`,
+   `elements/GenericMap.js`, `maps/TempoMap.js` and `maps/data/TempoData.js` all
+   error; `bezier.js`, `names.js` and `expression/transforms.js` are allowed. The
+   carve-out is included this wave because §9.7 specifies it as part of the zone,
+   not staged by wave; nothing imports bezier yet.
 5. **§4's infinite-`T` enumeration overlaps its own NaN case.** It lists
-"`log-around-*` and the bare logarithm at `x = 0`" among the ±∞ values and
-separately says `qbpm ≤ 0` is NaN. Mathematically `ln 0 = −∞` (capped) and
-`ln x < 0` is NaN (a typed document error). Implemented that way and documented;
-DESIGN's wording could be tightened to `qbpm < 0`.
+   "`log-around-*` and the bare logarithm at `x = 0`" among the ±∞ values and
+   separately says `qbpm ≤ 0` is NaN. Mathematically `ln 0 = −∞` (capped) and
+   `ln x < 0` is NaN (a typed document error). Implemented that way and documented;
+   DESIGN's wording could be tightened to `qbpm < 0`.
 6. **Rows with no §7.1 constant.** meanTempoAt, curvature, protraction, rubato
-intensity/lateStart/earlyEnd and the two booleans get `jnd = 1 [convention]`,
-i.e. **reported unnormalized in their own `T`-space unit**, rather than an
-invented perceptual constant. survey-lit §4.0 supports this directly: "Tempo-curve
-shape parameters — no JND constant exists (shape parameters are not a perceptual
-scale)". None of these rows carries its dimension's curve, so the constant never
-enters a §5 density; only §6's per-attribute `deltaJnd` reads it.
+   intensity/lateStart/earlyEnd and the two booleans get `jnd = 1 [convention]`,
+   i.e. **reported unnormalized in their own `T`-space unit**, rather than an
+   invented perceptual constant. survey-lit §4.0 supports this directly: "Tempo-curve
+   shape parameters — no JND constant exists (shape parameters are not a perceptual
+   scale)". None of these rows carries its dimension's curve, so the constant never
+   enters a §5 density; only §6's per-attribute `deltaJnd` reads it.
 7. **A `beatLength` plausibility band would catch §5.0's own motivating example
-more directly** than `qbpm ∈ [10,400]` does — the Hofmann (1927) files write
-`beatLength` in ticks. §5.0 names exactly four [convention] bands, so a fifth was
-not invented; the `beatLength` row carries `plausibleRange: null` and the note
-explains that the unit mismatch surfaces through `@bpm`'s band. W3/lit call.
+   more directly** than `qbpm ∈ [10,400]` does — the Hofmann (1927) files write
+   `beatLength` in ticks. §5.0 names exactly four [convention] bands, so a fifth was
+   not invented; the `beatLength` row carries `plausibleRange: null` and the note
+   explains that the unit mismatch surfaces through `@bpm`'s band. W3/lit call.
 8. **Scope addition, flagged for relocation if wanted**: §4's capped local metric
-`localDistance` is implemented here rather than left unassigned, because §4
-defines the registry and its metric as one unit and the row data is inert without
-it. It consumes W2b's `Valued<number>`/`Bottom` rather than a second spelling of
-`⊥`.
+   `localDistance` is implemented here rather than left unassigned, because §4
+   defines the registry and its metric as one unit and the row data is inert without
+   it. It consumes W2b's `Valued<number>`/`Bottom` rather than a second spelling of
+   `⊥`.
 
 Also exported: the four §7.1 JND constants by name, so an evaluator takes its
 curve JND from a symbol rather than deciding which row "is" the curve.
@@ -876,9 +877,9 @@ layer they exist to track and silently lose AD-28.1's accuracy. Only the row's
 §4's own wording).
 
 FIRST REAL NUMBERS — Telemann Grave, tempo, window 198 quarters, pair-derived:
-  Baroque <-> Fast      5975.4491 JND*qn   (147.5494 nepers*qn)  mean 30.18 JND
-  Baroque <-> Romantic   556.5371 JND*qn   ( 13.7424 nepers*qn)  mean  2.81 JND
-  Fast    <-> Romantic  5418.9120 JND*qn   (133.8071 nepers*qn)  mean 27.37 JND
+Baroque <-> Fast 5975.4491 JND*qn (147.5494 nepers*qn) mean 30.18 JND
+Baroque <-> Romantic 556.5371 JND*qn ( 13.7424 nepers*qn) mean 2.81 JND
+Fast <-> Romantic 5418.9120 JND*qn (133.8071 nepers*qn) mean 27.37 JND
 P-C9's shape holds: Baroque/Romantic is the near pair by an order of magnitude.
 The mean reads as ln(123/58) sustained, which is the right physical size for
 58 vs 123 qbpm. Anchors are pinned in BOTH units — the nepers figure survives a
@@ -908,7 +909,7 @@ Found while starting the asynchrony evaluator. **DESIGN contradicts itself and
 W2b's committed `spanEnds.ts` followed the wrong half.** Fixed in this commit.
 
 §5.0's table lists `AsynchronyMap` among the six maps that "scan forward for the
-next element of their *own* local name". §5.7 says the opposite in the same
+next element of their _own_ local name". §5.7 says the opposite in the same
 document: the map "takes the next dated child with **no local-name test**, so
 any non-`<asynchrony>` entry ends the span".
 
@@ -1514,3 +1515,120 @@ count every dated entry including <style>. Measured: trailing <style> gives 34
 position events over [0..1.8e308] where none gives 17 over [0..720]. Awaiting a
 ruling on the entry-index reading and on how the unbounded third state is priced.
 
+
+## 2026-08-10 — W3a cut 1, part 2: pedal curve, both densities, rows (task #7, survey-code)
+
+Cut 1 closed. AD-35 unblocked the pedal half and all three of its readings are
+implemented as ruled: (a) the render guard is stated over ENTRY indices, (b) a
+resurrected span is a real performed transition bounded by the window, (c) §5.8's
+contrast paragraph now carries three states. §5.8 amended in this commit under
+AD-35.3, with a table replacing the two-way contrast.
+
+RESURRECTION RE-MEASURED, and my pre-ruling figure was wrong in its detail. The
+earlier report said "34 events over [0..1.8e308] against 17 over [0..720]". Run
+again on a pinned fixture: **26 events over [0, 1.7976931348623157e308] against
+17 over [0, 720]**. The mechanism is exactly as reported — a trailing <style>
+moves `size() - 1` past the last movement — but the resurrected span is only
+resurrected when it is a TRANSITION; a trailing movement with no @transition.to
+resurrects as a constant and emits three events at its own date, which is where
+the earlier count came from. Leading and middle <style> switches change nothing,
+which is the whole content of "the guard counts entries". Both halves pinned.
+
+[DECISION, reported for ratification] §5.8 IS SILENT ON WHAT HAPPENS OUTSIDE A
+SPAN, and this commit fills the gap from renderer truth rather than by choice.
+renderMovementToMap annotates nothing; it builds a positionMap and
+Msm.parsePositionMap:1422-1454 turns EVERY <position> into a MIDI control change,
+unthinned, with no reset anywhere. A control change persists until the next one,
+so: the pedal is UP (0) before the first event — which is also why R6's neutral
+for an absent map is 0 — the last emitted value HOLDS to the end of the window
+after the last rendered span, and a SKIPPED movement leaves a hold rather than a
+gap, because getEndDate ends the previous span at it whether or not it parses.
+Executed and pinned: a constant position="1.0" at 0, an unreadable movement at 360
+and a transition at 720 emit nothing between 0 and 720, and the pedal sits at 1.0
+across the whole interval. Modelling the tail as 0 would claim a pedal lift the
+performance never makes.
+
+AD-35.4's hazard class has a SECOND instance in the same section, found while
+implementing: getPreviousPosition's inheritance scan is `j > 0` over ENTRY
+indices, so a movement inheriting from the map's first entry gets 0 instead of
+that entry's @transition.to — and inserting a leading <style> changes the
+inherited position from 0 to 0.25 on the same document. Renderer-verified in both
+directions and pinned as a test. PARITY.md already carries the defect (P2); what
+is new is that it is entry-index-shaped, i.e. the same class AD-35.4 names.
+
+⊥ FOR PEDAL IS THE NON-MONOTONE DATE COMPONENT. <movement> has no clamps, so
+outside [0,1] × [−1,1] the inner control points leave the unit square, x(t) stops
+being monotone and there is no date ↦ position function to integrate: §4's domain
+gate takes the span. Measured at curvature="1.5": sorted by date, an authored
+0 → 1 ramp no longer ascends. At curvature="4" the sampler puts events at −202 and
+at 922 ticks for a span of [0, 720], so the ⊥ span is a FLOOR on the damage, not
+an exact account — stated in §5.8 and pinned rather than papered over. Position
+values are the opposite case: EventMaker.createControlChange:536 clamps into
+0..127, so an out-of-range @position performs at the bound and compares as
+performed, which is §4's "resolved" working as designed.
+
+[DECISION] THE POINTWISE DENSITY IS CAPPED AT 2·δ_row FOR BOTH NEW DIMENSIONS,
+and this is forced rather than chosen. Tempo and dynamics integrate |Δ|/jnd
+uncapped and are metric doing so because neither can reach ⊥. Accentuation and
+pedal both can (an aborting accentuationPatternDef, a non-monotone x), and §4
+prices ⊥ at δ_row from every value — so an uncapped value-value pair breaks the
+triangle inequality the moment a ⊥ document is the middle term:
+d(x,⊥) + d(⊥,y) = 2δ while d(x,y) grows without bound. quadrature.ts gains
+integrateCappedAbsolute, which resolves the corner the cap introduces the same way
+integrateAbsolute resolves the corner at a root — bisect, split, integrate — and
+reports whether the cap bound anywhere. integrateAbsolute was refactored onto the
+shared piece-splitter so the two agree by construction, which is tested.
+
+d_accentuation IS EXACT. The curve is piecewise affine in score time, so once the
+grid carries every breakpoint — instruction dates, cycle wraps, each
+accentuation's beat, the length+1 switch, the @loop-off cutoff — GL-10 is exact
+per cell. Verified against a 240 000-sample trapezoid reference computed WITHOUT
+the breakpoint machinery: agreement to 4 decimals on a four-beat pattern against a
+three-beat one over eight quarters. That test is the real check on breakpoint
+completeness; a missing breakpoint shows up there and nowhere else.
+
+TWELVE REGISTRY ROWS, and w2a's skip-list shrank in the same commit as required:
+UNCOVERED_DIMENSIONS is down from seven to five (articulation, ornamentation, the
+three imprecision domains). Eight accentuation rows (@scale carrying the curve,
+@loop and @stickToMeasures as booleans-with-rows on AD-10's test, the def's
+@length, and the four pattern internals) and four pedal rows (@position carrying
+the curve, @transition.to, @curvature, @protraction). NO @controller row, by
+design: the value is a NAME and §4's metric is on numbers, so a mismatch goes
+through the structural channel — pedalDistance.controllerFindings — exactly as
+§5.8 asks. The name still matters and is reported: Msm.ts:1445 maps only sustain
+and soft, and every other name falls through to controller 0, which is BANK
+SELECT rather than a pedal.
+
+[DECISION] TWO NEW JND CONSTANTS, both [convention] with the alternative named.
+ACCENTUATION_VELOCITY_JND = 3 velocity units is §7.1's own velocity row applied to
+the one dimension whose curve is already in velocity units (T is the identity).
+PEDAL_POSITION_JND_RATIO = 0.1 of full travel is calibrated so that the extreme
+authored difference prices at exactly δ_row: canonical pedal maps are exact
+0.0/1.0, so full-down against full-up is 1.0/0.1 = 10 JND, the same price §4 puts
+on an incomparable value — pedal therefore cannot dominate D on the strength of
+its own scale. The 1/127 quantization floor (Msm.ts:1441 rounds position·127) is
+carried as a docs obligation on the row, like asynchrony's 6 ms floor, and NOT as
+machinery: the defined object is the ideal curve (§5.0 rule 3) and quantization
+belongs to the §6.3 replay. Also added: a row for accentuationPatternDef@length,
+which §5.4 does not enumerate — it is live twice over (the last accentuation's
+segment ends at length+1, and under stickToMeasures="false" it is the whole cycle)
+and AD-15 records that the parser writes the default onto the element. Flagged for
+ratification.
+
+ADVERSARIAL FAMILY 8 → 12, per the standing policy that each cut extends it with
+the failure surfaces it opens: the two new dimensions' ordinary case, one member
+per new ⊥ route (aborting def; non-monotone date component), and AD-35's unbounded
+resurrected span — the only member whose span end is Number.MAX_VALUE. The metric
+suite now runs P-C1/P-C2/P-C3/P-C3b over FIVE dimensions and twelve members: 220
+triples, all green, with distance memoized on the ORDERED pair so P-C2 stays a
+real computation rather than a cache lookup.
+
+Decomposition/invariance wired for both dimensions via accentuationSampler and
+pedalSampler, which return NULL on a window carrying a ⊥ span rather than
+substituting a number: §1.2 takes moments, ⊥ has nothing to contribute to a mean
+or a variance, and any stand-in would be read back as a pedal position. T is the
+identity for both, so level and gain come out in travel fractions and velocity
+units respectively — unlike tempo and dynamics, whose moments are in nepers.
+
+Gate: `npm run verify` green before committing (4447 passed + 1 skipped, was
+4352); eslint and prettier clean on every touched file. 95 new tests.

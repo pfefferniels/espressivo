@@ -29,6 +29,11 @@ import {
   rendererDefaultBeatGrid,
   type AccentuationCurve,
 } from '../../src/comparison/accentuationCurve.js';
+import {
+  accentuationDistance,
+  accentuationGridTicks,
+} from '../../src/comparison/accentuationDistance.js';
+import { comparisonRowFor } from '../../src/comparison/registry.js';
 import { isBottom } from '../../src/comparison/values.js';
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
@@ -306,5 +311,147 @@ describe('accentuation spans: loop, skips and ⊥', () => {
       HEADER,
     );
     expect(explicit.segments[0].stickToMeasures).toBe(false);
+  });
+});
+
+/**
+ * `d_accentuation` — §5.4's density.
+ *
+ * The claim this suite exists to defend is **exactness**: the curve is piecewise affine, so
+ * the integral is exact once the grid carries every breakpoint, and the way to test that is
+ * not to check a plausible number but to check it against a reference computed without the
+ * breakpoint machinery at all. A missing breakpoint shows up there and nowhere else.
+ */
+describe('d_accentuation (§5.4)', () => {
+  const DEFS =
+    '<accentuationPatternDef name="p" length="4.0">' +
+    '<accentuation beat="1" value="20" transition.to="-5"/>' +
+    '<accentuation beat="3" value="-10" transition.to="8"/>' +
+    '</accentuationPatternDef>' +
+    '<accentuationPatternDef name="q" length="3.0">' +
+    '<accentuation beat="1" value="6" transition.to="6"/>' +
+    '<accentuation beat="2.5" value="-14" transition.to="2"/>' +
+    '</accentuationPatternDef>';
+
+  const documentFor = (map: string) => doc(map, styles(DEFS));
+  const pairFor = (a: string, b: string, endQuarters: number) =>
+    readComparisonPair({
+      a: documentFor(a),
+      b: documentFor(b),
+      window: { start: 0, end: endQuarters },
+    });
+
+  const distanceOf = (a: string, b: string, endQuarters: number) => {
+    const pair = pairFor(a, b, endQuarters);
+    return accentuationDistance(curveOf(pair, 'a'), curveOf(pair, 'b'), pair.window, pair.ppq.lcm);
+  };
+
+  const patternAt = (name: string, extra = '') =>
+    `<style date="0.0" name.ref="M"/><accentuationPattern date="0.0" name.ref="${name}" scale="1.0" loop="true"${extra}/>`;
+  const SILENT = '<style date="0.0" name.ref="M"/>';
+
+  it('is exactly 0 against itself (P-C1)', () => {
+    expect(distanceOf(patternAt('p'), patternAt('p'), 8).distance).toBe(0);
+  });
+
+  it('is symmetric to the last bit (P-C2)', () => {
+    const forward = distanceOf(patternAt('p'), patternAt('q'), 8).distance;
+    const reverse = distanceOf(patternAt('q'), patternAt('p'), 8).distance;
+    expect(Object.is(forward, reverse)).toBe(true);
+  });
+
+  it('matches a brute-force reference computed WITHOUT the breakpoint grid', () => {
+    // 240 000 trapezoid samples over eight quarters of a four-beat pattern against a
+    // three-beat one, cycling on the measure. If the exact grid missed a breakpoint — a
+    // cycle wrap, a pattern beat, the length + 1 switch — the two would part company in the
+    // fourth digit or worse; the trapezoid's own error on a piecewise-affine integrand is
+    // O(h²) at the corners only.
+    const pair = pairFor(patternAt('p'), patternAt('q'), 8);
+    const a = curveOf(pair, 'a');
+    const b = curveOf(pair, 'b');
+    const ppq = pair.ppq.lcm;
+    const jnd = accentuationDistance(a, b, pair.window, ppq).jnd;
+
+    const samples = 240000;
+    const endTicks = 8 * ppq;
+    const at = (curve: AccentuationCurve, ticks: number) => {
+      const value = accentuationContributionAt(curve, ticks, ppq);
+      if (value.kind !== 'value') throw new Error('unexpected ⊥');
+      return value.value;
+    };
+    let reference = 0;
+    for (let i = 0; i < samples; ++i) {
+      const left = (i * endTicks) / samples;
+      const right = ((i + 1) * endTicks) / samples;
+      const middle = (left + right) / 2;
+      reference += (Math.abs(at(a, middle) - at(b, middle)) / jnd) * ((right - left) / ppq);
+    }
+
+    const exact = accentuationDistance(a, b, pair.window, ppq).distance;
+    expect(exact).toBeGreaterThan(0);
+    expect(exact).toBeCloseTo(reference, 4);
+  });
+
+  it('prices a pattern against silence as the pattern’s own mean deviation', () => {
+    // Against an empty map the density is |c| / jnd, so the mass is the pattern's mean
+    // absolute contribution times the window — a number a reader can check by hand.
+    const result = distanceOf(patternAt('p'), SILENT, 4);
+    expect(result.distance).toBeGreaterThan(0);
+    expect(result.mean).toBeCloseTo(result.distance / 4, 12);
+  });
+
+  it('sees @loop, which is why AD-10 gave the flag a row', () => {
+    // One pattern length is 2880 ticks = 4 quarters, so over eight quarters the looped and
+    // unlooped readings differ over the whole second half.
+    const looped = patternAt('p');
+    const once =
+      '<style date="0.0" name.ref="M"/><accentuationPattern date="0.0" name.ref="p" scale="1.0"/>';
+    expect(distanceOf(looped, once, 4).distance).toBe(0);
+    expect(distanceOf(looped, once, 8).distance).toBeGreaterThan(0);
+  });
+
+  it('sees @stickToMeasures, whose two cycles drift apart', () => {
+    // Pattern q is three beats long in a four-beat measure: sticking to the measure and
+    // sticking to the pattern are different phase structures from the second cycle on.
+    const sticky = patternAt('q');
+    const loose = patternAt('q', ' stickToMeasures="false"');
+    expect(distanceOf(sticky, loose, 8).distance).toBeGreaterThan(0);
+  });
+
+  it('prices a ⊥ pattern at δ_row per quarter, from every side', () => {
+    const broken =
+      '<style date="0.0" name.ref="M"/><accentuationPattern date="0.0" name.ref="nosuch" scale="1.0"/>';
+    const row = comparisonRowFor('accentuation/accentuationPattern@scale');
+    const result = distanceOf(broken, patternAt('p'), 4);
+    expect(result.capped).toBe(true);
+    expect(result.distance).toBeCloseTo(row.delta * 4, 9);
+    // And 0 against itself, which is what makes ⊥ a value rather than a hole (§4).
+    expect(distanceOf(broken, broken, 4).distance).toBe(0);
+  });
+
+  it('caps a difference past 2·δ_row rather than letting the scale run away', () => {
+    const huge =
+      '<style date="0.0" name.ref="M"/><accentuationPattern date="0.0" name.ref="p" scale="10000" loop="true"/>';
+    const row = comparisonRowFor('accentuation/accentuationPattern@scale');
+    const result = distanceOf(huge, SILENT, 4);
+    expect(result.capped).toBe(true);
+    // The cap is 2·δ_row per quarter, and the mass cannot exceed it over the window.
+    expect(result.distance).toBeLessThanOrEqual(2 * row.delta * 4 * (1 + 1e-9));
+    expect(result.distance).toBeGreaterThan(row.delta * 4);
+  });
+
+  it('puts the cycle wraps and the pattern beats on the grid', () => {
+    const pair = pairFor(patternAt('p'), SILENT, 4);
+    const grid = accentuationGridTicks(
+      curveOf(pair, 'a'),
+      curveOf(pair, 'b'),
+      pair.window,
+      pair.ppq.lcm,
+    );
+    // Beat 3 of the first measure is 2 beats in: 2 × 720.
+    expect(grid).toContain(1440);
+    // And beat length + 1 = 5, i.e. 4 × 720, which is also the measure wrap.
+    expect(grid).toContain(2880);
+    expect(grid[0]).toBe(0);
   });
 });

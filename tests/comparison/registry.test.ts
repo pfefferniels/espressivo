@@ -9,9 +9,9 @@
  * spelling, which a type can constrain but not compute.
  *
  * The superset suite is the one that will change. It is §4's "every live expression-registry
- * row has a comparison row with the same scale space", scoped to the four dimensions W2
- * evaluates and carrying the list of the seven it does not — so W3 shrinks that list to zero
- * by making this test fail, rather than by remembering to.
+ * row has a comparison row with the same scale space", scoped to the dimensions that have rows
+ * and carrying the list of those that do not — so each W3 cut shrinks that list by making this
+ * test fail, rather than by remembering to.
  *
  * **No RNG** (R2). Every sweep is a loop over a fixed grid.
  */
@@ -39,25 +39,26 @@ import {
 import type { RegistryRow, RowSpace } from '../../src/expression/registry.js';
 import { forwardInSpace } from '../../src/expression/transforms.js';
 
-/** The four §3 dimensions W2 evaluates. W3 brings the other seven. */
+/** The §3 dimensions with rows: W2's four, plus the two W3a cut 1 brought. */
 const COVERED_DIMENSIONS: readonly ComparisonDimension[] = [
   'tempo',
   'rubato',
   'dynamics',
+  'accentuation',
   'asynchrony',
+  'pedal',
 ];
 
 /**
- * The seven §3 dimensions with no rows yet, named so W3 must edit this line.
+ * The §3 dimensions with no rows yet, named so each W3 cut must edit this line.
  *
  * A `skip` would announce the gap; this asserts it, which is the difference between a note
- * and a gate: adding accentuation rows in W3 fails this test until the name is removed here.
+ * and a gate: adding articulation rows fails this test until the name is removed here. Cut 1
+ * removed `accentuation` and `pedal` from it, which is what the gate is for.
  */
 const UNCOVERED_DIMENSIONS: readonly ComparisonDimension[] = [
-  'accentuation',
   'articulation',
   'ornamentation',
-  'pedal',
   'imprecisionTiming',
   'imprecisionDynamics',
   'imprecisionDuration',
@@ -122,12 +123,17 @@ describe('the row key (§4, A1)', () => {
   it('is unique per row, which `element@attribute` alone is not', () => {
     const keys = COMPARISON_REGISTRY_ROWS.map((row) => row.key);
     expect(new Set(keys).size).toBe(keys.length);
-    // The reason the dimension is in the key at all: two rows share this pair across the
-    // table, and three more will once W3 lands the imprecision family.
+    // The reason the dimension is in the key at all: four rows share this pair across the
+    // table, and more will once the imprecision family lands.
     const transitionTargets = COMPARISON_REGISTRY_ROWS.filter(
       (row) => row.attribute === 'transition.to',
     );
-    expect(transitionTargets.map((row) => row.dimension)).toEqual(['tempo', 'dynamics']);
+    expect(transitionTargets.map((row) => row.dimension)).toEqual([
+      'tempo',
+      'dynamics',
+      'accentuation',
+      'pedal',
+    ]);
   });
 
   it('agrees with COMPARISON_JND_KEYS in both directions', () => {
@@ -139,7 +145,7 @@ describe('the row key (§4, A1)', () => {
     }
   });
 
-  it('names a dimension that exists, and covers the four dimensions of this wave', () => {
+  it('names a dimension that exists, and covers every dimension claimed as covered', () => {
     for (const row of COMPARISON_REGISTRY_ROWS) {
       expect(COMPARISON_DIMENSIONS).toContain(row.dimension);
       expect(row.sites.length).toBeGreaterThan(0);
@@ -238,16 +244,43 @@ describe('the columns §4 adds to the expression shape', () => {
       expect(row.liveness.element).toBe(row.element);
       expect(row.liveness.rule.length).toBeGreaterThan(20);
     }
-    // AD-8's trailing-transition rule reaches both level dimensions and nothing else.
+    // AD-8's trailing-transition rule reaches both level dimensions; §5.8's ENTRY-index rule
+    // is a different mechanism with a different outcome and reaches all four pedal rows.
     const conditional = COMPARISON_REGISTRY_ROWS.filter((row) => row.liveness !== 'always');
     expect(conditional.map((row) => row.key).sort()).toEqual([
       'dynamics/dynamics@curvature',
       'dynamics/dynamics@protraction',
       'dynamics/dynamics@subNoteDynamics',
       'dynamics/dynamics@transition.to',
+      'pedal/movement@curvature',
+      'pedal/movement@position',
+      'pedal/movement@protraction',
+      'pedal/movement@transition.to',
       'tempo/tempo@meanTempoAt',
       'tempo/tempo@transition.to',
     ]);
+  });
+
+  it('keeps §5.8’s entry-index rule distinct from AD-8’s trailing rule (AD-35)', () => {
+    const movement = rowFor('pedal/movement@transition.to').liveness;
+    const dynamics = rowFor('dynamics/dynamics@transition.to').liveness;
+    expect(movement).not.toBe('always');
+    expect(dynamics).not.toBe('always');
+    if (movement === 'always' || dynamics === 'always') throw new Error('unreachable');
+    // The distinction §5.8's contrast paragraph exists to protect: entries, not instructions.
+    expect(movement.rule).toContain('LAST ENTRY');
+    expect(movement.rule).toContain('AD-35');
+    expect(dynamics.rule).not.toContain('ENTRY');
+  });
+
+  it('does NOT share a Bézier default between <dynamics> and <movement> (AD-13)', () => {
+    // The one-line reading error §5.8 exists to prevent: same machinery, different defaults.
+    const movement = rowFor('pedal/movement@curvature');
+    expect(movement.notes).toContain('0.4');
+    expect(rowFor('dynamics/dynamics@curvature').notes).toContain('clamped');
+    // And <movement> has no clamps at all, which is why its domain gate takes the span to ⊥.
+    if (movement.liveness === 'always') throw new Error('unreachable');
+    expect(movement.liveness.rule).toContain('never clamped');
   });
 
   it('files @subNoteDynamics as structural — a mechanism switch, never a distance (§5.3)', () => {
@@ -276,7 +309,21 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     'dynamics/dynamics@protraction': [-1, -0.5, 0, 0.5, 1],
     'dynamics/dynamics@subNoteDynamics': [0, 1],
     'dynamics/dynamicsDef@value': [1, 80],
+    // An accentuation SUBTRACTS as readily as it adds, so every velocity row here is signed.
+    'accentuation/accentuationPattern@scale': [-50, 0, 1, 20, 1e6],
+    'accentuation/accentuationPattern@loop': [0, 1],
+    'accentuation/accentuationPattern@stickToMeasures': [0, 1],
+    'accentuation/accentuationPatternDef@length': [1e-6, 3, 4, 16],
+    'accentuation/accentuation@beat': [1, 2.5, 4],
+    'accentuation/accentuation@value': [-20, 0, 20],
+    'accentuation/accentuation@transition.from': [-10, 0, 10],
+    'accentuation/accentuation@transition.to': [-10, 0, 10],
     'asynchrony/asynchrony@milliseconds.offset': [-1e6, -30, 0, 30, 1e6],
+    // 0.0 and 1.0 are the canonical authored pedal positions, which is why §5.8 refuses a logit.
+    'pedal/movement@position': [0, 0.4, 1],
+    'pedal/movement@transition.to': [0, 0.5, 1],
+    'pedal/movement@curvature': [0, 0.4, 1],
+    'pedal/movement@protraction': [-1, 0, 0.5, 1],
   };
 
   const illegal: Readonly<Record<string, readonly number[]>> = {
@@ -299,7 +346,23 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     'dynamics/dynamics@protraction': [-1.1, 1.1, NaN, Infinity],
     'dynamics/dynamics@subNoteDynamics': [-1, 0.5, NaN],
     'dynamics/dynamicsDef@value': [0, -80, NaN, Infinity],
+    'accentuation/accentuationPattern@scale': [NaN, Infinity, -Infinity],
+    'accentuation/accentuationPattern@loop': [-1, 0.5, NaN],
+    'accentuation/accentuationPattern@stickToMeasures': [-1, 0.5, NaN],
+    // A pattern of zero or negative length gives a cycle nothing can be evaluated against.
+    'accentuation/accentuationPatternDef@length': [0, -4, NaN, Infinity],
+    'accentuation/accentuation@beat': [NaN, Infinity, -Infinity],
+    'accentuation/accentuation@value': [NaN, Infinity],
+    'accentuation/accentuation@transition.from': [NaN, -Infinity],
+    'accentuation/accentuation@transition.to': [NaN, Infinity],
     'asynchrony/asynchrony@milliseconds.offset': [NaN, Infinity, -Infinity],
+    // Outside [0,1] the MIDI export clamps, so the RESOLVED value never leaves the domain;
+    // these are the unresolvable ones, and NaN is the one the clamp cannot repair.
+    'pedal/movement@position': [-0.1, 1.1, NaN, Infinity],
+    'pedal/movement@transition.to': [-0.1, 1.1, NaN, Infinity],
+    // Out of range these make x(t) non-monotone, which is the ⊥ §5.8 names.
+    'pedal/movement@curvature': [-0.1, 1.1, NaN, Infinity],
+    'pedal/movement@protraction': [-1.1, 1.1, NaN, Infinity],
   };
 
   it('accepts every sampled legal value', () => {
@@ -333,6 +396,8 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     const infiniteAtBoundary = new Set([
       'dynamics/dynamics@curvature', // ln(1 − 1) at the authored curvature = 1
       'dynamics/dynamics@protraction', // logit(−1,1) at ±1
+      'pedal/movement@curvature', // the same two spaces, the same two boundaries
+      'pedal/movement@protraction',
     ]);
     for (const key of COMPARISON_JND_KEYS) {
       const row = rowFor(key);
@@ -471,7 +536,7 @@ function comparisonSpaceOfExpressionRow(space: RowSpace): string {
   return tag;
 }
 
-describe('superset of the expression registry (§4, P-C10) — W2 scaffold', () => {
+describe('superset of the expression registry (§4, P-C10) — at this wave’s coverage', () => {
   const coveredExpressionDimensions = new Set(
     COVERED_DIMENSIONS.flatMap((dimension) => EXPRESSION_DIMENSION_CORRESPONDENCE[dimension]),
   );
@@ -482,7 +547,16 @@ describe('superset of the expression registry (§4, P-C10) — W2 scaffold', () 
 
   it('has expression rows to check in the first place', () => {
     expect(coveredExpressionDimensions).toEqual(
-      new Set(['tempo', 'tempoShape', 'rubato', 'dynamics', 'dynamicsShape', 'asynchrony']),
+      new Set([
+        'tempo',
+        'tempoShape',
+        'rubato',
+        'dynamics',
+        'dynamicsShape',
+        'accentuation',
+        'asynchrony',
+        'pedalShape',
+      ]),
     );
     expect(inScope.length).toBeGreaterThan(10);
   });
@@ -511,14 +585,15 @@ describe('superset of the expression registry (§4, P-C10) — W2 scaffold', () 
     expect(protraction).toEqual({ kind: 'logit', lower: -1, upper: 1 });
   });
 
-  it('lists the seven dimensions W3 must bring, and no others are silently empty', () => {
+  it('lists the dimensions still to come, and no others are silently empty', () => {
     const empty = COMPARISON_DIMENSIONS.filter(
       (dimension) => comparisonRowsOf(dimension).length === 0,
     );
-    // When W3 adds rows for one of these, this assertion fails until the name is removed
-    // from UNCOVERED_DIMENSIONS — which is the point. The full superset property (every live
-    // expression row, plus §4's whole-inventory partition into rows / inert / exclusions)
-    // becomes assertable when this list is empty.
+    // When a cut adds rows for one of these, this assertion fails until the name is removed
+    // from UNCOVERED_DIMENSIONS — which is the point, and is how cut 1 removed accentuation
+    // and pedal. The full superset property (every live expression row, plus §4's
+    // whole-inventory partition into rows / inert / exclusions) becomes assertable when this
+    // list is empty.
     expect(empty).toEqual([...UNCOVERED_DIMENSIONS]);
     expect([...COVERED_DIMENSIONS, ...UNCOVERED_DIMENSIONS].sort()).toEqual(
       [...COMPARISON_DIMENSIONS].sort(),

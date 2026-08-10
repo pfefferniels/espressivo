@@ -9,11 +9,16 @@
  * touched `⊥`, the cap, a renderer default, a skip, or an unmatched part. That gap is what
  * let CAPITAL-1 and CAPITAL-3 through the wave, and it is why this file exists.
  *
- * Eight members, each carrying a different former-M1 hazard, including **two** transition
+ * Twelve members, each carrying a different former-M1 hazard, including **two** transition
  * members — `criticalPointTicks` fires only when BOTH sides are transitions, so a single power
  * member would leave that path unreached by every pair in the family. Negative-controlled:
  * reverting AD-33.2's canonical ordering fails this family's P-C2, which the wave's
  * constants-only tests could not.
+ *
+ * W3a cut 1 added four: the two new dimensions' ordinary case, and one member each for the two
+ * `⊥` routes they introduce (an aborting `accentuationPatternDef`, a non-monotone date
+ * component) plus AD-35's unbounded resurrected span. Each cut extends the family with the
+ * failure surfaces it opens, which is the standing policy rather than a courtesy.
  *
  * All members share one explicit window, which §10 requires: under a pair-derived window the
  * three windows of a triple differ and R3's triangle inequality is not even claimed (M2).
@@ -27,6 +32,20 @@ const document = (dated: string, header = ''): string =>
   '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p" pulsesPerQuarter="720">' +
   `<global><header>${header}</header><dated>${dated}</dated></global>` +
   '</performance></mpm>';
+
+/**
+ * The style collection the accentuation members resolve against.
+ *
+ * Two defs of different lengths, so that a member which cycles on the measure and one which
+ * cycles on the pattern are both expressible — and one member deliberately names neither.
+ */
+const ACCENTUATION_STYLES =
+  '<metricalAccentuationStyles><styleDef name="M">' +
+  '<accentuationPatternDef name="p" length="4.0">' +
+  '<accentuation beat="1" value="20" transition.to="-5"/>' +
+  '<accentuation beat="3" value="-10" transition.to="8"/>' +
+  '</accentuationPatternDef>' +
+  '</styleDef></metricalAccentuationStyles>';
 
 export interface AdversarialMember {
   readonly name: string;
@@ -115,6 +134,54 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
         '<tempo date="2880.0" bpm="90" beatLength="0.25"/></tempoMap>' +
         '<dynamicsMap><dynamics date="0.0" volume="45" transition.to="85" curvature="0.7" protraction="0.6"/>' +
         '<dynamics date="2880.0" volume="85"/></dynamicsMap>',
+    ),
+  },
+  {
+    name: 'accentuation-and-pedal',
+    hazard:
+      'the ordinary case for W3a cut 1’s two dimensions: a resolvable accentuation pattern ' +
+      'over a looping span, and a movement map that releases the pedal',
+    mpm: document(
+      '<metricalAccentuationMap><style date="0.0" name.ref="M"/>' +
+        '<accentuationPattern date="0.0" name.ref="p" scale="1.0" loop="true"/>' +
+        '</metricalAccentuationMap>' +
+        '<movementMap><movement date="0.0" position="1.0" transition.to="0.0"/>' +
+        '<movement date="1440.0" position="0.0"/></movementMap>',
+      ACCENTUATION_STYLES,
+    ),
+  },
+  {
+    name: 'accentuation-bottom',
+    hazard:
+      'a ⊥ accentuation span from an unresolvable pattern name — R21, where the render THROWS ' +
+      'rather than fabricating a level, so this is the ⊥ route no other member carries',
+    mpm: document(
+      '<metricalAccentuationMap><style date="0.0" name.ref="M"/>' +
+        '<accentuationPattern date="0.0" name.ref="nosuch" scale="1.0"/>' +
+        '</metricalAccentuationMap>',
+      ACCENTUATION_STYLES,
+    ),
+  },
+  {
+    name: 'pedal-resurrected',
+    hazard:
+      'AD-35: a trailing <style> puts the last <movement> inside the `size() - 1` guard, so it ' +
+      'renders with an UNBOUNDED span — the only member whose span end is Number.MAX_VALUE',
+    mpm: document(
+      '<movementMap><movement date="0.0" position="1.0" transition.to="0.0"/>' +
+        '<movement date="1440.0" position="0.5" transition.to="0.0"/>' +
+        '<style date="2160.0" name.ref="S"/></movementMap>',
+    ),
+  },
+  {
+    name: 'pedal-bottom',
+    hazard:
+      'a ⊥ pedal span from an out-of-domain @curvature — <movement> has no clamps, so x(t) is ' +
+      'non-monotone and there is no date ↦ position function at all (§5.8/§4)',
+    mpm: document(
+      '<movementMap><movement date="0.0" position="0.0" transition.to="1.0" curvature="4"/>' +
+        '<movement date="1440.0" position="1.0"/>' +
+        '<style date="2160.0" name.ref="S"/></movementMap>',
     ),
   },
   {

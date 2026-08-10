@@ -23,6 +23,13 @@ import {
   type TempoCurve,
 } from '../../src/comparison/tempoCurve.js';
 import { refinementGridTicks, tempoDistance } from '../../src/comparison/tempoDistance.js';
+import { readMovementSegments } from '../../src/comparison/pedalCurve.js';
+import { pedalGridTicks, pedalSampler } from '../../src/comparison/pedalDistance.js';
+import { readAccentuationSegments } from '../../src/comparison/accentuationCurve.js';
+import {
+  accentuationGridTicks,
+  accentuationSampler,
+} from '../../src/comparison/accentuationDistance.js';
 
 /** A uniform grid over [0, span], fine enough that GL-10 sees smooth cells. */
 const uniformGrid = (span: number, cells: number): number[] =>
@@ -303,6 +310,106 @@ describe('P-C3b zero-set transitivity (AD-21)', () => {
       '<tempo date="2880.0" bpm="60" beatLength="0.25" transition.to="200" meanTempoAt="0.5"/>';
     expect(distance(A, inert)).toBe(0);
     expect(distance(inert, C)).toBe(0);
+  });
+});
+
+describe('decomposition on the W3a cut 1 dimensions', () => {
+  const NS = 'http://www.cemfi.de/mpm/ns/1.0';
+  const pedalDoc = (map: string) =>
+    `<mpm xmlns="${NS}"><performance name="p" pulsesPerQuarter="720">` +
+    `<global><header/><dated><movementMap>${map}</movementMap></dated></global>` +
+    '</performance></mpm>';
+
+  const pedalCurveOf = (pair: ComparisonPair, side: 'a' | 'b') =>
+    readMovementSegments(
+      readScopeMapViews(pair[side].scopes[0]).get('movementMap') ?? null,
+      pair[side].scaleFactor,
+    );
+
+  it('closes the identity on a pedal pair, in fractions of full travel', () => {
+    // T is the identity for a gain space, so the moments are pedal positions and a reader can
+    // check `level` against the two curves by eye.
+    const pair = readComparisonPair({
+      a: pedalDoc(
+        '<movement date="0.0" position="1.0" transition.to="0.0"/>' +
+          '<movement date="1440.0" position="0.0"/>',
+      ),
+      b: pedalDoc(
+        '<movement date="0.0" position="0.6" transition.to="0.2" curvature="0.9"/>' +
+          '<movement date="1440.0" position="0.2"/>',
+      ),
+      window: { start: 0, end: 2 },
+    });
+    const curveA = pedalCurveOf(pair, 'a');
+    const curveB = pedalCurveOf(pair, 'b');
+    const a = pedalSampler(curveA, pair.window, pair.ppq.lcm);
+    const b = pedalSampler(curveB, pair.window, pair.ppq.lcm);
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    if (a === null || b === null) throw new Error('unreachable');
+
+    const grid = pedalGridTicks(curveA, curveB, pair.window, pair.ppq.lcm);
+    const result = decomposeCurves(a, b, grid);
+    expect(result.identity).toBeCloseTo(result.l2Squared, 10);
+    expect(result.level).toBeGreaterThan(0);
+    expect(result.level).toBeLessThan(1);
+  });
+
+  it('refuses to decompose a window carrying a ⊥ span, rather than substituting a number', () => {
+    // §1.2 takes MOMENTS: a mean and a variance. ⊥ has nothing to contribute to either, and a
+    // stand-in would be read back as a pedal position.
+    const pair = readComparisonPair({
+      a: pedalDoc(
+        '<movement date="0.0" position="0.0" transition.to="1.0" curvature="4"/>' +
+          '<movement date="1440.0" position="1.0"/>' +
+          '<style date="2160.0" name.ref="S"/>',
+      ),
+      window: { start: 0, end: 2 },
+    });
+    expect(pedalSampler(pedalCurveOf(pair, 'a'), pair.window, pair.ppq.lcm)).toBeNull();
+  });
+
+  it('closes the identity on an accentuation pair, in velocity units', () => {
+    const styles =
+      '<metricalAccentuationStyles><styleDef name="M">' +
+      '<accentuationPatternDef name="p" length="4.0">' +
+      '<accentuation beat="1" value="20" transition.to="-5"/>' +
+      '<accentuation beat="3" value="-10" transition.to="8"/>' +
+      '</accentuationPatternDef></styleDef></metricalAccentuationStyles>';
+    const accentuationDoc = (scale: string) =>
+      `<mpm xmlns="${NS}"><performance name="p" pulsesPerQuarter="720">` +
+      `<global><header>${styles}</header><dated><metricalAccentuationMap>` +
+      '<style date="0.0" name.ref="M"/>' +
+      `<accentuationPattern date="0.0" name.ref="p" scale="${scale}" loop="true"/>` +
+      '</metricalAccentuationMap></dated></global></performance></mpm>';
+
+    const pair = readComparisonPair({
+      a: accentuationDoc('1.0'),
+      b: accentuationDoc('2.0'),
+      window: { start: 0, end: 8 },
+    });
+    const curveFor = (side: 'a' | 'b') =>
+      readAccentuationSegments(
+        readScopeMapViews(pair[side].scopes[0]).get('metricalAccentuationMap') ?? null,
+        pair[side].scaleFactor,
+        pair[side].scopes[0].environment,
+        pair[side].performance.global,
+      );
+    const a = accentuationSampler(curveFor('a'), pair.window, pair.ppq.lcm);
+    const b = accentuationSampler(curveFor('b'), pair.window, pair.ppq.lcm);
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    if (a === null || b === null) throw new Error('unreachable');
+
+    const grid = accentuationGridTicks(curveFor('a'), curveFor('b'), pair.window, pair.ppq.lcm);
+    const result = decomposeCurves(a, b, grid);
+    expect(result.identity).toBeCloseTo(result.l2Squared, 8);
+    // One is exactly twice the other, so they are perfectly correlated: pure level and gain,
+    // no shape difference at all. This is the case §1.2 exists to separate.
+    expect(result.shapeless).toBe(false);
+    expect(result.r).toBeCloseTo(1, 8);
+    expect(result.shape).toBeCloseTo(0, 6);
+    expect(result.gain).toBeGreaterThan(0);
   });
 });
 
