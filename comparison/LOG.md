@@ -1949,3 +1949,47 @@ AD-40.4 The clean hazard check is RECORDED: no size()-1 guard in
 ornamentationMap (no AD-35 analogue), and the local-header gate resolves
 globally as measured — negative results are evidence too.
 Unblocked halves proceed meanwhile as proposed.
+
+## 2026-08-10 — W3a cut 3, part 1: ornamentation rows (task #7, survey-code)
+
+AD-40's unblocked half. Seven rows; UNCOVERED_DIMENSIONS is 4 -> 3 (the three
+imprecision domains). Six mirror expression's ornament rows one-for-one so the
+superset property holds; the seventh is @scale, which AD-40.1 restored.
+
+@scale carries its GATING behaviour in the liveness column, which is the part the
+rev-2 compilation lost: it gates <dynamicsGradient> entirely, defaults to 0.0, and
+does NOT gate <temporalSpread>. The notes carry the measurement (0/0/0 without it,
+-20/0/+20 with scale="1.0", spread applying either way) and the CONTRAST with §5.4's
+mandatory accentuationPattern@scale, where the same attribute name absent skips the
+whole instruction instead of zeroing half of it.
+
+Two liveness facts pinned in the rows rather than left to the evaluator:
+@transition.from is live only where the pool holds MORE THAN ONE chord, and
+@transition.to is `always` because a single-note pool performs IT — the else-branch
+of DynamicsGradient.apply, measured at 20 from a -20 -> +20 gradient. A reader
+implementing "interpolate across the pool" writes the start value or an average
+there and is wrong both times, which is why the asymmetry sits in the table.
+
+@frame.start and @frame.offset are two rows for one quantity in two spellings (v3
+renamed it, v2's name survives as the accepted alias) because a report must name
+which spelling a document used — @frame.offset's mere presence is what makes a
+<temporalSpread> v3 and changes how the frame is parsed. @frameLength is the
+geometric pair of @frame.start and is a separate row here although expression scales
+them together: "the frame is wider" and "the frame starts earlier" are different
+findings, and a comparison exists to say which.
+
+@intensity takes ARTICULATION_DURATION_JND_NEPERS rather than a fourth invented
+ratio constant: what it reshapes is the spacing of onsets inside a fixed window,
+which is the same kind of quantity as a note's sounding length.
+
+STILL TO COME in cut 3: the ornament reader (pool resolution, the performed pair
+(from*scale, to*scale) per AD-40.2, the before-first-style skip), the distance
+through the aligner as its SECOND consumer, and §5.6/§5.4's mutual cross-reference.
+One row is deliberately NOT here and is reported as an open question: @note.order,
+which §5.6 enumerates but whose value is a NAME ("ascending pitch") or an id list.
+§5.8's @controller precedent (AD-36.3) sends name-valued attributes to the finding
+channel; the two enumerated orderings could instead be a boolean01 row like @loop.
+Not invented at the tail of a session — asked.
+
+Gate: `npm run verify` green before committing (4506 passed + 1 skipped); eslint and
+prettier clean.

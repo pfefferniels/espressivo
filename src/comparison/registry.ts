@@ -28,6 +28,8 @@ import {
   ARTICULATION_MAP,
   ARTICULATION_STYLE,
   ASYNCHRONY_MAP,
+  ORNAMENTATION_MAP,
+  ORNAMENTATION_STYLE,
   DYNAMICS_MAP,
   DYNAMICS_STYLE,
   METRICAL_ACCENTUATION_MAP,
@@ -476,6 +478,13 @@ export const COMPARISON_JND_KEYS = Object.freeze([
   'articulation/articulation@absoluteVelocity',
   'articulation/articulation@detuneCents',
   'articulation/articulation@detuneHz',
+  'ornamentation/ornament@scale',
+  'ornamentation/dynamicsGradient@transition.from',
+  'ornamentation/dynamicsGradient@transition.to',
+  'ornamentation/temporalSpread@frame.start',
+  'ornamentation/temporalSpread@frame.offset',
+  'ornamentation/temporalSpread@frameLength',
+  'ornamentation/temporalSpread@intensity',
   'asynchrony/asynchrony@milliseconds.offset',
   'pedal/movement@position',
   'pedal/movement@transition.to',
@@ -1422,6 +1431,191 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
   },
 ];
 
+// --- §5.6 ornamentation ------------------------------------------------------------------
+//
+// EVENT rows, priced through §5.6's alignment DP. The compared object is the RESOLVED
+// PERFORMED EFFECT and never the attribute tuple (AD-40.2, which names the principle AD-37.3
+// established for §5.5): `@scale` multiplies the gradient's two endpoints, so `(from·scale,
+// to·scale)` is what is compared and `@scale` is not independently priced. Two encodings of one
+// performed ramp — `from="-20" scale="1"` against `from="-10" scale="2"` — are the same
+// performance and compare equal.
+
+const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
+  {
+    key: 'ornamentation/ornament@scale',
+    dimension: 'ornamentation',
+    element: 'ornament',
+    attribute: 'scale',
+    sites: [instructionSite(ORNAMENTATION_MAP, 'ornament')],
+    space: { kind: 'gain-ordered' },
+    valueDomain: anyFinite,
+    unit: 'velocity',
+    jnd: VELOCITY_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
+    role: 'event',
+    liveness: {
+      element: 'ornament',
+      rule:
+        'gates <dynamicsGradient> ENTIRELY and does NOT gate <temporalSpread>. It defaults to ' +
+        '0.0 (R19), so an <ornament> with no @scale performs its temporal spread in full and ' +
+        'its dynamics not at all — executed. Not independently priced: the gradient’s compared ' +
+        'object is (from·scale, to·scale) (AD-40.2).',
+    },
+    ppqSensitive: false,
+    notes:
+      '§5.6/AD-40.1 — the attribute revision 2 lost. Panel R19 flagged the 0.0 default and ' +
+      'AD-15 ratified the row, but the compilation absorbed it into §5.6 without the GATING ' +
+      'behaviour, so a comparison written from §5.6 alone would price a dynamicsGradient ' +
+      'difference between two documents that both perform no dynamics whatsoever — revision ' +
+      '1’s §5.4 error in a new place. Measured: a def with transition.from=-20 ' +
+      'transition.to=20 writes ornament.dynamics 0/0/0 with no @scale and -20/0/+20 with ' +
+      'scale="1.0", while the same ornament’s temporalSpread moves the notes either way. ' +
+      'CONTRAST §5.4’s accentuationPattern@scale, which is MANDATORY there: absent, the whole ' +
+      'instruction is skipped. Same attribute name, two sections, two dispositions — hence the ' +
+      'cross-reference in both. 3 velocity units [convention], §7.1’s velocity row.',
+  },
+  {
+    key: 'ornamentation/dynamicsGradient@transition.from',
+    dimension: 'ornamentation',
+    element: 'dynamicsGradient',
+    attribute: 'transition.from',
+    sites: [defSite(ORNAMENTATION_STYLE, 'dynamicsGradient')],
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'velocity',
+    jnd: VELOCITY_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
+    role: 'event',
+    liveness: {
+      element: 'dynamicsGradient',
+      rule:
+        'read as the ramp’s START, and performed only where the ornamented pool holds MORE ' +
+        'THAN ONE chord: a single-note pool takes @transition.to instead, not this value and ' +
+        'not a midpoint (DynamicsGradient.ts:47-49, executed). Scaled by @scale, which ' +
+        'defaults to 0 and zeroes the whole gradient.',
+    },
+    ppqSensitive: false,
+    notes:
+      '§5.6 — a signed velocity OFFSET added to the note’s velocity, not a velocity, hence the ' +
+      'gain space and the symmetric band. The ramp distributes over the ornamented POOL — the ' +
+      'notes at the ornament’s date, or the ids @note.order names — one step per chord, and ' +
+      'NOT over score time: with the pool’s notes at 0, 360 and 720 only the note sharing the ' +
+      'ornament’s date is touched at all. 3 velocity units [convention].',
+  },
+  {
+    key: 'ornamentation/dynamicsGradient@transition.to',
+    dimension: 'ornamentation',
+    element: 'dynamicsGradient',
+    attribute: 'transition.to',
+    sites: [defSite(ORNAMENTATION_STYLE, 'dynamicsGradient')],
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'velocity',
+    jnd: VELOCITY_JND,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: PLAUSIBLE_VELOCITY_DELTA,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.6/AD-40.3 — the ramp’s END, and the value a SINGLE-NOTE pool performs on its own: ' +
+      'the `chordSequence.length > 1` branch ramps, and the `else if` hands the lone chord ' +
+      'transitionTo·scale. A reader implementing "interpolate across the pool" writes the ' +
+      'start value or an average there and is wrong in both cases; measured 20 from a −20 → ' +
+      '+20 gradient. That is why this row is `always` live while its sibling is not. 3 ' +
+      'velocity units [convention].',
+  },
+  {
+    key: 'ornamentation/temporalSpread@frame.start',
+    dimension: 'ornamentation',
+    element: 'temporalSpread',
+    attribute: 'frame.start',
+    sites: [defSite(ORNAMENTATION_STYLE, 'temporalSpread')],
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'quarters',
+    jnd: RUBATO_DISPLACEMENT_JND_QUARTERS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: true,
+    notes:
+      '§5.6/§7.15 — the frame’s left edge, signed and idiomatically negative (an arpeggio ' +
+      'starts before its notated date). Ticks unless @time.unit says milliseconds, which is ' +
+      'why that attribute is a row of its own. v3 spells it @frame.offset and this name ' +
+      'survives as the accepted legacy alias, so the two are ONE quantity in two spellings. ' +
+      '1/16 quarter [convention], §7.1’s displacement unit.',
+  },
+  {
+    key: 'ornamentation/temporalSpread@frame.offset',
+    dimension: 'ornamentation',
+    element: 'temporalSpread',
+    attribute: 'frame.offset',
+    sites: [defSite(ORNAMENTATION_STYLE, 'temporalSpread')],
+    space: { kind: 'gain' },
+    valueDomain: anyFinite,
+    unit: 'quarters',
+    jnd: RUBATO_DISPLACEMENT_JND_QUARTERS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: true,
+    notes:
+      '§5.6/AD-15/R18 — the v3 spelling of @frame.start, and a v3 STRUCTURAL MARKER: its mere ' +
+      'presence makes the whole <temporalSpread> v3 (TemporalSpread.ts:113), which changes how ' +
+      'the frame is parsed. Its own row because a document may carry either spelling and the ' +
+      'report must name which. 1/16 quarter [convention].',
+  },
+  {
+    key: 'ornamentation/temporalSpread@frameLength',
+    dimension: 'ornamentation',
+    element: 'temporalSpread',
+    attribute: 'frameLength',
+    sites: [defSite(ORNAMENTATION_STYLE, 'temporalSpread')],
+    space: { kind: 'gain-ordered' },
+    valueDomain: anyFinite,
+    unit: 'quarters',
+    jnd: RUBATO_DISPLACEMENT_JND_QUARTERS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: true,
+    notes:
+      '§5.6 — the frame’s width, and the GEOMETRIC PAIR of @frame.start: the frame is ' +
+      '[start, start + length], so the two move together and scaling the length alone drags ' +
+      'the centroid late. Expression scales them by one factor for exactly that reason; here ' +
+      'they are two rows because a comparison reports where the difference IS, and "the frame ' +
+      'is wider" and "the frame starts earlier" are different findings. 1/16 quarter ' +
+      '[convention].',
+  },
+  {
+    key: 'ornamentation/temporalSpread@intensity',
+    dimension: 'ornamentation',
+    element: 'temporalSpread',
+    attribute: 'intensity',
+    sites: [defSite(ORNAMENTATION_STYLE, 'temporalSpread')],
+    space: { kind: 'log-around-1' },
+    valueDomain: positive,
+    unit: 'nepers',
+    jnd: ARTICULATION_DURATION_JND_NEPERS,
+    delta: DEFAULT_DELTA_JND,
+    plausibleRange: null,
+    role: 'event',
+    liveness: 'always',
+    ppqSensitive: false,
+    notes:
+      '§5.6 — how the notes are distributed WITHIN the frame: 1.0 spreads them evenly, and ' +
+      'other values bunch them towards one end. A ratio, so a log space and a ratio JND; it ' +
+      'takes the duration-ratio constant rather than a fourth invented one, since what it ' +
+      'reshapes is the spacing of onsets within a fixed window. ln(1.10) [convention].',
+  },
+];
+
 // --- §5.7 asynchrony ---------------------------------------------------------------------
 
 const ASYNCHRONY_ROWS: readonly ComparisonRegistryRow[] = [
@@ -1609,6 +1803,7 @@ export const COMPARISON_REGISTRY_ROWS: readonly ComparisonRegistryRow[] = Object
   ...DYNAMICS_ROWS,
   ...ACCENTUATION_ROWS,
   ...ARTICULATION_ROWS,
+  ...ORNAMENT_ROWS,
   ...ASYNCHRONY_ROWS,
   ...PEDAL_ROWS,
 ]);

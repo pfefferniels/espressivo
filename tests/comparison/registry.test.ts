@@ -46,6 +46,7 @@ const COVERED_DIMENSIONS: readonly ComparisonDimension[] = [
   'dynamics',
   'accentuation',
   'articulation',
+  'ornamentation',
   'asynchrony',
   'pedal',
 ];
@@ -58,7 +59,6 @@ const COVERED_DIMENSIONS: readonly ComparisonDimension[] = [
  * removed `accentuation` and `pedal` from it, which is what the gate is for.
  */
 const UNCOVERED_DIMENSIONS: readonly ComparisonDimension[] = [
-  'ornamentation',
   'imprecisionTiming',
   'imprecisionDynamics',
   'imprecisionDuration',
@@ -132,6 +132,7 @@ describe('the row key (§4, A1)', () => {
       'tempo',
       'dynamics',
       'accentuation',
+      'ornamentation',
       'pedal',
     ]);
   });
@@ -239,6 +240,9 @@ describe('the columns §4 adds to the expression shape', () => {
       'articulation/articulation@absoluteDurationChange',
       'articulation/articulation@absoluteDelay',
       'articulation/articulation@absoluteDuration',
+      'ornamentation/temporalSpread@frame.start',
+      'ornamentation/temporalSpread@frame.offset',
+      'ornamentation/temporalSpread@frameLength',
     ]);
     // `*Ms` and whole-note fractions never rescale — beatLength is the one a reader expects
     // to, and §5.0 says it does not.
@@ -263,6 +267,8 @@ describe('the columns §4 adds to the expression shape', () => {
       'dynamics/dynamics@protraction',
       'dynamics/dynamics@subNoteDynamics',
       'dynamics/dynamics@transition.to',
+      'ornamentation/dynamicsGradient@transition.from',
+      'ornamentation/ornament@scale',
       'pedal/movement@curvature',
       'pedal/movement@position',
       'pedal/movement@protraction',
@@ -341,6 +347,13 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     'articulation/articulation@absoluteVelocity': [0, 88.5, 127],
     'articulation/articulation@detuneCents': [-50, 0, 14],
     'articulation/articulation@detuneHz': [-3.5, 0, 3.5],
+    'ornamentation/ornament@scale': [0, 1, 20],
+    'ornamentation/dynamicsGradient@transition.from': [-20, 0, 20],
+    'ornamentation/dynamicsGradient@transition.to': [-20, 0, 20],
+    'ornamentation/temporalSpread@frame.start': [-240, 0, 240],
+    'ornamentation/temporalSpread@frame.offset': [-240, 0, 240],
+    'ornamentation/temporalSpread@frameLength': [0, 240, 1440],
+    'ornamentation/temporalSpread@intensity': [1e-6, 1, 4],
     'asynchrony/asynchrony@milliseconds.offset': [-1e6, -30, 0, 30, 1e6],
     // 0.0 and 1.0 are the canonical authored pedal positions, which is why §5.8 refuses a logit.
     'pedal/movement@position': [0, 0.4, 1],
@@ -392,6 +405,14 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     'articulation/articulation@absoluteVelocity': [NaN, Infinity],
     'articulation/articulation@detuneCents': [NaN, Infinity],
     'articulation/articulation@detuneHz': [NaN, -Infinity],
+    'ornamentation/ornament@scale': [NaN, Infinity],
+    'ornamentation/dynamicsGradient@transition.from': [NaN, Infinity],
+    'ornamentation/dynamicsGradient@transition.to': [NaN, -Infinity],
+    'ornamentation/temporalSpread@frame.start': [NaN, Infinity],
+    'ornamentation/temporalSpread@frame.offset': [NaN, -Infinity],
+    'ornamentation/temporalSpread@frameLength': [NaN, Infinity],
+    // A ratio: 0 and below leave the logarithm's domain.
+    'ornamentation/temporalSpread@intensity': [0, -1, NaN, Infinity],
     'asynchrony/asynchrony@milliseconds.offset': [NaN, Infinity, -Infinity],
     // Outside [0,1] the MIDI export clamps, so the RESOLVED value never leaves the domain;
     // these are the unresolvable ones, and NaN is the one the clamp cannot repair.
@@ -592,6 +613,9 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
         'dynamicsShape',
         'accentuation',
         'articulation',
+        'ornamentSpread',
+        'ornamentSpacing',
+        'ornamentDynamics',
         'asynchrony',
         'pedalShape',
       ]),
