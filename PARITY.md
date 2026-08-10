@@ -495,7 +495,7 @@ and `comprehensive.mei` then gained four `legato` articulations apiece that the 
 not have. That is what a dangling `@staff` is supposed to produce — nothing.
 
 **Fixed**, by porting the method in full. The evidence standard is met in both directions: the
-complete suite (**4059 tests, 90 files**) passes unchanged, so no reference fixture moves a byte,
+complete suite (**4062 tests, 90 files**) passes unchanged, so no reference fixture moves a byte,
 and §8's sixteen-fixture equivalence suite goes green, which is the direct measurement of the
 behaviour the fix restores. Attribute append order in both branches follows Java's exactly — it
 _is_ the fixture bytes — and is commented as such at the site.
@@ -1139,7 +1139,28 @@ Control events are **not** renumbered either: a `<slur staff="1">` still says `s
 staffs become `11` and `12`, and is then dropped as a dangling reference. That is upstream's
 behaviour, it is now also this port's (§1), and it is the sharpest edge of the feature.
 
-### 8.4 The one deliberate hardening
+### 8.4 The return value Java discards
+
+Java declares `public void layersToStaffs()`. It builds a `newStaffN → origStaffN` table
+internally — it needs one, to regenerate each `staffDef` from the right original — and then drops
+it when the method returns. The port **returns** that table instead, widened to carry the layer as
+well: one `Map<string, StaffProvenance>` per `mdiv`, in `getAllMdivs()` order.
+
+This changes no XML, no fixture byte and no behaviour; it stops discarding something already
+computed. The same shape of divergence is already in §2 (`OrnamentationMap.getOrnamentDataOf`
+returns the data Java computes and then unconditionally discards), and the justification is
+stronger here, because §8.3's numbering is **lossy**: `111` alone cannot tell you whether it came
+from staff 1 / layer 11 or staff 11 / layer 1, so without the table a consumer cannot map an MSM
+part back to the voice it represents. Requested by a downstream consumer whose schema codes part
+numbers as small integers with "part 1 = top voice", for which the concatenated numbers are
+otherwise uninterpretable.
+
+The maps are per-`mdiv` rather than merged for the same reason: the numbering is unique only
+within one movement, so merging would silently collapse two movements' staff `1`. An `mdiv` with
+no `score` contributes an empty map rather than being skipped, keeping the result index-aligned
+with `getAllMdivs()`.
+
+### 8.5 The one deliberate hardening
 
 Java orders the regenerated `staffDef`s through a `TreeMap<Integer, …>` keyed by
 `Integer.parseInt(newStaffN)`, which throws `NumberFormatException` on a non-integer `@n`. MEI
@@ -1147,7 +1168,7 @@ types `staff/@n` and `layer/@n` as `data.INT` (`att.nInteger`), so a conforming 
 reach it. The port sorts such entries last instead of throwing: strictly more useful than a crash,
 and unobservable on any schema-valid input.
 
-### 8.5 `XmlBase.fixDuplicateIds`
+### 8.6 `XmlBase.fixDuplicateIds`
 
 `layersToStaffs` ends by calling it, because the `staffDef` copies carry the originals' `xml:id`s.
 It is a straight port of `XmlBase.java:448` — first occurrence keeps its id, every later one is

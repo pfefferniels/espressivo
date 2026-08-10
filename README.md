@@ -396,11 +396,18 @@ channel and instrument**:
 import { Mei, Mei2MsmMpmConverter } from 'espressivo';
 
 const mei = Mei.fromXml(readFileSync('piano.mei', 'utf8'));
-mei.layersToStaffs(); // staff 1 / layers 1,2  ->  staffs 11, 12
+const [provenance] = mei.layersToStaffs(); // staff 1 / layers 1,2  ->  staffs 11, 12
 
 const [msm] = new Mei2MsmMpmConverter(720, true, false, true).convert(mei).getKey();
 // two parts now, numbered 11 and 12, on MIDI channels 0 and 1
+
+provenance.get('11'); // { origStaff: '1', origLayer: '1' }
+provenance.get('12'); // { origStaff: '1', origLayer: '2' }
 ```
+
+The return value is one map per `mdiv` — one per movement, matching what the converter emits —
+from each generated staff's `@n` back to the staff and layer it came from. You need it because the
+numbering is lossy: `111` alone cannot say whether it was staff 1 / layer 11 or staff 11 / layer 1.
 
 It is opt-in and mutates the instance — clone first if you still need the original — and the
 default pipeline is unchanged if you never call it. New staffs are numbered by concatenating the
@@ -431,7 +438,7 @@ produces"**. That is enforced mechanically:
   They auto-discover every `.mei` fixture, so a missing reference is
   a **failure, not a skip**, and they canonicalize generated `meico_<uuid>` identifiers by
   first-occurrence order — which keeps `goto` → `marker` wiring verifiable rather than deleting it.
-- **4059 tests across 90 files**, run as a gate (`npm run verify` = clean build + typecheck of the
+- **4062 tests across 90 files**, run as a gate (`npm run verify` = clean build + typecheck of the
   test sources + the full suite) before every single commit of the refactor that produced this
   codebase, and of the ornamentation work that followed it.
 - **Byte probes for every refactor.** Beyond the suite, each structural change was proven with a

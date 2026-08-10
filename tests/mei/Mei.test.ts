@@ -1023,6 +1023,63 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
     expect(new Set(ids).size).toBe(2);
   });
 
+  it('returns, per mdiv, where each generated staff came from', () => {
+    const mei = new Mei(TWO_LAYERS, true);
+    const provenance = mei.layersToStaffs();
+
+    expect(provenance).toHaveLength(1);
+    expect([...provenance[0].keys()]).toEqual(['11', '12']);
+    expect(provenance[0].get('11')).toEqual({ origStaff: '1', origLayer: '1' });
+    expect(provenance[0].get('12')).toEqual({ origStaff: '1', origLayer: '2' });
+  });
+
+  it('reports the synthetic @n it substituted, so origStaff + origLayer rebuilds the key', () => {
+    const mei = new Mei(
+      score(
+        '<scoreDef><staffGrp/></scoreDef>',
+        `<measure n="1"><staff>
+           <layer><note pname="c" oct="4" dur="4"/></layer>
+           <layer><note pname="e" oct="4" dur="4"/></layer>
+         </staff></measure>`,
+      ),
+      true,
+    );
+    const [map] = mei.layersToStaffs();
+    for (const [newStaffN, origin] of map) {
+      expect(origin.origStaff + origin.origLayer).toBe(newStaffN);
+    }
+    expect(map.get('10000000')).toEqual({ origStaff: '1000000', origLayer: '0' });
+  });
+
+  it('keeps the maps per mdiv rather than merging, and stays aligned with getAllMdivs()', () => {
+    const mei = new Mei(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei">
+  <meiHead><fileDesc><titleStmt><title/></titleStmt><pubStmt/></fileDesc></meiHead>
+  <music><body>
+    <mdiv><score>
+      <scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
+      <section><measure n="1"><staff n="1">
+        <layer n="1"><note pname="c" oct="4" dur="4"/></layer>
+      </staff></measure></section>
+    </score></mdiv>
+    <mdiv><score>
+      <scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
+      <section><measure n="1"><staff n="1">
+        <layer n="1"><note pname="g" oct="4" dur="4"/></layer>
+      </staff></measure></section>
+    </score></mdiv>
+  </body></music>
+</mei>`,
+      true,
+    );
+    const provenance = mei.layersToStaffs();
+    // both movements produce a staff "11"; merged, one would have hidden the other
+    expect(provenance).toHaveLength(mei.getAllMdivs().length);
+    expect(provenance[0].get('11')).toEqual({ origStaff: '1', origLayer: '1' });
+    expect(provenance[1].get('11')).toEqual({ origStaff: '1', origLayer: '1' });
+  });
+
   it('drops an oStaff that holds only oLayer children – reproduced upstream behaviour', () => {
     // layersToStaffs matches oStaff but moves only `layer` children, and detaches the
     // original unconditionally. PARITY.md §4 records this.

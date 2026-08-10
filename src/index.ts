@@ -145,6 +145,7 @@ export * from './mei/mpmNoteIds.js';
 
 // MEI
 export { Mei } from './mei/Mei.js';
+export type { StaffProvenance } from './mei/Mei.js';
 export { Mei2MsmMpmConverter } from './mei/Mei2MsmMpmConverter.js';
 
 // MSM
