@@ -1802,3 +1802,46 @@ rather than to articulation's shape.
 
 Gate: `npm run verify` green before committing (4473 passed + 1 skipped, was
 4465); eslint and prettier clean.
+
+## 2026-08-10 — W3a cut 2, part 3: the event aligner (task #7, survey-code)
+
+AD-37.6 implemented: src/comparison/eventAlignment.ts, dimension-neutral as ruled.
+Nothing in it knows what an articulation or an ornament is — the caller supplies
+`matched`, `unmatched` and `lambdaDate`, the module supplies the argmin over monotone
+alignments. Articulation is its first consumer (next commit); ornamentation is its
+second, in cut 3, which is the point of freezing the interface only after two.
+
+THE DATE TERM IS INSIDE THE MINIMAND, which is M5's correction carried into code:
+`alignEvents` adds `λ_date·|Δdate|` to the matched cost itself, so the functional that
+is minimized is the functional that is reported. Revision 1 minimized one and reported
+another, which priced a matched ornament displaced by half a bar at zero.
+
+TESTED ON THE OBJECTIVE, NOT ON AN ALIGNMENT. The load-bearing test enumerates every
+monotone alignment by brute force and checks the DP found the minimum, on six shapes
+including empty-vs-nonempty. Asserting "these two match" would pin one optimum out of
+several equal ones and would pass on an implementation minimizing the wrong thing.
+
+Id-pinning as ruled: equal non-null ids are an identity match, applied as a HARD
+constraint (a pinned event may match only its partner and may never be dropped);
+unequal ids do NOT forbid a match, because a rename is not a different event. Two
+sub-cases the ruling did not have to state and which the module decides explicitly:
+a DUPLICATED id takes the first claimant on each side, and a CROSSING pin set — the
+same two ids in opposite order, which no monotone alignment can honour — falls back to
+the unpinned optimum WHOLESALE and reports `pinsHonoured: false`. Partial honouring
+would make the answer depend on which subset was tried; silently resolving it either
+way would be a decision made in the dark. Both pinned as tests.
+
+[DECISION, reported for ratification] DEFAULT_LAMBDA_DATE = 16 per quarter
+[convention]. §5.6 states that λ_date belongs to the semantic definition but leaves
+its VALUE open, and the module takes it as a caller parameter precisely so the value
+is not baked into the aligner. The proposed default reuses the calibration the design
+already has for a displacement in score time: RUBATO_DISPLACEMENT_JND_QUARTERS is 1/16
+quarter (§7.1), so λ = 1/(1/16) = 16 makes a displacement of exactly one rubato JND
+cost exactly one JND here. The alternative — a number chosen to make some corpus behave
+— is what §7.1 exists to avoid.
+
+Ties are broken match > dropA > dropB, strictly, so the argmin is a function of the
+inputs alone; bit-exact symmetry remains a property of the caller's cost, which is
+where it belongs.
+
+Gate: `npm run verify` green before committing; eslint and prettier clean. 20 new tests.
