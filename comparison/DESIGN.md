@@ -16,7 +16,11 @@ the finding's evidence is the reason a rule reads as it does. Sections that the
 panel reversed carry one sentence saying so, because a reader who does not know
 why a rule exists will eventually undo it.
 
-Sections still marked [PENDING-LIT] await survey-lit and are named at the end.
+survey-lit.md has since been delivered (2,600 lines, verified per its own §0
+standard) and SURVEY.md §4 carries the conductor's synthesis; **AD-26 disposed of
+every literature slot revision 2 carried**, and its amendments are compiled in
+below. No pending-literature marker and no open item remains anywhere in this
+document; the closing section records where each was settled.
 
 ---
 
@@ -165,6 +169,38 @@ shape knob (`tempoShape`, `dynamicsShape`, `ornamentSpacing`, …) to 1, since
 independent reason. P-C5 splits into three parts accordingly (§10). This is
 still the strongest evidence the two engines are one mathematics — it is just
 true.
+
+### 1.4 What this module is not
+
+The literature survey ends in three prohibitions, and they are stated here rather
+than buried in the README because each names a claim the products above could
+easily be mistaken for (AD-26.6, survey-lit §7):
+
+1. **Not a quality judge.** Timing and dynamics together account for only
+   **9–18 % of the variance in aesthetic ratings** of real recordings (Repp 1999
+   III; the figure is 53 % for synthesized performances, which is precisely the
+   gap). A large `D` means two performances differ, never that one is worse. No
+   product ranks performances by merit and none ever will.
+2. **Not a perceptual-similarity model.** Nothing in the literature supports one
+   for whole performances. JND normalization makes the units *perceptually
+   scaled* — a difference below one JND is not a difference (survey-lit L5) — and
+   that is a much weaker claim than predicting what a listener would call similar.
+   The §7.3 equivalence block is the honest form of the strong claim: it says
+   what fraction of the deviation is below threshold, not what anyone will hear.
+3. **Never a single number.** Peter et al. (2023, DLfM) showed experimentally,
+   with a listening test, that a single MSE-style distance between performances
+   flips its ranking depending on which reference is chosen and cannot reliably
+   separate expert from randomised playing; Liebman, Ornoy & Chor (2012)
+   quantified the cost of the obvious shortcut — **r = 0.12 for a concatenated
+   heterogeneous feature vector against 0.40–0.42 for the two best single
+   families**. That is the evidence base for this design's shape: per-dimension
+   distances first, the aggregate second and always beside its decomposition, and
+   per-family disagreement reported as a *result* rather than averaged away. A
+   caller who quotes `aggregate.distance` alone has discarded the finding.
+
+Dimension-level non-goals are stated where the dimension is defined — §5.7 for
+asynchrony's per-note and register limits — and §11 makes the whole set a W4
+documentation obligation.
 
 ---
 
@@ -429,8 +465,18 @@ error on the document (§9), not a distance.
   comparison row with the same scale space; every attribute in the full
   survey-code §1.2 inventory appears exactly once across rows / inert /
   exclusions (R9).
-- The `jnd` column is [PENDING-LIT] for the perceptual constants; every value
-  ships with its tag, and [convention] values are overridable via options while
+- The `jnd` column carries a per-row provenance tag, settled by AD-26.2.
+  **`asynchrony` = 30 ms is [literature]**: the 30 ms perceptual threshold for
+  onset asynchrony is the Vernon 1936 → Goebl 2001 tradition, and the field's
+  operational definition of "simultaneous" — the 35 ms chord-clustering window —
+  sits just above it (survey-lit §1.1, §2). **Every other default ships
+  [convention]** per AD-24, with survey-lit's *partial* support named in the
+  row's `notes` rather than promoted to a citation: for tempo, the >2 %
+  local-slowing threshold that Widmer's rule learner uses to call a ritardando,
+  and Sundberg, Friberg & Frydén (1991)'s finding that musicians' preferred
+  k-values sit close to the threshold of perceptibility — which is the empirical
+  form of this module's own rule that **differences below one JND are not
+  differences** (survey-lit L5). Values are overridable via options while
   remaining the documented default. `delta` (δ_row) and `κ` (§7.1) are documented
   [convention] registry constants and are **not** caller-overridable in v1 of the
   module, to be revisited on consumer demand (AD-25.7).
@@ -629,6 +675,22 @@ Curve: `g(t) = ln(qbpm(t))`, `qbpm = bpm · beatLength · 4`. Piecewise per
 instruction span: constant, or the renderer's power transition
 `bpm₀ + (bpm₁ − bpm₀)·u^e`, `e = ln 0.5 / ln(meanTempoAt)`
 (`TempoMap.ts:137-158, 213-223`). Density `|g_A − g_B| / jnd_tempo`.
+
+**Base and direction, pinned** (AD-26.1). The internal `T` stays the **natural**
+logarithm — coherence with `expression/transforms.ts`'s closed forms is a design
+invariant, and JND normalization makes the reported *distances* base-free anyway
+— so every reported log quantity is tagged `'nepers'` in §9's result shapes. The
+literature's own primitive is log₂ (Desain & Honing 1993 endorse log explicitly
+as "a first step towards the use of subjective magnitudes"; partitura and
+Cancino-Chacón 2018 use base 2), so the docs give the conversion once and
+plainly: **multiply a nepers figure by `1/ln 2 ≈ 1.4427` to read it as log₂**
+(survey-lit L2). Direction is pinned in the type docs, because the field mixes
+the two conventions freely: **MPM stores BPM, a *rate*, so a positive log
+difference means A is FASTER**. A beat period is a duration, so in the
+seconds-per-beat convention partitura uses, positive means *slower*; the two are
+reciprocal and Cancino-Chacón et al. 2018 §4.3 names the resulting
+incomparability outright (survey-lit L3). Stating it once here and in the
+`DimensionComparison` doc comment is the whole fix.
 
 **Trailing transitions are inert** (AD-8, R1). `TempoMap.getEndDate:166-175`
 returns `Number.MAX_VALUE` when no later `<tempo>` exists, so
@@ -1284,9 +1346,20 @@ Every registry row carries `jnd`, the just-noticeable difference in the row's
 unit; densities are dimensionless multiples of JND. Values are [literature] where
 survey-lit provides a citation, else [convention]; all overridable via
 `options.jnd` (a closed key vocabulary, §4) while the defaults stay the
-documented reference. Initial candidates [PENDING-LIT]: tempo ln(1.05) ≈ 0.049
-nepers; dynamics ln(1.10)?; asynchrony 20 ms; rubato displacement ~1/16 quarter;
-velocity ~3 MIDI units.
+documented reference. The defaults, with their AD-26.2 tags:
+
+| row | default | tag |
+|---|---|---|
+| `asynchrony` | **30 ms** | **[literature]** — the onset-asynchrony detection threshold of the Vernon 1936 → Goebl 2001 tradition; the 35 ms chord-clustering window the field uses as its operational "simultaneous" sits just above it |
+| `tempo` | ln(1.05) ≈ 0.049 nepers | [convention]; partial support noted in the row — the >2 % local-slowing threshold used to classify a ritardando, and Sundberg/Friberg/Frydén 1991's near-threshold preferred k-values |
+| `dynamics` | ln(1.10) nepers | [convention] — survey-lit L6 records that four loudness conventions coexist in the literature with no shared scale, so this is a declared choice, not a measurement |
+| `rubato` displacement | ~1/16 quarter | [convention] |
+| `velocity` | ~3 MIDI units | [convention] |
+
+Revision 2 carried `asynchrony 20 ms` as a guess; 30 ms is the literature's
+figure and supersedes it. The general principle behind the whole column is
+survey-lit L5: **a difference below one JND is not a difference**, which is the
+empirical content of §7.3's `τ = 1` threshold.
 
 `δ_row` (§4) is the metric cap in JND units, default 10 [convention].
 
@@ -1576,6 +1649,26 @@ applies to the decomposition.
   fired, surfaced at corpus level so a heterogeneous folder announces itself
   before the dendrogram is read. This matters more as N grows, because a 200-file
   glob is where nobody inspects the inputs by hand.
+- **Corpus-average pseudo-performance (opt-in, AD-26.3).**
+  `corpusAverage?: boolean` adds one synthetic item to the matrix: the
+  per-dimension pointwise mean of the corpus's evaluated curves, labelled
+  `'«corpus average»'` and flagged `synthetic: true` in `items` so no consumer
+  mistakes it for a performance. Sapp (2007) is the precedent — the average
+  absorbs "minor and random relationships between performances" so only genuinely
+  distinctive matches survive — and it converts the corpus into the
+  *deviation-from-norm* comparison that survey-lit L4 records as the single most
+  replicated methodological result in the field (Stamatatos & Widmer 2005:
+  82.5 % identification against the norm versus 52.5 % against the score). Plain
+  data, off by default, and stamped in the settings echo when on.
+- **Per-piece percentile context (opt-in, AD-26.3).** `noiseFloor?: boolean`
+  annotates each pair distance with where it sits in *this corpus's* own
+  distribution: `{ percentile, corpusMedian, corpusIqr, noiseFloor }`, the noise
+  floor being the bottom half of the ranked distances in Sapp's sense. The
+  motivation is survey-lit L10 — a raw number is **not portable across pieces**;
+  the modal correlation between two *random* performances is 0.67 for Mazurka
+  17/4 and 0.87 for 68/3, so "two MPM files alone cannot tell you whether 0.8 is
+  close." This is context, never a rescaling: the matrices themselves are
+  untouched, so R3 and every metric guarantee stand.
 - **Scape (opt-in, W4+).** Binned multi-scale view (≤ 256 bins, prefix-sum
   implementation, bin count in the report): per (window center, size), either a
   pair's distance or the corpus argmin/argmax performer (Sapp's variant).
@@ -1707,6 +1800,10 @@ export interface CompareCorpusOptions extends ComparisonSettings {
   readonly k?: number;                               // PAM clusters; omit = none
   readonly embeddingAxes?: number;                   // default 2
   readonly scape?: { readonly bins: number };        // omit for no scape (A2)
+  /** Add the corpus-average pseudo-performance as an extra item (AD-26.3). */
+  readonly corpusAverage?: boolean;                  // default false
+  /** Annotate pair distances with this corpus's own percentile context (AD-26.3). */
+  readonly noiseFloor?: boolean;                     // default false
 }
 
 export function compareMpm(options: CompareMpmOptions): ComparisonResult;
@@ -1759,27 +1856,37 @@ export interface ComparisonNote {
 }
 
 export interface Decomposition {       // AD-18; interpretive, non-summing
-  readonly level: number;              // |ℓ_A − ℓ_B|
-  readonly levelSigned: number;        // ℓ_A − ℓ_B (C2 descriptor)
-  readonly gain: number;               // |σ_A − σ_B|
-  readonly shape: number | null;       // √(2(1−r)); null iff shapeless
-  readonly r: number | null;           // null iff shapeless
+  /** The T-space unit of `level`/`levelSigned`/`gain`: 'nepers' for the log
+   *  dimensions (tempo, dynamics), 'quarters'/'ms'/'velocity'/'ratio' elsewhere.
+   *  Natural log throughout; ×1/ln 2 ≈ 1.4427 to read as log₂ (AD-26.1). */
+  readonly unit: string;
+  readonly level: number;              // |ℓ_A − ℓ_B|, in `unit`
+  readonly levelSigned: number;        // ℓ_A − ℓ_B, in `unit`; > 0 ⇒ A faster/louder
+  readonly gain: number;               // |σ_A − σ_B|, in `unit`
+  readonly shape: number | null;       // √(2(1−r)), dimensionless; null iff shapeless
+  readonly r: number | null;           // dimensionless; null iff shapeless
   readonly shapeless: boolean;         // σ_A·σ_B === 0 (C14)
-  readonly l2Squared: number;          // the closing check; shape term := 0 when shapeless
+  readonly l2Squared: number;          // in `unit`²; shape term := 0 when shapeless
 }
 
 export interface DimensionComparison {
   readonly state: DimensionState;      // 'excluded' no longer exists (AD-1)
   readonly distance: number;           // JND·quarters
   readonly mean: number | null;        // JND; null iff L === 0 (A3)
-  readonly meanSigned: number | null;  // descriptor, never a distance (C2)
+  /** The T-space unit of `meanSigned` — 'nepers' for tempo/dynamics (natural
+   *  log; ×1/ln 2 for log₂). MPM stores BPM, a RATE: on tempo a positive
+   *  `meanSigned` means A is faster, the opposite of the seconds-per-beat
+   *  convention partitura and much of the literature use (AD-26.1). */
+  readonly unit: string;
+  readonly meanSigned: number | null;  // in `unit`; descriptor, never a distance (C2)
   readonly weight: number;
   readonly invariance: InvarianceMode;
   readonly rows: readonly {            // the per-row breakdown ω=1 needs (AD-20)
     readonly key: ComparisonJndKey;
-    readonly distance: number;
-    readonly jnd: number;
-    readonly delta: number;
+    readonly distance: number;         // JND·quarters
+    readonly unit: string;             // the row's own unit — 'nepers', 'ms', …
+    readonly jnd: number;              // in `unit`
+    readonly delta: number;            // δ_row, in JND units
   }[];
   readonly events: {
     readonly matched: number; readonly unmatchedA: number;
@@ -1797,8 +1904,13 @@ export interface ComparisonSegment {
   readonly lengthQuarters: number;
   readonly measure: { readonly start: MeasurePosition;
                       readonly end: MeasurePosition } | null;
-  readonly mass: number; readonly peak: number; readonly mean: number;
+  readonly mass: number;               // JND·quarters
+  readonly peak: number;               // JND per quarter
+  readonly mean: number;               // JND per quarter
   readonly peakAtQuarters: number;
+  /** Aggregate-derived (AD-19), so this is in JND per quarter, NOT a T-space
+   *  unit; the per-dimension signed figure with its own unit is on
+   *  `DimensionComparison` (AD-26.1). */
   readonly meanSigned: number;
   readonly direction: 'a-greater' | 'b-greater' | 'mixed';
   readonly rank: number;
@@ -1955,7 +2067,8 @@ export interface CorpusResult {
   readonly n: number;                                    // A4
   readonly labels: readonly string[];                    // unique, A8
   readonly items: readonly { readonly itemIndex: number;
-                             readonly performance: string }[];
+                             readonly performance: string;
+                             readonly synthetic: boolean }[];   // AD-26.3
   readonly matrices: {
     readonly aggregate: readonly number[];               // N², row-major
     readonly byDimension: Record<ComparisonDimension, readonly number[]>;
@@ -1981,6 +2094,14 @@ export interface CorpusResult {
                                 readonly toMedoidSigned: Record<ComparisonDimension, number>;
                                 readonly toMeanDistance: number }[];
   readonly normalizationConstants: Record<ComparisonDimension, number | null> | null;
+  /** AD-26.3; null unless `noiseFloor` was requested. Context, not a rescaling —
+   *  `matrices` is unaffected, so R3's guarantees are untouched. */
+  readonly context: {
+    readonly percentile: readonly number[];    // N², row-major, aggregate distances
+    readonly corpusMedian: number;
+    readonly corpusIqr: number;
+    readonly noiseFloor: number;               // Sapp's bottom-half boundary
+  } | null;
   readonly suspectPairs: readonly { readonly i: number; readonly j: number;
                                     readonly reason: ComparisonNoteKind }[];   // C7
   readonly scape: { readonly bins: number; readonly cells: readonly number[] } | null;
@@ -2251,25 +2372,77 @@ under `tests/comparison/fixtures/` (NEW tree; the immutable
   ops); `compareMpmCorpus` (N² matrices with `n`, UPGMA + linkages, PAM,
   silhouette + reliability flag, MDS/Jacobi with the degenerate guards,
   seriation, profiles incl. signed, corpus normalization with the M19 formula
-  written out, `suspectPairs`); scape opt-in; README section, **glossary**
+  written out, `suspectPairs`, the corpus-average pseudo-performance and the
+  noise-floor context of AD-26.3); scape opt-in; README section, **glossary**
   (AD-23, C14 — one worked example per decomposition component in performance
   terms) and **cookbook**: the Welte timing-only recipe with the per-space
   invariance trade-off (C9), the neutral-baseline ratio recipe requiring
   `invariance: 'level'` and explaining why `'none'` measures the wrong thing
   (C8), the `boundary_prf` derivation with its non-equivalence caveat (C12), and
-  the enumerated **non-goals** paragraphs (asynchrony's per-note and register
-  limits, C15; cross-piece comparison of `distance`, C10).
+  the enumerated **non-goals** paragraphs of §1.4 (plus asynchrony's per-note and
+  register limits, C15, and cross-piece comparison of `distance`, C10).
+  Four further documentation obligations from the literature (AD-26.4), recorded
+  here so they cannot be dropped:
+  - **The P1 interpolation answer.** Desain & Honing's standing objection —
+    never interpolate between measured events — targets *measured event data*.
+    MPM curves are **parametric specifications**, continuous by definition, so
+    this module compares shape functions and interpolates nothing. That is
+    exactly the representation Todd's kinematic models, Repp's parabolic ritard
+    and Molina-Solana's (w, q) fitting all have to *recover* by fitting, and it
+    is free here (survey-lit G5). One paragraph, in the README, before anyone
+    raises it.
+  - **The G2 framing paragraph.** Performer identity is carried first by
+    **articulation and melody lead**, then tempo, with dynamics last (the
+    Stamatatos & Widmer 2005 line of work) — and the top two are precisely what
+    audio-derived tempo/loudness traditions cannot see and what MPM carries
+    losslessly. This is the scientific argument for the module's existence and
+    belongs in the README's opening, not in a footnote.
+  - **The Hudson earlier-vs-later-rubato recipe.** Hudson's typology is
+    definitionally a statement about the relationship between the asynchrony
+    channel and the tempo channel, which MPM separates natively; Goebl, Flossmann
+    & Widmer (2010) supply the working detector (30 ms threshold plus a
+    density-based run criterion). A cookbook recipe that yields "these two
+    performances differ mainly in earlier rubato, localised at bars 17–24" speaks
+    the historians' language in a way no correlation coefficient does — survey-lit
+    calls it the highest-value single deliverable for the Welte use case (G4). If
+    the detector is cheap on top of the existing channels, ship it as a derived
+    report note as well as a recipe.
+  - **Provenance trust profiles as documented weight presets.** A roll-derived
+    document's dynamics are unreliable while its note ordering is not (Bausch;
+    Hall's six-factor decomposition), and its melody lead is confounded by
+    velocity (Goebl 2001; Hagmann's *künstliches Arpeggio*). Ship named weight
+    presets — meico export / hand-authored / roll-derived / alignment-fitted —
+    as documented data over the existing `weights` and `invariance` knobs, with
+    no new mechanism. TimeToAlign's `MatchClaim` certainty field (TISMIR 2026) is
+    the citable precedent for encoding provenance-conditioned trust (G7).
 - **W5 — audit**: adversarial verification, coverage/lint gates, PARITY note
-  (none expected — new module), campaign report, merge `--no-ff`.
+  (none expected — new module), campaign report, merge `--no-ff`. Plus one
+  literature obligation (AD-26.5): **re-sweep 2025–26 ISMIR/TISMIR before the
+  README ships the novelty claim** — survey-lit's sweep is complete through 2024
+  and explicitly flags PianoBind and "Pianist Transformer" (arXiv:2512.02652) as
+  unverified. The claim text is A-Q11's narrow phrasing, citing survey-lit G1
+  (no MPM–MPM distance, no MPM-based analytical study, no musical analogue of
+  SSIM for any performance representation): **the first exact, additively
+  decomposable comparison of symbolic performance-directive encodings**. If the
+  sweep finds prior art, the claim narrows or goes; it does not ship unverified.
 
 ---
 
-[PENDING-LIT] slots: §7.1's JND values + citations (the defaults ship
-[convention] if the lit survey cannot ground them — AD-24); §3 priority notes if
-the lit survey ranks products differently; README framing + novelty claim
-(A-Q11); evaluation-on-real-corpora design for W5.
+**No open literature slots remain.** survey-lit.md was delivered on 2026-08-10
+and AD-26 disposed of all four slots revision 2 carried: the JND values and their
+provenance tags are settled in §4 and §7.1 (asynchrony 30 ms [literature],
+everything else [convention] with partial support named in the row notes —
+AD-26.2); the units question is settled in §5.1 and stamped through §9's result
+shapes (natural log internally, `'nepers'` tags, the ×1/ln 2 conversion and the
+BPM-as-rate direction pinned — AD-26.1); product priorities produced two new
+opt-in corpus enrichments in §8 (AD-26.3) and four W4 documentation obligations
+in §11 (AD-26.4); the README framing and novelty claim are settled as A-Q11's
+narrow phrasing with a mandatory W5 re-sweep before shipping (AD-26.5); and the
+three prohibitions the survey ends on are now §1.4 (AD-26.6). The
+evaluation-on-real-corpora design remains W5's own work item, not a literature
+gap.
 
-No [OPEN] items remain. Revision 2's nine flags were disposed of by AD-25
+**No open items remain either.** Revision 2's nine flags were disposed of by AD-25
 (LOG.md, 2026-08-10) and the resolutions are compiled into the sections above:
 the knowability split for unhonourable options (§9.4, AD-25.1); label-based
 tie-breaking throughout the corpus products with full permutation-equivariance
