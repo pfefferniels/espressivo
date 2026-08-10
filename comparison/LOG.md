@@ -2509,3 +2509,26 @@ alternation; docs/history/README.md carries the fixed version and
 excludes itself from the sweep — mirror that exclusion). Their
 test-merge of docs-declutter into layers-to-staffs is clean (4059 green):
 the de-clutter merge waits only on the user's decision.
+
+## 2026-08-10 — AD-47: cut-4 first task answered by execution; conductor at the wheel
+
+Delegation capped until 2026-08-16 (weekly limit); the conductor executed
+AD-46's first task personally. ANSWER, measured through performMsm on a
+chord-bearing part map (pinned as tests/comparison/imprecisionDegenerate.
+test.ts, with a non-vacuity control): the clip-less triangular performs
+EXACTLY no imprecision — the null draw coerces arithmetically
+(attValue + null = attValue), String() wraps only the finite sum, NO path
+stringifies the raw null (no parseFloat(String(null)) NaN route), the
+chord shake path is equally benign (shake(null) lands 0), and the only
+render effect is a byte-level re-serialization fingerprint ("0.0" → "0")
+with no numeric content. CONSEQUENCE for the cut-4 reader: the degenerate
+table stands as ruled — clip-less triangular/compensating declare δ₀, NO
+⊥ from this route; the finite-guard discipline must treat null as
+"parameter absent" (δ₀ path), never route it to ⊥.
+
+Coordination: docs-declutter is authorized and landing on main —
+the docs/history/comparison/ landing spot is CONFIRMED, the W5
+contingency is dropped; after their push, compare-campaign is one merge
+behind main and the conductor will merge main in and re-measure the
+eslint.config.js/.prettierignore conflict surface personally (keep
+/ARCHITECTURE.md in .prettierignore — load-bearing).
