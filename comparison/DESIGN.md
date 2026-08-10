@@ -1010,6 +1010,13 @@ This is the one place revision 1's exclusion instinct was right, and the design
 must say _which_ unresolvables are which: tempo and dynamics levels have a
 performed value (R8), accentuation patterns do not.
 
+**`accentuationPattern@scale` is MANDATORY here, and that is the opposite of
+§5.6's** (AD-40.1). A `<accentuationPattern>` with no `@scale` is skipped
+outright — the whole instruction performs nothing — where an `<ornament>` with no
+`@scale` performs its temporal spread in full and only its dynamics gradient not
+at all. The attribute has one name and two dispositions, so neither section may
+be inferred from the other; §5.6 carries the reciprocal sentence.
+
 Pattern def internals (`accentuation@beat` / `@value` / `@transition.from` /
 `@transition.to`) are registry rows (gain, velocity units), as are
 `accentuationPattern@loop` and `@stickToMeasures` — both change the performed
@@ -1207,6 +1214,25 @@ which reads as a bug and is not one."_ A gain space maps neutral to 1.0 and send
 resolves to **0.0** here. Fixture caution: the v2 writer omits `scale` when it is
 1.0 while every reader defaults a missing `scale` to 0.0, so a v2 round trip
 changes the performed value — any fixture derived by round-tripping is exposed.
+
+It **gates half the ornament** (AD-40.1): `DynamicsGradient.apply` multiplies both
+endpoints by it, so an `<ornament>` with no `@scale` performs no dynamics at all
+while its `<temporalSpread>` applies in full — executed. And the compared object
+is the resolved pair `(from·scale, to·scale)`, never `@scale` itself (AD-40.2),
+so two encodings of one performed ramp compare equal. **Contrast §5.4's
+`accentuationPattern@scale`**, which is MANDATORY there: absent, the renderer
+skips the whole instruction rather than zeroing half of it. Same attribute name,
+two sections, two dispositions — which is why each section names the other, as
+§5.4 and §5.5 already do for unresolvable names.
+
+`@note.order`'s two enumerated orderings are a **boolean01 row**, 0 = "ascending
+pitch" (also the absent default) and 1 = "descending pitch" (AD-41.1); an
+explicit **id list is a structural finding**, not a row value, on §5.8's
+`@controller` precedent — naming notes is an identity claim, not a magnitude.
+The row is justified by what it performs and not only by the ruling: the two
+orderings sort the pool by pitch in opposite directions, so they decide which
+note receives which step of the ramp (executed: ascending performs 80/100/120
+where descending performs 120/100/80 over velocity 100).
 
 **Three unit cases, not two** (AD-16, R18). `TemporalValue`'s domains are
 `ticks | milliseconds | relative`, and `%` ⇒ `relative` has **no** absolute

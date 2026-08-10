@@ -2319,3 +2319,57 @@ restores green.
 Gate: `npm run verify` green before committing — 104 files, 4545 passed + 1 skipped (was 4523 +
 1). 39 tests in the ornamentation suite, replacing 17. eslint and prettier clean on all five
 touched files.
+
+## 2026-08-10 — W3a cut 3 closed: AD-44 implemented (w3-dims)
+
+AD-44.1, AD-44.2's measurement obligation, and AD-40.1's delegated DESIGN edit. Cut 3 is
+complete: rows, reader, distance, aligner's second consumer, and the §5.4/§5.6 cross-reference.
+
+**AD-44.1 — stacked gradients compose, and the law has a second half the ruling did not need to
+state.** `composeAnchors` groups atoms by anchor and sums endpoints, measured: `(-20,20)` stacked
+with `(-10,30)` performs 70/110/150, identical to a single `(-30,50)`. The second half is
+DIRECTION. A `descending pitch` ornament ramps over the same pool backwards, so it contributes
+SWAPPED endpoints — measured, ascending `(-20,20)` stacked with descending `(-10,30)` performs a
+flat 110/110/110, which is exactly the single gradient `(10,10)`, and the composition is closed
+under it because the reversal is an index reflection rather than a different shape. Composition
+is confined to a SHARED pool: the pitch-ordered forms and an absent `@note.order` all take "every
+note at this date" and compose; an explicit id list names its own notes and composes only with an
+identical list; a v3-shaped ornament generates its own notes and never composes. Spreads stay
+individual events per AD-44.2, so the composed gradient rides on the group's first atom and the
+rest keep their frames under a neutral gradient — which is what makes an ornament that carried
+only a gradient collapse away for free, and therefore what makes the two encodings compare equal.
+
+**AD-44.2's measurement obligation, discharged — and it NARROWS the ruling's premise.** AD-44.2
+rests on "two spreads of different intensity do not sum to a spread", which is true and now
+pinned: `(-22,44)` stacked with `(0,360, intensity 3)` performs onsets −22/45/382, which is no
+single frame. But EQUAL-intensity spreads DO sum: `(-22,44)` stacked with `(-100,200)` performs
+−122/0/122, exactly the single frame `(-122,244)`, because the offsets are affine in the same
+index. So the composite exists for the commoner case and the residual encoding sensitivity is
+narrower than the ruling assumed. Implemented AS RULED — spreads stay individual events — with
+both measurements pinned and the residual pinned as its own test: two documents that PERFORM
+identically compare unequal, which is AD-44.2's documented limitation carrying its evidence
+rather than its prose. If the conductor wants the equal-intensity case composed, the law is
+`frameStart` and `frameLength` add and `@intensity` is the guard; it is a one-branch change.
+
+[SELF-CORRECTION, found by the failing test rather than by review] Composition exposed a
+double-count in the neutral counterpart. `@note.order` has NO performed effect of its own — it
+orders the pool the ramp runs over, exactly as `@loop` shapes the curve it opens, which is §4's
+own argument for that row. Zeroing it in the neutral counterpart charged a dropped ornament one
+JND for having been ascending, on top of the ramp whose magnitude was already priced, and charged
+a gradient composed away under AD-44.1 for an ordering whose whole effect had moved into the
+composite. The counterpart now keeps it. `@repetitions` is deliberately NOT treated the same way:
+a dropped v3 figure really is a missing repetition count.
+
+DESIGN edits, both delegated by AD-40.1/AD-41.1 to this commit and no wider: §5.6 gains the
+`@scale` gating paragraph with the AD-40.2 performed-pair rule and the explicit contrast with
+§5.4, plus the `@note.order` boolean01/id-list wording with its measurement; §5.4 gains the
+reciprocal sentence, so neither section can be inferred from the other. **AD-44.3's rescoping of
+§5.6's three-unit-case paragraph is NOT in this commit** — that ruling names no editor and the
+standing rule leaves DESIGN amendments with the conductor. The code already implements it; the
+prose is the conductor's to align, and it is asked for in my report.
+
+Negative controls: disabling composition fails 2 tests, removing the endpoint swap fails 1,
+ignoring pool identity fails 1; the file restores green each time.
+
+Gate: `npm run verify` green before committing — 4552 passed + 1 skipped (was 4545). 46 tests in
+the ornamentation suite. eslint and prettier clean on every touched file.

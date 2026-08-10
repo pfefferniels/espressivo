@@ -201,6 +201,14 @@ export function ornamentDistance(
  * is its own magnitude in milliseconds and not an incomparability — substituting the tick
  * default would price every dropped millisecond frame at `δ_row` and lose exactly the
  * content-dependence AD-42.3 restored.
+ *
+ * It also KEEPS the atom's `@note.order`, which is not an oversight. That row has no performed
+ * effect of its own: it orders the pool the ramp runs over, exactly as `@loop` shapes the curve
+ * it opens (§4's own argument for that row), so an ornament with a neutral gradient and a
+ * neutral frame performs nothing whatever its ordering says. Zeroing it here would charge a
+ * dropped ornament one JND for having been ascending, on top of the ramp whose magnitude is
+ * already priced — and would leave a gradient composed away under AD-44.1 paying for an
+ * ordering whose whole effect is inside the composite.
  */
 function neutralCounterpart(atom: OrnamentAtom): OrnamentAtom {
   const domain =
@@ -208,7 +216,6 @@ function neutralCounterpart(atom: OrnamentAtom): OrnamentAtom {
   const source = atom.spread !== null && !isBottom(atom.spread) ? atom.spread.value.source : 'v2';
   return {
     ...atom,
-    noteOrderKind: null,
     repetitions: 0,
     gradient: valued(NEUTRAL_GRADIENT),
     spread: valued({ ...NEUTRAL_SPREAD, domain, source }),
@@ -218,6 +225,79 @@ function neutralCounterpart(atom: OrnamentAtom): OrnamentAtom {
 /** What one ornament costs to leave unmatched — its deviation from performing nothing. */
 export function deviationFromNeutral(atom: OrnamentAtom, ticksPerQuarter: number): number {
   return ornamentDistance(atom, neutralCounterpart(atom), ticksPerQuarter);
+}
+
+/**
+ * Which pool an ornament's gradient ramps over — two ornaments compose only if they share one.
+ *
+ * The pitch-ordered forms and an absent `@note.order` all take "every note at this date", so they
+ * share a pool whatever their direction; an explicit id list names its own notes and shares a
+ * pool only with the identical list. A v3-shaped ornament generates its own notes and never
+ * shares, so it is keyed uniquely.
+ */
+function poolKey(atom: OrnamentAtom, index: number): string {
+  if (atom.shape === 'v3') return `v3:${String(index)}`;
+  if (atom.noteOrderKind === 'id-list')
+    return `ids:${String(atom.dateTicks)}:${(atom.noteOrder ?? '').trim().split(/\s+/).join(' ')}`;
+  return `date:${String(atom.dateTicks)}`;
+}
+
+/**
+ * AD-44.1 — stacked gradients COMPOSE per anchor, and the composition is an endpoint sum.
+ *
+ * `setOrnamentDynamicsAtt` ADDS to the marker a previous ornament left, so two ramps over one
+ * pool perform their sum, and a sum of ramps over a shared index is the ramp of the summed
+ * endpoints. Measured: `(-20,20)` stacked with `(-10,30)` performs 70/110/150, identical to a
+ * single `(-30,50)`. Direction is part of the composition and not a separate case — a
+ * `descending pitch` ornament ramps over the same pool backwards, so it contributes SWAPPED
+ * endpoints. Measured: ascending `(-20,20)` stacked with descending `(-10,30)` performs a flat
+ * 110/110/110, which is exactly the single gradient `(10,10)`.
+ *
+ * Spreads stay INDIVIDUAL events (AD-44.2), so the composed gradient is carried by the group's
+ * first atom and the others keep their frames under a neutral gradient. An ornament that carried
+ * only a gradient therefore collapses away for free, which is what makes the two encodings of
+ * one performed ramp compare equal.
+ */
+export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly OrnamentAtom[] {
+  const groups = new Map<string, number[]>();
+  atoms.forEach((atom, index) => {
+    const key = poolKey(atom, index);
+    groups.set(key, [...(groups.get(key) ?? []), index]);
+  });
+
+  const composed = [...atoms];
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    let from = 0;
+    let to = 0;
+    let poisoned = false;
+    for (const index of members) {
+      const gradient = gradientOf(atoms[index]);
+      if (isBottom(gradient)) {
+        poisoned = true;
+        continue;
+      }
+      // A descending ornament walks the same pool from the other end.
+      const reversed = atoms[index].noteOrderKind === 'descending';
+      from += reversed ? gradient.value.to : gradient.value.from;
+      to += reversed ? gradient.value.from : gradient.value.to;
+    }
+    const [head, ...rest] = members;
+    // One poisoned member makes the whole anchor's velocity NaN, which is the anchor's effect.
+    composed[head] = {
+      ...atoms[head],
+      // The composed ramp is stated in the head's own direction, so a group whose head is
+      // descending carries it back the way that head reads it.
+      gradient: poisoned
+        ? bottom('renderer-error')
+        : valued(
+            atoms[head].noteOrderKind === 'descending' ? { from: to, to: from } : { from, to },
+          ),
+    };
+    for (const index of rest)
+      composed[index] = { ...atoms[index], gradient: valued(NEUTRAL_GRADIENT) };
+  }
+  return composed;
 }
 
 /** The structural differences a matched pair reports without pricing (§5.6). */
@@ -266,8 +346,8 @@ export function ornamentationDistance(
   const inWindow = (atom: OrnamentAtom): boolean =>
     atom.dateTicks >= startTicks && atom.dateTicks < endTicks;
 
-  const atomsA = a.atoms.filter(inWindow);
-  const atomsB = b.atoms.filter(inWindow);
+  const atomsA = composeAnchors(a.atoms.filter(inWindow));
+  const atomsB = composeAnchors(b.atoms.filter(inWindow));
 
   const alignment = alignEvents(
     atomsA,

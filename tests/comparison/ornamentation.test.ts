@@ -21,6 +21,7 @@ import {
 import {
   ornamentationDistance,
   deviationFromNeutral,
+  composeAnchors,
 } from '../../src/comparison/ornamentationDistance.js';
 import { comparisonRowFor, COMPARISON_JND_KEYS } from '../../src/comparison/registry.js';
 import { isBottom } from '../../src/comparison/values.js';
@@ -505,5 +506,89 @@ describe('the aligner’s interface, unchanged by its second consumer', () => {
     expect(result.unmatchedA).toBe(1);
     expect(result.unmatchedB).toBe(0);
     expect(result.distance).toBeCloseTo(deviationFromNeutral(a.atoms[1] as OrnamentAtom, PPQ), 9);
+  });
+});
+
+describe('stacked ornaments at one date (AD-44.1, AD-44.2)', () => {
+  const gradB =
+    '<ornamentDef name="h"><dynamicsGradient transition.from="-10.0" transition.to="30.0"/></ornamentDef>';
+  const summed =
+    '<ornamentDef name="g"><dynamicsGradient transition.from="-30.0" transition.to="50.0"/></ornamentDef>';
+  const ORN_H = '<ornament date="0.0" name.ref="h" scale="1.0"/>';
+
+  it('gradients compose by summing endpoints, and the renderer says so', () => {
+    expect(chordVelocities(`${GRAD}${gradB}`, `${STYLE0}${ORN()}${ORN_H}`)).toEqual([70, 110, 150]);
+    expect(chordVelocities(summed, `${STYLE0}${ORN()}`)).toEqual([70, 110, 150]);
+  });
+
+  it('so two stacked ornaments compare equal to the one that sums them (AD-44.1)', () => {
+    expect(
+      distance(
+        atomsOf(`${GRAD}${gradB}`, `${STYLE0}${ORN()}${ORN_H}`),
+        atomsOf(summed, `${STYLE0}${ORN()}`),
+      ),
+    ).toBe(0);
+  });
+
+  it('a descending ornament contributes SWAPPED endpoints, measured', () => {
+    const mixed = `${STYLE0}${ORN(' note.order="ascending pitch"')}<ornament date="0.0" name.ref="h" scale="1.0" note.order="descending pitch"/>`;
+    // asc(-20,20) + desc(-10,30) is a flat +10 — identical to the single gradient (10,10).
+    expect(chordVelocities(`${GRAD}${gradB}`, mixed)).toEqual([110, 110, 110]);
+    const flat =
+      '<ornamentDef name="g"><dynamicsGradient transition.from="10.0" transition.to="10.0"/></ornamentDef>';
+    expect(chordVelocities(flat, `${STYLE0}${ORN()}`)).toEqual([110, 110, 110]);
+    expect(distance(atomsOf(`${GRAD}${gradB}`, mixed), atomsOf(flat, `${STYLE0}${ORN()}`))).toBe(0);
+  });
+
+  it('does NOT compose across different pools', () => {
+    const byId = `${STYLE0}${ORN()}<ornament date="0.0" name.ref="h" scale="1.0" note.order="#n1 #n2"/>`;
+    const composed = composeAnchors(atomsOf(`${GRAD}${gradB}`, byId).atoms);
+    // Two pools, so two gradients survive rather than one sum and one neutral.
+    expect(composed.map((atom) => atom.gradient)).toEqual([
+      { kind: 'value', value: { from: -20, to: 20 } },
+      { kind: 'value', value: { from: -10, to: 30 } },
+    ]);
+  });
+
+  it('AD-44.2 — stacked SPREADS of equal intensity DO sum, which narrows the residual', () => {
+    const s =
+      '<ornamentDef name="s"><temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
+    const t =
+      '<ornamentDef name="t"><temporalSpread frame.start="-100.0" frameLength="200.0"/></ornamentDef>';
+    const both =
+      '<ornamentDef name="s"><temporalSpread frame.start="-122.0" frameLength="244.0"/></ornamentDef>';
+    const stacked = `${STYLE0}<ornament date="0.0" name.ref="s" scale="1.0"/><ornament date="0.0" name.ref="t" scale="1.0"/>`;
+    expect(chordOnsets(`${s}${t}`, stacked)).toEqual([-122, 0, 122]);
+    expect(chordOnsets(both, `${STYLE0}<ornament date="0.0" name.ref="s" scale="1.0"/>`)).toEqual([
+      -122, 0, 122,
+    ]);
+  });
+
+  it('AD-44.2 — and of DIFFERENT intensity do not sum to any single frame', () => {
+    const s =
+      '<ornamentDef name="s"><temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
+    const u =
+      '<ornamentDef name="u"><temporalSpread frame.start="0" frameLength="360" intensity="3"/></ornamentDef>';
+    const stacked = `${STYLE0}<ornament date="0.0" name.ref="s" scale="1.0"/><ornament date="0.0" name.ref="u" scale="1.0"/>`;
+    // −22/45/382: the second slot is not (i/(n−1))·L of any single frame with these ends.
+    expect(chordOnsets(`${s}${u}`, stacked)).toEqual([-22, 45, 382]);
+  });
+
+  it('so stacked spreads stay individual events, and the encoding residual is REAL', () => {
+    const s =
+      '<ornamentDef name="s"><temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
+    const t =
+      '<ornamentDef name="t"><temporalSpread frame.start="-100.0" frameLength="200.0"/></ornamentDef>';
+    const both =
+      '<ornamentDef name="s"><temporalSpread frame.start="-122.0" frameLength="244.0"/></ornamentDef>';
+    const stacked = `${STYLE0}<ornament date="0.0" name.ref="s" scale="1.0"/><ornament date="0.0" name.ref="t" scale="1.0"/>`;
+    // The two documents PERFORM identically (the test above) and compare unequal: AD-44.2's
+    // documented limitation, pinned with its measurement rather than left as prose.
+    expect(
+      distance(
+        atomsOf(`${s}${t}`, stacked),
+        atomsOf(both, `${STYLE0}<ornament date="0.0" name.ref="s" scale="1.0"/>`),
+      ),
+    ).toBeGreaterThan(0);
   });
 });
