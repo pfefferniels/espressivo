@@ -1,0 +1,867 @@
+/**
+ * The scale spaces of `src/expression/transforms.ts`, against DESIGN §1's properties.
+ *
+ * P1–P5 hold automatically for *any* monotone bijection with `T(neutral) = 0` (DESIGN
+ * §1.1), so this suite cannot validate a single registry choice — that is §7's job and
+ * A14's render tests'. What it does prove is that the closed forms are the ones DESIGN
+ * specifies, that they behave in IEEE-754 the way §1.1 says they do rather than the way
+ * they would over ℝ, and that every departure is a refusal rather than a written NaN.
+ *
+ * **No RNG** (R2). Every sweep is a loop over a fixed grid.
+ */
+import { describe, it, expect } from 'vitest';
+import {
+  SCALE_SPACE_FACTOR_DOMAINS,
+  boundaryPowerHigh,
+  boundaryPowerLow,
+  gain,
+  geometricMean,
+  isAdmissibleFactor,
+  isInValueDomain,
+  jointTrimWindow,
+  logAroundCenter,
+  logAroundOne,
+  logit,
+  neutralOf,
+  orderedGain,
+  transformInSpace,
+} from '../../src/expression/transforms.js';
+import type {
+  RubatoWindow,
+  ScaleSpace,
+  ScaleSpaceTag,
+  TransformResult,
+} from '../../src/expression/transforms.js';
+
+/**
+ * A3 contracts P2 as exact "only on the clamp-free subdomain and only to ~1 ULP". Measured
+ * over the grids below, the worst *conditioned* deviation is 1.07 ULP — so A3's figure is
+ * met, and 8 is the budget, enough headroom for a `Math.pow` slightly less accurate than
+ * this machine's. "Conditioned" is the load-bearing word — see {@link amplificationAt}.
+ *
+ * **What this budget cannot do is police the closed form**, and the negative control says
+ * so: an `exp`/`log` round trip composes to 2.2e-2 of the budget where the closed form
+ * reaches 2.7e-2, and even a different *metric* — §7.3's rejected log-1-over-`exponent`
+ * reading of `meanTempoAt` — passes at 2.0e-2. That is DESIGN §1.1's own point ("P1–P5
+ * constrain the neutral, not the metric ... the property suite cannot validate a single
+ * registry choice"), and it is why the metric anchors below exist as a separate block.
+ */
+const COMPOSITION_ULPS = 8;
+
+/**
+ * The joint trim gets its own budget because it is six roundings deep, not two: `t'`, both
+ * ratio divisions, both multiplications, and the `1 − b'` reconstruction.
+ */
+const JOINT_TRIM_ULPS = 24;
+
+/**
+ * How far a value's distance from the nearest bound amplifies one ULP of error.
+ *
+ * This is the whole reason the raw deviations exceed A3's "~1 ULP" and it is conditioning,
+ * not a defect: composing two exaggerations stores the intermediate as a double, and a
+ * `curvature` of 0.99999999 has only 8 significant digits of *distance from 1* left, which
+ * the second transform's `1 − x` recovers with relative error `eps/(1−x)`. The worst raw
+ * case in these grids is exactly that — `x = 0.99, s₂ = 4` puts the intermediate within
+ * 1e-8 of the bound and costs 1.3e-11 absolute, while every interior triple stays at 1 ULP.
+ *
+ * `scale / distance` is a genuine upper bound on the transform's own amplification, not a
+ * fudge factor: the local derivative of `1 − (1−x)^s` is `s·d^(s−1)`, and `s·d^s ≤ 1` for
+ * every `d < 1/e` and `s ≥ 0`, so `s·d^(s−1) ≤ 1/d`.
+ */
+function amplificationAt(
+  value: number,
+  boundDistance: (x: number) => number,
+  scale: number,
+): number {
+  return Math.max(1, scale / boundDistance(value));
+}
+
+/**
+ * Deviation of `actual` from `expected`, relative to the larger of the two magnitudes and
+ * the space's own scale.
+ *
+ * `scale` is what keeps the measure honest near a space's neutral: a `protraction` result
+ * of 1e-17 against an expected 0 is an absolute error of 1e-17 on an interval of width 2,
+ * i.e. nothing, but a pure relative measure calls it infinite. Log spaces pass `0` and are
+ * therefore measured purely relatively, which is the right notion there — their values are
+ * ratios, and their closed forms never subtract, so they carry no cancellation at all.
+ */
+function deviation(actual: number, expected: number, scale: number): number {
+  if (Object.is(actual, expected)) return 0;
+  return Math.abs(actual - expected) / Math.max(Math.abs(actual), Math.abs(expected), scale);
+}
+
+function expectOk(result: TransformResult): number {
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw new Error('unreachable');
+  return result.value;
+}
+
+interface SpaceUnderTest {
+  readonly name: string;
+  readonly space: ScaleSpace;
+  /** In-domain values, including every bound the space admits. */
+  readonly values: readonly number[];
+  /** Admissible factors, both attenuating and amplifying, excluding the identity. */
+  readonly factors: readonly number[];
+  /** Characteristic magnitude for {@link deviation}; 0 means "measure relatively". */
+  readonly scale: number;
+  /**
+   * Distance from a value to the nearest bound whose recovery costs precision, i.e. the one
+   * the closed form reaches by subtraction. `Infinity` where there is none — the log spaces
+   * bound at 0 but never subtract to get there.
+   */
+  readonly boundDistance: (x: number) => number;
+}
+
+const UNCONDITIONED = () => Infinity;
+const unitDistance = (x: number) => Math.min(x, 1 - x);
+
+const POSITIVE_FACTORS = [0.25, 0.5, 2, 4] as const;
+const REAL_FACTORS = [-2, -0.5, 0.25, 0.5, 2, 4] as const;
+
+/**
+ * One entry per scalar scale space of DESIGN §1's table. The `logit` interval and the
+ * `log-around-center` center are the registry's own (§7.3, §7.5/§7.14, §7.1).
+ */
+const SPACES: readonly SpaceUnderTest[] = [
+  {
+    name: 'log-around-center',
+    space: { kind: 'log-around-center', center: 72 },
+    values: [1e-3, 0.5, 20, 48, 60, 72, 100, 120, 1e3, 1e6],
+    factors: REAL_FACTORS,
+    scale: 0,
+    boundDistance: UNCONDITIONED,
+  },
+  {
+    name: 'log-around-1',
+    space: { kind: 'log-around-1' },
+    values: [1e-3, 0.1, 0.5, 1, 1.5, 2, 5, 100],
+    factors: REAL_FACTORS,
+    scale: 0,
+    boundDistance: UNCONDITIONED,
+  },
+  {
+    name: 'logit(0,1) — meanTempoAt',
+    space: { kind: 'logit', lower: 0, upper: 1 },
+    values: [0, 0.01, 0.1, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9, 0.99, 1],
+    factors: REAL_FACTORS,
+    scale: 1,
+    boundDistance: unitDistance,
+  },
+  {
+    name: 'logit(-1,1) — protraction',
+    space: { kind: 'logit', lower: -1, upper: 1 },
+    values: [-1, -0.9, -0.5, -0.1, 0, 0.1, 0.5, 0.9, 1],
+    factors: REAL_FACTORS,
+    scale: 2,
+    boundDistance: (x) => Math.min(x + 1, 1 - x),
+  },
+  {
+    name: 'boundary-power(low) — curvature',
+    space: { kind: 'boundary-power-low' },
+    values: [0, 0.01, 0.1, 0.4, 0.5, 0.9, 0.99, 1],
+    factors: POSITIVE_FACTORS,
+    scale: 1,
+    boundDistance: unitDistance,
+  },
+  {
+    name: 'boundary-power(high)',
+    space: { kind: 'boundary-power-high' },
+    values: [0, 0.01, 0.1, 0.4, 0.5, 0.9, 0.99, 1],
+    factors: POSITIVE_FACTORS,
+    scale: 1,
+    boundDistance: unitDistance,
+  },
+  {
+    name: 'gain',
+    space: { kind: 'gain' },
+    values: [-1000, -12.5, -1, -0.25, 0, 0.25, 1, 12.5, 1000],
+    factors: REAL_FACTORS,
+    scale: 0,
+    boundDistance: UNCONDITIONED,
+  },
+  {
+    name: 'gain-ordered',
+    space: { kind: 'gain-ordered' },
+    values: [-1000, -12.5, -1, -0.25, 0, 0.25, 1, 12.5, 1000],
+    factors: POSITIVE_FACTORS,
+    scale: 0,
+    boundDistance: UNCONDITIONED,
+  },
+];
+
+/** Windows whose total trim stays clear of the A6 clamp under every factor product below. */
+const TRIM_WINDOWS: readonly RubatoWindow[] = [
+  { lateStart: 0, earlyEnd: 0.8 },
+  { lateStart: 0.1, earlyEnd: 0.95 },
+  { lateStart: 0.2, earlyEnd: 0.9 },
+  { lateStart: 0.3, earlyEnd: 0.7 },
+  { lateStart: 0.25, earlyEnd: 1 },
+  { lateStart: 0.45, earlyEnd: 0.55 },
+];
+const TRIM_FACTORS = [0.5, 2] as const;
+
+/** DESIGN §4's default. An IEEE saturation guard, not a musical bound (A6). */
+const MIN_RUBATO_WINDOW = 1e-6;
+
+describe('s-domains are data (DESIGN §1, A3)', () => {
+  it('covers every scale space including the joint trim', () => {
+    const tags: readonly ScaleSpaceTag[] = [
+      'log-around-center',
+      'log-around-1',
+      'logit',
+      'boundary-power-low',
+      'boundary-power-high',
+      'gain',
+      'gain-ordered',
+      'joint-trim',
+    ];
+    expect(Object.keys(SCALE_SPACE_FACTOR_DOMAINS).sort()).toEqual([...tags].sort());
+  });
+
+  it('restricts boundary-power, ordered gain and the joint trim to s >= 0, others to R', () => {
+    for (const tag of [
+      'boundary-power-low',
+      'boundary-power-high',
+      'gain-ordered',
+      'joint-trim',
+    ] as const) {
+      expect(SCALE_SPACE_FACTOR_DOMAINS[tag]).toBe('non-negative');
+      expect(isAdmissibleFactor(tag, -0.5)).toBe(false);
+      expect(isAdmissibleFactor(tag, 0)).toBe(true);
+      expect(isAdmissibleFactor(tag, 3)).toBe(true);
+    }
+    for (const tag of ['log-around-center', 'log-around-1', 'logit', 'gain'] as const) {
+      expect(SCALE_SPACE_FACTOR_DOMAINS[tag]).toBe('real');
+      expect(isAdmissibleFactor(tag, -3)).toBe(true);
+    }
+  });
+
+  it('admits no non-finite factor anywhere', () => {
+    for (const tag of Object.keys(SCALE_SPACE_FACTOR_DOMAINS) as ScaleSpaceTag[]) {
+      for (const s of [NaN, Infinity, -Infinity]) {
+        expect(isAdmissibleFactor(tag, s)).toBe(false);
+      }
+    }
+  });
+
+  it('refuses a factor outside the space s-domain rather than clamping it', () => {
+    for (const { name, space } of SPACES) {
+      if (SCALE_SPACE_FACTOR_DOMAINS[space.kind] !== 'non-negative') continue;
+      const result = transformInSpace(space, 0.5, -1);
+      expect(result.ok, name).toBe(false);
+      if (!result.ok) expect(result.reason).toBe('out-of-domain-input');
+    }
+    const trim = jointTrimWindow({ lateStart: 0.2, earlyEnd: 0.9 }, -1, MIN_RUBATO_WINDOW);
+    expect(trim.ok).toBe(false);
+    if (!trim.ok) expect(trim.reason).toBe('out-of-domain-input');
+  });
+});
+
+describe('P1 — s = 1 is the identity bit for bit (DESIGN §1.1, A2)', () => {
+  it.each(SPACES)('$name returns its input exactly', ({ space, values }) => {
+    for (const x of values) {
+      expect(Object.is(expectOk(transformInSpace(space, x, 1)), x)).toBe(true);
+    }
+  });
+
+  it('holds where the arithmetic does not: mu*(48/mu)^1 !== 48', () => {
+    const center = Math.sqrt(20 * 100);
+    // DESIGN §1.1's own counter-example. The branch is what makes P1 true, not the formula.
+    expect(center * Math.pow(48 / center, 1)).not.toBe(48);
+    expect(expectOk(logAroundCenter(48, 1, center))).toBe(48);
+    expect(expectOk(logit(0.3, 1, 0, 1))).toBe(0.3);
+  });
+
+  it('the joint trim returns both endpoints exactly', () => {
+    for (const window of TRIM_WINDOWS) {
+      const result = jointTrimWindow(window, 1, MIN_RUBATO_WINDOW);
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(Object.is(result.value.lateStart, window.lateStart)).toBe(true);
+      expect(Object.is(result.value.earlyEnd, window.earlyEnd)).toBe(true);
+    }
+  });
+
+  it('never returns an out-of-domain input as an identity', () => {
+    expect(logAroundOne(-1, 1).ok).toBe(false);
+    expect(logit(1.5, 1, 0, 1).ok).toBe(false);
+    expect(boundaryPowerLow(1.5, 1).ok).toBe(false);
+    expect(gain(NaN, 1).ok).toBe(false);
+  });
+});
+
+describe('P2 — composition (DESIGN §1.1, A3)', () => {
+  it.each(SPACES)(
+    '$name: s1 after s2 equals s1*s2',
+    ({ space, values, factors, scale, boundDistance }) => {
+      let compared = 0;
+      let worst = 0;
+      for (const x of values) {
+        for (const s1 of factors) {
+          for (const s2 of factors) {
+            const first = transformInSpace(space, x, s2);
+            if (!first.ok) continue;
+            const composed = transformInSpace(space, first.value, s1);
+            const direct = transformInSpace(space, x, s1 * s2);
+            // A refusal on either path is a saturation, i.e. outside the clamp-free
+            // subdomain on which A3 contracts P2 at all.
+            if (!composed.ok || !direct.ok) continue;
+            // The intermediate is what the second transform has to read back, so it is its
+            // proximity to a bound — not the input's or the result's — that sets the budget.
+            const budget =
+              COMPOSITION_ULPS *
+              Number.EPSILON *
+              amplificationAt(first.value, boundDistance, scale);
+            worst = Math.max(worst, deviation(composed.value, direct.value, scale) / budget);
+            compared += 1;
+          }
+        }
+      }
+      expect(compared).toBeGreaterThan(20);
+      expect(worst).toBeLessThanOrEqual(1);
+    },
+  );
+
+  it('inverse factors round-trip to the input (s1*s2 = 1)', () => {
+    for (const { space, values, factors, scale, boundDistance } of SPACES) {
+      for (const x of values) {
+        for (const s of factors) {
+          const inverse = 1 / s;
+          if (!isAdmissibleFactor(space.kind, inverse)) continue;
+          const there = transformInSpace(space, x, s);
+          if (!there.ok) continue;
+          const back = transformInSpace(space, there.value, inverse);
+          if (!back.ok) continue;
+          const budget =
+            COMPOSITION_ULPS * Number.EPSILON * amplificationAt(there.value, boundDistance, scale);
+          expect(deviation(back.value, x, scale)).toBeLessThanOrEqual(budget);
+        }
+      }
+    }
+  });
+
+  it('log-around-center holds the center invariant, which is what makes P2 exact (§7.1)', () => {
+    const population = [40, 55, 60, 72, 90, 120];
+    const center = expectOk(geometricMean(population));
+    for (const s of REAL_FACTORS) {
+      const moved = population.map((x) => expectOk(logAroundCenter(x, s, center)));
+      expect(deviation(expectOk(geometricMean(moved)), center, 0)).toBeLessThanOrEqual(
+        COMPOSITION_ULPS * Number.EPSILON,
+      );
+    }
+  });
+
+  it('the joint trim composes and preserves the head:tail ratio (§7.6)', () => {
+    let compared = 0;
+    for (const window of TRIM_WINDOWS) {
+      const ratio = window.lateStart / (1 - window.earlyEnd);
+      for (const s1 of TRIM_FACTORS) {
+        for (const s2 of TRIM_FACTORS) {
+          const first = jointTrimWindow(window, s2, MIN_RUBATO_WINDOW);
+          expect(first.ok).toBe(true);
+          if (!first.ok) continue;
+          const composed = jointTrimWindow(first.value, s1, MIN_RUBATO_WINDOW);
+          const direct = jointTrimWindow(window, s1 * s2, MIN_RUBATO_WINDOW);
+          expect(composed.ok && direct.ok).toBe(true);
+          if (!composed.ok || !direct.ok) continue;
+          // The trim's conditioning is the intermediate window's remaining slack: what the
+          // second pass must recover is `1 − t`, and a nearly closed window has little of it.
+          const slack = first.value.earlyEnd - first.value.lateStart;
+          const budget = JOINT_TRIM_ULPS * Number.EPSILON * Math.max(1, 1 / slack);
+          expect(
+            deviation(composed.value.lateStart, direct.value.lateStart, 1),
+          ).toBeLessThanOrEqual(budget);
+          expect(deviation(composed.value.earlyEnd, direct.value.earlyEnd, 1)).toBeLessThanOrEqual(
+            budget,
+          );
+          if (Number.isFinite(ratio)) {
+            const movedRatio = direct.value.lateStart / (1 - direct.value.earlyEnd);
+            expect(deviation(movedRatio, ratio, 1)).toBeLessThanOrEqual(budget);
+          }
+          compared += 1;
+        }
+      }
+    }
+    expect(compared).toBe(TRIM_WINDOWS.length * TRIM_FACTORS.length * TRIM_FACTORS.length);
+  });
+});
+
+describe('P3 — domain closure comes from the transform, not a clamp (DESIGN §1.1)', () => {
+  it.each(SPACES)(
+    '$name maps its domain into itself for every admissible s',
+    ({ space, values, factors }) => {
+      for (const x of values) {
+        expect(isInValueDomain(space, x)).toBe(true);
+        for (const s of [...factors, 0, 1]) {
+          const result = transformInSpace(space, x, s);
+          if (!result.ok) continue;
+          expect(isInValueDomain(space, result.value)).toBe(true);
+        }
+      }
+    },
+  );
+
+  it('boundary-power leaves [0,1] for s < 0, which is why its s-domain is s >= 0', () => {
+    // The mathematics the s-domain encodes: unguarded, `1 − (1−x)^s` is negative here.
+    expect(1 - Math.pow(1 - 0.5, -1)).toBeLessThan(0);
+    expect(boundaryPowerLow(0.5, -1).ok).toBe(false);
+  });
+
+  it('the joint trim keeps 0 <= lateStart < earlyEnd <= 1 (§7.6)', () => {
+    for (const window of TRIM_WINDOWS) {
+      for (const s of [0, 0.25, 0.5, 1, 2, 4, 8, 16, 17, 64, 1e6]) {
+        const result = jointTrimWindow(window, s, MIN_RUBATO_WINDOW);
+        if (!result.ok) continue;
+        const { lateStart, earlyEnd } = result.value;
+        expect(lateStart).toBeGreaterThanOrEqual(0);
+        expect(earlyEnd).toBeLessThanOrEqual(1);
+        expect(lateStart).toBeLessThan(earlyEnd);
+      }
+    }
+  });
+});
+
+describe('P4 — the neutral is a fixed point for every admissible s (DESIGN §1.1)', () => {
+  it.each(SPACES)('$name fixes its neutral exactly', ({ space, factors }) => {
+    const neutral = neutralOf(space);
+    for (const s of [...factors, 0, 1]) {
+      expect(Object.is(expectOk(transformInSpace(space, neutral, s)), neutral)).toBe(true);
+    }
+  });
+
+  it('states each space neutral as DESIGN §1 does', () => {
+    expect(neutralOf({ kind: 'log-around-center', center: 72 })).toBe(72);
+    expect(neutralOf({ kind: 'log-around-1' })).toBe(1);
+    expect(neutralOf({ kind: 'logit', lower: 0, upper: 1 })).toBe(0.5);
+    expect(neutralOf({ kind: 'logit', lower: -1, upper: 1 })).toBe(0);
+    expect(neutralOf({ kind: 'boundary-power-low' })).toBe(0);
+    expect(neutralOf({ kind: 'boundary-power-high' })).toBe(1);
+    expect(neutralOf({ kind: 'gain' })).toBe(0);
+    expect(neutralOf({ kind: 'gain-ordered' })).toBe(0);
+  });
+
+  it('fixes the boundary values §7.5/§7.14 declare admissible, for s > 0', () => {
+    // `curvature = 1` and `protraction = ±1` are authored values, reached by the closed
+    // form rather than by `0·∞`. They are fixed points, not saturation cliffs.
+    for (const s of [0.25, 0.5, 2, 4, 1e6]) {
+      expect(Object.is(expectOk(boundaryPowerLow(1, s)), 1)).toBe(true);
+      expect(Object.is(expectOk(boundaryPowerLow(0, s)), 0)).toBe(true);
+      expect(Object.is(expectOk(boundaryPowerHigh(0, s)), 0)).toBe(true);
+      expect(Object.is(expectOk(boundaryPowerHigh(1, s)), 1)).toBe(true);
+      expect(Object.is(expectOk(logit(1, s, -1, 1)), 1)).toBe(true);
+      expect(Object.is(expectOk(logit(-1, s, -1, 1)), -1)).toBe(true);
+      expect(Object.is(expectOk(logit(0, s, 0, 1)), 0)).toBe(true);
+      expect(Object.is(expectOk(logit(1, s, 0, 1)), 1)).toBe(true);
+    }
+  });
+
+  it('refuses a bound-to-bound flip, which s < 0 makes of a boundary value', () => {
+    // `protraction = 1` at s = −1 maps to exactly −1: the opposite extreme, not an
+    // attenuation. The result is on a bound the input did not start on, so it is refused.
+    const flipped = logit(1, -1, -1, 1);
+    expect(flipped.ok).toBe(false);
+    if (!flipped.ok) expect(flipped.reason).toBe('saturation-to-boundary');
+  });
+
+  it('the untrimmed rubato window is the joint trim fixed point', () => {
+    const neutral: RubatoWindow = { lateStart: 0, earlyEnd: 1 };
+    for (const s of [0, 0.5, 1, 2, 16, 1e6]) {
+      const result = jointTrimWindow(neutral, s, MIN_RUBATO_WINDOW);
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(Object.is(result.value.lateStart, 0)).toBe(true);
+      expect(Object.is(result.value.earlyEnd, 1)).toBe(true);
+    }
+  });
+});
+
+describe('s = 0 writes the neutral through a closed form (DESIGN §1, A3)', () => {
+  it.each(SPACES)('$name maps every value to its neutral', ({ space, values }) => {
+    const neutral = neutralOf(space);
+    for (const x of values) {
+      expect(Object.is(expectOk(transformInSpace(space, x, 0)), neutral)).toBe(true);
+    }
+  });
+
+  it('does not compute 0 * T(x) at the values where T is infinite', () => {
+    // `curvature = 1` and `protraction = ±1` are exactly where `0·∞ = NaN` would bite.
+    expect(0 * Math.log(1 - 1)).toBeNaN();
+    expect(expectOk(boundaryPowerLow(1, 0))).toBe(0);
+    expect(expectOk(logit(1, 0, -1, 1))).toBe(0);
+    expect(expectOk(logit(-1, 0, -1, 1))).toBe(0);
+  });
+
+  it('gives gain the neutral 0, never the -0 that 0 * x produces', () => {
+    expect(0 * -5).toBe(-0);
+    expect(Object.is(expectOk(gain(-5, 0)), 0)).toBe(true);
+  });
+
+  it('removes the rubato window trim entirely', () => {
+    const result = jointTrimWindow({ lateStart: 0.45, earlyEnd: 0.55 }, 0, MIN_RUBATO_WINDOW);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual({ lateStart: 0, earlyEnd: 1 });
+  });
+});
+
+describe('saturation is refused, not written (DESIGN §1, A3)', () => {
+  it('refuses the logit cliffs §7.3 and §8 measured', () => {
+    // §7.3: "the logit saturates to exactly 1.0 at s ~ 8 for 0.99".
+    expect(1 / (1 + Math.pow((1 - 0.99) / 0.99, 8))).toBe(1);
+    const at99 = logit(0.99, 8, 0, 1);
+    expect(at99.ok).toBe(false);
+    if (!at99.ok) expect(at99.reason).toBe('saturation-to-boundary');
+    // The step below the cliff is still a value, and still interior.
+    expect(expectOk(logit(0.99, 7, 0, 1))).toBeLessThan(1);
+
+    // §8: "s ~ 16.75 for 0.9".
+    expect(logit(0.9, 16, 0, 1).ok).toBe(true);
+    const at9 = logit(0.9, 17, 0, 1);
+    expect(at9.ok).toBe(false);
+    if (!at9.ok) expect(at9.reason).toBe('saturation-to-boundary');
+
+    // At the lower bound the cliff is real but arrives far later, and only where the bound
+    // is not 0. `a + (b−a)/(1+w^s)` reaches `a` as soon as the quotient falls below half an
+    // ULP *of a* — immediate for protraction's −1, but for meanTempoAt `a = 0` contributes
+    // no cancellation and the quotient has to underflow the whole double range (s ≈ 155 for
+    // 0.01). So a meanTempoAt driven toward 0 keeps resolving where one driven toward 1 has
+    // long since saturated. The asymmetry is in the format, not the transform: §7.3 cites
+    // only the upper cliff because that is the one an authored value reaches.
+    const towardZero = logit(0.01, 8, 0, 1);
+    expect(expectOk(towardZero)).toBeGreaterThan(0);
+    const underflowed = logit(0.01, 160, 0, 1);
+    expect(underflowed.ok).toBe(false);
+    if (!underflowed.ok) expect(underflowed.reason).toBe('saturation-to-boundary');
+
+    const towardMinusOne = logit(-0.99, 8, -1, 1);
+    expect(towardMinusOne.ok).toBe(false);
+    if (!towardMinusOne.ok) expect(towardMinusOne.reason).toBe('saturation-to-boundary');
+  });
+
+  it('refuses boundary-power reaching an exact bound (A6 IEEE analysis)', () => {
+    // A6: once `(1−x)^s < 2^−54`, `1 − (1−x)^s` rounds to exactly 1.0.
+    expect(Math.pow(1 - 0.9, 17)).toBeLessThan(Math.pow(2, -54));
+    expect(1 - Math.pow(1 - 0.9, 17)).toBe(1);
+    const saturated = boundaryPowerLow(0.9, 17);
+    expect(saturated.ok).toBe(false);
+    if (!saturated.ok) expect(saturated.reason).toBe('saturation-to-boundary');
+    expect(expectOk(boundaryPowerLow(0.9, 16))).toBeLessThan(1);
+
+    const collapsed = boundaryPowerHigh(0.9, 1e5);
+    expect(collapsed.ok).toBe(false);
+    if (!collapsed.ok) expect(collapsed.reason).toBe('saturation-to-boundary');
+  });
+
+  it('refuses a log-space result that underflows out of R>0', () => {
+    const underflowed = logAroundOne(0.5, 5000);
+    expect(Math.pow(0.5, 5000)).toBe(0);
+    expect(underflowed.ok).toBe(false);
+    if (!underflowed.ok) expect(underflowed.reason).toBe('saturation-to-boundary');
+
+    const centered = logAroundCenter(1e-3, 200, 72);
+    expect(centered.ok).toBe(false);
+    if (!centered.ok) expect(centered.reason).toBe('saturation-to-boundary');
+  });
+
+  it('refuses a result that overflows rather than returning it', () => {
+    const overflowed = logAroundOne(10, 400);
+    expect(Math.pow(10, 400)).toBe(Infinity);
+    expect(overflowed.ok).toBe(false);
+    if (!overflowed.ok) expect(overflowed.reason).toBe('non-finite-result');
+
+    const huge = gain(1e300, 1e300);
+    expect(huge.ok).toBe(false);
+    if (!huge.ok) expect(huge.reason).toBe('non-finite-result');
+  });
+
+  it('does not refuse a gain result of 0, whose 0 is an interior neutral', () => {
+    expect(expectOk(gain(0, 4))).toBe(0);
+    expect(expectOk(gain(1e-300, 1e-300))).toBe(0);
+  });
+});
+
+describe('the validation gate refuses non-finite inputs (DESIGN §1.2)', () => {
+  const NON_FINITE = [NaN, Infinity, -Infinity] as const;
+
+  it.each(SPACES)(
+    '$name refuses a non-finite value and a non-finite factor',
+    ({ space, values }) => {
+      for (const bad of NON_FINITE) {
+        const byValue = transformInSpace(space, bad, 2);
+        expect(byValue.ok).toBe(false);
+        if (!byValue.ok) expect(byValue.reason).toBe('out-of-domain-input');
+
+        const byFactor = transformInSpace(space, values[0], bad);
+        expect(byFactor.ok).toBe(false);
+        if (!byFactor.ok) expect(byFactor.reason).toBe('out-of-domain-input');
+      }
+    },
+  );
+
+  it('refuses values outside each space domain', () => {
+    for (const x of [0, -1, -1e-300]) {
+      expect(logAroundOne(x, 2).ok).toBe(false);
+      expect(logAroundCenter(x, 2, 72).ok).toBe(false);
+    }
+    for (const x of [-1e-16, 1.0000000000000002, 2]) {
+      expect(boundaryPowerLow(x, 2).ok).toBe(false);
+      expect(boundaryPowerHigh(x, 2).ok).toBe(false);
+      expect(logit(x, 2, 0, 1).ok).toBe(false);
+    }
+    // §7.3's "curvature=1.5 at s=2.5 renders NaN" hazard: refused at the gate instead.
+    expect(boundaryPowerLow(1.5, 2.5).ok).toBe(false);
+    expect(Number.isNaN(1 - Math.pow(1 - 1.5, 2.5))).toBe(true);
+  });
+
+  it('refuses a malformed space parameter', () => {
+    for (const center of [0, -72, NaN, Infinity]) {
+      expect(logAroundCenter(60, 2, center).ok).toBe(false);
+    }
+    for (const [lower, upper] of [
+      [1, 0],
+      [0, 0],
+      [NaN, 1],
+      [0, Infinity],
+    ]) {
+      expect(logit(0.5, 2, lower, upper).ok).toBe(false);
+    }
+  });
+
+  it('refuses a rubato window that is out of domain or crossed', () => {
+    const bad: readonly RubatoWindow[] = [
+      { lateStart: 0.6, earlyEnd: 0.4 },
+      { lateStart: 0.5, earlyEnd: 0.5 },
+      { lateStart: -0.1, earlyEnd: 0.9 },
+      { lateStart: 0.1, earlyEnd: 1.1 },
+      { lateStart: NaN, earlyEnd: 0.9 },
+      { lateStart: 0.1, earlyEnd: Infinity },
+    ];
+    for (const window of bad) {
+      const result = jointTrimWindow(window, 2, MIN_RUBATO_WINDOW);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe('out-of-domain-input');
+    }
+    for (const minWindow of [0, 1, -1e-6, NaN, Infinity]) {
+      expect(jointTrimWindow({ lateStart: 0.2, earlyEnd: 0.9 }, 2, minWindow).ok).toBe(false);
+    }
+  });
+});
+
+describe('the joint trim guard (DESIGN §7.6, A6)', () => {
+  it('reparameterizes through the total trim rather than mapping the bounds separately', () => {
+    // RESOLVED-2's counter-example: independent boundary-power maps cross at the s solving
+    // `ee^s + (1−ls)^s = 1` — about 1.36 for a (0.4, 0.6) window.
+    const s = 1.4;
+    const independentLateStart = 1 - Math.pow(1 - 0.4, s);
+    const independentEarlyEnd = Math.pow(0.6, s);
+    expect(independentLateStart).toBeGreaterThan(independentEarlyEnd);
+
+    const joint = expectOk2(
+      jointTrimWindow({ lateStart: 0.4, earlyEnd: 0.6 }, s, MIN_RUBATO_WINDOW),
+    );
+    expect(joint.lateStart).toBeLessThan(joint.earlyEnd);
+  });
+
+  it('holds the window open at the (0.45, 0.55, s) triples DESIGN cites', () => {
+    const window: RubatoWindow = { lateStart: 0.45, earlyEnd: 0.55 };
+    // Unguarded, the total trim t = 0.9 rounds to exactly 1.0 at s = 17 and the split
+    // returns a' + b' = 1 — the pair the renderer resets to (0, 1).
+    expect(1 - Math.pow(1 - 0.9, 17)).toBe(1);
+
+    for (const s of [16, 17, 64, 1e6]) {
+      const result = expectOk2(jointTrimWindow(window, s, MIN_RUBATO_WINDOW));
+      expect(result.lateStart).toBeLessThan(result.earlyEnd);
+      // The guard, not the arithmetic, is what keeps them apart at these factors: the two
+      // endpoints are rounded independently, so the width lands within an ULP of the option
+      // rather than exactly on it.
+      expect(result.earlyEnd - result.lateStart).toBeCloseTo(MIN_RUBATO_WINDOW, 15);
+    }
+  });
+
+  it('absorbs a saturating total trim into the clamp instead of refusing it (§8)', () => {
+    // The one place a boundary saturation is *not* a refusal. Called on the scalar space
+    // directly, the same total trim is refused — which is what §8's "saturates smoothly"
+    // would otherwise contradict.
+    expect(boundaryPowerLow(0.9, 17).ok).toBe(false);
+    const window = expectOk2(
+      jointTrimWindow({ lateStart: 0.45, earlyEnd: 0.55 }, 17, MIN_RUBATO_WINDOW),
+    );
+    expect(window.lateStart).toBeLessThan(window.earlyEnd);
+  });
+
+  it('makes the clamp the caller option it is documented to be', () => {
+    const window: RubatoWindow = { lateStart: 0.45, earlyEnd: 0.55 };
+    const tight = expectOk2(jointTrimWindow(window, 1e6, MIN_RUBATO_WINDOW));
+    const loose = expectOk2(jointTrimWindow(window, 1e6, 0.25));
+    expect(tight.earlyEnd - tight.lateStart).toBeCloseTo(MIN_RUBATO_WINDOW, 12);
+    expect(loose.earlyEnd - loose.lateStart).toBeCloseTo(0.25, 12);
+  });
+
+  it('scales the trim, and only the trim, on a one-sided window', () => {
+    const headOnly = expectOk2(
+      jointTrimWindow({ lateStart: 0.25, earlyEnd: 1 }, 2, MIN_RUBATO_WINDOW),
+    );
+    expect(Object.is(headOnly.earlyEnd, 1)).toBe(true);
+    expect(headOnly.lateStart).toBeCloseTo(1 - Math.pow(1 - 0.25, 2), 15);
+
+    const tailOnly = expectOk2(
+      jointTrimWindow({ lateStart: 0, earlyEnd: 0.75 }, 2, MIN_RUBATO_WINDOW),
+    );
+    expect(Object.is(tailOnly.lateStart, 0)).toBe(true);
+    expect(tailOnly.earlyEnd).toBeCloseTo(Math.pow(1 - 0.25, 2), 15);
+  });
+
+  it('widens the window for s < 1 and narrows it for s > 1 (P5a)', () => {
+    const window: RubatoWindow = { lateStart: 0.2, earlyEnd: 0.9 };
+    const widened = expectOk2(jointTrimWindow(window, 0.5, MIN_RUBATO_WINDOW));
+    const narrowed = expectOk2(jointTrimWindow(window, 2, MIN_RUBATO_WINDOW));
+    const trimOf = (w: RubatoWindow) => w.lateStart + (1 - w.earlyEnd);
+    expect(trimOf(widened)).toBeLessThan(trimOf(window));
+    expect(trimOf(narrowed)).toBeGreaterThan(trimOf(window));
+  });
+});
+
+describe('geometricMean — the center population (DESIGN §7.1, A5)', () => {
+  it('is the unweighted geometric mean', () => {
+    expect(expectOk(geometricMean([20, 100]))).toBeCloseTo(Math.sqrt(2000), 12);
+    expect(expectOk(geometricMean([1, 2, 4]))).toBeCloseTo(2, 12);
+  });
+
+  it('returns a single-value population exactly, where exp(log(x)) does not', () => {
+    expect(Math.exp(Math.log(48))).not.toBe(48);
+    expect(Object.is(expectOk(geometricMean([48])), 48)).toBe(true);
+  });
+
+  it('returns an all-equal population exactly', () => {
+    // A piecewise-constant map is the dominant corpus shape (§1.3); a center off by an ULP
+    // there moves every value the run writes.
+    expect(Math.exp((Math.log(48) * 3) / 3)).not.toBe(48);
+    expect(Object.is(expectOk(geometricMean([48, 48, 48])), 48)).toBe(true);
+  });
+
+  it('is invariant to ordering and to the population size for repeated values', () => {
+    const a = expectOk(geometricMean([40, 60, 90]));
+    const b = expectOk(geometricMean([90, 40, 60]));
+    expect(deviation(a, b, 0)).toBeLessThanOrEqual(COMPOSITION_ULPS * Number.EPSILON);
+  });
+
+  it('refuses an empty population and any non-positive or non-finite member', () => {
+    for (const population of [[], [0], [-1], [60, 0], [60, -20], [NaN], [60, Infinity]]) {
+      const result = geometricMean(population);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe('out-of-domain-input');
+    }
+  });
+
+  it('cannot underflow out of R>0 — the two refusal branches are unreachable', () => {
+    // Stated as the reachability proof it is, rather than as an assertion behind an untaken
+    // `if` — which executed nothing and implied the underflow branch was covered.
+    // `logSum / n` is bounded below by `Math.log(5e-324) = -744.44` and above by
+    // `Math.log(1.79e308) = 709.78` for any population of positive finite doubles, and
+    // `Math.exp` neither underflows to 0 nor overflows anywhere in that range. So a geometric
+    // mean of positive doubles cannot leave ℝ>0, and both refusal branches below the loop in
+    // `geometricMean` are unreachable by construction.
+    const result = geometricMean([1e-320, 1e-320, 5e-324]);
+    expect(result.ok).toBe(true);
+    expect(Math.exp(Math.log(5e-324))).toBeGreaterThan(0);
+  });
+});
+
+describe('metric anchors — the numbers DESIGN chose, not merely a valid T', () => {
+  // P1–P5 hold for *any* monotone bijection with `T(neutral) = 0`, so nothing above pins a
+  // single registry choice (DESIGN §1.1). These do: each is a value DESIGN states, and each
+  // separates the chosen metric from the alternative it was chosen over.
+
+  it('logit over the position, not log-1 over the renderer exponent (§7.3)', () => {
+    // §7.3's own discriminator: "x=0.25 at s=2 gives 0.1 vs 0.0625". The rejected reading
+    // scales `exponent = ln0.5/ln x` in log-1; the chosen one scales *where in the span* the
+    // mean tempo falls, which is the perceptually even parameter and what the format exposes.
+    expect(expectOk(logit(0.25, 2, 0, 1))).toBeCloseTo(0.1, 15);
+    const rejectedExponentMetric = Math.exp(
+      Math.log(0.5) / Math.pow(Math.log(0.5) / Math.log(0.25), 2),
+    );
+    expect(rejectedExponentMetric).toBeCloseTo(0.0625, 15);
+  });
+
+  it('protraction on logit(-1,1) (§7.5, §7.14)', () => {
+    // w = 0.5/1.5 = 1/3; at s = 2, −1 + 2/(1 + 1/9) = 0.8.
+    expect(expectOk(logit(0.5, 2, -1, 1))).toBeCloseTo(0.8, 15);
+    expect(expectOk(logit(-0.5, 2, -1, 1))).toBeCloseTo(-0.8, 15);
+  });
+
+  it('curvature on boundary-power(low), neutral at the lower bound (§7.5)', () => {
+    expect(expectOk(boundaryPowerLow(0.5, 2))).toBeCloseTo(0.75, 15);
+    expect(expectOk(boundaryPowerLow(0.5, 0.5))).toBeCloseTo(1 - Math.SQRT1_2, 15);
+  });
+
+  it('levels scale their log-ratio to the center by exactly s (§7.1, §7.2)', () => {
+    // The property that makes `global` scope work on piecewise-constant maps: the ratio of
+    // any value to the center is raised to s, so section contrast grows without the center
+    // moving. A linear reading of the same attribute would not do this.
+    const center = 72;
+    expect(expectOk(logAroundCenter(144, 2, center))).toBeCloseTo(center * 4, 12);
+    expect(expectOk(logAroundCenter(36, 2, center))).toBeCloseTo(center / 4, 12);
+    // And the log-difference of a transition pair scales by s regardless of the center (§1.3).
+    const pair = [60, 120].map((x) => expectOk(logAroundCenter(x, 2, center)));
+    expect(Math.log(pair[1] / pair[0])).toBeCloseTo(2 * Math.log(120 / 60), 12);
+  });
+
+  it('ratio gains and signed offsets (§7.6, §7.10, §7.12)', () => {
+    expect(expectOk(logAroundOne(2, 3))).toBeCloseTo(8, 12);
+    expect(expectOk(logAroundOne(0.5, 2))).toBeCloseTo(0.25, 15);
+    expect(expectOk(gain(-12.5, 2))).toBe(-25);
+    expect(expectOk(orderedGain(20, 0.5))).toBe(10);
+  });
+
+  it('the joint trim splits the transformed total on the original ratio (§7.6)', () => {
+    // (0.2, 0.9): t = 0.3, t' = 1 − 0.7² = 0.51, split 2:1 into 0.34 and 0.17.
+    const result = expectOk2(
+      jointTrimWindow({ lateStart: 0.2, earlyEnd: 0.9 }, 2, MIN_RUBATO_WINDOW),
+    );
+    expect(result.lateStart).toBeCloseTo(0.34, 15);
+    expect(result.earlyEnd).toBeCloseTo(0.83, 15);
+  });
+});
+
+describe('dispatch', () => {
+  it('routes each space to the same transform as its named function', () => {
+    const s = 2.5;
+    expect(transformInSpace({ kind: 'log-around-center', center: 72 }, 60, s)).toEqual(
+      logAroundCenter(60, s, 72),
+    );
+    expect(transformInSpace({ kind: 'log-around-1' }, 1.5, s)).toEqual(logAroundOne(1.5, s));
+    expect(transformInSpace({ kind: 'logit', lower: -1, upper: 1 }, 0.4, s)).toEqual(
+      logit(0.4, s, -1, 1),
+    );
+    expect(transformInSpace({ kind: 'boundary-power-low' }, 0.4, s)).toEqual(
+      boundaryPowerLow(0.4, s),
+    );
+    expect(transformInSpace({ kind: 'boundary-power-high' }, 0.4, s)).toEqual(
+      boundaryPowerHigh(0.4, s),
+    );
+    expect(transformInSpace({ kind: 'gain' }, -12, s)).toEqual(gain(-12, s));
+    expect(transformInSpace({ kind: 'gain-ordered' }, -12, s)).toEqual(orderedGain(-12, s));
+  });
+
+  it('separates gain from ordered gain by s-domain alone', () => {
+    expect(gain(10, -2)).toEqual({ ok: true, value: -20 });
+    const ordered = orderedGain(10, -2);
+    expect(ordered.ok).toBe(false);
+    if (!ordered.ok) expect(ordered.reason).toBe('out-of-domain-input');
+    expect(orderedGain(10, 2)).toEqual(gain(10, 2));
+  });
+
+  it('throws on an unknown space tag — a programmer error, not data', () => {
+    const bogus = { kind: 'no-such-space' } as unknown as ScaleSpace;
+    expect(() => transformInSpace(bogus, 1, 2)).toThrow(/unknown scale space/);
+    expect(() => neutralOf(bogus)).toThrow(/unknown scale space/);
+  });
+});
+
+function expectOk2(result: TransformResult<RubatoWindow>): RubatoWindow {
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw new Error('unreachable');
+  return result.value;
+}

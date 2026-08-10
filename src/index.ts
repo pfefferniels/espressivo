@@ -60,10 +60,20 @@ export {
   renderExpressiveMidi,
 } from './api/pipeline.js';
 export {
+  exaggerateMpm,
+  spotlightMpm,
+  canonicalMpm,
+  weightedFactors,
+  EXPRESSION_DIMENSIONS,
+  PROTOTYPE_WEIGHTS,
+} from './api/expression.js';
+export {
   ParseError,
   EmptyDocumentError,
   PerformanceNotFoundError,
   InvalidOptionError,
+  SelectionNotFoundError,
+  EngineInvariantError,
 } from './api/errors.js';
 export type {
   XmlText,
@@ -78,6 +88,27 @@ export type {
   ControlChangeStream,
   PerformedPart,
   PerformanceData,
+  ExaggerateOptions,
+  ExaggerationResult,
+  SpotlightOptions,
+  SpotlightResult,
+  SpotlightSelection,
+  ExaggerationFactors,
+  ExaggerationWeights,
+  ExpressionDimension,
+  ExaggerationScope,
+  CenterOverrides,
+  VelocityRange,
+  ExaggerationReport,
+  PerformanceReport,
+  PerformanceBounds,
+  DimensionReport,
+  MsmDependentEstimates,
+  VelocityCoefficients,
+  ReportNote,
+  ReportNoteKind,
+  SiteRef,
+  SiteState,
 } from './api/types.js';
 
 // The compile-time units the facade's output types are branded with (RULE U1/U3(a)).

@@ -29,34 +29,74 @@ import importPlugin from 'eslint-plugin-import';
  * erased before it can become a module edge.
  *
  * Globs match the import *specifier*, which is always relative here, so `**` has to absorb
- * the leading `../`. `src/mei/**` is the top interior layer and gets no entry: everything
- * below it is fair game for the converter.
+ * the leading `../`. `src/mei/**` is the top interior layer of the renderer, so everything
+ * below it is fair game for the converter; its only entry is the reverse guard below.
+ *
+ * An `expression` glob appears in every renderer zone for the REVERSE direction: the expression
+ * transform sits above the whole renderer and reads raw XML, so no renderer module may reach up
+ * into it. Fencing only the downward direction would leave the new layer half-enforced — the
+ * edge count is zero today, and these entries are what keeps it there.
  */
 const LAYER_ZONES = [
   {
     layer: 'leaves',
     files: ['src/xml/**/*.ts', 'src/music/**/*.ts', 'src/supplementary/**/*.ts', 'src/version.ts'],
-    forbidden: ['**/midi/**', '**/msm/**', '**/mpm/**', '**/mei/**', '**/musicxml/**'],
-    why: 'L0/L1 leaf modules import nothing from a higher layer (ARCHITECTURE.md RULE M1).',
+    forbidden: [
+      '**/midi/**',
+      '**/msm/**',
+      '**/mpm/**',
+      '**/mei/**',
+      '**/musicxml/**',
+      '**/expression/**',
+    ],
+    why: 'L0/L1 leaf modules import nothing from a higher layer, the expression transform at the top of the tree included (ARCHITECTURE.md RULE M1).',
   },
   {
     layer: 'midi',
     files: ['src/midi/**/*.ts'],
-    forbidden: ['**/msm/**', '**/mpm/**', '**/mei/**', '**/musicxml/**'],
-    why: 'src/midi/** is L2 and must not know about MSM, MPM or MEI (RULE M1).',
+    forbidden: ['**/msm/**', '**/mpm/**', '**/mei/**', '**/musicxml/**', '**/expression/**'],
+    why: 'src/midi/** is L2 and must not know about MSM, MPM, MEI, or the expression transform above them (RULE M1).',
   },
   {
     layer: 'msm',
     files: ['src/msm/**/*.ts'],
-    forbidden: ['**/mpm/**', '**/mei/**', '**/musicxml/**'],
+    forbidden: ['**/mpm/**', '**/mei/**', '**/musicxml/**', '**/expression/**'],
     typeOk: true,
-    why: 'src/msm/** is L3: MPM and MEI are above it, so only `import type` may cross (RULE M1).',
+    why: 'src/msm/** is L3: MPM, MEI and the expression transform are above it, so only `import type` may cross (RULE M1).',
   },
   {
     layer: 'mpm',
     files: ['src/mpm/**/*.ts'],
-    forbidden: ['**/mei/**', '**/musicxml/**'],
-    why: 'src/mpm/** is L4 and must not import the MEI layer at all — T14 removed the last 33 such edges (RULE M1/M2).',
+    forbidden: ['**/mei/**', '**/musicxml/**', '**/expression/**'],
+    why: 'src/mpm/** is L4 and must not import the MEI layer or the expression transform above it — T14 removed the last 33 such MEI edges (RULE M1/M2).',
+  },
+  {
+    layer: 'mei',
+    files: ['src/mei/**/*.ts'],
+    forbidden: ['**/expression/**'],
+    why: "src/mei/** is the renderer's top interior layer, still below the expression transform.",
+  },
+  {
+    layer: 'expression',
+    files: ['src/expression/**/*.ts'],
+    // Negated last, gitignore-style: everything under `src/mpm/` is forbidden EXCEPT
+    // `names.ts`, which is the MPM vocabulary — the namespace URI plus the six style-collection
+    // and thirteen map local names. That module is a documented leaf that imports nothing (it
+    // exists precisely to break the `Mpm` ⇄ element-module cycle), so depending on it is
+    // depending on the format's spelling, not on the renderer.
+    forbidden: [
+      '**/midi/**',
+      '**/msm/**',
+      '**/mei/**',
+      '**/musicxml/**',
+      '**/mpm/**',
+      '!**/mpm/names.js',
+    ],
+    why:
+      'src/expression/** is a document transform over raw MPM XML: it may use src/xml/**, ' +
+      'src/supplementary/** and the MPM name constants, and nothing else. Importing a renderer ' +
+      'class would reintroduce exactly what DESIGN.md D-A/A1 forbids — `new Mpm(text)` runs the ' +
+      'mutating def parsers in its CONSTRUCTOR, so merely parsing a document rewrites it.',
   },
 ];
 export default tseslint.config(
