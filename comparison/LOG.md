@@ -552,3 +552,79 @@ Liebman et al. 2012 citations).
 
 W0 is now fully closed (tasks #1, #4). W2 in flight (w2a registry/config,
 survey-code document layer).
+
+## 2026-08-10 — W2b: comparison document layer (task #13, survey-code)
+
+`src/comparison/` document layer landed. Seven modules, 44 tests, no curve
+evaluation and no densities (W2c), no `src/api` change, no registry dependency.
+
+[DECISION] Module layout (the brief left it to me): `ppq.ts` (grid + lcm),
+`values.ts` (⊥ marker + renderer-default level), `spanEnds.ts` (span law as
+data), `parts.ts` (scopes, wholesale map resolution, matching), `window.ts`
+(precedence + stamps), `errors.ts` (interior throws), `document.ts`
+(orchestrator `readComparisonPair`). Small modules over one file, matching the
+expression module's granularity; each is independently testable and the two
+shadowing rules end up in visibly different files, which is the point.
+
+[DECISION] NO registry dependency at all, so w2a and w2b are order-independent.
+The brief allowed a type-only import from `./registry.js`, but at the time I
+started that file did not exist and a type-only import of a missing module
+fails `tsc`, which is in the verify gate. Nothing in a document layer needs a
+registry row: rows are about attributes and scale spaces, which is W2c's
+question. w2a's registry.ts landed in the shared worktree mid-item and the
+final verify covers both.
+
+[DECISION] Interior error classes (`errors.ts`) extending `MeicoError` from
+`src/xml/errors.js`, NOT the facade's `InvalidOptionError` /
+`PerformanceNotFoundError`. §9.4 assigns exactly this split — "the interior owns
+the domain validators … and the facade wraps their throws in
+`InvalidOptionError` with `{ cause }`" — and an interior import from `src/api`
+would be an upward dependency against RULE M1. Each class carries structured
+fields (`role`, `candidates`, `selector`) so W3's facade can build the
+role-prefixed message without parsing a string back apart.
+
+Renderer fidelity, verified by negative control rather than asserted:
+- Reversing the map-shadowing order fails exactly the empty-map-shadows test.
+- Reverting AD-1 (unresolvable level → NaN instead of 100.0) fails exactly the
+  three renderer-default tests, including the one pinning that `volume="?"` and
+  `volume="100"` agree.
+Both controls were run by patching, testing and restoring; neither test passes
+for the wrong reason.
+
+[DECISION, needs conductor confirmation] A `<part>` missing `@number`,
+`@midi.channel` or `@midi.port` is EXCLUDED from matching, not compared against
+neutral. `Part.parseData:90-105` throws on it, `Part.createPart` returns null
+and `Performance.parseData:213-219` continues past it, so nothing in it is ever
+performed; comparing it against neutral would charge a document for material
+the renderer discards. §5.0 states the governing principle for the neighbouring
+case in so many words — a difference that "is not performed" is distance 0 plus
+a structural note — so this follows the design rather than extending it, but
+R6's "unmatched parts are compared against the neutral curve" does not
+distinguish the two cases and the conductor may want it spelled out.
+
+OPEN QUESTIONS for the conductor (implemented as noted, all one-line changes):
+1. §5.0 lists the MSM score end ABOVE `options.window` in the precedence chain,
+   so an explicit window is ignored when an MSM is supplied. Implemented as
+   written. Most option systems let the explicit value win, and §9.4's
+   knowability split would make the ignored window an `option-unusable` note
+   rather than a silent override. Confirm the ordering is intended.
+2. A21 says `ppq.fallbackUsed` means "exactly one thing: a document declared no
+   `@pulsesPerQuarter`". A document that declares an UNUSABLE one
+   (`pulsesPerQuarter="lots"`, or `"0"`) is neither that case nor usable.
+   Implemented as a third state — value falls back to 720, `declared` stays
+   true, and the raw text is carried as `unusableDeclaration` — so the A21
+   stamp keeps its exact meaning. Needs a home in the §9.3 report shape.
+3. Parts with no usable `@number` cannot be matched. Implemented as one
+   unmatched row each, A-side block before B-side block so the order is
+   symmetric under swapping the documents (R2). Not specified anywhere.
+4. `b` omitted with two performances in `a` and no selectors still raises the
+   ambiguity error. §9.2 says the multi-performance-without-selector error
+   "still covers the ambiguous case"; a two-performance document is arguably
+   unambiguous. Kept strict.
+
+Gate: `npm run verify` green, 92 files / 4093 tests (was 4032; +44 mine, the
+remainder w2a's in-flight registry and forward-T work, which was uncommitted in
+the shared worktree and passes). eslint and prettier clean on all eight files I
+touched; `src/comparison/registry.ts` currently reports one unused-variable
+error and one prettier warning, both w2a's and deliberately not touched by me.
+Staged file by file rather than by directory for the same reason.
