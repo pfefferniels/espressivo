@@ -2444,3 +2444,33 @@ table's CONCLUSION stands; the mechanism does not, and it is a trap for exactly 
 discipline AD-42.4 just imposed — a reader checking `Number.isFinite` sees `null`, not a number,
 and must not route it to `⊥`. Whether any path stringifies it (`parseFloat(String(null))` = NaN)
 is unverified and is the first thing cut 4 should check in `ImprecisionMap.applyTo`.
+
+## 2026-08-10 — AD-46: w3-dims handoff; cut-4 commission [BINDING]
+
+adb9c4a accepted — everything ruled through AD-45 is implemented, nothing
+delegated outstanding; the inverted residual test (identical performances
+now compare at 0) and the mechanism-level relocation of the
+unequal-intensity limitation are both the campaign's established
+evidence-preservation move. w3-dims's tenure: the 404fd57 audit (9
+defects, 8 repaired + 1 referred), cut 3 closure, AD-45 implementation —
+4523 → 4553 tests, every claim pipeline-measured, every repair
+negative-controlled. HANDOFF GRANTED at the clean pushed boundary,
+explicitly for the AD-42 reason (no half-written module in a shared
+worktree).
+
+CUT-4 COMMISSION (successor): §5.9 + AD-14 in full (W₁ closed forms;
+Gaussian as the AD-14iv mixture; W₂ three-term with ρ-table fast paths +
+re-derivation pins; quantile quadrature with breakpoint-aware nodes;
+Φ/Φ⁻¹ per Acklam with re-derivation tests; timingBasis family-dependence;
+processParameters; ~20 registry rows closing the skip-list to ZERO;
+capped-density check per AD-36.2). INHERITANCES (verified by w3-dims,
+recorded here): (1) the degenerate table executes as ruled EXCEPT the
+triangular-clip mechanism — absent clip.* yields draws of NULL (typed
+number), δ₀ only because ms + null coerces; FIRST TASK: trace whether any
+path stringifies it (parseFloat(String(null)) = NaN ⇒ genuine ⊥) through
+ImprecisionMap.applyTo end to end before writing the reader. (2)
+DistributionData initialises every parameter to null — the degenerate
+table's whole mechanism. (3) AD-29's any-entry span rule is in
+spanEnds.ts, but AD-35.4's hazard question has NOT been asked of §5.9's
+remaining guards — ask it of every one; ornamentation yielded two fresh
+instances.
