@@ -84,8 +84,11 @@ export function asynchronyDistance(
   window: ComparisonWindow,
   ticksPerQuarter: number,
   canonical: CanonicalPair = IDENTITY_CANONICAL_PAIR,
+  jndOverride?: number,
 ): AsynchronyDistance {
-  const row = comparisonRowFor('asynchrony/asynchrony@milliseconds.offset');
+  const registryRow = comparisonRowFor('asynchrony/asynchrony@milliseconds.offset');
+  const row =
+    jndOverride === undefined ? registryRow : { ...registryRow, jnd: jndOverride };
   const grid = asynchronyGridTicks(a, b, window, ticksPerQuarter);
 
   const cells: AsynchronyCell[] = [];

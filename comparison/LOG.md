@@ -3440,3 +3440,95 @@ canonicalization from tempo's integrand (3); applying it to the raw value instea
 
 Gate: `npm run verify` GREEN before committing — 112 files, 4860 passed, 0 skipped (was 4846).
 14 new tests. eslint and prettier clean across `src/comparison` and `tests/comparison`.
+
+## 2026-08-16 — W3b part 5: the eleven-dimension driver (w3b-facade)
+
+`src/comparison/{dimensions,compare,report,msm,plausibility,drift}.ts` + 31 tests. The eleven
+dimensions become a comparison: one window, one settings record, one aggregate density, one
+closing table, and the campaign's first end-to-end numbers across all of §3.
+
+**ONE INTERFACE, THREE SHAPES.** `dimensions.ts` puts every dimension behind
+`DimensionEvaluation`, so §7's aggregation, §9's report and the profile export are written once
+rather than eleven times. The three genuinely different shapes §3 names — curve, event,
+distribution — are three functions, and the six curve dimensions share one `CurvePlan` record
+each. Nothing above that file has ever heard of a `TempoCurve`.
+
+**A DESIGN-VS-RENDERER DIVERGENCE, MEASURED THROUGH THE PIPELINE, AND IT IS AD-3's.** AD-3 says
+an unmatched part "compares against the neutral curve (R6 applied to parts)". The renderer does
+something else: `renderParts` iterates over the **MSM's** parts and calls
+`resolvePartMaps(mpmPart, globalMaps)`, whose first line is `if (mpmPart === null) return
+globalMaps` — so an MSM part with no MPM counterpart inherits the GLOBAL maps wholesale.
+Executed end to end through `performMsm`: an MPM with a global `dynamicsMap` at volume 40 and a
+part 1 shadowing it at 110, against an MSM with parts 1 and 2, performs part 1's notes at
+velocity 110 and part 2's at **40** — not at the neutral 100. The console says so too ("No MPM
+part found that corresponds to MSM part 2").
+
+R6 is being applied one level too early: an absent MAP is the neutral curve, and what a part
+with no counterpart has is not an absent map but the global one. Implemented renderer-true — a
+missing part takes that document's global scope, which degenerates to AD-3's rule exactly when
+the global map is absent too — with the pipeline probe pinned as a test and the reading stated
+in the module header. **The negative control fails on REAL DATA**: reverting to the neutral
+reading breaks two Vulpius anchors as well as the synthetic case, so this is not a corner.
+Reported for ratification; the difference is |ln(100/40)| = 9.6 JND sustained over a whole part.
+
+**MASS IS ADDITIVE AND A MEAN IS NOT**, which is the whole content of merging the part scopes.
+Cells and atoms concatenate and the aggregate density is their sum — overlapping cells are what
+`p_k(t) = Σ_parts p_{k,part}(t)` MEANS — while §1.2's decomposition is taken over the DISJOINT
+UNION of the parts' curves (part `p` on `[p·L, (p+1)·L)`), which is exact, needs no
+representative part, and degenerates correctly when every part inherits one global map. Pinned:
+a three-part document whose parts all inherit one global `tempoMap` scores exactly 3× the
+global-only pair, because the renderer performs that map three times.
+
+[DEFECT FOUND BY THAT MERGE, in shipped code] `aggregate.ts`'s `pointwiseDensityAt` RETURNED the
+first covering cell instead of summing. With one scope per dimension the two agree; with parts
+they do not, and `massIn` was already summing — so the root refinement would have seen a
+fraction of the density the mass reports. That is the module's own shape-versus-scale
+inconsistency one level down, and it is repaired with the reason recorded. Negative-controlled at
+the profile layer, where the same summation is visible directly.
+
+**§7.4's INVARIANCE IS DEGRADED, NOT THROWN, WHERE THE DOCUMENT DECIDES** (AD-25.1): a mode
+requested for a window carrying a `⊥` span has no moments to canonicalize against, and a mode
+requested for a dimension neither document carries removes nothing. Both emit `option-unusable`
+and fall back to `'none'`. C9's linear-space sentence ships as the `invariance-space` note, in
+plain words, with the measurement behind it from the previous commit.
+
+**THE SMALL MODULES.** `msm.ts` reads the score end, the global `timeSignatureMap`, the measure
+grid and the note count — and states its own shortfall: AD-12's forward-only walk needs the
+accentuation evaluator to take a grid FUNCTION, which is a cut-1 extension, so a single time
+signature is exact and several earn an `estimate-degradation` note naming the limitation.
+`plausibility.ts` is C6's channel as a dimension-neutral document walk over the registry's own
+`sites`/`plausibleRange` — ~60 lines rather than eleven hooks — and it produces §9.3's site
+reference as a by-product. `drift.ts` is C13, integrating `60/qbpm` on the tempo dimension's own
+graded mesh (`gradedBoundariesIn` is exported for it, so the drift and the distance see one
+mesh), with the divergence from §5.1's "renderer-Simpson" stated rather than hidden: reproducing
+the renderer's own accumulator means importing it, which §9.7's zone forbids.
+
+**FIRST REAL NUMBERS ACROSS ALL ELEVEN DIMENSIONS.**
+
+    Telemann Grave, MSM window 204 quarters, all eleven dimensions, ω = 1
+      Baroque <-> Fast      22357.06  |  Baroque <-> Romantic   6493.60  |  Fast <-> Romantic  21686.72
+    Vulpius, MSM window 54 quarters
+      Baroque <-> Romantic   8849.39  |  Baroque <-> Amateur   10294.50  |  Romantic <-> Amateur  2939.66
+
+P-C9's shape holds for Telemann and **§10's expectation of Vulpius is CORRECTED by measurement**.
+"Vulpius similar" predicts the two historical readings as the near pair; they are not, and the
+reason is in the document rather than in the metric — the Amateur reading is the ROMANTIC one
+with imprecision and asynchrony added. Its tempo, rubato and articulation rows against Romantic
+are EXACTLY zero, three whole dimensions of two different performances comparing at 0 because
+they really do share their maps, and everything separating them sits in `imprecisionTiming`,
+`imprecisionDynamics` and `asynchrony`. That is a better test than the ordering the design asked
+for: an expected ordering would pass on an implementation computing almost anything, while an
+exact zero across three dimensions with a large nonzero on three others can only come out of
+readers that agree with the document.
+
+NEGATIVE CONTROLS, each failing exactly its own tests and restoring green: the neutral reading of
+an unmatched part (3, two of them on real data); dropping the event atoms from the density (1 —
+the closure test, which is what the atoms exist for); a first-covering-cell profile density
+instead of the sum (1).
+
+Gate: `npm run verify` GREEN before committing — 113 files, 4891 passed, 0 skipped (was 4860).
+31 new tests. eslint and prettier clean across `src/comparison` and `tests/comparison`.
+
+REMAINING IN W3B: the §9 facade with its validation table, typed errors and −0 normalization;
+`src/index.ts` + `src/api` exports; P-C2 byte-identity at facade level; P-C11's walker; P-C5's
+three-part split.

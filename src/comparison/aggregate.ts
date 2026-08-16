@@ -275,15 +275,28 @@ function aggregateDensityAt(
   return total.total;
 }
 
-/** One dimension's `p_k(t)`: its sampler where it has one, else the covering cell's mean. */
+/**
+ * One dimension's `p_k(t)`: its sampler where it has one, else the covering cell's mean.
+ *
+ * SUMMED over every covering cell, not taken from the first. A dimension evaluated per part
+ * carries one cell list per part and they overlap in time — which is not a defect but the
+ * meaning of `p_k(t) = Σ_parts p_{k,part}(t)`, and it is exactly what {@link massIn} already
+ * does. A first-match lookup would make the root refinement see a fraction of the density the
+ * mass reports, which is the shape-versus-scale inconsistency this module's own doc warns
+ * about, one level down.
+ */
 function pointwiseDensityAt(density: DimensionDensity, quarters: number): number {
+  const total = new CompensatedSum();
   for (const cell of density.cells) {
     if (quarters < cell.startQuarters || quarters >= cell.endQuarters) continue;
-    if (cell.densityAt !== null) return cell.densityAt(quarters);
+    if (cell.densityAt !== null) {
+      total.add(cell.densityAt(quarters));
+      continue;
+    }
     const length = cell.endQuarters - cell.startQuarters;
-    return length > 0 ? cell.mass / length : 0;
+    total.add(length > 0 ? cell.mass / length : 0);
   }
-  return 0;
+  return total.total;
 }
 
 /**

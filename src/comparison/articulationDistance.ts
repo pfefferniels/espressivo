@@ -46,10 +46,11 @@
  * simplification.
  */
 import {
-  comparisonRowFor,
+  comparisonRowWith,
   localDistance,
   type ComparisonJndKey,
   type ComparisonRegistryRow,
+  type JndOverrides,
 } from './registry.js';
 import { CompensatedSum } from './quadrature.js';
 import {
@@ -234,8 +235,13 @@ export function anchorsOf(read: ArticulationAtoms): readonly ArticulationAnchor[
 }
 
 /** A row and the pair of values it prices, with `⊥` where one side has no value at all. */
-function priceRow(key: ComparisonJndKey, a: Valued<number>, b: Valued<number>): number {
-  const row: ComparisonRegistryRow = comparisonRowFor(key);
+function priceRowWith(
+  key: ComparisonJndKey,
+  a: Valued<number>,
+  b: Valued<number>,
+  jnd: JndOverrides,
+): number {
+  const row: ComparisonRegistryRow = comparisonRowWith(key, jnd);
   return localDistance(row, a, b).distance;
 }
 
@@ -258,9 +264,14 @@ export function modifierDistance(
   a: EffectiveModifier,
   b: EffectiveModifier,
   ticksPerQuarter: number,
+  jnd: JndOverrides = {},
 ): number {
   const total = new CompensatedSum();
   const quarters = (ticks: number) => ticks / ticksPerQuarter;
+  // Closed over `jnd` rather than threaded through eleven call sites: the override belongs to
+  // the RUN, not to each row, and passing it eleven times would be eleven chances to forget.
+  const priceRow = (key: ComparisonJndKey, x: Valued<number>, y: Valued<number>): number =>
+    priceRowWith(key, x, y, jnd);
 
   total.add(
     priceRow(
@@ -387,6 +398,7 @@ export function articulationDistance(
   window: ComparisonWindow,
   ticksPerQuarter: number,
   lambdaDate: number = DEFAULT_LAMBDA_DATE,
+  jnd: JndOverrides = {},
 ): ArticulationDistance {
   const startTicks = window.startQuarters * ticksPerQuarter;
   const endTicks = window.endQuarters * ticksPerQuarter;
@@ -403,8 +415,8 @@ export function articulationDistance(
     anchorsA,
     anchorsB,
     {
-      matched: (x, y) => modifierDistance(x.modifier, y.modifier, ticksPerQuarter),
-      unmatched: (x) => modifierDistance(x.modifier, NEUTRAL_MODIFIER, ticksPerQuarter),
+      matched: (x, y) => modifierDistance(x.modifier, y.modifier, ticksPerQuarter, jnd),
+      unmatched: (x) => modifierDistance(x.modifier, NEUTRAL_MODIFIER, ticksPerQuarter, jnd),
       lambdaDate,
     },
     ticksPerQuarter,

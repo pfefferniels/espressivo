@@ -2244,6 +2244,30 @@ export function comparisonRowFor(key: ComparisonJndKey): ComparisonRegistryRow {
 }
 
 /**
+ * §9.2's `options.jnd` — a partial override of the registry's defaults, keyed by row.
+ *
+ * Partial because a caller who has a better constant for one attribute has not thereby stated
+ * one for the other seventy-four; the defaults stay the documented reference (§7.1).
+ */
+export type JndOverrides = Partial<Record<ComparisonJndKey, number>>;
+
+/**
+ * The row as one run sees it: the registry's, with `options.jnd` applied.
+ *
+ * Only `jnd` is overridable. `δ_row` and `κ` are non-overridable documented constants in v1
+ * (AD-25.7), and `plausibleRange` is overridden where it is consumed rather than here, because
+ * a band is a claim about a corpus and belongs beside the finding it produces.
+ */
+export function comparisonRowWith(
+  key: ComparisonJndKey,
+  overrides: JndOverrides = {},
+): ComparisonRegistryRow {
+  const row = comparisonRowFor(key);
+  const jnd = overrides[key];
+  return jnd === undefined ? row : { ...row, jnd };
+}
+
+/**
  * The row for an (element, attribute) pair within one dimension, or null where the attribute
  * is not a live one there.
  *

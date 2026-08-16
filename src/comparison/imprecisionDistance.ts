@@ -41,6 +41,7 @@ import {
 } from './quadrature.js';
 import {
   comparisonRowAt,
+  type JndOverrides,
   localDistance,
   type ComparisonRegistryRow,
 } from './registry.js';
@@ -102,18 +103,28 @@ function lawSignature(law: ImprecisionLaw): string {
   }
 }
 
-/** The row that carries this dimension's law — its unit, JND and δ (§5.9). */
-function marginalRow(domain: ImprecisionDomain): ComparisonRegistryRow {
-  const row = comparisonRowAt(domain, 'distribution.uniform', 'limit.upper');
-  if (row === null) throw new Error(`no marginal row for ${domain}`);
-  return row;
+/** A row with `options.jnd` applied, for the two lookups this module makes by (element, attribute). */
+function withOverride(row: ComparisonRegistryRow, jnd: JndOverrides): ComparisonRegistryRow {
+  const override = jnd[row.key];
+  return override === undefined ? row : { ...row, jnd: override };
 }
 
-function processRow(domain: ImprecisionDomain, attribute: string): ComparisonRegistryRow {
+/** The row that carries this dimension's law — its unit, JND and δ (§5.9). */
+function marginalRow(domain: ImprecisionDomain, jnd: JndOverrides = {}): ComparisonRegistryRow {
+  const row = comparisonRowAt(domain, 'distribution.uniform', 'limit.upper');
+  if (row === null) throw new Error(`no marginal row for ${domain}`);
+  return withOverride(row, jnd);
+}
+
+function processRow(
+  domain: ImprecisionDomain,
+  attribute: string,
+  jnd: JndOverrides = {},
+): ComparisonRegistryRow {
   const element = PROCESS_ROW_ELEMENTS.get(attribute);
   const row = element === undefined ? null : comparisonRowAt(domain, element, attribute);
   if (row === null) throw new Error(`no process row for ${domain}/${attribute}`);
-  return row;
+  return withOverride(row, jnd);
 }
 
 /**
@@ -189,6 +200,14 @@ export interface ImprecisionCell {
 export interface ImprecisionDecomposition {
   /** `√∫(ℓ_A − ℓ_B)² dμ` — the location term. */
   readonly location: number;
+  /**
+   * `∫(ℓ_A − ℓ_B) dμ` — the SIGNED location difference, in the row's unit.
+   *
+   * A descriptor and never a distance (C2, §7.5): `location` cannot say which side runs late,
+   * and a document late in one half and early in the other is exactly the case where the
+   * unsigned term and the signed one disagree. It negates under the a/b swap.
+   */
+  readonly locationSigned: number;
   /** `√∫(σ_A − σ_B)² dμ` — the spread term. */
   readonly spread: number;
   /** `√∫2σ_Aσ_B(1 − ρ) dμ` — the distributional-shape term, or 0 where every cell is flat. */
@@ -250,11 +269,12 @@ export function imprecisionDistance(
   window: ComparisonWindow,
   ticksPerQuarter: number,
   invariance: InvarianceMode = 'none',
+  jnd: JndOverrides = {},
 ): ImprecisionDistanceResult {
   if (a.domain !== b.domain)
     throw new Error(`imprecisionDistance: ${a.domain} against ${b.domain}`);
 
-  const row = marginalRow(a.domain);
+  const row = marginalRow(a.domain, jnd);
   const grid = imprecisionGridTicks(a, b, window, ticksPerQuarter);
   const canonical = canonicalizers(a, b, grid, ticksPerQuarter, invariance);
 
@@ -270,6 +290,7 @@ export function imprecisionDistance(
   // are kept apart from the headline's and divided at the end. Reading ℓ against the
   // unnormalized measure would silently change its unit.
   const locationSquared = new CompensatedSum();
+  const locationSum = new CompensatedSum();
   const spreadSquared = new CompensatedSum();
   const shapeSquared = new CompensatedSum();
   const w2Squared = new CompensatedSum();
@@ -292,6 +313,7 @@ export function imprecisionDistance(
       a.domain,
       processParametersAt(a, cellStart),
       processParametersAt(b, cellStart),
+      jnd,
     );
 
     const density = marginal.distance;
@@ -325,6 +347,9 @@ export function imprecisionDistance(
       w2Memo.set(w2Key, parts);
     }
     locationSquared.add(parts.location * parts.location * lengthQuarters);
+    // `meanA − meanB` rather than a second signed field on `W2Decomposition`: the moments are
+    // already there and the sign is the whole content of the descriptor.
+    locationSum.add((parts.meanA - parts.meanB) * lengthQuarters);
     spreadSquared.add(parts.spread * parts.spread * lengthQuarters);
     shapeSquared.add(parts.shape * parts.shape * lengthQuarters);
     w2Squared.add(parts.w2 * parts.w2 * lengthQuarters);
@@ -336,6 +361,7 @@ export function imprecisionDistance(
 
   const normalizer = windowLength > 0 ? windowLength : 1;
   const location = Math.sqrt(Math.max(0, locationSquared.total / normalizer));
+  const locationSigned = locationSum.total / normalizer;
   const spread = Math.sqrt(Math.max(0, spreadSquared.total / normalizer));
   const shape = Math.sqrt(Math.max(0, shapeSquared.total / normalizer));
   const w2 = Math.sqrt(Math.max(0, w2Squared.total / normalizer));
@@ -351,6 +377,7 @@ export function imprecisionDistance(
     processDistance: processTotal.total,
     decomposition: {
       location,
+      locationSigned,
       spread,
       shape,
       rho: rhoWeight > 0 ? rhoWeighted.total / rhoWeight : null,
@@ -377,6 +404,7 @@ function processDistanceOf(
   domain: ImprecisionDomain,
   a: readonly ProcessParameter[],
   b: readonly ProcessParameter[],
+  jnd: JndOverrides,
 ): { readonly distance: number; readonly capped: boolean } {
   if (a.length === 0 && b.length === 0) return { distance: 0, capped: false };
 
@@ -388,7 +416,7 @@ function processDistanceOf(
   const total = new CompensatedSum();
   let capped = false;
   for (const attribute of [...new Set([...left.keys(), ...right.keys()])].sort()) {
-    const row = processRow(domain, attribute);
+    const row = processRow(domain, attribute, jnd);
     const leftValue = left.get(attribute);
     const rightValue = right.get(attribute);
     const local = localDistance(

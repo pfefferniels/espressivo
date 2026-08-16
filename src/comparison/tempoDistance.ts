@@ -98,8 +98,12 @@ export function refinementGridTicks(
  * grading exists to track that transition's boundary layer, which sits at the transition's
  * own `u = 1`, not at the cell's edge. Grading in the cell's coordinate would put the panels
  * in the wrong place and quietly lose the accuracy the mesh was adopted for (AD-28.1).
+ *
+ * Exported for §5.1's cumulative-drift secondary (C13), which integrates `60/qbpm` over the
+ * same cells: two meshes over one curve would be two accuracies to reason about, and the
+ * second one would be nobody's measured figure.
  */
-function gradedBoundariesIn(
+export function gradedBoundariesIn(
   segment: TempoSegment,
   cellStart: number,
   cellEnd: number,

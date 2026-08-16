@@ -34,10 +34,11 @@
  * the same row-wise functional evaluated against the neutral ornament, and not a constant.
  */
 import {
-  comparisonRowFor,
+  comparisonRowWith,
   localDistance,
   type ComparisonJndKey,
   type ComparisonRegistryRow,
+  type JndOverrides,
 } from './registry.js';
 import { CompensatedSum } from './quadrature.js';
 import {
@@ -82,14 +83,14 @@ export interface OrnamentationDistance {
   readonly atoms: readonly EventAtomMass[];
 }
 
-function price(key: ComparisonJndKey, a: Valued<number>, b: Valued<number>): number {
-  const row: ComparisonRegistryRow = comparisonRowFor(key);
+function priceWith(
+  key: ComparisonJndKey,
+  a: Valued<number>,
+  b: Valued<number>,
+  jnd: JndOverrides,
+): number {
+  const row: ComparisonRegistryRow = comparisonRowWith(key, jnd);
   return localDistance(row, a, b).distance;
-}
-
-/** `⊥` on one side costs `δ_row` whatever the other side holds, so this is swap-symmetric. */
-function incomparable(key: ComparisonJndKey, other: number): number {
-  return price(key, bottom('renderer-error'), valued(other));
 }
 
 /** The gradient a side performs: absent means the neutral pair, which it performs identically. */
@@ -130,8 +131,15 @@ export function ornamentDistance(
   a: OrnamentAtom,
   b: OrnamentAtom,
   ticksPerQuarter: number,
+  jnd: JndOverrides = {},
 ): number {
   const total = new CompensatedSum();
+  // Closed over `jnd` rather than threaded through every row: the override belongs to the RUN.
+  const price = (key: ComparisonJndKey, x: Valued<number>, y: Valued<number>): number =>
+    priceWith(key, x, y, jnd);
+  /** `⊥` on one side costs `δ_row` whatever the other side holds, so this stays swap-symmetric. */
+  const incomparable = (key: ComparisonJndKey, other: number): number =>
+    price(key, bottom('renderer-error'), valued(other));
 
   const gradientA = gradientOf(a);
   const gradientB = gradientOf(b);
@@ -237,8 +245,12 @@ function neutralCounterpart(atom: OrnamentAtom): OrnamentAtom {
 }
 
 /** What one ornament costs to leave unmatched — its deviation from performing nothing. */
-export function deviationFromNeutral(atom: OrnamentAtom, ticksPerQuarter: number): number {
-  return ornamentDistance(atom, neutralCounterpart(atom), ticksPerQuarter);
+export function deviationFromNeutral(
+  atom: OrnamentAtom,
+  ticksPerQuarter: number,
+  jnd: JndOverrides = {},
+): number {
+  return ornamentDistance(atom, neutralCounterpart(atom), ticksPerQuarter, jnd);
 }
 
 /**
@@ -391,6 +403,7 @@ export function ornamentationDistance(
   window: ComparisonWindow,
   ticksPerQuarter: number,
   lambdaDate: number = DEFAULT_LAMBDA_DATE,
+  jnd: JndOverrides = {},
 ): OrnamentationDistance {
   const startTicks = window.startQuarters * ticksPerQuarter;
   const endTicks = window.endQuarters * ticksPerQuarter;
@@ -404,8 +417,8 @@ export function ornamentationDistance(
     atomsA,
     atomsB,
     {
-      matched: (x, y) => ornamentDistance(x, y, ticksPerQuarter),
-      unmatched: (x) => deviationFromNeutral(x, ticksPerQuarter),
+      matched: (x, y) => ornamentDistance(x, y, ticksPerQuarter, jnd),
+      unmatched: (x) => deviationFromNeutral(x, ticksPerQuarter, jnd),
       lambdaDate,
     },
     ticksPerQuarter,
