@@ -2183,8 +2183,6 @@ export interface ComparisonSettings {
   readonly jnd?: Partial<Record<ComparisonJndKey, number>>; // > 0, finite
   readonly plausibleRange?: Partial<Record<ComparisonJndKey, readonly [number, number]>>;
   readonly invariance?: Partial<Record<ComparisonDimension, InvarianceMode>>;
-  /** Requires `msm`; setting it true without one is reported (A10). */
-  readonly noteDensityWeight?: boolean;
 }
 
 export interface CompareMpmOptions extends ComparisonSettings {
@@ -2233,6 +2231,13 @@ export function compareMpmCorpus(options: CompareCorpusOptions): CorpusResult;
 /** The documented empty performance, so nobody hand-rolls the null baseline (C8). */
 export function neutralMpm(options?: { readonly ppq?: number }): XmlText;
 ```
+
+**`noteDensityWeight` is REMOVED from the v1 surface** (AD-52.3a). AD-3 keeps the
+MSM note-count weight as a piece-derived, metric-safe OPTION, and it stays design
+intent — but the weight function `w(t)` has to reach all eleven dimensions'
+integrands, which W3b does not ship. An option whose only behaviour is to throw is
+worse than an absent one: it advertises a capability that is not there. Adding the
+key back is non-breaking, and the plumbing is journaled future work.
 
 `scape` loses revision 1's `| null` (AD-22, A2): RULE N4 says every _input_
 option is `?:` and never `null`, and RULE N1 forbids `null` meaning "use the
@@ -2657,11 +2662,13 @@ spread.
 (AD-25.1, resolving A10):
 
 - **Unusable given the OTHER OPTIONS alone ⇒ `InvalidOptionError`.** The caller
-  could have known without reading a document: `noteDensityWeight: true` with no
-  `msm` is the case, and it throws. The expression facade's reason applies
-  unchanged — a caller who _set_ the option asked a question, and answering it
-  with a full, plausible, differently-weighted report hides a typo behind a
-  valid-looking result.
+  could have known without reading a document. The expression facade's reason
+  applies unchanged — a caller who _set_ the option asked a question, and
+  answering it with a full, plausible, differently-weighted report hides a typo
+  behind a valid-looking result. **The pairwise entry point has no instance of
+  this branch in v1** (AD-52.3a removed `noteDensityWeight`, which was the one);
+  §8's corpus options `k` and `embeddingAxes` are the branch's live cases and
+  arrive with W4.
 - **Unusable only given DOCUMENT CONTENT ⇒ a typed `option-unusable` note.**
   `invariance: 'level'` on a dimension that turns out to be absent from both
   documents is the case: the caller could not have known when they wrote the

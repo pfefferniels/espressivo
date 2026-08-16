@@ -458,7 +458,6 @@ describe('the report’s own rules', () => {
     expect(Object.keys(report.inputs.settings).sort()).toEqual([
       'invariance',
       'jnd',
-      'noteDensityWeight',
       'plausibleRange',
       'weights',
       'window',

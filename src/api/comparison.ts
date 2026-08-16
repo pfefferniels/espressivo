@@ -18,6 +18,14 @@
  * `ExaggerationReport` is: the engine builds them, this layer hands them over unchanged, and a
  * second declaration would be a second thing to keep in step.
  *
+ * ## `noteDensityWeight` is not here (AD-52.3a)
+ *
+ * §9.2 declared it and AD-3 keeps the MSM note-count weight as design intent, but the weight
+ * function `w(t)` has to reach all eleven dimensions' integrands and this wave does not ship
+ * that. An option whose only behaviour is to throw is worse than an absent one — it advertises
+ * a capability that is not there — so the key is gone from the surface rather than present and
+ * refusing. Adding it back is non-breaking.
+ *
  * ## One named-parameter object, and one obligation that follows
  *
  * Every entry point takes ONE options object (F5): two interchangeable MPM texts make positional
@@ -108,8 +116,6 @@ export interface ComparisonSettings {
   readonly jnd?: Partial<Record<ComparisonJndKey, number>>;
   readonly plausibleRange?: Partial<Record<ComparisonJndKey, readonly [number, number]>>;
   readonly invariance?: Partial<Record<ComparisonDimension, InvarianceMode>>;
-  /** Requires `msm`. Not implemented in v1 — see the validation notes below. */
-  readonly noteDensityWeight?: boolean;
 }
 
 export interface CompareMpmOptions extends ComparisonSettings {
@@ -288,18 +294,6 @@ function checkCompareOptions(options: CompareMpmOptions): void {
   checkSelector('performanceA', options.performanceA);
   checkSelector('performanceB', options.performanceB);
   checkProfile(options.profile);
-
-  // AD-25.1's knowability split, first branch: unusable given the OTHER OPTIONS alone, so the
-  // caller could have known without reading a document, so it throws.
-  if (options.noteDensityWeight === true)
-    throw new InvalidOptionError(
-      options.msm === undefined
-        ? 'noteDensityWeight requires an msm: the weight function is derived from the score’s ' +
-            'note density and there is no score to derive it from'
-        : 'noteDensityWeight is not implemented in v1: the weight function w(t) would have to ' +
-            'reach all eleven dimensions’ integrands, and returning an UNWEIGHTED report for a ' +
-            'caller who asked for a weighted one would hide that behind a valid-looking result',
-    );
 }
 
 function checkWindow(window: ComparisonSettings['window']): void {

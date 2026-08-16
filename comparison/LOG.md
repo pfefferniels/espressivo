@@ -3805,3 +3805,32 @@ removing the cap from the rubato integrand (1, after the fixture was strengthene
 
 Gate: `npm run verify` GREEN before committing — 117 files, 4997 passed, 0 skipped (was 4984).
 13 new tests. eslint and prettier clean.
+
+## 2026-08-16 — AD-52.3a applied: noteDensityWeight removed from the surface (w3b-facade)
+
+The one ruling that crossed with a landed commit. AD-52.3a rules the option OUT of the v1
+surface rather than shipped-as-throw, and the facade commit had already landed with the throw
+in it; this is the follow-up the ruling names, and no code path is left advertising a capability
+that is not there.
+
+Removed from `ComparisonSettings`, from the validator, and from
+`ResolvedComparisonSettings` — so the echoed settings record now has exactly the five fields the
+run actually used. DESIGN §9.2 amended under the delegation, with the reason stated where the
+option was declared: AD-3 keeps the MSM note-count weight as design intent, the weight function
+`w(t)` has to reach all eleven dimensions' integrands, and adding the key back later is
+non-breaking.
+
+[PREMISE CORRECTION, reported rather than left standing] AD-52.3a's reasoning says "unknown keys
+already error". That is true of the NESTED key vocabularies — `weights`, `jnd`, `plausibleRange`
+and `invariance` all reject an unknown dimension or row key, naming every offender — and it is
+NOT true of top-level option keys: `compareMpm` ignores an unrecognized field on the options bag,
+exactly as `exaggerateMpm` and `performMsm` do. So after the removal a TypeScript caller who
+writes `noteDensityWeight` fails to compile and a JavaScript caller is silently ignored, which
+is the same treatment every other unknown top-level key gets in this package. The ruling's
+CONCLUSION is unaffected — an absent option is better than one that only throws — but a
+top-level unknown-key check would be a new policy across all three facades, so it is asked for
+rather than invented here.
+
+Gate: `npm run verify` GREEN — 4996 passed, 0 skipped (one test removed with the option, one
+key-list assertion updated in each of the two suites that pinned the echo). eslint and prettier
+clean; DESIGN.md prettier-clean.

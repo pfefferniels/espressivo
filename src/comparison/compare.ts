@@ -963,7 +963,6 @@ function resolvedSettings(
     jnd: effectiveJnd(options.jnd),
     plausibleRange,
     invariance: { ...options.invariance },
-    noteDensityWeight: false,
   };
 }
 

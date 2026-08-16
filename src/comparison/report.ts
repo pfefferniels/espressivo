@@ -181,7 +181,6 @@ export interface ResolvedComparisonSettings {
   readonly jnd: Record<ComparisonJndKey, number>;
   readonly plausibleRange: Partial<Record<ComparisonJndKey, readonly [number, number]>>;
   readonly invariance: Record<ComparisonDimension, InvarianceMode>;
-  readonly noteDensityWeight: boolean;
 }
 
 export interface ComparisonProfile {

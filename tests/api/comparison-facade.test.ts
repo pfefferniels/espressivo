@@ -211,19 +211,6 @@ describe('§9.4’s validation table', () => {
   it('rejects a profile step that is not positive and finite', () => {
     expect(compare({ a, profile: { grid: { step: 0 } } })).toThrow(/> 0/);
   });
-
-  /**
-   * AD-25.1's knowability split, and the second branch of it is the interesting one: with an
-   * `msm` the option is not unknowable, it is UNIMPLEMENTED — and answering a caller who asked
-   * for a note-density-weighted comparison with an unweighted one would hide that behind a
-   * plausible result, which is the failure mode §9.4's own reasoning names.
-   */
-  it('rejects noteDensityWeight, and says which of the two reasons applies', () => {
-    expect(compare({ a, noteDensityWeight: true })).toThrow(/requires an msm/);
-    expect(compare({ a, noteDensityWeight: true, msm: TELEMANN_MSM })).toThrow(
-      /not implemented in v1/,
-    );
-  });
 });
 
 describe('§9.4’s errors carry the document’s identity', () => {
