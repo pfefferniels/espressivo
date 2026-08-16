@@ -58,6 +58,7 @@ import {
   chargeAtoms,
   DEFAULT_LAMBDA_DATE,
   type AlignableEvent,
+  type EventAlignment,
   type EventAtomMass,
 } from './eventAlignment.js';
 import {
@@ -240,9 +241,12 @@ function priceRowWith(
   a: Valued<number>,
   b: Valued<number>,
   jnd: JndOverrides,
+  capped?: { capped: boolean },
 ): number {
   const row: ComparisonRegistryRow = comparisonRowWith(key, jnd);
-  return localDistance(row, a, b).distance;
+  const local = localDistance(row, a, b);
+  if (local.capped && capped !== undefined) capped.capped = true;
+  return local.distance;
 }
 
 /** A replacement attribute: present-vs-absent is `⊥`, never a difference from a neutral (AD-2). */
@@ -265,13 +269,14 @@ export function modifierDistance(
   b: EffectiveModifier,
   ticksPerQuarter: number,
   jnd: JndOverrides = {},
+  capped?: { capped: boolean },
 ): number {
   const total = new CompensatedSum();
   const quarters = (ticks: number) => ticks / ticksPerQuarter;
   // Closed over `jnd` rather than threaded through eleven call sites: the override belongs to
   // the RUN, not to each row, and passing it eleven times would be eleven chances to forget.
   const priceRow = (key: ComparisonJndKey, x: Valued<number>, y: Valued<number>): number =>
-    priceRowWith(key, x, y, jnd);
+    priceRowWith(key, x, y, jnd, capped);
 
   total.add(
     priceRow(
@@ -382,6 +387,14 @@ export interface ArticulationDistance {
    * the window rather than placed (AD-7, AD-39.1). The report states it (§9.3).
    */
   readonly datePositionKnown: boolean;
+  /**
+   * How many ANCHORS of the chosen alignment had §4's cap bind on at least one row (AD-2).
+   *
+   * Counted over the OPTIMUM rather than inside the cost function, which the DP evaluates at
+   * every cell of its table: a counter incremented there would report the search rather than
+   * the answer.
+   */
+  readonly cappedAnchors: number;
 }
 
 /**
@@ -449,6 +462,7 @@ export function articulationDistance(
     unmatchedB: alignment.unmatchedB.length,
     pinsHonoured: alignment.pinsHonoured,
     inertFindings,
+    cappedAnchors: cappedAnchorsOf(alignment, anchorsA, anchorsB, ticksPerQuarter, jnd),
     atoms: chargeAtoms(
       anchorsA,
       anchorsB,
@@ -458,4 +472,23 @@ export function articulationDistance(
     ),
     datePositionKnown: [...anchorsA, ...anchorsB].every((anchor) => anchor.datePositionKnown),
   };
+}
+
+/** AD-2's cap events, counted over the chosen alignment (see {@link ArticulationDistance}). */
+function cappedAnchorsOf(
+  alignment: EventAlignment,
+  a: readonly ArticulationAnchor[],
+  b: readonly ArticulationAnchor[],
+  ticksPerQuarter: number,
+  jnd: JndOverrides,
+): number {
+  let count = 0;
+  for (const charge of alignment.charges) {
+    const flag = { capped: false };
+    const left = charge.a === null ? NEUTRAL_MODIFIER : a[charge.a].modifier;
+    const right = charge.b === null ? NEUTRAL_MODIFIER : b[charge.b].modifier;
+    modifierDistance(left, right, ticksPerQuarter, jnd, flag);
+    if (flag.capped) count += 1;
+  }
+  return count;
 }

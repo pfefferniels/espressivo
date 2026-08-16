@@ -684,6 +684,7 @@ function eventEvaluation(
     readonly unmatchedA: number;
     readonly unmatchedB: number;
     readonly atoms: readonly EventAtomMass[];
+    readonly cappedAnchors: number;
   },
   rowDistances: readonly { readonly key: ComparisonJndKey; readonly distance: number }[],
   notes: readonly RawNote[],
@@ -713,7 +714,10 @@ function eventEvaluation(
       mass: result.distance,
     },
     bottomLengthQuarters: 0,
-    cappedCells: 0,
+    // §9.3's `cappedCells` counts CELLS for a curve dimension and ANCHORS here — the unit the
+    // dimension's density is carried in either way. AD-2 requires cap events to be reported and
+    // an event dimension that always answered 0 would have been silent about a truncation.
+    cappedCells: result.cappedAnchors,
     rowDistances,
     notes,
     timeSignatureSource: null,

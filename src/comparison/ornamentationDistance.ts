@@ -45,6 +45,7 @@ import {
   alignEvents,
   chargeAtoms,
   DEFAULT_LAMBDA_DATE,
+  type EventAlignment,
   type EventAtomMass,
 } from './eventAlignment.js';
 import {
@@ -73,6 +74,13 @@ export interface OrnamentationDistance {
   readonly pinsHonoured: boolean;
   readonly findings: readonly OrnamentFinding[];
   /**
+   * How many ANCHORS of the chosen alignment had §4's cap bind on at least one row (AD-2).
+   *
+   * Counted over the OPTIMUM, not inside the cost function the DP evaluates at every cell —
+   * a counter there would report the search rather than the answer.
+   */
+  readonly cappedAnchors: number;
+  /**
    * The optimum placed on the timeline (AD-51.2) — §5.0's atoms, in JND, before `κ`.
    *
    * Every ornament anchor carries a real date (the window filter above drops the ones outside
@@ -88,9 +96,12 @@ function priceWith(
   a: Valued<number>,
   b: Valued<number>,
   jnd: JndOverrides,
+  capped?: { capped: boolean },
 ): number {
   const row: ComparisonRegistryRow = comparisonRowWith(key, jnd);
-  return localDistance(row, a, b).distance;
+  const local = localDistance(row, a, b);
+  if (local.capped && capped !== undefined) capped.capped = true;
+  return local.distance;
 }
 
 /** The gradient a side performs: absent means the neutral pair, which it performs identically. */
@@ -132,11 +143,12 @@ export function ornamentDistance(
   b: OrnamentAtom,
   ticksPerQuarter: number,
   jnd: JndOverrides = {},
+  capped?: { capped: boolean },
 ): number {
   const total = new CompensatedSum();
   // Closed over `jnd` rather than threaded through every row: the override belongs to the RUN.
   const price = (key: ComparisonJndKey, x: Valued<number>, y: Valued<number>): number =>
-    priceWith(key, x, y, jnd);
+    priceWith(key, x, y, jnd, capped);
   /** `⊥` on one side costs `δ_row` whatever the other side holds, so this stays swap-symmetric. */
   const incomparable = (key: ComparisonJndKey, other: number): number =>
     price(key, bottom('renderer-error'), valued(other));
@@ -249,8 +261,9 @@ export function deviationFromNeutral(
   atom: OrnamentAtom,
   ticksPerQuarter: number,
   jnd: JndOverrides = {},
+  capped?: { capped: boolean },
 ): number {
-  return ornamentDistance(atom, neutralCounterpart(atom), ticksPerQuarter, jnd);
+  return ornamentDistance(atom, neutralCounterpart(atom), ticksPerQuarter, jnd, capped);
 }
 
 /**
@@ -434,6 +447,29 @@ export function ornamentationDistance(
     unmatchedB: alignment.unmatchedB.length,
     pinsHonoured: alignment.pinsHonoured,
     findings,
+    cappedAnchors: cappedAnchorsOf(alignment, atomsA, atomsB, ticksPerQuarter, jnd),
     atoms: chargeAtoms(atomsA, atomsB, alignment, () => true, { startTicks, endTicks }),
   };
+}
+
+/** AD-2's cap events, counted over the chosen alignment (see {@link OrnamentationDistance}). */
+function cappedAnchorsOf(
+  alignment: EventAlignment,
+  a: readonly OrnamentAtom[],
+  b: readonly OrnamentAtom[],
+  ticksPerQuarter: number,
+  jnd: JndOverrides,
+): number {
+  let count = 0;
+  for (const charge of alignment.charges) {
+    const flag = { capped: false };
+    if (charge.a !== null && charge.b !== null)
+      ornamentDistance(a[charge.a], b[charge.b], ticksPerQuarter, jnd, flag);
+    else {
+      const only = charge.a === null ? b[charge.b as number] : a[charge.a];
+      deviationFromNeutral(only, ticksPerQuarter, jnd, flag);
+    }
+    if (flag.capped) count += 1;
+  }
+  return count;
 }

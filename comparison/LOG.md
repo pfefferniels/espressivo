@@ -3630,3 +3630,72 @@ Gate: `npm run verify` GREEN before committing — 114 files, 4921 passed, 0 ski
 30 new tests. eslint and prettier clean on every touched file; `src/index.ts` reports one
 `no-unnecessary-condition` error at `helperGetAllChildElements`, proven pre-existing by
 re-running the same lint with the changes stashed (same error, same function, shifted line).
+
+## 2026-08-16 — W3b part 7: P-C5, and a reporting gap it found (w3b-facade)
+
+`tests/comparison/crossModule.test.ts` + 39 tests, and the cap-event reporting the property
+exposed. This is the test that proves `compareMpm` and `exaggerateMpm` are ONE mathematics
+rather than two that agree by inspection.
+
+**THE LAW IS STATED WITHOUT THE CENTRE APPEARING ANYWHERE**, which is what makes it a test of
+the two modules rather than of a third quantity neither exports:
+
+    d(A, C(A, s)) = |1 − s| · d(A, C(A, 0))
+
+`C(A, 0)` is the document flattened onto its own neutral, so the right-hand side is the
+document's whole deviation from neutral AS THE COMPARISON MEASURES IT. If the two modules did
+not share their scale spaces, their neutrals and their transforms, this would not hold to nine
+decimal places for anything.
+
+**IT HOLDS FOR SEVEN OF THE ELEVEN DIMENSIONS, INCLUDING THE EVENT AND DISTRIBUTION ONES.**
+Measured at 1e-9 relative: tempo and dynamics (log spaces), asynchrony (linear), accentuation
+(a scaled pattern), **articulation** — an event dimension, so the affine law survives the
+alignment DP untouched, because the optimum matches the same anchors on both sides and is then
+the row-wise sum — **ornamentation** (three expression dimensions behind one comparison
+dimension), and **imprecisionTiming** — a distribution dimension, where the law survives the
+WASSERSTEIN integral, `W₁` between two uniform laws being linear in their parameters. §1.3's
+proposition was written about curves; it reaches further than that, and the measurement is what
+says so.
+
+THE THREE EXCEPTIONS ARE MEASURED RATHER THAN ASSERTED ABSENT, because an exception nobody has
+measured is indistinguishable from a defect nobody has found:
+- **rubato** deviates by a pinned 0.7999 at s = 2 — §4's flag 2 already records that expression's
+  window rows are `joint-trim` while the comparison prices the window as L1 on the ENDPOINTS, a
+  documented substitution rather than the same space, and the displacement curve is not affine in
+  `@intensity` either;
+- **dynamics past the velocity clamp** deviates by a pinned 0.7609 at s = 2, where R6(a)'s clamp
+  saturates the transform;
+- **pedal** is VACUOUS rather than false: §3's correspondence maps `pedal ⊇ {pedalShape}` and the
+  fifteen expression dimensions carry no pedal LEVEL, so a factor moves the curvature and not the
+  position. `d = 0` exactly, pinned as the measurement that says so.
+
+**THE SKIP CONDITION IS A REPORTED FACT, NOT A CONVENIENCE.** A factor is outside the law when
+either module says it stopped being affine: the TRANSFORM saturated a bound, refused a write or
+left a domain (its report names every such site), or the METRIC's own cap bound — §4's
+`min(|T(x) − T(y)|, 2·δ_row)` truncating a difference the transform made faithfully. Both are
+read out of the two reports, and a non-vacuity assertion requires at least three unsaturated
+factors per fixture so the skip cannot swallow the test.
+
+[DEFECT FOUND BY THE PROPERTY, in shipped code] **The event dimensions reported `cappedCells: 0`
+unconditionally.** §4's cap binds inside `localDistance`, which articulation and ornamentation
+call once per row, and AD-2 requires cap events to be reported — so a report could truncate a
+difference at `2·δ_row` and say nothing. Found because the law failed at `s = 4` and the report
+gave no reason: the composed `relativeDuration` is `0.5⁴`, i.e. 21.8 JND on one row, past the 20
+the cap allows. Both modules now count the anchors where the cap bound, and they count them over
+the CHOSEN ALIGNMENT rather than inside the cost function — the DP evaluates that function at
+every cell of its table, so a counter there would report the search rather than the answer.
+Pinned in both directions (a run with no capped row says nothing; the s = 4 run counts and emits
+the `capped` note) and negative-controlled.
+
+AD-6's PARTS (ii) AND (iii). The breakpoint law is stated on DIFFERENCES of log row values, which
+cancels the centre — §4's own flag 1 records that the collapse of `log-around-center` to the bare
+logarithm is a property of differences, and this is that collapse used as the test it licenses.
+Part (iii)'s `d_shape` bounds are measured and pinned: on a transition spanning the whole window
+with a factor-of-two tempo change in it, two factors with the SAME `|1 − s|` score 1.06296023
+apart and a doubled `|1 − s|` scores 2.18740836 rather than 2 — both inside 10 %, so the exact law
+is a good estimate and the report's numbers are the integral rather than the estimate. Removing
+the transition from the same document restores the law exactly, which is what makes the bound a
+statement about interpolation rather than about the fixture.
+
+Gate: `npm run verify` GREEN before committing — 115 files, 4960 passed, 0 skipped (was 4921).
+39 new tests. eslint and prettier clean.
