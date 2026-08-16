@@ -4512,3 +4512,29 @@ documents' instructions and each must keep its own style resolution. That is AD-
 ("price the resolved performed effect, never the attribute tuple") and it is also what makes the
 replay reach B exactly: an instruction moved into the other document performs what it performs,
 not what that document's styleDefs would make of its name.
+
+## 2026-08-16 — AD-58: W4 cut A1 rulings [BINDING]
+
+bf29114 accepted (editScript.ts, dimension-neutral over EditPricing; the
+DP cell IS the state S(i,j) = b[0..j) ++ a[i..n)). Dispositions:
+AD-58.1 The §6.2-counterexample structural tie is RECORDED: the DP's
+equal-cost "delete I, substitute J" (telescoping through AD-9ii's
+no-tempo default) and the prose's "substitute I, delete J" both total
+exactly 10·ln2 with reworking 0; both totals pinned, the choice pinned
+separately. Nobody "fixes" the DP to match the narrative — the prose is
+one optimal script of several, which is §2.H's tie warning made concrete
+at the first example anyone reads.
+AD-58.2 The triple's exact semantics ratified: scriptCost = DP path
+total; replayedDelta = the op set replayed in delivered date order (path
+order ≠ date order in 29% of random pairs — measured); per-op cost =
+replay cost with Σ costs = replayedDelta exactly; replay residual is an
+exact-0 FIELD, not an assert.
+AD-58.3 RATIFIED (the flagged decision): a co-dated ADDED instruction
+sorts AFTER a surviving one — renderer-derived (parseData's backwards
+insertion scan via datedView), pinned at the exported editStateAt where
+the rule is deterministically observable (through the DP only
+statistically). RG-2's evidence-placement move, again.
+AD-58.4 Cut-A2's implied refactor ENDORSED: curve readers split into
+resolve-in-own-environment + assemble, because an edit state mixes both
+documents' instructions and each must carry ITS OWN style resolution —
+AD-40.2's principle, and the mechanism that makes replay reach B exactly.
