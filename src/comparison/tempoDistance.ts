@@ -30,6 +30,11 @@ import {
 } from './quadrature.js';
 import { quarterBpmAt, segmentAt, type TempoCurve, type TempoSegment } from './tempoCurve.js';
 import type { ComparisonWindow } from './window.js';
+import {
+  IDENTITY_CANONICAL_PAIR,
+  canonicalValue,
+  type CanonicalPair,
+} from './decomposition.js';
 
 /** One cell of the refinement grid, with the mass it carries. */
 export interface TempoCell {
@@ -188,6 +193,7 @@ export function tempoDistance(
   window: ComparisonWindow,
   ticksPerQuarter: number,
   jndOverride?: number,
+  canonical: CanonicalPair = IDENTITY_CANONICAL_PAIR,
 ): TempoDistance {
   const jnd = jndOverride ?? comparisonRowFor('tempo/tempo@bpm').jnd;
   const grid = refinementGridTicks(a, b, window, ticksPerQuarter);
@@ -205,7 +211,8 @@ export function tempoDistance(
     const segmentB = segmentAt(b, cellStart);
 
     const difference = (ticks: number) =>
-      Math.log(quarterBpmAt(a, ticks)) - Math.log(quarterBpmAt(b, ticks));
+      canonicalValue(canonical.a, Math.log(quarterBpmAt(a, ticks))) -
+      canonicalValue(canonical.b, Math.log(quarterBpmAt(b, ticks)));
 
     const splitPoints = [
       ...(segmentA === null ? [] : gradedBoundariesIn(segmentA, cellStart, cellEnd)),

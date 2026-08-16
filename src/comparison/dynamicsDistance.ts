@@ -20,6 +20,11 @@ import { comparisonRowFor } from './registry.js';
 import { CompensatedSum, integrateAbsolute } from './quadrature.js';
 import { dynamicsSegmentAt, volumeAt, type DynamicsCurve } from './dynamicsCurve.js';
 import type { ComparisonWindow } from './window.js';
+import {
+  IDENTITY_CANONICAL_PAIR,
+  canonicalValue,
+  type CanonicalPair,
+} from './decomposition.js';
 
 /**
  * The subdivision count for a cell where BOTH sides are live Bézier transitions —
@@ -122,6 +127,7 @@ export function dynamicsDistance(
   window: ComparisonWindow,
   ticksPerQuarter: number,
   jndOverride?: number,
+  canonical: CanonicalPair = IDENTITY_CANONICAL_PAIR,
 ): DynamicsDistance {
   const jnd = jndOverride ?? comparisonRowFor('dynamics/dynamics@volume').jnd;
   const grid = dynamicsGridTicks(a, b, window, ticksPerQuarter);
@@ -134,7 +140,8 @@ export function dynamicsDistance(
     const cellEnd = grid[i + 1];
 
     const difference = (ticks: number) =>
-      Math.log(volumeAt(a, ticks)) - Math.log(volumeAt(b, ticks));
+      canonicalValue(canonical.a, Math.log(volumeAt(a, ticks))) -
+      canonicalValue(canonical.b, Math.log(volumeAt(b, ticks)));
 
     // AD-30: subdivide only where both sides are live transitions. The segment governing the
     // cell is the one at its left edge — the grid carries every breakpoint of both curves,

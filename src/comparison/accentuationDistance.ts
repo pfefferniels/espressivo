@@ -45,6 +45,11 @@ import {
 } from './accentuationCurve.js';
 import { isBottom } from './values.js';
 import type { ComparisonWindow } from './window.js';
+import {
+  IDENTITY_CANONICAL_PAIR,
+  canonicalValue,
+  type CanonicalPair,
+} from './decomposition.js';
 
 /**
  * The accentuation curve as a `SampledCurve` for §1.2's decomposition, or **null** where the
@@ -207,6 +212,7 @@ export function accentuationDistance(
   ticksPerQuarter: number,
   grid: BeatGrid = rendererDefaultBeatGrid(),
   jndOverride?: number,
+  canonical: CanonicalPair = IDENTITY_CANONICAL_PAIR,
 ): AccentuationDistance {
   const row = comparisonRowFor('accentuation/accentuationPattern@scale');
   const jnd = jndOverride ?? row.jnd;
@@ -246,7 +252,7 @@ export function accentuationDistance(
         // Unreachable while the grid carries every segment boundary; priced at the cap if it
         // ever is, which is what an incomparable pair costs anyway.
         if (isBottom(x) || isBottom(y)) return cap * jnd;
-        return x.value - y.value;
+        return canonicalValue(canonical.a, x.value) - canonicalValue(canonical.b, y.value);
       };
       const integral = integrateCappedAbsolute(
         (ticks) => difference(ticks) / jnd,

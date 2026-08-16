@@ -33,6 +33,11 @@ import { BEZIER_PAIR_SUBDIVISIONS } from './dynamicsDistance.js';
 import { hasBottomIn, pedalSegmentAt, positionAt, type PedalCurve } from './pedalCurve.js';
 import { isBottom } from './values.js';
 import type { ComparisonWindow } from './window.js';
+import {
+  IDENTITY_CANONICAL_PAIR,
+  canonicalValue,
+  type CanonicalPair,
+} from './decomposition.js';
 
 export interface PedalCell {
   readonly startTicks: number;
@@ -117,6 +122,7 @@ export function pedalDistance(
   window: ComparisonWindow,
   ticksPerQuarter: number,
   jndOverride?: number,
+  canonical: CanonicalPair = IDENTITY_CANONICAL_PAIR,
 ): PedalDistance {
   const row = comparisonRowFor('pedal/movement@position');
   const jnd = jndOverride ?? row.jnd;
@@ -152,7 +158,7 @@ export function pedalDistance(
         // begin strictly inside a cell — and priced at the cap if it ever is, which is what
         // an incomparable pair costs anyway.
         if (isBottom(x) || isBottom(y)) return cap * jnd;
-        return x.value - y.value;
+        return canonicalValue(canonical.a, x.value) - canonicalValue(canonical.b, y.value);
       };
 
       const bothBezier =

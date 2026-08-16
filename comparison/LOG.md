@@ -3379,3 +3379,64 @@ visibly — estimate-degradation note in reports, board item for W4/W5,
 never silent.
 AD-52.4 The §7.4 invariance plumbing as its own commit before the driver
 is endorsed (per-document (shift, scale) reaching the integrands).
+
+## 2026-08-16 — W3b part 4: §7.4's invariance reaches the integrand (w3b-facade)
+
+AD-50's W3B commission names "invariance plumbing" and this is what it turned out to be: the
+six curve dimensions integrated RAW curves and had no way to see a canonicalization at all, so
+a mode could have canonicalized `decomposition` while `d_k` — the number a caller reads —
+stayed on the raw pair, and the report would have stamped an invariance the headline never saw.
+Only `imprecisionDistance` took a mode, because §5.9's reader was written after §7.4.
+
+**THE CANONICALIZATION BECOMES DATA.** `CurveCanonicalization` is `{shift, scale}` in T-space,
+`canonicalizationFor(mode, moments)` resolves §7.4's three modes against one document's own
+moments, and `applyInvariance` is REDEFINED THROUGH IT — so the curve form (which the
+decomposition uses) and the integrand form (which the distance uses) are one construction and
+cannot drift. Each of tempo, dynamics, rubato, asynchrony, accentuation and pedal takes a
+trailing `CanonicalPair` defaulting to the identity, so every existing call site is unchanged
+and every shipped number is unchanged.
+
+**THE SHIFT LANDS IN T-SPACE, AND THAT IS THE WHOLE CORRECTNESS QUESTION.** §7.4's own table
+says a log space's `'level'` removes a MULTIPLICATIVE factor, which is a subtraction only after
+the logarithm; subtracting a mean from a raw BPM is a different transform entirely. So
+`registry.ts` gains `canonicalLocalDistance`, which applies the shift and the scale between
+`forwardInSpace` and §4's cap, and `localDistance` is now that function under the identity pair
+— one definition, not two.
+
+[MEASURED GAP, closed by moving the evidence down a layer] The T-space placement is currently
+UNREACHABLE from any dimension: the only row that goes through the capped metric per cell is
+asynchrony's, whose space is `gain`, where `T` is the identity and both placements coincide. I
+found this by negative control — swapping `canonicalValue(forwardInSpace(x))` for
+`forwardInSpace(canonicalValue(x))` passed all 41 registry tests and both dimension suites. The
+distinction is real and invisible, so it is pinned at the FUNCTION in `registry.test.ts`, on a
+log-space row, together with the raw-canonicalized reading it must differ from. Same move as
+RG-2's and the K=4 pin: when a property stops being observable at one layer, the evidence goes
+down a layer rather than away.
+
+[SELF-CORRECTION, found by an existing test] Refactoring `applyInvariance` through the shared
+data first broke `decomposition.test.ts`'s AD-20 case. The old code returned `() => 0` for
+`σ = 0` under `'level-gain'`; the refactor left the scale at 1 and returned `v − ℓ`, which on a
+constant curve is 8.9e-16 rather than 0. AD-20's rule is stronger than "do not divide by zero":
+the canonical curve IS the zero curve. Encoded as `scale = 0`, with `canonicalValue` returning a
+literal `+0` for that case rather than computing the product — `0·(v − ℓ)` is `−0` wherever the
+centred value is negative, which §9.5's `−0` normalization would then have to undo, and `NaN` at
+the infinite `T`-values §4 admits.
+
+§7.4's LINEAR-SPACE TRAP is pinned in both directions, which is the reason the test file exists
+at all: on tempo (log) `'level'` scores a 10 % faster reading of the same gesture at exactly
+zero; on asynchrony (linear) the same mode removes a constant 25 ms lag but leaves a 10 %
+STRETCH standing, measurably. A test that only checked tempo would have reported the mode as
+working and shipped C9's trap unnoticed. The measurement is the evidence behind §7.4's obligation
+that the report say so in plain words, which the facade will carry as the `invariance-space` note.
+
+Also pinned: `T` of a power transition is NOT affine in its endpoints' logs, so two tempo ramps
+that look like a dilation of one another are a different SHAPE once the renderer interpolates —
+the first draft of the `'level-gain'` fixture was wrong for that reason and the corrected fixture
+uses steps, with the reason kept in the test.
+
+NEGATIVE CONTROLS, each failing exactly its own tests and restoring green: dropping the
+canonicalization from tempo's integrand (3); applying it to the raw value instead of in T-space
+(2, at the registry layer — and 0 anywhere else, which is the finding above).
+
+Gate: `npm run verify` GREEN before committing — 112 files, 4860 passed, 0 skipped (was 4846).
+14 new tests. eslint and prettier clean across `src/comparison` and `tests/comparison`.

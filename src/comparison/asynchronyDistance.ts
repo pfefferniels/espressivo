@@ -18,9 +18,10 @@
  */
 import { comparisonRowFor } from './registry.js';
 import { CompensatedSum } from './quadrature.js';
-import { localDistance } from './registry.js';
+import { canonicalLocalDistance } from './registry.js';
 import { offsetAt, type AsynchronyCurve } from './asynchronyCurve.js';
 import type { ComparisonWindow } from './window.js';
+import { IDENTITY_CANONICAL_PAIR, type CanonicalPair } from './decomposition.js';
 
 export interface AsynchronyCell {
   readonly startTicks: number;
@@ -82,6 +83,7 @@ export function asynchronyDistance(
   b: AsynchronyCurve,
   window: ComparisonWindow,
   ticksPerQuarter: number,
+  canonical: CanonicalPair = IDENTITY_CANONICAL_PAIR,
 ): AsynchronyDistance {
   const row = comparisonRowFor('asynchrony/asynchrony@milliseconds.offset');
   const grid = asynchronyGridTicks(a, b, window, ticksPerQuarter);
@@ -94,7 +96,12 @@ export function asynchronyDistance(
     const cellStart = grid[i];
     const cellEnd = grid[i + 1];
 
-    const local = localDistance(row, offsetAt(a, cellStart), offsetAt(b, cellStart));
+    const local = canonicalLocalDistance(
+      row,
+      offsetAt(a, cellStart),
+      offsetAt(b, cellStart),
+      canonical,
+    );
     const lengthQuarters = (cellEnd - cellStart) / ticksPerQuarter;
     const mass = local.distance * lengthQuarters;
 

@@ -217,10 +217,80 @@ export function applyInvariance(
   mode: InvarianceMode,
   moments: CurveMoments,
 ): SampledCurve {
+  const canonical = canonicalizationFor(mode, moments);
   if (mode === 'none') return curve;
-  if (mode === 'level') return (ticks) => curve(ticks) - moments.mean;
-  if (moments.sigma === 0) return () => 0;
-  return (ticks) => (curve(ticks) - moments.mean) / moments.sigma;
+  return (ticks) => canonicalValue(canonical, curve(ticks));
+}
+
+/**
+ * §7.4's canonicalization as DATA — `v ↦ scale·(v − shift)` in T-space.
+ *
+ * The same construction {@link applyInvariance} applies to a sampled curve, in the one form
+ * that can also reach a distance module's INTEGRAND. The curve `*Distance` functions integrate
+ * `|T_a − T_b|` without ever holding a `SampledCurve`, so a canonicalization expressed only as
+ * a wrapped curve could canonicalize the decomposition while leaving `d_k` on the raw curves —
+ * which would report an invariance mode the headline number never saw.
+ *
+ * Two constants make it a metric: the transform is per DOCUMENT and never pair-dependent
+ * (§7.4, AD-20), and the window it is derived over is piece-derived or corpus-shared (AD-4).
+ * Neither is this type's to enforce; the facade stamps them.
+ */
+export interface CurveCanonicalization {
+  /** Subtracted first, in T-space units. */
+  readonly shift: number;
+  /** Applied after the shift; dimensionless. */
+  readonly scale: number;
+}
+
+/** `'none'`: the transform that changes nothing. */
+export const IDENTITY_CANONICALIZATION: CurveCanonicalization = { shift: 0, scale: 1 };
+
+/** One canonicalization per document — what a distance module needs to see both sides. */
+export interface CanonicalPair {
+  readonly a: CurveCanonicalization;
+  readonly b: CurveCanonicalization;
+}
+
+/** Both sides raw: the default every distance module runs under. */
+export const IDENTITY_CANONICAL_PAIR: CanonicalPair = {
+  a: IDENTITY_CANONICALIZATION,
+  b: IDENTITY_CANONICALIZATION,
+};
+
+/**
+ * §7.4's mode, resolved against one document's own moments.
+ *
+ * `σ = 0` under `'level-gain'` gives `scale = 0`, i.e. the **identically zero curve** — AD-20's
+ * rule stated as data. It is stronger than "do not divide by zero": the canonical curve is
+ * zero, not merely un-normalized, and a constant curve is the most common input in this corpus
+ * rather than a corner. The caller marks the dimension `shapeless` ({@link isShapelessUnder}).
+ */
+export function canonicalizationFor(
+  mode: InvarianceMode,
+  moments: CurveMoments,
+): CurveCanonicalization {
+  if (mode === 'none') return IDENTITY_CANONICALIZATION;
+  if (mode === 'level') return { shift: moments.mean, scale: 1 };
+  return { shift: moments.mean, scale: moments.sigma > 0 ? 1 / moments.sigma : 0 };
+}
+
+/**
+ * `scale·(v − shift)`, on a value already in T-space.
+ *
+ * `scale = 0` returns a literal `+0` rather than computing the product, and both halves of that
+ * matter: `0 · (v − shift)` is `−0` wherever the centred value is negative, which
+ * `Object.is`-based identity assertions and §9.5's `−0` normalization would then have to undo,
+ * and it is `NaN` at the infinite T-values §4 admits. The zero curve AD-20 asks for is a
+ * constant, not an arithmetic accident.
+ */
+export function canonicalValue(canonical: CurveCanonicalization, value: number): number {
+  if (canonical.scale === 0) return 0;
+  return canonical.scale * (value - canonical.shift);
+}
+
+/** Whether two canonicalizations are the same transform, so `x = y ⇒ d = 0` still holds. */
+export function sameCanonicalization(a: CurveCanonicalization, b: CurveCanonicalization): boolean {
+  return a.shift === b.shift && a.scale === b.scale;
 }
 
 /** Whether a `'level-gain'` run collapses to the zero curve — AD-20's `shapeless` flag. */

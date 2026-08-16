@@ -46,6 +46,12 @@ import {
 import { forwardInSpace, type ScaleSpace } from '../expression/transforms.js';
 import type { ExpressionDimension } from '../expression/registry.js';
 import { isBottom, type Valued } from './values.js';
+import {
+  IDENTITY_CANONICAL_PAIR,
+  canonicalValue,
+  sameCanonicalization,
+  type CanonicalPair,
+} from './decomposition.js';
 
 /**
  * DESIGN §3/§9.1: the eleven contributing comparison dimensions.
@@ -2292,20 +2298,54 @@ export function localDistance(
   a: Valued<number>,
   b: Valued<number>,
 ): LocalDistance {
+  return canonicalLocalDistance(row, a, b, IDENTITY_CANONICAL_PAIR);
+}
+
+/**
+ * §4's capped local metric with §7.4's per-document canonicalization applied **in T-space**.
+ *
+ * `'level'` and `'level-gain'` are transforms of `T(x)`, not of `x` — a log space's level is a
+ * multiplicative factor and its canonicalization is a subtraction only after the logarithm —
+ * so the shift and the scale land here, between `forwardInSpace` and the cap, and nowhere else.
+ * A caller that canonicalized the raw VALUE instead would be right for `gain` (where `T` is the
+ * identity, and where every row that reaches this function today lives) and silently wrong for
+ * every log row, which is exactly the class of error §7.4's own table exists to warn about.
+ *
+ * `⊥` is untouched by any mode: it has no value to shift, and §4 prices it at `δ_row` from
+ * everything regardless of what the other side became.
+ */
+export function canonicalLocalDistance(
+  row: ComparisonRegistryRow,
+  a: Valued<number>,
+  b: Valued<number>,
+  canonical: CanonicalPair,
+): LocalDistance {
   if (isBottom(a) || isBottom(b)) {
     if (isBottom(a) && isBottom(b)) return { distance: 0, capped: false };
     return { distance: row.delta, capped: true };
   }
-  return localDistanceOf(row, a.value, b.value);
+  return localDistanceOf(row, a.value, b.value, canonical);
 }
 
 /** {@link localDistance} on two values both known to be present — the ⊥-free half. */
-function localDistanceOf(row: ComparisonRegistryRow, a: number, b: number): LocalDistance {
+function localDistanceOf(
+  row: ComparisonRegistryRow,
+  a: number,
+  b: number,
+  canonical: CanonicalPair,
+): LocalDistance {
   const cap = 2 * row.delta;
   // Identity first: `T` is infinite at the boundary fixed points §4 enumerates, and two
-  // documents that agree on `curvature = 1` differ by 0, not by `∞ − ∞`.
-  if (a === b) return { distance: 0, capped: false };
-  const raw = Math.abs(forwardInSpace(row.space, a) - forwardInSpace(row.space, b)) / row.jnd;
+  // documents that agree on `curvature = 1` differ by 0, not by `∞ − ∞`. It needs the two
+  // canonicalizations to agree as well — under `'level'` two documents holding one value are
+  // genuinely at different distances from their own means, which is the mode's whole content.
+  if (a === b && sameCanonicalization(canonical.a, canonical.b))
+    return { distance: 0, capped: false };
+  const raw =
+    Math.abs(
+      canonicalValue(canonical.a, forwardInSpace(row.space, a)) -
+        canonicalValue(canonical.b, forwardInSpace(row.space, b)),
+    ) / row.jnd;
   // NaN reaches here only from a caller that skipped the domain gate; the cap is the safe
   // reading — it is what an incomparable pair costs anyway — and the gate is where the
   // report note comes from.

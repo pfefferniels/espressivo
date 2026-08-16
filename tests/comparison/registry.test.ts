@@ -27,6 +27,7 @@ import {
   comparisonRowAt,
   comparisonRowFor,
   comparisonRowsOf,
+  canonicalLocalDistance,
   localDistance,
 } from '../../src/comparison/registry.js';
 import type { ComparisonDimension, ComparisonRegistryRow } from '../../src/comparison/registry.js';
@@ -926,5 +927,77 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
       (row) => !defElements.has(row.element) && !inventory.has(row.key),
     ).map((row) => row.key);
     expect(orphans).toEqual([]);
+  });
+});
+
+/**
+ * §7.4's canonicalization inside §4's metric, pinned at the FUNCTION rather than through a
+ * dimension — because no shipped row that reaches this function lives in a log space today.
+ *
+ * `canonicalLocalDistance` places the shift and the scale between `forwardInSpace` and the cap,
+ * i.e. in T-space, which is the only placement §7.4's table licenses: a log space's level is a
+ * multiplicative factor, and subtracting a mean from the raw BPM is not the same transform as
+ * subtracting it from the logarithm. Every row currently routed through here is `gain`, where
+ * `T` is the identity and the two placements coincide — so the distinction is real, invisible
+ * from any dimension, and therefore pinned here. Same move as RG-2's: when a property stops
+ * being observable at one layer, the evidence goes down a layer rather than away.
+ */
+describe('§4’s metric under §7.4’s canonicalization', () => {
+  const bpm = () => rowFor('tempo/tempo@bpm');
+  const offset = () => rowFor('asynchrony/asynchrony@milliseconds.offset');
+  const identity = { shift: 0, scale: 1 };
+
+  it('applies the shift in T-SPACE, not to the raw value', () => {
+    const row = bpm();
+    const canonical = { a: { shift: Math.log(120), scale: 1 }, b: { shift: Math.log(60), scale: 1 } };
+    const measured = canonicalLocalDistance(row, valued(120), valued(60), canonical).distance;
+    // Both sides sit exactly at their own level, so the canonicalized difference is 0.
+    expect(measured).toBeCloseTo(0, 12);
+    // Subtracting the same numbers from the RAW values instead is a different answer, which is
+    // the error this placement exists to prevent.
+    const rawCanonicalized = Math.abs(
+      forwardInSpace(row.space, 120 - Math.log(120)) - forwardInSpace(row.space, 60 - Math.log(60)),
+    ) / row.jnd;
+    expect(rawCanonicalized).toBeGreaterThan(1);
+  });
+
+  it('scales in T-space too, and reduces to localDistance under the identity pair', () => {
+    const row = bpm();
+    // 120 against 118 is well under §4's cap, so the doubling is visible; 120 against 60 is
+    // already capped at 2·δ_row and doubling a capped value would say nothing.
+    const scaled = canonicalLocalDistance(row, valued(120), valued(118), {
+      a: { shift: 0, scale: 2 },
+      b: { shift: 0, scale: 2 },
+    }).distance;
+    expect(scaled).toBeCloseTo(2 * localDistance(row, valued(120), valued(118)).distance, 9);
+    expect(
+      canonicalLocalDistance(row, valued(120), valued(60), { a: identity, b: identity }),
+    ).toEqual(localDistance(row, valued(120), valued(60)));
+  });
+
+  it('keeps d(x, x) = 0 only when both sides carry the SAME canonicalization', () => {
+    const row = offset();
+    const same = { a: { shift: 5, scale: 1 }, b: { shift: 5, scale: 1 } };
+    expect(canonicalLocalDistance(row, valued(20), valued(20), same).distance).toBe(0);
+    // Under 'level' two documents holding one value really are at different distances from
+    // their own means — that is the mode, not a defect.
+    const different = { a: { shift: 5, scale: 1 }, b: { shift: -5, scale: 1 } };
+    expect(canonicalLocalDistance(row, valued(20), valued(20), different).distance).toBeCloseTo(
+      10 / row.jnd,
+      12,
+    );
+  });
+
+  it('leaves ⊥ at δ_row whatever the canonicalization is', () => {
+    const row = bpm();
+    const canonical = { a: { shift: 3, scale: 7 }, b: { shift: -2, scale: 0.5 } };
+    expect(canonicalLocalDistance(row, bottom('renderer-error'), valued(60), canonical)).toEqual({
+      distance: row.delta,
+      capped: true,
+    });
+    expect(
+      canonicalLocalDistance(row, bottom('renderer-error'), bottom('renderer-error'), canonical)
+        .distance,
+    ).toBe(0);
   });
 });

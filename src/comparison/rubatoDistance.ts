@@ -20,6 +20,11 @@ import {
   type RubatoSegment,
 } from './rubatoCurve.js';
 import type { ComparisonWindow } from './window.js';
+import {
+  IDENTITY_CANONICAL_PAIR,
+  canonicalValue,
+  type CanonicalPair,
+} from './decomposition.js';
 
 /**
  * Subdivision count for rubato cells — §5.0 rule 2c (AD-33.3b as refined by AD-34.1).
@@ -154,6 +159,7 @@ export function rubatoDistance(
   window: ComparisonWindow,
   ticksPerQuarter: number,
   jndOverride?: number,
+  canonical: CanonicalPair = IDENTITY_CANONICAL_PAIR,
 ): RubatoDistance {
   const jnd = jndOverride ?? comparisonRowFor('rubato/rubato@frameLength').jnd;
   const grid = rubatoGridTicks(a, b, window, ticksPerQuarter);
@@ -166,7 +172,8 @@ export function rubatoDistance(
     const cellEnd = grid[i + 1];
 
     const difference = (ticks: number) =>
-      (displacementTicksAt(a, ticks) - displacementTicksAt(b, ticks)) / ticksPerQuarter;
+      canonicalValue(canonical.a, displacementTicksAt(a, ticks) / ticksPerQuarter) -
+      canonicalValue(canonical.b, displacementTicksAt(b, ticks) / ticksPerQuarter);
 
     // §5.0 rule 2c: structural split for frame-aligned cells, fixed subdivision otherwise.
     const segmentA = rubatoSegmentAt(a, cellStart);
