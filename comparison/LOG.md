@@ -4932,3 +4932,21 @@ Gate: `npm run verify` GREEN — 121 files, **5316 passed**, 0 skipped (was 5293
 NEXT in cut B: the driver and facade — item expansion with unique-label enforcement, one window
 and one option set, the `N²` matrices with their pinned bit-symmetry, `normalization: 'corpus'`
 by AD-25.5's median formula, profiles, `suspectPairs`, and AD-26.3's two opt-in enrichments.
+
+## 2026-08-17 — AD-62: cut B1 — PAM exhaustive pass ratified [BINDING]
+
+c915ee6 accepted (corpus mathematics with every algorithm checked against
+something that is NOT it; the discipline found two first-draft defects:
+Lance–Williams single/complete now literal Math.min/max because ½a+½b−½|a−b|
+is the minimum in ℝ and not the same double — merge heights are published
+data a consumer plots against the matrix — and PAM's BUILD+SWAP measured
+missing the exhaustive optimum in 12/200 corpora, worst excess 41%).
+
+AD-62.1 RATIFIED: PAM gains the exhaustive pass below
+PAM_EXHAUSTIVE_LIMIT = 200000 subsets [convention], heuristic fallback
+above, Partition.exhaustive reporting WHICH — the medoid product's whole
+value is naming the right performer, and a 41% miss is a product defect.
+Strict improvement, no interface change; §8's PAM sentence amends under
+delegation in B2. The tie-rich AD-25.2 pin and the Σ|λ|-vs-Σλ⁺ contrast
+pin are noted with approval — honesty requirements held by measurements,
+not style.
