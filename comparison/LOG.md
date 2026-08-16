@@ -3834,3 +3834,46 @@ rather than invented here.
 Gate: `npm run verify` GREEN — 4996 passed, 0 skipped (one test removed with the option, one
 key-list assertion updated in each of the two suites that pinned the echo). eslint and prettier
 clean; DESIGN.md prettier-clean.
+
+## 2026-08-16 — AD-54: W3b COMPLETE; rulings; W3 wave gate convened [BINDING]
+
+Nine w3b-fac commits accepted through bc7a2f6 (4996 + 0 skipped).
+compareMpm is live. Highlights on the record: P-C5 stated centre-free
+(d(A, C(A,s)) = |1−s|·d(A, C(A,0))) and MEASURED across seven dimensions
+— surviving the alignment DP and the Wasserstein integral, which §1.3's
+curve-scoped proposition never promised; the cappedCells defect it found
+(unconditional 0 against AD-2) fixed at the alignment level; MINOR-4's
+audit REFUTING the W2 verifier's NaN-curvature prediction with the
+measured midpoint-constant mechanism; rubato's first ⊥ route forcing
+AD-36.2 there, with the fixture sized so the cap can actually bind.
+
+AD-54.1 The P-C5 exception list is RATIFIED as measured anchors (rubato
+joint-trim substitution; dynamics velocity clamp; pedal level-vacuity
+from §3's correspondence) — the AD-6 split anticipated exactly these.
+AD-54.2 cappedCells in ANCHOR units for event dimensions: RATIFIED (the
+unit their density is carried in).
+AD-54.3 Top-level unknown option keys: FOLLOW THE PRECEDENT (ignored, as
+exaggerateMpm and performMsm do; the nested vocabularies stay strict).
+One facade diverging in strictness is worse than shared laxity; a
+repo-wide tightening is a facade-family decision for the owner, noted as
+future work, not campaign scope.
+AD-54.4 The NaN-curvature midpoint-constant repair and the rubato
+presence-not-usability def rule are accepted as renderer-true; both
+supersede the corresponding W2-VERIFICATION §5 rows, and the record
+notes the verifier's prediction was refuted by measurement — the
+standard applies to verifiers too.
+AD-54.5 w3b-fac's HANDOFF ACCEPTED at bc7a2f6. Tenure: event atoms,
+densityAt, invariance-as-data, the eleven-dimension driver, the facade,
+neutralMpm, P-C2/P-C11/P-C5, MINOR-2/4, the AD-3 correction, and the
+first full-spectrum real numbers with the Vulpius validation. Six
+tenures, one unbroken record standard.
+AD-54.6 THE W3 WAVE GATE CONVENES: an independent Opus verifier over
+b9444cf..bc7a2f6 (everything since the W2 re-gate) — renderer-truth spot
+audit incl. the divergence rulings as implemented; test-vacuity hunt;
+metric-property audit (capped/⊥ interactions, per-part summation, the
+canonical table's closure); independent numerical audit of the
+Wasserstein machinery; §5.4–§5.9/§7/§9 design-coverage walk; house rules
+incl. the plain-data walker; and EXTRA weight on anything
+conductor-authored (the imprecisionDegenerate probe test). Deliverable
+W3-VERIFICATION.md with GATE-PASS/BLOCK; fixes and re-gate per the W2
+pattern.
