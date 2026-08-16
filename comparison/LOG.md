@@ -3532,3 +3532,36 @@ Gate: `npm run verify` GREEN before committing — 113 files, 4891 passed, 0 ski
 REMAINING IN W3B: the §9 facade with its validation table, typed errors and −0 normalization;
 `src/index.ts` + `src/api` exports; P-C2 byte-identity at facade level; P-C11's walker; P-C5's
 three-part split.
+
+## 2026-08-16 — AD-53: driver accepted; Vulpius correction; interior decisions ratified [BINDING]
+
+d916e9d + 0df387b accepted (invariance as data reaching the integrands
+with the AD-20 scale=0 catch; the eleven-dimension driver; the
+pointwiseDensityAt sum repair — the module's own shape-vs-scale lesson
+one level down, negative-controlled). Note: the unmatched-part and
+noteDensityWeight items in this report crossed with AD-52, which already
+rules both (renderer-true implemented ✓; noteDensityWeight is REMOVED
+from the surface, not shipped-as-throw — apply AD-52.3a in the facade
+commit). Rulings on the rest:
+
+AD-53.1 The Vulpius pin is RATIFIED and §10's expectation is corrected by
+measurement: the Amateur reading IS the Romantic one plus imprecision/
+asynchrony, so the near pair is Romantic–Amateur and three dimensions
+compare at EXACT zero while three others carry the whole difference —
+pinned as the sharper fact because an expected ordering passes on almost
+anything while an exact three-dimension zero with structured nonzeros can
+only come from readers that agree with the document. This is the
+module's headline capability (exact decomposition) validated on real
+data for the first time.
+AD-53.2 The Telemann 3× accounting is accepted as renderer-true (three
+parts each perform the global tempo deviation; the per-part sum counts
+what is performed) and is pinned as its own test.
+AD-53.3 The three interior decisions are RATIFIED as stated: §1.2
+decomposition over the disjoint union of part curves; profile T-space
+curves exported only where all parts agree (else null, density still
+summed); ⊥ length across parts as MAX (a window fraction, not additive
+mass).
+AD-53.4 The unreachable-but-pinned T-space canonicalization placement
+(RG-2's move at the function level) is noted with approval — a
+correctness property pinned where no shipped row can currently reach it
+is how it stays correct when one does.
