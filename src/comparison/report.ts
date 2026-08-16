@@ -350,3 +350,106 @@ export interface ComparisonReport {
 export interface ComparisonResult {
   readonly report: ComparisonReport;
 }
+
+// ---------------------------------------------------------------------------
+// §6's edit path (§9.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * One op of a §6 script, delivered in application (date) order and carrying both orders (C5).
+ *
+ * `cost` is the SEQUENTIAL price in the delivered order (§6.2), so the ops of one script sum to
+ * that script's `replayedDelta` exactly. `free` is cost 0 **by pricing** — the state performs
+ * the same function before and after the op — never cost 0 by coincidence of rounding (A14).
+ */
+export interface EditOp {
+  readonly op: 'insert' | 'delete' | 'substitute' | 'fragment' | 'consolidate';
+  readonly map: string;
+  readonly part: number | null;
+  readonly site: ComparisonSiteRef;
+  readonly dateA: number | null;
+  readonly dateB: number | null;
+  readonly measureA: MeasurePosition | null;
+  readonly measureB: MeasurePosition | null;
+  readonly attributes: readonly EditOpAttribute[];
+  /** JND·quarters, sequential (§6.2). */
+  readonly cost: number;
+  readonly free: boolean;
+  readonly applicationIndex: number;
+  readonly costRank: number;
+}
+
+/**
+ * One attribute the op changes, priced by §4's capped local metric.
+ *
+ * `deltaJnd` is `localDistance`, which that function's own documentation names as "the §6 edit
+ * path's" attribute metric: `min(|T(x) − T(y)|/jnd, 2·δ_row)`, with an ABSENT attribute read as
+ * `⊥` and therefore priced at `δ_row`. That is §4's rule for a value with no comparable
+ * counterpart and it is the same reading the report's `⊥` means everywhere else — it is a
+ * REPORTING figure beside the op, never the op's price, which is `EditOp.cost`.
+ */
+export interface EditOpAttribute {
+  readonly key: ComparisonJndKey;
+  readonly name: string;
+  readonly valueA: number | string | null;
+  readonly valueB: number | string | null;
+  readonly deltaJnd: number;
+}
+
+export interface EditScript {
+  readonly part: number | null;
+  readonly map: string;
+  readonly dimension: ComparisonDimension;
+  /** Date order (§6.1, C5). */
+  readonly ops: readonly EditOp[];
+  /** Indices into {@link ops}, cost-descending — U3's "what matters most" (C5). */
+  readonly topByCost: readonly number[];
+  /** C12; the `boundary_prf` derivation is a division rather than a scan. */
+  readonly opCounts: {
+    readonly insert: number;
+    readonly delete: number;
+    readonly substitute: number;
+    readonly fragment: number;
+    readonly consolidate: number;
+    readonly free: number;
+  };
+}
+
+export interface DiffReport {
+  /** The same provenance block the comparison reports (A14). */
+  readonly inputs: ComparisonReport['inputs'];
+  readonly window: ComparisonReport['window'];
+  readonly ppq: ComparisonReport['ppq'];
+  readonly parts: ComparisonReport['parts'];
+  readonly scopes: ComparisonReport['scopes'];
+  /** One per (part, map) that carries at least one op, in a pinned order (§9.5). */
+  readonly scripts: readonly EditScript[];
+  readonly dimensions: Record<
+    ComparisonDimension,
+    {
+      /**
+       * `d_k` summed over the evaluated scopes — the lower bound both totals are theorems
+       * about, and the RAW one: §7.4's invariance modes rescale by a document's own moments
+       * and an intermediate edit state is not a document, so the edit path prices without them
+       * and this figure is stated on the same footing.
+       */
+      readonly dCurve: number | null;
+      readonly scriptCost: number;
+      readonly replayedDelta: number;
+      /** `scriptCost − dCurve`, `≥ 0` by AD-5's theorem up to the per-family quadrature ε. */
+      readonly reworking: number;
+      /**
+       * `norm(Φ(state after the last op), Φ(B))`, summed over scopes — §6.3's verification.
+       *
+       * Exactly 0 for every document this engine can produce, and shipped rather than asserted
+       * internally so that a reader can see the replay really reached B (§6.3).
+       */
+      readonly replayResidual: number;
+    }
+  >;
+  readonly notes: readonly ComparisonNote[];
+}
+
+export interface DiffResult {
+  readonly report: DiffReport;
+}

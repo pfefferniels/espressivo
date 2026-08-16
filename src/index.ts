@@ -82,6 +82,7 @@ export {
 // than a consequence.
 export {
   compareMpm,
+  diffMpm,
   neutralMpm,
   COMPARISON_DIMENSIONS,
   COMPARISON_JND_KEYS,
@@ -89,6 +90,7 @@ export {
 } from './api/comparison.js';
 export type {
   CompareMpmOptions,
+  DiffMpmOptions,
   ComparisonSettings,
   ComparisonDimension,
   ComparisonJndKey,
@@ -106,8 +108,13 @@ export type {
   ComparisonSegment,
   ComparisonSiteRef,
   Decomposition,
+  DiffReport,
+  DiffResult,
   DimensionComparison,
   DimensionState,
+  EditOp,
+  EditOpAttribute,
+  EditScript,
   EpsilonFamily,
   MeasureEntry,
   MeasurePosition,

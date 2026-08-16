@@ -4773,3 +4773,72 @@ the A4 window — a stated rule with no observable is half a rule.
 AD-60.4 The A4 invariance question was ruled before it was asked:
 AD-59.3 — InvalidOptionError, knowability split, never silent. Crossed
 messages; the LOG is the channel.
+
+## 2026-08-17 — W4 cut A4: `diffMpm` is live (w4-products)
+
+`src/comparison/diff.ts`, §9.3's `EditOp`/`EditScript`/`DiffReport` in `report.ts`, the facade
+and the export surface, + 15 tests. The edit path has a public entry point for the first time.
+
+**§6.4's ORIENTATION, and why it is the load-bearing part.** The traceback precedence
+`substitute > delete > insert` is deterministic but not transposition-covariant, so two
+independent runs are not mirrors of one another. The script is therefore computed ONCE in a
+canonical order and inverted. The order is CONTENT-derived per AD-25.4 — `serializeMpmRoot(root)`
+then the performance selector, compared in code-unit order — because `diffMpm(a, b)` and
+`diffMpm(b, a)` present the same role names in both directions and a rule keyed on `'a'`/`'b'`
+would not distinguish the two calls at all. `serializeMpmRoot` rather than `canonicalMpm`: the
+comparison layer may not import `src/api` (MINOR-5's zone) and `canonicalMpm` is one line over it,
+so the bytes are the same bytes.
+
+P-C2 is asserted on `JSON.stringify` of the whole report against a swap map written out as CODE
+— the discipline `properties.test.ts` established — so a future field that needs mirroring fails
+the test rather than quietly breaking the promise. The mirror re-SORTS rather than reverses: the
+delivered key is `dateA ?? dateB` and the inversion reads it off the other side, which is why
+`invertSteps` recomputes the order instead of flipping the array.
+
+**ATTRIBUTE DELTAS ARE A REGISTRY WALK**, `plausibility.ts`'s shape for `plausibility.ts`'s
+reason: the rows already say which attributes each container's elements carry, and a
+per-dimension list would be a second inventory to keep in step with the first. `deltaJnd` is
+`localDistance`, which that function's own documentation names as "the §6 edit path's" attribute
+metric, with an ABSENT attribute read as `⊥` and therefore priced at `δ_row`. Sorted descending,
+so `attributes[0]` is what the op is most about and `site.attribute` names something worth
+looking at rather than an arbitrary first field.
+
+[DECISION, needs ratification] **`DiffMpmOptions` is `CompareMpmOptions` MINUS `invariance` and
+`profile`**, where §9.2 declares a bare `extends`. `invariance` because §6.2's pricing must be
+raw (cut A2's ruling request: an intermediate state is not a document, so a canonicalized `norm`
+is not a fixed metric and AD-5's theorem fails); `profile` because a `DiffReport` has no profile
+to retain. Removed from the SURFACE rather than shipped as a throw, which is AD-52.3a's own rule
+— "an option whose only behaviour is to throw is worse than an absent one" — applied to a case
+that ruling did not name. A TypeScript caller who writes either fails to compile; a JavaScript
+caller is ignored, which is what every other unrecognized top-level key gets (AD-54.3).
+
+`moves: true` earns an `option-unusable` note rather than being silently dropped: A-Q5's
+fragment/consolidate ops land after the plain script has been through a wave gate, and a caller
+who asked for them should be told they did not arrive.
+
+[FOUND BY A TEST, in code written this cut] **`dCurve` and `compareMpm`'s `d_k` were two numbers.**
+`dimensionComparison` sums its scopes with `CompensatedSum` and the first draft here used `+=`;
+the vendored rubato rows differed in the last ulps. Repaired by summing the same way, so the two
+are BIT-IDENTICAL rather than close — a diff whose lower bound disagreed with the comparison's
+distance would be a product describing a different comparison. Negative-controlled by perturbing
+the total by one `Number.EPSILON`, which fails exactly that test.
+
+`dCurve` is `null` for the two EVENT-shaped dimensions, per §9.3: their `d_k` is an alignment
+optimum rather than a curve integral, and calling it `dCurve` would name it as something it is
+not. `replayResidual` ships as a field per dimension and is exactly 0 on every vendored pair.
+
+NEGATIVE CONTROLS, three, each failing exactly its own tests and restoring green: the canonical
+orientation removed, so each direction runs its own traceback (2 — P-C2 and the cost identity);
+the site's document role left unswapped in the mirror (1); the compensated sum perturbed (1).
+
+Gate: `npm run verify` GREEN — 120 files, **5293 passed**, 0 skipped (was 5278). Repo-wide
+`npx prettier --check .` clean; eslint clean on `src/comparison`, `tests/comparison`, `src/api`
+and `src/index.ts`.
+
+[MEASURED, and acted on] The two W4 test files cost 12.4 s + 14.2 s of a 25 s suite. `diff.test.ts`
+was 25 s until the property tests moved onto a 16-quarter window: P-C2 is a claim about SYMMETRY
+and every field it touches is present in the first few bars, so a short window buys four pairs in
+both directions where a full one bought one — with a full-window pair kept beside them so the
+short one cannot be hiding a field. An earlier full-suite run reported `[vitest-worker]: Timeout
+calling "onTaskUpdate"` with all 120 files passing, which is the runner losing its RPC under load
+rather than a test failing; the trim is the response to it either way.

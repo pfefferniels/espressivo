@@ -35,6 +35,7 @@
  * satisfy RULE I3(b).
  */
 import { compareInterior, type InteriorCompareOptions } from '../comparison/compare.js';
+import { diffInterior, type InteriorDiffOptions } from '../comparison/diff.js';
 import { defaultWeights } from '../comparison/aggregate.js';
 import { DEFAULT_LAMBDA_DATE } from '../comparison/eventAlignment.js';
 import {
@@ -52,7 +53,12 @@ import {
   type ComparisonJndKey,
 } from '../comparison/registry.js';
 import type { InvarianceMode } from '../comparison/decomposition.js';
-import type { ComparisonReport, ComparisonResult } from '../comparison/report.js';
+import type {
+  ComparisonReport,
+  ComparisonResult,
+  DiffReport,
+  DiffResult,
+} from '../comparison/report.js';
 import type { Element } from '../xml/XomTypes.js';
 import {
   ComparisonEngineError,
@@ -97,6 +103,11 @@ export type {
   EpsilonFamily,
   MeasureEntry,
   MeasurePosition,
+  DiffReport,
+  DiffResult,
+  EditOp,
+  EditOpAttribute,
+  EditScript,
   ResolvedComparisonSettings,
   TimeSignatureSource,
 } from '../comparison/report.js';
@@ -137,6 +148,26 @@ export interface CompareMpmOptions extends ComparisonSettings {
     /** Quarters; step-capped, and the cap is reported when it bites. */
     readonly grid?: 'refinement' | { readonly step: number };
   };
+}
+
+/**
+ * §6's edit path. `CompareMpmOptions` minus the two knobs the path cannot honour.
+ *
+ * `invariance` is out because §6.2's pricing is RAW and must be: §7.4's modes rescale a curve by
+ * that DOCUMENT's own moments, and an intermediate edit state is not a document — its moments
+ * move as the script is applied, so a canonicalized `norm` would not be a fixed metric and
+ * `scriptCost ≥ d_curve` would stop being AD-5's theorem. `profile` is out because a `DiffReport`
+ * has no profile to retain.
+ *
+ * Removed from the SURFACE rather than shipped as a throw, which is AD-52.3a's own rule — "an
+ * option whose only behaviour is to throw is worse than an absent one" — applied to §9.2's
+ * declared `extends CompareMpmOptions`. A TypeScript caller who writes either fails to compile;
+ * a JavaScript caller is ignored, which is what every other unrecognized top-level key gets in
+ * this package (AD-54.3).
+ */
+export interface DiffMpmOptions extends Omit<CompareMpmOptions, 'invariance' | 'profile'> {
+  /** `fragment`/`consolidate` ops (A-Q5). Not shipped yet; requesting them earns a note. */
+  readonly moves?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +236,62 @@ export function compareMpm(options: CompareMpmOptions): ComparisonResult {
 }
 
 /**
+ * Diff two performances — §6's typed edit script per (part, map), priced sequentially.
+ *
+ * Where {@link compareMpm} answers "how far apart are these two performances?", this answers
+ * "what would you have to change to turn one into the other, and what does each change cost?".
+ * The two are one mathematics: an op's `cost` is an integral of the same density `compareMpm`
+ * reports, so `topByCost` ranks the edits in the units the distance is quoted in.
+ *
+ * ```ts
+ * const { report } = diffMpm({ a: baroque, b: romantic, msm: score });
+ * report.scripts[0].ops[0];                  // the first edit, in score order
+ * report.scripts[0].topByCost;               // the same ops, largest first (C5)
+ * report.dimensions.tempo.reworking;         // how much more the script costs than d_tempo
+ * ```
+ *
+ * **The three numbers per dimension are three numbers** (§6.3): `dCurve` is the lower bound,
+ * `scriptCost` is the DP's own path total, and `replayedDelta` is what the same op set costs
+ * applied in the delivered date order. Both totals are `≥ dCurve` by AD-5's theorem, up to the
+ * per-family quadrature ε the report stamps in `inputs.epsilon`.
+ *
+ * The script is computed once in a CONTENT-derived canonical orientation and inverted for the
+ * other direction (§6.4), so `diffMpm(a, b)` and `diffMpm(b, a)` are exact mirrors rather than
+ * two tracebacks that happened to agree.
+ *
+ * @throws the same errors {@link compareMpm} throws, on the same inputs
+ */
+export function diffMpm(options: DiffMpmOptions): DiffResult {
+  checkCompareOptions(options);
+
+  const rootA = parseDocument('MPM a', options.a, parseMpmRoot, 'mpm');
+  const rootB =
+    options.b === undefined ? undefined : parseDocument('MPM b', options.b, parseMpmRoot, 'mpm');
+  const msm =
+    options.msm === undefined ? null : parseDocument('MSM', options.msm, parseMsmRoot, 'msm');
+
+  const report = runDiff({
+    a: rootA,
+    b: rootB,
+    performanceA: options.performanceA,
+    performanceB: options.performanceB,
+    msm,
+    window: options.window ?? null,
+    weights: resolveWeights(options.weights),
+    jnd: { ...options.jnd },
+    plausibleRange: { ...options.plausibleRange },
+    // §6.2's pricing is raw; the surface does not offer the modes, and the interior is told so
+    // explicitly rather than left to a default that a later edit could change.
+    invariance: resolveInvariance(undefined),
+    profile: null,
+    lambdaDate: DEFAULT_LAMBDA_DATE,
+    moves: options.moves,
+  });
+
+  return { report: normalizeZeros(report) };
+}
+
+/**
  * The documented empty performance, so that nobody hand-rolls the null baseline (C8).
  *
  * Comparing a document against this answers "how far is this performance from a deadpan
@@ -226,26 +313,40 @@ export function neutralMpm(options?: { readonly ppq?: number }): XmlText {
   );
 }
 
+/** {@link run} for the edit path — the same §9.4 translation over a different interior. */
+function runDiff(options: InteriorDiffOptions): DiffReport {
+  try {
+    return diffInterior(options);
+  } catch (cause) {
+    throw translate(cause);
+  }
+}
+
 /** Run the interior, turning its typed throws into the facade's (§9.4). */
 function run(options: InteriorCompareOptions): ComparisonReport {
   try {
     return compareInterior(options);
   } catch (cause) {
-    if (cause instanceof PerformanceSelectionNotFoundError)
-      throw new PerformanceNotFoundError(`MPM ${cause.role}: ${cause.message}`, { cause });
-    if (
-      cause instanceof PerformanceSelectionAmbiguousError ||
-      cause instanceof PerformanceSelectorInvalidError ||
-      cause instanceof NonPositiveTempoError
-    )
-      throw new InvalidOptionError(`MPM ${cause.role}: ${cause.message}`, { cause });
-    throw new ComparisonEngineError(
-      `the comparison engine failed an internal invariant — ${
-        cause instanceof Error ? cause.message : String(cause)
-      }`,
-      { cause },
-    );
+    throw translate(cause);
   }
+}
+
+/** §9.4's translation table, shared by both entry points so the two cannot drift. */
+function translate(cause: unknown): Error {
+  if (cause instanceof PerformanceSelectionNotFoundError)
+    return new PerformanceNotFoundError(`MPM ${cause.role}: ${cause.message}`, { cause });
+  if (
+    cause instanceof PerformanceSelectionAmbiguousError ||
+    cause instanceof PerformanceSelectorInvalidError ||
+    cause instanceof NonPositiveTempoError
+  )
+    return new InvalidOptionError(`MPM ${cause.role}: ${cause.message}`, { cause });
+  return new ComparisonEngineError(
+    `the comparison engine failed an internal invariant — ${
+      cause instanceof Error ? cause.message : String(cause)
+    }`,
+    { cause },
+  );
 }
 
 /**

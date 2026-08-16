@@ -555,7 +555,7 @@ export type ScopeRule = 'msm' | 'mpm' | 'global';
  * available. It stands, with the `estimate-degradation` note the caller stamps: it is an
  * estimate of a quantity the documents alone cannot answer, not the answer.
  */
-function scopeSides(
+export function scopeSides(
   pair: ComparisonPair,
   msm: ComparisonMsm | null,
 ): {
@@ -991,7 +991,7 @@ function readScopeTempoView(side: ScopeSide) {
 // Notes and settings
 // ---------------------------------------------------------------------------
 
-function note(
+export function note(
   kind: ComparisonNoteKind,
   dimension: ComparisonDimension | null,
   document: 'a' | 'b' | null,
@@ -1183,7 +1183,7 @@ export function compareNotes(x: ComparisonNote, y: ComparisonNote): number {
   );
 }
 
-function sortNotes(notes: readonly ComparisonNote[]): readonly ComparisonNote[] {
+export function sortNotes(notes: readonly ComparisonNote[]): readonly ComparisonNote[] {
   // Decorated, because the final tiebreak serializes and a comparison sort would do it
   // O(n log n) times per note otherwise. The key is built once and the order is the same.
   return [...notes]
@@ -1205,13 +1205,13 @@ function compareText(x: string, y: string): number {
   return x < y ? -1 : x > y ? 1 : 0;
 }
 
-function effectiveJnd(overrides: JndOverrides): Record<ComparisonJndKey, number> {
+export function effectiveJnd(overrides: JndOverrides): Record<ComparisonJndKey, number> {
   return Object.fromEntries(
     COMPARISON_JND_KEYS.map((key) => [key, comparisonRowWith(key, overrides).jnd]),
   ) as Record<ComparisonJndKey, number>;
 }
 
-function resolvedSettings(
+export function resolvedSettings(
   options: InteriorCompareOptions,
   pair: ComparisonPair,
 ): ResolvedComparisonSettings {
