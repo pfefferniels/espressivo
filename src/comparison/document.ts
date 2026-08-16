@@ -122,10 +122,20 @@ export interface ComparisonPair {
   readonly comparability: Comparability;
 }
 
+/**
+ * A document, as text or as a root the caller already parsed.
+ *
+ * The facade parses `a`, then `b`, then the MSM so that the FIRST failure reported is the
+ * earliest one and each carries its document's role (§9.4) — a text this layer parsed itself
+ * could only report "one of them". Passing the root through rather than the text is what keeps
+ * that from costing a second parse of a 300 KB document.
+ */
+export type MpmSource = string | Element;
+
 export interface ReadComparisonPairOptions {
-  readonly a: string;
+  readonly a: MpmSource;
   /** Omit to compare two performances inside `a` (§9.2, C16). */
-  readonly b?: string;
+  readonly b?: MpmSource;
   readonly performanceA?: PerformanceSelector;
   readonly performanceB?: PerformanceSelector;
   /** The MSM score end in quarters, when an MSM was supplied and could answer (R7). */
@@ -247,8 +257,13 @@ function readDocument(
  * (§9.4).
  */
 export function readComparisonPair(options: ReadComparisonPairOptions): ComparisonPair {
-  const rootA = parseMpmRoot(options.a);
-  const rootB = options.b === undefined ? rootA : parseMpmRoot(options.b);
+  const rootA = typeof options.a === 'string' ? parseMpmRoot(options.a) : options.a;
+  const rootB =
+    options.b === undefined
+      ? rootA
+      : typeof options.b === 'string'
+        ? parseMpmRoot(options.b)
+        : options.b;
 
   const readA = readDocument(rootA, options.performanceA, 'a');
   const readB = readDocument(rootB, options.performanceB, 'b');

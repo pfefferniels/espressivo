@@ -93,6 +93,7 @@ import { rubatoDistance } from './rubatoDistance.js';
 import { readTempoSegments, quarterBpmAt, type TempoCurve } from './tempoCurve.js';
 import { tempoDistance } from './tempoDistance.js';
 import { isBottom } from './values.js';
+import { NonPositiveTempoError } from './errors.js';
 import type { ComparisonWindow } from './window.js';
 
 // ---------------------------------------------------------------------------
@@ -505,13 +506,16 @@ function tempoPlan(settings: DimensionSettings): CurvePlan<TempoCurve> {
   return {
     dimension: 'tempo',
     jndKey: 'tempo/tempo@bpm',
-    read: (side) =>
-      readTempoSegments(
+    read: (side) => {
+      const curve = readTempoSegments(
         viewOf(side, TEMPO_MAP),
         side.document.scaleFactor,
         side.scope.environment,
         side.document.performance.global,
-      ),
+      );
+      requirePositiveTempo(curve, side.role);
+      return curve;
+    },
     breakpoints: (curve) => curve.breakpointsTicks,
     sampler: (curve) => (ticks) => Math.log(quarterBpmAt(curve, ticks)),
     // AD-1: tempo cannot reach `⊥` — an unresolvable level performs the renderer's own 100.0.
@@ -521,6 +525,22 @@ function tempoPlan(settings: DimensionSettings): CurvePlan<TempoCurve> {
     notes: (curve, role) =>
       curve.notes.map((note) => noteFrom('tempo', role, settings.ticksPerQuarter, note)),
   };
+}
+
+/**
+ * §9.4's `qbpm ≤ 0` row (M11), checked where the curve is built.
+ *
+ * A transition between two positive endpoints stays positive, so the endpoints are the whole
+ * check: a power interpolation of `qbpm0 > 0` and `qbpm1 > 0` cannot reach 0. The throw is the
+ * interior's (§9.4 gives it the domain validators) and the facade types it.
+ */
+function requirePositiveTempo(curve: TempoCurve, role: 'a' | 'b'): void {
+  for (const segment of curve.segments) {
+    const values =
+      segment.kind === 'constant' ? [segment.qbpm] : [segment.qbpm0, segment.qbpm1];
+    for (const qbpm of values)
+      if (!(qbpm > 0)) throw new NonPositiveTempoError(role, qbpm, segment.startTicks);
+  }
 }
 
 function dynamicsPlan(settings: DimensionSettings): CurvePlan<DynamicsCurve> {

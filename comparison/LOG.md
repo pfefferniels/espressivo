@@ -3565,3 +3565,68 @@ AD-53.4 The unreachable-but-pinned T-space canonicalization placement
 (RG-2's move at the function level) is noted with approval — a
 correctness property pinned where no shipped row can currently reach it
 is how it stays correct when one does.
+
+## 2026-08-16 — W3b part 6: the §9 facade and the export surface (w3b-facade)
+
+`src/api/comparison.ts` + `ComparisonEngineError` + the barrel wiring + 30 tests. `compareMpm`
+is live and the module has a public surface for the first time.
+
+**THE REPORT SHAPES ARE THE INTERIOR'S AND ARE RE-EXPORTED, NOT REDECLARED** — the precedent is
+`ExaggerationReport`, which `api/types.ts` re-exports from `expression/report.ts` for the same
+reason: the engine builds the shape, the facade hands it over unchanged (RULE F1), and a second
+declaration would be a second thing to keep in step. What the facade OWNS is the option types,
+the typed errors and the validation, i.e. the surface a caller can get wrong.
+
+**§9.4's TABLE, WITH ITS ORDER AS A CONTRACT.** Options are validated before any document is
+parsed, and a test pins that ordering by handing over a document that is not XML at all together
+with a misspelled dimension: the caller is told about the misspelling, because that is the error
+they can act on and the other may not even be theirs. Documents are then parsed `a`, `b`, `msm`,
+each with its ROLE in the message — `MPM a:` / `MPM b:` / `MSM:` — which a single interior parse
+could not say. `readComparisonPair` gained an `MpmSource = string | Element` so the facade's
+parse is the ONLY one: passing the root through rather than the text is what keeps role-precise
+errors from costing a second parse of a 300 KB document.
+
+M11's `qbpm ≤ 0` row is implemented where the curve is built (`NonPositiveTempoError`, wrapped by
+the facade): a transition between two positive endpoints stays positive, so the segments'
+endpoints are the whole check.
+
+[DECISION, reported] **`noteDensityWeight` THROWS IN BOTH BRANCHES**, with different reasons.
+Without an `msm` it is AD-25.1's knowable case and the ruling already says `InvalidOptionError`.
+WITH an `msm` it is not unknowable but UNIMPLEMENTED — the weight function `w(t)` would have to
+reach all eleven dimensions' integrands — and the message says so. Returning an unweighted
+report to a caller who asked for a weighted one would hide the gap behind a plausible-looking
+result, which is the exact failure mode §9.4's own reasoning names for the first branch. A
+silent degradation here would be worse than an error, and the error names the reason rather than
+the option.
+
+[FINDING — MINOR-2's normalizer is a GUARD, and the first test of it was VACUOUS] Deleting
+`normalizeZeros` failed NOTHING on an identity comparison. The W2 verifier's MINOR-2 was right
+that no shipped computation produces `-0`: every distance passes through `Math.abs` or a
+non-negative accumulator, and a signed descriptor of an identical pair is `x − x`, which is `+0`
+in IEEE754. The reachable path is the CALLER's — `-0` is a finite number `≥ 0`, so it passes the
+weight validator and lands in the echoed weight vector, where `Object.is` assertions and the JSON
+round trip would then disagree about a value the caller can see. The test is now pinned there,
+with a working negative control, plus a standing walker asserting that nothing anywhere in a
+report is `-0`. The vacuity is recorded in the test's own doc so the next reader does not have to
+rediscover it.
+
+`neutralMpm` (C8) ships: a `<performance>` with an empty `<dated>`, not a document with no
+performance at all — the latter is a `PerformanceNotFoundError` by §9.4 and is exactly the
+mistake the function exists to prevent. Pinned against the vendored `minimal.mpm`.
+
+EXPORTS (§9.7): `export * from './comparison.js'` in `src/api/index.ts`; member by member from
+`src/index.ts`, value exports and type exports listed separately. VERIFIED rather than assumed,
+as the commission asks: there is NO `api` layer zone in `eslint.config.js` — the zones cover
+`xml`/`midi`/`msm`/`mpm`/`mei`/`expression`/`comparison` and the facade sits above all of them —
+so `src/api/comparison.ts` importing `src/comparison/**` is permitted, and the comparison zone's
+own `'**/api/**'` entry (MINOR-5) still fences the reverse direction. `package.json`'s
+`sideEffects` list is `["./dist/mpm/Mpm.js", "./dist/mpm/elements/maps/*.js"]`, a SINGLE-level
+glob, and the only renderer file the comparison layer imports is
+`mpm/elements/maps/data/bezier.js`, one directory deeper — so it is not marked side-effectful and
+tree-shaking is unaffected. A21's `ppq.fallbackUsed` keeps its exact meaning and AD-27.2's third
+state travels beside it as `unusableDeclaration: {a, b}`.
+
+Gate: `npm run verify` GREEN before committing — 114 files, 4921 passed, 0 skipped (was 4891).
+30 new tests. eslint and prettier clean on every touched file; `src/index.ts` reports one
+`no-unnecessary-condition` error at `helperGetAllChildElements`, proven pre-existing by
+re-running the same lint with the changes stashed (same error, same function, shifted line).

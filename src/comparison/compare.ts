@@ -58,6 +58,7 @@ import {
   readComparisonPair,
   readScopeMapViews,
   type ComparisonPair,
+  type MpmSource,
   type PerformanceSelector,
 } from './document.js';
 import type { InvarianceMode } from './decomposition.js';
@@ -154,8 +155,8 @@ export const PROFILE_MAX_POINTS = 4096;
 
 /** What the facade hands the interior, with every default already resolved. */
 export interface InteriorCompareOptions {
-  readonly a: string;
-  readonly b?: string;
+  readonly a: MpmSource;
+  readonly b?: MpmSource;
   readonly performanceA?: PerformanceSelector;
   readonly performanceB?: PerformanceSelector;
   /** Already parsed by the facade, so a parse failure is typed before this runs. */

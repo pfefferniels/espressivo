@@ -74,7 +74,46 @@ export {
   InvalidOptionError,
   SelectionNotFoundError,
   EngineInvariantError,
+  ComparisonEngineError,
 } from './api/errors.js';
+// The comparison facade (comparison/DESIGN.md §9.7). Member by member for the reason the two
+// above are: a star export of a module that re-exports `MeicoError` would be ambiguous against
+// this file's own, and naming the members is what keeps the public surface a decision rather
+// than a consequence.
+export {
+  compareMpm,
+  neutralMpm,
+  COMPARISON_DIMENSIONS,
+  COMPARISON_JND_KEYS,
+  EXPRESSION_DIMENSION_CORRESPONDENCE,
+} from './api/comparison.js';
+export type {
+  CompareMpmOptions,
+  ComparisonSettings,
+  ComparisonDimension,
+  ComparisonJndKey,
+  ComparisonUnit,
+  InvarianceMode,
+  MetricGuarantee,
+  WindowRule,
+  AttributionTable,
+  ComparisonInputs,
+  ComparisonNote,
+  ComparisonNoteKind,
+  ComparisonProfile,
+  ComparisonReport,
+  ComparisonResult,
+  ComparisonSegment,
+  ComparisonSiteRef,
+  Decomposition,
+  DimensionComparison,
+  DimensionState,
+  EpsilonFamily,
+  MeasureEntry,
+  MeasurePosition,
+  ResolvedComparisonSettings,
+  TimeSignatureSource,
+} from './api/comparison.js';
 export type {
   XmlText,
   ConvertOptions,

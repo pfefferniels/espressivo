@@ -16,6 +16,7 @@
  * and why. The class surface (`Mei`, `Msm`, `Mpm`, `Midi`, `Performance`) is unchanged and
  * still exported from `src/index.ts`; this layer is additive.
  */
+export * from './comparison.js';
 export * from './errors.js';
 export * from './expression.js';
 export * from './pipeline.js';

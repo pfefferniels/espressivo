@@ -80,3 +80,25 @@ export class PerformanceSelectorInvalidError extends MeicoError {
     );
   }
 }
+
+/**
+ * A resolved quarter-BPM that is not a positive number — §9.4's `qbpm ≤ 0` row (M11).
+ *
+ * It is a DOCUMENT error rather than a `⊥` span, and the split is §4's: `⊥` is for a value the
+ * renderer performs and the comparison cannot read, while a non-positive tempo has no logarithm
+ * at all — `T` is `−∞` at 0 and `NaN` below it, so every quantity downstream would be one of
+ * those. AD-1's "compare what is performed" does not reach a document that states a tempo no
+ * performance can have.
+ */
+export class NonPositiveTempoError extends MeicoError {
+  constructor(
+    readonly role: ComparisonDocumentRole,
+    readonly qbpm: number,
+    readonly dateTicks: number,
+  ) {
+    super(
+      `document ${role} resolves a tempo of ${String(qbpm)} quarter-BPM at tick ` +
+        `${String(dateTicks)}; a tempo must be a positive number`,
+    );
+  }
+}
