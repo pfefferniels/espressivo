@@ -4348,3 +4348,46 @@ message's actual reader.
 Gate: `npm run verify` GREEN — 117 files, **5250 passed**, 0 skipped. Repo-wide
 `npx prettier --check .` clean; eslint clean on `src/comparison/`, `tests/comparison/`,
 `src/api/` and `src/index.ts`. The seven vendored anchors are unchanged.
+
+## 2026-08-16 — AD-56: W3 fix wave COMPLETE; batched ratifications [BINDING]
+
+Budget: RED / 29.1% used at 12.2% elapsed / THROTTLE (2026-08-16, credits
+calibrated). Regime: single-agent serial work continues; re-gate is one
+resumed agent; W4 deferred until W3 closes and paced against the window.
+
+w3-fix's six commits (f778638..eb29665) accepted in full: every CAPITAL,
+MAJOR and MINOR of W3-VERIFICATION.md addressed; verify 5250 + 0 skipped;
+15 negative-control patches, each failing exactly its own tests. Batched
+ratifications, all previously acknowledged in-channel:
+
+AD-56.1 MAJOR-16 re-cut to FIRST ratified (the gate real from commit 1);
+AD-55.2's "§7.5 sentence" RE-SITED to §5.0 with cross-reference — the
+conductor's citation named the wrong section; the delegation's correct
+reading was the worker's.
+AD-56.2 AD-55.3's figure AMENDED: "≤ 3e-17" was the verifier's
+uniform-only table; the reproducible support-scale figure over the
+14-pair family incl. point masses is 3.0e-16, published as
+{relative: 3e-16, jnd: 1.2e-16} with the falsified naive figure held by
+an assertion. Substance of the ruling unchanged.
+AD-56.3 The @controller dead channel (found by AD-55.1(b)'s
+exclusion-verification obligation ON ITS FIRST RUN, fixed in-commit) is
+recorded as the obligation's validation — same shape as CAPITAL-1, one
+dimension over, caught by the rule it motivated.
+AD-56.4 Anchors old → new recorded (all moves are CAPITAL-1's step
+component; CAPITAL-2 moved nothing vendored because the corpus's MSM and
+MPM part counts coincide): telemann B|F 22357.0626→24941.0626,
+B|R 6493.6010→8397.6010 (mean 41.164710882), F|R 21686.7196→26174.7196,
+albert 8929.5188→9854.3188, vulpius ×3 unchanged. The bit-identical
+anchors across cuts 3-5 are the right headline: pins that could not see,
+records that were wrong, numbers already true.
+AD-56.5 MAJOR-13+15 unified as encodingNotes (both design statements, one
+mechanism); MAJOR-12's three inert-difference sites; MAJOR-11's
+sum-vs-average duality stated at site and field; MINOR-3 strengthened
+beyond its ask (one unsaturated factor per side — the |1−s|-vs-|ln s|
+discriminator). All ratified as landed.
+AD-56.6 C7's length-proxy weakness stays DEFERRED to W5's report-quality
+pass (AD-55-era deferral reaffirmed; the albert lastDate=0 case is
+flagged by a question-worded note naming its numbers).
+AD-56.7 The re-gate convenes: w3-verify RESUMED (its probes are its
+context), scoped to the six commits against its own findings, RE-GATE
+PASS/BLOCK verdict appended to W3-VERIFICATION.md.
