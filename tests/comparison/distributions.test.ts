@@ -24,6 +24,7 @@ import {
   quantile,
   standardNormalCdf,
   standardNormalQuantile,
+  supportOf,
   triangularLaw,
   uniformLaw,
   wasserstein1,
@@ -236,6 +237,91 @@ describe('CDFs and quantiles are mutually inverse', () => {
     expect(cdf(clipped, -10 - 1e-9)).toBe(0);
     expect(cdf(clipped, 10 - 1e-9)).toBeCloseTo(2 / 3, 8);
     expect(cdf(clipped, 10)).toBe(1);
+  });
+
+  /**
+   * W3 CAPITAL-3. The support is where the SAMPLER reaches, and for a mode outside the limits
+   * the rising branch runs to `u = 1`: the supremum is `lower + √(scale·belowMode)` and not the
+   * mode. Unclamped, the hull was the mode itself — so the true endpoint, where the integrand
+   * kinks, never entered `cdfBreakpoints` and GL-10 straddled it.
+   *
+   * The reference is the renderer's own two-branch formula (`RandomNumberProvider:335-353`)
+   * evaluated at the extreme `u`, not a textbook triangular's support: a textbook triangular
+   * has no answer here, which is the whole reason §5.9 rewrote the CDF.
+   */
+  it('the support is where the renderer’s sampler reaches, mode outside the limits included', () => {
+    // `lo + √(u·s·a)` below the branch fraction, `hi − √((1−u)·s·b)` above it.
+    const sampled = (lower: number, upper: number, mode: number, u: number): number => {
+      const scale = upper - lower;
+      const below = mode - lower;
+      const above = upper - mode;
+      return u < below / scale
+        ? lower + Math.sqrt(u * scale * below)
+        : upper - Math.sqrt((1 - u) * scale * above);
+    };
+    for (const [lower, upper, mode] of [
+      [-30, 30, 99],
+      [0, 1, 1000],
+      [-30, 30, -99],
+      [-30, 30, 0],
+      [-30, 30, 15],
+    ] as const) {
+      const law = triangularLaw(lower, upper, mode) as ImprecisionLaw;
+      const [lo, hi] = supportOf(law);
+      const reach = [sampled(lower, upper, mode, 0), sampled(lower, upper, mode, 1 - 1e-15)];
+      expect(hi).toBeCloseTo(Math.max(upper, ...reach), 6);
+      expect(lo).toBeCloseTo(Math.min(lower, ...reach), 6);
+    }
+    // The two the report measured against the sampler, to the digit.
+    expect(supportOf(triangularLaw(-30, 30, 99) as ImprecisionLaw)[1]).toBeCloseTo(57.97727, 5);
+    expect(supportOf(triangularLaw(0, 1, 1000) as ImprecisionLaw)[1]).toBeCloseTo(31.622777, 6);
+  });
+
+  it('restores W₁ to machine precision where the overstated hull cost five orders', () => {
+    // Closed forms derived from `W₁ = ∫|F| dx` over the true support, not from this module.
+    const w1AgainstDelta = (lower: number, upper: number, mode: number): number => {
+      const law = triangularLaw(lower, upper, mode) as ImprecisionLaw;
+      return wasserstein1(law, DELTA_ZERO);
+    };
+    // Against an independent 4096-panel composite Simpson of |Q(u)| over u — the quantile
+    // form, which needs no support hull at all and therefore cannot inherit the same bug.
+    const byQuantile = (lower: number, upper: number, mode: number): number => {
+      const law = triangularLaw(lower, upper, mode) as ImprecisionLaw;
+      const n = 4096;
+      let total = 0;
+      for (let i = 0; i < n; ++i) {
+        const u0 = i / n;
+        const u1 = (i + 1) / n;
+        const mid = (u0 + u1) / 2;
+        total +=
+          ((u1 - u0) / 6) *
+          (Math.abs(quantile(law, u0 + 1e-12)) +
+            4 * Math.abs(quantile(law, mid)) +
+            Math.abs(quantile(law, u1 - 1e-12)));
+      }
+      return total;
+    };
+    for (const [lower, upper, mode] of [
+      [-30, 30, 99],
+      [0, 1, 1000],
+      [-30, 30, 0],
+    ] as const) {
+      const measured = w1AgainstDelta(lower, upper, mode);
+      expect(Math.abs(measured - byQuantile(lower, upper, mode))).toBeLessThan(1e-5 * measured);
+    }
+    // The overstated hull put GL-10 across the kink and cost 1.07e-2 relative on this one.
+    expect(w1AgainstDelta(0, 1, 1000)).toBeCloseTo(21.081851067789195, 9);
+    expect(w1AgainstDelta(-30, 30, 99)).toBeCloseTo(30.977094589809564, 9);
+  });
+
+  it('collapses a clip that is vacuous in TRUTH, which the overstated hull kept', () => {
+    // T(0, 1, 1000) really reaches 31.62, so a clip at ±40 swallows nothing and the law is its
+    // own base — the AD-40.2 principle. With the hull claiming 1000 the wrapper survived and
+    // `lawsEqual(base, clipped)` was false for two laws that are equal.
+    const base = triangularLaw(0, 1, 1000) as never;
+    expect(clippedLaw(base, -40, 40)).toBe(base);
+    // A clip that really does bite is still a clip.
+    expect(clippedLaw(base, -40, 10).kind).toBe('clipped');
   });
 });
 

@@ -550,6 +550,34 @@ describe('d_articulation', () => {
     expect(distanceOf(STACC, STACC).distance).toBe(0);
   });
 
+  /**
+   * W3 CAPITAL-6: the anchor sort is CODE-UNIT order, never `localeCompare`.
+   *
+   * The sibling module bans it by name for the report (§9.5) and the ban binds harder here,
+   * because this order is the aligner's input: with `localeCompare`, two documents with two
+   * anchors each at one date and disjoint id sets scored `d_articulation = 0` under `en_US` and
+   * `13.469` under `sv_SE`, with different report hashes.
+   *
+   * Pinned at the ORDER rather than by running the engine twice under two locales, which no
+   * in-process test can do — ICU's collator is fixed at startup. The two id pairs below are
+   * chosen so that code-unit order and collation disagree in every common locale ('B' before
+   * 'a' by code unit, after it by collation) or in the Nordic ones ('z' before 'ä' by code
+   * unit); the assertions on `localeCompare` itself are there so that a host whose ICU ever
+   * agreed would say so rather than let this test go quietly vacuous.
+   */
+  it('sorts anchors by CODE UNIT, so no locale can move the distance (§9.5)', () => {
+    const anchored = (id: string, factor: string) =>
+      `<articulation date="0.0" noteid="#${id}" relativeDuration="${factor}"/>`;
+    const idsOf = (map: string) => anchorsOf(atomsOf(map)).map((anchor) => anchor.id);
+
+    expect(idsOf(anchored('a1', '0.5') + anchored('B1', '2.0'))).toEqual(['B1', 'a1']);
+    expect(idsOf(anchored('ä1', '0.5') + anchored('z1', '2.0'))).toEqual(['z1', 'ä1']);
+    // Both orderings are the OPPOSITE of what this host's collator would produce, which is what
+    // makes the two assertions above falsifying rather than incidental.
+    expect('a'.localeCompare('B')).toBeLessThan(0);
+    expect('B' < 'a').toBe(true);
+  });
+
   it('is symmetric (P-C2)', () => {
     const other = '<articulation date="720.0" relativeVelocity="1.4"/>';
     expect(Object.is(distanceOf(STACC, other).distance, distanceOf(other, STACC).distance)).toBe(

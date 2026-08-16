@@ -250,9 +250,22 @@ export function anchorsOf(read: ArticulationAtoms): readonly ArticulationAnchor[
 
   // Date order, then id, so the aligner sees two monotone lists and the ordering is a function
   // of the documents rather than of which atom happened to arrive first.
+  //
+  // CODE-UNIT order, never `localeCompare` — `compare.ts` bans it by name for the report (§9.5)
+  // and the ban binds harder here, because this order is the ALIGNER's input and therefore
+  // decides a distance rather than a presentation. Measured under `LC_ALL=sv_SE`/`da_DK`, where
+  // 'ä' collates after 'z': two documents with two anchors each at one date and disjoint id sets
+  // scored `d_articulation = 13.469` instead of 0, with different report hashes. ASCII moves too
+  // ('a' vs 'B', 'x_1' vs 'x-1'), and so do small-icu builds and ICU/CLDR upgrades. The vendored
+  // corpus never caught it because every `@noteid` in it is a lowercase `meico_<uuid>`, where
+  // collation and code-unit order coincide.
   return anchors
     .map((entry) => entry.anchor)
-    .sort((x, y) => x.dateTicks - y.dateTicks || (x.id ?? '').localeCompare(y.id ?? ''));
+    .sort((x, y) => {
+      const left = x.id ?? '';
+      const right = y.id ?? '';
+      return x.dateTicks - y.dateTicks || (left < right ? -1 : left > right ? 1 : 0);
+    });
 }
 
 /** A row and the pair of values it prices, with `⊥` where one side has no value at all. */

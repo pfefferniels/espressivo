@@ -358,16 +358,27 @@ export function supportOf(law: ImprecisionLaw): readonly [number, number] {
  * Where the two branches of the renderer's triangular actually reach.
  *
  * For a mode inside the limits this is `[lower, upper]`. For a mode outside them one branch
- * is unreachable and the other overshoots — `lower + √(s·a)` above, `upper − √(s·b)` below —
+ * is unreachable and the other overshoots — `lower + √(s·b)` above, `upper − √(s·a)` below —
  * which is why the support is computed rather than assumed.
+ *
+ * **The branch fraction is CLAMPED into `[0, 1]`** (W3 CAPITAL-3), and the clamp is the whole
+ * repair. `fraction = (mode − lower)/scale` is the `u` at which the sampler switches branches,
+ * so for `mode > upper` it exceeds 1 and the rising branch runs all the way to `u = 1`: the
+ * supremum is `lower + √(scale·belowMode)`, not the mode. Unclamped, `T(0, 1, 1000)` claimed a
+ * hull reaching 1000 where the renderer's own sampler reaches 31.62, and the true endpoint —
+ * where the integrand kinks — never entered {@link cdfBreakpoints}, so GL-10 straddled it and
+ * `W₁` came out 1.07 % wrong. The CDF was right all along (`Math.min`/`Math.max` clamp it), which
+ * is why only the quadrature saw it. A mode outside the limits is not malformed input: §5.9's
+ * rewritten `triangularCdf` exists precisely because the renderer admits it.
  */
 function triangularSupport(law: TriangularLaw): readonly [number, number] {
   const scale = law.upper - law.lower;
   const belowMode = law.mode - law.lower;
   const aboveMode = law.upper - law.mode;
   const fraction = belowMode / scale;
-  const lo = fraction >= 1 ? law.lower : law.upper - Math.sqrt(scale * aboveMode * (1 - fraction));
-  const hi = fraction <= 0 ? law.upper : law.lower + Math.sqrt(scale * belowMode * fraction);
+  const rise = Math.min(1, Math.max(0, fraction));
+  const lo = fraction >= 1 ? law.lower : law.upper - Math.sqrt(scale * aboveMode * (1 - rise));
+  const hi = fraction <= 0 ? law.upper : law.lower + Math.sqrt(scale * belowMode * rise);
   return [Math.min(lo, law.lower), Math.max(hi, law.upper)];
 }
 

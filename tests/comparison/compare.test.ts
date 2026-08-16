@@ -17,7 +17,11 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { performMsm } from '../../src/api/pipeline.js';
-import { compareInterior, type InteriorCompareOptions } from '../../src/comparison/compare.js';
+import {
+  compareInterior,
+  SUSPECT_LENGTH_RATIO,
+  type InteriorCompareOptions,
+} from '../../src/comparison/compare.js';
 import { defaultWeights } from '../../src/comparison/aggregate.js';
 import { COMPARISON_DIMENSIONS, type ComparisonDimension } from '../../src/comparison/registry.js';
 import { DEFAULT_LAMBDA_DATE } from '../../src/comparison/eventAlignment.js';
@@ -483,7 +487,7 @@ describe('the report’s own rules', () => {
     expect(report.dimensions.asynchrony.bottomLengthQuarters).toBeCloseTo(4, 9);
   });
 
-  it('flags a suspect pair when the two documents differ in length by more than a factor of two (C7)', () => {
+  it('flags a suspect pair when the two documents differ in length by more than C7’s band', () => {
     const short = doc('<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/></tempoMap>');
     const long = doc(
       '<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/>' +
@@ -492,6 +496,84 @@ describe('the report’s own rules', () => {
     const report = compare({ a: short, b: long });
     expect(report.comparability.suspectPair).toBe(true);
     expect(report.notes.some((candidate) => candidate.kind === 'length-mismatch')).toBe(true);
+  });
+
+  /**
+   * W3 MAJOR-7: the constant is §5.0's documented band and neither number was pinned.
+   *
+   * `[0.8, 1.25]` on `long/short` is `short/long < 0.8`, and what shipped was `0.5` — so a 1.67×
+   * mismatch, which is a different piece by any reading, passed silently. The two probes below
+   * straddle the band, and they would BOTH have passed unflagged under the old constant.
+   */
+  it('puts C7’s band at §5.0’s [0.8, 1.25], not at a factor of two (MAJOR-7)', () => {
+    expect(SUSPECT_LENGTH_RATIO).toBe(0.8);
+    const until = (ticks: number) =>
+      doc(
+        '<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/>' +
+          `<tempo date="${String(ticks)}.0" bpm="90" beatLength="0.25"/></tempoMap>`,
+      );
+    // 720/1440 = 0.50 and 720/1200 = 0.60: both inside the old 0.5 threshold, both outside
+    // the documented band.
+    expect(compare({ a: until(720), b: until(1440) }).comparability.suspectPair).toBe(true);
+    expect(compare({ a: until(720), b: until(1200) }).comparability.suspectPair).toBe(true);
+    // 720/840 = 0.857 is inside the band and stays quiet.
+    expect(compare({ a: until(720), b: until(840) }).comparability.suspectPair).toBe(false);
+  });
+
+  /**
+   * W3 CAPITAL-5: C7's SECOND arm — "the same check against the score end when an MSM is
+   * supplied" — had no code at all.
+   *
+   * It is the arm that matters most, because the MSM is also where the window comes from: the
+   * Telemann MPM (last date 198 quarters) against the Vulpius MSM (score end 54) was compared
+   * over 54 quarters, discarding 73 % of the piece, and the report said nothing.
+   */
+  it('flags a score whose end does not match the documents, the hazard C7 was adopted for', () => {
+    const mismatched = compare({
+      a: TELEMANN,
+      performanceA: 'Baroque',
+      performanceB: 'Fast',
+      msm: parseMsmRoot(VULPIUS_MSM),
+    });
+    expect(mismatched.window.rule).toBe('msm');
+    expect(mismatched.window.endQuarters).toBeCloseTo(54, 6);
+    expect(mismatched.comparability.lastDateA).toBeCloseTo(198, 6);
+    expect(mismatched.comparability.suspectPair).toBe(true);
+    const fired = mismatched.notes.filter((candidate) => candidate.kind === 'length-mismatch');
+    expect(fired).toHaveLength(1);
+    expect(fired[0].message).toContain('score end');
+
+    // The pair's OWN length ratio is exactly 1 here — the two performances are the same
+    // document — so nothing but the score arm can be firing.
+    expect(mismatched.comparability.lengthRatio).toBe(1);
+    // And the matched score is quiet.
+    const matched = compare({
+      a: TELEMANN,
+      performanceA: 'Baroque',
+      performanceB: 'Fast',
+      msm: parseMsmRoot(TELEMANN_MSM),
+    });
+    expect(matched.comparability.suspectPair).toBe(false);
+    expect(matched.notes.some((candidate) => candidate.kind === 'length-mismatch')).toBe(false);
+  });
+
+  /**
+   * W3 CAPITAL-4: AD-51.1's ruled report field existed only on the internal `SegmentPass`.
+   *
+   * Empty is the right answer for every document this engine can produce — AD-51.1's extension
+   * wired a pointwise density into all seven cell-bearing dimensions — and that is exactly why
+   * it has to be present: a reader can then tell "no boundary is approximate" from "nobody
+   * checked". The mechanism behind it is exercised at `segmentPass` (`aggregate.test.ts`).
+   */
+  it('surfaces cellQuantizedDimensions, and it is empty because the samplers are wired', () => {
+    const report = compare({
+      a: TELEMANN,
+      performanceA: 'Baroque',
+      performanceB: 'Romantic',
+      msm: parseMsmRoot(TELEMANN_MSM),
+    });
+    expect(report.cellQuantizedDimensions).toEqual([]);
+    expect(Object.keys(report)).toContain('cellQuantizedDimensions');
   });
 
   it('reports a plausibility band violation without moving the distance (C6)', () => {

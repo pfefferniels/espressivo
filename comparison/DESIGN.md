@@ -2478,6 +2478,12 @@ export interface ComparisonReport {
   };
   readonly segments: readonly ComparisonSegment[];
   readonly remainder: { readonly mass: number }; // the below-threshold column
+  // AD-51.1: the dimensions whose threshold crossings were located at CELL resolution because
+  // they supplied no pointwise density, so their segment boundaries are approximate. Empty for
+  // every document this engine can produce — AD-51.1's extension wired a sampler into all seven
+  // cell-bearing dimensions — which is the point of shipping it: a reader can then tell "no
+  // boundary is approximate" from "nobody checked".
+  readonly cellQuantizedDimensions: readonly ComparisonDimension[];
   readonly table: AttributionTable;
   readonly equivalence: {
     // C11

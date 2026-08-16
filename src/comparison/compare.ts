@@ -150,10 +150,26 @@ export function epsilonRecord(): Record<
 /** §7.5's threshold for calling a segment's direction `'mixed'` [convention]. */
 const MIXED_DIRECTION_FRACTION = 0.5;
 
-/** C7's same-piece heuristic: below this length ratio the pair is flagged [convention]. */
-const SUSPECT_LENGTH_RATIO = 0.5;
+/**
+ * C7's same-piece heuristic: below this length ratio the pair is flagged [convention].
+ *
+ * `0.8` is §5.0's own documented band read as a ratio — `[0.8, 1.25]` on `long/short` is
+ * `short/long < 0.8`. What shipped was `0.5`, so a 1.67× length mismatch passed without a word
+ * and neither number was pinned by a test (W3 MAJOR-7). The band is a convention; what was wrong
+ * is that the constant and the sentence describing it disagreed by a factor of 1.6.
+ */
+export const SUSPECT_LENGTH_RATIO = 0.8;
 
-/** C1's step cap: a profile is a report field, not a sample buffer. */
+/**
+ * C1's step cap: a profile is a report field, not a sample buffer.
+ *
+ * 4096 points [convention] — a few hundred kilobytes of JSON per dimension at the outside, which
+ * is the scale a report field can carry, and about two points per quarter over a 30-minute
+ * movement. An explicit `grid.step` finer than the cap allows is honoured as far as the cap and
+ * then COARSENED, with a `grid-truncated` note saying so and naming both steps (§9.1): the
+ * alternative — silently returning fewer points than the caller's step implies, or refusing the
+ * option — is worse than a stated approximation.
+ */
 export const PROFILE_MAX_POINTS = 4096;
 
 // ---------------------------------------------------------------------------
@@ -359,8 +375,23 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
           `[${String(finding.range[0])}, ${String(finding.range[1])}]; the distance is unchanged`,
       });
 
+  // C7 has TWO arms, and the second one had no code (W3 CAPITAL-5). §5.0 asks for the length
+  // check between the two MPMs "and the same check against the score end when an MSM is
+  // supplied" — which is the arm that matters most, because that is exactly where the window
+  // comes from: a Telemann MPM reaching 198 quarters against a Vulpius MSM ending at 54 was
+  // compared over 54 quarters, silently discarding 73 % of the piece, and the report said
+  // nothing. The score is checked against BOTH documents, since either can be the mismatched one.
+  const msmRatios =
+    msm === null
+      ? []
+      : [pair.comparability.lastDateA, pair.comparability.lastDateB].map((lastDate) =>
+          lengthRatioOf(lastDate, msm.endQuarters),
+        );
+  const suspectLength = pair.comparability.lengthRatio < SUSPECT_LENGTH_RATIO;
+  const suspectScore = msmRatios.some((ratio) => ratio < SUSPECT_LENGTH_RATIO);
   const suspectPair =
-    pair.comparability.lengthRatio < SUSPECT_LENGTH_RATIO ||
+    suspectLength ||
+    suspectScore ||
     (pair.comparability.partCountA > 0 &&
       pair.comparability.partCountB > 0 &&
       !pair.comparability.partNumbersMatched);
@@ -372,8 +403,16 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
         null,
         pair.window.startQuarters,
         pair.window.endQuarters,
-        'the two documents may not encode the same piece: their lengths differ by more than a ' +
-          'factor of two, or they share no part number (C7)',
+        `the two documents may not encode the same piece: ${
+          suspectScore
+            ? `the MSM's score end is ${String(msm?.endQuarters ?? 0)} quarters against last ` +
+              `dates of ${String(pair.comparability.lastDateA)} and ` +
+              `${String(pair.comparability.lastDateB)}, outside C7's [${String(
+                SUSPECT_LENGTH_RATIO,
+              )}, ${String(1 / SUSPECT_LENGTH_RATIO)}] band — and the window is the SCORE's, so ` +
+              'whatever lies beyond it is not compared at all; '
+            : ''
+        }their lengths differ by more than C7's band, or they share no part number (C7)`,
       ),
     );
 
@@ -439,6 +478,7 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
       reportSegment(segment, pass.cells, signedDensity, msm),
     ),
     remainder: { mass: pass.remainderMass },
+    cellQuantizedDimensions: [...pass.cellQuantizedDimensions],
     table: {
       dimensions: [...table.dimensions],
       columnCount: table.columnCount,
@@ -462,6 +502,12 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
 // ---------------------------------------------------------------------------
 // Scopes
 // ---------------------------------------------------------------------------
+
+/** `short/long`, with `document.ts`'s own convention: two zero lengths are the same length. */
+function lengthRatioOf(x: number, y: number): number {
+  const longest = Math.max(x, y);
+  return longest === 0 ? 1 : Math.min(x, y) / longest;
+}
 
 /** Which document decided how many scopes the per-part sum runs over (AD-55.2). */
 export type ScopeRule = 'msm' | 'mpm' | 'global';
@@ -1169,13 +1215,21 @@ function profileDates(
   return Array.from({ length: count + 1 }, (_value, index) => start + index * step);
 }
 
-/** `p_k(t)`, summed over the scope rows and over the cells covering the point. */
+/**
+ * `p_k(t)`, summed over the scope rows and over the cells covering the point.
+ *
+ * A cell with no pointwise density contributes its MEAN, which is `aggregate.ts`'s own fallback
+ * one level up and the reason `cellQuantizedDimensions` exists: the profile then reports a
+ * staircase where the true density has a shape, and the report says which dimension it is.
+ */
 function densityAtOf(rows: readonly DimensionEvaluation[], quarters: number): number {
   const total = new CompensatedSum();
   for (const row of rows)
     for (const cell of row.cells) {
       if (quarters < cell.startQuarters || quarters >= cell.endQuarters) continue;
-      total.add(cell.densityAt(quarters));
+      const length = cell.endQuarters - cell.startQuarters;
+      if (cell.densityAt !== null) total.add(cell.densityAt(quarters));
+      else if (length > 0) total.add(cell.mass / length);
     }
   return total.total;
 }

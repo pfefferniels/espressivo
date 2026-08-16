@@ -4043,3 +4043,82 @@ and hidden the correction.
 
 Gate: `npm run verify` GREEN — 117 files, **5012 passed**, 0 skipped (4996 + 16). Repo-wide
 `npx prettier --check .` clean; eslint clean on `src/comparison/` and `tests/comparison/`.
+
+## 2026-08-16 — W3 fix cut 3: CAPITAL-3, 4, 5, 6 (and MAJOR-7 with CAPITAL-5) (w3-fix)
+
+The four mechanical capitals, plus the one MAJOR that is the same constant as CAPITAL-5 and
+would have been a second edit to the same line.
+
+**CAPITAL-3 — `triangularSupport`'s branch fraction is clamped.** `distributions.ts:369-370`.
+The fraction is the `u` at which the renderer's sampler switches branches; for `mode > upper` it
+exceeds 1, so the rising branch runs to `u = 1` and the supremum is `lower + √(scale·belowMode)`
+— which is where the sampler actually reaches. The verified one-line repair, measured against
+the sampler's own formula: `T(−30,30,99)` hull `99` → **57.977270**, `T(0,1,1000)` hull `1000` →
+**31.622777**. The damage was that the true endpoint, where the integrand kinks, never entered
+`cdfBreakpoints`, so GL-10 straddled it; `W₁` restored to machine precision —
+`T(0,1,1000)` vs δ₀ 21.30673514709183 → **21.08185106778919** (true 21.081851067789195, rel
+2.4e-16, was 1.07e-2); `T(−30,30,99)` vs δ₀ 30.977459211857905 → **30.977094589809553** (rel
+3.6e-16, was 1.18e-5). Mode-INSIDE behaviour is bit-identical. At the facade, measured before and
+after on a triangular whose clips do not bound the overstated hull: `mode=99` 3.8202503755345423
+→ 3.820201759261429 (rel 1.27e-05) and `mode=1000` 18.098836823489286 → 18.097427368277422
+(rel 7.79e-05) — the report's two relative figures, reproduced. The secondary consequence is
+fixed by the same line: `clippedLaw` now collapses a clip that is vacuous in truth, so
+`lawsEqual(base, clipped)` is true for two laws that are equal.
+
+Tested against an INDEPENDENT reference in the quantile domain — a 4096-panel composite Simpson
+of `|Q(u)|`, which needs no support hull at all and therefore cannot inherit the same bug — and
+against the sampler's two-branch formula evaluated at the extreme `u`.
+
+**CAPITAL-4 — `cellQuantizedDimensions` reaches the report.** AD-51.1 named it and it lived only
+on the internal `SegmentPass`. Surfaced beside `remainder`, added to §9.3. `EvaluationCell.densityAt`
+is nullable again so AD-51.1's graceful path is reachable end to end rather than only inside
+`aggregate.ts`, and `densityAtOf` falls back to the cell mean where it is null, as `aggregate.ts`
+does one level up. The field is `[]` for every document this engine can produce, which is the
+point of shipping it: a reader can tell "no boundary is approximate" from "nobody checked".
+
+**CAPITAL-5 + MAJOR-7 — C7's second arm, at C7's documented band.** §5.0 asks for the length
+check between the MPMs "and the same check against the score end when an MSM is supplied"; no
+such check existed. `suspectPair` now tests the score end against BOTH documents' last dates.
+Probed with the Telemann MPM (last date 198 quarters) against the Vulpius MSM (score end 54):
+window 54, 73 % of the piece silently truncated, and the report now fires a `length-mismatch`
+note naming both numbers. The band moves from `0.5` to **0.8** — §5.0's documented `[0.8, 1.25]`
+read as a ratio — because the constant and the sentence describing it disagreed by 1.6× and
+neither was pinned; a 1.67× mismatch passed silently before.
+
+[MEASURED, reported rather than smoothed over] On the vendored corpus with their own scores the
+new arm changes no verdict: telemann/bach/aller-augen stay quiet, vulpius was already flagged by
+the part-number arm (`partNumbersMatched: false`, 4 parts against 3), and albert was already
+flagged by the length arm — its "Like a robot" performance has no instruction after date 0, so
+`lastDateB = 0` and every length-based arm fires on it. That is C7's known weakness, not a new
+one: a "last dated instruction" is not a length, and a deadpan performance legitimately has none.
+The note is worded as a question and names the three numbers, so a reader sees the 0 immediately.
+The ruled repair is implemented as ruled; refining the proxy is a separate question.
+
+**CAPITAL-6 — the anchor sort is code-unit order.** `articulationDistance.ts`. The module bans
+`localeCompare` by name 700 lines away for the report, and the ban binds harder here because
+this order is the aligner's INPUT and decides a distance. Reproduced end to end with two
+documents carrying two anchors each at one date, disjoint id sets and different modifiers:
+
+```
+BEFORE  LC_ALL=en_US  d_articulation = 0.000000000   sha=97c9909a
+BEFORE  LC_ALL=sv_SE  d_articulation = 14.545081795  sha=0f1807ca
+AFTER   en_US / sv_SE / da_DK all: 14.545081795      sha=0f1807ca
+```
+
+Pinned at the ORDER rather than by running under two locales, which no in-process test can do —
+ICU's collator is fixed at startup. The fixture ids are chosen so code-unit order and collation
+disagree in every common locale ('B' before 'a' by code unit, after it by collation), and the
+test asserts `'a'.localeCompare('B') < 0` as well, so a host whose ICU ever agreed would say so
+rather than let the test go quietly vacuous.
+
+**Negative controls**, each by patch → `vitest run` → restore:
+
+| repair reverted | fails |
+| --- | --- |
+| the clamp (`rise = fraction`) | 3, all CAPITAL-3's own |
+| `cellQuantizedDimensions` dropped from the report | 12: its own test plus every plain-data / P-C11 walker, which is what those walkers are for |
+| the MSM arm disabled and the band back at 0.5 | 2: CAPITAL-5's and MAJOR-7's |
+| back to `localeCompare` | 1, CAPITAL-6's own |
+
+Gate: `npm run verify` GREEN — 117 files, **5019 passed**, 0 skipped. Repo-wide
+`npx prettier --check .` clean; eslint clean on `src/comparison/` and `tests/comparison/`.

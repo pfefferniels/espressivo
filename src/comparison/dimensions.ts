@@ -106,12 +106,22 @@ export interface RawNote {
   readonly message: string;
 }
 
-/** One cell of a dimension's density, in QUARTERS — `aggregate.ts`'s shape. */
+/**
+ * One cell of a dimension's density, in QUARTERS — `aggregate.ts`'s shape.
+ *
+ * `densityAt` is NULLABLE and every dimension this wave ships supplies one: AD-51.1's ruled
+ * extension had each `*Distance` module hand back the integrand it already evaluates, so AD-19's
+ * segment boundaries root-refine exactly rather than falling back to cell resolution. The null
+ * stays legal for the reason AD-51.1 gives — it is the graceful path for a future dimension that
+ * genuinely has no pointwise density — and `ComparisonReport.cellQuantizedDimensions` is the
+ * field that names such a dimension when it appears. Empty on every document the engine can
+ * currently produce, which is what makes it a measurement rather than a promise.
+ */
 export interface EvaluationCell {
   readonly startQuarters: number;
   readonly endQuarters: number;
   readonly mass: number;
-  readonly densityAt: (quarters: number) => number;
+  readonly densityAt: ((quarters: number) => number) | null;
 }
 
 export interface DimensionEvaluation {

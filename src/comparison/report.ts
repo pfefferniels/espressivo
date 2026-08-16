@@ -258,6 +258,17 @@ export interface ComparisonReport {
   };
   readonly segments: readonly ComparisonSegment[];
   readonly remainder: { readonly mass: number };
+  /**
+   * AD-51.1's honest report field: the dimensions whose threshold crossings were located at
+   * CELL resolution rather than exactly.
+   *
+   * AD-19/M9b refines a segment boundary to the root of `p_D − τ_D`, which needs `p_k` at a
+   * point. A dimension that supplies no pointwise density falls back to its cell's mean, so its
+   * boundaries can sit a cell away from the true crossing — and this names which, so a report
+   * can say which boundaries are approximate instead of implying that all of them are exact.
+   * Empty is the good case and the common one.
+   */
+  readonly cellQuantizedDimensions: readonly ComparisonDimension[];
   readonly table: AttributionTable;
   readonly equivalence: {
     readonly subThresholdMassFraction: number;
