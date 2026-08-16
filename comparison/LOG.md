@@ -3699,3 +3699,44 @@ statement about interpolation rather than about the fixture.
 
 Gate: `npm run verify` GREEN before committing — 115 files, 4960 passed, 0 skipped (was 4921).
 39 new tests. eslint and prettier clean.
+
+## 2026-08-16 — W3b part 8: P-C2 and P-C11 at the facade (w3b-facade)
+
+`tests/comparison/properties.test.ts` + 24 tests, and §9.6's zero-length-window note. The two
+properties that are about the REPORT rather than about a number in it.
+
+**P-C2 IS ASSERTED ON `JSON.stringify`, WHICH IS WHAT §9.5 PINS.** Comparing distances would miss
+an asymmetric segment ranking, an asymmetric note order, or a field carrying a document's
+identity without swapping. The swap map is written out as CODE in the test — swap, negate,
+invert, each a different operation on a different field — so a future field that needs mirroring
+fails the test rather than quietly breaking the promise. Six pairs, including two documents at
+different tick grids (720 against 480), a real document against `neutralMpm`, and the Albert
+document whose two performances have UNEQUAL PART SETS. Plus a non-vacuity test asserting that
+the un-mirrored reverse really does differ.
+
+[FINDING — §9.5's "the ratio INVERTS" is true of the real number and NOT of the double.] The
+mirror's first version computed `1/ratio` and failed byte-identity on the Albert pair by two
+ulps: `1/(a/b)` is 1.0439297220611783 where `b/a` is 1.0439297220611785. The swap map's other
+entries are permutations of stored fields, which are bit-exact by construction; `ratio` is
+DERIVED from two fields that swap, so the mirror takes the quotient of the swapped seconds — the
+same permutation of the same fields, and the arithmetic the engine performs. The inversion is the
+statement; the quotient is the computation. Recorded in the test at the point it bit.
+
+**P-C11 walks every number of every result** over the whole vendored corpus and seven degenerate
+shapes §9.6 names: `L = 0`, all-zero weights, both-neutral everywhere, a document against itself,
+a `⊥` span on both sides, an invariance mode on a dimension neither document carries, and a
+profile over a window with no cells. Finite or null, no `undefined`, in every one.
+
+§9.6's `L = 0` clause said "every mean is `null`, WITH A TYPED NOTE" and the note was missing —
+the nulls were right and silent. Added, and pinned beside the nulls: a reader should not have to
+infer a zero-length window from a field that is null for several possible reasons.
+
+NEGATIVE CONTROLS, each failing exactly its own tests and restoring green: dropping the MESSAGE
+tiebreak from the note sort, which leaves the order dependent on the array's own
+orientation-dependent order (1 — the Albert pair, the only one with notes that tie on
+`(kind, dimension, startQuarters, document)`); summing the `⊥` length across parts instead of
+taking the maximum (1 — and that control found a GAP first: no test covered the rule, so one was
+written before the control was run, which is the right order).
+
+Gate: `npm run verify` GREEN before committing — 116 files, 4984 passed, 0 skipped (was 4960).
+24 new tests. eslint and prettier clean.

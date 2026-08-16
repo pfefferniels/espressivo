@@ -268,6 +268,18 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
   );
 
   const windowLength = pair.window.endQuarters - pair.window.startQuarters;
+  if (!(windowLength > 0))
+    notes.push(
+      note(
+        'structural',
+        null,
+        null,
+        pair.window.startQuarters,
+        pair.window.endQuarters,
+        'the window has zero length — both documents place every instruction at one date — so ' +
+          'every length-normalized mean is null rather than a division by zero (§9.6)',
+      ),
+    );
   const signedDensity = aggregateSignedDensity(evaluations, options.weights);
 
   // Every dimension's report row, plus the notes its evaluation produced.

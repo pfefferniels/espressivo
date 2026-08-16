@@ -360,6 +360,20 @@ describe('the report’s own rules', () => {
     expect(report.table.residual).toBeLessThanOrEqual(1e-12 * report.table.total);
   });
 
+  it('reports the ⊥ length as a fraction of the WINDOW, not summed over the parts', () => {
+    // Both parts read ⊥ over the same interval — an `<asynchrony>` with no usable offset
+    // NaN-poisons its span (AD-33.1) — so one bar of the window is unreadable, not two.
+    const poisoned = '<asynchronyMap><asynchrony date="0.0"/></asynchronyMap>';
+    const usable =
+      '<asynchronyMap><asynchrony date="0.0" milliseconds.offset="30.0"/></asynchronyMap>';
+    const report = compare({
+      a: doc('', part(1, poisoned) + part(2, poisoned)),
+      b: doc('', part(1, usable) + part(2, usable)),
+      window,
+    });
+    expect(report.dimensions.asynchrony.bottomLengthQuarters).toBeCloseTo(4, 9);
+  });
+
   it('flags a suspect pair when the two documents differ in length by more than a factor of two (C7)', () => {
     const short = doc('<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/></tempoMap>');
     const long = doc(
