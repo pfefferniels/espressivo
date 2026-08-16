@@ -510,7 +510,16 @@ error on the document (§9), not a distance.
   score `d_rubato = 0`. `@stickToMeasures` likewise enters the accentuation
   evaluator (§5.4). The bucket is sound only for booleans the renderer does not
   read.
-- `@seed`: changes no distribution law; reported as an inert difference.
+- `@seed`: changes no distribution law; reported as an inert difference — **for
+  `uniform`, `gaussian` and `triangular` only** (AD-49.3, widened by cut 4's measurement).
+  On `brownianNoise`, `compensatingTriangle` and `distribution.list` it destroys the
+  performance: `RandomNumberProvider.setSeed` CLEARS `series`, and `series` is not a cache —
+  for the correlated pair it holds the walk's current value (which `doHandover` has just
+  seeded, `setSeed` running afterwards), and for the list it **is** the list. Every note in
+  such a span then reads an empty series and vanishes from the MIDI export, so the span is
+  `⊥` (R24/AD-1), not an inert difference. Measured end to end; the reference throws
+  (`IndexOutOfBoundsException` / `ArithmeticException`) where this port emits `NaN`, which is
+  PARITY.md's `IMP1`.
 
 **Rows added by AD-15** that revision 1 omitted: `ornament@scale`,
 `ornament@repetitions` (`-1` is the documented meico extension "fill the frame";
@@ -666,8 +675,13 @@ constant cannot be true of `step` dimensions (exact), `tempo` (quadrature after
 the substitution above), `bezier` (quadrature against the _ideal_ object, whose
 error model is the `tForDate` divergence bound of rule 3 and not tempo's
 substitution — which is why it is its own family), `imprecision`
-(special-function — the Φ/Φ⁻¹ rational approximations, currently Acklam at
-`|err| < 1.15·10⁻⁹`) and `drift` (the renderer's own Simpson rule at one
+(special-function — `Φ` by an all-positive confluent series below `z = 2` and a continued
+fraction above it, **measured 1.7·10⁻¹⁵ absolute and 4.9·10⁻¹⁴ relative in the left tail**
+against an independent quadrature of the density; `Φ⁻¹` by Acklam refined with one Halley
+step. The `1.15·10⁻⁹` this record carried was Acklam's figure for `Φ⁻¹` alone and is
+superseded for `Φ` by six orders, AD-49.8. In the same measurement `W₁` reproduces six closed
+forms to `3.6·10⁻¹⁶` relative — machine precision, Gaussian included — and `ρ` reproduces
+`7√2/10` bit-exactly and `√(3/π)` to `1.1·10⁻¹⁵`) and `drift` (the renderer's own Simpson rule at one
 sub-interval per sixteenth) simultaneously.
 
 **Sign probes are half-open** (AD-33.3a). Because curves are right-continuous, a cell's
@@ -1424,12 +1438,28 @@ distribution") — and **every gap is a δ₀ span**, a real interval with no
 imprecision at all. Executed: with a distribution at 0, a `<style>` at 360 and
 another distribution at 1080, the notes at 360 and 720 are unperturbed.
 
-**Degenerate table** (AD-14i, R7). There is no default for `limit.*`, `clip.*`,
-`deviation.standard` or `mode` anywhere in the read path — absent attributes stay
-`null` and flow into the provider — so three families degrade three different
-ways, and revision 1 computed ~8.3 ms of density per quarter between two
-triangular distributions that the renderer performs as _no imprecision
-whatsoever_:
+**"Any entry" means any entry the PARSER KEPT** (AD-49.7, hazard instance #6).
+`GenericMap.parseData:143-146` filters the child list before any index is taken: a child with
+no `@date` is skipped, and so is a `<style>` carrying no `@name.ref`. So a `<style>` ends an
+imprecision span only **with** that attribute — measured, a `<style name.ref="…">` at 720
+leaves every later note exactly unperturbed while the same element with the attribute removed
+performs bit-identically to no style at all. Two more consequences of the same entry walk, both
+measured: two distributions at ONE date give the first a zero-width span that performs nothing
+(its `endDate` is its own `startDate`, so the note loop breaks immediately), and a distribution
+with no `@date` is not an entry at all, so it neither governs nor terminates.
+
+**The gap is δ₀ and asynchrony's is `⊥`** — the same structural situation, opposite
+dispositions, and the contrast is deliberate: `asynchronyMap` READS an offset off the foreign
+element and gets `NaN` (AD-33.1), while `imprecisionMap` simply has no distribution for the
+interval and applies nothing.
+
+**Degenerate table** (AD-14i, R7), which **generalizes to one rule** (AD-49.1). There is no
+default for `limit.*`, `clip.*`, `deviation.standard` or `mode` anywhere in the read path —
+absent attributes stay `null` and flow into the provider, which assigns them into
+`number`-typed fields where **JavaScript coerces `null` to 0**, in arithmetic and in
+relational comparison alike. Every row below is a consequence of that one mechanism, and so
+are rows the table does not have. Revision 1 computed ~8.3 ms of density per quarter between
+two triangular distributions that the renderer performs as _no imprecision whatsoever_:
 
 | family                                         | missing attribute             | law actually performed                                                                                    |
 | ---------------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -1442,6 +1472,38 @@ whatsoever_:
 
 Each collapse is a _law_, so the W₁/W₂ machinery handles it: this is a reading
 rule, not new mathematics.
+
+**The rows the table above is silent on, and they are the commoner ones** (AD-49.1). Each is
+verified bit-for-bit against a document that writes the coerced value explicitly, which is a
+stronger check than any assertion about shape:
+
+| document                                                    | performs, exactly                       |
+| ----------------------------------------------------------- | ---------------------------------------- |
+| `uniform`, `limit.upper` absent, `limit.lower="-30"`        | `U(−30, 0)` — a genuine law, not `δ₀`   |
+| `gaussian`, `limit.upper` absent, `limit.lower="-5"`        | truncation to `[−5, 0]`                  |
+| `triangular`, `clip.upper` absent, `clip.lower="-20"`       | `clamp(·, −20, 0)`                       |
+| `triangular`, `mode` absent                                 | `mode = 0`                               |
+
+Only **both** limits absent gives `δ₀`. Reading the six-row table literally prices a
+performance that audibly displaces notes at zero.
+
+**Seven `⊥` routes, so the pointwise density is CAPPED** (AD-36.2 as answered by AD-49.2, and
+widened by cut 4's measurement). `null` is the `δ₀` route and `NaN` is `⊥`'s, and a reader's
+finite-guard must keep them apart (AD-47). All measured through `Performance.perform`: an
+unusable numeric parameter; an EMPTY `<distribution.list>` (`series[i % 0]` is `series[NaN]` is
+`undefined`); `degreeOfCorrelation` absent or `0` (the compensating step divides by it);
+`@milliseconds.timingBasis` unusable **or an explicit `0`** — the renderer's own `≤ 0` fallback
+repairs only an ABSENT basis, so a written zero divides the millisecond date by zero and
+`RandomNumberProvider.requireUsableIndex` throws, aborting the render; `@seed` on a correlated
+family or on a list (§4, PARITY `IMP1`); and a triangular with `limit.lower > limit.upper`,
+whose two inverse-CDF branches run in opposite directions so that `u ↦ x(u)` is not monotone
+and there is no distribution function at all — §5.8's non-monotone-pedal disposition, not a new
+rule (AD-49.6). A NEGATIVE timing basis is the control and is **not** `⊥`: the index clamps to
+0, every note draws `series[0]`, and the marginal is unchanged.
+
+Because both sides' laws are piecewise CONSTANT, the cap is a `min` on a constant rather than
+`integrateCappedAbsolute`: once the grid carries every span edge the integral over a cell is
+`density × length`, exact, and the corner that function exists to resolve does not arise.
 
 **The Gaussian is modelled as the mixture it is** (AD-14iv, M13):
 
@@ -1472,17 +1534,51 @@ continuity but not polynomiality, and the crossings are roots of a quadratic;
 transcendental root-finding. §5.0's per-family `epsilon` record reports this
 rather than claiming 1e−12 across the board.
 
-**Interpretive table**: W₂'s location / spread / shape three-term decomposition
-(closed forms for clean family pairs incl. the ρ-table constants `7√2/10` and
-`√(3/π)`, both re-derived independently by the math lens and confirmed to 12
-digits; quantile quadrature with breakpoint-aware nodes for truncated / clipped /
-list cases; Φ / Φ⁻¹ via Cody/Acklam rational approximations, hard-coded with
-re-derivation tests).
+**Interpretive table**: W₂'s location / spread / shape three-term decomposition, integrated in
+the quantile domain with **breakpoint-aware panels and a geometric refinement at BOTH ends**.
+The refinement is unconditional rather than Gaussian-only: the triangular's quantile is bounded
+but its DERIVATIVE is not (`Q = lo + √(u·s·a)` has infinite slope at `u = 0`), and a uniform
+mesh reported `σ` for `T(−30, 30, 0)` as 12.24716 against the closed form `30/√6 = 12.24745`.
+
+The two ρ-table constants — `7√2/10` for uniform-versus-symmetric-triangular and `√(3/π)` for
+uniform-versus-Gaussian — are **test references, never code fast paths** (AD-49.5). One code
+path cannot disagree with itself, and a closed form that LICENSES the general quadrature is
+worth more than one that bypasses it; this is the same argument that makes `quadrature.ts`
+re-derive its GL-10 table in a test rather than at run time. Both are re-derived from their
+integrals in the test file rather than quoted, and the quadrature reproduces `7√2/10` bit-exactly
+and `√(3/π)` to `1.1·10⁻¹⁵`.
+
+`Φ` is an all-positive confluent series below `z = 2` and a continued fraction above it, at the
+measured accuracy §5.0's record now carries; `Φ⁻¹` is Acklam with one Halley step, pinned by a
+round trip rather than by a coefficient comparison.
 
 **Correlated families** (`brownianNoise`, `compensatingTriangle`): marginal
 W₁/W₂ PLUS `stepWidth.max` / `degreeOfCorrelation` as gain rows in a separate
-`processParameters` component, with the explicit statement that the marginal does
-not characterize the process (A-B3).
+`processParameters` component — and `milliseconds.timingBasis` joins them there, on these two
+elements only (AD-14iii), because for a correlated family the basis sets the step rate per unit
+time. A parameter present on one side only reads `⊥` rather than a deviation from a neutral:
+`stepWidth.max = 0` is a definite behaviour (a frozen walk, correlation 1), so absence has no
+neutral to deviate from — the opposite disposition from AD-42.3's ornament sub-elements, and for
+a stated reason.
+
+**Which marginal, since there is not one** (AD-49.4). A-B3's "the marginal does not characterize
+the process" is a measured finding here rather than a caution: sampled from 20 000 INDEPENDENT
+chains per index, `brownianNoise` starts at `Uniform` over the MIDDLE HALF of its limits —
+`doHandover`'s fallback is `Math.random()·(R/2) + lower + R/4` — and widens toward
+`Uniform(lower, upper)` only after roughly 1000 indices at `stepWidth.max = 3`;
+`compensatingTriangle` starts from the same middle half and CONTRACTS instead (σ 8.30 at
+`degreeOfCorrelation` 2, 4.91 at 5, against `U(−30, 30)`'s 17.32) or EXPANDS to 20.76 with atoms
+at both limits at 0.5. The declared law is therefore the **index-0 construction**: uniform over
+the middle half of the limits, clipped where the family clips. It is exact at an index every
+span has, determined by the document alone, and read off the renderer rather than modelled,
+where the stationary envelope is exact only asymptotically and real spans may never approach the
+mixing time. Every correlated span carries a report note saying the marginal is index-dependent,
+with the measurement attached.
+
+The correlated handover is worth one sentence because it is **unreachable for authored
+documents**: `getHandoverValue` reads `@milliseconds.date` off the `<distribution.*>` ELEMENT,
+which nothing in the pipeline ever writes, so every correlated span starts fresh and independent
+of its predecessor and a span's law is a function of its own attributes alone.
 
 **`milliseconds.timingBasis` is never a reason to exclude** (AD-14iii, R13).
 Revision 1 excluded the span on a mismatch; but `timingBasis` enters only as
@@ -1506,7 +1602,17 @@ simultaneity structure. That is a render-path artifact outside a pure reader's
 object; §1's "the function the renderer would perform" is qualified here, in one
 sentence, rather than quietly violated.
 
-Tuning domain: inert (R9b) until the renderer reads it.
+Two more artifacts of the same kind, both measured, both depending on WHERE a note falls rather
+than on what the document declares. `distribution.list` is not sampled at all — `getValue(i)` is
+`series[i % n]`, cycling, and a FRACTIONAL index interpolates linearly between neighbours, so
+the values a render performs are not in general list members; the declared law is the empirical
+distribution of the list as a multiset. And the correlated families' marginal depends on the
+index, as above.
+
+Tuning domain: inert (R9b) — and the test is not "until the renderer reads it", because the
+renderer DOES write `tuning.offset` (`ImprecisionMap.ts:435-444`). It is inert because nothing
+reads it back, which `expression/applier.ts:1496` and `selection.ts:28` record independently
+from the write side.
 
 ---
 

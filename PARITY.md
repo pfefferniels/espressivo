@@ -563,8 +563,10 @@ _is_ the fixture bytes — and is commented as such at the site.
 ## 2. Frozen divergences
 
 Known, journaled, and deliberately **not** repaired. None is reachable from the MEI/MSM ⇒ MIDI
-pipeline. The first three come from capability gaps in the XML layer rather than from choices;
-the last is a choice, and is the one place where this port returns something Java's own code
+pipeline **on a well-formed document** — the one exception is `IMP1` below, which is reachable
+only from defective imprecision input and where both sides destroy the performance by different
+means. The first three come from capability gaps in the XML layer rather than from choices; the
+fourth is a choice, and is the one place where this port returns something Java's own code
 computes and then throws away.
 
 - **The `setLocalName` family.** Java renames an element in place when parsing a foreign one
@@ -602,6 +604,45 @@ computes and then throws away.
   `tests/mpm/elements/OrnamentationMap.test.ts` pin the returned shape, including the v3 fields.
   Flagged by the ornamentation programme's v2 semantics survey (ORN-1 §3.2/§5.3) as the last
   ornamentation divergence this ledger had not recorded; recorded now.
+
+### `IMP1` — an imprecision map the reference CRASHES on renders NaN-poisoned output here
+
+| Item                      | `IMP1` (comparison campaign, W3a cut 4)                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Java                      | `RandomNumberProvider.java:163-166` (`setSeed` clears `series`), `:262-272` (`getValue`), `:370-398` (both correlated draws)                              |
+| TypeScript                | `src/supplementary/RandomNumberProvider.ts:186-190`, `:272-284`, `:355-381`                                                                               |
+| Guard tests               | `tests/comparison/imprecisionLaws.test.ts` — the `⊥ routes` block                                                                                         |
+| Reachable from a fixture? | No fixture; reachable from any document that writes `@seed` on a correlated distribution or on a `<distribution.list>`, or an empty `<distribution.list>` |
+
+**Failure-mode divergence on defective input.** Three imprecision inputs make the reference
+throw and make this port emit `NaN`. Both outcomes destroy the performance; neither side is
+"right", which is why this is frozen rather than queued.
+
+`setSeed` clears `series` in both codebases, and `series` is not a cache:
+
+- For `brownianNoise` and `compensatingTriangle` it holds the walk's current value.
+  `ImprecisionMap` seeds it through `doHandover` and calls `setSeed` **afterwards**
+  (`ImprecisionMap.java:601-620`, ported at `ImprecisionMap.ts:319-354`), so the next draw
+  reads the last element of an empty list. Java's `ArrayList.get(-1)` throws
+  `IndexOutOfBoundsException`; JavaScript's `series[-1]` is `undefined`, and
+  `undefined + step` is `NaN`.
+- For `distribution.list`, `series` **is the list** (`rand.series = list`, ported as
+  `[...list]`), so clearing it leaves an empty one. Java computes `index % series.size()` on
+  `int`s and throws `ArithmeticException: / by zero`; JavaScript's `index % 0` is `NaN` and
+  `series[NaN]` is `undefined`. The same divide reaches an **empty** `<distribution.list>` with
+  no `@seed` at all, which is the commoner way in.
+
+Measured end to end through `performMsm`: a `brownianNoise` carrying `seed="99"` gives
+`milliseconds.date="NaN"` on every note, while the same document without the seed performs
+ordinary numbers; a `<distribution.list>` behaves identically.
+
+**Why it is frozen.** Repairing it means choosing a behaviour neither codebase has. Reordering
+`setSeed` before `doHandover` would change every seeded correlated rendering — the numbers, not
+just the failure — and `RandomNumberProvider`'s own class doc records that the count and order
+of draws is part of the output. Throwing to match Java would turn a NaN into an exception on
+the same defective input without making either document renderable. The comparison module needs
+neither: it prices such a span `⊥` (§5.9, AD-1/R24 — the renderer has no performed value), which
+is correct against both codebases.
 
 ---
 

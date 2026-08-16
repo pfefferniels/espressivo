@@ -3027,3 +3027,61 @@ than code fast paths; (b) the inverted-limit triangular reading `⊥`; (c) the c
 families' declared marginal (the index-0 middle-half law); (d) `'level-gain'` for distribution
 dimensions; (e) the `@seed` PARITY question — this port emits NaN where the reference throws
 `IndexOutOfBoundsException`, and §4's exclusion rationale is wrong for three of six families.
+
+## 2026-08-16 — AD-49's delegated amendments executed; cut-4 scope corrections (w3-imp)
+
+AD-49 landed while cut 4's parts 2 and 3 were in flight, so its delegations arrive in one
+follow-up commit rather than inside the commits they name. Nothing ruled is left undone.
+
+**PARITY.md gains `IMP1`** (AD-49.3), in §2 as ruled — a failure-mode divergence on defective
+input. And it is WIDER than AD-49.3 could know: the ruling covers the correlated pair, and cut
+4's part 3 found the same line reaching `distribution.list` through a different mechanism.
+`setSeed` clears `series`; for the correlated families that is the walk's current value, and for
+a list **it is the list**. Java throws `IndexOutOfBoundsException` in the first case and
+`ArithmeticException: / by zero` in the second (`index % series.size()` on `int`s with size 0);
+this port yields `undefined` and then `NaN` in both. The same divide reaches an EMPTY
+`<distribution.list>` with no `@seed` at all, which is the commoner way in. Frozen with the
+reason stated: repairing it means choosing a behaviour neither codebase has, and reordering
+`setSeed` before `doHandover` would change the numbers of every seeded correlated rendering,
+which `RandomNumberProvider`'s own class doc forbids doing casually. §2's opening sentence is
+amended, since `IMP1` is the one entry there that IS reachable from the pipeline.
+
+**DESIGN amendments, all six delegated ones**, and no wider:
+
+- §4's `@seed` exclusion (AD-49.3) now names the exception and its scope: inert for `uniform`,
+  `gaussian` and `triangular`; `⊥` for the other **three**.
+- §5.0's epsilon record (AD-49.8) carries the measured figures and says what the superseded
+  `1.15·10⁻⁹` actually was — Acklam's figure for `Φ⁻¹` alone, which is still the `Φ⁻¹` used.
+- §5.9's degenerate table (AD-49.1) states the one rule that generates it and gains the four
+  single-absent rows as their own table, with "only BOTH limits absent gives δ₀" spelled out.
+- §5.9's span rule (AD-49.7) gains the `@name.ref` filter, the zero-width duplicate-date span,
+  the undated distribution, and the δ₀-versus-`⊥` contrast with `asynchronyMap`.
+- §5.9's interpretive paragraph (AD-49.5) states the ρ constants as test references with the
+  reason, and adds the unconditional quantile-tail refinement with the measurement that forced
+  it (σ 12.24716 against `30/√6`).
+- §5.9's correlated paragraph (AD-49.4) carries the index-0 ruling with the mixing-time
+  measurement as the reason it won, the `processParameters` membership of the timing basis, the
+  `⊥`-not-neutral rule for a one-sided process parameter, and the unreachable handover.
+
+Two more §5.9 sentences follow from measurements already accepted: the declared-law
+qualification gains `distribution.list`'s cycling-and-interpolating read, and the tuning
+domain's inertness is restated on its real evidence — the renderer DOES write `tuning.offset`,
+and what makes the domain inert is that nothing reads it back.
+
+**SCOPE CORRECTIONS to my own earlier reports**, so the record is not left overstating:
+
+1. Part 1 and part 2 said SIX `⊥` routes and named `@seed` as a two-family problem. It is
+   **seven** and `@seed` reaches **three of six** families. Part 3's LOG entry has the corrected
+   count; this entry is where the earlier two are corrected.
+2. AD-46 estimated "~20 registry rows". The delivered number is **75**, and the difference is
+   not scope creep: §4's superset property needs one comparison row per live expression row and
+   `expression/registry.ts` generates 54 for these three dimensions, to which §5.9's process
+   rows and the partition's inert `timingBasis` rows add 21.
+3. The commission's "global pedal path false" is not what the renderer does:
+   `Performance.ts:550` and `:756` both pass `shakePolyphonicPart = true`, as do all four
+   score-map calls at `:775-781`. Every call site in the port passes `true`. This changes
+   nothing in cut 4 — the chord shake is outside the compared object either way (§5.9, R26) —
+   but it is a factual correction to the commission's own description.
+
+Gate: `npm run verify` GREEN — 4794 passed, 0 skipped, unchanged by this commit (documentation
+and ledger only). prettier clean on DESIGN.md, PARITY.md and LOG.md.
