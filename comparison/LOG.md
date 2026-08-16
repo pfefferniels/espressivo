@@ -4842,3 +4842,29 @@ both directions where a full one bought one — with a full-window pair kept bes
 short one cannot be hiding a field. An earlier full-suite run reported `[vitest-worker]: Timeout
 calling "onTaskUpdate"` with all 120 files passing, which is the runner losing its RPC under load
 rather than a test failing; the trim is the response to it either way.
+
+## 2026-08-17 — AD-61: cut A4 rulings; W4 order confirmed [BINDING]
+
+baa4579 accepted — diffMpm live; the content-derived orientation with
+whole-report swap-map P-C2; the dCurve/d_k bit-unification (a diff whose
+bound disagreed with the comparison's own distance would describe a
+different comparison — caught by test, negative-controlled at one
+EPSILON); the suite-cost trim with the full-window pair kept beside the
+short ones.
+
+AD-61.1 RATIFIED and SUPERSEDING AD-59.3's form: DiffMpmOptions is
+CompareMpmOptions MINUS invariance and profile — ABSENCE over throw,
+AD-52.3a's rule applied to a case it did not name, and the stronger form
+of the same ruling. §9.2's bare-extends declaration amends under
+delegation in the next commit. `moves: true` earns option-unusable as
+shipped.
+AD-61.2 The "still open" rubato epsilon family was ruled in AD-60.1
+while A4 was in flight (sixth family, AD-34.1's figure; §9.3 amendment
+delegated) — crossed messages again; execute the delegation in the B
+window.
+AD-61.3 W4 ORDER CONFIRMED: B (corpus) → C (scape) → D (docs) → E
+(family + drop-each-member check). A5 (fragment/consolidate moves) is
+DEFERRED-BY-DEFAULT under the RED budget: it proceeds only if B–E close
+with headroom, else it is journaled post-campaign work — A-Q5 called it
+presentation sugar under semantic pricing, and the budget regime says
+defer discretionary phases. Not silent: this entry is the record.
