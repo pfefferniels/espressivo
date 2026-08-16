@@ -30,7 +30,7 @@ comparing performances/interpretations. The user's sketch of wants:
 - G2: This is a NEW module (like `expression/`), not a Java port — no Java
   parity obligation, but it must not perturb the ported pipeline. PARITY.md
   untouched unless the ported code is touched (it should not be).
-- G3: House API rules (refactor/ARCHITECTURE.md): text-in/text-out facade in
+- G3: House API rules (ARCHITECTURE.md): text-in/text-out facade in
   `src/api`, typed errors, no `undefined` in outputs (null for absence), plain-
   data reports, determinism. Interior module in `src/comparison/` (naming TBD
   at design time).

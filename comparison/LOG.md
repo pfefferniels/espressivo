@@ -2543,3 +2543,27 @@ the compare-campaign↔main conflict surface ONCE against the settled main
 base about to go stale is the peer's twice-burned trap, adopted as our
 lesson without paying for it. Cut-4 implementation continues meanwhile
 (conductor's hand; merge and citation sweep are independent of it).
+
+## 2026-08-16 — AD-48: resumption after weekly reset; main absorbed [BINDING]
+
+Delegation capacity restored; USER DIRECTIVE: subagents run on OPUS 5,
+never Fable — enforced belt-and-braces (explicit model param on every
+spawn; the global CLAUDE_CODE_SUBAGENT_MODEL=opus setting points the same
+way). Rulings and state:
+
+AD-48.1 Settled main (b37abcf: docs-declutter + layers-to-staffs) merged
+into compare-campaign (dc81ab0). Conflicts: .prettierignore (both sides
+kept; `comparison/` ADDED with the docs/history/ rationale — hand-formatted
+journals, keeps repo-wide format:check viable for the wave gate) and
+PARITY.md (purely additive, both sections kept: CMP1 + processSlur).
+eslint.config.js auto-merged. Verify green on the merged tree: 4624 + 1.
+AD-48.2 Citation policy for the new layout: HISTORICAL campaign records
+(LOG, panel reports, surveys) keep contemporaneous paths — the de-clutter
+convention's own precedent; only the LIVE charter repoints (done:
+CAMPAIGN.md G3 → bare ARCHITECTURE.md). Code cited bare already.
+AD-48.3 The conductor's cut-4 stage-1 draft (distributions.ts, written
+during the capacity gap, TWO KNOWN TYPE ERRORS, zero tests) is relocated
+to comparison/drafts/distributions.draft.ts as DECLARED unverified input
+for the resumed cut-4 worker — the AD-42.2 treatment, self-applied: audit
+every claim, keep what survives, rewrite what does not, attribute
+honestly. It never entered a gated commit as src.
