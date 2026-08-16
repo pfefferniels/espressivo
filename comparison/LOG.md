@@ -5015,3 +5015,32 @@ collisions permitted (1); normalization applied to the per-dimension matrices as
 
 Gate: `npm run verify` GREEN — 122 files, **5335 passed**, 0 skipped (was 5316). Repo-wide
 `npx prettier --check .` clean; eslint clean.
+
+## 2026-08-17 — AD-63: corpusAverage removed from v1; B2 ratifications [BINDING]
+
+c05d251 accepted — compareMpmCorpus live; the one-function matrix asserted
+cell-by-cell with toEqual against pairwise calls; P-C6 against a permuted
+RE-RUN; normalization rebuilding the aggregate only, negative-controlled.
+
+AD-63.1 (the requested ruling) corpusAverage is REMOVED from the v1
+surface — AD-26.3's ruling predates the implementation's discovery that a
+mean curve is not a document: building it means a SECOND integration path
+(no cap, no ⊥, no split points) whose synthetic rows would sit beside
+eleven verified integrators in the same matrix, dendrogram, MDS and
+medoid search. The absence-over-throw form (AD-52.3a/AD-61.1) applies.
+What remains serves the same musicological need with verified numbers:
+the medoid profiles name a REAL most-typical performance (Sapp's own
+displays keep the argmax performer), and noiseFloor context stays (it
+derives from the shipped matrices — no new integration). Post-campaign
+route if a consumer asks: option (b), piecewise-constant dimensions exact
++ nulls elsewhere, journaled here. DESIGN §8/§9 amendments delegated to
+cut C's commit.
+AD-63.2 Both option decisions RATIFIED: explicit embeddingAxes out of
+range errors while the DEFAULT degrades (§9.4's closing sentence governs;
+found by a test the literal reading made unwritable), and k ≤ N checked
+after expansion in the interior as the knowable branch.
+AD-63.3 REMINDER WITH EMPHASIS: the rubato epsilon family was ruled in
+AD-60.1 and re-pointed in AD-61.2 — it is NOT open. Execute the
+delegation (sixth family, AD-34.1's figure, §9.3 amendment) in cut C's
+commit; the worker's "still open" lines indicate the LOG entries since
+AD-60 have not been re-read — re-read them before C.
