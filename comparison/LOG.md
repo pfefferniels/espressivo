@@ -2751,3 +2751,51 @@ non-monotone pedal date component gets (AD-35).
 Gate: `npm run verify` GREEN before committing — 107 files, 4675 passed + 1 skipped (was
 4624 + 1). 51 new tests. eslint and prettier clean on both files. The draft is deleted in this
 commit, superseded by what the audit kept.
+
+## 2026-08-16 — AD-49: cut-4 commit-1 rulings [BINDING]
+
+8a4177b accepted (51 tests; the draft audit's verdicts — incl. rejecting
+the conductor's own Φ block at five orders past the claimed ε — are the
+AD-42.2 discipline working without regard to authorship, which is the
+point). Rulings:
+
+AD-49.1 (finding 1) The degenerate table GENERALIZES: absent parameter ≡ 0
+(one rule, all rows) — and gains the single-absent-limit rows the table
+was silent on (absent limit.upper ≡ limit.upper="0" etc., measured
+bit-identical). §5.9 table amendment DELEGATED to the reader commit.
+AD-49.2 (finding 2) Four measured ⊥ routes ⇒ AD-36.2's capped density is
+FORCED for all three imprecision dimensions; the guard distinguishes null
+(absent ⇒ 0, AD-47) from NaN (unusable ⇒ ⊥). The timingBasis
+OutOfRangeError abort joins the renderer-error causes.
+AD-49.3 (finding 3) @seed on a correlated family: PARITY ENTRY YES —
+delegated to the reader commit. Classification: failure-mode divergence on
+defective input (Java crashes IndexOutOfBoundsException; port renders
+NaN-poisoned output; both destroy the performance). §4's @seed sentence
+gains the correlated-family exception (same delegation). Comparison
+prices the span ⊥ either way, as proposed.
+AD-49.4 (finding 5, the open question) RATIFIED: the correlated families'
+declared marginal is the INDEX-0 construction (Uniform over the middle
+half of [limit.lower, limit.upper]; clipped for compensatingTriangle) —
+exact at a point every span has, document-determined, renderer-sourced;
+the stationary envelope is exact only asymptotically (measured ~1000-index
+mixing at stepWidth 3, which real spans may never approach). Ship with
+processParameters + the index-dependence report note as proposed; the
+mixing-time measurement goes into the module doc as the reason index-0
+won.
+AD-49.5 (decision a) RATIFIED: the ρ constants are TEST REFERENCES, never
+code fast paths — one code path cannot disagree with itself, and the
+closed form that LICENSES the general quadrature is worth more than one
+that bypasses it (the GL-table re-derivation precedent). §5.9 wording
+tweak delegated.
+AD-49.6 (decision b) RATIFIED: inverted-limit triangular declares NO law
+and reads ⊥ (non-monotone inverse, measured −132 jump) — the AD-35
+precedent applied, not a new rule.
+AD-49.7 (finding 6) Hazard instance #6 recorded: a <style> ends an
+imprecision span only WITH @name.ref (parseData filters before indexing);
+§5.9's span-rule wording gains it (delegated). Findings 4 and 7–9
+accepted as measured (handover unreachable ⇒ spans independent;
+zero-width first span at duplicate dates; domain-less/unknown-name maps
+perform nothing; tuning inert on write-but-never-read evidence).
+AD-49.8 The §5.0 epsilon record supersession is accepted (measured
+Φ 1.7e-15 abs / W₁ ≤ 3.6e-16 rel / ρ bit-exact and 1.1e-15) — record
+update delegated alongside the other §5.9 amendments.
