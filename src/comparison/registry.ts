@@ -1941,7 +1941,6 @@ const PEDAL_ROWS: readonly ComparisonRegistryRow[] = [
   },
 ];
 
-
 // --- §5.9 imprecision (timing / dynamics / duration) --------------------------------------
 //
 // Three dimensions, one table — the rows differ only in which `imprecisionMap` they live in
@@ -2034,35 +2033,33 @@ const imprecisionRowsFor = <Element extends string, Attribute extends string>(
   note: string,
 ) =>
   IMPRECISION_DOMAIN_TABLE.flatMap((domain) =>
-    attributes.map(
-      ([attribute, role]) => ({
-        key: `${domain.dimension}/${element}@${attribute}` as const,
-        dimension: domain.dimension,
-        element,
-        attribute,
-        sites: [instructionSite(domain.map, element)],
-        space: { kind: 'gain-ordered' } as const,
-        // Finite, and for `degreeOfCorrelation` also non-zero — the row states its own ⊥
-        // condition rather than leaving it to the reader alone. A zero divisor makes the
-        // compensating step ±∞ and NaNs every draw after the first (measured), which is
-        // exactly §4's "no comparable quantity". `stepWidth.max = 0` is NOT the same case and
-        // stays legal: it freezes the walk at its start value, a correlation of 1.
-        valueDomain: attribute === 'degreeOfCorrelation' ? nonZeroFinite : Number.isFinite,
-        unit: domain.unit,
-        jnd: domain.jnd,
-        delta: DEFAULT_DELTA_JND,
-        // §5.0 names exactly four [convention] plausibility bands and imprecision is not among
-        // them. A fifth is not invented here: the honest band would come from a corpus of
-        // authored imprecision widths, and cut 1 declined the same invitation for `beatLength`.
-        plausibleRange: null,
-        role,
-        liveness: { element, rule: note },
-        // Milliseconds or velocity units throughout. Nothing here is tick-valued, so §5.0's
-        // lcm rescale never touches these rows.
-        ppqSensitive: false,
-        notes: `§5.9 — ${note} ${domain.jndNote}`,
-      }),
-    ),
+    attributes.map(([attribute, role]) => ({
+      key: `${domain.dimension}/${element}@${attribute}` as const,
+      dimension: domain.dimension,
+      element,
+      attribute,
+      sites: [instructionSite(domain.map, element)],
+      space: { kind: 'gain-ordered' } as const,
+      // Finite, and for `degreeOfCorrelation` also non-zero — the row states its own ⊥
+      // condition rather than leaving it to the reader alone. A zero divisor makes the
+      // compensating step ±∞ and NaNs every draw after the first (measured), which is
+      // exactly §4's "no comparable quantity". `stepWidth.max = 0` is NOT the same case and
+      // stays legal: it freezes the walk at its start value, a correlation of 1.
+      valueDomain: attribute === 'degreeOfCorrelation' ? nonZeroFinite : Number.isFinite,
+      unit: domain.unit,
+      jnd: domain.jnd,
+      delta: DEFAULT_DELTA_JND,
+      // §5.0 names exactly four [convention] plausibility bands and imprecision is not among
+      // them. A fifth is not invented here: the honest band would come from a corpus of
+      // authored imprecision widths, and cut 1 declined the same invitation for `beatLength`.
+      plausibleRange: null,
+      role,
+      liveness: { element, rule: note },
+      // Milliseconds or velocity units throughout. Nothing here is tick-valued, so §5.0's
+      // lcm rescale never touches these rows.
+      ppqSensitive: false,
+      notes: `§5.9 — ${note} ${domain.jndNote}`,
+    })),
   );
 
 const IMPRECISION_ROWS: readonly ComparisonRegistryRow[] = [

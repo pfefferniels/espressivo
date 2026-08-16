@@ -56,7 +56,8 @@ export function cumulativeDrift(
   for (let i = 0; i < grid.length - 1; ++i) {
     const cellStart = grid[i];
     const cellEnd = grid[i + 1];
-    const secondsPerQuarter = (curve: TempoCurve) => (ticks: number) => 60 / quarterBpmAt(curve, ticks);
+    const secondsPerQuarter = (curve: TempoCurve) => (ticks: number) =>
+      60 / quarterBpmAt(curve, ticks);
 
     // The stationary point of the two clocks' difference is where their INTEGRANDS cross, so
     // the extremum inside a cell is bracketed there rather than sampled for. Outside such a

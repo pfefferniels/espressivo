@@ -24,7 +24,12 @@ tests/comparison/fixtures/
 docs/history/
 
 # The live comparison campaign's record (moves to docs/history/comparison/ at merge, W5).
-comparison/
+# ROOT-ANCHORED, and the lesson is the one three lines above: gitignore semantics match at any
+# depth, so the unanchored spelling swallowed src/comparison/ and tests/comparison/ as well and
+# hid 28 unformatted source files from `format:check` for a whole wave (W3 MAJOR-16). The `/` is
+# the whole fix. What made it invisible is that `npx prettier --check src/comparison/` answers
+# "All matched files use Prettier code style!" for files it is silently skipping.
+/comparison/
 
 # The target-architecture ruling. Exempt for a stronger reason than the journals: its RULEs are
 # cited by ~85 `ARCHITECTURE.md:NNN` line anchors from PARITY.md and the campaign records, so a

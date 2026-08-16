@@ -87,8 +87,7 @@ export function asynchronyDistance(
   jndOverride?: number,
 ): AsynchronyDistance {
   const registryRow = comparisonRowFor('asynchrony/asynchrony@milliseconds.offset');
-  const row =
-    jndOverride === undefined ? registryRow : { ...registryRow, jnd: jndOverride };
+  const row = jndOverride === undefined ? registryRow : { ...registryRow, jnd: jndOverride };
   const grid = asynchronyGridTicks(a, b, window, ticksPerQuarter);
 
   const cells: AsynchronyCell[] = [];

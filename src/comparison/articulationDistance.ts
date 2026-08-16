@@ -463,13 +463,10 @@ export function articulationDistance(
     pinsHonoured: alignment.pinsHonoured,
     inertFindings,
     cappedAnchors: cappedAnchorsOf(alignment, anchorsA, anchorsB, ticksPerQuarter, jnd),
-    atoms: chargeAtoms(
-      anchorsA,
-      anchorsB,
-      alignment,
-      (anchor) => anchor.datePositionKnown,
-      { startTicks, endTicks },
-    ),
+    atoms: chargeAtoms(anchorsA, anchorsB, alignment, (anchor) => anchor.datePositionKnown, {
+      startTicks,
+      endTicks,
+    }),
     datePositionKnown: [...anchorsA, ...anchorsB].every((anchor) => anchor.datePositionKnown),
   };
 }

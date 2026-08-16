@@ -35,9 +35,7 @@ const flat = (
   densityAt: ((quarters: number) => number) | null = null,
 ): DimensionDensity => ({
   dimension,
-  cells: [
-    { startQuarters: start, endQuarters: end, mass: value * (end - start), densityAt },
-  ],
+  cells: [{ startQuarters: start, endQuarters: end, mass: value * (end - start), densityAt }],
   atoms: [],
   distance: value * (end - start),
 });
@@ -364,9 +362,39 @@ describe('AD-19: the table closes', () => {
     const weights = defaultWeights();
     // A partition nothing would ever choose: three ragged segments.
     const arbitrary = [
-      { startQuarters: 0, endQuarters: 1.5, lengthQuarters: 1.5, mass: 0, mean: 0, peak: 0, peakAtQuarters: 0, score: 0, rank: 0 },
-      { startQuarters: 3, endQuarters: 3.25, lengthQuarters: 0.25, mass: 0, mean: 0, peak: 0, peakAtQuarters: 3, score: 0, rank: 1 },
-      { startQuarters: 6, endQuarters: 8, lengthQuarters: 2, mass: 0, mean: 0, peak: 0, peakAtQuarters: 6, score: 0, rank: 2 },
+      {
+        startQuarters: 0,
+        endQuarters: 1.5,
+        lengthQuarters: 1.5,
+        mass: 0,
+        mean: 0,
+        peak: 0,
+        peakAtQuarters: 0,
+        score: 0,
+        rank: 0,
+      },
+      {
+        startQuarters: 3,
+        endQuarters: 3.25,
+        lengthQuarters: 0.25,
+        mass: 0,
+        mean: 0,
+        peak: 0,
+        peakAtQuarters: 3,
+        score: 0,
+        rank: 1,
+      },
+      {
+        startQuarters: 6,
+        endQuarters: 8,
+        lengthQuarters: 2,
+        mass: 0,
+        mean: 0,
+        peak: 0,
+        peakAtQuarters: 6,
+        score: 0,
+        rank: 2,
+      },
     ];
     const table = attributionTable(densities, weights, arbitrary, 0, 8);
     expect(table.total).toBeCloseTo(24, 9);
@@ -414,7 +442,15 @@ describe('C11: the equivalence block', () => {
     const thresholds = defaultThresholds();
     const pass = segmentPass(densities, weights, thresholds, 0, 8);
     const total = aggregateDistance(densities, weights);
-    const block = equivalenceBlock(densities, thresholds, pass.segments, pass.remainderMass, total, 0, 8);
+    const block = equivalenceBlock(
+      densities,
+      thresholds,
+      pass.segments,
+      pass.remainderMass,
+      total,
+      0,
+      8,
+    );
 
     expect(block.subThresholdMassFraction).toBeCloseTo(1.2 / 11.2, 9);
     expect(block.aboveThresholdLengthFraction).toBeCloseTo(2 / 8, 9);
@@ -429,9 +465,7 @@ describe('C11: the equivalence block', () => {
     expect(block.aboveThresholdLengthFraction).toBe(0);
     for (const dimension of COMPARISON_DIMENSIONS) {
       expect(Number.isFinite(block.byDimension[dimension].subThresholdMassFraction)).toBe(true);
-      expect(Number.isFinite(block.byDimension[dimension].aboveThresholdLengthFraction)).toBe(
-        true,
-      );
+      expect(Number.isFinite(block.byDimension[dimension].aboveThresholdLengthFraction)).toBe(true);
     }
   });
 

@@ -12,11 +12,7 @@
  * boundary in the grid is what keeps each cell smooth.
  */
 import { comparisonRowFor, localDistance } from './registry.js';
-import {
-  CompensatedSum,
-  integrateCappedAbsolute,
-  powerCriticalPoint,
-} from './quadrature.js';
+import { CompensatedSum, integrateCappedAbsolute, powerCriticalPoint } from './quadrature.js';
 import {
   displacementTicksAt,
   isRubatoBottomAt,
@@ -26,11 +22,7 @@ import {
 } from './rubatoCurve.js';
 import { bottom, valued } from './values.js';
 import type { ComparisonWindow } from './window.js';
-import {
-  IDENTITY_CANONICAL_PAIR,
-  canonicalValue,
-  type CanonicalPair,
-} from './decomposition.js';
+import { IDENTITY_CANONICAL_PAIR, canonicalValue, type CanonicalPair } from './decomposition.js';
 
 /**
  * Subdivision count for rubato cells — §5.0 rule 2c (AD-33.3b as refined by AD-34.1).
@@ -195,8 +187,12 @@ export function rubatoDistance(
     if (bottomA || bottomB) {
       const local = localDistance(
         row,
-        bottomA ? bottom('renderer-error') : valued(displacementTicksAt(a, cellStart) / ticksPerQuarter),
-        bottomB ? bottom('renderer-error') : valued(displacementTicksAt(b, cellStart) / ticksPerQuarter),
+        bottomA
+          ? bottom('renderer-error')
+          : valued(displacementTicksAt(a, cellStart) / ticksPerQuarter),
+        bottomB
+          ? bottom('renderer-error')
+          : valued(displacementTicksAt(b, cellStart) / ticksPerQuarter),
       );
       const mass = local.distance * lengthQuarters;
       if (local.capped) anyCapped = true;

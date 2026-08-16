@@ -51,7 +51,11 @@ function referenceNormalCdf(x: number): number {
     const panels = Math.max(1, Math.ceil((hi - lo) * 64));
     let total = 0;
     for (let i = 0; i < panels; ++i)
-      total += gaussLegendre10(density, lo + ((hi - lo) * i) / panels, lo + ((hi - lo) * (i + 1)) / panels);
+      total += gaussLegendre10(
+        density,
+        lo + ((hi - lo) * i) / panels,
+        lo + ((hi - lo) * (i + 1)) / panels,
+      );
     return total;
   };
   if (x < 0) return integrate(x - 12, x);

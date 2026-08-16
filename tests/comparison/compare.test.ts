@@ -263,8 +263,8 @@ describe('scopes: what a part with no counterpart is compared against', () => {
       '<dynamicsMap><dynamics date="0.0" volume="40.0"/></dynamicsMap>',
       part(1, '<dynamicsMap><dynamics date="0.0" volume="110.0"/></dynamicsMap>'),
     );
-    const performed = [...performMsm({ msm, mpm }).matchAll(/<note\b[^>]*>/g)].map((match) =>
-      /\svelocity="([^"]*)"/.exec(match[0])?.[1],
+    const performed = [...performMsm({ msm, mpm }).matchAll(/<note\b[^>]*>/g)].map(
+      (match) => /\svelocity="([^"]*)"/.exec(match[0])?.[1],
     );
     // Part 1 takes its own map; part 2, which the MPM does not have, takes the GLOBAL one —
     // not the neutral 100 the design's wording would predict.
@@ -290,8 +290,7 @@ describe('scopes: what a part with no counterpart is compared against', () => {
 
   it('evaluates a global-only pair ONCE, and a three-part pair three times (AD-3)', () => {
     const globalOnly = (bpm: number) => doc(tempoMap(bpm));
-    const threeParts = (bpm: number) =>
-      doc(tempoMap(bpm), part(1, '') + part(2, '') + part(3, ''));
+    const threeParts = (bpm: number) => doc(tempoMap(bpm), part(1, '') + part(2, '') + part(3, ''));
     const window = { start: 0, end: 4 };
     const one = compare({ a: globalOnly(60), b: globalOnly(90), window }).dimensions.tempo.distance;
     const three = compare({ a: threeParts(60), b: threeParts(90), window }).dimensions.tempo
@@ -473,9 +472,11 @@ describe('the report’s own rules', () => {
     const halved = compare({ ...options, jnd: { 'tempo/tempo@bpm': Math.log(1.025) / 2 } })
       .dimensions.tempo.distance;
     expect(halved).toBeCloseTo(2 * base, 6);
-    expect(compare({ ...options, jnd: { 'tempo/tempo@bpm': Math.log(1.025) / 2 } }).inputs.jnd[
-      'tempo/tempo@bpm'
-    ]).toBeCloseTo(Math.log(1.025) / 2, 12);
+    expect(
+      compare({ ...options, jnd: { 'tempo/tempo@bpm': Math.log(1.025) / 2 } }).inputs.jnd[
+        'tempo/tempo@bpm'
+      ],
+    ).toBeCloseTo(Math.log(1.025) / 2, 12);
   });
 
   it('excludes a zero-weight dimension from D while still reporting it (§7.3)', () => {

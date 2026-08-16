@@ -300,9 +300,8 @@ describe('every cell-bearing dimension exposes the integrand it integrated (AD-5
     // The two components §5.9 sums, read off the cell they were computed for: this dimension's
     // reading is piecewise constant, so its "definition at a point" IS the covering cell's.
     const cellAt = (quarters: number) =>
-      result.cells.find(
-        (cell) => quarters >= cell.startQuarters && quarters < cell.endQuarters,
-      ) ?? result.cells[result.cells.length - 1];
+      result.cells.find((cell) => quarters >= cell.startQuarters && quarters < cell.endQuarters) ??
+      result.cells[result.cells.length - 1];
     checkCells(result.cells, result.distance, (quarters) => {
       const cell = cellAt(quarters);
       return cell.density + cell.processDensity;

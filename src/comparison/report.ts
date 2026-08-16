@@ -168,10 +168,7 @@ export interface ComparisonInputs {
   readonly settings: ResolvedComparisonSettings;
   readonly jnd: Record<ComparisonJndKey, number>;
   readonly msmUsed: boolean;
-  readonly epsilon: Record<
-    EpsilonFamily,
-    { readonly relative: number; readonly jnd: number }
-  >;
+  readonly epsilon: Record<EpsilonFamily, { readonly relative: number; readonly jnd: number }>;
 }
 
 /** The knobs that define the metric, with every default filled in. */

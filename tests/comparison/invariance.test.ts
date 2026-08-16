@@ -19,7 +19,11 @@
 import { describe, it, expect } from 'vitest';
 import { readComparisonPair, readScopeMapViews } from '../../src/comparison/document.js';
 import type { ComparisonDocument, ComparisonPair } from '../../src/comparison/document.js';
-import { quarterBpmAt, readTempoSegments, type TempoCurve } from '../../src/comparison/tempoCurve.js';
+import {
+  quarterBpmAt,
+  readTempoSegments,
+  type TempoCurve,
+} from '../../src/comparison/tempoCurve.js';
 import { refinementGridTicks, tempoDistance } from '../../src/comparison/tempoDistance.js';
 import {
   offsetAt,
@@ -99,8 +103,10 @@ describe('tempo, a LOG space: “level” removes a multiplicative factor (§7.4
     const curveA = read('a');
     const curveB = read('b');
     const grid = refinementGridTicks(curveA, curveB, pair.window, pair.ppq.lcm);
-    const sampler = (curve: TempoCurve): SampledCurve => (ticks) =>
-      Math.log(quarterBpmAt(curve, ticks));
+    const sampler =
+      (curve: TempoCurve): SampledCurve =>
+      (ticks) =>
+        Math.log(quarterBpmAt(curve, ticks));
     const distance = (mode: InvarianceMode) =>
       tempoDistance(
         curveA,
@@ -177,11 +183,13 @@ describe('asynchrony, a LINEAR space: “level” removes an offset only (§7.4�
     const curveA = read('a');
     const curveB = read('b');
     const grid = asynchronyGridTicks(curveA, curveB, pair.window, pair.ppq.lcm);
-    const sampler = (curve: AsynchronyCurve): SampledCurve => (ticks) => {
-      const value = offsetAt(curve, ticks);
-      if (isBottom(value)) throw new Error('the fixture is ⊥-free by construction');
-      return value.value;
-    };
+    const sampler =
+      (curve: AsynchronyCurve): SampledCurve =>
+      (ticks) => {
+        const value = offsetAt(curve, ticks);
+        if (isBottom(value)) throw new Error('the fixture is ⊥-free by construction');
+        return value.value;
+      };
     const distance = (mode: InvarianceMode) =>
       asynchronyDistance(
         curveA,

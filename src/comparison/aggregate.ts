@@ -253,9 +253,7 @@ function overlapLength(
   startQuarters: number,
   endQuarters: number,
 ): number {
-  return (
-    Math.min(span.endQuarters, endQuarters) - Math.max(span.startQuarters, startQuarters)
-  );
+  return Math.min(span.endQuarters, endQuarters) - Math.max(span.startQuarters, startQuarters);
 }
 
 /** `p_D(t) = Σ_k ω_k p_k(t)`, in JND per quarter — the pointwise form the roots need. */
@@ -347,14 +345,8 @@ export function segmentPass(
     .map((segment, index) => ({ ...segment, rank: index }));
 
   const covered = new CompensatedSum();
-  for (const run of runs)
-    for (let i = run.start; i <= run.end; ++i) covered.add(cells[i].mass);
-  const totalMass = weightedMassIn(
-    densities,
-    weights,
-    windowStartQuarters,
-    windowEndQuarters,
-  );
+  for (const run of runs) for (let i = run.start; i <= run.end; ++i) covered.add(cells[i].mass);
+  const totalMass = weightedMassIn(densities, weights, windowStartQuarters, windowEndQuarters);
 
   return {
     cells,
@@ -365,7 +357,9 @@ export function segmentPass(
       .filter(
         (density) =>
           weights[density.dimension] !== 0 &&
-          density.cells.some((cell) => cell.densityAt === null && cell.endQuarters > cell.startQuarters),
+          density.cells.some(
+            (cell) => cell.densityAt === null && cell.endQuarters > cell.startQuarters,
+          ),
       )
       .map((density) => density.dimension),
   };
@@ -581,9 +575,7 @@ export function attributionTable(
     const inSegments = new CompensatedSum();
     for (const segment of segments) {
       const cell =
-        density === undefined
-          ? 0
-          : massIn(density, segment.startQuarters, segment.endQuarters);
+        density === undefined ? 0 : massIn(density, segment.startQuarters, segment.endQuarters);
       inSegments.add(cell);
       cells.push(cell);
     }

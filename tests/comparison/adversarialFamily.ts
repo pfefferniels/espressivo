@@ -204,7 +204,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   {
     name: 'imprecision-plain',
     hazard:
-      'an ordinary uniform imprecision law over the whole window — the dimension\'s ' +
+      "an ordinary uniform imprecision law over the whole window — the dimension's " +
       'non-⊥ path, without which every imprecision pair would be ⊥-vs-⊥ or law-vs-neutral',
     mpm: document(
       '<imprecisionMap.timing>' +
@@ -230,7 +230,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
     hazard:
       'an EMPTY <distribution.list>: getValue reads series[i % 0] = series[NaN] = undefined ' +
       'and every note in the span vanishes from the MIDI export (R24), so the span is ⊥ — the ' +
-      'member that makes §5.9\'s capped density load-bearing (AD-36.2)',
+      "member that makes §5.9's capped density load-bearing (AD-36.2)",
     mpm: document(
       '<imprecisionMap.timing><distribution.list date="0.0" milliseconds.timingBasis="300"/></imprecisionMap.timing>',
     ),
@@ -238,10 +238,10 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   {
     name: 'imprecision-wide',
     hazard:
-      'a law so wide that W₁/jnd exceeds 2·δ_row, so §4\'s CAP binds — added because ' +
+      "a law so wide that W₁/jnd exceeds 2·δ_row, so §4's CAP binds — added because " +
       'reverting the cap failed only its dedicated test and no pair in the family, which is ' +
       'the same gap the eighth member was added to close for criticalPointTicks. Against ' +
-      'imprecision-bottom it is the triangle\'s equality case: d(wide, plain) = 2δ exactly ' +
+      "imprecision-bottom it is the triangle's equality case: d(wide, plain) = 2δ exactly " +
       'equals d(wide, ⊥) + d(⊥, plain), and uncapped it would exceed it',
     mpm: document(
       '<imprecisionMap.timing>' +
@@ -252,7 +252,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   {
     name: 'imprecision-process',
     hazard:
-      'a brownianNoise whose declared MARGINAL is exactly imprecision-plain\'s — the middle ' +
+      "a brownianNoise whose declared MARGINAL is exactly imprecision-plain's — the middle " +
       'half of ±50 is ±25 — while its process differs, so the pair is zero in the marginal ' +
       'and non-zero only through processParameters (§5.9, A-B3)',
     mpm: document(

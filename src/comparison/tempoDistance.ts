@@ -30,11 +30,7 @@ import {
 } from './quadrature.js';
 import { quarterBpmAt, segmentAt, type TempoCurve, type TempoSegment } from './tempoCurve.js';
 import type { ComparisonWindow } from './window.js';
-import {
-  IDENTITY_CANONICAL_PAIR,
-  canonicalValue,
-  type CanonicalPair,
-} from './decomposition.js';
+import { IDENTITY_CANONICAL_PAIR, canonicalValue, type CanonicalPair } from './decomposition.js';
 
 /** One cell of the refinement grid, with the mass it carries. */
 export interface TempoCell {

@@ -160,9 +160,12 @@ describe('§5.9’s degenerate table is one rule: an absent parameter reads as 0
       '<distribution.gaussian date="0.0" seed="7" limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"/>',
     );
     expect(dates.map(Number)).toEqual(performedDates('').map(Number));
-    expect(lawsEqual(lawOf('<distribution.gaussian date="0.0" limit.lower="-30" limit.upper="30"/>'), DELTA_ZERO)).toBe(
-      true,
-    );
+    expect(
+      lawsEqual(
+        lawOf('<distribution.gaussian date="0.0" limit.lower="-30" limit.upper="30"/>'),
+        DELTA_ZERO,
+      ),
+    ).toBe(true);
   });
 
   it('triangular with BOTH clips absent performs δ₀ — AD-47’s null draw', () => {
@@ -212,9 +215,7 @@ describe('§5.9’s degenerate table is one rule: an absent parameter reads as 0
 
 describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () => {
   it('an EMPTY distribution.list makes every note vanish', () => {
-    const dates = performedDates(
-      '<distribution.list date="0.0" milliseconds.timingBasis="300"/>',
-    );
+    const dates = performedDates('<distribution.list date="0.0" milliseconds.timingBasis="300"/>');
     expect(dates).toEqual(['NaN', 'NaN', 'NaN', 'NaN']);
     expect(isBottomAt('<distribution.list date="0.0"/>')).toBe(true);
   });
@@ -289,9 +290,7 @@ describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () 
     expect(seedPoisonsSpan('distribution.correlated.compensatingTriangle', true)).toBe(true);
     expect(seedPoisonsSpan('distribution.list', true)).toBe(true);
     expect(seedPoisonsSpan('distribution.correlated.brownianNoise', false)).toBe(false);
-    expect(
-      lawOf(UNIFORM('limit.lower="-30" limit.upper="30"')),
-    ).toEqual(
+    expect(lawOf(UNIFORM('limit.lower="-30" limit.upper="30"'))).toEqual(
       lawOf('<distribution.uniform date="0.0" limit.lower="-30" limit.upper="30"/>'),
     );
   });
@@ -336,8 +335,9 @@ describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () 
 describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
   it('a <style> WITH @name.ref ends the span and leaves the rest exactly unperturbed', () => {
     const dates = performedDates(
-      `${UNIFORM('limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"') 
-        }<style date="720.0" name.ref="none"/>`,
+      `${UNIFORM(
+        'limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"',
+      )}<style date="720.0" name.ref="none"/>`,
     );
     // Notes at 720, 1440, 2160 are untouched — the δ₀ gap, exact rather than approximate.
     expect(dates.slice(1).map(Number)).toEqual([720, 1440, 2160]);
@@ -347,22 +347,21 @@ describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
 
   it('a <style> WITHOUT @name.ref is not an entry at all — AD-35.4, one level lower', () => {
     const body = UNIFORM('limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"');
-    expect(performedDates(`${body  }<style date="720.0"/>`)).toEqual(performedDates(body));
+    expect(performedDates(`${body}<style date="720.0"/>`)).toEqual(performedDates(body));
     // The reader agrees: one span, no gap.
-    expect(readFor(`${body  }<style date="720.0"/>`).spans).toHaveLength(1);
-    expect(readFor(`${body  }<style date="720.0" name.ref="none"/>`).spans).toHaveLength(1);
-    expect(
-      readFor(`${body  }<style date="720.0" name.ref="none"/>`).spans[0].endTicks,
-    ).toBe(720);
-    expect(readFor(`${body  }<style date="720.0"/>`).spans[0].endTicks).toBe(
+    expect(readFor(`${body}<style date="720.0"/>`).spans).toHaveLength(1);
+    expect(readFor(`${body}<style date="720.0" name.ref="none"/>`).spans).toHaveLength(1);
+    expect(readFor(`${body}<style date="720.0" name.ref="none"/>`).spans[0].endTicks).toBe(720);
+    expect(readFor(`${body}<style date="720.0"/>`).spans[0].endTicks).toBe(
       Number.POSITIVE_INFINITY,
     );
   });
 
   it('a gap between two distributions performs δ₀ and the second resumes', () => {
     const dates = performedDates(
-      `${UNIFORM('limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"') 
-        }<style date="720.0" name.ref="none"/>` +
+      `${UNIFORM(
+        'limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"',
+      )}<style date="720.0" name.ref="none"/>` +
         `<distribution.uniform date="2160.0" seed="5" limit.lower="300" limit.upper="300" milliseconds.timingBasis="300"/>`,
     );
     expect(dates.slice(1, 3).map(Number)).toEqual([720, 1440]);
@@ -371,7 +370,7 @@ describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
 
   it('lawAt returns δ₀ in a gap and outside every span', () => {
     const reading = readFor(
-      `${UNIFORM('limit.lower="-30" limit.upper="30"')  }<style date="720.0" name.ref="none"/>`,
+      `${UNIFORM('limit.lower="-30" limit.upper="30"')}<style date="720.0" name.ref="none"/>`,
     );
     const inGap = lawAt(reading, 1000);
     expect(isBottom(inGap)).toBe(false);
@@ -379,10 +378,12 @@ describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
   });
 
   it('two distributions at ONE date: the first performs nothing', () => {
-    const both =
-      `<distribution.uniform date="0.0" seed="1" limit.lower="-300" limit.upper="-300" milliseconds.timingBasis="300"/>${ 
-      UNIFORM('limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"')}`;
-    const secondAlone = UNIFORM('limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"');
+    const both = `<distribution.uniform date="0.0" seed="1" limit.lower="-300" limit.upper="-300" milliseconds.timingBasis="300"/>${UNIFORM(
+      'limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"',
+    )}`;
+    const secondAlone = UNIFORM(
+      'limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"',
+    );
     expect(performedDates(both)).toEqual(performedDates(secondAlone));
     // The reader drops the empty span and says why.
     const reading = readFor(both);
@@ -391,9 +392,9 @@ describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
   });
 
   it('an undated distribution is not an entry: it governs nothing and ends nothing', () => {
-    const body =
-      `${UNIFORM('limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"') 
-      }<distribution.uniform seed="8" limit.lower="-300" limit.upper="300" milliseconds.timingBasis="300"/>`;
+    const body = `${UNIFORM(
+      'limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"',
+    )}<distribution.uniform seed="8" limit.lower="-300" limit.upper="300" milliseconds.timingBasis="300"/>`;
     expect(performedDates(body)).toEqual(
       performedDates(UNIFORM('limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"')),
     );

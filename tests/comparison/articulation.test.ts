@@ -668,8 +668,8 @@ describe('articulation atom placement (AD-51.2)', () => {
   });
 
   it('reports datePositionKnown true when every anchor carries a date', () => {
-    expect(distanceOf('<articulation date="0.0" relativeDuration="0.5"/>', '').datePositionKnown).toBe(
-      true,
-    );
+    expect(
+      distanceOf('<articulation date="0.0" relativeDuration="0.5"/>', '').datePositionKnown,
+    ).toBe(true);
   });
 });

@@ -20,11 +20,7 @@ import { comparisonRowFor } from './registry.js';
 import { CompensatedSum, integrateAbsolute } from './quadrature.js';
 import { dynamicsSegmentAt, volumeAt, type DynamicsCurve } from './dynamicsCurve.js';
 import type { ComparisonWindow } from './window.js';
-import {
-  IDENTITY_CANONICAL_PAIR,
-  canonicalValue,
-  type CanonicalPair,
-} from './decomposition.js';
+import { IDENTITY_CANONICAL_PAIR, canonicalValue, type CanonicalPair } from './decomposition.js';
 
 /**
  * The subdivision count for a cell where BOTH sides are live Bézier transitions —

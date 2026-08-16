@@ -806,10 +806,19 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
       (dimension) =>
         (
           [
-            ['distribution.uniform', ['seed', 'limit.lower', 'limit.upper', 'milliseconds.timingBasis']],
+            [
+              'distribution.uniform',
+              ['seed', 'limit.lower', 'limit.upper', 'milliseconds.timingBasis'],
+            ],
             [
               'distribution.gaussian',
-              ['seed', 'deviation.standard', 'limit.lower', 'limit.upper', 'milliseconds.timingBasis'],
+              [
+                'seed',
+                'deviation.standard',
+                'limit.lower',
+                'limit.upper',
+                'milliseconds.timingBasis',
+              ],
             ],
             [
               'distribution.triangular',
@@ -843,13 +852,11 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
             ['measurement', ['value']],
           ] as const
         ).flatMap(([element, attributes]) =>
-          attributes.map(
-            (attribute): readonly [ComparisonDimension, string, string] => [
-              dimension,
-              element,
-              attribute,
-            ],
-          ),
+          attributes.map((attribute): readonly [ComparisonDimension, string, string] => [
+            dimension,
+            element,
+            attribute,
+          ]),
         ),
     ),
   ];
@@ -891,7 +898,9 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
           : (comparisonRowAt(dimension, element, attribute) as ComparisonRegistryRow | null);
       // Exactly one bucket. Both would mean the exclusion walk and the table disagree; neither
       // would mean an attribute the renderer reads is priced nowhere and reported nowhere.
-      expect(`${String(dimension)}/${element}@${attribute}: row=${String(row !== null)} excluded=${String(excluded)}`).toBe(
+      expect(
+        `${String(dimension)}/${element}@${attribute}: row=${String(row !== null)} excluded=${String(excluded)}`,
+      ).toBe(
         `${String(dimension)}/${element}@${attribute}: row=${String(!excluded)} excluded=${String(excluded)}`,
       );
     }
@@ -911,8 +920,8 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
     // row for an attribute no renderer reads would be pricing a difference that is never
     // performed. Def-site rows are exempt — §1.2 is the MAP inventory, and the defs are §1.3.
     const inventory = new Set(
-      READ_ATTRIBUTES.map(([dimension, element, attribute]) =>
-        `${String(dimension)}/${element}@${attribute}`,
+      READ_ATTRIBUTES.map(
+        ([dimension, element, attribute]) => `${String(dimension)}/${element}@${attribute}`,
       ),
     );
     const defElements = new Set([
@@ -949,15 +958,20 @@ describe('§4’s metric under §7.4’s canonicalization', () => {
 
   it('applies the shift in T-SPACE, not to the raw value', () => {
     const row = bpm();
-    const canonical = { a: { shift: Math.log(120), scale: 1 }, b: { shift: Math.log(60), scale: 1 } };
+    const canonical = {
+      a: { shift: Math.log(120), scale: 1 },
+      b: { shift: Math.log(60), scale: 1 },
+    };
     const measured = canonicalLocalDistance(row, valued(120), valued(60), canonical).distance;
     // Both sides sit exactly at their own level, so the canonicalized difference is 0.
     expect(measured).toBeCloseTo(0, 12);
     // Subtracting the same numbers from the RAW values instead is a different answer, which is
     // the error this placement exists to prevent.
-    const rawCanonicalized = Math.abs(
-      forwardInSpace(row.space, 120 - Math.log(120)) - forwardInSpace(row.space, 60 - Math.log(60)),
-    ) / row.jnd;
+    const rawCanonicalized =
+      Math.abs(
+        forwardInSpace(row.space, 120 - Math.log(120)) -
+          forwardInSpace(row.space, 60 - Math.log(60)),
+      ) / row.jnd;
     expect(rawCanonicalized).toBeGreaterThan(1);
   });
 

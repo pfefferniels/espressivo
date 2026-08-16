@@ -35,10 +35,7 @@
  *    what the marginal cannot say.
  * 3. **The `W₂` decomposition** (§1.2), which is interpretive and never enters `d_k`.
  */
-import {
-  CompensatedSum,
-  gaussLegendre10,
-} from './quadrature.js';
+import { CompensatedSum, gaussLegendre10 } from './quadrature.js';
 import {
   comparisonRowAt,
   type JndOverrides,

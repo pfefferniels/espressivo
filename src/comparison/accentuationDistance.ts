@@ -45,11 +45,7 @@ import {
 } from './accentuationCurve.js';
 import { isBottom } from './values.js';
 import type { ComparisonWindow } from './window.js';
-import {
-  IDENTITY_CANONICAL_PAIR,
-  canonicalValue,
-  type CanonicalPair,
-} from './decomposition.js';
+import { IDENTITY_CANONICAL_PAIR, canonicalValue, type CanonicalPair } from './decomposition.js';
 
 /**
  * The accentuation curve as a `SampledCurve` for §1.2's decomposition, or **null** where the

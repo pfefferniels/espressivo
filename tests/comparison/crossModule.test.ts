@@ -74,7 +74,11 @@ const BOUNDED_KINDS = new Set([
  * what they were built to do; what would be a defect is a test that hid them.
  */
 function lawIsUnreachable(
-  fixture: { readonly mpm: string; readonly expression: readonly ExpressionDimension[]; readonly comparison: ComparisonDimension },
+  fixture: {
+    readonly mpm: string;
+    readonly expression: readonly ExpressionDimension[];
+    readonly comparison: ComparisonDimension;
+  },
   s: number,
 ): boolean {
   const { report, mpm } = exaggerateMpm(fixture.mpm, {
@@ -228,14 +232,16 @@ describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
       });
 
       it('is monotone in |1 − s|, not in |ln s| (AD-6)', () => {
-        const measured = FACTORS.filter((s) => !lawIsUnreachable(fixture, s)).map((s) => ({
-          spread: Math.abs(1 - s),
-          value: distance(
-            fixture.mpm,
-            exaggerate(fixture.mpm, fixture.expression, s),
-            fixture.comparison,
-          ),
-        })).sort((x, y) => x.spread - y.spread);
+        const measured = FACTORS.filter((s) => !lawIsUnreachable(fixture, s))
+          .map((s) => ({
+            spread: Math.abs(1 - s),
+            value: distance(
+              fixture.mpm,
+              exaggerate(fixture.mpm, fixture.expression, s),
+              fixture.comparison,
+            ),
+          }))
+          .sort((x, y) => x.spread - y.spread);
         for (let i = 1; i < measured.length; ++i)
           expect(measured[i].value).toBeGreaterThanOrEqual(measured[i - 1].value * (1 - 1e-9));
       });
@@ -267,9 +273,7 @@ describe('AD-2’s cap events are reported by the event dimensions too', () => {
     });
     expect(report.dimensions.articulation.cappedCells).toBe(0);
     expect(
-      report.notes.some(
-        (note) => note.kind === 'capped' && note.dimension === 'articulation',
-      ),
+      report.notes.some((note) => note.kind === 'capped' && note.dimension === 'articulation'),
     ).toBe(false);
   });
 
@@ -283,9 +287,7 @@ describe('AD-2’s cap events are reported by the event dimensions too', () => {
     });
     expect(report.dimensions.articulation.cappedCells).toBeGreaterThan(0);
     expect(
-      report.notes.some(
-        (note) => note.kind === 'capped' && note.dimension === 'articulation',
-      ),
+      report.notes.some((note) => note.kind === 'capped' && note.dimension === 'articulation'),
     ).toBe(true);
   });
 });
@@ -387,8 +389,7 @@ describe('P-C5 (ii): the BREAKPOINT-level law on a transition-bearing fixture', 
 });
 
 describe('P-C5 (iii): the measured d_shape bound on transitions', () => {
-  const at = (s: number) =>
-    distance(TRANSITION, exaggerate(TRANSITION, ['tempo'], s), 'tempo');
+  const at = (s: number) => distance(TRANSITION, exaggerate(TRANSITION, ['tempo'], s), 'tempo');
 
   /**
    * The exact law FAILS here, by a measured amount, and that is the finding rather than a defect.

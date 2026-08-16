@@ -227,8 +227,11 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       msm: score('telemann-grave'),
     };
     const forward = compareMpm(options).report;
-    const reverse = compareMpm({ ...options, performanceA: 'Fast', performanceB: 'Baroque' })
-      .report;
+    const reverse = compareMpm({
+      ...options,
+      performanceA: 'Fast',
+      performanceB: 'Baroque',
+    }).report;
     expect(JSON.stringify(reverse)).not.toBe(JSON.stringify(forward));
     expect(JSON.stringify(mirror(reverse))).toBe(JSON.stringify(forward));
   });
@@ -241,8 +244,11 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       msm: score('vulpius-die-helle-sonn'),
     };
     const forward = compareMpm(options).report;
-    const reverse = compareMpm({ ...options, performanceA: 'Amateur', performanceB: 'Baroque' })
-      .report;
+    const reverse = compareMpm({
+      ...options,
+      performanceA: 'Amateur',
+      performanceB: 'Baroque',
+    }).report;
     expect(reverse.segments.map((segment) => segment.startQuarters)).toEqual(
       forward.segments.map((segment) => segment.startQuarters),
     );
@@ -284,15 +290,16 @@ const DEGENERATE: readonly { readonly name: string; readonly run: () => Comparis
   },
   {
     name: 'a document against itself, where every difference is exactly 0',
-    run: () =>
-      compareMpm({ a: TELEMANN, performanceA: 'Fast', performanceB: 'Fast' }).report,
+    run: () => compareMpm({ a: TELEMANN, performanceA: 'Fast', performanceB: 'Fast' }).report,
   },
   {
     name: 'a ⊥ span on both sides: an asynchrony map with no usable offset',
     run: () =>
       compareMpm({
         a: doc('<asynchronyMap><asynchrony date="0.0"/></asynchronyMap>'),
-        b: doc('<asynchronyMap><asynchrony date="0.0" milliseconds.offset="30.0"/></asynchronyMap>'),
+        b: doc(
+          '<asynchronyMap><asynchrony date="0.0" milliseconds.offset="30.0"/></asynchronyMap>',
+        ),
         window: { start: 0, end: 4 },
       }).report,
   },
@@ -321,8 +328,7 @@ const DEGENERATE: readonly { readonly name: string; readonly run: () => Comparis
 describe('P-C11: every number of every result is finite or null (§9.6)', () => {
   const check = (report: ComparisonReport, label: string): void => {
     for (const [path, value] of walk(report)) {
-      if (typeof value === 'number')
-        expect(Number.isFinite(value), `${label} ${path}`).toBe(true);
+      if (typeof value === 'number') expect(Number.isFinite(value), `${label} ${path}`).toBe(true);
       if (value !== null && typeof value === 'object' && !Array.isArray(value))
         for (const key of Object.keys(value as object))
           expect(
@@ -354,10 +360,13 @@ describe('P-C11: every number of every result is finite or null (§9.6)', () => 
     const report = DEGENERATE[0].run();
     expect(report.window.endQuarters).toBe(report.window.startQuarters);
     expect(report.aggregate.mean).toBeNull();
-    for (const dimension of COMPARISON_DIMENSIONS) expect(report.dimensions[dimension].mean).toBeNull();
+    for (const dimension of COMPARISON_DIMENSIONS)
+      expect(report.dimensions[dimension].mean).toBeNull();
     // …and says so, rather than leaving a reader to infer it from the nulls.
     expect(
-      report.notes.some((note) => note.kind === 'structural' && note.message.includes('zero length')),
+      report.notes.some(
+        (note) => note.kind === 'structural' && note.message.includes('zero length'),
+      ),
     ).toBe(true);
   });
 

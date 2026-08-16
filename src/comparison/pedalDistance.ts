@@ -33,11 +33,7 @@ import { BEZIER_PAIR_SUBDIVISIONS } from './dynamicsDistance.js';
 import { hasBottomIn, pedalSegmentAt, positionAt, type PedalCurve } from './pedalCurve.js';
 import { isBottom } from './values.js';
 import type { ComparisonWindow } from './window.js';
-import {
-  IDENTITY_CANONICAL_PAIR,
-  canonicalValue,
-  type CanonicalPair,
-} from './decomposition.js';
+import { IDENTITY_CANONICAL_PAIR, canonicalValue, type CanonicalPair } from './decomposition.js';
 
 export interface PedalCell {
   readonly startTicks: number;

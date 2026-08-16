@@ -3926,3 +3926,25 @@ AD-55.6 Fix wave assigned to a FRESH Opus worker (w3-fix) with
 W3-VERIFICATION.md as its specification (the findings carry executable
 evidence and verified repairs); w3-verify re-gates scoped to the
 findings afterward, per the W2 pattern.
+
+## 2026-08-16 — W3 fix cut 1: MAJOR-16, the prettierignore anchor (w3-fix)
+
+[RE-CUT, journalled] The commission put MAJOR-16 fourth. It goes first instead, for one reason:
+AD-55.5 puts repo-wide `npx prettier --check` in the pre-commit gate NOW, and until the anchor
+lands that check is vacuous over `src/comparison/**` while failing on one pre-existing file
+(`tests/midi/Midi.test.ts`, unformatted since 67b407e). Landing it first makes the gate real
+from commit 1 and keeps the fix wave's own new code out of the 28-file reformat — otherwise
+every later cut would write unformatted code that this commit then rewrites, and the reformat
+would be entangled with the semantics after all.
+
+`.prettierignore:27` `comparison/` → `/comparison/`. Gitignore semantics match at any depth, so
+the unanchored spelling swallowed `src/comparison/` and `tests/comparison/` along with the
+campaign-record directory it was written for. The file's own rewrite documents this exact hazard
+three lines above, for the sibling `/expression/` entry, and this one never got the slash.
+`npm run format` then reformatted 28 comparison sources plus the one file outside the wave.
+
+Nothing else is in this commit: no line of it changes a value, and `npm run verify` reports the
+same 4996 passed / 0 skipped before and after, which is the check that says so.
+
+Gate: `npm run verify` GREEN — 117 files, 4996 passed, 0 skipped. `npx prettier --check .` clean
+repo-wide for the first time. eslint clean on `src/comparison/` and `tests/comparison/`.

@@ -32,10 +32,7 @@
  * is reported for ratification; the difference is not small (|ln(100/40)| = 9.6 JND sustained
  * over the whole part).
  */
-import {
-  accentuationDistance,
-  accentuationSampler,
-} from './accentuationDistance.js';
+import { accentuationDistance, accentuationSampler } from './accentuationDistance.js';
 import {
   readAccentuationSegments,
   rendererDefaultBeatGrid,
@@ -45,11 +42,7 @@ import {
 import { articulationDistance } from './articulationDistance.js';
 import { readArticulationAtoms, type ArticulationAtoms } from './articulationAtoms.js';
 import { asynchronyDistance } from './asynchronyDistance.js';
-import {
-  offsetAt,
-  readAsynchronySegments,
-  type AsynchronyCurve,
-} from './asynchronyCurve.js';
+import { offsetAt, readAsynchronySegments, type AsynchronyCurve } from './asynchronyCurve.js';
 import {
   canonicalizationFor,
   curveMoments,
@@ -65,10 +58,7 @@ import { readScopeMapViews, type ComparisonDocument } from './document.js';
 import { dynamicsDistance } from './dynamicsDistance.js';
 import { readDynamicsSegments, volumeAt, type DynamicsCurve } from './dynamicsCurve.js';
 import type { EventAtomMass } from './eventAlignment.js';
-import {
-  imprecisionDistance,
-  type ImprecisionDecomposition,
-} from './imprecisionDistance.js';
+import { imprecisionDistance, type ImprecisionDecomposition } from './imprecisionDistance.js';
 import {
   readImprecisionSpans,
   type ImprecisionDomain,
@@ -342,8 +332,14 @@ function evaluateCurve<C>(
   }
 
   const canonical: CanonicalPair = {
-    a: momentsA === null || invariance === 'none' ? IDENTITY : canonicalizationFor(invariance, momentsA),
-    b: momentsB === null || invariance === 'none' ? IDENTITY : canonicalizationFor(invariance, momentsB),
+    a:
+      momentsA === null || invariance === 'none'
+        ? IDENTITY
+        : canonicalizationFor(invariance, momentsA),
+    b:
+      momentsB === null || invariance === 'none'
+        ? IDENTITY
+        : canonicalizationFor(invariance, momentsB),
   };
 
   const result = plan.distance(curveA, curveB, row.jnd, canonical);
@@ -541,8 +537,7 @@ function tempoPlan(settings: DimensionSettings): CurvePlan<TempoCurve> {
  */
 function requirePositiveTempo(curve: TempoCurve, role: 'a' | 'b'): void {
   for (const segment of curve.segments) {
-    const values =
-      segment.kind === 'constant' ? [segment.qbpm] : [segment.qbpm0, segment.qbpm1];
+    const values = segment.kind === 'constant' ? [segment.qbpm] : [segment.qbpm0, segment.qbpm1];
     for (const qbpm of values)
       if (!(qbpm > 0)) throw new NonPositiveTempoError(role, qbpm, segment.startTicks);
   }
@@ -616,14 +611,7 @@ function asynchronyPlan(settings: DimensionSettings): CurvePlan<AsynchronyCurve>
     },
     bottomSpans: (curve) => curve.segments.filter((segment) => isBottom(segment.offset)),
     distance: (curveA, curveB, jnd, canonical) =>
-      asynchronyDistance(
-        curveA,
-        curveB,
-        settings.window,
-        settings.ticksPerQuarter,
-        canonical,
-        jnd,
-      ),
+      asynchronyDistance(curveA, curveB, settings.window, settings.ticksPerQuarter, canonical, jnd),
     notes: (curve, role) =>
       curve.notes.map((note) => noteFrom('asynchrony', role, settings.ticksPerQuarter, note)),
   };
@@ -643,10 +631,8 @@ function accentuationPlan(settings: DimensionSettings): CurvePlan<AccentuationCu
         grid,
       ),
     breakpoints: (curve) => curve.breakpointsTicks,
-    sampler: (curve) =>
-      accentuationSampler(curve, settings.window, settings.ticksPerQuarter, grid),
-    bottomSpans: (curve) =>
-      curve.segments.filter((segment) => segment.pattern.kind === 'bottom'),
+    sampler: (curve) => accentuationSampler(curve, settings.window, settings.ticksPerQuarter, grid),
+    bottomSpans: (curve) => curve.segments.filter((segment) => segment.pattern.kind === 'bottom'),
     distance: (curveA, curveB, jnd, canonical) =>
       accentuationDistance(
         curveA,

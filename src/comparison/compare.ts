@@ -298,7 +298,9 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
       bothNeutral,
     );
     for (const raw of rows.flatMap((row) => row.notes)) notes.push(fromRawNote(raw));
-    notes.push(...invarianceNotes(dimension, rows, options.invariance[dimension], bothNeutral, pair));
+    notes.push(
+      ...invarianceNotes(dimension, rows, options.invariance[dimension], bothNeutral, pair),
+    );
     if (rows.some((row) => row.cappedCells > 0))
       notes.push(
         note(
@@ -579,7 +581,8 @@ function dimensionComparison(
     bottomLengthQuarters: Math.max(0, ...rows.map((row) => row.bottomLengthQuarters)),
     cappedCells: rows.reduce((sum, row) => sum + row.cappedCells, 0),
     decomposition: mergedDecomposition(rows),
-    timeSignatureSource: rows.find((row) => row.timeSignatureSource !== null)?.timeSignatureSource ?? null,
+    timeSignatureSource:
+      rows.find((row) => row.timeSignatureSource !== null)?.timeSignatureSource ?? null,
     datePositionKnown: rows.every((row) => row.datePositionKnown),
   };
 }
@@ -609,10 +612,7 @@ function mergedDecomposition(rows: readonly DimensionEvaluation[]): Decompositio
   return unionDecomposition(unit, samplers);
 }
 
-function averagedDecomposition(
-  unit: string,
-  rows: readonly DimensionEvaluation[],
-): Decomposition {
+function averagedDecomposition(unit: string, rows: readonly DimensionEvaluation[]): Decomposition {
   const mean = (pick: (row: DimensionEvaluation) => number): number =>
     rows.reduce((sum, row) => sum + pick(row), 0) / rows.length;
   const withRho = rows.filter((row) => row.decomposition?.r != null);
@@ -746,10 +746,7 @@ function reportSegment(
     startQuarters: segment.startQuarters,
     endQuarters: segment.endQuarters,
     lengthQuarters: segment.lengthQuarters,
-    measure:
-      msm === null
-        ? null
-        : measureRange(msm, segment.startQuarters, segment.endQuarters),
+    measure: msm === null ? null : measureRange(msm, segment.startQuarters, segment.endQuarters),
     mass: segment.mass,
     peak: segment.peak,
     mean: segment.mean,

@@ -309,7 +309,9 @@ export function readRubatoSegments(
       segments.push({
         startTicks: raw.dateTicks,
         endTicks,
-        frameLengthTicks: Number.isFinite(frameLengthTicks) ? frameLengthTicks : endTicks - raw.dateTicks,
+        frameLengthTicks: Number.isFinite(frameLengthTicks)
+          ? frameLengthTicks
+          : endTicks - raw.dateTicks,
         intensity: 1,
         lateStart: 0,
         earlyEnd: 1,

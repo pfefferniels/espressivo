@@ -927,5 +927,4 @@ describe('Midi', () => {
       expect(data.length).toBe(14 + 8 + chunkLength);
     });
   });
-
 });

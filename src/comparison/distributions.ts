@@ -388,7 +388,6 @@ const INVERSE_SQRT_PI = 0.5641895835477563;
  */
 const ERFC_CONTINUED_FRACTION_LIMIT = 2;
 
-
 /**
  * `erf(z)` for `z ≥ 0` by the confluent series (DLMF 7.6.2 / A&S 7.1.6)
  *
@@ -720,11 +719,7 @@ export function quantileBreakpoints(law: ImprecisionLaw): readonly number[] {
     case 'list':
       return law.values.map((_, index) => index / law.values.length);
     case 'clipped':
-      return [
-        cdf(law.base, law.lower),
-        cdf(law.base, law.upper),
-        ...quantileBreakpoints(law.base),
-      ];
+      return [cdf(law.base, law.lower), cdf(law.base, law.upper), ...quantileBreakpoints(law.base)];
   }
 }
 
@@ -860,10 +855,7 @@ export interface W2Decomposition {
  * catastrophically for a law whose mean dwarfs its spread, which is the ordinary case for a
  * list of measured offsets clustered far from zero.
  */
-export function wasserstein2Decomposition(
-  a: ImprecisionLaw,
-  b: ImprecisionLaw,
-): W2Decomposition {
+export function wasserstein2Decomposition(a: ImprecisionLaw, b: ImprecisionLaw): W2Decomposition {
   const panels = quantilePanels(a, b);
   const integrate = (g: (u: number) => number): number => {
     const total = new CompensatedSum();
@@ -993,9 +985,7 @@ export function lawsEqual(a: ImprecisionLaw, b: ImprecisionLaw): boolean {
     }
     case 'clipped': {
       const other = b as ClippedLaw;
-      return (
-        a.lower === other.lower && a.upper === other.upper && lawsEqual(a.base, other.base)
-      );
+      return a.lower === other.lower && a.upper === other.upper && lawsEqual(a.base, other.base);
     }
   }
 }

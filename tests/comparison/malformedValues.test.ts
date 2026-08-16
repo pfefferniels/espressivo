@@ -156,8 +156,7 @@ const RUBATO_STYLES =
   '</styleDef></rubatoStyles>';
 
 const rubatoMap = (body: string) => `<rubatoMap>${body}</rubatoMap>`;
-const withStyle = (body: string) =>
-  rubatoMap(`<style date="0.0" name.ref="R"/>${body}`);
+const withStyle = (body: string) => rubatoMap(`<style date="0.0" name.ref="R"/>${body}`);
 
 const rubatoCurveFor = (dated: string, header = '') => {
   const parts = scopeOf(doc(dated, header), 'rubatoMap');
@@ -215,12 +214,7 @@ describe('MINOR-4 row 3: @frameLength that the renderer cannot use', () => {
 
   it('poisons nothing when it is 0 and @loop is off — the guard breaks on the first note', () => {
     const zero = rubatoMap('<rubato date="0.0" frameLength="0.0" intensity="2.0"/>');
-    expect(performed(zero).map((note) => note.date)).toEqual([
-      '0.0',
-      '720.0',
-      '1440.0',
-      '2160.0',
-    ]);
+    expect(performed(zero).map((note) => note.date)).toEqual(['0.0', '720.0', '1440.0', '2160.0']);
     expect(rubatoBottomSpans(rubatoCurveFor(zero))).toEqual([]);
   });
 
@@ -260,9 +254,7 @@ describe('AD-36.2: rubato’s first ⊥ route forces its capped integrator', () 
     // keep — and where an uncapped integral breaks the inequality with a ⊥ in the middle.
     const warp = (intensity: string) =>
       doc(
-        rubatoMap(
-          `<rubato date="0.0" frameLength="2880.0" intensity="${intensity}" loop="true"/>`,
-        ),
+        rubatoMap(`<rubato date="0.0" frameLength="2880.0" intensity="${intensity}" loop="true"/>`),
       );
     const a = warp('0.05');
     const c = warp('20');
