@@ -4428,3 +4428,87 @@ pseudo-item + noise-floor context AD-26.3, ω = 1/median normalization
 AD-25.5); scape opt-in (AD-27.8, ≤256 bins, prefix sums); the W4 docs
 obligations (AD-26.4: P1 answer, G2 framing, Hudson recipe, provenance
 presets; C8/C12/C14/C15). Family extension per AD-57.2's check.
+
+## 2026-08-16 — W4 cut A1: the sequential-pricing DP (w4-products)
+
+`src/comparison/editScript.ts` + 18 tests. §6's edit path as an algorithm over a DECLARED
+interface, touching no dimension: it gates on its own and it cannot leave a cross-module change
+half-written, which is AD-51's scoping lesson applied to the wave's largest product.
+
+**THE DP CELL IS THE STATE, which is what makes AD-5's sequential pricing affordable.** §6.2
+says "the state the DP needs is determined by the DP cell" and leaves the construction open. It
+is `S(i, j) = b[0..j) ++ a[i..n)` — the prefix already converted, the suffix still A's — so
+`S(0,0) = A`, `S(n,m) = B`, each of the three moves steps between two such states, and every
+transition price is a function of `(cell, move)` alone. Φ is memoized per cell, so a fill costs
+`(n+1)(m+1)` representations and `~3nm` norms rather than six representations per cell.
+
+Sized against the corpus before it was written, because a full-state rebuild is only defensible
+if the states are small: per (scope, map) the vendored documents carry **3–25 instructions** on
+the curve maps and 50 at the outside (bach `tempoMap`); the one 205-entry map is `articulationMap`,
+which §6.2 prices through the §5.6 alignment functional and not through this DP at all.
+
+**AD-5's COUNTEREXAMPLE IS PINNED — AND IT HAS A STRUCTURAL TIE §6.2's NARRATIVE DOES NOT
+MENTION.** On `A = {I@0 bpm=60, J@5 bpm=60}` against `B = {I@0 bpm=120}` the sequential total is
+`10·ln2 = d_curve` with `reworking = 0`, and the against-A reading is refuted in the same test at
+`5·ln2`, i.e. `d_curve/2` with reworking NEGATIVE. But §6.2 narrates "substitute I, delete J",
+and the DP delivers "delete I, substitute J". Both cost exactly `10·ln2`, and not approximately:
+
+    substitute I, then delete J : 5·ln2         + 5·ln2                 = 10·ln2
+    delete I,     then subst. J : 5·ln(100/60)  + 5·ln(120/100) + 5·ln2 = 10·ln2
+
+the second telescoping through the renderer's own no-tempo default (AD-9ii), which is why they
+land on the same number rather than merely near it. §6.4's precedence keeps the substitute
+branch at the last cell, and that branch is reached from the delete-first predecessor. This is
+survey-algo §2.H's "the ties are structural rather than accidental" arriving at the first
+example anyone will read. Both totals are pinned; which assignment the precedence picks is
+pinned separately so a change to it is visible.
+
+**THE TRIPLE IS THREE NUMBERS BECAUSE THE TWO ORDERS ARE TWO ORDERS.** The DP walks its path in
+ALIGNMENT order; §6.1 delivers in DATE order. Measured over 4000 random pairs, the two differ in
+**1146 of them (29 %)** — a delete at bar 40 really does precede an insert at bar 3 along a
+minimal path. So `scriptCost` is the DP's own path total and `replayedDelta` is what the same op
+set costs applied in the delivered order (§6.3), each op's reported `cost` is its REPLAY cost,
+and `Σ ops.cost = replayedDelta` exactly. Both telescope from A to B, so both are `≥ d_curve`;
+neither dominates the other. The date-order test runs over the family for that reason: pinned to
+one hand-built pair it passed with the delivery sort DELETED, which a negative control found.
+
+**§6.3's VERIFICATION IS AN EXACT ZERO, not a tolerance.** The replay's final state is `b`'s own
+records in `b`'s own order, so `norm(Φ(final), Φ(B))` is `0` bit for bit and `replayResidual` is
+shipped as a field rather than asserted internally — a future move kind that failed to reach B
+is then visible instead of absorbed.
+
+[DECISION, needs ratification] **A co-dated added instruction goes AFTER a surviving one**, and
+the rule is renderer-derived rather than chosen: `datedView.orderedEntries` reproduces
+`GenericMap.parseData`'s backwards insertion scan, which finds the last position whose date is
+`<=` the new one, so an element added to a map lands after the children already at its date —
+and since a co-dated predecessor governs a zero-width span, the added one performs. It matters
+only where both sides coexist at one date, which the DP fill reaches and the replay does not
+(the delivered order is date-then-move-rank and `delete` outranks `insert`, so at a shared date
+A's instruction is gone before B's arrives). `editStateAt` is EXPORTED to pin it, because through
+the DP the rule is observable only statistically: reversing the preference moves scripts on a
+random family and moves nothing on any single hand-built pair. Same move as RG-2's and the K=4
+pin — when a property stops being observable at one layer, the evidence goes down a layer.
+
+The load-bearing test is `eventAlignment.test.ts`'s and `aggregate.test.ts`'s: brute-force
+enumeration of every monotone alignment, each priced by a restatement of §6.2's definition that
+shares no line with the DP, against the DP's optimum. The toy Φ is a step function in a log
+space — `tempoDistance` with every transition removed — so the file exercises the DP's own
+arithmetic without importing a dimension's.
+
+NEGATIVE CONTROLS, four, each failing exactly its own tests and restoring green: the replay
+priced against A rather than the evolving state (2 — AD-5's total and the closure); the
+precedence flipped to `delete > substitute` (5); the co-dated side preference reversed (2 — the
+brute-force family and the direct pin); the delivery re-sort deleted (1, after the date-order
+test was moved onto the family; before that move it failed NOTHING, which is how the gap was
+found).
+
+Gate: `npm run verify` GREEN before committing — 118 files, **5268 passed**, 0 skipped (was
+5250). Repo-wide `npx prettier --check .` clean; eslint clean on both files.
+
+NEXT in cut A: the curve dimensions' `represent`/`norm` adapters. The shape is settled and one
+refactor is implied — each curve reader splits into "resolve one instruction in ITS OWN document's
+environment" and "assemble the resolved list into a curve", because an edit state mixes the two
+documents' instructions and each must keep its own style resolution. That is AD-40.2's principle
+("price the resolved performed effect, never the attribute tuple") and it is also what makes the
+replay reach B exactly: an instruction moved into the other document performs what it performs,
+not what that document's styleDefs would make of its name.
