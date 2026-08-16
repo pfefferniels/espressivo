@@ -4,11 +4,17 @@
  *
  * The wave's original triangle tests ran on three pointwise-ordered constants, which sit at
  * the triangle's *equality* case: they could fail only on quadrature error, so they tested
- * the quadrature and not the metric. This file runs the same properties over twelve members
- * that between them carry `⊥` (by four different routes), the cap, a renderer-default level,
- * a tempo skip, a dynamics skip, AD-35's unbounded resurrected span, and a power-vs-power
+ * the quadrature and not the metric. This file runs the same properties over twenty-six members
+ * that between them carry `⊥` (by seven different routes), the cap, a renderer-default level,
+ * a tempo skip, a dynamics skip, AD-35's unbounded resurrected span, a power-vs-power
  * transition pair — the last being the only member that reaches `criticalPointTicks`, the path
- * CAPITAL-3 broke unseen.
+ * CAPITAL-3 broke unseen — and, since the W3 fix wave, the five dimensions the list of
+ * DIMENSIONS used to omit.
+ *
+ * It runs over **all eleven dimensions** (W3 MAJOR-1). The six it covered left out the two
+ * EVENT dimensions, whose distance is an argmin over monotone alignments and whose metric
+ * status §5.6 argues in prose; measured, an uncapped `localDistance` fails ornamentation's
+ * triangle test and nothing in the old six would have seen it.
  *
  * Every comparison runs under one **explicit shared window**, which §10 requires: under a
  * pair-derived window the three windows of a triple differ and R3 does not claim the triangle
@@ -22,132 +28,62 @@ import {
   adversarialTriples,
   type AdversarialMember,
 } from './adversarialFamily.js';
-import { readComparisonPair, readScopeMapViews } from './../../src/comparison/document.js';
-import type { ComparisonDocument, ComparisonPair } from '../../src/comparison/document.js';
-import { readTempoSegments } from '../../src/comparison/tempoCurve.js';
-import { tempoDistance } from '../../src/comparison/tempoDistance.js';
-import { readDynamicsSegments } from '../../src/comparison/dynamicsCurve.js';
-import { dynamicsDistance } from '../../src/comparison/dynamicsDistance.js';
-import { readAsynchronySegments } from '../../src/comparison/asynchronyCurve.js';
-import { asynchronyDistance } from '../../src/comparison/asynchronyDistance.js';
-import { readAccentuationSegments } from '../../src/comparison/accentuationCurve.js';
-import { accentuationDistance } from '../../src/comparison/accentuationDistance.js';
-import { readMovementSegments } from '../../src/comparison/pedalCurve.js';
-import { pedalDistance } from '../../src/comparison/pedalDistance.js';
-import { readImprecisionSpans } from '../../src/comparison/imprecisionLaws.js';
-import { imprecisionDistance } from '../../src/comparison/imprecisionDistance.js';
+import { readComparisonPair } from './../../src/comparison/document.js';
+import type { ComparisonPair } from '../../src/comparison/document.js';
+import { evaluateDimension, type ScopeSide } from '../../src/comparison/dimensions.js';
+import { DEFAULT_LAMBDA_DATE } from '../../src/comparison/eventAlignment.js';
+import { COMPARISON_DIMENSIONS, type ComparisonDimension } from '../../src/comparison/registry.js';
+import type { InvarianceMode } from '../../src/comparison/decomposition.js';
 
-/** Every dimension with a density so far, each as a total distance function. */
-const DIMENSIONS = [
-  'tempo',
-  'dynamics',
-  'asynchrony',
-  'accentuation',
-  'pedal',
-  'imprecisionTiming',
-] as const;
-type Dimension = (typeof DIMENSIONS)[number];
+/**
+ * ALL ELEVEN (W3 MAJOR-1). The suite covered six, and the five it skipped included the two
+ * EVENT dimensions — whose distance is an argmin over monotone alignments, the only construction
+ * in the module where the triangle inequality is a structural question rather than a numerical
+ * one, and whose metric argument §5.6 makes in prose — plus rubato, which gained its first four
+ * `⊥` routes and the capped integrator in the very wave that shipped this list.
+ *
+ * The distance is now taken through `evaluateDimension`, the same entry the driver calls, rather
+ * than through eleven hand-wired reader/distance pairs. Two things follow and both are the
+ * point: a dimension cannot be in the report and absent here (the list IS
+ * `COMPARISON_DIMENSIONS`), and a dimension's metric properties are checked over everything its
+ * `d_k` is made of — which for articulation now means the alignment optimum AND AD-55.1's
+ * default step function, two components that reach the number by different routes.
+ */
+const DIMENSIONS = COMPARISON_DIMENSIONS;
+type Dimension = ComparisonDimension;
 
-const globalScopeOf = (document: ComparisonDocument) => {
+const NO_INVARIANCE = Object.fromEntries(
+  COMPARISON_DIMENSIONS.map((dimension) => [dimension, 'none']),
+) as Record<ComparisonDimension, InvarianceMode>;
+
+/** The parsed pair, memoized across the eleven dimensions rather than reparsed per dimension. */
+const PAIRS = new Map<string, ComparisonPair>();
+
+function pairOf(x: AdversarialMember, y: AdversarialMember): ComparisonPair {
+  const key = `${x.name}|${y.name}`;
+  const known = PAIRS.get(key);
+  if (known !== undefined) return known;
+  const parsed = readComparisonPair({ a: x.mpm, b: y.mpm, window: ADVERSARIAL_WINDOW });
+  PAIRS.set(key, parsed);
+  return parsed;
+}
+
+function sideOf(pair: ComparisonPair, role: 'a' | 'b'): ScopeSide {
+  const document = pair[role];
   const scope = document.scopes.find((candidate) => candidate.scope === 'global');
   if (scope === undefined) throw new Error('no global scope');
-  return scope;
-};
+  return { role, document, scope };
+}
 
 function distanceFor(dimension: Dimension, pair: ComparisonPair): number {
-  const read = (side: 'a' | 'b') => {
-    const document = pair[side];
-    const scope = globalScopeOf(document);
-    const views = readScopeMapViews(scope);
-    return { document, scope, views };
-  };
-  const a = read('a');
-  const b = read('b');
-
-  if (dimension === 'tempo')
-    return tempoDistance(
-      readTempoSegments(
-        a.views.get('tempoMap') ?? null,
-        a.document.scaleFactor,
-        a.scope.environment,
-        a.document.performance.global,
-      ),
-      readTempoSegments(
-        b.views.get('tempoMap') ?? null,
-        b.document.scaleFactor,
-        b.scope.environment,
-        b.document.performance.global,
-      ),
-      pair.window,
-      pair.ppq.lcm,
-    ).distance;
-
-  if (dimension === 'dynamics')
-    return dynamicsDistance(
-      readDynamicsSegments(
-        a.views.get('dynamicsMap') ?? null,
-        a.document.scaleFactor,
-        a.scope.environment,
-        a.document.performance.global,
-      ),
-      readDynamicsSegments(
-        b.views.get('dynamicsMap') ?? null,
-        b.document.scaleFactor,
-        b.scope.environment,
-        b.document.performance.global,
-      ),
-      pair.window,
-      pair.ppq.lcm,
-    ).distance;
-
-  if (dimension === 'asynchrony')
-    return asynchronyDistance(
-      readAsynchronySegments(a.views.get('asynchronyMap') ?? null, a.document.scaleFactor),
-      readAsynchronySegments(b.views.get('asynchronyMap') ?? null, b.document.scaleFactor),
-      pair.window,
-      pair.ppq.lcm,
-    ).distance;
-
-  if (dimension === 'accentuation')
-    return accentuationDistance(
-      readAccentuationSegments(
-        a.views.get('metricalAccentuationMap') ?? null,
-        a.document.scaleFactor,
-        a.scope.environment,
-        a.document.performance.global,
-      ),
-      readAccentuationSegments(
-        b.views.get('metricalAccentuationMap') ?? null,
-        b.document.scaleFactor,
-        b.scope.environment,
-        b.document.performance.global,
-      ),
-      pair.window,
-      pair.ppq.lcm,
-    ).distance;
-
-  if (dimension === 'imprecisionTiming')
-    return imprecisionDistance(
-      readImprecisionSpans(
-        a.views.get('imprecisionMap.timing') ?? null,
-        'imprecisionTiming',
-        a.document.scaleFactor,
-      ),
-      readImprecisionSpans(
-        b.views.get('imprecisionMap.timing') ?? null,
-        'imprecisionTiming',
-        b.document.scaleFactor,
-      ),
-      pair.window,
-      pair.ppq.lcm,
-    ).distance;
-
-  return pedalDistance(
-    readMovementSegments(a.views.get('movementMap') ?? null, a.document.scaleFactor),
-    readMovementSegments(b.views.get('movementMap') ?? null, b.document.scaleFactor),
-    pair.window,
-    pair.ppq.lcm,
-  ).distance;
+  return evaluateDimension(dimension, sideOf(pair, 'a'), sideOf(pair, 'b'), {
+    window: pair.window,
+    ticksPerQuarter: pair.ppq.lcm,
+    jnd: {},
+    invariance: NO_INVARIANCE,
+    beatGrid: null,
+    lambdaDate: DEFAULT_LAMBDA_DATE,
+  }).distance;
 }
 
 /**
@@ -164,21 +100,22 @@ function distance(dimension: Dimension, x: AdversarialMember, y: AdversarialMemb
   const key = `${dimension}|${x.name}|${y.name}`;
   const cached = CACHE.get(key);
   if (cached !== undefined) return cached;
-  const computed = distanceFor(
-    dimension,
-    readComparisonPair({ a: x.mpm, b: y.mpm, window: ADVERSARIAL_WINDOW }),
-  );
+  const computed = distanceFor(dimension, pairOf(x, y));
   CACHE.set(key, computed);
   return computed;
 }
 
 describe('the adversarial family itself', () => {
-  it('has seventeen members with distinct hazards', () => {
-    // Twelve after cut 1, seventeen after cut 4 — each cut extends the family with the failure
-    // surfaces it opens (AD-33.5's standing policy), and this count is what makes that an
-    // obligation rather than an intention.
-    expect(ADVERSARIAL_FAMILY).toHaveLength(17);
-    expect(new Set(ADVERSARIAL_FAMILY.map((member) => member.name)).size).toBe(17);
+  it('has twenty-six members with distinct hazards', () => {
+    // Twelve after cut 1, seventeen after cut 4, twenty-six after the W3 fix wave — each cut
+    // extends the family with the failure surfaces it opens (AD-33.5's standing policy), and
+    // this count is what makes that an obligation rather than an intention. The nine added at
+    // MAJOR-1 are the surfaces of the five dimensions the suite never ran on: rubato's ordinary
+    // warp and its first ⊥ route, the two event dimensions' ordinary, offset and incomparable
+    // cases, articulation's default step function, and the two imprecision domains that had no
+    // member at all.
+    expect(ADVERSARIAL_FAMILY).toHaveLength(26);
+    expect(new Set(ADVERSARIAL_FAMILY.map((member) => member.name)).size).toBe(26);
   });
 
   it('is not degenerate: every member differs from every other in some dimension', () => {
@@ -315,5 +252,79 @@ describe('the family reaches the paths the wave could not see', () => {
     const d = distance('asynchrony', capped!, plain!);
     expect(Number.isFinite(d)).toBe(true);
     expect(d).toBeLessThanOrEqual(2 * 10 * 4 * (1 + 1e-9));
+  });
+
+  // W3 MAJOR-1. The five dimensions the suite never ran on, each shown to REACH its own
+  // failure surface and not merely to contain a member. AD-50.3's lesson, applied to the
+  // additions it licensed: a family that contains a hazard is not one that reaches it.
+  const member = (name: string): AdversarialMember => {
+    const found = ADVERSARIAL_FAMILY.find((candidate) => candidate.name === name);
+    if (found === undefined) throw new Error(`no adversarial member named ${name}`);
+    return found;
+  };
+  const PLAIN = () => member('plain');
+
+  it('reaches rubato’s ⊥ route, and the cap binds over the whole window', () => {
+    // An unusable @intensity with @loop on poisons the WHOLE span, so a ⊥ against a real warp
+    // is δ_row per quarter across the window: 10 × 4. Rubato's four ⊥ routes and its capped
+    // integrator both arrived in W3b with no family member reaching either.
+    expect(distance('rubato', member('rubato-bottom'), member('rubato-plain'))).toBeCloseTo(
+      10 * 4,
+      9,
+    );
+    expect(distance('rubato', member('rubato-plain'), PLAIN())).toBeGreaterThan(0);
+  });
+
+  it('reaches a NON-TRIVIAL articulation alignment, not an all-drops one', () => {
+    // The two anchor sets sit an eighth of a quarter apart, so `λ_date` makes exactly one match
+    // cheaper than two drops and the DP has to trade. An all-drops optimum would exercise the
+    // sum and not the argmin, which is the construction §5.6 makes the semantic definition.
+    const pair = readComparisonPair({
+      a: member('articulation-anchors').mpm,
+      b: member('articulation-offset').mpm,
+      window: ADVERSARIAL_WINDOW,
+    });
+    const events = evaluateDimension('articulation', sideOf(pair, 'a'), sideOf(pair, 'b'), {
+      window: pair.window,
+      ticksPerQuarter: pair.ppq.lcm,
+      jnd: {},
+      invariance: NO_INVARIANCE,
+      beatGrid: null,
+      lambdaDate: DEFAULT_LAMBDA_DATE,
+    }).events;
+    expect(events.matched).toBeGreaterThan(0);
+    expect(events.unmatchedA).toBeGreaterThan(0);
+    expect(events.unmatchedB).toBeGreaterThan(0);
+  });
+
+  it('reaches AD-55.1’s default step function as a component of its own', () => {
+    // `articulation-default` carries NO atoms — only two `<style>` switches — so anything it
+    // scores is the step function's, by a different route from every other event member.
+    expect(distance('articulation', member('articulation-default'), PLAIN())).toBeGreaterThan(0);
+  });
+
+  it('reaches ornamentation’s incomparable pair, and prices it at the cap', () => {
+    // A tick frame against a millisecond frame has no common domain without a tempo map
+    // (§5.6): two matched anchors, each at 2·δ_row. Against a document with no ornaments the
+    // same member is an ordinary deviation-from-neutral, which is what makes the pair a ⊥ and
+    // not merely a large number.
+    expect(
+      distance('ornamentation', member('ornament-plain'), member('ornament-milliseconds')),
+    ).toBeCloseTo(2 * 2 * 10, 9);
+    expect(distance('ornamentation', member('ornament-plain'), PLAIN())).toBeGreaterThan(0);
+  });
+
+  it('reaches the two imprecision domains that had no member at all', () => {
+    for (const dimension of ['imprecisionDynamics', 'imprecisionDuration'] as const) {
+      expect(distance(dimension, member('imprecision-other-domains'), PLAIN())).toBeGreaterThan(0);
+      // The ⊥ route in those domains too, at the cap: an empty <distribution.list>.
+      expect(
+        distance(
+          dimension,
+          member('imprecision-other-domains'),
+          member('imprecision-other-domains-bottom'),
+        ),
+      ).toBeCloseTo(10 * 4, 9);
+    }
   });
 });

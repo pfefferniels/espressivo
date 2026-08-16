@@ -646,6 +646,54 @@ export interface EquivalenceBlock {
  * Fractions of ZERO are `0`, not `NaN`: a pair with no deviation at all has none of it above
  * threshold, which is the true answer and the one §9.6's finiteness discipline requires.
  */
+/**
+ * The LENGTH of `{ t ∈ window : p_k(t) > τ_k }`, at cell resolution.
+ *
+ * Summing each cell's own length was wrong wherever a dimension is evaluated over several part
+ * scopes: the cell lists then OVERLAP in time — which is not a defect but the meaning of
+ * `p_k(t) = Σ_parts p_{k,part}(t)` — so three parts deviating everywhere reported a "fraction"
+ * of 3.0, and §7.3's mandated sentence would have printed "300 % of the window" (W3 MAJOR-4).
+ *
+ * So the measure is taken over the union of the cell edges, and each elementary interval carries
+ * the density of every cell covering it, which is the same summation {@link massIn} and
+ * {@link pointwiseDensityAt} already perform. The result is a length inside the window by
+ * construction, so the fraction cannot leave `[0, 1]`.
+ */
+function aboveThresholdLength(
+  density: DimensionDensity,
+  threshold: number,
+  windowStartQuarters: number,
+  windowEndQuarters: number,
+): number {
+  const edges = new Set<number>([windowStartQuarters, windowEndQuarters]);
+  for (const cell of density.cells) {
+    if (cell.startQuarters > windowStartQuarters && cell.startQuarters < windowEndQuarters)
+      edges.add(cell.startQuarters);
+    if (cell.endQuarters > windowStartQuarters && cell.endQuarters < windowEndQuarters)
+      edges.add(cell.endQuarters);
+  }
+  const grid = [...edges].sort((x, y) => x - y);
+
+  const total = new CompensatedSum();
+  for (let i = 0; i < grid.length - 1; ++i) {
+    const low = grid[i];
+    const high = grid[i + 1];
+    const length = high - low;
+    if (!(length > 0)) continue;
+    // Cells only: an ATOM is a point mass, and a set of measure zero is never "above threshold
+    // for a length". Its mass is where the event dimensions are visible, in the mass fraction.
+    const mass = new CompensatedSum();
+    for (const cell of density.cells) {
+      if (cell.endQuarters <= low || cell.startQuarters >= high) continue;
+      mass.add(
+        cellMassBetween(cell, Math.max(cell.startQuarters, low), Math.min(cell.endQuarters, high)),
+      );
+    }
+    if (mass.total / length > threshold) total.add(length);
+  }
+  return total.total;
+}
+
 export function equivalenceBlock(
   densities: readonly DimensionDensity[],
   thresholds: DimensionWeights,
@@ -673,16 +721,17 @@ export function equivalenceBlock(
       // would make the field vacuous. §7.3 licenses exactly this as the secondary,
       // explicitly non-closing per-dimension product; it is measured at cell resolution,
       // without the aggregate pass's root refinement, which is why it is a descriptor.
-      const above = new CompensatedSum();
-      for (const cell of density.cells) {
-        const length = cell.endQuarters - cell.startQuarters;
-        if (length > 0 && cell.mass / length > thresholds[dimension]) above.add(length);
-      }
+      const above = aboveThresholdLength(
+        density,
+        thresholds[dimension],
+        windowStartQuarters,
+        windowEndQuarters,
+      );
       return [
         dimension,
         {
           subThresholdMassFraction: total > 0 ? (total - inSegments.total) / total : 0,
-          aboveThresholdLengthFraction: windowLength > 0 ? above.total / windowLength : 0,
+          aboveThresholdLengthFraction: windowLength > 0 ? above / windowLength : 0,
         },
       ];
     }),

@@ -499,4 +499,81 @@ describe('C11: the equivalence block', () => {
     expect(block.byDimension.tempo.aboveThresholdLengthFraction).toBeCloseTo(0.5, 9);
     expect(block.byDimension.pedal.aboveThresholdLengthFraction).toBe(0);
   });
+
+  /**
+   * W3 MAJOR-4: it is a FRACTION, and a dimension evaluated over several part scopes carries
+   * one overlapping cell list per scope.
+   *
+   * Summing each cell's own length counted the same quarter once per part, so three parts
+   * deviating everywhere reported 3.0 — a caller-visible value outside `[0, 1]`, and §7.3's
+   * mandated sentence would have printed "300 % of the window". The only test that touched the
+   * field used ONE synthetic scope and pinned 0.5, which is right for one scope and blind to
+   * the case the real corpus is made of: telemann's tempo row measured 3.0000 on the vendored
+   * documents and albert's dynamics likewise.
+   */
+  it('stays a fraction when a dimension is evaluated over several part scopes', () => {
+    const threeParts: DimensionDensity = {
+      dimension: 'tempo',
+      // Three scopes, each covering the whole window — what `densityOf` concatenates when three
+      // parts inherit one global map.
+      cells: [0, 1, 2].map(() => ({
+        startQuarters: 0,
+        endQuarters: 8,
+        mass: 9 * 8,
+        densityAt: () => 9,
+      })),
+      atoms: [],
+      distance: 3 * 9 * 8,
+    };
+    const block = equivalenceBlock(
+      [threeParts],
+      defaultThresholds(),
+      [],
+      0,
+      threeParts.distance,
+      0,
+      8,
+    );
+    expect(block.byDimension.tempo.aboveThresholdLengthFraction).toBe(1);
+
+    // And it is not clamped into range: a dimension above threshold on HALF the window still
+    // reports 0.5 with three scopes, so the repair is a measure and not a `Math.min`.
+    const halfAbove: DimensionDensity = {
+      dimension: 'pedal',
+      cells: [0, 1, 2].flatMap(() => [
+        { startQuarters: 0, endQuarters: 4, mass: 9 * 4, densityAt: () => 9 },
+        { startQuarters: 4, endQuarters: 8, mass: 0, densityAt: () => 0 },
+      ]),
+      atoms: [],
+      distance: 3 * 9 * 4,
+    };
+    const second = equivalenceBlock(
+      [halfAbove],
+      defaultThresholds(),
+      [],
+      0,
+      halfAbove.distance,
+      0,
+      8,
+    );
+    expect(second.byDimension.pedal.aboveThresholdLengthFraction).toBeCloseTo(0.5, 12);
+  });
+
+  it('sums the overlapping scopes’ densities rather than taking one of them', () => {
+    // Three scopes each at 0.4 JND per quarter are below the threshold alone and above it
+    // together — `p_k(t) = Σ_parts p_{k,part}(t)`, the same summation `massIn` performs.
+    const together: DimensionDensity = {
+      dimension: 'dynamics',
+      cells: [0, 1, 2].map(() => ({
+        startQuarters: 0,
+        endQuarters: 8,
+        mass: 0.4 * 8,
+        densityAt: () => 0.4,
+      })),
+      atoms: [],
+      distance: 3 * 0.4 * 8,
+    };
+    const block = equivalenceBlock([together], defaultThresholds(), [], 0, together.distance, 0, 8);
+    expect(block.byDimension.dynamics.aboveThresholdLengthFraction).toBe(1);
+  });
 });

@@ -46,12 +46,17 @@
  * are dimension-neutral for the same reason the DP is — placement is a fact about dates, not
  * about articulations.
  *
- * ## Determinism
+ * ## Determinism, and SYMMETRY (W3 MAJOR-17)
  *
- * Ties are broken in a fixed order — match, then drop from `a`, then drop from `b` — so the
- * argmin is a function of the inputs and not of the iteration order. R2's bit-exact symmetry is
- * a property of the *cost*, which the caller owns; what this module guarantees is that equal
- * costs never make the answer depend on anything but the stated tie-break.
+ * Ties are broken on a key of the two EVENTS — match first, then the drop whose event has the
+ * smaller `dateTicks`, then the smaller `id` in code-unit order — so the argmin is a function of
+ * the inputs and not of the iteration order, AND the swapped call reaches the same alignment
+ * from the other side. Revision 1 broke ties in the fixed order `match → dropA → dropB`, which
+ * is deterministic but not symmetric: at an equal-cost tie it picked the mirror image of what
+ * `solve(b, a)` picked, a different alignment of identical cost. The distances were invariant —
+ * the mass integral is preserved — but `events.{matched, unmatchedA, unmatchedB}` and
+ * `segments[].peak` are shipped fields, and on `aller-augen | bach` they read `[0, 35, 396]` one
+ * way and `[18, 378, 17]` the other. §9.5's P-C2 promise is about the whole report.
  */
 
 /** The minimum an event must expose to be alignable. */
@@ -317,6 +322,31 @@ export function chargeAtoms<T extends AlignableEvent>(
 
 type Move = 'match' | 'dropA' | 'dropB' | 'none';
 
+/**
+ * Which of two equal-cost drops to take — a key of the two EVENTS, never of their sides.
+ *
+ * A fixed cascade is not a symmetric one. `match → dropA → dropB` made the argmin a function of
+ * the inputs, which is all the determinism note used to claim, but at an equal-cost tie it
+ * selected the mirror image of what the swapped call selected: on `aller-augen | bach` the
+ * shipped `events` block read `[0, 35, 396]` one way and `[18, 378, 17]` the other, with
+ * `segments[].peak` differing at identical mass. Those are caller-visible fields and §9.5's P-C2
+ * promise is about the whole report, not only its distances.
+ *
+ * So the tie is broken on the smaller `dateTicks`, then the smaller `id` in code-unit order —
+ * both properties of the events themselves, so the swapped call reaches the same decision from
+ * the other side. Two events agreeing on BOTH keys are indistinguishable to this rule and fall
+ * to `'dropA'`; that residue needs equal dates, equal (or absent) ids and equal cost, and equal
+ * NON-null ids would have been pinned to each other rather than dropped.
+ */
+function preferredDrop(eventA: AlignableEvent, eventB: AlignableEvent): 'dropA' | 'dropB' {
+  if (eventA.dateTicks !== eventB.dateTicks)
+    return eventA.dateTicks < eventB.dateTicks ? 'dropA' : 'dropB';
+  const idA = eventA.id ?? '';
+  const idB = eventB.id ?? '';
+  if (idA !== idB) return idA < idB ? 'dropA' : 'dropB';
+  return 'dropA';
+}
+
 function solve<T extends AlignableEvent>(
   a: readonly T[],
   b: readonly T[],
@@ -352,33 +382,27 @@ function solve<T extends AlignableEvent>(
       const matchAllowed =
         (pinA === undefined || pinA === j - 1) && (pinB === undefined || pinB === i - 1);
 
-      let best = Number.POSITIVE_INFINITY;
-      let move: Move = 'none';
-
+      let matchCost = Number.POSITIVE_INFINITY;
       if (matchAllowed && Number.isFinite(dp[i - 1][j - 1])) {
         const displacement = Math.abs(a[i - 1].dateTicks - b[j - 1].dateTicks) / ticksPerQuarter;
-        const candidate =
+        matchCost =
           dp[i - 1][j - 1] + cost.matched(a[i - 1], b[j - 1]) + cost.lambdaDate * displacement;
-        if (candidate < best) {
-          best = candidate;
-          move = 'match';
-        }
       }
-      // Tie-break order — match, then drop from a, then drop from b — is fixed and strict, so
-      // an equal-cost alternative never displaces the one already chosen.
-      if (pinA === undefined && Number.isFinite(dp[i - 1][j])) {
-        const candidate = dp[i - 1][j] + cost.unmatched(a[i - 1]);
-        if (candidate < best) {
-          best = candidate;
-          move = 'dropA';
-        }
-      }
-      if (pinB === undefined && Number.isFinite(dp[i][j - 1])) {
-        const candidate = dp[i][j - 1] + cost.unmatched(b[j - 1]);
-        if (candidate < best) {
-          best = candidate;
-          move = 'dropB';
-        }
+      const dropACost =
+        pinA === undefined && Number.isFinite(dp[i - 1][j])
+          ? dp[i - 1][j] + cost.unmatched(a[i - 1])
+          : Number.POSITIVE_INFINITY;
+      const dropBCost =
+        pinB === undefined && Number.isFinite(dp[i][j - 1])
+          ? dp[i][j - 1] + cost.unmatched(b[j - 1])
+          : Number.POSITIVE_INFINITY;
+
+      const best = Math.min(matchCost, dropACost, dropBCost);
+      let move: Move = 'none';
+      if (Number.isFinite(best)) {
+        if (best === matchCost) move = 'match';
+        else if (best === dropACost && best === dropBCost) move = preferredDrop(a[i - 1], b[j - 1]);
+        else move = best === dropACost ? 'dropA' : 'dropB';
       }
 
       dp[i][j] = best;

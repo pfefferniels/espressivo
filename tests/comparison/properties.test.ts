@@ -19,7 +19,8 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { compareMpm, neutralMpm, COMPARISON_DIMENSIONS } from '../../src/api/index.js';
-import type { ComparisonReport } from '../../src/api/index.js';
+import type { ComparisonNote, ComparisonReport } from '../../src/api/index.js';
+import { compareNotes } from '../../src/comparison/compare.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const fixture = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'utf-8');
@@ -28,6 +29,8 @@ const score = (name: string) => readFileSync(join(FIXTURES, `${name}.msm`), 'utf
 const TELEMANN = fixture('telemann-grave');
 const VULPIUS = fixture('vulpius-die-helle-sonn');
 const ALBERT = fixture('albert-du-mein-einzig-licht');
+const BACH = fixture('bach-bwv1007-minuet2');
+const ALLER_AUGEN = fixture('aller-augen');
 const MINIMAL = fixture('minimal');
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
@@ -108,13 +111,12 @@ function mirror(report: ComparisonReport): ComparisonReport {
     if (site !== null) site.document = swapRole(site.document);
     return { ...note, document: swapRole(note.document) };
   });
-  copy.notes = notes.sort(
-    (x, y) =>
-      compareText(x.kind as string, y.kind as string) ||
-      compareText((x.dimension as string | null) ?? '', (y.dimension as string | null) ?? '') ||
-      ((x.startQuarters as number | null) ?? 0) - ((y.startQuarters as number | null) ?? 0) ||
-      compareText((x.document as string | null) ?? '', (y.document as string | null) ?? '') ||
-      compareText(x.message as string, y.message as string),
+  // The ENGINE's comparator, not a copy of it. A copy was what let W3 MAJOR-6 hide: the two
+  // drifted, the engine's was not total, and this re-sort tidied the difference away. Using the
+  // real one makes the re-sort what it claims to be — the swap map applied — and leaves the
+  // comparator's totality to the dedicated test that can actually see it.
+  copy.notes = notes.sort((x, y) =>
+    compareNotes(x as unknown as ComparisonNote, y as unknown as ComparisonNote),
   );
 
   return copy as unknown as ComparisonReport;
@@ -135,10 +137,6 @@ function negate(value: unknown): unknown {
 
 function swapRole(role: unknown): unknown {
   return role === 'a' ? 'b' : role === 'b' ? 'a' : role;
-}
-
-function compareText(x: string, y: string): number {
-  return x < y ? -1 : x > y ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +192,26 @@ const PAIRS: readonly Pair[] = [
     performanceA: 'Baroque',
     performanceB: 'Baroque',
   },
+  // W3 MAJOR-17. Every pair above is either a same-document pair or one whose event dimensions
+  // never reach an equal-cost tie, and the alignment DP's tie-break asymmetry appeared only on
+  // CROSS-document pairs with real articulation on both sides: `events` read `[0, 35, 396]` one
+  // way and `[18, 378, 17]` the other, with `segments[].peak` differing at identical mass. A
+  // corpus can contain a hazard without reaching it (AD-50.3's lesson), so the two the verifier
+  // found are here by name.
+  {
+    name: 'Aller Augen against Bach — cross-document, articulation on both sides',
+    a: ALLER_AUGEN,
+    b: BACH,
+    performanceA: 'My Performance',
+    performanceB: 'like Heinrich Schiff',
+  },
+  {
+    name: 'Albert against Bach — cross-document, an id-anchored articulation map on one side',
+    a: ALBERT,
+    b: BACH,
+    performanceA: 'Axel Berndt',
+    performanceB: 'like Heinrich Schiff',
+  },
 ];
 
 describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9.5’s map', () => {
@@ -234,6 +252,63 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
     }).report;
     expect(JSON.stringify(reverse)).not.toBe(JSON.stringify(forward));
     expect(JSON.stringify(mirror(reverse))).toBe(JSON.stringify(forward));
+  });
+
+  /**
+   * W3 MAJOR-6: the note comparator has to be TOTAL, and P-C2 above cannot tell.
+   *
+   * §9.5 names `site` among the note keys and the comparator did not use it, so four Albert
+   * notes — one plausibility finding raised in the global scope and in each of three part
+   * scopes — tied on every key with four distinct serializations, and their relative order was
+   * decided by sort stability, i.e. by which document was read first. P-C2 is blind to it
+   * because the mirror re-sorts with the same comparator: a partial order tidies its own
+   * ambiguity away. So this is the direct statement instead — two notes compare equal only if
+   * they ARE equal.
+   */
+  it('orders the notes TOTALLY: comparing equal implies being equal', () => {
+    for (const pair of PAIRS) {
+      const report = compareMpm({
+        a: pair.a,
+        b: pair.b,
+        performanceA: pair.performanceA,
+        performanceB: pair.performanceB,
+        msm: pair.msm,
+      }).report;
+      for (let i = 0; i + 1 < report.notes.length; ++i) {
+        const x = report.notes[i];
+        const y = report.notes[i + 1];
+        if (compareNotes(x, y) !== 0) continue;
+        expect(JSON.stringify(x), `${pair.name}: two distinct notes compare equal`).toBe(
+          JSON.stringify(y),
+        );
+      }
+      // Sorted, and by THIS comparator — an array in some other order would make the check above
+      // vacuous, since it only inspects adjacent pairs.
+      for (let i = 0; i + 1 < report.notes.length; ++i)
+        expect(compareNotes(report.notes[i], report.notes[i + 1])).toBeLessThanOrEqual(0);
+    }
+  });
+
+  it('separates the four Albert notes that differ only in their SITE', () => {
+    // The concrete case: one `@transition.to` outside its plausible band, reported once for the
+    // global scope and once for each of three parts. Same kind, same dimension, same date, same
+    // document, same message — and four different sites.
+    const report = compareMpm({
+      a: ALBERT,
+      performanceA: 'Axel Berndt',
+      performanceB: 'Like a robot',
+    }).report;
+    const sameMessage = report.notes.filter(
+      (note) =>
+        note.kind === 'plausibility' &&
+        note.message ===
+          report.notes.find((candidate) => candidate.kind === 'plausibility')?.message,
+    );
+    expect(sameMessage.length).toBeGreaterThan(1);
+    const sites = new Set(sameMessage.map((note) => JSON.stringify(note.site)));
+    expect(sites.size).toBe(sameMessage.length);
+    for (let i = 0; i + 1 < sameMessage.length; ++i)
+      expect(compareNotes(sameMessage[i], sameMessage[i + 1])).toBeLessThan(0);
   });
 
   it('keeps the segment ranking and the note order out of the orientation', () => {

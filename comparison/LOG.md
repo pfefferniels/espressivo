@@ -4122,3 +4122,125 @@ rather than let the test go quietly vacuous.
 
 Gate: `npm run verify` GREEN — 117 files, **5019 passed**, 0 skipped. Repo-wide
 `npx prettier --check .` clean; eslint clean on `src/comparison/` and `tests/comparison/`.
+
+## 2026-08-16 — W3 fix cut 4: MAJOR-1, 2, 3, 4, 5, 6, 17 (w3-fix)
+
+The seven MAJORs that change what is CHECKED or what is PUBLISHED. None moves a vendored
+headline number — the seven anchors are bit-identical to cut 2's — which is itself the finding:
+these were pins that could not see, records that were wrong, and one order that was not total.
+
+**MAJOR-17 — the alignment tie-break is symmetric now, not merely fixed.** `eventAlignment.ts`'s
+cascade `match → dropA → dropB` made the argmin a function of the inputs and, at an equal-cost
+tie, selected the mirror image of what the swapped call selected. `preferredDrop` breaks the tie
+on a key of the two EVENTS — smaller `dateTicks`, then smaller `id` in code-unit order — so both
+orientations reach the same decision from their own side. Verified on the two cross-document
+pairs the report named:
+
+```
+aller-augen | bach   events fwd [0,35,780]  rev [0,780,35]   (exact mirror)  peak identical
+albert      | bach   events fwd [9,58,576]  rev [9,576,58]   (exact mirror)  peak identical
+```
+
+The residue — two events agreeing on date AND id — falls to `dropA` and is documented; it needs
+equal cost as well, and equal non-null ids would have been PINNED rather than dropped.
+
+**MAJOR-1 — the metric suite runs on all eleven dimensions.** `DIMENSIONS` is now literally
+`COMPARISON_DIMENSIONS`, and the distance is taken through `evaluateDimension` — the driver's own
+entry — rather than through hand-wired reader/distance pairs. A dimension therefore cannot be in
+the report and absent here, and each dimension is checked over everything its `d_k` is made of
+(articulation's two components included). Nine family members added, one per uncovered surface,
+each shown to REACH it and not merely to contain it:
+
+| member | reaches | measured |
+| --- | --- | --- |
+| `rubato-plain` / `rubato-bottom` | rubato's first ⊥ route, and the cap | `d(⊥, warp) = 40 = δ_row × 4` with the cap binding in all 4 cells |
+| `articulation-anchors` / `-offset` | a NON-TRIVIAL alignment | matched 1, unmatchedA 3, unmatchedB 3 — the DP trades a match against drops |
+| `articulation-default` | AD-55.1's step component alone | 23.70 against a document with no articulation map |
+| `ornament-plain` / `-milliseconds` | §5.6's incomparable `@time.unit` pair | `2 × 2·δ_row = 40`, cap binding on both anchors |
+| `imprecision-other-domains` (+`-bottom`) | the two imprecision domains with no member at all | dynamics 8.00, duration 1.96; both ⊥ arms at `δ_row × 4` |
+
+[MEASURED while building it] The toneduration member first scored 0 against a document with no
+such map, which is renderer-true and useless: absent `clip.*` read as 0 and collapse a triangular
+to δ₀ (AD-49.1's degenerate table). The clips are explicit now, with the reason written down.
+
+**MAJOR-2 / AD-55.3 — the imprecision epsilon says what it is relative TO.** The published
+3.6e-16 was a naive `|Δ|/W₁` on well-separated pairs; two uniforms `6e-12` apart falsify it by
+eleven orders while the ABSOLUTE error stays at one ulp of the support. Measured over 14 pairs
+with closed forms derived from `∫₀¹|Q_A − Q_B| du`:
+
+```
+U(-30,30) vs shifted 6      exact 6.0e+0   abs 1.78e-15  naive 2.96e-16  per support 2.69e-17
+U(-30,30) vs shifted 6e-6   exact 6.0e-6   abs 7.08e-16  naive 1.18e-10  per support 1.18e-17
+U(-30,30) vs shifted 6e-12  exact 6.0e-12  abs 3.24e-16  naive 5.39e-05  per support 5.39e-18
+```
+
+The field now carries **3e-16 relative to the SUPPORT SCALE** — worst over the family, reached at
+the point-mass pairs where the two readings coincide because the support degenerates to the
+separation — with `jnd: 1.2e-16` operative and the well-separated caveat written at the constant.
+
+[MEASUREMENT DIFFERS FROM THE RULING, reported] AD-55.3 records "measured ≤ 3e-17". That figure
+is the verifier's uniform-only table, where the support (60) is ten times the answer. Over a
+family that includes two point masses the same quantity is 3.0e-16, and publishing 3e-17 would
+have been publishing a number this repository cannot reproduce. The ruling's SUBSTANCE — restate
+against the support scale, keep the JND figure operative — is implemented exactly.
+
+**MAJOR-3 — the Halley residual is complementary in the right tail.** `Φ(x) − p` cancels
+completely as `p → 1`, so the correction was noise and Acklam's raw 1.15e-9 survived; the round
+trip that pinned it is `|Φ(Q(p)) − p| / p`, which is exactly 0 there whatever `Q` returned.
+`(1 − p) − Φ(−x)` has no cancellation in it: `1 − p` is exact by Sterbenz and `Φ(−x)` is the
+left tail. Against `mpmath` at 60 dps, references computed for the DOUBLE the caller passes
+(`fl(1 − 10⁻ᵏ)` is not the complement of `fl(10⁻ᵏ)`, and comparing both tails to one list of
+magnitudes would charge the right tail 1 % of a reference it never claimed):
+
+```
+worst relative, k = 1..15   right tail 1.15e-15   left tail 1.15e-15    (was 1.12e-9 / 1.4e-17)
+```
+
+Two new pins: the mpmath table, and the round trip restated on `1 − p`.
+
+**MINOR-2, in the same file** — the published Φ left-tail relative figure was 4.9e-14, measured
+on a 0.01 grid that steps over the peak. The peak sits just under `ERFC_CONTINUED_FRACTION_LIMIT`
+where `1 − erfSeries` still cancels two digits: measured **8.3e-14** on `[−8, 0]` and **2.3e-13**
+to −37σ. The scan is refined to 0.002, the asserted tolerance moves from 1e-10 (2000× the figure
+it was supposed to defend) to 3e-13, and a 19-point mpmath table pins the absolute figure at
+≤ 3e-16 — the composite reference cannot go below its own 5 ulp above `x ≈ 6`, which is why the
+old absolute assertion had to be relaxed to 2e-15 and the tight claim moved to the new table.
+
+**MAJOR-4 — `aboveThresholdLengthFraction` is a fraction again.** It summed each cell's own
+length, and a dimension evaluated over several part scopes carries one OVERLAPPING cell list per
+scope, so telemann's tempo row reported 3.0000 and §7.3's mandated sentence would have printed
+"300 % of the window". `aboveThresholdLength` measures the set `{t : p_k(t) > τ_k}` over the
+union of the cell edges, summing the covering cells' densities exactly as `massIn` does. Telemann
+tempo 3.0000 → **1.0**, albert dynamics 3.0000 → 1.0, vulpius 1.3333 → 0.9074; nothing outside
+`[0, 1]` on any vendored pair. Not a clamp: a dimension above threshold on half the window still
+reports 0.5 with three scopes, and three scopes at 0.4 JND/quarter — below threshold alone, above
+it together — report 1.0.
+
+**MAJOR-5 / AD-55.4 — DESIGN §7.1's tempo row.** `ln(1.05)` `[convention]` → `ln(1.025)`
+`[literature]`, which is AD-27.6 and the shipped constant. The code was already pinned
+(`registry.test.ts` asserts both the value and the `[literature]` tag); only the table was stale,
+by a factor of two.
+
+**MAJOR-6 — the notes comparator is total.** §9.5 names `site` and the comparator did not use it:
+four Albert notes — one `@transition.to` plausibility finding raised in the global scope and in
+each of three part scopes — tied on all five keys with four distinct serializations, and their
+order was decided by sort stability. `compareNotes` is exported, takes the note's own
+SERIALIZATION as the final tiebreak (so the order is total by construction rather than by an
+argument that the earlier keys separate everything), and `properties.test.ts`'s mirror now sorts
+with the ENGINE's comparator instead of a drifted copy — the copy is what let this hide, because
+a partial order tidies its own ambiguity away under a re-sort. The totality is asserted directly.
+
+**Negative controls**, each by patch → `vitest run` → restore:
+
+| repair reverted | fails |
+| --- | --- |
+| the symmetric tie-break | 2: the two cross-document P-C2 pairs, and nothing else |
+| §4's cap, with the ELEVEN-dimension suite | 3 — including **ornamentation**'s triangle test, which the six-dimension list could not have reached |
+| the complementary Halley residual | 2, both MAJOR-3's |
+| the falsified epsilon value | 1, MAJOR-2's |
+| the per-cell length sum | 2, both MAJOR-4's |
+| the serialization tiebreak | 2, both MAJOR-6's |
+
+Gate: `npm run verify` GREEN — 117 files, **5235 passed**, 0 skipped (5019 + 216, most of them
+the metric suite's 11 × 26 identity cases). Repo-wide `npx prettier --check .` clean; eslint clean
+on `src/comparison/` and `tests/comparison/`. The seven vendored anchors are unchanged.

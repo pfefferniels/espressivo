@@ -32,6 +32,7 @@ import {
   type ImprecisionLaw,
 } from '../../src/comparison/distributions.js';
 import { gaussLegendre10 } from '../../src/comparison/quadrature.js';
+import { epsilonRecord } from '../../src/comparison/compare.js';
 
 /**
  * An INDEPENDENT `Φ`: composite GL-10 over the standard normal density, 64 panels per unit.
@@ -82,7 +83,13 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
     let worstAt = 0;
     let worstRelative = 0;
     let worstRelativeAt = 0;
-    for (let x = -8; x <= 8; x += 0.01) {
+    // W3 MINOR-2: the scan used to start at −8 and step 0.01, and the peak sits just under the
+    // `erfc` handover at `x = −2√2`, where `1 − erfSeries` still cancels about two digits. A
+    // 0.01 grid can miss it and the published 4.9e-14 was measured with one; the true worst on
+    // `[−8, 0]` is 8.3e-14 at x ≈ −2.772, and to −37σ it is 2.3e-13 (both against `mpmath` at
+    // 60 dps, and both reproduced by the composite reference below). So the scan is refined
+    // through the handover and extended to the subnormal floor.
+    for (let x = -8; x <= 8; x += 0.002) {
       const reference = referenceNormalCdf(x);
       const error = Math.abs(standardNormalCdf(x) - reference);
       if (error > worstAbsolute) {
@@ -102,11 +109,77 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
     }
     // Reported rather than merely asserted: these are the numbers §9.3's `imprecision` family
     // carries. The A–S 7.1.26 rational the draft proposed measures 7.5e-8 absolute here.
-    expect(worstAbsolute, `worst absolute at x=${String(worstAt)}`).toBeLessThan(1e-15);
-    expect(worstRelative, `worst relative at x=${String(worstRelativeAt)}`).toBeLessThan(1e-10);
+    //
+    // The relative tolerance is 3e-13 rather than the 1e-10 that shipped, which was 2000× the
+    // figure it was supposed to defend and would have accepted a three-order regression in
+    // silence (W3 MINOR-2). 3e-13 is just above the measured 2.3e-13 at −37σ.
+    //
+    // The ABSOLUTE bound is 2e-15 and it is the REFERENCE's limit rather than the
+    // implementation's: above x ≈ 6 the composite quadrature is summing to within 1e-12 of 1
+    // and carries about 5 ulp of its own. Against `mpmath` at 60 dps the implementation's worst
+    // absolute error over the same range is 1.3e-16, which the next test pins.
+    expect(worstAbsolute, `worst absolute at x=${String(worstAt)}`).toBeLessThan(2e-15);
+    expect(worstRelative, `worst relative at x=${String(worstRelativeAt)}`).toBeLessThan(3e-13);
+    expect(
+      worstRelative,
+      'the peak under the erfc handover is real, not a grid artifact',
+    ).toBeGreaterThan(5e-14);
     // The right tail is covered by symmetry, which is exact in IEEE754 for this pair.
     for (let x = 0.5; x <= 8; x += 0.25)
       expect(standardNormalCdf(x) + standardNormalCdf(-x)).toBeCloseTo(1, 15);
+  });
+
+  /**
+   * The published absolute figure, against an arbitrary-precision reference rather than against
+   * another quadrature (W3 MINOR-2).
+   *
+   * The composite reference above is a real independent check and it is what catches a wrong
+   * ALGORITHM; what it cannot do is bound the implementation below its own quadrature error,
+   * which above `x ≈ 6` is 5 ulp. These nineteen points are `½·erfc(−x/√2)` at `mp.dps = 60`,
+   * chosen at the places a table would be wrong: both sides of the `erfc` handover, the peak of
+   * the relative error just under it, the far tail, and the subnormal floor.
+   */
+  it('matches an arbitrary-precision reference to 3e-16 absolute', () => {
+    const REFERENCE: readonly (readonly [number, number])[] = [
+      [-37, 5.725571222524577e-300],
+      [-20, 2.7536241186062337e-89],
+      [-12, 1.776482112077679e-33],
+      [-8.5, 9.479534822203318e-18],
+      [-6.9, 2.600126965638166e-12],
+      [-4.88, 5.304292029750943e-7],
+      [-2.8284271247461903, 0.0023388674905236314],
+      [-2.772, 0.0027856518278135916],
+      [-2.0, 0.02275013194817921],
+      [-1.0, 0.15865525393145705],
+      [-0.5, 0.3085375387259869],
+      [0.0, 0.5],
+      [0.5, 0.6914624612740131],
+      [1.0, 0.8413447460685429],
+      [2.0, 0.9772498680518208],
+      [2.8284271247461903, 0.9976611325094764],
+      [4.88, 0.999999469570797],
+      [6.914, 0.9999999999976441],
+    ];
+    let worstAbsolute = 0;
+    let worstNear = 0;
+    let worstFar = 0;
+    for (const [x, reference] of REFERENCE) {
+      const error = Math.abs(standardNormalCdf(x) - reference);
+      worstAbsolute = Math.max(worstAbsolute, error);
+      if (x > 0) continue;
+      worstFar = Math.max(worstFar, error / reference);
+      if (x >= -8) worstNear = Math.max(worstNear, error / reference);
+    }
+    expect(worstAbsolute).toBeLessThan(3e-16);
+    // TWO relative figures, because one number cannot describe both regimes. Within `[−8, 0]`
+    // the worst is 8.3e-14, not the 4.9e-14 published, and it sits just under
+    // `ERFC_CONTINUED_FRACTION_LIMIT` where `1 − erfSeries` still cancels about two digits —
+    // the old scan stepped 0.01 and could miss it. Below −8 the continued fraction loses a
+    // little more per decade, reaching 2.3e-13 at −37σ. The peak is sharp enough that a fixed
+    // point list understates it (1.9e-14 at exactly −2.772), so the SCAN above is what pins its
+    // existence and this list pins the two ceilings.
+    expect(worstNear).toBeLessThan(1e-13);
+    expect(worstFar).toBeLessThan(3e-13);
   });
 
   it('is exact at the values a table typo would move', () => {
@@ -148,6 +221,63 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
     for (const p of [1e-12, 1e-6, 0.001, 0.02425, 0.1, 0.25, 0.5, 0.75, 0.9, 0.97575, 0.999999]) {
       const roundTrip = standardNormalCdf(standardNormalQuantile(p));
       worst = Math.max(worst, Math.abs(roundTrip - p) / p);
+    }
+    expect(worst).toBeLessThan(1e-13);
+  });
+
+  /**
+   * W3 MAJOR-3: the right tail, and a pin that can see it.
+   *
+   * The round trip above measures `|Φ(Q(p)) − p| / p`, which in the RIGHT tail is exactly 0 at
+   * every probe by construction — `Φ` there is 1 to sixteen digits whatever `Q` returned — and
+   * its `p`-list stopped at 0.999999. So the metric was blind exactly where the Halley step was:
+   * `Φ(x) − p` cancels completely as `p → 1`, the correction was noise, and Acklam's raw
+   * 1.15e-9 survived. Measured at 1.124e-9 relative at `p = 1 − 1e-13` against 1.41e-17 at
+   * `p = 1e-13` — an asymmetry of 4.5·10⁵ in an algorithm that is symmetric on paper.
+   *
+   * The check is against `mpmath` at 60 dps, on `1 − p` rather than on `p`, and the references
+   * are computed for the DOUBLE the caller actually passes: `fl(1 − 10^-k)` is not the exact
+   * complement of `fl(10^-k)`, so comparing the two tails against one list of magnitudes would
+   * charge the right tail up to 1 % of a reference it never claimed.
+   */
+  it('Φ⁻¹ keeps its relative accuracy in the RIGHT tail, where the round trip is blind', () => {
+    // Φ⁻¹ at p = fl(1 − 10^-k) and at p = fl(10^-k), k = 1..15, mpmath dps=60.
+    const RIGHT = [
+      1.2815515655446006, 2.3263478740408408, 3.090232306167813, 3.7190164854557084,
+      4.264890793923841, 4.753424308817087, 5.199337582290661, 5.612001243305505,
+      5.9978070196016375, 6.361340889697422, 6.706023143414748, 7.0344869100478356,
+      7.3487545403000425, 7.650730905155643, 7.941444487415978,
+    ];
+    const LEFT = [
+      -1.2815515655446004, -2.326347874040841, -3.0902323061678136, -3.7190164854556804,
+      -4.264890793922825, -4.753424308822899, -5.1993375821928165, -5.612001244174789,
+      -5.9978070150076865, -6.361340902404057, -6.706023155495136, -7.034483825301132,
+      -7.348796102800677, -7.650628092935269, -7.941345326170997,
+    ];
+    let worstRight = 0;
+    let worstLeft = 0;
+    for (let k = 1; k <= 15; ++k) {
+      const right = standardNormalQuantile(1 - 10 ** -k);
+      const left = standardNormalQuantile(10 ** -k);
+      worstRight = Math.max(worstRight, Math.abs(right - RIGHT[k - 1]) / Math.abs(RIGHT[k - 1]));
+      worstLeft = Math.max(worstLeft, Math.abs(left - LEFT[k - 1]) / Math.abs(LEFT[k - 1]));
+    }
+    // Both tails at the CDF's own accuracy, which is what the doc claims for the Halley step.
+    expect(worstRight).toBeLessThan(1e-14);
+    expect(worstLeft).toBeLessThan(1e-14);
+    // And no asymmetry left worth naming: before the repair this ratio was 4.5e5.
+    expect(worstRight / Math.max(worstLeft, Number.MIN_VALUE)).toBeLessThan(100);
+  });
+
+  it('the round trip, stated on 1 − p, is exact in the right tail too', () => {
+    // The complementary form of the pin above: `Φ(−Q(p))` against `1 − p`, which is the
+    // quantity that carries information there. The original `|Φ(Q(p)) − p| / p` is left in
+    // place for the left tail, where it is the operative one.
+    let worst = 0;
+    for (let k = 1; k <= 13; ++k) {
+      const p = 1 - 10 ** -k;
+      const complement = standardNormalCdf(-standardNormalQuantile(p));
+      worst = Math.max(worst, Math.abs(complement - (1 - p)) / (1 - p));
     }
     expect(worst).toBeLessThan(1e-13);
   });
@@ -312,6 +442,56 @@ describe('CDFs and quantiles are mutually inverse', () => {
     // The overstated hull put GL-10 across the kink and cost 1.07e-2 relative on this one.
     expect(w1AgainstDelta(0, 1, 1000)).toBeCloseTo(21.081851067789195, 9);
     expect(w1AgainstDelta(-30, 30, 99)).toBeCloseTo(30.977094589809564, 9);
+  });
+
+  /**
+   * W3 MAJOR-2 / AD-55.3: what the `imprecision` epsilon figure is relative TO.
+   *
+   * `W₁ = ∫|F_A − F_B| dx` over the union support, so a small answer is a small difference of
+   * large integrals: the ABSOLUTE error is what the quadrature bounds, and the naive relative
+   * error is unbounded as the two laws approach each other. The record used to publish
+   * 3.6e-16 as a relative figure; two uniforms 6e-12 apart falsify that by eleven orders while
+   * the absolute error stays at one ulp of the support.
+   */
+  it('is machine-precise against the SUPPORT SCALE, and not against the answer', () => {
+    // Closed forms derived from `W₁ = ∫₀¹|Q_A − Q_B| du`, not copied from this module.
+    const CASES: readonly (readonly [ImprecisionLaw, ImprecisionLaw, number])[] = [
+      ...[6, 6e-3, 6e-6, 6e-9, 6e-12].map(
+        (shift) => [uniformLaw(-30, 30), uniformLaw(-30 + shift, 30 + shift), shift] as const,
+      ),
+      ...[30, 4, 1e-3].map((h) => [uniformLaw(-h, h), DELTA_ZERO, h / 2] as const),
+      ...[30, 6].map(
+        (h) => [triangularLaw(-h, h, 0) as ImprecisionLaw, DELTA_ZERO, h / 3] as const,
+      ),
+      [deltaLaw(5), deltaLaw(11), 6],
+      [deltaLaw(0), deltaLaw(1e-6), 1e-6],
+      ...[10, 0.5].map(
+        (sigma) =>
+          [
+            gaussianLaw(sigma, 0, 0) as ImprecisionLaw,
+            DELTA_ZERO,
+            sigma * Math.sqrt(2 / Math.PI),
+          ] as const,
+      ),
+    ];
+
+    let worstNaive = 0;
+    let worstAgainstSupport = 0;
+    for (const [a, b, exact] of CASES) {
+      const error = Math.abs(wasserstein1(a, b) - exact);
+      const [loA, hiA] = supportOf(a);
+      const [loB, hiB] = supportOf(b);
+      const scale = Math.max(hiA, hiB) - Math.min(loA, loB);
+      worstNaive = Math.max(worstNaive, error / exact);
+      if (scale > 0) worstAgainstSupport = Math.max(worstAgainstSupport, error / scale);
+    }
+
+    // The published figure, and the quantity it is a figure FOR.
+    expect(worstAgainstSupport).toBeLessThan(3e-16);
+    expect(epsilonRecord().imprecision.relative).toBe(3e-16);
+    // The falsification, kept as an assertion so the caveat cannot quietly stop being true:
+    // the naive reading is five orders worse on this same family.
+    expect(worstNaive).toBeGreaterThan(1e-6);
   });
 
   it('collapses a clip that is vacuous in TRUTH, which the overstated hull kept', () => {

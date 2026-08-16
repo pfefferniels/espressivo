@@ -64,6 +64,30 @@ const ACCENTUATION_STYLES =
   '</accentuationPatternDef>' +
   '</styleDef></metricalAccentuationStyles>';
 
+/** The articulation defs the event members name — two factors, so an alignment has a choice. */
+const ARTICULATION_STYLES =
+  '<articulationStyles><styleDef name="A">' +
+  '<articulationDef name="stacc" relativeDuration="0.5"/>' +
+  '<articulationDef name="ten" relativeDuration="1.2" absoluteVelocityChange="8"/>' +
+  '</styleDef></articulationStyles>';
+
+/**
+ * Two ornament styles that differ ONLY in the spread's time unit.
+ *
+ * That is §5.6's one genuinely incomparable pair: a tick frame and a millisecond frame have no
+ * common domain without a tempo map, so the two are `⊥` against each other while each is an
+ * ordinary law against a document with no ornaments at all.
+ */
+const ORNAMENT_STYLES =
+  '<ornamentationStyles>' +
+  '<styleDef name="O"><ornamentDef name="arp">' +
+  '<temporalSpread frameStart="-30.0" frameLength="60.0" intensity="1.0"/>' +
+  '</ornamentDef></styleDef>' +
+  '<styleDef name="Oms"><ornamentDef name="arp">' +
+  '<temporalSpread frameStart="-30.0" frameLength="60.0" intensity="1.0" time.unit="milliseconds"/>' +
+  '</ornamentDef></styleDef>' +
+  '</ornamentationStyles>';
+
 export interface AdversarialMember {
   readonly name: string;
   /** Which hazard this member introduces — one line, for a failure message worth reading. */
@@ -272,6 +296,128 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
         '<tempo date="2880.0" bpm="85" beatLength="0.25"/></tempoMap>' +
         '<dynamicsMap><dynamics date="0.0" volume="40" transition.to="90" curvature="0.2" protraction="-0.5"/>' +
         '<dynamics date="2880.0" volume="90"/></dynamicsMap>',
+    ),
+  },
+  {
+    name: 'rubato-plain',
+    hazard: 'an ordinary rubato warp — the dimension had no non-⊥ member at all (W3 MAJOR-1)',
+    mpm: document(
+      '<rubatoMap><rubato date="0.0" frameLength="720.0" intensity="1.6" lateStart="0.1" ' +
+        'earlyEnd="0.9" loop="true"/><rubato date="2880.0" frameLength="720.0"/></rubatoMap>',
+    ),
+  },
+  {
+    name: 'rubato-bottom',
+    hazard:
+      'an unusable @intensity with @loop on: the warp is NaN over the WHOLE span, every note ' +
+      'it touches gets date.perf="NaN" and vanishes from the MIDI export (R24), so the span ' +
+      'is ⊥. Rubato gained its first four ⊥ routes in W3b and the capped integrator with ' +
+      'them, and no family member reached any of them',
+    mpm: document(
+      '<rubatoMap><rubato date="0.0" frameLength="720.0" intensity="not-a-number" loop="true"/>' +
+        '<rubato date="2880.0" frameLength="720.0"/></rubatoMap>',
+    ),
+  },
+  {
+    name: 'articulation-anchors',
+    hazard:
+      'four articulation anchors at four dates with four different modifiers — the event ' +
+      "dimension's ordinary path, and the side of a pair that forces the alignment DP to " +
+      'trade a match against two drops rather than to align trivially',
+    mpm: document(
+      '<articulationMap><style date="0.0" name.ref="A"/>' +
+        '<articulation date="0.0" relativeDuration="0.5"/>' +
+        '<articulation date="720.0" relativeVelocity="1.4"/>' +
+        '<articulation date="1440.0" absoluteDurationChange="60"/>' +
+        '<articulation date="2160.0" absoluteVelocityChange="-12"/>' +
+        '</articulationMap>',
+      ARTICULATION_STYLES,
+    ),
+  },
+  {
+    name: 'articulation-offset',
+    hazard:
+      'the same four families at dates BETWEEN the previous member’s, so no anchor pairs for ' +
+      'free: `λ_date` decides every match and the DP reaches its equal-cost ties, which is ' +
+      'where the tie-break has to be symmetric as well as fixed (W3 MAJOR-17)',
+    mpm: document(
+      '<articulationMap><style date="0.0" name.ref="A"/>' +
+        '<articulation date="90.0" relativeDuration="0.8"/>' +
+        '<articulation date="810.0" relativeVelocity="0.7"/>' +
+        '<articulation date="1530.0" absoluteDurationChange="-30"/>' +
+        '<articulation date="2250.0" absoluteVelocityChange="20"/>' +
+        '</articulationMap>',
+      ARTICULATION_STYLES,
+    ),
+  },
+  {
+    name: 'articulation-default',
+    hazard:
+      'a <style>@defaultArticulation and nothing else — d_articulation’s SECOND component ' +
+      '(AD-55.1), which is a step function over the window and reaches the metric by a ' +
+      'different route from the atoms',
+    mpm: document(
+      '<articulationMap><style date="0.0" name.ref="A" defaultArticulation="stacc"/>' +
+        '<style date="1440.0" name.ref="A" defaultArticulation="ten"/>' +
+        '</articulationMap>',
+      ARTICULATION_STYLES,
+    ),
+  },
+  {
+    name: 'ornament-plain',
+    hazard:
+      'a temporalSpread ornament in TICKS — the other event dimension’s ordinary path, whose ' +
+      'metric status §5.6 argues in prose (deviation-from-neutral anchored at neutral) and ' +
+      'which nothing computed',
+    mpm: document(
+      '<ornamentationMap><style date="0.0" name.ref="O"/>' +
+        '<ornament date="720.0" name.ref="arp"/>' +
+        '<ornament date="2160.0" name.ref="arp"/>' +
+        '</ornamentationMap>',
+      ORNAMENT_STYLES,
+    ),
+  },
+  {
+    name: 'ornament-milliseconds',
+    hazard:
+      'the same ornaments with the spread declared in MILLISECONDS: §5.6’s one genuinely ' +
+      'incomparable case, since a tick frame and a millisecond frame have no common domain ' +
+      'without a tempo map. It is the ⊥ the ornamentation dimension can actually reach',
+    mpm: document(
+      '<ornamentationMap><style date="0.0" name.ref="Oms"/>' +
+        '<ornament date="720.0" name.ref="arp"/>' +
+        '<ornament date="2160.0" name.ref="arp"/>' +
+        '</ornamentationMap>',
+      ORNAMENT_STYLES,
+    ),
+  },
+  {
+    name: 'imprecision-other-domains',
+    hazard:
+      'laws in the DYNAMICS and TONEDURATION imprecision maps: the P-C5 record and this ' +
+      'family both stopped at timing, so two of the eleven dimensions were compared only ' +
+      'against neutral (W3 MAJOR-1, MINOR-4)',
+    mpm: document(
+      '<imprecisionMap.dynamics>' +
+        '<distribution.uniform date="0.0" limit.lower="-12" limit.upper="12"/>' +
+        '</imprecisionMap.dynamics>' +
+        // The clips are EXPLICIT because absent ones read as 0 and collapse a triangular to δ₀
+        // (AD-49.1's degenerate table) — measured: without them this member scored 0 against a
+        // document with no toneduration map at all, which is renderer-true and useless here.
+        '<imprecisionMap.toneduration>' +
+        '<distribution.triangular date="0.0" limit.lower="-40" limit.upper="40" mode="15" ' +
+        'clip.lower="-40" clip.upper="40" milliseconds.timingBasis="300"/>' +
+        '</imprecisionMap.toneduration>',
+    ),
+  },
+  {
+    name: 'imprecision-other-domains-bottom',
+    hazard:
+      'an EMPTY <distribution.list> in each of those two maps — the ⊥ route in the two ' +
+      'domains the family did not reach, so §4’s cap is load-bearing there too',
+    mpm: document(
+      '<imprecisionMap.dynamics><distribution.list date="0.0"/></imprecisionMap.dynamics>' +
+        '<imprecisionMap.toneduration><distribution.list date="0.0"/></imprecisionMap.toneduration>',
     ),
   },
 ];

@@ -109,6 +109,27 @@ import type {
  * own perceptual scale — which is the one that says whether the number is fit for purpose,
  * because the metric requirement is JND-scale exactness and the relative figures are numerical
  * hygiene above it.
+ *
+ * ## What the `imprecision` relative figure is relative TO (AD-55.3)
+ *
+ * The **support scale**, not the answer. `W₁` is computed as `∫|F_A − F_B| dx` over the union
+ * support, so a small answer is a small difference of large integrals: the ABSOLUTE error is
+ * bounded by the quadrature and the naive relative error is not bounded at all as the two laws
+ * approach each other. Measured over 14 pairs with closed forms derived from
+ * `∫₀¹|Q_A − Q_B| du`:
+ *
+ * | pair                            | exact `W₁` | abs err  | naive relative | relative to support |
+ * | ------------------------------- | ---------- | -------- | -------------- | ------------------- |
+ * | `U(−30,30)` vs the same shifted 6 | 6.0e+0   | 1.78e-15 | 2.96e-16       | 2.69e-17            |
+ * | shifted `6e-6`                    | 6.0e-6   | 7.08e-16 | **1.18e-10**   | 1.18e-17            |
+ * | shifted `6e-12`                   | 6.0e-12  | 3.24e-16 | **5.39e-05**   | 5.39e-18            |
+ *
+ * The published 3.6e-16 was the naive figure on WELL-SEPARATED pairs, where it happens to
+ * coincide; two near-identical laws falsify it by eleven orders. So the field carries the
+ * quantity that really is at machine precision (worst 3.0e-16, at the point-mass pairs where the
+ * support scale degenerates to the separation itself and the two readings coincide), the `jnd`
+ * figure is the operative one, and a caller reading `relative` as `|Δ|/W₁` should read it as
+ * applying to well-separated pairs only.
  */
 const EPSILON_FIGURES: Readonly<
   Record<EpsilonFamily, { readonly relative: number; readonly jnd: number }>
@@ -122,8 +143,10 @@ const EPSILON_FIGURES: Readonly<
   // The ideal-curve inversion's conditioning limit at `curvature = 1`, where `x'(0.5) = 0` and
   // a cube-root loss leaves ~6e-4 volume units; every interior curvature is exact to 1e-9.
   bezier: { relative: 6e-6, jnd: 2e-5 },
-  // `W₁` against six closed forms, and `Φ` at 1.7e-15 absolute in the left tail.
-  imprecision: { relative: 3.6e-16, jnd: 3.6e-16 },
+  // `W₁` against 14 closed forms derived from `∫₀¹|Q_A − Q_B| du`, measured relative to the
+  // laws' SUPPORT SCALE (AD-55.3) — see the note above on what that figure is relative to. The
+  // JND figure is the same absolute error on the row's own 30 ms / 3 velocity scale.
+  imprecision: { relative: 3e-16, jnd: 1.2e-16 },
   // The drift is a SECONDS quantity and has no JND scale; the 0 is not a claim of exactness
   // but the true statement that this family contributes no JND-scale error to any distance,
   // because the drift enters no `d_k`.
@@ -1052,21 +1075,45 @@ function invarianceNotes(
 }
 
 /**
- * §9.5's total order on the notes: `(kind, dimension, startQuarters, message)`.
+ * §9.5's order on the notes: `(kind, dimension, startQuarters, document, message, site)`.
  *
- * The final tiebreak is the MESSAGE, and it is stated rather than left to sort stability: the
- * array's own order depends on which document was read first, so a stable sort would leak the
- * a/b orientation into the report and break P-C2.
+ * §9.5 names `site` and the comparator did not use it, so four Albert notes — one plausibility
+ * finding raised in the global scope and in each of three part scopes — tied on every key with
+ * four distinct serializations, and their order was decided by sort stability, i.e. by which
+ * document was read first (W3 MAJOR-6).
+ *
+ * The final tiebreak is the note's own SERIALIZATION, which makes the order TOTAL by
+ * construction rather than by an argument that the earlier keys separate everything: two notes
+ * that compare equal here are equal as data, so no orientation can survive in the array. Stating
+ * it that way is also the cheapest thing to keep true, since a future field is covered the day
+ * it is added.
  */
-function sortNotes(notes: readonly ComparisonNote[]): readonly ComparisonNote[] {
-  return [...notes].sort(
-    (x, y) =>
-      compareText(x.kind, y.kind) ||
-      compareText(x.dimension ?? '', y.dimension ?? '') ||
-      (x.startQuarters ?? 0) - (y.startQuarters ?? 0) ||
-      compareText(x.document ?? '', y.document ?? '') ||
-      compareText(x.message, y.message),
+export function compareNotes(x: ComparisonNote, y: ComparisonNote): number {
+  return (
+    compareText(x.kind, y.kind) ||
+    compareText(x.dimension ?? '', y.dimension ?? '') ||
+    (x.startQuarters ?? 0) - (y.startQuarters ?? 0) ||
+    compareText(x.document ?? '', y.document ?? '') ||
+    compareText(x.message, y.message) ||
+    compareText(JSON.stringify(x), JSON.stringify(y))
   );
+}
+
+function sortNotes(notes: readonly ComparisonNote[]): readonly ComparisonNote[] {
+  // Decorated, because the final tiebreak serializes and a comparison sort would do it
+  // O(n log n) times per note otherwise. The key is built once and the order is the same.
+  return [...notes]
+    .map((note) => ({ note, key: JSON.stringify(note) }))
+    .sort(
+      (x, y) =>
+        compareText(x.note.kind, y.note.kind) ||
+        compareText(x.note.dimension ?? '', y.note.dimension ?? '') ||
+        (x.note.startQuarters ?? 0) - (y.note.startQuarters ?? 0) ||
+        compareText(x.note.document ?? '', y.note.document ?? '') ||
+        compareText(x.note.message, y.note.message) ||
+        compareText(x.key, y.key),
+    )
+    .map((entry) => entry.note);
 }
 
 /** Code-unit order, never `localeCompare` — the report must not depend on a locale (§9.5). */

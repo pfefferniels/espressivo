@@ -51,12 +51,24 @@
  *
  * | quantity | worst measured error |
  * |---|---|
- * | `Φ`, absolute over `x ∈ [−8, 8]` | 1.7·10⁻¹⁵ |
- * | `Φ`, relative in the left tail | 4.9·10⁻¹⁴ |
- * | `W₁` against six closed forms | 3.6·10⁻¹⁶ relative — machine precision, Gaussian included |
+ * | `Φ`, absolute over `x ∈ [−37, 8]` | 3·10⁻¹⁶ (against `mpmath` at 60 dps) |
+ * | `Φ`, relative in the left tail, `x ≥ −8` | 8.3·10⁻¹⁴ |
+ * | `Φ`, relative in the left tail, to −37σ | 2.3·10⁻¹³ |
+ * | `Φ⁻¹`, relative, BOTH tails to `1 − 10⁻¹⁵` | 1.2·10⁻¹⁵ |
+ * | `W₁` against 14 closed forms, per SUPPORT SCALE | 3.0·10⁻¹⁶ |
  * | `W₂` moments against closed forms | 1.5·10⁻¹⁵ relative |
  * | `ρ` against `7√2/10` / `√(3/π)` | bit-exact / 1.1·10⁻¹⁵ |
  * | §1.2's closing identity | 4.1·10⁻¹⁴ relative |
+ *
+ * Three of those rows were corrected in the W3 fix wave and the corrections are the point of
+ * reporting them. `Φ`'s left-tail relative figure was published as 4.9·10⁻¹⁴, measured on a
+ * 0.01 grid that steps over the peak: it sits just under {@link ERFC_CONTINUED_FRACTION_LIMIT},
+ * where `1 − erfSeries` still cancels about two digits (MINOR-2). `Φ⁻¹`'s right tail was
+ * 1.12·10⁻⁹ — Acklam's raw accuracy, because the Halley residual `Φ(x) − p` cancels completely
+ * as `p → 1` and the round trip that pinned it is exactly 0 there (MAJOR-3). And `W₁`'s
+ * 3.6·10⁻¹⁶ was a RELATIVE figure that two near-identical laws falsify by eleven orders; the
+ * quantity that is machine-precise is the error against the laws' support scale (MAJOR-2,
+ * AD-55.3). `compare.ts`'s `EPSILON_FIGURES` carries the last of these and says so.
  *
  * §5.0's record quotes "Acklam at `|err| < 1.15·10⁻⁹`" for this family; the numbers above
  * supersede it by six orders, and the reason to report them rather than the claim is
@@ -487,6 +499,14 @@ export function standardNormalCdf(x: number): number {
  * The refinement is what makes the pair self-consistent: `Φ(Φ⁻¹(p)) = p` to ~1e−16 is the
  * property the quantile integrals actually depend on, and it is pinned as a round trip rather
  * than as a coefficient comparison.
+ *
+ * **In the right tail that round trip is blind, and the residual is formed complementarily**
+ * (W3 MAJOR-3, see the step itself). `|Φ(Q(p)) − p| / p` is exactly 0 for every `p > 1 − 1e-13`
+ * whatever `Q` returned, because `Φ` there is 1 to sixteen digits — so the pin could not see
+ * that the correction had degenerated to noise and Acklam's raw 1.15·10⁻⁹ was surviving. Both
+ * tails now measure ≤ 1.2·10⁻¹⁵ relative against `mpmath` at 60 dps out to `1 − 10⁻¹⁵`, and the
+ * round trip is additionally stated on `1 − p`, which is the quantity that carries information
+ * there.
  */
 export function standardNormalQuantile(p: number): number {
   if (p <= 0) return Number.NEGATIVE_INFINITY;
@@ -528,9 +548,17 @@ export function standardNormalQuantile(p: number): number {
 
   // One Halley step on f(x) = Φ(x) − p. Skipped where the density underflows, since the
   // correction is then 0/0 rather than small.
+  //
+  // The residual is formed COMPLEMENTARILY for `x > 0` (W3 MAJOR-3). `Φ(x) − p` cancels
+  // completely as `p → 1` — both terms are 1 to sixteen digits — so the correction was noise
+  // there and Acklam's raw 1.15e-9 survived: measured 1.124e-9 relative at `p = 1 − 1e-13`
+  // against 1.41e-17 at `p = 1e-13`, an asymmetry of 4.5·10⁵. `(1 − p) − Φ(−x)` is the same
+  // quantity with no cancellation in it: `1 − p` is EXACT for `p ∈ [0.5, 1)` by Sterbenz, and
+  // `Φ(−x)` is the left tail, which `erfc`'s continued fraction computes to full relative
+  // accuracy by construction.
   const density = Math.exp((-x * x) / 2) / Math.sqrt(2 * Math.PI);
   if (!(density > 0)) return x;
-  const error = standardNormalCdf(x) - p;
+  const error = x > 0 ? 1 - p - standardNormalCdf(-x) : standardNormalCdf(x) - p;
   const step = error / density;
   return x - step / (1 + (x * step) / 2);
 }
