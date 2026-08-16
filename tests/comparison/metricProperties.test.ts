@@ -34,9 +34,18 @@ import { readAccentuationSegments } from '../../src/comparison/accentuationCurve
 import { accentuationDistance } from '../../src/comparison/accentuationDistance.js';
 import { readMovementSegments } from '../../src/comparison/pedalCurve.js';
 import { pedalDistance } from '../../src/comparison/pedalDistance.js';
+import { readImprecisionSpans } from '../../src/comparison/imprecisionLaws.js';
+import { imprecisionDistance } from '../../src/comparison/imprecisionDistance.js';
 
 /** Every dimension with a density so far, each as a total distance function. */
-const DIMENSIONS = ['tempo', 'dynamics', 'asynchrony', 'accentuation', 'pedal'] as const;
+const DIMENSIONS = [
+  'tempo',
+  'dynamics',
+  'asynchrony',
+  'accentuation',
+  'pedal',
+  'imprecisionTiming',
+] as const;
 type Dimension = (typeof DIMENSIONS)[number];
 
 const globalScopeOf = (document: ComparisonDocument) => {
@@ -117,6 +126,22 @@ function distanceFor(dimension: Dimension, pair: ComparisonPair): number {
       pair.ppq.lcm,
     ).distance;
 
+  if (dimension === 'imprecisionTiming')
+    return imprecisionDistance(
+      readImprecisionSpans(
+        a.views.get('imprecisionMap.timing') ?? null,
+        'imprecisionTiming',
+        a.document.scaleFactor,
+      ),
+      readImprecisionSpans(
+        b.views.get('imprecisionMap.timing') ?? null,
+        'imprecisionTiming',
+        b.document.scaleFactor,
+      ),
+      pair.window,
+      pair.ppq.lcm,
+    ).distance;
+
   return pedalDistance(
     readMovementSegments(a.views.get('movementMap') ?? null, a.document.scaleFactor),
     readMovementSegments(b.views.get('movementMap') ?? null, b.document.scaleFactor),
@@ -148,9 +173,12 @@ function distance(dimension: Dimension, x: AdversarialMember, y: AdversarialMemb
 }
 
 describe('the adversarial family itself', () => {
-  it('has twelve members with distinct hazards', () => {
-    expect(ADVERSARIAL_FAMILY).toHaveLength(12);
-    expect(new Set(ADVERSARIAL_FAMILY.map((member) => member.name)).size).toBe(12);
+  it('has seventeen members with distinct hazards', () => {
+    // Twelve after cut 1, seventeen after cut 4 — each cut extends the family with the failure
+    // surfaces it opens (AD-33.5's standing policy), and this count is what makes that an
+    // obligation rather than an intention.
+    expect(ADVERSARIAL_FAMILY).toHaveLength(17);
+    expect(new Set(ADVERSARIAL_FAMILY.map((member) => member.name)).size).toBe(17);
   });
 
   it('is not degenerate: every member differs from every other in some dimension', () => {
@@ -195,16 +223,29 @@ describe.each(DIMENSIONS)('P-C2 bit-exact symmetry — %s', (dimension) => {
 });
 
 describe.each(DIMENSIONS)('P-C3 triangle inequality — %s', (dimension) => {
-  it('holds for every triple, with the relative tolerance', () => {
-    for (const [x, y, z] of adversarialTriples()) {
-      const xy = distance(dimension, x, y);
-      const xz = distance(dimension, x, z);
-      const zy = distance(dimension, z, y);
-      expect(
-        xy <= (xz + zy) * (1 + 1e-9),
-        `${dimension}: d(${x.name},${y.name})=${String(xy)} > d(..,${z.name})+d(${z.name},..)=${String(xz + zy)}`,
-      ).toBe(true);
-    }
+  it('holds for every triple with EVERY member as the middle term', () => {
+    // All three assignments, not one. `adversarialTriples` returns an unordered triple and the
+    // first version of this test always took the third member as the middle, so it checked one
+    // inequality of the three a triple asserts. Cut 4 found that the hard way: §4's cap binds
+    // only when a ⊥ member sits BETWEEN two laws whose uncapped distance exceeds 2·δ_row, and
+    // with one fixed middle that arrangement depended on the family's array order — the
+    // property was true, unobservable, and would have stayed unobservable through any
+    // reordering. Same lesson as the eighth member's (AD-33.5): a family that merely CONTAINS
+    // the hazard is not a family that reaches it.
+    for (const [x, y, z] of adversarialTriples())
+      for (const [left, right, middle] of [
+        [x, y, z],
+        [x, z, y],
+        [y, z, x],
+      ] as const) {
+        const direct = distance(dimension, left, right);
+        const viaLeft = distance(dimension, left, middle);
+        const viaRight = distance(dimension, middle, right);
+        expect(
+          direct <= (viaLeft + viaRight) * (1 + 1e-9),
+          `${dimension}: d(${left.name},${right.name})=${String(direct)} > d(..,${middle.name})+d(${middle.name},..)=${String(viaLeft + viaRight)}`,
+        ).toBe(true);
+      }
   });
 });
 

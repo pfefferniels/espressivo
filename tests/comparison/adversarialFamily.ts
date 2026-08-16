@@ -20,6 +20,23 @@
  * component) plus AD-35's unbounded resurrected span. Each cut extends the family with the
  * failure surfaces it opens, which is the standing policy rather than a courtesy.
  *
+ * W3a cut 4 adds five more, one per surface §5.9 opens that nothing above it reaches:
+ *
+ * - `imprecision-plain` — an ordinary uniform law, so that every pair has a non-`⊥` law to
+ *   compare against and the dimension's ordinary path is exercised at all.
+ * - `imprecision-gaussian-gap` — a Gaussian span followed by a `<style>` that ends it, which
+ *   is BOTH the special-function quadrature path and the δ₀ gap the any-entry rule opens.
+ *   That gap is the sharp contrast with `asynchronyMap`, where the same structural situation
+ *   NaN-poisons the span instead; having both in one family means a reading that confuses them
+ *   fails the triangle test rather than merely a dedicated test.
+ * - `imprecision-bottom` — an EMPTY `<distribution.list>`, the `⊥` route measured through the
+ *   pipeline. It is the member that makes the capped density load-bearing: without a `⊥` in the
+ *   family, an uncapped `W₁/jnd` would satisfy the triangle inequality on every pair here.
+ * - `imprecision-process` — a `brownianNoise` whose declared MARGINAL matches
+ *   `imprecision-plain`'s middle-half law while its process differs, so the pair is zero in the
+ *   marginal component and non-zero only through `processParameters`. Without it the process
+ *   component could be deleted and every metric property would still pass.
+ *
  * All members share one explicit window, which §10 requires: under a pair-derived window the
  * three windows of a triple differ and R3's triangle inequality is not even claimed (M2).
  */
@@ -182,6 +199,66 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
       '<movementMap><movement date="0.0" position="0.0" transition.to="1.0" curvature="4"/>' +
         '<movement date="1440.0" position="1.0"/>' +
         '<style date="2160.0" name.ref="S"/></movementMap>',
+    ),
+  },
+  {
+    name: 'imprecision-plain',
+    hazard:
+      'an ordinary uniform imprecision law over the whole window — the dimension\'s ' +
+      'non-⊥ path, without which every imprecision pair would be ⊥-vs-⊥ or law-vs-neutral',
+    mpm: document(
+      '<imprecisionMap.timing>' +
+        '<distribution.uniform date="0.0" limit.lower="-25" limit.upper="25" milliseconds.timingBasis="300"/>' +
+        '</imprecisionMap.timing>',
+    ),
+  },
+  {
+    name: 'imprecision-gaussian-gap',
+    hazard:
+      'a Gaussian law (the special-function quadrature path) ended by a <style>, which under ' +
+      'the any-entry rule opens a δ₀ GAP — the same structural situation asynchronyMap ' +
+      'NaN-poisons, with the opposite disposition (AD-14ii against AD-33.1)',
+    mpm: document(
+      '<imprecisionMap.timing>' +
+        '<distribution.gaussian date="0.0" deviation.standard="11" limit.lower="-20" limit.upper="20" milliseconds.timingBasis="300"/>' +
+        '<style date="1440.0" name.ref="S"/>' +
+        '</imprecisionMap.timing>',
+    ),
+  },
+  {
+    name: 'imprecision-bottom',
+    hazard:
+      'an EMPTY <distribution.list>: getValue reads series[i % 0] = series[NaN] = undefined ' +
+      'and every note in the span vanishes from the MIDI export (R24), so the span is ⊥ — the ' +
+      'member that makes §5.9\'s capped density load-bearing (AD-36.2)',
+    mpm: document(
+      '<imprecisionMap.timing><distribution.list date="0.0" milliseconds.timingBasis="300"/></imprecisionMap.timing>',
+    ),
+  },
+  {
+    name: 'imprecision-wide',
+    hazard:
+      'a law so wide that W₁/jnd exceeds 2·δ_row, so §4\'s CAP binds — added because ' +
+      'reverting the cap failed only its dedicated test and no pair in the family, which is ' +
+      'the same gap the eighth member was added to close for criticalPointTicks. Against ' +
+      'imprecision-bottom it is the triangle\'s equality case: d(wide, plain) = 2δ exactly ' +
+      'equals d(wide, ⊥) + d(⊥, plain), and uncapped it would exceed it',
+    mpm: document(
+      '<imprecisionMap.timing>' +
+        '<distribution.uniform date="0.0" limit.lower="-1500" limit.upper="1500" milliseconds.timingBasis="300"/>' +
+        '</imprecisionMap.timing>',
+    ),
+  },
+  {
+    name: 'imprecision-process',
+    hazard:
+      'a brownianNoise whose declared MARGINAL is exactly imprecision-plain\'s — the middle ' +
+      'half of ±50 is ±25 — while its process differs, so the pair is zero in the marginal ' +
+      'and non-zero only through processParameters (§5.9, A-B3)',
+    mpm: document(
+      '<imprecisionMap.timing>' +
+        '<distribution.correlated.brownianNoise date="0.0" stepWidth.max="4" limit.lower="-50" limit.upper="50" milliseconds.timingBasis="300"/>' +
+        '</imprecisionMap.timing>',
     ),
   },
   {

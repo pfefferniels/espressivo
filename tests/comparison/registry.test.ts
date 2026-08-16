@@ -49,20 +49,22 @@ const COVERED_DIMENSIONS: readonly ComparisonDimension[] = [
   'ornamentation',
   'asynchrony',
   'pedal',
-];
-
-/**
- * The §3 dimensions with no rows yet, named so each W3 cut must edit this line.
- *
- * A `skip` would announce the gap; this asserts it, which is the difference between a note
- * and a gate: adding articulation rows fails this test until the name is removed here. Cut 1
- * removed `accentuation` and `pedal` from it, which is what the gate is for.
- */
-const UNCOVERED_DIMENSIONS: readonly ComparisonDimension[] = [
   'imprecisionTiming',
   'imprecisionDynamics',
   'imprecisionDuration',
 ];
+
+/**
+ * The §3 dimensions with no rows yet — **now empty**, and asserted empty rather than deleted.
+ *
+ * A `skip` would have announced the gap; this asserted it, which is the difference between a
+ * note and a gate: each cut had to edit this line before its rows could land. Cut 1 removed
+ * `accentuation` and `pedal`, cut 2 `articulation`, cut 3 `ornamentation`, and cut 4 the three
+ * imprecision domains — which closes it. The empty assertion stays because it is now the
+ * stronger statement: every one of §3's eleven dimensions has rows, and a future dimension
+ * added to `COMPARISON_DIMENSIONS` without rows fails here immediately.
+ */
+const UNCOVERED_DIMENSIONS: readonly ComparisonDimension[] = [];
 
 function rowFor(key: (typeof COMPARISON_JND_KEYS)[number]): ComparisonRegistryRow {
   return comparisonRowFor(key);
@@ -259,7 +261,24 @@ describe('the columns §4 adds to the expression shape', () => {
     // AD-8's trailing-transition rule reaches both level dimensions; §5.8's ENTRY-index rule
     // is a different mechanism with a different outcome and reaches all four pedal rows.
     const conditional = COMPARISON_REGISTRY_ROWS.filter((row) => row.liveness !== 'always');
-    expect(conditional.map((row) => row.key).sort()).toEqual([
+    // EVERY imprecision row is conditional, and that is the rule rather than a coincidence:
+    // §5.9's laws are geometries, so what each attribute does depends on which of its
+    // siblings are present — an absent limit is the number 0, an absent clip collapses the
+    // whole law to δ₀, an absent mode is 0, and an absent degreeOfCorrelation is ⊥. Listing
+    // sixty-three keys here would hide that behind a wall of strings.
+    const imprecisionRows = COMPARISON_REGISTRY_ROWS.filter((row) =>
+      row.key.startsWith('imprecision'),
+    );
+    // 75 = three domains x (2 uniform + 3 gaussian + 5 triangular + 4 brownian +
+    // 6 compensating + 1 measurement@value + 4 inert timingBasis rows).
+    expect(imprecisionRows).toHaveLength(75);
+    expect(imprecisionRows.filter((row) => row.liveness !== 'always')).toHaveLength(75);
+    expect(
+      conditional
+        .filter((row) => !row.key.startsWith('imprecision'))
+        .map((row) => row.key)
+        .sort(),
+    ).toEqual([
       'articulation/articulation@absoluteDuration',
       'articulation/articulation@absoluteDurationChange',
       'articulation/articulation@relativeDuration',
@@ -311,7 +330,31 @@ describe('the columns §4 adds to the expression shape', () => {
 });
 
 describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () => {
+  /**
+   * Every imprecision row's domain is `Number.isFinite` — a width in ms or velocity units has
+   * no bound to violate — so one sample pair serves all sixty-three, and spelling them out
+   * one by one would pin nothing extra. The one exception is stated below it.
+   */
+  const imprecisionLegal = Object.fromEntries(
+    COMPARISON_JND_KEYS.filter((key) => key.startsWith('imprecision')).map((key) => [
+      key,
+      key.endsWith('@degreeOfCorrelation') ? [-4, 0.5, 1, 2, 1e6] : [-1e6, -30, 0, 30, 1e6],
+    ]),
+  );
+
+  const imprecisionIllegal = Object.fromEntries(
+    COMPARISON_JND_KEYS.filter((key) => key.startsWith('imprecision')).map((key) => [
+      key,
+      // `degreeOfCorrelation = 0` is the ⊥ condition the row states itself: the compensating
+      // step divides by it, so every draw after the first is NaN (measured).
+      key.endsWith('@degreeOfCorrelation')
+        ? [0, NaN, Infinity, -Infinity]
+        : [NaN, Infinity, -Infinity],
+    ]),
+  );
+
   const legal: Readonly<Record<string, readonly number[]>> = {
+    ...imprecisionLegal,
     'tempo/tempo@bpm': [1e-6, 0.25, 60, 120, 1e6],
     'tempo/tempo@beatLength': [1 / 32, 0.25, 1, 4],
     'tempo/tempo@transition.to': [1, 90, 400],
@@ -369,6 +412,7 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
   };
 
   const illegal: Readonly<Record<string, readonly number[]>> = {
+    ...imprecisionIllegal,
     // ln 0 = −∞ and ln(negative) = NaN — §4's one case the cap cannot rescue.
     'tempo/tempo@bpm': [0, -1, NaN, Infinity, -Infinity],
     'tempo/tempo@beatLength': [0, -0.25, NaN, Infinity],
@@ -627,6 +671,9 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
         'ornamentDynamics',
         'asynchrony',
         'pedalShape',
+        'imprecisionTiming',
+        'imprecisionDynamics',
+        'imprecisionDuration',
       ]),
     );
     expect(inScope.length).toBeGreaterThan(10);
@@ -635,9 +682,21 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
   it('gives every live expression row a comparison row in the same scale space', () => {
     for (const row of inScope) {
       const elements = row.sites.map((site) => site.element);
+      // The DIMENSION is part of the match, and cut 4 is why: `<distribution.uniform>` appears
+      // identically in three imprecision maps, so `element@attribute` names three comparison
+      // rows rather than one. That non-uniqueness is the documented reason §4 puts the
+      // dimension in the key at all, and a superset check that ignored it would count three
+      // candidates and fail on a registry that is correct.
+      const dimensions = COMPARISON_DIMENSIONS.filter((candidate) =>
+        (EXPRESSION_DIMENSION_CORRESPONDENCE[candidate] as readonly string[]).includes(
+          row.dimension,
+        ),
+      );
       const candidates = COMPARISON_REGISTRY_ROWS.filter(
         (comparison) =>
-          comparison.attribute === row.attribute && elements.includes(comparison.element),
+          comparison.attribute === row.attribute &&
+          elements.includes(comparison.element) &&
+          dimensions.includes(comparison.dimension),
       );
       expect(`${row.dimension}/${elements[0]}@${row.attribute}: ${candidates.length}`).toBe(
         `${row.dimension}/${elements[0]}@${row.attribute}: 1`,
@@ -671,8 +730,201 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
     );
   });
 
-  it.skip('every attribute of the survey-code §1.2 inventory appears exactly once (R9) — W3', () => {
-    // Needs rows for accentuation, articulation, ornamentation, pedal and the three
-    // imprecision dimensions before the partition into rows / inert / exclusions can close.
+  /**
+   * §4's whole-inventory partition (R9), finally assertable.
+   *
+   * The skip this replaces said "needs rows for accentuation, articulation, ornamentation,
+   * pedal and the three imprecision dimensions before the partition can close". Cut 4 was the
+   * last of them, so it closes here.
+   *
+   * The inventory is `survey-code.md` §1.2's map table, transcribed as data: for every map,
+   * every attribute the RENDERER actually reads, with its source citation. The property is
+   * that each one lands in exactly one of three buckets — a registry row, an `inert` row, or a
+   * §4 exclusion — and never in two or none. A missing attribute is the failure this exists to
+   * catch: it is the one shape of gap that no other test can see, because a dimension with
+   * nine of its ten attributes looks complete from the inside.
+   */
+  const READ_ATTRIBUTES: readonly (readonly [ComparisonDimension | null, string, string])[] = [
+    // [dimension | null for a map with no comparison dimension, element, attribute]
+    ['tempo', 'tempo', 'bpm'],
+    ['tempo', 'tempo', 'beatLength'],
+    ['tempo', 'tempo', 'transition.to'],
+    ['tempo', 'tempo', 'meanTempoAt'],
+    ['dynamics', 'dynamics', 'volume'],
+    ['dynamics', 'dynamics', 'transition.to'],
+    ['dynamics', 'dynamics', 'curvature'],
+    ['dynamics', 'dynamics', 'protraction'],
+    ['dynamics', 'dynamics', 'subNoteDynamics'],
+    ['rubato', 'rubato', 'frameLength'],
+    ['rubato', 'rubato', 'loop'],
+    ['rubato', 'rubato', 'intensity'],
+    ['rubato', 'rubato', 'lateStart'],
+    ['rubato', 'rubato', 'earlyEnd'],
+    ['articulation', 'articulation', 'absoluteDuration'],
+    ['articulation', 'articulation', 'absoluteDurationChange'],
+    ['articulation', 'articulation', 'relativeDuration'],
+    ['articulation', 'articulation', 'absoluteDurationMs'],
+    ['articulation', 'articulation', 'absoluteDurationChangeMs'],
+    ['articulation', 'articulation', 'absoluteVelocityChange'],
+    ['articulation', 'articulation', 'absoluteVelocity'],
+    ['articulation', 'articulation', 'relativeVelocity'],
+    ['articulation', 'articulation', 'absoluteDelayMs'],
+    ['articulation', 'articulation', 'absoluteDelay'],
+    ['articulation', 'articulation', 'detuneCents'],
+    ['articulation', 'articulation', 'detuneHz'],
+    ['accentuation', 'accentuationPattern', 'scale'],
+    ['accentuation', 'accentuationPattern', 'loop'],
+    ['accentuation', 'accentuationPattern', 'stickToMeasures'],
+    ['ornamentation', 'ornament', 'note.order'],
+    ['ornamentation', 'ornament', 'scale'],
+    ['ornamentation', 'ornament', 'repetitions'],
+    ['asynchrony', 'asynchrony', 'milliseconds.offset'],
+    ['pedal', 'movement', 'position'],
+    ['pedal', 'movement', 'transition.to'],
+    ['pedal', 'movement', 'curvature'],
+    ['pedal', 'movement', 'protraction'],
+    ['pedal', 'movement', 'controller'],
+    // §1.2's ornament pool children, which no §5 section gives a row.
+    ['ornamentation', 'note', 'midi.pitch'],
+    ['ornamentation', 'note', 'interval.chromatic'],
+    ['ornamentation', 'note', 'interval.diatonic'],
+    // The <style> switch, present in every map.
+    [null, 'style', 'name.ref'],
+    [null, 'style', 'defaultArticulation'],
+    // The imprecision maps' own attribute, and per distribution the attributes its own
+    // provider CONSUMES.
+    //
+    // Not everything `DistributionData` parses: it reads all thirteen unconditionally
+    // regardless of type (§1.2 says so), so `<distribution.uniform>` carries a parsed
+    // `clip.lower` that no uniform provider is ever handed. Listing the parsed set would
+    // demand rows for attributes that cannot affect a performance, which is the opposite of
+    // what this partition is for. The consumed set is read off the factory calls at
+    // `ImprecisionMap.ts:295-347`.
+    [null, 'imprecisionMap', 'detuneUnit'],
+    ...(['imprecisionTiming', 'imprecisionDynamics', 'imprecisionDuration'] as const).flatMap(
+      (dimension) =>
+        (
+          [
+            ['distribution.uniform', ['seed', 'limit.lower', 'limit.upper', 'milliseconds.timingBasis']],
+            [
+              'distribution.gaussian',
+              ['seed', 'deviation.standard', 'limit.lower', 'limit.upper', 'milliseconds.timingBasis'],
+            ],
+            [
+              'distribution.triangular',
+              [
+                'seed',
+                'limit.lower',
+                'limit.upper',
+                'mode',
+                'clip.lower',
+                'clip.upper',
+                'milliseconds.timingBasis',
+              ],
+            ],
+            [
+              'distribution.correlated.brownianNoise',
+              ['seed', 'stepWidth.max', 'limit.lower', 'limit.upper', 'milliseconds.timingBasis'],
+            ],
+            [
+              'distribution.correlated.compensatingTriangle',
+              [
+                'seed',
+                'degreeOfCorrelation',
+                'limit.lower',
+                'limit.upper',
+                'clip.lower',
+                'clip.upper',
+                'milliseconds.timingBasis',
+              ],
+            ],
+            ['distribution.list', ['seed', 'milliseconds.timingBasis']],
+            ['measurement', ['value']],
+          ] as const
+        ).flatMap(([element, attributes]) =>
+          attributes.map(
+            (attribute): readonly [ComparisonDimension, string, string] => [
+              dimension,
+              element,
+              attribute,
+            ],
+          ),
+        ),
+    ),
+  ];
+
+  /**
+   * §4's exclusion walk, as a predicate — every clause with the reason §4 gives it.
+   *
+   * `@date` is the axis. `xml:id` and `*.ref` are identity. `@noteid` is named explicitly
+   * because it is spelled without `.ref` and the pattern would miss it (AD-15/R16). The
+   * name-valued attributes go to the structural finding channel by the `@controller`
+   * precedent (AD-36.3) — naming a thing is an identity claim, not a magnitude — and the pool
+   * `<note>` children are the same case one level down: they say WHICH pitches an ornament
+   * generates.
+   *
+   * `@seed` is §4's own exclusion and it stays one, but its stated RATIONALE is now known to
+   * be wrong for two of the six families: "changes no distribution law" holds for the four
+   * i.i.d. ones and fails for `brownianNoise` and `compensatingTriangle`, where `setSeed`
+   * clears the series `doHandover` had just seeded and every note in the span vanishes
+   * (measured). The reader prices those spans `⊥`; the DESIGN sentence is the conductor's to
+   * amend, and this comment is here so the gap is not silently inherited.
+   */
+  const EXCLUDED_ATTRIBUTES: ReadonlyMap<string, string> = new Map([
+    ['name.ref', 'identity: names a styleDef (§4 *.ref)'],
+    ['defaultArticulation', 'identity: names an articulationDef (§4 *.ref in substance)'],
+    ['controller', 'name-valued: the structural finding channel, AD-36.3'],
+    ['seed', '§4: not a magnitude — but see the note above on the correlated families'],
+    ['detuneUnit', 'the tuning domain is inert (R9b): nothing reads tuning.offset back'],
+    ['midi.pitch', 'names WHICH note an ornament generates — an identity claim (AD-41.1)'],
+    ['interval.chromatic', 'the same, as an interval'],
+    ['interval.diatonic', 'the same, as an interval'],
+  ]);
+
+  it('every attribute of the survey-code §1.2 inventory appears exactly once (R9)', () => {
+    for (const [dimension, element, attribute] of READ_ATTRIBUTES) {
+      const excluded = EXCLUDED_ATTRIBUTES.has(attribute);
+      const row =
+        dimension === null
+          ? null
+          : (comparisonRowAt(dimension, element, attribute) as ComparisonRegistryRow | null);
+      // Exactly one bucket. Both would mean the exclusion walk and the table disagree; neither
+      // would mean an attribute the renderer reads is priced nowhere and reported nowhere.
+      expect(`${String(dimension)}/${element}@${attribute}: row=${String(row !== null)} excluded=${String(excluded)}`).toBe(
+        `${String(dimension)}/${element}@${attribute}: row=${String(!excluded)} excluded=${String(excluded)}`,
+      );
+    }
+  });
+
+  it('the axis and the identity attributes are excluded everywhere, by rule not by omission', () => {
+    // §4's four universal exclusions, checked against the table rather than trusted: none of
+    // them may have a row in any dimension.
+    for (const attribute of ['date', 'xml:id', 'name.ref', 'noteid'])
+      expect(
+        COMPARISON_REGISTRY_ROWS.filter((row) => row.attribute === attribute).map((r) => r.key),
+      ).toEqual([]);
+  });
+
+  it('no registry row is missing from the inventory either (the partition closes both ways)', () => {
+    // The other direction, which is what makes it a partition rather than a coverage check: a
+    // row for an attribute no renderer reads would be pricing a difference that is never
+    // performed. Def-site rows are exempt — §1.2 is the MAP inventory, and the defs are §1.3.
+    const inventory = new Set(
+      READ_ATTRIBUTES.map(([dimension, element, attribute]) =>
+        `${String(dimension)}/${element}@${attribute}`,
+      ),
+    );
+    const defElements = new Set([
+      'tempoDef',
+      'dynamicsDef',
+      'accentuationPatternDef',
+      'accentuation',
+      'dynamicsGradient',
+      'temporalSpread',
+    ]);
+    const orphans = COMPARISON_REGISTRY_ROWS.filter(
+      (row) => !defElements.has(row.element) && !inventory.has(row.key),
+    ).map((row) => row.key);
+    expect(orphans).toEqual([]);
   });
 });

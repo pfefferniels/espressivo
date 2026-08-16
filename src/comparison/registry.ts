@@ -32,6 +32,9 @@ import {
   ORNAMENTATION_STYLE,
   DYNAMICS_MAP,
   DYNAMICS_STYLE,
+  IMPRECISION_MAP_DYNAMICS,
+  IMPRECISION_MAP_TIMING,
+  IMPRECISION_MAP_TONEDURATION,
   METRICAL_ACCENTUATION_MAP,
   METRICAL_ACCENTUATION_STYLE,
   MOVEMENT_MAP,
@@ -492,6 +495,81 @@ export const COMPARISON_JND_KEYS = Object.freeze([
   'pedal/movement@transition.to',
   'pedal/movement@curvature',
   'pedal/movement@protraction',
+  'imprecisionTiming/distribution.uniform@limit.lower',
+  'imprecisionTiming/distribution.uniform@limit.upper',
+  'imprecisionTiming/distribution.gaussian@deviation.standard',
+  'imprecisionTiming/distribution.gaussian@limit.lower',
+  'imprecisionTiming/distribution.gaussian@limit.upper',
+  'imprecisionTiming/distribution.triangular@limit.lower',
+  'imprecisionTiming/distribution.triangular@limit.upper',
+  'imprecisionTiming/distribution.triangular@mode',
+  'imprecisionTiming/distribution.triangular@clip.lower',
+  'imprecisionTiming/distribution.triangular@clip.upper',
+  'imprecisionTiming/distribution.correlated.brownianNoise@stepWidth.max',
+  'imprecisionTiming/distribution.correlated.brownianNoise@limit.lower',
+  'imprecisionTiming/distribution.correlated.brownianNoise@limit.upper',
+  'imprecisionTiming/distribution.correlated.brownianNoise@milliseconds.timingBasis',
+  'imprecisionTiming/distribution.correlated.compensatingTriangle@degreeOfCorrelation',
+  'imprecisionTiming/distribution.correlated.compensatingTriangle@limit.lower',
+  'imprecisionTiming/distribution.correlated.compensatingTriangle@limit.upper',
+  'imprecisionTiming/distribution.correlated.compensatingTriangle@clip.lower',
+  'imprecisionTiming/distribution.correlated.compensatingTriangle@clip.upper',
+  'imprecisionTiming/distribution.correlated.compensatingTriangle@milliseconds.timingBasis',
+  'imprecisionTiming/measurement@value',
+  'imprecisionDynamics/distribution.uniform@limit.lower',
+  'imprecisionDynamics/distribution.uniform@limit.upper',
+  'imprecisionDynamics/distribution.gaussian@deviation.standard',
+  'imprecisionDynamics/distribution.gaussian@limit.lower',
+  'imprecisionDynamics/distribution.gaussian@limit.upper',
+  'imprecisionDynamics/distribution.triangular@limit.lower',
+  'imprecisionDynamics/distribution.triangular@limit.upper',
+  'imprecisionDynamics/distribution.triangular@mode',
+  'imprecisionDynamics/distribution.triangular@clip.lower',
+  'imprecisionDynamics/distribution.triangular@clip.upper',
+  'imprecisionDynamics/distribution.correlated.brownianNoise@stepWidth.max',
+  'imprecisionDynamics/distribution.correlated.brownianNoise@limit.lower',
+  'imprecisionDynamics/distribution.correlated.brownianNoise@limit.upper',
+  'imprecisionDynamics/distribution.correlated.brownianNoise@milliseconds.timingBasis',
+  'imprecisionDynamics/distribution.correlated.compensatingTriangle@degreeOfCorrelation',
+  'imprecisionDynamics/distribution.correlated.compensatingTriangle@limit.lower',
+  'imprecisionDynamics/distribution.correlated.compensatingTriangle@limit.upper',
+  'imprecisionDynamics/distribution.correlated.compensatingTriangle@clip.lower',
+  'imprecisionDynamics/distribution.correlated.compensatingTriangle@clip.upper',
+  'imprecisionDynamics/distribution.correlated.compensatingTriangle@milliseconds.timingBasis',
+  'imprecisionDynamics/measurement@value',
+  'imprecisionDuration/distribution.uniform@limit.lower',
+  'imprecisionDuration/distribution.uniform@limit.upper',
+  'imprecisionDuration/distribution.gaussian@deviation.standard',
+  'imprecisionDuration/distribution.gaussian@limit.lower',
+  'imprecisionDuration/distribution.gaussian@limit.upper',
+  'imprecisionDuration/distribution.triangular@limit.lower',
+  'imprecisionDuration/distribution.triangular@limit.upper',
+  'imprecisionDuration/distribution.triangular@mode',
+  'imprecisionDuration/distribution.triangular@clip.lower',
+  'imprecisionDuration/distribution.triangular@clip.upper',
+  'imprecisionDuration/distribution.correlated.brownianNoise@stepWidth.max',
+  'imprecisionDuration/distribution.correlated.brownianNoise@limit.lower',
+  'imprecisionDuration/distribution.correlated.brownianNoise@limit.upper',
+  'imprecisionDuration/distribution.correlated.brownianNoise@milliseconds.timingBasis',
+  'imprecisionDuration/distribution.correlated.compensatingTriangle@degreeOfCorrelation',
+  'imprecisionDuration/distribution.correlated.compensatingTriangle@limit.lower',
+  'imprecisionDuration/distribution.correlated.compensatingTriangle@limit.upper',
+  'imprecisionDuration/distribution.correlated.compensatingTriangle@clip.lower',
+  'imprecisionDuration/distribution.correlated.compensatingTriangle@clip.upper',
+  'imprecisionDuration/distribution.correlated.compensatingTriangle@milliseconds.timingBasis',
+  'imprecisionDuration/measurement@value',
+  'imprecisionTiming/distribution.uniform@milliseconds.timingBasis',
+  'imprecisionTiming/distribution.gaussian@milliseconds.timingBasis',
+  'imprecisionTiming/distribution.triangular@milliseconds.timingBasis',
+  'imprecisionTiming/distribution.list@milliseconds.timingBasis',
+  'imprecisionDynamics/distribution.uniform@milliseconds.timingBasis',
+  'imprecisionDynamics/distribution.gaussian@milliseconds.timingBasis',
+  'imprecisionDynamics/distribution.triangular@milliseconds.timingBasis',
+  'imprecisionDynamics/distribution.list@milliseconds.timingBasis',
+  'imprecisionDuration/distribution.uniform@milliseconds.timingBasis',
+  'imprecisionDuration/distribution.gaussian@milliseconds.timingBasis',
+  'imprecisionDuration/distribution.triangular@milliseconds.timingBasis',
+  'imprecisionDuration/distribution.list@milliseconds.timingBasis',
 ] as const);
 
 export type ComparisonJndKey = (typeof COMPARISON_JND_KEYS)[number];
@@ -1857,6 +1935,254 @@ const PEDAL_ROWS: readonly ComparisonRegistryRow[] = [
   },
 ];
 
+
+// --- §5.9 imprecision (timing / dynamics / duration) --------------------------------------
+//
+// Three dimensions, one table — the rows differ only in which `imprecisionMap` they live in
+// and therefore in their unit and their JND. The generated shape mirrors
+// `expression/registry.ts`'s own `IMPRECISION_ROWS` one for one, which is what makes §4's
+// superset property hold here literally rather than through a documented substitution: the
+// scale space is `gain-ordered` on both sides, because every one of these attributes is a
+// WIDTH in the domain's own unit and none of them is a ratio or a bounded shape parameter.
+//
+// **These rows do not sum to the distance.** Like tempo's four, they are inputs to one
+// object — here the LAW a span declares — and the dimension's density is `W₁(law_A, law_B)`
+// divided by the row JND (§5.9, AD-14v). What the rows carry is the unit, the JND, the
+// liveness the evaluator must honour, and §7.2's per-attribute breakdown for the report.
+//
+// The two `process` rows are the exception and are priced on their own, per §5.9's
+// `processParameters` component and A-B3: `stepWidth.max` and `degreeOfCorrelation` do not
+// enter the marginal at all, and the measurement in `imprecisionLaws.ts` is why — the
+// correlated marginal is index-dependent, so the process is exactly what the marginal fails
+// to characterize. `milliseconds.timingBasis` joins them on the two correlated elements only
+// (AD-14iii); on the four i.i.d. ones it changes which draw a note receives and not the law
+// it is drawn from, so it is reported inert and carries no row.
+
+/** Per domain: the map it reads, its unit, its JND, and the provenance of that JND. */
+const IMPRECISION_DOMAIN_TABLE = [
+  {
+    dimension: 'imprecisionTiming',
+    map: IMPRECISION_MAP_TIMING,
+    unit: 'ms',
+    jnd: ASYNCHRONY_JND_MS,
+    jndNote:
+      'ASYNCHRONY_JND_MS = 30 ms [literature] — Vernon 1936 → Goebl 2001. Reused rather ' +
+      'than invented because the QUANTITY KIND matches exactly: a timing-imprecision offset ' +
+      'IS an onset displacement in milliseconds, which is what the threshold measures. Same ' +
+      'reasoning as @absoluteDelayMs (AD-38.2). The 6 ms absolute floor below ~240 ms IOI ' +
+      '(AD-27.6) is a docs obligation on this row as on every ms-domain timing row.',
+  },
+  {
+    dimension: 'imprecisionDynamics',
+    map: IMPRECISION_MAP_DYNAMICS,
+    unit: 'velocity',
+    jnd: VELOCITY_JND,
+    jndNote:
+      'VELOCITY_JND = 3 velocity units [convention]. The one velocity JND §7.1 states, ' +
+      'shared with §5.4 and §5.5 (AD-38.2): T is the identity here, so the law lives in ' +
+      'velocity units directly. Unclamped in the map — the offset bites after the dynamics ' +
+      'pass — so a wide law can push a velocity outside 0..127 and the MIDI export clamps it.',
+  },
+  {
+    dimension: 'imprecisionDuration',
+    map: IMPRECISION_MAP_TONEDURATION,
+    unit: 'ms',
+    jnd: ASYNCHRONY_JND_MS,
+    jndNote:
+      'ASYNCHRONY_JND_MS borrowed at 30 ms, and [convention] rather than [literature] — the ' +
+      'tag travels with the borrowing (AD-38.2). The evidence is an ONSET threshold and this ' +
+      'is a change in a note‘s SOUNDING LENGTH, which has no tracked reference to be judged ' +
+      'against; the same argument that gave @relativeDuration its own constant rather than ' +
+      'tempo‘s. Calibration alternative, named honestly: derive it from a corpus of ' +
+      'note-length differences listeners were asked to discriminate. None was available.',
+  },
+] as const;
+
+/** {@link ComparisonRegistryRow.valueDomain} for a row whose zero is a `⊥` condition. */
+const nonZeroFinite = (value: number): boolean => Number.isFinite(value) && value !== 0;
+
+/**
+ * One element's rows across all three domains.
+ *
+ * A factory per element rather than one table-driven `flatMap`, and the reason is the KEY's
+ * compile-time check. Iterating a union-typed table lets TypeScript form
+ * `${dimension}/${anyElement}@${anyAttribute}` — the cross product — and demand keys for
+ * combinations no element has. Generic in `element` and `attribute`, each call instantiates
+ * the template with that element's own literals.
+ *
+ * The return type is deliberately left to inference and the check happens where the results
+ * are ASSIGNED to {@link IMPRECISION_ROWS}: a generic body is checked against its constraint
+ * (`string`), where the template proves nothing, while the call site has the literals. A typo
+ * in one attribute name is then a compile error, which is negative-controlled — misspelling
+ * `stepWidth.max` really does fail `tsc`, and that is the whole point of a closed vocabulary
+ * (§4, A1).
+ *
+ * The `note` is where the renderer study lands. Every rule in one was executed — see
+ * `imprecisionLaws.ts` and its tests — and the ones a reader is likeliest to get backwards are
+ * the ABSENT cases, because an absent attribute here is not a missing parameter but the
+ * parameter 0.
+ */
+const imprecisionRowsFor = <Element extends string, Attribute extends string>(
+  element: Element,
+  attributes: readonly (readonly [Attribute, ComparisonRole])[],
+  note: string,
+) =>
+  IMPRECISION_DOMAIN_TABLE.flatMap((domain) =>
+    attributes.map(
+      ([attribute, role]) => ({
+        key: `${domain.dimension}/${element}@${attribute}` as const,
+        dimension: domain.dimension,
+        element,
+        attribute,
+        sites: [instructionSite(domain.map, element)],
+        space: { kind: 'gain-ordered' } as const,
+        // Finite, and for `degreeOfCorrelation` also non-zero — the row states its own ⊥
+        // condition rather than leaving it to the reader alone. A zero divisor makes the
+        // compensating step ±∞ and NaNs every draw after the first (measured), which is
+        // exactly §4's "no comparable quantity". `stepWidth.max = 0` is NOT the same case and
+        // stays legal: it freezes the walk at its start value, a correlation of 1.
+        valueDomain: attribute === 'degreeOfCorrelation' ? nonZeroFinite : Number.isFinite,
+        unit: domain.unit,
+        jnd: domain.jnd,
+        delta: DEFAULT_DELTA_JND,
+        // §5.0 names exactly four [convention] plausibility bands and imprecision is not among
+        // them. A fifth is not invented here: the honest band would come from a corpus of
+        // authored imprecision widths, and cut 1 declined the same invitation for `beatLength`.
+        plausibleRange: null,
+        role,
+        liveness: { element, rule: note },
+        // Milliseconds or velocity units throughout. Nothing here is tick-valued, so §5.0's
+        // lcm rescale never touches these rows.
+        ppqSensitive: false,
+        notes: `§5.9 — ${note} ${domain.jndNote}`,
+      }),
+    ),
+  );
+
+const IMPRECISION_ROWS: readonly ComparisonRegistryRow[] = [
+  ...imprecisionRowsFor(
+    'distribution.uniform',
+    [
+      ['limit.lower', 'distribution'],
+      ['limit.upper', 'distribution'],
+    ],
+    'The law is U(limit.lower, limit.upper). ABSENT reads as 0, so ONE absent limit gives a ' +
+      'genuine U(limit, 0) — measured bit-identical to writing the 0 — and only BOTH absent ' +
+      'give δ₀. Inverted limits are the same law: the renderer computes r·(upper − lower) + ' +
+      'lower, which sweeps the same interval backwards.',
+  ),
+  ...imprecisionRowsFor(
+    'distribution.gaussian',
+    [
+      ['deviation.standard', 'distribution'],
+      ['limit.lower', 'distribution'],
+      ['limit.upper', 'distribution'],
+    ],
+    'AD-14iv’s mixture (1 − qᴺ)·TruncNormal + qᴺ·N(0, σ), N = 10000 — the rejection ' +
+      'sampler’s escape hatch as a law. σ absent (or 0) is δ₀; the limits absent make q = 1 ' +
+      'and the law the UNTRUNCATED normal, which is also what limit.lower === limit.upper ' +
+      'gives. σ’s sign is immaterial. One absent limit truncates to [limit, 0].',
+  ),
+  ...imprecisionRowsFor(
+    'distribution.triangular',
+    [
+      ['limit.lower', 'distribution'],
+      ['limit.upper', 'distribution'],
+      ['mode', 'distribution'],
+      ['clip.lower', 'distribution'],
+      ['clip.upper', 'distribution'],
+    ],
+    'clip(triangular(limits, mode)) — clipping is a separate operation in the renderer and is ' +
+      'modelled as one, so its atoms at the two bounds are the tails it swallowed. BOTH clips ' +
+      'absent is δ₀ via a literal null draw (AD-47); ONE absent clamps to [clip, 0]. An absent ' +
+      'mode is mode 0. A mode OUTSIDE the limits is a different law rather than an error — one ' +
+      'branch never runs and the support overshoots. limit.lower > limit.upper has NO law at ' +
+      'all: the two branches run in opposite directions, so there is no monotone quantile and ' +
+      'the span reads ⊥ (§5.8’s non-monotone-pedal disposition).',
+  ),
+  ...imprecisionRowsFor(
+    'distribution.correlated.brownianNoise',
+    [
+      ['stepWidth.max', 'process'],
+      ['limit.lower', 'distribution'],
+      ['limit.upper', 'distribution'],
+      ['milliseconds.timingBasis', 'process'],
+    ],
+    'A rejection random walk. Its marginal is INDEX-DEPENDENT, so the declared law is the ' +
+      'index-0 one doHandover constructs — uniform over the MIDDLE HALF of the limits ' +
+      '(measured: KS 0.0058 against U(−15, 15) for limits ±30, from 20 000 independent ' +
+      'chains). stepWidth.max and milliseconds.timingBasis are the PROCESS and are priced ' +
+      'separately (A-B3): absent stepWidth.max freezes the walk at its start value, which is a ' +
+      'correlation of 1 rather than a smaller spread. @seed makes the span ⊥ — setSeed clears ' +
+      'the series doHandover had just seeded.',
+  ),
+  ...imprecisionRowsFor(
+    'distribution.correlated.compensatingTriangle',
+    [
+      ['degreeOfCorrelation', 'process'],
+      ['limit.lower', 'distribution'],
+      ['limit.upper', 'distribution'],
+      ['clip.lower', 'distribution'],
+      ['clip.upper', 'distribution'],
+      ['milliseconds.timingBasis', 'process'],
+    ],
+    'A mean-reverting walk, and the family with the strongest index dependence: measured σ ' +
+      'settles at 8.30 for degreeOfCorrelation 2 and 4.91 for 5, against U(−30, 30)’s 17.32, ' +
+      'and EXPANDS to 20.76 with atoms at both limits at 0.5. Declared law is again the ' +
+      'index-0 one — the middle half of the limits, CLIPPED, which is why clip-less is δ₀. ' +
+      'degreeOfCorrelation absent or 0 divides by zero and NaNs every note after the first, so ' +
+      'the span reads ⊥. @seed makes it ⊥ as it does for brownianNoise.',
+  ),
+  // `@milliseconds.timingBasis` on the four I.I.D. elements — role `inert`, per AD-14iii.
+  //
+  // Filed as rows rather than left absent for R14's reason: the inertness is a FINDING and
+  // should be stated, not inferred from a gap in the table. And it is inert in a precise sense
+  // that the detune pair's is not — the renderer really does read this attribute, but it
+  // selects an INDEX into the pseudorandom sequence, and for these four families the marginal
+  // at every index is the same law. So the render genuinely differs while the compared object
+  // does not, which is pinned as a test rather than asserted. On the two CORRELATED elements
+  // the same attribute is a `process` row instead, because there the marginal really does
+  // depend on the index (see their notes) — the two dispositions sit in one table on purpose.
+  ...imprecisionRowsFor(
+    'distribution.uniform',
+    [['milliseconds.timingBasis', 'inert']],
+    'AD-14iii: the basis sets the index handed to the provider, and for an i.i.d. family the ' +
+      'marginal is the same at every index — so a difference here changes WHICH draw a note ' +
+      'receives (a per-render artifact this module refuses to model) and not the law it is ' +
+      'drawn from. Reported as an inert difference, priced at nothing, never excluded. An ' +
+      'explicit 0 is the exception and is ⊥: it divides the millisecond date by zero and the ' +
+      'render aborts, which the renderer’s own ≤ 0 fallback does not catch because that guard ' +
+      'only ever repairs an ABSENT basis.',
+  ),
+  ...imprecisionRowsFor(
+    'distribution.gaussian',
+    [['milliseconds.timingBasis', 'inert']],
+    'AD-14iii, as for <distribution.uniform>: index selection, not law selection.',
+  ),
+  ...imprecisionRowsFor(
+    'distribution.triangular',
+    [['milliseconds.timingBasis', 'inert']],
+    'AD-14iii, as for <distribution.uniform>: index selection, not law selection.',
+  ),
+  ...imprecisionRowsFor(
+    'distribution.list',
+    [['milliseconds.timingBasis', 'inert']],
+    'AD-14iii, and for the list it is the starkest case: the sequence is DETERMINISTIC ' +
+      '(series[i % n], interpolated at fractional indices), so the basis chooses which list ' +
+      'entry a note lands on and the empirical law over the list is unchanged either way.',
+  ),
+  ...imprecisionRowsFor(
+    'measurement',
+    [['value', 'distribution']],
+    'The whole <measurement> list is one law — the empirical distribution of its values as a ' +
+      'MULTISET, which is why duplicates matter. An EMPTY list reads ⊥: getValue computes ' +
+      'series[i % 0] = series[NaN] = undefined and every note in the span vanishes from the ' +
+      'MIDI export (R24). What the renderer actually draws is not sampling at all — ' +
+      'series[i % n] with interpolation at fractional indices — so this row, like §5.9’s ' +
+      'chord-shake sentence, declares the law rather than the sequence.',
+  ),
+];
+
 /**
  * DESIGN §5's live attributes for the dimensions evaluated so far, in §5's own order.
  *
@@ -1875,6 +2201,7 @@ export const COMPARISON_REGISTRY_ROWS: readonly ComparisonRegistryRow[] = Object
   ...ORNAMENT_ROWS,
   ...ASYNCHRONY_ROWS,
   ...PEDAL_ROWS,
+  ...IMPRECISION_ROWS,
 ]);
 
 // --- Derived views -----------------------------------------------------------------------

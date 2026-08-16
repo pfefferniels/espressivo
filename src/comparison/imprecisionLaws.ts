@@ -45,7 +45,7 @@
  *   (measured: the first note performs, every later one is `NaN`).
  * - an unusable `milliseconds.timingBasis` → `RandomNumberProvider.requireUsableIndex` THROWS
  *   and the whole render aborts (R21's condition, reached from a different direction).
- * - `@seed` on a CORRELATED family → see {@link seedPoisonsCorrelatedSpan}.
+ * - `@seed` on a correlated family OR on a list → see {@link seedPoisonsSpan}.
  *
  * **These are the `⊥` routes AD-36.2 asks about, and they exist**, so this dimension's
  * pointwise density is capped like accentuation's and pedal's rather than integrated free like
@@ -125,6 +125,15 @@ const LIST = 'distribution.list';
 const CORRELATED_FAMILIES: readonly string[] = [BROWNIAN, COMPENSATING];
 
 /**
+ * The three families `@seed` destroys — see {@link seedPoisonsSpan}.
+ *
+ * `distribution.list` is here for a different reason from the other two and was found by the
+ * registry's own inventory partition rather than by looking: `setSeed` clears `series`, and
+ * for a list provider `series` IS the list.
+ */
+const SEED_POISONED_FAMILIES: readonly string[] = [BROWNIAN, COMPENSATING, LIST];
+
+/**
  * The renderer's fallback timing basis, and the value every non-timing domain uses
  * (`ImprecisionMap.ts:378-379`).
  */
@@ -141,7 +150,7 @@ export type ImprecisionBottomCause =
   | 'empty-list'
   | 'degenerate-correlation'
   | 'unusable-timing-basis'
-  | 'seeded-correlated'
+  | 'seeded'
   | 'no-monotone-quantile';
 
 /**
@@ -340,22 +349,30 @@ function coerced(reading: NumericReading): number {
 }
 
 /**
- * `@seed` poisons a correlated span, which §4's exclusion list does not say.
+ * `@seed` destroys the span for THREE of the six families, which §4's exclusion list does not
+ * say for any of them.
  *
- * `doHandover` seeds the walk's first value through `setInitialValue`, and `setSeed` runs
- * AFTERWARDS and CLEARS the series (`ImprecisionMap.ts:319-354`,
- * `RandomNumberProvider.ts:186-190`), so the next draw reads `series[series.length − 1]` on an
- * empty array. Measured end to end: a `brownianNoise` carrying `seed="99"` gives
- * `milliseconds.date="NaN"` on **every** note, while the same document without it performs
- * normally. §4 lists `@seed` among the exclusions as "changes no distribution law" — true of
- * the four i.i.d. families and false of these two.
+ * One mechanism, two consequences. `RandomNumberProvider.setSeed:186-190` pins the sequence
+ * and **clears `series`** — and `series` is not a cache:
  *
- * The reference has the identical ordering, so this is not a port divergence; there
- * `ArrayList.get(-1)` throws `IndexOutOfBoundsException` and the render dies instead of
+ * - For the two CORRELATED families it holds the walk's current value.
+ *   `ImprecisionMap.ts:319-354` calls `doHandover` (which seeds it) and only THEN calls
+ *   `setSeed`, so the next draw reads `series[series.length − 1]` on an empty array.
+ * - For `distribution.list` it holds the LIST ITSELF
+ *   (`createRandomNumberProvider_distributionList` assigns `series = [...list]`), so clearing
+ *   it leaves `series[i % 0]` = `series[NaN]` = `undefined`.
+ *
+ * Measured end to end in both cases: `seed="99"` gives `milliseconds.date="NaN"` on **every**
+ * note, while the same document without it performs normally. §4 lists `@seed` among the
+ * exclusions as "changes no distribution law"; that holds for `uniform`, `gaussian` and
+ * `triangular` and fails for the other three.
+ *
+ * The reference has the identical ordering, so the correlated case is not a port divergence;
+ * there `ArrayList.get(-1)` throws `IndexOutOfBoundsException` and the render dies instead of
  * emitting `NaN`. Both destroy the performance, which is what `⊥` records.
  */
-export function seedPoisonsCorrelatedSpan(family: string, hasSeed: boolean): boolean {
-  return hasSeed && CORRELATED_FAMILIES.includes(family);
+export function seedPoisonsSpan(family: string, hasSeed: boolean): boolean {
+  return hasSeed && SEED_POISONED_FAMILIES.includes(family);
 }
 
 function readDistribution(
@@ -417,10 +434,10 @@ function readDistribution(
 
   // 3. `@seed` on a correlated family — the §4 divergence.
   const hasSeed = readAttributeValue(element, 'seed') !== null;
-  if (seedPoisonsCorrelatedSpan(family, hasSeed))
+  if (seedPoisonsSpan(family, hasSeed))
     return bottomReading(
-      'seeded-correlated',
-      `<${family}> carries @seed, and setSeed clears the series doHandover had just seeded, so every draw reads an empty series and every note in the span vanishes (§4 lists @seed as inert, which holds only for the i.i.d. families)`,
+      'seeded',
+      `<${family}> carries @seed, and setSeed CLEARS the series — which for a correlated family is the walk's current value doHandover had just seeded, and for a list is the list itself — so every draw reads an empty series and every note in the span vanishes (§4 lists @seed as inert, which holds only for uniform, gaussian and triangular)`,
     );
 
   const timingBasis = deriveTimingBasis(family, domain, {
@@ -463,6 +480,13 @@ function readDistribution(
     case BROWNIAN: {
       if (stepWidth.state === 'present')
         processParameters.push({ attribute: 'stepWidth.max', value: stepWidth.value });
+      // AD-14iii: for a correlated family the basis sets the step rate per unit time, which
+      // is a property of the PROCESS, so it joins the component rather than being reported
+      // inert as it is on the four i.i.d. elements.
+      processParameters.push({
+        attribute: 'milliseconds.timingBasis',
+        value: timingBasis.value,
+      });
       note = { kind: 'declared-law', detail: CORRELATED_MARGINAL_NOTE };
       return finish(correlatedStartLaw(coerced(lowerLimit), coerced(upperLimit), null, null));
     }
@@ -477,6 +501,10 @@ function readDistribution(
           '@degreeOfCorrelation is absent or 0, so the compensating step divides by zero and every draw after the first is NaN — the notes vanish from the MIDI export (R24)',
         );
       processParameters.push({ attribute: 'degreeOfCorrelation', value: coerced(correlation) });
+      processParameters.push({
+        attribute: 'milliseconds.timingBasis',
+        value: timingBasis.value,
+      });
       note = { kind: 'declared-law', detail: CORRELATED_MARGINAL_NOTE };
       return finish(
         correlatedStartLaw(

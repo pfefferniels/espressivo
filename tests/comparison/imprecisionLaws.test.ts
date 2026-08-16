@@ -24,7 +24,7 @@ import {
   neutralImprecisionReading,
   processParametersAt,
   readImprecisionSpans,
-  seedPoisonsCorrelatedSpan,
+  seedPoisonsSpan,
   timingBasisIsInert,
   type ImprecisionDomain,
   type ImprecisionReading,
@@ -147,7 +147,7 @@ describe('§5.9’s degenerate table is one rule: an absent parameter reads as 0
     const law = lawOf(
       '<distribution.gaussian date="0.0" seed="7" deviation.standard="10" milliseconds.timingBasis="300"/>',
     );
-    expect(law).toEqual({ kind: 'gaussian', sigma: 10, lower: 0, upper: 0 });
+    expect(law).toEqual({ kind: 'gaussian', sigma: 10, lower: 0, upper: 0, center: 0 });
     // The renderer really does draw unconditioned values there — well outside any limit.
     const dates = performedDates(
       '<distribution.gaussian date="0.0" seed="7" deviation.standard="10" milliseconds.timingBasis="300"/>',
@@ -281,15 +281,31 @@ describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () 
     expect(isBottomAt(seeded)).toBe(true);
     expect(isBottomAt(unseeded)).toBe(false);
 
-    // …and on an i.i.d. family @seed really IS inert, which is the other half of the claim.
-    expect(seedPoisonsCorrelatedSpan('distribution.uniform', true)).toBe(false);
-    expect(seedPoisonsCorrelatedSpan('distribution.correlated.brownianNoise', true)).toBe(true);
-    expect(seedPoisonsCorrelatedSpan('distribution.correlated.brownianNoise', false)).toBe(false);
+    // …and on uniform / gaussian / triangular @seed really IS inert, which is the other half.
+    expect(seedPoisonsSpan('distribution.uniform', true)).toBe(false);
+    expect(seedPoisonsSpan('distribution.gaussian', true)).toBe(false);
+    expect(seedPoisonsSpan('distribution.triangular', true)).toBe(false);
+    expect(seedPoisonsSpan('distribution.correlated.brownianNoise', true)).toBe(true);
+    expect(seedPoisonsSpan('distribution.correlated.compensatingTriangle', true)).toBe(true);
+    expect(seedPoisonsSpan('distribution.list', true)).toBe(true);
+    expect(seedPoisonsSpan('distribution.correlated.brownianNoise', false)).toBe(false);
     expect(
       lawOf(UNIFORM('limit.lower="-30" limit.upper="30"')),
     ).toEqual(
       lawOf('<distribution.uniform date="0.0" limit.lower="-30" limit.upper="30"/>'),
     );
+  });
+
+  it('@seed destroys a distribution.list too — setSeed clears the list itself', () => {
+    // Found by the registry's inventory partition rather than by looking: `series` is not a
+    // cache for a list provider, it IS the list, and setSeed empties it.
+    const values = '<measurement value="-40"/><measurement value="0"/><measurement value="40"/>';
+    const seeded = `<distribution.list date="0.0" seed="99" milliseconds.timingBasis="300">${values}</distribution.list>`;
+    const plain = `<distribution.list date="0.0" milliseconds.timingBasis="300">${values}</distribution.list>`;
+    expect(performedDates(seeded)).toEqual(['NaN', 'NaN', 'NaN', 'NaN']);
+    expect(performedDates(plain).every((value) => Number.isFinite(Number(value)))).toBe(true);
+    expect(isBottomAt(seeded)).toBe(true);
+    expect(isBottomAt(plain)).toBe(false);
   });
 
   it('an inverted-limit triangular has no monotone quantile, so it reads ⊥', () => {
@@ -473,7 +489,11 @@ describe('correlated families: processParameters and the index-dependent margina
     const reading = readFor(
       '<distribution.correlated.brownianNoise date="0.0" stepWidth.max="3" limit.lower="-30" limit.upper="30"/>',
     );
-    expect(processParametersAt(reading, 0)).toEqual([{ attribute: 'stepWidth.max', value: 3 }]);
+    expect(processParametersAt(reading, 0)).toEqual([
+      { attribute: 'stepWidth.max', value: 3 },
+      // AD-14iii folds the basis into the process for a correlated family, and only there.
+      { attribute: 'milliseconds.timingBasis', value: 60 },
+    ]);
   });
 
   it('compensatingTriangle carries degreeOfCorrelation', () => {
@@ -482,6 +502,7 @@ describe('correlated families: processParameters and the index-dependent margina
     );
     expect(processParametersAt(reading, 0)).toEqual([
       { attribute: 'degreeOfCorrelation', value: 2 },
+      { attribute: 'milliseconds.timingBasis', value: 60 },
     ]);
   });
 

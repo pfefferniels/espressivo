@@ -129,6 +129,14 @@ export interface GaussianLaw {
   readonly sigma: number;
   readonly lower: number;
   readonly upper: number;
+  /**
+   * The normal's mean. Always 0 as a document declares it — the renderer multiplies a
+   * STANDARD deviate by σ and never adds an offset — and non-zero only after §7.4's `'level'`
+   * invariance has shifted the law. It is a field rather than a wrapper so that every law in
+   * this module folds under an affine map ({@link affineLaw}) instead of accumulating one.
+   * The limits stay ABSOLUTE, so a shifted law's truncation window moves with it.
+   */
+  readonly center: number;
 }
 
 /**
@@ -229,9 +237,14 @@ export function triangularLaw(
  * symmetric and the renderer multiplies a standard deviate by it (measured: `σ = −10` draws
  * the same law as `σ = 10`).
  */
-export function gaussianLaw(sigma: number, lower: number, upper: number): DeltaLaw | GaussianLaw {
+export function gaussianLaw(
+  sigma: number,
+  lower: number,
+  upper: number,
+  center = 0,
+): DeltaLaw | GaussianLaw {
   const s = Math.abs(sigma);
-  return s === 0 ? DELTA_ZERO : { kind: 'gaussian', sigma: s, lower, upper };
+  return s === 0 ? deltaLaw(center) : { kind: 'gaussian', sigma: s, lower, upper, center };
 }
 
 /** The empirical law of `values`; null for an empty list, which the renderer cannot draw. */
@@ -260,6 +273,56 @@ export function clippedLaw(base: BaseLaw, lower: number, upper: number): Impreci
   return { kind: 'clipped', base, lower: lo, upper: hi };
 }
 
+/**
+ * `scale·X + shift` as another law of the same vocabulary — §7.4's invariance modes, applied
+ * to a distribution.
+ *
+ * Every kind FOLDS; nothing is wrapped. That is the reason {@link GaussianLaw} carries a
+ * `center` at all: with a wrapper, an invariance-transformed law would be a different SHAPE of
+ * object from the one the reader produced, and every consumer — `W₁`'s breakpoints, `W₂`'s
+ * quantile panels, `lawsEqual`'s identity fast path — would need a case for it. Folding keeps
+ * one vocabulary, so `d(A, A) = 0` stays exact after canonicalization, which is what P-C3's
+ * metric guarantee under an invariance mode actually needs.
+ *
+ * `scale` must be positive: a negative one reflects the law, which is not what either mode
+ * asks for, and `0` collapses it to a point mass that the caller means as a degenerate case
+ * rather than a canonicalization. AD-20's `σ = 0` rule handles that one a level up.
+ */
+export function affineLaw(law: ImprecisionLaw, scale: number, shift: number): ImprecisionLaw {
+  if (!(scale > 0) || !Number.isFinite(scale) || !Number.isFinite(shift))
+    throw new RangeError(
+      `affineLaw needs a positive finite scale and a finite shift, got ${String(scale)} and ${String(shift)}`,
+    );
+  if (scale === 1 && shift === 0) return law;
+  const map = (x: number): number => scale * x + shift;
+  switch (law.kind) {
+    case 'delta':
+      return deltaLaw(map(law.at));
+    case 'uniform':
+      return uniformLaw(map(law.lower), map(law.upper));
+    case 'triangular': {
+      const moved = triangularLaw(map(law.lower), map(law.upper), map(law.mode));
+      // `map` is increasing, so an inverted pair cannot appear from a valid one and `null`
+      // is unreachable — but returning the law unchanged would be a silent wrong answer.
+      if (moved === null) throw new RangeError('affineLaw: increasing map inverted a triangular');
+      return moved;
+    }
+    case 'gaussian':
+      return gaussianLaw(scale * law.sigma, map(law.lower), map(law.upper), map(law.center));
+    case 'list':
+      return listLaw(law.values.map(map)) ?? DELTA_ZERO;
+    case 'clipped':
+      // The cast is safe by construction and the switch above is the proof: every BASE kind
+      // maps to a base kind, so the recursive call on `law.base` cannot return a `ClippedLaw`.
+      // TypeScript cannot see that through the recursion.
+      return clippedLaw(
+        affineLaw(law.base, scale, shift) as BaseLaw,
+        map(law.lower),
+        map(law.upper),
+      );
+  }
+}
+
 // --- support ------------------------------------------------------------------------------
 
 /** The interval outside which a law has no mass — `±12σ` standing in for a Gaussian's tails. */
@@ -280,7 +343,7 @@ export function supportOf(law: ImprecisionLaw): readonly [number, number] {
       // sigmas of provably empty axis.
       if (gaussianEscapeWeight(law) <= 0) return [law.lower, law.upper];
       const tail = GAUSSIAN_TAIL_SIGMAS * law.sigma;
-      return [Math.min(-tail, law.lower), Math.max(tail, law.upper)];
+      return [Math.min(law.center - tail, law.lower), Math.max(law.center + tail, law.upper)];
     }
     case 'list':
       return [law.values[0], law.values[law.values.length - 1]];
@@ -471,7 +534,8 @@ export function standardNormalQuantile(p: number): number {
  */
 export function gaussianEscapeWeight(law: GaussianLaw): number {
   const inside =
-    standardNormalCdf(law.upper / law.sigma) - standardNormalCdf(law.lower / law.sigma);
+    standardNormalCdf((law.upper - law.center) / law.sigma) -
+    standardNormalCdf((law.lower - law.center) / law.sigma);
   const outside = 1 - inside;
   if (!(outside > 0)) return 0;
   if (outside >= 1) return 1;
@@ -490,11 +554,11 @@ export function cdf(law: ImprecisionLaw, x: number): number {
     case 'triangular':
       return triangularCdf(law, x);
     case 'gaussian': {
-      const base = standardNormalCdf(x / law.sigma);
+      const base = standardNormalCdf((x - law.center) / law.sigma);
       const weight = gaussianEscapeWeight(law);
       if (weight >= 1) return base;
-      const lo = standardNormalCdf(law.lower / law.sigma);
-      const hi = standardNormalCdf(law.upper / law.sigma);
+      const lo = standardNormalCdf((law.lower - law.center) / law.sigma);
+      const hi = standardNormalCdf((law.upper - law.center) / law.sigma);
       const inside = hi - lo;
       let truncated: number;
       if (!(inside > 0)) truncated = x >= law.lower ? 1 : 0;
@@ -597,18 +661,18 @@ function triangularQuantile(law: TriangularLaw, u: number): number {
  */
 function gaussianQuantile(law: GaussianLaw, u: number): number {
   const weight = gaussianEscapeWeight(law);
-  if (weight >= 1) return law.sigma * standardNormalQuantile(u);
+  if (weight >= 1) return law.center + law.sigma * standardNormalQuantile(u);
   if (weight <= 0) {
-    const lo = standardNormalCdf(law.lower / law.sigma);
-    const hi = standardNormalCdf(law.upper / law.sigma);
+    const lo = standardNormalCdf((law.lower - law.center) / law.sigma);
+    const hi = standardNormalCdf((law.upper - law.center) / law.sigma);
     if (!(hi > lo)) return law.lower;
-    return law.sigma * standardNormalQuantile(lo + u * (hi - lo));
+    return law.center + law.sigma * standardNormalQuantile(lo + u * (hi - lo));
   }
   const [hullLo, hullHi] = supportOf(law);
   if (u <= 0) return hullLo;
   if (u >= 1) return hullHi;
   const crossing = bisectSignChange((x) => cdf(law, x) - u, hullLo, hullHi);
-  return crossing ?? law.sigma * standardNormalQuantile(u);
+  return crossing ?? law.center + law.sigma * standardNormalQuantile(u);
 }
 
 // --- structural breakpoints ---------------------------------------------------------------
@@ -631,7 +695,7 @@ export function cdfBreakpoints(law: ImprecisionLaw): readonly number[] {
       // under 1e-9, so further nodes buy nothing and cost a piece each.
       const nodes: number[] = [law.lower, law.upper];
       for (let k = -GAUSSIAN_MESH_SIGMAS; k <= GAUSSIAN_MESH_SIGMAS; ++k)
-        nodes.push(k * law.sigma);
+        nodes.push(law.center + k * law.sigma);
       return nodes;
     }
     case 'list':
@@ -916,7 +980,7 @@ export function lawsEqual(a: ImprecisionLaw, b: ImprecisionLaw): boolean {
       const other = b as GaussianLaw;
       // Two untruncated Gaussians agree whatever their (dead) limits say — the limits are
       // parameters of a component that carries no weight.
-      if (a.sigma !== other.sigma) return false;
+      if (a.sigma !== other.sigma || a.center !== other.center) return false;
       if (a.lower === other.lower && a.upper === other.upper) return true;
       return gaussianEscapeWeight(a) >= 1 && gaussianEscapeWeight(other) >= 1;
     }
