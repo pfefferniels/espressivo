@@ -36,9 +36,14 @@
  */
 import { compareInterior, type InteriorCompareOptions } from '../comparison/compare.js';
 import { diffInterior, type InteriorDiffOptions } from '../comparison/diff.js';
+import { compareCorpusInterior, type InteriorCorpusOptions } from '../comparison/corpus.js';
+import type { Linkage } from '../comparison/clustering.js';
 import { defaultWeights } from '../comparison/aggregate.js';
 import { DEFAULT_LAMBDA_DATE } from '../comparison/eventAlignment.js';
 import {
+  CorpusLabelCollisionError,
+  CorpusOptionRangeError,
+  CorpusSizeError,
   NonPositiveTempoError,
   PerformanceSelectionAmbiguousError,
   PerformanceSelectionNotFoundError,
@@ -56,6 +61,8 @@ import type { InvarianceMode } from '../comparison/decomposition.js';
 import type {
   ComparisonReport,
   ComparisonResult,
+  CorpusReport,
+  CorpusResult,
   DiffReport,
   DiffResult,
 } from '../comparison/report.js';
@@ -103,6 +110,8 @@ export type {
   EpsilonFamily,
   MeasureEntry,
   MeasurePosition,
+  CorpusReport,
+  CorpusResult,
   DiffReport,
   DiffResult,
   EditOp,
@@ -168,6 +177,26 @@ export interface CompareMpmOptions extends ComparisonSettings {
 export interface DiffMpmOptions extends Omit<CompareMpmOptions, 'invariance' | 'profile'> {
   /** `fragment`/`consolidate` ops (A-Q5). Not shipped yet; requesting them earns a note. */
   readonly moves?: boolean;
+}
+
+/** §8's corpus surface. One option set for the whole matrix, which is what makes it one (R3). */
+export interface CompareCorpusOptions extends ComparisonSettings {
+  readonly items: readonly {
+    readonly mpm: XmlText;
+    /** Omit in a multi-performance document to EXPAND to one item per performance (§8). */
+    readonly performance?: string | number;
+    readonly label?: string;
+  }[];
+  /** One MSM for the whole matrix — it moves the window, the measures and the beat grid. */
+  readonly msm?: XmlText;
+  readonly maxItems?: number;
+  readonly normalization?: 'fixed' | 'corpus';
+  readonly linkage?: Linkage;
+  /** PAM clusters; omit for none. */
+  readonly k?: number;
+  readonly embeddingAxes?: number;
+  /** AD-26.3's per-piece percentile context. Context, never a rescaling. */
+  readonly noiseFloor?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +321,62 @@ export function diffMpm(options: DiffMpmOptions): DiffResult {
 }
 
 /**
+ * Compare a corpus — §8's matrices and everything read off them.
+ *
+ * ```ts
+ * const { report } = compareMpmCorpus({ items: rolls.map((mpm) => ({ mpm })), k: 3 });
+ * report.labels[report.medoids![0]];   // "the most typical performance of cluster 0"
+ * report.matrices.aggregate[i * report.n + j];
+ * report.embedding.negativeEigenvalueMass;  // how non-Euclidean this corpus is
+ * ```
+ *
+ * **One window, one option set, for every cell** (R3) — that is what makes the matrix a matrix
+ * rather than a table of separately-scaled numbers, and it is why the settings are a single bag
+ * shared with {@link compareMpm} rather than a per-pair argument. An item naming no performance
+ * in a multi-performance document EXPANDS to one item per performance, and labels are required
+ * unique after that expansion.
+ *
+ * @throws {InvalidOptionError} the option mistakes {@link compareMpm} rejects, plus a `k` or
+ *   `embeddingAxes` outside its domain, a corpus past `maxItems`, or labels that collide after
+ *   expansion
+ * @throws {ParseError} an item or the MSM is not well-formed MPM/MSM — the message names which
+ * @throws {PerformanceNotFoundError} an item's selector names or indexes nothing
+ */
+export function compareMpmCorpus(options: CompareCorpusOptions): CorpusResult {
+  checkCorpusOptions(options);
+
+  const items = options.items.map((item, index) => ({
+    root: parseDocument(`MPM items[${String(index)}]`, item.mpm, parseMpmRoot, 'mpm'),
+    performance: item.performance,
+    label: item.label,
+  }));
+  const msm =
+    options.msm === undefined ? null : parseDocument('MSM', options.msm, parseMsmRoot, 'msm');
+
+  const report = runCorpus({
+    items,
+    msm,
+    window: options.window ?? null,
+    weights: resolveWeights(options.weights),
+    jnd: { ...options.jnd },
+    plausibleRange: { ...options.plausibleRange },
+    invariance: resolveInvariance(options.invariance),
+    lambdaDate: DEFAULT_LAMBDA_DATE,
+    maxItems: options.maxItems ?? DEFAULT_MAX_ITEMS,
+    normalization: options.normalization ?? 'fixed',
+    linkage: options.linkage ?? 'average',
+    k: options.k,
+    embeddingAxes: options.embeddingAxes ?? null,
+    noiseFloor: options.noiseFloor ?? false,
+  });
+
+  return { report: normalizeZeros(report) };
+}
+
+/** R10's ceiling, raised to 256 by C17 so the 121-file Daten corpus fits in one call. */
+const DEFAULT_MAX_ITEMS = 256;
+
+/**
  * The documented empty performance, so that nobody hand-rolls the null baseline (C8).
  *
  * Comparing a document against this answers "how far is this performance from a deadpan
@@ -311,6 +396,15 @@ export function neutralMpm(options?: { readonly ppq?: number }): XmlText {
     '<global><header/><dated/></global>' +
     '</performance></mpm>'
   );
+}
+
+/** {@link run} for the corpus — the same §9.4 translation over a third interior. */
+function runCorpus(options: InteriorCorpusOptions): CorpusReport {
+  try {
+    return compareCorpusInterior(options);
+  } catch (cause) {
+    throw translate(cause);
+  }
 }
 
 /** {@link run} for the edit path — the same §9.4 translation over a different interior. */
@@ -341,6 +435,12 @@ function translate(cause: unknown): Error {
     cause instanceof NonPositiveTempoError
   )
     return new InvalidOptionError(`MPM ${cause.role}: ${cause.message}`, { cause });
+  if (
+    cause instanceof CorpusLabelCollisionError ||
+    cause instanceof CorpusSizeError ||
+    cause instanceof CorpusOptionRangeError
+  )
+    return new InvalidOptionError(cause.message, { cause });
   return new ComparisonEngineError(
     `the comparison engine failed an internal invariant — ${
       cause instanceof Error ? cause.message : String(cause)
@@ -397,6 +497,62 @@ function checkCompareOptions(options: CompareMpmOptions): void {
   checkSelector('performanceA', options.performanceA);
   checkSelector('performanceB', options.performanceB);
   checkProfile(options.profile);
+}
+
+/**
+ * §9.4's corpus rows, checked BEFORE any document is parsed (A23).
+ *
+ * `k` and `embeddingAxes` are §9.4's live cases of the knowability split's first branch
+ * (AD-25.1): a `k` outside `[1, N]` is unusable given the OTHER OPTIONS alone — `items.length`
+ * is in the same bag — so the caller could have known, and a full plausible-looking report with
+ * a silently clamped `k` would hide the typo the option exists to express.
+ */
+function checkCorpusOptions(options: CompareCorpusOptions): void {
+  const bag: unknown = options;
+  if (typeof bag !== 'object' || bag === null)
+    throw new InvalidOptionError('options must be an object carrying at least `items`');
+  const list: unknown = options.items;
+  if (!Array.isArray(list))
+    throw new InvalidOptionError('items must be an array of { mpm, performance?, label? }');
+
+  checkWindow(options.window);
+  checkWeights(options.weights);
+  checkJnd(options.jnd);
+  checkPlausibleRange(options.plausibleRange);
+  checkInvariance(options.invariance);
+  for (const [index, item] of options.items.entries())
+    checkSelector(`items[${String(index)}].performance`, item.performance);
+
+  if (
+    options.maxItems !== undefined &&
+    (!Number.isInteger(options.maxItems) || options.maxItems < 0)
+  )
+    throw new InvalidOptionError(
+      `maxItems must be a non-negative integer, got ${String(options.maxItems)}`,
+    );
+  // Checked against the UNEXPANDED count, which is a lower bound on the expanded one: the exact
+  // bound needs the documents, and this branch is the one a caller can act on without them.
+  if (options.k !== undefined && (!Number.isInteger(options.k) || options.k < 1))
+    throw new InvalidOptionError(`k must be an integer >= 1, got ${String(options.k)}`);
+  if (
+    options.embeddingAxes !== undefined &&
+    (!Number.isInteger(options.embeddingAxes) || options.embeddingAxes < 1)
+  )
+    throw new InvalidOptionError(
+      `embeddingAxes must be an integer >= 1, got ${String(options.embeddingAxes)}`,
+    );
+  if (
+    options.linkage !== undefined &&
+    !['average', 'single', 'complete', 'weighted', 'ward.D2'].includes(options.linkage)
+  )
+    throw new InvalidOptionError(
+      `unknown linkage "${String(options.linkage)}"; expected average, single, complete, ` +
+        'weighted or ward.D2',
+    );
+  if (options.normalization !== undefined && !['fixed', 'corpus'].includes(options.normalization))
+    throw new InvalidOptionError(
+      `unknown normalization "${String(options.normalization)}"; expected fixed or corpus`,
+    );
 }
 
 function checkWindow(window: ComparisonSettings['window']): void {

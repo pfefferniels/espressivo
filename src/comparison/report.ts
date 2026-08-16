@@ -453,3 +453,95 @@ export interface DiffReport {
 export interface DiffResult {
   readonly report: DiffReport;
 }
+
+// ---------------------------------------------------------------------------
+// §8's corpus level (§9.3)
+// ---------------------------------------------------------------------------
+
+export interface CorpusReport {
+  readonly n: number;
+  /** Unique after expansion (A8); the ONLY place a string appears — everything else indexes. */
+  readonly labels: readonly string[];
+  readonly items: readonly {
+    readonly itemIndex: number;
+    readonly performance: string;
+    /** True for a pseudo-performance, so no consumer mistakes one for a recording (AD-26.3). */
+    readonly synthetic: boolean;
+  }[];
+  readonly matrices: {
+    /** `N²`, row-major, `m[i*n + j]`; `m[i*n+j] === m[j*n+i]` bit for bit and `m[i*n+i] === 0`. */
+    readonly aggregate: readonly number[];
+    readonly byDimension: Record<ComparisonDimension, readonly number[]>;
+  };
+  readonly dendrogram: {
+    readonly merges: readonly {
+      readonly left: number;
+      readonly right: number;
+      readonly height: number;
+      readonly size: number;
+    }[];
+    readonly order: readonly number[];
+  };
+  /** Indices into {@link labels}; null unless `k` was requested. */
+  readonly medoids: readonly number[] | null;
+  readonly clusters: readonly number[] | null;
+  readonly silhouette: readonly number[] | null;
+  /** False below 20 items, where the figure is noisy (A22) — a field, not prose. */
+  readonly silhouetteReliable: boolean;
+  readonly embedding: {
+    readonly coordinates: readonly number[];
+    readonly eigenvalues: readonly number[];
+    readonly explainedVariance: readonly (number | null)[];
+    readonly degenerate: boolean;
+    readonly negativeEigenvalueMass: number;
+    readonly axes: number;
+  };
+  readonly seriationOrder: readonly number[];
+  readonly profiles: readonly {
+    readonly toMedoid: Record<ComparisonDimension, number>;
+    /**
+     * §7.5's signed companion — a DESCRIPTOR, never a distance, and `null` where the dimension
+     * has no single T-space quantity to be signed in or the item IS the medoid.
+     */
+    readonly toMedoidSigned: Record<ComparisonDimension, number | null>;
+    readonly toMeanDistance: number;
+  }[];
+  /** AD-25.5; null unless `normalization: 'corpus'`. A dimension with no nonzero set is null. */
+  readonly normalizationConstants: Record<ComparisonDimension, number | null> | null;
+  /** AD-26.3; null unless `noiseFloor` was requested. Context, never a rescaling. */
+  readonly context: {
+    readonly percentile: readonly number[];
+    readonly corpusMedian: number;
+    readonly corpusIqr: number;
+    readonly noiseFloor: number;
+  } | null;
+  readonly suspectPairs: readonly {
+    readonly i: number;
+    readonly j: number;
+    readonly reason: ComparisonNoteKind;
+  }[];
+  /** AD-27.8; null unless a `scape` was requested. */
+  readonly scape: { readonly bins: number; readonly cells: readonly number[] } | null;
+  /**
+   * The window every cell was computed over, with AD-4's two stamps.
+   *
+   * §8 says the settings echo carries the window and it does — as `{start, end}`. The RULE and
+   * the guarantee are here beside it because AD-4 makes them the difference between numbers
+   * that may be assembled into a matrix and numbers that may not, and a corpus result is a
+   * matrix. A corpus-shared window is piece-derived in AD-4's sense even when derived from the
+   * items, because it does not vary with the pair.
+   */
+  readonly window: {
+    readonly startQuarters: number;
+    readonly endQuarters: number;
+    readonly rule: WindowRule;
+    readonly metricGuarantee: MetricGuarantee;
+  };
+  /** The echo (A12): scalar settings only, never the document texts. */
+  readonly settings: ResolvedComparisonSettings;
+  readonly notes: readonly ComparisonNote[];
+}
+
+export interface CorpusResult {
+  readonly report: CorpusReport;
+}

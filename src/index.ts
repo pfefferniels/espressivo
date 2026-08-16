@@ -82,6 +82,7 @@ export {
 // than a consequence.
 export {
   compareMpm,
+  compareMpmCorpus,
   diffMpm,
   neutralMpm,
   COMPARISON_DIMENSIONS,
@@ -90,6 +91,7 @@ export {
 } from './api/comparison.js';
 export type {
   CompareMpmOptions,
+  CompareCorpusOptions,
   DiffMpmOptions,
   ComparisonSettings,
   ComparisonDimension,
@@ -107,6 +109,8 @@ export type {
   ComparisonResult,
   ComparisonSegment,
   ComparisonSiteRef,
+  CorpusReport,
+  CorpusResult,
   Decomposition,
   DiffReport,
   DiffResult,

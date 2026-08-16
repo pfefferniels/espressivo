@@ -4950,3 +4950,68 @@ Strict improvement, no interface change; §8's PAM sentence amends under
 delegation in B2. The tie-rich AD-25.2 pin and the Σ|λ|-vs-Σλ⁺ contrast
 pin are noted with approval — honesty requirements held by measurements,
 not style.
+
+## 2026-08-17 — W4 cut B2: `compareMpmCorpus` is live (w4-products)
+
+`src/comparison/corpus.ts`, §9.3's `CorpusReport`, three interior error classes, the facade and
+the export surface, + 19 tests. §8's corpus level over the vendored documents.
+
+**THE MATRIX IS ONE FUNCTION, and that is the test that carries the file.** Every cell comes
+from `compareInterior` — the same engine the pairwise facade uses, with the same options record
+— so a corpus number and a pairwise number for the same two documents under the same window are
+the SAME number, asserted cell by cell and dimension by dimension with `toEqual` rather than
+`toBeCloseTo`. R3's "one window, one option set" is what makes a dendrogram mean anything, and
+the window is derived ONCE (`corpusEndQuarters`, the maximum score end over the items) and handed
+to every pairwise call, so no cell can pick a different one. Negative-controlled: a per-pair
+window fails the window test.
+
+Bit-symmetry is BY CONSTRUCTION rather than by an appeal to the metric: both triangles are
+written from one computed number. Negative-controlled by perturbing the mirrored write by one
+`Number.EPSILON`, which fails three tests including P-C6's.
+
+**P-C6's CORPUS CLAUSE, asserted against a permuted RE-RUN** rather than against a stored
+expectation: permuting `items` permutes the matrices and relabels the dendrogram — merge for
+merge, leaf for leaf, and the seriation with them — and changes nothing else. That is AD-25.2's
+label-keyed tie rule doing its work end to end, on top of cut B1's own pin at the algorithm
+layer.
+
+[DECISION, needs ratification] **An EXPLICIT `embeddingAxes` outside `[1, N−1]` errors; the
+DEFAULT degrades.** §9.4's table gives the range without distinguishing the two, and taking it
+literally makes the default invalid for a two-item corpus — a caller who never set the option
+would be told they made a mistake they did not make. §9.4's own closing sentence governs it:
+"R7's three-state degradation continues to govern fields the caller did NOT request." So an
+unset `embeddingAxes` clamps to `min(2, max(1, N−1))` silently and an explicit one is the
+knowable branch. Found by a test that could not have been written any other way — the default
+threw.
+
+[DECISION, needs ratification] **`k ≤ N` is checked AFTER expansion**, in the interior, and
+translated to `InvalidOptionError` by the facade. The bound depends on the expanded count, which
+the facade cannot know without reading the documents; it is still §9.4's knowable branch rather
+than a degradation note, because the caller supplied both the corpus and the number.
+
+AD-25.5's normalization is implemented as the formula rather than as a stamped constant, and the
+test re-derives the median from the shipped per-dimension matrices instead of trusting the
+constant. The per-dimension matrices are UNCHANGED by it — only the aggregate is rebuilt — which
+is negative-controlled, because rescaling them too would silently redefine every `d_k` a caller
+reads.
+
+Profiles are taken against the CORPUS medoid, a single one obtained at `k = 1` whatever `k` the
+caller asked for, which is §8's own phrase ("distance to the corpus medoid") and the reading
+that makes "who is extreme in what" a statement about the whole corpus.
+
+NOT IN THIS CUT, and both flagged rather than dropped: AD-26.3's `corpusAverage` pseudo-item and
+AD-27.8's `scape`. The scape is cut C. The corpus average needs a decision I will not make
+alone — §8 defines it as "the per-dimension POINTWISE MEAN of the corpus's evaluated curves",
+and a mean curve is not a document, so its distance to each item cannot go through
+`compareInterior` at all. The T-space samplers exist (`DimensionEvaluation.valueA`), so the
+integral is computable, but it would be a SECOND integration path beside the eleven verified
+per-dimension integrators — no caps, no `⊥` handling, no transition-aware split points — and a
+synthetic row computed that way would sit in the same matrix as exact ones. Asked for a ruling
+before building it.
+
+NEGATIVE CONTROLS, four, each failing exactly its own tests and restoring green: a per-pair
+window instead of the corpus-shared one (1); the mirrored write perturbed by one ulp (3); label
+collisions permitted (1); normalization applied to the per-dimension matrices as well (1).
+
+Gate: `npm run verify` GREEN — 122 files, **5335 passed**, 0 skipped (was 5316). Repo-wide
+`npx prettier --check .` clean; eslint clean.

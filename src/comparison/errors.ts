@@ -102,3 +102,61 @@ export class NonPositiveTempoError extends MeicoError {
     );
   }
 }
+
+/**
+ * Two corpus items reduced to one label after expansion (§8, A8).
+ *
+ * Uniqueness is not pedantry. Every tie in §8's products is broken on a label (AD-25.2) and PAM
+ * medoids are the one product whose entire value is naming a real performer, so two documents
+ * legitimately labelled `"Welte 1905"` each holding a performance called `"default"` would make
+ * "the most typical Hofmann" ambiguous. The message names every collision and the item indices
+ * that produced it, because with ~256 items an error naming none of them sends the caller
+ * bisecting their own corpus.
+ */
+export class CorpusLabelCollisionError extends MeicoError {
+  constructor(readonly collisions: ReadonlyMap<string, readonly number[]>) {
+    super(
+      `corpus labels must be unique after expansion; ${String(collisions.size)} collide: ${[
+        ...collisions,
+      ]
+        .map(([label, indices]) => `"${label}" from items ${indices.join(', ')}`)
+        .join('; ')}`,
+    );
+  }
+}
+
+/** More items than `maxItems` allows — R10's ceiling, raised to 256 by C17 for the Daten corpus. */
+export class CorpusSizeError extends MeicoError {
+  constructor(
+    readonly count: number,
+    readonly maxItems: number,
+  ) {
+    super(
+      `the corpus expands to ${String(count)} items, past maxItems = ${String(maxItems)}; ` +
+        'raise maxItems or narrow the corpus',
+    );
+  }
+}
+
+/**
+ * A `k` or an `embeddingAxes` outside its domain, checked after §8's item expansion.
+ *
+ * The bound depends on the EXPANDED count, which the facade cannot know without reading the
+ * documents — a multi-performance item becomes several. It is still §9.4's knowable branch
+ * rather than a degradation note: the caller supplied both the corpus and the number, so the
+ * pair is theirs to reconcile, and a silently clamped `k` would answer a different question
+ * from the one asked.
+ */
+export class CorpusOptionRangeError extends MeicoError {
+  constructor(
+    readonly option: string,
+    readonly value: number,
+    readonly limit: number,
+    readonly expanded: number,
+  ) {
+    super(
+      `${option} = ${String(value)} is outside [1, ${String(limit)}] for a corpus that expands ` +
+        `to ${String(expanded)} items`,
+    );
+  }
+}
