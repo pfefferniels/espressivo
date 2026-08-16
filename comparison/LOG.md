@@ -3877,3 +3877,52 @@ incl. the plain-data walker; and EXTRA weight on anything
 conductor-authored (the imprecisionDegenerate probe test). Deliverable
 W3-VERIFICATION.md with GATE-PASS/BLOCK; fixes and re-gate per the W2
 pattern.
+
+## 2026-08-16 — AD-55: W3 gate verdict GATE-BLOCK; fix-wave rulings [BINDING]
+
+W3-VERIFICATION.md archived (6 CAPITAL, 18 MAJOR, ~18 MINOR; 18/19
+renderer behaviours reproduce exactly; 12/12 falsifiability probes incl.
+the conductor's test; the audit's own standard — mpmath references at
+60-80 dps, nothing accepted from the module's own tests — is the gate
+working as designed). Rulings on the four items needing more than a patch:
+
+AD-55.1 (CAPITAL-1) RULED as the report's repair (a)+(b): the
+defaultArticulation step function becomes a LIVE second component of
+d_articulation — a piecewise-constant step reading priced by
+localDistance on the resolved def's effective modifier per cell, summed
+with the alignment optimum (articulationDefault.ts already returns the
+step list; that is why it was written). @defaultArticulation is
+RECLASSIFIED from exclusion to live. NEW STANDING OBLIGATION: every
+partition-test EXCLUSION carries a renderer-checked reason — an
+attribute is an exclusion only if changing it changes no performed
+value; the classification call is itself a renderer claim and gets the
+renderer standard.
+AD-55.2 (CAPITAL-2) RULED as the report's repair: with an MSM, part
+scopes are driven by the MSM's part list (each paired with its MPM
+counterpart or the document's global scope per AD-52.2) — that is what
+renderParts iterates and therefore what performs; without an MSM the
+MPM-driven count stands WITH the estimate-degradation note. §7.5
+sentence delegated to the fix commit. AD-53.2's justification is
+SUPERSEDED (its 3× pin measured the artifact — empty <part> elements);
+every multi-part anchor is re-pinned under the corrected rule in the fix
+wave, and the fix commit's LOG entry records old → new numbers.
+AD-55.3 (MAJOR-2) RULED: the imprecision epsilon's relative figure is
+restated against the SUPPORT SCALE (the quantity that is machine-precise;
+measured ≤ 3e-17), with the JND figure operative and the
+well-separated-pairs caveat for the naive relative reading. Lands after
+CAPITAL-3's clamp.
+AD-55.4 (MAJOR-5) RULED: the CODE is authoritative — ln(1.025) per
+AD-27.6; DESIGN §7.1's stale ln(1.05) row is corrected under delegation.
+AD-55.5 All remaining findings are ACCEPTED with their proposed repairs:
+CAPITAL-3 (verified clamp), CAPITAL-4 (surface the ruled field),
+CAPITAL-5 (the MSM arm of suspectPair), CAPITAL-6 (code-unit sort — the
+module's own ban applied to itself), MAJOR-1 (all eleven dimensions in
+the metric suite + one family member per uncovered surface), MAJOR-17
+(symmetric tie-break key), MAJOR-16 (/comparison/ anchor + npm run
+format over the 28 files + repo-wide prettier --check joins the wave
+gate NOW, not W5), MAJOR-4/6/7..15 and the should-fix MINORs as listed.
+MINOR-8 was pre-declared by its author and is recorded as such.
+AD-55.6 Fix wave assigned to a FRESH Opus worker (w3-fix) with
+W3-VERIFICATION.md as its specification (the findings carry executable
+evidence and verified repairs); w3-verify re-gates scoped to the
+findings afterward, per the W2 pattern.
