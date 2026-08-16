@@ -11,14 +11,20 @@
  * cell that straddled a boundary would have GL-10 integrating across a jump. Putting every
  * boundary in the grid is what keeps each cell smooth.
  */
-import { comparisonRowFor } from './registry.js';
-import { CompensatedSum, integrateAbsolute, powerCriticalPoint } from './quadrature.js';
+import { comparisonRowFor, localDistance } from './registry.js';
+import {
+  CompensatedSum,
+  integrateCappedAbsolute,
+  powerCriticalPoint,
+} from './quadrature.js';
 import {
   displacementTicksAt,
+  isRubatoBottomAt,
   rubatoSegmentAt,
   type RubatoCurve,
   type RubatoSegment,
 } from './rubatoCurve.js';
+import { bottom, valued } from './values.js';
 import type { ComparisonWindow } from './window.js';
 import {
   IDENTITY_CANONICAL_PAIR,
@@ -109,6 +115,8 @@ export interface RubatoCell {
   readonly startQuarters: number;
   readonly endQuarters: number;
   readonly mass: number;
+  /** True where §4's cap bound this cell — a `⊥` interval, or a difference past `2·δ_row`. */
+  readonly capped: boolean;
   /**
    * `p_rubato(t)` in JND per quarter, at a position in QUARTERS (AD-51.1).
    *
@@ -126,6 +134,8 @@ export interface RubatoDistance {
   readonly mean: number | null;
   readonly cells: readonly RubatoCell[];
   readonly jnd: number;
+  /** True when any cell was capped, i.e. a `⊥` interval or a difference past `2·δ_row`. */
+  readonly capped: boolean;
 }
 
 /** The sorted, deduplicated union of both curves' breakpoints, clipped to the window. */
@@ -161,15 +171,47 @@ export function rubatoDistance(
   jndOverride?: number,
   canonical: CanonicalPair = IDENTITY_CANONICAL_PAIR,
 ): RubatoDistance {
-  const jnd = jndOverride ?? comparisonRowFor('rubato/rubato@frameLength').jnd;
+  const row = comparisonRowFor('rubato/rubato@frameLength');
+  const jnd = jndOverride ?? row.jnd;
+  const cap = 2 * row.delta;
   const grid = rubatoGridTicks(a, b, window, ticksPerQuarter);
 
   const cells: RubatoCell[] = [];
   const total = new CompensatedSum();
+  let anyCapped = false;
 
   for (let i = 0; i < grid.length - 1; ++i) {
     const cellStart = grid[i];
     const cellEnd = grid[i + 1];
+    const lengthQuarters = (cellEnd - cellStart) / ticksPerQuarter;
+
+    // MINOR-4 gave this dimension its first `⊥` route, so AD-36.2's capped integrator is now
+    // FORCED here as it is for accentuation and pedal: an uncapped value-value integral
+    // alongside a `δ`-priced `⊥` breaks the triangle inequality the moment a `⊥` document is
+    // the middle term. The `⊥`-ness is decided at the cell's left edge, which is sound because
+    // the grid carries every poisoned interval's end (A-B1).
+    const bottomA = isRubatoBottomAt(a, cellStart);
+    const bottomB = isRubatoBottomAt(b, cellStart);
+    if (bottomA || bottomB) {
+      const local = localDistance(
+        row,
+        bottomA ? bottom('renderer-error') : valued(displacementTicksAt(a, cellStart) / ticksPerQuarter),
+        bottomB ? bottom('renderer-error') : valued(displacementTicksAt(b, cellStart) / ticksPerQuarter),
+      );
+      const mass = local.distance * lengthQuarters;
+      if (local.capped) anyCapped = true;
+      total.add(mass);
+      cells.push({
+        startTicks: cellStart,
+        endTicks: cellEnd,
+        startQuarters: cellStart / ticksPerQuarter,
+        endQuarters: cellEnd / ticksPerQuarter,
+        mass,
+        capped: local.capped,
+        densityAt: () => local.distance,
+      });
+      continue;
+    }
 
     const difference = (ticks: number) =>
       canonicalValue(canonical.a, displacementTicksAt(a, ticks) / ticksPerQuarter) -
@@ -194,8 +236,15 @@ export function rubatoDistance(
         splitPoints.push(cellStart + ((cellEnd - cellStart) * k) / RUBATO_FALLBACK_SUBDIVISIONS);
     }
 
-    const mass =
-      integrateAbsolute(difference, cellStart, cellEnd, splitPoints) / ticksPerQuarter / jnd;
+    const integral = integrateCappedAbsolute(
+      (ticks) => difference(ticks) / jnd,
+      cap,
+      cellStart,
+      cellEnd,
+      splitPoints,
+    );
+    const mass = integral.mass / ticksPerQuarter;
+    if (integral.capped) anyCapped = true;
     total.add(mass);
     cells.push({
       startTicks: cellStart,
@@ -203,7 +252,9 @@ export function rubatoDistance(
       startQuarters: cellStart / ticksPerQuarter,
       endQuarters: cellEnd / ticksPerQuarter,
       mass,
-      densityAt: (quarters) => Math.abs(difference(quarters * ticksPerQuarter)) / jnd,
+      capped: integral.capped,
+      densityAt: (quarters) =>
+        Math.min(Math.abs(difference(quarters * ticksPerQuarter)) / jnd, cap),
     });
   }
 
@@ -213,5 +264,6 @@ export function rubatoDistance(
     mean: length > 0 ? total.total / length : null,
     cells,
     jnd,
+    capped: anyCapped,
   };
 }

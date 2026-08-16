@@ -66,7 +66,11 @@ export type DynamicsSegment =
 
 export interface DynamicsCurveNote {
   readonly kind:
-    'renderer-default-level' | 'inert-transition' | 'sub-note-mechanism' | 'renderer-skip';
+    | 'renderer-default-level'
+    | 'inert-transition'
+    | 'sub-note-mechanism'
+    | 'renderer-skip'
+    | 'degenerate-shape';
   readonly dateTicks: number;
   readonly detail: string;
 }
@@ -93,9 +97,20 @@ export function neutralDynamicsCurve(): DynamicsCurve {
   };
 }
 
-/** `DynamicsMap.clampCurvature` / `clampProtraction`, applied on the way in. */
-function clamp(value: number, low: number, high: number): number {
-  if (!Number.isFinite(value)) return 0;
+/**
+ * `DynamicsMap.clampCurvature` / `clampProtraction`, applied on the way in — **including what
+ * they do to a value that is not a number** (MINOR-4).
+ *
+ * The clamps are two comparisons, `value < 0` and `value > 1`, and `NaN` fails both — so an
+ * unusable `@curvature` reaches the curve as `NaN` rather than as the 0.0 an absent one gets.
+ * Repairing it to 0 was this module's first reading and it is a divergence: it produces a
+ * smoothstep ramp where the renderer performs something else entirely (see
+ * {@link readDynamicsSegments}). ABSENT is still 0.0, which is `DynamicsData`'s own initializer.
+ */
+function shapeParameter(element: Element, name: string, low: number, high: number): number {
+  if (readAttributeValue(element, name) === null) return 0;
+  const value = readNumericAttributeValue(element, name);
+  if (!Number.isFinite(value)) return value;
   return Math.min(high, Math.max(low, value));
 }
 
@@ -231,8 +246,8 @@ export function readDynamicsSegments(
       transitionTo: transitionTo === null ? null : transitionTo.value,
       // Read ONLY in the transition branch, and defaulted to 0.0 there — not 0.4, which is
       // <movement>'s default and a different family (§5.8/AD-13).
-      curvature: clamp(readNumericAttributeValue(element, 'curvature'), 0, 1),
-      protraction: clamp(readNumericAttributeValue(element, 'protraction'), -1, 1),
+      curvature: shapeParameter(element, 'curvature', 0, 1),
+      protraction: shapeParameter(element, 'protraction', -1, 1),
       subNoteDynamics: readAttributeValue(element, 'subNoteDynamics') === 'true',
       rendererDefault:
         volume.source === 'renderer-default' ||
@@ -286,7 +301,34 @@ export function readDynamicsSegments(
 
     // No redundant null re-test: TypeScript narrows `transitionTo` through the `isTransition`
     // const, and `no-unnecessary-condition` deletes the belt-and-braces check.
-    if (isTransition) {
+    if (isTransition && !Number.isFinite(raw.curvature + raw.protraction)) {
+      // MINOR-4, measured through `performMsm`: an unusable `@curvature`/`@protraction` makes
+      // the inner control points `NaN`, and `tForDate` starts at `t = 0.5` and loops only
+      // `while (Math.abs(diffX) >= 1.0)` — which `NaN` fails — so `t` stays exactly 0.5. The
+      // value fraction there is `(3 − 2t)t² = 0.5` for EVERY shape, so the span performs the
+      // arithmetic midpoint of its two endpoints as a CONSTANT. Executed: 40 → 120 with
+      // `curvature="abc"` performs 40, 80, 80, 80 on notes at 0/720/1440/2160.
+      //
+      // The verifier's MINOR-4 predicted `velocity="NaN"` here and the measurement refutes it;
+      // the renderer performs a perfectly definite, audible constant. The two exact endpoints
+      // (`getTForDate` short-circuits `t = 0` and `t = 1`) are single points of measure zero and
+      // are not modelled — an integral does not see them, and a breakpoint for each would put
+      // two zero-width cells in every grid.
+      segments.push({
+        kind: 'constant',
+        startTicks: raw.dateTicks,
+        endTicks,
+        volume: (raw.volume + raw.transitionTo) / 2,
+      });
+      notes.push({
+        kind: 'degenerate-shape',
+        dateTicks: raw.dateTicks,
+        detail:
+          'an unusable @curvature or @protraction leaves the Bézier control points NaN, so ' +
+          "tForDate's loop never runs and the span performs the midpoint of its endpoints as a " +
+          'constant — not the ramp a repaired 0.0 would give',
+      });
+    } else if (isTransition) {
       const [x1, x2] = innerControlPointsXPositions(raw.curvature, raw.protraction);
       segments.push({
         kind: 'bezier',

@@ -3740,3 +3740,68 @@ written before the control was run, which is the right order).
 
 Gate: `npm run verify` GREEN before committing — 116 files, 4984 passed, 0 skipped (was 4960).
 24 new tests. eslint and prettier clean.
+
+## 2026-08-16 — W3b part 9: MINOR-4's malformed-value table, ruled by the renderer (w3b-facade)
+
+`tests/comparison/malformedValues.test.ts` + 13 tests, and the two readers repaired. AD-33.6
+assigned MINOR-4 to W3b with the instruction to "decide them together rather than one at a
+time"; deciding them together is what makes one of the three answers different from what the
+report that raised them predicted.
+
+**THE TABLE, EVERY ROW MEASURED THROUGH `performMsm`:**
+
+| input | the verifier predicted | the renderer does | now read as |
+| --- | --- | --- | --- |
+| `curvature="abc"` on a `<dynamics>` transition | `velocity="NaN"` | performs the MIDPOINT of the endpoints as a CONSTANT | a constant at the midpoint |
+| `intensity="abc"` with a `rubatoDef` in scope | keeps NaN, ignores the def | keeps NaN, `date.perf="NaN"` over the warped frame | `⊥` over the warped frame |
+| `frameLength="0"` with `@loop` | NaN warped dates | `date.perf="NaN"` over the whole span | `⊥` over the whole span |
+
+**ROW 1 IS REFUTED, AND THE MECHANISM IS EXACT.** `clampCurvature` is two comparisons, `value <
+0` and `value > 1`, and `NaN` fails both — so the control points really are `NaN`, as the report
+says. But `tForDate` starts at `t = 0.5` and loops `while (Math.abs(diffX) >= 1.0)`, which `NaN`
+also fails, so `t` never moves; and the value fraction at `t = 0.5` is `(3 − 2t)t² = 0.5` for
+EVERY shape. Executed: 40 → 120 with `curvature="abc"` performs 40, 80, 80, 80 on notes at
+0/720/1440/2160 — the arithmetic midpoint, held as a constant, with the two exact endpoints
+(`getTForDate` short-circuits `t = 0` and `t = 1`) as single points of measure zero. Reading it
+as `⊥` would have priced at `δ_row` a performance the renderer gives perfectly well; reading it
+as a repaired `curvature = 0` — which is what shipped — gives a smoothstep RAMP where the
+renderer holds a constant. Both are wrong and they are wrong in different directions.
+
+**ROWS 2 AND 3 CONFIRM, and the rule behind them is sharper than the report's.**
+`getRubatoDataOf` tests the attribute's PRESENCE, not its usability:
+`if (att !== null) rd.x = parseFloat(...); else if (def) rd.x = def.getX();`. So a
+present-but-unusable value keeps its `NaN` and the def is never consulted FOR THAT ATTRIBUTE —
+which the shipped reader got backwards, silently performing the def's warp where the renderer
+performs none. The same presence rule and the same `NaN`-survives-the-clamps mechanic reach
+`@lateStart` and `@earlyEnd` (`NaN < 0`, `NaN > 1` and `NaN >= earlyEnd` are all false), which
+the report did not name and which are now covered.
+
+WHERE the poison lands is the render loop's own guard, `!loop && date >= startDate +
+frameLength`, and three cases fall out of it, all measured:
+- an UNUSABLE `@frameLength` poisons the WHOLE span even without `@loop`, because `NaN` fails
+  the guard and every note in the span is warped — worse than a zero one;
+- `frameLength="0"` poisons the whole span WITH `@loop` (`x % 0` is `NaN`) and NOTHING without
+  it (the guard breaks on the first note), which is the existing skip-to-a-neutral-gap reading;
+- a NEGATIVE `@frameLength` performs the IDENTITY on the dates the renderer visits — `%` takes
+  the dividend's sign — so it is not `⊥` at all.
+
+**AD-36.2 IS THEREFORE FORCED FOR RUBATO**, which is the consequence that makes this more than a
+reader fix: rubato had no `⊥` route before, and now it has four. `rubatoDistance` moves from
+`integrateAbsolute` to `integrateCappedAbsolute` and prices a `⊥` interval at `δ_row` per
+quarter through `localDistance`, exactly as accentuation and pedal do. The triangle inequality
+with a `⊥` document as the middle term is pinned — over a FOUR-quarter frame, because over a
+one-quarter frame the displacement cannot reach the 20 JND the cap sits at and the test would
+have passed uncapped (measured: it did, until the fixture was fixed).
+
+PEDAL WAS CHECKED AND NEEDS NOTHING. `MovementData` uses the same `tForDate`, but the movement
+path SAMPLES the curve instead of evaluating it per note, so a `NaN` control point produces
+events with `date="null"` — nothing is placed at all — and `pedalCurve` already reads that as
+`⊥` through §5.8's non-monotone-date rule. One `NaN`, two renderer paths, two dispositions, and
+the comparison already had both right.
+
+NEGATIVE CONTROLS, each failing exactly its own tests and restoring green: repairing an unusable
+`@curvature` to 0 (2); inheriting a present-but-unusable rubato attribute from the def (4);
+removing the cap from the rubato integrand (1, after the fixture was strengthened to reach it).
+
+Gate: `npm run verify` GREEN before committing — 117 files, 4997 passed, 0 skipped (was 4984).
+13 new tests. eslint and prettier clean.

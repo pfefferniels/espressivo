@@ -88,7 +88,12 @@ import {
   type ComparisonUnit,
   type JndOverrides,
 } from './registry.js';
-import { readRubatoSegments, displacementTicksAt, type RubatoCurve } from './rubatoCurve.js';
+import {
+  displacementTicksAt,
+  readRubatoSegments,
+  rubatoBottomSpans,
+  type RubatoCurve,
+} from './rubatoCurve.js';
 import { rubatoDistance } from './rubatoDistance.js';
 import { readTempoSegments, quarterBpmAt, type TempoCurve } from './tempoCurve.js';
 import { tempoDistance } from './tempoDistance.js';
@@ -576,8 +581,13 @@ function rubatoPlan(settings: DimensionSettings): CurvePlan<RubatoCurve> {
         side.document.performance.global,
       ),
     breakpoints: (curve) => curve.breakpointsTicks,
-    sampler: (curve) => (ticks) => displacementTicksAt(curve, ticks) / settings.ticksPerQuarter,
-    bottomSpans: () => [],
+    sampler: (curve, startTicks, endTicks) =>
+      rubatoBottomSpans(curve).some(
+        (span) => span.startTicks < endTicks && span.endTicks > startTicks,
+      )
+        ? null
+        : (ticks: number) => displacementTicksAt(curve, ticks) / settings.ticksPerQuarter,
+    bottomSpans: (curve) => rubatoBottomSpans(curve),
     distance: (curveA, curveB, jnd, canonical) =>
       rubatoDistance(curveA, curveB, settings.window, settings.ticksPerQuarter, jnd, canonical),
     notes: (curve, role) =>

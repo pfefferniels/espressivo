@@ -44,7 +44,7 @@
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { RUBATO_MAP, RUBATO_STYLE } from '../mpm/names.js';
-import { readAttributeValue, readNumericAttributeValue } from '../expression/attributes.js';
+import { readAttributeValue } from '../expression/attributes.js';
 import { findStyleDef } from '../expression/styleScope.js';
 import type { MpmEnvironment } from '../expression/mpmTree.js';
 import { assertSpanEndRule } from './spanEnds.js';
@@ -102,10 +102,20 @@ export interface RubatoSegment {
   readonly loop: boolean;
   /** True when the clamped parameters are the identity warp — `δ ≡ 0` exactly (M18). */
   readonly neutral: boolean;
+  /**
+   * The end of the `⊥` interval this segment opens at its own start, or null where it opens
+   * none (MINOR-4).
+   *
+   * A warp the renderer computes as `NaN` erases every note it touches, and WHERE it touches
+   * is the render loop's guard: the whole span under `@loop` or an unusable `@frameLength`,
+   * the first frame otherwise. Modelled as an interval rather than as a segment kind because
+   * it is a sub-interval of the span, exactly as the `@loop`-off warp itself is.
+   */
+  readonly poisonedEndTicks: number | null;
 }
 
 export interface RubatoCurveNote {
-  readonly kind: 'renderer-skip' | 'grid-truncated';
+  readonly kind: 'renderer-skip' | 'grid-truncated' | 'renderer-error';
   readonly dateTicks: number;
   readonly detail: string;
 }
@@ -129,8 +139,12 @@ export function neutralRubatoCurve(): RubatoCurve {
  * all rather than as a backwards one.
  */
 function clampWindow(lateStart: number, earlyEnd: number): { lateStart: number; earlyEnd: number } {
-  let low = Number.isFinite(lateStart) ? lateStart : 0;
-  let high = Number.isFinite(earlyEnd) ? earlyEnd : 1;
+  let low = lateStart;
+  let high = earlyEnd;
+  // `NaN` fails all three comparisons and SURVIVES, exactly as it does in the renderer
+  // (`RubatoMap.ts:136-141`). Repairing it to 0/1 was this module's first reading and it is a
+  // divergence: the renderer carries the NaN into `computeRubatoTransformation`, which then
+  // writes `date.perf="NaN"` and the note vanishes from the MIDI export (MINOR-4, R24).
   if (low < 0) low = 0;
   if (high > 1) high = 1;
   if (low >= high) return { lateStart: 0, earlyEnd: 1 };
@@ -146,18 +160,28 @@ function clampWindow(lateStart: number, earlyEnd: number): { lateStart: number; 
  *
  * Returns null exactly where `getRubatoDataOf` does — no `@frameLength` from either source.
  */
+type RawRubato =
+  | {
+      readonly poisoned?: undefined;
+      readonly frameLength: number;
+      readonly intensity: number;
+      readonly lateStart: number;
+      readonly earlyEnd: number;
+      readonly loop: boolean;
+    }
+  /** The warp the renderer performs here is `NaN`, so the notes it touches vanish (R24). */
+  | {
+      readonly poisoned: 'span' | 'warped';
+      readonly loop: boolean;
+      readonly frameLength?: number;
+    };
+
 function readRawRubato(
   element: Element,
   styleName: string | null,
   environment: MpmEnvironment,
   globalEnvironment: MpmEnvironment,
-): {
-  frameLength: number;
-  intensity: number;
-  lateStart: number;
-  earlyEnd: number;
-  loop: boolean;
-} | null {
+): RawRubato | null {
   const def = findRubatoDef(
     readAttributeValue(element, 'name.ref'),
     styleName,
@@ -165,33 +189,59 @@ function readRawRubato(
     globalEnvironment,
   );
 
-  const inherited = (name: string): number => {
-    const own = readNumericAttributeValue(element, name);
-    if (!Number.isNaN(own)) return own;
-    if (def === null) return NaN;
-    return readNumericAttributeValue(def, name);
+  // `getRubatoDataOf` tests the attribute's PRESENCE, not its usability:
+  // `if (att !== null) rd.x = parseFloat(att.getValue()); else if (def) rd.x = def.getX();`
+  // So a present-but-unusable value keeps its `NaN` and the def is NEVER consulted for it
+  // (MINOR-4, confirmed at source and through `performMsm`). Reading it as "unusable, so
+  // inherit" was this module's first version and it silently performed the def's warp where
+  // the renderer performs none at all.
+  const resolved = (name: string): { present: boolean; value: number } => {
+    const own = readAttributeValue(element, name);
+    if (own !== null) return { present: true, value: parseFloat(own) };
+    if (def !== null) {
+      const inherited = readAttributeValue(def, name);
+      if (inherited !== null) return { present: true, value: parseFloat(inherited) };
+    }
+    return { present: false, value: NaN };
   };
 
-  const frameLength = inherited('frameLength');
-  if (!Number.isFinite(frameLength) || frameLength <= 0) return null;
+  const frame = resolved('frameLength');
+  // `else return null` — no `@frameLength` from either source is the one skip the renderer makes.
+  if (!frame.present) return null;
 
-  const intensityRaw = inherited('intensity');
-  const lateStartRaw = inherited('lateStart');
-  const earlyEndRaw = inherited('earlyEnd');
+  const loop = readAttributeValue(element, 'loop') === 'true';
+
+  // An UNUSABLE frame length poisons the whole span even without `@loop`: the render loop's
+  // guard is `!loop && date >= startDate + frameLength`, and `NaN` fails it, so every note in
+  // the span is warped and every warp is `NaN`. Measured: all four notes `date.perf="NaN"`.
+  if (Number.isNaN(frame.value)) return { poisoned: 'span', loop };
+
+  // A frame length of exactly 0 with `@loop`: `(date − start) % 0` is `NaN`. Without `@loop`
+  // the same guard breaks on the first note and NOTHING is warped, and a NEGATIVE frame length
+  // performs the identity on the dates the renderer visits — both measured, and both the
+  // existing skip-to-a-neutral-gap reading.
+  if (frame.value <= 0) return frame.value === 0 && loop ? { poisoned: 'span', loop } : null;
+
+  const intensityRaw = resolved('intensity');
+  const lateStartRaw = resolved('lateStart');
+  const earlyEndRaw = resolved('earlyEnd');
 
   const { lateStart, earlyEnd } = clampWindow(
-    Number.isNaN(lateStartRaw) ? 0 : lateStartRaw,
-    Number.isNaN(earlyEndRaw) ? 1 : earlyEndRaw,
+    lateStartRaw.present ? lateStartRaw.value : 0,
+    earlyEndRaw.present ? earlyEndRaw.value : 1,
   );
+  // RubatoData's initializers: 1.0 / 0.0 / 1.0 — the identity warp.
+  const intensity = intensityRaw.present ? intensityRaw.value : 1;
+
+  if (!Number.isFinite(intensity + lateStart + earlyEnd))
+    return { poisoned: 'warped', loop, frameLength: frame.value };
 
   return {
-    frameLength,
-    // RubatoData's initializers: 1.0 / 0.0 / 1.0 — the identity warp.
-    intensity: Number.isNaN(intensityRaw) ? 1 : intensityRaw,
+    frameLength: frame.value,
+    intensity,
     lateStart,
     earlyEnd,
-    // `@loop` is never inherited from the def (§7.16's note on the same attribute).
-    loop: readAttributeValue(element, 'loop') === 'true',
+    loop,
   };
 }
 
@@ -243,6 +293,42 @@ export function readRubatoSegments(
       continue;
     }
 
+    if (parsed.poisoned !== undefined) {
+      // The warp is `NaN` wherever it applies, so every note it touches gets
+      // `date.perf="NaN"` and vanishes from the MIDI export — R24's condition, priced `⊥`
+      // (AD-1, AD-33.1). WHERE it applies is the render loop's own guard: the whole span when
+      // `@loop` is on or the frame length itself is unusable, the first frame otherwise.
+      const frameLengthTicks =
+        parsed.frameLength === undefined
+          ? Number.POSITIVE_INFINITY
+          : parsed.frameLength * scaleFactor;
+      const poisonedEnd =
+        parsed.poisoned === 'span' || parsed.loop
+          ? endTicks
+          : Math.min(endTicks, raw.dateTicks + frameLengthTicks);
+      segments.push({
+        startTicks: raw.dateTicks,
+        endTicks,
+        frameLengthTicks: Number.isFinite(frameLengthTicks) ? frameLengthTicks : endTicks - raw.dateTicks,
+        intensity: 1,
+        lateStart: 0,
+        earlyEnd: 1,
+        loop: parsed.loop,
+        neutral: true,
+        poisonedEndTicks: poisonedEnd,
+      });
+      breakpoints.add(poisonedEnd);
+      notes.push({
+        kind: 'renderer-error',
+        dateTicks: raw.dateTicks,
+        detail:
+          'an unusable @frameLength, @intensity, @lateStart or @earlyEnd leaves the warp NaN, ' +
+          'so every note it touches gets date.perf="NaN" and vanishes from the MIDI export ' +
+          '(R24): the interval reads ⊥ rather than an unwarped gap',
+      });
+      continue;
+    }
+
     const frameLengthTicks = parsed.frameLength * scaleFactor;
     const neutral = parsed.intensity === 1 && parsed.lateStart === 0 && parsed.earlyEnd === 1;
 
@@ -255,6 +341,7 @@ export function readRubatoSegments(
       earlyEnd: parsed.earlyEnd,
       loop: parsed.loop,
       neutral,
+      poisonedEndTicks: null,
     });
 
     // Frame boundaries enter the grid: one when @loop is off (the single frame's end), and
@@ -328,4 +415,22 @@ export function displacementQuartersAt(
   ticksPerQuarter: number,
 ): number {
   return displacementTicksAt(curve, ticks) / ticksPerQuarter;
+}
+
+/** The intervals where the renderer's warp is `NaN` — §4's `⊥`, in common ticks (MINOR-4). */
+export function rubatoBottomSpans(
+  curve: RubatoCurve,
+): readonly { readonly startTicks: number; readonly endTicks: number }[] {
+  return curve.segments
+    .filter((segment) => segment.poisonedEndTicks !== null)
+    .map((segment) => ({
+      startTicks: segment.startTicks,
+      endTicks: segment.poisonedEndTicks as number,
+    }));
+}
+
+/** Whether `t` falls in a `⊥` interval — the probe the distance takes at each cell's edge. */
+export function isRubatoBottomAt(curve: RubatoCurve, ticks: number): boolean {
+  const segment = rubatoSegmentAt(curve, ticks);
+  return segment !== null && segment.poisonedEndTicks !== null && ticks < segment.poisonedEndTicks;
 }

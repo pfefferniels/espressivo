@@ -219,6 +219,7 @@ describe('rubato: the structural u* split (rule 2c) — RG-2', () => {
     earlyEnd,
     loop: true,
     neutral: false,
+    poisonedEndTicks: null,
   });
 
   it('returns the closed-form u* for a frame-aligned pair', () => {
