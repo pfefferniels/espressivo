@@ -4742,3 +4742,34 @@ and `src/index.ts`. [MEASURED, reported] The suite's own cost: `editDimensions.t
 real corpus with a DP per (pair, scope, dimension) and is 12.4 s of the 21 s total. It was 37.8 s
 before the walk was merged into one pass and the localization pins were restricted to the
 dimensions that localize — a pin over a code path both modes share asserts nothing.
+
+## 2026-08-17 — AD-60: cut A3 rulings — sixth epsilon family [BINDING]
+
+f3db06c accepted (all eleven dimensions carry a §6 script; event
+reworking measured at exactly 0 — the §5.6 functional's per-event
+additivity arriving as measurement; §5.5's two components falling out of
+ONE script is the second justification for <style> in the edit sequence).
+
+AD-60.1 (the requested ruling) The epsilon record GAINS A SIXTH FAMILY:
+`rubato`, with AD-34.1's measured figure (2.718e-4 relative; the JND
+figure alongside) — the `step` family's "no quadrature in the time
+domain" claim is true of asynchrony/accentuation/imprecision spans and
+FALSE of rubato, whose displacement integrates through rule 2c. The
+record's exact-0 stays for the genuinely exact members. DESIGN §9.3
+amendment delegated to the A4 facade commit. The band + separate
+worst-shortfall assertion pattern is approved (a band that cannot absorb
+a regression).
+AD-60.2 Both in-cut fixes accepted: the per-entry resolution threading
+(endpoint claim now exact equality on every vendored triple), and the
+articulation localization IMPOSSIBILITY — hazard instance #7 (the
+retroactive default reaches arbitrarily far left, and the interval's
+right bound is the next unchanged INSTRUCTION, not switch). Localization
+stays OFF for articulation with the 8× violation measurement recorded as
+what any future attempt must face.
+AD-60.3 RATIFIED: ornamentation's whole-map scope rule for mixed states
+(any A instruction ⇒ A's scope; none ⇒ B's — endpoint exactness governs,
+AD-59.1's reading extended). Obligation: pin it on a SYNTHETIC pair in
+the A4 window — a stated rule with no observable is half a rule.
+AD-60.4 The A4 invariance question was ruled before it was asked:
+AD-59.3 — InvalidOptionError, knowability split, never silent. Crossed
+messages; the LOG is the channel.
