@@ -3085,3 +3085,55 @@ and what makes the domain inert is that nothing reads it back.
 
 Gate: `npm run verify` GREEN — 4794 passed, 0 skipped, unchanged by this commit (documentation
 and ledger only). prettier clean on DESIGN.md, PARITY.md and LOG.md.
+
+## 2026-08-16 — AD-50: cut 4 CLOSED, W3a COMPLETE; W3b commission [BINDING]
+
+aecf49f + fa706f7 + 6d5f6da accepted. W3a is COMPLETE: eleven dimensions
+live, 75 imprecision rows (superset-forced, not scope creep), skip-list
+empty and asserted, R9 partition un-skipped and bidirectional, 4794
+passed with ZERO skipped. Dispositions:
+
+AD-50.1 The @seed three-family expansion is accepted (list's series IS
+the seed-cleared state; empty list same route; Java ArithmeticException vs
+port NaN — PARITY IMP1 as landed). The registry partition test finding it
+is the argument for the partition test, on the record.
+AD-50.2 Seven ⊥ routes ⇒ capped density CONFIRMED; the Math.min form is
+CORRECT (piecewise-constant readings make the cell integral density ×
+length exactly — the corner integrateCappedAbsolute resolves does not
+exist here; module doc carries the reason).
+AD-50.3 The P-C3 all-three-middles repair + the cap-binding family member
+are accepted with emphasis: a suite defect affecting all dimensions,
+found by negative control, fixed at the family level. Standing lesson
+re-recorded: a family that merely CONTAINS a hazard is not one that
+REACHES it.
+AD-50.4 (item d) RATIFIED AS IMPLEMENTED: 'level-gain' for distribution
+dimensions is §7.4's literal reading — X ↦ (X − ℓ)/σ per document — a
+genuine per-document canonicalization, metric-safe by the curve argument,
+with the AD-32 floor/shapeless discipline. Not an error case: the
+construction §7.4 names is well-defined here and musically meaningful
+(scatter-shape comparison). AD-20's silence was a gap, not a prohibition.
+AD-50.5 The two record corrections (six→seven routes, two→three families;
+the commission's wrong "global pedal path false" — conductor's error,
+Performance.ts:550/:756 pass true) are accepted; corrected records
+outrank unblemished ones.
+AD-50.6 affineLaw folding (GaussianLaw gains `center`), the ratio-form
+proportionality pin, and the cellwise-lemma decomposition are ratified as
+landed.
+
+W3B COMMISSION (imp-cut4 continues; hand off at a clean boundary if
+context runs low — the campaign norm): §7 aggregation (D = Σω_k d_k,
+weights/JND options, zero-weight handling, invariance plumbing);
+AD-19's canonical table (aggregate-density segments via Ruzzo–Tompa,
+below-threshold remainder, closure pinned ≤ 1e-12·D); the §9 facade AS
+ADJUDICATED (ComparisonSettings; b defaults to a; selectors + errors
+carrying document identity; COMPARISON_JND_KEYS export; full report
+shapes — dimensions record in COMPARISON_DIMENSIONS order, aggregate,
+segments with {mass,peak,mean,length,start,end}, closing table,
+decomposition, notes channel, drift, equivalence block, opt-in profile
+export, signed descriptors, per-family epsilon record, windowRule/
+metricGuarantee stamps; finiteness discipline with P-C11 walker;
+serialization order pinned; −0 normalization MINOR-2; malformed-value
+table MINOR-4; options echo without document texts); src/index.ts +
+src/api exports per §9.7; P-C2 byte-identity at facade level; P-C5
+cross-module test in AD-6's three-part split. Then the W3 wave gate
+(independent verifier).
