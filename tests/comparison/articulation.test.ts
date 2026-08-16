@@ -592,3 +592,84 @@ describe('d_articulation', () => {
     expect(result.distance).toBeGreaterThan(0);
   });
 });
+
+/**
+ * AD-51.2's atom placement, at the dimension level.
+ *
+ * The aggregation's table cannot close on a scalar: an articulation's mass belongs in the
+ * column of the segment its note falls in. These pin that the placement is a decomposition of
+ * the SAME optimum — nothing lost, nothing invented — and that the id-anchored case is the
+ * admission AD-39.1 requires it to be rather than a silent guess at a date.
+ */
+describe('articulation atom placement (AD-51.2)', () => {
+  const distanceOf = (a: string, b: string, endQuarters = 8) => {
+    const pair = readComparisonPair({
+      a: doc(a),
+      b: doc(b),
+      window: { start: 0, end: endQuarters },
+    });
+    const read = (side: 'a' | 'b') => {
+      const document = pair[side];
+      const scope = document.scopes.find((candidate) => candidate.scope === 'global');
+      if (scope === undefined) throw new Error('no global scope');
+      return readArticulationAtoms(
+        readScopeMapViews(scope).get('articulationMap') ?? null,
+        document.scaleFactor,
+        scope.environment,
+        document.performance.global,
+      );
+    };
+    return articulationDistance(read('a'), read('b'), pair.window, pair.ppq.lcm);
+  };
+
+  it('decomposes the distance without losing or inventing mass', () => {
+    const a =
+      '<articulation date="0.0" relativeDuration="0.5"/>' +
+      '<articulation date="1440.0" relativeVelocity="1.4"/>';
+    const b = '<articulation date="720.0" relativeDuration="0.25"/>';
+    const result = distanceOf(a, b);
+    const mass = result.atoms.reduce((sum, atom) => sum + atom.mass, 0);
+    expect(mass).toBeCloseTo(result.distance, 9);
+    expect(result.atoms).toHaveLength(result.matched + result.unmatchedA + result.unmatchedB);
+  });
+
+  it('places a matched pair over the span between the two dates (AD-7)', () => {
+    const half = '<articulation date="0.0" relativeDuration="0.5"/>';
+    // 45 ticks is 1/16 quarter, i.e. exactly one λ_date JND — near enough that matching
+    // beats dropping both, which at a whole quarter apart it does not.
+    const quarter = '<articulation date="45.0" relativeDuration="0.25"/>';
+    const result = distanceOf(half, quarter);
+    expect(result.matched).toBe(1);
+    expect(result.atoms).toHaveLength(1);
+    expect(result.atoms[0].startTicks).toBe(0);
+    expect(result.atoms[0].endTicks).toBe(45);
+  });
+
+  it('places an unmatched atom at its own date as a point mass', () => {
+    const result = distanceOf('<articulation date="1440.0" relativeDuration="0.5"/>', '');
+    expect(result.atoms).toHaveLength(1);
+    expect(result.atoms[0].kind).toBe('unmatched-a');
+    expect(result.atoms[0].startTicks).toBe(1440);
+    expect(result.atoms[0].endTicks).toBe(1440);
+    expect(result.atoms[0].datePositionKnown).toBe(true);
+  });
+
+  it('spreads an id-anchored atom over the window and reports the position as unknown', () => {
+    const a = '<articulation date="0.0" noteid="#n1" relativeDuration="0.5"/>';
+    const b = '<articulation date="0.0" noteid="#n1" relativeDuration="0.25"/>';
+    const result = distanceOf(a, b, 8);
+    expect(result.datePositionKnown).toBe(false);
+    expect(result.atoms).toHaveLength(1);
+    expect(result.atoms[0].datePositionKnown).toBe(false);
+    // Window in quarters × ppq: the atom covers the whole compared interval.
+    expect(result.atoms[0].startTicks).toBe(0);
+    expect(result.atoms[0].endTicks).toBe(8 * 720);
+    expect(result.atoms[0].mass).toBeCloseTo(result.distance, 12);
+  });
+
+  it('reports datePositionKnown true when every anchor carries a date', () => {
+    expect(distanceOf('<articulation date="0.0" relativeDuration="0.5"/>', '').datePositionKnown).toBe(
+      true,
+    );
+  });
+});

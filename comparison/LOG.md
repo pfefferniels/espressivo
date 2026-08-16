@@ -3252,3 +3252,50 @@ family repair that strengthened every dimension. The scoping instinct
 change) is the AD-42 lesson internalized. Successor commission: task #1's
 order — event-atom extension, densityAt extension, eleven-dimension
 driver, §9 facade as adjudicated, exports, P-C2/P-C11/P-C5.
+
+## 2026-08-16 — W3b part 2: the event-atom extension (AD-51.2) (w3b-facade)
+
+AD-51's item 1, and the smallest change that makes AD-19's table closable: the two event
+dimensions now hand back WHERE their mass sits, not only how much of it there is.
+
+**THE DECOMPOSITION LIVES IN THE ALIGNER, because the placement rule is dimension-neutral.**
+`eventAlignment.ts` gains `EventCharge` (the optimum taken apart per event: the DP's three
+moves, each carrying the term it contributed) and `chargeAtoms` (AD-7's spreading rule applied
+to those charges). Nothing in either knows what an articulation or an ornament is — the same
+bet AD-37.6 made and won with the second consumer, extended to a third question.
+
+The charges are **recomputed from the chosen alignment rather than accumulated inside the DP**.
+That is deliberate: what is reported is then literally the same expression the recurrence
+minimized, evaluated at its own argmin, so a future edit to the recurrence cannot leave the
+report describing a functional the DP no longer uses. The cost is one extra evaluation of the
+cost functions per event, which is what M5's correction already pays for at every DP cell.
+
+AD-7 IMPLEMENTED WHERE IT BELONGS: a matched pair at differing dates spreads uniformly over
+`[min(dA,dB), max(dA,dB)]` — so `λ_date` is visible in the timeline rather than teleported to
+whichever document is `a` — and a point mass is the coincident case of the same rule, not a
+second one. Pinned in both directions, including that swapping the documents mirrors the
+placement and preserves every mass bit for bit.
+
+[DECISION, needs ratification] **AN ANCHOR OF UNKNOWN DATE POSITION SPREADS OVER THE WHOLE
+WINDOW.** §5.5's id-anchored articulation without an MSM is the case: AD-39.1 says the atom is
+never dropped, so its mass is real and has to land in the table somewhere, and DESIGN does not
+say where. Three placements were available and two of them assert something false — pinning it
+to the written `@date` claims a position §5.5 explicitly says is not known (the renderer applies
+the atom to its note wherever that note is, and warns when the dates disagree), and dropping it
+forgives a difference the renderer performs. A uniform spread over the window is the only
+placement that adds no information, it keeps the table closing by construction, and it is
+symmetric. `datePositionKnown` travels with the atom AND on the dimension result, so AD-39.1's
+"the report must STATE that id-anchored content is window-exempt" has its data.
+
+The atoms sum to the alignment's own optimum to within summation order — the DP accumulates
+along its path and the caller sums the list — which is pinned at 1e-9 rather than asserted, and
+is why `distance` is left as the DP's cost rather than replaced by the sum: the semantic
+definition is the argmin (§5.6), and a decomposition that redefined it would be a second
+number claiming to be the first.
+
+NEGATIVE CONTROLS, both failing exactly their own tests and restoring green: deleting the
+unknown-position branch fails 3 (the id-anchored placement at both layers); charging a matched
+pair to its `a`-side date instead of spreading fails 4.
+
+Gate: `npm run verify` GREEN before committing — 110 files, 4839 passed, 0 skipped (was 4822).
+17 new tests. eslint and prettier clean on all six touched files.

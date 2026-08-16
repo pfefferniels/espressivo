@@ -52,7 +52,13 @@ import {
   type ComparisonRegistryRow,
 } from './registry.js';
 import { CompensatedSum } from './quadrature.js';
-import { alignEvents, DEFAULT_LAMBDA_DATE, type AlignableEvent } from './eventAlignment.js';
+import {
+  alignEvents,
+  chargeAtoms,
+  DEFAULT_LAMBDA_DATE,
+  type AlignableEvent,
+  type EventAtomMass,
+} from './eventAlignment.js';
 import {
   effectiveAttributes,
   type ArticulationAtom,
@@ -351,6 +357,20 @@ export interface ArticulationDistance {
   /** False where a crossing id-pin set forced the aligner back to the unpinned optimum. */
   readonly pinsHonoured: boolean;
   readonly inertFindings: readonly InertFinding[];
+  /**
+   * The optimum placed on the timeline (AD-51.2) — §5.0's atoms, in JND, before `κ`.
+   *
+   * They sum to {@link distance} up to summation order: the DP accumulates along its path and
+   * this list is summed by the caller, so the two agree to within floating-point associativity
+   * rather than bit for bit. AD-19's table closes on THIS decomposition, which is why it is
+   * the shape the aggregation takes rather than the scalar.
+   */
+  readonly atoms: readonly EventAtomMass[];
+  /**
+   * False where any anchor in play is id-anchored without an MSM, so its mass is spread over
+   * the window rather than placed (AD-7, AD-39.1). The report states it (§9.3).
+   */
+  readonly datePositionKnown: boolean;
 }
 
 /**
@@ -417,5 +437,13 @@ export function articulationDistance(
     unmatchedB: alignment.unmatchedB.length,
     pinsHonoured: alignment.pinsHonoured,
     inertFindings,
+    atoms: chargeAtoms(
+      anchorsA,
+      anchorsB,
+      alignment,
+      (anchor) => anchor.datePositionKnown,
+      { startTicks, endTicks },
+    ),
+    datePositionKnown: [...anchorsA, ...anchorsB].every((anchor) => anchor.datePositionKnown),
   };
 }

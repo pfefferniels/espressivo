@@ -40,7 +40,12 @@ import {
   type ComparisonRegistryRow,
 } from './registry.js';
 import { CompensatedSum } from './quadrature.js';
-import { alignEvents, DEFAULT_LAMBDA_DATE } from './eventAlignment.js';
+import {
+  alignEvents,
+  chargeAtoms,
+  DEFAULT_LAMBDA_DATE,
+  type EventAtomMass,
+} from './eventAlignment.js';
 import {
   NEUTRAL_SPREAD,
   type OrnamentAtom,
@@ -66,6 +71,15 @@ export interface OrnamentationDistance {
   readonly unmatchedB: number;
   readonly pinsHonoured: boolean;
   readonly findings: readonly OrnamentFinding[];
+  /**
+   * The optimum placed on the timeline (AD-51.2) — §5.0's atoms, in JND, before `κ`.
+   *
+   * Every ornament anchor carries a real date (the window filter above drops the ones outside
+   * it), so unlike §5.5's id-anchored articulations none of these is ever an admission: the
+   * `datePositionKnown` flag on each is always true here, and it is carried anyway so that the
+   * aggregation reads one shape from both event dimensions.
+   */
+  readonly atoms: readonly EventAtomMass[];
 }
 
 function price(key: ComparisonJndKey, a: Valued<number>, b: Valued<number>): number {
@@ -407,5 +421,6 @@ export function ornamentationDistance(
     unmatchedB: alignment.unmatchedB.length,
     pinsHonoured: alignment.pinsHonoured,
     findings,
+    atoms: chargeAtoms(atomsA, atomsB, alignment, () => true, { startTicks, endTicks }),
   };
 }

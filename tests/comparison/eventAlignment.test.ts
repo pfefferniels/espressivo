@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_LAMBDA_DATE,
   alignEvents,
+  chargeAtoms,
   type AlignableEvent,
   type AlignmentCost,
 } from '../../src/comparison/eventAlignment.js';
@@ -210,5 +211,112 @@ describe('λ_date', () => {
   it('is the caller’s to state, which is what makes the module dimension-neutral', () => {
     const cheap = alignEvents([event(0, 0)], [event(1440, 0)], { ...cost, lambdaDate: 0 }, PPQ);
     expect(cheap.cost).toBe(0);
+  });
+});
+
+/**
+ * AD-51.2's extension: the optimum comes apart per event, and the parts land on the timeline.
+ *
+ * The decomposition is tested against the SCALAR the DP minimized rather than against
+ * hand-computed charges — a per-charge expectation would pin my arithmetic, and the property
+ * that matters is that nothing is lost or invented between the optimum and the table.
+ */
+describe('the optimum decomposes into charges (AD-51.2)', () => {
+  const a = [event(0, 10), event(360, 5), event(1440, 20)];
+  const b = [event(0, 12), event(1080, 18)];
+
+  it('sums to the minimized objective', () => {
+    const alignment = alignEvents(a, b, cost, PPQ);
+    const total = alignment.charges.reduce((sum, charge) => sum + charge.cost, 0);
+    expect(total).toBeCloseTo(alignment.cost, 12);
+  });
+
+  it('accounts for every event exactly once', () => {
+    const alignment = alignEvents(a, b, cost, PPQ);
+    expect(alignment.charges.map((charge) => charge.a).filter((index) => index !== null)).toEqual([
+      0, 1, 2,
+    ]);
+    expect(alignment.charges.map((charge) => charge.b).filter((index) => index !== null)).toEqual([
+      0, 1,
+    ]);
+  });
+
+  it('is in date order, so the table reads left to right along the timeline', () => {
+    const alignment = alignEvents(a, b, cost, PPQ);
+    const dates = chargeAtoms(a, b, alignment, () => true, {
+      startTicks: 0,
+      endTicks: 2880,
+    }).map((atom) => atom.startTicks);
+    expect([...dates]).toEqual([...dates].sort((x, y) => x - y));
+  });
+});
+
+describe('AD-7’s placement rule', () => {
+  const WINDOW = { startTicks: 0, endTicks: 2880 };
+
+  it('spreads a matched pair uniformly over the interval between its two dates', () => {
+    const a = [event(0, 10)];
+    const b = [event(720, 10)];
+    const [atom] = chargeAtoms(a, b, alignEvents(a, b, cost, PPQ), () => true, WINDOW);
+    expect(atom.startTicks).toBe(0);
+    expect(atom.endTicks).toBe(720);
+    // The whole charge here IS the date term: the values agree, so nothing else is priced.
+    expect(atom.mass).toBeCloseTo(DEFAULT_LAMBDA_DATE * 1, 12);
+  });
+
+  it('makes a co-dated pair a point mass, which is the coincident case of the same rule', () => {
+    const a = [event(720, 10)];
+    const b = [event(720, 14)];
+    const [atom] = chargeAtoms(a, b, alignEvents(a, b, cost, PPQ), () => true, WINDOW);
+    expect(atom.startTicks).toBe(720);
+    expect(atom.endTicks).toBe(720);
+    expect(atom.mass).toBeCloseTo(4, 12);
+  });
+
+  it('charges an unmatched event at its own date', () => {
+    const a = [event(1440, 30)];
+    const alignment = alignEvents(a, [], cost, PPQ);
+    const [atom] = chargeAtoms(a, [] as Event[], alignment, () => true, WINDOW);
+    expect(atom.kind).toBe('unmatched-a');
+    expect([atom.startTicks, atom.endTicks]).toEqual([1440, 1440]);
+    expect(atom.mass).toBe(30);
+  });
+
+  it('is symmetric: swapping the documents mirrors the placement and keeps the mass', () => {
+    const a = [event(0, 10), event(1440, 30)];
+    const b = [event(720, 10)];
+    const forward = chargeAtoms(a, b, alignEvents(a, b, cost, PPQ), () => true, WINDOW);
+    const reverse = chargeAtoms(b, a, alignEvents(b, a, cost, PPQ), () => true, WINDOW);
+    expect(reverse.map((atom) => [atom.startTicks, atom.endTicks, atom.mass])).toEqual(
+      forward.map((atom) => [atom.startTicks, atom.endTicks, atom.mass]),
+    );
+  });
+
+  /**
+   * The id-anchored case (AD-7, AD-39.1). Pinning the mass to the written `@date` would assert
+   * a position §5.5 says is unknown; dropping it would forgive a difference the renderer
+   * performs. The uniform spread is the placement that adds no information.
+   */
+  it('spreads an anchor of unknown position over the whole window, and says so', () => {
+    const a = [event(360, 10, 'n1')];
+    const b = [event(360, 30, 'n1')];
+    const [atom] = chargeAtoms(a, b, alignEvents(a, b, cost, PPQ), () => false, WINDOW);
+    expect(atom.datePositionKnown).toBe(false);
+    expect([atom.startTicks, atom.endTicks]).toEqual([WINDOW.startTicks, WINDOW.endTicks]);
+    expect(atom.mass).toBe(20);
+  });
+
+  it('keeps a known-position anchor placed even when its partner is unknown-position', () => {
+    const a = [event(360, 10, 'n1'), event(720, 4)];
+    const alignment = alignEvents(a, [] as Event[], cost, PPQ);
+    const atoms = chargeAtoms(
+      a,
+      [] as Event[],
+      alignment,
+      (candidate) => candidate.id === null,
+      WINDOW,
+    );
+    expect(atoms.map((atom) => atom.datePositionKnown)).toEqual([false, true]);
+    expect(atoms[1].startTicks).toBe(720);
   });
 });

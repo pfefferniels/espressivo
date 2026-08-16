@@ -600,3 +600,61 @@ describe('stacked ornaments at one date (AD-44.1, AD-44.2)', () => {
     expect(composedFrames).toEqual([44, 360]);
   });
 });
+
+/**
+ * AD-51.2's atom placement, for the aligner's second consumer.
+ *
+ * Ornament anchors always carry a date — the window filter drops the ones outside it — so
+ * everything here is a real placement and the interesting case is the SPREADING rule, which is
+ * where a matched pair at two dates stops being a scalar.
+ */
+describe('ornament atom placement (AD-51.2)', () => {
+  const WINDOW = { startQuarters: 0, endQuarters: 8 } as never;
+  const at = (date: string, extra = ''): string =>
+    `<ornament date="${date}" name.ref="g" scale="1.0"${extra}/>`;
+
+  it('decomposes the distance without losing or inventing mass', () => {
+    const result = ornamentationDistance(
+      atomsOf(GRAD, `${STYLE0}${at('0.0')}${at('1440.0')}`),
+      atomsOf(GRAD, `${STYLE0}${at('720.0')}`),
+      WINDOW,
+      PPQ,
+    );
+    const mass = result.atoms.reduce((sum, atom) => sum + atom.mass, 0);
+    expect(mass).toBeCloseTo(result.distance, 9);
+    expect(result.atoms).toHaveLength(result.matched + result.unmatchedA + result.unmatchedB);
+  });
+
+  it('spreads a matched pair over the interval between the two dates (AD-7)', () => {
+    const wider =
+      '<ornamentDef name="g"><dynamicsGradient transition.from="-30.0" transition.to="30.0"/></ornamentDef>';
+    const result = ornamentationDistance(
+      atomsOf(GRAD, `${STYLE0}${at('0.0')}`),
+      atomsOf(wider, `${STYLE0}${at('45.0')}`),
+      WINDOW,
+      PPQ,
+    );
+    expect(result.matched).toBe(1);
+    expect(result.atoms).toHaveLength(1);
+    expect([result.atoms[0].startTicks, result.atoms[0].endTicks]).toEqual([0, 45]);
+    expect(result.atoms[0].datePositionKnown).toBe(true);
+  });
+
+  it('is symmetric under the swap, placement and mass together (P-C2)', () => {
+    const forward = ornamentationDistance(
+      atomsOf(GRAD, `${STYLE0}${at('0.0')}${at('1440.0')}`),
+      atomsOf(GRAD, `${STYLE0}${at('1440.0')}`),
+      WINDOW,
+      PPQ,
+    );
+    const reverse = ornamentationDistance(
+      atomsOf(GRAD, `${STYLE0}${at('1440.0')}`),
+      atomsOf(GRAD, `${STYLE0}${at('0.0')}${at('1440.0')}`),
+      WINDOW,
+      PPQ,
+    );
+    expect(reverse.atoms.map((atom) => [atom.startTicks, atom.endTicks, atom.mass])).toEqual(
+      forward.atoms.map((atom) => [atom.startTicks, atom.endTicks, atom.mass]),
+    );
+  });
+});

@@ -37,6 +37,15 @@
  * ({@link EventAlignment.pinsHonoured}), rather than being silently resolved one way or the
  * other.
  *
+ * ## The optimum comes apart again (AD-51.2)
+ *
+ * A scalar optimum cannot say WHERE in the piece a difference sits, and AD-19's table needs
+ * exactly that: an event's mass belongs in the column of the segment it falls in.
+ * {@link EventAlignment.charges} is the optimum decomposed per event, and
+ * {@link chargeAtoms} places each charge on the timeline under AD-7's spreading rule. Both
+ * are dimension-neutral for the same reason the DP is — placement is a fact about dates, not
+ * about articulations.
+ *
  * ## Determinism
  *
  * Ties are broken in a fixed order — match, then drop from `a`, then drop from `b` — so the
@@ -93,12 +102,38 @@ export interface AlignedPair {
   readonly b: number;
 }
 
+/**
+ * One event's — or one matched pair's — share of the minimized objective.
+ *
+ * The alignment's optimum is a SUM over the events it aligns, and AD-19's table needs that sum
+ * taken apart again: an event dimension's mass has to land in the column of the segment it
+ * falls in, which a scalar total cannot say. The three kinds are the DP's three moves, and
+ * `cost` is the term that move contributed — `matched + λ_date·|Δdate|` for a match, the
+ * neutral cost for a drop.
+ */
+export interface EventCharge {
+  readonly kind: 'matched' | 'unmatched-a' | 'unmatched-b';
+  /** Index into the `a` list, or null for a drop from `b`. */
+  readonly a: number | null;
+  readonly b: number | null;
+  /** In JND. Sums to {@link EventAlignment.cost} up to summation order. */
+  readonly cost: number;
+}
+
 export interface EventAlignment {
   readonly pairs: readonly AlignedPair[];
   readonly unmatchedA: readonly number[];
   readonly unmatchedB: readonly number[];
   /** The minimized objective, including the date term. */
   readonly cost: number;
+  /**
+   * The optimum, taken apart per event in date order — {@link EventCharge}.
+   *
+   * Recomputed from the chosen alignment rather than accumulated inside the DP, so the two
+   * cannot drift apart in a future edit to the recurrence: what is reported here is literally
+   * the same expression the DP minimized, evaluated at its own argmin.
+   */
+  readonly charges: readonly EventCharge[];
   /**
    * False where the id pins could not all be honoured because they are not jointly monotone,
    * in which case the alignment is the unpinned optimum. A crossing pin set is a real
@@ -145,12 +180,139 @@ export function alignEvents<T extends AlignableEvent>(
 ): EventAlignment {
   const pinned = pinsBetween(a, b);
   const withPins = solve(a, b, cost, ticksPerQuarter, pinned);
-  if (Number.isFinite(withPins.cost)) return { ...withPins, pinsHonoured: true };
+  if (Number.isFinite(withPins.cost))
+    return {
+      ...withPins,
+      charges: chargesOf(a, b, withPins, cost, ticksPerQuarter),
+      pinsHonoured: true,
+    };
 
   // Not jointly monotone: no alignment honours every pin, so the pins are dropped wholesale
   // rather than partially, which would make the result depend on which subset was tried.
   const empty = { aToB: new Map<number, number>(), bToA: new Map<number, number>() };
-  return { ...solve(a, b, cost, ticksPerQuarter, empty), pinsHonoured: false };
+  const unpinned = solve(a, b, cost, ticksPerQuarter, empty);
+  return {
+    ...unpinned,
+    charges: chargesOf(a, b, unpinned, cost, ticksPerQuarter),
+    pinsHonoured: false,
+  };
+}
+
+/**
+ * The optimum's per-event decomposition, in date order.
+ *
+ * Ordering is by the earlier of a pair's two dates, then by the `a` index, so the list is a
+ * function of the inputs alone and reads left to right along the timeline — which is the order
+ * the table's columns are in and the order a compensated sum should take.
+ */
+function chargesOf<T extends AlignableEvent>(
+  a: readonly T[],
+  b: readonly T[],
+  alignment: Omit<EventAlignment, 'pinsHonoured' | 'charges'>,
+  cost: AlignmentCost<T>,
+  ticksPerQuarter: number,
+): readonly EventCharge[] {
+  const charges: EventCharge[] = [];
+  for (const pair of alignment.pairs) {
+    const displacement = Math.abs(a[pair.a].dateTicks - b[pair.b].dateTicks) / ticksPerQuarter;
+    charges.push({
+      kind: 'matched',
+      a: pair.a,
+      b: pair.b,
+      cost: cost.matched(a[pair.a], b[pair.b]) + cost.lambdaDate * displacement,
+    });
+  }
+  for (const index of alignment.unmatchedA)
+    charges.push({ kind: 'unmatched-a', a: index, b: null, cost: cost.unmatched(a[index]) });
+  for (const index of alignment.unmatchedB)
+    charges.push({ kind: 'unmatched-b', a: null, b: index, cost: cost.unmatched(b[index]) });
+
+  return charges.sort((x, y) => dateOf(x, a, b) - dateOf(y, a, b) || indexOf(x) - indexOf(y));
+}
+
+function dateOf<T extends AlignableEvent>(
+  charge: EventCharge,
+  a: readonly T[],
+  b: readonly T[],
+): number {
+  const dateA = charge.a === null ? null : a[charge.a].dateTicks;
+  const dateB = charge.b === null ? null : b[charge.b].dateTicks;
+  if (dateA === null) return dateB ?? 0;
+  if (dateB === null) return dateA;
+  return Math.min(dateA, dateB);
+}
+
+/** A total order within one date: `a`-side events first, then `b`-side, then by index. */
+function indexOf(charge: EventCharge): number {
+  return charge.a ?? charge.b ?? 0;
+}
+
+/**
+ * One event's contribution to §5.0's atomic measure, placed where AD-7 puts it.
+ *
+ * `mass` is in JND; `κ` (§7.1) is the caller's to apply, because it is the constant that makes
+ * an event commensurable with a QUARTER of sustained deviation and therefore belongs where the
+ * two are added, not here.
+ */
+export interface EventAtomMass {
+  readonly startTicks: number;
+  readonly endTicks: number;
+  readonly mass: number;
+  readonly kind: EventCharge['kind'];
+  /**
+   * False where the placement is an admission rather than a date — an id-anchored anchor whose
+   * note the module cannot locate without an MSM (AD-7, AD-39.1).
+   */
+  readonly datePositionKnown: boolean;
+}
+
+/**
+ * AD-7's placement rule: a matched pair at differing dates spreads its mass UNIFORMLY over
+ * `[min(dA, dB), max(dA, dB)]`, and an unmatched event is a point mass at its own date.
+ *
+ * Spreading rather than charging one end is what makes `λ_date` visible in the timeline
+ * instead of teleporting the difference to whichever document is `a` — M17's option (ii),
+ * symmetric by construction, and the reason {@link EventAtomMass} carries an interval at all.
+ *
+ * **An anchor whose date position is unknown spreads over the whole window.** That case is
+ * §5.5's id-anchored articulation without an MSM: the atom is never dropped (AD-39.1) and its
+ * mass is real, but the module knows only THAT the renderer performs it, not WHERE. A uniform
+ * spread is the only placement that adds no information — pinning it to the written `@date`
+ * would assert a position §5.5 says is not known, and dropping it would forgive a performed
+ * difference. `datePositionKnown: false` travels with it so the report can say so.
+ */
+export function chargeAtoms<T extends AlignableEvent>(
+  a: readonly T[],
+  b: readonly T[],
+  alignment: EventAlignment,
+  positionKnown: (event: T) => boolean,
+  window: { readonly startTicks: number; readonly endTicks: number },
+): readonly EventAtomMass[] {
+  return alignment.charges.map((charge): EventAtomMass => {
+    const eventA = charge.a === null ? null : a[charge.a];
+    const eventB = charge.b === null ? null : b[charge.b];
+    const known =
+      (eventA === null || positionKnown(eventA)) && (eventB === null || positionKnown(eventB));
+    if (!known)
+      return {
+        startTicks: window.startTicks,
+        endTicks: window.endTicks,
+        mass: charge.cost,
+        kind: charge.kind,
+        datePositionKnown: false,
+      };
+
+    const dates = [eventA?.dateTicks, eventB?.dateTicks].filter(
+      (date): date is number => date !== undefined,
+    );
+    return {
+      startTicks: Math.min(...dates),
+      endTicks: Math.max(...dates),
+      mass: charge.cost,
+      kind: charge.kind,
+      datePositionKnown: true,
+    };
+  });
 }
 
 type Move = 'match' | 'dropA' | 'dropB' | 'none';
@@ -161,7 +323,7 @@ function solve<T extends AlignableEvent>(
   cost: AlignmentCost<T>,
   ticksPerQuarter: number,
   pins: { readonly aToB: ReadonlyMap<number, number>; readonly bToA: ReadonlyMap<number, number> },
-): Omit<EventAlignment, 'pinsHonoured'> {
+): Omit<EventAlignment, 'pinsHonoured' | 'charges'> {
   const n = a.length;
   const m = b.length;
   const dp: number[][] = Array.from({ length: n + 1 }, () =>
