@@ -565,6 +565,132 @@ describe('the report’s own rules', () => {
    * it has to be present: a reader can then tell "no boundary is approximate" from "nobody
    * checked". The mechanism behind it is exercised at `segmentPass` (`aggregate.test.ts`).
    */
+  /**
+   * W3 MINOR-1: a mass is non-negative, and this one was not.
+   *
+   * §7.3's remainder is computed by SUBTRACTION from the row total — the right choice, because
+   * it is what makes the table close exactly — so it inherits the root refinement's quadrature
+   * error with the opposite sign. It measured `−1.825996` on telemann Baroque|Fast against a `D`
+   * of 22357, an impossible value in a caller-visible field that P-C11's walker cannot see
+   * because a negative mass is finite. Clamped, with the magnitude reported instead of thrown
+   * away.
+   */
+  it('clamps the remainder mass at 0 and reports what it clamped (MINOR-1)', () => {
+    const pairs = [
+      ['Baroque', 'Fast'],
+      ['Fast', 'Romantic'],
+      ['Baroque', 'Romantic'],
+    ] as const;
+    let sawUnderflow = false;
+    for (const [a, b] of pairs) {
+      const report = compare({
+        a: TELEMANN,
+        performanceA: a,
+        performanceB: b,
+        msm: parseMsmRoot(TELEMANN_MSM),
+      });
+      expect(report.remainder.mass).toBeGreaterThanOrEqual(0);
+      expect(report.remainder.quadratureUnderflow).toBeGreaterThanOrEqual(0);
+      // Tiny against the number it belongs to — this is the conditioning of the segmentation,
+      // not a missing mass.
+      expect(report.remainder.quadratureUnderflow).toBeLessThan(1e-3 * report.aggregate.distance);
+      if (report.remainder.quadratureUnderflow > 0) sawUnderflow = true;
+    }
+    // Non-vacuity: the underflow really occurs on this corpus, so the clamp is doing work.
+    expect(sawUnderflow).toBe(true);
+  });
+
+  /**
+   * W3 MAJOR-12: §9.1's `inert-difference` kind was emitted from exactly ONE site.
+   *
+   * §10 names it as a fixture obligation — "two documents differing only in a trailing
+   * `@transition.to` ⇒ `d_tempo = 0` plus an inert-difference note; same for dynamics and for a
+   * single-`<movement>` map" — and all three were arriving as `structural`, which is the channel
+   * for a difference that IS performed but is not a magnitude. The distinction matters to a
+   * reader deciding whether a zero means "nothing to see" or "something written that nothing
+   * reads".
+   */
+  it('files an attribute the renderer never applies as inert-difference (§9.1, AD-8)', () => {
+    const trailing = (transition: string) =>
+      doc(
+        `<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/>` +
+          `<tempo date="2880.0" bpm="90" beatLength="0.25"${transition}/></tempoMap>`,
+      );
+    // The trailing instruction's span runs to MAX_VALUE and `getEndDate` collapses it, so the
+    // `@transition.to` is read and never applied: distance 0, and a note that says so.
+    const report = compare({ a: trailing(''), b: trailing(' transition.to="40"'), window });
+    expect(report.dimensions.tempo.distance).toBe(0);
+    const inert = report.notes.filter((note) => note.kind === 'inert-difference');
+    expect(inert.length).toBeGreaterThan(0);
+    expect(inert.every((note) => note.dimension === 'tempo')).toBe(true);
+    // Non-vacuity: the same attribute on a NON-trailing instruction is live and priced, so the
+    // kind is about the position and not about the attribute name.
+    const live = compare({
+      a: doc(
+        '<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/>' +
+          '<tempo date="2880.0" bpm="90" beatLength="0.25"/></tempoMap>',
+      ),
+      b: doc(
+        '<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25" transition.to="90"/>' +
+          '<tempo date="2880.0" bpm="90" beatLength="0.25"/></tempoMap>',
+      ),
+      window,
+    });
+    expect(live.dimensions.tempo.distance).toBeGreaterThan(0);
+  });
+
+  /**
+   * §10's P-C8 and §5.0's global-vs-part-local rule — one fact, two spellings, and neither had
+   * any code (W3 MAJOR-13, MAJOR-15).
+   *
+   * Both say: the distance is exactly 0 AND a structural note fires, because the two documents
+   * encode the same performance differently. The zero was right; the note was missing, and
+   * without it a caller cannot tell "encoded the same" from "encoded differently and performed
+   * the same" — which is the difference a diff product exists to report.
+   */
+  describe('the encoding differs and the performance does not (P-C8, §5.0)', () => {
+    const encodingNotesOf = (a: string, b: string) =>
+      compare({ a, b, window }).notes.filter((note) =>
+        note.message.includes('encode this dimension'),
+      );
+
+    it('reports an explicit neutral instruction against an absent map (P-C8)', () => {
+      const neutralRubato =
+        '<rubatoMap><rubato date="0.0" frameLength="720.0" intensity="1.0" lateStart="0.0" ' +
+        'earlyEnd="1.0"/><rubato date="2880.0" frameLength="720.0"/></rubatoMap>';
+      const neutralAsync =
+        '<asynchronyMap><asynchrony date="0.0" milliseconds.offset="0.0"/></asynchronyMap>';
+      for (const [dimension, map] of [
+        ['rubato', neutralRubato],
+        ['asynchrony', neutralAsync],
+      ] as const) {
+        const report = compare({ a: doc(tempoMap(60) + map), b: doc(tempoMap(60)), window });
+        // Exactly 0 — §5.2's special case (M18), not merely close.
+        expect(Object.is(report.dimensions[dimension].distance, 0)).toBe(true);
+        const fired = report.notes.filter(
+          (note) => note.dimension === dimension && note.message.includes('encode this dimension'),
+        );
+        expect(fired, `${dimension}: P-C8's note half`).toHaveLength(1);
+      }
+    });
+
+    it('reports a global map against an identical part-local one (§5.0)', () => {
+      // The renderer resolves both to the same curve — `resolvePartMaps` returns the part's own
+      // map where it has one and the global map where it does not — so nothing is performed
+      // differently and the difference is an encoding one.
+      const fired = encodingNotesOf(doc(tempoMap(60)), doc('', part(1, tempoMap(60))));
+      expect(fired).toHaveLength(1);
+      expect(fired[0].dimension).toBe('tempo');
+      expect(fired[0].message).toContain('part-local');
+    });
+
+    it('says nothing when the encodings agree, or when the distance is not 0', () => {
+      // Two controls, because a note that fires on every pair would be worse than no note.
+      expect(encodingNotesOf(doc(tempoMap(60)), doc(tempoMap(60)))).toHaveLength(0);
+      expect(encodingNotesOf(doc(tempoMap(60)), doc(tempoMap(90)))).toHaveLength(0);
+    });
+  });
+
   it('surfaces cellQuantizedDimensions, and it is empty because the samplers are wired', () => {
     const report = compare({
       a: TELEMANN,

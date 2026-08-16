@@ -91,6 +91,15 @@ export interface DimensionComparison {
    * uses (AD-26.1).
    */
   readonly unit: string;
+  /**
+   * §7.5's signed descriptor, in {@link unit} — never a distance.
+   *
+   * **Averaged over the evaluated scopes, where `distance` is SUMMED** (AD-55.5 / W3 MAJOR-11).
+   * Mass is additive across parts and a level is not: summing three parts' "A is 4 BPM faster"
+   * would report 12 BPM, a figure no part carries. `distance` and `meanSigned` therefore do not
+   * stand in a ratio to each other on a multi-part pair, and that is the intended reading rather
+   * than an inconsistency.
+   */
   readonly meanSigned: number | null;
   readonly weight: number;
   /** The mode actually applied — `'none'` where the requested one could not be honoured. */
@@ -155,6 +164,40 @@ export interface AttributionTable {
 
 /** The five epsilon families, each in BOTH units (AD-28.2). */
 export type EpsilonFamily = 'step' | 'tempo' | 'bezier' | 'imprecision' | 'drift';
+
+/**
+ * Which epsilon family each dimension's quadrature belongs to.
+ *
+ * Two readers' docs already say "this dimension's entry in §9.3's per-family epsilon record" and
+ * there was no way to get from a dimension to its entry (a W3 MINOR): the mapping lived only in
+ * the prose. It is data now, so the sentence is executable.
+ *
+ * The families are about the INTEGRATOR, not the dimension: a dimension whose curve is
+ * piecewise constant integrates exactly (`step`), one with a `meanTempoAt` power curve carries
+ * AD-28.1's graded-mesh error (`tempo`), one with a Bézier transition carries the inversion's
+ * conditioning limit (`bezier`), and the three distribution dimensions carry the Wasserstein
+ * machinery's (`imprecision`). A dimension that can take more than one shape is filed under the
+ * WORST it can reach, which is the only reading that keeps the record an upper bound.
+ */
+export const EPSILON_FAMILY_OF: Readonly<Record<ComparisonDimension, EpsilonFamily>> =
+  Object.freeze({
+    tempo: 'tempo',
+    // A `<dynamics>` transition is a Bézier, so this dimension can reach the bezier family.
+    dynamics: 'bezier',
+    rubato: 'step',
+    asynchrony: 'step',
+    // §5.4's pattern interpolates linearly between beats, but a transition inside a pattern is
+    // the same Bézier machinery the dynamics curve uses.
+    accentuation: 'bezier',
+    pedal: 'bezier',
+    // Both event dimensions price per anchor with no time-domain quadrature at all, and
+    // articulation's default step function is a step reading (AD-55.1).
+    articulation: 'step',
+    ornamentation: 'step',
+    imprecisionTiming: 'imprecision',
+    imprecisionDynamics: 'imprecision',
+    imprecisionDuration: 'imprecision',
+  });
 
 export interface ComparisonInputs {
   /**
@@ -257,7 +300,17 @@ export interface ComparisonReport {
     readonly normalization: 'fixed' | 'corpus';
   };
   readonly segments: readonly ComparisonSegment[];
-  readonly remainder: { readonly mass: number };
+  /**
+   * §7.3's below-threshold column. `mass` is a MASS and is therefore `≥ 0`.
+   *
+   * It is computed by subtraction from the row total, which is what makes the table close
+   * exactly, so it inherits the root refinement's quadrature error with the opposite sign and
+   * used to go slightly negative on four of the seven vendored pairs — an impossible value in a
+   * caller-visible field, invisible to P-C11 because a negative mass is finite (W3 MINOR-1).
+   * `quadratureUnderflow` is how far below zero the subtraction went before the clamp, `≥ 0` and
+   * usually exactly 0: the conditioning of the segmentation, reported rather than discarded.
+   */
+  readonly remainder: { readonly mass: number; readonly quadratureUnderflow: number };
   /**
    * AD-51.1's honest report field: the dimensions whose threshold crossings were located at
    * CELL resolution rather than exactly.

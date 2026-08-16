@@ -146,6 +146,12 @@ const LAYER_ZONES = [
       '**/msm/**',
       '**/mei/**',
       '**/musicxml/**',
+      // `**/music/**` and `src/units.ts` were named by the `why` below as outside the zone and
+      // were absent from this list, so the stated zone and the enforced one disagreed (W3
+      // MINOR-7). Zero live violations either way — which is exactly why nothing would have
+      // caught the drift until an import turned it into a defect.
+      '**/music/**',
+      '**/units.js',
       '**/mpm/**',
       '!**/mpm/names.js',
       '!**/mpm/elements',

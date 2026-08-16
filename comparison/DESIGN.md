@@ -1233,8 +1233,10 @@ is optimal, and where it is not optimal the pin was wrong. Revision 1 also
 defined the matched-event contribution _without_ a date term while §6.2 priced
 event ops _with_ one — a non-minimal functional evaluated at the argmin of a
 different one, which has no metric argument at all, and which priced a matched
-ornament displaced by half a bar at zero. `λ_date` is now stated here, in §5.6,
-as part of the semantic definition.
+ornament displaced by half a bar at zero. `λ_date` is part of the semantic
+definition and its VALUE is §7.1's, with the rest of the constants: **16 per
+quarter** [convention], calibrated so that one rubato displacement JND of date
+displacement costs exactly one JND here.
 
 **Opportunistic id-pinning stays** (AD-7): `xml:id` / `noteid` equality is an
 identity match and is transitive whenever all three documents carry ids, so it
@@ -1257,6 +1259,39 @@ Matched events compare their resolved def content row-wise:
 `@frame.offset` and `@time.unit` as the two rows revision 1 omitted (AD-15,
 R18); `@intensity` log-around-1; `dynamicsGradient@transition.from` /
 `@transition.to` velocity gain; `@repetitions` and `@note.order` (AD-15, R28).
+
+**The compared object is the per-anchor COMPOSED effect, not the atom**
+(AD-44.1 / AD-45.1, AD-44.2 / AD-45.2 — landed here at W3 MAJOR-10, having been
+implemented and tested for two waves while §5.6 still described the atom). It is
+AD-37.4's articulation treatment extended, and it is what makes two encodings of
+one performance compare equal:
+
+- **Stacked gradients compose, direction included.**
+  `setOrnamentDynamicsAtt` ADDS, so summed endpoints perform the summed ramp over
+  a shared pool: `(−20, 20) + (−10, 30)` performs exactly `(−30, 50)`, measured.
+  **Direction is part of the composition** (AD-45.1): a descending gradient is an
+  index reflection with swapped endpoints, so ascending `(−20, 20)` plus
+  descending `(−10, 30)` performs FLAT `(10, 10)` — velocities 110/110/110 — and
+  a composition that ignored direction would report two documents that perform
+  identically as different.
+- **Equal-intensity spreads compose; unequal ones stay individual events**
+  (AD-45.2, amending AD-44.2). `TemporalSpread.apply` writes slot `i` of `n` at
+  `(i/(n−1))^intensity·L + s` and adds it to whatever is already there, so with
+  one shared exponent the sum is another frame of the same shape: measured,
+  `(−22, 44) + (−100, 200)` is exactly `(−122, 244)`. `@intensity` and the time
+  domain must both match; otherwise no composite exists in the renderer's own
+  vocabulary and the two spreads stay separate aligner events. That leaves a
+  **documented** encoding sensitivity for the unequal case — one spread against
+  two halves that perform identically can compare unequal — carried with its
+  measurement rather than silently.
+
+**A single-note pool performs `transition.to`, not `transition.from`**
+(AD-40.3, AD-44.4; landed here at W3 MAJOR-10). `DynamicsGradient.java:47-49`'s
+`else if` gives a pool of one the gradient's END value, so a two-endpoint row
+priced as if both endpoints were performed charges a difference the renderer
+never makes. It is implemented in its `L = 1`-airtight form: an explicit
+`@note.order` id list bounds the pool above by its length, and at `L = 1`
+`transition.from` is never performed under either reading of the pool.
 
 **`ornament@scale` is a linear velocity-unit row with neutral 0.0** (AD-15,
 R19) — not a log gain. `DEFAULT_ORNAMENT_SCALE = 0.0` and
@@ -1805,13 +1840,31 @@ documented reference. The defaults, with their AD-26.2 tags:
 | `dynamics`            | ln(1.10) nepers         | [convention] — survey-lit L6 records that four loudness conventions coexist in the literature with no shared scale, so this is a declared choice, not a measurement                                          |
 | `rubato` displacement | ~1/16 quarter           | [convention]                                                                                                                                                                                                 |
 | `velocity`            | ~3 MIDI units           | [convention]                                                                                                                                                                                                 |
+| `articulation` duration | ln(1.10) ≈ 0.0953 nepers | [convention] — a 10 % duration change, the dynamics constant reused because both are ratios of a performed quantity and neither has a measurement behind it |
+| `pedal` position     | 0.1 of the 0..1 range    | [convention] — a tenth of full travel; the controller resolution is 128 steps, so this is ~13 of them |
+| the unnormalized row | 1                        | [convention] — the identity, for a row whose own unit IS the perceptual one (a flag, an index, a count): dividing by 1 is what "no JND is claimed here" looks like in the same arithmetic |
 
 Revision 2 carried `asynchrony 20 ms` as a guess; 30 ms is the literature's
 figure and supersedes it. The general principle behind the whole column is
 survey-lit L5: **a difference below one JND is not a difference**, which is the
-empirical content of §7.3's `τ = 1` threshold.
+empirical content of §7.3's `τ = 1` threshold. Every one of the eight shipped
+constants is in this table (W3's MINOR: three of them were not, and the table
+described itself as complete).
 
 `δ_row` (§4) is the metric cap in JND units, default 10 [convention].
+
+`λ_date` (§5.6) is **16 per quarter** [convention] — one JND per 1/16 quarter of
+date displacement between two matched events, which is exactly the `rubato`
+displacement JND above, so a displacement of one rubato JND costs one JND here.
+§5.6 says the constant belongs to the semantic definition and left its value
+open; this is the value, chosen by calibration against a sibling row rather than
+against a corpus, which is what §7.1 exists to avoid.
+
+`DEFAULT_PPQ` is **720** [convention], assumed when a document declares no
+`@pulsesPerQuarter` at all. It is a grid and not a metric constant — every date
+is converted onto the pair's LCM grid before anything is priced — so the
+assumption changes no distance between two documents that both leave it out; the
+report stamps `ppq.fallbackUsed` and `ppq.assumed` so it is never silent.
 
 `κ` weights event atoms per dimension [convention], making one 1-JND event equal
 `κ` quarters of 1-JND sustained deviation; default `κ = 1`. **`κ` carries units
@@ -2200,7 +2253,9 @@ export type ComparisonNoteKind =
   | 'renderer-skip' // AD-9: instruction the renderer skips
   | 'inert-difference' // R9b: documents differ in an attribute nothing reads
   | 'capped' // AD-2: the local metric's cap bound
-  | 'grid-truncated' // AD-10: rubato frame-boundary cap bound
+  | 'grid-truncated' // a documented GRID CAP bound, and the note names which: AD-10's rubato
+  //   frame-boundary cap, or C1's PROFILE_MAX_POINTS (the message states both the
+  //   requested step and the one actually used)
   | 'estimate-degradation' // R7: an MSM-dependent refinement was unavailable
   | 'option-unusable' // A10: an explicitly-set option could not be honoured
   | 'invariance-space' // C9: 'level' on a linear-space dimension
@@ -2239,10 +2294,20 @@ export interface CompareMpmOptions extends ComparisonSettings {
   /** Part of the metric, not a report-only side input: it moves the window,
    *  the weight function and articulation resolution (A11). */
   readonly msm?: XmlText;
-  /** Opt-in retention of the evaluated curves and densities (C1). */
+  /**
+   * Opt-in retention of the evaluated curves and densities (C1).
+   *
+   * Both grids are capped at **PROFILE_MAX_POINTS = 4096** [convention] — a profile is a report
+   * field, not a sample buffer, and 4096 is a few hundred kilobytes of JSON per dimension at the
+   * outside and about two points per quarter over a 30-minute movement. `'refinement'` keeps
+   * every other cell edge past the cap; an explicit `step` finer than the cap allows is honoured
+   * as far as the cap and then COARSENED. Either way a `grid-truncated` note fires and names the
+   * requested step and the one used, because silently returning fewer points than the caller's
+   * step implies is worse than a stated approximation and refusing the option is worse than both.
+   */
   readonly profile?: {
     readonly dimensions?: readonly ComparisonDimension[]; // default: all
-    readonly grid?: 'refinement' | { readonly step: number }; // quarters; step-capped
+    readonly grid?: 'refinement' | { readonly step: number }; // quarters; capped at 4096 points
   };
 }
 
@@ -2405,7 +2470,11 @@ export interface AttributionTable {
 export interface ComparisonReport {
   /** Provenance: the fully resolved settings, never the documents (A12). */
   readonly inputs: {
-    readonly settings: Required<ComparisonSettings>; // defaults filled in
+    // ResolvedComparisonSettings — STRONGER than `Required<ComparisonSettings>`, which removes
+    // top-level optionality only: every dimension of `weights` and `invariance` and every key
+    // of `jnd` is filled in, so the echo is the vector the run used and not the subset the
+    // caller happened to pass.
+    readonly settings: ResolvedComparisonSettings;
     readonly jnd: Record<ComparisonJndKey, number>; // the effective vector (A1/A11)
     readonly msmUsed: boolean;
     /**
@@ -2434,6 +2503,11 @@ export interface ComparisonReport {
     readonly lcm: number;
     readonly fallbackUsed: boolean;
     readonly assumed: number | null;
+    // AD-27.2's third state, delegated to §9.3 and landed at W3: the RAW TEXT of a
+    // `@pulsesPerQuarter` that was declared and could not be used, per document. `null` where
+    // the attribute was absent (then `fallbackUsed`) or usable. Absent and unusable are
+    // different facts about a document and a single boolean conflated them.
+    readonly unusableDeclaration: { readonly a: string | null; readonly b: string | null };
   };
   // the two MPMs' own <part> sets, matched by @number
   readonly parts: readonly {
@@ -2460,6 +2534,10 @@ export interface ComparisonReport {
     readonly partNumbersMatched: boolean;
     readonly instructionCountA: number;
     readonly instructionCountB: number;
+    // C7's verdict, so a caller need not re-derive the heuristic from the evidence above it:
+    // the length ratio outside [0.8, 1.25] between the documents OR between either document
+    // and the score end, or two part sets sharing no number.
+    readonly suspectPair: boolean;
   };
   readonly measures:
     | readonly {
@@ -2703,7 +2781,11 @@ spread.
 | `weights` values                                        | finite, ≥ 0                                                  | `InvalidOptionError`                                                                                      |
 | `jnd` / `plausibleRange` keys                           | in `COMPARISON_JND_KEYS`                                     | `InvalidOptionError` naming all offenders                                                                 |
 | `jnd` values                                            | finite, > 0 (a zero JND divides)                             | `InvalidOptionError`                                                                                      |
+| `plausibleRange` values                                 | a `[low, high]` pair, both finite, `low ≤ high`              | `InvalidOptionError`                                                                                      |
 | `invariance` values                                     | in the union; `'level'`/`'level-gain'` on an event dimension | `InvalidOptionError` (AD-20)                                                                              |
+| `profile.dimensions`                                    | every entry in `COMPARISON_DIMENSIONS`                       | `InvalidOptionError` naming all offenders                                                                 |
+| `profile.grid.step`                                     | finite, > 0                                                  | `InvalidOptionError` (a non-positive step is an infinite grid, not a coarse one)                          |
+| `a` (and `b` when given)                                | present, and XML text                                        | `ParseError` — an absent or non-string `a` cannot be told from malformed XML without guessing at intent, so it is reported as what the parser saw |
 | `performanceA` / `performanceB` / `items[].performance` | non-negative integer, or a name; index in bounds             | `InvalidOptionError` / `PerformanceNotFoundError`, spelled exactly as `selectPerformance` spells it (A17) |
 | multi-performance document, no selector                 | —                                                            | `InvalidOptionError` naming the candidates                                                                |
 | document with **zero** performances                     | —                                                            | `PerformanceNotFoundError` (C8 — users hand-building neutral documents hit this)                          |
@@ -2742,10 +2824,20 @@ request.
   precedent), never by iterating a document — a record built by document traversal
   reorders under the a/b swap.
 - **Every array has a total order independent of which document is `a`** (A9):
-  `parts` by matched `@number` then `@name` (code-unit order, never
-  `localeCompare`); `notes` by `(kind, dimension, startQuarters, site)` with a
-  stated final tiebreak; `segments` by `(mass desc, start asc, length asc)`;
-  `scripts` by `(part, map)`; ops by application index.
+  `parts` by matched `@number` ascending, then the A-side number-less parts in
+  document order, then the B-side ones — AD-27.3, which SUPERSEDED the "then
+  `@name`" tiebreak this list used to carry: a part with no usable `@number` is
+  not matchable at all, so there is no tie for a name to break, and A-block
+  before B-block is symmetric because it does not depend on which document was
+  passed first. `notes` by
+  `(kind, dimension, startQuarters, document, message)` with the note's own
+  SERIALIZATION as the stated final tiebreak, which makes the order total by
+  construction rather than by an argument that the earlier keys separate
+  everything (W3 MAJOR-6: they did not). `segments` by
+  `(mass desc, start asc, length asc)`; `scripts` by `(part, map)`; ops by
+  application index. **Code-unit order throughout, never `localeCompare`** — and
+  the ban binds inside the engine as well as at the report boundary, since the
+  articulation aligner's input order decides a distance (W3 CAPITAL-6).
 - **The a/b swap map is explicit** (A9), and is separate from the **sign-negating**
   fields, which are not a swap: `ppq.a`/`ppq.b`, `dateA`/`dateB`,
   `valueA`/`valueB`, `measureA`/`measureB`, the per-part pairing entries and the

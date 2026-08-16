@@ -4244,3 +4244,107 @@ a partial order tidies its own ambiguity away under a re-sort. The totality is a
 Gate: `npm run verify` GREEN — 117 files, **5235 passed**, 0 skipped (5019 + 216, most of them
 the metric suite's 11 × 26 identity cases). Repo-wide `npx prettier --check .` clean; eslint clean
 on `src/comparison/` and `tests/comparison/`. The seven vendored anchors are unchanged.
+
+## 2026-08-16 — W3 fix cut 5: MAJOR-8..15 and the MINORs (w3-fix)
+
+The last cut. Nine MAJORs and fourteen MINORs, none of which moves a vendored headline number —
+the seven anchors are bit-identical to cut 2's. Most are DESIGN currency and pins for rules that
+had none; four are behaviour.
+
+**MAJOR-13 + MAJOR-15, one mechanism.** DESIGN states the same fact twice — §5.0's
+"a global-vs-part-local encoding difference with identical resolved curves is distance 0 plus a
+structural note" and §10's P-C8 "an explicit neutral instruction ≡ absent map: distance exactly
+0 — plus the structural note" — and neither had any code. `encodingNotes` emits one note per
+dimension when the two documents' map SIGNATURES differ (absent / global / part-local, per
+evaluated scope) and the distance is exactly 0. Measured:
+
+```
+global vs part-local tempoMap              D=0  note fires (tempo)
+explicit neutral rubato vs absent map      D=0  note fires (rubato)
+explicit 0 ms asynchrony vs absent map     D=0  note fires (asynchrony)
+identical documents                        D=0  silent
+a real tempo difference                    D=65.68  silent
+```
+
+The two controls matter as much as the two cases: a note that fired on every pair would be worse
+than none. What the note buys is that a zero becomes legible — "encoded the same" and "encoded
+differently, performed the same" are the distinction a diff product exists to report.
+
+**MAJOR-12 — `inert-difference` reaches more than one site.** §9.1's kind was emitted from
+exactly one, while §10 names it as a fixture obligation for three: AD-8's trailing
+`@transition.to` on tempo AND dynamics, AD-35's trailing `<movement>`, and (added here for the
+same reason) AD-11i's shadowed duration lever. All were arriving as `structural`, which is the
+channel for a difference that IS performed but is not a magnitude — the opposite claim.
+
+**MAJOR-11 — `meanSigned` averages where `distance` sums**, now stated at both the site and the
+report field. The two are right for opposite reasons: mass is additive across parts, a LEVEL is
+not, and summing three parts' "A is 4 BPM faster" would report 12 BPM — a figure no part carries.
+Same argument §1.2 makes for taking moments over the disjoint union, and the same shape as
+`bottomLengthQuarters` taking a maximum.
+
+**MAJOR-8 — `PROFILE_MAX_POINTS`** declared in §9.3 with its convention tag and its reasoning,
+and §9.1's `grid-truncated` gloss widened to the two mechanisms that legitimately share it
+(AD-10's rubato frame cap, C1's profile cap) instead of naming only one. The profile note now
+states BOTH steps and the factor between them: an explicit 0.001 over a 198-quarter window is
+coarsened 48×, and "the step was coarsened" left the caller to work that out.
+
+**MAJOR-10 — three binding §5.6 amendments landed in DESIGN**, implemented and tested for two
+waves while the section still described the atom rather than the composed effect: AD-44.1/45.1
+(stacked gradients compose, DIRECTION included — ascending (−20,20) + descending (−10,30)
+performs flat (10,10)), AD-44.2/45.2 (equal-intensity spreads compose, (−22,44)+(−100,200) =
+(−122,244) exactly; unequal ones stay individual events with the documented limitation), and
+AD-40.3/44.4 (a single-note pool performs `transition.to`, in its L=1-airtight form).
+
+**MAJOR-9 — §9.5's key order is pinned by a test that can see it.** The two tests touching key
+sets `.sort()`ed them first, which checks membership and says nothing about order, and P-C2
+compares the engine against itself. The top-level order is written out as data and the
+per-dimension records are checked against `COMPARISON_DIMENSIONS` UNSORTED — with an assertion
+that the pinned order is NOT the sorted one, so the old technique could not have passed by luck.
+
+**MAJOR-14 — P-C6 at the pairwise path**, over all eight P-C2 fixtures with profiles on.
+
+**MAJOR-7** landed with CAPITAL-5 in cut 3; **MAJOR-16** was cut 1.
+
+**MINORs.** MINOR-1 the remainder clamp, with `remainder.quadratureUnderflow` carrying what was
+clamped (measured: 1.826 / 1.452 / 0.001170 / 0.030741 on the four vendored pairs the verifier
+named, reproducing their figures) — a mass is non-negative and this one was not, invisibly to
+P-C11 because a negative mass is finite. MINOR-2 folded into cut 4. MINOR-3 the P-C5 non-vacuity
+claim, restated so it is arithmetically possible AND strengthened: it now asserts one unsaturated
+factor on EACH side of the identity, which is what distinguishes AD-6's `|1 − s|` law from
+`|ln s|`, where the old total-count assertion could pass one-sided. MINOR-4 the two missing
+imprecision domains, as two new P-C5 fixtures. MINOR-5 the unseeded `withClips` arm, seeded.
+MINOR-6 the one lint error in `src/`: `undefined` belongs in the implementation signature, which
+is what makes the guard legal rather than an unnecessary condition. MINOR-7 the eslint zone's
+`why` and `forbidden` made to agree (`**/music/**`, `**/units.js`), negative-controlled — an
+import of `../units.js` from `src/comparison/values.ts` is now rejected — and the three implicit
+single-key sorts documented where they are (deterministic, single-document, so no orientation can
+leak through them). MINOR-8 the stale `@throws` line deleted.
+
+Eleven design MINORs: `λ_date = 16` and `DEFAULT_PPQ = 720` stated in §7.1 with their reasoning;
+the three missing JND constants added to §7.1's table, which now carries all eight;
+`ppq.unusableDeclaration` (AD-27.2's delegated edit) and `comparability.suspectPair` declared in
+§9.3; `inputs.settings` corrected to `ResolvedComparisonSettings` with the reason it is stronger
+than `Required<ComparisonSettings>`; §9.5's superseded "then `@name`" parts tiebreak replaced by
+AD-27.3's actual rule; four §9.4 rows added (`plausibleRange` values, `profile.dimensions`,
+`profile.grid.step`, a missing `a`), each verified against the code before being written down.
+`EPSILON_FAMILY_OF` makes two readers' "this dimension's entry in the per-family epsilon record"
+an executable lookup instead of prose.
+
+[BEYOND THE FINDING, reported] The shared `requireXmlText` guard said "got nothing" for `42` and
+for `{}` as well as for an absent argument. It names what arrived now, which changes a message in
+the expression facade's suite too — an untyped caller who passed the wrong variable is this
+message's actual reader.
+
+**Negative controls**, each by patch → `vitest run` → restore:
+
+| repair reverted | fails |
+| --- | --- |
+| `encodingNotes` removed | 2, both P-C8/§5.0 tests |
+| the three inert kinds back to `structural` | 1, MAJOR-12's |
+| the remainder clamp | 1, MINOR-1's |
+| `dimensions` built over a SORTED dimension list | 2: MAJOR-9's key-order pin and one facade test |
+| `units.js` imported from `src/comparison/values.ts` | eslint rejects it (MINOR-7's zone, which permitted it before) |
+
+Gate: `npm run verify` GREEN — 117 files, **5250 passed**, 0 skipped. Repo-wide
+`npx prettier --check .` clean; eslint clean on `src/comparison/`, `tests/comparison/`,
+`src/api/` and `src/index.ts`. The seven vendored anchors are unchanged.

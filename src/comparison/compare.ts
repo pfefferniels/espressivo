@@ -376,6 +376,7 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
             'keeps the triangle inequality intact when a ⊥ document is the middle term',
         ),
       );
+    notes.push(...encodingNotes(dimension, sides, dimensions[dimension].distance, pair));
   }
 
   for (const side of ['a', 'b'] as const)
@@ -500,7 +501,7 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
     segments: pass.segments.map((segment) =>
       reportSegment(segment, pass.cells, signedDensity, msm),
     ),
-    remainder: { mass: pass.remainderMass },
+    remainder: { mass: pass.remainderMass, quadratureUnderflow: pass.remainderUnderflow },
     cellQuantizedDimensions: [...pass.cellQuantizedDimensions],
     table: {
       dimensions: [...table.dimensions],
@@ -694,6 +695,17 @@ function dimensionComparison(
   const distance = new CompensatedSum();
   for (const row of rows) distance.add(row.distance);
 
+  // `distance` SUMS over the scopes and `meanSigned` AVERAGES over them, and the two are right
+  // for opposite reasons (W3 MAJOR-11, which found the difference unstated and unratified).
+  // Mass is additive — two parts deviating at bar 5 put twice the mass at bar 5, which is what
+  // `p_k(t) = Σ_parts p_{k,part}(t)` means — while `meanSigned` is a DESCRIPTOR in the row's
+  // T-space unit: summing three parts' "A is 4 BPM faster" would report 12 BPM, a number no
+  // part carries and no listener could hear. It is the same argument §1.2's decomposition makes
+  // for taking moments over the disjoint union rather than over a concatenation of masses, and
+  // the field is reported per scope-average for the same reason `bottomLengthQuarters` takes a
+  // maximum rather than a sum. On telemann Baroque|Romantic the two read `mean = 8.605` against
+  // `meanSigned = −0.0708`, which is not a contradiction: one is a distance per quarter summed
+  // over three parts, the other a signed level in BPM-nepers held by each of them.
   const withCurves = rows.filter((row) => row.meanSigned !== null);
   const meanSigned =
     withCurves.length === 0
@@ -1018,12 +1030,77 @@ function noteKindOf(kind: string): ComparisonNoteKind {
     case 'capped':
     case 'structural':
       return kind;
+    // R9b's kind, which §10 names as a fixture obligation and which exactly one site was
+    // emitting (W3 MAJOR-12). AD-8's trailing `@transition.to`, AD-35's trailing `<movement>`
+    // and AD-11i's shadowed duration lever are all "an attribute the renderer reads and never
+    // applies" — the same finding in three maps — and all three were arriving as `structural`,
+    // which is the channel for a difference that IS performed but is not a magnitude.
+    case 'inert-transition':
+    case 'trailing-movement':
+    case 'shadowed-lever':
+      return 'inert-difference';
     // The readers name their findings after the mechanism that produced them — 'unresolved-def',
     // 'v3-shape', 'scale-zero', 'declared-law'. Every one of them is §3's structural channel:
     // read, consequential, and never folded into a distance.
     default:
       return 'structural';
   }
+}
+
+/**
+ * §5.0's and §10/P-C8's structural note: **the encoding differs and the performance does not.**
+ *
+ * DESIGN states the rule twice and neither statement had any code (W3 MAJOR-13, MAJOR-15):
+ * "a global-vs-part-local encoding difference with identical resolved curves is distance 0 plus
+ * a structural note — which is correct: it is not performed" (§5.0), and P-C8's "an explicit
+ * neutral instruction ≡ absent map: dimension distance exactly 0 — plus the structural note".
+ * They are one fact in two spellings, so one note answers both: the distance is 0 and the two
+ * documents nonetheless say it differently.
+ *
+ * That the note exists is what makes `d_k = 0` legible. A caller who sees a zero cannot tell
+ * "these encode the same performance the same way" from "these encode the same performance
+ * differently", and the second is exactly what a diff product (§6) is for.
+ *
+ * The signature is per scope: whether the resolved map exists at all, and whether it came from
+ * the PART's own environment or was inherited from the global one — which is
+ * `resolvePartMaps`' own distinction (AD-16/R22) and the only thing that can differ while the
+ * resolved curve does not.
+ */
+function encodingNotes(
+  dimension: ComparisonDimension,
+  sides: readonly (readonly [ScopeSide, ScopeSide])[],
+  distance: number,
+  pair: ComparisonPair,
+): readonly ComparisonNote[] {
+  // Only where the performance really is identical. A nonzero distance already reports the
+  // difference as a magnitude, and saying "and they are encoded differently" on top of it would
+  // be noise on every ordinary pair.
+  if (distance !== 0) return [];
+
+  const signature = (side: ScopeSide): string => {
+    if (!hasEntries(side, dimension)) return 'absent';
+    return side.scope.scope === 'part' && side.scope.environment.maps.has(containerOf(dimension))
+      ? 'part-local'
+      : 'global';
+  };
+  const signatureA = sides.map(([a]) => signature(a)).join(',');
+  const signatureB = sides.map(([, b]) => signature(b)).join(',');
+  if (signatureA === signatureB) return [];
+
+  return [
+    note(
+      'structural',
+      dimension,
+      null,
+      pair.window.startQuarters,
+      pair.window.endQuarters,
+      `the two documents encode this dimension differently and perform it identically: ` +
+        `a's ${containerOf(dimension)} is [${signatureA}] per evaluated scope against b's ` +
+        `[${signatureB}], and the resolved curves agree, so the distance is exactly 0 (§5.0, ` +
+        'P-C8). An absent map is the neutral curve (R6) and a part-local map that resolves to ' +
+        'the global one performs the global one, so neither difference is performed',
+    ),
+  ];
 }
 
 function invarianceNotes(
@@ -1245,6 +1322,10 @@ function profileDates(
   const step = grid.step;
   const count = Math.floor((end - start) / step);
   if (count + 1 > PROFILE_MAX_POINTS) {
+    // BOTH steps, requested and actual (W3 MAJOR-8). A note that says only "the step was
+    // coarsened" leaves the caller to work out by how much, and the factor is not small: an
+    // explicit 0.001 over a 198-quarter window is coarsened 48×.
+    const coarse = (end - start) / (PROFILE_MAX_POINTS - 1);
     notes.push(
       note(
         'grid-truncated',
@@ -1253,10 +1334,10 @@ function profileDates(
         start,
         end,
         `a step of ${String(step)} quarters would produce ${String(count + 1)} points; the ` +
-          `profile is capped at ${String(PROFILE_MAX_POINTS)} and the step was coarsened`,
+          `profile is capped at ${String(PROFILE_MAX_POINTS)} (C1) and the step used was ` +
+          `${String(coarse)} quarters, coarser by a factor of ${String(coarse / step)}`,
       ),
     );
-    const coarse = (end - start) / (PROFILE_MAX_POINTS - 1);
     return Array.from({ length: PROFILE_MAX_POINTS }, (_value, index) => start + index * coarse);
   }
   return Array.from({ length: count + 1 }, (_value, index) => start + index * step);

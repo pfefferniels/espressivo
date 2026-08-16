@@ -161,6 +161,9 @@ export function readAccentuationPattern(def: Element): AccentuationPattern {
     });
   }
 
+  // On `@beat` alone: two `<accentuation>` children of one def sharing a beat keep their
+  // document order, which is the order the renderer applies them in. Stable, single-document,
+  // and therefore invisible to the a/b swap — stated because it was implicit (W3 MINOR-7).
   points.sort((a, b) => a.beat - b.beat);
   return {
     length: Number.isFinite(rawLength) ? rawLength : DEFAULT_PATTERN_LENGTH,

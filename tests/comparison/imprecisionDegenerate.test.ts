@@ -46,8 +46,12 @@ describe('AD-46 probe: clip-less triangular through the full pipeline', () => {
     const clipless = mpm(
       '<distribution.triangular date="0.0" limit.lower="-30.0" limit.upper="30.0" mode="0.0" milliseconds.timingBasis="300.0"/>',
     );
+    // SEEDED (W3 MINOR-5). This is the only arm that draws, and without a `@seed` it draws from
+    // `Math.random()`: the assertion it guards is robust — two continuous draws collide with
+    // probability ~0 — but a `Math.random()` dependency has no place in a suite that pins
+    // byte-identity elsewhere, and the seed costs nothing.
     const withClips = mpm(
-      '<distribution.triangular date="0.0" limit.lower="-30.0" limit.upper="30.0" mode="0.0" clip.lower="-30.0" clip.upper="30.0" milliseconds.timingBasis="300.0"/>',
+      '<distribution.triangular date="0.0" seed="20260816" limit.lower="-30.0" limit.upper="30.0" mode="0.0" clip.lower="-30.0" clip.upper="30.0" milliseconds.timingBasis="300.0"/>',
     );
     const none = mpm('');
 

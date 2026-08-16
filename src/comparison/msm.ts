@@ -150,6 +150,8 @@ function readTimeSignatures(root: Element, ppq: number): readonly TimeSignatureE
     if (!Number.isFinite(date) || !(numerator > 0) || !(denominator > 0)) continue;
     entries.push({ startQuarters: date / ppq, numerator, denominator });
   }
+  // Date only: two `<timeSignature>` entries at one date keep document order, which is what
+  // the renderer's own forward walk sees. One document, so no orientation leaks (W3 MINOR-7).
   return entries.sort((x, y) => x.startQuarters - y.startQuarters);
 }
 

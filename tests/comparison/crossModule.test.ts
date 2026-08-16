@@ -193,6 +193,32 @@ const CONSTANT_FIXTURES: readonly {
         'milliseconds.timingBasis="300"/></imprecisionMap.timing>',
     ),
   },
+  // W3 MINOR-4: the record's "seven of the eleven … the three exceptions" framing implies ten
+  // dimensions are accounted for, and these two were exercised nowhere. They are separate
+  // expression dimensions reading separate maps, so "timing works" is not evidence about either.
+  {
+    name: 'imprecisionDynamics — the velocity domain, its own map and its own factor',
+    comparison: 'imprecisionDynamics',
+    expression: ['imprecisionDynamics'],
+    mpm: doc(
+      '<imprecisionMap.dynamics>' +
+        '<distribution.uniform date="0.0" limit.lower="-12.0" limit.upper="12.0"/>' +
+        '<distribution.uniform date="2880.0" limit.lower="-3.0" limit.upper="6.0"/>' +
+        '</imprecisionMap.dynamics>',
+    ),
+  },
+  {
+    name: 'imprecisionDuration — the toneduration domain, likewise',
+    comparison: 'imprecisionDuration',
+    expression: ['imprecisionDuration'],
+    mpm: doc(
+      '<imprecisionMap.toneduration>' +
+        '<distribution.uniform date="0.0" limit.lower="-40.0" limit.upper="40.0" ' +
+        'milliseconds.timingBasis="300"/>' +
+        '<distribution.uniform date="2880.0" limit.lower="-8.0" limit.upper="20.0" ' +
+        'milliseconds.timingBasis="300"/></imprecisionMap.toneduration>',
+    ),
+  },
 ];
 
 describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
@@ -208,7 +234,8 @@ describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
       });
 
       it('scores |1 − s| × its deviation from neutral, wherever the transform is unsaturated', () => {
-        let checked = 0;
+        let below = 0;
+        let above = 0;
         for (const s of FACTORS) {
           // A factor that saturates a bound, or a difference §4's cap truncates, is outside the
           // law — and BOTH modules say so in their reports, so the skip is a reported fact
@@ -220,10 +247,19 @@ describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
             fixture.comparison,
           );
           expect(measured / (Math.abs(1 - s) * deviation), `s = ${String(s)}`).toBeCloseTo(1, 9);
-          checked += 1;
+          if (s < 1) below += 1;
+          else above += 1;
         }
-        // Non-vacuity: at least three factors on each side of 1 really were unsaturated.
-        expect(checked).toBeGreaterThanOrEqual(3);
+        // Non-vacuity, stated so that it is arithmetically possible (W3 MINOR-3). The comment
+        // used to claim "at least three factors on each side of 1", which `FACTORS` cannot
+        // deliver — it has two values below 1 — while the assertion was on the TOTAL, so a
+        // fixture unsaturated on one side only passed a claim about both. What is really
+        // asserted, and what matters, is that the law is exercised on BOTH sides of the
+        // identity: `|1 − s|` and `|ln s|` agree in sign but not in shape, and a one-sided
+        // check cannot tell AD-6's law from its rival.
+        expect(below, 'no unsaturated factor below s = 1').toBeGreaterThanOrEqual(1);
+        expect(above, 'no unsaturated factor above s = 1').toBeGreaterThanOrEqual(1);
+        expect(below + above).toBeGreaterThanOrEqual(3);
       });
 
       it('is exactly 0 at s = 1, which is the identity (P-C1)', () => {

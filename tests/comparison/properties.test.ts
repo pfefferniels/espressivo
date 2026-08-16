@@ -311,6 +311,100 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       expect(compareNotes(sameMessage[i], sameMessage[i + 1])).toBeLessThan(0);
   });
 
+  /**
+   * W3 MAJOR-9: §9.5's "key order is pinned (A9)" had no test.
+   *
+   * The two tests that touched key sets `.sort()`ed them first — which checks membership and
+   * says nothing about order — and P-C2 compares the engine against itself, so a record built
+   * by document traversal would serialize identically both ways and still break the promise.
+   * The top-level order is written out here as data; the per-dimension records are checked
+   * against `COMPARISON_DIMENSIONS` UNSORTED, which is the invariant §9.5 actually states
+   * (`Object.fromEntries(COMPARISON_DIMENSIONS.map(…))`, never a document walk).
+   */
+  it('pins the key order of the report and of every per-dimension record (§9.5, A9)', () => {
+    const report = compareMpm({
+      a: TELEMANN,
+      performanceA: 'Baroque',
+      performanceB: 'Fast',
+      msm: score('telemann-grave'),
+      profile: { grid: 'refinement' },
+    }).report;
+
+    expect(Object.keys(report)).toEqual([
+      'inputs',
+      'window',
+      'ppq',
+      'parts',
+      'scopes',
+      'comparability',
+      'measures',
+      'dimensions',
+      'aggregate',
+      'segments',
+      'remainder',
+      'cellQuantizedDimensions',
+      'table',
+      'equivalence',
+      'cumulativeDrift',
+      'profiles',
+      'notes',
+    ]);
+
+    const inDimensionOrder = [...COMPARISON_DIMENSIONS];
+    expect(Object.keys(report.dimensions)).toEqual(inDimensionOrder);
+    expect(Object.keys(report.equivalence.byDimension)).toEqual(inDimensionOrder);
+    expect(Object.keys(report.aggregate.weights)).toEqual(inDimensionOrder);
+    expect(Object.keys(report.profiles ?? {})).toEqual(inDimensionOrder);
+    expect(Object.keys(report.inputs.settings.weights)).toEqual(inDimensionOrder);
+    expect(Object.keys(report.inputs.settings.invariance)).toEqual(inDimensionOrder);
+    // Non-vacuity: the pinned order is NOT the sorted one, so sorting before comparing — which
+    // is what the two existing tests did — would have accepted any order at all.
+    expect(inDimensionOrder).not.toEqual([...inDimensionOrder].sort());
+
+    // One nested record too, since §9.5's rule is about every object and not only the top.
+    expect(Object.keys(report.dimensions.tempo)).toEqual([
+      'state',
+      'distance',
+      'mean',
+      'unit',
+      'meanSigned',
+      'weight',
+      'invariance',
+      'rows',
+      'events',
+      'bottomLengthQuarters',
+      'cappedCells',
+      'decomposition',
+      'timeSignatureSource',
+      'datePositionKnown',
+    ]);
+  });
+
+  /**
+   * W3 MAJOR-14: §10's P-C6 had no test at the PAIRWISE path.
+   *
+   * The property holds — the report is byte-identical across separate processes — but nothing
+   * pinned it here, so a future `Map`-iteration regression in the report builder would ship
+   * green. Two runs over the same input text is the cheap half and the one that catches a
+   * builder keying on object identity or on insertion order.
+   */
+  it('is deterministic at the pairwise path: two runs, byte-identical JSON (P-C6)', () => {
+    for (const pair of PAIRS) {
+      const run = () =>
+        JSON.stringify(
+          compareMpm({
+            a: pair.a,
+            b: pair.b,
+            performanceA: pair.performanceA,
+            performanceB: pair.performanceB,
+            msm: pair.msm,
+            profile: { dimensions: ['tempo', 'rubato'], grid: { step: 1 } },
+          }).report,
+        );
+      expect(run(), pair.name).toBe(run());
+    }
+  });
+
   it('keeps the segment ranking and the note order out of the orientation', () => {
     const options = {
       a: VULPIUS,

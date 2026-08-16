@@ -79,6 +79,8 @@ export type {
 } from '../comparison/registry.js';
 export type { InvarianceMode } from '../comparison/decomposition.js';
 export type { MetricGuarantee, WindowRule } from '../comparison/window.js';
+/** Dimension → epsilon family, so `inputs.epsilon[EPSILON_FAMILY_OF[k]]` is a lookup. */
+export { EPSILON_FAMILY_OF } from '../comparison/report.js';
 export type {
   AttributionTable,
   ComparisonInputs,
@@ -166,7 +168,7 @@ export interface CompareMpmOptions extends ComparisonSettings {
  * @throws {InvalidOptionError} an unknown dimension or JND key, a non-finite or negative weight,
  *   a JND that is not positive, an inverted or non-finite window, an invariance mode on an event
  *   dimension, a selector that is not a non-negative integer, a multi-performance document with
- *   no selector, `noteDensityWeight` without an `msm`, or a document resolving a tempo ≤ 0
+ *   no selector, or a document resolving a tempo ≤ 0
  * @throws {ParseError} `a`, `b` or `msm` is not XML text, is not well-formed, or has the wrong
  *   root element — the message names which of the three
  * @throws {PerformanceNotFoundError} a selector names or indexes nothing, or a document carries

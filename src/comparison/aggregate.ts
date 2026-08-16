@@ -125,8 +125,26 @@ export interface AggregateSegment {
 export interface SegmentPass {
   readonly cells: readonly ScoredCell[];
   readonly segments: readonly AggregateSegment[];
-  /** Mass of `p_D` outside every segment — the table's last column. */
+  /**
+   * Mass of `p_D` outside every segment — the table's last column. **Clamped at 0** (W3
+   * MINOR-1); see {@link remainderUnderflow} for the magnitude that was clamped away.
+   */
   readonly remainderMass: number;
+  /**
+   * How far below zero the subtraction went, `≥ 0`, before the clamp.
+   *
+   * A mass is non-negative, and this one is computed by SUBTRACTION from the row total — which
+   * is the right choice, because it is what makes the table close exactly — so it inherits the
+   * root refinement's quadrature error with the opposite sign. Measured on four of the seven
+   * vendored pairs (worst `−1.83` against a `D` of 22357, i.e. 8e-5 of it), which put an
+   * impossible value into a caller-visible field while every headline number stayed right.
+   * P-C11's walker cannot see it, because a negative mass is finite.
+   *
+   * So the field is clamped and the magnitude is reported rather than discarded: a reader who
+   * wants to know whether the segmentation is well conditioned has the number, and one who
+   * wants a mass gets a mass.
+   */
+  readonly remainderUnderflow: number;
   readonly thresholdPerQuarter: number;
   /**
    * Dimensions whose cells carried no pointwise density, so their threshold crossings were
@@ -348,10 +366,13 @@ export function segmentPass(
   for (const run of runs) for (let i = run.start; i <= run.end; ++i) covered.add(cells[i].mass);
   const totalMass = weightedMassIn(densities, weights, windowStartQuarters, windowEndQuarters);
 
+  const remainder = totalMass - covered.total;
+
   return {
     cells,
     segments,
-    remainderMass: totalMass - covered.total,
+    remainderMass: Math.max(0, remainder),
+    remainderUnderflow: remainder < 0 ? -remainder : 0,
     thresholdPerQuarter,
     cellQuantizedDimensions: densities
       .filter(

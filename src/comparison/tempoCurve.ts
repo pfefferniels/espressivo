@@ -337,6 +337,11 @@ export function readTempoSegments(
       });
   }
 
+  // Sorted on the date alone, so two segments opening at one tick keep their MAP order — sort
+  // stability, and deliberate rather than overlooked (W3 MINOR-7 named it as implicit). It is
+  // the right order and not merely a stable one: co-dated instructions are applied in document
+  // order by the renderer too, and the array reaching here came from ONE document, so no a/b
+  // orientation can leak through it (§9.5's concern is arrays built from both).
   segments.sort((a, b) => a.startTicks - b.startTicks);
 
   return {

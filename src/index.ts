@@ -218,7 +218,12 @@ export const Meico = { version: VERSION } as const;
 function helperGetAllChildElements(name: string, ofThis: Element): Element[] | null;
 function helperGetAllChildElements(ofThis: Element): Element[] | null;
 function helperGetAllChildElements(
-  arg1: string | Element | null,
+  // `undefined` belongs in the IMPLEMENTATION signature and in neither overload: an untyped
+  // caller reaching the shim can pass it, and the guard below is what turns that into `null`
+  // rather than a `TypeError` from `allChildElements`. Declaring it is what makes the guard
+  // legal rather than a condition "the types have no overlap" with — the one lint error in
+  // `src/`, pre-existing and only shifted by the comparison wave (W3 MINOR-6).
+  arg1: string | Element | null | undefined,
   arg2?: Element | null,
 ): Element[] | null {
   if (arg1 === null || arg1 === undefined) return null;

@@ -234,13 +234,16 @@ describe('RULE E2: every failure is a typed error naming the offender', () => {
       );
     });
 
+    // The message names WHAT arrived (a W3 comparison MINOR, fixed in the shared guard): an
+    // empty string and an absent argument are different mistakes and "got nothing" was said of
+    // both, which is misleading for the untyped caller who is this message's actual reader.
     it.each([
       ['empty', ''],
       ['blank', '   '],
-    ])('rejects %s input as "got nothing"', (_why, text) => {
+    ])('rejects %s input, naming what arrived', (_why, text) => {
       rejects(
         () => exaggerateMpm(text as XmlText, { factors }),
-        /MPM: expected XML text, got nothing/,
+        /MPM: expected XML text, got an empty string/,
       );
     });
 
@@ -248,6 +251,10 @@ describe('RULE E2: every failure is a typed error naming the offender', () => {
       rejects(
         () => exaggerateMpm(null as unknown as XmlText, { factors }),
         /MPM: expected XML text, got nothing/,
+      );
+      rejects(
+        () => exaggerateMpm(42 as unknown as XmlText, { factors }),
+        /MPM: expected XML text, got a number/,
       );
     });
 
