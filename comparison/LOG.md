@@ -2799,3 +2799,103 @@ perform nothing; tuning inert on write-but-never-read evidence).
 AD-49.8 The §5.0 epsilon record supersession is accepted (measured
 Φ 1.7e-15 abs / W₁ ≤ 3.6e-16 rel / ρ bit-exact and 1.1e-15) — record
 update delegated alongside the other §5.9 amendments.
+
+## 2026-08-16 — W3a cut 4, part 2: the imprecision reader (w3-imp)
+
+`src/comparison/imprecisionLaws.ts` + 39 tests, every renderer claim measured through
+`performMsm` per AD-43.1. The density, the distances, the registry rows and the adversarial
+family are the next commit; the reader is separable and is the half the renderer study
+licenses directly.
+
+THE DEGENERATE TABLE IS IMPLEMENTED AS ONE RULE, not six cases — an absent parameter reads as
+the number 0 — and the decisive test form is BIT-IDENTITY against an explicit control rather
+than an assertion about shape. A document with `limit.upper` absent performs, byte for byte,
+what the same document with `limit.upper="0"` performs. That fails on any difference at all,
+which "the offsets look uniform" would not.
+
+THREE ROWS §5.9's TABLE DOES NOT HAVE, all measured, all genuine laws rather than collapses:
+a single absent limit gives `U(limit, 0)` (uniform) or truncation to `[limit, 0]` (gaussian);
+a single absent clip clamps to `[clip, 0]`; an absent `mode` is `mode="0"`. §5.9 is right about
+the case it names — BOTH limits absent — and silent about the commoner one. Reading the table
+literally is a real defect and is pinned as such: the negative control that collapses any
+single-absent-limit uniform to δ₀ fails exactly the test that names the row.
+
+SIX ⊥ ROUTES, so AD-36.2's capped density is FORCED for these three dimensions. Five were in
+the renderer study; the sixth the tests found:
+
+**`@milliseconds.timingBasis="0"` aborts the render**, and the renderer's own guard misses it.
+That guard lives inside `if (millisecondsTimingBasis === null)`, so it repairs an ABSENT basis
+and never a written zero; the index then divides by zero, `requireUsableIndex` rejects `±∞`
+and throws. A NEGATIVE basis is the control and is deliberately NOT ⊥: the index goes
+negative, `getValue` clamps it to 0, every note draws `series[0]`, and the marginal is
+unchanged — the same class of render artifact as AD-14iii's ordinary basis effect. Both
+measured.
+
+AD-35.4's HAZARD QUESTION, ASKED OF EVERY GUARD IN THE §5.9 PATH. Five guards, five answers,
+all executed:
+1. `GenericMap.parseData:143-146` — ENTRIES, and the entry list is FILTERED before any index
+   is taken: no `@date` and a `<style>` without `@name.ref` are both dropped. Consequence
+   measured: `<style name.ref="none">` at 720 leaves every later note exactly unperturbed
+   (the δ₀ gap), while the SAME element with the attribute removed performs bit-identically to
+   no style at all. This is the hazard class one level below where AD-46 asked it — not "does
+   the guard count entries" but "which children became entries".
+2. `getDistributionDataOf:212` — ENTRIES (`elements[i+1]`), which is the any-entry rule
+   already in `spanEnds.ts` and asserted at reader entry.
+3. The `impIndex` loop — ENTRIES; a non-distribution entry restores the previous `dd` and
+   continues, which is what makes a gap a gap.
+4. `mapIndex` is NOT reset between distributions — one shared forward walk over the note map.
+   Sound because entries are date-sorted, but it makes two distributions at ONE date visible:
+   the first has `endDate === startDate`, the note loop breaks immediately, and it performs
+   nothing. Measured with a first distribution that would have shifted everything by −300 ms:
+   bit-identical to the second alone.
+5. The domain switch's `default: return` and the type switch's `default: continue` — a
+   domain-less `<imprecisionMap>` and an unknown `distribution.*` name both perform nothing.
+   The unknown name reads δ₀ and a structural note, NOT ⊥: nothing is destroyed, nothing is
+   applied.
+
+GAPS ARE δ₀ AND ASYNCHRONY'S ARE ⊥, and the contrast is now pinned in both directions. Same
+structural situation — a foreign entry inside a span-bearing map — and opposite dispositions,
+because `asynchronyMap` READS an offset off the foreign element and gets NaN (AD-33.1) while
+`imprecisionMap` simply has no distribution for the interval and applies nothing.
+
+[DECISION, needs ratification] THE CORRELATED FAMILIES DECLARE THEIR INDEX-0 LAW: uniform over
+the MIDDLE HALF of `[limit.lower, limit.upper]`, clipped where the family clips. This is a
+decide-without-stopping under AD-36.1's test — the renderer determines it and §5.9 is silent,
+because §5.9 says "compare marginals" and the measurement shows there is no single marginal to
+compare. `doHandover`'s fallback is the whole mechanism: `Math.random()·(R/2) + lower + R/4`.
+Measured from 20 000 INDEPENDENT chains per index (a time average over one chain measures the
+same thing only after mixing, and its error is autocorrelation rather than sampling): KS
+0.0058 against `U(−15, 15)` for limits ±30, against a 0.0096 noise floor at that sample size.
+The alternative — the stationary envelope `Uniform(lower, upper)` — is exact for
+`brownianNoise` only asymptotically (~1000 indices at `stepWidth.max = 3`) and never for
+`compensatingTriangle`, which contracts instead (σ 8.30 at `degreeOfCorrelation` 2, 4.91 at 5)
+or expands to 20.76 with atoms at both limits at 0.5. The index-0 law is exact at an index
+every span has, is determined by the document alone, and is read off the renderer rather than
+modelled. `stepWidth.max` and `degreeOfCorrelation` carry the process as `processParameters`
+rows, which is what makes A-B3's "the marginal does not characterize the process" a finding
+here rather than a caveat — and the whole measurement ships as a `declared-law` note on every
+correlated span.
+
+§5.9's DECLARED-LAW SENTENCE GAINS TWO MORE, both measured and both the same kind of
+render-path artifact as the chord shake: `distribution.list` is not sampled at all
+(`getValue(i)` is `series[i % n]`, and a FRACTIONAL index INTERPOLATES between neighbours, so
+the performed values are not in general list members), and the correlated marginal depends on
+the index. All three depend on where a note falls rather than on what the document declares.
+
+TIMING BASIS: derivation implemented as `ImprecisionMap.ts:356-380` has it (limits for
+uniform/gaussian/brownian, CLIPS for both triangles, range for the list, timing domain only,
+fallback 100.0 for everything else and for any derivation ≤ 0) — and the one-rule reading
+explains why the fallback catches so much: absent limits derive `0 − 0 = 0`, which is ≤ 0.
+Family-dependence per AD-14iii: inert for the four i.i.d. families (pinned as "the law is
+identical while the RENDER genuinely differs", so the inertness is a claim about the law rather
+than about the document being unchanged), a `processParameters` row for the two correlated
+ones — where the measurement above makes it more than a formality, since the marginal really
+does depend on the index the basis sets.
+
+NEGATIVE CONTROLS, five, each failing exactly its own tests and restoring green: reading the
+degenerate table literally (1 test), dropping the `@seed` check (1), declaring the full limit
+range instead of the middle half (1), dropping the zero-basis ⊥ route (1), and switching the
+span rule from any-entry to same-local-name (2).
+
+Gate: `npm run verify` GREEN before committing — 108 files, 4714 passed + 1 skipped (was
+4675 + 1). eslint and prettier clean.
