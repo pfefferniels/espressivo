@@ -4628,3 +4628,33 @@ written in response — the corpus does not happen to contain either hazard.
 Gate: `npm run verify` GREEN before committing — 119 files, **5279 passed**, 0 skipped (was
 5268). Repo-wide `npx prettier --check .` clean; eslint clean on `src/comparison`,
 `tests/comparison`, `src/api` and `src/index.ts`.
+
+## 2026-08-16 — AD-59: W4 cut A2 rulings [BINDING]
+
+4de9420 accepted (edit path end-to-end on six curve dimensions; Φ is §5's
+own reader via OrderedMapView — no second reading of any map; the
+localization optimization ships with the unlocalized mode behind a flag
+and a bit-equality pin over the corpus + all 650 family pairs; two
+controls that failed-to-fail were given their fixtures BEFORE the tally —
+the discipline stated as practiced). Rulings:
+
+AD-59.1 RATIFIED (a): deleting a <style> switch does not re-resolve
+subsequent instructions — resolution travels with the instruction, which
+is the reading under which the endpoints are exactly A and B and the only
+one a (part, map)-scoped script can express (styleDefs live outside the
+scope). StyleDef-only differences remain priced, attributed to the
+instructions that perform them; pinned at 4·ln2/ln(1.025) on the
+byte-identical-elements fixture.
+AD-59.2 RATIFIED (b): every dated entry is an instruction, <style>
+included — §6.1 verbatim, load-bearing under the any-entry span rule.
+AD-59.3 RATIFIED (c): edit pricing is RAW, never canonicalized — an
+intermediate state is not a document, a document-moment rescaling is not
+a fixed metric over states, and AD-5's theorem dies with it. AND THE A4
+QUESTION IS RULED NOW: diffMpm REJECTS `invariance` (and any
+canonicalization-implying option) with InvalidOptionError naming the
+reason — the script is a raw-document product; invariant views belong to
+compareMpm. AD-25.1's knowability split applies: unusable given the
+options alone ⇒ error, never silent ignoring.
+AD-59.4 Cut A3's hypothesis (event op cost = its EventCharge; Σ = the
+alignment optimum with reworking 0) is endorsed AS A HYPOTHESIS to be
+measured, per its own framing.
