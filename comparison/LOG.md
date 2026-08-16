@@ -4391,3 +4391,40 @@ flagged by a question-worded note naming its numbers).
 AD-56.7 The re-gate convenes: w3-verify RESUMED (its probes are its
 context), scoped to the six commits against its own findings, RE-GATE
 PASS/BLOCK verdict appended to W3-VERIFICATION.md.
+
+## 2026-08-16 — AD-57: RE-GATE PASS; W3 CLOSED; W4 opened [BINDING]
+
+Re-verification appended to W3-VERIFICATION.md: all 6 CAPITAL + 18 MAJOR +
+MINORs confirmed repaired under the ORIGINAL probes with independently
+re-derived references (mpmath 60 dps per-double; symbolic closed forms;
+renderer-transcribed quantiles); the verifier recorded its own two failed
+negative-control patches before the third falsified MAJOR-17's pin — the
+standard applied to itself. The mathematics section stands: W₁ ≤ 2.84e-16
+against 23 derived closed forms, table closure 1.6e-16 on real corpora
+with atoms and parts, 52k report nodes clean, byte-identical across
+processes.
+
+AD-57.1 RV-MINOR-1 (cut-2 LOG narrative: 962.633/870.4/64 should read
+1017.033/924.8/68 — self-inconsistent with its own commit's anchor table;
+code, tests, anchors all correct) goes to W5 housekeeping. The LOG being
+append-only, the correction lands as a dated erratum entry there, not an
+edit.
+AD-57.2 RV-OBS-1 adopted as recommended: DO NOT PRUNE the 26-member
+family (332 metric tests in 1.44s; each member documents a distinct
+hazard); the drop-each-member coverage check is W4's obligation when its
+products extend the family.
+AD-57.3 W3 IS CLOSED. The wave's arc: 4996 → 5250 tests, six capitals
+(five wiring, one mathematical) found by independent audit and repaired
+with per-defect negative controls, every corpus anchor either bit-stable
+or moved by a ruled correction with old→new recorded.
+AD-57.4 W4 OPENS under the budget regime (RED/THROTTLE, meico-ts high):
+ONE Opus worker, serial cuts, the W3 cadence — not a fan-out. Scope per
+the board's task #3: diffMpm (AD-5 sequential pricing, AD-25.4 canonical
+orientation, replay verification, deterministic traceback, moves after
+plain ops per A-Q5); compareMpmCorpus (label-keyed determinism AD-25.2,
+UPGMA default + linkages with the Ward caveat, PAM, silhouette, classical
+MDS with spectrum honesty per §8, seriation, profiles, corpus-average
+pseudo-item + noise-floor context AD-26.3, ω = 1/median normalization
+AD-25.5); scape opt-in (AD-27.8, ≤256 bins, prefix sums); the W4 docs
+obligations (AD-26.4: P1 answer, G2 framing, Hudson recipe, provenance
+presets; C8/C12/C14/C15). Family extension per AD-57.2's check.

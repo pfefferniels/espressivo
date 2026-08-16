@@ -845,3 +845,222 @@ renderer-true module nothing imports, a multiplier taken from the wrong document
 binding ruling named and the shape omits, a check DESIGN specifies and no code performs, a comparator
 one file forbids and another uses. The one exception, CAPITAL-3, is a genuine mathematical defect and
 has a verified one-line repair.
+
+---
+
+# Re-verification (fix wave) — 2026-08-16
+
+Convened under AD-56.7. Scope: `f778638..eb29665`, HEAD `66e2e6f`, against this document's own
+findings. The verifier re-ran its **original probes**, not the fix wave's tests, and re-derived every
+reference independently — renderer-transcribed quantiles, symbolic closed forms, and `mpmath` at
+60 dps with references computed **per double**, as the commission flags. Five negative-control
+patches were applied with `patch → run → git checkout --`, each verified to leave `git status` clean.
+
+`npm run verify` at HEAD: **117 files, 5250 passed, 0 skipped.** `npx prettier --check .` clean
+repo-wide — and now non-vacuously, since `.prettierignore:32` is `/comparison/`. `npx eslint` clean
+on `src/comparison`, `tests/comparison`, `src/api/comparison.ts`, `src/index.ts`, `src/api/index.ts`.
+
+## Verdict: **RE-GATE PASS**
+
+All six CAPITALs, all eighteen MAJORs and the MINORs are addressed, and every repair holds under the
+probe that found the defect. One new MINOR — a record-accuracy error in a LOG narrative, not in the
+code and not in a ratified anchor — is recorded below.
+
+### CAPITAL-1 — the step component is live, and its magnitudes are renderer-exact ✔
+
+The three-document probe, re-run unchanged:
+
+```
+renderer CANCEL 50,50,100,100 | CONTINUE 50,50,50,50 | NODEFAULT 100,100,100,100
+CANCEL vs CONTINUE     D = 4.646345573301650   articulation only, notes: structural/articulation ×2
+CANCEL vs NODEFAULT    D = 7.272540897341713
+CONTINUE vs NODEFAULT  D = 11.918886470643363
+```
+
+Exactly additive — `4.646345573301650 + 7.272540897341713 = 11.918886470643363` to the last bit,
+which is what one step function over two disjoint intervals must give. The magnitude reconstructs
+from the renderer: `|ln 0.5| / ln(1.10) = 7.272540897…` per quarter, and the three numbers are that
+constant times 1, 0.63889 and 1.63889 quarters — the step lengths in a window ending at 1180 ticks.
+The difference is now reported as well as priced, where before there was no note at all.
+
+On the **real Albert pair**: `d_articulation` 92.233 → **1017.0334197483661**, `D` →
+**9854.318757855726**. The step component reconstructs exactly from the two `nonlegato` defs,
+independently of the code:
+
+```
+(96 ms / 30 ms) + ((60/720) quarters / (1/16) quarters) = 4.533333333333333 JND per quarter
+× window 68 quarters × scopes 3                        = 924.8
+measured d_articulation − events.mass                  = 924.8      EXACT
+```
+
+### CAPITAL-2 — part scopes are the score's ✔
+
+```
+perform(a,k=0) === perform(a,k=3)  true      (byte-identical, unchanged)
+ k=0  D = 69.903192   k=1  69.903192   k=2  69.903192   k=3  69.903192   (was 23.30/23.30/46.60/69.90)
+MSM parts 1..4, no MPM parts:  ratio 1.000 / 2.000 / 3.000 / 4.000       (was constant 1×)
+```
+
+Empty `<part>` elements no longer move `D`, and the multiplier now follows the score.
+`report.scopes = {"rule":"msm","count":3}` states it. P-C2 stays symmetric under unequal part sets
+(`d(A,B) = d(B,A) = 64.67583722016839`) and zero-set transitivity holds.
+
+### CAPITAL-3 — the hull clamp, against my own references ✔
+
+Support now matches the renderer's sampler (`RandomNumberProvider:345-353`, transcribed) in every
+case, mode-outside included: `T(−30,30,99)` → 57.977270, `T(0,1,1000)` → 31.622777,
+`T(−30,30,1000)` → 218.596058. `W₁` against a **symbolic closed form I derived**,
+`E|X| = (2/3)√1000` for `T(0,1,1000)`:
+
+```
+exact  21.081851067789195      module  21.08185106778919      rel 2.4e-16    (was 1.07e-02)
+```
+
+A 2·10⁶-panel Simpson on `|Q(u)|` — which needs no hull and therefore cannot inherit the bug —
+agrees on all five cases to ~1e-10, its own convergence floor at the `√u` endpoint singularity.
+
+### CAPITAL-4, CAPITAL-5, CAPITAL-6 ✔
+
+`cellQuantizedDimensions: []` is present at top level (17 keys now, `scopes` added too). C7's MSM arm
+fires on Telemann-MPM-against-Vulpius-MSM, naming all three numbers and the band: *"the MSM's score
+end is 54 quarters against last dates of 198 and 198, outside C7's [0.8, 1.25] band — and the window
+is the SCORE's, so whatever lies beyond it is not compared at all"*. The locale quartet:
+
+```
+en_US  'ä'.localeCompare('z') = −1   d_articulation = 14.545081795   sha 52f2dd6d
+de_DE  −1                            14.545081795                    52f2dd6d
+sv_SE  +1                            14.545081795                    52f2dd6d
+da_DK  +1                            14.545081795                    52f2dd6d
+```
+
+The collator genuinely disagrees across the quartet and the whole report is byte-identical
+regardless — where the same probe previously gave 0 against 13.47 with different hashes.
+
+### MAJOR-17 — symmetric, and its pin works ✔
+
+```
+aller-augen | bach   fwd [0,35,780]  rev [0,780,35]   EXACT MIRROR, peak identical, d symmetric
+albert      | bach   fwd [9,58,576]  rev [9,576,58]   EXACT MIRROR, peak identical, d symmetric
+```
+
+Reproduces the fix wave's figures exactly. **Recorded honestly:** my first two negative-control
+patches passed, and both were my own errors — one removed only the id sub-key, the next only the date
+sub-key, each leaving the other to supply symmetry. Forcing `preferredDrop` to return `'dropA'`
+unconditionally reintroduces the asymmetry (`rev [18,762,17]` and `[40,545,27]`) and fails **exactly
+2 tests, the two cross-document P-C2 pairs** — the claim verbatim. The pin is not vacuous.
+
+### MAJOR-1, MAJOR-3, MAJOR-4, MINOR-1, MINOR-2 ✔
+
+Removing §4's cap now fails **ornamentation**'s triangle test, a surface the six-dimension list could
+not reach:
+
+```
+× P-C3 triangle inequality — ornamentation > holds for every triple with EVERY member as the middle term
+× P-C3 triangle inequality — asynchrony   > …
+× the family reaches the paths the wave could not see > reaches the cap
+  Tests  3 failed | 329 passed
+```
+
+`Φ` / `Φ⁻¹` against `mpmath` at 60 dps, references computed for the exact double passed (so
+`fl(1 − 10⁻ᵏ)` is referenced as itself and the right tail is not charged for a value it never
+claimed):
+
+```
+Φ⁻¹ worst relative RIGHT tail   1.1410e-15      (was 1.1238e-09)
+Φ⁻¹ worst relative LEFT  tail   1.1920e-15      — the 4.5e5× asymmetry is gone
+Φ   worst absolute              2.3294e-16 at z = 2.188        (published ≤ 3e-16 — holds)
+Φ   worst relative, |z| ≤ 6     7.3298e-14                     (restated figure — honest)
+Φ   worst relative to −37σ      2.3605e-13                     (restated figure — honest)
+```
+
+`aboveThresholdLengthFraction` is a fraction again: max **1.000000** on all seven vendored pairs,
+nothing outside `[0, 1]`. `remainder.mass` is non-negative everywhere, with
+`remainder.quadratureUnderflow` carrying **1.8259960367868189 / 1.4523854292237957 /
+0.0011702741117005644 / 0.030740797506950912** — the four figures this report named, reproduced.
+
+### The fix wave's own additions, with fresh eyes ✔
+
+`encodingNotes` fires on both cases and is silent on both controls — the property that matters, since
+a note firing on every pair would be worse than none:
+
+```
+global vs part-local tempoMap        D = 0        structural/tempo
+explicit neutral rubato vs absent    D = 0        structural/rubato
+CONTROL identical documents          D = 0        (silent)
+CONTROL a real tempo difference      D = 23.3011  (silent)
+```
+
+The `@controller` channel that AD-55.1(b)'s obligation uncovered (AD-56.3) behaves the same way: a
+`structural/pedal` note naming the controller fires for `sustain` against `soft` and is **silent**
+for `sustain` against `sustain`. The two `inert-difference/pedal` notes accompanying both are AD-35's
+per-document last-entry facts, not difference reports — correct, and worth naming because they
+briefly read as a note firing on its own control.
+
+### Adjudicated items, verified as implemented, not re-litigated ✔
+
+`report.inputs.epsilon.imprecision` is `{"relative":3e-16,"jnd":1.2e-16}` — AD-56.2 exactly. C7's
+proxy weakness is deferred per AD-56.6, and the note is question-worded and names its numbers, as
+that ruling requires.
+
+### Anchors ✔
+
+All seven match AD-56.4 to the pinned precision: telemann B|F **24941.0626**, B|R **8397.6010**
+(mean 41.164710882), F|R **26174.7196**, vulpius ×3 unchanged at 8849.3905 / 10294.4974 / 2939.6596,
+albert **9854.3188**. Cuts 3–5 moved nothing: `git diff b5f8b80..HEAD -- tests/comparison/` removes
+no line carrying any anchor value, and the assertions at HEAD (`compare.test.ts:101-106`) hold the
+ratified numbers.
+
+### RV-MINOR-1 — a LOG narrative figure contradicts its own ratified anchor
+
+Cut 2's entry states the Albert step component as *"`d_articulation` 92.233 → 962.633, the 870.4
+being `(96/jnd_ms + (60/720)/jnd_quarters) × 64 quarters × 3 scopes`"*. The formula is right and the
+window is **68 quarters, not 64**: the correct product is `4.533333… × 68 × 3 = 924.8`, giving
+`d_articulation` **1017.0334** and `D` **9854.3188**. The shipped code, the shipped tests and
+AD-56.4's anchor table are all consistent with 924.8 / 1017.03 / 9854.32 — I reconstructed them from
+the two defs independently — so **nothing in the product is wrong**; only the prose figure in that
+one narrative paragraph is, and it is self-inconsistent with the anchor table in the same commit.
+**Repair:** correct the three numbers in the cut-2 LOG entry (`962.633` → `1017.033`, `870.4` →
+`924.8`, `64 quarters` → `68 quarters`). Doc-only, W5 housekeeping.
+
+### RV-OBS-1 — family minimality was never assessed [DECLARED BY w3-fix]
+
+Recorded as the fixer's own declaration, not a finding of this re-gate. MAJOR-1's nine new members
+are each verified to **reach** their surface — every one fails when its hazard's guard is removed —
+but none was checked for **redundancy** against the other 25. Minimality is economy, not
+correctness: the property that matters is reaching, which is AD-50.3's whole lesson ("a family that
+merely CONTAINS a hazard is not one that REACHES it"), and that half is discharged. A redundant
+member costs runtime and nothing else; a missing one costs a defect.
+
+Measured, so the affordability argument carries evidence rather than an estimate: the family is
+**26 members**, and the whole metric suite is **332 tests in 1.44 s** (1.97 s wall clock) — inside
+the fixer's own 2.3 s figure. At that cost pruning buys nothing worth a regression risk, and each
+member currently doubles as documentation of a distinct hazard, which a minimal family would lose.
+**Recommendation: do not prune.** If the family is revisited — W4's diff and corpus products will
+extend it again — the cheap check is to drop each member in turn and confirm some test still fails
+for a *different* reason than the dropped member's own. That is a coverage question to answer then,
+not now.
+
+### Summary
+
+| finding                      | status at `66e2e6f`                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| CAPITAL-1                    | **fixed** — step component live, magnitudes reconstruct exactly, difference reported  |
+| CAPITAL-2                    | **fixed** — score-driven scopes; empty MPM parts inert; N MSM parts give exact N×     |
+| CAPITAL-3                    | **fixed** — hull matches the sampler; `W₁` at 2.4e-16 against a symbolic closed form  |
+| CAPITAL-4                    | **fixed** — `cellQuantizedDimensions` surfaced                                        |
+| CAPITAL-5                    | **fixed** — C7's MSM arm fires at the documented `[0.8, 1.25]` band                   |
+| CAPITAL-6                    | **fixed** — report byte-identical across a collation-disagreeing locale quartet       |
+| MAJOR-1                      | **fixed** — 11 dimensions, 26 members; cap removal reaches ornamentation              |
+| MAJOR-2                      | **fixed** — `{relative: 3e-16, jnd: 1.2e-16}` per AD-56.2                             |
+| MAJOR-3 / MINOR-2            | **fixed** — right tail 1.14e-15; restated Φ figures reproduce                         |
+| MAJOR-4                      | **fixed** — max fraction 1.000000 corpus-wide                                         |
+| MAJOR-5, 6, 7–16             | **fixed** — DESIGN corrected, comparator total, gate checks real and non-vacuous      |
+| MAJOR-17                     | **fixed** — exact mirrors; negative control fails exactly its 2 pairs                 |
+| MINOR-1, 3–8 + design MINORs | **fixed** — remainder clamped with its underflow reported; the rest as listed         |
+| **RV-MINOR-1 (new)**         | cut-2 LOG narrative: 962.633 / 870.4 / 64 quarters should read 1017.033 / 924.8 / 68  |
+| **RV-OBS-1 (declared)**      | family minimality unassessed — reaching is verified; 26 members / 332 tests / 1.44 s; do not prune |
+
+The wave that produced six CAPITALs closes with every one repaired at the mechanism rather than at
+the symptom, and with two of the repairs — the exclusion-verification obligation and the
+eleven-dimension family — having found further defects on their first run. RV-MINOR-1 is a stale
+sentence in a journal, not a defect in the product, and gates nothing.
