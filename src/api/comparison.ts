@@ -38,6 +38,7 @@ import { compareInterior, type InteriorCompareOptions } from '../comparison/comp
 import { diffInterior, type InteriorDiffOptions } from '../comparison/diff.js';
 import { compareCorpusInterior, type InteriorCorpusOptions } from '../comparison/corpus.js';
 import type { Linkage } from '../comparison/clustering.js';
+export { SCAPE_MAX_BINS, scapeIndex } from '../comparison/scape.js';
 import { SCAPE_MAX_BINS } from '../comparison/scape.js';
 import { defaultWeights } from '../comparison/aggregate.js';
 import { DEFAULT_LAMBDA_DATE } from '../comparison/eventAlignment.js';

@@ -5141,3 +5141,72 @@ commit, before the README work:
         SYNTHETIC PIN (AD-60.3's obligation — a stated rule with no
         observable is half a rule).
 Cut D then proceeds to the docs obligations as scoped in AD-57.4/AD-61.3.
+
+## 2026-08-17 — W4 cut D: the documentation obligations, and two claims the tests refuted
+
+README gains a ~370-line comparison section, and `tests/comparison/readmeRecipes.test.ts` gains 12
+tests that EXECUTE it. §11's W4 obligations and AD-26.4's four are discharged; AD-26.5's novelty
+claim is deliberately NOT shipped, because that ruling makes the 2025–26 re-sweep a precondition
+and the sweep is W5's.
+
+**THE RECIPES ARE TESTED, and that is not ceremony.** A cookbook entry reaches for report fields
+by name — `table.columnSums`, `segment.measure.start.number`, `opCounts.substitute` — and a rename
+anywhere in §9.3 would leave every one of them plausible and broken, which is the failure mode
+review is worst at catching. So every recipe runs in the form the README prints it, and every
+number the README quotes is asserted against the engine.
+
+**TWO CLAIMS I WROTE WERE FALSE, and the tests found both before the commit:**
+
+1. *"The report says which spaces you asked it of, as an `invariance-space` note."* It does not.
+   The note fires where the mode means something a reader would NOT expect — on a LINEAR space,
+   where `'level'` removes an offset rather than a factor — and asking for `'level'` on tempo, a
+   log space, correctly says nothing. The README now quotes the note's own words and the test
+   pins BOTH directions: present on `asynchrony`, absent on `tempo`.
+
+2. *"That yields 'these two differ mainly in melody lead, localised at bars 17–24'."* Measured, the
+   recipe as drafted found nothing at all. Two reasons, both now in the README: the `> 50 % of the
+   column` criterion is wrong for real data — on Vulpius Romantic|Amateur asynchrony is 180.0 of
+   2939.7, i.e. **6 %**, because imprecision dominates that pair — and **every vendored pair yields
+   a SINGLE segment spanning the whole piece**, since with `ω = 1` the entire piece is above the
+   one-JND threshold and there is nothing to localise within. The recipe now RANKS segments by
+   asynchrony's share rather than thresholding at a half, and the worked example moved to the pair
+   where the phenomenon is unmistakable: Albert *Du mein einzig Licht*, an expressive reading
+   against a deliberately deadpan "Like a robot", prints a **475 ms** lead — sixteen times Goebl's
+   30 ms threshold, which is the recipe's own criterion rather than a number chosen to work —
+   carrying **33 %** of the difference. Both figures are asserted, and so is the single-segment
+   limit, so the caveat cannot rot.
+
+WHAT THE SECTION COVERS, obligation by obligation: G2's framing paragraph OPENS it, because it is
+the scientific argument for the module's existence rather than a footnote — articulation and
+melody lead carry performer identity first, and they are exactly what audio-derived traditions
+cannot see. Then the real numbers with AD-53.1's Vulpius correction told as what it is: a design
+expectation refuted by measurement, where three dimensions compare at EXACT zero and the report
+says why without being asked. Then AD-26.1's units (nepers, the ×1/ln 2 conversion, BPM-as-rate
+so a positive signed tempo difference means FASTER), C10's mean-versus-distance, the
+distance-versus-descriptor split, C14's glossary (level/gain/shape with one worked example each,
+in musicians' terms — "are they in the same place / is one doing more / are they doing the same
+thing at the same time"), AD-4's window and its two stamps with the "must not be assembled into a
+matrix" warning, C7's suspectPair, `diffMpm` with the three-number triple and `reworking` named as
+the interesting one, `compareMpmCorpus` with the Ward.D2 caveat sentence and the three honesty
+fields, and the scape at both levels.
+
+The cookbook: C9's Welte timing-only recipe with the per-space trade-off; C8's neutral-baseline
+recipe including the reason `'level'` belongs in it (with `'none'` a performance that is merely
+fast scores as expressive, which measures the wrong thing); C12's `boundary_prf` derivation with
+its non-equivalence caveat stated as a mechanism rather than a hedge (greedy-nearest with a
+tolerance against a cost-minimizing DP); the Hudson recipe above; and AD-26.4/G7's four provenance
+presets as documented DATA in the README rather than exported constants — §11's "as documented
+data over the existing knobs, with no new mechanism", read literally.
+
+The non-goals close it with survey-lit's own three prohibitions and their citations (Peter et al.
+2023 on quality, Liebman et al. 2012 on the single number), AD-27.7's Repp position-variance
+caveat as a stated simplification with its consequence spelled out, C15's asynchrony limits, and
+the P1 interpolation answer — Desain & Honing's objection targets MEASURED event data and an MPM
+curve is a parametric specification, so this module interpolates nothing and gets for free the
+representation Todd, Repp and Molina-Solana all have to recover by fitting.
+
+`scapeIndex` and `SCAPE_MAX_BINS` join the public surface, because the README's scape example
+indexes a triangular packing and a consumer who has to reverse-engineer it will get it wrong.
+
+Gate: `npm run verify` GREEN — 124 files, **5358 passed**, 0 skipped (was 5346). Repo-wide
+`npx prettier --check .` clean; eslint clean.

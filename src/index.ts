@@ -85,6 +85,8 @@ export {
   compareMpmCorpus,
   diffMpm,
   neutralMpm,
+  scapeIndex,
+  SCAPE_MAX_BINS,
   COMPARISON_DIMENSIONS,
   COMPARISON_JND_KEYS,
   EXPRESSION_DIMENSION_CORRESPONDENCE,
