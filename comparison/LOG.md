@@ -5110,3 +5110,34 @@ fixture was written for it); the corpus reduction including the medoid itself (2
 
 Gate: `npm run verify` GREEN — 123 files, **5346 passed**, 0 skipped (was 5335). Repo-wide
 `npx prettier --check .` clean; eslint clean.
+
+## 2026-08-17 — AD-64: cut C ratified; CONSOLIDATED delegations for cut D [BINDING]
+
+2e2e4e2 accepted: both scape variants; the mass-preservation finding
+(binning apportions by sampler SHAPE rescaled to the cell's mass — the
+shape-vs-scale rule one level out; 0.05% quadrature drift identified by
+its bin-count dependence and eliminated); the independent narrowed-window
+route; the corpus variant's closest-to-medoid at 2/N overhead with kind
+in the DATA; the key-order pin catching its own author; the point-atom
+evidence moved down a layer (RG-2's move, third time this wave).
+AD-64.1 RATIFIED: scape on the pairwise surface as well as corpus —
+§8's own two variants require it; §9.2 amendment joins the delegation
+list below.
+AD-64.2 COORDINATION CORRECTION, on the record: the worker's last two
+reports list rulings as open that AD-60.1 (rubato sixth epsilon family)
+and AD-63.1 (corpusAverage removed) closed. The LOG is in the shared
+working tree; its tail was not re-read. The predecessor's rule is
+re-imposed explicitly: THE LOG IS THE CHANNEL — re-read every entry
+newer than your last report before composing the next one.
+AD-64.3 CONSOLIDATED UNEXECUTED DELEGATIONS — all land in cut D's FIRST
+commit, before the README work:
+  (i)   §9.3: sixth epsilon family `rubato`, AD-34.1's figure (AD-60.1).
+  (ii)  §8 + §9: corpusAverage removed from v1, medoid-profiles rationale,
+        option (b) journaled as the consumer route (AD-63.1).
+  (iii) §9.2: DiffMpmOptions = CompareMpmOptions minus invariance/profile
+        (AD-61.1); scape on the pairwise surface (AD-64.1).
+  (iv)  §8: the PAM exhaustive-pass sentence (AD-62.1).
+  (v)   §5.6-adjacent: the ornamentation mixed-state scope rule's
+        SYNTHETIC PIN (AD-60.3's obligation — a stated rule with no
+        observable is half a rule).
+Cut D then proceeds to the docs obligations as scoped in AD-57.4/AD-61.3.
