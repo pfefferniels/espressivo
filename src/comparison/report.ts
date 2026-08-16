@@ -344,6 +344,14 @@ export interface ComparisonReport {
   } | null;
   /** C1; null exactly when `options.profile` was omitted. */
   readonly profiles: Record<ComparisonDimension, ComparisonProfile> | null;
+  /**
+   * AD-27.8's scape of the aggregate density; null exactly when `options.scape` was omitted.
+   *
+   * `cells[scapeIndex(bins, size, start)]` is the aggregate mass over that sub-window, in
+   * JND·quarters — the same measure §7's segments are cut out of, so a scape cell and a segment
+   * mass are the same units. The last entry is the whole window and equals `aggregate.distance`.
+   */
+  readonly scape: { readonly bins: number; readonly cells: readonly number[] } | null;
   readonly notes: readonly ComparisonNote[];
 }
 
@@ -520,8 +528,22 @@ export interface CorpusReport {
     readonly j: number;
     readonly reason: ComparisonNoteKind;
   }[];
-  /** AD-27.8; null unless a `scape` was requested. */
-  readonly scape: { readonly bins: number; readonly cells: readonly number[] } | null;
+  /**
+   * AD-27.8's corpus scape (Sapp's variant); null unless a `scape` was requested.
+   *
+   * `cells` holds ITEM INDICES, not distances: per (start, size) sub-window, which item is
+   * closest to the corpus medoid over it — "who plays most typically here, at this timescale".
+   * `kind` says so in the data rather than in prose, because an array of numbers whose meaning a
+   * reader has to guess is a different kind of defect from a wrong number. The pairwise variant
+   * §8 also names — a pair's distance per cell — is `ComparisonReport.scape`.
+   */
+  readonly scape: {
+    readonly bins: number;
+    readonly kind: 'closest-to-medoid';
+    /** The index the cells are measured against; `null` only for a corpus too small to have one. */
+    readonly medoid: number | null;
+    readonly cells: readonly number[];
+  } | null;
   /**
    * The window every cell was computed over, with AD-4's two stamps.
    *

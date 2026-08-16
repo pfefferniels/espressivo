@@ -38,6 +38,7 @@ import { compareInterior, type InteriorCompareOptions } from '../comparison/comp
 import { diffInterior, type InteriorDiffOptions } from '../comparison/diff.js';
 import { compareCorpusInterior, type InteriorCorpusOptions } from '../comparison/corpus.js';
 import type { Linkage } from '../comparison/clustering.js';
+import { SCAPE_MAX_BINS } from '../comparison/scape.js';
 import { defaultWeights } from '../comparison/aggregate.js';
 import { DEFAULT_LAMBDA_DATE } from '../comparison/eventAlignment.js';
 import {
@@ -157,6 +158,14 @@ export interface CompareMpmOptions extends ComparisonSettings {
     /** Quarters; step-capped, and the cap is reported when it bites. */
     readonly grid?: 'refinement' | { readonly step: number };
   };
+  /**
+   * AD-27.8's scape of the aggregate density — the difference at every position AND scale.
+   *
+   * §9.2 declares `scape` on the CORPUS options only, and §8's own text names two variants:
+   * "either a pair's distance or the corpus argmin/argmax performer". This is the first, and it
+   * lives here because a pair's scape needs a pair. `1 ≤ bins ≤ 256`.
+   */
+  readonly scape?: { readonly bins: number };
 }
 
 /**
@@ -197,6 +206,8 @@ export interface CompareCorpusOptions extends ComparisonSettings {
   readonly embeddingAxes?: number;
   /** AD-26.3's per-piece percentile context. Context, never a rescaling. */
   readonly noiseFloor?: boolean;
+  /** AD-27.8's Sapp variant: per cell, which item is closest to the corpus medoid. */
+  readonly scape?: { readonly bins: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +270,7 @@ export function compareMpm(options: CompareMpmOptions): ComparisonResult {
     invariance: resolveInvariance(options.invariance),
     profile: options.profile ?? null,
     lambdaDate: DEFAULT_LAMBDA_DATE,
+    scape: options.scape ?? null,
   });
 
   return { report: normalizeZeros(report) };
@@ -368,6 +380,7 @@ export function compareMpmCorpus(options: CompareCorpusOptions): CorpusResult {
     k: options.k,
     embeddingAxes: options.embeddingAxes ?? null,
     noiseFloor: options.noiseFloor ?? false,
+    scape: options.scape ?? null,
   });
 
   return { report: normalizeZeros(report) };
@@ -497,6 +510,7 @@ function checkCompareOptions(options: CompareMpmOptions): void {
   checkSelector('performanceA', options.performanceA);
   checkSelector('performanceB', options.performanceB);
   checkProfile(options.profile);
+  checkScape(options.scape);
 }
 
 /**
@@ -522,6 +536,7 @@ function checkCorpusOptions(options: CompareCorpusOptions): void {
   checkInvariance(options.invariance);
   for (const [index, item] of options.items.entries())
     checkSelector(`items[${String(index)}].performance`, item.performance);
+  checkScape(options.scape);
 
   if (
     options.maxItems !== undefined &&
@@ -552,6 +567,16 @@ function checkCorpusOptions(options: CompareCorpusOptions): void {
   if (options.normalization !== undefined && !['fixed', 'corpus'].includes(options.normalization))
     throw new InvalidOptionError(
       `unknown normalization "${String(options.normalization)}"; expected fixed or corpus`,
+    );
+}
+
+/** §9.4's row: `scape.bins` is an integer in `[1, 256]`, and out of range is a caller error. */
+function checkScape(scape: { readonly bins: number } | undefined): void {
+  if (scape === undefined) return;
+  const bins: unknown = scape.bins;
+  if (typeof bins !== 'number' || !Number.isInteger(bins) || bins < 1 || bins > SCAPE_MAX_BINS)
+    throw new InvalidOptionError(
+      `scape.bins must be an integer in [1, ${String(SCAPE_MAX_BINS)}], got ${String(bins)}`,
     );
 }
 

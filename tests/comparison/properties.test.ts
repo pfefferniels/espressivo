@@ -347,6 +347,9 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       'equivalence',
       'cumulativeDrift',
       'profiles',
+      // W4 addition: AD-27.8's scape, beside `profiles` because it is the other opt-in
+      // retention of what the density holds. The pin caught it, which is what the pin is for.
+      'scape',
       'notes',
     ]);
 

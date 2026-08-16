@@ -5044,3 +5044,69 @@ AD-60.1 and re-pointed in AD-61.2 — it is NOT open. Execute the
 delegation (sixth family, AD-34.1's figure, §9.3 amendment) in cut C's
 commit; the worker's "still open" lines indicate the LOG entries since
 AD-60 have not been re-read — re-read them before C.
+
+## 2026-08-17 — W4 cut C: the scape, at both levels (w4-products)
+
+`src/comparison/scape.ts` + 11 tests, wired into `compareMpm` and `compareMpmCorpus`. AD-27.8's
+committed deliverable — survey-lit §6.0 promoted it from a stretch goal because the timescape is
+how the field READS a comparison: the aggregate difference at every position and every timescale
+at once, in one triangle.
+
+**THE BINNING IS NOT `massIn`, and the difference was measured rather than assumed.**
+`aggregate.massIn` apportions a partly-covered cell by integrating the dimension's own sampler
+over the overlap, and GL-10 over two halves is not GL-10 over the whole — so a scape binned that
+way came out **0.05 % below `aggregate.distance`** on the Telemann pair at 8 bins, and by a
+DIFFERENT amount at every other bin count, which is what identifies quadrature rather than an
+edge convention. The shipped binning apportions each density CELL across the bins it touches by
+the shape its sampler gives and then RESCALES the shares to the cell's own `mass`, which is the
+authority — `aggregate.ts`'s own shape-versus-scale rule, one level further out. The bins of one
+cell then sum to that cell exactly, the bins of one dimension to `d_k`, and the top cell of the
+triangle to `D`, which is pinned at 9 decimals. Negative-controlled: dropping the rescale fails
+the closure at two bin counts.
+
+Additivity — a cell is the sum of any partition of itself — is what a reader assumes when they
+compare a phrase-length cell to the bars beneath it, and it is asserted at 1e-9 RELATIVE rather
+than bit-exactly, because a cell is a difference of two running prefix totals and two such
+differences do not recombine bit for bit. The binning conserves mass exactly; the cancellation is
+the residue.
+
+**A SECOND, INDEPENDENT ROUTE agrees**: running `compareMpm` over an explicitly narrowed window
+re-reads the documents and rebuilds every dimension's own refinement grid for that window, where
+the scape apportions the full-window cells. Worst divergence over four sub-windows is measured
+and asserted at `< 1e-3` relative and `> 0` — far below the metric's JND resolution and inside
+AD-34.1's documented rubato residual.
+
+**§8's SECOND VARIANT ships too, and it was cheap.** The corpus scape is Sapp's: per cell, WHICH
+item is closest to the corpus medoid — "who plays most typically here, at this timescale" — from
+`N − 1` extra comparisons against the medoid alone, a `2/N` overhead on the matrix's own
+`N(N−1)/2`. Every candidate row is the SAME prefix-summed density the pairwise product reports,
+so the reduction introduces no arithmetic. Ties go to the lowest label, which is AD-25.2 reaching
+the one corpus product that had not needed it. `kind: 'closest-to-medoid'` is in the DATA, not
+in prose: an array of numbers whose meaning a reader has to guess is a different kind of defect
+from a wrong number. The reduction is checked against the rows it reduces.
+
+[DECISION, needs ratification] **`scape` is on the PAIRWISE surface as well as the corpus one.**
+§9.2 declares it on `CompareCorpusOptions` only, while §8's own text names two variants —
+"either a pair's distance or the corpus argmin/argmax performer". The first needs a pair, so it
+lives on `CompareMpmOptions` and reports as `ComparisonReport.scape`. §9.4's `scape.bins` row is
+implemented as written (integer in `[1, 256]`, out of range is an `InvalidOptionError`), so no
+capping occurs and the `grid-truncated` note the commission anticipated has nothing to fire on.
+
+**§9.5's KEY-ORDER PIN CAUGHT THE NEW FIELD**, which is what MAJOR-9 built it for: the top-level
+order is written out as data, so adding `scape` failed the suite until the order was updated
+deliberately. Recorded because a pin that fires on your own change is the pin working.
+
+[MEASURED] The last bin's edge is pinned at the window end rather than left at
+`start + count·width`, and the guard's job is narrower than it looks: for a density CELL the
+rescale already protects the total, so what the pin saves is a POINT ATOM sitting exactly at the
+window end, which an under-rounded last edge (`49 · (16/49) = 15.999999999999998`) would read as
+outside the triangle. No vendored document places one there — a negative control on the pin
+passed every corpus test in the file — so the evidence goes down a layer to `scapeOf` itself with
+a hand-built density, and the control then bites. RG-2's move, third time in this wave.
+
+NEGATIVE CONTROLS, three, each failing exactly its own tests and restoring green: the
+mass-preserving rescale removed (2); the last-bin pin removed (1, after the function-level
+fixture was written for it); the corpus reduction including the medoid itself (2).
+
+Gate: `npm run verify` GREEN — 123 files, **5346 passed**, 0 skipped (was 5335). Repo-wide
+`npx prettier --check .` clean; eslint clean.

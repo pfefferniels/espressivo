@@ -81,6 +81,8 @@ export interface InteriorCorpusOptions extends Omit<
    */
   readonly embeddingAxes: number | null;
   readonly noiseFloor: boolean;
+  /** AD-27.8; omit or null for none. */
+  readonly scape?: { readonly bins: number } | null;
 }
 
 /** One expanded row of the corpus: a document, a performance in it, and its label. */
@@ -347,6 +349,8 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
     }
 
   const context = options.noiseFloor ? contextOf(aggregate, n) : null;
+  const scape =
+    options.scape == null ? null : corpusScape(options, items, corpusEnd, corpusMedoid, n);
   const first = pairwise.values().next().value;
 
   return {
@@ -369,7 +373,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
     normalizationConstants,
     context,
     suspectPairs,
-    scape: null,
+    scape,
     // A corpus of fewer than two items ran no comparison, so there is no report to read the
     // window and the echo off. The values are the ones §9.6 gives a degenerate shape: an empty
     // window, stamped as pair-derived because nothing derived it.
@@ -382,6 +386,80 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
     settings: first?.inputs.settings ?? degenerateSettings(options),
     notes: sortNotes(notes),
   };
+}
+
+/**
+ * §8's Sapp variant: per (start, size) cell, WHICH item is closest to the corpus medoid.
+ *
+ * Computed after the matrix, from `N − 1` extra comparisons against the medoid alone — a `2/N`
+ * overhead on the `N(N−1)/2` the matrix already cost, which is why the corpus variant is
+ * affordable at all. Each of those comparisons asks for its own pairwise scape, so every cell of
+ * every candidate row comes from the SAME prefix-summed aggregate density the pairwise product
+ * reports; the reduction is an argmin over item indices and introduces no new arithmetic.
+ *
+ * Ties go to the lowest LABEL, which is AD-25.2 reaching the one corpus product that had not
+ * needed it yet — two performances equally typical over a bar is exactly the situation §8 says
+ * is structural here rather than measure-zero.
+ */
+function corpusScape(
+  options: InteriorCorpusOptions,
+  items: readonly ExpandedItem[],
+  corpusEnd: number | null,
+  medoid: number | null,
+  n: number,
+): CorpusReport['scape'] {
+  const bins = options.scape?.bins ?? 0;
+  if (medoid === null || n < 2) return { bins: 0, kind: 'closest-to-medoid', medoid, cells: [] };
+
+  const rows = new Map<number, readonly number[]>();
+  let width = 0;
+  for (let index = 0; index < n; ++index) {
+    if (index === medoid) continue;
+    const report = compareInterior({
+      a: items[index].root,
+      b: items[medoid].root,
+      performanceA: items[index].selector,
+      performanceB: items[medoid].selector,
+      msm: options.msm,
+      window: options.window,
+      corpusEndQuarters: corpusEnd,
+      weights: options.weights,
+      jnd: options.jnd,
+      plausibleRange: options.plausibleRange,
+      invariance: options.invariance,
+      lambdaDate: options.lambdaDate,
+      scape: { bins },
+    });
+    rows.set(index, report.scape?.cells ?? []);
+    width = report.scape?.bins ?? width;
+  }
+
+  const cellCount = (width * (width + 1)) / 2;
+  // The medoid is at distance 0 from itself and would win every cell outright, so the reduction
+  // is over the OTHERS — "which of the rest plays most like the typical one here".
+  const cells = new Array<number>(cellCount).fill(medoid);
+  for (let cell = 0; cell < cellCount; ++cell) {
+    let best = -1;
+    let bestValue = Number.POSITIVE_INFINITY;
+    for (const [index, values] of rows) {
+      const value = values[cell];
+      if (
+        value < bestValue ||
+        (value === bestValue && best >= 0 && lowerLabel(items, index, best))
+      ) {
+        best = index;
+        bestValue = value;
+      }
+    }
+    cells[cell] = best < 0 ? medoid : best;
+  }
+
+  return { bins: width, kind: 'closest-to-medoid', medoid, cells };
+}
+
+/** Code-unit order on labels — AD-25.2's tie rule, reaching the scape. */
+function lowerLabel(items: readonly ExpandedItem[], x: number, y: number): boolean {
+  return items[x].label < items[y].label;
 }
 
 /**

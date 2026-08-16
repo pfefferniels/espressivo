@@ -71,6 +71,7 @@ import {
 } from './msm.js';
 import type { ComparisonScope } from './parts.js';
 import { plausibilityFindings, type PlausibleRanges } from './plausibility.js';
+import { scapeOf } from './scape.js';
 import { CompensatedSum, gaussLegendre10 } from './quadrature.js';
 import {
   COMPARISON_DIMENSIONS,
@@ -218,6 +219,8 @@ export interface InteriorCompareOptions {
     readonly grid?: 'refinement' | { readonly step: number };
   } | null;
   readonly lambdaDate: number;
+  /** AD-27.8's scape; omit or null for none. Bins are clamped to `SCAPE_MAX_BINS`. */
+  readonly scape?: { readonly bins: number } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -519,6 +522,16 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
     },
     cumulativeDrift: drift,
     profiles,
+    scape:
+      options.scape == null
+        ? null
+        : scapeOf(
+            densities,
+            options.weights,
+            pair.window.startQuarters,
+            pair.window.endQuarters,
+            options.scape.bins,
+          ),
     notes: sortNotes(notes),
   };
 }
