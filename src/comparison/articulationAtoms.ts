@@ -57,7 +57,7 @@ import { INLINE_DURATION_PRECEDENCE } from '../expression/registry.js';
 import { findStyleDef } from '../expression/styleScope.js';
 import type { MpmEnvironment } from '../expression/mpmTree.js';
 import { assertSpanEndRule } from './spanEnds.js';
-import type { OrderedMapView } from './document.js';
+import { resolutionAt, type OrderedMapView } from './document.js';
 
 /**
  * The attribute whose presence takes the whole tick-domain duration branch out of play
@@ -265,7 +265,8 @@ export function readArticulationAtoms(
     const element = entry.element;
     if (element.getLocalName() !== 'articulation') continue;
 
-    const dateTicks = entry.date * scaleFactor;
+    const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
+    const dateTicks = entry.date * resolution.scaleFactor;
     if (!Number.isFinite(entry.date)) {
       notes.push({
         kind: 'renderer-skip',
@@ -282,8 +283,8 @@ export function readArticulationAtoms(
       const style = findStyleDef(
         ARTICULATION_STYLE,
         view.styleNames[index],
-        environment,
-        globalEnvironment,
+        resolution.environment,
+        resolution.globalEnvironment,
       );
       if (style !== null)
         for (const candidate of style.styleDef.getChildElements('articulationDef').toArray())

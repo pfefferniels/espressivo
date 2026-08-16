@@ -541,11 +541,7 @@ export function evaluateDimension(
 }
 
 /**
- * §6's script for one dimension over one (part, map) scope, or null where this wave has none.
- *
- * The curve dimensions are here; the event and distribution ones follow in later cuts, and the
- * null is what a caller reports rather than a silent empty script — §9.3's `scripts` array must
- * not imply "no differences" where it means "not computed".
+ * §6's script for one dimension over one (part, map) scope — all eleven of them.
  *
  * ## Two decisions this makes, both stated rather than buried
  *
@@ -564,7 +560,7 @@ export function editScriptForDimension(
   b: ScopeSide,
   settings: DimensionSettings,
   options: EditScriptOptions = {},
-): DimensionEditScript | null {
+): DimensionEditScript {
   switch (dimension) {
     case 'tempo':
       return curveEditScript(tempoPlan(settings), a, b, settings, options);
@@ -577,12 +573,13 @@ export function editScriptForDimension(
     case 'accentuation':
       return curveEditScript(accentuationPlan(settings), a, b, settings, options);
     case 'pedal':
-      // NOT localized: `getPreviousPosition` scans BACKWARDS over entry indices for an
-      // inherited `@transition.to` (PARITY P2), so a movement can depend on an instruction
-      // before it and `affectedTicks`' left bound does not hold here.
-      return curveEditScript(pedalPlan(settings), a, b, settings, { ...options, localize: false });
+      return curveEditScript(pedalPlan(settings), a, b, settings, options);
+    case 'articulation':
+      return stateEditScript(articulationEditPlan(a, settings), a, b, settings, options);
+    case 'ornamentation':
+      return stateEditScript(ornamentationEditPlan(a, b, settings), a, b, settings, options);
     default:
-      return null;
+      return stateEditScript(imprecisionEditPlan(dimension, a, settings), a, b, settings, options);
   }
 }
 
@@ -606,14 +603,47 @@ export interface DimensionEditScript {
   readonly script: EditScriptResult<EditInstruction>;
 }
 
-function curveEditScript<C>(
-  plan: CurvePlan<C>,
+/**
+ * What a dimension has to supply for §6, whatever shape its `Φ` is.
+ *
+ * `represent` reads ONE state — the reader the semantic level already uses, over the edit view —
+ * and `norm` is that dimension's own `d_k` over a window. The curve dimensions fill this in from
+ * their `CurvePlan`; the event and distribution ones fill it in directly, and none of them needs
+ * a second reading of a map.
+ */
+interface EditPlan<S> {
+  readonly dimension: ComparisonDimension;
+  readonly container: string;
+  readonly represent: (view: OrderedMapView | null, containsA: boolean) => S;
+  readonly norm: (x: S, y: S, window: ComparisonWindow) => number;
+  /**
+   * Whether a transition may be integrated over `affectedTicks`' interval instead of the window.
+   *
+   * A predicate on the two ENDPOINT readings, because for two dimensions the answer is a
+   * property of the documents rather than of the dimension:
+   *
+   * - `pedal` never localizes — `getPreviousPosition` scans BACKWARDS over entry indices for an
+   *   inherited `@transition.to` (PARITY P2, AD-35.4's hazard class), so a movement can depend
+   *   on an instruction before it and the left bound does not hold.
+   * - `articulation` localizes only where every atom is DATE-anchored. An id-anchored atom is
+   *   window-EXEMPT (AD-39.1) — a narrowed window does not drop it — so it would enter every
+   *   sub-alignment and be charged once per transition instead of once.
+   *
+   * Where it does apply the argument is the same as for a curve and one step stronger: outside
+   * the interval the two states' atoms are IDENTICAL, a monotone alignment matches identical
+   * atoms at cost 0, and the global optimum therefore decomposes into that matching plus the
+   * optimum over the interval.
+   */
+  readonly localize: (a: S, b: S) => boolean;
+}
+
+function stateEditScript<S>(
+  plan: EditPlan<S>,
   a: ScopeSide,
   b: ScopeSide,
   settings: DimensionSettings,
   options: EditScriptOptions,
 ): DimensionEditScript {
-  const jnd = comparisonRowWith(plan.jndKey, settings.jnd).jnd;
   const viewA = viewOf(a, plan.container);
   const viewB = viewOf(b, plan.container);
   // The view's `element` is its map, which no reader consults; it exists so an edit view is a
@@ -626,7 +656,6 @@ function curveEditScript<C>(
     previous: readonly EditInstruction[],
     next: readonly EditInstruction[],
   ): ComparisonWindow => {
-    if (options.localize === false) return settings.window;
     const affected = affectedTicks(
       previous,
       next,
@@ -640,18 +669,167 @@ function curveEditScript<C>(
     };
   };
 
-  const script = editScript<EditInstruction, C>(
-    editInstructionsOf('a', viewA, resolutionOf(a)),
-    editInstructionsOf('b', viewB, resolutionOf(b)),
-    {
-      represent: (state) =>
-        plan.readView(editView(plan.container, state, fallback), resolutionOf(a), 'a'),
-      norm: (x, y, previous, next) =>
-        plan.distance(x, y, jnd, IDENTITY_CANONICAL_PAIR, normWindow(previous, next)).distance,
-    },
-  );
+  const instructionsA = editInstructionsOf('a', viewA, resolutionOf(a));
+  const instructionsB = editInstructionsOf('b', viewB, resolutionOf(b));
+  const represent = (state: readonly EditInstruction[]): S =>
+    plan.represent(
+      editView(plan.container, state, fallback),
+      state.some((instruction) => instruction.side === 'a'),
+    );
+  const localizable =
+    options.localize !== false && plan.localize(represent(instructionsA), represent(instructionsB));
+
+  const script = editScript<EditInstruction, S>(instructionsA, instructionsB, {
+    represent,
+    norm: (x, y, previous, next) =>
+      plan.norm(x, y, localizable ? normWindow(previous, next) : settings.window),
+  });
 
   return { dimension: plan.dimension, container: plan.container, script };
+}
+
+function curveEditScript<C>(
+  plan: CurvePlan<C>,
+  a: ScopeSide,
+  b: ScopeSide,
+  settings: DimensionSettings,
+  options: EditScriptOptions,
+): DimensionEditScript {
+  const jnd = comparisonRowWith(plan.jndKey, settings.jnd).jnd;
+  return stateEditScript(
+    {
+      dimension: plan.dimension,
+      container: plan.container,
+      represent: (view) => plan.readView(view, resolutionOf(a), 'a'),
+      norm: (x, y, window) => plan.distance(x, y, jnd, IDENTITY_CANONICAL_PAIR, window).distance,
+      localize: () => plan.dimension !== 'pedal',
+    },
+    a,
+    b,
+    settings,
+    options,
+  );
+}
+
+/**
+ * §5.5's TWO components in one script (AD-55.1).
+ *
+ * `d_articulation` is the alignment optimum PLUS the `@defaultArticulation` step function, and
+ * both are read off the same map: the atoms from its `<articulation>` elements, the steps from
+ * its `<style>` switches. So one sequential script over the map's entries prices both, and
+ * `directDistance` is the whole `d_articulation` rather than half of it — which is also why the
+ * `<style>` switches have to be in the sequence.
+ */
+function articulationEditPlan(
+  a: ScopeSide,
+  settings: DimensionSettings,
+): EditPlan<{ readonly atoms: ArticulationAtoms; readonly steps: DefaultArticulationCurve }> {
+  const resolution = resolutionOf(a);
+  return {
+    dimension: 'articulation',
+    container: ARTICULATION_MAP,
+    represent: (view) => ({
+      atoms: readArticulationAtoms(
+        view,
+        resolution.scaleFactor,
+        resolution.environment,
+        resolution.globalEnvironment,
+      ),
+      steps: readDefaultArticulation(
+        view,
+        resolution.scaleFactor,
+        resolution.environment,
+        resolution.globalEnvironment,
+      ),
+    }),
+    norm: (x, y, window) =>
+      articulationDistance(
+        x.atoms,
+        y.atoms,
+        window,
+        settings.ticksPerQuarter,
+        settings.lambdaDate,
+        settings.jnd,
+      ).distance +
+      defaultArticulationDistance(x.steps, y.steps, window, settings.ticksPerQuarter, settings.jnd)
+        .distance,
+    // NEVER, and the reason is measured rather than argued. `affectedTicks` bounds an interval
+    // on the assumption that nothing outside it can change, and AD-37.1's default step function
+    // breaks that assumption in BOTH directions: its value on `[0, firstSwitchDate)` is the
+    // FIRST switch's default, so editing a `<style>` reaches arbitrarily far LEFT, and its value
+    // after the interval is governed by the last switch at or before it, which the interval's
+    // right bound (the next unchanged INSTRUCTION, not the next unchanged SWITCH) need not
+    // contain. Measured on Telemann part 1: localized, `scriptCost` came out 108.89 against a
+    // `directDistance` of 926.67 — the theorem `scriptCost ≥ d` violated, which is how the
+    // hazard announced itself. Removing the step component from the norm and re-running restored
+    // `scriptCost = directDistance` exactly on all three parts (46.67 / 23.33 / 5.00), which is
+    // what identifies the step function rather than the alignment as the cause: the ALIGNMENT
+    // half localizes soundly, and the third hazard-class instance in this cut is a reading that
+    // depends on an instruction outside its own span.
+    localize: () => false,
+  };
+}
+
+/**
+ * §5.6's atoms, with the map SCOPE decided so that both endpoints stay exact.
+ *
+ * `OrnamentationMap.apply` branches on whether a local header exists (AD-44's defect 8: in a
+ * global map every `<style>` after the first successful one is ignored outright), so the scope
+ * is a property of the MAP rather than of an entry — and a state holding instructions from both
+ * documents has no single one. A state carrying any A instruction takes A's scope and a state
+ * carrying none takes B's, which makes `S(0,0)` exactly `A` and `S(n,m)` exactly `B`; the mixed
+ * states in between take A's, stated here rather than left to whichever branch happened to run.
+ * `replayResidual` is the field that would show a document where this mattered, since a state
+ * read under the wrong scope cannot reach `B`.
+ */
+function ornamentationEditPlan(
+  a: ScopeSide,
+  b: ScopeSide,
+  settings: DimensionSettings,
+): EditPlan<OrnamentAtoms> {
+  const resolution = resolutionOf(a);
+  const scopeOf = (side: ScopeSide) =>
+    mapIsPartLocal(side, ORNAMENTATION_MAP) ? ('part' as const) : ('global' as const);
+  return {
+    dimension: 'ornamentation',
+    container: ORNAMENTATION_MAP,
+    represent: (view, containsA) =>
+      readOrnamentAtoms(
+        view,
+        resolution.scaleFactor,
+        resolution.environment,
+        resolution.globalEnvironment,
+        containsA ? scopeOf(a) : scopeOf(b),
+      ),
+    norm: (x, y, window) =>
+      ornamentationDistance(
+        x,
+        y,
+        window,
+        settings.ticksPerQuarter,
+        settings.lambdaDate,
+        settings.jnd,
+      ).distance,
+    localize: () => false,
+  };
+}
+
+/** §5.9's spans, priced by the same `W₁` the semantic level uses, with invariance off. */
+function imprecisionEditPlan(
+  dimension: ComparisonDimension,
+  a: ScopeSide,
+  settings: DimensionSettings,
+): EditPlan<ImprecisionReading> {
+  const domain = dimension as ImprecisionDomain;
+  const resolution = resolutionOf(a);
+  return {
+    dimension,
+    container: IMPRECISION_MAPS[dimension],
+    represent: (view) => readImprecisionSpans(view, domain, resolution.scaleFactor),
+    norm: (x, y, window) =>
+      imprecisionDistance(x, y, window, settings.ticksPerQuarter, 'none', settings.jnd).distance,
+    localize: () => true,
+  };
 }
 
 const TEMPO_MAP = 'tempoMap';

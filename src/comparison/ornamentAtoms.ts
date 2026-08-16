@@ -128,7 +128,7 @@ import { findStyleDef } from '../expression/styleScope.js';
 import type { MpmEnvironment } from '../expression/mpmTree.js';
 import { assertSpanEndRule } from './spanEnds.js';
 import { bottom, valued, type Valued } from './values.js';
-import type { OrderedMapView } from './document.js';
+import { resolutionAt, type OrderedMapView } from './document.js';
 
 /** `OrnamentData.ts:121` — and the reason half an unscaled ornament is inert. */
 export const DEFAULT_ORNAMENT_SCALE = 0;
@@ -426,17 +426,18 @@ export function readOrnamentAtoms(
   // a per-entry lookup gets both scope branches wrong.
   let carried: Element | null = null;
 
-  for (const entry of view.entries) {
+  for (const [index, entry] of view.entries.entries()) {
     const element = entry.element;
-    const dateTicks = entry.date * scaleFactor;
+    const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
+    const dateTicks = entry.date * resolution.scaleFactor;
 
     if (element.getLocalName() === 'style') {
       const found =
         findStyleDef(
           ORNAMENTATION_STYLE,
           readAttributeValue(element, 'name.ref') ?? '',
-          environment,
-          globalEnvironment,
+          resolution.environment,
+          resolution.globalEnvironment,
         )?.styleDef ?? null;
 
       if (scope === 'part') {

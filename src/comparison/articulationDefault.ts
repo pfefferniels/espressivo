@@ -53,7 +53,7 @@ import { ARTICULATION_STYLE } from '../mpm/names.js';
 import { readAttributeValue } from '../expression/attributes.js';
 import { findStyleDef } from '../expression/styleScope.js';
 import type { MpmEnvironment } from '../expression/mpmTree.js';
-import type { OrderedMapView } from './document.js';
+import { resolutionAt, type OrderedMapView } from './document.js';
 
 /** Why a switch left no default in force — the two cancelling dispositions of AD-37.2. */
 export type DefaultCancelCause = 'no-attribute' | 'unknown-def';
@@ -117,13 +117,19 @@ export function readDefaultArticulation(
     cause: DefaultCancelCause | null;
   }[] = [];
 
-  for (const entry of view.entries) {
+  for (const [index, entry] of view.entries.entries()) {
     const element = entry.element;
     if (element.getLocalName() !== 'style') continue;
 
-    const dateTicks = entry.date * scaleFactor;
+    const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
+    const dateTicks = entry.date * resolution.scaleFactor;
     const styleName = readAttributeValue(element, 'name.ref');
-    const style = findStyleDef(ARTICULATION_STYLE, styleName, environment, globalEnvironment);
+    const style = findStyleDef(
+      ARTICULATION_STYLE,
+      styleName,
+      resolution.environment,
+      resolution.globalEnvironment,
+    );
 
     // Disposition 1: the switch never reaches the list, so the PREVIOUS default continues.
     if (style === null) {

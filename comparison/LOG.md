@@ -4658,3 +4658,87 @@ options alone ⇒ error, never silent ignoring.
 AD-59.4 Cut A3's hypothesis (event op cost = its EventCharge; Σ = the
 alignment optimum with reworking 0) is endorsed AS A HYPOTHESIS to be
 measured, per its own framing.
+
+## 2026-08-17 — W4 cut A3: the remaining five dimensions, and two defects the theorem found
+
+`editScriptForDimension` now returns a script for **all eleven dimensions**. The curve plan's
+`readView` generalizes into an `EditPlan` — `represent` reads one state, `norm` is that
+dimension's own `d_k` over a window — and the event and distribution dimensions fill it in
+directly. No dimension needs a second reading of a map, which was the whole bet of cut A2's
+shape and it held.
+
+**§5.5's TWO COMPONENTS FALL OUT OF ONE SCRIPT.** `d_articulation` is the alignment optimum PLUS
+AD-55.1's `@defaultArticulation` step function, and both are read off the same map — the atoms
+from its `<articulation>` elements, the steps from its `<style>` switches. So one sequential
+script over the map's entries prices both and `directDistance` is the whole `d_articulation`,
+which is also the second reason (after AD-29's any-entry rule) that `<style>` switches have to
+be in the edit sequence. Measured on Telemann part 1: `directDistance = scriptCost =
+replayedDelta = 926.666667` over 25 ops. **Re-working is 0 for the event dimensions**, and that
+is §6.2's "consistent by construction" arriving as a measurement rather than a claim: the §5.6
+functional is a sum over events, so applying one op changes exactly one event's contribution.
+
+**DEFECT 1 — the event readers never took the per-entry resolution, and `directDistance` said
+so.** Cut A2 threaded `resolutionAt` through the seven curve/span readers and left
+`articulationAtoms`, `articulationDefault` and `ornamentAtoms` for this cut. The consequence was
+not subtle and the endpoint check caught it immediately: Telemann part 1 reported
+`d_articulation = 926.67` against a `directDistance` of **770.67**, because `Φ(S(n,m))` was
+reading B's instructions through A's `articulationStyles`. Threaded; the claim is now an exact
+equality on every vendored (pair, scope, dimension) triple.
+
+**DEFECT 2 — articulation cannot localize, and the theorem is how it announced itself.** With
+`affectedTicks` applied, Telemann part 1 gave `scriptCost = 108.89` against a `directDistance`
+of `926.67` — `scriptCost ≥ d` violated by a factor of eight. Diagnosed by removing the step
+component from the norm and re-running: `scriptCost = directDistance` exactly on all three parts
+(46.67 / 23.33 / 5.00), which identifies the STEP function rather than the alignment as the
+cause. AD-37.1's default step is **retroactive** — its value on `[0, firstSwitchDate)` is the
+FIRST switch's default — so editing a `<style>` reaches arbitrarily far LEFT; and its value after
+an interval is governed by the last switch at or before it, which the interval's right bound (the
+next unchanged INSTRUCTION, not the next unchanged SWITCH) need not contain. AD-35.4's hazard
+class in a **seventh** instance, and a new shape: a reading that depends on an instruction
+outside its own span in BOTH directions. `articulation` and `ornamentation` therefore do not
+localize; the alignment half would, and that measurement is recorded so a future attempt has
+something to face.
+
+[STOP-AND-REPORT — a DESIGN-vs-implementation contradiction, with executed evidence]
+**§9.3's per-family epsilon record files `rubato` in the `step` family, whose published figure is
+an exact `0`.** The record's own words for that family are "piecewise-constant readings: the cell
+integral is `density × length`, with no quadrature in the time domain at all". That is false for
+rubato: `rubatoDistance` integrates a warp DISPLACEMENT through AD-33.3b's rule 2c — the
+structural `u*` split plus a K = 16 mesh — and AD-34.1 measured that integrator's residual at
+2.718e-4 relative. Measured here on real data, as the shortfall of `scriptCost` below `d`:
+
+    telemann part 2 / rubato   d = 476.22531733   scriptCost = 476.18955454   7.51e-5
+    telemann part 1 / rubato   d = 350.26776146   scriptCost = 350.26003225   2.21e-5
+    telemann part 3 / rubato   d = 162.82001908   scriptCost = 162.81746979   1.57e-5
+    vulpius  part 1 / dynamics d = 174.44139374   scriptCost = 174.44124366   8.60e-7
+
+Every other dimension's worst is below 1e-6 and most are exactly 0. The localization is NOT the
+cause and that was checked before anything else: localized and whole-window `scriptCost` are
+BIT-IDENTICAL on every one of these, so the shortfall is quadrature in a telescoping sum of many
+small integrals against one large one. In JND terms the worst is 0.036 JND·quarters over ~50
+quarters, i.e. 7e-4 JND — far below the metric's own resolution, which is AD-28.2's point exactly.
+**The number is fine; the published record is not.** Asking for a ruling because AD-25.6 approved
+FIVE epsilon families and rubato needs either a sixth or a corrected figure; the code is
+unchanged pending it, and the measurement is pinned so the record cannot drift further.
+
+The theorem is asserted in a RELATIVE band of 1e-4 for that reason — W2c's P-C3 lesson ("an
+absolute epsilon fails a correct implementation") — with the worst measured shortfall asserted
+separately, so the band cannot quietly absorb a regression.
+
+**ORNAMENTATION'S MAP SCOPE, decided so both endpoints stay exact.** `OrnamentationMap.apply`
+branches on whether a local header exists (AD-44's defect 8), so the scope is a property of the
+MAP and a mixed state has no single one. A state carrying any A instruction takes A's scope and a
+state carrying none takes B's, which makes `S(0,0)` exactly `A` and `S(n,m)` exactly `B`;
+`replayResidual` is the field that would show a document where the mixed states' choice mattered.
+No vendored document has an `ornamentationMap`, so this is stated rather than measured.
+
+NEGATIVE CONTROLS, three, each failing exactly its own tests and restoring green: the event
+readers ignoring the per-entry resolution (2); articulation localization enabled (2); the
+default-step component dropped from articulation's norm (2).
+
+Gate: `npm run verify` GREEN — 119 files, **5278 passed**, 0 skipped. Repo-wide
+`npx prettier --check .` clean; eslint clean on `src/comparison`, `tests/comparison`, `src/api`
+and `src/index.ts`. [MEASURED, reported] The suite's own cost: `editDimensions.test.ts` walks a
+real corpus with a DP per (pair, scope, dimension) and is 12.4 s of the 21 s total. It was 37.8 s
+before the walk was merged into one pass and the localization pins were restricted to the
+dimensions that localize — a pin over a code path both modes share asserts nothing.
