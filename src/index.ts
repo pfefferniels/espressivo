@@ -2,7 +2,7 @@
 //
 // Scope: MEI / MSM+MPM => expressive MIDI. Format conversions (MusicXML,
 // MIDI->MSM, MEI->MusicXML), audio, playback, chroma/pitches and SVG were
-// removed in T3 as out of scope; see refactor/log.md.
+// removed in T3 as out of scope; see docs/history/refactor/log.md.
 
 import type { Element } from './xml/XomTypes.js';
 import {
@@ -145,6 +145,7 @@ export * from './mei/mpmNoteIds.js';
 
 // MEI
 export { Mei } from './mei/Mei.js';
+export type { StaffProvenance } from './mei/Mei.js';
 export { Mei2MsmMpmConverter } from './mei/Mei2MsmMpmConverter.js';
 
 // MSM

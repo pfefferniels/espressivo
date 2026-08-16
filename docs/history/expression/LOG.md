@@ -21,7 +21,7 @@
     clamped to [0,127] on the data path). They consume at first usable commit —
     ping them.
 - W0 survey workflow launched (wf_772de42b-1f4): 8 map-family readers +
-  conventions brief + prototype-test intent, synthesized into expression/SURVEY.md.
+  conventions brief + prototype-test intent, synthesized into docs/history/expression/SURVEY.md.
 
 ## 2026-08-09 W1 (early) — design decision: scope of level exaggeration
 
@@ -536,7 +536,7 @@ to the conductor and never made; it now states the A2 contract (canonical
 baseline, both predicates) and is marked as amended. (f) PARITY §7 said "Four
 differences" over five bullets, and named no prototype capability that is
 simply absent; it now counts correctly and names `Increase`, the sketchiness
-curves and `humanize`. (g) README and PARITY linked to `expression/DESIGN.md`,
+curves and `humanize`. (g) README and PARITY linked to `docs/history/expression/DESIGN.md`,
 which `package.json` `files` does not ship; both links now point at the GitHub
 blob path. (h) DESIGN §7.15's forward reference to a decision "at W4" was
 stale — it landed at W3 kickoff, in §8's `ornamentSpread` row. (i) §7.8/§7.16
@@ -584,7 +584,7 @@ is 1048 before and after.
 **W3 and W4 verification records archived.** Charter invariant 8's per-wave
 adversarial verification ran for all five waves, but only W1's and W2's lens
 reports were archived verbatim; W3's and W4's existed only as conductor
-summaries in this journal. Both are now in `expression/W3-VERIFICATION.md` and
+summaries in this journal. Both are now in `docs/history/expression/W3-VERIFICATION.md` and
 `W4-VERIFICATION.md`, in the same format as `W2-VERIFICATION.md` — two lenses
 each, 13 findings each, verbatim.
 

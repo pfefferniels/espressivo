@@ -867,7 +867,7 @@ export class Performance extends AbstractXmlSubtree {
    *    `millisecondsDate` keeps the value read *before* that write, and every case below
    *    uses that pre-shift value plus the offset — never the re-read attribute.
    * 1b. `ornament.milliseconds.fromend.offset` — the one addition MPM v3 makes to this pass
-   *    (DESIGN.md's D5 amendment, journaled in ornamentation/LOG.md). It states the onset
+   *    (DESIGN.md's D5 amendment, journaled in docs/history/ornamentation/LOG.md). It states the onset
    *    relative to the note's millisecond END, which is the only way to express a frame
    *    aligned `at end` in a domain that does not exist yet when the ornament is rendered.
    *    It resolves to an ordinary onset shift, so cases 2–4 are untouched by it. The branch

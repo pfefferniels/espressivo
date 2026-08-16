@@ -21,7 +21,7 @@
  * attribute that v3 removed from every element. Every real v3 file writes values without a
  * suffix: the format's own sample encoding (`Reger - Moment Musical op 13 no 4.mpm`, values
  * `-22.0`, `44.0`, `0.0`, `300.0`) and the guidelines' own first example both do — see
- * `ornamentation/research/github-v3-design.md` §5. So {@link parseTemporalValueStrict} is
+ * `docs/history/ornamentation/research/github-v3-design.md` §5. So {@link parseTemporalValueStrict} is
  * the schema-exact reader (also usable as a validator), and
  * {@link parseTemporalValueLenient} is what the document reader uses. What a missing domain
  * *means* — legacy `@time.unit` if present, else ticks — is reader policy and deliberately
@@ -29,7 +29,7 @@
  *
  * PARITY NOTE. The v3 reference implementation's `TemporalValue.java`
  * (LarsEngeln/meico@3deb141c) is deliberately not ported — neither its API nor its
- * behaviour (DESIGN.md §1 non-goals; `ornamentation/research/lars-v3-implementation.md`
+ * behaviour (DESIGN.md §1 non-goals; `docs/history/ornamentation/research/lars-v3-implementation.md`
  * §2.2–§2.4). Its parse regex is `^(\d+)(ms|th|%|ticks|\?)$`, which rejects both the sign
  * and the decimals of the spec's own examples — `-100ms` and `20.5ms` fail to match, then
  * fail `Double.parseDouble`, and the value is left silently unchanged; it admits two
@@ -177,7 +177,7 @@ export function parseTemporalValueLenient(text: string): UnresolvedTemporalValue
  * every shipped serializer in this port already uses for attribute values — see
  * `TemporalSpread.generateXML`. So this emits `"0ticks"` and `"50%"` where Java's
  * `Double.toString` would give `"0.0ticks"` and `"50.0%"`; the port-wide textual divergence
- * is recorded in `ornamentation/research/java-ts-v2-ornamentation.md` §5.3 item 5, and both
+ * is recorded in `docs/history/ornamentation/research/java-ts-v2-ornamentation.md` §5.3 item 5, and both
  * spellings satisfy the schematron. Matching the house convention keeps one number-writing
  * rule in the codebase rather than two.
  *

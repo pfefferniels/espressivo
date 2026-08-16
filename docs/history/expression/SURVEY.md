@@ -1555,7 +1555,7 @@ attribute that leaves the note unchanged, so no T with T(neutral)=0 can be built
 alone. Scaling the literal (`x' = x^s` around 1 tick, or `x*s`) is scaling an absolute length with an
 arbitrary anchor — P4 has no meaning and s→0 gives silence. The refactor log already records the
 underlying obstacle: "an articulation ratio is not derivable except through the millisecond fields"
-(`refactor/log.md:5235,5393`; `refactor/ARCHITECTURE.md:1656`). If a consumer insists, the only
+(`docs/history/refactor/log.md:5235,5393`; `ARCHITECTURE.md:1656`). If a consumer insists, the only
 defensible reading is to exaggerate it jointly with the renderer's per-note duration, which needs the
 MSM, not the MPM.
 
@@ -1974,8 +1974,8 @@ the per-part fallback (`Performance.ts:613-614`).
   pre-articulation value, which lives in the MSM, not the MPM. A registry that records neutral=0 or
   neutral=1 for these will produce musically wrong output at every s ≠ 1. The refactor log
   independently records the same obstacle from the parity side: "an articulation ratio is not
-  derivable except through the millisecond fields" (`refactor/log.md:5235,5393`;
-  `refactor/ARCHITECTURE.md:1656`).
+  derivable except through the millisecond fields" (`docs/history/refactor/log.md:5235,5393`;
+  `ARCHITECTURE.md:1656`).
 - **#2 THE SAME ATTRIBUTE NAME COMPOSES DIFFERENTLY ON `<articulationDef>` THAN ON
   `<articulation>`.** In `ArticulationDef.articulateNote` the three tick-duration attributes COMPOSE —
   each step re-reads `duration.perf` from what the previous step wrote (`ArticulationDef.ts:357-368`,
@@ -1999,7 +1999,7 @@ the per-part fallback (`Performance.ts:613-614`).
   Also the entire branch is gated on the pre-existing duration being > 0, and in `ArticulationData`
   the `modified` bookkeeping now sits inside that gate too (`ArticulationData.ts:208-220`) — a
   deliberate divergence from Java, documented at `ArticulationData.ts:193-211` and
-  `refactor/ARCHITECTURE.md:1150`.
+  `ARCHITECTURE.md:1150`.
 - **#4 THE MILLISECOND COMMIT GUARD IS A CLIFF, NOT A CLAMP, AND IT IS SHARED.** Pass two computes
   `dateNew` and `endNew` from all three ms attributes and then commits ONLY if `dateNew < endNew`
   (`ArticulationMap.ts:336-339`). If an exaggerated `absoluteDurationChangeMs` or `absoluteDelayMs`
@@ -4133,8 +4133,8 @@ changes which entry the render treats as "last". See hazards: that interaction h
 
 ## 9. Conventions brief
 
-Everything below is derived from `refactor/ARCHITECTURE.md` (the design ruling — its numbered
-**RULE**s are normative), `refactor/CHARTER.md` (invariants, which win over `ARCHITECTURE.md`),
+Everything below is derived from `ARCHITECTURE.md` (the design ruling — its numbered
+**RULE**s are normative), `docs/history/refactor/CHARTER.md` (invariants, which win over `ARCHITECTURE.md`),
 `eslint.config.js`, `tsconfig*.json`, `vitest.config.ts`, `package.json`, and the existing
 `src/api/**`, `src/units.ts`, `tests/api/**`, `tests/mpm/**`. The package name is `espressivo`.
 
@@ -4153,7 +4153,7 @@ which is exactly `npm run build && npm run typecheck:tests && vitest run`
 
 - **Charter invariant 1**: `npm run verify` must be green before every commit. No `--skip`, no test
   exclusion.
-- **`npm run lint` is deliberately NOT part of verify** (`refactor/lint-debt.md` says so explicitly) —
+- **`npm run lint` is deliberately NOT part of verify** (`docs/history/refactor/lint-debt.md` says so explicitly) —
   there are ~1011 inherited errors. That is not a licence to add more: the standing expectation is
   **zero new lint errors from a new module** (T13's facade added 8 files and 0 errors). Run
   `npx eslint src/your/new/file.ts` on your own files.
@@ -4285,7 +4285,7 @@ one `convert()` call; (3) `Performance.perform` and every `render*ToMap`, which 
   ```
   must return nothing.
 - **RULE I6** — no allocation-heavy immutability in hot rendering loops. If a spot wants persistent
-  structures, write a `DISCOVERED:` note in `refactor/log.md` instead of doing it.
+  structures, write a `DISCOVERED:` note in `docs/history/refactor/log.md` instead of doing it.
 
 New code also follows **RULE C5** (no new Java-style `getX()`/`setX()` — new modules use `readonly`
 properties and plain functions), **RULE C2** (`no-extraneous-class` is 0 and stays 0: no static-only

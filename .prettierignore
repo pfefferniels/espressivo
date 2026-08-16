@@ -13,19 +13,23 @@ tests/integration/fixtures/
 # tests/comparison/fixtures/PROVENANCE.md.
 tests/comparison/fixtures/
 
-# Swarm coordination journal — hand-formatted, reflowing it would churn the log.
-refactor/
+# The completed campaigns' journals, charters, design docs, research reports and probe tools
+# (refactor swarm, MPM v3 ornamentation, expression transform). Hand-formatted and mostly
+# append-only: reflowing them would churn logs that are already committed — DESIGN.md alone
+# rewrites ~1000 lines — and the probe tools under ornamentation/tools/ are byte gates, copies
+# of the refactor swarm's that must stay comparable.
+# This one entry replaces three separate root-level entries. The old `/expression/` entry
+# needed a root anchor to avoid also catching src/expression/ and tests/expression/, which are
+# ordinary source; nesting the records under docs/ makes that ambiguity impossible to hit.
+docs/history/
 
-# The MPM v3 ornamentation programme's journal, charter, design doc, research reports and
-# probe tools. Same rationale as refactor/ above, and one more: LOG.md is append-only, so a
-# reformat would rewrite ~400 lines inside already-committed waves' entries. The two probe
-# tools are byte gates — they are copies of the refactor swarm's and must stay comparable.
-ornamentation/
+# The live comparison campaign's record (moves to docs/history/comparison/ at merge, W5).
+comparison/
 
-# The expression-transform campaign's charter, design doc, survey and journal. Same rationale
-# again, and measured: reflowing DESIGN.md alone rewrites ~1000 lines of already-committed
-# prose, and LOG.md is append-only. These documents were already outside Prettier's style
-# before this entry existed; the entry records that, rather than changing it.
-# Root-anchored: unanchored, it would also exempt src/expression/ and tests/expression/, which
-# are ordinary source and must stay under the formatter.
-/expression/
+# The target-architecture ruling. Exempt for a stronger reason than the journals: its RULEs are
+# cited by ~85 `ARCHITECTURE.md:NNN` line anchors from PARITY.md and the campaign records, so a
+# reflow would silently invalidate every one of them while leaving the build green. The file was
+# exempt implicitly while it sat inside refactor/; promoting it to the repo root is what makes
+# the exemption something that has to be written down. Verified: without this entry
+# `prettier --check ARCHITECTURE.md` reports the file as needing reformatting.
+/ARCHITECTURE.md

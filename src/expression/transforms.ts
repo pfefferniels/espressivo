@@ -1,5 +1,5 @@
 /**
- * The scale spaces of the expression-transform engine (expression/DESIGN.md §1).
+ * The scale spaces of the expression-transform engine (docs/history/expression/DESIGN.md §1).
  *
  * Every exaggerable MPM attribute has a monotone bijection `T : D → ℝ` from its musical
  * domain with `T(neutral) = 0`, and the whole engine is one formula in different `T`s:

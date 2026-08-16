@@ -10,7 +10,7 @@ import importPlugin from 'eslint-plugin-import';
  * three type-aware rules ARCHITECTURE.md RULE N6 names, enabled by T21 over `src/` only.
  * The *presets* stay non-type-checked: N6 rejected `recommendedTypeChecked` explicitly,
  * because hundreds of findings over parity-frozen code would drown a gate that is
- * deliberately outside `npm run verify`. `refactor/lint-debt.md` records the measured
+ * deliberately outside `npm run verify`. `docs/history/refactor/lint-debt.md` records the measured
  * preview those numbers came from.
  *
  * The architecture rules of ARCHITECTURE.md §1.2 are enforced at the bottom of this file
@@ -190,7 +190,7 @@ export default tseslint.config(
       sourceType: 'module',
     },
     rules: {
-      // --- Style decisions codified for the refactor (see refactor/state.json T2) ---
+      // --- Style decisions codified for the refactor (see docs/history/refactor/state.json T2) ---
 
       // `===` everywhere, except `x == null`. T12 settled the null-vs-undefined policy
       // (ARCHITECTURE.md RULE N5) and blessed that one idiom: in TypeScript it is the
@@ -219,7 +219,7 @@ export default tseslint.config(
       // Left at the default `props: false` — it flags rebinding the parameter
       // itself, not mutation through it. Flipping `props: true` would flag
       // `renderXToMap(map)`-style writes, which ARE the documented purpose here;
-      // refactor/lint-debt.md records that count separately.
+      // docs/history/refactor/lint-debt.md records that count separately.
       'no-param-reassign': 'warn',
     },
   },

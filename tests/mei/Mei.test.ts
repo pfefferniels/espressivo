@@ -795,3 +795,306 @@ describe('Mei – the export entry points', () => {
     expect(() => new Mei(SAMPLE_MEI, true).exportMsm()).toThrow(/Mei2MsmMpmConverter/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// layersToStaffs
+// ---------------------------------------------------------------------------
+
+/** build a score whose section contains exactly `sectionInner` */
+function score(scoreDefInner: string, sectionInner: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei">
+  <meiHead><fileDesc><titleStmt><title/></titleStmt><pubStmt/></fileDesc></meiHead>
+  <music><body><mdiv><score>
+    ${scoreDefInner}
+    <section>${sectionInner}</section>
+  </score></mdiv></body></music>
+</mei>`;
+}
+
+/** the @n of every staff in document order */
+function staffNs(mei: Mei): string[] {
+  const staffs = mei.getRootElement()!.query("descendant::*[local-name()='staff']");
+  return staffs.toArray().map((s) => (s as unknown as Element).getAttributeValue('n') ?? '');
+}
+
+/** the @n of every staffDef in document order */
+function staffDefNs(mei: Mei): string[] {
+  const defs = mei.getRootElement()!.query("descendant::*[local-name()='staffDef']");
+  return defs.toArray().map((d) => (d as unknown as Element).getAttributeValue('n') ?? '');
+}
+
+describe('Mei.layersToStaffs – one staff per layer', () => {
+  const TWO_LAYERS = score(
+    '<scoreDef><staffGrp><staffDef n="1" lines="5" clef.shape="G" label="Piano"/></staffGrp></scoreDef>',
+    `<measure n="1"><staff n="1">
+       <layer n="1"><note xml:id="a" pname="c" oct="4" dur="4"/></layer>
+       <layer n="2"><note xml:id="b" pname="e" oct="3" dur="4"/></layer>
+     </staff></measure>`,
+  );
+
+  it('replaces one two-layer staff by two staffs numbered staff@n + layer@n', () => {
+    const mei = new Mei(TWO_LAYERS, true);
+    mei.layersToStaffs();
+    expect(staffNs(mei)).toEqual(['11', '12']);
+  });
+
+  it('renumbers each moved layer to @n="1", since its new staff holds only it', () => {
+    const mei = new Mei(TWO_LAYERS, true);
+    mei.layersToStaffs();
+    const layers = mei.getRootElement()!.query("descendant::*[local-name()='layer']");
+    expect(layers.toArray().map((l) => (l as unknown as Element).getAttributeValue('n'))).toEqual([
+      '1',
+      '1',
+    ]);
+    // and the notes travelled with their layer
+    expect(
+      layers
+        .toArray()
+        .map((l) =>
+          ((l as unknown as Element).getChildElements().get(0) as Element).getAttributeValue(
+            'xml:id',
+          ),
+        ),
+    ).toEqual(['a', 'b']);
+  });
+
+  it('regenerates one staffDef per new staff, carrying the original attributes over', () => {
+    const mei = new Mei(TWO_LAYERS, true);
+    mei.layersToStaffs();
+    expect(staffDefNs(mei)).toEqual(['11', '12']);
+
+    const defs = mei.getRootElement()!.query("descendant::*[local-name()='staffDef']");
+    for (const d of defs.toArray()) {
+      const def = d as unknown as Element;
+      expect(def.getAttributeValue('lines')).toBe('5');
+      expect(def.getAttributeValue('clef.shape')).toBe('G');
+      expect(def.getAttributeValue('label')).toBe('Piano');
+    }
+  });
+
+  it('keeps the new staffDefs inside the original staffGrp', () => {
+    const mei = new Mei(TWO_LAYERS, true);
+    mei.layersToStaffs();
+    const grp = mei.getRootElement()!.query("descendant::*[local-name()='staffGrp']").get(0);
+    expect((grp as unknown as Element).getChildElements().size()).toBe(2);
+  });
+
+  it('inserts the new staffs where the original stood, not at the end of the measure', () => {
+    const mei = new Mei(
+      score(
+        '<scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>',
+        `<measure n="1">
+           <staff n="1"><layer n="1"><note pname="c" oct="4" dur="4"/></layer></staff>
+           <dir tstamp="1">after</dir>
+         </measure>`,
+      ),
+      true,
+    );
+    mei.layersToStaffs();
+    const measure = mei.getRootElement()!.query("descendant::*[local-name()='measure']").get(0);
+    const kids = (measure as unknown as Element).getChildElements();
+    expect([kids.get(0).getLocalName(), kids.get(1).getLocalName()]).toEqual(['staff', 'dir']);
+  });
+
+  it('orders the new staffDefs by @n numerically, not by the order the layers were met', () => {
+    // layer 10 is visited before layer 9, but staffDef 110 must still follow staffDef 19
+    const mei = new Mei(
+      score(
+        '<scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>',
+        `<measure n="1"><staff n="1">
+           <layer n="10"><note pname="c" oct="4" dur="4"/></layer>
+           <layer n="9"><note pname="e" oct="4" dur="4"/></layer>
+         </staff></measure>`,
+      ),
+      true,
+    );
+    mei.layersToStaffs();
+    expect(staffNs(mei)).toEqual(['110', '19']); // document order follows the layers
+    expect(staffDefNs(mei)).toEqual(['19', '110']); // staffDefs are sorted numerically
+  });
+
+  it('synthesises @n for an unnumbered layer from its index, and 1000000 for an unnumbered staff', () => {
+    const mei = new Mei(
+      score(
+        '<scoreDef><staffGrp/></scoreDef>',
+        `<measure n="1"><staff>
+           <layer><note pname="c" oct="4" dur="4"/></layer>
+           <layer><note pname="e" oct="4" dur="4"/></layer>
+         </staff></measure>`,
+      ),
+      true,
+    );
+    mei.layersToStaffs();
+    // staff "1000000" + layer "0" / "1000000"
+    expect(staffNs(mei)).toEqual(['10000000', '10000001000000']);
+  });
+
+  it('mints an empty staffDef when the original staff had none', () => {
+    const mei = new Mei(
+      score(
+        '<scoreDef><staffGrp/></scoreDef>',
+        '<measure n="1"><staff n="3"><layer n="1"><note pname="c" oct="4" dur="4"/></layer></staff></measure>',
+      ),
+      true,
+    );
+    mei.layersToStaffs();
+    expect(staffDefNs(mei)).toEqual(['31']);
+  });
+
+  it('creates a scoreDef and appends it to the score when there was none', () => {
+    const mei = new Mei(
+      score(
+        '',
+        '<measure n="1"><staff n="1"><layer n="1"><note pname="c" oct="4" dur="4"/></layer></staff></measure>',
+      ),
+      true,
+    );
+    mei.layersToStaffs();
+    const scoreEl = mei.getRootElement()!.query("descendant::*[local-name()='score']").get(0);
+    const kids = (scoreEl as unknown as Element).getChildElements();
+    expect(kids.get(kids.size() - 1).getLocalName()).toBe('scoreDef');
+    expect(staffDefNs(mei)).toEqual(['11']);
+  });
+
+  it('processes each mdiv separately', () => {
+    const mei = new Mei(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei">
+  <meiHead><fileDesc><titleStmt><title/></titleStmt><pubStmt/></fileDesc></meiHead>
+  <music><body>
+    <mdiv><score>
+      <scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
+      <section><measure n="1"><staff n="1">
+        <layer n="1"><note pname="c" oct="4" dur="4"/></layer>
+        <layer n="2"><note pname="e" oct="4" dur="4"/></layer>
+      </staff></measure></section>
+    </score></mdiv>
+    <mdiv><score>
+      <scoreDef><staffGrp><staffDef n="2" lines="5"/></staffGrp></scoreDef>
+      <section><measure n="1"><staff n="2">
+        <layer n="1"><note pname="g" oct="4" dur="4"/></layer>
+      </staff></measure></section>
+    </score></mdiv>
+  </body></music>
+</mei>`,
+      true,
+    );
+    mei.layersToStaffs();
+    expect(staffNs(mei)).toEqual(['11', '12', '21']);
+    expect(staffDefNs(mei)).toEqual(['11', '12', '21']);
+  });
+
+  it('is a no-op on a score whose staffs already hold a single layer, apart from renumbering', () => {
+    const mei = new Mei(
+      score(
+        '<scoreDef><staffGrp><staffDef n="1" lines="5"/><staffDef n="2" lines="5"/></staffGrp></scoreDef>',
+        `<measure n="1">
+           <staff n="1"><layer n="1"><note pname="c" oct="4" dur="4"/></layer></staff>
+           <staff n="2"><layer n="1"><note pname="e" oct="3" dur="4"/></layer></staff>
+         </measure>`,
+      ),
+      true,
+    );
+    mei.layersToStaffs();
+    expect(staffNs(mei)).toEqual(['11', '21']);
+    expect(staffDefNs(mei)).toEqual(['11', '21']);
+  });
+
+  it('gives the staffDef copies fresh xml:ids so the document holds no id twice', () => {
+    const mei = new Mei(
+      score(
+        '<scoreDef><staffGrp><staffDef xml:id="sd1" n="1" lines="5"/></staffGrp></scoreDef>',
+        `<measure n="1"><staff n="1">
+           <layer n="1"><note pname="c" oct="4" dur="4"/></layer>
+           <layer n="2"><note pname="e" oct="4" dur="4"/></layer>
+         </staff></measure>`,
+      ),
+      true,
+    );
+    mei.layersToStaffs();
+    const ids = mei
+      .getRootElement()!
+      .query("descendant::*[local-name()='staffDef']")
+      .toArray()
+      .map((d) => (d as unknown as Element).getAttributeValue('id')!);
+    expect(ids[0]).toBe('sd1'); // the first occurrence keeps the original id
+    expect(ids[1]).toMatch(/^meico_/); // the duplicate is reassigned
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it('returns, per mdiv, where each generated staff came from', () => {
+    const mei = new Mei(TWO_LAYERS, true);
+    const provenance = mei.layersToStaffs();
+
+    expect(provenance).toHaveLength(1);
+    expect([...provenance[0].keys()]).toEqual(['11', '12']);
+    expect(provenance[0].get('11')).toEqual({ origStaff: '1', origLayer: '1' });
+    expect(provenance[0].get('12')).toEqual({ origStaff: '1', origLayer: '2' });
+  });
+
+  it('reports the synthetic @n it substituted, so origStaff + origLayer rebuilds the key', () => {
+    const mei = new Mei(
+      score(
+        '<scoreDef><staffGrp/></scoreDef>',
+        `<measure n="1"><staff>
+           <layer><note pname="c" oct="4" dur="4"/></layer>
+           <layer><note pname="e" oct="4" dur="4"/></layer>
+         </staff></measure>`,
+      ),
+      true,
+    );
+    const [map] = mei.layersToStaffs();
+    for (const [newStaffN, origin] of map) {
+      expect(origin.origStaff + origin.origLayer).toBe(newStaffN);
+    }
+    expect(map.get('10000000')).toEqual({ origStaff: '1000000', origLayer: '0' });
+  });
+
+  it('keeps the maps per mdiv rather than merging, and stays aligned with getAllMdivs()', () => {
+    const mei = new Mei(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei">
+  <meiHead><fileDesc><titleStmt><title/></titleStmt><pubStmt/></fileDesc></meiHead>
+  <music><body>
+    <mdiv><score>
+      <scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
+      <section><measure n="1"><staff n="1">
+        <layer n="1"><note pname="c" oct="4" dur="4"/></layer>
+      </staff></measure></section>
+    </score></mdiv>
+    <mdiv><score>
+      <scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
+      <section><measure n="1"><staff n="1">
+        <layer n="1"><note pname="g" oct="4" dur="4"/></layer>
+      </staff></measure></section>
+    </score></mdiv>
+  </body></music>
+</mei>`,
+      true,
+    );
+    const provenance = mei.layersToStaffs();
+    // both movements produce a staff "11"; merged, one would have hidden the other
+    expect(provenance).toHaveLength(mei.getAllMdivs().length);
+    expect(provenance[0].get('11')).toEqual({ origStaff: '1', origLayer: '1' });
+    expect(provenance[1].get('11')).toEqual({ origStaff: '1', origLayer: '1' });
+  });
+
+  it('drops an oStaff that holds only oLayer children – reproduced upstream behaviour', () => {
+    // layersToStaffs matches oStaff but moves only `layer` children, and detaches the
+    // original unconditionally. PARITY.md §4 records this.
+    const mei = new Mei(
+      score(
+        '<scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>',
+        `<measure n="1">
+           <staff n="1"><layer n="1"><note pname="c" oct="4" dur="4"/></layer></staff>
+           <oStaff n="1"><oLayer n="1"><note pname="d" oct="4" dur="4"/></oLayer></oStaff>
+         </measure>`,
+      ),
+      true,
+    );
+    mei.layersToStaffs();
+    expect(mei.getRootElement()!.query("descendant::*[local-name()='oStaff']").size()).toBe(0);
+    expect(staffNs(mei)).toEqual(['11']);
+  });
+});

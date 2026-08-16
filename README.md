@@ -380,9 +380,45 @@ the admissible range is the caller's job; §8 of the design document has the per
 
 The full model, the per-attribute registry, and the reasoning behind every inclusion and exclusion
 are in
-[expression/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/expression/DESIGN.md)
+[docs/history/expression/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/docs/history/expression/DESIGN.md)
 (a repository document — the npm package does not carry it); the relationship to the Java-era
 prototype these ideas came from is in [PARITY.md](PARITY.md).
+
+## One part per voice: splitting MEI layers
+
+MEI keeps the voices of a keyboard or divisi staff as sibling `<layer>` elements inside one
+`<staff>`, and the conversion makes one MSM `<part>` per `<staffDef>` — so those voices arrive
+merged into a single part, sharing one MIDI channel and one instrument. `Mei.layersToStaffs()`
+rewrites the encoding first, giving every layer its own staff and therefore **its own part,
+channel and instrument**:
+
+```ts
+import { Mei, Mei2MsmMpmConverter } from 'espressivo';
+
+const mei = Mei.fromXml(readFileSync('piano.mei', 'utf8'));
+const [provenance] = mei.layersToStaffs(); // staff 1 / layers 1,2  ->  staffs 11, 12
+
+const [msm] = new Mei2MsmMpmConverter(720, true, false, true).convert(mei).getKey();
+// two parts now, numbered 11 and 12, on MIDI channels 0 and 1
+
+provenance.get('11'); // { origStaff: '1', origLayer: '1' }
+provenance.get('12'); // { origStaff: '1', origLayer: '2' }
+```
+
+The return value is one map per `mdiv` — one per movement, matching what the converter emits —
+from each generated staff's `@n` back to the staff and layer it came from. You need it because the
+numbering is lossy: `111` alone cannot say whether it was staff 1 / layer 11 or staff 11 / layer 1.
+
+It is opt-in and mutates the instance — clone first if you still need the original — and the
+default pipeline is unchanged if you never call it. New staffs are numbered by concatenating the
+original `staff@n` and `layer@n`, and each staff's `<staffDef>` is copied so clef, key,
+transposition and instrument follow the voice.
+
+Two edges are worth knowing, both inherited from meico and both detailed in
+[PARITY.md §8](PARITY.md): control events keep their original `@staff`, so a `<slur staff="1">`
+becomes a dangling reference once the staffs are renumbered and is dropped; and an `<oStaff>` whose
+children are `<oLayer>` elements is removed rather than split, so do not run the pass over ossia
+content you need to keep.
 
 ## Equivalence with Java meico
 
@@ -394,12 +430,15 @@ produces"**. That is enforced mechanically:
   raw and expressive MIDI (48 files), and 40 programmatically built per-map fixtures covering
   rubato, asynchrony, metrical accentuation, movement, imprecision and a combined case. These
   files are **immutable** — regenerating them is a governed act with its own provenance record.
-- **Six equivalence suites** compare against them: MEI ⇒ MSM/MPM cross-validation, full XML
+- **Seven equivalence suites** compare against them: MEI ⇒ MSM/MPM cross-validation, full XML
   equivalence of the augmented MSM, performance equivalence, per-map equivalence, MIDI **byte**
-  equivalence event by event, and the MIDI export pipeline. They auto-discover every `.mei` fixture, so a missing reference is
+  equivalence event by event, the MIDI export pipeline, and the layer-splitting pass (whose
+  reference set lives beside the frozen one, in `tests/integration/fixtures-layers-to-staffs/`,
+  and is generated the same way — see [PARITY.md §8](PARITY.md)).
+  They auto-discover every `.mei` fixture, so a missing reference is
   a **failure, not a skip**, and they canonicalize generated `meico_<uuid>` identifiers by
   first-occurrence order — which keeps `goto` → `marker` wiring verifiable rather than deleting it.
-- **3064 tests across 68 files**, run as a gate (`npm run verify` = clean build + typecheck of the
+- **4062 tests across 90 files**, run as a gate (`npm run verify` = clean build + typecheck of the
   test sources + the full suite) before every single commit of the refactor that produced this
   codebase, and of the ornamentation work that followed it.
 - **Byte probes for every refactor.** Beyond the suite, each structural change was proven with a
