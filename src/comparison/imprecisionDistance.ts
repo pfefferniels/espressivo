@@ -174,6 +174,16 @@ export interface ImprecisionCell {
   readonly processDensity: number;
   readonly mass: number;
   readonly capped: boolean;
+  /**
+   * `p_imprecision(t)` in JND per quarter, at a position in QUARTERS (AD-51.1).
+   *
+   * The integrand this cell's mass was computed from, exposed rather than recomputed: AD-19
+   * refines segment boundaries to the ROOTS of `p_D − τ_D`, and a cell-quantized edge can sit
+   * many bars from the crossing. `mass` remains the authority — the aggregation rescales the
+   * sampler's shape onto it — so a sampler that disagreed with its own integral could move a
+   * boundary but never a reported number.
+   */
+  readonly densityAt: (quarters: number) => number;
 }
 
 export interface ImprecisionDecomposition {
@@ -298,6 +308,9 @@ export function imprecisionDistance(
       processDensity: process.distance,
       mass,
       capped: marginal.capped || process.capped,
+      // Both components are piecewise CONSTANT in `t` — the grid carries every span edge —
+      // which is also why this dimension's cell integral is `density × length` exactly.
+      densityAt: () => density + process.distance,
     });
 
     // A `⊥` span has no moments to take — §1.2's terms are integrals of means and spreads, and

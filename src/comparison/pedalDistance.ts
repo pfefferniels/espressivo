@@ -42,6 +42,16 @@ export interface PedalCell {
   readonly mass: number;
   /** True where §4's cap bound this cell — a `⊥` span, or a difference past `2·δ_row`. */
   readonly capped: boolean;
+  /**
+   * `p_pedal(t)` in JND per quarter, at a position in QUARTERS (AD-51.1).
+   *
+   * The integrand this cell's mass was computed from, exposed rather than recomputed: AD-19
+   * refines segment boundaries to the ROOTS of `p_D − τ_D`, and a cell-quantized edge can sit
+   * many bars from the crossing. `mass` remains the authority — the aggregation rescales the
+   * sampler's shape onto it — so a sampler that disagreed with its own integral could move a
+   * boundary but never a reported number.
+   */
+  readonly densityAt: (quarters: number) => number;
 }
 
 /** A controller one document drives and the other does not — §5.8's structural channel. */
@@ -127,10 +137,13 @@ export function pedalDistance(
 
     let mass: number;
     let capped: boolean;
+    let densityAt: (quarters: number) => number;
     if (isBottom(left) || isBottom(right)) {
       const local = localDistance(row, left, right);
       mass = local.distance * lengthQuarters;
       capped = local.capped;
+      // A `⊥` cell is priced at `δ_row` for its whole length, so its density is that constant.
+      densityAt = () => local.distance;
     } else {
       const difference = (ticks: number) => {
         const x = positionAt(a, ticks);
@@ -158,6 +171,10 @@ export function pedalDistance(
       );
       mass = integral.mass / ticksPerQuarter;
       capped = integral.capped;
+      // The capped integrand itself (AD-36.2's `min(|·|, 2·δ_row)`), so the sampler and the
+      // quadrature see one function rather than two that agree by inspection.
+      densityAt = (quarters) =>
+        Math.min(Math.abs(difference(quarters * ticksPerQuarter)) / jnd, cap);
     }
 
     if (capped) anyCapped = true;
@@ -169,6 +186,7 @@ export function pedalDistance(
       endQuarters: cellEnd / ticksPerQuarter,
       mass,
       capped,
+      densityAt,
     });
   }
 

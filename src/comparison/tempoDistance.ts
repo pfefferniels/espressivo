@@ -39,6 +39,16 @@ export interface TempoCell {
   readonly endQuarters: number;
   /** JND·quarters contributed by this cell. */
   readonly mass: number;
+  /**
+   * `p_tempo(t)` in JND per quarter, at a position in QUARTERS (AD-51.1).
+   *
+   * The integrand this cell's mass was computed from, exposed rather than recomputed: AD-19
+   * refines segment boundaries to the ROOTS of `p_D − τ_D`, and a cell-quantized edge can sit
+   * many bars from the crossing. `mass` remains the authority — the aggregation rescales the
+   * sampler's shape onto it — so a sampler that disagreed with its own integral could move a
+   * boundary but never a reported number.
+   */
+  readonly densityAt: (quarters: number) => number;
 }
 
 export interface TempoDistance {
@@ -215,6 +225,7 @@ export function tempoDistance(
       startQuarters: cellStart / ticksPerQuarter,
       endQuarters: cellEnd / ticksPerQuarter,
       mass,
+      densityAt: (quarters) => Math.abs(difference(quarters * ticksPerQuarter)) / jnd,
     });
   }
 

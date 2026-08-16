@@ -82,6 +82,16 @@ export interface AccentuationCell {
   readonly endQuarters: number;
   readonly mass: number;
   readonly capped: boolean;
+  /**
+   * `p_accentuation(t)` in JND per quarter, at a position in QUARTERS (AD-51.1).
+   *
+   * The integrand this cell's mass was computed from, exposed rather than recomputed: AD-19
+   * refines segment boundaries to the ROOTS of `p_D − τ_D`, and a cell-quantized edge can sit
+   * many bars from the crossing. `mass` remains the authority — the aggregation rescales the
+   * sampler's shape onto it — so a sampler that disagreed with its own integral could move a
+   * boundary but never a reported number.
+   */
+  readonly densityAt: (quarters: number) => number;
 }
 
 export interface AccentuationDistance {
@@ -222,10 +232,13 @@ export function accentuationDistance(
 
     let mass: number;
     let capped: boolean;
+    let densityAt: (quarters: number) => number;
     if (bottomA || bottomB) {
       const local = localDistance(row, contribution(a, cellStart), contribution(b, cellStart));
       mass = local.distance * lengthQuarters;
       capped = local.capped;
+      // A `⊥` cell is priced at `δ_row` for its whole length, so its density is that constant.
+      densityAt = () => local.distance;
     } else {
       const difference = (ticks: number) => {
         const x = contribution(a, ticks);
@@ -243,6 +256,10 @@ export function accentuationDistance(
       );
       mass = integral.mass / ticksPerQuarter;
       capped = integral.capped;
+      // The capped integrand itself (AD-36.2's `min(|·|, 2·δ_row)`), so the sampler and the
+      // quadrature see one function rather than two that agree by inspection.
+      densityAt = (quarters) =>
+        Math.min(Math.abs(difference(quarters * ticksPerQuarter)) / jnd, cap);
     }
 
     if (capped) anyCapped = true;
@@ -254,6 +271,7 @@ export function accentuationDistance(
       endQuarters: cellEnd / ticksPerQuarter,
       mass,
       capped,
+      densityAt,
     });
   }
 

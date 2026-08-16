@@ -3299,3 +3299,49 @@ pair to its `a`-side date instead of spreading fails 4.
 
 Gate: `npm run verify` GREEN before committing — 110 files, 4839 passed, 0 skipped (was 4822).
 17 new tests. eslint and prettier clean on all six touched files.
+
+## 2026-08-16 — W3b part 3: the densityAt extension (AD-51.1) (w3b-facade)
+
+Every cell-bearing dimension now hands back the integrand it already evaluated, so AD-19's
+segment boundaries root-refine exactly instead of falling back to cell resolution. Seven
+modules, one field, and the whole content of the change is that it is the SAME function the
+quadrature saw rather than a second one written to look like it.
+
+The shipped optional-`densityAt` machinery and `cellQuantizedDimensions` STAY, as AD-51.1
+directs: they are the graceful path for any future dimension that genuinely has no pointwise
+density, and the honest report field wherever a boundary is approximate. With all seven wired
+the list is empty on every ordinary document, which is the difference between a promise and a
+measurement.
+
+Per dimension the sampler is exactly what the module integrates and nothing more: tempo and
+dynamics `|ln A − ln B|/jnd`; rubato the displacement difference converted to quarters first,
+as its integrand already is; asynchrony and imprecision constant across the cell BY
+CONSTRUCTION (§5.7, §5.9 — the grid carries every span edge, which is also why those two
+integrate exactly); accentuation and pedal the CAPPED integrand `min(|·|/jnd, 2·δ_row)`, the
+same `Math.min` `integrateCappedAbsolute` applies, so the two cannot drift.
+
+**THE TEST IS POINTWISE, AND THAT IS THE POINT.** The obvious property — the sampler's integral
+reproduces the cell's mass — is satisfied EXACTLY by the mean-density stand-in this extension
+exists to remove, since `mean = mass / length` by definition. An integral check could therefore
+never have caught the fallback. So each dimension's sampler is checked against its DEFINITION,
+evaluated independently in the test from the curve readers (`quarterBpmAt`, `volumeAt`,
+`displacementTicksAt`, `offsetAt`, `accentuationContributionAt`, `positionAt`), at seven
+interior probes per cell to 1e-12. The integral is asserted as well, loosely, because it is what
+catches the one error the pointwise check cannot: a sampler stated per TICK where the
+aggregation reads per QUARTER is off by a factor of `ppq` in the integral and correct at no
+point at all.
+
+[MEASURED, both while writing that tolerance] The 1e-3 relative integral band is honest about
+two real effects rather than chosen to pass: a composite Simpson reference SMEARS the `|·|`
+corner that `integrateAbsolute` splits at exactly (accentuation, 5.9e-4 — the module is right
+and the reference is not), and rubato's own quadrature carries AD-34.1's documented residual at
+an `intensity = 0.5` boundary layer (5.2e-4, inside that ruling's own measured band). Both were
+found by the test failing at 1e-5 and diagnosed against a converging reference sequence before
+the tolerance moved.
+
+NEGATIVE CONTROLS, each failing exactly its own test and restoring green: replacing tempo's
+sampler with the cell's mean density (1); stating dynamics' sampler per tick instead of per
+quarter (1).
+
+Gate: `npm run verify` GREEN before committing — 111 files, 4846 passed, 0 skipped (was 4839).
+7 new tests. eslint and prettier clean across `src/comparison` and `tests/comparison`.

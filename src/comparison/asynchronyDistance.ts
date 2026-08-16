@@ -30,6 +30,16 @@ export interface AsynchronyCell {
   readonly mass: number;
   /** True where §4's cap bound this cell — reported through the `capped` note kind. */
   readonly capped: boolean;
+  /**
+   * `p_asynchrony(t)` in JND per quarter, at a position in QUARTERS (AD-51.1).
+   *
+   * The integrand this cell's mass was computed from, exposed rather than recomputed: AD-19
+   * refines segment boundaries to the ROOTS of `p_D − τ_D`, and a cell-quantized edge can sit
+   * many bars from the crossing. `mass` remains the authority — the aggregation rescales the
+   * sampler's shape onto it — so a sampler that disagreed with its own integral could move a
+   * boundary but never a reported number.
+   */
+  readonly densityAt: (quarters: number) => number;
 }
 
 export interface AsynchronyDistance {
@@ -97,6 +107,9 @@ export function asynchronyDistance(
       endQuarters: cellEnd / ticksPerQuarter,
       mass,
       capped: local.capped,
+      // Constant across the cell: the grid carries every breakpoint of both step curves, so
+      // the left-edge reading IS the cell's reading throughout (A-B1).
+      densityAt: () => local.distance,
     });
   }
 
