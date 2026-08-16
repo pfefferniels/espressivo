@@ -2567,3 +2567,187 @@ to comparison/drafts/distributions.draft.ts as DECLARED unverified input
 for the resumed cut-4 worker — the AD-42.2 treatment, self-applied: audit
 every claim, keep what survives, rewrite what does not, attribute
 honestly. It never entered a gated commit as src.
+
+## 2026-08-16 — W3a cut 4, part 1: the renderer study, and §5.9's law mathematics (w3-imp)
+
+AD-46's commission, resumed under AD-48.3. This commit is the DISTRIBUTION MATHEMATICS only —
+`src/comparison/distributions.ts` + 51 tests. The reader, the density, the registry rows and
+the adversarial family follow. The conductor's draft is deleted here, superseded; the audit
+verdicts are below, per AD-42.2.
+
+**THE RENDERER STUDY, done first and recorded so it is not repeated.** Every claim executed,
+the pipeline-level ones through `performMsm` per AD-43.1. Nine findings, five of which §5.9
+does not state and two of which contradict it.
+
+1. **ONE RULE GENERATES THE WHOLE DEGENERATE TABLE: an absent parameter reads as 0.**
+   `DistributionData` leaves every absent attribute `null`, the provider assigns it into a
+   `number`-typed field, and JS coerces `null` to 0 in arithmetic and in relational
+   comparison. Every row of §5.9's table follows, and so do rows it does not have. Measured
+   bit-for-bit against explicit controls: uniform with `limit.upper` absent draws **exactly**
+   what `limit.upper="0"` draws; gaussian with `limit.upper` absent is **exactly** the
+   truncation to `[lower, 0]`; triangular with `mode` absent is **exactly** `mode="0"`.
+   §5.9's table is therefore right about the case it names — BOTH limits absent — and silent
+   about the far commoner one. **A single absent limit is not δ₀ at all**; it is a genuine
+   law of half the authored width.
+2. **`⊥` ROUTES INTO §5.9 EXIST — so AD-36.2 forces the capped density.** Four, all measured
+   through `performMsm`, all producing `milliseconds.date="NaN"` and therefore notes that
+   vanish from the MIDI export (R24's exact condition):
+   (a) an EMPTY `distribution.list` (`series[i % 0]` is `series[NaN]` = `undefined`);
+   (b) any unusable numeric parameter (`limit.lower="abc"` → NaN through every draw);
+   (c) `compensatingTriangle` with `degreeOfCorrelation` absent or `0` — the division
+   `(prev − lower)/degree` is ±∞, the triangular of infinite limits is NaN, and the clip
+   passes NaN through (measured: first note fine, every later note NaN);
+   (d) an unusable `milliseconds.timingBasis` (`"abc"`, `"0"`) makes the index NaN or ∞ and
+   `RandomNumberProvider.requireUsableIndex` THROWS — the whole render aborts.
+   AD-47's answer stands untouched: a NULL draw is the δ₀ path and must never be routed to ⊥.
+   The finite-guard discipline has to distinguish `null` (absent ⇒ 0) from `NaN` (unusable
+   ⇒ ⊥), which is exactly the trap AD-45's handoff note flagged.
+3. **`@seed` ON A CORRELATED FAMILY DESTROYS THE PERFORMANCE — §4 says it is inert.**
+   `doHandover` seeds the walk's first value through `setInitialValue`, and `setSeed` runs
+   AFTERWARDS and CLEARS the series (`RandomNumberProvider.ts:186-190`). The next draw reads
+   `series[series.length − 1]` on an empty array. Measured end to end: a `brownianNoise` with
+   `seed="99"` gives `milliseconds.date="NaN"` on **every** note; without the seed the same
+   document performs normally. §4's exclusion list says "`@seed`: changes no distribution law;
+   reported as an inert difference" — true for the four i.i.d. families, **false for the two
+   correlated ones**, where it is the difference between a performance and no notes at all.
+   PARITY: Java has the identical ordering (`ImprecisionMap.java:601-620`,
+   `RandomNumberProvider.java:163-166`) but `ArrayList.get(-1)` throws
+   `IndexOutOfBoundsException` rather than yielding `undefined`, so the reference CRASHES
+   where this port emits NaN. Both destroy the performance; the mechanisms differ. Flagged for
+   the conductor as a PARITY.md question, not blocking — this cut prices the span `⊥` either
+   way, which is what "no performed value" means (AD-1/R21).
+4. **THE CORRELATED HANDOVER IS UNREACHABLE FOR AUTHORED DOCUMENTS.** `getHandoverValue`
+   reads `attribute('milliseconds.date', ddNext.xml)` off the `<distribution.*>` ELEMENT.
+   Nothing in the pipeline ever writes that attribute onto an MPM map entry — verified by
+   grepping every `milliseconds.date` write in `src/`; they all target MSM map entries. So the
+   handover always returns null, `doHandover` always takes its `Math.random()` branch, and
+   **every correlated span starts fresh and independent of its predecessor**. That simplifies
+   the reader decisively: a span's law is a function of its own attributes alone.
+5. **THE CORRELATED FAMILIES HAVE NO SINGLE MARGINAL — measured, not argued.** Sampling the
+   marginal at index `j` from 20 000 INDEPENDENT chains (a time average over one chain
+   measures the same thing only after mixing, and its error is autocorrelation rather than
+   sampling):
+   - `brownianNoise` from the FACTORY start is Uniform(lower, upper) at every index — KS
+     0.005–0.012 against a 0.0096 noise floor at that sample size. That is the rejection
+     walk's stationary law and it is provable: a symmetric proposal with reject-if-outside
+     satisfies detailed balance against the uniform.
+   - But the renderer does not use the factory start. `doHandover`'s fallback overwrites it
+     with `Math.random()·(R/2) + lower + R/4`, i.e. **Uniform over the MIDDLE HALF**. Measured
+     at index 0 with limits ±30: KS 0.0058 against U(−15, 15). The walk then diffuses outward
+     and reaches U(−30, 30) only after ~1000 indices at `stepWidth.max=3` (KS 0.0145, σ 16.92
+     against 17.32), or ~10 at `stepWidth.max=30`.
+   - `compensatingTriangle` is index-0 uniform over the same middle half, then CONTRACTS:
+     σ 8.69 → 8.30 at `degreeOfCorrelation=2`, → 4.91 at 5, and EXPANDS to 20.76 with atoms at
+     both limits at 0.5. Its stationary spread is a function of `degreeOfCorrelation` and has
+     no closed form.
+   §5.9's "compare marginals" therefore names a quantity that does not exist for these two
+   families as a single law. The next commit's reader has to choose one and say so; the
+   choice, the measurement and the request for ratification go with it.
+6. **`<style>` ENDS AN IMPRECISION SPAN ONLY IF IT CARRIES `@name.ref`** — AD-35.4's hazard
+   question, answered on the entry list itself. `GenericMap.parseData:143-146` skips a child
+   with no `@date` AND a `<style>` with no `@name.ref`, so the ENTRY LIST the any-entry rule
+   indexes is already filtered. Measured: a `<style name.ref="none">` at 720 leaves the notes
+   at 720/1440/2160 exactly unperturbed (the δ₀ gap §5.9 promises); the same `<style>` with
+   the attribute REMOVED performs bit-identically to no style at all. Same for an undated
+   `<distribution.uniform>`: invisible, governs nothing, ends nothing.
+7. **Two distributions at ONE date: the first governs a zero-width span and performs nothing**
+   — its `endDate` is its own `startDate`, so the note loop breaks immediately. Measured with
+   a first distribution that would have shifted everything by −300 ms: bit-identical to the
+   second alone.
+8. **A domain-less `<imprecisionMap>` and an unknown `distribution.*` name both perform
+   nothing** (the domain switch's `default: return`, the type switch's `default: continue`).
+   Both measured identical to no map at all. `spanEnds.ts` already carries the bare
+   `imprecisionMap` for its span rule, which is right — it has entries even though it renders
+   nothing.
+9. **The tuning domain is inert, confirmed and now cited.** `renderImprecisionToMap` really
+   does write `tuning.offset` (`ImprecisionMap.ts:435-444`), so "until the renderer reads it"
+   is the wrong test; the right one is whether anything reads it back, and nothing does —
+   `src/expression/applier.ts:1496` and `selection.ts:28` record the same verified finding for
+   the write side. §5.9's "Tuning domain: inert (R9b)" stands, on better evidence.
+
+**DRAFT AUDIT (AD-42.2), block by block.** The draft's two known type errors were real
+(`gauss10` and `NeumaierSum` do not exist — they are `gaussLegendre10` and `CompensatedSum`
+with a `.total` getter; and `bisectSignChange` returns `number | null`, which the draft pushed
+into a `number[]` and returned as a `number`). Zero of its claims had been checked.
+
+- **Law union — KEPT in shape, REWRITTEN in substance.** Five laws is the right vocabulary.
+  But the draft folded clipping into `TriangularLaw`'s parameters, where the renderer composes
+  it (`this.clip(this.triangularDistribution(…))`); it is now a `ClippedLaw` WRAPPER, which
+  then also serves the compensating triangle and the correlated start value, and whose atoms
+  at the bounds fall out of one implementation. `GaussianLaw`'s `number | null` limits are
+  gone: an absent limit reads as 0 (finding 1) and the mixture then produces the untruncated
+  law with no null branch. `Delta0Law` became a point mass at any value, which the degenerate
+  geometries need.
+- **`phi()` — REJECTED.** Abramowitz–Stegun 7.1.26 at `|ε| < 7.5·10⁻⁸`, which misses §5.0's
+  own epsilon claim for this family by five orders; the draft's own comment called it
+  "refined below the special-function ε", which it is not. Replaced by an all-positive
+  confluent series below `z = 2` and a continued fraction above it. **Measured 1.7·10⁻¹⁵
+  absolute and 4.9·10⁻¹⁴ relative in the left tail**, against a composite GL-10 quadrature of
+  the density that shares no coefficient with it. A hard-coded Cody table was written first
+  and thrown away: its correctness would have rested on forty transcribed digits.
+- **`phiInv()` — KEPT.** Acklam's coefficients survive (§5.0's record names them, and they
+  are the half of the pair that was right). The Halley step is now skipped where the density
+  underflows, since the correction there is 0/0 rather than small; the round trip is pinned at
+  `1e-13` relative rather than asserted in prose.
+- **`triangularCdf` — REWRITTEN, defect found.** The draft's textbook formula returns 1 for
+  `x ≥ upper`, which is FALSE when `mode > upper`: the renderer's branch fraction then exceeds
+  1, only the rising branch runs, and the true CDF at `upper` is `span/ca < 1`. Measured, a
+  `mode="99"` triangular on `±30` draws values up to ~58. The CDF is now written as the
+  inverse of the renderer's own two-branch quantile, so the two cannot disagree.
+- **`wasserstein1` — mechanism REJECTED, framing KEPT.** The x-domain choice is right and is
+  now measured exact. The draft's crossing search probed at quarters and hand-rolled what
+  `integrateAbsolute(f, a, b, splitPoints)` already does. Replaced: structural split points
+  are the quadratic's vertex from a three-point fit — exact for the polynomial families, where
+  `F_A − F_B` really is a quadratic between breakpoints — PLUS a K=16 subdivision, both
+  emitted, per AD-34.1's "both sets, never one".
+- **`quantile` — REWRITTEN for list and triangular.** The draft's list quantile
+  `floor(u·n)` is the wrong generalized inverse (it is `ceil(u·n) − 1`); its triangular
+  clamped into the clip inside the law rather than through the wrapper; its Gaussian branch
+  returned `bisectSignChange`'s possible null as a number.
+- **`wasserstein2Decomposition` — structure KEPT, panels and floor REWRITTEN.** The panel /
+  integrate / four-field / AD-32-floor structure is sound and is kept. Two defects: the tail
+  refinement fired only for Gaussians, but the TRIANGULAR's quantile has infinite DERIVATIVE
+  at `u = 0` (`Q = lo + √(u·s·a)`), which measured σ for `T(−30, 30, 0)` as 12.24716 against
+  the closed form `30/√6 = 12.24745` and put `ρ(uniform, triangular)` 6.7·10⁻⁶ off `7√2/10` —
+  refinement is now unconditional, and costs nothing on the families with no singularity
+  because GL-10 is exact on their quantiles anyway. And the draft's noise-floor scale included
+  `sigmaA, sigmaB` in its own `Math.max`, making the floor that decides whether σ is 0 depend
+  on σ; the scale is now the means alone.
+- **`supportHull` — REWRITTEN.** The draft's triangular support assumed the clip bounds it
+  (wrong for a mode outside the limits) and always spent ±12σ on a Gaussian even when the
+  truncation is live. Restricting a pure truncated normal to `[lower, upper]` and the σ-mesh
+  to ±6σ took `W₁` between two Gaussians from **7.07 ms to 1.57 ms per call with every closed
+  form unchanged at machine precision**.
+- **`lawsEqual`, `cdfBreakpoints`, the `q^N`-in-log-space mixture weight, the identity
+  short-circuit, and the x-domain/u-domain split — KEPT.** The mixture weight in particular is
+  exactly right and is the draft's best block: `q^10000` underflows below `q ≈ 0.9977` and the
+  log form says so out loud.
+
+**MEASURED, and these are §9.3's `imprecision` family**: `Φ` 1.7·10⁻¹⁵ absolute / 4.9·10⁻¹⁴
+left-tail relative; `W₁` against six closed forms ≤ 3.6·10⁻¹⁶ relative — machine precision,
+**Gaussian-vs-δ₀ included at 1.9·10⁻¹⁶**; `W₂` moments ≤ 1.5·10⁻¹⁵; `ρ(U, T)` bit-exact
+against `7√2/10`; `ρ(U, N)` 1.1·10⁻¹⁵ against `√(3/π)`; §1.2's closing identity 4.1·10⁻¹⁴
+relative over all 64 ordered pairs of a nine-law family.
+
+**BOTH ρ CONSTANTS RE-DERIVED INDEPENDENTLY** before they were compared to anything, and the
+derivations are in the test file rather than in a citation: `ρ(U, T) = (7/60)·√72 = 7√2/10`
+from `∫₀¹(u−½)Q_T(u)du = 2(1/8 − 1/15) = 7/60` with `σ_U = 1/√12`, `σ_T = 1/√6`; and
+`ρ(U, N) = √12/(2√π) = √(3/π)` from `E[X·Φ(X)] = 1/(2√π)`.
+
+[DECISION, reported] The ρ constants are **test references, not code fast paths**, which
+deviates from §5.9's "closed forms for clean family pairs". Reason: one code path cannot
+disagree with itself, and a closed form that LICENSES the general quadrature is worth more
+than one that bypasses it — the same argument that makes `quadrature.ts` re-derive its GL-10
+table in a test rather than at run time. The quadrature reproduces both constants to the
+last bit and to 1.1·10⁻¹⁵ respectively, which is the evidence a fast path would have hidden.
+
+[DECISION, reported] **An inverted-limit triangular (`limit.lower > limit.upper`) has no
+law**, and `triangularLaw` returns null so the caller reads `⊥`. This is §5.8's pedal
+precedent rather than a new rule: with the limits inverted the renderer's two branches run in
+opposite directions, so `u ↦ x(u)` is not monotone and there is no distribution function to
+integrate — measured, the "quantile" jumps DOWN by 132 at `u = 0.5`. Exactly the disposition a
+non-monotone pedal date component gets (AD-35).
+
+Gate: `npm run verify` GREEN before committing — 107 files, 4675 passed + 1 skipped (was
+4624 + 1). 51 new tests. eslint and prettier clean on both files. The draft is deleted in this
+commit, superseded by what the audit kept.
