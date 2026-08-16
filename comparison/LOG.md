@@ -3345,3 +3345,37 @@ quarter (1).
 
 Gate: `npm run verify` GREEN before committing — 111 files, 4846 passed, 0 skipped (was 4839).
 7 new tests. eslint and prettier clean across `src/comparison` and `tests/comparison`.
+
+## 2026-08-16 — AD-52: W3b rulings — unmatched parts renderer-true [BINDING]
+
+67f10a7 + 300c4f8 accepted (event atoms with charges recomputed at the
+argmin; densityAt with the pointwise test that the mean-density stand-in
+could never satisfy; the two tolerance moves diagnosed against a
+converging reference BEFORE the band moved — the discipline in its
+mature form). Rulings:
+
+AD-52.1 RATIFIED: an anchor with unknown date position spreads uniformly
+over the WHOLE WINDOW — the only placement that asserts nothing false,
+keeps closure by construction, and is symmetric; datePositionKnown
+travels on atom and dimension result and feeds AD-39.1's required
+statement.
+AD-52.2 AD-3's unmatched-part MECHANISM IS SUPERSEDED by the measured
+renderer truth: an unmatched part resolves to that document's GLOBAL
+maps (resolvePartMaps returns globalMaps for a null MPM part — executed:
+velocity 40, not neutral 100, 9.6 JND of error under the old rule); R6's
+neutral applies one level later, exactly when the global map is absent
+too — which degenerates to AD-3's rule for part-only documents. The
+hazard class's latest instance; the probe is pinned; the driver
+implements renderer-true with the reading in its module doc. AD-44.3 is
+the governing precedent, correctly cited.
+AD-52.3 Driver scope calls: (a) noteDensityWeight is REMOVED from the v1
+facade surface (an option whose only behavior is to throw is worse than
+absent; unknown keys already error; §9 amendment delegated to the facade
+commit; the w(t) plumbing is journaled future work — adding the key back
+is non-breaking). (b) MSM support ships as proposed (window end,
+measures, note counts, single-TS beat grid) with AD-12's multi-TS
+forward walk recorded as a NAMED, adjudicated obligation deferred
+visibly — estimate-degradation note in reports, board item for W4/W5,
+never silent.
+AD-52.4 The §7.4 invariance plumbing as its own commit before the driver
+is endorsed (per-document (shift, scale) reaching the integrands).
