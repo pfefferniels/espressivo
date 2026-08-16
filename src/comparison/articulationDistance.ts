@@ -44,6 +44,23 @@
  * *which* note needs the MSM. So the two kinds of anchor are kept apart and the id-anchored
  * ones carry `datePositionKnown: false`, which is §5.5's own instruction rather than a
  * simplification.
+ *
+ * ## `d_articulation` has TWO components (AD-55.1)
+ *
+ * The atoms are one of them. The other is `<style>@defaultArticulation`, which governs every
+ * note in its span that carries no atom — a piecewise-constant curve over score time, built by
+ * `articulationDefault`. It was read, ruled about and tested for a whole wave without reaching
+ * any evaluator, and three documents differing only in their default compared at `D = 0` while
+ * the renderer performed one of them at half duration throughout.
+ *
+ * So {@link defaultArticulationDistance} prices the step function as the step reading it is:
+ * per cell of the two curves' joint refinement, `localDistance` on the resolved def's effective
+ * modifier, sustained over the cell. It is the SAME `modifierDistance` the alignment charges,
+ * because a default and an atom modify a note by the same affine map and pricing them on two
+ * scales would make a document that moves an instruction between the two look like a document
+ * that changed it. The two components sum, and they reach the aggregation by different routes —
+ * the alignment's optimum as atoms, the step function as cells — which is what §5.0's
+ * "absolutely continuous part **plus** atoms" already provides for.
  */
 import {
   comparisonRowWith,
@@ -62,11 +79,14 @@ import {
   type EventAtomMass,
 } from './eventAlignment.js';
 import {
+  articulationDefAtom,
   effectiveAttributes,
   type ArticulationAtom,
   type ArticulationAtoms,
 } from './articulationAtoms.js';
+import { defaultArticulationAt, type DefaultArticulationCurve } from './articulationDefault.js';
 import { bottom, valued, type Valued } from './values.js';
+import type { Element } from '../xml/XomTypes.js';
 import type { ComparisonWindow } from './window.js';
 
 /** `x ↦ (replacement ?? x)·factor + offset` — the closed form both families take. */
@@ -469,6 +489,101 @@ export function articulationDistance(
     }),
     datePositionKnown: [...anchorsA, ...anchorsB].every((anchor) => anchor.datePositionKnown),
   };
+}
+
+/** One cell of the two default step functions' joint refinement. */
+export interface DefaultArticulationCell {
+  readonly startQuarters: number;
+  readonly endQuarters: number;
+  /** JND per quarter — constant across the cell, since both defaults are. */
+  readonly densityPerQuarter: number;
+  /** JND·quarters. */
+  readonly mass: number;
+  readonly capped: boolean;
+}
+
+export interface DefaultArticulationDistance {
+  readonly distance: number;
+  readonly cells: readonly DefaultArticulationCell[];
+  readonly cappedCells: number;
+}
+
+/**
+ * `d_default` over the window — the `@defaultArticulation` step function's own component.
+ *
+ * The two curves are piecewise constant, so their joint refinement is the union of their step
+ * dates and the integrand is constant inside every cell: the cell's mass is the modifier
+ * distance times the cell's length, with no quadrature in the time domain at all. That is
+ * §5.7's `step` epsilon family, exactly, and it is why this component adds no numerical error
+ * to the one the alignment already carries.
+ *
+ * A step with no def in force — the two CANCELLING dispositions of AD-37.2, and the whole
+ * pre-first-switch region of a document that has no default at all — prices as the NEUTRAL
+ * modifier and never as `⊥`: the renderer performs such a note at its written duration, which
+ * is a known value rather than an unreadable one.
+ */
+export function defaultArticulationDistance(
+  a: DefaultArticulationCurve,
+  b: DefaultArticulationCurve,
+  window: ComparisonWindow,
+  ticksPerQuarter: number,
+  jnd: JndOverrides = {},
+): DefaultArticulationDistance {
+  const startTicks = window.startQuarters * ticksPerQuarter;
+  const endTicks = window.endQuarters * ticksPerQuarter;
+
+  const edges = new Set<number>([startTicks, endTicks]);
+  for (const curve of [a, b])
+    for (const step of curve.steps)
+      if (step.startTicks > startTicks && step.startTicks < endTicks) edges.add(step.startTicks);
+  const grid = [...edges].sort((x, y) => x - y);
+
+  // One modifier per DEF, not per cell: a default in force across twenty steps resolves the
+  // same element twenty times otherwise, and the resolution is the expensive half.
+  const modifiers = new Map<Element | null, EffectiveModifier>();
+  const modifierAt = (curve: DefaultArticulationCurve, ticks: number): EffectiveModifier => {
+    const def = defaultArticulationAt(curve, ticks);
+    if (def === null) return NEUTRAL_MODIFIER;
+    const known = modifiers.get(def);
+    if (known !== undefined) return known;
+    const modifier = modifierOf(articulationDefAtom(def, ticks));
+    modifiers.set(def, modifier);
+    return modifier;
+  };
+
+  const total = new CompensatedSum();
+  const cells: DefaultArticulationCell[] = [];
+  let cappedCells = 0;
+
+  for (let i = 0; i < grid.length - 1; ++i) {
+    const lowTicks = grid[i];
+    const highTicks = grid[i + 1];
+    const lengthQuarters = (highTicks - lowTicks) / ticksPerQuarter;
+    if (!(lengthQuarters > 0)) continue;
+
+    const flag = { capped: false };
+    const density = modifierDistance(
+      modifierAt(a, lowTicks),
+      modifierAt(b, lowTicks),
+      ticksPerQuarter,
+      jnd,
+      flag,
+    );
+    if (density === 0 && !flag.capped) continue;
+    if (flag.capped) cappedCells += 1;
+
+    const mass = density * lengthQuarters;
+    total.add(mass);
+    cells.push({
+      startQuarters: lowTicks / ticksPerQuarter,
+      endQuarters: highTicks / ticksPerQuarter,
+      densityPerQuarter: density,
+      mass,
+      capped: flag.capped,
+    });
+  }
+
+  return { distance: total.total, cells, cappedCells };
 }
 
 /** AD-2's cap events, counted over the chosen alignment (see {@link ArticulationDistance}). */

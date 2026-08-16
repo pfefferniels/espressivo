@@ -704,10 +704,28 @@ all three.
 global/part map resolution. A global-vs-part-local _encoding_ difference with
 identical resolved curves is distance 0 plus a structural note — which is
 correct: it is not performed. Parts are matched by `@number` (with `@name`
-reported when it disagrees); **unmatched parts are compared against the neutral
-curve** and reported as structural notes (R6), and the document-level rule is a
-SUM over the union of parts. Documents that are global-only on both sides
-evaluate once, not per part.
+reported when it disagrees); a part with no counterpart takes the other
+document's **global** scope, which is what `resolvePartMaps(null, globalMaps)`
+performs (AD-52.2, superseding AD-3's neutral-curve wording), and it is reported
+as a structural note (R6). Documents that are global-only on both sides evaluate
+once, not per part.
+
+**The per-part sum counts rendered MSM parts** (AD-55.2, superseding AD-53.2's
+justification). The document-level rule is a SUM over scopes, and the scope count
+is a multiplier on every `d_k` and on `D`, so which document supplies it decides
+the headline number. `Performance.renderParts` iterates the **score's** parts and
+calls `resolvePartMaps(getCorrespondingPart(msmPart), globalMaps)`, skipping a
+part with no `<dated>`; an MPM `<part>` the score never names therefore performs
+nothing at all. So **with an MSM the scopes are the score's rendered parts**, each
+matched into each document the way `getCorrespondingPart` matches — `@number`
+first, then `@name` — and a document with no counterpart for a score part
+contributes its own global scope. Counting MPM `<part>` elements instead scored
+two pairs whose performed MSMs are byte-identical 3× apart: adding
+`<part><header/><dated/></part>` three times to both documents tripled `D` while
+changing no performed value, and AD-53.2's ratified Telemann 3× measured exactly
+that artifact. **Without an MSM** there is no score to count and the MPM-driven
+reading stands as an estimate, stamped with an `estimate-degradation` note; the
+report states the rule and the count it used in `scopes` (§9.3).
 
 **Two shadowing rules, not one** (AD-16, R22). _Maps_ shadow wholesale: a
 part-local map replaces the global one entirely, and an **empty** part-local
@@ -1071,6 +1089,27 @@ not 60. Revision 1's model was `profile = step(t) ⊕ atoms`; the renderer's is
 `profile(t) = atoms(t) where atoms exist, else step(t)`, so revision 1
 double-charged at exactly the dates the composer bothered to mark. The default's
 step function is built from the resolved style-switch list.
+
+**`d_articulation` has TWO components** (AD-55.1). The alignment optimum over
+`<articulation>` atoms is one; the `@defaultArticulation` step function is the
+other, and it is not optional. The step function is piecewise constant over score
+time, so it prices as the step reading it is: per cell of the two documents'
+joint refinement, §4's `localDistance` on the **resolved def's effective
+modifier** — the same affine form and the same rows an atom is priced on, because
+a default and an atom modify a note by the same map, and pricing them on two
+scales would make a document that moves an instruction between the two look like
+a document that changed it — sustained over the cell, summed with the alignment
+optimum. A step with no def in force (either cancelling disposition, and the
+whole of a document that declares no default) prices as the NEUTRAL modifier and
+never as `⊥`: such a note performs at its written duration, which is a known
+value. The two components reach §7's aggregation by different routes — the
+alignment's optimum as **atoms**, the step function as **cells** — which is
+§5.0's "absolutely continuous part plus atoms", used by one dimension for both.
+Without this component three documents differing only in their default compared
+at `D = 0` while the renderer performed one of them at half duration throughout,
+and the vendored Albert pair reported none of the `−96 ms` against `−60 ticks`
+default difference that is the only articulation instruction its second
+performance has.
 
 **The step function is RETROACTIVE** (AD-37.1).
 `renderArticulationToMap_noMillisecondModifiers:255-283` starts
@@ -1801,6 +1840,12 @@ the effective weight vector. `normalization: 'corpus'` (corpus level only)
 derives a single constant vector from the whole matrix and stamps it.
 Pair-dependent weights are forbidden and unimplemented (R3).
 
+Every `d_k` above is already summed over the evaluated SCOPES, and the scope
+count is the silent second multiplier on `D`. §5.0 fixes it: the score's rendered
+parts where an MSM is supplied, the MPM's `<part>` elements as a stamped estimate
+otherwise (AD-55.2). The report states the rule and the count in `scopes`, so a
+reader comparing two `D`s can see whether they were counted the same way.
+
 ### 7.3 Segments and the closing table
 
 **Columns come from the aggregate density** (AD-19, M9a). Revision 1 scored cells
@@ -2390,6 +2435,7 @@ export interface ComparisonReport {
     readonly fallbackUsed: boolean;
     readonly assumed: number | null;
   };
+  // the two MPMs' own <part> sets, matched by @number
   readonly parts: readonly {
     readonly numberA: number | null;
     readonly numberB: number | null;
@@ -2397,6 +2443,11 @@ export interface ComparisonReport {
     readonly nameB: string | null;
     readonly matched: boolean;
   }[];
+  // what the per-part SUM counted, and which document decided it (AD-55.2). `count` is a
+  // multiplier on every d_k and on D, and it differs from `parts.length` whenever an MPM
+  // declares a <part> the score does not name, or the other way round. 'mpm' carries an
+  // estimate-degradation note; 'global' is §5.0's single evaluation.
+  readonly scopes: { readonly rule: 'msm' | 'mpm' | 'global'; readonly count: number };
   readonly comparability: {
     // C7
     readonly lastDateA: number;

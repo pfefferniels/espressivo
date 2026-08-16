@@ -84,16 +84,24 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
    *
    * The tempo figure is NOT the 556.5371 the tempo suite pins for the same pair, and the two
    * differences are both accounted for: this window is the MSM's 204 quarters rather than the
-   * pair-derived 198, and this document has THREE parts, each of which inherits the global
-   * `tempoMap` and each of which the renderer performs — so AD-3's sum over the union of both
-   * documents' parts counts the same deviation once per part, which is what the renderer does.
+   * pair-derived 198, and this score has THREE parts, each of which inherits the global
+   * `tempoMap` and each of which the renderer performs — so §5.0's sum over the score's parts
+   * counts the same deviation once per part, which is what `renderParts` does (AD-55.2).
+   *
+   * The aggregate figures moved at AD-55.1 and the whole of the move is articulation's: the
+   * `<style>@defaultArticulation` step function became the second component of `d_articulation`
+   * (`1904 = 2004 − 100` on this pair), and the scope count is unchanged because this MSM names
+   * exactly the three parts the MPM declares.
    */
   it('pins the aggregate and the tempo row', () => {
-    expect(baroqueRomantic.aggregate.distance).toBeCloseTo(6493.60102, 4);
-    expect(baroqueRomantic.aggregate.mean).toBeCloseTo(31.83137755, 6);
+    expect(baroqueRomantic.aggregate.distance).toBeCloseTo(8397.60102, 4);
+    expect(baroqueRomantic.aggregate.mean).toBeCloseTo(41.164710882, 6);
     expect(baroqueRomantic.dimensions.tempo.distance).toBeCloseTo(1755.4706259, 4);
-    expect(baroqueFast.aggregate.distance).toBeCloseTo(22357.0626073, 4);
-    expect(fastRomantic.aggregate.distance).toBeCloseTo(21686.7195808, 4);
+    expect(baroqueRomantic.dimensions.articulation.distance).toBeCloseTo(2004, 9);
+    expect(baroqueFast.aggregate.distance).toBeCloseTo(24941.0626073, 4);
+    expect(fastRomantic.aggregate.distance).toBeCloseTo(26174.7195808, 4);
+    // The multiplier the numbers above carry, stated rather than left to be inferred (AD-55.2).
+    expect(baroqueRomantic.scopes).toEqual({ rule: 'msm', count: 3 });
   });
 
   it('satisfies the triangle inequality on real data, to quadrature precision (P-C3)', () => {
@@ -288,16 +296,118 @@ describe('scopes: what a part with no counterpart is compared against', () => {
     );
   });
 
-  it('evaluates a global-only pair ONCE, and a three-part pair three times (AD-3)', () => {
-    const globalOnly = (bpm: number) => doc(tempoMap(bpm));
-    const threeParts = (bpm: number) => doc(tempoMap(bpm), part(1, '') + part(2, '') + part(3, ''));
+  /**
+   * AD-55.2: the per-part sum counts what PERFORMS, and only a score can say what that is.
+   *
+   * AD-53.2 ratified the sum with the justification that "the per-part sum counts what is
+   * performed". It counted MPM `<part>` elements instead, and the two are not the same thing:
+   * `renderParts` iterates the MSM's parts, so an MPM `<part>` the score never names performs
+   * nothing at all. Adding three empty ones to both documents tripled `D` while the performed
+   * MSMs stayed byte-identical — two pairs that perform the same, scored 3× apart.
+   */
+  describe('the per-part sum counts rendered MSM parts (AD-55.2)', () => {
     const window = { start: 0, end: 4 };
-    const one = compare({ a: globalOnly(60), b: globalOnly(90), window }).dimensions.tempo.distance;
-    const three = compare({ a: threeParts(60), b: threeParts(90), window }).dimensions.tempo
-      .distance;
-    // Every part inherits the one global map, so the renderer performs the same difference in
-    // each of them and AD-3's sum counts it three times.
-    expect(three).toBeCloseTo(3 * one, 9);
+    const globalOnly = (bpm: number) => doc(tempoMap(bpm));
+    const withEmptyParts = (bpm: number, k: number) =>
+      doc(
+        tempoMap(bpm),
+        Array.from({ length: k }, (_value, index) => part(index + 1, '')).join(''),
+      );
+
+    const scoreOf = (partCount: number) =>
+      `<?xml version="1.0" encoding="UTF-8"?>` +
+      `<msm xmlns="http://www.cemfi.de/msm/ns/1.0" title="t" pulsesPerQuarter="720">` +
+      `<global><dated/></global>${Array.from(
+        { length: partCount },
+        (_value, index) =>
+          `<part name="p${String(index + 1)}" number="${String(index + 1)}" ` +
+          `midi.channel="${String(index)}" midi.port="0"><dated><score>` +
+          `<note xml:id="n${String(index)}" date="0.0" midi.pitch="60.0" duration="2880.0"/>` +
+          `</score></dated></part>`,
+      ).join('')}</msm>`;
+
+    it('the RENDERER ignores an MPM part the score does not name (measured)', () => {
+      const score = scoreOf(1);
+      const performed = [0, 1, 2, 3].map((k) =>
+        performMsm({ msm: score, mpm: withEmptyParts(60, k) }),
+      );
+      // Byte-identical: the empty <part> elements reach no note, so any k that moved a
+      // distance would be moving a number the performance does not carry.
+      for (const rendered of performed) expect(rendered).toBe(performed[0]);
+    });
+
+    it('scores k = 0..3 empty MPM parts identically when the MSM names one part', () => {
+      const score = scoreOf(1);
+      const distances = [0, 1, 2, 3].map(
+        (k) =>
+          compare({
+            a: withEmptyParts(60, k),
+            b: withEmptyParts(90, k),
+            window,
+            msm: parseMsmRoot(score),
+          }).dimensions.tempo.distance,
+      );
+      for (const distance of distances) expect(distance).toBeCloseTo(distances[0], 12);
+      expect(distances[0]).toBeCloseTo(
+        compare({ a: globalOnly(60), b: globalOnly(90), window, msm: parseMsmRoot(score) })
+          .dimensions.tempo.distance,
+        12,
+      );
+      expect(distances[0]).toBeGreaterThan(0);
+    });
+
+    it('counts one scope per rendered MSM part, three parts three times', () => {
+      const one = compare({
+        a: globalOnly(60),
+        b: globalOnly(90),
+        window,
+        msm: parseMsmRoot(scoreOf(1)),
+      });
+      const three = compare({
+        a: globalOnly(60),
+        b: globalOnly(90),
+        window,
+        msm: parseMsmRoot(scoreOf(3)),
+      });
+      // Three score parts all inheriting the one global map: the renderer performs the same
+      // deviation in each of them, so the sum counts it three times — and this time the 3 is
+      // the score's, not an artifact of two empty elements in the MPM.
+      expect(three.dimensions.tempo.distance).toBeCloseTo(3 * one.dimensions.tempo.distance, 9);
+      expect(three.scopes).toEqual({ rule: 'msm', count: 3 });
+      expect(one.scopes).toEqual({ rule: 'msm', count: 1 });
+    });
+
+    it('falls back to the MPM count with an estimate-degradation note when no MSM is given', () => {
+      const report = compare({ a: withEmptyParts(60, 3), b: withEmptyParts(90, 3), window });
+      expect(report.scopes).toEqual({ rule: 'mpm', count: 3 });
+      const degradations = report.notes.filter(
+        (note) => note.kind === 'estimate-degradation' && note.message.includes('per-part sum'),
+      );
+      expect(degradations).toHaveLength(1);
+      // Global-only on both sides is §5.0's single evaluation, and it says so too.
+      expect(compare({ a: globalOnly(60), b: globalOnly(90), window }).scopes).toEqual({
+        rule: 'global',
+        count: 1,
+      });
+    });
+
+    it('matches a score part to an MPM part by @number, then by @name (getCorrespondingPart)', () => {
+      // The MPM's only part is numbered 7 and named `p1`; the score's part 1 is named `p1`, so
+      // the renderer's SECOND lookup is the one that has to fire and its tempoMap is what
+      // performs. A number-only match would leave the part on the global map and score 0.
+      const named = doc(tempoMap(60), part(7, tempoMap(120)).replace('name="p7"', 'name="p1"'));
+      const report = compare({
+        a: named,
+        b: doc(tempoMap(60)),
+        window,
+        msm: parseMsmRoot(scoreOf(1)),
+      });
+      expect(report.scopes).toEqual({ rule: 'msm', count: 1 });
+      expect(report.dimensions.tempo.distance).toBeCloseTo(
+        (4 * Math.abs(Math.log(120 / 60))) / Math.log(1.025),
+        6,
+      );
+    });
   });
 });
 

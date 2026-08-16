@@ -62,7 +62,14 @@ import {
   type PerformanceSelector,
 } from './document.js';
 import type { InvarianceMode } from './decomposition.js';
-import { beatGridOf, measurePositionAt, readComparisonMsm, type ComparisonMsm } from './msm.js';
+import {
+  beatGridOf,
+  measurePositionAt,
+  readComparisonMsm,
+  type ComparisonMsm,
+  type MsmPartScope,
+} from './msm.js';
+import type { ComparisonScope } from './parts.js';
 import { plausibilityFindings, type PlausibleRanges } from './plausibility.js';
 import { CompensatedSum, gaussLegendre10 } from './quadrature.js';
 import {
@@ -192,7 +199,8 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
 
   const ticksPerQuarter = pair.ppq.lcm;
   const notes: ComparisonNote[] = [];
-  const sides = scopeSides(pair);
+  const scopes = scopeSides(pair, msm);
+  const sides = scopes.sides;
 
   const settings: DimensionSettings = {
     window: pair.window,
@@ -214,6 +222,21 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
         `the MSM carries ${String(msm.timeSignatures.length)} time signatures and the ` +
           'accentuation phase is anchored to the first: AD-12’s forward-only walk needs the ' +
           'evaluator to take a grid function, which this wave does not ship',
+      ),
+    );
+  if (scopes.rule === 'mpm')
+    notes.push(
+      note(
+        'estimate-degradation',
+        null,
+        null,
+        pair.window.startQuarters,
+        pair.window.endQuarters,
+        `the per-part sum runs over ${String(sides.length)} scopes taken from the MPM's own ` +
+          '<part> elements, because no MSM was supplied. What the renderer performs is one scope ' +
+          'per rendered MSM part (AD-55.2), which the documents alone cannot answer: an MPM part ' +
+          'the score never names performs nothing, and a score part with no MPM counterpart ' +
+          'performs the global maps anyway. Supply an `msm` for the counted quantity',
       ),
     );
   if (msm !== null && options.window != null && msm.endQuarters !== pair.window.endQuarters)
@@ -402,6 +425,7 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
       nameB: pairing.nameB,
       matched: pairing.matched,
     })),
+    scopes: { rule: scopes.rule, count: sides.length },
     comparability: { ...pair.comparability, suspectPair },
     measures: msm === null ? null : [...msm.measures],
     dimensions,
@@ -439,35 +463,100 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
 // Scopes
 // ---------------------------------------------------------------------------
 
+/** Which document decided how many scopes the per-part sum runs over (AD-55.2). */
+export type ScopeRule = 'msm' | 'mpm' | 'global';
+
 /**
- * The scope pairs to evaluate: every part, or the global scope alone.
+ * The scope pairs to evaluate, and what drove the count (AD-55.2).
  *
- * A side with no scope for a part row takes its own GLOBAL scope, which is exactly
- * `resolvePartMaps(null, globalMaps)` — see `dimensions.ts`'s header for the pipeline
- * measurement and for where that departs from AD-3's wording.
+ * The count is a MULTIPLIER on `D`, so getting it from the wrong document is not a detail.
+ * `Performance.renderParts` iterates the **MSM's** parts and calls
+ * `resolvePartMaps(getCorrespondingPart(msmPart), globalMaps)`, so what performs is one scope
+ * per rendered MSM part — and an MPM `<part>` the score never names performs nothing at all.
+ * AD-53.2's Telemann 3× pin measured the other thing: adding three EMPTY `<part>` elements to
+ * both documents tripled `D` while the performed MSMs stayed byte-identical.
+ *
+ * So with an MSM the scopes are the score's, matched into each document the way
+ * `getCorrespondingPart` matches — `@number` first, then `@name` — and a side with no
+ * counterpart takes its own GLOBAL scope, which is exactly `resolvePartMaps(null, globalMaps)`
+ * (AD-52.2, measured: velocity 40 from the global map, not the neutral 100).
+ *
+ * Without an MSM there is no score to count and the MPM-driven reading is the only one
+ * available. It stands, with the `estimate-degradation` note the caller stamps: it is an
+ * estimate of a quantity the documents alone cannot answer, not the answer.
  */
-function scopeSides(pair: ComparisonPair): readonly (readonly [ScopeSide, ScopeSide])[] {
+function scopeSides(
+  pair: ComparisonPair,
+  msm: ComparisonMsm | null,
+): {
+  readonly rule: ScopeRule;
+  readonly sides: readonly (readonly [ScopeSide, ScopeSide])[];
+} {
   const globalA = pair.a.scopes.find((scope) => scope.scope === 'global');
   const globalB = pair.b.scopes.find((scope) => scope.scope === 'global');
   if (globalA === undefined || globalB === undefined)
     throw new Error('comparison: a performance with no global scope');
 
-  const partRows = pair.scopes.filter((pairing) => pairing.scope === 'part');
-  if (partRows.length === 0)
-    return [
-      [
-        { role: 'a', document: pair.a, scope: globalA },
-        { role: 'b', document: pair.b, scope: globalB },
-      ],
-    ];
+  const globalOnly = [
+    [
+      { role: 'a', document: pair.a, scope: globalA },
+      { role: 'b', document: pair.b, scope: globalB },
+    ],
+  ] as const as readonly (readonly [ScopeSide, ScopeSide])[];
 
-  return partRows.map(
-    (pairing) =>
-      [
-        { role: 'a', document: pair.a, scope: pairing.a ?? globalA },
-        { role: 'b', document: pair.b, scope: pairing.b ?? globalB },
-      ] as const,
-  );
+  if (msm !== null) {
+    const scored = msm.parts.filter((part) => part.rendered);
+    // A score with no rendered part performs nothing; there is no part count to take from it,
+    // so the pair falls back to the reading the documents can answer.
+    if (scored.length > 0)
+      return {
+        rule: 'msm',
+        sides: scored.map(
+          (part) =>
+            [
+              { role: 'a', document: pair.a, scope: correspondingScope(pair.a, part) ?? globalA },
+              { role: 'b', document: pair.b, scope: correspondingScope(pair.b, part) ?? globalB },
+            ] as const,
+        ),
+      };
+  }
+
+  const partRows = pair.scopes.filter((pairing) => pairing.scope === 'part');
+  if (partRows.length === 0) return { rule: 'global', sides: globalOnly };
+
+  return {
+    rule: 'mpm',
+    sides: partRows.map(
+      (pairing) =>
+        [
+          { role: 'a', document: pair.a, scope: pairing.a ?? globalA },
+          { role: 'b', document: pair.b, scope: pairing.b ?? globalB },
+        ] as const,
+    ),
+  };
+}
+
+/**
+ * `Performance.getCorrespondingPart`, on the comparison's scopes: `@number`, then `@name`.
+ *
+ * The name fallback is the renderer's second lookup and it is why a score whose parts carry no
+ * `@number` still performs against an MPM that names its parts. Non-renderable `<part>`s are
+ * already absent from the scope list (`parts.ts`), which is `Part.createPart` returning null.
+ */
+function correspondingScope(
+  document: ComparisonPair['a'],
+  part: MsmPartScope,
+): ComparisonScope | null {
+  const parts = document.scopes.filter((scope) => scope.scope === 'part' && scope.renderable);
+  if (part.number !== null) {
+    const byNumber = parts.find((scope) => scope.number === part.number);
+    if (byNumber !== undefined) return byNumber;
+  }
+  if (part.name !== null) {
+    const byName = parts.find((scope) => scope.name === part.name);
+    if (byName !== undefined) return byName;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

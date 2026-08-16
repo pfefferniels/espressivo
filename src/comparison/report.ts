@@ -212,6 +212,7 @@ export interface ComparisonReport {
     /** AD-27.2's third state: the raw text of a declared-but-unusable value, per document. */
     readonly unusableDeclaration: { readonly a: string | null; readonly b: string | null };
   };
+  /** The two documents' own `<part>` sets, matched by `@number` — a fact about the MPMs. */
   readonly parts: readonly {
     readonly numberA: number | null;
     readonly numberB: number | null;
@@ -219,6 +220,17 @@ export interface ComparisonReport {
     readonly nameB: string | null;
     readonly matched: boolean;
   }[];
+  /**
+   * What the per-part SUM actually counted, and which document decided it (AD-55.2).
+   *
+   * `count` is a multiplier on every `d_k` and on `D`, so it is reported rather than left to be
+   * inferred from `parts`: the two differ whenever an MPM declares a `<part>` the score does
+   * not name, or the other way round. `'msm'` is the counted quantity — one scope per rendered
+   * MSM part, which is what `renderParts` iterates; `'mpm'` is the estimate available without a
+   * score, and carries an `estimate-degradation` note; `'global'` is the single evaluation a
+   * pair with no parts on either side gets (§5.0).
+   */
+  readonly scopes: { readonly rule: 'msm' | 'mpm' | 'global'; readonly count: number };
   readonly comparability: {
     readonly lastDateA: number;
     readonly lastDateB: number;

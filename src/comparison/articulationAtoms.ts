@@ -331,6 +331,33 @@ export function readArticulationAtoms(
   return { atoms, notes };
 }
 
+/**
+ * One `<articulationDef>` on its own, as the atom a `@defaultArticulation` step performs.
+ *
+ * The default names a def and the renderer applies it to every note in the step's span that
+ * carries no atom of its own, with no inline instruction on top (AD-37.2b: an atom SHADOWS the
+ * default rather than composing with it). So the atom is the def's attributes and nothing else,
+ * read at site `'def'` — where every duration lever composes rather than shadowing, which is
+ * exactly the affine form §5.5's pricing wants and the reason this is a call into this module
+ * rather than a second reader in `articulationDefault`.
+ *
+ * `readAttributes`' note channel is discarded here and that is not a loss: `resolveDurationLever`
+ * returns every present lever at site `'def'`, so the only note it can raise — `shadowed-lever` —
+ * cannot fire.
+ */
+export function articulationDefAtom(def: Element, dateTicks: number): ArticulationAtom {
+  return {
+    dateTicks,
+    entryIndex: -1,
+    xmlId: attribute('id', def)?.getValue() ?? null,
+    nameRef: attribute('name', def)?.getValue() ?? null,
+    def,
+    noteid: null,
+    datePositionKnown: true,
+    attributes: readAttributes(def, 'def', [], dateTicks),
+  };
+}
+
 /** The live, non-neutral attributes of an atom — what a matcher will price it on. */
 export function effectiveAttributes(atom: ArticulationAtom): readonly AtomAttribute[] {
   return atom.attributes.filter((candidate) => candidate.live && !candidate.neutral);

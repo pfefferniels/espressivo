@@ -39,8 +39,9 @@ import {
   type AccentuationCurve,
   type BeatGrid,
 } from './accentuationCurve.js';
-import { articulationDistance } from './articulationDistance.js';
+import { articulationDistance, defaultArticulationDistance } from './articulationDistance.js';
 import { readArticulationAtoms, type ArticulationAtoms } from './articulationAtoms.js';
+import { readDefaultArticulation, type DefaultArticulationCurve } from './articulationDefault.js';
 import { asynchronyDistance } from './asynchronyDistance.js';
 import { offsetAt, readAsynchronySegments, type AsynchronyCurve } from './asynchronyCurve.js';
 import {
@@ -67,7 +68,7 @@ import {
 import { ornamentationDistance } from './ornamentationDistance.js';
 import { readOrnamentAtoms, type OrnamentAtoms } from './ornamentAtoms.js';
 import { pedalDistance, pedalSampler } from './pedalDistance.js';
-import { readMovementSegments, type PedalCurve } from './pedalCurve.js';
+import { DEFAULT_CONTROLLER, readMovementSegments, type PedalCurve } from './pedalCurve.js';
 import type { ComparisonScope } from './parts.js';
 import { CompensatedSum, gaussLegendre10 } from './quadrature.js';
 import {
@@ -661,8 +662,45 @@ function pedalPlan(settings: DimensionSettings): CurvePlan<PedalCurve> {
       pedalDistance(curveA, curveB, settings.window, settings.ticksPerQuarter, jnd, canonical),
     notes: (curve, role) => [
       ...curve.notes.map((note) => noteFrom('pedal', role, settings.ticksPerQuarter, note)),
+      ...controllerNotes(curve, role, settings),
     ],
   };
+}
+
+/**
+ * §5.8's structural channel for `@controller`, which AD-36.3 named and nothing emitted.
+ *
+ * The attribute is excluded from the metric because it says WHICH controller carries the curve
+ * and not what the curve does — the reader's spans are deliberately flat across controllers
+ * (AD-13/R9). But two documents driving `sustain` and `soft` do perform differently, and until
+ * this note existed `PedalCurve.controllers` was computed and read by nothing, so the exclusion's
+ * stated channel did not fire. AD-55.1's obligation is what surfaced it.
+ *
+ * Silent for the ordinary document: a map that drives only `sustain` is the default and saying
+ * so on every report would bury the case that matters.
+ */
+function controllerNotes(
+  curve: PedalCurve,
+  role: 'a' | 'b',
+  settings: DimensionSettings,
+): readonly RawNote[] {
+  const controllers = curve.controllers;
+  if (controllers.length === 0) return [];
+  if (controllers.length === 1 && controllers[0] === DEFAULT_CONTROLLER) return [];
+  return [
+    {
+      kind: 'structural',
+      dimension: 'pedal',
+      document: role,
+      startQuarters: settings.window.startQuarters,
+      endQuarters: settings.window.endQuarters,
+      message:
+        `the movementMap drives ${controllers.map((name) => `'${name}'`).join(', ')}: ` +
+        '@controller is excluded from the metric as a name (§4, AD-36.3) and the spans are flat ' +
+        'across controllers (AD-13/R9), so a document driving a different controller is reported ' +
+        'here rather than priced',
+    },
+  ];
 }
 
 // --- the event dimensions ---------------------------------------------------
@@ -670,6 +708,10 @@ function pedalPlan(settings: DimensionSettings): CurvePlan<PedalCurve> {
 /**
  * The two event dimensions share everything but their reader and their findings, and the shared
  * part is where AD-7's `κ` and §9.3's `events` block come from.
+ *
+ * `continuous` is articulation's default step function (AD-55.1) and is empty for ornamentation:
+ * a dimension can carry BOTH an atomic and an absolutely continuous part, which is what §5.0's
+ * measure already says and what `d_k = alignment optimum + step mass` needs here.
  */
 function eventEvaluation(
   dimension: ComparisonDimension,
@@ -685,12 +727,17 @@ function eventEvaluation(
   rowDistances: readonly { readonly key: ComparisonJndKey; readonly distance: number }[],
   notes: readonly RawNote[],
   datePositionKnown: boolean,
+  continuous: {
+    readonly distance: number;
+    readonly cells: readonly EvaluationCell[];
+    readonly cappedCells: number;
+  } = { distance: 0, cells: [], cappedCells: 0 },
 ): DimensionEvaluation {
   const requested = settings.invariance[dimension];
   return {
     dimension,
-    distance: result.distance,
-    cells: [],
+    distance: result.distance + continuous.distance,
+    cells: continuous.cells,
     atoms: result.atoms,
     signedAt: null,
     meanSigned: null,
@@ -711,9 +758,11 @@ function eventEvaluation(
     },
     bottomLengthQuarters: 0,
     // §9.3's `cappedCells` counts CELLS for a curve dimension and ANCHORS here — the unit the
-    // dimension's density is carried in either way. AD-2 requires cap events to be reported and
-    // an event dimension that always answered 0 would have been silent about a truncation.
-    cappedCells: result.cappedAnchors,
+    // dimension's density is carried in either way (AD-54.2). Articulation now has both parts,
+    // so it reports both counts added: the field is a count of CAP EVENTS, and a reader who
+    // needs to know which component capped has the `capped` note's dimension and the two
+    // components' own shapes.
+    cappedCells: result.cappedAnchors + continuous.cappedCells,
     rowDistances,
     notes,
     timeSignatureSource: null,
@@ -737,6 +786,13 @@ function evaluateArticulation(
       side.scope.environment,
       side.document.performance.global,
     );
+  const readDefault = (side: ScopeSide): DefaultArticulationCurve =>
+    readDefaultArticulation(
+      viewOf(side, ARTICULATION_MAP),
+      side.document.scaleFactor,
+      side.scope.environment,
+      side.document.performance.global,
+    );
   const atomsA = read(a);
   const atomsB = read(b);
   const result = articulationDistance(
@@ -748,9 +804,23 @@ function evaluateArticulation(
     settings.jnd,
   );
 
+  // AD-55.1's second component: `<style>@defaultArticulation` governs every note that carries
+  // no atom of its own, so it is a step function over score time and it is priced as one.
+  const defaultA = readDefault(a);
+  const defaultB = readDefault(b);
+  const step = defaultArticulationDistance(
+    defaultA,
+    defaultB,
+    settings.window,
+    settings.ticksPerQuarter,
+    settings.jnd,
+  );
+
   const notes: RawNote[] = [
     ...atomsA.notes.map((note) => noteFrom('articulation', 'a', settings.ticksPerQuarter, note)),
     ...atomsB.notes.map((note) => noteFrom('articulation', 'b', settings.ticksPerQuarter, note)),
+    ...defaultA.notes.map((note) => noteFrom('articulation', 'a', settings.ticksPerQuarter, note)),
+    ...defaultB.notes.map((note) => noteFrom('articulation', 'b', settings.ticksPerQuarter, note)),
     ...result.inertFindings.map((finding): RawNote => {
       const quarters = finding.dateTicks / settings.ticksPerQuarter;
       return {
@@ -793,9 +863,24 @@ function evaluateArticulation(
     'articulation',
     settings,
     result,
-    [{ key: 'articulation/articulation@relativeDuration', distance: result.distance }],
+    [
+      {
+        key: 'articulation/articulation@relativeDuration',
+        distance: result.distance + step.distance,
+      },
+    ],
     notes,
     result.datePositionKnown,
+    {
+      distance: step.distance,
+      cells: step.cells.map((cell) => ({
+        startQuarters: cell.startQuarters,
+        endQuarters: cell.endQuarters,
+        mass: cell.mass,
+        densityAt: () => cell.densityPerQuarter,
+      })),
+      cappedCells: step.cappedCells,
+    },
   );
 }
 

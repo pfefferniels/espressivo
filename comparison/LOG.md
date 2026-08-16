@@ -3948,3 +3948,98 @@ same 4996 passed / 0 skipped before and after, which is the check that says so.
 
 Gate: `npm run verify` GREEN — 117 files, 4996 passed, 0 skipped. `npx prettier --check .` clean
 repo-wide for the first time. eslint clean on `src/comparison/` and `tests/comparison/`.
+
+## 2026-08-16 — W3 fix cut 2: CAPITAL-1 and CAPITAL-2, the two semantic capitals (w3-fix)
+
+Both rulings implemented, both verified against the renderer through the pipeline, and every
+multi-part anchor re-pinned once rather than twice — which is why they share a commit.
+
+**CAPITAL-1 / AD-55.1 — the default step function is now a live second component.**
+`articulationDefault.ts` was imported by nothing in `src/`. `defaultArticulationDistance`
+(`articulationDistance.ts`) prices the two curves' joint refinement: per cell, `localDistance` on
+the resolved def's effective modifier — via the new `articulationDefAtom`, so the affine form and
+the liveness rule are `articulationAtoms`' own and not a second reading — sustained over the cell,
+summed with the alignment optimum. The step mass reaches §7 as CELLS and the alignment's as
+ATOMS, which is §5.0's measure used by one dimension for both, and AD-19's table still closes
+(residual 0.00e+0 on all seven vendored pairs, worst closure 3.64e-12 absolute on 24941).
+A cancelled or absent default prices as the NEUTRAL modifier, never `⊥`.
+
+Verified on the report's own three-document probe, through `performMsm` and then through the
+facade — CANCEL 50,50,100,100 / CONTINUE 50,50,50,50 / NODEFAULT 100,100,100,100, and the three
+pairwise distances are `|ln 2|/jnd` × 1, × 3 and × 4 quarters, which add up because they are
+lengths of one step function. And on the REAL Albert pair: `d_articulation` 92.233 → 962.633,
+the 870.4 being `(96/jnd_ms + (60/720)/jnd_quarters) × 64 quarters × 3 scopes` — the two
+`nonlegato` defs are written in different units and §5.5 gives them different rows, so both fire.
+
+**CAPITAL-1(b) — the exclusion obligation, and one defect it immediately found.**
+The partition test's call is now THREE-way: row / excluded / **resolved** (live, no row of its
+own — `@name.ref` and `@defaultArticulation`). `CLASSIFICATION_PROBES` gives every non-row
+attribute a channel and an executable probe: `'priced'` must move `D`, `'reported'` must give
+`D = 0` plus a note that names the difference, `'out-of-scope'` must give `D = 0` plus a RENDERER
+probe showing where the performed difference went. A new exclusion with no probe fails the list
+check before any probe runs.
+
+[NEW FINDING, found by the obligation and fixed here] `@controller`'s stated channel did not
+fire. AD-36.3 files it to "the structural finding channel", `PedalCurve.controllers` was computed
+for exactly that, and `grep` says nothing outside `pedalCurve.ts` ever read it — so two documents
+driving `sustain` and `soft` produced `D = 0` and no note at all. `controllerNotes` in
+`dimensions.ts` emits it, silently for the ordinary `sustain`-only map. This is CAPITAL-1's shape
+one dimension over, and it is the obligation working as AD-55.1 intended.
+
+Also measured while probing, and left as it is because AD-41.1 already ruled it: the ornament
+pool's `@midi.pitch` / `@interval.chromatic` / `@interval.diatonic` DO change a performed value —
+the generated note's pitch, and nothing else, which the `'out-of-scope'` probe now pins by
+diffing two rendered documents with the `midi.pitch` attributes masked out.
+
+**CAPITAL-2 / AD-55.2 — part scopes are the score's.**
+`scopeSides` takes an MSM. With one, the scopes are the rendered MSM parts (a part with no
+`<dated>` is skipped, as `renderParts` skips it), each matched into both documents the way
+`getCorrespondingPart` matches — `@number` first, then `@name`, which is the renderer's second
+lookup and had no counterpart in the comparison before. A document with no counterpart for a
+score part contributes its own global scope (AD-52.2, unchanged). Without an MSM the MPM-driven
+count stands and carries an `estimate-degradation` note. `report.scopes = { rule, count }` states
+the multiplier; `report.parts` keeps its meaning (the two MPMs' own part sets).
+
+AD-53.2's 3× pin is replaced by three tests: the renderer probe (k = 0..3 empty MPM parts,
+byte-identical performances), the comparison probe (k = 0..3, constant `D`), and the score-driven
+3× (three MSM parts, 3 × the one-part number). Plus the `@name` fallback, which nothing pinned.
+
+**Old → new anchors.** The vendored corpus's MSM part counts happen to equal its MPM part counts
+(telemann 3, vulpius 4, albert 3), so no vendored number moved for CAPITAL-2; every move below is
+CAPITAL-1's step component. Measured with the MSM supplied, as the suite pins them:
+
+| pair | old D | new D | d_articulation old → new |
+| --- | --- | --- | --- |
+| telemann Baroque\|Fast | 22357.0626 | **24941.0626** | 75 → 2659 |
+| telemann Baroque\|Romantic | 6493.6010 | **8397.6010** | 100 → 2004 |
+| telemann Fast\|Romantic | 21686.7196 | **26174.7196** | 35 → 4523 |
+| vulpius Baroque\|Romantic | 8849.3905 | 8849.3905 | 154.9056 (unchanged) |
+| vulpius Baroque\|Amateur | 10294.4974 | 10294.4974 | 154.9056 (unchanged) |
+| vulpius Romantic\|Amateur | 2939.6596 | 2939.6596 | 0 (unchanged) |
+| albert Axel\|Robot | 8929.5188 | **9854.3188** | 92.2334 → 1017.0334 |
+
+Vulpius is unchanged because its three performances share one `@defaultArticulation`; that the
+Romantic\|Amateur articulation row is still EXACTLY 0 across both components is the check that
+says the new component is not a constant added everywhere. `baroqueRomantic.aggregate.mean`
+31.83137755 → 41.164710882.
+
+**Negative controls**, each by patch → `vitest run` → restore, tree verified clean after each:
+
+| repair reverted | fails |
+| --- | --- |
+| `defaultArticulationDistance` returns 0 | 4: the `@defaultArticulation` channel probe, both AD-55.1 distance tests, the Telemann pin |
+| MSM-driven scopes disabled | 4: three AD-55.2 tests, the Telemann pin (its `scopes` assertion) |
+| `controllerNotes` removed | 1: `@controller`'s channel probe |
+| `defaultArticulation` back in `EXCLUDED_ATTRIBUTES` | 2: the partition test, the probe-debt list |
+
+DESIGN amended under the AD-55 delegations: §5.5 gains "`d_articulation` has TWO components";
+§5.0's per-part paragraph gains the MSM-driven rule and loses AD-3's superseded neutral-curve
+wording; §7.2 gains the sentence that the scope count is `D`'s second multiplier; §9.3 gains
+`scopes`. [RE-SITED, journalled] AD-55.2 delegates "the §7.5 sentence"; §7.5 is *Signed
+descriptors*, and the sentence AD-55.2 supersedes physically lives in §5.0's per-part paragraph,
+so the rule is written there with a cross-reference from §7.2 where `D = Σ ω_k d_k` is defined.
+Writing a part-scope rule into the signed-descriptor section would have satisfied the citation
+and hidden the correction.
+
+Gate: `npm run verify` GREEN — 117 files, **5012 passed**, 0 skipped (4996 + 16). Repo-wide
+`npx prettier --check .` clean; eslint clean on `src/comparison/` and `tests/comparison/`.

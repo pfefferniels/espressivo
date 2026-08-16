@@ -38,6 +38,7 @@ import {
   scaleSpaceTagOf,
 } from '../../src/expression/registry.js';
 import type { RegistryRow, RowSpace } from '../../src/expression/registry.js';
+import { compareMpm, performMsm, type XmlText } from '../../src/api/index.js';
 import { forwardInSpace } from '../../src/expression/transforms.js';
 
 /** The §3 dimensions with rows: W2's four, plus the two W3a cut 1 brought. */
@@ -864,12 +865,17 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
   /**
    * §4's exclusion walk, as a predicate — every clause with the reason §4 gives it.
    *
-   * `@date` is the axis. `xml:id` and `*.ref` are identity. `@noteid` is named explicitly
+   * `@date` is the axis. `xml:id` and `@noteid` are identity — `@noteid` is named explicitly
    * because it is spelled without `.ref` and the pattern would miss it (AD-15/R16). The
    * name-valued attributes go to the structural finding channel by the `@controller`
    * precedent (AD-36.3) — naming a thing is an identity claim, not a magnitude — and the pool
    * `<note>` children are the same case one level down: they say WHICH pitches an ornament
    * generates.
+   *
+   * `*.ref` is NOT here any more. AD-55.1 moved the two def-naming attributes to
+   * {@link RESOLVED_ATTRIBUTES}, because "identity" was the reason a whole renderer-true
+   * mechanism went unpriced, and every member of both non-row buckets now carries an executable
+   * reason ({@link CLASSIFICATION_PROBES}).
    *
    * `@seed` is §4's own exclusion and it stays one, but its stated RATIONALE is now known to
    * be wrong for two of the six families: "changes no distribution law" holds for the four
@@ -879,8 +885,6 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
    * amend, and this comment is here so the gap is not silently inherited.
    */
   const EXCLUDED_ATTRIBUTES: ReadonlyMap<string, string> = new Map([
-    ['name.ref', 'identity: names a styleDef (§4 *.ref)'],
-    ['defaultArticulation', 'identity: names an articulationDef (§4 *.ref in substance)'],
     ['controller', 'name-valued: the structural finding channel, AD-36.3'],
     ['seed', '§4: not a magnitude — but see the note above on the correlated families'],
     ['detuneUnit', 'the tuning domain is inert (R9b): nothing reads tuning.offset back'],
@@ -889,19 +893,46 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
     ['interval.diatonic', 'the same, as an interval'],
   ]);
 
+  /**
+   * The partition's THIRD bucket: **live, with no row of its own** (AD-55.1).
+   *
+   * An attribute that names a def is not an exclusion and it is not a row either — it is an
+   * indirection whose MAGNITUDES are priced on the def's rows, one resolution away. Filing one
+   * with the exclusions was CAPITAL-1's mechanism: `@defaultArticulation` carried the reason
+   * "identity: names an articulationDef", which is true of the NAME and says nothing about
+   * whether anything resolves it — and for a whole wave nothing did, so three documents at
+   * 50/100/mixed durations compared at `D = 0` while the partition test passed.
+   *
+   * A member of this bucket owes the same debt an exclusion does ({@link CLASSIFICATION_PROBES}),
+   * in the strong direction: changing it must MOVE a reported distance.
+   */
+  const RESOLVED_ATTRIBUTES: ReadonlyMap<string, string> = new Map([
+    ['name.ref', 'live: the def it names is read and the def’s own rows are priced'],
+    [
+      'defaultArticulation',
+      'live (AD-55.1): the def it names governs every un-articulated note in the span, and the ' +
+        'step function is priced per cell on the same rows an atom is priced on',
+    ],
+  ]);
+
   it('every attribute of the survey-code §1.2 inventory appears exactly once (R9)', () => {
     for (const [dimension, element, attribute] of READ_ATTRIBUTES) {
       const excluded = EXCLUDED_ATTRIBUTES.has(attribute);
+      const resolved = RESOLVED_ATTRIBUTES.has(attribute);
       const row =
         dimension === null
           ? null
           : (comparisonRowAt(dimension, element, attribute) as ComparisonRegistryRow | null);
-      // Exactly one bucket. Both would mean the exclusion walk and the table disagree; neither
-      // would mean an attribute the renderer reads is priced nowhere and reported nowhere.
+      // Exactly one bucket of THREE (AD-55.1). Two would mean the exclusion walk and the table
+      // disagree; none would mean an attribute the renderer reads is priced nowhere and
+      // reported nowhere.
+      const buckets = [row !== null, excluded, resolved].filter(Boolean).length;
       expect(
-        `${String(dimension)}/${element}@${attribute}: row=${String(row !== null)} excluded=${String(excluded)}`,
+        `${String(dimension)}/${element}@${attribute}: row=${String(row !== null)} ` +
+          `excluded=${String(excluded)} resolved=${String(resolved)} buckets=${String(buckets)}`,
       ).toBe(
-        `${String(dimension)}/${element}@${attribute}: row=${String(!excluded)} excluded=${String(excluded)}`,
+        `${String(dimension)}/${element}@${attribute}: row=${String(!excluded && !resolved)} ` +
+          `excluded=${String(excluded)} resolved=${String(resolved)} buckets=1`,
       );
     }
   });
@@ -937,6 +968,207 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
     ).map((row) => row.key);
     expect(orphans).toEqual([]);
   });
+
+  // -------------------------------------------------------------------------------------
+  // AD-55.1's standing obligation: the classification call is itself a renderer claim
+  // -------------------------------------------------------------------------------------
+
+  /**
+   * Every non-row attribute, with the CHANNEL its performed effect reaches the report through
+   * and a probe that shows the channel fires.
+   *
+   * This is the obligation AD-55.1 attaches to the partition, and it is the check that would
+   * have caught CAPITAL-1 the day the classification was written. The partition is only as
+   * strong as its three-way call, and until now nothing cross-checked a call against the
+   * renderer: `@defaultArticulation` was filed as an exclusion, the filing was never executed,
+   * and a document at half duration throughout scored 0.
+   *
+   * Three channels, each with its own falsifiable shape:
+   *
+   * - `'priced'` — the magnitudes are priced one resolution away, or the span reads `⊥`.
+   *   A pair differing only in this attribute must move `D`.
+   * - `'reported'` — the difference is real but is not an expressive magnitude, so §3's
+   *   structural channel carries it. `D` must be 0 **and** a note must name it. A channel that
+   *   fires no note is not a channel, which is how `@controller`'s came to be wired at all.
+   * - `'out-of-scope'` — the difference is confined to a quantity outside the eleven
+   *   dimensions. `D` must be 0, and a RENDERER probe must show where the difference went.
+   *
+   * Every probe runs an EXPLICIT window: these documents are two instructions long, so a
+   * pair-derived window would end at the last date and integrate over nothing — which is a real
+   * property of §5.0 and not a defect, but it would make every probe here vacuously 0.
+   */
+  const PROBE_WINDOW = { start: 0, end: 4 };
+
+  const mpm = (header: string, dated: string): XmlText =>
+    (`<?xml version="1.0" encoding="UTF-8"?>` +
+      `<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0">` +
+      `<performance name="P" pulsesPerQuarter="720">` +
+      `<global><header>${header}</header><dated>${dated}</dated></global>` +
+      `</performance></mpm>`) as XmlText;
+
+  const ARTICULATION_STYLES =
+    '<articulationStyles><styleDef name="S">' +
+    '<articulationDef name="stacc" relativeDuration="0.5"/>' +
+    '<articulationDef name="ten" relativeDuration="1.2"/>' +
+    '</styleDef></articulationStyles>';
+
+  const articulation = (styleAttributes: string, atomRef: string) =>
+    mpm(
+      ARTICULATION_STYLES,
+      `<articulationMap><style date="0.0" name.ref="S" ${styleAttributes}/>` +
+        `<articulation date="360.0" name.ref="${atomRef}"/></articulationMap>`,
+    );
+
+  const movement = (controller: string) =>
+    mpm(
+      '',
+      `<movementMap><movement date="0.0" position="0.0" controller="${controller}"/>` +
+        '<movement date="720.0" position="1.0"/></movementMap>',
+    );
+
+  const brownian = (seed: string) =>
+    mpm(
+      '',
+      `<imprecisionMap.timing><distribution.correlated.brownianNoise date="0.0" ` +
+        `stepWidth.max="10.0" limit.lower="-30.0" limit.upper="30.0" ${seed}/>` +
+        '</imprecisionMap.timing>',
+    );
+
+  // Seeded, because the out-of-scope probe compares two RENDERED documents and an unseeded
+  // uniform draws from Math.random(): without it the probe would measure the RNG (§9.6, R2).
+  const imprecisionUnit = (unit: string) =>
+    mpm(
+      '',
+      `<imprecisionMap.timing detuneUnit="${unit}">` +
+        '<distribution.uniform date="0.0" seed="7" limit.lower="-30.0" limit.upper="30.0"/>' +
+        '</imprecisionMap.timing>',
+    );
+
+  const ORNAMENT_STYLES =
+    '<ornamentationStyles><styleDef name="O"><ornamentDef name="arp">' +
+    '<temporalSpread frameStart="-20.0" frameLength="40.0"/>' +
+    '</ornamentDef></styleDef></ornamentationStyles>';
+
+  const poolNote = (attributes: string) =>
+    mpm(
+      ORNAMENT_STYLES,
+      '<ornamentationMap><style date="0.0" name.ref="O"/>' +
+        `<ornament date="0.0" name.ref="arp" noteid="#n0" note.order="#p0">` +
+        `<note xml:id="p0" ${attributes}/></ornament></ornamentationMap>`,
+    );
+
+  /** One note, so a pool note stated as an interval has a principal to be relative to. */
+  const POOL_MSM =
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<msm title="probe" pulsesPerQuarter="720"><global><header/><dated/></global>' +
+    '<part name="P" number="1" midi.channel="0" midi.port="0"><header/><dated><score>' +
+    '<note date="0.0" midi.pitch="60.0" duration="720.0" xml:id="n0"/>' +
+    '</score></dated></part></msm>';
+
+  interface ClassificationProbe {
+    readonly attribute: string;
+    readonly channel: 'priced' | 'reported' | 'out-of-scope';
+    readonly a: XmlText;
+    readonly b: XmlText;
+    /** For `'reported'`: a substring the note must contain. */
+    readonly names?: string;
+  }
+
+  const CLASSIFICATION_PROBES: readonly ClassificationProbe[] = [
+    // --- resolved (live, no row of its own) ---------------------------------------------
+    {
+      attribute: 'name.ref',
+      channel: 'priced',
+      a: articulation('', 'stacc'),
+      b: articulation('', 'ten'),
+    },
+    {
+      attribute: 'defaultArticulation',
+      channel: 'priced',
+      a: articulation('defaultArticulation="stacc"', 'stacc'),
+      b: articulation('', 'stacc'),
+    },
+    // --- excluded -----------------------------------------------------------------------
+    {
+      // `setSeed` clears the series `doHandover` seeded, so the span reads ⊥ and the cap binds:
+      // the exclusion is real (the seed is not a magnitude) and the effect is priced anyway.
+      attribute: 'seed',
+      channel: 'priced',
+      a: brownian('seed="99"'),
+      b: brownian(''),
+    },
+    {
+      attribute: 'controller',
+      channel: 'reported',
+      a: movement('sustain'),
+      b: movement('soft'),
+      names: "'soft'",
+    },
+    {
+      attribute: 'detuneUnit',
+      channel: 'out-of-scope',
+      a: imprecisionUnit('cents'),
+      b: imprecisionUnit('Hz'),
+    },
+    {
+      attribute: 'midi.pitch',
+      channel: 'out-of-scope',
+      a: poolNote('midi.pitch="60.0"'),
+      b: poolNote('midi.pitch="72.0"'),
+    },
+    {
+      attribute: 'interval.chromatic',
+      channel: 'out-of-scope',
+      a: poolNote('interval.chromatic="1.0"'),
+      b: poolNote('interval.chromatic="7.0"'),
+    },
+    {
+      attribute: 'interval.diatonic',
+      channel: 'out-of-scope',
+      a: poolNote('interval.diatonic="1.0"'),
+      b: poolNote('interval.diatonic="4.0"'),
+    },
+  ];
+
+  it('every non-row attribute carries a renderer-checked reason (AD-55.1)', () => {
+    const owed = [...EXCLUDED_ATTRIBUTES.keys(), ...RESOLVED_ATTRIBUTES.keys()].sort();
+    const probed = CLASSIFICATION_PROBES.map((probe) => probe.attribute).sort();
+    // The debt itself, before any probe runs: a new exclusion with no probe is the exact
+    // omission CAPITAL-1 was, and it fails here rather than three waves later.
+    expect(probed).toEqual(owed);
+  });
+
+  for (const probe of CLASSIFICATION_PROBES)
+    it(`@${probe.attribute}'s channel fires: ${probe.channel}`, () => {
+      const { report } = compareMpm({ a: probe.a, b: probe.b, window: PROBE_WINDOW });
+
+      if (probe.channel === 'priced') {
+        // A resolved indirection that resolves to nothing scores 0, which is CAPITAL-1.
+        expect(report.aggregate.distance).toBeGreaterThan(0);
+        return;
+      }
+
+      expect(report.aggregate.distance).toBe(0);
+      if (probe.channel === 'reported') {
+        const naming = report.notes.filter((note) => note.message.includes(probe.names ?? ''));
+        expect(naming.length).toBeGreaterThan(0);
+        return;
+      }
+
+      // 'out-of-scope': the renderer DOES perform a difference, and the probe says where it
+      // went. Anything but the named quantity would mean the exclusion is hiding a magnitude.
+      const perform = (source: XmlText) =>
+        String(performMsm({ msm: POOL_MSM as XmlText, mpm: source }));
+      if (probe.attribute === 'detuneUnit') {
+        expect(perform(probe.a)).toBe(perform(probe.b));
+        return;
+      }
+      const pitches = (source: XmlText) => perform(source).match(/midi\.pitch="[^"]*"/g) ?? [];
+      expect(pitches(probe.a)).not.toEqual(pitches(probe.b));
+      expect(perform(probe.a).replace(/midi\.pitch="[^"]*"/g, '')).toBe(
+        perform(probe.b).replace(/midi\.pitch="[^"]*"/g, ''),
+      );
+    });
 });
 
 /**

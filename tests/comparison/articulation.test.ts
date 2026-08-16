@@ -29,7 +29,15 @@ import {
   type DefaultArticulationCurve,
 } from '../../src/comparison/articulationDefault.js';
 import { anchorsOf, articulationDistance } from '../../src/comparison/articulationDistance.js';
-import { comparisonRowFor } from '../../src/comparison/registry.js';
+import { compareInterior } from '../../src/comparison/compare.js';
+import { defaultWeights } from '../../src/comparison/aggregate.js';
+import { DEFAULT_LAMBDA_DATE } from '../../src/comparison/eventAlignment.js';
+import {
+  COMPARISON_DIMENSIONS,
+  comparisonRowFor,
+  type ComparisonDimension,
+} from '../../src/comparison/registry.js';
+import type { InvarianceMode } from '../../src/comparison/decomposition.js';
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
 
@@ -671,5 +679,104 @@ describe('articulation atom placement (AD-51.2)', () => {
     expect(
       distanceOf('<articulation date="0.0" relativeDuration="0.5"/>', '').datePositionKnown,
     ).toBe(true);
+  });
+});
+
+/**
+ * The default step function as the SECOND component of `d_articulation` (AD-55.1).
+ *
+ * `articulationDefault.ts` was read, ruled about and tested for a whole wave without reaching
+ * any evaluator: `articulationDistance` consumed the atoms alone, so three documents differing
+ * only in their `@defaultArticulation` compared at `D = 0` while the renderer performed one of
+ * them at half duration throughout. The suite above pins the STEP FUNCTION; this one pins that
+ * the step function reaches the number, which is a different claim and the one that was false.
+ *
+ * The renderer figures are the same ones the suite above executes — 50/50/100/100 for the
+ * canceller, 50/50/50/50 for the continuer, 100 throughout for a document with no default —
+ * so what is checked here is that three performances a listener could tell apart do not
+ * compare at zero.
+ */
+describe('the default step function reaches d_articulation (AD-55.1)', () => {
+  const window = { start: 0, end: 4 } as const;
+  const NEPERS_PER_JND = comparisonRowFor('articulation/articulation@relativeDuration').jnd;
+
+  const styled = (styles: string, map: string) =>
+    `<mpm xmlns="${NS}"><performance name="p" pulsesPerQuarter="720">` +
+    `<global><header>${styles}</header><dated><articulationMap>${map}` +
+    '</articulationMap></dated></global></performance></mpm>';
+
+  const withDefault = (secondStyle: string) =>
+    styled(STYLES, `<style date="0.0" name.ref="A" defaultArticulation="stacc"/>${secondStyle}`);
+
+  // AD-37.2's three dispositions, as three documents that differ in nothing else.
+  const CANCEL = withDefault('<style date="720.0" name.ref="A"/>');
+  const CONTINUE = withDefault('<style date="720.0" name.ref="MISSING"/>');
+  const NODEFAULT = styled(
+    STYLES,
+    '<style date="0.0" name.ref="A"/><style date="720.0" name.ref="A"/>',
+  );
+
+  const distance = (a: string, b: string) =>
+    compareInterior({
+      a,
+      b,
+      window,
+      weights: defaultWeights(),
+      jnd: {},
+      plausibleRange: {},
+      invariance: Object.fromEntries(
+        COMPARISON_DIMENSIONS.map((dimension) => [dimension, 'none']),
+      ) as Record<ComparisonDimension, InvarianceMode>,
+      lambdaDate: DEFAULT_LAMBDA_DATE,
+    });
+
+  it('separates the canceller, the continuer and the document with no default', () => {
+    const cancelContinue = distance(CANCEL, CONTINUE);
+    const cancelNone = distance(CANCEL, NODEFAULT);
+    const continueNone = distance(CONTINUE, NODEFAULT);
+    for (const report of [cancelContinue, cancelNone, continueNone])
+      expect(report.dimensions.articulation.distance).toBeGreaterThan(0);
+
+    // The step function is `×0.5` against `×1.0`, i.e. |ln 2| nepers sustained. CANCEL and
+    // NODEFAULT differ over [0, 1) quarter; CANCEL and CONTINUE over [1, 4); CONTINUE and
+    // NODEFAULT over the whole window — and the three lengths add up, which is what makes
+    // this a step reading rather than three unrelated numbers.
+    const perQuarter = Math.abs(Math.log(0.5)) / NEPERS_PER_JND;
+    expect(cancelNone.dimensions.articulation.distance).toBeCloseTo(perQuarter * 1, 9);
+    expect(cancelContinue.dimensions.articulation.distance).toBeCloseTo(perQuarter * 3, 9);
+    expect(continueNone.dimensions.articulation.distance).toBeCloseTo(perQuarter * 4, 9);
+  });
+
+  it('places the step mass as CELLS, so AD-19’s table still closes', () => {
+    const report = distance(CANCEL, NODEFAULT);
+    const row = report.table.dimensions.indexOf('articulation');
+    expect(report.table.rowSums[row]).toBeGreaterThan(0);
+    expect(report.table.rowSums[row]).toBeCloseTo(report.dimensions.articulation.distance, 9);
+    expect(report.table.residual).toBeLessThanOrEqual(1e-12 * report.aggregate.distance);
+    // The atoms are the alignment's and stay at 0 here: neither document carries an atom, so
+    // the whole of the distance is the step function's.
+    expect(report.dimensions.articulation.events.mass).toBe(0);
+  });
+
+  it('prices the two units the Albert pair’s defaults are written in, separately (§5.5)', () => {
+    // `nonlegato` is `absoluteDurationChangeMs="-96"` in one performance and
+    // `absoluteDurationChange="-60"` (ticks) in the other. They are different ROWS with
+    // different units, and the sum is what the pair's step component is made of.
+    const nonlegato = (attribute: string) =>
+      '<articulationStyles><styleDef name="A">' +
+      `<articulationDef name="nonlegato" ${attribute}/>` +
+      '</styleDef></articulationStyles>';
+    const map = '<style date="0.0" name.ref="A" defaultArticulation="nonlegato"/>';
+    const report = distance(
+      styled(nonlegato('absoluteDurationChangeMs="-96.0"'), map),
+      styled(nonlegato('absoluteDurationChange="-60.0"'), map),
+    );
+    const msJnd = comparisonRowFor('articulation/articulation@absoluteDurationChangeMs').jnd;
+    const tickJnd = comparisonRowFor('articulation/articulation@absoluteDurationChange').jnd;
+    // 96 ms on one row, 60/720 quarter on the other, sustained over the four-quarter window.
+    expect(report.dimensions.articulation.distance).toBeCloseTo(
+      4 * (96 / msJnd + 60 / 720 / tickJnd),
+      9,
+    );
   });
 });

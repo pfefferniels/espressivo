@@ -55,6 +55,26 @@ export interface MeasurePosition {
   readonly beat: number;
 }
 
+/**
+ * One `<part>` of the score, as `Performance.renderParts` sees it (AD-55.2).
+ *
+ * This is the list the per-part sum counts, because it is the list the renderer iterates:
+ * `renderParts` walks the MSM's parts and calls `resolvePartMaps(getCorrespondingPart(part), …)`,
+ * so an MPM `<part>` with no MSM counterpart is never a scope and an MSM part with no MPM
+ * counterpart is one anyway — inheriting the global maps wholesale (AD-52.2).
+ */
+export interface MsmPartScope {
+  /** Position among the MSM's `<part>` children. */
+  readonly index: number;
+  readonly number: number | null;
+  readonly name: string | null;
+  /**
+   * False where the part has no `<dated>`: `renderParts` `continue`s past it, so it performs
+   * nothing at all and is not a scope.
+   */
+  readonly rendered: boolean;
+}
+
 export interface ComparisonMsm {
   /** `max(date + duration)` over every note, in quarters; 0 for a score with no notes. */
   readonly endQuarters: number;
@@ -62,6 +82,8 @@ export interface ComparisonMsm {
   readonly measures: readonly MeasureEntry[];
   /** How many notes the score carries, per part number where it has one. */
   readonly noteCount: number;
+  /** In document order — `renderParts`' own iteration (AD-55.2). */
+  readonly parts: readonly MsmPartScope[];
   readonly facts: MsmFacts;
 }
 
@@ -93,11 +115,23 @@ export function readComparisonMsm(root: Element): ComparisonMsm {
   const timeSignatures = readTimeSignatures(root, ppq);
   const endQuarters = endTicks / ppq;
 
+  // The `<dated>` test is read from the tree rather than from `MsmFacts`, which carries notes
+  // and not the element: `renderParts` skips a part with no `<dated>` before it renders
+  // anything, so a part that carries one is a scope even when its score is empty.
+  const elements = root.getChildElements('part').toArray();
+  const parts = facts.parts.map((part): MsmPartScope => ({
+    index: part.index,
+    number: part.number,
+    name: part.name,
+    rendered: elements[part.index]?.getFirstChildElement('dated') != null,
+  }));
+
   return {
     endQuarters,
     timeSignatures,
     measures: measureGrid(timeSignatures, endQuarters),
     noteCount,
+    parts,
     facts,
   };
 }
