@@ -3137,3 +3137,87 @@ table MINOR-4; options echo without document texts); src/index.ts +
 src/api exports per §9.7; P-C2 byte-identity at facade level; P-C5
 cross-module test in AD-6's three-part split. Then the W3 wave gate
 (independent verifier).
+
+## 2026-08-16 — W3b part 1: §7 aggregation and AD-19's closing table (w3-imp)
+
+`src/comparison/aggregate.ts` + 28 tests. Pure mathematics over a DECLARED density interface,
+deliberately touching no evaluator: it can be gated on its own, and it cannot leave a
+cross-module change half-written if this context has to hand off.
+
+**THE DENSITY IS A MEASURE, and the interface says so.** §5.0's `p_k` is an absolutely
+continuous part plus ATOMS at event dates, and `DimensionDensity` carries both because the
+table has to sum both. Flattening atoms into an average density would put an articulation
+event's mass in the wrong column, which is not a rounding choice — atoms are exactly where the
+mass is concentrated. AD-7's spreading rule gets the same treatment: a matched pair at
+differing dates is not a point mass but a uniform contribution over `[min(dA,dB), max(dA,dB)]`,
+so `DensityAtom` carries an interval and a true atom is the coincident case.
+
+`κ` (§7.1) is implemented for the first time — `EVENT_KAPPA_QUARTERS = 1`, and the UNIT is its
+whole content: an alignment's optimum is in JND, the table is in JND·quarters, and κ is the
+bridge that lets an atom and a cell share a column.
+
+**RUZZO–TOMPA IS TESTED AGAINST A BRUTE-FORCE ENUMERATION, and the reference was wrong first.**
+The discipline is `eventAlignment.test.ts`'s: asserting "these are the segments" pins one
+answer and passes on an implementation that optimizes the wrong thing. Writing the reference
+exposed that I had paraphrased maximality rather than stated it. Ruzzo & Tompa's condition (2)
+is "no proper supersequence THAT ITSELF SATISFIES (1) scores at least as much", and the
+qualifier is load-bearing: on `[1, −2, 3]` the subsequence `[0,0]` scoring 1 sits inside
+`[0,2]` scoring 2, but `[0,2]` contains `[2,2]` scoring 3 and so is not a competitor —
+`[0,0]` survives. My first reference dropped the qualifier and accused a correct algorithm.
+Both now agree on thirteen hand-picked shapes and 400 random sequences.
+
+The canonicity §7.3 claims is pinned directly: `[0, 5, 0]` gives `[1,1]` and never `[0,2]`,
+because a run extended by a zero-score cell contains a proper subsequence of equal score and
+fails maximality. That is the property the math lens attacked and it holds.
+
+**A DESIGN INCONSISTENCY I WROTE AND THE TEST CAUGHT.** `DensityCell` carries `mass` (the
+authority) and an optional `densityAt` (the shape, for root refinement). My first `massIn`
+pro-rated a partly covered cell BY LENGTH while the root refinement used the sampler — so a
+boundary could move without any mass moving, which is exactly the inconsistency the module's
+own doc comment warns about, written by me two hundred lines earlier. The root-refinement test
+found no segment at all where the density plainly crosses the threshold. Repaired the way that
+keeps both guarantees: the sub-interval's share is `∫ p / ∫_cell p` RESCALED to `mass`, so the
+shape comes from the sampler and the scale from the authority, and the row sums still reproduce
+`d_k` exactly whatever the sampler's own quadrature error.
+
+**[LIMITATION, reported not hidden] ROOT REFINEMENT NEEDS A POINTWISE DENSITY THAT NO SHIPPED
+EVALUATOR EXPOSES.** AD-19/M9b requires segment boundaries at the ROOTS of `p_D − τ_D` because
+a cell-quantized edge can sit many bars from the crossing. All eight `*Distance` modules return
+cells carrying `mass` only. `densityAt` is therefore optional, and where it is absent the
+cell's mean density stands in and `SegmentPass.cellQuantizedDimensions` **names** the
+dimensions that fell back — so a report can say which boundaries are approximate instead of
+implying all are exact. The remedy is for each `*Distance` module to hand back the integrand it
+already evaluates; that is a cross-module change and belongs with the wiring, not here.
+
+TWO MORE STRUCTURAL FINDINGS for whoever wires the dimensions in, recorded now so they are not
+rediscovered:
+
+1. **The event dimensions expose no atom placement.** `articulationDistance` and
+   `ornamentationDistance` return a scalar plus counts — no per-anchor mass, no dates. AD-19's
+   table cannot close without them, and AD-7's spreading rule needs both dates of a matched
+   pair. `eventAlignment` already returns `pairs`/`unmatchedA`/`unmatchedB`, so the costs and
+   dates are recoverable; exposing them is a required extension to the cut-2/cut-3 modules.
+2. **`peak` on a zero-width (atom) segment.** Reported as the continuous part's peak, i.e. 0,
+   rather than as `Infinity`: a point mass has unbounded density and §9.6's finiteness
+   discipline admits no such field. The atom is visible in `mass`, which is where it belongs.
+
+C11's equivalence block ships with one deviation from a literal reading, stated in the code:
+the PER-DIMENSION `aboveThresholdLengthFraction` is measured against that dimension's OWN
+threshold rather than copied from the aggregate segments. Copied, it would be identical for
+every dimension and say nothing; §7.3 licenses exactly this as the secondary, explicitly
+non-closing per-dimension product, and it is a descriptor measured at cell resolution.
+
+NEGATIVE CONTROLS, four, each failing exactly its own tests and restoring green: dropping the
+root refinement (1); pro-rating a sampled cell by length (1 — the same test, which is the point,
+since the two halves of that repair are one property); letting Ruzzo–Tompa absorb boundary
+zeros (3); computing the remainder column by re-integration rather than by subtraction from the
+row total (2, both closure tests).
+
+Gate: `npm run verify` GREEN before committing — 110 files, 4822 passed, 0 skipped (was 4794).
+eslint and prettier clean.
+
+REMAINING IN W3B, in the order I would take them: the event-dimension atom placement (finding
+1 above); a per-part dimension driver producing `DimensionDensity` for all eleven; the §9
+facade with its report shapes, validation table, serialization order, −0 normalization and
+finiteness walker; `src/index.ts` + `src/api` exports; P-C2 byte-identity; P-C5's three-part
+split.
