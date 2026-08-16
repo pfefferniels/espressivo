@@ -3221,3 +3221,34 @@ REMAINING IN W3B, in the order I would take them: the event-dimension atom place
 facade with its report shapes, validation table, serialization order, −0 normalization and
 finiteness walker; `src/index.ts` + `src/api` exports; P-C2 byte-identity; P-C5's three-part
 split.
+
+## 2026-08-16 — AD-51: W3b part 1 accepted; two rulings; handoff granted [BINDING]
+
+2c2a4f0 accepted (aggregation + canonical table; κ implemented for the
+first time; the Ruzzo–Tompa maximality-qualifier self-catch and the
+massIn shape-vs-scale repair are both on the record as the discipline
+working). Rulings:
+
+AD-51.1 densityAt: the EVALUATOR EXTENSION is ruled (each *Distance
+module hands back the integrand it already evaluates), because AD-19
+adjudicated exact root-refined boundaries and the integrand exists in
+every module — the extension is exposure, not new mathematics. The
+shipped optional-densityAt machinery with cellQuantizedDimensions STAYS
+as (i) the graceful path for any future dimension that genuinely lacks a
+pointwise density and (ii) the honest report field naming approximate
+boundaries wherever they occur. Successor takes it after the event-atom
+extension.
+AD-51.2 Event atom placement: REQUIRED extension to the cut-2/cut-3
+modules (per-anchor masses + both dates of matched pairs, recoverable
+from eventAlignment's existing returns) — AD-19's table cannot close and
+AD-7's spreading rule cannot run without it. Item 1 for the successor,
+as recommended.
+AD-51.3 HANDOFF GRANTED at 2c2a4f0 (clean, pushed, green 4822+0).
+imp-cut4's tenure: cut 4 in four commits (the Wasserstein substrate at
+machine precision, the reader with nine renderer findings, 75 rows
+closing the inventory, PARITY IMP1) plus W3b part 1 — and the P-C3
+family repair that strengthened every dimension. The scoping instinct
+(pure math over a declared interface, no half-written cross-module
+change) is the AD-42 lesson internalized. Successor commission: task #1's
+order — event-atom extension, densityAt extension, eleven-dimension
+driver, §9 facade as adjudicated, exports, P-C2/P-C11/P-C5.
