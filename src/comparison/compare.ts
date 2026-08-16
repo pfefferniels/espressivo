@@ -812,6 +812,13 @@ function unionDecomposition(unit: string, rows: readonly DimensionEvaluation[]):
   const length = spans[0].end - spans[0].start;
 
   // The virtual abscissa: row `p` occupies `[p·length, (p+1)·length)`.
+  //
+  // The `1e-12` floor is a DIVISION guard and nothing else (a W3 MINOR named it undeclared): on
+  // a zero-length window every row occupies the same degenerate span, `x / 0` is `NaN` or
+  // `±Infinity`, and the clamp below would then carry that into the index. With the floor the
+  // index is 0 and the union degenerates to the first row's curve, which is the right answer for
+  // a window with no interior — §9.6 already reports every length-normalized mean as null there.
+  // It substitutes for no VALUE: `length` itself is never replaced, only the divisor.
   const locate = (x: number): { row: DimensionEvaluation; quarters: number } => {
     const index = Math.min(rows.length - 1, Math.max(0, Math.floor(x / Math.max(length, 1e-12))));
     const span = spans[index];
