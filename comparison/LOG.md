@@ -4868,3 +4868,67 @@ DEFERRED-BY-DEFAULT under the RED budget: it proceeds only if B–E close
 with headroom, else it is journaled post-campaign work — A-Q5 called it
 presentation sugar under semantic pricing, and the budget regime says
 defer discretionary phases. Not silent: this entry is the record.
+
+## 2026-08-17 — W4 cut B1: §8's corpus mathematics (w4-products)
+
+`src/comparison/clustering.ts` and `src/comparison/embedding.ts` + 23 tests. Lance–Williams
+agglomeration, PAM, silhouette, cyclic Jacobi, classical MDS and seriation — pure algorithms
+over a declared matrix interface, touching no document. AD-51's scoping precedent again: it
+gates on its own and it cannot leave a cross-module change half-written.
+
+**EVERY ALGORITHM IS CHECKED AGAINST SOMETHING THAT IS NOT IT**, which is the discipline
+`quadrature.ts`'s Newton re-derivation and `eventAlignment.ts`'s brute-force enumeration
+established. `single`/`complete` against a brute-force min/max over member pairs on random
+matrices; `average` against the mean inter-cluster distance; `ward.D2` against Ward's own closed
+form on Euclidean data, `√(2·n_I·n_J/(n_I+n_J))·|c_I − c_J|`, which shares no line with the
+recurrence; `pam` against an exhaustive search over every `k`-subset; `silhouette` against the
+formula evaluated independently; `jacobiEigen` against `A = V Λ Vᵀ` and `VᵀV = I`; `classicalMds`
+against the distances it is supposed to reproduce, on a planar point set; `doubleCentered`
+against `−½ J D² J` built from explicit matrix products.
+
+**TWO DEFECTS THE REFERENCES FOUND, both in the first draft:**
+
+1. **§2.F's Lance–Williams coefficients for `single`/`complete` are not bit-exact.**
+   `½a + ½b − ½|a−b|` IS the minimum in exact arithmetic and is NOT the same double: measured on
+   a 4-item corpus, the nested form gave a final single-linkage height of `6.699999999999999`
+   where the matrix entry it is supposed to BE reads `6.7`. A merge height is published data a
+   consumer plots and compares against the matrix, so the implementation uses `Math.min`/
+   `Math.max` — which is also the definition rather than a shortcut for it. The table's arithmetic
+   form is kept for the three linkages where there is no closed form to prefer.
+
+2. **PAM's BUILD + SWAP misses, and by more than a rounding.** Measured over 200 random corpora
+   of 4–7 items: **12 misses, worst excess 41 %** against the exhaustive optimum. §8 makes the
+   medoid the one corpus product whose entire value is naming a real performer — "the most
+   typical Hofmann" — so a 41 % worse answer is a product defect and not a numerical one.
+
+[DECISION, needs ratification] **PAM gains an EXHAUSTIVE pass below a documented limit.**
+`PAM_EXHAUSTIVE_LIMIT = 200 000` subsets [convention]: each candidate costs `O(n·k)`, so that is
+a few tens of millions of operations at the ceiling and instant on anything a hand-assembled
+corpus produces. Every vendored corpus is covered outright, as is a 121-item folder at `k = 2`
+(7 260 subsets); the same folder at `k = 3` is `2.9·10⁵` and falls back to BUILD + SWAP.
+`Partition.exhaustive` reports WHICH, so a caller reads whether the medoid is the global optimum
+rather than assuming it. §8 specifies PAM and does not specify this, which is why it is flagged:
+it is strictly better where it applies and it changes no interface.
+
+**AD-25.2 IS PINNED ON A TIE-RICH MATRIX**, which is the only place index-keyed rules and
+label-keyed rules differ: every distance equal — what a corpus of `both-neutral` dimensions or a
+duplicated document produces. The permuted corpus's dendrogram maps back through the permutation
+to the straight one exactly, merge for merge and leaf for leaf. Negative-controlled by keying the
+merge tie on the index, which fails it.
+
+Classical MDS is honest about a non-Euclidean input in the three ways §8 requires, and the third
+is pinned as a CONTRAST rather than as a value: on a 4-point metric no Euclidean space realizes
+(three points mutually 2 apart with a fourth at distance 1 from each, where the circumradius is
+`2/√3 ≈ 1.155`), explained variance over `Σ|λ|` is strictly less than the same figure over
+`Σλ⁺`, so the choice of denominator is measurable rather than stylistic. Negative-controlled.
+
+NEGATIVE CONTROLS, five, each failing exactly its own tests and restoring green: the arithmetic
+LW form for single/complete (1); the exhaustive PAM pass removed (2); explained variance over
+`Σλ⁺` (1); the merge tie keyed on the index (1); the eigenvector sign fixing removed (1).
+
+Gate: `npm run verify` GREEN — 121 files, **5316 passed**, 0 skipped (was 5293). Repo-wide
+`npx prettier --check .` clean; eslint clean.
+
+NEXT in cut B: the driver and facade — item expansion with unique-label enforcement, one window
+and one option set, the `N²` matrices with their pinned bit-symmetry, `normalization: 'corpus'`
+by AD-25.5's median formula, profiles, `suspectPairs`, and AD-26.3's two opt-in enrichments.
