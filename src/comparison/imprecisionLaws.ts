@@ -267,7 +267,15 @@ export function readImprecisionSpans(
 
   if (view === null) return neutralImprecisionReading(domain);
 
-  const entries = view.entries.filter((entry) => Number.isFinite(entry.date));
+  // Common-tick dates first, so a mixed view's two tick grids meet in one place rather than at
+  // each of the three sites the any-entry span walk reads a date.
+  const entries = view.entries
+    .map((entry, index) => ({
+      element: entry.element,
+      ticks: entry.date * (view.entryResolutions?.[index]?.scaleFactor ?? scaleFactor),
+      date: entry.date,
+    }))
+    .filter((entry) => Number.isFinite(entry.date));
   if (entries.length === 0) return neutralImprecisionReading(domain);
 
   const spans: ImprecisionSpan[] = [];
@@ -276,11 +284,11 @@ export function readImprecisionSpans(
 
   for (const [index, entry] of entries.entries()) {
     const element: Element = entry.element;
-    const startTicks = entry.date * scaleFactor;
+    const startTicks = entry.ticks;
     // ANY next entry ends the span (AD-14ii/R12) — the imprecision maps and asynchronyMap are
     // the only two with this rule, and `spanEnds.ts` is asserted above so the two cannot drift.
     const next = entries[index + 1] as (typeof entries)[number] | undefined;
-    const endTicks = next === undefined ? Number.POSITIVE_INFINITY : next.date * scaleFactor;
+    const endTicks = next === undefined ? Number.POSITIVE_INFINITY : next.ticks;
 
     breakpoints.add(startTicks);
 

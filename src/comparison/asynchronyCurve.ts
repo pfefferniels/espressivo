@@ -83,7 +83,15 @@ export function readAsynchronySegments(
 
   if (view === null) return neutralAsynchronyCurve();
 
-  const entries = view.entries.filter((entry) => Number.isFinite(entry.date));
+  // Common-tick dates first, so a mixed view's two tick grids are reconciled once rather than
+  // at each of the three places the span walk reads a date.
+  const entries = view.entries
+    .map((entry, index) => ({
+      element: entry.element,
+      ticks: entry.date * (view.entryResolutions?.[index]?.scaleFactor ?? scaleFactor),
+      date: entry.date,
+    }))
+    .filter((entry) => Number.isFinite(entry.date));
   if (entries.length === 0) return neutralAsynchronyCurve();
 
   const segments: AsynchronySegment[] = [];
@@ -92,10 +100,10 @@ export function readAsynchronySegments(
 
   for (const [index, entry] of entries.entries()) {
     const element: Element = entry.element;
-    const startTicks = entry.date * scaleFactor;
+    const startTicks = entry.ticks;
     // ANY next entry ends the span — the whole point of behaviour 1.
     const next = entries[index + 1] as (typeof entries)[number] | undefined;
-    const endTicks = next === undefined ? Number.POSITIVE_INFINITY : next.date * scaleFactor;
+    const endTicks = next === undefined ? Number.POSITIVE_INFINITY : next.ticks;
 
     breakpoints.add(startTicks);
 

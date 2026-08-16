@@ -52,11 +52,19 @@ import {
   type CanonicalPair,
   type CurveDecomposition,
   type CurveMoments,
+  IDENTITY_CANONICAL_PAIR,
   type InvarianceMode,
   type SampledCurve,
 } from './decomposition.js';
-import { readScopeMapViews, type ComparisonDocument } from './document.js';
+import {
+  readScopeMapViews,
+  type ComparisonDocument,
+  type EntryResolution,
+  type OrderedMapView,
+} from './document.js';
 import { dynamicsDistance } from './dynamicsDistance.js';
+import { editScript, type EditScriptResult } from './editScript.js';
+import { affectedTicks, editInstructionsOf, editView, type EditInstruction } from './editState.js';
 import { readDynamicsSegments, volumeAt, type DynamicsCurve } from './dynamicsCurve.js';
 import type { EventAtomMass } from './eventAlignment.js';
 import { imprecisionDistance, type ImprecisionDecomposition } from './imprecisionDistance.js';
@@ -267,8 +275,21 @@ const EMPTY_EVENTS = { matched: 0, unmatchedA: 0, unmatchedB: 0, mass: 0 };
 /** Everything a curve-shaped dimension has to supply, in one record. */
 interface CurvePlan<C> {
   readonly dimension: ComparisonDimension;
+  /** The map this dimension reads, which is also the (part, map) scope of its §6 script. */
+  readonly container: string;
   readonly jndKey: ComparisonJndKey;
-  readonly read: (side: ScopeSide) => C;
+  /**
+   * Read a VIEW rather than a side, so §6's edit states go through the same reader.
+   *
+   * `resolution` is the fallback for a view whose entries carry none — i.e. every ordinary
+   * single-document view. A mixed edit view carries one per entry and this argument is then
+   * never consulted (`document.ts`'s `resolutionAt`).
+   */
+  readonly readView: (
+    view: OrderedMapView | null,
+    resolution: EntryResolution,
+    role: 'a' | 'b',
+  ) => C;
   readonly breakpoints: (curve: C) => readonly number[];
   /**
    * The T-space curve, or null where the window carries a `⊥` span — §1.2 takes moments and
@@ -278,11 +299,17 @@ interface CurvePlan<C> {
   readonly bottomSpans: (
     curve: C,
   ) => readonly { readonly startTicks: number; readonly endTicks: number }[];
+  /**
+   * `d_k` over a window. The WINDOW is a parameter rather than a closure because §6's edit path
+   * integrates the same function over the sub-interval a transition can change
+   * (`editState.affectedTicks`); every other caller passes `settings.window`.
+   */
   readonly distance: (
     a: C,
     b: C,
     jnd: number,
     canonical: CanonicalPair,
+    window: ComparisonWindow,
   ) => {
     readonly distance: number;
     readonly cells: readonly {
@@ -297,6 +324,20 @@ interface CurvePlan<C> {
   readonly timeSignatureSource?: (a: C, b: C) => 'msm' | 'renderer-default';
 }
 
+/** What one side's instructions resolve against, in `document.ts`'s own shape. */
+function resolutionOf(side: ScopeSide): EntryResolution {
+  return {
+    scaleFactor: side.document.scaleFactor,
+    environment: side.scope.environment,
+    globalEnvironment: side.document.performance.global,
+  };
+}
+
+/** One side's curve: its own map, read through its own resolution. */
+function readCurve<C>(plan: CurvePlan<C>, side: ScopeSide): C {
+  return plan.readView(viewOf(side, plan.container), resolutionOf(side), side.role);
+}
+
 function evaluateCurve<C>(
   plan: CurvePlan<C>,
   a: ScopeSide,
@@ -307,8 +348,8 @@ function evaluateCurve<C>(
   const startTicks = settings.window.startQuarters * ticksPerQuarter;
   const endTicks = settings.window.endQuarters * ticksPerQuarter;
 
-  const curveA = plan.read(a);
-  const curveB = plan.read(b);
+  const curveA = readCurve(plan, a);
+  const curveB = readCurve(plan, b);
   const row = comparisonRowWith(plan.jndKey, settings.jnd);
 
   // Moments are taken on each document's OWN breakpoints, which is what makes the
@@ -353,7 +394,7 @@ function evaluateCurve<C>(
         : canonicalizationFor(invariance, momentsB),
   };
 
-  const result = plan.distance(curveA, curveB, row.jnd, canonical);
+  const result = plan.distance(curveA, curveB, row.jnd, canonical, settings.window);
 
   const canonicalA =
     samplerA === null ? null : (ticks: number) => canonicalApply(canonical.a, samplerA(ticks));
@@ -499,6 +540,120 @@ export function evaluateDimension(
   }
 }
 
+/**
+ * §6's script for one dimension over one (part, map) scope, or null where this wave has none.
+ *
+ * The curve dimensions are here; the event and distribution ones follow in later cuts, and the
+ * null is what a caller reports rather than a silent empty script — §9.3's `scripts` array must
+ * not imply "no differences" where it means "not computed".
+ *
+ * ## Two decisions this makes, both stated rather than buried
+ *
+ * **Pricing is RAW, never canonicalized.** §7.4's invariance modes rescale a curve by that
+ * DOCUMENT's own moments, and an intermediate edit state is not a document — its moments move
+ * as the script is applied, so a canonicalized `norm` would not be a fixed metric and
+ * `scriptCost ≥ d_curve` would stop being the theorem AD-5 makes it. The identity pair is
+ * therefore used throughout, and the `dCurve` reported beside a script is the identity one.
+ *
+ * **Both sides use the SAME `jnd`**, the row's resolved value, so `norm` is one function of the
+ * pair. A per-side JND would make the telescoping sum meaningless.
+ */
+export function editScriptForDimension(
+  dimension: ComparisonDimension,
+  a: ScopeSide,
+  b: ScopeSide,
+  settings: DimensionSettings,
+  options: EditScriptOptions = {},
+): DimensionEditScript | null {
+  switch (dimension) {
+    case 'tempo':
+      return curveEditScript(tempoPlan(settings), a, b, settings, options);
+    case 'dynamics':
+      return curveEditScript(dynamicsPlan(settings), a, b, settings, options);
+    case 'rubato':
+      return curveEditScript(rubatoPlan(settings), a, b, settings, options);
+    case 'asynchrony':
+      return curveEditScript(asynchronyPlan(settings), a, b, settings, options);
+    case 'accentuation':
+      return curveEditScript(accentuationPlan(settings), a, b, settings, options);
+    case 'pedal':
+      // NOT localized: `getPreviousPosition` scans BACKWARDS over entry indices for an
+      // inherited `@transition.to` (PARITY P2), so a movement can depend on an instruction
+      // before it and `affectedTicks`' left bound does not hold here.
+      return curveEditScript(pedalPlan(settings), a, b, settings, { ...options, localize: false });
+    default:
+      return null;
+  }
+}
+
+/** Knobs the edit path takes; the default is the shipped behaviour in every case. */
+export interface EditScriptOptions {
+  /**
+   * Integrate each transition over the interval it can change rather than over the window.
+   *
+   * On by default and EXACT — `editState.affectedTicks` states the argument and the suite pins
+   * the two forms bit-equal over the vendored corpus and the adversarial family. The `false`
+   * mode is what that pin compares against, and it is the reason the flag exists: an
+   * optimization whose reference has been deleted cannot be checked again.
+   */
+  readonly localize?: boolean;
+}
+
+/** One dimension's §6 script over one scope, with the lower bound it is a theorem about. */
+export interface DimensionEditScript {
+  readonly dimension: ComparisonDimension;
+  readonly container: string;
+  readonly script: EditScriptResult<EditInstruction>;
+}
+
+function curveEditScript<C>(
+  plan: CurvePlan<C>,
+  a: ScopeSide,
+  b: ScopeSide,
+  settings: DimensionSettings,
+  options: EditScriptOptions,
+): DimensionEditScript {
+  const jnd = comparisonRowWith(plan.jndKey, settings.jnd).jnd;
+  const viewA = viewOf(a, plan.container);
+  const viewB = viewOf(b, plan.container);
+  // The view's `element` is its map, which no reader consults; it exists so an edit view is a
+  // complete `OrderedMapView` rather than a lookalike. Either document's map will do, and a
+  // state with no instruction at all reads as the absent map it performs like.
+  const fallback = viewA?.element ?? viewB?.element ?? null;
+
+  const ticksPerQuarter = settings.ticksPerQuarter;
+  const normWindow = (
+    previous: readonly EditInstruction[],
+    next: readonly EditInstruction[],
+  ): ComparisonWindow => {
+    if (options.localize === false) return settings.window;
+    const affected = affectedTicks(
+      previous,
+      next,
+      settings.window.startQuarters * ticksPerQuarter,
+      settings.window.endQuarters * ticksPerQuarter,
+    );
+    return {
+      ...settings.window,
+      startQuarters: affected.startTicks / ticksPerQuarter,
+      endQuarters: affected.endTicks / ticksPerQuarter,
+    };
+  };
+
+  const script = editScript<EditInstruction, C>(
+    editInstructionsOf('a', viewA, resolutionOf(a)),
+    editInstructionsOf('b', viewB, resolutionOf(b)),
+    {
+      represent: (state) =>
+        plan.readView(editView(plan.container, state, fallback), resolutionOf(a), 'a'),
+      norm: (x, y, previous, next) =>
+        plan.distance(x, y, jnd, IDENTITY_CANONICAL_PAIR, normWindow(previous, next)).distance,
+    },
+  );
+
+  return { dimension: plan.dimension, container: plan.container, script };
+}
+
 const TEMPO_MAP = 'tempoMap';
 const DYNAMICS_MAP = 'dynamicsMap';
 const RUBATO_MAP = 'rubatoMap';
@@ -517,23 +672,24 @@ const IMPRECISION_MAPS: Readonly<Record<string, string>> = {
 function tempoPlan(settings: DimensionSettings): CurvePlan<TempoCurve> {
   return {
     dimension: 'tempo',
+    container: TEMPO_MAP,
     jndKey: 'tempo/tempo@bpm',
-    read: (side) => {
+    readView: (view, resolution, role) => {
       const curve = readTempoSegments(
-        viewOf(side, TEMPO_MAP),
-        side.document.scaleFactor,
-        side.scope.environment,
-        side.document.performance.global,
+        view,
+        resolution.scaleFactor,
+        resolution.environment,
+        resolution.globalEnvironment,
       );
-      requirePositiveTempo(curve, side.role);
+      requirePositiveTempo(curve, role);
       return curve;
     },
     breakpoints: (curve) => curve.breakpointsTicks,
     sampler: (curve) => (ticks) => Math.log(quarterBpmAt(curve, ticks)),
     // AD-1: tempo cannot reach `⊥` — an unresolvable level performs the renderer's own 100.0.
     bottomSpans: () => [],
-    distance: (curveA, curveB, jnd, canonical) =>
-      tempoDistance(curveA, curveB, settings.window, settings.ticksPerQuarter, jnd, canonical),
+    distance: (curveA, curveB, jnd, canonical, window) =>
+      tempoDistance(curveA, curveB, window, settings.ticksPerQuarter, jnd, canonical),
     notes: (curve, role) =>
       curve.notes.map((note) => noteFrom('tempo', role, settings.ticksPerQuarter, note)),
   };
@@ -557,19 +713,20 @@ function requirePositiveTempo(curve: TempoCurve, role: 'a' | 'b'): void {
 function dynamicsPlan(settings: DimensionSettings): CurvePlan<DynamicsCurve> {
   return {
     dimension: 'dynamics',
+    container: DYNAMICS_MAP,
     jndKey: 'dynamics/dynamics@volume',
-    read: (side) =>
+    readView: (view, resolution) =>
       readDynamicsSegments(
-        viewOf(side, DYNAMICS_MAP),
-        side.document.scaleFactor,
-        side.scope.environment,
-        side.document.performance.global,
+        view,
+        resolution.scaleFactor,
+        resolution.environment,
+        resolution.globalEnvironment,
       ),
     breakpoints: (curve) => curve.breakpointsTicks,
     sampler: (curve) => (ticks) => Math.log(volumeAt(curve, ticks)),
     bottomSpans: () => [],
-    distance: (curveA, curveB, jnd, canonical) =>
-      dynamicsDistance(curveA, curveB, settings.window, settings.ticksPerQuarter, jnd, canonical),
+    distance: (curveA, curveB, jnd, canonical, window) =>
+      dynamicsDistance(curveA, curveB, window, settings.ticksPerQuarter, jnd, canonical),
     notes: (curve, role) =>
       curve.notes.map((note) => noteFrom('dynamics', role, settings.ticksPerQuarter, note)),
   };
@@ -578,13 +735,14 @@ function dynamicsPlan(settings: DimensionSettings): CurvePlan<DynamicsCurve> {
 function rubatoPlan(settings: DimensionSettings): CurvePlan<RubatoCurve> {
   return {
     dimension: 'rubato',
+    container: RUBATO_MAP,
     jndKey: 'rubato/rubato@frameLength',
-    read: (side) =>
+    readView: (view, resolution) =>
       readRubatoSegments(
-        viewOf(side, RUBATO_MAP),
-        side.document.scaleFactor,
-        side.scope.environment,
-        side.document.performance.global,
+        view,
+        resolution.scaleFactor,
+        resolution.environment,
+        resolution.globalEnvironment,
       ),
     breakpoints: (curve) => curve.breakpointsTicks,
     sampler: (curve, startTicks, endTicks) =>
@@ -594,8 +752,8 @@ function rubatoPlan(settings: DimensionSettings): CurvePlan<RubatoCurve> {
         ? null
         : (ticks: number) => displacementTicksAt(curve, ticks) / settings.ticksPerQuarter,
     bottomSpans: (curve) => rubatoBottomSpans(curve),
-    distance: (curveA, curveB, jnd, canonical) =>
-      rubatoDistance(curveA, curveB, settings.window, settings.ticksPerQuarter, jnd, canonical),
+    distance: (curveA, curveB, jnd, canonical, window) =>
+      rubatoDistance(curveA, curveB, window, settings.ticksPerQuarter, jnd, canonical),
     notes: (curve, role) =>
       curve.notes.map((note) => noteFrom('rubato', role, settings.ticksPerQuarter, note)),
   };
@@ -604,8 +762,9 @@ function rubatoPlan(settings: DimensionSettings): CurvePlan<RubatoCurve> {
 function asynchronyPlan(settings: DimensionSettings): CurvePlan<AsynchronyCurve> {
   return {
     dimension: 'asynchrony',
+    container: ASYNCHRONY_MAP,
     jndKey: 'asynchrony/asynchrony@milliseconds.offset',
-    read: (side) => readAsynchronySegments(viewOf(side, ASYNCHRONY_MAP), side.document.scaleFactor),
+    readView: (view, resolution) => readAsynchronySegments(view, resolution.scaleFactor),
     breakpoints: (curve) => curve.breakpointsTicks,
     sampler: (curve, startTicks, endTicks) => {
       const hasBottom = curve.segments.some(
@@ -621,8 +780,8 @@ function asynchronyPlan(settings: DimensionSettings): CurvePlan<AsynchronyCurve>
       };
     },
     bottomSpans: (curve) => curve.segments.filter((segment) => isBottom(segment.offset)),
-    distance: (curveA, curveB, jnd, canonical) =>
-      asynchronyDistance(curveA, curveB, settings.window, settings.ticksPerQuarter, canonical, jnd),
+    distance: (curveA, curveB, jnd, canonical, window) =>
+      asynchronyDistance(curveA, curveB, window, settings.ticksPerQuarter, canonical, jnd),
     notes: (curve, role) =>
       curve.notes.map((note) => noteFrom('asynchrony', role, settings.ticksPerQuarter, note)),
   };
@@ -632,28 +791,21 @@ function accentuationPlan(settings: DimensionSettings): CurvePlan<AccentuationCu
   const grid = settings.beatGrid ?? rendererDefaultBeatGrid();
   return {
     dimension: 'accentuation',
+    container: ACCENTUATION_MAP,
     jndKey: 'accentuation/accentuationPattern@scale',
-    read: (side) =>
+    readView: (view, resolution) =>
       readAccentuationSegments(
-        viewOf(side, ACCENTUATION_MAP),
-        side.document.scaleFactor,
-        side.scope.environment,
-        side.document.performance.global,
+        view,
+        resolution.scaleFactor,
+        resolution.environment,
+        resolution.globalEnvironment,
         grid,
       ),
     breakpoints: (curve) => curve.breakpointsTicks,
     sampler: (curve) => accentuationSampler(curve, settings.window, settings.ticksPerQuarter, grid),
     bottomSpans: (curve) => curve.segments.filter((segment) => segment.pattern.kind === 'bottom'),
-    distance: (curveA, curveB, jnd, canonical) =>
-      accentuationDistance(
-        curveA,
-        curveB,
-        settings.window,
-        settings.ticksPerQuarter,
-        grid,
-        jnd,
-        canonical,
-      ),
+    distance: (curveA, curveB, jnd, canonical, window) =>
+      accentuationDistance(curveA, curveB, window, settings.ticksPerQuarter, grid, jnd, canonical),
     notes: (curve, role) =>
       curve.notes.map((note) => noteFrom('accentuation', role, settings.ticksPerQuarter, note)),
     timeSignatureSource: (curveA) => curveA.timeSignatureSource,
@@ -663,13 +815,14 @@ function accentuationPlan(settings: DimensionSettings): CurvePlan<AccentuationCu
 function pedalPlan(settings: DimensionSettings): CurvePlan<PedalCurve> {
   return {
     dimension: 'pedal',
+    container: MOVEMENT_MAP,
     jndKey: 'pedal/movement@position',
-    read: (side) => readMovementSegments(viewOf(side, MOVEMENT_MAP), side.document.scaleFactor),
+    readView: (view, resolution) => readMovementSegments(view, resolution.scaleFactor),
     breakpoints: (curve) => curve.breakpointsTicks,
     sampler: (curve) => pedalSampler(curve, settings.window, settings.ticksPerQuarter),
     bottomSpans: (curve) => curve.segments.filter((segment) => segment.shape.kind === 'bottom'),
-    distance: (curveA, curveB, jnd, canonical) =>
-      pedalDistance(curveA, curveB, settings.window, settings.ticksPerQuarter, jnd, canonical),
+    distance: (curveA, curveB, jnd, canonical, window) =>
+      pedalDistance(curveA, curveB, window, settings.ticksPerQuarter, jnd, canonical),
     notes: (curve, role) => [
       ...curve.notes.map((note) => noteFrom('pedal', role, settings.ticksPerQuarter, note)),
       ...controllerNotes(curve, role, settings),

@@ -4538,3 +4538,93 @@ AD-58.4 Cut-A2's implied refactor ENDORSED: curve readers split into
 resolve-in-own-environment + assemble, because an edit state mixes both
 documents' instructions and each must carry ITS OWN style resolution —
 AD-40.2's principle, and the mechanism that makes replay reach B exactly.
+
+## 2026-08-16 — W4 cut A2: the six curve dimensions price edit states (w4-products)
+
+`src/comparison/editState.ts`, per-entry resolution in `document.ts` and the seven readers,
+`CurvePlan` restructured around `readView`, `editScriptForDimension` — plus 11 tests. §6's edit
+path now runs end to end on real documents for tempo, dynamics, rubato, asynchrony, accentuation
+and pedal. The event and distribution dimensions return NULL rather than an empty script, which
+is a later cut and is asserted so that "not computed" cannot read as "no differences".
+
+**AN EDIT STATE IS AN `OrderedMapView`, so no reader gains a case for the edit path.** The
+readers turned out to need almost nothing from a view — `entries` and `styleNames`, never
+`element`, `mapName` or `spanEndRule` — so an intermediate state presents itself as the view
+they already take, and §6.2's `Φ` is §5's own reader rather than a second reading of a map. The
+one thing a MIXED view needs and a single-document one does not is per-entry resolution, which
+is `entryResolutions` on the view: the tick `scaleFactor` (the two documents may declare
+different `@pulsesPerQuarter`, and tick-VALUED attributes like `@frameLength` scale with it, not
+only dates) and the pair of environments a symbolic level resolves against. Absent on every view
+`readScopeMapViews` builds, so the whole comparison path is byte-identical — 1147 comparison
+tests unchanged across the plumbing commit.
+
+**RESOLUTION TRAVELS WITH THE INSTRUCTION, and that is what makes §6.3's replay exact.** AD-40.2
+in a new place: an instruction carries what it PERFORMS in its own document, so the state after
+the last op is `b`'s instructions with `b`'s resolutions — `B` itself — rather than "B's
+instructions read through A's styleDefs", which would leave `replayedDelta` describing a document
+neither side wrote. `replayResidual` is an exact **0** on every vendored pair and every curve
+dimension. Pinned on a document whose two performances have BYTE-IDENTICAL `<tempo>` elements and
+different `tempoDef`s: the difference lives entirely in the header, is priced at
+`4·ln2 / ln(1.025)`, and a reading that resolved B's instruction through A's header would price
+it at 0.
+
+[DECISION, needs ratification] **Deleting a `<style>` switch does not re-resolve the instructions
+after it.** A mixed map has no well-defined style scope — A's style names need not exist in B's
+header — and §6.1 scopes a script to one (part, map) while `styleDef`s live in the header,
+outside it. So a script cannot express a styleDef edit, and the reading that makes its endpoints
+exactly `A` and `B` is the one where each instruction keeps its own resolution. Where two
+documents differ ONLY in a styleDef the difference is still priced; it is attributed to the
+instruction rather than to the header, and the report should say so.
+
+[DECISION, needs ratification] **Every dated entry is an instruction, `<style>` included** —
+§6.1's own words ("date-ordered by the `datedView` rules"), and not a formality: under the
+any-entry span rule (AD-29, AD-14ii) a `<style>` ENDS a span, so a sequence that dropped it would
+not perform what its document performs. A negative control dropping styles passed the entire
+vendored corpus, because **no vendored `asynchronyMap` carries a style**; the fixture that makes
+it observable was written before the control was re-run, which is the right order.
+
+[DECISION, needs ratification] **Edit pricing is RAW, never canonicalized.** §7.4's invariance
+modes rescale by a DOCUMENT's own moments, and an intermediate state is not a document — its
+moments move as the script is applied, so a canonicalized `norm` would not be a fixed metric and
+`scriptCost ≥ d_curve` would stop being AD-5's theorem. The `dCurve` reported beside a script is
+therefore the identity one. What the facade should do when a caller passes `invariance` to
+`diffMpm` is asked in cut A4, not decided here.
+
+**THE LOCALIZED NORM: 6.4× FASTER AND BIT-IDENTICAL.** Two states of one transition differ by a
+single instruction, so their curves agree outside a bounded interval and integrating over the
+window computes zeros — measured, Vulpius Baroque|Romantic cost **2044 ms** for one scope, of
+which dynamics alone was 1897 ms (K=16 Bézier subdivision × a 50-bisection inversion per node).
+`affectedTicks` bounds the interval structurally: on the left the last unchanged instruction
+BEFORE the change (not the change itself — its predecessor's span end moves and under AD-8 its
+trailing-ness can flip), on the right the first unchanged instruction after it. Vulpius drops to
+**320 ms**, Telemann 345 → 180 ms, and every reported number is unchanged bit for bit.
+
+The argument is not the evidence (AD-30/AD-31's lesson, applied before the fact): the
+unlocalized mode SHIPS behind `EditScriptOptions.localize` and the suite pins the two forms
+bit-equal over the vendored corpus and over all 26×25 adversarial-family pairs. `pedal` is
+excluded from localization by construction — `getPreviousPosition` scans BACKWARDS over entry
+indices for an inherited `@transition.to` (PARITY P2, AD-35.4's hazard class), so a movement can
+depend on an instruction before it and the left bound does not hold there.
+
+**FIRST EDIT-PATH NUMBERS.** Vulpius Baroque|Romantic, global scope:
+
+    tempo      d = 631.161302  scriptCost = 631.161302  replayedDelta = 663.367553  (4s/1d/3i)
+    dynamics   d = 158.677254  scriptCost = 159.671848  replayedDelta = 169.375996  (14s/7d/6i)
+
+Both facts the triple exists to carry, on one pair: dynamics shows genuine **re-working** (no
+monotone script reaches B for `d_dynamics`, so `scriptCost` sits 0.99 JND·quarters above the
+lower bound), and tempo shows the two ORDERS disagreeing (the same op set costs 663.37 applied
+in the order a reader walks the score against 631.16 along the DP's path). Albert's deadpan
+performance is 14 deletions and one substitution in tempo, 10 deletions in dynamics — the shape
+you would predict from a performance that removes expression rather than changing it.
+
+NEGATIVE CONTROLS, four, each failing exactly its own tests and restoring green: per-entry
+resolution ignored (3); the localization's left bound moved to the change itself, dropping the
+predecessor's span (5, including the transition-then-delete fixture built for it); the right
+bound moved to the change (6); `<style>` entries dropped from the sequences (1, the fixture
+above). Two of these failed NOTHING on the first attempt and the tests that make them bite were
+written in response — the corpus does not happen to contain either hazard.
+
+Gate: `npm run verify` GREEN before committing — 119 files, **5279 passed**, 0 skipped (was
+5268). Repo-wide `npx prettier --check .` clean; eslint clean on `src/comparison`,
+`tests/comparison`, `src/api` and `src/index.ts`.

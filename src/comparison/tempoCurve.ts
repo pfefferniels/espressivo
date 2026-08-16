@@ -43,7 +43,7 @@ import type { MpmEnvironment } from '../expression/mpmTree.js';
 import { resolveComparisonLevel } from './values.js';
 import { TEMPO_MAP } from '../mpm/names.js';
 import { assertSpanEndRule } from './spanEnds.js';
-import type { OrderedMapView } from './document.js';
+import { resolutionAt, type OrderedMapView } from './document.js';
 
 /** MPM's no-tempo default, in quarter-bpm: `computeMillisecondsForNoTempo` is `600·date/ppq`. */
 export const NO_TEMPO_QUARTER_BPM = 100;
@@ -258,14 +258,15 @@ export function readTempoSegments(
   for (const [index, entry] of view.entries.entries()) {
     if (entry.element.getLocalName() !== 'tempo') continue;
     if (!Number.isFinite(entry.date)) continue;
+    const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
     raws.push(
       readRawTempo(
         entry.element,
         entry.date,
-        scaleFactor,
+        resolution.scaleFactor,
         view.styleNames[index],
-        environment,
-        globalEnvironment,
+        resolution.environment,
+        resolution.globalEnvironment,
       ),
     );
   }

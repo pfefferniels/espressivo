@@ -41,7 +41,7 @@ import type { MpmEnvironment } from '../expression/mpmTree.js';
 import { resolveComparisonLevel } from './values.js';
 import { DYNAMICS_MAP } from '../mpm/names.js';
 import { assertSpanEndRule } from './spanEnds.js';
-import type { OrderedMapView } from './document.js';
+import { resolutionAt, type OrderedMapView } from './document.js';
 
 /** `DynamicsMap.renderDynamicsToMap`'s pin for notes with no dynamics in force. */
 export const NEUTRAL_VELOCITY = 100;
@@ -205,12 +205,13 @@ export function readDynamicsSegments(
     if (!Number.isFinite(entry.date)) continue;
 
     const styleName = view.styleNames[index];
+    const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
     const volumeText = readAttributeValue(element, 'volume');
 
     if (volumeText === null) {
       // The renderer skips it but still ends the previous span with it (AD-33.4).
       raws.push({
-        dateTicks: entry.date * scaleFactor,
+        dateTicks: entry.date * resolution.scaleFactor,
         volume: null,
         transitionTo: null,
         curvature: 0,
@@ -225,8 +226,8 @@ export function readDynamicsSegments(
       volumeText,
       'dynamics',
       styleName,
-      environment,
-      globalEnvironment,
+      resolution.environment,
+      resolution.globalEnvironment,
     );
     const transitionToText = readAttributeValue(element, 'transition.to');
     const transitionTo =
@@ -236,12 +237,12 @@ export function readDynamicsSegments(
             transitionToText,
             'dynamics',
             styleName,
-            environment,
-            globalEnvironment,
+            resolution.environment,
+            resolution.globalEnvironment,
           );
 
     raws.push({
-      dateTicks: entry.date * scaleFactor,
+      dateTicks: entry.date * resolution.scaleFactor,
       volume: volume.value,
       transitionTo: transitionTo === null ? null : transitionTo.value,
       // Read ONLY in the transition branch, and defaulted to 0.0 there — not 0.4, which is

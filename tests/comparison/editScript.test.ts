@@ -110,7 +110,7 @@ function pathCost(a: readonly Level[], b: readonly Level[], moves: readonly ('s'
           x.instruction.dateTicks - y.instruction.dateTicks || x.side - y.side || x.index - y.index,
       )
       .map((entry) => entry.instruction);
-  const norm = pricing().norm;
+  const norm = (x: readonly Level[], y: readonly Level[]) => stepNorm(x, y, Math.log(100));
 
   let i = a.length;
   let j = b.length;
@@ -223,7 +223,7 @@ describe('AD-5: pricing against A is not an upper bound, and the counterexample 
     //
     // The second telescopes through the renderer's own no-tempo default, which is why the two
     // land on the same number rather than merely near it.
-    const norm = pricing().norm;
+    const norm = (x: readonly Level[], y: readonly Level[]) => stepNorm(x, y, Math.log(100));
     const substituteFirst =
       norm(a, [level(0, 120, 'I'), a[1]]) + norm([level(0, 120, 'I'), a[1]], b);
     const deleteFirst = norm(a, [a[1]]) + norm([a[1]], b);
@@ -240,7 +240,7 @@ describe('AD-5: pricing against A is not an upper bound, and the counterexample 
 
   it('is refuted by the against-A reading, which halves the total and makes the delete free', () => {
     // The reading revision 1 shipped: every op priced against the ORIGINAL A.
-    const norm = pricing().norm;
+    const norm = (x: readonly Level[], y: readonly Level[]) => stepNorm(x, y, Math.log(100));
     const substituteAgainstA = norm(a, [level(0, 120, 'I'), a[1]]);
     const deleteAgainstA = norm(a, [a[0]]);
     expect(substituteAgainstA).toBeCloseTo(5 * Math.LN2, 12);

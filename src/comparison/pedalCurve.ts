@@ -83,7 +83,7 @@ import { MOVEMENT_MAP } from '../mpm/names.js';
 import { assertSpanEndRule } from './spanEnds.js';
 import { idealCurveParameter } from './dynamicsCurve.js';
 import { bottom, valued, type Valued } from './values.js';
-import type { OrderedMapView } from './document.js';
+import { entryTicksAt, type OrderedMapView } from './document.js';
 
 /** No controller event has been sent yet: the pedal is up (MIDI's CC default). */
 export const PEDAL_NEUTRAL_POSITION = 0;
@@ -218,13 +218,10 @@ function inheritedPosition(entries: OrderedMapView['entries'], index: number): n
 }
 
 /** `MovementMap.getEndDate:153-159` — the next entry named `movement`, else `MAX_VALUE`. */
-function endTicksOf(
-  entries: OrderedMapView['entries'],
-  index: number,
-  scaleFactor: number,
-): number {
+function endTicksOf(view: OrderedMapView, index: number, scaleFactor: number): number {
+  const entries = view.entries;
   for (let j = index + 1; j < entries.length; ++j)
-    if (entries[j].element.getLocalName() === 'movement') return entries[j].date * scaleFactor;
+    if (entries[j].element.getLocalName() === 'movement') return entryTicksAt(view, j, scaleFactor);
   return UNBOUNDED_END_TICKS;
 }
 
@@ -255,7 +252,7 @@ export function readMovementSegments(view: OrderedMapView | null, scaleFactor: n
     if (element.getLocalName() !== 'movement') continue;
 
     const controller = readAttributeValue(element, 'controller') ?? DEFAULT_CONTROLLER;
-    const dateTicks = entry.date * scaleFactor;
+    const dateTicks = entryTicksAt(view, index, scaleFactor);
 
     // AD-35(a): the guard is `movementIndex < size() - 1` over ENTRIES, so what excludes a
     // movement is being the last entry — not being the last movement.
@@ -342,7 +339,7 @@ export function readMovementSegments(view: OrderedMapView | null, scaleFactor: n
 
     raws.push({
       dateTicks,
-      endTicks: endTicksOf(entries, index, scaleFactor),
+      endTicks: endTicksOf(view, index, scaleFactor),
       position: clampedPosition,
       transitionTo: clampedTransitionTo,
       curvature: readNumericOr(element, 'curvature', DEFAULT_MOVEMENT_CURVATURE),

@@ -58,7 +58,7 @@ import { findStyleDef } from '../expression/styleScope.js';
 import type { MpmEnvironment } from '../expression/mpmTree.js';
 import { assertSpanEndRule } from './spanEnds.js';
 import { bottom, valued, type Valued } from './values.js';
-import type { OrderedMapView } from './document.js';
+import { resolutionAt, type OrderedMapView } from './document.js';
 
 /** `AccentuationPatternDef`'s own default, which it also writes onto the element at parse. */
 export const DEFAULT_PATTERN_LENGTH = 4;
@@ -277,14 +277,23 @@ export function readAccentuationSegments(
   assertSpanEndRule(METRICAL_ACCENTUATION_MAP, 'same-local-name');
   if (view === null) return neutralAccentuationCurve();
 
-  const raws: { dateTicks: number; element: Element; styleName: string | null }[] = [];
+  const raws: {
+    dateTicks: number;
+    element: Element;
+    styleName: string | null;
+    environment: MpmEnvironment;
+    globalEnvironment: MpmEnvironment;
+  }[] = [];
   for (const [index, entry] of view.entries.entries()) {
     if (entry.element.getLocalName() !== 'accentuationPattern') continue;
     if (!Number.isFinite(entry.date)) continue;
+    const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
     raws.push({
-      dateTicks: entry.date * scaleFactor,
+      dateTicks: entry.date * resolution.scaleFactor,
       element: entry.element,
       styleName: view.styleNames[index],
+      environment: resolution.environment,
+      globalEnvironment: resolution.globalEnvironment,
     });
   }
   if (raws.length === 0) return neutralAccentuationCurve();
@@ -317,8 +326,8 @@ export function readAccentuationSegments(
     const style = findStyleDef(
       METRICAL_ACCENTUATION_STYLE,
       raw.styleName,
-      environment,
-      globalEnvironment,
+      raw.environment,
+      raw.globalEnvironment,
     );
 
     // No style in scope — an instruction before the map's first <style> switch — is skipped

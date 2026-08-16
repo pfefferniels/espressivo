@@ -33,7 +33,11 @@
  */
 import type { Element } from '../xml/XomTypes.js';
 import { parseMpmRoot } from '../expression/mpmDocument.js';
-import { readPerformances, type PerformanceView } from '../expression/mpmTree.js';
+import {
+  readPerformances,
+  type MpmEnvironment,
+  type PerformanceView,
+} from '../expression/mpmTree.js';
 import { orderedEntries, styleNameAt, type DatedEntry } from '../expression/datedView.js';
 import {
   PerformanceSelectionAmbiguousError,
@@ -78,6 +82,57 @@ export interface OrderedMapView {
   readonly styleNames: readonly (string | null)[];
   /** Null for a map name the MPM model does not define (e.g. a corpus `gestureMap`). */
   readonly spanEndRule: SpanEndRule | null;
+  /**
+   * Per-entry resolution, for a view whose entries come from TWO documents (§6's edit states).
+   *
+   * ABSENT on every view `readScopeMapViews` builds, where one document's tick grid and one
+   * style environment govern the whole map and the reader's own arguments say so. §6's edit
+   * path is the one caller that needs otherwise: an intermediate state is A's map with some of
+   * B's instructions in it, and each instruction has to keep the resolution it PERFORMS —
+   * AD-40.2's named principle, and also what makes §6.3's replay reach B exactly rather than
+   * reaching "B's instructions read through A's styleDefs".
+   *
+   * Two things vary per entry and nothing else does: the tick `scaleFactor` onto the common
+   * grid (the documents may declare different `@pulsesPerQuarter`, and tick-VALUED attributes
+   * such as `@frameLength` are scaled with it, not only dates) and the pair of environments a
+   * symbolic level or a `@name.ref` resolves against. `styleNames` is already per entry, so the
+   * style in scope needs no second channel.
+   */
+  readonly entryResolutions?: readonly EntryResolution[];
+}
+
+/** What one entry of a mixed view resolves against; see {@link OrderedMapView.entryResolutions}. */
+export interface EntryResolution {
+  readonly scaleFactor: number;
+  readonly environment: MpmEnvironment;
+  readonly globalEnvironment: MpmEnvironment;
+}
+
+/**
+ * The resolution governing entry `index`: the view's own where it has one, else the caller's.
+ *
+ * Every reader goes through this rather than closing over its `scaleFactor` argument, so a
+ * mixed view is read correctly by construction instead of by each reader remembering to ask.
+ */
+export function resolutionAt(
+  view: OrderedMapView,
+  index: number,
+  scaleFactor: number,
+  environment: MpmEnvironment,
+  globalEnvironment: MpmEnvironment,
+): EntryResolution {
+  return (
+    view.entryResolutions?.[index] ?? {
+      scaleFactor,
+      environment,
+      globalEnvironment,
+    }
+  );
+}
+
+/** The common-tick date of entry `index`, which is the one quantity every reader needs. */
+export function entryTicksAt(view: OrderedMapView, index: number, scaleFactor: number): number {
+  return view.entries[index].date * (view.entryResolutions?.[index]?.scaleFactor ?? scaleFactor);
 }
 
 /** One side of the pair, normalized. */

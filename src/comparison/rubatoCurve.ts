@@ -48,7 +48,7 @@ import { readAttributeValue } from '../expression/attributes.js';
 import { findStyleDef } from '../expression/styleScope.js';
 import type { MpmEnvironment } from '../expression/mpmTree.js';
 import { assertSpanEndRule } from './spanEnds.js';
-import type { OrderedMapView } from './document.js';
+import { resolutionAt, type OrderedMapView } from './document.js';
 
 /**
  * The `<rubatoDef name="…">` a `<rubato name.ref="…">` inherits from, or null.
@@ -256,14 +256,26 @@ export function readRubatoSegments(
 
   if (view === null) return neutralRubatoCurve();
 
-  const raws: { dateTicks: number; element: Element; styleName: string | null }[] = [];
+  const raws: {
+    dateTicks: number;
+    element: Element;
+    styleName: string | null;
+    environment: MpmEnvironment;
+    globalEnvironment: MpmEnvironment;
+    /** This instruction's own tick scale, which its tick-VALUED `@frameLength` is read in. */
+    scaleFactor: number;
+  }[] = [];
   for (const [index, entry] of view.entries.entries()) {
     if (entry.element.getLocalName() !== 'rubato') continue;
     if (!Number.isFinite(entry.date)) continue;
+    const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
     raws.push({
-      dateTicks: entry.date * scaleFactor,
+      dateTicks: entry.date * resolution.scaleFactor,
       element: entry.element,
       styleName: view.styleNames[index],
+      environment: resolution.environment,
+      globalEnvironment: resolution.globalEnvironment,
+      scaleFactor: resolution.scaleFactor,
     });
   }
   if (raws.length === 0) return neutralRubatoCurve();
@@ -278,7 +290,12 @@ export function readRubatoSegments(
     const next = raws[index + 1] as (typeof raws)[number] | undefined;
     const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
 
-    const parsed = readRawRubato(raw.element, raw.styleName, environment, globalEnvironment);
+    const parsed = readRawRubato(
+      raw.element,
+      raw.styleName,
+      raw.environment,
+      raw.globalEnvironment,
+    );
     breakpoints.add(raw.dateTicks);
 
     if (parsed === null) {
@@ -301,7 +318,7 @@ export function readRubatoSegments(
       const frameLengthTicks =
         parsed.frameLength === undefined
           ? Number.POSITIVE_INFINITY
-          : parsed.frameLength * scaleFactor;
+          : parsed.frameLength * raw.scaleFactor;
       const poisonedEnd =
         parsed.poisoned === 'span' || parsed.loop
           ? endTicks
@@ -331,7 +348,7 @@ export function readRubatoSegments(
       continue;
     }
 
-    const frameLengthTicks = parsed.frameLength * scaleFactor;
+    const frameLengthTicks = parsed.frameLength * raw.scaleFactor;
     const neutral = parsed.intensity === 1 && parsed.lateStart === 0 && parsed.earlyEnd === 1;
 
     segments.push({

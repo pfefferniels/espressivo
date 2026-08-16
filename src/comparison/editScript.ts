@@ -81,7 +81,17 @@ export interface EditableInstruction {
  */
 export interface EditPricing<I extends EditableInstruction, S> {
   readonly represent: (state: readonly I[]) => S;
-  readonly norm: (x: S, y: S) => number;
+  /**
+   * `‖x − y‖₁`, with the two STATES beside their representations.
+   *
+   * The states are passed because a caller may localize an EXACT computation with them and for
+   * no other reason: two states of one transition differ by a single instruction, so the two
+   * curves are identical outside a bounded interval, and a caller that can establish that
+   * interval structurally may integrate over it instead of over the window. `norm` remains one
+   * metric on representations either way — the states are evidence, never a second argument the
+   * answer depends on.
+   */
+  readonly norm: (x: S, y: S, previous: readonly I[], next: readonly I[]) => number;
 }
 
 export type EditMove = 'substitute' | 'delete' | 'insert';
@@ -314,18 +324,39 @@ export function editScript<I extends EditableInstruction, S>(
       // §6.4's precedence, applied at the cell: strict `<` after the substitute branch means
       // a tie keeps the earlier candidate, so the order of these three blocks IS the rule.
       if (i > 0 && j > 0) {
-        best = cost[(i - 1) * width + (j - 1)] + pricing.norm(phi(i - 1, j - 1), phi(i, j));
+        best =
+          cost[(i - 1) * width + (j - 1)] +
+          pricing.norm(
+            phi(i - 1, j - 1),
+            phi(i, j),
+            editStateAt(a, b, i - 1, j - 1),
+            editStateAt(a, b, i, j),
+          );
         bestFrom = FROM_SUBSTITUTE;
       }
       if (i > 0) {
-        const candidate = cost[(i - 1) * width + j] + pricing.norm(phi(i - 1, j), phi(i, j));
+        const candidate =
+          cost[(i - 1) * width + j] +
+          pricing.norm(
+            phi(i - 1, j),
+            phi(i, j),
+            editStateAt(a, b, i - 1, j),
+            editStateAt(a, b, i, j),
+          );
         if (candidate < best) {
           best = candidate;
           bestFrom = FROM_DELETE;
         }
       }
       if (j > 0) {
-        const candidate = cost[i * width + (j - 1)] + pricing.norm(phi(i, j - 1), phi(i, j));
+        const candidate =
+          cost[i * width + (j - 1)] +
+          pricing.norm(
+            phi(i, j - 1),
+            phi(i, j),
+            editStateAt(a, b, i, j - 1),
+            editStateAt(a, b, i, j),
+          );
         if (candidate < best) {
           best = candidate;
           bestFrom = FROM_INSERT;
@@ -364,20 +395,23 @@ export function editScript<I extends EditableInstruction, S>(
 
   const removedA = new Array<boolean>(n).fill(false);
   const addedB = new Array<boolean>(m).fill(false);
-  let state = pricing.represent(stateFromFlags(a, b, removedA, addedB));
+  let instructions = stateFromFlags(a, b, removedA, addedB);
+  let state = pricing.represent(instructions);
   const replayCosts: number[] = [];
   let replayed = 0;
   for (const step of ordered) {
     if (step.indexA !== null) removedA[step.indexA] = true;
     if (step.indexB !== null) addedB[step.indexB] = true;
-    const next = pricing.represent(stateFromFlags(a, b, removedA, addedB));
-    const price = pricing.norm(state, next);
+    const nextInstructions = stateFromFlags(a, b, removedA, addedB);
+    const next = pricing.represent(nextInstructions);
+    const price = pricing.norm(state, next, instructions, nextInstructions);
     replayCosts.push(price);
     replayed += price;
     state = next;
+    instructions = nextInstructions;
   }
 
-  const replayResidual = pricing.norm(state, phi(n, m));
+  const replayResidual = pricing.norm(state, phi(n, m), instructions, editStateAt(a, b, n, m));
 
   // Cost rank: descending, ties by the delivered order, so the ranking is a permutation of the
   // delivery indices and never depends on the sort's own stability.
@@ -402,7 +436,12 @@ export function editScript<I extends EditableInstruction, S>(
     steps,
     scriptCost: cost[n * width + m],
     replayedDelta: replayed,
-    directDistance: pricing.norm(phi(0, 0), phi(n, m)),
+    directDistance: pricing.norm(
+      phi(0, 0),
+      phi(n, m),
+      editStateAt(a, b, 0, 0),
+      editStateAt(a, b, n, m),
+    ),
     topByCost: ranking,
     opCounts: countOps(steps),
     replayResidual,
@@ -439,15 +478,21 @@ function countOps<I extends EditableInstruction>(steps: readonly EditStep<I>[]):
 export function invertSteps<I extends EditableInstruction>(
   steps: readonly EditStep<I>[],
 ): readonly EditStep<I>[] {
-  const flipped = steps.map((step) => ({
-    move: step.move === 'insert' ? 'delete' : step.move === 'delete' ? 'insert' : 'substitute',
-    a: step.b,
-    b: step.a,
-    indexA: step.indexB,
-    indexB: step.indexA,
-    cost: step.cost,
-    free: step.free,
-  }));
+  const inverse: Readonly<Record<EditMove, EditMove>> = {
+    insert: 'delete',
+    delete: 'insert',
+    substitute: 'substitute',
+  };
+  const flipped: (DeliverableStep<I> & { readonly cost: number; readonly free: boolean })[] =
+    steps.map((step) => ({
+      move: inverse[step.move],
+      a: step.b,
+      b: step.a,
+      indexA: step.indexB,
+      indexB: step.indexA,
+      cost: step.cost,
+      free: step.free,
+    }));
 
   const ordered = [...flipped].sort(compareDelivery);
 
