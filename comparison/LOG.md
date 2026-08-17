@@ -5335,3 +5335,46 @@ and `src/index.ts`.
 cut B2: §8 defines it as the pointwise mean of the evaluated curves, which is not a document, so
 its row cannot go through `compareInterior` and would need a second integration path beside the
 eleven verified integrators.
+
+## 2026-08-17 — AD-66: W4 COMPLETE and CLOSED; tenure ended; gate convened [BINDING]
+
+Budget: RED / 35.7% at 14.6% elapsed / THROTTLE.
+
+8789179 accepted — cuts E and A5: the AD-57.2 check matured through two
+measured failures into the right question ("which member CATCHES a given
+defect"), its sweep reproducing AD-50.3's predicted 3-failure count and
+identifying the three producers; the load-bearing-is-relative-to-a-defect
+insight is the definitive argument for AD-57.2's do-not-prune, now with
+a re-runnable hook. Family 26 → 28 (the styled-level pair reaching §6's
+styleDef surface). A5's moves landed within A-Q5's terms (after plain
+ops; ranked below primitives; off by default) with the measured
+fragment/consolidate asymmetry (120:1 over 200 random pairs) and a
+6144-JND·quarter improvement on real data; the mirror's opCounts defect
+was caught by extending byte-identity to a moved script — counts-only
+passed throughout the defect, which is the lesson.
+
+AD-66.1 The two genuinely new surface flags are RATIFIED: EditOp.count
+(a move op without its group size is not actionable) and
+CorpusReport.window. Everything else in the report's "open" list was
+ruled cuts ago (AD-60..AD-64) and partly landed by the conductor's own
+d98c735 — which 8789179 built on without touching, so the tree is
+consistent even though the worker never saw the rulings.
+AD-66.2 W4 IS CLOSED. corpusAverage is NOT open scope — AD-63.1 removed
+it; the worker's hold is moot. All committed W4 products are live and
+gated: diffMpm (with moves), compareMpmCorpus, both scape variants, the
+executed-recipe docs, the family + coverage check.
+AD-66.3 w4-prod's TENURE ENDS at its clean boundary, per AD-65's
+commitment: the handshake failed a third time (no ruling after AD-57
+ever acknowledged), so the remaining campaign work is repartitioned away
+from this channel. On the record with equal weight: the tenure's WORK
+was excellent throughout — eight green cuts, two products shipped, five
+first-draft defects self-caught by its own discipline — the fault was
+the channel, not the craft.
+AD-66.4 THE W4 GATE CONVENES: a fresh Opus verifier over
+87aa040..8789179 (all of W4 + the conductor's d98c735), the W2/W3 gate
+methodology, with two mandated extra heads: (i) reconcile the shipped
+surfaces against AD-58..AD-65's rulings — the worker never read them, so
+the gate must check the code matches the rulings it was supposed to
+implement (the conductor believes it does, by convergent reasoning — the
+gate verifies); (ii) the README's executed recipes against the shipped
+report shapes. Deliverable W4-VERIFICATION.md, GATE-PASS/BLOCK.
