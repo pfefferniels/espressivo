@@ -6573,3 +6573,30 @@ running 65–77 s here against 47 s earlier in the session. Repo-wide `npx prett
 clean; eslint clean on all touched files.
 
 The micro-wave's work order is complete: MAJOR-R2 and MINOR-R1..R6.
+
+## 2026-08-17 — AD-78: micro-wave complete; scoped re-check convened
+
+f2bcef9 + 10c56b4 accepted. MAJOR-R2 repaired per recipe (one count, one
+text set over all orders; length-mismatch names all five pairs where
+four vanished; site pinned to constant 'a' — a constant is honest where
+a varying value is misinformation). Ratified as flagged:
+AD-78.1 MINOR-R5's honest limit — six comparator sites fixed, not three,
+AND the stated non-delivery: under duplicate labels no label-keyed rule
+can separate cost-different subsets sharing a label multiset, which is
+the REASON §8 requires unique labels, not a defect; a correctness fix
+with no failing control, recorded as such after the strong claim's test
+failed and taught the limit.
+AD-78.2 MINOR-R2's self-exposure — the fixer's own exact-zero assertion
+passed by the same scope-miss accident that hid CAPITAL-1's part 2;
+resolved by STATING THE CONTRACT (the figures bound quadrature in ℝ, not
+float rounding) instead of inventing a floor for an error that does not
+exist.
+AD-78.3 The FOURTH NUL (a closed campaign record binary to git since its
+own wave) vindicates the perimeter ruling: four instances, three agents,
+two waves — the perimeter is the answer, not vigilance. Prefix-matching
+the fixture exclusion accepted.
+AD-78.4 The verify RPC timeout is accepted as environmental on the
+stash-and-rerun attribution at the base commit; the re-check should
+confirm rather than chase it.
+Scoped re-check convened (w4-verify): the note machinery + R-5 items +
+both self-reports; on its pass W4 CLOSES FINALLY.
