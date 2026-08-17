@@ -621,15 +621,24 @@ interface EditPlan<S> {
   /**
    * Whether a transition may be integrated over `affectedTicks`' interval instead of the window.
    *
-   * A predicate on the two ENDPOINT readings, because for two dimensions the answer is a
-   * property of the documents rather than of the dimension:
+   * A predicate on the two ENDPOINT readings, because where it holds at all the answer can be a
+   * property of the documents rather than of the dimension. Three dimensions answer `false`
+   * unconditionally, each for its own reason:
    *
    * - `pedal` never localizes — `getPreviousPosition` scans BACKWARDS over entry indices for an
    *   inherited `@transition.to` (PARITY P2, AD-35.4's hazard class), so a movement can depend
    *   on an instruction before it and the left bound does not hold.
-   * - `articulation` localizes only where every atom is DATE-anchored. An id-anchored atom is
-   *   window-EXEMPT (AD-39.1) — a narrowed window does not drop it — so it would enter every
-   *   sub-alignment and be charged once per transition instead of once.
+   * - `articulation` never localizes either, per AD-60.2. The id-anchored-atom argument was the
+   *   first reason and it is not the binding one: AD-37.1's default step function is
+   *   RETROACTIVE — its value on `[0, firstSwitchDate)` is the first switch's default — so
+   *   editing a `<style>` reaches arbitrarily far LEFT, and its value after an interval is
+   *   governed by the last switch at or before it, which the interval's right bound (the next
+   *   unchanged INSTRUCTION, not the next unchanged SWITCH) need not contain. Hazard instance
+   *   #7, and the first that fails in BOTH directions. Forcing it on was measured at
+   *   `scriptCost = 506.9999999999999` against `d_articulation = 2583`, a 5.09× violation of
+   *   `scriptCost ≥ d`, which is what any future attempt has to face.
+   * - `ornamentation` never localizes — its map SCOPE is a whole-map property (AD-60.3) that a
+   *   mixed state does not have.
    *
    * Where it does apply the argument is the same as for a curve and one step stronger: outside
    * the interval the two states' atoms are IDENTICAL, a monotone alignment matches identical

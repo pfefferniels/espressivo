@@ -128,7 +128,10 @@ describe('§8’s expansion and labels', () => {
       'alb:Like a robot',
     ]);
     expect(report.items.map((item) => item.itemIndex)).toEqual([0, 0, 0, 1, 1]);
-    expect(report.items.every((item) => !item.synthetic)).toBe(true);
+    // AD-63.1 / W4 MINOR-3: the row carries the two fields it can say something about.
+    // `synthetic` went with `corpusAverage` — the pseudo-performance was its only producer, so
+    // the flag could report nothing but `false` for every row of every corpus.
+    expect(Object.keys(report.items[0]!)).toEqual(['itemIndex', 'performance']);
 
     // A named performance does NOT expand and keeps the caller's own label.
     const named = corpus([{ mpm: TELEMANN, performance: 'Fast', label: 'just-fast' }]);

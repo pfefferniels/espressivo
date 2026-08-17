@@ -136,7 +136,9 @@ const EPSILON_FIGURES: Readonly<
   Record<EpsilonFamily, { readonly relative: number; readonly jnd: number }>
 > = Object.freeze({
   // Piecewise-constant readings: the cell integral is `density × length`, with no quadrature
-  // in the time domain at all (§5.7, §5.9).
+  // in the time domain at all (§5.7, §5.9). The exact `0` is a claim about this family's
+  // GENUINELY exact members — asynchrony, articulation and ornamentation — and it stopped
+  // covering rubato at AD-60.1, which is why that dimension now has a family of its own.
   step: { relative: 0, jnd: 0 },
   // AD-28.1's graded mesh, worst case over the legal `meanTempoAt` range; the JND figure is
   // AD-28.2's, corrected for AD-27.6's halved constant.
@@ -144,6 +146,15 @@ const EPSILON_FIGURES: Readonly<
   // The ideal-curve inversion's conditioning limit at `curvature = 1`, where `x'(0.5) = 0` and
   // a cube-root loss leaves ~6e-4 volume units; every interior curvature is exact to 1e-9.
   bezier: { relative: 6e-6, jnd: 2e-5 },
+  // AD-60.1's sixth family. Rubato's displacement integrates through AD-33.3b's rule 2c — the
+  // structural `u*` split plus a K = 16 mesh — and AD-34.1 measured that integrator's residual
+  // at 2.718e-4 relative over 3906 pairs, which is the figure published here. The JND figure is
+  // the same error on the dimension's own scale: cut A3's worst real-data case is 0.036
+  // JND·quarters over ~50 quarters, i.e. 7e-4 JND, an order below the metric's own resolution —
+  // AD-28.2's point exactly. The worst real-data RELATIVE shortfall (7.51e-5, Telemann part 2)
+  // sits well inside the published figure and is pinned separately in `editDimensions.test.ts`,
+  // so this band cannot quietly absorb a regression.
+  rubato: { relative: 2.718e-4, jnd: 7e-4 },
   // `W₁` against 14 closed forms derived from `∫₀¹|Q_A − Q_B| du`, measured relative to the
   // laws' SUPPORT SCALE (AD-55.3) — see the note above on what that figure is relative to. The
   // JND figure is the same absolute error on the row's own 30 ms / 3 velocity scale.

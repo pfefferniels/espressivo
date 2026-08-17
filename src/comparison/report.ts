@@ -162,8 +162,8 @@ export interface AttributionTable {
   readonly residual: number;
 }
 
-/** The five epsilon families, each in BOTH units (AD-28.2). */
-export type EpsilonFamily = 'step' | 'tempo' | 'bezier' | 'imprecision' | 'drift';
+/** The six epsilon families, each in BOTH units (AD-28.2, AD-60.1). */
+export type EpsilonFamily = 'step' | 'tempo' | 'bezier' | 'rubato' | 'imprecision' | 'drift';
 
 /**
  * Which epsilon family each dimension's quadrature belongs to.
@@ -175,16 +175,21 @@ export type EpsilonFamily = 'step' | 'tempo' | 'bezier' | 'imprecision' | 'drift
  * The families are about the INTEGRATOR, not the dimension: a dimension whose curve is
  * piecewise constant integrates exactly (`step`), one with a `meanTempoAt` power curve carries
  * AD-28.1's graded-mesh error (`tempo`), one with a Bézier transition carries the inversion's
- * conditioning limit (`bezier`), and the three distribution dimensions carry the Wasserstein
- * machinery's (`imprecision`). A dimension that can take more than one shape is filed under the
- * WORST it can reach, which is the only reading that keeps the record an upper bound.
+ * conditioning limit (`bezier`), one whose warp DISPLACEMENT integrates through AD-33.3b's rule
+ * 2c carries that integrator's residual (`rubato`, AD-60.1), and the three distribution
+ * dimensions carry the Wasserstein machinery's (`imprecision`). A dimension that can take more
+ * than one shape is filed under the WORST it can reach, which is the only reading that keeps the
+ * record an upper bound.
  */
 export const EPSILON_FAMILY_OF: Readonly<Record<ComparisonDimension, EpsilonFamily>> =
   Object.freeze({
     tempo: 'tempo',
     // A `<dynamics>` transition is a Bézier, so this dimension can reach the bezier family.
     dynamics: 'bezier',
-    rubato: 'step',
+    // AD-60.1: its OWN family. `rubatoDistance` integrates a warp displacement through rule 2c
+    // (structural `u*` split + K=16 mesh), so the `step` family's "no quadrature in the time
+    // domain at all" is false of it — measured at 7.51e-5 relative on the vendored corpus.
+    rubato: 'rubato',
     asynchrony: 'step',
     // §5.4's pattern interpolates linearly between beats, but a transition inside a pattern is
     // the same Bézier machinery the dynamics curve uses.
@@ -479,11 +484,17 @@ export interface CorpusReport {
   readonly n: number;
   /** Unique after expansion (A8); the ONLY place a string appears — everything else indexes. */
   readonly labels: readonly string[];
+  /**
+   * AD-26.3's rows, one per expanded performance.
+   *
+   * `synthetic` was removed with AD-63.1's `corpusAverage`: the pseudo-performance was its only
+   * producer, so the field could report nothing but `false` for every row of every corpus. A
+   * flag that cannot vary is not data (AD-52.3a's rule, applied to the shape rather than to an
+   * option) — if a synthetic item ever returns, so does the flag, with something to say.
+   */
   readonly items: readonly {
     readonly itemIndex: number;
     readonly performance: string;
-    /** True for a pseudo-performance, so no consumer mistakes one for a recording (AD-26.3). */
-    readonly synthetic: boolean;
   }[];
   readonly matrices: {
     /** `N²`, row-major, `m[i*n + j]`; `m[i*n+j] === m[j*n+i]` bit for bit and `m[i*n+i] === 0`. */

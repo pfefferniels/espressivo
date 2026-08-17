@@ -5431,3 +5431,77 @@ and the orphaned corpusAverage doc comment is removed (MINOR-3). The
 conductor's own record is subject to the same standard it enforces:
 stated-as-done must mean done, and this erratum is the cost of asserting
 before verifying.
+
+## 2026-08-17 — W4 fix cut 1: CAPITAL-1's sixth family, and MINOR-1..4 (w4-fix)
+
+LOG read through AD-67 erratum. §8's item 1, with the MINOR-1..4 text divergences in the same
+commit per the report's advice — they are the remainder of the same channel fault and the tree
+should stop disagreeing with itself about what was ruled.
+
+**CAPITAL-1 — AD-60.1's sixth epsilon family is now in the code.** `EpsilonFamily` gains
+`'rubato'` (`report.ts:166`), `EPSILON_FAMILY_OF.rubato` repoints from `'step'` to `'rubato'`
+(`report.ts:190`), and `EPSILON_FIGURES` gains `rubato: { relative: 2.718e-4, jnd: 7e-4 }`
+(`compare.ts:147`). The `step` comment loses its claim to cover rubato and says instead which
+members its exact `0` is a claim about — asynchrony, articulation, ornamentation. `epsilonRecord()`
+is derived from the table and needed no change; `compare.test.ts:770`'s `step` pin is unaffected
+because the exact 0 is still true of what remains.
+
+[FLAGGED FOR RATIFICATION] AD-60.1 named the relative figure (AD-34.1's 2.718e-4) and said "the
+JND figure alongside" without naming one. The `7e-4` shipped here is cut A3's own measurement,
+converted the way the record's other rows convert: the worst real-data shortfall is 0.036
+JND·quarters over ~50 quarters, i.e. 7e-4 JND — an order below the metric's resolution, which is
+AD-28.2's whole point and the reason the number was fine while the record was wrong.
+
+**The pin, and a correction to the gate report.** W4-VERIFICATION §2's repair note says
+`editDimensions.test.ts` "already pins the 7.51e-5 real-data shortfall, so the assertion has a
+measured figure to bind to". It does not: that test's WALK carries scopes `[0, 1]` for the primary
+pairs, so the worst rubato shortfall it ever sees is Telemann **part 1** at 2.207e-5. Part 2's
+7.51e-5 — cut A3's STOP-AND-REPORT figure and the corpus worst — was measured by no shipped test.
+Verified by probe over every part scope of the Telemann pair: part 1 `2.207e-5`, part 2
+`7.510e-5` (d = 476.22531733, scriptCost = 476.18955454), part 3 `1.566e-5`; the global scope
+carries no rubato at all, since the maps live in the parts.
+
+So the family is pinned twice and neither pin is the band:
+
+- In the walk, against the PUBLISHED record rather than a hand-typed figure — the shortfall must
+  be inside `epsilonRecord()[EPSILON_FAMILY_OF[k]].relative`, which is the exact lookup
+  `EPSILON_FAMILY_OF` is exported for and the one a consumer performing `diffMpm`'s documented
+  `≥ dCurve` check would do. Every `step`-family dimension is asserted at EXACTLY
+  `published.step.relative`, so the family's zero is pinned on its genuinely exact members and a
+  future re-filing has to face that rather than a `< 1e-6` band.
+- In a new focused test (`301 ms`, one dimension over every part scope, against the walk's
+  eleven dimensions over two), pinning the corpus worst at `7.51e-5` and asserting it is inside
+  `published.rubato.relative` and OUTSIDE `published.step.relative`. That second assertion is the
+  finding: under the shipped-before-fix filing this correct measurement read as a theorem
+  violation, and so did ulp-level noise on a clean pair (vulpius rubato, 1.687e-16).
+
+**MINOR-2 and MINOR-4, the stale text.** `DESIGN.md:2324`'s `moves` default corrected to FALSE
+(A-Q5/AD-66.1; the code's reading was the ruled one). `dimensions.ts`' `EditPlan.localize` doc
+rewritten: it claimed articulation "localizes only where every atom is DATE-anchored", which was
+the first reason and is not the binding one — AD-60.2's retroactive default step reaches
+arbitrarily far LEFT and its right bound is the next unchanged INSTRUCTION, so the doc now names
+all three unconditional `false` dimensions with their own reasons and carries the 5.09× violation
+measurement a future attempt has to face.
+
+**MINOR-1 and MINOR-3's conductor halves verified, not redone** (AD-67.3 + erratum): §9.2 carries
+the pairwise `scape` field at `DESIGN.md:2315-2317`, and the orphaned `corpusAverage` doc comment
+is gone.
+
+**MINOR-3's remainder** — `items[].synthetic`, whose only producer was the pseudo-performance
+AD-63.1 removed. [FLAGGED FOR RATIFICATION: this is a surface reduction, not a text edit.] The
+field could report nothing but `false` for every row of every corpus, which is AD-52.3a's rule
+(`noteDensityWeight`) applied to a report shape rather than to an option: a flag that cannot vary
+is not data. Removed from `report.ts`'s `CorpusReport`, from `corpus.ts:359`, from `DESIGN.md:2698`,
+and `DESIGN.md:3038`'s W4 deliverable list stops naming the pseudo-performance as a deliverable.
+`corpus.test.ts`'s `every(item => !item.synthetic)` — vacuously true, and the only reader —
+becomes an assertion on the row's key list, which is what actually has something to say now.
+
+NEGATIVE CONTROLS, three, each failing exactly its own tests and restoring green: re-filing
+`rubato` under `step` (2 failed / 1274 passed in `tests/comparison`, both in
+`editDimensions.test.ts` — the walk's and the focused pin's); zeroing the published `rubato`
+figure (1 failed, `expected 0.00002206659004738242 to be less than 0`); restoring
+`synthetic: false` (1 failed in `corpus.test.ts`).
+
+Gate: `npm run verify` GREEN — 125 files, **5397 passed**, 0 skipped (5396 before; the focused
+rubato pin is the one new test). Repo-wide `npx prettier --check .` clean; eslint clean on every
+touched file.

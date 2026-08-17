@@ -30,6 +30,8 @@ import {
   type ScopeSide,
 } from '../../src/comparison/dimensions.js';
 import { COMPARISON_DIMENSIONS, type ComparisonDimension } from '../../src/comparison/registry.js';
+import { EPSILON_FAMILY_OF } from '../../src/comparison/report.js';
+import { epsilonRecord } from '../../src/comparison/compare.js';
 import { DEFAULT_LAMBDA_DATE } from '../../src/comparison/eventAlignment.js';
 import type { InvarianceMode } from '../../src/comparison/decomposition.js';
 import { ADVERSARIAL_FAMILY, ADVERSARIAL_WINDOW } from './adversarialFamily.js';
@@ -115,6 +117,10 @@ const REFERENCE_PAIRS = [
  * `1e-4` covers the worst measured shortfall on the vendored corpus (rubato, Telemann part 2,
  * `7.51e-5`); every other dimension's worst is below `1e-6` (dynamics `8.60e-7`, the rest
  * exactly 0). Both figures are asserted, so the band cannot quietly absorb a regression.
+ *
+ * The band is a TEST tolerance and not the published record. AD-60.1 gave rubato an epsilon
+ * family of its own, and the assertions below are made against that record rather than against
+ * this constant — a dimension whose integrator changes shape has to be re-filed, not absorbed.
  */
 const QUADRATURE_BAND = 1e-4;
 
@@ -206,21 +212,45 @@ describe('the edit path over the vendored corpus', () => {
       }
 
     // [MEASURED] Where the band is actually needed, and by how much. `rubato` is the only
-    // dimension that comes near it, and that is a FINDING rather than a tolerance: §9.3 files
-    // rubato in the `step` epsilon family, whose published figure is an exact `0` on the
-    // grounds that a step reading needs no time-domain quadrature — but `rubatoDistance`
-    // integrates a warp displacement through AD-33.3b's rule 2c (structural `u*` split plus a
-    // K = 16 mesh) and AD-34.1 measures that integrator's residual at 2.718e-4. The dimension
-    // is misfiled and the published record understates its error as zero. Reported for a
-    // ruling, since AD-25.6 approved FIVE epsilon families and a sixth is a DESIGN change.
-    expect(shortfall.get('rubato')).toBeLessThan(1e-4);
-    expect(shortfall.get('rubato')).toBeGreaterThan(1e-6);
-    for (const [dimension, worst] of shortfall)
-      if (dimension !== 'rubato')
-        expect({ dimension, belowMachineBand: worst < 1e-6 }).toEqual({
+    // dimension that comes near it, and AD-60.1 ruled that a FAMILY OF ITS OWN — not the band —
+    // is where that fact belongs: `rubatoDistance` integrates a warp displacement through
+    // AD-33.3b's rule 2c (structural `u*` split plus a K = 16 mesh), so the `step` family's
+    // "no quadrature in the time domain at all, exact 0" was false of it.
+    //
+    // The assertion is made against the PUBLISHED record rather than against a hand-typed
+    // figure, which is what makes it a pin on the record and not only on the engine: a consumer
+    // doing `inputs.epsilon[EPSILON_FAMILY_OF[k]]` — the lookup that mapping is exported for —
+    // must find the shortfall inside its family's stamped epsilon. Under the shipped-before-fix
+    // filing (`rubato: 'step'`, ε = 0) this measured 7.51e-5 read as a theorem violation, which
+    // is the CAPITAL-1 regression this pin exists to catch.
+    const published = epsilonRecord();
+    const rubatoShortfall = shortfall.get('rubato') ?? 0;
+    expect(EPSILON_FAMILY_OF.rubato).toBe('rubato');
+    expect(rubatoShortfall).toBeLessThan(published.rubato.relative);
+    // …and OUTSIDE the `step` figure, so a re-filing under `step` cannot pass this test.
+    expect(rubatoShortfall).toBeGreaterThan(published.step.relative);
+    // This walk's own worst, asserted on its own so the published band cannot absorb a
+    // regression. It is Telemann part 1 at 2.21e-5, NOT the corpus worst — the walk carries
+    // scopes 0 and 1 for the primary pairs, and part 2's 7.51e-5 is pinned by its own test
+    // below, which reaches every part scope for one dimension instead of every dimension for
+    // two scopes.
+    expect(rubatoShortfall).toBeLessThan(1e-4);
+    expect(rubatoShortfall).toBeGreaterThan(1e-6);
+
+    // The `step` family's exact-0 claim, asserted on its GENUINELY exact members only — which
+    // is what AD-60.1 preserved by moving rubato out rather than by widening `step`'s figure.
+    // Every other family's members are checked against their own published figure, so a
+    // dimension whose integrator changes shape has to be re-filed rather than absorbed.
+    for (const [dimension, worst] of shortfall) {
+      const family = EPSILON_FAMILY_OF[dimension];
+      if (family === 'step')
+        expect({ dimension, worst }).toEqual({ dimension, worst: published.step.relative });
+      else
+        expect({ dimension, within: worst < published[family].relative }).toEqual({
           dimension,
-          belowMachineBand: true,
+          within: true,
         });
+    }
 
     // Non-vacuity: an implementation returning 0 everywhere satisfies claim 1, and the two
     // facts that make the triple three numbers are asserted on REAL data rather than only on a
@@ -230,6 +260,53 @@ describe('the edit path over the vendored corpus', () => {
     expect(nonzero).toBeGreaterThan(30);
     expect(reworked).toBeGreaterThan(0);
     expect(divergent).toBeGreaterThan(0);
+  });
+
+  /**
+   * AD-60.1's sixth epsilon family, pinned on the case that motivated it.
+   *
+   * The walk above spends its budget on eleven dimensions over two scopes; this spends a much
+   * smaller one on ONE dimension over every part scope, which is where the corpus's worst
+   * shortfall lives (Telemann part 2, 7.51e-5 — cut A3's STOP-AND-REPORT figure).
+   *
+   * The point is not the number, it is which epsilon the number has to answer to. Before
+   * AD-60.1 rubato was filed under `step`, whose published figure is an exact `0` because a
+   * piecewise-constant reading needs no time-domain quadrature; but `rubatoDistance` integrates
+   * a warp DISPLACEMENT through AD-33.3b's rule 2c (structural `u*` split plus a K = 16 mesh),
+   * which AD-34.1 measured at 2.718e-4. So a consumer doing the `EPSILON_FAMILY_OF` lookup the
+   * mapping is exported for read this perfectly correct 7.51e-5 as a theorem violation, and the
+   * ulp-level noise on a clean pair as one too. The wrong thing was the published record.
+   */
+  it('answers to its OWN epsilon: rubato’s worst real shortfall is inside AD-34.1’s figure', () => {
+    const pair = readComparisonPair({
+      a: fixture('telemann-grave'),
+      performanceA: 0,
+      performanceB: 1,
+      window: null,
+    });
+    let worst = 0;
+    let scopesWithRubato = 0;
+    for (let index = 0; index < pair.a.scopes.length; index += 1) {
+      const target = bench(fixture('telemann-grave'), 0, 1, { scopeIndex: index });
+      if (target === null) continue;
+      const { script } = editScriptForDimension('rubato', target.a, target.b, target.settings);
+      if (script.directDistance <= 0) continue;
+      scopesWithRubato += 1;
+      worst = Math.max(worst, (script.directDistance - script.scriptCost) / script.directDistance);
+    }
+
+    // The maps live in the parts, not the global scope — all three parts carry rubato.
+    expect(scopesWithRubato).toBe(3);
+
+    const published = epsilonRecord();
+    // [MEASURED] Telemann part 2: d = 476.22531733 against scriptCost = 476.18955454.
+    expect(worst).toBeCloseTo(7.51e-5, 7);
+    // Inside its own family's published figure…
+    expect(worst).toBeLessThan(published.rubato.relative);
+    // …and OUTSIDE the `step` figure it used to be filed under, which is the whole finding: a
+    // re-filing under `step` (ε = 0) makes this measurement read as `scriptCost < d`.
+    expect(worst).toBeGreaterThan(published.step.relative);
+    expect(EPSILON_FAMILY_OF.rubato).toBe('rubato');
   });
 
   it('anchors the Vulpius Baroque|Romantic scripts, where both facts show at once', () => {

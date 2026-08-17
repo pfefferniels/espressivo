@@ -359,7 +359,6 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
     items: items.map((item) => ({
       itemIndex: item.itemIndex,
       performance: item.performance,
-      synthetic: false,
     })),
     matrices: { aggregate, byDimension },
     dendrogram,

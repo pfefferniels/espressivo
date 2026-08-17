@@ -2321,7 +2321,7 @@ export interface CompareMpmOptions extends ComparisonSettings {
 // diff surface entirely (absence over throw, AD-52.3a's form): edit pricing is
 // RAW by AD-59.3's theorem argument, and a DiffReport carries no profile.
 export interface DiffMpmOptions extends Omit<CompareMpmOptions, 'invariance' | 'profile'> {
-  readonly moves?: boolean; // fragment/consolidate ops; W3+, default true
+  readonly moves?: boolean; // fragment/consolidate ops; A-Q5/AD-66.1, default FALSE
 }
 
 export interface CompareCorpusOptions extends ComparisonSettings {
@@ -2698,8 +2698,7 @@ export interface CorpusResult {
   readonly items: readonly {
     readonly itemIndex: number;
     readonly performance: string;
-    readonly synthetic: boolean;
-  }[]; // AD-26.3
+  }[]; // AD-26.3; `synthetic` went with corpusAverage (AD-63.1) — no producer
   readonly matrices: {
     readonly aggregate: readonly number[]; // N², row-major
     readonly byDimension: Record<ComparisonDimension, readonly number[]>;
@@ -3037,8 +3036,9 @@ under `tests/comparison/fixtures/` (NEW tree; the immutable
   ops); `compareMpmCorpus` (N² matrices with `n`, UPGMA + linkages, PAM,
   silhouette + reliability flag, MDS/Jacobi with the degenerate guards,
   seriation, profiles incl. signed, corpus normalization with the M19 formula
-  written out, `suspectPairs`, the corpus-average pseudo-performance and the
-  noise-floor context of AD-26.3); scape opt-in; README section, **glossary**
+  written out, `suspectPairs`, and the noise-floor context of AD-26.3 — the
+  corpus-average pseudo-performance is NOT a deliverable, removed by AD-63.1);
+  scape opt-in; README section, **glossary**
   (AD-23, C14 — one worked example per decomposition component in performance
   terms) and **cookbook**: the Welte timing-only recipe with the per-space
   invariance trade-off (C9), the neutral-baseline ratio recipe requiring
