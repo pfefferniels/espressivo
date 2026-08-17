@@ -5667,3 +5667,49 @@ DESIGN's Σ|λ|=0 implication correctly one-way. The two measurement
 refinements (whole-axis mirror detection; material-eigenvalue gating) are
 noted as the difference between a real assertion and a flattering one —
 on the record in those words.
+
+## 2026-08-17 — W4 fix cut 4: a file the campaign's own tools could not read (w4-fix)
+
+LOG read through AD-68 (fix cut 1 ratifications).
+
+[NEW FINDING, not on §8's must-fix list — reported here because it was found while working
+MAJOR-1, and it explains a gap in every review this file has had.]
+
+**`src/comparison/diff.ts` contained two RAW NUL bytes and has been BINARY to git and grep since
+`baa4579`.** Line 90's orientation key wrote its separator as the character itself rather than as
+the escape ``, and the doc comment eleven lines above quoted it the same way. The string
+this produces is correct and the mechanism is sound — a separator no XML serialization can
+contain, so no selector can forge a key boundary. What is wrong is the file:
+
+- `git diff` and `git show` classify it as binary. **`git diff --stat` reports
+  `Bin 21151 -> 21695 bytes` and NOT ONE LINE of content** — so cut A4's and cut A5's diffs of
+  this file, and this gate's own re-reading of `87aa040..8789179`, showed nothing textual for
+  `diff.ts` at all. The 537 lines that implement §6.4's orientation, the mirror and the report
+  assembly have never appeared in a reviewable diff.
+- `grep` and `rg` skip it in SILENCE — exit 1, no output, no "binary file matches" line. A sweep
+  over `src/comparison/**` returns clean while never having read this file. Found exactly that
+  way: `grep -n "notes" src/comparison/diff.ts` returned nothing on a file the gate had just
+  cited `notes` line numbers from.
+- `file` calls it `data`.
+
+Nothing else in `src/` or `tests/` outside `tests/integration/fixtures/**` carries a NUL; the
+whole tracked tree was swept. `docs/history/ornamentation/tools/probe.mjs` has one and is a
+closed campaign record, left alone.
+
+*Repair:* both occurrences written as the escape, which is the identical string at runtime —
+`clustering.ts` already writes the same separator that way, which is how the inconsistency is
+visible at all. `file` now reports UTF-8 text, `git diff` shows lines, `grep` works. The module
+doc says why the escape is mandatory here, so it cannot regress silently.
+
+Landing ALONE, and before the MAJOR-1 work in the same file, deliberately: the point of the fix
+is that the NEXT commit touching `diff.ts` shows up as text in review, and bundling it with a
+semantic change would waste exactly that.
+
+NEGATIVE CONTROL, of the only kind available: the change is semantics-preserving by construction
+(an escape and a literal denote the same string), so the control is that the behaviour is
+UNCHANGED — `npm run verify` reports the same 5406 passed before and after, and `diff.test.ts`'s
+17 tests including the byte-identity mirror pass untouched. The orientation key is what those
+tests exercise most directly.
+
+Gate: `npm run verify` GREEN — 125 files, **5406 passed**, 0 skipped, identical to the previous
+commit. Repo-wide `npx prettier --check .` clean; eslint clean on `src/comparison/diff.ts`.
