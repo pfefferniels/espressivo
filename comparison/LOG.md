@@ -5912,3 +5912,97 @@ the vendored corpus's accidental absence of ties. §9.4's own false claim
 about itself is corrected in place with the reason. diff.ts shows LINES
 in the diffstat for the first time in its history — cut 4 doing what it
 was for.
+
+## 2026-08-17 — W4 fix cut 7: MAJOR-4 and MAJOR-6 — and the tie CAPITAL-2 could not reach (w4-fix)
+
+LOG read through AD-70 (the NUL finding; diff-surface consumption ruled). §8's items 7 and 8.
+
+[NEW FINDING, CAPITAL-class, found BY item 8's work and fixed in the same cut — flagged for
+ratification below.]
+
+**MAJOR-4 — AD-60.3's synthetic pin exists, and the fixture took three tries.** The rule
+(`containsA ? scopeOf(a) : scopeOf(b)`) is now pinned on a two-performance synthetic: the same
+document, one performance holding its `ornamentationMap` in the PART and one under `<global>`,
+read at the part scope where `mapIsPartLocal` answers differently for each. What makes the scope
+observable is the style-carrying rule, which genuinely differs between the slots — a part-local
+map carries each `<style>` switch forward, a global map ignores every switch after the first.
+
+The three tries are recorded IN the test because the two that failed both look right:
+
+1. **The same map bytes in both slots** — the shape the gate report suggested. "A read as part"
+   and "B read as part" are then the same atoms, so inverting the rule to
+   `containsA ? scopeOf(b) : scopeOf(a)` merely swaps the two arguments of a symmetric norm.
+   Control PASSED.
+2. **Two switches each, differing only in ornament dates.** The inverted reading pairs
+   `720 with S` against `1440 with T` where the correct one pairs `720 with T` against
+   `1440 with S` — same date gap, same style difference, same cost. Control PASSED again.
+3. The shipped one: both maps carry two switches but differ in opening style, switch date and
+   ornament count, which separates all FOUR readings the rule can produce —
+   correct `28.000000000000004`, inverted `13.333333333333336`, forced-part `29.333333333333332`,
+   forced-global `22.666666666666664`.
+
+A fixture separating three of the four would have shipped looking complete. That is the shape of
+the defect AD-60.3 was written about in the first place. Also required an EXPLICIT window: the
+pair-derived one ends at the last instruction date, which put the very ornament the two slots
+disagree about on the boundary and read 0.
+
+**MAJOR-6 — `w4Family.test.ts` binds `adversarialMembers()` now, and a SKIP is the honest
+report.** The obvious fix (route through the hook) is not enough on its own: a test that names a
+member and finds it gone would then pass vacuously, which is the defect the gate found
+(`DROP=styled-level-fast` reported 7 passed, including the test whose entire subject was
+removed). Tests naming members guard with `it.skipIf`, so the sweep reports what actually
+happened. Measured before and after:
+
+    DROP=''                    7 passed              7 passed
+    DROP=styled-level-fast     7 passed          →   6 passed | 1 skipped
+    DROP=styled-level-slow     7 passed          →   6 passed | 1 skipped
+    DROP=plain                 7 passed          →   6 passed | 1 skipped
+    DROP=nonexistent-member    1 failed              1 failed   (the hook's own guard)
+
+`requireMember` THROWS on an absence, so routing through the hook does not soften anything: only
+the `skipIf` guard licenses a missing member. The corpus test's hard-coded 10-element permutation
+became a derived stride and its `45 pairs` became `C(n,2)`, so a dropped member shrinks the
+corpus instead of indexing off the end.
+
+**And the finding that came out of it.** With `plain` dropped, the nine-item corpus FAILED
+permutation-equivariance on the medoid set — after CAPITAL-2 was fixed. Diagnosed:
+
+    straight  {bottom-span, capped, renderer-default-level}
+    shuffled  {bottom-span, renderer-default-level, skips}
+
+Five subsets attain the optimum `177.477686776`. In the straight corpus the winner and the
+runner-up are BIT-EQUAL (`177.47768677583286490` both, difference exactly 0); in the permuted one
+they differ by `2.842e-14`. **`partitionCost` summed each item's distance in the CALLER's item
+order, and floating-point addition is not associative** — so a permuted corpus turns an exact tie
+into a 1-ulp difference, `cost < bestCost` settles it, and AD-25.2's label key is never consulted.
+
+CAPITAL-2 repaired the tie KEY. This is the tie itself not surviving to reach the key — the same
+disease as CAPITAL-3's exact-equality tests, one level BELOW the gate's finding. Neither the gate
+nor cut 2 could have caught it with the fixtures in hand: `corpusMath.test.ts`'s two-block witness
+is integer-valued, and integer sums are exact in any order, which is exactly why that test passes
+either way.
+
+*Repair, and it is EXACT rather than an epsilon.* `partitionCost` sums in LABEL order — one
+canonical sequence computed once per `pam` call and threaded down (it sits in the exhaustive
+walk's hot loop, so a per-candidate sort would be `O(C(n,k)·n log n)`). The same numbers added in
+the same sequence give bit-identical totals under every permutation, so the tie stays a tie and
+the sorted-label key decides it as AD-25.2 says. An epsilon comparison would have tolerated the
+noise; a canonical order removes it.
+
+[FLAGGED FOR RATIFICATION] This is a CAPITAL-class defect off the must-fix list, in the area
+CAPITAL-2 covers, and the repair changes a published number (`Partition.cost`) by ulps — in the
+direction of making it permutation-invariant, which the report should be.
+
+Pinned in `w4Family.test.ts` on the corpus that exhibited it: the matrix is taken from the
+pipeline once and permuted directly under 45 orders (every rotation × five strides), asserting
+ONE medoid set, with a non-vacuity test proving that corpus really has several cost-equal optima.
+
+NEGATIVE CONTROLS, five, each failing exactly its own tests and restoring green. MAJOR-4: three
+perturbations of the scope rule — inverted, forced-part, forced-global — each failing the new pin
+with a different measured distance (13.33 / 29.33 / 22.67 against 28.00). The summation order:
+`partitionCost` back to index order → 1 failed of 1294 in `tests/comparison`, exactly the new
+permutation test. MAJOR-6's control is the sweep table above rather than an injection, since the
+defect there was a test that could not fail.
+
+Gate: `npm run verify` GREEN — 126 files, **5417 passed**, 0 skipped (5413 before; four new
+tests). Repo-wide `npx prettier --check .` clean; eslint clean on the three touched files.

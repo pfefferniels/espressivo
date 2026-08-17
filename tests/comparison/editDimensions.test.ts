@@ -370,6 +370,147 @@ describe('the edit path over the vendored corpus', () => {
   });
 });
 
+/**
+ * AD-60.3's obligation, discharged: the ornamentation map's SCOPE rule, on a synthetic pair
+ * built for it (W4 MAJOR-4).
+ *
+ * The rule is that a map's scope is a property of the MAP and a mixed edit state has no single
+ * one, so `dimensions.ts` picks `containsA ? scopeOf(a) : scopeOf(b)` — which makes `S(0,0)`
+ * exactly A and `S(n,m)` exactly B. AD-60.3 ruled it and required a pin because "a stated rule
+ * with no observable is half a rule", and it had none: no test in the repository constructed an
+ * `ornamentationMap` pair, no vendored document carries one, and the adversarial family's two
+ * ornament members do not differ in where their map LIVES. The branch was never taken in either
+ * direction.
+ *
+ * What makes the scope observable is the style-carrying rule, which really does differ between
+ * the two slots (`ornamentAtoms.ts`): a part-local map carries each `<style>` switch forward,
+ * while a map under `<global>` IGNORES every switch after the first successful one. So a map
+ * with two switches performs differently depending only on which slot holds it — and this pair
+ * holds the same map bytes in the two different slots, so the scope is the only variable.
+ */
+describe('AD-60.3: the ornamentation map’s scope, pinned on a synthetic pair', () => {
+  /** Two ornament styles whose spreads differ, so which one is carried is visible in the atoms. */
+  const STYLES =
+    '<ornamentationStyles>' +
+    '<styleDef name="S"><ornamentDef name="arp">' +
+    '<temporalSpread frameStart="-30.0" frameLength="60.0" intensity="1.0"/>' +
+    '</ornamentDef></styleDef>' +
+    '<styleDef name="T"><ornamentDef name="arp">' +
+    '<temporalSpread frameStart="-240.0" frameLength="480.0" intensity="1.0"/>' +
+    '</ornamentDef></styleDef>' +
+    '</ornamentationStyles>';
+
+  /**
+   * The two maps, and the asymmetry the pin needs — which took three tries, recorded because
+   * the two fixtures that did NOT work both look perfectly reasonable.
+   *
+   * Both maps carry TWO `<style>` switches, so each has two genuinely different readings: as a
+   * part the switch is carried forward, as a global map every switch after the first successful
+   * one is ignored. They differ in everything else — which style they open with, where the
+   * switch falls, how many ornaments follow — and that is deliberate, because the rule names
+   * FOUR possible readings and a pin worth having has to separate all four:
+   *
+   *     correct   norm(A as part, B as global)   28.000000000000004
+   *     inverted  norm(A as global, B as part)   13.333333333333336
+   *     forced part                              29.333333333333332
+   *     forced global                            22.666666666666664
+   *
+   * Two rejected fixtures, both measured against the control that inverts the rule to
+   * `containsA ? scopeOf(b) : scopeOf(a)`:
+   *
+   * 1. The same map bytes in both slots — the shape the gate report suggested. "A read as part"
+   *    and "B read as part" are then the same atoms, so inverting the rule merely swaps the two
+   *    arguments of a symmetric norm. Control PASSED.
+   * 2. Two switches each, differing only in ornament dates. The inverted reading pairs
+   *    `720 with S` against `1440 with T` where the correct one pairs `720 with T` against
+   *    `1440 with S` — same date gap, same style difference, same cost. Control PASSED again.
+   *
+   * A fixture that separates three of the four would have shipped looking complete. That is the
+   * shape of the defect AD-60.3 was written about in the first place.
+   */
+  const MAP_LOCAL =
+    '<ornamentationMap>' +
+    '<style date="0.0" name.ref="S"/>' +
+    '<ornament date="0.0" name.ref="arp"/>' +
+    '<style date="720.0" name.ref="T"/>' +
+    '<ornament date="720.0" name.ref="arp"/>' +
+    '<ornament date="1440.0" name.ref="arp"/>' +
+    '</ornamentationMap>';
+
+  const MAP_GLOBAL =
+    '<ornamentationMap>' +
+    '<style date="0.0" name.ref="T"/>' +
+    '<ornament date="0.0" name.ref="arp"/>' +
+    '<style date="360.0" name.ref="S"/>' +
+    '<ornament date="360.0" name.ref="arp"/>' +
+    '</ornamentationMap>';
+
+  /**
+   * One document, two performances, differing in which SLOT holds the map.
+   *
+   * `local` puts it in the part; `global` puts one under `<global>` and leaves the part empty,
+   * so the part scope inherits it. Both are read at the PART scope, where `mapIsPartLocal`
+   * answers `true` for the first and `false` for the second — which is the whole variable.
+   */
+  const PAIR =
+    '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0">' +
+    '<performance name="local" pulsesPerQuarter="720">' +
+    `<global><header>${STYLES}</header><dated/></global>` +
+    '<part name="v" number="0" midi.channel="0" midi.port="0">' +
+    `<header/><dated>${MAP_LOCAL}</dated></part>` +
+    '</performance>' +
+    '<performance name="global" pulsesPerQuarter="720">' +
+    `<global><header>${STYLES}</header><dated>${MAP_GLOBAL}</dated></global>` +
+    '<part name="v" number="0" midi.channel="0" midi.port="0">' +
+    '<header/><dated/></part>' +
+    '</performance>' +
+    '</mpm>';
+
+  /**
+   * An EXPLICIT window, for the family's own reason: the pair-derived one ends at the last
+   * instruction date, which here is the second `<style>` switch at 720 ticks = 1 quarter — so
+   * the very ornament the two slots disagree about sits on the boundary and the comparison
+   * reads 0. Four quarters contains both ornaments and their spreads.
+   */
+  const SCOPE_WINDOW = { start: 0, end: 4 } as const;
+
+  const benchOf = () =>
+    requireBench(PAIR, 'local', 'global', { scopeIndex: 1, window: SCOPE_WINDOW });
+
+  it('makes S(0,0) exactly A and S(n,m) exactly B, and the replay reaches B', () => {
+    const target = benchOf();
+    const { script } = editScriptForDimension('ornamentation', target.a, target.b, target.settings);
+    const evaluated = evaluateDimension('ornamentation', target.a, target.b, target.settings);
+
+    // The endpoints ARE the documents: `directDistance` is the `d_k` the comparison reports,
+    // which is only true if `S(0,0)` read A under A's scope and `S(n,m)` read B under B's. Not
+    // `toBeCloseTo` — the two are the same arithmetic over the same atoms.
+    expect(script.directDistance).toBe(evaluated.distance);
+
+    // §6.3: the replay landed on B. A state read under the WRONG scope cannot reach B, which is
+    // exactly what `replayResidual` is the field for (AD-60.3's own sentence).
+    expect(script.replayResidual).toBe(0);
+
+    // …and the theorem holds on it.
+    expect(script.scriptCost).toBeGreaterThanOrEqual(script.directDistance / (1 + QUADRATURE_BAND));
+  });
+
+  it('is non-vacuous: the two slots really do perform the same map differently', () => {
+    // Without this the test above would pass on a pair whose scope branch changes nothing, and
+    // AD-60.3's obligation would be discharged in name only — which is the exact failure the
+    // ruling was written to prevent.
+    const target = benchOf();
+    const evaluated = evaluateDimension('ornamentation', target.a, target.b, target.settings);
+    expect(evaluated.distance).toBeGreaterThan(0);
+
+    // The mechanism, named rather than assumed: the part-local side carries the second `<style>`
+    // switch and the global side ignores it, so the two differ on the ornament at date 720 and
+    // agree on the one at date 0.
+    const { script } = editScriptForDimension('ornamentation', target.a, target.b, target.settings);
+    expect(script.steps.length).toBeGreaterThan(0);
+  });
+});
+
 describe('resolution travels with the instruction (AD-40.2)', () => {
   // Two performances whose `<tempo>` elements are BYTE-IDENTICAL and whose `tempoStyles` differ.
   // Nothing in the map says what the tempo is; the styleDef does.

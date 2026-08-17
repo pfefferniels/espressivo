@@ -17,7 +17,13 @@
  */
 import { describe, it, expect } from 'vitest';
 import { compareMpmCorpus, diffMpm } from '../../src/api/comparison.js';
-import { ADVERSARIAL_FAMILY, ADVERSARIAL_WINDOW, adversarialMembers } from './adversarialFamily.js';
+import {
+  ADVERSARIAL_FAMILY,
+  ADVERSARIAL_WINDOW,
+  adversarialMembers,
+  type AdversarialMember,
+} from './adversarialFamily.js';
+import { pam, type DistanceMatrix } from '../../src/comparison/clustering.js';
 import type { XmlText } from '../../src/api/types.js';
 import type { DiffReport, EditOp } from '../../src/comparison/report.js';
 
@@ -135,18 +141,56 @@ function mirrored(report: DiffReport): unknown {
   };
 }
 
+/**
+ * W4 MAJOR-6: this file binds `adversarialMembers()`, never the raw `ADVERSARIAL_FAMILY`.
+ *
+ * AD-57.2's drop-each-member hook answers "which member CATCHES a given defect", and it can only
+ * answer it for tests that actually honour the drop. These bound the constant, so a sweep over
+ * `COMPARISON_DROP_MEMBER` ran IDENTICAL assertions for every value — including
+ * `COMPARISON_DROP_MEMBER=styled-level-fast`, which reported 7 passed with
+ * `expect(fast).toBeDefined()` succeeding on a member that was supposed to be gone. The sweep
+ * was real (it runs through `metricProperties.test.ts`) and this file was outside it, which is
+ * to say the orientation mirror and the tie-rich matrix — the two surfaces AD-57.2's check was
+ * EXTENDED for — were the two it did not reach.
+ *
+ * Where a test needs a member BY NAME, a drop is handled by `requiredMember`, which returns null
+ * only when that member is the one the sweep dropped. Any other absence still fails, so routing
+ * through the hook does not soften what these tests assert.
+ */
+const FAMILY = adversarialMembers();
+
+/** The member the sweep removed, if any — the ONLY licensed reason for one to be missing. */
+const DROPPED = process.env.COMPARISON_DROP_MEMBER ?? '';
+
+/** True when the sweep removed one of the members a test cannot run without. */
+const dropped = (...names: readonly string[]): boolean => names.includes(DROPPED);
+
+/**
+ * A member a test names outright. Missing is a FAILURE here, never a shrug.
+ *
+ * Tests that name members guard themselves with `it.skipIf(dropped(...))`, so by the time this
+ * runs the member must be present — and a SKIP is the honest report for "the sweep removed what
+ * this test is about". Passing would be the vacuity the gate found (`DROP=styled-level-fast`
+ * reported 7 passed, including the test whose whole subject was gone); failing would drown the
+ * sweep's signal in noise it cannot act on.
+ */
+function requireMember(name: string): AdversarialMember {
+  const found = FAMILY.find((member) => member.name === name);
+  if (found === undefined) throw new Error(`no family member "${name}" (dropped: "${DROPPED}")`);
+  return found;
+}
+
 describe('§6.4’s orientation, over the family’s hazards', () => {
   // Every member against the ORDINARY case and against the styled-level pair W4 added — the
   // first puts each hazard opposite a document with nothing wrong with it, the second puts it
   // opposite a difference that lives entirely in a header.
-  const anchors = ADVERSARIAL_FAMILY.filter((member) =>
-    ['plain', 'styled-level-slow'].includes(member.name),
-  );
+  const anchors = FAMILY.filter((member) => ['plain', 'styled-level-slow'].includes(member.name));
 
   it('mirrors every member against both anchors, field by field', () => {
     let scripted = 0;
+    let pairs = 0;
     for (const anchor of anchors)
-      for (const member of ADVERSARIAL_FAMILY) {
+      for (const member of FAMILY) {
         if (member === anchor) continue;
         const forward = diff(anchor.mpm, member.mpm);
         const reverse = diff(member.mpm, anchor.mpm);
@@ -154,35 +198,41 @@ describe('§6.4’s orientation, over the family’s hazards', () => {
           JSON.stringify(mirrored(forward)),
         );
         scripted += forward.scripts.length;
+        pairs += 1;
       }
     // Non-vacuity: the pairs really do produce scripts, so the mirror has something to mirror.
-    expect(scripted).toBeGreaterThan(40);
+    // Stated PER PAIR rather than as a total, so that dropping a member weakens the sweep's
+    // coverage without weakening its threshold — a fixed `> 40` would have quietly absorbed the
+    // loss of a member that carries several scripts.
+    expect(pairs).toBe(anchors.length * (FAMILY.length - 1));
+    expect(scripted).toBeGreaterThan(pairs);
   });
 
-  it('reaches B exactly on every one of them (§6.3)', () => {
-    for (const member of ADVERSARIAL_FAMILY) {
+  it.skipIf(dropped('plain'))('reaches B exactly on every one of them (§6.3)', () => {
+    const anchor = requireMember('plain');
+    for (const member of FAMILY) {
       if (member.name === 'plain') continue;
-      const report = diff(ADVERSARIAL_FAMILY[0].mpm, member.mpm);
+      const report = diff(anchor.mpm, member.mpm);
       for (const row of Object.values(report.dimensions))
         expect(row.replayResidual, member.name).toBe(0);
     }
   });
 
-  it('prices the styled-level pair, whose difference is invisible in the maps', () => {
-    const slow = ADVERSARIAL_FAMILY.find((m) => m.name === 'styled-level-slow');
-    const fast = ADVERSARIAL_FAMILY.find((m) => m.name === 'styled-level-fast');
-    expect(slow).toBeDefined();
-    expect(fast).toBeDefined();
-    if (slow === undefined || fast === undefined) return;
+  it.skipIf(dropped('styled-level-slow', 'styled-level-fast'))(
+    'prices the styled-level pair, whose difference is invisible in the maps',
+    () => {
+      const slow = requireMember('styled-level-slow');
+      const fast = requireMember('styled-level-fast');
 
-    // The two `<tempoMap>` bodies are byte-identical; only the header differs.
-    expect(slow.mpm.split('<dated>')[1]).toBe(fast.mpm.split('<dated>')[1]);
+      // The two `<tempoMap>` bodies are byte-identical; only the header differs.
+      expect(slow.mpm.split('<dated>')[1]).toBe(fast.mpm.split('<dated>')[1]);
 
-    const report = diff(slow.mpm, fast.mpm);
-    // 4 quarters at |ln 2| over the tempo JND — the whole window, both instructions at date 0.
-    expect(report.dimensions.tempo.dCurve).toBeCloseTo((4 * Math.LN2) / Math.log(1.025), 6);
-    expect(report.dimensions.tempo.replayResidual).toBe(0);
-  });
+      const report = diff(slow.mpm, fast.mpm);
+      // 4 quarters at |ln 2| over the tempo JND — the whole window, both instructions at date 0.
+      expect(report.dimensions.tempo.dCurve).toBeCloseTo((4 * Math.LN2) / Math.log(1.025), 6);
+      expect(report.dimensions.tempo.replayResidual).toBe(0);
+    },
+  );
 });
 
 describe('§8’s determinism, over a tie-RICH corpus', () => {
@@ -202,21 +252,36 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
     'styled-level-slow',
     'styled-level-fast',
   ];
-  const items = chosen.map((name) => {
-    const member = ADVERSARIAL_FAMILY.find((entry) => entry.name === name);
-    if (member === undefined) throw new Error(`no family member "${name}"`);
-    return { mpm: member.mpm as XmlText, label: name };
-  });
+  // Built from the HOOK's list, so a dropped member shrinks the corpus instead of throwing.
+  // Any absence other than the sweep's own is still a failure, asserted rather than tolerated.
+  const items = chosen
+    .filter((name) => {
+      const present = FAMILY.some((member) => member.name === name);
+      if (!present) expect({ name, reason: DROPPED }).toEqual({ name, reason: name });
+      return present;
+    })
+    .map((name) => ({ mpm: requireMember(name).mpm as XmlText, label: name }));
 
   const corpusOf = (list: typeof items) =>
     compareMpmCorpus({ items: list, window: WINDOW, k: 3, noiseFloor: true }).report;
 
+  /**
+   * A permutation DERIVED from the corpus size, so a dropped member shrinks the corpus rather
+   * than indexing off the end of a hard-coded order (W4 MAJOR-6). The stride is coprime with
+   * every length this corpus can take here, so it is a genuine derangement at 9 items and at 10.
+   */
+  const order = items.map((_unused, index) => (index * 7 + 3) % items.length);
+
   it('permutes the matrices and relabels the dendrogram, and changes nothing else', () => {
-    const order = [7, 2, 9, 0, 4, 8, 1, 6, 3, 5];
+    // Non-vacuity for the permutation itself: a stride that happened to be the identity would
+    // make every assertion below trivially true.
+    expect(new Set(order).size).toBe(items.length);
+    expect(order).not.toEqual(items.map((_unused, index) => index));
+
     const straight = corpusOf(items);
     const shuffled = corpusOf(order.map((index) => items[index]));
     const n = straight.n;
-    expect(n).toBe(10);
+    expect(n).toBe(items.length);
 
     for (let i = 0; i < n; ++i)
       for (let j = 0; j < n; ++j)
@@ -248,13 +313,107 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
     for (let i = 0; i < n; ++i)
       for (let j = i + 1; j < n; ++j) offDiagonal.push(report.matrices.aggregate[i * n + j]);
     const distinct = new Set(offDiagonal).size;
-    // 45 pairs and materially fewer distinct values: exact ties, not near-ties.
-    expect(offDiagonal).toHaveLength(45);
-    expect(distinct).toBeLessThan(45);
+    // `C(n, 2)` pairs and materially fewer distinct values: exact ties, not near-ties. Stated
+    // from `n` rather than as the literal 45, so the claim survives a dropped member instead of
+    // failing for a reason that has nothing to do with tie-richness.
+    expect(offDiagonal).toHaveLength((n * (n - 1)) / 2);
+    expect(distinct).toBeLessThan(offDiagonal.length);
   });
 
   it('is byte-identical across runs', () => {
     expect(JSON.stringify(corpusOf(items))).toBe(JSON.stringify(corpusOf(items)));
+  });
+
+  /**
+   * The medoid under permutation, on REAL distances — where the tie key alone is not enough.
+   *
+   * W4 CAPITAL-2 repaired `exhaustiveMedoids`' tie key, and this corpus found what the key
+   * cannot reach: the tie has to SURVIVE to be broken. `partitionCost` summed each item's
+   * distance in the caller's item order, floating-point addition is not associative, and a
+   * permuted corpus therefore turned an exact tie into a 1-ulp difference that
+   * `cost < bestCost` settled before the label rule was ever consulted.
+   *
+   * [MEASURED] on the nine-item corpus (this list without `plain`) at `k = 3`, where FIVE
+   * subsets attain the optimum `177.477686776`: summed in index order the winner
+   * `{bottom-span, capped, renderer-default-level}` and the runner-up
+   * `{bottom-span, renderer-default-level, skips}` are bit-equal under one item order
+   * (`177.47768677583286490` both) and differ by `2.842e-14` under another — so the corpus named
+   * a different set of typical performances for no reason a reader could see.
+   *
+   * The matrix is taken from the pipeline ONCE and permuted directly, so the sweep is over
+   * `pam` rather than over the whole corpus build: the defect is in the objective's summation
+   * order, and this is where it lives. Integer-valued fixtures cannot catch it — their sums are
+   * exact in any order, which is why `corpusMath.test.ts`'s two-block witness passes either way.
+   */
+  it('names the same medoids under every permutation of REAL, inexact distances', () => {
+    const nine = items.filter((item) => item.label !== 'plain');
+    const report = compareMpmCorpus({
+      items: nine,
+      window: WINDOW,
+      k: 3,
+    }).report;
+    const labels = [...report.labels];
+    const matrix: DistanceMatrix = { n: report.n, values: [...report.matrices.aggregate] };
+    expect(matrix.n).toBe(nine.length);
+
+    const permute = (source: DistanceMatrix, into: readonly number[]): DistanceMatrix => ({
+      n: source.n,
+      values: Array.from({ length: source.n * source.n }, (_unused, index) => {
+        const i = Math.floor(index / source.n);
+        const j = index % source.n;
+        return source.values[into[i] * source.n + into[j]];
+      }),
+    });
+
+    const answers = new Set<string>();
+    // Every cyclic rotation plus every stride — enough distinct orders to have caught the
+    // defect (it showed on the very first one tried) without enumerating 9!.
+    for (let shift = 0; shift < matrix.n; ++shift)
+      for (const stride of [1, 2, 4, 5, 7]) {
+        const into = Array.from(
+          { length: matrix.n },
+          (_unused, index) => (index * stride + shift) % matrix.n,
+        );
+        if (new Set(into).size !== matrix.n) continue;
+        const permutedLabels = into.map((index) => labels[index]);
+        const result = pam(permute(matrix, into), 3, permutedLabels);
+        expect(result?.exhaustive).toBe(true);
+        answers.add(
+          result!.medoids
+            .map((item) => permutedLabels[item])
+            .sort()
+            .join(','),
+        );
+      }
+
+    expect([...answers]).toEqual(['bottom-span,capped,renderer-default-level']);
+  });
+
+  it('is non-vacuous: that corpus really does have several cost-equal optima', () => {
+    // Without competing optima the test above asserts nothing about any tie rule, and the whole
+    // mechanism — cost tie, then label key — is never exercised.
+    const nine = items.filter((item) => item.label !== 'plain');
+    const report = compareMpmCorpus({ items: nine, window: WINDOW, k: 3 }).report;
+    const n = report.n;
+    const costOf = (subset: readonly number[]) => {
+      let total = 0;
+      for (let i = 0; i < n; ++i)
+        total += Math.min(...subset.map((medoid) => report.matrices.aggregate[i * n + medoid]));
+      return total;
+    };
+    let best = Number.POSITIVE_INFINITY;
+    let attained = 0;
+    for (let a = 0; a < n; ++a)
+      for (let b = a + 1; b < n; ++b)
+        for (let c = b + 1; c < n; ++c) {
+          const total = costOf([a, b, c]);
+          if (total < best - 1e-12) {
+            best = total;
+            attained = 0;
+          }
+          if (Math.abs(total - best) < 1e-12) attained += 1;
+        }
+    expect(attained).toBeGreaterThan(1);
   });
 });
 

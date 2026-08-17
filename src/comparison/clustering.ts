@@ -291,6 +291,7 @@ function exhaustiveMedoids(
   matrix: DistanceMatrix,
   k: number,
   labels: readonly string[],
+  order: readonly number[],
 ): readonly number[] | null {
   const n = matrix.n;
   if (chooseCount(n, k, PAM_EXHAUSTIVE_LIMIT) > PAM_EXHAUSTIVE_LIMIT) return null;
@@ -306,7 +307,7 @@ function exhaustiveMedoids(
   let bestCost = Number.POSITIVE_INFINITY;
   const walk = (start: number, chosen: readonly number[]): void => {
     if (chosen.length === k) {
-      const cost = partitionCost(matrix, chosen, labels);
+      const cost = partitionCost(matrix, chosen, labels, order);
       // Only a TIE needs a key, and a tie is the rare case: computing one per candidate would
       // put an `O(k log k)` sort inside the hot loop of a `2·10⁵`-subset enumeration.
       if (cost > bestCost) return;
@@ -356,14 +357,47 @@ function nearestMedoid(
   return best;
 }
 
+/**
+ * Item indices in LABEL order — the sequence every cost is summed in.
+ *
+ * Computed once per `pam` call and threaded down, because it sits inside the exhaustive walk's
+ * hot loop and sorting `n` labels per candidate would be `O(C(n,k)·n log n)`.
+ */
+function labelOrder(n: number, labels: readonly string[]): readonly number[] {
+  return Array.from({ length: n }, (_unused, index) => index).sort((x, y) =>
+    lower(labels[x] ?? '', labels[y] ?? '') ? -1 : 1,
+  );
+}
+
+/**
+ * The objective PAM minimizes: every item's distance to its nearest medoid.
+ *
+ * Summed in LABEL order rather than in the caller's item order, and that is not a nicety —
+ * without it PAM's medoid set is STILL not permutation-invariant after AD-25.2's tie key is
+ * repaired, because the tie never survives to reach the key. Floating-point addition is not
+ * associative, so a permuted corpus adds the same numbers in a different sequence and two
+ * genuinely cost-equal subsets come out differing by an ulp; `exhaustiveMedoids` then decides on
+ * `cost < bestCost` and the label rule is never consulted.
+ *
+ * Measured on the adversarial corpus at `n = 9, k = 3`, where five subsets attain the optimum:
+ * summed in index order the winner `{bottom-span, capped, renderer-default-level}` and the
+ * runner-up `{bottom-span, renderer-default-level, skips}` are BIT-EQUAL in one item order
+ * (`177.47768677583286490` both) and differ by `2.842e-14` in another — so the corpus named a
+ * different set of typical performances for no reason a reader could see. This is the same
+ * disease as W4 CAPITAL-3's exact-equality tie tests, one level below the key the gate found.
+ *
+ * A canonical summation ORDER is the exact repair rather than an epsilon one: the same numbers
+ * added in the same sequence give bit-identical totals under every permutation, so the tie stays
+ * a tie and {@link exhaustiveMedoids}' sorted-label key decides it as AD-25.2 says.
+ */
 function partitionCost(
   matrix: DistanceMatrix,
   medoids: readonly number[],
   labels: readonly string[],
+  order: readonly number[],
 ): number {
   let total = 0;
-  for (let i = 0; i < matrix.n; ++i)
-    total += at(matrix, i, medoids[nearestMedoid(matrix, medoids, i, labels)]);
+  for (const i of order) total += at(matrix, i, medoids[nearestMedoid(matrix, medoids, i, labels)]);
   return total;
 }
 
@@ -384,6 +418,9 @@ export function pam(
   const n = matrix.n;
   if (n === 0 || k <= 0 || k > n) return null;
 
+  // ONE canonical summation order for every cost this call computes — see `partitionCost`.
+  const order = labelOrder(n, labels);
+
   // BUILD: the first medoid minimizes the total distance to everything; each further one is
   // the candidate whose addition reduces the total most.
   const medoids: number[] = [];
@@ -392,7 +429,7 @@ export function pam(
     let bestCost = Number.POSITIVE_INFINITY;
     for (let candidate = 0; candidate < n; ++candidate) {
       if (medoids.includes(candidate)) continue;
-      const cost = partitionCost(matrix, [...medoids, candidate], labels);
+      const cost = partitionCost(matrix, [...medoids, candidate], labels, order);
       if (
         cost < bestCost ||
         (cost === bestCost && best >= 0 && lower(labels[candidate] ?? '', labels[best] ?? ''))
@@ -408,7 +445,7 @@ export function pam(
   // SWAP: exchange one medoid for one non-medoid while that reduces the total. Bounded by `n·k`
   // iterations so the loop terminates on any input, which a strict-improvement rule already
   // gives but which is worth being explicit about.
-  let cost = partitionCost(matrix, medoids, labels);
+  let cost = partitionCost(matrix, medoids, labels, order);
   for (let iteration = 0; iteration < n * k; ++iteration) {
     let bestCost = cost;
     let bestOut = -1;
@@ -418,7 +455,7 @@ export function pam(
         if (medoids.includes(candidate)) continue;
         const trial = [...medoids];
         trial[position] = candidate;
-        const trialCost = partitionCost(matrix, trial, labels);
+        const trialCost = partitionCost(matrix, trial, labels, order);
         const better =
           trialCost < bestCost ||
           (trialCost === bestCost &&
@@ -438,7 +475,7 @@ export function pam(
   }
 
   // Where the space allows, replace the heuristic's answer with the global optimum outright.
-  const exact = exhaustiveMedoids(matrix, k, labels);
+  const exact = exhaustiveMedoids(matrix, k, labels, order);
   const chosen = exact === null ? medoids : [...exact];
 
   // Reported in label order, so the medoid list itself is permutation-equivariant.
@@ -449,7 +486,7 @@ export function pam(
   return {
     medoids: chosen,
     clusters,
-    cost: partitionCost(matrix, chosen, labels),
+    cost: partitionCost(matrix, chosen, labels, order),
     exhaustive: exact !== null,
   };
 }
