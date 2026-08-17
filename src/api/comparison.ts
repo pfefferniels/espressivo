@@ -206,6 +206,24 @@ export interface DiffMpmOptions extends Omit<
   'invariance' | 'profile' | 'weights' | 'scape'
 > {
   /**
+   * The four are re-declared `?: never` rather than merely omitted (W4 MINOR-R3).
+   *
+   * Omitting them relies on excess-property checking, which reaches OBJECT LITERALS only — so
+   * `diffMpm({ a, ...sharedSettings })` and `diffMpm(wideOptionsVariable)` compiled clean and
+   * dropped `weights`/`scape`/`invariance`/`profile` in silence. That is the very
+   * accepted-and-ignored behaviour AD-25.1 forbids, arriving through the one door the type could
+   * not see — and §9.2's own rationale for `ComparisonSettings`, "so a corpus and a pair can be
+   * configured identically", makes the shared bag the INTENDED usage rather than an edge case.
+   *
+   * `?: never` is checked on every assignment, spread or not: a bag carrying any of the four
+   * fails to compile against this type. The runtime half (`checkDiffOptions`) was already right;
+   * this closes the half that only looked right.
+   */
+  readonly weights?: never;
+  readonly scape?: never;
+  readonly invariance?: never;
+  readonly profile?: never;
+  /**
    * A-Q5's `fragment` and `consolidate` ops: one instruction became several, or the reverse.
    *
    * Off by default, and the default is the conservative reading rather than the cheap one — a

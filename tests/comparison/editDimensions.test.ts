@@ -241,10 +241,16 @@ describe('the edit path over the vendored corpus', () => {
     // is what AD-60.1 preserved by moving rubato out rather than by widening `step`'s figure.
     // Every other family's members are checked against their own published figure, so a
     // dimension whose integrator changes shape has to be re-filed rather than absorbed.
+    // An ULP FLOOR on the `step` family rather than an exact 0 (W4 MINOR-R2). The published 0 is
+    // the QUADRATURE figure and it is exact in ℝ; the arithmetic is doubles, and articulation
+    // measures 9.296e-16 at the widest scope of the vendored corpus — four ulps of a `d` of
+    // 1223, not a quadrature error. Asserting an exact 0 here passed only because this walk does
+    // not reach that scope, which is the same accident that hid CAPITAL-1's part 2.
+    const ULP_FLOOR = 1e-14;
     for (const [dimension, worst] of shortfall) {
       const family = EPSILON_FAMILY_OF[dimension];
       if (family === 'step')
-        expect({ dimension, worst }).toEqual({ dimension, worst: published.step.relative });
+        expect({ dimension, atFloor: worst <= ULP_FLOOR }).toEqual({ dimension, atFloor: true });
       else
         expect({ dimension, within: worst < published[family].relative }).toEqual({
           dimension,
@@ -493,6 +499,13 @@ describe('AD-60.3: the ornamentation map’s scope, pinned on a synthetic pair',
 
     // …and the theorem holds on it.
     expect(script.scriptCost).toBeGreaterThanOrEqual(script.directDistance / (1 + QUADRATURE_BAND));
+
+    // The VALUE, not just the relation (MINOR-R6). A fifth reading of the scope rule — one that
+    // leaves both endpoints correct and gives the MIXED states B's scope — passes every other
+    // assertion in this file while moving `scriptCost` from 38.667 to 30.667, because the
+    // endpoints are what the other assertions constrain and the mixed states are what the rule
+    // is about. Pinning the total is what reaches them.
+    expect(script.scriptCost).toBeCloseTo(38.666666666666664, 9);
   });
 
   it('is non-vacuous: the two slots really do perform the same map differently', () => {

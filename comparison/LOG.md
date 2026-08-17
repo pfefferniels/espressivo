@@ -6501,3 +6501,75 @@ re-running at `6b781bf`, which reports the same single error at 5430 passed. The
 64–72 s here against 47 s earlier in the same session with the same tree, so the machine is under
 load — plausibly other agents' suites. Flagged for the re-gate so it is not chased as a finding.
 Repo-wide `npx prettier --check .` clean; eslint clean on all five touched files.
+
+## 2026-08-17 — W4 micro-wave cut 14: MINOR-R1, R2, R3, R4, R6 (w4-fix)
+
+LOG read through AD-77 (re-gate verdict — BLOCK on one regression). The rest of R-5.
+
+**MINOR-R4 — the guard's perimeter, and a fourth NUL it immediately found.** The guard walked
+`src/` and `tests/` only, leaving out the documents the campaign is REVIEWED FROM. It now walks
+`comparison/`, `docs/` and `README.md` as well, and the fixture exclusion matches by PREFIX —
+`entry === 'fixtures'` had missed `fixtures-v3` and `fixtures-layers-to-staffs`, which only went
+unnoticed because nothing above them was walked either.
+
+Widening it turned up a fourth instance of the original defect, already in the tree:
+`docs/history/ornamentation/tools/probe.mjs:696` wrote its transcript separators as a raw NUL and
+a raw `U+0001`, so a CLOSED campaign record was binary to `git diff`, `grep` and `file` exactly as
+`diff.ts` had been — `file` reported `data`, `grep -c` found nothing, `sed` rendered the line with
+the characters invisible. Both are escapes now, which is the identical string at runtime
+(`node --check` passes and the file reads as UTF-8 text). Four instances from three agents across
+two waves; the perimeter is the answer to that, not vigilance.
+
+**MINOR-R3 — the type half of the diff surface, verified at the COMPILER.** `Omit` relies on
+excess-property checking, which reaches object literals only, so `diffMpm({ a, ...sharedSettings })`
+and `diffMpm(wideOptionsVariable)` compiled clean and dropped the four unconsumable options in
+silence — the accepted-and-ignored behaviour AD-25.1 forbids, through the one door the type could
+not see. §9.2's own rationale for `ComparisonSettings` ("so a corpus and a pair can be configured
+identically") makes the shared bag the intended usage, not an edge case. The four are re-declared
+`?: never`.
+
+Controlled at the compile level rather than by a runtime test, since the defect is a compile-time
+one: a probe file exercising both forms produces **2 type errors** with `?: never` and **0**
+without it — the hole, reproduced and closed.
+
+**MINOR-R6 — the ornamentation total pinned.** `expect(script.scriptCost).toBeCloseTo(38.666666666666664, 9)`.
+A fifth reading of the scope rule leaves both endpoints correct and gives the MIXED states B's
+scope; the endpoints are what every other assertion constrains, so only the total reaches it.
+
+**MINOR-R2 — the epsilon record says what it bounds.** Swept every step-family dimension over
+every scope of the vendored corpus: articulation's worst shortfall is **9.296e-16** (telemann
+1v2, scope 3, `d = 1223`) — larger than the verifier's 2.07e-16 because the sweep reaches scopes
+its single case did not, and still about four ulps rather than a quadrature error. `asynchrony`
+and `ornamentation` measure exactly 0.
+
+The resolution is the contract, not a fabricated floor. `EPSILON_FIGURES` now states that these
+are QUADRATURE figures, exact in ℝ, which do NOT bound floating-point rounding and cannot — every
+one of these quantities is a sum of doubles. The distinction is invisible while a figure is large
+(tempo's 3.3e-6 dwarfs any rounding) and becomes the whole story at `step`, where checking
+`scriptCost ≥ d − 0` is checking exact-arithmetic equality against a float computation. Inventing
+a nonzero floor for `step` would state a quadrature error that does not exist, and would spare the
+reader an allowance they need for every other family anyway.
+
+The consequence for the suite is mine to own: `editDimensions.test.ts` asserted step-family
+members at EXACTLY 0, which is false at scopes this walk does not reach — the same accident that
+hid CAPITAL-1's part 2, in a test I wrote. It asserts an ulp floor now, with the measurement.
+
+**MINOR-R1 — the narrowed contract's cost, stated to the reader.** `coordinates`, `eigenvalues`,
+`explainedVariance` and `negativeEigenvalueMass` are not bit-reproducible under relabelling; the
+module header and the `eigenvalues` field say so. The ORDER and the ORIENTATION are exact — those
+are discrete choices the tie rules make functions of the corpus — and it is the magnitudes that
+drift. The instance worth naming is the verifier's: at `n = 6`, `negativeEigenvalueMass` moves in
+the 15th significant figure of a value of **0.048**, material rather than noise-around-zero.
+
+NEGATIVE CONTROLS: the compile-level pair for MINOR-R3 (2 errors against 0); the hygiene guard
+already has its re-introduction control from cut 6, and the widened perimeter is asserted file by
+file so a future narrowing fails in place. MINOR-R1, R2 and R6 are documentation and one value
+pin; R6's pin is its own control by construction (the fifth reading moves 38.667 → 30.667).
+
+**Gate.** `npm run verify`: **126 files, 5433 passed, 0 skipped**, and `Errors 2` — the same
+vitest worker RPC timeout (`Timeout calling "onTaskUpdate"`) reported in cut 13 and shown there to
+reproduce at `6b781bf` with every change stashed. Environmental, not a regression; the suite is
+running 65–77 s here against 47 s earlier in the session. Repo-wide `npx prettier --check .`
+clean; eslint clean on all touched files.
+
+The micro-wave's work order is complete: MAJOR-R2 and MINOR-R1..R6.

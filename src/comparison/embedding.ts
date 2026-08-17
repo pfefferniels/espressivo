@@ -44,6 +44,20 @@
  * two-dimensional eigenspace, and every rotation within it is as valid as every other.
  * Canonicalising that block is deep numerics for a rare and DETECTABLE case, so this module
  * detects it and reports it instead — honesty as data, which is the campaign's pattern.
+ *
+ * ## What the narrowed contract costs the reader (W4 MINOR-R1)
+ *
+ * Four published fields are NOT bit-reproducible under relabelling, and a reader should be told
+ * rather than left to discover it: `coordinates`, `eigenvalues`, `explainedVariance` and
+ * `negativeEigenvalueMass`. Permuting the corpus reruns Jacobi's rotations in a different
+ * sequence, so each comes back agreeing to roughly the working precision and not to the bit.
+ *
+ * The ORDER and the ORIENTATION are exact — the seriation, the sign anchor, and which axis is
+ * which — because those are discrete choices and the tie rules above make them functions of the
+ * corpus. It is the magnitudes that drift, and one instance is worth naming because it is
+ * material rather than noise-around-zero: at `n = 6`, `negativeEigenvalueMass` moves in the 15th
+ * significant figure of a value of **0.048**. Comparing these four across two runs of a
+ * differently-ordered corpus needs a tolerance; comparing the seriation or the signs does not.
  */
 
 /** A symmetric matrix in §8's layout: `n` rows of `n`, row-major, `m[i*n + j]`. */
@@ -55,7 +69,13 @@ export interface SquareMatrix {
 export interface Embedding {
   /** `N × axes`, row-major. */
   readonly coordinates: readonly number[];
-  /** The FULL spectrum, descending — not only the retained axes. */
+  /**
+   * The FULL spectrum, descending — not only the retained axes.
+   *
+   * Like `coordinates`, `explainedVariance` and `negativeEigenvalueMass`, these values agree to
+   * working precision and NOT to the bit across a permuted corpus (MINOR-R1) — see the module
+   * header. Their ORDER is exact; their magnitudes drift in the last figures.
+   */
   readonly eigenvalues: readonly number[];
   /**
    * Per retained axis, `λ_j / Σ|λ|`; every entry null exactly when `Σ|λ| = 0` (A3b).

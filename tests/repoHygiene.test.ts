@@ -21,6 +21,23 @@
  * Fixture directories are excluded because the MIDI references under
  * `tests/integration/fixtures/**` are legitimately binary — they are byte-for-byte comparison
  * targets, and a NUL is what a MIDI file is made of.
+ *
+ * ## The perimeter (W4 MINOR-R4)
+ *
+ * It walked `src/` and `tests/` only, which left out the documents the campaign is REVIEWED
+ * FROM — `comparison/DESIGN.md`, `comparison/LOG.md`, the verification records, `README.md` and
+ * `docs/`. The re-gate demonstrated the gap the hard way: its own deliverable acquired three
+ * NULs while auditing the guard that would have caught them. And the sweep that followed found a
+ * fourth instance already in the tree — `docs/history/ornamentation/tools/probe.mjs` wrote a
+ * transcript separator as a raw NUL and a raw `U+0001`, so a CLOSED campaign record was binary
+ * to `git diff`, `grep` and `file` exactly as `diff.ts` had been. Four instances from three
+ * agents across two waves is not a coincidence; it is a habit the tooling has to catch, so the
+ * perimeter is now every tracked directory the project's own text lives in.
+ *
+ * The fixture exclusion was `entry === 'fixtures'`, which missed `fixtures-v3` and
+ * `fixtures-layers-to-staffs` — two directories of byte-comparison targets that happened not to
+ * be walked because nothing above them was walked either. Now matched by prefix, so widening the
+ * perimeter does not drag them in.
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'fs';
@@ -33,8 +50,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 function walk(directory: string): readonly string[] {
   const found: string[] = [];
   for (const entry of readdirSync(directory)) {
-    // `fixtures` holds byte-comparison targets — MIDI, and whatever a future parity check needs.
-    if (entry === 'fixtures' || entry === 'node_modules') continue;
+    // `fixtures*` holds byte-comparison targets — MIDI, and whatever a future parity check
+    // needs. Matched by PREFIX: `fixtures-v3` and `fixtures-layers-to-staffs` are the same kind
+    // of directory and an exact match missed both (MINOR-R4).
+    if (entry.startsWith('fixtures') || entry === 'node_modules') continue;
     const path = join(directory, entry);
     if (statSync(path).isDirectory()) found.push(...walk(path));
     else found.push(path);
@@ -43,7 +62,18 @@ function walk(directory: string): readonly string[] {
 }
 
 describe('no source file is binary to git and grep (AD-70.1)', () => {
-  const files = [...walk(join(ROOT, 'src')), ...walk(join(ROOT, 'tests'))];
+  /**
+   * Source AND record. The campaign's own documents are reviewed the same way its code is, and
+   * a NUL makes them just as unreadable — MINOR-R4, demonstrated by the re-gate's deliverable
+   * and by a closed record that had carried the defect all along.
+   */
+  const files = [
+    ...walk(join(ROOT, 'src')),
+    ...walk(join(ROOT, 'tests')),
+    ...walk(join(ROOT, 'comparison')),
+    ...walk(join(ROOT, 'docs')),
+    join(ROOT, 'README.md'),
+  ];
 
   it('finds no raw NUL byte under src/ or tests/', () => {
     const offenders: string[] = [];
@@ -65,7 +95,18 @@ describe('no source file is binary to git and grep (AD-70.1)', () => {
   it('is non-vacuous: it really did read the files, including the one that had it', () => {
     // A walk that silently found nothing would pass the test above for the wrong reason.
     expect(files.length).toBeGreaterThan(150);
-    expect(files.map((path) => relative(ROOT, path))).toContain('src/comparison/diff.ts');
+    const walked = files.map((path) => relative(ROOT, path));
+    expect(walked).toContain('src/comparison/diff.ts');
+    // The widened perimeter, named file by file so a future narrowing fails here.
+    expect(walked).toContain('comparison/LOG.md');
+    expect(walked).toContain('comparison/DESIGN.md');
+    expect(walked).toContain('comparison/W4-VERIFICATION.md');
+    expect(walked).toContain('README.md');
+    expect(walked).toContain('docs/history/ornamentation/tools/probe.mjs');
+    // …and the byte-comparison fixtures stay OUT, by prefix rather than by exact name.
+    expect(walked.some((path) => path.includes('fixtures-v3'))).toBe(false);
+    expect(walked.some((path) => path.includes('fixtures-layers-to-staffs'))).toBe(false);
+    expect(walked.some((path) => path.includes('tests/integration/fixtures/'))).toBe(false);
     // …and the check itself detects a NUL when there is one to detect.
     expect(Buffer.from('a\u0000b', 'utf-8').indexOf(0)).toBe(1);
   });

@@ -132,6 +132,23 @@ import type {
  * figure is the operative one, and a caller reading `relative` as `|Δ|/W₁` should read it as
  * applying to well-separated pairs only.
  */
+/**
+ * What these figures bound, and what they do not (W4 MINOR-R2).
+ *
+ * They are QUADRATURE figures: the error an integrator makes against the integral it
+ * approximates, in ℝ. They do NOT bound floating-point rounding, and cannot — every quantity
+ * here is a sum of doubles and carries ulp-scale noise no quadrature analysis speaks to.
+ *
+ * That distinction is invisible while a figure is large (tempo's 3.3e-6 dwarfs any rounding) and
+ * becomes the whole story at `step`, whose figure is an exact `0`: a consumer checking
+ * `scriptCost ≥ d − ε` against `0` is checking `scriptCost ≥ d` in exact arithmetic, which a
+ * float computation can miss by an ulp and does — measured, articulation at 9.296e-16.
+ *
+ * So the contract is: compare against the stamped ε PLUS an ulp allowance on the magnitudes
+ * involved. The alternative — inventing a nonzero floor for `step` — would state a quadrature
+ * error that does not exist and would make the record say something false to spare the reader an
+ * allowance they need for every other family too.
+ */
 const EPSILON_FIGURES: Readonly<
   Record<EpsilonFamily, { readonly relative: number; readonly jnd: number }>
 > = Object.freeze({
@@ -139,6 +156,12 @@ const EPSILON_FIGURES: Readonly<
   // in the time domain at all (§5.7, §5.9). The exact `0` is a claim about this family's
   // GENUINELY exact members — asynchrony, articulation and ornamentation — and it stopped
   // covering rubato at AD-60.1, which is why that dimension now has a family of its own.
+  //
+  // `0` is the QUADRATURE figure and it is exact in ℝ. It is not a claim that the arithmetic is
+  // exact in doubles, and no family's figure is (W4 MINOR-R2): measured across every scope of
+  // the vendored corpus, articulation's worst shortfall is 9.296e-16 — about four ulps of a
+  // `d` of 1223, float rounding rather than quadrature error, eleven orders below CAPITAL-1's
+  // 7.51e-5. See the record's own contract note above for what a consumer must allow.
   step: { relative: 0, jnd: 0 },
   // AD-28.1's graded mesh, worst case over the legal `meanTempoAt` range; the JND figure is
   // AD-28.2's, corrected for AD-27.6's halved constant.

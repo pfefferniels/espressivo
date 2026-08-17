@@ -693,7 +693,7 @@ try {
 
 /* -------------------------------------------------------------------- output */
 
-const transcript = results.map(([k, v]) => `${k} ${v}`).join('');
+const transcript = results.map(([k, v]) => `${k}\u0000${v}`).join('\u0001');
 const sha = createHash('sha256').update(transcript).digest('hex');
 writeFileSync(
   outFile,
