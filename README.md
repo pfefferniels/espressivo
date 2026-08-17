@@ -583,7 +583,10 @@ Three honesty fields, all reported always:
 - **`embedding.negativeEigenvalueMass`** — how non-Euclidean the corpus is. An `L¹`-type distance
   generally is, so the MDS plot is a projection of something that does not live in a plane, and
   this number says how much was lost. `explainedVariance` is computed over `Σ|λ|`, never over
-  `Σλ⁺`, which would flatter the result by pretending the negative mass is not there.
+  `Σλ⁺`, which would flatter the result by pretending the negative mass is not there. It is
+  SIGNED: a negative share is an axis with a negative eigenvalue — an imaginary direction, whose
+  coordinates are all zero because only a positive eigenvalue is embedded. Reading it as a
+  magnitude would credit an axis that is not there with variance it does not carry.
 - **`silhouetteReliable`** — `false` below twenty items, where the silhouette is noisy enough to
   inform a choice of `k` but not to decide one.
 - **`suspectPairs`** — the comparability check, surfaced at corpus level so a heterogeneous folder

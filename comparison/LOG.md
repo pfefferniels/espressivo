@@ -5740,3 +5740,72 @@ proposed: Omit list 'invariance' | 'profile' | 'scape' | 'weights'
 DiffReport.notes populated by plausibilityFindings (an implausible @bpm
 is exactly what the script prices a large op at), resolving MAJOR-5 in
 the same stroke. MAJOR-1+5 as one cut, as proposed.
+
+## 2026-08-17 — W4 fix cut 5: MAJOR-2 and MAJOR-3, the two corpus-math defects (w4-fix)
+
+LOG read through AD-69 (fix cut 3 ratifications). §8's items 5 and 6. They share a commit because
+they are independent one-line repairs in the two corpus-math modules and neither touches the
+other's surface; MAJOR-1 is deliberately NOT here, for the reason cut 4's report gave.
+
+**MAJOR-2 — a negative axis reported POSITIVE variance.** `explainedVariance` shipped
+`Math.abs(eigenvalue) / total` while its own documentation said `λ_j / Σ|λ|`. The `Math.abs` is
+gone. This is not a sign convention, it is the module's whole subject: an axis with a negative
+eigenvalue is an IMAGINARY direction produced by a non-Euclidean corpus, only `eigenvalue > 0` is
+embedded so its `coordinates` are all zero, and reporting it at `+1.8 %` says the opposite of
+both facts. Measured through the public API on the vendored corpus at `embeddingAxes: 9 = n−1`
+(legal): axes 7 and 8 have eigenvalues `−145738.84` and `−567987.33`, empty coordinates, and were
+reported at `+0.004664811652368655` and `+0.018180149719632315` — **2.28 % of the variance
+credited to two axes that are not there**.
+
+The consequence for readers is stated rather than hidden: the shares now sum to `Σλ / Σ|λ|`,
+which is BELOW 1 by exactly twice `negativeEigenvalueMass`, and that identity is asserted. A
+consumer summing the shares to check they reach 1 was previously being told a comfortable
+falsehood by the same `Math.abs`. `README.md`'s honesty-fields section and DESIGN §9.3's field
+comment now both say SIGNED.
+
+**MAJOR-3 — `Partition.exhaustive` was false, with a false published note, for 841 legal pairs.**
+Both halves in one commit, which the report insisted on and the measurement below justifies.
+
+`chooseCount` multiplied along the row up to `k`. `C(n, j)` is unimodal, so for `k` near `n` an
+intermediate product blows the limit while the answer is tiny: `C(26, 24)` is 325 and `C(21, 21)`
+is 1, and both reported `limit + 1`. Each such corpus silently gave up the global optimum for the
+heuristic AND published `PAM's medoids are BUILD + SWAP's ... C(26, 24) is past the exhaustive
+limit`, which is simply untrue. Now `Math.min(k, n − k)`, which is `C(n, k) = C(n, n − k)`.
+
+The flag never lied in the dangerous direction — `exhaustive: true` meant a true global optimum
+in all 2000 of the gate's verified cases — so this was a false NEGATIVE that gave up the answer
+and then misdescribed why.
+
+**The pruning guard is the other half, and [MEASURED] here rather than taken on trust.** Without
+`if (n - start < k - chosen.length) return;` the walk visits `Σ_{j≤k} C(n, j)` nodes, so fixing
+the count ALONE converts a false flag into a hang. Reproduced by applying the count fix and
+removing the guard:
+
+    n=21 k=21    guarded 3 ms      unguarded 71 ms
+    n=26 k=24    guarded 5 ms      unguarded 2291 ms
+    n=30 k=28    guarded 8 ms      unguarded 39329 ms      (4900×)
+
+The gate measured 51054 ms for the last one; same phenomenon, different matrix. With the guard
+the walk visits exactly `C(n, k)` leaves, which is what `PAM_EXHAUSTIVE_LIMIT` was always sizing.
+
+**Pinned.** MAJOR-2 on the smallest corpus that has the shape (four points, three mutually 2
+apart and a fourth at 1 — the triangle inequality holds and no Euclidean space realizes it), at
+`axes = n` so the negative eigenvalue is retained: `λ₃ ≈ −0.25`, its share negative and equal to
+`λ₃/Σ|λ|`, its coordinates all 0, and the sum identity above. The existing negative-mass test's
+share assertion loses its own `Math.abs` and gains a note saying why it could not have caught
+this: both axes it retains are positive, so it cannot tell the two readings apart.
+
+MAJOR-3 on the three witnesses `(21,21)`, `(26,24)`, `(30,28)`, asserting `exhaustive: true`, and
+the `(26,24)` answer checked against the global optimum computed by enumerating the two items to
+EXCLUDE — `C(26,2) = 325` subsets, a different enumeration from the one the implementation runs.
+Those cases are also the guard's own detector, and the test says so: unguarded, that test does not
+fail, it stops.
+
+NEGATIVE CONTROLS, three, each failing exactly its own test and restoring green: restoring
+`Math.abs` in `explainedVariance` → 1 failed (`gives a negative axis a NEGATIVE share`);
+`chooseCount` back to walking up to `k` → 1 failed (`is exhaustive for a k near n`); the count fix
+with the guard removed → the timing table above, which is the control for the coupling rather
+than for a value.
+
+Gate: `npm run verify` GREEN — 125 files, **5408 passed**, 0 skipped (5406 before; 2 new tests).
+Repo-wide `npx prettier --check .` clean; eslint clean on the three touched files.

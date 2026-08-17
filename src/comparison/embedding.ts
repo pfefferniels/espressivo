@@ -57,7 +57,14 @@ export interface Embedding {
   readonly coordinates: readonly number[];
   /** The FULL spectrum, descending — not only the retained axes. */
   readonly eigenvalues: readonly number[];
-  /** Per retained axis, `λ_j / Σ|λ|`; every entry null exactly when `Σ|λ| = 0` (A3b). */
+  /**
+   * Per retained axis, `λ_j / Σ|λ|`; every entry null exactly when `Σ|λ| = 0` (A3b).
+   *
+   * SIGNED. A negative entry is an axis with a negative eigenvalue — an imaginary direction the
+   * corpus's non-Euclidean geometry produced — and its `coordinates` are all zero, since only a
+   * positive eigenvalue is embedded. Reading `|share|` there would credit an axis that is not
+   * there with variance it does not carry (W4 MAJOR-2).
+   */
   readonly explainedVariance: readonly (number | null)[];
   /**
    * True when the eigenbasis is NOT unique, so `coordinates` are one arbitrary choice among
@@ -252,7 +259,16 @@ export function classicalMds(
     // be deleted as unreachable by `no-unnecessary-condition` (`document.ts`'s own note).
     const column = axis < order.length ? order[axis] : -1;
     const eigenvalue = column < 0 ? 0 : values[column];
-    explainedVariance.push(zeroSpectrum ? null : Math.abs(eigenvalue) / total);
+    // `λ_j / Σ|λ|` — SIGNED, which is the documented formula and was not what shipped (W4
+    // MAJOR-2). An `Math.abs` here credits a NEGATIVE axis with positive variance, and a
+    // negative axis is the one thing this module exists to be honest about: it is an imaginary
+    // direction, its `coordinates` are all zero because the retention test is `eigenvalue > 0`,
+    // and reporting it at `+1.8 %` says the opposite of what it means. Measured on the vendored
+    // corpus at `embeddingAxes: 9 = n−1` (legal): axes 7 and 8 have eigenvalues `−145738.84`
+    // and `−567987.33`, empty coordinates, and were reported at `+0.004664811652368655` and
+    // `+0.018180149719632315` — 2.28 % of the variance credited to two axes that are not there.
+    // The sign is the whole signal, so the shares now sum to at most 1 and can go below it.
+    explainedVariance.push(zeroSpectrum ? null : eigenvalue / total);
     if (column < 0 || !(eigenvalue > 0)) continue;
     const sign = signOf(vectors, n, column, labels);
     const scale = Math.sqrt(eigenvalue) * sign;

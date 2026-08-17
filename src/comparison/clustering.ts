@@ -246,10 +246,26 @@ export interface Partition {
  */
 export const PAM_EXHAUSTIVE_LIMIT = 200_000;
 
-/** `C(n, k)`, saturating at `limit + 1` so a huge corpus cannot overflow the count. */
+/**
+ * `C(n, k)`, saturating at `limit + 1` so a huge corpus cannot overflow the count.
+ *
+ * The `Math.min(k, n − k)` is `C(n, k) = C(n, n − k)` and it is load-bearing (W4 MAJOR-3).
+ * Multiplying up to `k` walks along the row, and `C(n, j)` is UNIMODAL: an intermediate product
+ * can blow the limit while the answer itself is tiny. Swept over the legal domain
+ * (`n ≤ DEFAULT_MAX_ITEMS = 256`, `1 ≤ k ≤ n`) the unsymmetrized form reported `limit + 1` for
+ * **841 pairs whose true `C(n, k)` is at or below the limit** — the smallest being `n = 21,
+ * k = 21`, where `C = 1`. Each of those got `exhaustive: false` and a published note saying the
+ * count "is past the exhaustive limit", which was simply false: `n = 26, k = 24` is `C = 325`.
+ *
+ * The flag never lied in the dangerous direction — `exhaustive: true` meant a true global
+ * optimum in all 2000 verified cases — so this is a false NEGATIVE that gave up the optimum and
+ * then said something untrue about why.
+ */
 function chooseCount(n: number, k: number, limit: number): number {
+  const steps = Math.min(k, n - k);
+  if (steps < 0) return 0;
   let total = 1;
-  for (let step = 0; step < k; ++step) {
+  for (let step = 0; step < steps; ++step) {
     total = (total * (n - step)) / (step + 1);
     if (total > limit) return limit + 1;
   }
@@ -302,6 +318,13 @@ function exhaustiveMedoids(
       }
       return;
     }
+    // PRUNE the branches that cannot reach `k`. This must land with `chooseCount`'s symmetry
+    // and not after it (W4 MAJOR-3): the walk visits `Σ_{j≤k} C(n, j)` nodes without it, so
+    // correcting the count alone converts a false flag into a hang. Measured with the count fix
+    // and no guard, `pam(n = 30, k = 28)` went from 1 ms to **51054 ms**; the two halves are one
+    // repair. With the guard the walk visits exactly `C(n, k)` leaves, which is what the limit
+    // was always sizing.
+    if (n - start < k - chosen.length) return;
     for (let index = start; index < n; ++index) walk(index + 1, [...chosen, index]);
   };
   walk(0, []);

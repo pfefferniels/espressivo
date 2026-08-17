@@ -2736,7 +2736,8 @@ export interface CorpusResult {
   readonly embedding: {
     readonly coordinates: readonly number[]; // N × axes, row-major
     readonly eigenvalues: readonly number[];
-    readonly explainedVariance: readonly (number | null)[]; // null iff Σ|λ| = 0
+    readonly explainedVariance: readonly (number | null)[]; // λ_j/Σ|λ|, SIGNED;
+    // null iff Σ|λ| = 0. A negative share is an unembedded imaginary axis
     readonly degenerate: boolean; // A3b, widened by AD-67.1: the eigenbasis is
     // not unique — Σ|λ| = 0, OR a repeated eigenvalue at/across the retained cut
     readonly negativeEigenvalueMass: number;

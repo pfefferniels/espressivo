@@ -423,6 +423,64 @@ describe('PAM', () => {
     expect(pam(matrix, 3, labelsOf(2))).toBeNull();
     expect(pam({ n: 0, values: [] }, 1, [])).toBeNull();
   });
+
+  /**
+   * W4 MAJOR-3: `C(n, k) = C(n, n − k)`, and the pruning guard that has to land with it.
+   *
+   * `chooseCount` multiplied along the row up to `k`. `C(n, j)` is UNIMODAL, so for a `k` near
+   * `n` an intermediate product blows the limit while the answer is tiny — 841 legal `(n, k)`
+   * pairs got `exhaustive: false` and a published note claiming the count was past the limit,
+   * when `C(26, 24)` is 325 and `C(21, 21)` is 1.
+   *
+   * The guard is the other half and not an optimization: without it `walk` visits
+   * `Σ_{j≤k} C(n, j)` nodes, so correcting the count alone turns a false flag into a hang —
+   * `pam(30, 28)` was measured at **51054 ms** in that state, against 1 ms before and 8 ms now.
+   * Every case below therefore also serves as the guard's detector: unguarded, this test does
+   * not fail, it stops.
+   */
+  it('is exhaustive for a k near n, where C(n, k) is small but the row’s middle is not', () => {
+    /** A deterministic non-degenerate matrix; the values are irrelevant, the sizes are not. */
+    const spread = (n: number): DistanceMatrix => {
+      const values = new Array<number>(n * n).fill(0);
+      for (let i = 0; i < n; ++i)
+        for (let j = i + 1; j < n; ++j) {
+          const value = ((i * 7 + j * 13) % 19) + 1;
+          values[i * n + j] = value;
+          values[j * n + i] = value;
+        }
+      return { n, values };
+    };
+
+    for (const [n, k] of [
+      [21, 21],
+      [26, 24],
+      [30, 28],
+    ] as const) {
+      const result = pam(spread(n), k, labelsOf(n));
+      expect({ n, k, exhaustive: result?.exhaustive }).toEqual({ n, k, exhaustive: true });
+      expect(result?.medoids).toHaveLength(k);
+    }
+
+    // …and the answer really is the global optimum, checked by enumerating the items to
+    // EXCLUDE rather than the ones to keep — `C(26, 2) = 325` subsets, and a different
+    // enumeration from the one the implementation runs.
+    const n = 26;
+    const k = 24;
+    const matrix = spread(n);
+    const result = pam(matrix, k, labelsOf(n));
+    let bestCost = Number.POSITIVE_INFINITY;
+    for (let x = 0; x < n; ++x)
+      for (let y = x + 1; y < n; ++y) {
+        const kept = Array.from({ length: n }, (_unused, item) => item).filter(
+          (item) => item !== x && item !== y,
+        );
+        let total = 0;
+        for (let i = 0; i < n; ++i)
+          total += Math.min(...kept.map((medoid) => matrix.values[i * n + medoid]));
+        bestCost = Math.min(bestCost, total);
+      }
+    expect(result?.cost).toBeCloseTo(bestCost, 12);
+  });
 });
 
 describe('silhouette', () => {
@@ -534,10 +592,12 @@ describe('classical MDS', () => {
     const embedding = classicalMds({ n, values }, 2, labelsOf(n));
     expect(embedding.negativeEigenvalueMass).toBeGreaterThan(0);
 
-    // Explained variance is over `Σ|λ|`, so the retained axes never claim the negative mass.
+    // Explained variance is over `Σ|λ|`, so the retained axes never claim the negative mass —
+    // and it is SIGNED, `λ_j / Σ|λ|` (W4 MAJOR-2). Both axes retained here are positive, so
+    // this assertion cannot tell the two readings apart; the test below is the one that can.
     const total = embedding.eigenvalues.reduce((sum, value) => sum + Math.abs(value), 0);
     for (const [axis, share] of embedding.explainedVariance.entries())
-      expect(share).toBeCloseTo(Math.abs(embedding.eigenvalues[axis]) / total, 12);
+      expect(share).toBeCloseTo(embedding.eigenvalues[axis] / total, 12);
     const retained = embedding.explainedVariance.reduce<number>(
       (sum, share) => sum + (share ?? 0),
       0,
@@ -549,6 +609,54 @@ describe('classical MDS', () => {
       .slice(0, 2)
       .reduce((sum, value) => sum + Math.max(0, value) / positive, 0);
     expect(flattering).toBeGreaterThan(retained);
+  });
+
+  /**
+   * W4 MAJOR-2: a NEGATIVE axis reports negative variance, because the sign is the signal.
+   *
+   * `Math.abs(eigenvalue) / total` credited an imaginary direction with positive variance. Both
+   * facts about such an axis point the other way: only `eigenvalue > 0` is embedded, so its
+   * `coordinates` are all zero, and its eigenvalue is negative because the corpus is not
+   * Euclidean. Reported at `+1.8 %` it reads as a real axis carrying real spread and is neither.
+   *
+   * Measured through the public API on the vendored corpus at `embeddingAxes: 9 = n−1` (legal):
+   * axes 7 and 8 had eigenvalues `−145738.84` and `−567987.33`, all-zero coordinates, and
+   * shares of `+0.004664811652368655` and `+0.018180149719632315` — 2.28 % of the variance
+   * credited to two axes that are not there. Reproduced here on the smallest corpus that has
+   * the shape, so the claim is about the arithmetic rather than about one fixture.
+   */
+  it('gives a negative axis a NEGATIVE share, and no coordinates', () => {
+    const n = 4;
+    const values = new Array<number>(n * n).fill(0);
+    const set = (i: number, j: number, value: number) => {
+      values[i * n + j] = value;
+      values[j * n + i] = value;
+    };
+    set(0, 1, 2);
+    set(0, 2, 2);
+    set(1, 2, 2);
+    set(0, 3, 1);
+    set(1, 3, 1);
+    set(2, 3, 1);
+    // Every axis retained, so the negative one is reported rather than dropped.
+    const embedding = classicalMds({ n, values }, n, labelsOf(n));
+
+    // λ = [2, 2, ~0, −0.25]: the last is the non-Euclidean direction.
+    expect(embedding.eigenvalues[3]).toBeCloseTo(-0.25, 12);
+    const total = embedding.eigenvalues.reduce((sum, value) => sum + Math.abs(value), 0);
+    expect(embedding.explainedVariance[3]).toBeCloseTo(-0.25 / total, 12);
+    expect(embedding.explainedVariance[3]).toBeLessThan(0);
+
+    // The axis carries no coordinates at all — which is the fact the positive share denied.
+    for (let item = 0; item < n; ++item) expect(embedding.coordinates[item * n + 3]).toBe(0);
+
+    // The shares now sum to `Σλ / Σ|λ|`, i.e. BELOW 1 by exactly twice the negative mass.
+    const summed = embedding.explainedVariance.reduce<number>(
+      (sum, share) => sum + (share ?? 0),
+      0,
+    );
+    expect(summed).toBeCloseTo(1 - 2 * embedding.negativeEigenvalueMass, 12);
+    expect(summed).toBeLessThan(1);
   });
 
   it('flags a corpus with no spread as degenerate rather than dividing by zero (A3b)', () => {
