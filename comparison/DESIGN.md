@@ -2312,6 +2312,9 @@ export interface CompareMpmOptions extends ComparisonSettings {
     readonly dimensions?: readonly ComparisonDimension[]; // default: all
     readonly grid?: 'refinement' | { readonly step: number }; // quarters; capped at 4096 points
   };
+  /** AD-64.1: the PAIRWISE scape — §8 names two variants and the first needs a
+   *  pair. Integer bins in [1, SCAPE_MAX_BINS]; out of range errors (§9.4). */
+  readonly scape?: { readonly bins: number };
 }
 
 // AD-61.1: NOT a bare extends — `invariance` and `profile` are absent from the
@@ -2334,7 +2337,6 @@ export interface CompareCorpusOptions extends ComparisonSettings {
   readonly k?: number; // PAM clusters; omit = none
   readonly embeddingAxes?: number; // default 2
   readonly scape?: { readonly bins: number }; // omit for no scape (A2)
-  /** Add the corpus-average pseudo-performance as an extra item (AD-26.3). */
   /** Annotate pair distances with this corpus's own percentile context (AD-26.3). */
   readonly noiseFloor?: boolean; // default false
 }

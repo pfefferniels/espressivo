@@ -5420,3 +5420,14 @@ must-fix list as specification, with the INSTITUTIONALIZED handshake:
 every report opens by citing the newest AD read; work does not proceed
 past a report that fails to. Re-gate by w4-verify scoped to the
 findings afterward.
+
+## 2026-08-17 — AD-67 erratum: the no-worker edits land in THIS commit
+
+AD-67.3 claimed the two DESIGN edits landed in d1cad82; they did NOT —
+the edit script's match failed and asserted before writing, while the
+commit proceeded with the archive and journal. The claim was false for
+one commit. Corrected here: §9.2 gains the pairwise-scape line (AD-64.1)
+and the orphaned corpusAverage doc comment is removed (MINOR-3). The
+conductor's own record is subject to the same standard it enforces:
+stated-as-done must mean done, and this erratum is the cost of asserting
+before verifying.
