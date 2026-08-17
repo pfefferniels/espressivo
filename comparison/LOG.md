@@ -5893,3 +5893,22 @@ in this file's history. Cut 4's repair is doing what it was for.
 Gate: `npm run verify` GREEN — **126 files**, **5413 passed**, 0 skipped (5408 before; one new
 file, five new tests). Repo-wide `npx prettier --check .` clean; eslint clean on all five touched
 files.
+
+## 2026-08-17 — AD-71: fix cut 6 accepted; the validator-half principle
+
+799f8af accepted (the standing NUL guard, proven by re-introduction;
+MAJOR-1+5 as ruled). Two things join the canon: AD-71.1 the
+VALIDATOR-HALF PRINCIPLE — a surface narrowed without its validator is
+the same fault pointed the other way (post-Omit, an ignored key was
+still being validated into an error about a field the type no longer
+declares, against AD-54.3); checkDiffOptions validates exactly what the
+diff offers, pinned in both directions with the illegal-value
+distinction that keeps it from tautology. AD-71.2 the mirror tests had
+been mirroring an EMPTY ARRAY ("which agrees with anything") — two
+latent defects flushed by the first real note, the tests made
+independent of the engine's own sortNotes, and the near-unexercised
+in-place-swap guard given a CONSTRUCTED tie case rather than shipped on
+the vendored corpus's accidental absence of ties. §9.4's own false claim
+about itself is corrected in place with the reason. diff.ts shows LINES
+in the diffstat for the first time in its history — cut 4 doing what it
+was for.
