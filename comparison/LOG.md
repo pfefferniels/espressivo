@@ -5378,3 +5378,45 @@ the gate must check the code matches the rulings it was supposed to
 implement (the conductor believes it does, by convergent reasoning — the
 gate verifies); (ii) the README's executed recipes against the shipped
 report shapes. Deliverable W4-VERIFICATION.md, GATE-PASS/BLOCK.
+
+## 2026-08-17 — AD-67: W4 gate verdict GATE-BLOCK; fix-wave rulings [BINDING]
+
+Postscript to AD-66 first: w4-prod's posthumous handshake discharged by
+number, the fault owned as description-not-defence, three verified
+reconciliation items pre-declared to the gate, and the A5
+retrospective-licence note volunteered against its own interest — the
+model for how a tenure that failed its channel can still close at the
+record standard. The gate confirms AD-66.3's reading: the fault was the
+channel, not the craft.
+
+W4-VERIFICATION.md archived: 3 CAPITAL, 10 MAJOR, 13 MINOR; GATE-BLOCK.
+The verdict does NOT rest on the pre-declared items — struck, it still
+blocks on CAPITAL-2/3, the gate's own contribution: PAM's medoid set and
+the embedding/seriation are not permutation-invariant on published
+fields (order-dependent tie key; float-noise ties never reaching the
+label branch; the sign anchor mirroring whole plots), traceable to a
+tie-rule test on a tie-free corpus — the vacuity the family exists to
+prevent, one level up. CONDUCTOR ACCOUNTABILITY on the record: CAPITAL-1's
+DESIGN-vs-code contradiction was MANUFACTURED by the conductor's own
+split execution of AD-60.1 (doc side landed, code side could not converge
+by construction). The mechanism is now named: a delegation executed on
+one side is worse than one executed on neither.
+
+Rulings:
+AD-67.1 CAPITAL-3(b): NARROW-WITH-DATA — relative-epsilon tie-breaks
+(part a), plus embedding.degenerate carrying the repeated-eigenvalue
+carve-out as DATA with the header's guarantee narrowed accordingly.
+Canonicalizing degenerate eigenbases is deep numerics for a rare,
+detectable case; honesty-as-data is the campaign's pattern.
+AD-67.2 MAJOR-1's companion: every CompareMpmOptions field the diff
+product does not CONSUME is Omitted (absence over throw, AD-61.1's form)
+— the fixer determines consumption against the code and journals the
+resulting Omit list.
+AD-67.3 The conductor has executed the gate's two no-worker DESIGN edits
+in this commit (MINOR-1's §9.2 pairwise-scape line; MINOR-3's orphan
+comment removed).
+AD-67.4 Fix wave: fresh Opus worker (w4-fix), W4-VERIFICATION.md §8's
+must-fix list as specification, with the INSTITUTIONALIZED handshake:
+every report opens by citing the newest AD read; work does not proceed
+past a report that fails to. Re-gate by w4-verify scoped to the
+findings afterward.
