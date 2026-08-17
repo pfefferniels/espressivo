@@ -6244,3 +6244,29 @@ tests). Repo-wide `npx prettier --check .` clean; eslint clean on all seven touc
 **§8's must-fix list is CLOSED.** 3 CAPITAL, 10 MAJOR, 13 MINOR, plus two findings off the list
 (the NUL bytes that made `diff.ts` binary; the summation order that CAPITAL-2's tie key could not
 reach) and one gate finding corrected on measurement (MINOR-9).
+
+## 2026-08-17 — AD-74: W4 fix wave CLOSED; re-gate convened [BINDING]
+
+758c1ee accepted; the wave is closed — 3 CAPITAL, 10 MAJOR, 13 MINOR,
+two off-list finds, one gate-report correction, across ten cuts,
+5396 → 5428 tests. Four dispositions ratified as flagged: MINOR-9's
+REVERTED self-edit (the divergence was not one; the one-script-per-bucket
+property now asserted against silent future breakage); MINOR-7's honest
+non-closure (a computed 0 and a constant 0 are indistinguishable by any
+value assertion — the structural half is pinned, the field stays
+self-reported, and the LOG says so rather than claiming the gap shut);
+MINOR-13's removal-over-documentation (an engine-dependent argument-limit
+ceiling verified thrown at n=326, replaced by accumulation with the
+squares-cannot-overflow argument); MINOR-11's floor-not-zero pin
+(clamping would hide the small-but-real non-Euclideanness the field
+exists to report).
+
+RE-GATE convened (w4-verify resumed), scoped to eee4b0b..758c1ee, FIVE
+heads: (i) per-finding re-probe with its original instruments;
+(ii) AD-70.2 — diff.ts READ IN FULL as text, its first review by anyone
+but author and fixer; (iii) AD-72.2 — the caller-order summation sweep
+over published values; (iv) the fix wave's own additions with fresh eyes
+(the canonical summation, the note dedupe/attribution, checkDiffOptions,
+the NUL guard); (v) verify the two off-list finds' repairs. Verdict
+appended to W4-VERIFICATION.md; RE-GATE PASS closes W4 finally and opens
+W5.
