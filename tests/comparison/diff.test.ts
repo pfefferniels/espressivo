@@ -28,6 +28,7 @@ const fixture = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'u
 const TELEMANN = fixture('telemann-grave');
 const VULPIUS = fixture('vulpius-die-helle-sonn');
 const ALBERT = fixture('albert-du-mein-einzig-licht');
+const GRAVE_SCORE = readFileSync(join(FIXTURES, 'telemann-grave.msm'), 'utf-8') as XmlText;
 
 // ---------------------------------------------------------------------------
 // The mirror
@@ -214,10 +215,131 @@ describe('P-C2: diffMpm(a, b) and diffMpm(b, a) are exact mirrors (§6.4)', () =
     expect(moved).toBeGreaterThan(0);
   });
 
+  /**
+   * The mirror WITH an MSM, so `measureA`/`measureB` are populated (MINOR-6).
+   *
+   * `mirrorOf` swaps those two fields and no shipped mirror test passed an `msm`, so both were
+   * always null and the swap was asserted against nothing. The verifier confirmed the code is
+   * correct by writing its own mirror; this closes the gap in the suite so the next change to
+   * the measure mapping cannot pass unnoticed.
+   */
+  it('mirrors a pair WITH an msm, where measureA and measureB are not null', () => {
+    const base = { a: TELEMANN, msm: GRAVE_SCORE, window: SHORT } as const;
+    const forward = diffMpm({ ...base, performanceA: 0, performanceB: 1 }).report;
+    const reverse = diffMpm({ ...base, performanceA: 1, performanceB: 0 }).report;
+    expect(JSON.stringify(reverse)).toBe(JSON.stringify(mirrorOf(forward)));
+
+    // Non-vacuity: the fields this adds over the tests above are actually populated, so the
+    // swap has something to swap. Without an msm every one of them is null.
+    const measured = forward.scripts.flatMap((script) =>
+      script.ops.filter((op) => op.measureA !== null || op.measureB !== null),
+    );
+    expect(measured.length).toBeGreaterThan(0);
+    const withoutMsm = diffMpm({
+      a: TELEMANN,
+      performanceA: 0,
+      performanceB: 1,
+      window: SHORT,
+    }).report;
+    expect(
+      withoutMsm.scripts.every((script) =>
+        script.ops.every((op) => op.measureA === null && op.measureB === null),
+      ),
+    ).toBe(true);
+  });
+
   it('mirrors over a full window too, so the short one is not hiding a field', () => {
     const forward = diffMpm({ a: ALBERT, performanceA: 0, performanceB: 1 });
     const reverse = diffMpm({ a: ALBERT, performanceA: 1, performanceB: 0 });
     expect(JSON.stringify(reverse.report)).toBe(JSON.stringify(mirrorOf(forward.report)));
+  });
+
+  /**
+   * `callerIsCanonical`'s `<=`, which nothing pinned (MINOR-10).
+   *
+   * With `<`, a document compared against ITSELF has equal orientation keys, so the caller's
+   * order is judged non-canonical, the report is built and then INVERTED — and every op's
+   * `site.document` comes back as `'b'`. The result is still a valid empty script, which is why
+   * no existing test noticed: a self-diff has nothing to price, so only the site labels move.
+   * Equal keys mean identical inputs and the orientation is irrelevant, so `<=` is the rule and
+   * the a-side labelling is what a caller reading `site.document` expects.
+   */
+  it('treats an identical pair as already canonical, so sites stay on the a side', () => {
+    const self = diffMpm({ a: TELEMANN, performanceA: 0, performanceB: 0, window: SHORT }).report;
+    const sites = self.scripts.flatMap((script) => script.ops.map((op) => op.site.document));
+    // A self-diff is an empty-cost script; what this pins is the LABEL, not the cost.
+    expect(self.scripts.every((script) => script.ops.every((op) => op.cost === 0))).toBe(true);
+    for (const document of sites) expect(document).toBe('a');
+
+    // Non-vacuity: on a self-diff of a document that HAS instructions there are sites to label,
+    // so the assertion above is about real ops rather than an empty array.
+    const anySites = diffMpm({
+      a: TELEMANN,
+      performanceA: 0,
+      performanceB: 0,
+      window: { start: 0, end: 64 },
+    }).report;
+    expect(anySites.scripts.flatMap((script) => script.ops).length).toBeGreaterThan(0);
+    for (const script of anySites.scripts)
+      for (const op of script.ops) expect(op.site.document).toBe('a');
+  });
+
+  /**
+   * §9.5's `scripts` order, which no test asserted (MINOR-9) — and the two texts turn out to
+   * agree, for a reason worth pinning rather than a discrepancy worth fixing.
+   *
+   * The gate read DESIGN's `(part, map)` against `compareScripts`' `(part, map, dimension)` as a
+   * divergence. Measured, they describe the same order: every `(part, map)` in a real report
+   * carries EXACTLY ONE dimension's script, because the three imprecision dimensions live in
+   * separately-named maps (`imprecisionMap.dynamics`, `.timing`, `.toneduration`) rather than
+   * sharing one. So `(part, map)` is already total and `dimension` is a defensive third key that
+   * no input reaches. Both facts are asserted below, because the second is what makes the first
+   * true and it is exactly the kind of thing a future map rename would break silently.
+   */
+  it('delivers the scripts in (part, map, dimension) order', () => {
+    const report = diffMpm({
+      a: TELEMANN,
+      performanceA: 0,
+      performanceB: 1,
+      window: { start: 0, end: 64 },
+    }).report;
+    expect(report.scripts.length).toBeGreaterThan(1);
+
+    const key = (script: (typeof report.scripts)[number]) =>
+      [script.part ?? -1, script.map, script.dimension] as const;
+    for (let index = 1; index < report.scripts.length; ++index) {
+      const previous = key(report.scripts[index - 1]);
+      const current = key(report.scripts[index]);
+      const ordered =
+        previous[0] < current[0] ||
+        (previous[0] === current[0] &&
+          (previous[1] < current[1] || (previous[1] === current[1] && previous[2] < current[2])));
+      expect({ index, previous, current, ordered }).toEqual({
+        index,
+        previous,
+        current,
+        ordered: true,
+      });
+    }
+
+    // The global scope sorts FIRST, which is what `part ?? -1` encodes and what `parts` reports.
+    if (report.scripts.some((script) => script.part === null))
+      expect(report.scripts[0].part).toBeNull();
+
+    // `(part, map)` is ALREADY total: no bucket holds two scripts, so the `dimension` key is
+    // never consulted. If a future map name were shared between two dimensions this would fail
+    // here rather than silently making the delivered order depend on the unpinned third key.
+    const perPartMap = new Map<string, string[]>();
+    for (const script of report.scripts) {
+      const bucket = `${String(script.part)}|${script.map}`;
+      perPartMap.set(bucket, [...(perPartMap.get(bucket) ?? []), script.dimension]);
+    }
+    for (const [bucket, dimensions] of perPartMap)
+      expect({ bucket, dimensions }).toEqual({ bucket, dimensions: [dimensions[0]] });
+
+    // Non-vacuity: there really are several parts and several maps to order.
+    expect(new Set(report.scripts.map((script) => script.part)).size).toBeGreaterThan(1);
+    expect(new Set(report.scripts.map((script) => script.map)).size).toBeGreaterThan(1);
   });
 
   it('is non-vacuous: the UN-mirrored reverse really does differ', () => {

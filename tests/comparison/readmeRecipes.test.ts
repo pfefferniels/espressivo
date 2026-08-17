@@ -25,6 +25,34 @@ import type { XmlText } from '../../src/api/types.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const mpm = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'utf-8') as XmlText;
+
+/**
+ * The README itself, read — because re-typing its numbers here tests nothing about it (MINOR-5).
+ *
+ * The gate rewrote five of the README's headline figures (`8397.60→9999.99`, `1755.47→1111.11`,
+ * `24941.06→12345.67`, `475 ms→999 ms`, `33 %→99 %`) and all 124 tests stayed green: this file
+ * held its own copies, so the docstring's claim that "the numbers the README quotes are asserted
+ * against the engine" was true only of the copies. Every headline figure below is now EXTRACTED
+ * from the prose, so a drift in either direction fails — edit the README and the engine's number
+ * no longer matches it; change the engine and it no longer matches the README.
+ */
+const README = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../../README.md'),
+  'utf-8',
+);
+
+/**
+ * The number the README prints at `anchor`, whose first capture group is the figure.
+ *
+ * A missing anchor THROWS rather than defaulting: if the prose is rewritten so the anchor no
+ * longer matches, the right outcome is a failure that says so, not a test that silently stops
+ * checking the documentation it exists to check.
+ */
+function quoted(anchor: RegExp): number {
+  const match = anchor.exec(README);
+  if (match === null) throw new Error(`README.md no longer contains a figure at ${String(anchor)}`);
+  return Number(match[1]);
+}
 const msm = (name: string) => readFileSync(join(FIXTURES, `${name}.msm`), 'utf-8') as XmlText;
 const GRAVE = mpm('telemann-grave');
 const GRAVE_SCORE = msm('telemann-grave');
@@ -35,19 +63,39 @@ describe('the numbers the README quotes', () => {
   const telemann = (a: string, b: string) =>
     compareMpm({ a: GRAVE, performanceA: a, performanceB: b, msm: GRAVE_SCORE }).report;
 
-  it('quotes the Telemann table correctly', () => {
+  it('quotes the Telemann table correctly, with the figures READ from the README', () => {
     const baroqueRomantic = telemann('Baroque', 'Romantic');
-    expect(baroqueRomantic.aggregate.distance).toBeCloseTo(8397.6, 1);
-    expect(baroqueRomantic.aggregate.mean).toBeCloseTo(41.16, 2);
-    expect(baroqueRomantic.dimensions.tempo.distance).toBeCloseTo(1755.47, 2);
+    // The worked example above the table, field by field as the README prints it.
+    expect(baroqueRomantic.aggregate.distance).toBeCloseTo(
+      quoted(/report\.aggregate\.distance; \/\/ ([\d.]+)/),
+      1,
+    );
+    expect(baroqueRomantic.aggregate.mean).toBeCloseTo(
+      quoted(/report\.aggregate\.mean; \/\/\s+([\d.]+)/),
+      2,
+    );
+    expect(baroqueRomantic.dimensions.tempo.distance).toBeCloseTo(
+      quoted(/report\.dimensions\.tempo\.distance; \/\/ ([\d.]+)/),
+      2,
+    );
+
+    // …and the table rows, each anchored on its own label so a reordering cannot pass.
+    const row = (pair: string) => quoted(new RegExp(`\\| ${pair} +\\|\\s+([\\d.]+) \\|`));
+    expect(baroqueRomantic.aggregate.distance).toBeCloseTo(row('Baroque ↔ Romantic'), 1);
 
     const baroqueFast = telemann('Baroque', 'Fast');
-    expect(baroqueFast.aggregate.distance).toBeCloseTo(24941.06, 2);
+    expect(baroqueFast.aggregate.distance).toBeCloseTo(row('Baroque ↔ Fast'), 2);
     expect(Math.round(baroqueFast.aggregate.mean ?? 0)).toBe(122);
 
     const fastRomantic = telemann('Fast', 'Romantic');
-    expect(fastRomantic.aggregate.distance).toBeCloseTo(26174.72, 2);
+    expect(fastRomantic.aggregate.distance).toBeCloseTo(row('Fast ↔ Romantic'), 2);
     expect(Math.round(fastRomantic.aggregate.mean ?? 0)).toBe(128);
+  });
+
+  it('is non-vacuous: the extraction really reads the README and really can miss', () => {
+    // A test that silently found nothing would make every assertion above pass on `NaN`.
+    expect(quoted(/report\.aggregate\.distance; \/\/ ([\d.]+)/)).toBeCloseTo(8397.6, 1);
+    expect(() => quoted(/this text is not in the README ([\d.]+)/)).toThrow(/no longer contains/);
   });
 
   it('quotes the Vulpius correction correctly, including the three exact zeros', () => {
@@ -179,9 +227,10 @@ describe('the cookbook, run as printed', () => {
     });
 
     const lead = report.dimensions.asynchrony.meanSigned ?? 0;
-    // The README's 475 ms. An expressive reading against a deliberately deadpan one, and 475 is
-    // sixteen times Goebl's 30 ms threshold — the recipe's own criterion, not a chosen number.
-    expect(Math.abs(lead)).toBeCloseTo(475, 0);
+    // The README's 475 ms, READ from the prose rather than re-typed (MINOR-5). An expressive
+    // reading against a deliberately deadpan one, and 475 is sixteen times Goebl's 30 ms
+    // threshold — the recipe's own criterion, not a chosen number.
+    expect(Math.abs(lead)).toBeCloseTo(quoted(/prints a \*\*([\d.]+) ms\*\* lead/), 0);
     expect(Math.abs(lead)).toBeGreaterThanOrEqual(30);
 
     const row = report.table.dimensions.indexOf('asynchrony');
@@ -197,8 +246,8 @@ describe('the cookbook, run as printed', () => {
       }))
       .sort((x, y) => y.share - x.share);
     expect(ranked.length).toBeGreaterThan(0);
-    // The README's 33 %.
-    expect(ranked[0].share).toBeCloseTo(0.33, 2);
+    // The README's 33 %, read from the same sentence as the 475 ms above.
+    expect(ranked[0].share).toBeCloseTo(quoted(/carrying \*\*([\d.]+) %\*\* of the/) / 100, 2);
     expect(ranked[0].segment.measure).not.toBeNull();
 
     // The README's stated limit: this corpus yields ONE segment per pair, because the whole

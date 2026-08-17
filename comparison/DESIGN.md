@@ -2891,7 +2891,9 @@ request.
   SERIALIZATION as the stated final tiebreak, which makes the order total by
   construction rather than by an argument that the earlier keys separate
   everything (W3 MAJOR-6: they did not). `segments` by
-  `(mass desc, start asc, length asc)`; `scripts` by `(part, map)`; ops by
+  `(mass desc, start asc, length asc)`; `scripts` by `(part, map)`, which is
+  already total because one `(part, map)` carries at most one dimension's script
+  — `compareScripts` carries `dimension` as a third key that no input reaches; ops by
   application index. **Code-unit order throughout, never `localeCompare`** — and
   the ban binds inside the engine as well as at the report boundary, since the
   articulation aligner's input order decides a distance (W3 CAPITAL-6).

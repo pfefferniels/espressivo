@@ -84,7 +84,20 @@ export interface Embedding {
    * orientation is not".
    */
   readonly degenerate: boolean;
-  /** `Σ|λ⁻| / Σ|λ|`, or 0 in the degenerate case. */
+  /**
+   * `Σ|λ⁻| / Σ|λ|`, or 0 in the degenerate case.
+   *
+   * It is a MEASURED quantity and not a proof of non-Euclideanness: a perfectly Euclidean corpus
+   * can report a value at the noise floor, because Jacobi's rotations leave a zero eigenvalue at
+   * `±1e-16` rather than at 0 and the sign of that residue is arbitrary. Measured on regular
+   * simplices, which are exactly Euclidean: `0` at `k = 5, 6, 8, 10` and `6.1e-17`, `2.3e-17`,
+   * `5.8e-17`, `4.7e-17` at `k = 3, 4, 7, 12` (W4 MINOR-11).
+   *
+   * Deliberately NOT clamped. A threshold would have to be chosen, it would hide genuine
+   * small-but-real non-Euclideanness — which is precisely what this field exists to report —
+   * and `1e-17` is unmistakably noise to any reader who sees it. Read the figure against the
+   * spectrum, which is published in full beside it.
+   */
   readonly negativeEigenvalueMass: number;
   readonly axes: number;
 }
@@ -130,7 +143,16 @@ export function jacobiEigen(matrix: SquareMatrix): {
   const v = new Array<number>(n * n).fill(0);
   for (let i = 0; i < n; ++i) v[i * n + i] = 1;
 
-  const norm = Math.hypot(...a);
+  // `Math.hypot(...a)` spreads `n²` arguments, and V8's measured argument limit is 105741 — so
+  // this throws `RangeError` at `n ≥ 326` (W4 MINOR-13). `DEFAULT_MAX_ITEMS = 256` needs 65536,
+  // which is 1.61× headroom, but the ceiling is C17's and a future raise would land here rather
+  // than anywhere it could be predicted from. Accumulated instead, which has no argument limit
+  // and is the same number: `Math.hypot`'s scaling protects against overflow in the SQUARES, and
+  // these are distance-matrix entries whose squares cannot overflow a double at any `n` this
+  // module accepts.
+  let sumOfSquares = 0;
+  for (const value of a) sumOfSquares += value * value;
+  const norm = Math.sqrt(sumOfSquares);
   const threshold = JACOBI_TOLERANCE * (norm === 0 ? 1 : norm);
 
   for (let sweep = 0; sweep < JACOBI_MAX_SWEEPS; ++sweep) {

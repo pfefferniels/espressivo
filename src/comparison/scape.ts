@@ -6,7 +6,7 @@
  * readings agree bar by bar and diverge over the phrase, or the reverse. The object is a
  * triangle: one cell per (start, size) sub-window, `B(B+1)/2` of them for `B` bins.
  *
- * ## Prefix sums, and a binning that conserves mass EXACTLY
+ * ## Prefix sums, and a binning that conserves mass to the last ulp
  *
  * `p_D` is a MEASURE, so its mass over `[a, b)` is additive in the interval: bin the window
  * once, take running totals, and every cell is one subtraction. That is `O(B)` work for `O(B²)`
@@ -22,8 +22,16 @@
  * quadrature rather than an edge convention. Here each density CELL is apportioned across the
  * bins it touches and the shares are then RESCALED to the cell's own `mass`, which is the
  * authority (`aggregate.ts`'s own shape-versus-scale rule, one level further out). The bins of
- * one cell then sum to that cell exactly, the bins of one dimension to `d_k`, and the whole
- * triangle's top cell to `D`.
+ * one cell then sum to that cell, the bins of one dimension to `d_k`, and the whole triangle's
+ * top cell to `D`.
+ *
+ * "Conserves" here means to the last ULP, not bit-for-bit, and the distinction is the honest one
+ * (W4 MINOR-12): the sums are floating-point additions in a different association from the one
+ * that produced `D`, so at `bins = 1` the top cell reads `2526.4921488423447` against a `D` of
+ * `2526.4921488423442`. Measured across the bin counts the tests cover, the worst relative gap
+ * is `5.4e-16` — one or two ulps — and every cell equals the sum of the unit cells beneath it to
+ * `2.22e-16`. That is conservation in every sense a reader of a triangle needs, and it is not
+ * the word "exactly", which this paragraph used to claim.
  *
  * ## Layout
  *

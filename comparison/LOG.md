@@ -6160,3 +6160,87 @@ O(N) not O(N²)) and the defeat-the-dedupe control failing on the
 UNIQUENESS assertion rather than a count are the mechanism-not-magic-
 number standard. MAJOR-10's empty-domain repair (everything-legal
 exactly where nothing was) accepted. MINORs 5–13 close the wave.
+
+## 2026-08-17 — W4 fix cut 10: MINORs 5–13, and §8's list is closed (w4-fix)
+
+LOG read through AD-71 (fix cut 6 accepted; the validator-half principle). The last of §8.
+
+**MINOR-5 — the README is READ now.** The recipe file held its own copies of the README's
+figures, so its docstring's claim that "the numbers the README quotes are asserted against the
+engine" was true only of the copies. Every headline figure is extracted from the prose by an
+anchored regex, and a missing anchor THROWS rather than defaulting — a test that silently stops
+checking the documentation it exists to check is worse than no test. The gate's own control (five
+figures rewritten: `8397.60→9999.99`, `1755.47→1111.11`, `24941.06→12345.67`, `475 ms→999 ms`,
+`33 %→99 %`) now fails 3 tests where it failed 0.
+
+**MINOR-6 — the mirror WITH an msm.** No shipped mirror test passed one, so `measureA`/`measureB`
+were always null and `mirrorOf`'s swap of them was asserted against nothing. Now pinned, with the
+non-vacuity that the fields are populated with an msm and null without.
+
+**MINOR-7 — `replayResidual`, and an honest statement of what could NOT be closed.** The residual
+is rebuilt independently: from the DELIVERED OPS alone, remove what the steps consume, add what
+they produce, sort, and compare `Φ` against `Φ(B)` with the same `norm`. Over 60 random pairs it
+also asserts every A instruction is consumed exactly once and every B instruction produced
+exactly once — the bookkeeping the exactness actually rests on.
+
+[MEASURED, and reported against my own repair] hard-coding `const replayResidual = 0` STILL fails
+nothing, and it cannot be made to fail: the true residual is 0 for every input a correct engine
+can produce, so no assertion on its VALUE can distinguish a computed 0 from a constant one. What
+the new test closes is the structural half — that the final state really IS B — and that half is
+now caught: dropping the last delivered op fails it (with 4 others), and making a step forget one
+`bItem` fails it (with 4 others). The field remains self-reported and the module should not
+pretend otherwise.
+
+**MINOR-8 — key order for the two new shapes.** `ComparisonReport` was pinned and the shapes W4
+added were not, though the existing pin's own comment records that it is what caught W4's `scape`
+addition. `DiffReport`, its `dimensions` row, its `scripts` and their `ops`, and `CorpusReport`
+with every opt-in product asked for — the widest shape, which is the `scape` lesson applied
+before it bites again.
+
+**MINOR-9 — the gate read a divergence that is not one, and the resolution is worth more than the
+fix would have been.** DESIGN said `scripts` by `(part, map)`; `compareScripts` implements
+`(part, map, dimension)`. Measured, they describe the same order: every `(part, map)` in a real
+report carries EXACTLY ONE dimension's script, because the three imprecision dimensions live in
+separately-named maps (`imprecisionMap.dynamics`, `.timing`, `.toneduration`) rather than sharing
+one. So `(part, map)` is already total and `dimension` is a defensive key no input reaches. I had
+already "corrected" DESIGN to `(part, map, dimension)` before measuring, and reverted it: the
+DESIGN text was right. Both facts are now asserted — the delivered order, and the one-script-per-
+bucket property that makes the third key unreachable — because a future map rename would break
+the second silently.
+
+**MINOR-10 — `callerIsCanonical`'s `<=`.** With `<`, a self-diff has equal keys, is judged
+non-canonical, and comes back inverted with every `site.document` reading `'b'`. Still a valid
+empty-cost script, which is why nothing noticed. Pinned on a self-diff with real ops.
+
+**MINOR-11 — `negativeEigenvalueMass` at the noise floor, documented rather than clamped.**
+Measured on regular simplices, which are exactly Euclidean: `0` at `k = 5, 6, 8, 10` and
+`6.1e-17`, `2.3e-17` (the gate's own figure), `5.8e-17`, `4.7e-17` at `k = 3, 4, 7, 12`. Jacobi
+leaves a zero eigenvalue at `±1e-16` with an arbitrary sign. Deliberately NOT clamped: a
+threshold would have to be chosen and it would hide the small-but-real non-Euclideanness the
+field exists to report. What is pinned is that it stays at the floor, not that it is zero.
+
+**MINOR-12 — the scape "conserves mass EXACTLY" no longer says exactly.** It conserves to the
+last ulp: at `bins = 1` the top cell reads `2526.4921488423447` against a `D` of
+`2526.4921488423442`, worst relative gap `5.4e-16`. That is conservation in every sense a reader
+of a triangle needs and it is not the word the header used.
+
+**MINOR-13 — the latent ceiling is GONE rather than documented.** `jacobiEigen` spread `n²`
+arguments into `Math.hypot` against V8's 105741-argument limit, so it threw `RangeError` at
+`n ≥ 326` — verified directly against the old line, which throws where the new one returns 330
+eigenvalues. `DEFAULT_MAX_ITEMS = 256` left 1.61× headroom, and a ceiling that depends on an
+engine's argument limit is not one anyone can reason about. Accumulated instead, which is the
+same number: `Math.hypot`'s scaling guards against overflow in the SQUARES, and these are
+distance-matrix entries whose squares cannot overflow a double at any `n` this module accepts.
+
+NEGATIVE CONTROLS, six, each failing exactly its own tests and restoring green: the README's five
+figures rewritten → 3 failed; dropping the last delivered op → 5 failed incl. MINOR-7's;
+a step forgetting one `bItem` → 5 failed incl. MINOR-7's; `Math.hypot(...a)` restored → 1 failed;
+`callerIsCanonical` with `<` → 1 failed; and (recorded as a NON-failure, above) hard-coding the
+residual, which still fails nothing and explains why.
+
+Gate: `npm run verify` GREEN — 126 files, **5428 passed**, 0 skipped (5421 before; seven new
+tests). Repo-wide `npx prettier --check .` clean; eslint clean on all seven touched files.
+
+**§8's must-fix list is CLOSED.** 3 CAPITAL, 10 MAJOR, 13 MINOR, plus two findings off the list
+(the NUL bytes that made `diff.ts` binary; the summation order that CAPITAL-2's tie key could not
+reach) and one gate finding corrected on measurement (MINOR-9).

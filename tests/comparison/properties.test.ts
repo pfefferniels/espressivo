@@ -18,7 +18,13 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { compareMpm, neutralMpm, COMPARISON_DIMENSIONS } from '../../src/api/index.js';
+import {
+  compareMpm,
+  compareMpmCorpus,
+  diffMpm,
+  neutralMpm,
+  COMPARISON_DIMENSIONS,
+} from '../../src/api/index.js';
 import type { ComparisonNote, ComparisonReport } from '../../src/api/index.js';
 import { compareNotes } from '../../src/comparison/compare.js';
 
@@ -381,6 +387,114 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       'timeSignatureSource',
       'datePositionKnown',
     ]);
+  });
+
+  /**
+   * The same pin for the two shapes W4 added (MINOR-8).
+   *
+   * `ComparisonReport` was pinned and the two new report shapes were not — and the existing pin's
+   * own comment records what a key-order pin is worth: it is what caught W4's `scape` addition.
+   * A `DiffReport` and a `CorpusReport` are serialized, diffed and compared by consumers exactly
+   * as a `ComparisonReport` is, and §9.5's rule is about every object rather than about one.
+   */
+  it('pins the key order of DiffReport and CorpusReport too (§9.5, A9)', () => {
+    const diff = diffMpm({
+      a: TELEMANN,
+      performanceA: 'Baroque',
+      performanceB: 'Fast',
+      msm: score('telemann-grave'),
+      window: { start: 0, end: 16 },
+    }).report;
+
+    expect(Object.keys(diff)).toEqual([
+      'inputs',
+      'window',
+      'ppq',
+      'parts',
+      'scopes',
+      'scripts',
+      'dimensions',
+      'notes',
+    ]);
+    expect(Object.keys(diff.dimensions)).toEqual([...COMPARISON_DIMENSIONS]);
+    expect(Object.keys(diff.dimensions.tempo)).toEqual([
+      'dCurve',
+      'scriptCost',
+      'replayedDelta',
+      'reworking',
+      'replayResidual',
+    ]);
+    // The script and its ops, which are the shapes a consumer walks most.
+    expect(Object.keys(diff.scripts[0])).toEqual([
+      'part',
+      'map',
+      'dimension',
+      'ops',
+      'topByCost',
+      'opCounts',
+    ]);
+    expect(Object.keys(diff.scripts[0].ops[0])).toEqual([
+      'op',
+      'map',
+      'part',
+      'site',
+      'dateA',
+      'dateB',
+      'measureA',
+      'measureB',
+      'attributes',
+      'count',
+      'cost',
+      'free',
+      'applicationIndex',
+      'costRank',
+    ]);
+
+    const corpus = compareMpmCorpus({
+      items: [
+        { mpm: TELEMANN, performance: 'Baroque', label: 'a' },
+        { mpm: TELEMANN, performance: 'Fast', label: 'b' },
+        { mpm: TELEMANN, performance: 'Romantic', label: 'c' },
+      ],
+      window: { start: 0, end: 16 },
+      k: 2,
+      noiseFloor: true,
+      scape: { bins: 4 },
+    }).report;
+
+    // Every opt-in product asked for, so the pin covers the widest shape rather than the
+    // narrowest — the `scape` lesson from the pin above, applied before it can bite again.
+    expect(Object.keys(corpus)).toEqual([
+      'n',
+      'labels',
+      'items',
+      'matrices',
+      'dendrogram',
+      'medoids',
+      'clusters',
+      'silhouette',
+      'silhouetteReliable',
+      'embedding',
+      'seriationOrder',
+      'profiles',
+      'normalizationConstants',
+      'context',
+      'suspectPairs',
+      'scape',
+      'window',
+      'settings',
+      'notes',
+    ]);
+    expect(Object.keys(corpus.embedding)).toEqual([
+      'coordinates',
+      'eigenvalues',
+      'explainedVariance',
+      'degenerate',
+      'negativeEigenvalueMass',
+      'axes',
+    ]);
+    expect(Object.keys(corpus.items[0])).toEqual(['itemIndex', 'performance']);
+    expect(Object.keys(corpus.matrices.byDimension)).toEqual([...COMPARISON_DIMENSIONS]);
   });
 
   /**

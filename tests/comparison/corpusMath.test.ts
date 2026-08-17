@@ -970,6 +970,42 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
     expect(seen.size).toBeGreaterThan(1);
   });
 
+  /**
+   * The two numeric honesties W4's gate raised, pinned so the prose cannot drift from them.
+   *
+   * MINOR-11: `negativeEigenvalueMass` is a MEASURED quantity, and a perfectly Euclidean corpus
+   * can report a value at the noise floor because Jacobi leaves a zero eigenvalue at `±1e-16`
+   * with an arbitrary sign. Not clamped — a threshold would hide the small-but-real
+   * non-Euclideanness the field exists to report — so what is pinned is that it stays at the
+   * floor rather than that it is zero.
+   *
+   * MINOR-13: `jacobiEigen` used `Math.hypot(...a)`, which spreads `n²` arguments against V8's
+   * measured 105741-argument limit, so it threw `RangeError` at `n ≥ 326` — verified against the
+   * old line. `DEFAULT_MAX_ITEMS = 256` left 1.61× headroom, and a ceiling that depends on an
+   * engine's argument limit is not a ceiling anyone can reason about. Accumulated instead.
+   */
+  it('reports noise-floor negative mass on a Euclidean simplex, and survives past N = 326', () => {
+    for (const k of [3, 4, 5, 7, 12]) {
+      const values = new Array<number>(k * k).fill(0);
+      for (let i = 0; i < k; ++i) for (let j = 0; j < k; ++j) values[i * k + j] = i === j ? 0 : 1;
+      const embedding = classicalMds({ n: k, values }, 2, labelsOf(k));
+      // A regular simplex is exactly Euclidean, so the TRUE value is 0 and anything above the
+      // floor would be a real defect rather than a rounding residue.
+      expect({ k, atFloor: embedding.negativeEigenvalueMass < 1e-14 }).toEqual({
+        k,
+        atFloor: true,
+      });
+    }
+
+    // Past the old `Math.hypot` ceiling. `n = 330` is 108900 arguments, comfortably over V8's
+    // 105741, and the previous line threw `RangeError` here.
+    const n = 330;
+    const values = new Array<number>(n * n).fill(0);
+    for (let i = 0; i < n; ++i)
+      for (let j = 0; j < n; ++j) values[i * n + j] = i === j ? 0 : 1 + ((i * 7 + j) % 5);
+    expect(jacobiEigen({ n, values }).values).toHaveLength(n);
+  });
+
   it('does not flag the ordinary corpus, so the carve-out stays narrow', () => {
     // A near-zero TAIL is not a degeneracy a reader can see: `√λ·v` at the noise floor is below
     // the resolution of any plot, and flagging it would make every `axes = N−1` corpus

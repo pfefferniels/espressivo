@@ -214,6 +214,53 @@ describe('the DP minimizes the sequential objective', () => {
    * is not observable from outside `editScript` and a test that reached in to check it would be
    * pinning the implementation rather than the behaviour.
    */
+  /**
+   * `replayResidual` is CHECKED against an independent reconstruction, not taken on trust
+   * (MINOR-7).
+   *
+   * Hard-coding `const replayResidual = 0` in `editScript` failed nothing: the field asserts its
+   * own correctness. Structurally the claim is sound — the op bookkeeping does reach B — but
+   * nothing computed `Φ(final)` independently of `editScript` and compared it to `Φ(B)`, which
+   * is exactly what a residual is FOR (§6.3). A genuinely broken replay was caught (skipping the
+   * last delivered op fails tests across four files); a replay that lied about its own residual
+   * was not.
+   *
+   * Rebuilt here from the DELIVERED OPS ALONE: start from `a`, remove every instruction any step
+   * consumes, add every one any step produces, sort into the state order, and compare `Φ` of
+   * that against `Φ(b)` with the same `norm` the engine used. That shares no line with the
+   * replay's own accumulation.
+   */
+  it('reports a replayResidual that an independent rebuild agrees with (MINOR-7)', () => {
+    const next = lcg(90210);
+    let checked = 0;
+    for (let trial = 0; trial < 60; ++trial) {
+      const a = randomSequence(next, 1 + Math.floor(next() * 4));
+      const b = randomSequence(next, 1 + Math.floor(next() * 4));
+      const result = editScript(a, b, pricing());
+
+      // Every A instruction consumed at most once and every B instruction produced at most once
+      // — the bookkeeping the residual's exactness actually rests on.
+      const consumed = result.steps.flatMap((step) => step.aItems);
+      const produced = result.steps.flatMap((step) => step.bItems);
+      expect(new Set(consumed).size).toBe(consumed.length);
+      expect(new Set(produced).size).toBe(produced.length);
+      expect(new Set(consumed)).toEqual(new Set(a));
+      expect(new Set(produced)).toEqual(new Set(b));
+
+      // The final state, rebuilt from the ops rather than read out of the engine.
+      const survivors = a.filter((instruction) => !consumed.includes(instruction));
+      const rebuilt = [...survivors, ...produced].sort(
+        (x, y) => x.dateTicks - y.dateTicks || (x.id < y.id ? -1 : 1),
+      );
+      const residual = stepNorm(rebuilt, b, Math.log(100));
+
+      expect({ trial, residual }).toEqual({ trial, residual: 0 });
+      expect({ trial, reported: result.replayResidual }).toEqual({ trial, reported: residual });
+      checked += 1;
+    }
+    expect(checked).toBe(60);
+  });
+
   it('prefers the surviving side at a co-dated date in the REPLAY too (MAJOR-8)', () => {
     const a = [level(1, 210, 'a0'), level(1, 202, 'a1')];
     const b = [level(1, 108, 'b0')];
