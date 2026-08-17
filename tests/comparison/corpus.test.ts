@@ -570,6 +570,87 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
     expect(new Set(fingerprints).size).toBe(fingerprints.length);
   });
 
+  /**
+   * MAJOR-R2: the note dedupe folds pairwise reports into corpus facts WITHOUT keeping any
+   * pair-relative data in the key or in the text.
+   *
+   * The first version of MAJOR-9's repair applied that reasoning to the top-level `document`
+   * field and not to the copy inside `site`, and named only `pairs[0]` in the prefix. Three
+   * measured symptoms, all fixed here and each asserted separately:
+   *
+   * (a) the note COUNT depended on item order — 100 against 104 for the same three-item corpus;
+   * (b) a note firing on some-but-not-all pairs named only the first and the rest VANISHED,
+   *     which for `length-mismatch` was strictly worse than the filter this repair replaced:
+   *     `suspectPairs` naming five pairs beside a single note, one report contradicting itself;
+   * (c) the message text varied under permutation, the same note reading `"C | B: …"` under one
+   *     listing and `"B | C: …"` under another.
+   */
+  it('gives the same notes, the same count and the same text under every item order', () => {
+    const three = [
+      { mpm: TELEMANN, performance: 'Baroque' as const, label: 'tel-b' },
+      { mpm: TELEMANN, performance: 'Fast' as const, label: 'tel-f' },
+      { mpm: ALBERT, performance: 0, label: 'alb' },
+    ];
+    // ALL SIX orders of three items — the defect showed on some and not others, so a single
+    // fixed permutation is exactly the instrument that missed it the first time.
+    const orders = [
+      [0, 1, 2],
+      [0, 2, 1],
+      [1, 0, 2],
+      [1, 2, 0],
+      [2, 0, 1],
+      [2, 1, 0],
+    ];
+    const counts = new Set<number>();
+    const texts = new Set<string>();
+    for (const order of orders) {
+      const report = corpus(order.map((index) => three[index]));
+      counts.add(report.notes.length);
+      texts.add(
+        report.notes
+          .map(
+            (entry) =>
+              `${entry.kind}|${entry.itemIndex === null ? '-' : report.labels[entry.itemIndex]}|${entry.message}`,
+          )
+          .sort()
+          .join('\n'),
+      );
+    }
+    // (a) one count, and (c) one text set — not two of either.
+    expect([...counts]).toHaveLength(1);
+    expect(texts.size).toBe(1);
+
+    // Non-vacuity: there really are notes to disagree about.
+    expect([...counts][0]).toBeGreaterThan(50);
+  });
+
+  it('names EVERY pair a note fired on, so nothing contradicts suspectPairs', () => {
+    const four = [
+      { mpm: TELEMANN, performance: 'Baroque' as const, label: 'tel-b' },
+      { mpm: TELEMANN, performance: 'Fast' as const, label: 'tel-f' },
+      { mpm: VULPIUS, performance: 'Baroque' as const, label: 'vul-b' },
+      { mpm: ALBERT, performance: 0, label: 'alb' },
+    ];
+    const report = corpus(four);
+
+    // `length-mismatch` fires on the pairs `suspectPairs` names, and the note has to account for
+    // all of them — this is symptom (b), where four of the five silently disappeared.
+    const mismatch = report.notes.filter((entry) => entry.kind === 'length-mismatch');
+    expect(mismatch).toHaveLength(1);
+    expect(report.suspectPairs.length).toBeGreaterThan(1);
+    for (const pair of report.suspectPairs) {
+      const [left, right] = [report.labels[pair.i], report.labels[pair.j]].sort();
+      expect({
+        pair: `${left} | ${right}`,
+        named: mismatch[0].message.includes(`${left} | ${right}`),
+      }).toEqual({ pair: `${left} | ${right}`, named: true });
+    }
+
+    // The pairs are listed in a canonical order, so the sentence is a function of the corpus.
+    const listed = mismatch[0].message.split(':')[0].split('; ');
+    expect(listed).toEqual([...listed].sort());
+  });
+
   it('makes plausibleRange live at the corpus, which is the option’s only product', () => {
     const items = [
       { mpm: TELEMANN, performance: 'Baroque' as const, label: 'tel-b' },

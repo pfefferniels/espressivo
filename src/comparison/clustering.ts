@@ -84,6 +84,35 @@ function lower(x: string, y: string): boolean {
 }
 
 /**
+ * A TOTAL order on item indices by label, falling back to the index where labels are equal.
+ *
+ * `lower(a, b) ? -1 : 1` is not a comparator: it answers `1` in BOTH directions for two equal
+ * labels, which puts `Array.prototype.sort` in unspecified territory (W4 MINOR-R5). §8 requires
+ * labels unique after expansion, so `compareMpmCorpus` never reaches the tie; a DIRECT caller of
+ * `pam`, `silhouette` or `agglomerate` can.
+ *
+ * What this repair does NOT do is worth stating, because it would be easy to assume otherwise:
+ * it does not make the products permutation-invariant under duplicate labels. Measured after it,
+ * `pam`'s cost still takes 2 distinct values over 40 permutations at `n = 12` with duplicated
+ * labels — the verifier's own figure, unmoved. The index fallback cannot help, since the index is
+ * exactly what a permutation changes.
+ *
+ * The cause is one level up, in {@link exhaustiveMedoids}' tie KEY: two subsets with different
+ * costs can share a label multiset, and no label-keyed rule can separate them because in the
+ * only frame the corpus has they are the same subset. That is not a defect to repair here; it is
+ * why §8 requires unique labels, and `compareMpmCorpus` enforces it before any of this runs.
+ *
+ * So this is a correctness fix — a valid total order where an invalid comparator stood — with no
+ * behavioural difference the author could measure on any input tried, including the one that
+ * motivated it. Recorded that way rather than as an invariance repair.
+ */
+function byLabelThenIndex(labels: readonly string[], x: number, y: number): number {
+  const left = labels[x] ?? '';
+  const right = labels[y] ?? '';
+  return lower(left, right) ? -1 : lower(right, left) ? 1 : x - y;
+}
+
+/**
  * Agglomerative clustering by the naive `O(N³)` Lance–Williams update.
  *
  * `N ≤ 256` (R10/C17), so the naive form is `1.7·10⁷` operations at the ceiling and needs no
@@ -365,7 +394,7 @@ function nearestMedoid(
  */
 function labelOrder(n: number, labels: readonly string[]): readonly number[] {
   return Array.from({ length: n }, (_unused, index) => index).sort((x, y) =>
-    lower(labels[x] ?? '', labels[y] ?? '') ? -1 : 1,
+    byLabelThenIndex(labels, x, y),
   );
 }
 
@@ -479,7 +508,7 @@ export function pam(
   const chosen = exact === null ? medoids : [...exact];
 
   // Reported in label order, so the medoid list itself is permutation-equivariant.
-  chosen.sort((x, y) => (lower(labels[x] ?? '', labels[y] ?? '') ? -1 : 1));
+  chosen.sort((x, y) => byLabelThenIndex(labels, x, y));
   const clusters = Array.from({ length: n }, (_unused, item) =>
     nearestMedoid(matrix, chosen, item, labels),
   );
@@ -517,8 +546,7 @@ export function silhouette(
   // happen to reassociate exactly — and it is repaired anyway, because "no permutation has
   // reordered these particular sums yet" is not a property. `labels` defaults to empty, which
   // leaves index order: the algorithm-layer callers that pass none get what they got before.
-  for (const members of groups.values())
-    members.sort((x, y) => ((labels[x] ?? '') < (labels[y] ?? '') ? -1 : 1));
+  for (const members of groups.values()) members.sort((x, y) => byLabelThenIndex(labels, x, y));
 
   return Array.from({ length: n }, (_unused, item) => {
     const own = groups.get(clusters[item]) ?? [item];

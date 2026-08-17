@@ -50,6 +50,7 @@ import type { Element } from '../xml/XomTypes.js';
 import type {
   ComparisonNote,
   ComparisonNoteKind,
+  ComparisonSiteRef,
   ComparisonReport,
   CorpusReport,
   ResolvedComparisonSettings,
@@ -205,10 +206,13 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
     string,
     {
       readonly entry: ComparisonNote;
+      readonly site: ComparisonSiteRef | null;
       readonly itemIndex: number | null;
-      readonly pairs: [number, number][];
+      /** A SET of `"i,j"` keys — a pair cannot be counted twice (MAJOR-R2). */
+      readonly pairs: Set<string>;
     }
   >();
+  const key0 = (i: number, j: number) => `${String(i)},${String(j)}`;
 
   // ONE window for the whole matrix (R3). Derived from the corpus rather than from a pair: the
   // maximum last date across every item, which every pairwise call is then handed as
@@ -224,8 +228,11 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
    * SET of numbers — and every published corpus figure has to be a function of the corpus rather
    * than of how it was listed.
    */
-  const labelOrder = Array.from({ length: n }, (_unused, index) => index).sort((x, y) =>
-    labels[x] < labels[y] ? -1 : 1,
+  const labelOrder = Array.from({ length: n }, (_unused, index) => index).sort(
+    // Total: the index fallback is what stops two equal labels from being ordered by whatever
+    // the sort received (MINOR-R5). Unreachable here — §8 rejects duplicate labels before this
+    // runs — and written correctly anyway, because the next caller may not be this one.
+    (x, y) => (labels[x] < labels[y] ? -1 : labels[y] < labels[x] ? 1 : x - y),
   );
 
   const pairwise = new Map<string, ComparisonReport>();
@@ -288,18 +295,35 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
         // `document` is PAIR-relative and meaningless once the pair is gone: the same file is
         // `a` in one comparison and `b` in the next. `itemIndex` is the corpus-level identity.
         const itemIndex = entry.document === 'a' ? i : entry.document === 'b' ? j : null;
+
+        // …and the SAME is true of the copy inside `site`, which is what the first version of
+        // this repair missed (MAJOR-R2). Keying on `entry.site` put one document-level fact in
+        // one bucket or two depending on whether that document had been the `i` or the `j` of
+        // the pairs it appeared in — which is precisely what a permutation changes. Measured
+        // before this: 100 notes against 104 for the same three-item corpus under two orders.
+        //
+        // Every corpus note that carries a site also carries an `itemIndex` (measured: 4 of 4,
+        // and 0 site-bearing notes without one), so at this level `site.document` names nothing
+        // that `itemIndex` does not name better. It is pinned to `'a'` rather than left to vary:
+        // the field cannot be null in `ComparisonSiteRef`, and a constant is honest where a
+        // varying value would be misinformation.
+        const site = entry.site === null ? null : { ...entry.site, document: 'a' as const };
         const key = JSON.stringify([
           entry.kind,
           entry.dimension,
           itemIndex,
-          entry.site,
+          site,
           entry.startQuarters,
           entry.endQuarters,
           entry.message,
         ]);
         const seen = pairNotes.get(key);
-        if (seen === undefined) pairNotes.set(key, { entry, itemIndex, pairs: [[i, j]] });
-        else seen.pairs.push([i, j]);
+        // The pair set is a SET. A note repeated inside ONE pairwise report used to push its
+        // pair twice, which could carry the count to `=== totalPairs` and promote a note that
+        // fired on a handful of pairs into an unprefixed corpus-wide statement.
+        if (seen === undefined)
+          pairNotes.set(key, { entry, site, itemIndex, pairs: new Set([key0(i, j)]) });
+        else seen.pairs.add(key0(i, j));
       }
     }
 
@@ -314,16 +338,36 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
   // of every comparison in the run, so `N(N−1)/2` differently-prefixed copies would be noise
   // dressed as detail.
   const totalPairs = (n * (n - 1)) / 2;
-  for (const { entry, itemIndex, pairs } of pairNotes.values()) {
-    const [firstI, firstJ] = pairs[0];
+  for (const { entry, site, itemIndex, pairs } of pairNotes.values()) {
+    // EVERY pair the note fired on, canonically ordered — not `pairs[0]` (MAJOR-R2).
+    //
+    // Naming only the first was wrong twice over. It made the emitted text depend on the
+    // enumeration order, so the same note read `"C | B: …"` under one listing and `"B | C: …"`
+    // under another; and where a note fired on some-but-not-all pairs it silently DROPPED the
+    // rest, which for `length-mismatch` was strictly worse than the code this repair replaced —
+    // measured, `suspectPairs` naming five pairs beside a single `length-mismatch` note, one
+    // report contradicting itself.
+    //
+    // Sorted by label within each pair and then between pairs, so the sentence is a function of
+    // the corpus and not of how it was listed.
+    const named = [...pairs]
+      .map((pair) => {
+        const [left, right] = pair.split(',').map(Number);
+        return labels[left] < labels[right]
+          ? `${labels[left]} | ${labels[right]}`
+          : `${labels[right]} | ${labels[left]}`;
+      })
+      .sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
+
     const prefix =
       itemIndex !== null
         ? `${labels[itemIndex]}: `
-        : pairs.length === totalPairs && totalPairs > 1
+        : pairs.size === totalPairs && totalPairs > 1
           ? ''
-          : `${labels[firstI]} | ${labels[firstJ]}: `;
+          : `${named.join('; ')}: `;
     notes.push({
       ...entry,
+      site,
       document: null,
       itemIndex,
       message: `${prefix}${entry.message}`,

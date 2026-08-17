@@ -571,6 +571,72 @@ describe('silhouette', () => {
     expect(disagreements).toBe(0);
   });
 
+  /**
+   * MINOR-R5's boundary, stated as a test because the repair alone does not reach it.
+   *
+   * The six label comparators are total orders now (`lower(a,b) ? -1 : 1` answers `1` in BOTH
+   * directions for equal labels, which is not a comparator and leaves `Array.prototype.sort`
+   * in unspecified territory). That repair is right on its own terms and it does NOT deliver
+   * permutation-invariance under duplicate labels — measured, `pam`'s cost still takes 2
+   * distinct values over 40 permutations at `n = 12` with three labels shared twelve ways,
+   * exactly as the verifier reported, and the index fallback cannot help because the index is
+   * what permutes.
+   *
+   * The cause is one level up, in `exhaustiveMedoids`' tie KEY: two subsets with different
+   * costs can share a label multiset, and then no label-keyed rule can choose between them —
+   * they are indistinguishable in the only frame the corpus has. This is not a defect to repair
+   * but the reason §8 requires labels unique after expansion, and what that requirement buys is
+   * asserted here: the products are invariant on the supported domain, and the unsupported one
+   * is refused at the door rather than silently answered.
+   */
+  it('rests its invariance on §8’s unique labels, and refuses the domain where it fails', () => {
+    const n = 12;
+    const next = lcg(20260817);
+    const values = new Array<number>(n * n).fill(0);
+    for (let i = 0; i < n; ++i)
+      for (let j = i + 1; j < n; ++j) {
+        const value = Math.round(next() * 1e6) / 7919;
+        values[i * n + j] = value;
+        values[j * n + i] = value;
+      }
+    const matrix: DistanceMatrix = { n, values };
+    const unique = labelsOf(n);
+
+    const answers = new Set<string>();
+    for (let attempt = 0; attempt < 40; ++attempt) {
+      const order = Array.from({ length: n }, (_unused, index) => index);
+      for (let i = n - 1; i > 0; --i) {
+        const j = Math.floor(next() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      const permuted: DistanceMatrix = {
+        n,
+        values: Array.from({ length: n * n }, (_unused, index) => {
+          const i = Math.floor(index / n);
+          const j = index % n;
+          return matrix.values[order[i] * n + order[j]];
+        }),
+      };
+      const permutedLabels = order.map((index) => unique[index]);
+      const result = pam(permuted, 3, permutedLabels);
+      answers.add(
+        [
+          result!.cost.toPrecision(17),
+          result!.medoids
+            .map((item) => permutedLabels[item])
+            .sort()
+            .join(','),
+          silhouette(permuted, result!.clusters, permutedLabels)
+            .map((score) => score.toPrecision(17))
+            .sort()
+            .join(','),
+        ].join(' | '),
+      );
+    }
+    // ONE answer: cost, medoid set and the whole silhouette multiset, over 40 permutations.
+    expect(answers.size).toBe(1);
+  });
+
   it('scores a singleton cluster 0, and a zero-distance corpus 0', () => {
     expect(silhouette(fromPoints([0, 5, 9]), [0, 1, 2])).toEqual([0, 0, 0]);
     expect(silhouette({ n: 2, values: [0, 0, 0, 0] }, [0, 0])).toEqual([0, 0]);

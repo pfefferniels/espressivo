@@ -437,8 +437,13 @@ export function seriationOrder(embedding: Embedding, labels: readonly string[]):
   // caller's index order makes even that outcome a function of the corpus rather than of how
   // the items were listed. `Array.prototype.sort` is stable, so the seed survives every
   // comparison that returns 0.
-  order.sort((x, y) => (lower(labels, x, y) ? -1 : 1));
+  // TOTAL at both sorts — `lower(...) ? -1 : 1` answers 1 in both directions for equal labels,
+  // which is not a comparator and reintroduces the caller's order through the back door
+  // (MINOR-R5). The index fallback settles genuinely equal labels.
+  const byLabel = (x: number, y: number) =>
+    lower(labels, x, y) ? -1 : lower(labels, y, x) ? 1 : x - y;
+  order.sort(byLabel);
   return order.sort((x, y) =>
-    tied(first(x), first(y), scale) ? (lower(labels, x, y) ? -1 : 1) : first(x) - first(y),
+    tied(first(x), first(y), scale) ? byLabel(x, y) : first(x) - first(y),
   );
 }

@@ -6431,3 +6431,73 @@ repair; channel proven): MAJOR-R2 per the recipe + the R-5 MINORs as the
 report lists them, one or two cuts, full gates. AD-77.2 w4-verify then
 re-checks SCOPED to the note machinery + the R-5 items only. AD-77.3 On
 that pass, W4 CLOSES FINALLY.
+
+## 2026-08-17 — W4 micro-wave cut 13: MAJOR-R2, and MINOR-R5's honest limit (w4-fix)
+
+LOG read through AD-77 (re-gate verdict — BLOCK on one regression). W4-VERIFICATION R-0..R-7 read
+in full.
+
+**MAJOR-R2 — all three symptoms, one root, fixed at `corpus.ts:288-345`.** The verifier's
+three-part recipe, applied as given.
+
+1. **`site` resolved to corpus identity before keying.** MAJOR-9's repair applied the
+   pair-relative reasoning to the top-level `document` and not to the copy inside `site` — the
+   verdict's own pattern, a repair landing at the site that was named and not at its sibling.
+   Measured first: every corpus note that carries a site also carries an `itemIndex` (**4 of 4**,
+   and **0** site-bearing notes without one), so `site.document` names nothing at this level that
+   `itemIndex` does not name better. It is pinned to `'a'` — `ComparisonSiteRef.document` cannot
+   be null, and a constant is honest where a varying value is misinformation.
+2. **Every pair named, canonically.** Within each pair the two labels are sorted, then the pairs
+   are sorted between themselves and joined with `; `.
+3. **The pair collection is a SET**, so a note repeated inside one pairwise report cannot reach
+   `=== totalPairs` and be promoted to an unprefixed corpus-wide statement.
+
+The `''` branch for a genuinely corpus-wide note stays, as the recipe says.
+
+[MEASURED] over all six orders of a three-item corpus: note count **{81}** — one value, against
+the reported 100-vs-104; distinct note-text sets **1**. And symptom (b) on the four-item corpus:
+`suspectPairs` names 5 pairs and the single `length-mismatch` note now names all five —
+`alb | tel-b; alb | tel-f; alb | vul-b; tel-b | vul-b; tel-f | vul-b: …` — where before it named
+one and four vanished.
+
+**MINOR-R5 — six sites, not three, and the repair does LESS than it looks like it does.**
+
+The sweep found six comparators of the `lower(a, b) ? -1 : 1` shape, not the three the report
+named: both `labelOrder`s, `silhouette`'s member sort, **`pam`'s published `chosen` medoid
+order**, and **both of `seriationOrder`'s sorts**. The last three were not in the finding. All six
+now use a total order with an index fallback, via one shared `byLabelThenIndex` helper.
+
+And then the honest part, because the obvious claim is wrong. **The repair does not make anything
+permutation-invariant under duplicate labels.** Measured after it, `pam`'s cost still takes **2
+distinct values over 40 permutations at n = 12** with duplicated labels — the verifier's own
+figure, unmoved. The index fallback cannot help: the index is exactly what a permutation changes.
+
+The cause is one level up, in `exhaustiveMedoids`' tie KEY. Two subsets with different costs can
+share a label multiset, and no label-keyed rule can separate them, because in the only frame the
+corpus has they are the same subset. That is not a defect to repair; it is *why* §8 requires
+unique labels, and `compareMpmCorpus` enforces that before any of this runs.
+
+Nor could a behavioural difference be found: on a 22-element duplicate-label array both the
+invalid and the valid comparator produce a correctly label-sorted result, V8's TimSort tolerating
+the invalid one. So this is a **correctness fix — a valid total order where an invalid comparator
+stood — with no measurable behavioural change on any input tried, including the one that
+motivated it.** Recorded that way in the code and here, rather than as an invariance repair.
+
+The first version of the test asserted the strong claim and FAILED (`expected 10 to be 2`), which
+is how the limit was found. What ships asserts what is true: on the supported domain — unique
+labels — cost, medoid set and the whole silhouette multiset are ONE answer over 40 permutations,
+and the unsupported domain is refused at the door rather than silently answered.
+
+NEGATIVE CONTROLS, four, each failing exactly its own tests and restoring green: `site.document`
+back in the key → 1 failed (the count/text test); the prefix back to the first pair only → 1
+failed (the every-pair test); the pair set defeated so intra-report repeats count separately → 2
+failed. The MINOR-R5 repair has NO failing control, which is stated above as its own finding
+rather than papered over.
+
+**Gate, with one qualification I am not going to hide.** `npm run verify`: **126 files, 5433
+passed, 0 skipped** — and `Errors 1`, a vitest worker RPC timeout (`Timeout calling
+"onTaskUpdate"`). It is NOT a regression: verified by stashing every change in this cut and
+re-running at `6b781bf`, which reports the same single error at 5430 passed. The suite is taking
+64–72 s here against 47 s earlier in the same session with the same tree, so the machine is under
+load — plausibly other agents' suites. Flagged for the re-gate so it is not chased as a finding.
+Repo-wide `npx prettier --check .` clean; eslint clean on all five touched files.
