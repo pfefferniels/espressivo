@@ -451,6 +451,112 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
     expect(report.embedding.explainedVariance.every((share) => share === null)).toBe(true);
   });
 
+  /**
+   * W4 MAJOR-9: the corpus forwards every note kind, once per distinct FACT.
+   *
+   * It used to filter on `kind === 'length-mismatch'`, so `capped`, `plausibility`,
+   * `renderer-*`, `grid-truncated`, `invariance-space` and `estimate-degradation` findings from
+   * the `N(N−1)/2` comparisons were unobservable at the corpus facade — and `plausibleRange` was
+   * accepted, validated and inert here, since notes are its only product.
+   *
+   * Forwarding them verbatim is not the fix either. Most notes are about a DOCUMENT, and a
+   * document sits in `N−1` pairs: measured on this five-item corpus, the pairwise pass produces
+   * 664 `structural` notes over 10 pairs, of which 654 name a document. That is `O(N²)` copies
+   * of an `O(N)` fact. They are deduplicated on their content, and `itemIndex` — not `document`,
+   * which is pair-relative and meaningless once the pair is gone — carries the identity.
+   */
+  it('carries every note kind, deduplicated, with itemIndex naming the document', () => {
+    const items = [
+      { mpm: TELEMANN, performance: 'Baroque' as const, label: 'tel-b' },
+      { mpm: TELEMANN, performance: 'Fast' as const, label: 'tel-f' },
+      { mpm: TELEMANN, performance: 'Romantic' as const, label: 'tel-r' },
+      { mpm: VULPIUS, performance: 'Baroque' as const, label: 'vul-b' },
+      { mpm: ALBERT, performance: 0, label: 'alb' },
+    ];
+    const report = corpus(items);
+
+    // More than one kind, which is the whole finding.
+    const kinds = new Set(report.notes.map((entry) => entry.kind));
+    expect(kinds.size).toBeGreaterThan(1);
+    for (const kind of ['structural', 'capped', 'estimate-degradation', 'length-mismatch'])
+      expect({ kind, present: kinds.has(kind as (typeof report.notes)[number]['kind']) }).toEqual({
+        kind,
+        present: true,
+      });
+
+    // `document` is dropped and `itemIndex` replaces it — the same file is `a` in one comparison
+    // and `b` in the next, so the pair-relative field cannot survive the corpus.
+    expect(report.notes.every((entry) => entry.document === null)).toBe(true);
+    const documentScoped = report.notes.filter((entry) => entry.itemIndex !== null);
+    expect(documentScoped.length).toBeGreaterThan(0);
+    for (const entry of documentScoped)
+      expect(entry.message.startsWith(`${report.labels[entry.itemIndex!]}: `)).toBe(true);
+
+    // Deduplicated: 104 notes against the 713 the ten pairwise reports carry between them, and
+    // no two say the same thing about the same item over the same span. The span belongs in the
+    // identity — one document can be capped in two different places, and those are two facts.
+    expect(report.notes.length).toBeLessThan(200);
+    const fingerprints = report.notes.map((entry) =>
+      JSON.stringify([
+        entry.kind,
+        entry.dimension,
+        entry.itemIndex,
+        entry.site,
+        entry.startQuarters,
+        entry.endQuarters,
+        entry.message,
+      ]),
+    );
+    expect(new Set(fingerprints).size).toBe(fingerprints.length);
+  });
+
+  it('makes plausibleRange live at the corpus, which is the option’s only product', () => {
+    const items = [
+      { mpm: TELEMANN, performance: 'Baroque' as const, label: 'tel-b' },
+      { mpm: TELEMANN, performance: 'Fast' as const, label: 'tel-f' },
+      { mpm: VULPIUS, performance: 'Baroque' as const, label: 'vul-b' },
+    ];
+    const plain = corpus(items);
+    const banded = corpus(items, { plausibleRange: { 'tempo/tempo@bpm': [200, 400] } });
+
+    const plausibility = (report: CorpusReport) =>
+      report.notes.filter((entry) => entry.kind === 'plausibility');
+    expect(plausibility(banded).length).toBeGreaterThan(plausibility(plain).length);
+    expect(plausibility(banded)[0].message).toContain('outside its plausible band [200, 400]');
+    // Every one names the item it is about, so a reader can act on it.
+    expect(plausibility(banded).every((entry) => entry.itemIndex !== null)).toBe(true);
+  });
+
+  /**
+   * W4 MAJOR-10: `embeddingAxes`' declared domain is `[1, N−1]`, which at `N ≤ 1` is EMPTY.
+   *
+   * The guard read `n > 1 && axes > n - 1`, so exactly where nothing is legal, everything was
+   * accepted: a one-item corpus reported `axes === 7`, and an empty one reported five all-null
+   * variance shares. AD-25.1's first branch applies — `items.length` is in the same option bag,
+   * so the caller could have known without reading a document.
+   */
+  it('rejects an explicit embeddingAxes where the domain is empty (N ≤ 1)', () => {
+    expect(() =>
+      corpus([{ mpm: TELEMANN, performance: 'Baroque', label: 'only' }], {
+        embeddingAxes: 7,
+      }),
+    ).toThrow(InvalidOptionError);
+    expect(() => corpus([], { embeddingAxes: 5 })).toThrow(InvalidOptionError);
+    // Even 1 is out of an empty domain — there is no axis in a one-point cloud.
+    expect(() =>
+      corpus([{ mpm: TELEMANN, performance: 'Baroque', label: 'only' }], {
+        embeddingAxes: 1,
+      }),
+    ).toThrow(InvalidOptionError);
+
+    // …and the DEFAULT still degrades rather than erroring, which is the other half of §9.4's
+    // rule: a caller who never set the option has made no mistake to be told about.
+    const single = corpus([{ mpm: TELEMANN, performance: 'Baroque', label: 'only' }]);
+    expect(single.n).toBe(1);
+    expect(single.embedding.axes).toBe(1);
+    expect(corpus([]).n).toBe(0);
+  });
+
   it('is plain data: finite or null everywhere, no undefined, no -0', () => {
     const report = corpus(
       [

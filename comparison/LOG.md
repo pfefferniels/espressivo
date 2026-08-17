@@ -6085,3 +6085,60 @@ MAJOR-7 perturbations tabulated above, and reversing `stateFromFlags`' side rule
 
 Gate: `npm run verify` GREEN — 126 files, **5418 passed**, 0 skipped (5417 before; one new test).
 Repo-wide `npx prettier --check .` clean; eslint clean on both touched files.
+
+## 2026-08-17 — W4 fix cut 9: MAJOR-9 and MAJOR-10, the corpus surface (w4-fix)
+
+LOG read through AD-71 (fix cut 6 accepted; the validator-half principle). §8's item 10, the
+remaining two thirds.
+
+**MAJOR-10 — `embeddingAxes` at `N ≤ 1`, where the domain is EMPTY.** The guard read
+`n > 1 && axes > n - 1`, so exactly where NOTHING is legal it accepted everything: a one-item
+corpus reported `axes === 7`, an empty one reported five all-null variance shares. Now
+`axes > Math.max(0, n - 1)`, so an explicit value errors at `N ≤ 1` — AD-25.1's first branch,
+since `items.length` sits in the same option bag and the caller could have known without reading
+a document. The DEFAULT still degrades rather than erroring, which is §9.4's other half: a caller
+who never set the option has made no mistake to be told about.
+
+**MAJOR-9 — the corpus forwards every note kind now, and forwarding them verbatim would have
+been the wrong fix.** The filter was `kind === 'length-mismatch'`, which made `capped`,
+`plausibility`, `renderer-*`, `grid-truncated`, `invariance-space` and `estimate-degradation`
+unobservable at the corpus facade, and made `plausibleRange` accepted-validated-and-inert there
+since notes are its only product.
+
+But the pairwise pass is `N(N−1)/2` comparisons and most notes are about a DOCUMENT, which sits
+in `N−1` pairs. [MEASURED] on the five-item vendored corpus: **664 `structural` notes over 10
+pairs, of which 654 name a document** — `O(N²)` copies of an `O(N)` fact. A 50-item folder would
+have produced tens of thousands. So the notes are deduplicated on their content, keyed on
+`(kind, dimension, itemIndex, site, span, message)`. Result on the same corpus: **104 notes**
+against the 713 the ten reports carry between them, and with a `[200, 400]` band on
+`tempo/tempo@bpm`, 254 plausibility notes — bounded by the DOCUMENTS rather than by `N²`.
+
+Two decisions inside that, both about honesty rather than volume:
+
+- **`document` is dropped and `itemIndex` replaces it.** `document: 'a' | 'b'` is PAIR-relative:
+  the same file is `a` in one comparison and `b` in the next, so carrying it to the corpus level
+  would be meaningless at best and wrong at worst. The old code set `itemIndex: i` on every
+  forwarded note regardless of side — latent, since only `document: null` notes were forwarded,
+  and now correct: `'a'` maps to `i`, `'b'` to `j`.
+- **The label prefix follows what the note is ABOUT.** A note naming a document gets that item's
+  label; a pair-scoped note whose content varied by pair gets both labels; a pair-scoped note
+  whose content repeated for EVERY pair gets neither, because it is then a fact about the corpus
+  and prefixing it with whichever pair was enumerated first would misattribute it. The
+  MPM-scope-rule `estimate-degradation` note is the case that forced this: true of every
+  comparison in the run.
+
+NEGATIVE CONTROLS, three, each failing exactly its own tests and restoring green: restoring the
+`length-mismatch`-only filter → 2 failed (the kind coverage and the `plausibleRange` liveness);
+restoring the `n > 1` guard → 1 failed; defeating the dedupe so every pair-instance is forwarded
+→ 1 failed, on the uniqueness assertion rather than on the count, so the control tests the
+mechanism and not a magic number.
+
+DESIGN §9.3's `CorpusResult.notes` now states the dedupe rule and the `itemIndex`-not-`document`
+identity with the measured figures; §9.4's `embeddingAxes` row states the empty-domain case.
+
+Gate: `npm run verify` GREEN — 126 files, **5421 passed**, 0 skipped (5418 before; three new
+tests). Repo-wide `npx prettier --check .` clean; eslint clean on both touched files.
+
+**§8's must-fix list is now closed except the MINORs.** CAPITAL-1/2/3, MAJOR-1..10 all landed,
+plus two findings off the list (the NUL bytes, and the summation order that CAPITAL-2's tie key
+could not reach). MINORs 5–13 remain, and MINORs 1–4 landed in cut 1.

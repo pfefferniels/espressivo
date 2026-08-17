@@ -2773,9 +2773,21 @@ export interface CorpusResult {
   }[]; // C7
   readonly scape: { readonly bins: number; readonly cells: readonly number[] } | null;
   readonly settings: Required<ComparisonSettings>; // the echo, documents excluded
+  // EVERY kind the N(N-1)/2 comparisons produce, deduplicated on content
+  // (AD-70's wave, MAJOR-9). `document` is null throughout — it is pair-relative
+  // and meaningless once the pair is gone — and `itemIndex` names the document a
+  // note is about, or null where the note is about a pair or about the corpus.
   readonly notes: readonly ComparisonNote[];
 }
 ```
+
+Forwarding the pairwise notes verbatim is not an option: most are about a
+DOCUMENT, and a document sits in `N−1` pairs, so a five-item corpus produced
+664 `structural` notes of which 654 named a document — `O(N²)` copies of an
+`O(N)` fact. They are keyed on `(kind, dimension, itemIndex, site, span,
+message)` and emitted once each. A note whose content repeats for EVERY pair is
+a fact about the corpus and carries no label prefix; one that varies by pair
+carries both labels; one about a document carries that item's label.
 
 ### 9.4 Errors
 
@@ -2827,7 +2839,7 @@ spread.
 | multi-performance document, no selector                 | —                                                            | `InvalidOptionError` naming the candidates                                                                |
 | document with **zero** performances                     | —                                                            | `PerformanceNotFoundError` (C8 — users hand-building neutral documents hit this)                          |
 | `k`                                                     | integer, `1 ≤ k ≤ N`                                         | `InvalidOptionError`                                                                                      |
-| `embeddingAxes`                                         | integer, `1 ≤ axes ≤ N−1`                                    | `InvalidOptionError`                                                                                      |
+| `embeddingAxes`                                         | integer, `1 ≤ axes ≤ N−1`; at `N ≤ 1` the domain is EMPTY and any explicit value errors | `InvalidOptionError`                                                            |
 | `scape.bins`                                            | integer, `1 ≤ bins ≤ 256`                                    | `InvalidOptionError`                                                                                      |
 | `maxItems` / `items.length`                             | integer ≥ 0; `items.length ≤ maxItems`                       | `InvalidOptionError`                                                                                      |
 | duplicate labels after expansion                        | —                                                            | `InvalidOptionError` naming every collision and its item indices (A8)                                     |

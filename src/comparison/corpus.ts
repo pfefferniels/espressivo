@@ -186,12 +186,29 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
   const n = items.length;
   if (options.k !== undefined && options.k > n)
     throw new CorpusOptionRangeError('k', options.k, n, n);
-  if (options.embeddingAxes !== null && n > 1 && options.embeddingAxes > n - 1)
-    throw new CorpusOptionRangeError('embeddingAxes', options.embeddingAxes, n - 1, n);
+  // The `n > 1` guard is NOT part of the test (W4 MAJOR-10). `embeddingAxes`' declared domain is
+  // `[1, N−1]`, which at `N ≤ 1` is EMPTY — so where nothing is legal the old guard accepted
+  // everything: `compareMpmCorpus({ items: [one], embeddingAxes: 7 })` reported `axes === 7`,
+  // and an empty corpus with `embeddingAxes: 5` reported five all-null variance shares. That is
+  // AD-25.1's first branch exactly — `items.length` sits in the same option bag, so the caller
+  // could have known without reading a document, and a plausible-looking report with a silently
+  // meaningless axis count hides the typo the option exists to express.
+  if (options.embeddingAxes !== null && options.embeddingAxes > Math.max(0, n - 1))
+    throw new CorpusOptionRangeError('embeddingAxes', options.embeddingAxes, Math.max(0, n - 1), n);
   const axes = options.embeddingAxes ?? Math.min(2, Math.max(1, n - 1));
 
   const labels = items.map((item) => item.label);
   const notes: ComparisonNote[] = [];
+
+  /** Per-pair notes, keyed on their content so a document's note is stated once (MAJOR-9). */
+  const pairNotes = new Map<
+    string,
+    {
+      readonly entry: ComparisonNote;
+      readonly itemIndex: number | null;
+      readonly pairs: [number, number][];
+    }
+  >();
 
   // ONE window for the whole matrix (R3). Derived from the corpus rather than from a pair: the
   // maximum last date across every item, which every pairwise call is then handed as
@@ -244,14 +261,61 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
       }
       signed[j * n + i] = flipped;
 
-      for (const entry of report.notes)
-        if (entry.kind === 'length-mismatch')
-          notes.push({
-            ...entry,
-            itemIndex: i,
-            message: `${labels[i]} | ${labels[j]}: ${entry.message}`,
-          });
+      // EVERY kind, not just `length-mismatch` (W4 MAJOR-9). Filtering to one kind made
+      // `capped`, `plausibility`, `renderer-*`, `grid-truncated`, `invariance-space` and
+      // `estimate-degradation` unobservable at the corpus facade — and made `plausibleRange`
+      // inert here, since notes are its only product.
+      //
+      // Collected now and emitted after the loop, because forwarding them verbatim is not an
+      // option either: the pairwise pass is `N(N−1)/2` comparisons and most notes are about a
+      // DOCUMENT rather than about a pair, so a document's note would be repeated `N−1` times.
+      // Measured on the five-item vendored corpus: 664 `structural` notes over 10 pairs, of
+      // which 654 name a document. Left unfolded that is `O(N²)` copies of an `O(N)` fact.
+      for (const entry of report.notes) {
+        // `document` is PAIR-relative and meaningless once the pair is gone: the same file is
+        // `a` in one comparison and `b` in the next. `itemIndex` is the corpus-level identity.
+        const itemIndex = entry.document === 'a' ? i : entry.document === 'b' ? j : null;
+        const key = JSON.stringify([
+          entry.kind,
+          entry.dimension,
+          itemIndex,
+          entry.site,
+          entry.startQuarters,
+          entry.endQuarters,
+          entry.message,
+        ]);
+        const seen = pairNotes.get(key);
+        if (seen === undefined) pairNotes.set(key, { entry, itemIndex, pairs: [[i, j]] });
+        else seen.pairs.push([i, j]);
+      }
     }
+
+  // The collected per-pair notes, one per distinct FACT (W4 MAJOR-9).
+  //
+  // The label a note carries follows what it is about, which the collection above already
+  // determined: a note naming a document gets that item's label, a note about a pair that said
+  // something different for each pair gets both labels, and a note about a pair that said the
+  // SAME thing for every pair gets neither — because it is then a fact about the corpus, and
+  // prefixing it with whichever pair happened to be enumerated first would misattribute it.
+  // The `estimate-degradation` note for the MPM-derived scope rule is exactly that case: true
+  // of every comparison in the run, so `N(N−1)/2` differently-prefixed copies would be noise
+  // dressed as detail.
+  const totalPairs = (n * (n - 1)) / 2;
+  for (const { entry, itemIndex, pairs } of pairNotes.values()) {
+    const [firstI, firstJ] = pairs[0];
+    const prefix =
+      itemIndex !== null
+        ? `${labels[itemIndex]}: `
+        : pairs.length === totalPairs && totalPairs > 1
+          ? ''
+          : `${labels[firstI]} | ${labels[firstJ]}: `;
+    notes.push({
+      ...entry,
+      document: null,
+      itemIndex,
+      message: `${prefix}${entry.message}`,
+    });
+  }
 
   // AD-25.5's normalization, written out as a formula rather than stamped as a constant.
   const normalizationConstants =
