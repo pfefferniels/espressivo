@@ -210,6 +210,77 @@ describe('P-C6: permuting the items permutes the matrices and relabels the dendr
   });
 });
 
+/**
+ * P-C6 on a TIE-RICH corpus — the blind spot the test above has, and where W4 CAPITAL-2 lived.
+ *
+ * The corpus above is tie-free and passes no `k`, so `medoids` is null there and PAM's tie rule
+ * is never consulted: it asserts equivariance on a corpus that has nothing to be equivariant
+ * about. This one is built to tie. Each of the three vendored documents is listed TWICE at the
+ * same performance under two labels, so the matrix has three exact 0 cells off the diagonal and
+ * the `k = 2` optimum is reached by several different subsets.
+ *
+ * The permutation is not random and not a sweep: it is the minimal witness — the first two
+ * items swapped. Before the sort landed in `exhaustiveMedoids`' tie key that single swap changed
+ * which performance the corpus called the most typical, from `B-vul-1` to `E-vul-2`, with
+ * `exhaustive: true` on both. [MEASURED] over all 720 orders of this corpus, 600 said
+ * `{A-tel-1, B-vul-1}` and 120 said `{A-tel-1, E-vul-2}`.
+ *
+ * §8 makes the medoid the one corpus product whose entire value is naming a real performer, so
+ * this is the level the finding has to be pinned at, not only at `pam`'s own.
+ */
+describe('P-C6 where the ties are: the medoid does not depend on the caller’s item order', () => {
+  const tied = [
+    { mpm: TELEMANN, performance: 0, label: 'A-tel-1' },
+    { mpm: VULPIUS, performance: 0, label: 'B-vul-1' },
+    { mpm: ALBERT, performance: 0, label: 'C-alb-1' },
+    { mpm: TELEMANN, performance: 0, label: 'D-tel-2' },
+    { mpm: VULPIUS, performance: 0, label: 'E-vul-2' },
+    { mpm: ALBERT, performance: 0, label: 'F-alb-2' },
+  ];
+  const swapFirstTwo = [1, 0, 2, 3, 4, 5];
+
+  it('names the same medoids and the same clusters when two items trade places', () => {
+    const straight = corpus(tied, { k: 2 });
+    const shuffled = corpus(
+      swapFirstTwo.map((index) => tied[index]),
+      { k: 2 },
+    );
+
+    // Read both back in LABELS. Indices mean different things in the two runs, and the labels
+    // are the frame in which "the same answer" is even a statement.
+    const medoidsOf = (report: CorpusReport) =>
+      (report.medoids ?? []).map((item) => report.labels[item]);
+    const clustersOf = (report: CorpusReport) =>
+      (report.clusters ?? [])
+        .map((cluster, item) => `${report.labels[item]}→${report.labels[report.medoids![cluster]]}`)
+        .sort();
+
+    expect(medoidsOf(shuffled)).toEqual(medoidsOf(straight));
+    expect(clustersOf(shuffled)).toEqual(clustersOf(straight));
+    // Both runs claim the exhaustive global optimum — the absence of the heuristic note is how
+    // the corpus surface says so — which is what made the disagreement a contradiction rather
+    // than two heuristics differing.
+    for (const report of [straight, shuffled])
+      expect(report.notes.some((entry) => entry.message.includes('BUILD + SWAP'))).toBe(false);
+  });
+
+  it('is non-vacuous: this corpus really does tie, and the swap really does move the items', () => {
+    const straight = corpus(tied, { k: 2 });
+    // Three exact-0 off-diagonal cells: each document against its own duplicate.
+    const zeros = [];
+    for (let i = 0; i < straight.n; ++i)
+      for (let j = i + 1; j < straight.n; ++j)
+        if (straight.matrices.aggregate[i * straight.n + j] === 0) zeros.push([i, j]);
+    expect(zeros).toHaveLength(3);
+
+    const shuffled = corpus(
+      swapFirstTwo.map((index) => tied[index]),
+      { k: 2 },
+    );
+    expect(shuffled.labels).not.toEqual([...straight.labels]);
+  });
+});
+
 describe('the products §8 reads off the matrix', () => {
   const items = [
     { mpm: TELEMANN, performance: 'Baroque' as const, label: 'tel-baroque' },

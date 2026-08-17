@@ -235,6 +235,96 @@ describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-
     };
     expect(permute(scattered, order).values).not.toEqual([...scattered.values]);
   });
+
+  /**
+   * W4 CAPITAL-2, at the layer that had it: PAM's own tie rule, over EVERY permutation.
+   *
+   * The dendrogram test above is the equivariance claim for `agglomerate`; `pam` had no such
+   * test, and the corpus-level P-C6 test uses a tie-free corpus with one fixed permutation and
+   * no `k`, so `medoids` was null there. That is the exact blind spot the shipped defect sat in.
+   *
+   * The matrix is two clean blocks with an interior distance of 0, so `{one from each block}`
+   * ties with every other such pair and there are genuinely several cost-equal optima. Labels
+   * are deliberately NOT in index order — the whole failure was a key that was label-VALUED but
+   * index-ORDERED, which reads as a label rule and is not one, and a label list already sorted
+   * by index would hide it. All 24 permutations, and the claim is about `clusters` as much as
+   * `medoids`: a caller who gets a stable medoid set and unstable cluster assignments is no
+   * better off.
+   */
+  it('names the same medoids and the same clusters under every permutation of a tie-rich corpus', () => {
+    const size = 4;
+    const blocks: DistanceMatrix = {
+      n: size,
+      // prettier-ignore
+      values: [
+        0, 0, 2, 2,
+        0, 0, 2, 2,
+        2, 2, 0, 0,
+        2, 2, 0, 0,
+      ],
+    };
+    const labels = ['L02', 'L00', 'L01', 'L03'];
+
+    const answers = new Set<string>();
+    const permutations: number[][] = [];
+    const build = (rest: readonly number[], acc: readonly number[]): void => {
+      if (rest.length === 0) permutations.push([...acc]);
+      for (const [position, index] of rest.entries())
+        build([...rest.slice(0, position), ...rest.slice(position + 1)], [...acc, index]);
+    };
+    build([0, 1, 2, 3], []);
+    expect(permutations).toHaveLength(24);
+
+    for (const order of permutations) {
+      const shuffled = pam(
+        permute(blocks, order),
+        2,
+        order.map((index) => labels[index]),
+      );
+      expect(shuffled?.exhaustive).toBe(true);
+      // Both products are read back in the caller's OWN labels, which is the only frame in
+      // which two differently-ordered corpora can be compared at all.
+      const medoids = shuffled!.medoids.map((item) => labels[order[item]]);
+      const clusters = shuffled!.clusters
+        .map(
+          (cluster, item) => `${labels[order[item]]}→${labels[order[shuffled!.medoids[cluster]]]}`,
+        )
+        .sort();
+      answers.add(JSON.stringify({ medoids, clusters }));
+    }
+
+    // [MEASURED] One answer, not two. Before the sort landed in `exhaustiveMedoids`' key this
+    // set held TWO: `{L00,L01}` under 20 permutations and `{L00,L03}` under the other 4, each
+    // reported with `exhaustive: true` — two different global optima for the same corpus.
+    expect([...answers]).toHaveLength(1);
+    expect(JSON.parse([...answers][0] as string).medoids).toEqual(['L00', 'L01']);
+  });
+
+  it('is non-vacuous: the tie-rich matrix really does have cost-equal optima', () => {
+    // Without this the test above would pass on a corpus with a unique optimum, where no tie
+    // rule is ever consulted and permutation-invariance is free.
+    const size = 4;
+    const blocks: DistanceMatrix = {
+      n: size,
+      // prettier-ignore
+      values: [
+        0, 0, 2, 2,
+        0, 0, 2, 2,
+        2, 2, 0, 0,
+        2, 2, 0, 0,
+      ],
+    };
+    const costOf = (chosen: readonly number[]) => {
+      let total = 0;
+      for (let i = 0; i < size; ++i)
+        total += Math.min(...chosen.map((medoid) => blocks.values[i * size + medoid]));
+      return total;
+    };
+    const optima = [];
+    for (let i = 0; i < size; ++i)
+      for (let j = i + 1; j < size; ++j) if (costOf([i, j]) === 0) optima.push([i, j]);
+    expect(optima).toHaveLength(4);
+  });
 });
 
 // ---------------------------------------------------------------------------

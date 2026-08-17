@@ -256,7 +256,21 @@ function chooseCount(n: number, k: number, limit: number): number {
   return Math.round(total);
 }
 
-/** The globally cheapest `k`-subset, ties by the label sequence. Null where the space is too big. */
+/**
+ * The globally cheapest `k`-subset, ties by the SORTED label sequence. Null where the space is
+ * too big.
+ *
+ * The sort is the whole of AD-25.2 at this call site and it is not decoration (W4 CAPITAL-2).
+ * `walk` enumerates subsets in ascending INDEX order, so an unsorted key is the subset's labels
+ * *in the caller's own item order* — label-valued but index-ordered, which is a different thing
+ * and not a tie rule at all. Two cost-equal subsets then compare differently depending on how
+ * the corpus was listed, and the corpus names a different performance as the most typical one
+ * for no reason a reader can see. Measured before the sort, on `[0,0,2,2, 0,0,2,2, 2,2,0,0,
+ * 2,2,0,0]` with labels `['L02','L00','L01','L03']` and `k = 2`: `{L00,L01}` under 20 of the 24
+ * permutations and `{L00,L03}` under the other 4, both claiming to be the exhaustive global
+ * optimum. `k = 1` was immune throughout, because a one-element key has no order — which is why
+ * the corpus medoid feeding `profiles` and the corpus scape never showed it.
+ */
 function exhaustiveMedoids(
   matrix: DistanceMatrix,
   k: number,
@@ -265,15 +279,25 @@ function exhaustiveMedoids(
   const n = matrix.n;
   if (chooseCount(n, k, PAM_EXHAUSTIVE_LIMIT) > PAM_EXHAUSTIVE_LIMIT) return null;
 
+  const keyOf = (subset: readonly number[]): string =>
+    subset
+      .map((index) => labels[index] ?? '')
+      .sort()
+      .join('\u0000');
+
   let best: readonly number[] | null = null;
+  let bestKey = '';
   let bestCost = Number.POSITIVE_INFINITY;
   const walk = (start: number, chosen: readonly number[]): void => {
     if (chosen.length === k) {
       const cost = partitionCost(matrix, chosen, labels);
-      const key = chosen.map((index) => labels[index] ?? '').join('\u0000');
-      const bestKey = best === null ? '' : best.map((index) => labels[index] ?? '').join('\u0000');
-      if (cost < bestCost || (cost === bestCost && best !== null && lower(key, bestKey))) {
+      // Only a TIE needs a key, and a tie is the rare case: computing one per candidate would
+      // put an `O(k log k)` sort inside the hot loop of a `2·10⁵`-subset enumeration.
+      if (cost > bestCost) return;
+      const key = keyOf(chosen);
+      if (cost < bestCost || (best !== null && lower(key, bestKey))) {
         bestCost = cost;
+        bestKey = key;
         best = chosen;
       }
       return;

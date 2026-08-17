@@ -5524,3 +5524,52 @@ AD-68.2 RATIFIED: items[].synthetic REMOVED — its only producer was
 AD-63.1's removed pseudo-performance, so it could only ever say false;
 AD-52.3a's absence rule applied to a report shape, which is a new and
 correct extension of the form.
+
+## 2026-08-17 — W4 fix cut 2: CAPITAL-2, the tie key that was index-ordered (w4-fix)
+
+LOG read through AD-67 erratum (no entries newer than my cut-1 report). §8's item 2.
+
+**The repair.** `exhaustiveMedoids`' tie key sorts the labels before joining
+(`clustering.ts:282-286`). `walk` enumerates subsets in ascending INDEX order, so the shipped key
+was the subset's labels *in the caller's own item order* — label-VALUED but index-ORDERED, which
+reads as AD-25.2's rule and is not it. `bestKey` is now carried alongside `best` rather than
+recomputed per candidate, and a `cost > bestCost` early return keeps the `O(k log k)` sort out of
+the hot loop of a 2·10⁵-subset enumeration — only a tie needs a key.
+
+**The heuristic's tie clauses, audited as the must-fix required — and they are already right.**
+The audit is a measurement rather than a reading: `PAM_EXHAUSTIVE_LIMIT` puts BUILD + SWAP out of
+reach of any corpus small enough to permute exhaustively, so the probe used `n = 30, k = 6`
+(`C = 593775`, past the limit, `exhaustive: false` asserted) on tie-rich matrices with only three
+distinct distances, 6 matrices × 8 random permutations. **0 disagreements out of 48**, on the
+medoid SET and on the cluster assignment, both read back in labels. The reason: `partitionCost`
+and `nearestMedoid` are set-valued given the medoid set (`nearestMedoid` returns a POSITION and
+ties on the lowest label, and §8's unique-labels requirement means no two medoids can tie on the
+label itself), BUILD compares candidates against a running best on a total order, and SWAP's
+clause orders first by the OUT medoid's label and then by the IN candidate's. None of those
+consults an index. The defect was confined to the one key that did.
+
+**Pinned at both layers, and the facade pin has a minimal deterministic witness.**
+
+- `corpusMath.test.ts`, all **24** permutations of the report's 4×4 two-block matrix with labels
+  deliberately not in index order (`['L02','L00','L01','L03']`, `k = 2`), asserting `medoids`
+  AND `clusters` in label space, plus a non-vacuity test proving the matrix really has 4
+  cost-equal optima. Before the sort this produced TWO answers.
+- `corpus.test.ts`, end to end through `compareMpmCorpus`: three vendored documents each listed
+  twice at the same performance under two labels (three exact-0 off-diagonal cells, asserted),
+  `k = 2`, `window {0,8}`. The permutation is not a sweep — it is **the first two items
+  swapped**, which is the smallest thing a caller can do, and before the repair that swap alone
+  changed the corpus's most typical performance from `B-vul-1` to `E-vul-2` with the exhaustive
+  claim intact on both. [MEASURED] over all 720 orders of this corpus: 600 said
+  `{A-tel-1, B-vul-1}`, 120 said `{A-tel-1, E-vul-2}`. Two facade calls, ~1 s, no randomness.
+
+The wave's existing P-C6 test is left as it is and the new one sits beside it, because the two
+say different things: that one asserts equivariance on a tie-FREE corpus with no `k`, where
+`medoids` is null and the tie rule is never consulted. That is the blind spot, named in place.
+
+NEGATIVE CONTROL: removing the `.sort()` fails exactly the two new tests and nothing else —
+`tests/comparison` 2 failed / 1278 passed, `expected [ …(2) ] to have a length of 1 but got 2` at
+the algorithm layer and `expected [ 'A-tel-1', 'E-vul-2' ] to deeply equal [ 'A-tel-1',
+'B-vul-1' ]` at the facade. Restored byte-identical.
+
+Gate: `npm run verify` GREEN — 125 files, **5401 passed**, 0 skipped (5397 before; 4 new tests).
+Repo-wide `npx prettier --check .` clean; eslint clean on the three touched files.
