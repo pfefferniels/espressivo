@@ -6663,3 +6663,25 @@ commit's own anchor table, the shipped tests, and the W3 re-gate's
 independent reconstruction all agree. The narrative paragraph was
 self-inconsistent with its own anchors; the LOG being append-only, this
 entry is the correction.
+
+## 2026-08-17 — AD-81: the record moves home; the merge
+
+The campaign record moves to docs/history/comparison/ per the repo
+convention (AD-48's obligation; the de-clutter session's docs/history/
+README is the canonical statement). Live references updated:
+.prettierignore's /comparison/ entry retired (docs/history/ covers it),
+the NUL guard's walk roots and its three non-vacuity paths repointed.
+Historical records keep contemporaneous paths per AD-48.2.
+
+Gate note for the record: two intermediate verify runs showed 2-then-6
+"failures" that were FLAKE from the conductor's own chained double-verify
+loading the machine — a clean single run at the moved tree is 126 files,
+5433 passed, 0 failed, with 3 environmental RPC timeouts of AD-78.4's
+documented kind. The conductor's pipe chain also masked test failures
+behind grep exit codes for two commands — recorded as the same class of
+self-inflicted evidence damage as the AD-67 erratum, caught the same
+way: by not trusting "it printed GREEN".
+
+Next: merge --no-ff into main via a disposable worktree, verify on the
+merged tree, push both branches. The campaign closes with the final
+report and memory update.

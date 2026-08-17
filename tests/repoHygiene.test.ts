@@ -70,7 +70,7 @@ describe('no source file is binary to git and grep (AD-70.1)', () => {
   const files = [
     ...walk(join(ROOT, 'src')),
     ...walk(join(ROOT, 'tests')),
-    ...walk(join(ROOT, 'comparison')),
+    // comparison/ moved to docs/history/comparison/ at W5's merge; docs/ covers it.
     ...walk(join(ROOT, 'docs')),
     join(ROOT, 'README.md'),
   ];
@@ -98,9 +98,9 @@ describe('no source file is binary to git and grep (AD-70.1)', () => {
     const walked = files.map((path) => relative(ROOT, path));
     expect(walked).toContain('src/comparison/diff.ts');
     // The widened perimeter, named file by file so a future narrowing fails here.
-    expect(walked).toContain('comparison/LOG.md');
-    expect(walked).toContain('comparison/DESIGN.md');
-    expect(walked).toContain('comparison/W4-VERIFICATION.md');
+    expect(walked).toContain('docs/history/comparison/LOG.md');
+    expect(walked).toContain('docs/history/comparison/DESIGN.md');
+    expect(walked).toContain('docs/history/comparison/W4-VERIFICATION.md');
     expect(walked).toContain('README.md');
     expect(walked).toContain('docs/history/ornamentation/tools/probe.mjs');
     // …and the byte-comparison fixtures stay OUT, by prefix rather than by exact name.
