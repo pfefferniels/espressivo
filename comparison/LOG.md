@@ -6006,3 +6006,24 @@ defect there was a test that could not fail.
 
 Gate: `npm run verify` GREEN — 126 files, **5417 passed**, 0 skipped (5413 before; four new
 tests). Repo-wide `npx prettier --check .` clean; eslint clean on the three touched files.
+
+## 2026-08-17 — AD-72: cut 7 — canonical summation ratified [BINDING]
+
+842e67b accepted. AD-72.1 RATIFIED (the off-list CAPITAL-class find):
+partitionCost summed in the CALLER'S item order let float non-associativity
+break exact ties under permutation ONE LEVEL BELOW CAPITAL-2's tie key —
+bit-equal optima in one order, 2.8e-14 apart in another, the label key
+never consulted; invisible to the integer-valued witness because integer
+sums are exact in any order. The repair is ratified in its EXACT form —
+label-order canonical summation, one sequence per pam call — over any
+epsilon: an epsilon tolerates the noise, a canonical order removes it,
+and summation order has been part of this campaign's determinism since
+W2's own checklist (date-ordered Neumaier). The ulp movement of the
+published Partition.cost is authorized: it moves toward
+permutation-invariance. AD-72.2 RE-GATE HEAD ADDED: sweep for OTHER
+caller-order summations feeding published values — the disease may have
+siblings below other keys. AD-72.3 MAJOR-4's three-try fixture
+(separating all FOUR readings where three-of-four would have shipped
+looking complete) and MAJOR-6's skipIf-plus-requireMember discipline
+(routing through the hook softened nothing) are accepted with the
+tries recorded.
