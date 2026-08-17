@@ -5573,3 +5573,80 @@ the algorithm layer and `expected [ 'A-tel-1', 'E-vul-2' ] to deeply equal [ 'A-
 
 Gate: `npm run verify` GREEN — 125 files, **5401 passed**, 0 skipped (5397 before; 4 new tests).
 Repo-wide `npx prettier --check .` clean; eslint clean on the three touched files.
+
+## 2026-08-17 — W4 fix cut 3: CAPITAL-3, the tie rules that never reached their label branch (w4-fix)
+
+LOG read through AD-68 (fix cut 1 ratifications). §8's item 3, under AD-67.1's NARROW-WITH-DATA.
+
+**The diagnosis, in one sentence.** Every tie rule in `embedding.ts` tested `===` before falling
+back to the label, and a permuted matrix runs Jacobi's rotations in a different sequence — so two
+quantities equal in exact arithmetic arrive one ulp apart, the label branch is never reached, and
+the published order follows the noise. The label rule was there; nothing could get to it.
+
+**Part (a), the relative epsilons — at FOUR sites, one more than the report named.** A single
+`TIE_EPSILON = 1e-9` [convention], sitting above the arithmetic (`jacobiEigen`'s own residuals are
+`≤1.18e-11` and `≤3.78e-15`) and below anything a plot can show.
+
+- `signOf` is now TWO passes: find the peak, then take the lowest-label component within
+  `peak·(1−ε)` of it. The single-pass form compared against a RUNNING best, so the anchor was
+  whichever component won by an ulp. The `square` fixture already in the suite is the witness —
+  its four corners are at `±2` and their computed magnitudes are `1.99999999999999911`,
+  `1.99999999999999978`, `2.00000000000000000`, `1.99999999999999933`, so the strict maximum is
+  a corner of the OPPOSITE sign to the anchor. That is what mirrored whole plots.
+- `seriationOrder` compares relatively, AND is seeded by sorting on the label first. The seed is
+  the part the report did not ask for and it is what takes the residue to zero: an epsilon
+  comparison is not transitive, so `sort`'s pivot choices can still see a near-tie chain, and
+  seeding with the caller's INDEX order made even that outcome depend on the listing.
+  `Array.prototype.sort` is stable, so the label seed survives every comparison returning 0.
+- The eigenvalue ORDER (`values[y] - values[x] || compareVectorKeys`) had the identical defect one
+  level up and the report did not name it: near-equal eigenvalues were ordered by rotation
+  history, never by the vector key. Relative now, journalled as within AD-67.1's form.
+- `compareVectorKeys`' own component comparison, likewise, relative to the two vectors' peak.
+
+[MEASURED] the shipped `embedding.ts` against the repaired one on the same generator and seed,
+20 corpora × 30 permutations = 600 cases: seriation disagreed **211** times, **15** axes came
+back MIRRORED, worst relative coordinate displacement **2.0** (which is what a mirror is). All
+three are **0**. Two refinements the measurement forced, both recorded because they are the
+difference between a real assertion and a flattering one: a per-coordinate `Math.sign` test is
+wrong (an item at the corpus centroid sits at `1e-17` and its sign carries nothing), so mirroring
+is detected by comparing a whole axis against its own negation; and an axis is only counted at
+all when its eigenvalue is material — a collinear corpus has `λ = [70.3, 2.08e-15, -1.11e-15]`,
+and asking which way round its second axis points is not a question.
+
+**Part (b), the carve-out as DATA.** `embedding.degenerate` is widened from `Σ|λ| = 0` to "the
+eigenbasis is not unique": that condition OR a repeated eigenvalue at or across the retained cut
+where at least one of the pair carries material variance. The old condition IMPLIES the new one
+(all eigenvalues are then 0), so `DESIGN.md`'s stated invariant `Σ|λ| = 0 ⇒ degenerate` still
+holds and this is a widening rather than a change of meaning. `explainedVariance`'s null-ness and
+`negativeEigenvalueMass` stay on the narrow `Σ|λ| = 0` test, which is now named `zeroSpectrum` in
+the code so the two conditions cannot drift back together.
+
+The materiality qualification is what keeps the flag worth reading. Every real corpus has a tail
+of near-zero eigenvalues mutually tied at any epsilon; their eigenvectors ARE arbitrary, but the
+coordinates they produce are `√λ·v` at the noise floor. Flagging them would make `degenerate`
+true for every corpus asked for `axes = N−1` and tell a reader nothing.
+
+The gate's own example reproduces exactly: three documents each listed twice with equal
+cross-document distances gives `λ = [9, 9, ~0, ~0, ~0, 0]`, `degenerate: true`, and — the
+non-vacuity, asserted — **78 distinct coordinate sets and 6 distinct seriations over all 720
+orders**. The flag is not decoration; it names a corpus whose plot genuinely has no orientation.
+
+**Pinned** in `corpusMath.test.ts` (the 600-case sweep; the repeated-eigenvalue flag with its
+instability; the narrowness check that an ordinary corpus is NOT flagged even at `axes = 4`; and
+the `square`'s anchor rule restated with a non-vacuity test proving the anchor is not the strict
+maximum) and in `corpus.test.ts` (the same two-item swap as CAPITAL-2, now through
+`seriationOrder` and `embedding.coordinates`).
+
+**DESIGN §8's P-C6 paragraph** carries both qualifications now: a tie key must be a key over the
+SET rather than over the caller's listing (CAPITAL-2), every tie test is relative, and the exact
+tie is out of scope of the guarantee with `embedding.degenerate` reporting it. §9.3's field
+comment and §9.6's `Σ|λ| = 0` row say the implication is one-way.
+
+NEGATIVE CONTROLS, four. Reverting `embedding.ts` wholesale fails exactly the 5 CAPITAL-3 tests
+and nothing else (`tests/comparison`: 5 failed / 1280 passed). Then one per sub-repair:
+seriation back to exact → 2 failed (the algorithm sweep and the facade pin); `signOf`'s threshold
+back to the strict peak → 3 failed; `degenerate` back to the narrow flag → 1 failed. Each
+restored byte-identical.
+
+Gate: `npm run verify` GREEN — 125 files, **5406 passed**, 0 skipped (5401 before; 5 new tests).
+Repo-wide `npx prettier --check .` clean; eslint clean on the three touched source/test files.

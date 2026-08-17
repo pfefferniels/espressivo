@@ -264,6 +264,47 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
       expect(report.notes.some((entry) => entry.message.includes('BUILD + SWAP'))).toBe(false);
   });
 
+  /**
+   * The same swap, through the other two published fields (W4 CAPITAL-3, AD-67.1).
+   *
+   * The seriation and the embedding failed permutation-invariance for a different reason than
+   * the medoid did — not an index-keyed tie rule but an EXACT one, which a permuted Jacobi's
+   * ulp-level noise never reaches. Measured before the repair on this corpus's own matrix:
+   * 7 distinct seriations over 20 permutations, and `A-tel-1`'s first coordinate taking 16
+   * distinct values, all `≈ −45.2370019107607`.
+   */
+  it('gives the same seriation and the same embedding when two items trade places', () => {
+    const straight = corpus(tied, { k: 2, embeddingAxes: 2 });
+    const shuffled = corpus(
+      swapFirstTwo.map((index) => tied[index]),
+      { k: 2, embeddingAxes: 2 },
+    );
+
+    expect(shuffled.seriationOrder.map((item) => shuffled.labels[item])).toEqual(
+      straight.seriationOrder.map((item) => straight.labels[item]),
+    );
+
+    // Not bit-identical and it cannot be: the permuted matrix runs Jacobi's rotations in a
+    // different sequence. The claim is that the difference stays inside the band the tie rules
+    // were widened to absorb, rather than flipping an axis or reordering the plot.
+    const pointOf = (report: CorpusReport, label: string) => {
+      const item = report.labels.indexOf(label);
+      return [report.embedding.coordinates[item * 2], report.embedding.coordinates[item * 2 + 1]];
+    };
+    const extent = Math.max(
+      ...straight.labels.map((label) => Math.abs(pointOf(straight, label)[0])),
+    );
+    for (const label of straight.labels)
+      for (const axis of [0, 1])
+        expect({
+          label,
+          axis,
+          within:
+            Math.abs(pointOf(straight, label)[axis] - pointOf(shuffled, label)[axis]) <
+            1e-9 * extent,
+        }).toEqual({ label, axis, within: true });
+  });
+
   it('is non-vacuous: this corpus really does tie, and the swap really does move the items', () => {
     const straight = corpus(tied, { k: 2 });
     // Three exact-0 off-diagonal cells: each document against its own duplicate.

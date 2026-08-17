@@ -2136,12 +2136,29 @@ readonly number[]>` plus an aggregate, with an explicit `n` field; index
   that resolved to `(0,3)` before a permutation can resolve to `(1,2)` after — a
   _different merge_, not a relabeling. Since labels are already required unique
   after expansion, keying every tie on the label instead — merge ties, child
-  order, PAM BUILD/SWAP, and the eigenvector sign ties below — makes the products
-  genuinely permutation-invariant, so P-C6's corpus clause is **full
-  permutation-equivariance**: permuting `items` permutes the matrices and
+  order, PAM BUILD/SWAP **and its exhaustive pass**, and the eigenvector sign
+  ties below — makes the products permutation-invariant, so P-C6's corpus clause
+  is **permutation-equivariance**: permuting `items` permutes the matrices and
   relabels the dendrogram, and nothing else changes. The comparison is code-unit
   order (`<`), never `localeCompare`, which is locale-dependent and would break
   R2's byte-identity across environments.
+
+  Two qualifications, both from W4's gate (AD-67.1), and both are about what
+  "the same value" can mean in floating point rather than about the rule:
+
+  1. A tie key must be a key over the SET, not over the caller's listing of it.
+     The exhaustive medoid pass keyed on the subset's labels in item order —
+     label-valued but index-ordered — and named a different medoid for the same
+     corpus depending on how it was listed (W4 CAPITAL-2). The labels are sorted
+     before they are joined.
+  2. Every tie test here is RELATIVE, not exact. A permuted matrix runs Jacobi's
+     rotations in a different sequence, so quantities equal in exact arithmetic
+     arrive one ulp apart and an `===` tie test never reaches its label branch at
+     all — the published order then follows the noise (W4 CAPITAL-3). Where the
+     tie is EXACT rather than near — two retained eigenvalues coinciding, which
+     duplicated documents produce — the eigenspace has no canonical basis and no
+     sign rule can make one. That case is out of scope of the guarantee and
+     `embedding.degenerate` reports it, per AD-67.1's narrow-with-data.
 - **Embedding.** Classical MDS: double-centering + cyclic Jacobi (fixed sweep
   order, stop at off-diagonal norm ≤ 1e−12·‖B‖). Report the FULL eigenvalue
   spectrum, explained variance over Σ|λ| (never Σλ⁺), and negative-eigenvalue
@@ -2720,7 +2737,8 @@ export interface CorpusResult {
     readonly coordinates: readonly number[]; // N × axes, row-major
     readonly eigenvalues: readonly number[];
     readonly explainedVariance: readonly (number | null)[]; // null iff Σ|λ| = 0
-    readonly degenerate: boolean; // A3b
+    readonly degenerate: boolean; // A3b, widened by AD-67.1: the eigenbasis is
+    // not unique — Σ|λ| = 0, OR a repeated eigenvalue at/across the retained cut
     readonly negativeEigenvalueMass: number;
     readonly axes: number;
   };
@@ -2868,6 +2886,10 @@ rule rather than by hope (AD-22, A3):
   with a typed note. A caller-supplied zero-length window is an
   `InvalidOptionError` instead (§9.4).
 - `Σ|λ| = 0` ⇒ `explainedVariance` entries `null` and `embedding.degenerate` true.
+  The implication is one-way (AD-67.1): `degenerate` is ALSO true where two
+  retained eigenvalues coincide, and there `explainedVariance` is a real number
+  per axis. The flag answers "is the orientation of these axes canonical?", the
+  nulls answer "is there any variance to apportion?".
 - `normalization: 'corpus'` with an empty nonzero set for dimension _k_ ⇒
   `normalizationConstants[k] = null`, `ω_k` falls back to the fixed default,
   stamped.

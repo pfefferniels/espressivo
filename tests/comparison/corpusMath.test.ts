@@ -559,20 +559,62 @@ describe('classical MDS', () => {
     expect(embedding.coordinates).toEqual([0, 0, 0, 0, 0, 0]);
   });
 
-  it('fixes eigenvector signs, so two runs are not mirror images', () => {
+  /**
+   * The sign rule, as AD-67.1 leaves it — and this fixture is the reason it had to move.
+   *
+   * The rule used to read "the largest-magnitude component is positive", with ties on EXACTLY
+   * equal magnitude going to the lowest label. On this square the four corners are at ±2 and
+   * tied in exact arithmetic, but the computed magnitudes differ in the last ulp:
+   * `1.99999999999999911`, `1.99999999999999978`, `2.00000000000000000`, `1.99999999999999933`.
+   * So the exact tie test never fired, the anchor was whichever corner won by an ulp, and a
+   * permuted corpus — which runs Jacobi's rotations in a different sequence — could hand that
+   * ulp to a corner of the opposite sign and mirror the whole plot. Measured on the vendored
+   * corpus: `A-tel` at `+634.1636783061936` under four item orders, `−634.1636783061933` under
+   * two others (W4 CAPITAL-3).
+   *
+   * The rule now reads: among the components tied at the peak RELATIVELY, the lowest-label one
+   * is positive. On a corpus with a unique peak that is the old rule verbatim.
+   */
+  it('anchors each axis on the lowest-label component at its peak, so two runs are not mirrors', () => {
     const matrix = fromPlane(square);
     const labels = labelsOf(square.length);
     const once = classicalMds(matrix, 2, labels);
     const twice = classicalMds(matrix, 2, labels);
     expect(twice.coordinates).toEqual([...once.coordinates]);
-    // The largest-magnitude component of each axis is positive, which IS the rule.
+
     for (let axis = 0; axis < once.axes; ++axis) {
-      let extreme = 0;
-      for (let i = 0; i < matrix.n; ++i)
-        if (Math.abs(once.coordinates[i * once.axes + axis]) > Math.abs(extreme))
-          extreme = once.coordinates[i * once.axes + axis];
-      expect(extreme).toBeGreaterThanOrEqual(0);
+      const column = Array.from(
+        { length: matrix.n },
+        (_unused, item) => once.coordinates[item * once.axes + axis],
+      );
+      const peak = Math.max(...column.map((value) => Math.abs(value)));
+      if (peak === 0) continue;
+      // `labelsOf` is index-ordered, so the first index at the peak IS the lowest label.
+      const anchor = column.findIndex((value) => Math.abs(value) >= peak * (1 - 1e-9));
+      expect({ axis, anchored: column[anchor] }).toEqual({
+        axis,
+        anchored: Math.abs(column[anchor]),
+      });
     }
+  });
+
+  it('is non-vacuous: on this square the anchor is NOT the strict maximum', () => {
+    // Without this the test above would pass under the old exact rule too. The strict maximum
+    // of axis 0 is a corner of the opposite sign, one ulp above the anchor — which is exactly
+    // the ulp the old rule was deciding the plot's orientation on.
+    const once = classicalMds(fromPlane(square), 2, labelsOf(square.length));
+    const column = Array.from(
+      { length: square.length },
+      (_unused, item) => once.coordinates[item * once.axes],
+    );
+    const peak = Math.max(...column.map((value) => Math.abs(value)));
+    const strictest = column.findIndex((value) => Math.abs(value) === peak);
+    const anchor = column.findIndex((value) => Math.abs(value) >= peak * (1 - 1e-9));
+    expect(strictest).not.toBe(anchor);
+    expect(column[strictest]).toBeLessThan(0);
+    expect(column[anchor]).toBeGreaterThan(0);
+    // …and the two really are the same number to every digit anyone would print.
+    expect(Math.abs(column[strictest])).toBeCloseTo(Math.abs(column[anchor]), 12);
   });
 
   it('pads the retained axes rather than dropping them', () => {
@@ -617,5 +659,221 @@ describe('seriation', () => {
     // On a one-dimensional corpus the order IS the line, up to the sign the rule fixes.
     // Points 0, 10, 3, 7, 1: ascending along the line is 0, 1, 3, 7, 10 — indices 0, 4, 2, 3, 1.
     expect(order).toEqual([0, 4, 2, 3, 1]);
+  });
+});
+
+/**
+ * W4 CAPITAL-3: P-C6 through the embedding, and the exact place the guarantee stops.
+ *
+ * Two claims, and the second is as much the point as the first. Permuting a corpus reruns
+ * Jacobi's rotations in a different sequence, so every quantity here arrives with ulp-level
+ * noise on it, and every tie rule that tested `===` before falling back to the label was
+ * therefore deciding on the noise. That is the near-tie, and it is repaired.
+ *
+ * The exact tie is not repairable at this layer and the module says so in data rather than in
+ * prose: where two retained eigenvalues coincide, the eigenspace has no canonical basis and
+ * `degenerate` is true. AD-67.1 ruled that narrow-with-data over canonicalising the block.
+ */
+describe('AD-67.1: the embedding is permutation-equivariant, and says where it is not', () => {
+  const permuteMatrix = (matrix: DistanceMatrix, order: readonly number[]): DistanceMatrix => ({
+    n: matrix.n,
+    values: Array.from({ length: matrix.n * matrix.n }, (_unused, index) => {
+      const i = Math.floor(index / matrix.n);
+      const j = index % matrix.n;
+      return matrix.values[order[i] * matrix.n + order[j]];
+    }),
+  });
+
+  /** Both products read back in the caller's own labels, which is the only comparable frame. */
+  const readback = (matrix: DistanceMatrix, labels: readonly string[]) => {
+    const embedding = classicalMds(matrix, 2, labels);
+    const byLabel = new Map<string, readonly [number, number]>();
+    for (let item = 0; item < matrix.n; ++item)
+      byLabel.set(labels[item], [
+        embedding.coordinates[item * 2],
+        embedding.coordinates[item * 2 + 1],
+      ]);
+    return {
+      degenerate: embedding.degenerate,
+      seriation: seriationOrder(embedding, labels)
+        .map((item) => labels[item])
+        .join(','),
+      byLabel,
+      eigenvalues: embedding.eigenvalues,
+      coordinates: [...byLabel.entries()]
+        .sort(([x], [y]) => (x < y ? -1 : 1))
+        .map(([label, point]) => `${label}:${point[0].toPrecision(12)},${point[1].toPrecision(12)}`)
+        .join('|'),
+    };
+  };
+
+  /**
+   * Whether one run's axis is the other's MIRROR — the failure the sign anchor exists to stop.
+   *
+   * Per-coordinate `Math.sign` would be the wrong test: an item at the corpus centroid sits at
+   * `1e-17` on an axis and its sign carries no information at all. Comparing the whole vector
+   * against its own negation does, and it is robust to exactly those near-zero entries.
+   */
+  const isMirrored = (
+    left: ReadonlyMap<string, readonly [number, number]>,
+    right: ReadonlyMap<string, readonly [number, number]>,
+    axis: 0 | 1,
+  ): boolean => {
+    let same = 0;
+    let flipped = 0;
+    for (const [label, point] of left) {
+      const other = right.get(label) ?? [0, 0];
+      same += Math.abs(point[axis] - other[axis]);
+      flipped += Math.abs(point[axis] + other[axis]);
+    }
+    return flipped < same;
+  };
+
+  /**
+   * What equivariance can and cannot mean for a float computation, stated exactly.
+   *
+   * The SIGN and the ORDER are exactly reproducible and are asserted as such — they are
+   * discrete choices, and CAPITAL-3 was that both of them were being made on float noise. The
+   * coordinate VALUES are not bit-reproducible and never could be: a permuted matrix runs
+   * Jacobi's rotations in a different sequence, so the arithmetic differs in the last ulps.
+   * They are asserted to a relative `1e-9`, which is {@link TIE_EPSILON}'s own band — the
+   * claim being that the noise stays inside the band the tie rules were widened to absorb.
+   *
+   * [MEASURED] this exact test against the shipped code, by reverting `embedding.ts` alone:
+   * **211** of 600 permutations disagreed on the seriation, **15** axes came back mirrored, and
+   * the worst relative coordinate displacement was **2.0** — which is what a mirror is. All
+   * three are 0 now. The seriation figure is the largest because
+   * `coordinates[x*axes] - coordinates[y*axes] || label` reached its label branch only on an
+   * EXACT float equality, which two permuted runs essentially never produce, so the published
+   * order followed the last ulp on every near-tie.
+   */
+  it('gives the same seriation, the same orientation and the same coordinates under permutation', () => {
+    const next = lcg(777);
+    let seriationDisagreements = 0;
+    let mirroredAxes = 0;
+    let worstRelative = 0;
+    let cases = 0;
+
+    for (let trial = 0; trial < 20; ++trial) {
+      const n = 4 + Math.floor(next() * 4);
+      // Planar points, half of them DUPLICATED, so exact zero distances and near-tied
+      // coordinates are common rather than a lucky accident.
+      const distinct = Array.from(
+        { length: trial % 2 === 1 ? Math.ceil(n / 2) : n },
+        () => [Math.round(next() * 40) / 4, Math.round(next() * 40) / 4] as const,
+      );
+      const points = (trial % 2 === 1 ? [...distinct, ...distinct] : distinct).slice(0, n);
+      const matrix = fromPlane(points);
+      const labels = labelsOf(n);
+      const straight = readback(matrix, labels);
+      if (straight.degenerate) continue;
+
+      for (let attempt = 0; attempt < 30; ++attempt) {
+        const order = Array.from({ length: n }, (_unused, index) => index);
+        for (let i = n - 1; i > 0; --i) {
+          const j = Math.floor(next() * (i + 1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
+        const shuffled = readback(
+          permuteMatrix(matrix, order),
+          order.map((index) => labels[index]),
+        );
+        cases += 1;
+        if (shuffled.seriation !== straight.seriation) seriationDisagreements += 1;
+        for (const axis of [0, 1] as const) {
+          // Only an axis that EXISTS can be mirrored. A collinear corpus has
+          // `λ = [70.3, 2.08e-15, -1.11e-15]`: its second axis is rounding error, its
+          // coordinates peak at `2.6e-8`, and asking which way round it points is not a
+          // question. Skipping it is the same materiality rule `classicalMds` uses to decide
+          // whether a repeated eigenvalue is worth flagging, applied to the same end.
+          const scale = Math.abs(straight.eigenvalues[0]);
+          if (!(Math.abs(straight.eigenvalues[axis]) > 1e-9 * scale)) continue;
+          if (isMirrored(straight.byLabel, shuffled.byLabel, axis)) mirroredAxes += 1;
+        }
+        for (const axis of [0, 1] as const) {
+          if (!(Math.abs(straight.eigenvalues[axis]) > 1e-9 * Math.abs(straight.eigenvalues[0])))
+            continue;
+          // Relative to the AXIS's own extent, not to each coordinate: an item sitting at the
+          // corpus centroid is at `~0` on that axis, and a per-coordinate ratio there reports
+          // an enormous relative error for a difference no plot could render. The axis extent
+          // is the scale a reader actually sees.
+          let extent = 0;
+          for (const [, point] of straight.byLabel)
+            extent = Math.max(extent, Math.abs(point[axis]));
+          if (extent === 0) continue;
+          for (const [label, point] of straight.byLabel) {
+            const other = shuffled.byLabel.get(label) ?? [0, 0];
+            worstRelative = Math.max(worstRelative, Math.abs(point[axis] - other[axis]) / extent);
+          }
+        }
+      }
+    }
+
+    expect(cases).toBeGreaterThan(500);
+    expect({ seriationDisagreements, mirroredAxes }).toEqual({
+      seriationDisagreements: 0,
+      mirroredAxes: 0,
+    });
+    expect(worstRelative).toBeLessThan(1e-9);
+  });
+
+  /**
+   * The carve-out, as an observable rather than as a sentence.
+   *
+   * Three documents each listed twice, every cross-document distance equal: the gate's own
+   * example, and its spectrum is `[9, 9, ~0, ~0, ~0, 0]`. The top eigenvalue is DOUBLE, so the
+   * plane it spans has no distinguished pair of axes and every rotation within it is as valid
+   * as every other. No sign rule reaches that, which is why the honest answer is the flag.
+   */
+  it('flags a repeated retained eigenvalue, where no sign rule can canonicalise the basis', () => {
+    const n = 6;
+    const block = (item: number) => Math.floor(item / 2);
+    const matrix: DistanceMatrix = {
+      n,
+      values: Array.from({ length: n * n }, (_unused, index) =>
+        block(Math.floor(index / n)) === block(index % n) ? 0 : 3,
+      ),
+    };
+    const labels = labelsOf(n);
+    const embedding = classicalMds(matrix, 2, labels);
+
+    expect(embedding.eigenvalues[0]).toBeCloseTo(9, 9);
+    expect(embedding.eigenvalues[1]).toBeCloseTo(9, 9);
+    expect(embedding.degenerate).toBe(true);
+    // The narrower A3b condition is NOT what is true here — `Σ|λ| > 0` and the variance shares
+    // are real numbers. The flag widened; `explainedVariance`'s contract did not.
+    expect(embedding.explainedVariance.every((share) => share !== null)).toBe(true);
+
+    // Non-vacuity, and the reason the flag is not decoration: the coordinates really do move.
+    // [MEASURED] 78 distinct coordinate sets and 6 distinct seriations over all 720 orders.
+    const seen = new Set<string>();
+    for (const order of [
+      [0, 1, 2, 3, 4, 5],
+      [1, 0, 2, 3, 4, 5],
+      [2, 3, 0, 1, 4, 5],
+      [5, 4, 3, 2, 1, 0],
+    ])
+      seen.add(
+        readback(
+          permuteMatrix(matrix, order),
+          order.map((index) => labels[index]),
+        ).coordinates,
+      );
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it('does not flag the ordinary corpus, so the carve-out stays narrow', () => {
+    // A near-zero TAIL is not a degeneracy a reader can see: `√λ·v` at the noise floor is below
+    // the resolution of any plot, and flagging it would make every `axes = N−1` corpus
+    // degenerate and the field useless. Asked for every axis it has, this corpus is still clean.
+    const matrix = fromPlane([
+      [0, 0],
+      [3, 0],
+      [3, 4],
+      [0, 4],
+      [1.5, 2],
+    ]);
+    expect(classicalMds(matrix, 2, labelsOf(5)).degenerate).toBe(false);
+    expect(classicalMds(matrix, 4, labelsOf(5)).degenerate).toBe(false);
   });
 });
