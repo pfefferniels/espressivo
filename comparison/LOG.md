@@ -6321,3 +6321,24 @@ back to index-order summation → 1 failed; `silhouette`'s member ordering remov
 
 Gate: `npm run verify` GREEN — 126 files, **5430 passed**, 0 skipped (5428 before; two new
 tests). Repo-wide `npx prettier --check .` clean; eslint clean on all four touched files.
+
+## 2026-08-17 — AD-75: cut 11 — sibling repairs accepted; the head stays live [BINDING]
+
+32aa7c4 accepted: two live siblings of the summation disease found and
+repaired (profiles.toMeanDistance, 4/24 permutations; silhouette — 0/24
+on the six-item vendored corpus but 1242/2844 at n=12..19, the
+measured-clean-means-measured-on-six-items blind spot in a new costume),
+plus the window-size test-design lesson (a pin that passes under its own
+control at one window and fails at another is not coverage — on the
+record in the fixer's words).
+
+AD-75.1 BOUNDARY RULING: the fixer ran AD-72.2's sweep, which was a
+RE-GATE head — flagged plainly, justified defensibly (ratified repair
+form; a defect a verifier would rediscover is better fixed than queued),
+and the repairs are ACCEPTED. But a fixer's sweep of its own wave does
+not DISCHARGE a verification head — only a verifier's does. Head (iii)
+stays LIVE as an INDEPENDENT sweep; the two siblings become pre-declared
+repairs for it to verify. The distinction is the campaign's audit
+structure itself and is not waived for good work.
+AD-75.2 The fix wave is COMPLETE at eleven cuts: §8 closed + four
+off-list finds, 5396 → 5430, every repair negative-controlled.
