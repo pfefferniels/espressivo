@@ -6378,3 +6378,24 @@ verifies before a loaded machine exposed it.
 Gate: `npm run verify` GREEN — 126 files, **5430 passed**, 0 skipped, unchanged in count; suite
 duration back to 46.9 s from the 122.9 s of the failing run. Repo-wide `npx prettier --check .`
 clean; eslint clean.
+
+## 2026-08-17 — AD-76: cut 12 — the fixer's own defect; wave closed at twelve cuts
+
+f6fe6a7 accepted. The fixer's cut-10 ceiling test survived two green
+verifies and failed on a LOADED runner at the exact HEAD the re-gate
+covers — isolated to the real claim (argument count, not rotations), now
+124 ms on a diagonal matrix with the spectrum checkable as a bonus; and
+cut 10's record CORRECTED: the restored ceiling's failure mode is not
+even stable (RangeError one run, stack overflow another), which is
+itself the removal argument, now stated in test and LOG. The lesson in
+the fixer's words: a slow test is a flaky test; isolate the claim, don't
+raise the timeout. "It passed here" is the claim this wave has shown to
+be weakest — on the record.
+
+The wave closes at TWELVE cuts: §8 complete, four off-list finds, one
+gate-report correction, one gate finding corrected on measurement, one
+self-reported defect. 5396 → 5430. Re-gate scope end moves to f6fe6a7;
+the moved HEAD and the self-reported defect join its pre-declared list.
+AD-75.1's structure held: the fixer accepted the boundary ruling without
+reservation and framed its final hand-off around what it could NOT close
+itself.
