@@ -14,6 +14,13 @@ import {
   SCALE_SPACE_FACTOR_DOMAINS,
   boundaryPowerHigh,
   boundaryPowerLow,
+  forwardBoundaryPowerHigh,
+  forwardBoundaryPowerLow,
+  forwardGain,
+  forwardInSpace,
+  forwardLogAroundCenter,
+  forwardLogAroundOne,
+  forwardLogit,
   gain,
   geometricMean,
   isAdmissibleFactor,
@@ -857,6 +864,163 @@ describe('dispatch', () => {
     const bogus = { kind: 'no-such-space' } as unknown as ScaleSpace;
     expect(() => transformInSpace(bogus, 1, 2)).toThrow(/unknown scale space/);
     expect(() => neutralOf(bogus)).toThrow(/unknown scale space/);
+  });
+});
+
+/**
+ * `T` values are logarithms, so the honest error measure is relative in the large and
+ * absolute in the small: near a space's neutral `T → 0` and a pure relative measure calls an
+ * absolute 1e-17 infinite. Passing `1` as {@link deviation}'s scale does exactly that — one
+ * neper is the unit these quantities are read in (comparison/DESIGN.md §4, AD-26.1).
+ */
+const NEPER_SCALE = 1;
+
+/**
+ * `T(C(x,s))` is `T` reading back a value the closed form just wrote, so it inherits the
+ * same conditioning P2 measures — see {@link amplificationAt}, which supplies the rest of
+ * the budget. At `x = 0.99, s = 4` the logit intermediate sits 1e-8 from its bound and the
+ * `upper − x` recovery has spent eight digits before `ln` sees it.
+ */
+const FORWARD_ULPS = 8;
+
+describe('forward maps — `T` itself (comparison/DESIGN.md §4)', () => {
+  it.each(SPACES)(
+    '$name: T(C(x,s)) = s*T(x) over the sampled grid',
+    ({ space, values, factors, scale, boundDistance }) => {
+      let compared = 0;
+      let worst = 0;
+      for (const x of values) {
+        const forward = forwardInSpace(space, x);
+        // The infinite boundary values have their own case below: `s · ±∞` is the one
+        // product this identity cannot be stated over, which is why `s = 0` is a branch.
+        if (!Number.isFinite(forward)) continue;
+        for (const s of factors) {
+          const moved = transformInSpace(space, x, s);
+          // A refusal is a saturation, i.e. outside the subdomain the closed form claims.
+          if (!moved.ok) continue;
+          const budget =
+            FORWARD_ULPS * Number.EPSILON * amplificationAt(moved.value, boundDistance, scale);
+          worst = Math.max(
+            worst,
+            deviation(forwardInSpace(space, moved.value), s * forward, NEPER_SCALE) / budget,
+          );
+          compared += 1;
+        }
+      }
+      expect(compared).toBeGreaterThan(20);
+      expect(worst).toBeLessThanOrEqual(1);
+    },
+  );
+
+  it('sends every space neutral to 0, which is the whole content of "T(neutral) = 0"', () => {
+    for (const { space } of SPACES) {
+      expect(forwardInSpace(space, neutralOf(space))).toBe(0);
+    }
+  });
+
+  it('is strictly monotone on each domain, which is what makes |T(x) - T(y)| a metric', () => {
+    for (const { name, space, values } of SPACES) {
+      const forwards = values.map((x) => forwardInSpace(space, x));
+      // Direction is per space and carries no meaning for a distance: boundary-power(low)'s
+      // `ln(1 - x)` decreases, every other space here increases.
+      const ascending = forwards[1] > forwards[0];
+      for (let i = 1; i < forwards.length; i += 1) {
+        const ordered = ascending ? forwards[i] > forwards[i - 1] : forwards[i] < forwards[i - 1];
+        expect(`${name} @ ${values[i]}: ${ordered}`).toBe(`${name} @ ${values[i]}: true`);
+      }
+    }
+  });
+
+  it('returns the signed infinities comparison §4 enumerates, leaving the cap to the caller', () => {
+    // The enumeration verbatim: boundary-power-low at x = 1 (curvature = 1);
+    // boundary-power-high at x = 0; logit at both bounds (protraction = ±1); the logarithms
+    // at x = 0. All are legal authored values, and §4's capped metric is what makes them
+    // finite — this module must NOT clamp them, or the cap would be applied twice.
+    expect(forwardInSpace({ kind: 'boundary-power-low' }, 1)).toBe(-Infinity);
+    expect(forwardInSpace({ kind: 'boundary-power-high' }, 0)).toBe(-Infinity);
+    expect(forwardInSpace({ kind: 'logit', lower: -1, upper: 1 }, -1)).toBe(-Infinity);
+    expect(forwardInSpace({ kind: 'logit', lower: -1, upper: 1 }, 1)).toBe(Infinity);
+    expect(forwardInSpace({ kind: 'logit', lower: 0, upper: 1 }, 0)).toBe(-Infinity);
+    expect(forwardInSpace({ kind: 'logit', lower: 0, upper: 1 }, 1)).toBe(Infinity);
+    expect(forwardInSpace({ kind: 'log-around-1' }, 0)).toBe(-Infinity);
+    expect(forwardInSpace({ kind: 'log-around-center', center: 72 }, 0)).toBe(-Infinity);
+  });
+
+  it('holds T(C(x,s)) = s*T(x) at those boundary values too, for every admissible s > 0', () => {
+    const boundaries: readonly (readonly [ScaleSpace, number])[] = [
+      [{ kind: 'boundary-power-low' }, 1],
+      [{ kind: 'boundary-power-high' }, 0],
+      [{ kind: 'logit', lower: 0, upper: 1 }, 0],
+      [{ kind: 'logit', lower: 0, upper: 1 }, 1],
+      [{ kind: 'logit', lower: -1, upper: 1 }, -1],
+      [{ kind: 'logit', lower: -1, upper: 1 }, 1],
+    ];
+    for (const [space, x] of boundaries) {
+      const forward = forwardInSpace(space, x);
+      for (const s of POSITIVE_FACTORS) {
+        // §7.5's fixed points: the closed form returns the bound itself, so `T` returns the
+        // same infinity — which is `s · (±∞)` for every s > 0, the sign being what the
+        // identity actually asserts here.
+        expect(forwardInSpace(space, expectOk(transformInSpace(space, x, s)))).toBe(forward);
+      }
+    }
+  });
+
+  it('makes s = 0 the branch DESIGN §1 says it is: T(neutral) = 0, never 0 * infinity', () => {
+    const space: ScaleSpace = { kind: 'boundary-power-low' };
+    expect(forwardInSpace(space, expectOk(transformInSpace(space, 1, 0)))).toBe(0);
+    expect(0 * forwardInSpace(space, 1)).toBeNaN();
+  });
+
+  it('cancels the center in every difference, which is why comparison drops it (§4)', () => {
+    const pairs = [
+      [48, 60],
+      [60, 120],
+      [1e-3, 1e3],
+    ] as const;
+    for (const center of [1, 7.5, 72, 1e4]) {
+      for (const [x, y] of pairs) {
+        const centered = forwardLogAroundCenter(x, center) - forwardLogAroundCenter(y, center);
+        const bare = forwardLogAroundOne(x) - forwardLogAroundOne(y);
+        expect(deviation(centered, bare, NEPER_SCALE)).toBeLessThanOrEqual(
+          FORWARD_ULPS * Number.EPSILON,
+        );
+      }
+    }
+  });
+
+  it('gives NaN outside a log space domain — §4 typed document error, not a distance', () => {
+    expect(forwardLogAroundOne(-1)).toBeNaN();
+    expect(forwardLogAroundCenter(-1, 72)).toBeNaN();
+    expect(forwardBoundaryPowerLow(1.5)).toBeNaN();
+    expect(forwardLogit(1.5, 0, 1)).toBeNaN();
+    expect(forwardLogit(-0.5, 0, 1)).toBeNaN();
+  });
+
+  it('does not gate its input, so the registry predicate has to run first', () => {
+    // `boundary-power-low` below its lower bound is the trap: finite, plausible, and wrong.
+    // Comparison §4 checks the row's valueDomain before ever calling T.
+    expect(forwardBoundaryPowerLow(-1)).toBeCloseTo(Math.LN2, 15);
+    expect(isInValueDomain({ kind: 'boundary-power-low' }, -1)).toBe(false);
+  });
+
+  it('routes each space to its named forward map and throws on an unknown tag', () => {
+    expect(forwardInSpace({ kind: 'log-around-center', center: 72 }, 60)).toBe(
+      forwardLogAroundCenter(60, 72),
+    );
+    expect(forwardInSpace({ kind: 'log-around-1' }, 1.5)).toBe(forwardLogAroundOne(1.5));
+    expect(forwardInSpace({ kind: 'logit', lower: -1, upper: 1 }, 0.4)).toBe(
+      forwardLogit(0.4, -1, 1),
+    );
+    expect(forwardInSpace({ kind: 'boundary-power-low' }, 0.4)).toBe(forwardBoundaryPowerLow(0.4));
+    expect(forwardInSpace({ kind: 'boundary-power-high' }, 0.4)).toBe(
+      forwardBoundaryPowerHigh(0.4),
+    );
+    expect(forwardInSpace({ kind: 'gain' }, -12)).toBe(forwardGain(-12));
+    expect(forwardInSpace({ kind: 'gain-ordered' }, -12)).toBe(forwardGain(-12));
+
+    const bogus = { kind: 'no-such-space' } as unknown as ScaleSpace;
+    expect(() => forwardInSpace(bogus, 1)).toThrow(/unknown scale space/);
   });
 });
 

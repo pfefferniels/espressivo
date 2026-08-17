@@ -473,6 +473,66 @@ P1 fixed, but a def can be skipped by the factory above it and a map entry canno
 nowhere for a `NumberFormatError` to go. These are two of the map-level reads P1's closing note
 lists as open.
 
+### `Builder.build` — a UTF-8 BOM no longer rejects the document
+
+|                           |                                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| Item                      | `CMP1` (comparison campaign W2 item #1)                                            |
+| Java                      | `XmlBase.java:99`, `:128`, `:162`; `mei/Helper.java:1042`, `:1061`                 |
+| TypeScript                | `src/xml/XomTypes.ts` — `stripByteOrderMark`, applied in `Builder.build`           |
+| Guard tests               | `tests/xml/XomTypes.test.ts` (Builder), `tests/api/bom-tolerance.test.ts` (facade) |
+| Reachable from a fixture? | No — no fixture carries a BOM; reached from the MPM format's own sample corpus     |
+
+A port bug fixed _toward_ Java, in the same sense as `Msm.getMinimalPPQ` above: Java accepts
+these documents and the port did not.
+
+**Why Java accepts them.** Every Java entry point hands XOM **bytes** —
+`builder.build(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)))`
+(`XmlBase.java:99`, and identically in `Helper.java:1042`/`:1061`), `builder.build(inputStream)`
+(`:128`), or `builder.build(file)` (`:162`). XOM parses all three through a SAX/Xerces
+`XMLReader`, and for a byte stream a leading `EF BB BF` is the UTF-8 encoding signature of
+XML 1.0 §4.3.3 and Appendix F: it is consumed while determining the encoding, before the
+document entity begins. Nothing in Java ever sees it as content.
+
+**Why the port did not.** `Builder.build` takes a `string` and calls
+`DOMParser.parseFromString`. By then the bytes have been decoded, and the signature has become
+a U+FEFF **character** sitting in front of the XML declaration. `@xmldom/xmldom` treats that as
+content outside the root and raises a fatal error — `processing instruction at position 1 is an
+xml declaration which is only at the start of the document` — so the whole document is refused.
+The divergence is an artefact of parsing characters where Java parses bytes; it is not a
+decision either side made about BOMs.
+
+**Where the fix goes, and why not higher up.** In `Builder.build`, which is the one choke point
+every document passes through: `XmlBase`'s constructor for `Mei`/`Msm`/`Mpm`
+(`src/xml/XmlBase.ts:56-59`), and the expression layer's two raw parses
+(`src/expression/mpmDocument.ts:52`, `src/expression/msmFacts.ts:80`) which deliberately bypass
+those classes under DESIGN.md D-A. The obvious alternative, `src/api/parse.ts`, cannot do it:
+`parseOrThrow` receives an already-bound `() => parse(text)` closure and never sees the text, so
+normalising there would have meant changing its signature and would still have covered only the
+facade — leaving the expression engine, and any future module that follows its raw-`Builder`
+discipline, still unable to read a BOM'd file.
+
+**Exactly one leading mark is removed.** U+FEFF is only a signature at position 0; anywhere else
+it is ZERO WIDTH NO-BREAK SPACE and is ordinary character data, which the guard tests pin. A
+_run_ of marks is not stripped either: the second one is content, content before the declaration
+is an error, and Java rejects that case too — so over-normalising it would open a new divergence
+in the course of closing one.
+
+**Not reachable from any fixture, and reached constantly outside them.** No file under
+`tests/integration/fixtures/**` carries a BOM, which is why the port could refuse them for as
+long as it did. Three of the six encodings in the MPM format's own sample corpus do carry one,
+including both of its multi-performance documents (Telemann _Grave_ TWV 51-D7 with Baroque/Fast/
+Romantic, and Vulpius _Die helle Sonn_ with Baroque/Romantic/Amateur) — the only real
+multi-performance MPM available to the comparison campaign, and the reason the item was pulled
+forward. All four BOM-affected sample files parse after the fix; before it, three of them threw.
+
+**Evidence.** `npm run verify` green at 4005 tests, up from 3992 — the 13 added are all new
+assertions, and no existing test changed. Because the fix only ever removes a character that
+made the parse throw, no document that parsed before can parse differently now: the guard tests
+assert equality of downstream products (`canonicalMpm`, `performMsm`, `convertMeiToMsmMpm`)
+between BOM'd and un-BOM'd input rather than merely asserting that parsing succeeded, which is
+what would catch a mark that survived into the tree.
+
 ### `processSlur` ignored `@staff`, so every slur was a global instruction
 
 `src/mei/Mei2MsmMpmConverter.ts`'s `processSlur` carried the comment _"Simplified -- the full
@@ -503,8 +563,10 @@ _is_ the fixture bytes — and is commented as such at the site.
 ## 2. Frozen divergences
 
 Known, journaled, and deliberately **not** repaired. None is reachable from the MEI/MSM ⇒ MIDI
-pipeline. The first three come from capability gaps in the XML layer rather than from choices;
-the last is a choice, and is the one place where this port returns something Java's own code
+pipeline **on a well-formed document** — the one exception is `IMP1` below, which is reachable
+only from defective imprecision input and where both sides destroy the performance by different
+means. The first three come from capability gaps in the XML layer rather than from choices; the
+fourth is a choice, and is the one place where this port returns something Java's own code
 computes and then throws away.
 
 - **The `setLocalName` family.** Java renames an element in place when parsing a foreign one
@@ -542,6 +604,45 @@ computes and then throws away.
   `tests/mpm/elements/OrnamentationMap.test.ts` pin the returned shape, including the v3 fields.
   Flagged by the ornamentation programme's v2 semantics survey (ORN-1 §3.2/§5.3) as the last
   ornamentation divergence this ledger had not recorded; recorded now.
+
+### `IMP1` — an imprecision map the reference CRASHES on renders NaN-poisoned output here
+
+| Item                      | `IMP1` (comparison campaign, W3a cut 4)                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Java                      | `RandomNumberProvider.java:163-166` (`setSeed` clears `series`), `:262-272` (`getValue`), `:370-398` (both correlated draws)                              |
+| TypeScript                | `src/supplementary/RandomNumberProvider.ts:186-190`, `:272-284`, `:355-381`                                                                               |
+| Guard tests               | `tests/comparison/imprecisionLaws.test.ts` — the `⊥ routes` block                                                                                         |
+| Reachable from a fixture? | No fixture; reachable from any document that writes `@seed` on a correlated distribution or on a `<distribution.list>`, or an empty `<distribution.list>` |
+
+**Failure-mode divergence on defective input.** Three imprecision inputs make the reference
+throw and make this port emit `NaN`. Both outcomes destroy the performance; neither side is
+"right", which is why this is frozen rather than queued.
+
+`setSeed` clears `series` in both codebases, and `series` is not a cache:
+
+- For `brownianNoise` and `compensatingTriangle` it holds the walk's current value.
+  `ImprecisionMap` seeds it through `doHandover` and calls `setSeed` **afterwards**
+  (`ImprecisionMap.java:601-620`, ported at `ImprecisionMap.ts:319-354`), so the next draw
+  reads the last element of an empty list. Java's `ArrayList.get(-1)` throws
+  `IndexOutOfBoundsException`; JavaScript's `series[-1]` is `undefined`, and
+  `undefined + step` is `NaN`.
+- For `distribution.list`, `series` **is the list** (`rand.series = list`, ported as
+  `[...list]`), so clearing it leaves an empty one. Java computes `index % series.size()` on
+  `int`s and throws `ArithmeticException: / by zero`; JavaScript's `index % 0` is `NaN` and
+  `series[NaN]` is `undefined`. The same divide reaches an **empty** `<distribution.list>` with
+  no `@seed` at all, which is the commoner way in.
+
+Measured end to end through `performMsm`: a `brownianNoise` carrying `seed="99"` gives
+`milliseconds.date="NaN"` on every note, while the same document without the seed performs
+ordinary numbers; a `<distribution.list>` behaves identically.
+
+**Why it is frozen.** Repairing it means choosing a behaviour neither codebase has. Reordering
+`setSeed` before `doHandover` would change every seeded correlated rendering — the numbers, not
+just the failure — and `RandomNumberProvider`'s own class doc records that the count and order
+of draws is part of the output. Throwing to match Java would turn a NaN into an exception on
+the same defective input without making either document renderable. The comparison module needs
+neither: it prices such a span `⊥` (§5.9, AD-1/R24 — the renderer has no performed value), which
+is correct against both codebases.
 
 ---
 

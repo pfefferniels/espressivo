@@ -83,3 +83,16 @@ export class SelectionNotFoundError extends MeicoError {}
  * here — and this is where they become catchable.
  */
 export class EngineInvariantError extends MeicoError {}
+
+/**
+ * The comparison engine broke one of its own invariants — the attribution table failed to close,
+ * a scope had no global environment, a dimension returned something the aggregation cannot use.
+ *
+ * It is a distinct class rather than a reuse of {@link EngineInvariantError}, and the reason is
+ * that the neighbouring class documents itself as one **no document can provoke**, naming
+ * `minRubatoWindow` as the only input that can. Under comparison a pathological PAIR absolutely
+ * can, so reusing it would ship two false sentences in the file consumers read to decide what to
+ * catch (DESIGN.md §9.4, A15). P-C5 also runs both engines inside one expression, where a caught
+ * error has to say which engine broke without anyone parsing a message.
+ */
+export class ComparisonEngineError extends MeicoError {}

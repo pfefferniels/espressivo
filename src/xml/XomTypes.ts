@@ -843,13 +843,51 @@ export class Document {
 }
 
 /**
+ * U+FEFF, the character a UTF-8 byte-order mark (`EF BB BF`) decodes to.
+ *
+ * Only a LEADING one is a signature. Anywhere else U+FEFF is ZERO WIDTH NO-BREAK SPACE and
+ * is ordinary content, so exactly one occurrence, at position 0, is removed.
+ */
+const BYTE_ORDER_MARK = '﻿';
+
+/**
+ * Drop a leading byte-order mark, so that a BOM'd document parses instead of throwing.
+ *
+ * **This restores Java parity rather than diverging from it.** Every Java entry point hands
+ * XOM *bytes* — `builder.build(new ByteArrayInputStream(xml.getBytes(UTF_8)))`
+ * (`meico/xml/XmlBase.java:99`, `meico/mei/Helper.java:1042,1061`) or `builder.build(file)`
+ * (`XmlBase.java:162`) — and XOM parses those through a SAX/Xerces `XMLReader`, for which a
+ * leading `EF BB BF` is the UTF-8 encoding signature of XML 1.0 §4.3.3 / Appendix F and is
+ * consumed before the document entity begins. Java therefore accepts a BOM'd file silently.
+ *
+ * This port parses a *decoded string* instead (`DOMParser.parseFromString`), by which point
+ * the signature has already become a U+FEFF character sitting in front of the XML
+ * declaration — and `@xmldom/xmldom` rejects it outright with "processing instruction at
+ * position 1 is an xml declaration which is only at the start of the document". The
+ * divergence is an artefact of parsing characters where Java parses bytes, so stripping the
+ * mark here is what makes the two agree.
+ *
+ * It is not a hypothetical: 3 of the 6 encodings in the MPM format's own sample corpus carry
+ * a BOM, including both multi-performance documents.
+ */
+function stripByteOrderMark(xml: string): string {
+  return xml.startsWith(BYTE_ORDER_MARK) ? xml.slice(BYTE_ORDER_MARK.length) : xml;
+}
+
+/**
  * XML parser — XOM's `Builder`. Parses a string with `@xmldom/xmldom` and hands the
  * result to {@link Element.wrap}, which is where the DOM stops being authoritative.
+ *
+ * This is the one choke point every document in the port passes through — `XmlBase`'s
+ * constructor for the `Mei`/`Msm`/`Mpm` classes (`XmlBase.ts:56-59`), and the expression
+ * layer's two raw parses (`expression/mpmDocument.ts:52`, `expression/msmFacts.ts:80`),
+ * which deliberately bypass those classes. Input normalization therefore belongs here and
+ * nowhere else: anything applied further up would cover one path and miss the others.
  */
 export class Builder {
   build(xml: string): Document {
     const parser = new DOMParser();
-    const dom = parser.parseFromString(xml, 'text/xml');
+    const dom = parser.parseFromString(stripByteOrderMark(xml), 'text/xml');
 
     // Check for parse errors
     const errorNode = dom.getElementsByTagName('parsererror');

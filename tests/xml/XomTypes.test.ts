@@ -528,6 +528,63 @@ describe('Builder', () => {
     const root = doc.getRootElement();
     expect(root.getNamespaceURI()).toBe('http://www.music-encoding.org/ns/mei');
   });
+
+  // -------------------------------------------------------------------------
+  // UTF-8 BOM tolerance.
+  //
+  // Java hands XOM bytes, where a leading EF BB BF is the XML 1.0 Appendix F
+  // encoding signature and is consumed before the document entity begins
+  // (meico/xml/XmlBase.java:99,162). This port parses a decoded string, where the
+  // same bytes arrive as a U+FEFF character in front of the declaration. Stripping
+  // it is what makes the two agree.
+  // -------------------------------------------------------------------------
+  const BOM = '﻿';
+
+  it('should parse a BOM-prefixed document identically to the same text without one', () => {
+    const xml = '<?xml version="1.0"?>\n<root a="1"><child/></root>';
+    expect(
+      builder
+        .build(BOM + xml)
+        .getRootElement()
+        .toXML(),
+    ).toBe(builder.build(xml).getRootElement().toXML());
+  });
+
+  it('should parse a BOM-prefixed document with no XML declaration', () => {
+    expect(builder.build(`${BOM}<root/>`).getRootElement().getLocalName()).toBe('root');
+  });
+
+  it('should parse a BOM-prefixed document that uses single-quoted attributes', () => {
+    // 97 of 121 files in the "Measuring Early Records" corpus are spelled this way, and
+    // three of the MPM format's own sample encodings carry a BOM; the two traits co-occur.
+    const single =
+      "<?xml version='1.0'?>\n<mpm xmlns='http://www.cemfi.de/mpm/ns/1.0'>" +
+      "<performance name='p' pulsesPerQuarter='720'/></mpm>";
+    const root = builder.build(BOM + single).getRootElement();
+    expect(root.getLocalName()).toBe('mpm');
+    expect(root.getNamespaceURI()).toBe('http://www.cemfi.de/mpm/ns/1.0');
+    const performance = root.getFirstChildElement('performance');
+    expect(performance).not.toBeNull();
+    expect(performance!.getAttributeValue('pulsesPerQuarter')).toBe('720');
+    // Attribute quoting is a lexical detail the parser normalises away, so the two
+    // spellings must produce the same tree.
+    expect(root.toXML()).toBe(builder.build(single).getRootElement().toXML());
+  });
+
+  it('should preserve U+FEFF that is not the leading signature', () => {
+    // Anywhere but position 0, U+FEFF is ZERO WIDTH NO-BREAK SPACE — ordinary content.
+    const doc = builder.build(`${BOM}<t>a${BOM}b</t>`);
+    expect(doc.getRootElement().getValue()).toBe(`a${BOM}b`);
+  });
+
+  it('should strip exactly one leading BOM, not a run of them', () => {
+    // One signature is what a UTF-8 encoder writes; a second mark is content, and content
+    // before the declaration is fatal. Stripping the run would be over-normalising input
+    // that Java does not accept either.
+    const declared = '<?xml version="1.0"?><t/>';
+    expect(() => builder.build(BOM + declared)).not.toThrow();
+    expect(() => builder.build(BOM + BOM + declared)).toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------

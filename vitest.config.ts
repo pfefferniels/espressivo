@@ -28,10 +28,16 @@ export default defineConfig({
       // already scopes, entered from the writing end rather than the rendering one: it reads
       // the MPM vocabulary through the same def and style semantics the renderer uses, and a
       // divergence there produces a document the rest of this port then renders wrongly.
+      // W2 addition (performance-comparison campaign): `src/comparison/**` reads two MPM
+      // documents and writes none. It is in scope for the same reason `src/expression/**` is
+      // — it reads the MPM vocabulary through the same def and style semantics the renderer
+      // uses, and a divergence there misreports what this port would render. Named
+      // explicitly because this list is curated, not a glob (comparison/DESIGN.md §9.7).
       include: [
         'src/version.ts',
         'src/units.ts',
         'src/api/**/*.ts',
+        'src/comparison/**/*.ts',
         'src/expression/**/*.ts',
         'src/mei/Mei.ts',
         'src/mei/mpmNoteIds.ts',

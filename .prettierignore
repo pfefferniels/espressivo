@@ -6,6 +6,13 @@ package-lock.json
 # Java-generated ground truth + MEI inputs. Immutable (charter invariant 2).
 tests/integration/fixtures/
 
+# Vendored third-party MPM/MSM from the MPM format's own sample corpus (BSD-2 + CC BY 4.0).
+# Two reasons, both hard: Prettier infers no parser for .mpm/.msm and errors out on them, the
+# same reason the line above exists; and these files are byte-faithful copies whose UTF-8 BOM
+# and single-quoted attributes are the point — a reformat would destroy what they pin. See
+# tests/comparison/fixtures/PROVENANCE.md.
+tests/comparison/fixtures/
+
 # The completed campaigns' journals, charters, design docs, research reports and probe tools
 # (refactor swarm, MPM v3 ornamentation, expression transform). Hand-formatted and mostly
 # append-only: reflowing them would churn logs that are already committed — DESIGN.md alone
@@ -15,6 +22,13 @@ tests/integration/fixtures/
 # needed a root anchor to avoid also catching src/expression/ and tests/expression/, which are
 # ordinary source; nesting the records under docs/ makes that ambiguity impossible to hit.
 docs/history/
+
+# The comparison campaign's record now lives under docs/history/ (covered above).
+# ROOT-ANCHORED, and the lesson is the one three lines above: gitignore semantics match at any
+# depth, so the unanchored spelling swallowed src/comparison/ and tests/comparison/ as well and
+# hid 28 unformatted source files from `format:check` for a whole wave (W3 MAJOR-16). The `/` is
+# the whole fix. What made it invisible is that `npx prettier --check src/comparison/` answers
+# "All matched files use Prettier code style!" for files it is silently skipping.
 
 # The target-architecture ruling. Exempt for a stronger reason than the journals: its RULEs are
 # cited by ~85 `ARCHITECTURE.md:NNN` line anchors from PARITY.md and the campaign records, so a
