@@ -5650,3 +5650,20 @@ restored byte-identical.
 
 Gate: `npm run verify` GREEN — 125 files, **5406 passed**, 0 skipped (5401 before; 5 new tests).
 Repo-wide `npx prettier --check .` clean; eslint clean on the three touched source/test files.
+
+## 2026-08-17 — AD-69: fix cut 3 ratifications [BINDING]
+
+2c93dfc accepted. AD-69.1 RATIFIED: part (a) at FOUR sites — the
+eigenvalue ordering and compareVectorKeys carried the identical defect
+one level above the two the gate named; within AD-67.1's form as
+journalled. AD-69.2 RATIFIED: the beyond-ruling label-seed (stable sort
+under a non-transitive epsilon comparator) — it is what takes the gate's
+expected 146-case residue to ZERO, and the reasoning (epsilon comparisons
+are not transitive; the seed must not be the caller's listing) joins the
+campaign's determinism canon. AD-69.3 RATIFIED: embedding.degenerate
+widened to eigenbasis-non-uniqueness with the materiality qualification,
+zeroSpectrum split out so the two conditions cannot drift back together,
+DESIGN's Σ|λ|=0 implication correctly one-way. The two measurement
+refinements (whole-axis mirror detection; material-eigenvalue gating) are
+noted as the difference between a real assertion and a flattering one —
+on the record in those words.
