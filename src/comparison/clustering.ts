@@ -93,7 +93,8 @@ function lower(x: string, y: string): boolean {
  *
  * What this repair does NOT do is worth stating, because it would be easy to assume otherwise:
  * it does not make the products permutation-invariant under duplicate labels. Measured after it,
- * `pam`'s cost still takes 2 distinct values over 40 permutations at `n = 12` with duplicated
+ * `pam`'s cost still takes multiple distinct values (2-3 measured across runs) over 40
+ * permutations at `n = 12` with duplicated
  * labels — the verifier's own figure, unmoved. The index fallback cannot help, since the index is
  * exactly what a permutation changes.
  *

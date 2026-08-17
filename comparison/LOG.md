@@ -6600,3 +6600,43 @@ stash-and-rerun attribution at the base commit; the re-check should
 confirm rather than chase it.
 Scoped re-check convened (w4-verify): the note machinery + R-5 items +
 both self-reports; on its pass W4 CLOSES FINALLY.
+
+## 2026-08-17 — AD-79: RE-CHECK PASS; W4 CLOSED FINALLY; W5 opens [BINDING]
+
+The scoped re-check verdict is archived: RE-CHECK PASS — MAJOR-R2
+repaired past the failing cases, MINOR-R5's limit real and correctly
+reasoned (with the verifier's improving note that the medoid LABEL
+MULTISET is invariant, so the limit costs a float and not a product),
+the contract restatement honest, the guard perimeter verified by
+injection on four file classes and three exclusions, the RPC timeout
+environmental at the base commit. The one open item — a figure in a
+docstring attributing a measurement to the verifier who now measures
+differently — is corrected in this commit (2 → "2-3 measured across
+runs"; the claim was never about the number). Verify green: 126 files,
+5433 passed, 0 skipped.
+
+W4 IS CLOSED FINALLY. The wave's full arc: 5250 → 5433 tests; two
+public products + scape + executed docs; one gate, one twelve-cut fix
+wave with four off-list finds, one re-gate finding one regression, one
+two-cut micro-wave, one scoped re-check. Both directions of the
+standard held: the fixer corrected the gate, the gate implicated
+itself, and every correction is in the record.
+
+W5 OPENS, scoped against the RED budget (journaled per the regime so a
+throttled phase is never mistaken for a complete one):
+1. The novelty re-sweep (AD-26.5: PianoBind, arXiv:2512.02652) and the
+   README's novelty sentence — conductor, WebSearch.
+2. W5 housekeeping: AD-57.1's LOG erratum (the cut-2 narrative figures);
+   this entry discharges the docstring item.
+3. The docs/history/comparison/ move (AD-48 obligations incl. the
+   citation repoint with the corrected perl + README self-exclusion),
+   merge --no-ff to main, push.
+4. Final report to the user + memory update.
+DESCOPED AND JOURNALED (throttle + duplication): a fresh whole-module
+audit beyond the four wave gates — each wave was independently verified
+twice (gate + re-gate), the conductor's own code was audited with extra
+weight (AD-54.6) and its draft dismembered by audit (AD-49); a fifth
+full pass would re-tread verified ground at RED. Recorded as available
+post-campaign work, not as done. AD-56.6's C7 proxy refinement stays
+deferred with its question-worded note. AD-61.3's A5 licence note and
+AD-63.1's corpusAverage option (b) remain the journaled consumer routes.

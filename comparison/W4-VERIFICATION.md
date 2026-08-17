@@ -917,3 +917,202 @@ was named and not at its siblings — `partitionCost` but not `silhouette`, `rub
 `step`'s remaining members, `pam`'s tie key but not `labelOrder`'s comparator, and the note repair
 fixed `document` at the top level while leaving the same field inside `site`. Two of those the
 fixer swept unprompted, which is the habit to keep.
+
+---
+
+# Scoped re-check (micro-wave) — 2026-08-17
+
+**Verdict: RE-CHECK PASS. W4 closes.**
+
+Scope per AD-78: `f2bcef9` + `10c56b4`, HEAD `25b0fa9`. Four narrow items, each verified by this
+verifier's own measurement rather than inherited from the fixer's self-reports. One
+non-blocking documentation nit is recorded at the end.
+
+`npm run verify` at `25b0fa9`, twice on the unmodified tree: **126 files, 5433 passed, 0 skipped,
+0 failures.** Both runs also emitted the environmental RPC error that item 4 is about — see there.
+Tree clean; all probing in disposable copies.
+
+## C-1. MAJOR-R2 — repaired, all three symptoms gone
+
+The block from the re-gate was that the note dedupe kept pair-relative data, giving a note count,
+a note set and a message text that all moved with the caller's item order, and losing every pair
+but the first from a multi-pair note. Re-run with the same probes:
+
+**(a) One count and one text set over every order.** Three-item corpus, all six permutations:
+
+```
+[RC1] distinct note counts over 6 orders: [98]
+[RC1] distinct note text sets: 1
+[RC1] site.document values seen: ["a"]
+```
+
+Was 98/98/102 with two distinct text sets. Extended past the case that failed — n = 4, 5 and 6
+over eight random orders each — every one gives one count and one text set:
+
+```
+[RC1] n=4: counts=[137] textSets=1
+[RC1] n=5: counts=[148] textSets=1
+[RC1] n=6: counts=[150] textSets=1
+```
+
+**(b) The site key is pinned to a constant.** Every site-bearing corpus note reports
+`site.document === 'a'`, and no other value occurs. That is the right shape: the field cannot be
+null in `ComparisonSiteRef`, `itemIndex` already carries the corpus-level identity, and a
+constant is honest where a varying value was misinformation.
+
+**(c) A multi-pair note names every pair.** On a five-item corpus the length-mismatch note names
+**all nine** pairs that `suspectPairs` names — the pairs are canonically ordered and joined:
+
+```
+[RC1] suspectPairs (9): tel-b|alb, tel-b|bach, tel-b|aller, tel-f|alb, tel-f|bach,
+                        tel-f|aller, alb|bach, alb|aller, bach|aller
+[RC1]   alb | aller; alb | bach; alb | tel-b; alb | tel-f; aller | bach; aller | tel-b;
+        aller | tel-f; bach | tel-b; bach | tel-f
+```
+
+Nine of ten possible pairs, so the note is correctly *not* promoted to the unprefixed corpus-wide
+form — which is the middle case the old `pairs[0]` branch destroyed. The `''` branch for a
+genuinely universal note is untouched and still right.
+
+## C-2. The R-5 items as landed, with both self-reports verified
+
+### (a) MINOR-R5 — the comparator repair, and its stated LIMIT
+
+**The limit is real, and slightly wider than stated.** Duplicate labels (`'same'`×6, `'other'`×6),
+n = 12, 40 permutations, k = 3:
+
+```
+[RC2] duplicate labels, n=12: distinct costs = 3
+      ["10231.491999999998", "10231.492000000002", "10231.492"]
+[RC2] distinct medoid LABEL multisets = 1  →  ["other","same","same"]
+```
+
+The fixer's comment says the cost "still takes 2 distinct values"; measured here it takes **3**.
+The direction is the fixer's — the repair does not buy invariance under duplicate labels — so the
+claim stands and only the figure is off by one. Recorded as a doc nit below rather than a finding.
+
+**The more important measurement is the second line**: the medoid **label multiset is invariant**.
+So the *product* — which performers the corpus names — is stable even under duplicate labels; it
+is only the float `cost` that wobbles. That is the fact that makes the limit tolerable, and it is
+stronger than what the comment claims for itself.
+
+**The reasoning checks out against a constructed case.** The fixer argues no label-keyed rule can
+do better, because cost-different subsets share a label multiset. Built directly — labels
+`['A','A','B','B']` with an asymmetric distance table:
+
+```
+[RC2] subset {0,2} labels {A,B} cost=5      subset {1,2} labels {A,B} cost=4
+[RC2] subset {0,3} labels {A,B} cost=5      subset {1,3} labels {A,B} cost=3
+[RC2] label multiset {A,B} covers 3 distinct costs: [5,4,3]
+```
+
+One label multiset covers three different costs, so a key built from labels provably cannot
+separate them: in the only frame the corpus has, they *are* the same subset. The argument is
+sound, and §8's unique-label requirement is the right place for the constraint to live.
+
+**No behavioural change from the six comparator fixes**, on every input reachable through the
+facade. Unique labels, n = 12, 40 permutations: `costs = 1`, `medoid sets = 1` — invariant, no
+regression. `compareMpmCorpus` rejects duplicate labels before any of this runs, so the only
+inputs that can reach the tie are direct algorithm-layer calls. The repair is what it says it is:
+a valid total order replacing an invalid comparator, with no measurable behaviour change.
+
+### (b) MINOR-R2 — the contract restatement
+
+**The figures did not change, and should not have.** `step` still stamps
+`{relative: 0, jnd: 0}` and `EPSILON_FAMILY_OF.articulation` is still `'step'`. What changed is
+what the record *claims*: `compare.ts` now states that these are QUADRATURE figures — the error an
+integrator makes against the integral it approximates, in ℝ — that they do not bound
+floating-point rounding and cannot, and that a consumer must compare against the stamped ε **plus
+an ulp allowance on the magnitudes involved**.
+
+That is the right resolution, and better than the alternative this gate offered. Inventing a
+nonzero floor for `step` would state a quadrature error that does not exist, and would make the
+record say something false in order to spare the reader an allowance they need for every other
+family anyway.
+
+Verified against the shipped numbers:
+
+```
+[RC3] epsilon families: step, tempo, bezier, rubato, imprecision, drift
+[RC3] step = {"relative":0,"jnd":0}       rubato = {"relative":0.0002718,"jnd":0.0007}
+[RC3] articulation: d=4391 scriptCost=4390.999999999999 shortfall=2.0713e-16 family=step
+```
+
+The gate's articulation case — 2.07e-16 at the aggregate, 9.296e-16 at the worst scope, about
+four ulps of a `d` of 1223 — is inside the stated contract and is named in the code by that
+figure. Discharged.
+
+## C-3. The fourth NUL and the widened perimeter
+
+**The guard fires on the closed record's file class.** A raw NUL poked into each, one at a time,
+fails `tests/repoHygiene.test.ts` every time:
+
+| file | guard fires |
+|---|---|
+| `comparison/LOG.md` | yes |
+| `comparison/W4-VERIFICATION.md` (this record) | yes |
+| `docs/history/ornamentation/tools/probe.mjs` (the fourth instance's own file) | yes |
+| `README.md` | yes |
+
+**The prefix-matched exclusions hold**, so widening the perimeter did not drag the
+byte-comparison targets in. A NUL in each of these is correctly ignored:
+`tests/comparison/fixtures/telemann-grave.mpm`, `tests/integration/fixtures-v3/multi-ornament.mpm`,
+`tests/integration/fixtures-layers-to-staffs/articulations.mpm`. The last two are exactly the
+directories `entry === 'fixtures'` used to miss.
+
+**One boundary, confirmed and correct as documented:** the guard tests for `0x00` only. A raw
+`U+0001` — which the fourth instance also carried — does **not** fail it. That is the right rule
+rather than a gap: NUL in the first 8000 bytes is git's own binary heuristic and what makes `grep`
+and `rg` skip a file, and `U+0001` alone does neither. Worth stating because the motivating file
+carried both, so a reader could reasonably assume both are caught.
+
+## C-4. AD-78.4 — the verify RPC timeout is environmental
+
+**Reproduced at the base commit.** `4ae5547` extracted to a clean sandbox, `tests/comparison/` run
+with all eight cores saturated by busy loops:
+
+```
+Vitest caught 4 unhandled errors during the test run.
+Error: [vitest-worker]: Timeout calling "onTaskUpdate"
+ ❯ tests/comparison/readmeRecipes.test.ts (13 tests | 1 failed) 72706ms
+ ❯ tests/comparison/editDimensions.test.ts (13 tests | 1 failed) 81952ms
+```
+
+Those two files run in roughly 12–25 s on an idle machine; under load they take 73 s and 82 s and
+their timing-sensitive assertions fail with them. The RPC error is the vitest worker losing its
+channel to the main process, not a test failing.
+
+**It also appears at the current HEAD, without failing anything.** Both of this verifier's
+`npm run verify` runs at `25b0fa9` reported `126 files, 5433 passed, 0 skipped` alongside
+`Vitest caught 2 unhandled errors … Timeout calling "onTaskUpdate"`, on a machine still settling
+from the load test above.
+
+So: present before the micro-wave, present after it, load-dependent, and never the cause of a
+failed assertion. Confirmed environmental. Not chased further, per AD-78.4.
+
+## C-5. One non-blocking doc nit
+
+`clustering.ts`'s `byLabelThenIndex` docstring states that `pam`'s cost "still takes 2 distinct
+values over 40 permutations at `n = 12` with duplicated labels — the verifier's own figure,
+unmoved." Measured here on the same shape: **3**, not 2. The claim the sentence is making is
+correct and the figure is incidental to it; a one-word correction closes it. Recorded rather than
+left, because the sentence attributes the number to this verifier and this verifier now measures a
+different one.
+
+The sentence would also be stronger for adding what C-2(a) measured: the medoid **label multiset**
+is invariant under those same permutations, so the limit costs a float and not a product.
+
+## C-6. Verdict
+
+**RE-CHECK PASS — W4 closes.**
+
+- MAJOR-R2: repaired, all three symptoms, verified past the failing case at n = 4, 5 and 6.
+- MINOR-R5: repair sound, limit real and correctly reasoned, no behavioural change; figure nit
+  above.
+- MINOR-R2: contract restated honestly; the gate's own case is inside it.
+- MINOR-R1, R3, R4, R6: landed; the guard perimeter verified by injection on four file classes
+  and three exclusions.
+- AD-78.4: environmental, reproduced at the base commit, not pursued.
+
+Nothing in this re-check blocks. The single open item is a one-word figure correction in a code
+comment, which needs no wave.
