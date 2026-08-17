@@ -1050,9 +1050,11 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
    * floor rather than that it is zero.
    *
    * MINOR-13: `jacobiEigen` used `Math.hypot(...a)`, which spreads `n²` arguments against V8's
-   * measured 105741-argument limit, so it threw `RangeError` at `n ≥ 326` — verified against the
-   * old line. `DEFAULT_MAX_ITEMS = 256` left 1.61× headroom, and a ceiling that depends on an
-   * engine's argument limit is not a ceiling anyone can reason about. Accumulated instead.
+   * measured 105741-argument limit, so it THREW at `n ≥ 326` — verified by restoring the old
+   * line, which fails here as `RangeError` or as `Maximum call stack size exceeded` depending on
+   * how the engine reports the limit that run. That variability is itself the argument:
+   * `DEFAULT_MAX_ITEMS = 256` left 1.61× headroom, and a ceiling that depends on an engine's
+   * argument handling is not one anyone can reason about. Accumulated instead.
    */
   it('reports noise-floor negative mass on a Euclidean simplex, and survives past N = 326', () => {
     for (const k of [3, 4, 5, 7, 12]) {
@@ -1068,12 +1070,25 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
     }
 
     // Past the old `Math.hypot` ceiling. `n = 330` is 108900 arguments, comfortably over V8's
-    // 105741, and the previous line threw `RangeError` here.
+    // measured 105741, and the previous line threw on exactly this input.
+    //
+    // The matrix is DIAGONAL, which is what keeps this cheap: the ceiling lives in the very
+    // first statement, where the off-diagonal threshold is computed by spreading all `n²`
+    // entries, and a matrix that is already diagonal exits the sweep loop on its first check.
+    // So this exercises the argument count — the whole of the claim — in `O(n²)` work rather
+    // than the `O(n³)`-per-sweep of a full eigendecomposition. A dense 330×330 matrix here cost
+    // 33 s under a loaded runner and timed out, which is a test-suite defect of the kind this
+    // file's own history records (`editDimensions` went from 37.8 s to 12.4 s for the same
+    // reason): the number of arguments is the subject, not the number of rotations.
     const n = 330;
     const values = new Array<number>(n * n).fill(0);
-    for (let i = 0; i < n; ++i)
-      for (let j = 0; j < n; ++j) values[i * n + j] = i === j ? 0 : 1 + ((i * 7 + j) % 5);
-    expect(jacobiEigen({ n, values }).values).toHaveLength(n);
+    for (let i = 0; i < n; ++i) values[i * n + i] = 1 + (i % 7);
+    const spectrum = jacobiEigen({ n, values });
+    expect(spectrum.values).toHaveLength(n);
+    // The eigenvalues of a diagonal matrix are its diagonal, so the result is checkable too.
+    expect([...spectrum.values].sort((x, y) => x - y)).toEqual(
+      Array.from({ length: n }, (_unused, i) => 1 + (i % 7)).sort((x, y) => x - y),
+    );
   });
 
   it('does not flag the ordinary corpus, so the carve-out stays narrow', () => {

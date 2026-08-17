@@ -6342,3 +6342,39 @@ repairs for it to verify. The distinction is the campaign's audit
 structure itself and is not waived for good work.
 AD-75.2 The fix wave is COMPLETE at eleven cuts: §8 closed + four
 off-list finds, 5396 → 5430, every repair negative-controlled.
+
+## 2026-08-17 — W4 fix cut 12: a test I made too expensive (w4-fix)
+
+LOG read through AD-75 (cut 11 — sibling repairs accepted; the head stays live).
+
+[SELF-REPORTED DEFECT, mine, introduced in cut 10.]
+
+MINOR-13's ceiling test built a DENSE 330×330 matrix and ran a full eigendecomposition on it.
+Isolated it passed in a few seconds; under a loaded runner it took **33124 ms** and the suite
+came back `2 errors`. Caught by re-running `npm run verify` at the exact HEAD the re-gate is
+scoped over, which is the only reason it did not become the verifier's problem.
+
+The claim was never about rotations. The ceiling lives in `jacobiEigen`'s FIRST statement, where
+the off-diagonal threshold spreads all `n²` entries into one call — so the subject is the
+ARGUMENT COUNT and nothing else. The matrix is diagonal now: `n = 330` still means 108900
+arguments, and a matrix that is already diagonal exits the sweep loop on its first check. `O(n²)`
+work instead of `O(n³)` per sweep, and the eigenvalues become checkable as a bonus (a diagonal
+matrix's spectrum is its diagonal, asserted). **`corpusMath.test.ts`: 414 ms total, 124 ms in
+tests, against 33 s for that one case.**
+
+The control still fires on the cheaper input, and reporting it corrected the entry: restoring
+`Math.hypot(...a)` fails as `RangeError` on one run and `Maximum call stack size exceeded` on
+another, depending on how the engine reports the limit that time. Cut 10's LOG said `RangeError`
+flatly. The variability is itself the argument for removing the ceiling rather than documenting
+it — a limit whose very failure mode is not stable is not one anyone can reason about — and both
+the test and this record now say so.
+
+The lesson is the one this file's own history already carries (`editDimensions` went from 37.8 s
+to 12.4 s once the walk stopped pinning code paths both modes share): a test that is slow is a
+test that will be flaky under load, and the fix is almost always to isolate the claim rather than
+to raise the timeout. I shipped the opposite of that in cut 10 and it survived two full green
+verifies before a loaded machine exposed it.
+
+Gate: `npm run verify` GREEN — 126 files, **5430 passed**, 0 skipped, unchanged in count; suite
+duration back to 46.9 s from the 122.9 s of the failing run. Repo-wide `npx prettier --check .`
+clean; eslint clean.
