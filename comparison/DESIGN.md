@@ -2118,7 +2118,11 @@ readonly number[]>` plus an aggregate, with an explicit `n` field; index
   Ties: merge the pair whose `(min label, max label)` is lexicographically
   smallest; children ordered by smallest contained label. Dendrogram as plain
   data `{ merges: [{left, right, height, size}], order }` in the SciPy/hclust
-  convention. Flat clustering: PAM k-medoids (medoids are real performances —
+  convention. Flat clustering: PAM k-medoids — below
+  PAM_EXHAUSTIVE_LIMIT = 200000 candidate subsets the optimum is found
+  EXHAUSTIVELY and `Partition.exhaustive` says so; above it, BUILD+SWAP with the
+  measured caveat that the heuristic missed the optimum in 12/200 random corpora,
+  worst excess 41% (AD-62.1) — (medoids are real performances —
   "the most typical Hofmann"), BUILD/SWAP ties by lowest label; silhouette per k
   as guidance, with `silhouetteReliable: false` at N < 20 (A22 — the caveat gets
   a field rather than living in prose).
@@ -2158,17 +2162,16 @@ readonly number[]>` plus an aggregate, with an explicit `n` field; index
   fired, surfaced at corpus level so a heterogeneous folder announces itself
   before the dendrogram is read. This matters more as N grows, because a 200-file
   glob is where nobody inspects the inputs by hand.
-- **Corpus-average pseudo-performance (opt-in, AD-26.3).**
-  `corpusAverage?: boolean` adds one synthetic item to the matrix: the
-  per-dimension pointwise mean of the corpus's evaluated curves, labelled
-  `'«corpus average»'` and flagged `synthetic: true` in `items` so no consumer
-  mistakes it for a performance. Sapp (2007) is the precedent — the average
-  absorbs "minor and random relationships between performances" so only genuinely
-  distinctive matches survive — and it converts the corpus into the
-  _deviation-from-norm_ comparison that survey-lit L4 records as the single most
-  replicated methodological result in the field (Stamatatos & Widmer 2005:
-  82.5 % identification against the norm versus 52.5 % against the score). Plain
-  data, off by default, and stamped in the settings echo when on.
+- **Corpus-average pseudo-performance — REMOVED from v1 (AD-63.1, superseding
+  AD-26.3's pre-implementation ruling).** A pointwise-mean curve is not a
+  document: computing its row would require a SECOND integration path beside the
+  eleven verified per-dimension integrators (no §4 cap, no ⊥ handling, no
+  transition-aware split points), and its synthetic values would enter the same
+  matrix, dendrogram, MDS and medoid search as exact ones. The musicological need
+  Sapp (2007)/survey-lit L4 name — deviation-from-norm — is served with verified
+  numbers by the medoid profiles, whose "most typical" is a REAL performance. If
+  a consumer asks, the honest route is journaled (AD-63.1): exact grid integrals
+  for the piecewise-constant dimensions, null elsewhere.
 - **Per-piece percentile context (opt-in, AD-26.3).** `noiseFloor?: boolean`
   annotates each pair distance with where it sits in _this corpus's_ own
   distribution: `{ percentile, corpusMedian, corpusIqr, noiseFloor }`, the noise
@@ -2311,7 +2314,10 @@ export interface CompareMpmOptions extends ComparisonSettings {
   };
 }
 
-export interface DiffMpmOptions extends CompareMpmOptions {
+// AD-61.1: NOT a bare extends — `invariance` and `profile` are absent from the
+// diff surface entirely (absence over throw, AD-52.3a's form): edit pricing is
+// RAW by AD-59.3's theorem argument, and a DiffReport carries no profile.
+export interface DiffMpmOptions extends Omit<CompareMpmOptions, 'invariance' | 'profile'> {
   readonly moves?: boolean; // fragment/consolidate ops; W3+, default true
 }
 
@@ -2329,7 +2335,6 @@ export interface CompareCorpusOptions extends ComparisonSettings {
   readonly embeddingAxes?: number; // default 2
   readonly scape?: { readonly bins: number }; // omit for no scape (A2)
   /** Add the corpus-average pseudo-performance as an extra item (AD-26.3). */
-  readonly corpusAverage?: boolean; // default false
   /** Annotate pair distances with this corpus's own percentile context (AD-26.3). */
   readonly noiseFloor?: boolean; // default false
 }
@@ -2487,9 +2492,13 @@ export interface ComparisonReport {
      * a requirement rather than a comfort.
      */
     readonly epsilon: Record<
-      'step' | 'tempo' | 'bezier' | 'imprecision' | 'drift',
+      'step' | 'tempo' | 'bezier' | 'rubato' | 'imprecision' | 'drift',
       { readonly relative: number; readonly jnd: number }
     >;
+    // AD-60.1: `rubato` is the SIXTH family — its displacement integrates through
+    // rule 2c (structural u* + K=16 mesh) at AD-34.1's measured 2.718e-4 relative,
+    // so the `step` family's "no time-domain quadrature, exact 0" claim stays true
+    // of its genuinely exact members and stops being false of rubato.
   };
   readonly window: {
     readonly startQuarters: number;

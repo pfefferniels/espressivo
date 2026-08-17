@@ -5210,3 +5210,30 @@ indexes a triangular packing and a consumer who has to reverse-engineer it will 
 
 Gate: `npm run verify` GREEN — 124 files, **5358 passed**, 0 skipped (was 5346). Repo-wide
 `npx prettier --check .` clean; eslint clean.
+
+## 2026-08-17 — AD-65: cut D ratified; conductor executes doc delegations; channel fault [BINDING]
+
+cb32a88 accepted in full: the README with its recipes EXECUTED by tests —
+including two of the author's own claims falsified before commit (the
+invariance-space note's real firing rule; the Hudson recipe finding
+NOTHING as drafted, recalibrated to rank by asynchrony share with the
+Albert 475 ms lead as the honest worked example and the single-segment
+limit asserted so the caveat cannot rot). The novelty claim correctly
+withheld pending AD-26.5's W5 re-sweep. scapeIndex/SCAPE_MAX_BINS on the
+surface ratified.
+
+AD-65.1 CHANNEL FAULT recorded: w4-prod has referenced no ruling newer
+than AD-57 and none of the conductor's six messages across five cuts —
+the delegations of AD-60.1/61.1/62.1/63.1/64.1 went unexecuted despite
+AD-64's explicit stop instruction. Whatever the transport cause, the
+conductor has now EXECUTED the four doc-only delegations directly in this
+commit (DESIGN §9.3 sixth epsilon family; §8 corpusAverage bullet
+rewritten as removed with the AD-63.1 rationale; §9.2 DiffMpmOptions as
+Omit<…,'invariance'|'profile'> + corpusAverage option line removed; §8
+PAM exhaustive sentence) — doc-only, collision-free between the worker's
+cuts, justified by two failed delivery cycles. REMAINING WITH THE WORKER:
+the AD-60.3 synthetic pin (ornamentation mixed-state scope) and the §9.2
+pairwise-scape surface line — both fold into cut E, and cut E does NOT
+start until the worker ACKNOWLEDGES THIS ENTRY BY NUMBER in its next
+report. If the next report again shows no rulings received, the conductor
+partitions the remaining work differently.
