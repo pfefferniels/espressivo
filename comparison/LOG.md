@@ -6027,3 +6027,61 @@ siblings below other keys. AD-72.3 MAJOR-4's three-try fixture
 looking complete) and MAJOR-6's skipIf-plus-requireMember discipline
 (routing through the hook softened nothing) are accepted with the
 tries recorded.
+
+## 2026-08-17 — W4 fix cut 8: MAJOR-7 and MAJOR-8, the two vacuous tie rules (w4-fix)
+
+LOG read through AD-71 (fix cut 6 accepted; the validator-half principle). §8's item 9.
+
+**MAJOR-7 was already discharged by cuts 2 and 7 — verified rather than assumed, and recorded
+with the measurement.** The gate measured both perturbations of `exhaustiveMedoids`' tie clause
+failing NOTHING across all 124 W4 tests. Re-run against the tree as it now stands, over the whole
+of `tests/comparison` (1294 tests):
+
+    delete the tie clause  (first-enumerated wins)   3 failed   — was 0
+    `cost <= bestCost`     (last-enumerated wins)    3 failed   — was 0
+    invert the label direction (highest label wins)  2 failed   — was 0
+
+The third is one I added rather than one the gate named, and it is the one that matters most for
+the shape of the pin: the first two are caught by permutation-invariance alone, but a rule that
+picks the lexicographically LARGEST tied subset is perfectly permutation-invariant and simply
+publishes a different performer. Only a VALUE assertion catches that, and cut 2's
+`expect(medoids).toEqual(['L00','L01'])` does — it reports `['L02','L03']` under the inversion.
+An invariance test alone would have left half of AD-25.2 unpinned, which is worth saying plainly
+because "the tie rule is tested" would have been true either way. No new test: three independent
+controls on two existing ones is the pin, and a fourth assertion of the same fact would be
+padding.
+
+**MAJOR-8 — the replay's co-dated preference, pinned, and the module's prose corrected.**
+`editStateAt`'s rule is pinned directly (AD-58.3); `stateFromFlags` carries the identical
+comparator for the identical reason and reversing its `x.side - y.side` failed nothing.
+
+The module said the case was unreachable: "the delivered order is date-then-move-rank and
+`delete` outranks `insert`, so at a shared date A's instruction is gone before B's arrives".
+That argument is correct for ONE instruction per side at a date and false as soon as a date
+carries two — the DP substitutes one and DELETES the other, and the survivor is still there when
+the insertion lands. The prose now says so, with the measurement.
+
+[MEASURED] 4000 random pairs of the shape this file's generator produces, run under both rules
+and compared: **668 differ** in `replayedDelta`. One pair in six. The witness pinned is the
+SMALLEST of those 668, found by sorting the disagreements by size — two A instructions at one
+date (210 and 202 bpm) against a single B instruction at the same date (108 bpm):
+
+    shipped   replayedDelta = 5.635228232492866
+    reversed  replayedDelta = 6.3343452321856075     (+12 %)
+
+Pinned as a VALUE rather than as an ordering, because `stateFromFlags` is not exported and a test
+reaching in to inspect its output would pin the implementation instead of the behaviour — the
+same reasoning `editStateAt`'s own export note gives, applied to the function that could not be
+exported without adding surface for a test's convenience.
+
+The gate's own figures for this were fingerprint sums over a generator (365539.774112 against
+362418.129030). A single minimal pair with an exact expected value is the stronger pin: it fails
+with a readable number, it cannot drift with the generator, and it names the shape of the input
+that reaches the case.
+
+NEGATIVE CONTROLS, four, each failing exactly its own tests and restoring green: the three
+MAJOR-7 perturbations tabulated above, and reversing `stateFromFlags`' side rule → 1 failed of
+1295 in `tests/comparison`, `expected 6.3343452321856075 to be 5.635228232492866`.
+
+Gate: `npm run verify` GREEN — 126 files, **5418 passed**, 0 skipped (5417 before; one new test).
+Repo-wide `npx prettier --check .` clean; eslint clean on both touched files.

@@ -258,11 +258,19 @@ function compareDelivery<I extends EditableInstruction>(
  * instructions added to it, so B's sit after A's survivors — and since a co-dated predecessor
  * governs a zero-width span, that decides which of the two performs.
  *
- * It matters only where both sides coexist at one date, which the DP fill reaches and the
- * replay does not: the delivered order is date-then-move-rank and `delete` outranks `insert`,
- * so at a shared date A's instruction is gone before B's arrives. At `(n, m)` no A instruction
- * survives at all, so the final state is `b`'s own records in `b`'s own order and `Φ(S(n,m))` is
- * `Φ(B)` bit for bit — which is what makes §6.3's replay residual an exact 0.
+ * It matters where both sides coexist at one date. The DP fill reaches that, and **so does the
+ * replay** — this paragraph used to claim otherwise (W4 MAJOR-8), on the argument that the
+ * delivered order is date-then-move-rank with `delete` outranking `insert`, so at a shared date
+ * A's instruction is gone before B's arrives. That holds for one instruction per side and fails
+ * as soon as a date carries two: the DP substitutes one and DELETES the other, and the survivor
+ * is still there when the insertion lands. Measured over 4000 random pairs, **668** come out
+ * with a different `replayedDelta` under the reversed rule — one in six, not a corner.
+ * `stateFromFlags` below carries the same comparator for the same reason, and
+ * `editScript.test.ts` pins the smallest of those 668.
+ *
+ * At `(n, m)` no A instruction survives at all, so the final state is `b`'s own records in `b`'s
+ * own order and `Φ(S(n,m))` is `Φ(B)` bit for bit — which is what makes §6.3's replay residual
+ * an exact 0. That part was true and remains true.
  *
  * Exported so the ordering rule can be pinned where it is directly visible. Through the DP it is
  * observable only statistically — reversing the side preference moves some scripts on a random

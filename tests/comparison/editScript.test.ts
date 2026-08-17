@@ -193,6 +193,44 @@ describe('the DP minimizes the sequential objective', () => {
     // And it is the added one that performs, since its predecessor's span is zero-width.
     expect(valueAt(state, 0, Math.log(100))).toBe(added.value);
   });
+
+  /**
+   * The SAME rule inside the replay's own state function, which had no pin at all (W4 MAJOR-8).
+   *
+   * `editStateAt` is pinned directly above; `stateFromFlags` carries the identical comparator
+   * for the identical reason, and reversing its `x.side - y.side` failed NOTHING in the suite.
+   * The module's prose said the replay never reaches the co-dated case. Measured, it does: over
+   * 4000 random pairs of the shape this file's generator produces, **668** came out with a
+   * different `replayedDelta` under the reversed rule. Not a corner — one pair in six.
+   *
+   * The witness below is the SMALLEST of those 668, found by running the generator under both
+   * rules and sorting the disagreements by size: two A instructions at one date against a single
+   * B instruction at the same date. The DP substitutes one and deletes the other, so the replay
+   * passes through a state holding a surviving A instruction and an added B instruction at the
+   * same date — and which of them governs the interval after it is exactly what the side rule
+   * decides.
+   *
+   * Pinned as a VALUE rather than as an ordering, because the ordering inside `stateFromFlags`
+   * is not observable from outside `editScript` and a test that reached in to check it would be
+   * pinning the implementation rather than the behaviour.
+   */
+  it('prefers the surviving side at a co-dated date in the REPLAY too (MAJOR-8)', () => {
+    const a = [level(1, 210, 'a0'), level(1, 202, 'a1')];
+    const b = [level(1, 108, 'b0')];
+    const result = editScript(a, b, pricing());
+
+    // [MEASURED] 5.635228232492866 shipped, against 6.3343452321856075 with `x.side - y.side`
+    // reversed — a 12 % difference on a three-instruction pair.
+    expect(result.replayedDelta).toBe(5.635228232492866);
+    expect(result.replayResidual).toBe(0);
+
+    // Non-vacuity: the pair really does put a survivor and an addition at one date. Both A
+    // instructions share a date, so whichever the DP keeps is co-dated with B's insertion, and
+    // the replay must pass through that state on its way to B.
+    expect(a[0].dateTicks).toBe(a[1].dateTicks);
+    expect(b[0].dateTicks).toBe(a[0].dateTicks);
+    expect(result.steps.length).toBeGreaterThan(1);
+  });
 });
 
 describe('AD-5: pricing against A is not an upper bound, and the counterexample is §6.2’s own', () => {
