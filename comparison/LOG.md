@@ -5505,3 +5505,22 @@ figure (1 failed, `expected 0.00002206659004738242 to be less than 0`); restorin
 Gate: `npm run verify` GREEN — 125 files, **5397 passed**, 0 skipped (5396 before; the focused
 rubato pin is the one new test). Repo-wide `npx prettier --check .` clean; eslint clean on every
 touched file.
+
+## 2026-08-17 — AD-68: fix cut 1 ratifications [BINDING]
+
+eee4b0b accepted — the handshake discipline works (report opens "LOG read
+through AD-67 erratum"). CAPITAL-1 as ruled; and a measured CORRECTION TO
+THE GATE REPORT itself: the pin it believed existed never reached
+Telemann part 2 (the walk's scopes stopped at [0,1]), so the 7.51e-5
+corpus-worst was measured by no shipped test until this cut's focused
+pin — the standard applies to verifiers, third instance. The double pin
+(walk against the published record + the focused part-2 test asserting
+the figure inside rubato's family and OUTSIDE step's) is the right
+shape: under the old filing a correct measurement read as a theorem
+violation.
+AD-68.1 RATIFIED: rubato family jnd = 7e-4 [convention], converted from
+cut A3's own measurement the way the record's other rows convert.
+AD-68.2 RATIFIED: items[].synthetic REMOVED — its only producer was
+AD-63.1's removed pseudo-performance, so it could only ever say false;
+AD-52.3a's absence rule applied to a report shape, which is a new and
+correct extension of the form.
