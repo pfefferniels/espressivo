@@ -6399,3 +6399,35 @@ the moved HEAD and the self-reported defect join its pre-declared list.
 AD-75.1's structure held: the fixer accepted the boundary ruling without
 reservation and framed its final hand-off around what it could NOT close
 itself.
+
+## 2026-08-17 — AD-77: re-gate verdict — BLOCK on one regression [BINDING]
+
+Re-verification appended to W4-VERIFICATION.md. Every original finding is
+GENUINELY REPAIRED and held under attack far heavier than the defects
+that prompted them (161,280 pam calls at 0 variants; 32,896 (n,k) pairs
+at 0 disagreements; 4,080 near-tie-chain permutations at 0
+order-dependent results with the label seed proven load-bearing). The
+gate's own record grew three entries of the campaign's kind: the fixer's
+correction of the gate UPHELD (the rubato pin really never reached
+part 2 — "this gate was wrong on that point and the fixer was right");
+the gate IMPLICATING ITSELF on the NUL (its original audit "read"
+diff.ts with the separator rendered invisible — reviewable and read were
+different facts; four NUL instances from two agents in one wave argue
+the guard and its wider perimeter); and the verdict-against-the-tree
+method upgrade after coming within one probe re-run of BLOCKing an
+already-fixed defect.
+
+WHAT BLOCKS: MAJOR-R2, a regression in MAJOR-9's own repair — the corpus
+note dedupe keys on site.document, which is pair-relative and which the
+surrounding code's own comment declares meaningless at corpus level:
+order-dependent note counts; some-but-not-all-pairs notes naming only
+the first pair (strictly WORSE than pre-fix for length-mismatch); and
+permutation-variant message prefixes. The reasoning applied to the
+top-level field was not applied to the copy inside site. Repair is
+localized (corpus.ts:288-324) with the verifier's three-part recipe.
+
+AD-77.1 The micro-fix-wave is w4-fix's (standing by; owns MAJOR-9's
+repair; channel proven): MAJOR-R2 per the recipe + the R-5 MINORs as the
+report lists them, one or two cuts, full gates. AD-77.2 w4-verify then
+re-checks SCOPED to the note machinery + the R-5 items only. AD-77.3 On
+that pass, W4 CLOSES FINALLY.

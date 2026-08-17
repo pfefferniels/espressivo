@@ -616,3 +616,304 @@ by the recomputed date key, which is exactly what `invertSteps` exists to do. Th
 wrong, not the engine; it was rewritten to mirror from §6.4 independently and then passed. It is
 recorded because a gate that hides its own false positives is applying a standard it does not
 meet.
+
+---
+
+# Re-verification (fix wave) — 2026-08-17
+
+**Verdict: RE-GATE BLOCK**, on one MAJOR plus six MINORs. Every original finding re-probed is
+genuinely repaired, and the hardest repairs held under far heavier load than the defects that
+prompted them. What blocks is a regression introduced by one of the repairs.
+
+## R-0. Scope, and a moving target
+
+The convening brief gave HEAD `63df1d5`; scope was then amended to `eee4b0b..f6fe6a7` with HEAD
+`4ae5547`. **The tree moved twice during this audit**, and that changed a finding.
+
+At `63df1d5` this gate measured a MAJOR defect in `silhouette` and `profileOf` — the canonical
+summation applied to `partitionCost` and not to its two siblings. Before it could be written up,
+`32aa7c4` repaired exactly those sites. Recorded as **confirmed-and-already-repaired**, verified
+at scale in R-3 rather than taken on the fixer's word.
+
+Two process notes, both worth more than the finding:
+
+- The fixer reached the same two siblings independently, with the right reason — *"a defect a
+  verifier would rediscover is better fixed than queued."*
+- **This gate came within one probe re-run of publishing a BLOCK on an already-fixed defect.**
+  The re-run happened only because a test-count discrepancy (brief 5428, tree 5430) prompted a
+  HEAD check. A gate that verdicts against a brief rather than against the tree can be wrong;
+  confirming HEAD and re-running every live finding immediately before the verdict is now part of
+  this verifier's method. Every claim in R-1 below was re-measured at `4ae5547`.
+
+AD-76's calibration note — *"it passed here" is the claim this wave has shown to be weakest* — is
+adopted and acted on: R-3 replaces this gate's original single-window, n=3 evidence with a sweep
+over five corpus sizes and four windows.
+
+`npm run verify` at `4ae5547`, run by this verifier on the unmodified tree: **126 files, 5430
+passed, 0 skipped, green.** Tree clean; all probing in disposable copies.
+
+## R-1. What the fix wave got right
+
+Each original witness re-run at `4ae5547`, then attacked with new adversarial cases:
+
+- **CAPITAL-1 (epsilon family) — REPAIRED.** `rubato` is its own family at
+  `{relative: 2.718e-4, jnd: 7e-4}`; `step` keeps exact 0 for its remaining members. **The
+  fixer's correction of this gate is upheld**: the original report repeated a claim that
+  `editDimensions.test.ts` already pinned the 7.51e-5 shortfall; it did not — that walk carries
+  scope 0 only. A sweep over all vendored documents × performance pairs × scopes × 11 dimensions
+  (160 non-zero triples) puts the corpus-worst rubato shortfall at **7.509637e-5 at
+  telemann-grave p0v1 scope 2**, the scope the new focused test walks, inside the stamped epsilon
+  with 3.62× headroom. This gate was wrong on that point and the fixer was right.
+- **CAPITAL-2 (PAM tie key) — REPAIRED.** The 24-permutation witness yields one medoid set (was
+  20/4). Attack: 1600 tie-rich `(matrix, k)` cases, n=4..8, k=1..4, **161,280 `pam` calls** with
+  labels anti-correlated to index order → **0** permutation-variant medoids, clusters, `cost` or
+  `exhaustive`.
+- **CAPITAL-3 (embedding order fields) — REPAIRED for every order-valued output.** Seriation on
+  the original witness: 1 distinct order over 20 permutations (was 7). The non-transitive
+  comparator was attacked directly — near-tie chains at n = 3..200, 102 corpora, **4,080
+  permutations**, plus 2,880 random-blob permutations → 0 order-dependent results, because the
+  label seed makes the second sort's input a canonical function of the (label, coordinate)
+  multiset. Counterfactually the hazard is real (60/60 distinct orders at n ≥ 25 without the
+  seed), so the seed is load-bearing.
+- **MAJOR-2 (signed variance) — REPAIRED**; the identity
+  `Σ explainedVariance = 1 − 2·negativeEigenvalueMass` holds to **3.331e-16** over 90+ corpora
+  whenever all axes are retained.
+- **MAJOR-3 (`chooseCount` + pruning) — REPAIRED.** Full legal-domain sweep, **32,896 `(n,k)`
+  pairs** against exact BigInt `C(n,k)`: **0** disagreements post-fix against 841 pre-fix. The
+  51,054 ms case now runs in **4.6–19 ms**; removing the prune alone restores it to 39,130 ms, so
+  both halves are independently necessary exactly as the gate required.
+- **MAJOR-4 (ornamentation pin) — WRITTEN** and non-vacuous: all three wrong readings of
+  `containsA ? scopeOf(a) : scopeOf(b)` are caught, and a whole-directory run confirms the pin is
+  the only guard for the rule.
+- **MAJOR-8 (co-dated replay witness) — SOUND.** Reversing `stateFromFlags`' comparator fails
+  exactly one test; reversing `editStateAt` instead fails a **disjoint** set of five. Both
+  comparators are now independently pinned.
+- **MINOR-13's ceiling test (pre-declared, repaired in `f6fe6a7`) — SOUND AND CHEAP.** The claim
+  is the `Math.hypot` argument ceiling, and the diagonal 330×330 matrix isolates exactly that:
+  the spread happens in the first statement, and an already-diagonal matrix exits the sweep loop
+  immediately, so the test exercises the argument count in `O(n²)` instead of `O(n³)` per sweep.
+  **Non-vacuity verified by revert**: restoring `Math.hypot(...a)` in place of
+  `Math.sqrt(sumOfSquares)` fails the test in **6 ms** with `RangeError: Maximum call stack size
+  exceeded`. The claim is pinned, and the 33 s flake is gone.
+- **The NUL guard fires.** A raw NUL in `src/comparison/scape.ts` fails `tests/repoHygiene.test.ts`
+  with the correct path and 1-indexed line; 347 files walked.
+- **Untouched areas did not regress** (spot-checks at `4ae5547`): AD-5's theorem on every vendored
+  pair × 11 dimensions × moves on and off; `dCurve` still bit-identical to `compareMpm`'s `d_k`;
+  the mirror still symmetric with moves and an MSM.
+
+## R-2. AD-70.2 — `src/comparison/diff.ts`, first review (mandated head)
+
+Read in full as text, 608 lines. **Confirmed this file was never reviewable before:** the blob at
+`f74c32a` — the tree this gate audited — carries **two raw NUL bytes, at lines 86 and 90**. Line
+90 is `orientationKey`'s separator.
+
+**This gate is implicated and says so.** The original audit read `diff.ts` and quoted line 90, but
+the file-reading tool rendered the NUL as nothing, so the separator was transcribed as a space and
+the defect was invisible; `git diff` reported `Bin` and `grep` skipped the file silently. "The
+verifier read it" and "the file was reviewable" were different facts — precisely AD-70.1's harm.
+The same class then appeared twice more in this gate's own work: three NULs copied out of
+`clustering.ts` made `W4-VERIFICATION.md` binary until caught, and a fourth was typed into the
+shell command that first tried to append this section. Four instances in one wave, from two
+agents, is the argument for the standing guard and for widening its perimeter (MINOR-R4).
+
+The review found **no new defect**. The NUL repair is correct and documented in place. Two
+fix-wave additions here are right and worth naming: the `plausibility` and `estimate-degradation`
+notes (MAJOR-5), scoped by what the diff actually *consumes*; and `invertReport` now **re-sorting**
+notes rather than mapping in place — necessary because `sortNotes` orders on `document`, which the
+swap changes, and §6.4's claim is byte-identity rather than set equality.
+
+One latent item, checked and **not reachable**: `EditScript.part` and `site.partIndex` are copied
+unchanged through the mirror while `parts[]` swaps `numberA`/`numberB`. Measured on the vendored
+corpus, `numberA === numberB` for every matched part and the forward/reverse `script.part` sets
+are identical. Latent, not a finding.
+
+## R-3. AD-75 — the INDEPENDENT accumulation sweep (mandated head, re-run at scale)
+
+Per AD-75, the fixer's own sweep does not discharge this head, and its "safe by construction"
+claim for the remaining accumulations is checked here rather than inherited.
+
+**White-box.** Every accumulation in the four files, classified by this verifier:
+
+| site | accumulates over | order | verdict |
+|---|---|---|---|
+| `clustering.ts:400` `partitionCost` | items | label | repaired (AD-72.1) |
+| `clustering.ts:528` `silhouette` `a` | cluster members | label | repaired at `32aa7c4` |
+| `clustering.ts:535` `silhouette` `b` | cluster members | label | repaired at `32aa7c4` |
+| `corpus.ts:617` `profileOf.toMeanDistance` | items | label | repaired at `32aa7c4` |
+| `corpus.ts:357` normalization rebuild | dimensions, fixed cell | fixed dimension order | order-free — **measured** |
+| `corpus.ts:643` `contextOf` rank count | items | integer counting | order-free — **measured** |
+| `scape.ts:99,147,151,157,167,171,175` | bins / cells, fixed index | not item-indexed | order-free — **measured** |
+| `embedding.ts:154` `sumOfSquares` | matrix entries | index | inside the eigensolver |
+| `embedding.ts:161` `off` | matrix entries | index | inside the eigensolver |
+| **`embedding.ts:217-219` `doubleCentered`** | **items, per row and grand** | **index** | **a genuine caller-order sum** — *not* safe by construction; it is the root of the coordinate wobble |
+| `embedding.ts:270-271` `total` / `negative` | eigenvalues | canonical sorted order | order-free *given* the spectrum |
+
+One correction to the inherited picture: `doubleCentered`'s row and grand means are summed in
+item-index order over `n²` entries. That is the same disease as `partitionCost`'s, one layer down,
+and calling it "safe by construction" would be wrong — it is safe only in the sense that AD-67.1
+*narrowed the guarantee* to cover it. The distinction matters because the contract now carries
+what the code does not.
+
+**Black-box, and this is the load-bearing evidence.** Every published `CorpusReport` field
+fingerprinted by LABEL and compared bit-exactly between a canonical run and six random
+permutations, at **n = 3, 6, 12, 15, 19** across **four windows** (`{0,8}`, `{0,16}`, `{0,31}`,
+`{4,20}`), under `normalization: 'corpus'` with `k = 2` — **232,680 field comparisons**. The
+n = 12..19 range is deliberate: it is where the fixer measured 1242/2844 silhouette bit-differences
+before the repair, and where this gate's earlier single-window n=3 probe had no power.
+
+**Invariant at every n and every window** — `matrices.aggregate`, `matrices.byDimension` (all 11),
+`silhouette`, `clusters`, `medoids`, `profiles[].toMeanDistance`, `.toMedoid`, `.toMedoidSigned`,
+`seriationOrder`, `dendrogram.merges`, `dendrogram.order`, `silhouetteReliable`,
+`normalizationConstants`, `context`, `suspectPairs`, `scape`.
+
+**That is a much stronger confirmation of the two sibling repairs than the single-window probe
+that first found them**, and it independently confirms the fixer's order-free claim for the
+normalization rebuild, the percentile context and the scape.
+
+**Varying** — five fields, from two distinct roots:
+
+| field | root | disposition |
+|---|---|---|
+| `embedding.coordinates` | `doubleCentered` + Jacobi | MINOR-R1, inside AD-67.1's narrowed contract |
+| `embedding.eigenvalues` | same | same |
+| `embedding.explainedVariance` | same | same |
+| `embedding.negativeEigenvalueMass` | same | same; at n=6 a *material* value moves (0.04822332545907413 vs 0.0482233254590742) |
+| **`notes`** | **the note dedupe** | **MAJOR-R2 — a second, distinct root** |
+
+## R-4. MAJOR-R2 — the corpus note dedupe, three symptoms of one root
+
+**Still live at `4ae5547`.** The fix wave's repair for MAJOR-9 forwards every note kind, which was
+right, and then folds `N(N−1)/2` pairwise reports into corpus-level facts using a key that still
+contains pair-relative data. Three measured symptoms:
+
+**(a) The note count depends on item order.** From the sweep, at every corpus size:
+
+```
+n=3   100 vs 104      n=6   156 vs 152      n=12  316 vs 311
+n=15  434 vs 433      n=19  567 vs 563
+```
+
+Root: the dedupe key includes `entry.site`, and `ComparisonSiteRef.document` is `'a'`/`'b'` —
+*pair*-relative. The same document-level fact therefore lands in one bucket or two depending on
+whether that document was the `i` or the `j` of the pairs it appeared in, which is exactly what a
+permutation changes. Caught in the act on a three-item corpus:
+
+```
+[N] order 120: plausibility|tempo|itemIndex=1|site.document=a|C: @transition.to = 6 outside [10,400]
+[N] order 120: plausibility|tempo|itemIndex=1|site.document=b|C: @transition.to = 6 outside [10,400]
+```
+
+One fact about one document, emitted twice, distinguished only by a field the surrounding code
+already knows is meaningless at corpus level — its own comment says so: *"`document` is
+PAIR-relative and meaningless once the pair is gone; `itemIndex` is the corpus-level identity."*
+That reasoning was applied to the top-level field and not to the copy inside `site`.
+
+**(b) A note firing on some-but-not-all pairs names only the first and the rest vanish.**
+
+```
+[RG3] suspectPairs: ["tel-b|alb","tel-f|alb"]
+[RG3] length-mismatch notes: 1 — "tel-b | alb: the two documents may not encode the same piece…"
+```
+
+One report contradicts itself: `suspectPairs` names two pairs, `notes` names one. This is
+**strictly worse than the pre-fix code** for `length-mismatch` — the one kind the old filter did
+forward, one note per pair.
+
+**(c) The emitted message text varies under permutation**, because the `labelA | labelB` prefix is
+built from `pairs[0]` in enumeration order: the same note reads `"C | B: §4's cap bound in 4
+cells…"` under one order and `"B | C: …"` under another.
+
+*Repair*, one place, `corpus.ts:288-324`: resolve `site` to corpus-level identity before keying
+(drop `site.document` from the key, or rewrite it from the already-computed `itemIndex`); sort
+`pairs` canonically by label and join **all** of them in the prefix; de-duplicate `pairs` as a set
+so a note repeated inside one pairwise report cannot reach `=== totalPairs` and be promoted to an
+unprefixed corpus-wide statement. The `''` branch for a genuinely corpus-wide note is right and
+should stay.
+
+Severity **MAJOR**: symptom (b) is a wrong answer a consumer would act on, and (a) and (c) are
+P-C6 violations on a published field. It is now the **only** permutation-invariance failure
+outside AD-67.1's narrowed eigensolver contract.
+
+## R-5. MINORs
+
+- **MINOR-R1 — `embedding.coordinates`, `eigenvalues`, `explainedVariance` and
+  `negativeEigenvalueMass` vary under permutation.** Inside AD-67.1's narrowed contract, so not a
+  finding against the code — recorded because the *contract* now carries it and because one
+  instance is material rather than noise: at n=6, `negativeEigenvalueMass` moves in the 15th
+  significant figure of a value of 0.048, not merely around zero. A reader of these four fields
+  should be told they are not bit-reproducible under relabelling.
+- **MINOR-R2 — `articulation` sits under `step`, whose epsilon is exactly 0, and has a non-zero
+  shortfall.** Measured at `4ae5547`: telemann p1v2, `d = 4391`, `scriptCost = 4390.999999999999`,
+  shortfall **2.07e-16**. Same *class* as CAPITAL-1, eleven orders of magnitude smaller — float
+  noise, not quadrature error. But `step`'s stamped 0 is what a consumer checks the theorem
+  against, and 0 admits no noise. Either give every family a documented ulp floor or stop claiming
+  exact 0 for quantities exact only in ℝ.
+- **MINOR-R3 — `DiffMpmOptions`' type half is weaker than its docstring.** Excess-property
+  checking does not reach non-literals, so `diffMpm({ a, ...sharedSettings })` and
+  `diffMpm(wideOptionsVariable)` compile clean and silently drop
+  `weights`/`scape`/`invariance`/`profile`. §9.2's rationale for `ComparisonSettings` — "so a
+  corpus and a pair can be configured identically" — makes the shared-bag spread the *intended*
+  usage. *Repair:* declare the four keys as `?: never` rather than omitting them. The runtime half
+  is correct and well tested.
+- **MINOR-R4 — the NUL guard's perimeter misses the campaign's own records.** It walks `src/` and
+  `tests/` only; `comparison/DESIGN.md`, `comparison/LOG.md`, `README.md` and `docs/` are
+  unguarded — the documents the campaign is reviewed *from*. This gate's own deliverable
+  demonstrated the gap by acquiring three NULs. Secondary: the fixture exclusion tests
+  `entry === 'fixtures'`, missing `fixtures-v3` and `fixtures-layers-to-staffs`.
+- **MINOR-R5 — the inconsistent label comparator now has three instances.** `labelOrder`
+  (`clustering.ts:367-369`, `lower(x, y) ? -1 : 1`), `exhaustiveMedoids`' key sort, and — added by
+  the sibling repair — `silhouette`'s member sort (`clustering.ts:521`,
+  `(labels[x] ?? '') < (labels[y] ?? '') ? -1 : 1`, which also bypasses `lower()` for a raw `<`).
+  Each returns `1` in both directions for equal labels, so a direct caller with duplicate labels
+  gets order-dependent results — measured, 2 distinct costs over 200 permutations at n=12. Not
+  reachable through `compareMpmCorpus`, which rejects duplicate labels first. *Repair:*
+  `lower(x, y) ? -1 : lower(y, x) ? 1 : x - y` at all three. Worth doing with MAJOR-R2: it is the
+  unswept residue of the repair that closed CAPITAL-2, and the sibling repair propagated it.
+- **MINOR-R6 — the ornamentation tie-break is still unpinned.** A fifth reading of the scope rule
+  that leaves both endpoints correct but gives mixed states B's scope passes all 63 tests while
+  moving `scriptCost` from 38.667 to 30.667. One line:
+  `expect(script.scriptCost).toBeCloseTo(38.666666666666664, 9)`.
+- **Performance, recorded not blocking:** the `chooseCount` symmetry fix opens a legal slow region
+  it does not budget for — `pam(n=256, k=254)` is exhaustive and takes **45 s** of synchronous
+  CPU, where pre-fix it returned instantly with a wrong flag. Tempered by the 32,640 pairwise
+  comparisons needed to reach n=256 at all.
+
+## R-6. Gate hygiene — this verifier's own instruments
+
+Three items, recorded rather than quietly fixed.
+
+`probe-two.test.ts`'s P9 is a **vacuous green**: it calls the stale four-argument
+`pam(matrix, n, k, labels)` against the current three-argument signature, yielding empty medoid
+strings and passing on a set of size 1. The corrected witness in `probe-three.test.ts` is what
+actually found CAPITAL-2; the broken copy was left in place. A gate shipping a vacuous probe has
+no standing to report vacuity in others.
+
+The near-miss in R-0: a BLOCK was drafted on an already-repaired defect and caught only by a
+test-count mismatch.
+
+And the one this head exists to correct: **this gate's original evidence for the summation
+siblings was a single window at n=3**, which had no power at the sizes where the defect is dense.
+AD-75's ruling that a fixer's own sweep cannot discharge the verification head is right, and so is
+AD-76's note that single-window evidence on float-association defects is weak — R-3 is the form
+that answer needed, and it is the form this verifier should have used the first time.
+
+## R-7. Verdict
+
+**RE-GATE BLOCK**, on one item:
+
+1. **MAJOR-R2** — the corpus note dedupe keys on pair-relative `site.document` and labels from
+   `pairs[0]`, so the note count, the note set and the message text all depend on the order the
+   caller listed the items in, and a note firing on some-but-not-all pairs loses every pair but
+   the first. `corpus.ts:288-324`.
+
+MINOR-R2 and MINOR-R5 belong in the same pass — each is one line, and each is the unswept residue
+of a defect the wave declared closed. MINOR-R1, R3, R4 and R6 can follow.
+
+The wave's substance is sound: every CAPITAL and MAJOR from the original gate is genuinely
+repaired, and the sweep in R-3 puts sixteen published corpus fields beyond permutation doubt at
+five corpus sizes and four windows — evidence the original gate never produced. The pattern worth
+carrying forward is the one AD-72.2 named and this head confirms: repairs land at the site that
+was named and not at its siblings — `partitionCost` but not `silhouette`, `rubato` but not
+`step`'s remaining members, `pam`'s tie key but not `labelOrder`'s comparator, and the note repair
+fixed `document` at the top level while leaving the same field inside `site`. Two of those the
+fixer swept unprompted, which is the habit to keep.
