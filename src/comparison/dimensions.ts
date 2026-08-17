@@ -594,6 +594,8 @@ export interface EditScriptOptions {
    * optimization whose reference has been deleted cannot be checked again.
    */
   readonly localize?: boolean;
+  /** A-Q5's `fragment`/`consolidate` moves; off unless the caller asks (§6.1's `moves`). */
+  readonly moves?: boolean;
 }
 
 /** One dimension's §6 script over one scope, with the lower bound it is a theorem about. */
@@ -679,11 +681,16 @@ function stateEditScript<S>(
   const localizable =
     options.localize !== false && plan.localize(represent(instructionsA), represent(instructionsB));
 
-  const script = editScript<EditInstruction, S>(instructionsA, instructionsB, {
-    represent,
-    norm: (x, y, previous, next) =>
-      plan.norm(x, y, localizable ? normWindow(previous, next) : settings.window),
-  });
+  const script = editScript<EditInstruction, S>(
+    instructionsA,
+    instructionsB,
+    {
+      represent,
+      norm: (x, y, previous, next) =>
+        plan.norm(x, y, localizable ? normWindow(previous, next) : settings.window),
+    },
+    { moves: options.moves },
+  );
 
   return { dimension: plan.dimension, container: plan.container, script };
 }

@@ -380,6 +380,15 @@ export interface EditOp {
   readonly measureA: MeasurePosition | null;
   readonly measureB: MeasurePosition | null;
   readonly attributes: readonly EditOpAttribute[];
+  /**
+   * How many instructions the op consumes on each side (A-Q5).
+   *
+   * `1` and `1` for a substitution, `1` and `0` for a deletion, and the interesting case is a
+   * `fragment` or `consolidate`, where one of the two is greater: an op that said "consolidate"
+   * without saying how many were consolidated would not be actionable. §9.3 does not declare
+   * the field, and the two move kinds it DOES declare are what make it necessary.
+   */
+  readonly count: { readonly a: number; readonly b: number };
   /** JND·quarters, sequential (§6.2). */
   readonly cost: number;
   readonly free: boolean;

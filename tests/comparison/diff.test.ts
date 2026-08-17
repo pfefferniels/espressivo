@@ -43,7 +43,7 @@ const ALBERT = fixture('albert-du-mein-einzig-licht');
 function mirrorOf(report: DiffReport): unknown {
   const swapOp = (op: EditOp) => ({
     ...op,
-    op: op.op === 'insert' ? 'delete' : op.op === 'delete' ? 'insert' : op.op,
+    op: INVERSE[op.op],
     site: { ...op.site, document: op.site.document === 'a' ? 'b' : 'a' },
     dateA: op.dateB,
     dateB: op.dateA,
@@ -54,6 +54,7 @@ function mirrorOf(report: DiffReport): unknown {
       valueA: entry.valueB,
       valueB: entry.valueA,
     })),
+    count: { a: op.count.b, b: op.count.a },
   });
 
   return {
@@ -101,6 +102,8 @@ function mirrorOf(report: DiffReport): unknown {
           ...script.opCounts,
           insert: script.opCounts.delete,
           delete: script.opCounts.insert,
+          fragment: script.opCounts.consolidate,
+          consolidate: script.opCounts.fragment,
         },
       };
     }),
@@ -111,6 +114,15 @@ function mirrorOf(report: DiffReport): unknown {
     })),
   };
 }
+
+/** A-Q5's pair inverts with the plain one: one-became-several read backwards is the reverse. */
+const INVERSE: Readonly<Record<string, EditOp['op']>> = {
+  insert: 'delete',
+  delete: 'insert',
+  substitute: 'substitute',
+  fragment: 'consolidate',
+  consolidate: 'fragment',
+};
 
 const MOVE_RANK: Readonly<Record<string, number>> = {
   substitute: 0,
@@ -133,6 +145,9 @@ const MOVE_RANK: Readonly<Record<string, number>> = {
  */
 const SHORT = { start: 0, end: 16 } as const;
 
+/** Long enough to contain groups worth reading as one edit, short enough to run in under a second. */
+const MOVES = { start: 0, end: 32 } as const;
+
 describe('P-C2: diffMpm(a, b) and diffMpm(b, a) are exact mirrors (§6.4)', () => {
   const pairs: readonly (readonly [XmlText, string | number, string | number])[] = [
     [TELEMANN, 0, 1],
@@ -147,6 +162,32 @@ describe('P-C2: diffMpm(a, b) and diffMpm(b, a) are exact mirrors (§6.4)', () =
       const reverse = diffMpm({ a: document, performanceA: b, performanceB: a, window: SHORT });
       expect(JSON.stringify(reverse.report)).toBe(JSON.stringify(mirrorOf(forward.report)));
     }
+  });
+
+  it('mirrors a MOVED script byte for byte, not only in its counts', () => {
+    // The `moves: true` mirror, asserted the way the plain one is: on the whole serialization.
+    // The counts-only version of this test passed while `opCounts.fragment` was un-swapped, so
+    // the byte comparison is what makes the claim complete.
+    const forward = diffMpm({
+      a: TELEMANN,
+      performanceA: 0,
+      performanceB: 2,
+      window: MOVES,
+      moves: true,
+    });
+    const reverse = diffMpm({
+      a: TELEMANN,
+      performanceA: 2,
+      performanceB: 0,
+      window: MOVES,
+      moves: true,
+    });
+    expect(JSON.stringify(reverse.report)).toBe(JSON.stringify(mirrorOf(forward.report)));
+    const moved = forward.report.scripts.reduce(
+      (total, script) => total + script.opCounts.fragment + script.opCounts.consolidate,
+      0,
+    );
+    expect(moved).toBeGreaterThan(0);
   });
 
   it('mirrors over a full window too, so the short one is not hiding a field', () => {
@@ -352,17 +393,72 @@ describe('the surface (§9.4)', () => {
     );
   });
 
-  it('notes a `moves` request rather than silently ignoring it', () => {
-    const report = diffMpm({
+  it('honours `moves`, and the plain script is what a caller gets unasked (A-Q5)', () => {
+    // A THIRTY-TWO quarter window, and the size is measured rather than chosen: the 16-quarter
+    // window this file uses elsewhere contains no group worth reading as one edit (a test that
+    // asserted otherwise there would have been asserting something false about the data), while
+    // the full score window costs 22 s a call — enough to time out under a loaded runner, which
+    // it did. Thirty-two quarters carries both move kinds at under a second.
+    const base = { a: TELEMANN, performanceA: 0, performanceB: 2, window: MOVES } as const;
+    const plain = diffMpm(base).report;
+    const withMoves = diffMpm({ ...base, moves: true }).report;
+
+    // Off by default: the two move kinds are absent, and every op consumes at most one a side.
+    for (const script of plain.scripts) {
+      expect(script.opCounts.fragment).toBe(0);
+      expect(script.opCounts.consolidate).toBe(0);
+      for (const op of script.ops) {
+        expect(op.count.a).toBeLessThanOrEqual(1);
+        expect(op.count.b).toBeLessThanOrEqual(1);
+      }
+    }
+
+    // On, a move can only LOWER the total: it replaces a sequence of plain ops with ONE state
+    // transition, which the L¹ triangle inequality bounds by their sum.
+    let moved = 0;
+    for (const dimension of COMPARISON_DIMENSIONS) {
+      expect(withMoves.dimensions[dimension].scriptCost).toBeLessThanOrEqual(
+        plain.dimensions[dimension].scriptCost * (1 + 1e-9) + 1e-12,
+      );
+      expect(withMoves.dimensions[dimension].replayResidual).toBe(0);
+    }
+    for (const script of withMoves.scripts) {
+      moved += script.opCounts.fragment + script.opCounts.consolidate;
+      for (const op of script.ops)
+        if (op.op === 'fragment' || op.op === 'consolidate')
+          expect(Math.max(op.count.a, op.count.b)).toBeGreaterThan(1);
+    }
+    // [MEASURED] Non-vacuity on REAL data, and the size of what the vocabulary buys: this pair
+    // yields **5 fragments and 1 consolidate** over this window, and the script gets **88.22
+    // JND·quarters** cheaper — which is the point of the move kinds rather than a curiosity.
+    // Over the FULL score window the same pairing yields 9 and 2 and saves 4675.56, so the
+    // effect grows with the piece rather than being an artefact of a short window.
+    expect(moved).toBe(6);
+    let saved = 0;
+    for (const dimension of COMPARISON_DIMENSIONS)
+      saved += plain.dimensions[dimension].scriptCost - withMoves.dimensions[dimension].scriptCost;
+    expect(saved).toBeCloseTo(88.2172, 3);
+  });
+
+  it('mirrors a moved script too, fragment against consolidate', () => {
+    const forward = diffMpm({
       a: TELEMANN,
       performanceA: 0,
-      performanceB: 1,
+      performanceB: 2,
+      window: MOVES,
       moves: true,
-      window: SHORT,
     }).report;
-    expect(report.notes.some((entry) => entry.kind === 'option-unusable')).toBe(true);
-    const quiet = diffMpm({ a: TELEMANN, performanceA: 0, performanceB: 1, window: SHORT }).report;
-    expect(quiet.notes.some((entry) => entry.kind === 'option-unusable')).toBe(false);
+    const reverse = diffMpm({
+      a: TELEMANN,
+      performanceA: 2,
+      performanceB: 0,
+      window: MOVES,
+      moves: true,
+    }).report;
+    const count = (report: DiffReport, kind: 'fragment' | 'consolidate') =>
+      report.scripts.reduce((total, script) => total + script.opCounts[kind], 0);
+    expect(count(reverse, 'consolidate')).toBe(count(forward, 'fragment'));
+    expect(count(reverse, 'fragment')).toBe(count(forward, 'consolidate'));
   });
 
   it('is deterministic across calls', () => {

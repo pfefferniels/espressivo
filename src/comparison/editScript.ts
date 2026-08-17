@@ -94,16 +94,35 @@ export interface EditPricing<I extends EditableInstruction, S> {
   readonly norm: (x: S, y: S, previous: readonly I[], next: readonly I[]) => number;
 }
 
-export type EditMove = 'substitute' | 'delete' | 'insert';
+export type EditMove = 'substitute' | 'delete' | 'insert' | 'fragment' | 'consolidate';
+
+/**
+ * How many instructions a `fragment` or `consolidate` may span [convention].
+ *
+ * The DP gains `O(nm·k)` transitions for a span bound of `k`, so this is a cost knob as well as
+ * a semantic one. Four covers the case §6.2 names — "consolidating five steps into one
+ * transition" is four steps plus the survivor — and a longer run is expressible as a move
+ * followed by plain ops at a price the DP compares against.
+ */
+export const MAX_MOVE_SPAN = 4;
 
 /** One step of the script, before a dimension dresses it as a §9.3 `EditOp`. */
 export interface EditStep<I extends EditableInstruction> {
   readonly move: EditMove;
-  /** The A-side instruction, for `delete` and `substitute`; null for `insert`. */
+  /** The FIRST A-side instruction the move consumes; null where it consumes none. */
   readonly a: I | null;
-  /** The B-side instruction, for `insert` and `substitute`; null for `delete`. */
+  /** The FIRST B-side instruction the move produces; null where it produces none. */
   readonly b: I | null;
-  /** Position in the A sequence, or null where the move consumes none. */
+  /**
+   * Every instruction the move consumes on each side, in sequence order.
+   *
+   * A plain op has at most one of each; a `consolidate` has several `aItems` and one `bItems`,
+   * a `fragment` the reverse. An op that said "consolidate" without saying HOW MANY would not
+   * be actionable, which is why the counts travel rather than being derivable from the dates.
+   */
+  readonly aItems: readonly I[];
+  readonly bItems: readonly I[];
+  /** Position of {@link a} in the A sequence, or null where the move consumes none. */
   readonly indexA: number | null;
   readonly indexB: number | null;
   /** The SEQUENTIAL price in the delivered (date) order — §6.2, in JND·quarters. */
@@ -146,6 +165,24 @@ export interface EditOpCounts {
   readonly free: number;
 }
 
+/** Knobs the search takes. */
+export interface EditScriptSearch {
+  /**
+   * Whether `fragment` and `consolidate` are in the move set (A-Q5, §6.1's `moves`).
+   *
+   * They land AFTER the plain script because that is the order A-Q5 rules and because they are
+   * only meaningful under it: a move is emitted where treating a group as ONE edit is strictly
+   * cheaper than any sequence of plain ops, and "strictly cheaper" is a claim the plain pricing
+   * has to be in place to make. The op kind is therefore a statement about the PRICE — these
+   * instructions are best read as one gesture — and not a claim about what the author did.
+   *
+   * By the `L¹` triangle inequality a move is never dearer than the plain decomposition it
+   * replaces, so enabling them can only lower `scriptCost`, never raise it: the script moves
+   * TOWARD the lower bound as its vocabulary grows, and `reworking` shrinks with it.
+   */
+  readonly moves?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // The delivered order
 // ---------------------------------------------------------------------------
@@ -165,13 +202,21 @@ function dateKeyOf<I extends EditableInstruction>(step: {
 }
 
 /** Move order for the delivery tie-break: the traceback precedence, spelled as a rank. */
-const MOVE_RANK: Readonly<Record<EditMove, number>> = { substitute: 0, delete: 1, insert: 2 };
+const MOVE_RANK: Readonly<Record<EditMove, number>> = {
+  substitute: 0,
+  delete: 1,
+  insert: 2,
+  fragment: 3,
+  consolidate: 4,
+};
 
 /** Everything the delivery order reads; both the traced steps and the inverted ones have it. */
 interface DeliverableStep<I extends EditableInstruction> {
   readonly move: EditMove;
   readonly a: I | null;
   readonly b: I | null;
+  readonly aItems: readonly I[];
+  readonly bItems: readonly I[];
   readonly indexA: number | null;
   readonly indexB: number | null;
 }
@@ -279,6 +324,10 @@ const FROM_NONE = 0;
 const FROM_SUBSTITUTE = 1;
 const FROM_DELETE = 2;
 const FROM_INSERT = 3;
+/** One A instruction became several B ones; the span travels in a parallel array. */
+const FROM_FRAGMENT = 4;
+/** Several A instructions became one B; likewise. */
+const FROM_CONSOLIDATE = 5;
 
 /**
  * The minimal-cost monotone edit script from `a` to `b` under sequential pricing.
@@ -290,6 +339,7 @@ export function editScript<I extends EditableInstruction, S>(
   a: readonly I[],
   b: readonly I[],
   pricing: EditPricing<I, S>,
+  search: EditScriptSearch = {},
 ): EditScriptResult<I> {
   const n = a.length;
   const m = b.length;
@@ -310,6 +360,9 @@ export function editScript<I extends EditableInstruction, S>(
 
   const cost = new Float64Array((n + 1) * width);
   const from = new Int8Array((n + 1) * width);
+  // How many instructions the move consumed on its MANY side; 1 for every plain op.
+  const span = new Int8Array((n + 1) * width).fill(1);
+  const moves = search.moves === true;
 
   for (let i = 0; i <= n; ++i)
     for (let j = 0; j <= m; ++j) {
@@ -363,29 +416,111 @@ export function editScript<I extends EditableInstruction, S>(
         }
       }
 
+      // A-Q5's two, and they rank BELOW the plain ops so a tie keeps the primitive. They can
+      // only win strictly, which is what makes the op kind a statement about the price.
+      let bestSpan = 1;
+      if (moves) {
+        // `fragment`: one `a[i-1]` became `b[j-k .. j)`, `k ≥ 2`.
+        for (let k = 2; k <= MAX_MOVE_SPAN && i > 0 && j >= k; ++k) {
+          const candidate =
+            cost[(i - 1) * width + (j - k)] +
+            pricing.norm(
+              phi(i - 1, j - k),
+              phi(i, j),
+              editStateAt(a, b, i - 1, j - k),
+              editStateAt(a, b, i, j),
+            );
+          if (candidate < best) {
+            best = candidate;
+            bestFrom = FROM_FRAGMENT;
+            bestSpan = k;
+          }
+        }
+        // `consolidate`: `a[i-k .. i)` became one `b[j-1]`.
+        for (let k = 2; k <= MAX_MOVE_SPAN && j > 0 && i >= k; ++k) {
+          const candidate =
+            cost[(i - k) * width + (j - 1)] +
+            pricing.norm(
+              phi(i - k, j - 1),
+              phi(i, j),
+              editStateAt(a, b, i - k, j - 1),
+              editStateAt(a, b, i, j),
+            );
+          if (candidate < best) {
+            best = candidate;
+            bestFrom = FROM_CONSOLIDATE;
+            bestSpan = k;
+          }
+        }
+      }
+
       cost[i * width + j] = best;
       from[i * width + j] = bestFrom;
+      span[i * width + j] = bestSpan;
     }
 
   // Traceback, then delivery order, then the replay that prices what is delivered.
   const traced: DeliverableStep<I>[] = [];
   for (let i = n, j = m; i > 0 || j > 0;) {
     const code = from[i * width + j];
+    const k = span[i * width + j];
     if (code === FROM_SUBSTITUTE) {
       traced.push({
         move: 'substitute',
         a: a[i - 1],
         b: b[j - 1],
+        aItems: [a[i - 1]],
+        bItems: [b[j - 1]],
         indexA: i - 1,
         indexB: j - 1,
       });
       i -= 1;
       j -= 1;
     } else if (code === FROM_DELETE) {
-      traced.push({ move: 'delete', a: a[i - 1], b: null, indexA: i - 1, indexB: null });
+      traced.push({
+        move: 'delete',
+        a: a[i - 1],
+        b: null,
+        aItems: [a[i - 1]],
+        bItems: [],
+        indexA: i - 1,
+        indexB: null,
+      });
       i -= 1;
+    } else if (code === FROM_FRAGMENT) {
+      traced.push({
+        move: 'fragment',
+        a: a[i - 1],
+        b: b[j - k],
+        aItems: [a[i - 1]],
+        bItems: b.slice(j - k, j),
+        indexA: i - 1,
+        indexB: j - k,
+      });
+      i -= 1;
+      j -= k;
+    } else if (code === FROM_CONSOLIDATE) {
+      traced.push({
+        move: 'consolidate',
+        a: a[i - k],
+        b: b[j - 1],
+        aItems: a.slice(i - k, i),
+        bItems: [b[j - 1]],
+        indexA: i - k,
+        indexB: j - 1,
+      });
+      i -= k;
+      j -= 1;
     } else {
-      traced.push({ move: 'insert', a: null, b: b[j - 1], indexA: null, indexB: j - 1 });
+      traced.push({
+        move: 'insert',
+        a: null,
+        b: b[j - 1],
+        aItems: [],
+        bItems: [b[j - 1]],
+        indexA: null,
+        indexB: j - 1,
+      });
       j -= 1;
     }
   }
@@ -400,8 +535,10 @@ export function editScript<I extends EditableInstruction, S>(
   const replayCosts: number[] = [];
   let replayed = 0;
   for (const step of ordered) {
-    if (step.indexA !== null) removedA[step.indexA] = true;
-    if (step.indexB !== null) addedB[step.indexB] = true;
+    for (let offset = 0; offset < step.aItems.length; ++offset)
+      removedA[(step.indexA ?? 0) + offset] = true;
+    for (let offset = 0; offset < step.bItems.length; ++offset)
+      addedB[(step.indexB ?? 0) + offset] = true;
     const nextInstructions = stateFromFlags(a, b, removedA, addedB);
     const next = pricing.represent(nextInstructions);
     const price = pricing.norm(state, next, instructions, nextInstructions);
@@ -422,6 +559,8 @@ export function editScript<I extends EditableInstruction, S>(
 
   const steps: EditStep<I>[] = ordered.map((step, index) => ({
     move: step.move,
+    aItems: step.aItems,
+    bItems: step.bItems,
     a: step.a,
     b: step.b,
     indexA: step.indexA,
@@ -453,8 +592,8 @@ function countOps<I extends EditableInstruction>(steps: readonly EditStep<I>[]):
     insert: steps.filter((step) => step.move === 'insert').length,
     delete: steps.filter((step) => step.move === 'delete').length,
     substitute: steps.filter((step) => step.move === 'substitute').length,
-    fragment: 0,
-    consolidate: 0,
+    fragment: steps.filter((step) => step.move === 'fragment').length,
+    consolidate: steps.filter((step) => step.move === 'consolidate').length,
     free: steps.filter((step) => step.free).length,
   };
 }
@@ -482,12 +621,17 @@ export function invertSteps<I extends EditableInstruction>(
     insert: 'delete',
     delete: 'insert',
     substitute: 'substitute',
+    // One became several, read the other way round, is several became one.
+    fragment: 'consolidate',
+    consolidate: 'fragment',
   };
   const flipped: (DeliverableStep<I> & { readonly cost: number; readonly free: boolean })[] =
     steps.map((step) => ({
       move: inverse[step.move],
       a: step.b,
       b: step.a,
+      aItems: step.bItems,
+      bItems: step.aItems,
       indexA: step.indexB,
       indexB: step.indexA,
       cost: step.cost,

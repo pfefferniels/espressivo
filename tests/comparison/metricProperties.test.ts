@@ -106,16 +106,18 @@ function distance(dimension: Dimension, x: AdversarialMember, y: AdversarialMemb
 }
 
 describe('the adversarial family itself', () => {
-  it('has twenty-six members with distinct hazards', () => {
-    // Twelve after cut 1, seventeen after cut 4, twenty-six after the W3 fix wave — each cut
-    // extends the family with the failure surfaces it opens (AD-33.5's standing policy), and
-    // this count is what makes that an obligation rather than an intention. The nine added at
-    // MAJOR-1 are the surfaces of the five dimensions the suite never ran on: rubato's ordinary
-    // warp and its first ⊥ route, the two event dimensions' ordinary, offset and incomparable
-    // cases, articulation's default step function, and the two imprecision domains that had no
-    // member at all.
-    expect(ADVERSARIAL_FAMILY).toHaveLength(26);
-    expect(new Set(ADVERSARIAL_FAMILY.map((member) => member.name)).size).toBe(26);
+  it('has twenty-eight members with distinct hazards', () => {
+    // Twelve after cut 1, seventeen after cut 4, twenty-six after the W3 fix wave, twenty-eight
+    // after W4 — each cut extends the family with the failure surfaces it opens (AD-33.5's
+    // standing policy), and this count is what makes that an obligation rather than an
+    // intention. The nine added at MAJOR-1 are the surfaces of the five dimensions the suite
+    // never ran on: rubato's ordinary warp and its first ⊥ route, the two event dimensions'
+    // ordinary, offset and incomparable cases, articulation's default step function, and the two
+    // imprecision domains that had no member at all. W4's two are a PAIR — the same map text
+    // resolving through different `tempoDef`s — which is the surface §6's edit path opened and
+    // which every other member misses by stating its levels as literals.
+    expect(ADVERSARIAL_FAMILY).toHaveLength(28);
+    expect(new Set(ADVERSARIAL_FAMILY.map((member) => member.name)).size).toBe(28);
   });
 
   it('is not degenerate: every member differs from every other in some dimension', () => {

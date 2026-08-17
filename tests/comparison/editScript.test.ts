@@ -18,6 +18,7 @@ import {
   editScript,
   editStateAt,
   invertSteps,
+  MAX_MOVE_SPAN,
   type EditPricing,
   type EditStep,
 } from '../../src/comparison/editScript.js';
@@ -412,6 +413,146 @@ describe('the mirror is an inversion, not a second traceback (§6.4, AD-21)', ()
     const forward = editScript(a, b, pricing());
     const mirrored = invertSteps(forward.steps);
     expect(mirrored.map((step) => step.move)).not.toEqual(forward.steps.map((step) => step.move));
+  });
+});
+
+describe('A-Q5’s moves: fragment and consolidate', () => {
+  // One instruction becoming two, where the plain decomposition has to OVERSHOOT. `[60@2]`
+  // performs 60 from bar 2 onward; `[140@2, 60@3]` performs 140 for one quarter and then 60.
+  // Read as one edit that costs the single quarter that differs. Read as substitute-then-insert
+  // it has to pass through `[140@2]`, which performs 140 for the whole rest of the window before
+  // the insertion takes it back — and the slack is exactly what a move exists to avoid paying.
+  const single = [level(2, 60, 'p')];
+  const pair = [level(2, 140, 'x'), level(3, 60, 'y')];
+  /** `|ln 140 − ln 60|`, the one difference the whole example is made of. */
+  const L = Math.log(140 / 60);
+
+  it('finds a fragment where the plain path has to overshoot', () => {
+    const plain = editScript(single, pair, pricing());
+    const withMoves = editScript(single, pair, pricing(), { moves: true });
+
+    expect(withMoves.opCounts.fragment).toBe(1);
+    expect(withMoves.scriptCost).toBeLessThan(plain.scriptCost);
+    // One quarter against fifteen — and the move reaches the lower bound exactly.
+    expect(withMoves.scriptCost).toBeCloseTo(L, 12);
+    expect(withMoves.directDistance).toBeCloseTo(L, 12);
+    expect(plain.scriptCost).toBeCloseTo(15 * L, 12);
+
+    const move = withMoves.steps.find((step) => step.move === 'fragment');
+    expect(move?.aItems.map((item) => item.id)).toEqual(['p']);
+    expect(move?.bItems.map((item) => item.id)).toEqual(['x', 'y']);
+  });
+
+  it('turns every fragment into a consolidate under the mirror', () => {
+    const result = editScript(single, pair, pricing(), { moves: true });
+    const mirrored = invertSteps(result.steps);
+    expect(mirrored.filter((step) => step.move === 'consolidate')).toHaveLength(
+      result.opCounts.fragment,
+    );
+    expect(sumOf(mirrored)).toBe(sumOf(result.steps));
+  });
+
+  it('[MEASURED] chooses fragments far more often than consolidates, for a stated reason', () => {
+    // Over 200 random pairs of this family: moves win in **114**, producing **120 fragments and
+    // 1 consolidate**. The asymmetry is not an implementation accident and it is worth knowing
+    // before reading an op count. A fragment replaces "substitute, then INSERT the rest", and
+    // the inserts overshoot: the first of a group governs a span the later ones take back. A
+    // consolidate replaces "substitute, then DELETE the rest", and the deletes do not overshoot,
+    // because after the substitution the value each deletion exposes is already B's. Both
+    // branches fire — the consolidate is reachable directly and, through `invertSteps`, from
+    // every fragment — but on a step reading the slack lives almost entirely on one side.
+    const next = lcg(24680);
+    let fragments = 0;
+    let consolidates = 0;
+    let cheaper = 0;
+    for (let trial = 0; trial < 200; ++trial) {
+      const a = randomSequence(next, 1 + Math.floor(next() * 6));
+      const b = randomSequence(next, 1 + Math.floor(next() * 6));
+      const plain = editScript(a, b, pricing());
+      const withMoves = editScript(a, b, pricing(), { moves: true });
+      fragments += withMoves.opCounts.fragment;
+      consolidates += withMoves.opCounts.consolidate;
+      if (withMoves.scriptCost < plain.scriptCost * (1 - 1e-12)) cheaper += 1;
+    }
+    expect(cheaper).toBe(114);
+    expect(fragments).toBe(120);
+    expect(consolidates).toBe(1);
+  });
+
+  it('never costs more than the plain script, and keeps §6.2’s theorems', () => {
+    const next = lcg(24680);
+    let cheaper = 0;
+    for (let trial = 0; trial < 40; ++trial) {
+      const a = randomSequence(next, 1 + Math.floor(next() * 6));
+      const b = randomSequence(next, 1 + Math.floor(next() * 6));
+      const plain = editScript(a, b, pricing());
+      const withMoves = editScript(a, b, pricing(), { moves: true });
+
+      // A move replaces a sequence of plain ops with one state transition, so the `L¹` triangle
+      // inequality bounds it by their sum: enabling moves moves the script TOWARD the lower
+      // bound and can never push it away.
+      expect(withMoves.scriptCost).toBeLessThanOrEqual(plain.scriptCost * (1 + 1e-12));
+      expect(withMoves.scriptCost).toBeGreaterThanOrEqual(withMoves.directDistance / (1 + 1e-12));
+      expect(withMoves.replayResidual).toBe(0);
+      expect(withMoves.steps.reduce((total, step) => total + step.cost, 0)).toBeCloseTo(
+        withMoves.replayedDelta,
+        12,
+      );
+      if (withMoves.scriptCost < plain.scriptCost * (1 - 1e-12)) cheaper += 1;
+    }
+    // Non-vacuity: the moves really are chosen somewhere on this family.
+    expect(cheaper).toBeGreaterThan(0);
+  });
+
+  it('keeps the plain op at a tie, so a move has to win strictly', () => {
+    // Two shapes where the plain path is ALREADY geodesic and a move can only tie.
+    //
+    // Co-dated instructions: only the last performs, so substituting and then deleting the
+    // shadowed one costs the substitution and nothing more.
+    const codated = editScript(
+      [level(0, 60, 'p'), level(0, 80, 'q')],
+      [level(0, 100, 'x')],
+      pricing(),
+      { moves: true },
+    );
+    expect(codated.opCounts.consolidate).toBe(0);
+
+    // A staircase collapsing onto one level: each plain op changes a DISJOINT interval, so the
+    // four of them sum to the direct distance exactly and there is no slack to recover. This is
+    // the case a first draft of this file expected a consolidate on, and measured, it ties.
+    const staircase = [level(0, 60, 'p'), level(1, 70, 'q'), level(2, 80, 'r'), level(3, 90, 's')];
+    const withMoves = editScript(staircase, [level(0, 75, 'x')], pricing(), { moves: true });
+    const plain = editScript(staircase, [level(0, 75, 'x')], pricing());
+    expect(withMoves.scriptCost).toBeCloseTo(plain.scriptCost, 12);
+    expect(withMoves.scriptCost).toBeCloseTo(withMoves.directDistance, 12);
+    expect(withMoves.opCounts.consolidate).toBe(0);
+  });
+
+  it('bounds a move at MAX_MOVE_SPAN and expresses the rest with plain ops', () => {
+    // A long plateau, so the DP wants a consolidate longer than the bound allows.
+    const a = [
+      ...Array.from({ length: MAX_MOVE_SPAN + 2 }, (_unused, index) =>
+        level(2 + index, 120, `a${String(index)}`),
+      ),
+      level(2 + MAX_MOVE_SPAN + 2, 60, 'tail'),
+    ];
+    const b = [level(2, 60, 'x')];
+    const result = editScript(a, b, pricing(), { moves: true });
+    for (const step of result.steps) {
+      expect(step.aItems.length).toBeLessThanOrEqual(MAX_MOVE_SPAN);
+      expect(step.bItems.length).toBeLessThanOrEqual(MAX_MOVE_SPAN);
+    }
+    // Every instruction is still consumed exactly once.
+    const consumedA = result.steps.flatMap((step) => step.aItems.map((item) => item.id));
+    expect([...consumedA].sort()).toEqual([...a.map((item) => item.id)].sort());
+    expect(result.replayResidual).toBe(0);
+  });
+
+  it('is off by default, so the plain script is what a caller gets unasked', () => {
+    const result = editScript(single, pair, pricing());
+    expect(result.opCounts.consolidate).toBe(0);
+    expect(result.opCounts.fragment).toBe(0);
+    expect(result.scriptCost).toBeCloseTo(15 * L, 12);
   });
 });
 

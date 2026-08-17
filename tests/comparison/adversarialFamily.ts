@@ -420,13 +420,60 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
         '<imprecisionMap.toneduration><distribution.list date="0.0"/></imprecisionMap.toneduration>',
     ),
   },
+  // W4 adds two, and they are a PAIR: the surface §6's edit path opened is a difference that
+  // lives entirely in the header, where the two maps are byte-identical and only the styleDef
+  // they resolve through differs. Nothing in the family reached it — every other member states
+  // its levels as literals — and it is metric-relevant as well as edit-relevant, because two
+  // documents that PERFORM different tempi must not compare at 0 whatever their map text says.
+  {
+    name: 'styled-level-slow',
+    hazard:
+      'a symbolic @bpm resolved through a tempoDef — the level lives in the header, not in ' +
+      'the map (W4 cut A2: resolution travels with the instruction, AD-40.2)',
+    mpm: document(
+      '<tempoMap><style date="0.0" name.ref="T"/>' +
+        '<tempo date="0.0" bpm="t" beatLength="0.25"/></tempoMap>',
+      '<tempoStyles><styleDef name="T"><tempoDef name="t" value="60"/></styleDef></tempoStyles>',
+    ),
+  },
+  {
+    name: 'styled-level-fast',
+    hazard:
+      'the SAME map text as styled-level-slow with a different tempoDef: the pair is a real ' +
+      'distance whose whole cause is invisible in the maps being compared',
+    mpm: document(
+      '<tempoMap><style date="0.0" name.ref="T"/>' +
+        '<tempo date="0.0" bpm="t" beatLength="0.25"/></tempoMap>',
+      '<tempoStyles><styleDef name="T"><tempoDef name="t" value="120"/></styleDef></tempoStyles>',
+    ),
+  },
 ];
+
+/**
+ * AD-57.2's drop-each-member coverage check, made re-runnable rather than run once.
+ *
+ * Setting `COMPARISON_DROP_MEMBER` to a member's name removes it from the family, so
+ *
+ *     for m in $(node -e '…names…'); do COMPARISON_DROP_MEMBER=$m npx vitest run …; done
+ *
+ * answers "which members are load-bearing?" without patching a file. The W3 verifier ran the
+ * equivalent by hand; a hook makes the answer reproducible by anyone who doubts it, which is the
+ * difference between a measurement and an anecdote. AD-57.2 rules the family must NOT be pruned
+ * on the result — a member that no test currently reaches still documents a distinct hazard, and
+ * the check exists to say WHICH tests would notice, not to shorten the list.
+ */
+const DROPPED = process.env.COMPARISON_DROP_MEMBER ?? '';
+
+/** The family as the suite sees it — the full list, unless the drop hook names a member. */
+export function adversarialMembers(): readonly AdversarialMember[] {
+  return DROPPED === '' ? ADVERSARIAL_FAMILY : ADVERSARIAL_FAMILY.filter((m) => m.name !== DROPPED);
+}
 
 /** Every ordered pair of distinct members — the triangle test's inner loop. */
 export function adversarialPairs(): readonly (readonly [AdversarialMember, AdversarialMember])[] {
   const pairs: (readonly [AdversarialMember, AdversarialMember])[] = [];
-  for (const a of ADVERSARIAL_FAMILY)
-    for (const b of ADVERSARIAL_FAMILY) if (a !== b) pairs.push([a, b]);
+  const members = adversarialMembers();
+  for (const a of members) for (const b of members) if (a !== b) pairs.push([a, b]);
   return pairs;
 }
 
@@ -437,9 +484,10 @@ export function adversarialTriples(): readonly (readonly [
   AdversarialMember,
 ])[] {
   const triples: (readonly [AdversarialMember, AdversarialMember, AdversarialMember])[] = [];
-  for (let i = 0; i < ADVERSARIAL_FAMILY.length; ++i)
-    for (let j = i + 1; j < ADVERSARIAL_FAMILY.length; ++j)
-      for (let k = j + 1; k < ADVERSARIAL_FAMILY.length; ++k)
-        triples.push([ADVERSARIAL_FAMILY[i], ADVERSARIAL_FAMILY[j], ADVERSARIAL_FAMILY[k]]);
+  const members = adversarialMembers();
+  for (let i = 0; i < members.length; ++i)
+    for (let j = i + 1; j < members.length; ++j)
+      for (let k = j + 1; k < members.length; ++k)
+        triples.push([members[i], members[j], members[k]]);
   return triples;
 }

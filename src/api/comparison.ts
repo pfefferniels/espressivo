@@ -185,7 +185,15 @@ export interface CompareMpmOptions extends ComparisonSettings {
  * this package (AD-54.3).
  */
 export interface DiffMpmOptions extends Omit<CompareMpmOptions, 'invariance' | 'profile'> {
-  /** `fragment`/`consolidate` ops (A-Q5). Not shipped yet; requesting them earns a note. */
+  /**
+   * A-Q5's `fragment` and `consolidate` ops: one instruction became several, or the reverse.
+   *
+   * Off by default, and the default is the conservative reading rather than the cheap one — a
+   * move is emitted where treating a group as ONE edit is strictly cheaper than any sequence of
+   * plain ops, so the op kind is a statement about the PRICE and not a claim about what the
+   * author did. Enabling them can only LOWER `scriptCost`: by the `L¹` triangle inequality a
+   * move never costs more than the plain decomposition it replaces.
+   */
   readonly moves?: boolean;
 }
 

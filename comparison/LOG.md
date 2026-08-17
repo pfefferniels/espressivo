@@ -5237,3 +5237,101 @@ pairwise-scape surface line — both fold into cut E, and cut E does NOT
 start until the worker ACKNOWLEDGES THIS ENTRY BY NUMBER in its next
 report. If the next report again shows no rulings received, the conductor
 partitions the remaining work differently.
+
+## 2026-08-17 — W4 cuts E and A5: the family extension, AD-57.2's check, and A-Q5's moves
+
+Two cuts in one commit because the second's evidence runs through the first's family.
+
+### E — the family gains two, and AD-57.2's check is made re-runnable
+
+`ADVERSARIAL_FAMILY` is **26 → 28**, and the two are a PAIR: `styled-level-slow` and
+`styled-level-fast` carry byte-identical `<tempoMap>` bodies and different `tempoDef`s, so their
+whole difference lives in the header. Nothing in the family reached that — every other member
+states its levels as literals — and it is the surface §6's edit path opened (cut A2's "resolution
+travels with the instruction"). It is metric-relevant as well as edit-relevant: two documents that
+PERFORM different tempi must not compare at 0 whatever their map text says.
+
+`tests/comparison/w4Family.test.ts` runs W4's products against the family, which is AD-33.5's
+standing policy applied to two surfaces the metric suite cannot see because they are not
+properties of `d_k`: §6.4's ORIENTATION (every member mirrored against two anchors, field by
+field, 54 pairs) and §8's MATRIX DETERMINISM (a ten-member corpus that is genuinely tie-rich —
+45 pairs, materially fewer distinct values, asserted — permuted and re-run).
+
+**AD-57.2's drop-each-member check, and the first version of it measured nothing.** A hook on
+`COMPARISON_DROP_MEMBER` makes the check re-runnable rather than a one-off patch, and the first
+sweep reported "1 failed" for all 28 members — the one failure being the hook's own guard test,
+which demanded an unset env. Fixed to assert the hook's BEHAVIOUR in both modes. The second sweep
+then reported "0 failed" for all 28, which measures nothing either, and for a structural reason
+worth stating: **dropping a member only shrinks the pair and triple loops, so it can never cause
+a failure.** The question AD-57.2 is really asking is which member CATCHES a given defect, so the
+check is a coverage sweep against a known one — §4's cap, the property the family exists for:
+
+    §4's cap removed, full family                        3 failures
+    …and with `capped` dropped                           2      ← sole catcher
+    …and with `ornament-plain` dropped                   2      ← sole catcher
+    …and with `ornament-milliseconds` dropped            2      ← sole catcher
+    …and with any of the other 25 dropped                3
+
+**Three of twenty-eight members are load-bearing for this defect, and they are exactly the three
+the record predicts**: `capped`, which was built for it, and the ornamentation `⊥` pair AD-50.3
+named when it recorded "removing §4's cap, with the ELEVEN-dimension suite, fails 3 — including
+ornamentation's triangle test, which the six-dimension list could not have reached". The sweep
+reproduces that count and says which members produce it.
+
+That is also the argument for AD-57.2's "do not prune", made concrete: **load-bearing is relative
+to a defect.** Twenty-five members contribute nothing to catching THIS one and each exists for a
+different one, so a prune driven by any single sweep would delete the family. What the check is
+for is knowing which member would notice, not shortening the list.
+
+### A5 — A-Q5's `fragment` and `consolidate`
+
+The DP gains two move kinds bounded at `MAX_MOVE_SPAN = 4` [convention], and they rank BELOW the
+plain ops so a tie keeps the primitive. That makes the op kind a statement about the PRICE —
+these instructions are best read as one gesture — rather than a claim about what the author did.
+By the `L¹` triangle inequality a move is never dearer than the plain decomposition it replaces,
+so enabling them can only LOWER `scriptCost`: the script moves toward the lower bound as its
+vocabulary grows. `moves` is off by default and `EditOp.count` carries the group sizes, because an
+op that said "consolidate" without saying how many would not be actionable.
+
+**[MEASURED] The two kinds are wildly asymmetric, and the cause is structural.** Over 200 random
+pairs: moves win in **114**, producing **120 fragments and 1 consolidate**. A fragment replaces
+"substitute, then INSERT the rest", and the inserts overshoot — the first of a group governs a
+span the later ones take back. A consolidate replaces "substitute, then DELETE the rest", and the
+deletes do not overshoot, because after the substitution the value each deletion exposes is
+already B's. Both branches fire, and `invertSteps` turns every fragment into a consolidate, so
+the kind is reachable both ways. Pinned with the figures.
+
+On REAL data the vocabulary buys a great deal: Telemann Baroque|Romantic over the score's own
+window yields **11 fragments** and a script **6144.14 JND·quarters** cheaper; Baroque|Fast yields
+9 and 2 and saves 4675.56. The shipped test uses a 32-quarter window (5 fragments, 1 consolidate,
+88.22 saved) because the full-window call takes 22 s and timed out under a loaded runner — the
+size is measured, and the full-window figures are recorded here so the trade is visible.
+
+[FOUND BY A TEST, in code written this cut] **The mirror swapped `insert`/`delete` in `opCounts`
+and left `fragment`/`consolidate` alone.** On Telemann Baroque|Fast the forward script had 9
+fragments and 2 consolidates while the reverse reported 2 and 9 in its OPS and still 9 and 2 in
+its COUNTS. `EditOp.count` had the same gap. Both repaired, and the byte-identity mirror test was
+extended to a MOVED script — the counts-only version passed throughout the defect, which is why
+the byte comparison is the one that completes the claim.
+
+[MEASURED, and a fixture rebuilt because of it] A first draft asserted a consolidate on a
+staircase collapsing onto one level. Measured, that ties: each plain op there changes a DISJOINT
+interval, so the four of them sum to the direct distance exactly and there is no slack to
+recover. The case is kept as a TIE fixture with its reason, and the move fixtures were rebuilt on
+the shape that does have slack — one instruction becoming two, where the plain path passes
+through a state that over-reaches for the rest of the window (one quarter against fifteen).
+
+NEGATIVE CONTROLS, six across the two cuts, each failing exactly its own tests and restoring
+green: moves ranked above the plain ops so a tie takes the move (2); the mirror's move counts
+left unswapped (2); the replay not clearing a move's whole group on the A side (0 — a GAP, since
+the toy family produces fragments whose A count is 1) and on the B side (1); `MAX_MOVE_SPAN`
+raised to 64 (1).
+
+Gate: `npm run verify` GREEN — 125 files, **5396 passed**, 0 skipped (was 5358). Repo-wide
+`npx prettier --check .` clean; eslint clean on `src/comparison`, `tests/comparison`, `src/api`
+and `src/index.ts`.
+
+**W4's scope is now complete except `corpusAverage`**, which is held for the ruling requested at
+cut B2: §8 defines it as the pointwise mean of the evaluated curves, which is not a document, so
+its row cannot go through `compareInterior` and would need a second integration path beside the
+eleven verified integrators.
