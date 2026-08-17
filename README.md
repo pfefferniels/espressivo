@@ -18,6 +18,11 @@ MEI ──convert──▶ MSM (score) ──perform──▶ augmented MSM ─�
                  MPM (performance) ──────┘                          per-note data
 ```
 
+On top of the port it adds what meico does not have: MPM v3 ornamentation, parametric expression
+transforms, performance comparison, and a plain-data facade over the whole pipeline.
+[What espressivo adds to meico](#what-espressivo-adds-to-meico) summarizes each in a paragraph;
+[`docs/`](docs/README.md) has the full account of every one.
+
 ## Install
 
 ```sh
@@ -143,7 +148,7 @@ try {
 
 `MeicoError` is the root of all of them; `ParseError`, `EmptyDocumentError`,
 `PerformanceNotFoundError`, `InvalidOptionError`, `SelectionNotFoundError`,
-`EngineInvariantError` and `MissingNodeError` are its subclasses.
+`ComparisonEngineError`, `EngineInvariantError` and `MissingNodeError` are its subclasses.
 
 ## The API
 
@@ -154,6 +159,8 @@ XML node ever crosses the boundary. Concretely, a result survives `structuredClo
 `Uint8Array` MIDI payloads), and is a fresh value on every call, so React-style `===`
 memoization works.
 
+The pipeline — the part that reproduces meico:
+
 | Function                                        | In                 | Out                                         |
 | ----------------------------------------------- | ------------------ | ------------------------------------------- |
 | `convertMeiToMsmMpm(mei, options?)`             | MEI text           | one `{ index, title, msm, mpm }` per `mdiv` |
@@ -163,10 +170,19 @@ memoization works.
 | `performMsmToData({ msm, mpm }, options?)`      | MSM + MPM text     | `PerformanceData`                           |
 | `renderMidi({ msm }, options?)`                 | MSM text           | `Uint8Array` — the score as written         |
 | `renderExpressiveMidi({ msm, mpm? }, options?)` | MSM (+ MPM) text   | `Uint8Array` — as performed                 |
-| `exaggerateMpm(mpm, options)`                   | MPM text           | `{ mpm, report }` — the same MPM, turned up |
-| `spotlightMpm(mpm, options)`                    | MPM text           | the above `+ { spared, resolvedIds }`       |
-| `canonicalMpm(mpm)`                             | MPM text           | MPM text — parsed and re-serialized         |
-| `weightedFactors(s, weights)`                   | scalar + weights   | a factor per dimension                      |
+
+The additions, none of which has a meico counterpart:
+
+| Function                               | In               | Out                                                   |
+| -------------------------------------- | ---------------- | ----------------------------------------------------- |
+| `exaggerateMpm(mpm, options)`          | MPM text         | `{ mpm, report }` — the same MPM, turned up           |
+| `spotlightMpm(mpm, options)`           | MPM text         | the above `+ { spared, resolvedIds }`                 |
+| `canonicalMpm(mpm)`                    | MPM text         | MPM text — parsed and re-serialized                   |
+| `weightedFactors(s, weights)`          | scalar + weights | a factor per dimension                                |
+| `compareMpm({ a, b?, msm?, … })`       | two performances | `{ report }` — distance, dimensions, segments, scape  |
+| `diffMpm({ a, b?, msm?, … })`          | two performances | `{ report }` — ranked edit scripts and what they cost |
+| `compareMpmCorpus({ items, msm?, … })` | N performances   | `{ report }` — matrices, clusters, MDS embedding      |
+| `neutralMpm(options?)`                 | `{ ppq? }`       | MPM text — the documented empty performance           |
 
 Options for the conversion and rendering entry points, all optional:
 
@@ -174,25 +190,13 @@ Options for the conversion and rendering entry points, all optional:
   needs a finer grid), `dontUseChannel10`, `ignoreExpansions`, `cleanup`, `sourceName` (the name
   written into the MPM metadata's related-resource entry; set it to reproduce byte for byte what
   the file-based Java path produces), `expandOrnaments` (write MEI trills, mordents and turns into
-  the MPM as ornaments — default true; see below).
+  the MPM as ornaments — default true).
 - **`PerformOptions`** — `performance` (name or index), `seed`, `movementSampleMaxStep`,
   `expandOrnaments` (let the MPM's ornaments generate their notes — default true).
 - **`MidiOptions`** — `generateProgramChanges`; `renderMidi` also takes `bpm` (default 120).
 
-Options for the two expression transforms, where the first field of each is **required**:
-
-- **`ExaggerateOptions`** — `factors` (required), plus `performance` (name or index; **omitted
-  transforms all of them**, unlike `performMsm`), `scope` (`'global'`, the default, exaggerates
-  levels around a performance-wide centre so a piecewise-constant map grows section contrast;
-  `'gesture'` scales each transition pair around its own mean and leaves constants alone),
-  `center`, `velocityRange` (default `{ min: 1, max: 127 }` — the floor is 1 because velocity 0 is
-  a note-off), `minRubatoWindow`, and `msm`, which fills in the report's estimates and reaches
-  nothing else.
-- **`SpotlightOptions`** — `ids` and `attenuation` (both required), plus `performance`. There is no
-  `scope`: spotlight is always `'gesture'`, because under `'global'` damping a background level
-  pulls it _toward_ the centre and re-levels quiet material louder.
-
-See the [Expression transforms](#expression-transforms-turning-a-performance-up) section below.
+The transforms' and the comparison's options are documented with the features themselves, in
+[`docs/expression.md`](docs/expression.md) and [`docs/comparison.md`](docs/comparison.md).
 
 > **`seed` is not a promise of reproducible output.** Where two imprecision offsets land on the
 > same millisecond date, the interior picks which one keeps its value with a bare `Math.random()`
@@ -225,679 +229,123 @@ const bytes = midi?.exportMidi() ?? null;
 ```
 
 Two things to know about this layer, both inherited from Java on purpose: it **logs to the console
-and returns `null`** instead of throwing, and its XML tree is mutable. The facade exists precisely
-to keep that inside. Mixing the two is fine — the facade is additive, and both were proven to
-produce identical bytes.
+and returns `null`** instead of throwing, and its XML tree is mutable. The facade above is what
+keeps that inside — meico has no such boundary, and the plain-data guarantee, the typed errors and
+the text-in/text-out staging are espressivo's own. Mixing the two is fine: the facade is additive,
+and both were proven to produce identical bytes.
 
-## Ornamentation: MEI signs become real notes
+## What espressivo adds to meico
 
-A `<trill>`, `<mordent>` or `<turn>` in the MEI is not a note, and most tools leave it that way.
-espressivo implements the **MPM v3 ornamentation model** — designed by Lars Engeln and Axel
-Berndt — so an ornament sign becomes an MPM
-`<ornament>` carrying the notes it plays — a note pool, the playing order (`|: #a #b :|` for a
-repeated figure), and an `<ornamentDef>` saying where in time the figure sits and how it is
-spaced — and the renderer then generates those notes into the performance.
+The first three below have no counterpart in the Java library at all, which is also why none of
+them is covered by the equivalence claim — there is no reference output to be byte-identical to,
+so each is verified on its own terms instead. The fourth is a backport of a method that postdates
+the fork this port is measured against, and had its ground truth constructed rather than waived.
+Each has a guide.
 
-Nothing extra is needed to get it. `convertMeiToMsmMpm` writes the ornaments, `performMsm` plays
-them, and the trill in `composite_advanced.mei` comes out of `performMsmToData` as three sounding
-notes where the score had one:
+### MPM v3 ornamentation — signs become sounding notes
 
-| `id`      | `pitch` | `milliseconds` | `ornamented` | `ornamentSource` | `ornamentSlot` | `ornamentAnchor` |
-| --------- | ------- | -------------- | ------------ | ---------------- | -------------- | ---------------- |
-| `n20`     | 74      | 7500 → 7767.94 | `true`       | `tr1_n0`         | 0              | `n20`            |
-| `meico_…` | 76      | 7767.94 → 8000 | `true`       | `tr1_n1`         | 1              | `n20`            |
-| `meico_…` | 74      | 8000 → 8125    | `true`       | `tr1_n0`         | 2              | `n20`            |
+A `<trill>`, `<mordent>` or `<turn>` in the MEI is not a note, and meico leaves it that way.
+espressivo implements the **MPM v3 ornamentation model** (Lars Engeln and Axel Berndt): the
+converter writes each sign as an `<ornament>` carrying the notes it plays, and the renderer
+generates them — so the trill in `composite_advanced.mei` comes out of the pipeline as three
+sounding notes where the score had one. Every generated note carries provenance back to the
+ornament and to the score note it decorates, so a performance can be joined to its score without
+parsing the ornament. It is on by default and switchable off at either stage.
 
-All three also carry `ornamentRef: "tr1"`, the `xml:id` of the ornament that produced them.
+Java meico does not implement v3, so this is verified against the specification and hand-computed
+vectors instead, with a proof that it moves no byte of anything that _is_ under the claim. MPM
+**v2** ornamentation is unchanged and stays inside it.
 
-Every generated note says where it came from, so you can join a performance back to the score
-without parsing the ornament yourself: `ornamentRef` names the `<ornament>`, `ornamentSource` the
-token in its playing order, `ornamentSlot` the position in the expanded figure, `ornamentPass` the
-repetition it belongs to, and **`ornamentAnchor` the score note the whole figure decorates** —
-which is the field to key on, because generated `id`s are fresh per run. `ornamented` is also true
-for a note an ornament merely _altered_: the head of the original note that survives in front of
-an end-aligned figure, and any note an MPM v2 ornament shifts or shades.
+→ [`docs/ornamentation.md`](docs/ornamentation.md), [PARITY.md §6](PARITY.md)
 
-Hand-written MPM gets the whole model, not just what the MEI signs use: note pools with absolute
-pitches or chromatic and diatonic intervals (resolved against the score's key signature), chords
-and repetition groups in `note.order`, `repetitions`, `alignment="at end"`, frame values in ticks,
-milliseconds or percent of the note's duration, all three `noteoff.shift` modes, and dynamics
-gradients across the figure.
+### Expression transforms — turning a performance up
 
-Two switches, both defaulting to on, and they compose:
+meico applies an MPM to a score; it never transforms the MPM. `exaggerateMpm` and `spotlightMpm`
+do: **MPM text in, MPM text out**, nothing rendered and nothing extracted.
 
 ```ts
-convertMeiToMsmMpm(mei, { expandOrnaments: false }); // don't write ornaments into the MPM
-performMsm(movement, { expandOrnaments: false }); // keep them in the MPM, don't play them
-```
-
-**This is the one feature not covered by the equivalence claim below**: Java meico does not
-implement MPM v3, so there is nothing to be byte-identical to. It is verified against the
-specification and hand-computed vectors instead, and every decision that goes beyond what the spec
-fixes — including where this deliberately differs from the unmerged Java branch that also
-implements v3 — is written up in [PARITY.md §6](PARITY.md). MPM **v2** ornamentation is unchanged
-and stays inside the equivalence claim.
-
-## Expression transforms: turning a performance up
-
-An MPM says how a piece is played. `exaggerateMpm` and `spotlightMpm` edit that document
-parametrically — **MPM text in, MPM text out**, nothing rendered and nothing extracted — so you can
-sample a family of performances from one encoding, damp everything but the phrase you are
-studying, or drive a single "how expressive?" slider.
-
-```ts
-import { readFileSync } from 'node:fs';
-import { exaggerateMpm, spotlightMpm } from 'espressivo';
-
-const mpmText = readFileSync('performance.mpm', 'utf8');
-
 // Every tempo and dynamics deviation, further from neutral.
 const { mpm, report } = exaggerateMpm(mpmText, { factors: { tempo: 1.6, dynamics: 1.4 } });
 
 // Damp everything the selected instructions do not govern, to a quarter.
 const brought = spotlightMpm(mpmText, { ids: ['t2', 'dyn4'], attenuation: 0.25 });
-// brought.spared === ['tempo', 'tempoShape', 'dynamics', 'dynamicsShape']
 ```
 
-**What `s` means.** Each exaggerable attribute is mapped into a space where its _neutral_ value is
-0, scaled by `s`, and mapped back — a log space around a mean for tempo and dynamics levels, a
-logit for bounded proportions, a plain gain for signed offsets. So `s = 1` is the identity, `s > 1`
-pushes further from neutral, `s < 1` pulls toward it, and `s = 0` writes the neutral itself.
-Fifteen dimensions scale independently (`EXPRESSION_DIMENSIONS` is the list) and a missing key
-means 1. `weightedFactors(s, weights)` expands one scalar into all fifteen, and
-`PROTOTYPE_WEIGHTS` is a documented heuristic preset rather than a default.
+Each attribute is mapped into a space where its _neutral_ is 0, scaled, and mapped back, so `s = 1`
+is the identity, `s > 1` pushes away from neutral and `s = 0` writes the neutral itself. Fifteen
+dimensions scale independently; `weightedFactors` collapses them onto one slider. The result keeps
+the input's exact skeleton — no element or attribute added or removed, no `@date` ever written —
+and performs to the same symbolic notes; the report names every site that was clamped, skipped or
+found inert, and `report.totalWrites === 0` is the exact test for a no-op. Deterministic, no RNG.
 
-**What is guaranteed.** Two invariances, of different strength — and the distinction matters if you
-are generating training data:
+Use it to sample a family of performances from one encoding, to damp everything but the phrase you
+are studying, or to drive a single "how expressive?" control.
 
-- **Structural (R5a), universal.** The result has the same skeleton as `canonicalMpm(input)`: no
-  `@date` is ever written, no element and no attribute is added or removed. Only numeric attribute
-  values change; the report says which dimensions were written and how many writes each made, and
-  names every site it refused, clamped, skipped or found inert. Compare against
-  `canonicalMpm(input)` and not against your own bytes — parsing and re-serializing re-emits an
-  `xmlns` declaration on every namespaced element, which inflates a real 2444-byte fixture to 3972
-  bytes before the transform touches anything. That is why `canonicalMpm` is exported: it is the
-  baseline any byte comparison has to be made against, and the identity transform returns it
-  exactly.
-- **Symbolic (R5b), qualified.** Performing the result against the same MSM yields the same notes —
-  same **symbolic** dates, durations and pitches, and the same ids for the notes the score already
-  had; only milliseconds, velocities and control changes move. Notes that an MPM v3 ornament
-  _generates_ are matched by position and date rather than by id: they draw a fresh random
-  `meico_<uuid>` on every render, so two renders of the _same untransformed_ document already
-  disagree on those ids. The guarantee holds for every MPM v2 document and for every v3 document
-  whose ornament frames are in milliseconds. It does **not** hold for `ornamentSpread` or
-  `ornamentSpacing` on a v3 ornament that _generates_ notes into a tick-resolved frame, because the
-  renderer derives those notes' geometry from the very frame those two dimensions scale. Hold them
-  at 1 if you need the guarantee unconditionally.
+→ [`docs/expression.md`](docs/expression.md), [PARITY.md §7](PARITY.md)
 
-Every run returns a report beside the document: which dimensions were transformed, skipped or
-inert, which sites were clamped, the computed centers (pass one back to make composition exact),
-and per-document sampling bounds. `report.totalWrites === 0` is the exact test for "this sample is
-a no-op". The transform is deterministic — no RNG anywhere — and never writes a non-finite value.
+### Comparing performances — how far apart, and where
 
-**Cookbook: one slider of your own.** A named "sketchiness" or "energy" curve is a UI recipe, not
-library semantics, so none ships — but composing one is the point of `weightedFactors`, whose
-expansion is `sᵈ = 1 + wᵈ·(s − 1)`. A missing weight passes `s` through unchanged, `w = 0` pins its
-dimension at the identity, and `s = 1` is the identity for any weights at all. The weights below
-are a **heuristic** — nothing here derives them:
+`compareMpm` measures two MPM performances against each other across eleven expressive channels at
+once, including the two that carry performer identity most strongly and that an audio-derived
+tempo-and-loudness curve cannot see: articulation and melody lead.
 
 ```ts
-import { exaggerateMpm, weightedFactors, type ExaggerationWeights } from 'espressivo';
+const { report } = compareMpm({ a: grave, performanceA: 'Baroque', performanceB: 'Romantic', msm });
 
-// Looser and more uneven, without redrawing the dynamic plan or moving generated notes.
-const SKETCHY: ExaggerationWeights = {
-  imprecisionTiming: 1.8,
-  imprecisionDynamics: 1.4,
-  imprecisionDuration: 1.2,
-  asynchrony: 1.3,
-  rubato: 1.2,
-  tempo: 0.6,
-  tempoShape: 1,
-  articulation: 0.6,
-  accentuation: 0.8,
-  dynamics: 0.4,
-  dynamicsShape: 0.4,
-  pedalShape: 0,
-  // 0 pins these three at the identity, which is what keeps R5b unconditional.
-  ornamentSpread: 0,
-  ornamentSpacing: 0,
-  ornamentDynamics: 0,
-};
-
-const { mpm, report } = exaggerateMpm(mpmText, { factors: weightedFactors(1.5, SKETCHY) });
-
-// Faster as well as looser: levels are scaled around a center, so moving the center moves all
-// of them with it — override the one the previous run reported rather than raising `tempo`.
-const faster = exaggerateMpm(mpmText, {
-  factors: weightedFactors(1.5, SKETCHY),
-  center: { tempo: (report.performances[0].centers.tempo ?? 100) * 1.1 },
-});
+report.aggregate.mean; // 41.16 JND — the human headline
+report.dimensions.tempo.distance; // how much of it is tempo
+report.segments[0]; // where the difference concentrates
 ```
 
-A weight above 1 can drive a factor negative below `s = 1` — `weightedFactors(0.3, {rubato: 1.5})`
-is about −0.05 — and `exaggerateMpm` rejects that, naming the dimension. Keeping the slider inside
-the admissible range is the caller's job; §8 of the design document has the per-dimension ranges.
-
-The full model, the per-attribute registry, and the reasoning behind every inclusion and exclusion
-are in
-[docs/history/expression/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/docs/history/expression/DESIGN.md)
-(a repository document — the npm package does not carry it); the relationship to the Java-era
-prototype these ideas came from is in [PARITY.md](PARITY.md).
-
-## Comparing performances: how far apart, and where
-
-Performer identity is carried first by **articulation and melody lead**, then by tempo, with
-dynamics last — the finding the Stamatatos & Widmer line of work keeps arriving at. Those top two
-are precisely what an audio-derived tempo-and-loudness curve cannot see, and precisely what an MPM
-carries losslessly: the articulation map says what each note does to its own length and attack, and
-the asynchrony map says which voice arrives first. `compareMpm` compares two performances across
-all eleven of those channels at once, and says not only how far apart they are but _where_ and _in
-what_.
-
-As far as a verified literature survey (2026) and a targeted 2025–26 re-sweep could establish, this
-is the first **exact, additively-decomposable comparison of symbolic performance-directive
-encodings**: prior work compares _rendered_ parameter sequences — beat-level curves, per-note MIDI
-features, or their distributions — where the decomposition by expressive dimension is
-approximate at best and usually unavailable. The claim is deliberately narrow (performance
-comparison as such is a century old); what is new is that the difference decomposes _exactly_, by
-dimension and by score passage, with zero residual.
-
-```ts
-import { readFileSync } from 'node:fs';
-import { compareMpm } from 'espressivo';
-
-const grave = readFileSync('telemann-grave.mpm', 'utf8');
-const score = readFileSync('telemann-grave.msm', 'utf8');
-
-const { report } = compareMpm({
-  a: grave,
-  performanceA: 'Baroque',
-  performanceB: 'Romantic',
-  msm: score,
-});
-
-report.aggregate.distance; // 8397.60  JND·quarters — the mathematical total
-report.aggregate.mean; //    41.16   JND — the human headline (C10)
-report.dimensions.tempo.distance; // 1755.47 of it is tempo
-report.segments[0]; //       where the largest concentration of difference is
-report.table.cells; //       the closing table: every dimension × every segment, and it closes
-```
-
-Nothing is rendered and nothing is extracted: two MPM documents in, one plain-data report out.
-
-### The numbers are real, and one of them corrected the design
-
-The vendored corpus is the MPM format's own sample encodings. Telemann's _Grave_ carries three
-readings of one piece, and they come out where you would expect — Baroque and Romantic close,
-Fast far from both:
-
-| pair               | aggregate distance | mean |
-| ------------------ | -----------------: | ---: |
-| Baroque ↔ Romantic |            8397.60 | 41.2 |
-| Baroque ↔ Fast     |           24941.06 |  122 |
-| Fast ↔ Romantic    |           26174.72 |  128 |
-
-Vulpius's _Die helle Sonn_ was expected to behave the same way, and it does not. Its two
-historical readings are **not** the near pair; Romantic and Amateur are, at 2939.66 against
-8849.39 and 10294.50. The reason is in the document rather than in the metric, and the report says
-so without being asked: `tempo`, `rubato` and `articulation` are **exactly zero** between Romantic
-and Amateur — three whole dimensions of two different performances comparing at 0, because they
-really do share those maps — and everything that separates them sits in `imprecisionTiming`,
-`imprecisionDynamics` and `asynchrony`. The Amateur reading _is_ the Romantic one with
-imprecision and asynchrony added. An expected ordering would have passed on an implementation
-computing almost anything; an exact zero across three dimensions with large structured values on
-three others can only come out of readers that agree with the document.
-
-### What the number is
-
-Every dimension is compared as a **function of score time**, not as a list of instructions. Two
-documents that spell the same performed curve differently — a global map against a part-local one,
-an explicit neutral instruction against an absent map, five steps against one transition — compare
-at exactly 0, and the report says _encoded differently, performed the same_ in a note. The
-distance is the integral of the pointwise difference:
-
-```
-d_k = ∫ |T(A(t)) − T(B(t))| / jnd_k  dt        D = Σ_k ω_k d_k
-```
-
-- `T` is the dimension's **scale space** — the natural logarithm for tempo and dynamics levels,
-  the identity for velocities and milliseconds, so that a ratio is a difference where a ratio is
-  what the ear hears. Every reported log quantity carries the unit `'nepers'`; multiply by
-  `1/ln 2` to read it as log₂. **MPM stores BPM, a rate**, so a positive signed tempo difference
-  means A is _faster_ — the opposite of the seconds-per-beat convention much of the literature
-  uses.
-- `jnd_k` is a just-noticeable difference, so `d_k` is in **JND·quarters** and `mean` is in
-  **JND**: "about 41 just-noticeable differences, sustained". Tempo's is `ln(1.025)` — Friberg &
-  Sundberg's verified 2.5 % relative threshold — and asynchrony's is 30 ms; the rest are
-  documented conventions and every one is overridable through `options.jnd`.
-- `ω_k = 1` by default. That weights dimensions as JND-integrals, which is honest but is not the
-  same as weighting them by importance; `options.weights` is where a different view goes, and
-  `compareMpmCorpus`'s `normalization: 'corpus'` derives one from the corpus itself.
-
-**`mean` is the human headline and `distance` is the mathematical total.** Quote the mean. A
-distance is proportional to how long the piece is and to how many parts the score has, so two
-distances from different pieces are not comparable and the module will not pretend otherwise —
-that is what the corpus-level percentile context exists for.
-
-**What is a distance and what is not.** `distance`, `mean`, the closing table and the matrices are
-distances: they satisfy the metric axioms under a piece-derived window, and `window.metricGuarantee`
-tells you which kind you have. `meanSigned`, `levelSigned`, `direction`, `cumulativeDrift` and the
-profile's signed series are **descriptors**: they say which side is faster or louder, they enter no
-distance, and they do not satisfy the triangle inequality.
-
-### The glossary: level, gain, shape
-
-Each curve dimension is also decomposed into three interpretable numbers, which is where a
-comparison stops being a score and starts being a description. In musicians' terms:
-
-- **level** — _are they in the same place?_ One performance is simply faster, or louder, than the
-  other, all the way through. `decomposition.level` on tempo is the size of that offset in nepers;
-  `levelSigned` says which way. A 1905 roll read 10 % fast against the same roll read correctly is
-  pure level: `level = ln(1.1) ≈ 0.095`, `gain = 0`, `shape = 0`.
-- **gain** — _is one of them doing more?_ Same shape of gesture, further from the mean. A
-  ritardando to half tempo against the same ritardando to three-quarters is pure gain: both slow
-  down in the same places, one twice as much. `gain` is the difference of the two curves' standard
-  deviations about their own means.
-- **shape** — _are they doing the same thing at the same time?_ `shape = √(2(1 − r))`, where `r`
-  is the correlation of the two curves. Two performances that both use the same amount of rubato,
-  in different places, have `level = 0`, `gain = 0` and `shape` near its maximum of 2. A performer
-  who slows into every cadence against one who slows out of them is the pure-shape case.
-
-The three close: `level² + gain² + 2σ_Aσ_B(1 − r) = ‖A − B‖²` on the normalized measure, and the
-report carries the closing check so a plausible-looking value that does not close is visible
-rather than silent.
-
-### The window, and what the guarantee is conditional on
-
-Every integral runs over one window, and which one is a fact about your inputs rather than a
-setting to forget. Supply an `msm` and the window is the score's own end — `window.rule === 'msm'`,
-`metricGuarantee === 'unconditional'`. Supply neither `msm` nor `window` and the module falls back
-to the later of the two documents' last instruction dates, stamps `'pair-derived'` and
-`'window-restricted'`, and **those numbers must not be assembled into a matrix**: a window that
-varies with the pair makes each cell a value of a different function, and the triangle inequality
-between three such numbers means nothing. `compareMpmCorpus` derives one window for the whole
-matrix for exactly this reason.
-
-`report.comparability.suspectPair` is the other half of the same care: it fires when the two
-documents look like different pieces — lengths outside a `[0.8, 1.25]` band, or no shared part
-number, or a score end that truncates most of what an MPM encodes. It is worded as a question and
-names its numbers, because "these two files may not be the same piece" is a judgement the reader
-has to make.
-
-### `diffMpm`: what would you have to change?
-
-Where `compareMpm` answers _how far apart_, `diffMpm` answers _what would you have to change to
-turn one into the other, and what does each change cost_. The two are one mathematics: an op's
-cost is an integral of the same density the distance reports, so the edit list is ranked in the
-units the distance is quoted in.
-
-```ts
-import { diffMpm } from 'espressivo';
-
-const { report } = diffMpm({
-  a: grave,
-  performanceA: 'Baroque',
-  performanceB: 'Romantic',
-  msm: score,
-});
-
-for (const script of report.scripts) {
-  for (const index of script.topByCost.slice(0, 3)) {
-    const op = script.ops[index];
-    console.log(op.op, script.map, `bar ${op.measureA?.number ?? '?'}`, op.cost.toFixed(1));
-  }
-}
-
-report.dimensions.tempo.reworking; // how much MORE the script costs than d_tempo
-```
-
-Ops are delivered in **score order** and each carries its rank in cost order, because those are
-two different readings and both are wanted: a reader following along in the score walks the first,
-and "what matters most" is the second. Each op names the attributes it changes with their values
-on both sides and the difference in JND.
-
-Three numbers come back per dimension and they are three numbers, not one reported thrice:
-`dCurve` is the distance — a lower bound — `scriptCost` is what the cheapest monotone script
-costs when each edit is priced against the state the previous edits left behind, and
-`replayedDelta` is what that same edit list costs applied in score order. **`reworking =
-scriptCost − dCurve` is the interesting one**: it is how much the edit path has to undo itself,
-and it is `≥ 0` as a theorem rather than as an observation.
-
-### `compareMpmCorpus`: a folder of performances
-
-```ts
-import { compareMpmCorpus } from 'espressivo';
-
-const { report } = compareMpmCorpus({
-  items: rolls.map((mpm, index) => ({ mpm, label: names[index] })),
-  msm: score,
-  k: 3,
-  noiseFloor: true,
-});
-
-report.labels[report.medoids![0]]; // the most typical performance of cluster 0
-report.matrices.aggregate[i * report.n + j]; // full N², row-major, bit-symmetric
-report.embedding.coordinates; // classical MDS, N × 2 by default
-report.context!.percentile[i * report.n + j]; // where this pair sits in THIS corpus
-```
-
-An item that names no performance in a multi-performance document expands to one item per
-performance. Labels are required unique after that expansion, and the module refuses a collision
-rather than resolving it: the medoid is the one product whose entire value is naming a real
-performer, and two rows both called `"Welte 1905"` make "the most typical Hofmann" ambiguous.
-
-Three honesty fields, all reported always:
-
-- **`embedding.negativeEigenvalueMass`** — how non-Euclidean the corpus is. An `L¹`-type distance
-  generally is, so the MDS plot is a projection of something that does not live in a plane, and
-  this number says how much was lost. `explainedVariance` is computed over `Σ|λ|`, never over
-  `Σλ⁺`, which would flatter the result by pretending the negative mass is not there. It is
-  SIGNED: a negative share is an axis with a negative eigenvalue — an imaginary direction, whose
-  coordinates are all zero because only a positive eigenvalue is embedded. Reading it as a
-  magnitude would credit an axis that is not there with variance it does not carry.
-- **`silhouetteReliable`** — `false` below twenty items, where the silhouette is noisy enough to
-  inform a choice of `k` but not to decide one.
-- **`suspectPairs`** — the comparability check, surfaced at corpus level so a heterogeneous folder
-  announces itself before the dendrogram is read. This matters more as `N` grows, because a
-  200-file glob is where nobody inspects the inputs by hand.
-
-`linkage: 'ward.D2'` is offered and carries a caveat worth reading: the Lance–Williams recurrence
-remains **valid** on a non-Euclidean dissimilarity, but Ward's minimum-variance **interpretation**
-does not — and this distance is generally not Euclidean. The output is a well-defined hierarchy
-whose usual story does not apply. `'average'` (UPGMA) is the default and its merge heights read
-directly as mean inter-cluster distance in the reported units.
-
-### Scapes: every position, every timescale
-
-`scape: { bins: 32 }` returns the aggregate difference over every sub-window at once — Sapp's
-timescape, which is how the field reads a comparison. The triangle is internally consistent by
-construction: a cell is the sum of any partition of itself, so comparing a phrase-length cell
-against the bars beneath it is meaningful rather than approximate, and the top cell _is_
-`aggregate.distance`.
-
-```ts
-import { compareMpm, scapeIndex } from 'espressivo';
-
-const { report } = compareMpm({ a, b, msm: score, scape: { bins: 32 } });
-const cells = report.scape!.cells;
-cells[scapeIndex(32, 1, 0)]; // the first bin alone
-cells[scapeIndex(32, 8, 4)]; // eight bins starting at the fifth
-```
-
-At corpus level the same option gives Sapp's other variant: per cell, **which** performance is
-closest to the corpus medoid there — who plays most typically at that place and that timescale.
-
-## Cookbook
-
-**Timing only, for a piano roll.** A Welte roll's speed is structurally uncertain: the reproducing
-piano's tempo depends on the playback machine, so the absolute rate is not a property of the
-performance. Compare in a level-invariant tempo space and give the dynamics no weight:
-
-```ts
-const { report } = compareMpm({
-  a: roll1905,
-  b: roll1927,
-  msm: score,
-  invariance: { tempo: 'level' },
-  weights: { dynamics: 0, imprecisionDynamics: 0 },
-});
-```
-
-The trade-off is per space, and it is not symmetric. On tempo, which is a **log** space,
-`'level'` removes a multiplicative factor — a roll read 10 % fast compares at exactly 0 against
-the same roll read correctly. On asynchrony, which is **linear**, the same mode removes a constant
-lag but leaves a 10 % _stretch_ standing, because `c·x − mean(c·x) = c(x − mean x)`. Ask for it on
-a linear dimension and the report says so in plain words, as an `invariance-space` note: _"this
-dimension's scale space is linear, so invariance 'level' removed an OFFSET, not a scale factor"_.
-
-**How far is this from deadpan?** `neutralMpm()` is the documented empty performance, so nobody
-has to hand-roll the null baseline:
-
-```ts
-import { compareMpm, neutralMpm } from 'espressivo';
-
-const { report } = compareMpm({ a: performance, b: neutralMpm({ ppq: 720 }), msm: score });
-report.aggregate.mean; // the whole deviation from neutral, in JND
-```
-
-That is the denominator for "how expressive is this, relative to that": compare two performances
-against the same neutral and take the ratio. Use `invariance: 'level'` on tempo if the question is
-about _shaping_ rather than about tempo choice — with `'none'` a performance that is simply fast
-scores as expressive, which is measuring the wrong thing.
-
-**Boundary precision and recall.** With `a` inferred and `b` ground truth, `diffMpm`'s op counts
-give a `boundary_prf`-style figure directly: substitutions are matched boundaries, deletions are
-spurious inferred instructions, insertions are missed true ones.
-
-```ts
-const { opCounts } = report.scripts.find((s) => s.map === 'tempoMap')!;
-const precision = opCounts.substitute / (opCounts.substitute + opCounts.delete);
-const recall = opCounts.substitute / (opCounts.substitute + opCounts.insert);
-```
-
-**These will not equal mpmify's numbers, and the difference is not a bug.** mpmify's matcher is
-greedy-nearest with an explicit date tolerance; this one is a cost-minimizing DP that may prefer a
-large-date-shift substitution over an insert-and-delete pair on semantic grounds. The figures are
-comparable in trend and not in value, which is why they are a recipe here rather than a field in
-the report — a symmetric metric should not inherit precision/recall's asymmetry uncritically. Add
-`|op.dateA − op.dateB| <= tol` as a post-filter if you want the tolerance back.
-
-**Earlier or later rubato?** Hudson's typology — does the melody arrive _before_ the beat is
-stretched, or after — is definitionally a statement about the relationship between the asynchrony
-channel and the tempo channel, and MPM separates them natively where an audio study has to
-disentangle them. Goebl, Flossmann & Widmer's working detector is a 30 ms threshold, and 30 ms is
-already this module's asynchrony JND:
-
-```ts
-const { report } = compareMpm({ a, b, msm: score });
-
-// Does melody lead separate them at all? `meanSigned` is in ms, and 30 ms is the threshold.
-const lead = report.dimensions.asynchrony.meanSigned ?? 0;
-const separates = Math.abs(lead) >= 30;
-
-// Where is it concentrated? The closing table attributes every segment to the dimensions that
-// made it. Rows are `table.dimensions`; columns are the segments, then the below-threshold
-// remainder — so a share is a cell over its column's sum.
-const row = report.table.dimensions.indexOf('asynchrony');
-const ranked = report.segments
-  .map((segment, column) => ({
-    segment,
-    share:
-      report.table.columnSums[column] === 0
-        ? 0
-        : report.table.cells[row * report.table.columnCount + column] /
-          report.table.columnSums[column],
-  }))
-  .sort((x, y) => y.share - x.share);
-
-const top = ranked[0];
-if (separates && top.segment.measure)
-  console.log(
-    `melody lead ${lead.toFixed(0)} ms; ${(top.share * 100).toFixed(0)} % of the difference in ` +
-      `bars ${top.segment.measure.start.number}–${top.segment.measure.end.number}`,
-  );
-```
-
-On the vendored Albert _Du mein einzig Licht_, whose two readings are an expressive one and a
-deliberately deadpan "Like a robot", that prints a **475 ms** lead carrying **33 %** of the
-difference — an unmistakable answer in the historians' own terms, where a correlation coefficient
-would say only that the two are far apart.
-
-Two honest limits. **The localisation is only as fine as the segmentation**, and on this corpus
-every pair yields a single segment spanning the whole piece: with `ω = 1` the entire piece is
-above the one-JND threshold, so there is nothing to localise _within_. Narrow the window, or
-down-weight the dimensions that are saturating it, to see the segmentation split. And this is a
-recipe rather than a report field because deciding _earlier_ against _later_ needs the asynchrony
-attributed to the melody voice specifically, while the report sums over the score's parts rather
-than separating them — a limitation stated here rather than papered over with a plausible note.
-
-**Trusting an encoding as far as it deserves.** Where a document came from should change what you
-weigh, and the knobs for that already exist — these are documented data, not library semantics,
-and nothing here derives them:
-
-```ts
-// A roll-derived encoding: the note ordering is trustworthy, the dynamics are not, and the
-// melody lead is confounded by velocity (Goebl 2001; Hagmann's künstliches Arpeggio).
-const ROLL_DERIVED = {
-  weights: { dynamics: 0.2, imprecisionDynamics: 0.2, accentuation: 0.3, asynchrony: 0.5 },
-  invariance: { tempo: 'level' as const },
-};
-
-// An alignment-fitted encoding: onsets are as good as the alignment, so timing is trustworthy
-// and everything the fitter had to invent is not.
-const ALIGNMENT_FITTED = {
-  weights: { ornamentation: 0, pedal: 0, accentuation: 0.5 },
-};
-
-// A hand-authored encoding: every channel is deliberate; weigh them equally.
-const HAND_AUTHORED = {};
-```
-
-TimeToAlign's `MatchClaim` certainty field is the citable precedent for encoding
-provenance-conditioned trust this way — the trust belongs to the source, so it belongs in the
-weights rather than in the metric.
-
-## What this is not
-
-Three prohibitions, and they are the survey's rather than this document's:
-
-- **Not a quality judge.** The distance says two performances differ, never that one is better.
-  Peter et al. (2023) is the standing demonstration that "distance from a norm" and "quality" are
-  different axes, and nothing here measures the second.
-- **Not a perceptual model.** JND normalization makes the dimensions commensurable; it does not
-  make the total a prediction about what a listener will notice. A constant JND is a stated
-  simplification, and a real one: Repp's 1992/1995 position-variance work shows that the
-  perception of musical time is warped by structure — thresholds dip exactly where expressive
-  lengthening typically occurs — so a difference of 1 JND at a phrase boundary and 1 JND mid-bar
-  are not equally audible. Position-dependent thresholds are enumerated future work, not silently
-  absent.
-- **Not a single number.** `D` exists because a metric needs a total, but the products worth
-  reading are the per-dimension rows, the segments, and the decomposition. Liebman et al. (2012)
-  is the standing warning against collapsing performance similarity onto one axis.
-
-**Asynchrony's limits, specifically** (`asynchronyMap` is one offset per part, per span): it
-models a part-level lead or lag, not per-note melody lead within a chord, and not the
-register-dependent asynchrony a real pianist produces. A document that encodes the first will be
-compared exactly; a study that needs the second needs note-level data this format does not carry.
-
-**On interpolating between measured events.** Desain & Honing's standing objection — never
-interpolate a curve through measured onsets — targets _measured event data_, and it is right. It
-does not apply here: an MPM curve is a **parametric specification**, continuous by definition and
-authored as such, so this module compares shape functions and interpolates nothing. That is
-exactly the representation Todd's kinematic models, Repp's parabolic ritard and Molina-Solana's
-`(w, q)` fitting all have to _recover_ by fitting, and it is free here.
-
-The full model — the eleven dimensions, the per-attribute registry, the renderer-truth readings
-each one is compiled from, and the reasoning behind every inclusion and exclusion — is in
-[docs/history/comparison/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/docs/history/comparison/DESIGN.md)
-(a repository document; the npm package does not carry it).
-
-## One part per voice: splitting MEI layers
+Every dimension is compared as a **function of score time** rather than as a list of instructions,
+so two documents that spell the same performed curve differently compare at exactly 0. The total is
+an integral of the pointwise difference in just-noticeable differences, and it **decomposes exactly**
+— by dimension, by score passage, with zero residual — which as far as a verified literature survey
+could establish has no prior art for symbolic performance-directive encodings. Alongside it,
+`diffMpm` answers _what would you have to change_ with a cost-ranked edit script in the same units,
+`compareMpmCorpus` turns a folder into matrices, clusters and an MDS embedding, and `scape` gives
+Sapp's timescape over every position and timescale.
+
+Three things it deliberately is not: a quality judge, a perceptual model, or a single number.
+
+→ [`docs/comparison.md`](docs/comparison.md)
+
+### One part per voice — splitting MEI layers
 
 MEI keeps the voices of a keyboard or divisi staff as sibling `<layer>` elements inside one
-`<staff>`, and the conversion makes one MSM `<part>` per `<staffDef>` — so those voices arrive
-merged into a single part, sharing one MIDI channel and one instrument. `Mei.layersToStaffs()`
-rewrites the encoding first, giving every layer its own staff and therefore **its own part,
-channel and instrument**:
+`<staff>`, and the conversion makes one MSM part per `<staffDef>` — so those voices arrive merged
+into a single part, sharing one MIDI channel and one instrument. `Mei.layersToStaffs()` rewrites
+the encoding first, giving every layer its own staff and therefore **its own part, channel and
+instrument**, and returns the map from each generated staff back to the staff and layer it came
+from (the numbering is lossy without it). It is opt-in, mutates the instance, and changes nothing
+if you never call it.
 
-```ts
-import { Mei, Mei2MsmMpmConverter } from 'espressivo';
+This one is a backport rather than an invention: the method exists in upstream meico v0.11.10, but
+the fork this port is measured against is v0.11.2 and predates it, so ground truth had to be
+constructed instead of exempted.
 
-const mei = Mei.fromXml(readFileSync('piano.mei', 'utf8'));
-const [provenance] = mei.layersToStaffs(); // staff 1 / layers 1,2  ->  staffs 11, 12
-
-const [msm] = new Mei2MsmMpmConverter(720, true, false, true).convert(mei).getKey();
-// two parts now, numbered 11 and 12, on MIDI channels 0 and 1
-
-provenance.get('11'); // { origStaff: '1', origLayer: '1' }
-provenance.get('12'); // { origStaff: '1', origLayer: '2' }
-```
-
-The return value is one map per `mdiv` — one per movement, matching what the converter emits —
-from each generated staff's `@n` back to the staff and layer it came from. You need it because the
-numbering is lossy: `111` alone cannot say whether it was staff 1 / layer 11 or staff 11 / layer 1.
-
-It is opt-in and mutates the instance — clone first if you still need the original — and the
-default pipeline is unchanged if you never call it. New staffs are numbered by concatenating the
-original `staff@n` and `layer@n`, and each staff's `<staffDef>` is copied so clef, key,
-transposition and instrument follow the voice.
-
-Two edges are worth knowing, both inherited from meico and both detailed in
-[PARITY.md §8](PARITY.md): control events keep their original `@staff`, so a `<slur staff="1">`
-becomes a dangling reference once the staffs are renumbered and is dropped; and an `<oStaff>` whose
-children are `<oLayer>` elements is removed rather than split, so do not run the pass over ossia
-content you need to keep.
+→ [`docs/layers-to-staffs.md`](docs/layers-to-staffs.md), [PARITY.md §8](PARITY.md)
 
 ## Equivalence with Java meico
 
 The port's correctness criterion is not "passes its tests", it is **"produces what meico
-produces"**. That is enforced mechanically:
+produces"**, and that is enforced mechanically: 16 MEI fixtures with the Java library's own output
+for each — MSM, MPM, augmented MSM, raw and expressive MIDI, plus 40 per-map fixtures — held
+**immutable**, and seven equivalence suites comparing against them, down to MIDI byte equivalence
+event by event. The suites auto-discover the fixtures, so a missing reference is a **failure, not a
+skip**. 5434 tests across 126 files run as a gate before every commit, every structural refactor was
+additionally proven with a whole-pipeline byte probe, and the load-bearing probes have negative
+controls — a deliberate mutation had to break them.
 
-- **Java-generated ground truth.** `tests/integration/fixtures/` holds 16 MEI inputs and the
-  reference output the Java library produces for each: MSM + MPM (32 files), augmented MSM plus
-  raw and expressive MIDI (48 files), and 40 programmatically built per-map fixtures covering
-  rubato, asynchrony, metrical accentuation, movement, imprecision and a combined case. These
-  files are **immutable** — regenerating them is a governed act with its own provenance record.
-- **Seven equivalence suites** compare against them: MEI ⇒ MSM/MPM cross-validation, full XML
-  equivalence of the augmented MSM, performance equivalence, per-map equivalence, MIDI **byte**
-  equivalence event by event, the MIDI export pipeline, and the layer-splitting pass (whose
-  reference set lives beside the frozen one, in `tests/integration/fixtures-layers-to-staffs/`,
-  and is generated the same way — see [PARITY.md §8](PARITY.md)).
-  They auto-discover every `.mei` fixture, so a missing reference is
-  a **failure, not a skip**, and they canonicalize generated `meico_<uuid>` identifiers by
-  first-occurrence order — which keeps `goto` → `marker` wiring verifiable rather than deleting it.
-- **4062 tests across 90 files**, run as a gate (`npm run verify` = clean build + typecheck of the
-  test sources + the full suite) before every single commit of the refactor that produced this
-  codebase, and of the ornamentation work that followed it.
-- **Byte probes for every refactor.** Beyond the suite, each structural change was proven with a
-  pipeline probe: all fixtures pushed through MSM, MPM, augmented MSM, raw MIDI and expressive
-  MIDI on both the old and the new tree, hashed, and compared — plus emitted-JavaScript diffs to
-  show that "style-only" changes were style-only.
-- **Negative controls.** Where a claim was load-bearing, the inverse was tested too: deliberately
-  mutating the new code had to _break_ the probe, so that a green result proves the probe can see
-  the thing it claims to check. Roughly a dozen such mutations are recorded in the journal, and the
-  `AccentuationPatternDef` control is why we know a one-character "fix" there moves fixture bytes —
-  which is why that fix shipped only once the Java fork had been patched and the affected ground
-  truth regenerated from it.
+What it does not claim: imprecision is nondeterministic by design and is never byte-compared; a
+short list of behaviours on malformed input still differs; and ornamentation, the expression
+transforms and the comparison module are outside the claim entirely, for want of anything to
+compare against. Java's bugs are reproduced rather than corrected, with eight exceptions — each
+an obvious bug, each fixed only once the fix was proven not to move fixture bytes, or else shipped
+by patching the Java fork first and regenerating the affected ground truth from it.
 
-What this does **not** claim: imprecision output is nondeterministic by design and is never
-byte-compared (see [PARITY.md §4](PARITY.md)); a short list of behaviours on malformed or
-unreachable input still differs from the reference — those are enumerated in
-[PARITY.md §2](PARITY.md) rather than fixed; and **MPM v3 ornamentation is not covered by the
-equivalence claim at all**, because the Java library does not implement it. That feature is
-verified against the specification and hand-computed vectors instead, in its own fixture
-directory, and it is documented separately in [PARITY.md §6](PARITY.md) — including the proof
-that it moves no byte of anything above.
-
-### Where this deliberately differs from Java
-
-The reference is the specification, so its bugs are reproduced rather than corrected. The
-exception is an **obvious** bug, which is fixed provided the fix is proven not to move the bytes of
-any reference fixture:
-
-1. **The articulation hang is fixed.** `ArticulationData.articulateNote`'s
-   `absoluteDurationChange` branch never terminates in Java (`ArticulationData.java:197`); the port
-   uses the spelling Java's own `ArticulationDef.java:420-423` gives the same computation.
-2. **The `movementMap` fixes are mirrored** from the maintained fork, and the reference fixtures
-   were regenerated from it.
-3. **`Msm.getMinimalPPQ` was repaired toward Java**, which uses integer division where the port
-   had used float division.
-4. **Both spellings of the two `Mpm.isInNamespace` typos are accepted** — the corrections as well
-   as Java's `'accentuation '` and `'dynamcisGradient'`, so the vocabulary is a superset of the
-   reference's.
-5. **Malformed numeric attributes skip the def** instead of yielding one whose value is `NaN`,
-   matching what `Double.parseDouble` plus Java's factory `catch` already did.
-6. **A movement that cannot inherit a position is skipped**, where Java throws a
-   `NullPointerException` and the port used to render it at position 0.
-7. **The random-number provider rejects an unusable index** — `NaN`, infinite, or absurdly large —
-   instead of overflowing the stack or allocating without bound, as both Java and the port did.
-8. **`AccentuationPatternDef.getAccentuationAt` ramps each segment to the next accentuation**,
-   where a guard that can never hold (`i > size - 1`) made every segment ramp to the end of the
-   whole pattern. This is the one fix that moves fixture bytes, so it shipped the way entry 2 did:
-   the fork was patched first and the affected ground truth regenerated from it.
-
-Full accounts, with Java line citations and the evidence for each, are in [PARITY.md](PARITY.md) —
-along with the differences left in place and the Java bugs reproduced on purpose.
+→ [`docs/equivalence.md`](docs/equivalence.md) for the enforcement and the eight departures in
+full; [PARITY.md](PARITY.md) for the complete ledger, with Java line citations.
 
 ## Provenance
 
@@ -935,8 +383,10 @@ npm run build         # tsc; always preceded by a dist wipe, so no stale output 
 ```
 
 `npm pack` rebuilds from a clean `dist/` first, and the published tarball contains only `dist/`,
-`src/` (so the declaration maps and source maps resolve to real TypeScript), `PARITY.md`, this
-README and the manifest.
+`src/` (so the declaration maps and source maps resolve to real TypeScript), `PARITY.md`, the
+guides in `docs/`, this README and the manifest. `ARCHITECTURE.md` is the standing architectural
+contract for anyone working _on_ the port; the campaign records behind all of it are in
+[`docs/history/`](docs/history/README.md).
 
 ## License
 
