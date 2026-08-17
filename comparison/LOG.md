@@ -6142,3 +6142,21 @@ tests). Repo-wide `npx prettier --check .` clean; eslint clean on both touched f
 **§8's must-fix list is now closed except the MINORs.** CAPITAL-1/2/3, MAJOR-1..10 all landed,
 plus two findings off the list (the NUL bytes, and the summation order that CAPITAL-2's tie key
 could not reach). MINORs 5–13 remain, and MINORs 1–4 landed in cut 1.
+
+## 2026-08-17 — AD-73: cut 9 ratifications; must-fix list closed to MINORs [BINDING]
+
+2ed139a accepted — CAPITAL-1..3 and MAJOR-1..10 all landed, plus the two
+off-list finds (the NUL bytes; the summation order below the tie key).
+AD-73.1 RATIFIED: corpus notes drop pair-relative `document` for
+`itemIndex` — 'a'/'b' cannot mean anything at corpus level, and the old
+`itemIndex: i` regardless of side was latent only because nothing
+document-scoped was forwarded. AD-73.2 RATIFIED: the attribution rule —
+a note about a document carries that item's label; pair-varying content
+carries both; content identical across EVERY pair carries neither,
+because it is then a fact about the corpus and first-enumerated-pair
+attribution would misattribute it (the MPM-scope-rule note forced the
+distinction). The dedupe measurements (713 → 104; document-facts at
+O(N) not O(N²)) and the defeat-the-dedupe control failing on the
+UNIQUENESS assertion rather than a count are the mechanism-not-magic-
+number standard. MAJOR-10's empty-domain repair (everything-legal
+exactly where nothing was) accepted. MINORs 5–13 close the wave.
