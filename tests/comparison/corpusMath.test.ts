@@ -501,6 +501,76 @@ describe('silhouette', () => {
     }
   });
 
+  /**
+   * The silhouette under permutation — AD-72.2's sweep, on a corpus big enough to show it.
+   *
+   * `a` and `b` sum a cluster's members, and members were collected in the caller's item order.
+   * Floating-point addition is not associative, so a permuted corpus adds the same numbers in a
+   * different sequence and the published per-item score is not the same double. The six-item
+   * vendored corpus does NOT show this — its clusters are small enough that the additions
+   * reassociate exactly — which is why the repair looked defensive until it was measured on
+   * something larger.
+   *
+   * [MEASURED] `n = 12..19`, `k = 3`, 30 corpora × 6 permutations = 2844 per-item comparisons:
+   * **1242 differ** bit-wise without the label ordering, **0** with it. Not a corner case — it
+   * is nearly half of them, and the only reason it was invisible is that nothing had permuted a
+   * corpus this size.
+   */
+  it('gives bit-identical scores under permutation, on a corpus large enough to show it', () => {
+    const next = lcg(31337);
+    let disagreements = 0;
+    let cases = 0;
+
+    const permute = (matrix: DistanceMatrix, order: readonly number[]): DistanceMatrix => ({
+      n: matrix.n,
+      values: Array.from({ length: matrix.n * matrix.n }, (_unused, index) => {
+        const i = Math.floor(index / matrix.n);
+        const j = index % matrix.n;
+        return matrix.values[order[i] * matrix.n + order[j]];
+      }),
+    });
+
+    for (let trial = 0; trial < 12; ++trial) {
+      const n = 12 + Math.floor(next() * 8);
+      const values = new Array<number>(n * n).fill(0);
+      for (let i = 0; i < n; ++i)
+        for (let j = i + 1; j < n; ++j) {
+          // Values with long binary expansions, which is what makes reassociation visible at
+          // all — a matrix of small integers sums exactly in any order.
+          const value = Math.round(next() * 1e6) / 7919;
+          values[i * n + j] = value;
+          values[j * n + i] = value;
+        }
+      const matrix: DistanceMatrix = { n, values };
+      const labels = labelsOf(n);
+      const partition = pam(matrix, 3, labels);
+      const straight = silhouette(matrix, partition!.clusters, labels);
+      const byLabel = new Map(labels.map((label, item) => [label, straight[item]]));
+
+      for (let attempt = 0; attempt < 6; ++attempt) {
+        const order = Array.from({ length: n }, (_unused, index) => index);
+        for (let i = n - 1; i > 0; --i) {
+          const j = Math.floor(next() * (i + 1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
+        const permutedLabels = order.map((index) => labels[index]);
+        const permuted = permute(matrix, order);
+        const shuffled = silhouette(
+          permuted,
+          pam(permuted, 3, permutedLabels)!.clusters,
+          permutedLabels,
+        );
+        for (let item = 0; item < n; ++item) {
+          cases += 1;
+          if (byLabel.get(permutedLabels[item]) !== shuffled[item]) disagreements += 1;
+        }
+      }
+    }
+
+    expect(cases).toBeGreaterThan(1000);
+    expect(disagreements).toBe(0);
+  });
+
   it('scores a singleton cluster 0, and a zero-distance corpus 0', () => {
     expect(silhouette(fromPoints([0, 5, 9]), [0, 1, 2])).toEqual([0, 0, 0]);
     expect(silhouette({ n: 2, values: [0, 0, 0, 0] }, [0, 0])).toEqual([0, 0]);

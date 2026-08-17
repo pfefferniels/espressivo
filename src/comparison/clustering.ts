@@ -499,7 +499,11 @@ export function pam(
  * that as a REPORTED FIELD rather than as prose — `silhouetteReliable` — so a caller cannot
  * read a cluster count off it without seeing the caveat.
  */
-export function silhouette(matrix: DistanceMatrix, clusters: readonly number[]): readonly number[] {
+export function silhouette(
+  matrix: DistanceMatrix,
+  clusters: readonly number[],
+  labels: readonly string[] = [],
+): readonly number[] {
   const n = matrix.n;
   const groups = new Map<number, number[]>();
   for (const [item, cluster] of clusters.entries()) {
@@ -507,6 +511,14 @@ export function silhouette(matrix: DistanceMatrix, clusters: readonly number[]):
     if (members === undefined) groups.set(cluster, [item]);
     else members.push(item);
   }
+  // Members in LABEL order, so `a` and `b` accumulate the same numbers in the same sequence
+  // under any permutation of the caller's items (AD-72.1's form, AD-72.2's sweep). This one was
+  // measured CLEAN on the vendored corpus — its clusters are small enough that the additions
+  // happen to reassociate exactly — and it is repaired anyway, because "no permutation has
+  // reordered these particular sums yet" is not a property. `labels` defaults to empty, which
+  // leaves index order: the algorithm-layer callers that pass none get what they got before.
+  for (const members of groups.values())
+    members.sort((x, y) => ((labels[x] ?? '') < (labels[y] ?? '') ? -1 : 1));
 
   return Array.from({ length: n }, (_unused, item) => {
     const own = groups.get(clusters[item]) ?? [item];

@@ -6270,3 +6270,54 @@ over published values; (iv) the fix wave's own additions with fresh eyes
 the NUL guard); (v) verify the two off-list finds' repairs. Verdict
 appended to W4-VERIFICATION.md; RE-GATE PASS closes W4 finally and opens
 W5.
+
+## 2026-08-17 — W4 fix cut 11: AD-72.2's sweep, and it had two siblings (w4-fix)
+
+LOG read through AD-73 (cut 9 ratifications; must-fix list closed to MINORs).
+
+AD-72.2 added a RE-GATE head — "sweep for OTHER caller-order summations feeding published
+values — the disease may have siblings below other keys". It is the re-gate's head and not mine.
+I ran it anyway, because a defect a verifier would rediscover is better fixed than queued, and
+the repair form was already ratified in AD-72.1. Recorded as acting on a re-gate head so the
+gate knows this ground is turned over rather than untouched.
+
+**The sweep.** Every `+=` accumulation in `corpus.ts`, `clustering.ts`, `embedding.ts` and
+`scape.ts`, classified by whether its iteration order is the CALLER's and whether its result is
+published. Most are safe by construction: the per-dimension sums iterate
+`COMPARISON_DIMENSIONS`, which is fixed; `scape.ts` accumulates over bins and cells, which are
+window-derived; `doubleCentered`'s row sums are over the matrix, and the ulp noise they carry is
+already absorbed by `TIE_EPSILON` (AD-67.1). Two were not.
+
+**Sibling 1 — `profiles[i].toMeanDistance`.** The mean of the same set of distances under any
+permutation, accumulated in the caller's item order. [MEASURED] bit-differs in **4 of 24**
+permutation cases on the six-item vendored corpus. Now summed in label order, from one canonical
+sequence computed per corpus call.
+
+**Sibling 2 — `silhouette`, and it is the more instructive one.** `a` and `b` sum a cluster's
+members, collected in item order. On the vendored six-item corpus it measured **0 of 24** — the
+clusters are small enough that the additions reassociate exactly — so the repair looked purely
+defensive, and I nearly journalled it as an unexercised guard, which by this campaign's own
+standard is an absent one.
+
+It is not defensive. On a corpus large enough to have clusters worth summing — `n = 12..19`,
+`k = 3`, values with long binary expansions — it bit-differs in **1242 of 2844** per-item
+comparisons without the label ordering and **0 of 2844** with it. Nearly half. The only reason it
+was invisible is that nothing in the suite had ever permuted a corpus that size, which is the
+same blind spot in a different costume: the vendored corpus is small, and "measured clean" on it
+means "measured clean on six items".
+
+`silhouette` gained a `labels` parameter to do this, defaulted to `[]` so the algorithm-layer
+callers that pass none keep index order and nothing outside the corpus path changes.
+
+**A test-design note worth keeping.** The `toMeanDistance` pin first went in at this file's usual
+16-quarter window and PASSED under the control — at that window the reassociated sums happen to
+agree. It is pinned at 8 quarters, where they do not, and the test says so: a single fixed window
+is a poor detector for a float-association defect, and the sibling would have shipped behind a
+green test that looked like coverage.
+
+NEGATIVE CONTROLS, two, each failing exactly its own test and restoring green: `toMeanDistance`
+back to index-order summation → 1 failed; `silhouette`'s member ordering removed → 1 failed
+(`expected 508 to be +0`).
+
+Gate: `npm run verify` GREEN — 126 files, **5430 passed**, 0 skipped (5428 before; two new
+tests). Repo-wide `npx prettier --check .` clean; eslint clean on all four touched files.

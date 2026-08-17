@@ -305,6 +305,66 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
         }).toEqual({ label, axis, within: true });
   });
 
+  /**
+   * AD-72.2's sweep, landed: every published PER-ITEM number is bit-identical under permutation.
+   *
+   * AD-72.1 repaired `partitionCost`, whose caller-order summation let float non-associativity
+   * break exact ties one level below the tie key, and AD-72.2 asked whether the disease had
+   * siblings. It does: `profiles[i].toMeanDistance` is the mean of the same set of distances
+   * under any permutation, but accumulated in the caller's item order it is not the same double
+   * — measured, it differed BIT-WISE in 4 of 24 permutation cases before the repair.
+   *
+   * `silhouette` has the identical shape and measured clean on this corpus, its clusters being
+   * small enough that the additions happen to reassociate exactly. It is repaired and pinned
+   * anyway: "no permutation has reordered these particular sums yet" is not a property, and the
+   * next corpus is not this one.
+   */
+  it('gives bit-identical per-item numbers under permutation (AD-72.2)', () => {
+    // An EIGHT-quarter window, and the size is measured rather than chosen: at the 16 quarters
+    // this file uses elsewhere the reassociated sums happen to agree bit for bit, so the defect
+    // is invisible there. It is the same six items either way — which is the point, and the
+    // reason a single fixed window is a poor detector for a float-association defect.
+    const shorter = { window: { start: 0, end: 8 }, k: 2 } as const;
+    const straight = corpus(tied, shorter);
+    const readback = (report: CorpusReport) => {
+      const byLabel = new Map<string, { silhouette: number; toMeanDistance: number }>();
+      for (let item = 0; item < report.n; ++item)
+        byLabel.set(report.labels[item], {
+          silhouette: (report.silhouette ?? [])[item],
+          toMeanDistance: report.profiles[item].toMeanDistance,
+        });
+      return byLabel;
+    };
+    const base = readback(straight);
+
+    // Several orders, including reversal and two derangements, because the defect showed on
+    // some permutations and not others — a single fixed order is what let it ship.
+    for (const order of [
+      [1, 0, 2, 3, 4, 5],
+      [5, 4, 3, 2, 1, 0],
+      [2, 4, 0, 5, 1, 3],
+      [3, 1, 5, 0, 4, 2],
+    ]) {
+      const shuffled = readback(
+        corpus(
+          order.map((index) => tied[index]),
+          shorter,
+        ),
+      );
+      for (const [label, values] of base) {
+        // `toBe`, not `toBeCloseTo`: the claim is bit-identity, and a tolerance here would be
+        // exactly the epsilon AD-72.1 rejected in favour of a canonical order.
+        expect({ label, ...(shuffled.get(label) ?? {}) }).toEqual({ label, ...values });
+      }
+    }
+
+    // Non-vacuity: these are real numbers with real spread, not a corpus of zeros where any
+    // summation order agrees.
+    expect(new Set([...base.values()].map((entry) => entry.toMeanDistance)).size).toBeGreaterThan(
+      1,
+    );
+  });
+
   it('is non-vacuous: this corpus really does tie, and the swap really does move the items', () => {
     const straight = corpus(tied, { k: 2 });
     // Three exact-0 off-diagonal cells: each document against its own duplicate.

@@ -215,6 +215,19 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
   // `corpusEndQuarters` so no cell can pick a different one.
   const corpusEnd = corpusEndOf(options, items);
 
+  /**
+   * Item indices in LABEL order — the canonical sequence every corpus-level sum accumulates in.
+   *
+   * AD-72.1 ratified this for `partitionCost` and AD-72.2 asked for the sweep; `toMeanDistance`
+   * is the sibling it found. Floating-point addition is not associative, so a sum over the
+   * caller's item order is not the same double under a permutation even though it is the same
+   * SET of numbers — and every published corpus figure has to be a function of the corpus rather
+   * than of how it was listed.
+   */
+  const labelOrder = Array.from({ length: n }, (_unused, index) => index).sort((x, y) =>
+    labels[x] < labels[y] ? -1 : 1,
+  );
+
   const pairwise = new Map<string, ComparisonReport>();
   const aggregate = new Array<number>(n * n).fill(0);
   const byDimension = {} as Record<ComparisonDimension, number[]>;
@@ -364,7 +377,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
   const matrix = { n, values: aggregate };
   const dendrogram = agglomerate(matrix, options.linkage, labels);
   const partition = options.k === undefined ? null : pam(matrix, options.k, labels);
-  const scores = partition === null ? null : silhouette(matrix, partition.clusters);
+  const scores = partition === null ? null : silhouette(matrix, partition.clusters, labels);
   const embedding = classicalMds(matrix, Math.max(1, axes), labels);
   const seriation = seriationOrder(embedding, labels);
 
@@ -401,7 +414,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
   // typical of the whole corpus.
   const corpusMedoid = pam(matrix, 1, labels)?.medoids[0] ?? null;
   const profiles = items.map((_item, index) =>
-    profileOf(index, corpusMedoid, n, byDimension, signed, aggregate),
+    profileOf(index, corpusMedoid, n, byDimension, signed, aggregate, labelOrder),
   );
 
   const suspectPairs: { i: number; j: number; reason: ComparisonNoteKind }[] = [];
@@ -585,6 +598,8 @@ function profileOf(
   byDimension: Record<ComparisonDimension, readonly number[]>,
   signed: readonly Record<ComparisonDimension, number | null>[],
   aggregate: readonly number[],
+  /** Item indices in label order — one canonical summation sequence (AD-72.1's form). */
+  order: readonly number[],
 ): CorpusReport['profiles'][number] {
   const toMedoid = {} as Record<ComparisonDimension, number>;
   const toMedoidSigned = {} as Record<ComparisonDimension, number | null>;
@@ -593,9 +608,13 @@ function profileOf(
     toMedoidSigned[dimension] =
       medoid === null || index === medoid ? null : (signed[index * n + medoid][dimension] ?? null);
   }
+  // Summed in LABEL order, the sibling AD-72.2 sent me looking for. `toMeanDistance` is a
+  // published per-item number and the mean of the SAME set of distances under any permutation —
+  // but accumulated in the caller's item order it is not the same double: measured, it differs
+  // bit-wise in 4 of 24 permutation cases on the six-item vendored corpus. Same disease as
+  // `partitionCost`'s (AD-72.1), same exact repair rather than an epsilon.
   let total = 0;
-  for (let other = 0; other < n; ++other)
-    if (other !== index) total += aggregate[index * n + other];
+  for (const other of order) if (other !== index) total += aggregate[index * n + other];
   return { toMedoid, toMedoidSigned, toMeanDistance: n > 1 ? total / (n - 1) : 0 };
 }
 
