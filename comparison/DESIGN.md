@@ -2334,10 +2334,18 @@ export interface CompareMpmOptions extends ComparisonSettings {
   readonly scape?: { readonly bins: number };
 }
 
-// AD-61.1: NOT a bare extends — `invariance` and `profile` are absent from the
-// diff surface entirely (absence over throw, AD-52.3a's form): edit pricing is
-// RAW by AD-59.3's theorem argument, and a DiffReport carries no profile.
-export interface DiffMpmOptions extends Omit<CompareMpmOptions, 'invariance' | 'profile'> {
+// AD-61.1 / AD-67.2 / AD-70.3: NOT a bare extends. Every field the diff does
+// not CONSUME is absent from the surface, never accepted-and-ignored — absence
+// over throw, AD-52.3a's form. `invariance`: edit pricing is RAW by AD-59.3's
+// theorem argument. `profile`: a DiffReport carries none. `weights`: they
+// combine dimensions into an aggregate and a DiffReport has no aggregate.
+// `scape`: it is a scape OF the aggregate density. `plausibleRange` stays
+// because it is consumed — plausibilityFindings reads only the two documents,
+// so the diff produces those notes from the same parse (§9.1).
+// The validator is narrowed to match: a wider validator would throw about keys
+// this surface does not declare, which AD-54.3 says are simply ignored.
+export interface DiffMpmOptions
+  extends Omit<CompareMpmOptions, 'invariance' | 'profile' | 'weights' | 'scape'> {
   readonly moves?: boolean; // fragment/consolidate ops; A-Q5/AD-66.1, default FALSE
 }
 
@@ -2837,6 +2845,14 @@ spread.
   this branch in v1** (AD-52.3a removed `noteDensityWeight`, which was the one);
   §8's corpus options `k` and `embeddingAxes` are the branch's live cases and
   arrive with W4.
+
+  This claim was FALSE for `diffMpm` between W4 and its fix wave (MAJOR-1):
+  `DiffMpmOptions` omitted only `invariance` and `profile`, so `weights` and
+  `scape` were inherited, validated, echoed, and silently dropped — the one
+  answer AD-25.1 forbids. AD-70.3 restored it by widening the `Omit` rather
+  than by adding throws, which keeps the claim literally true: with the four
+  unconsumed fields absent, there is again no instance of this branch at either
+  pairwise entry point.
 - **Unusable only given DOCUMENT CONTENT ⇒ a typed `option-unusable` note.**
   `invariance: 'level'` on a dimension that turns out to be absent from both
   documents is the case: the caller could not have known when they wrote the

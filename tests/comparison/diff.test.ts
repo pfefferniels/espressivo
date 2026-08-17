@@ -107,11 +107,35 @@ function mirrorOf(report: DiffReport): unknown {
         },
       };
     }),
-    notes: report.notes.map((entry) => ({
-      ...entry,
-      document: entry.document === 'a' ? 'b' : entry.document === 'b' ? 'a' : null,
-      site: entry.site === null ? null : { ...entry.site, document: entry.site.document },
-    })),
+    // The notes swap sides and are then RE-SORTED into §9.5's order, both of which this mirror
+    // used to get wrong in ways nothing could see: `DiffReport.notes` was structurally always
+    // empty (W4 MAJOR-5), so this branch mirrored an empty array and agreed with anything. It
+    // left `site.document` unswapped, and it did not re-sort — and §9.5's key runs through
+    // `document` and through the serialized note, both of which the swap changes.
+    //
+    // Re-derived from §9.5's stated order rather than by calling the engine's `sortNotes`, which
+    // is what keeps this mirror independent: kind, dimension, start, document, message, then the
+    // whole note as the final tiebreak.
+    notes: [
+      ...report.notes.map((entry) => ({
+        ...entry,
+        document: entry.document === 'a' ? 'b' : entry.document === 'b' ? 'a' : null,
+        site:
+          entry.site === null
+            ? null
+            : { ...entry.site, document: entry.site.document === 'a' ? 'b' : 'a' },
+      })),
+    ].sort((x, y) => {
+      const text = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
+      return (
+        text(x.kind, y.kind) ||
+        text(x.dimension ?? '', y.dimension ?? '') ||
+        (x.startQuarters ?? 0) - (y.startQuarters ?? 0) ||
+        text(x.document ?? '', y.document ?? '') ||
+        text(x.message, y.message) ||
+        text(JSON.stringify(x), JSON.stringify(y))
+      );
+    }),
   };
 }
 
@@ -391,6 +415,143 @@ describe('the surface (§9.4)', () => {
     expect(() => diffMpm({ a: neutralMpm(), performanceA: 'nope' })).toThrow(
       PerformanceNotFoundError,
     );
+  });
+
+  /**
+   * W4 MAJOR-1 / AD-70.3: a field the diff does not CONSUME is absent, not accepted-and-dropped.
+   *
+   * `DiffMpmOptions` omitted only `invariance` and `profile`, so `weights` and `scape` were
+   * inherited, validated, echoed — and never read. Measured before the repair:
+   * `JSON.stringify(diffMpm({…, scape: { bins: 8 }}))` was byte-identical to the call without
+   * it, and `weights: { tempo: 0 }` left every `scriptCost` bit-identical while the echo
+   * reported `0`. That is AD-25.1's knowability split violated on the surface AD-59.3 and
+   * AD-61.1 were about: unusable-given-the-options-alone must never be silent.
+   *
+   * TypeScript is the primary guard and it is not testable at runtime — the four keys do not
+   * type-check, which is the whole point of absence-over-throw. What IS testable is the
+   * JavaScript caller's path, and this pins the two halves of AD-54.3's rule for it: the keys
+   * are ignored exactly as `{ nonsense: 1 }` is, and — the half that is easy to get wrong —
+   * they do not THROW either, which they would have if the diff kept using the pairwise
+   * validator after losing the fields from its surface.
+   */
+  it('omits the four options it cannot consume, and neither reads nor rejects them', () => {
+    const base = { a: TELEMANN, performanceA: 0, performanceB: 1, window: SHORT } as const;
+    const plain = JSON.stringify(diffMpm(base).report);
+
+    // A JavaScript caller can hand over anything; each of these is an unrecognized key now.
+    const smuggle = (extra: Record<string, unknown>) =>
+      JSON.stringify(diffMpm({ ...base, ...extra } as never).report);
+
+    expect(smuggle({ weights: { tempo: 0 } })).toBe(plain);
+    expect(smuggle({ scape: { bins: 8 } })).toBe(plain);
+    expect(smuggle({ invariance: { tempo: 'level' } })).toBe(plain);
+    expect(smuggle({ profile: { dimensions: ['tempo'] } })).toBe(plain);
+    expect(smuggle({ nonsense: 1 })).toBe(plain);
+
+    // …and an ILLEGAL value for an omitted key is ignored too, rather than throwing about a
+    // field this surface does not declare. `scape.bins = 0` is an `InvalidOptionError` on
+    // `compareMpm`, which is what makes this a real distinction and not a tautology.
+    expect(smuggle({ scape: { bins: 0 } })).toBe(plain);
+    expect(() => compareMpm({ ...base, scape: { bins: 0 } } as never)).toThrow(InvalidOptionError);
+
+    // The options the diff DOES declare are still validated, so the narrower validator did not
+    // simply stop checking.
+    expect(() => diffMpm({ ...base, jnd: { 'tempo/tempo@bpm': -1 } })).toThrow(InvalidOptionError);
+    expect(() => diffMpm({ ...base, moves: 'yes' as never })).toThrow(InvalidOptionError);
+  });
+
+  /**
+   * W4 MAJOR-5: `DiffReport.notes` was allocated, sorted, and never written to.
+   *
+   * Structurally always empty means no note kind of §9.1 could fire on the diff path at all, and
+   * two of them should: the MPM-derived scope rule, which `DiffReport.scopes` reports as
+   * `rule: 'mpm'` and which DESIGN §9.3 says carries an `estimate-degradation` note, and
+   * `plausibility`, which AD-70.3 ruled is the reason `plausibleRange` stays on this surface.
+   * It also made `invertReport`'s note-inversion branch dead code — and that branch had two
+   * defects waiting in it, which the mirror test found the moment the first note existed.
+   */
+  it('reports the notes the edit path can produce (MAJOR-5)', () => {
+    const base = { a: TELEMANN, performanceA: 0, performanceB: 1, window: SHORT } as const;
+
+    // Unasked, exactly one note: the scope rule. No MSM was supplied, so the per-part sum runs
+    // over the MPM's own <part> elements rather than over rendered MSM parts (AD-55.2), and the
+    // report says so instead of leaving the reader to infer it from `scopes.rule`.
+    const plain = diffMpm(base).report;
+    expect(plain.scopes.rule).toBe('mpm');
+    expect(plain.notes.map((entry) => entry.kind)).toEqual(['estimate-degradation']);
+    expect(plain.notes[0].message).toContain('Supply an `msm` for the counted quantity');
+
+    // With a band the documents violate, `plausibility` fires — 56 of them, one per site, which
+    // is the same count `compareMpm` produces from the same two documents, because
+    // `plausibilityFindings` reads the documents and nothing else. That equality is the
+    // argument for `plausibleRange` being CONSUMED here rather than omitted.
+    const band = { plausibleRange: { 'tempo/tempo@bpm': [200, 400] } } as never;
+    const banded = diffMpm({ ...base, ...(band as object) }).report;
+    const plausibility = banded.notes.filter((entry) => entry.kind === 'plausibility');
+    expect(plausibility).toHaveLength(56);
+    expect(plausibility[0].message).toBe(
+      '@bpm = 58 is outside its plausible band [200, 400]; the distance is unchanged',
+    );
+    expect(plausibility.every((entry) => entry.dimension === 'tempo')).toBe(true);
+    expect(new Set(plausibility.map((entry) => entry.document))).toEqual(new Set(['a', 'b']));
+    expect(
+      compareMpm({ ...base, ...(band as object) }).report.notes.filter(
+        (entry) => entry.kind === 'plausibility',
+      ),
+    ).toHaveLength(56);
+
+    // Non-vacuity: the band is what produces them. The default bands are wide enough that this
+    // corpus violates none, which is why the unasked report has only the scope note.
+    expect(diffMpm(base).report.notes.some((entry) => entry.kind === 'plausibility')).toBe(false);
+  });
+
+  /**
+   * The mirror's note handling, on the one shape that can tell it apart from doing nothing.
+   *
+   * `invertReport` re-sorts the notes after swapping their sides, and on the vendored corpus
+   * that re-sort changes NOTHING: every plausibility message carries the attribute's value, the
+   * two performances never share one at the same site, so no two notes tie on §9.5's key ahead
+   * of `document`. Removing the re-sort left all 26 mirror assertions passing — which makes it
+   * exactly the kind of unexercised guard this campaign treats as absent.
+   *
+   * So the case is constructed rather than hunted for: two documents whose date-0 `<tempo>` is
+   * byte-identical and out of the DEFAULT band, differing only later. Both sides then emit the
+   * same note text at the same date, the pair ties on (kind, dimension, startQuarters, message),
+   * and `document` is what orders them — so mapping the swap in place leaves the mirrored report
+   * holding `b, a` where §9.5 says `a, b`. §6.4 claims byte-identity, and that is a byte.
+   */
+  it('re-sorts the mirrored notes, where two of them differ only in which document they name', () => {
+    const withTempo = (later: number): XmlText =>
+      ('<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0">' +
+        '<performance name="p" pulsesPerQuarter="720"><global><header/><dated><tempoMap>' +
+        // Shared, byte for byte, and 900 bpm is outside the default [10, 400] band.
+        '<tempo date="0.0" bpm="900" beatLength="0.25"/>' +
+        `<tempo date="720.0" bpm="${String(later)}" beatLength="0.25"/>` +
+        '</tempoMap></dated></global></performance></mpm>') as XmlText;
+
+    const a = withTempo(60);
+    const b = withTempo(80);
+
+    // Both orders, so whichever one is non-canonical goes through `invertReport`.
+    for (const [left, right] of [
+      [a, b],
+      [b, a],
+    ] as const) {
+      const forward = diffMpm({ a: left, b: right, window: SHORT }).report;
+      const reverse = diffMpm({ a: right, b: left, window: SHORT }).report;
+      expect(JSON.stringify(reverse)).toBe(JSON.stringify(mirrorOf(forward)));
+    }
+
+    // Non-vacuity: the tie really is there, and it is a tie on everything §9.5 ranks above
+    // `document`. Without this the test above would be asserting the mirror on a note set that
+    // cannot distinguish a re-sort from a no-op — which is what the vendored corpus does.
+    const report = diffMpm({ a, b, window: SHORT }).report;
+    const shared = report.notes.filter(
+      (entry) => entry.kind === 'plausibility' && entry.startQuarters === 0,
+    );
+    expect(shared).toHaveLength(2);
+    expect(shared[0].message).toBe(shared[1].message);
+    expect(shared.map((entry) => entry.document)).toEqual(['a', 'b']);
   });
 
   it('honours `moves`, and the plain script is what a caller gets unasked (A-Q5)', () => {

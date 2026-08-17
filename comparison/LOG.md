@@ -5809,3 +5809,87 @@ than for a value.
 
 Gate: `npm run verify` GREEN — 125 files, **5408 passed**, 0 skipped (5406 before; 2 new tests).
 Repo-wide `npx prettier --check .` clean; eslint clean on the three touched files.
+
+## 2026-08-17 — W4 fix cut 6: MAJOR-1 and MAJOR-5, and AD-70.1's standing guard (w4-fix)
+
+LOG read through AD-70 (the NUL finding; diff-surface consumption ruled). §8's items 4 and 10's
+first third, as ONE cut per AD-70.3, plus AD-70.1's guard which that ruling assigned to this cut.
+
+**AD-70.1's standing guard: `tests/repoHygiene.test.ts`.** A walk over `src/` and `tests/`,
+skipping `fixtures` (the MIDI references are legitimately binary — a NUL is what a MIDI file is
+made of), asserting no file carries a raw NUL and naming the file and LINE if one does. The class,
+not the instance: every other guard in this suite catches a wrong answer, and a wrong answer
+announces itself; this one catches a file that quietly stops being reviewable. It carries its own
+non-vacuity — that the walk found more than 150 files, that `diff.ts` is among them, and that the
+detector detects.
+
+**MAJOR-1, per AD-70.3's ratified determination.** `DiffMpmOptions` now omits
+`'invariance' | 'profile' | 'weights' | 'scape'`. The two new ones are structural, not incidental:
+weights combine eleven dimensions into ONE aggregate and a `DiffReport` has no aggregate; the
+scape is a scape OF the aggregate density, which the diff path also has none of.
+
+**The half the report did not name, and it is half the defect.** A surface narrowed without its
+VALIDATOR is the same fault pointed the other way. `diffMpm` called `checkCompareOptions`, so
+after the `Omit` a JavaScript caller passing `scape: { bins: 0 }` would get an
+`InvalidOptionError` about a key `DiffMpmOptions` does not declare — while AD-54.3 says an
+unrecognized top-level key is IGNORED. `checkDiffOptions` validates exactly what the diff offers
+(window, jnd, plausibleRange, the two selectors, `moves`), so the omitted four now get the same
+silence `{ nonsense: 1 }` gets. Pinned in both directions: the four are byte-identically ignored
+INCLUDING with illegal values, `compareMpm` still throws on the same illegal value (which is what
+makes it a distinction rather than a tautology), and the fields the diff does declare are still
+rejected when wrong.
+
+**MAJOR-5, and `plausibleRange` earning its place.** `DiffReport.notes` was allocated, sorted and
+never written to. Two kinds now fire, and which two is AD-70.3's consumption rule applied to the
+report surface rather than to the options:
+
+- `plausibility`, the kind AD-70.3 names. `plausibilityFindings` reads the two DOCUMENTS and
+  nothing else — not the aggregate, not the weights, not the comparison — so the diff produces
+  them from the same parse. [MEASURED] with a `[200, 400]` band on `tempo/tempo@bpm`: **56**
+  notes, the same count `compareMpm` produces from the same two documents, and that equality is
+  the argument for consumption over omission. Unasked, the default bands are wide enough that
+  the corpus violates none.
+- `estimate-degradation` for the MPM-derived scope rule. `DiffReport.scopes` reports
+  `rule: 'mpm'` and DESIGN §9.3 says that rule carries the note; `compare.ts` emitted it and the
+  diff did not, so the same fact about the same documents was stamped on one report and silent
+  on the other. Same wording, because it is the same fact.
+
+**Two latent defects the first note flushed out, in code that had never run.**
+
+1. `invertReport` mapped the swap in place without re-sorting. §9.5 orders notes through
+   `document` and through the serialized note, both of which the swap changes.
+2. **Both mirror tests had the same hole, independently** — `diff.test.ts`'s `mirrorOf` and
+   `w4Family.test.ts`'s left `site.document` UNSWAPPED and did not re-sort. They mirrored an
+   empty array and agreed with anything. Corrected by re-deriving §9.5's order in the tests
+   rather than by calling the engine's `sortNotes`, which is what keeps a mirror independent of
+   the thing it checks.
+
+**And the re-sort needed a corpus built for it, which is recorded because it nearly shipped
+unexercised.** Removing `sortNotes` from `invertReport` left all 26 mirror assertions PASSING:
+every plausibility message carries the attribute's value, the vendored performances never share
+one at the same site, so no two notes ever tie on §9.5's key ahead of `document`. An unexercised
+guard is an absent one by this campaign's own standard, so the case is CONSTRUCTED — two
+documents whose date-0 `<tempo bpm="900">` is byte-identical and outside the DEFAULT band,
+differing only later. Both sides then emit the same text at the same date, `document` is what
+orders the pair, and mapping in place leaves the mirror holding `b, a` where §9.5 says `a, b`.
+With that pair present the control fails as it should.
+
+**DESIGN** carries the widened `Omit` with the per-field reasons and the validator's narrowing,
+and §9.4's knowability-split paragraph now records that its own claim — "the pairwise entry point
+has no instance of this branch in v1" — was FALSE for `diffMpm` between W4 and this wave, and why
+widening the `Omit` rather than adding throws makes it literally true again.
+
+NEGATIVE CONTROLS, five, each failing exactly its own tests and restoring green: the `Omit` back
+to two fields with the wide validator → 1 failed; the diff's note production removed → 1 failed;
+`invertReport` without the re-sort → 1 failed (the constructed pair, and NOTHING before it
+existed — recorded above); `invertReport` without swapping `site.document` → 3 failed across both
+mirror tests; and a NUL re-introduced into `diff.ts` → the hygiene guard fires, naming the file
+and line, which is the control that matters most since it is the only proof AD-70.1's guard is
+not itself decoration.
+
+[NOTED] `git diff --stat` shows `src/comparison/diff.ts | 73 +++---` — LINES, for the first time
+in this file's history. Cut 4's repair is doing what it was for.
+
+Gate: `npm run verify` GREEN — **126 files**, **5413 passed**, 0 skipped (5408 before; one new
+file, five new tests). Repo-wide `npx prettier --check .` clean; eslint clean on all five touched
+files.

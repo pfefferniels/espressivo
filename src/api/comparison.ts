@@ -170,21 +170,41 @@ export interface CompareMpmOptions extends ComparisonSettings {
 }
 
 /**
- * §6's edit path. `CompareMpmOptions` minus the two knobs the path cannot honour.
+ * §6's edit path. `CompareMpmOptions` minus every knob the path does not CONSUME.
  *
- * `invariance` is out because §6.2's pricing is RAW and must be: §7.4's modes rescale a curve by
- * that DOCUMENT's own moments, and an intermediate edit state is not a document — its moments
- * move as the script is applied, so a canonicalized `norm` would not be a fixed metric and
- * `scriptCost ≥ d_curve` would stop being AD-5's theorem. `profile` is out because a `DiffReport`
- * has no profile to retain.
+ * The rule is AD-67.2's, ruled in AD-70.3: a field the diff product cannot act on is absent from
+ * the surface, never accepted-and-ignored. AD-25.1's knowability split makes silence the one
+ * unacceptable answer — an option unusable given the options alone must ERROR — and AD-52.3a's
+ * form makes absence better than a throw, since "an option whose only behaviour is to throw is
+ * worse than an absent one". A TypeScript caller who writes one fails to compile; a JavaScript
+ * caller is ignored, which is what every unrecognized top-level key gets here (AD-54.3).
  *
- * Removed from the SURFACE rather than shipped as a throw, which is AD-52.3a's own rule — "an
- * option whose only behaviour is to throw is worse than an absent one" — applied to §9.2's
- * declared `extends CompareMpmOptions`. A TypeScript caller who writes either fails to compile;
- * a JavaScript caller is ignored, which is what every other unrecognized top-level key gets in
- * this package (AD-54.3).
+ * Four are out, each structural rather than incidental:
+ *
+ * - `invariance` — §6.2's pricing is RAW and must be. §7.4's modes rescale a curve by that
+ *   DOCUMENT's own moments, and an intermediate edit state is not a document: its moments move
+ *   as the script is applied, so a canonicalized `norm` would not be a fixed metric and
+ *   `scriptCost ≥ d_curve` would stop being AD-5's theorem.
+ * - `profile` — a `DiffReport` has no profile to retain.
+ * - `weights` — weights exist to combine the eleven dimensions into ONE aggregate, and a
+ *   `DiffReport` has no aggregate: every figure in `dimensions` is per-dimension and raw.
+ *   Measured while it was still inherited: `weights: { tempo: 0 }` left every `scriptCost`
+ *   bit-identical while the echo dutifully reported `0` (W4 MAJOR-1).
+ * - `scape` — AD-27.8's scape is of the AGGREGATE density, which the diff path also has none
+ *   of. Measured: `JSON.stringify(diffMpm({…, scape: { bins: 8 }}))` was byte-identical to the
+ *   same call without it, and `checkCompareOptions` validated the `bins` on the way past.
+ *
+ * `plausibleRange` stays, and it stays because it is CONSUMED rather than because it is harmless
+ * (AD-70.3). `plausibilityFindings` reads the two documents and nothing else — not the
+ * aggregate, not the weights, not the comparison — so the diff produces those notes from the
+ * same parse, and an implausible `@bpm` is exactly the site the script prices a large op at. It
+ * WAS inert here until W4 MAJOR-5 gave `DiffReport` its notes; keeping it meant making it work,
+ * which is the only honest way to keep it.
  */
-export interface DiffMpmOptions extends Omit<CompareMpmOptions, 'invariance' | 'profile'> {
+export interface DiffMpmOptions extends Omit<
+  CompareMpmOptions,
+  'invariance' | 'profile' | 'weights' | 'scape'
+> {
   /**
    * A-Q5's `fragment` and `consolidate` ops: one instruction became several, or the reverse.
    *
@@ -312,7 +332,7 @@ export function compareMpm(options: CompareMpmOptions): ComparisonResult {
  * @throws the same errors {@link compareMpm} throws, on the same inputs
  */
 export function diffMpm(options: DiffMpmOptions): DiffResult {
-  checkCompareOptions(options);
+  checkDiffOptions(options);
 
   const rootA = parseDocument('MPM a', options.a, parseMpmRoot, 'mpm');
   const rootB =
@@ -327,11 +347,13 @@ export function diffMpm(options: DiffMpmOptions): DiffResult {
     performanceB: options.performanceB,
     msm,
     window: options.window ?? null,
-    weights: resolveWeights(options.weights),
     jnd: { ...options.jnd },
     plausibleRange: { ...options.plausibleRange },
-    // §6.2's pricing is raw; the surface does not offer the modes, and the interior is told so
-    // explicitly rather than left to a default that a later edit could change.
+    // The four the surface does not offer are pinned to their inert values HERE rather than
+    // left to a default a later edit could move (AD-70.3). `resolveWeights(undefined)` is the
+    // fixed default vector, which the diff never reads — it has no aggregate to weight — and
+    // stating it beats leaving the interior's shape to chance.
+    weights: resolveWeights(undefined),
     invariance: resolveInvariance(undefined),
     profile: null,
     lambdaDate: DEFAULT_LAMBDA_DATE,
@@ -520,6 +542,34 @@ function checkCompareOptions(options: CompareMpmOptions): void {
   checkSelector('performanceB', options.performanceB);
   checkProfile(options.profile);
   checkScape(options.scape);
+}
+
+/**
+ * §9.4's rows for the DIFF surface — which is a strict subset, and has to be (W4 MAJOR-1).
+ *
+ * A validator wider than its surface is the same defect as a surface wider than its product,
+ * pointed the other way: `checkCompareOptions` would reject `scape: { bins: 0 }` here, throwing
+ * `InvalidOptionError` about a key `DiffMpmOptions` does not declare, while AD-54.3 says an
+ * unrecognized top-level key is IGNORED. A JavaScript caller passing the four omitted fields
+ * must get the same silence they would get for `{ nonsense: 1 }`, and a TypeScript caller cannot
+ * reach any of this because the type already refused.
+ *
+ * So this validates exactly what the diff surface offers, and `moves` with it.
+ */
+function checkDiffOptions(options: DiffMpmOptions): void {
+  const bag: unknown = options;
+  if (typeof bag !== 'object' || bag === null)
+    throw new InvalidOptionError('options must be an object carrying at least `a`');
+
+  checkWindow(options.window);
+  checkJnd(options.jnd);
+  checkPlausibleRange(options.plausibleRange);
+  checkSelector('performanceA', options.performanceA);
+  checkSelector('performanceB', options.performanceB);
+
+  const moves: unknown = options.moves;
+  if (moves !== undefined && typeof moves !== 'boolean')
+    throw new InvalidOptionError('moves must be a boolean');
 }
 
 /**

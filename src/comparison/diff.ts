@@ -33,11 +33,13 @@ import { serializeMpmRoot, parseMpmRoot } from '../expression/mpmDocument.js';
 import {
   effectiveJnd,
   epsilonRecord,
+  note,
   resolvedSettings,
   scopeSides,
   sortNotes,
   type InteriorCompareOptions,
 } from './compare.js';
+import { plausibilityFindings } from './plausibility.js';
 import {
   editScriptForDimension,
   type DimensionEditScript,
@@ -52,6 +54,7 @@ import { beatGridOf, measurePositionAt, readComparisonMsm, type ComparisonMsm } 
 import {
   COMPARISON_DIMENSIONS,
   COMPARISON_REGISTRY_ROWS,
+  comparisonRowFor,
   localDistance,
   type ComparisonDimension,
   type ComparisonRegistryRow,
@@ -164,6 +167,59 @@ function buildDiff(options: InteriorDiffOptions): DiffReport {
   const scopes = scopeSides(pair, msm);
   const notes: ComparisonNote[] = [];
   const scripts: EditScript[] = [];
+
+  // §9.1's notes, on the edit path (W4 MAJOR-5). This array was allocated and sorted and never
+  // written to, so no note kind could fire on a `DiffReport` at all — `invertReport`'s
+  // note-inversion branch was dead code and the mirror test's handling of it tested nothing.
+  //
+  // Which kinds belong here is decided by what the diff CONSUMES, which is AD-70.3's rule for
+  // the option surface applied to the report surface. Two do.
+  //
+  // `plausibility` is the one AD-70.3 names, and it is the reason `plausibleRange` stays on
+  // `DiffMpmOptions` rather than joining the `Omit`: `plausibilityFindings` reads the two
+  // DOCUMENTS and nothing else — not the aggregate, not the weights, not the comparison — and
+  // the diff parses the same two documents. It is also the note a diff reader most wants: an
+  // implausible `@bpm` is exactly the site the script will price a large op at, and "the
+  // distance is unchanged" is the sentence that stops it being read as the cause.
+  for (const side of ['a', 'b'] as const)
+    for (const finding of plausibilityFindings(
+      pair[side],
+      side,
+      ticksPerQuarter,
+      options.plausibleRange,
+    ))
+      notes.push({
+        kind: 'plausibility',
+        dimension: comparisonRowFor(finding.key).dimension,
+        document: side,
+        itemIndex: null,
+        site: finding.site,
+        startQuarters: finding.site.date,
+        endQuarters: finding.site.date,
+        message:
+          `@${finding.site.attribute} = ${String(finding.value)} is outside its plausible band ` +
+          `[${String(finding.range[0])}, ${String(finding.range[1])}]; the distance is unchanged`,
+      });
+
+  // `estimate-degradation` for the MPM-derived scope rule. `DiffReport.scopes` reports
+  // `rule: 'mpm'` and DESIGN §9.3 says that rule carries this note; `compare.ts` emits it and
+  // the diff did not, so the same fact was stamped on one report and silent on the other. The
+  // wording is `compare.ts`'s, because it is the same fact about the same documents.
+  if (scopes.rule === 'mpm')
+    notes.push(
+      note(
+        'estimate-degradation',
+        null,
+        null,
+        pair.window.startQuarters,
+        pair.window.endQuarters,
+        `the per-part sum runs over ${String(scopes.sides.length)} scopes taken from the MPM's ` +
+          'own <part> elements, because no MSM was supplied. What the renderer performs is one ' +
+          'scope per rendered MSM part (AD-55.2), which the documents alone cannot answer: an ' +
+          'MPM part the score never names performs nothing, and a score part with no MPM ' +
+          'counterpart performs the global maps anyway. Supply an `msm` for the counted quantity',
+      ),
+    );
   // Compensated, and in the same order `dimensionComparison` sums its scopes, so `dCurve` is
   // BIT-IDENTICAL to the `d_k` the comparison reports rather than merely close to it. A plain
   // `+=` here differed from it in the last ulps on the vendored rubato rows, which is exactly
@@ -455,11 +511,18 @@ function invertReport(report: DiffReport): DiffReport {
       matched: pairing.matched,
     })),
     scripts: report.scripts.map(invertScript),
-    notes: report.notes.map((entry) => ({
-      ...entry,
-      document: entry.document === 'a' ? 'b' : entry.document === 'b' ? 'a' : null,
-      site: entry.site === null ? null : invertSite(entry.site),
-    })),
+    // RE-SORTED after the swap, and that is not a formality (W4 MAJOR-5). `sortNotes` orders on
+    // `document` and on the serialized note, both of which the swap changes, so mapping in place
+    // leaves the mirrored report holding the FORWARD report's order — and §6.4's claim is
+    // byte-identity, not set equality. This branch was dead until notes existed, so nothing
+    // caught it; `diff.test.ts`'s mirror caught it within a minute of the first note landing.
+    notes: sortNotes(
+      report.notes.map((entry) => ({
+        ...entry,
+        document: entry.document === 'a' ? 'b' : entry.document === 'b' ? 'a' : null,
+        site: entry.site === null ? null : invertSite(entry.site),
+      })),
+    ),
   };
 }
 

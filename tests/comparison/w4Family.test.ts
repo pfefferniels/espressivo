@@ -108,11 +108,30 @@ function mirrored(report: DiffReport): unknown {
         },
       };
     }),
-    notes: report.notes.map((entry) => ({
-      ...entry,
-      document: entry.document === 'a' ? 'b' : entry.document === 'b' ? 'a' : null,
-      site: entry.site === null ? null : { ...entry.site },
-    })),
+    // Swap sides, then re-sort into §9.5's order. Both halves were latent until W4 MAJOR-5 gave
+    // `DiffReport` its notes: this mirror left `site.document` unswapped and never re-sorted,
+    // and an empty array agrees with anything. Re-derived from §9.5 rather than by calling the
+    // engine's `sortNotes`, which is what keeps the mirror independent of what it checks.
+    notes: [
+      ...report.notes.map((entry) => ({
+        ...entry,
+        document: entry.document === 'a' ? 'b' : entry.document === 'b' ? 'a' : null,
+        site:
+          entry.site === null
+            ? null
+            : { ...entry.site, document: entry.site.document === 'a' ? 'b' : 'a' },
+      })),
+    ].sort((x, y) => {
+      const text = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
+      return (
+        text(x.kind, y.kind) ||
+        text(x.dimension ?? '', y.dimension ?? '') ||
+        (x.startQuarters ?? 0) - (y.startQuarters ?? 0) ||
+        text(x.document ?? '', y.document ?? '') ||
+        text(x.message, y.message) ||
+        text(JSON.stringify(x), JSON.stringify(y))
+      );
+    }),
   };
 }
 
