@@ -6640,3 +6640,26 @@ full pass would re-tread verified ground at RED. Recorded as available
 post-campaign work, not as done. AD-56.6's C7 proxy refinement stays
 deferred with its question-worded note. AD-61.3's A5 licence note and
 AD-63.1's corpusAverage option (b) remain the journaled consumer routes.
+
+## 2026-08-17 — AD-80: novelty re-sweep CLEAR; erratum discharged [BINDING]
+
+AD-26.5's re-sweep executed by the conductor: PianoBind (ISMIR 2025) is
+a text-to-music retrieval embedding for pop piano; arXiv:2512.02652
+"Pianist Transformer" is self-supervised performance RENDERING; a
+targeted sweep of the caveat's named risk area (metric learning on
+performance renditions) surfaced only distributional evaluation of
+rendered MIDI parameters (JS divergence / intersection over velocity,
+duration and IOI histograms; kernel distances adapted to symbolic) —
+the rendered-parameter category the narrow claim excludes, and
+time-blind besides (§2.B.4's own rejection). THE CLAIM IS LICENSED and
+the README carries it in A-Q11's narrow phrasing with the
+prior-work contrast.
+
+ERRATUM (discharging AD-57.1): the W3 fix wave's cut-2 LOG narrative
+stated the Albert step component as "d_articulation 92.233 → 962.633,
+the 870.4 being (…) × 64 quarters × 3" — the window is 68 quarters, the
+component 924.8, d_articulation 1017.0334, D 9854.3188, as the same
+commit's own anchor table, the shipped tests, and the W3 re-gate's
+independent reconstruction all agree. The narrative paragraph was
+self-inconsistent with its own anchors; the LOG being append-only, this
+entry is the correction.

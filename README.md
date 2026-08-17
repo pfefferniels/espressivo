@@ -394,6 +394,14 @@ the asynchrony map says which voice arrives first. `compareMpm` compares two per
 all eleven of those channels at once, and says not only how far apart they are but _where_ and _in
 what_.
 
+As far as a verified literature survey (2026) and a targeted 2025–26 re-sweep could establish, this
+is the first **exact, additively-decomposable comparison of symbolic performance-directive
+encodings**: prior work compares _rendered_ parameter sequences — beat-level curves, per-note MIDI
+features, or their distributions — where the decomposition by expressive dimension is
+approximate at best and usually unavailable. The claim is deliberately narrow (performance
+comparison as such is a century old); what is new is that the difference decomposes _exactly_, by
+dimension and by score passage, with zero residual.
+
 ```ts
 import { readFileSync } from 'node:fs';
 import { compareMpm } from 'espressivo';
