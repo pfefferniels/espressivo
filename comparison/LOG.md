@@ -5713,3 +5713,30 @@ tests exercise most directly.
 
 Gate: `npm run verify` GREEN — 125 files, **5406 passed**, 0 skipped, identical to the previous
 commit. Repo-wide `npx prettier --check .` clean; eslint clean on `src/comparison/diff.ts`.
+
+## 2026-08-17 — AD-70: the NUL finding; diff-surface consumption ruled [BINDING]
+
+bb6a361 accepted — a NEW finding off the must-fix list: raw NUL bytes in
+src/comparison/diff.ts made the file BINARY to git/grep/file since
+baa4579. Consequences named plainly: 537 lines implementing §6.4's
+orientation, mirror and report assembly appeared in NO reviewable diff
+across cuts A4/A5, were silently skipped by every grep sweep (exit 1, no
+"binary file matches"), and the W4 gate's own re-reading of the range saw
+nothing textual for the file. Found by the inconsistency being visible
+at all only because clustering.ts writes the same separator escaped.
+Landed alone, before other work in the file, so the next diff.ts change
+is reviewable text; behaviour unchanged by construction (identical 5406,
+byte-identity mirror untouched).
+
+AD-70.1 STANDING GUARD ruled: a repo test asserting no tracked source
+file under src/ or tests/ (fixtures excluded) contains a raw NUL — the
+class of hole, not the instance, is what gets closed. Lands in the next
+cut. AD-70.2 RE-GATE OBLIGATION: w4-verify must READ diff.ts IN FULL as
+text — its 537 lines have never been reviewed by anyone but their
+author.
+AD-70.3 (the requested ruling) AD-67.2's determination RATIFIED as
+proposed: Omit list 'invariance' | 'profile' | 'scape' | 'weights'
+(structurally unconsumable); plausibleRange KEPT WITH CONSUMPTION —
+DiffReport.notes populated by plausibilityFindings (an implausible @bpm
+is exactly what the script prices a large op at), resolving MAJOR-5 in
+the same stroke. MAJOR-1+5 as one cut, as proposed.
