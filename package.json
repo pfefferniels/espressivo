@@ -56,6 +56,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "gate": "vitest run tests/integration/cross-validation.test.ts tests/integration/full-xml-equivalence.test.ts tests/integration/midi-byte-equivalence.test.ts tests/integration/all-maps-equivalence.test.ts",
     "bench": "npm run build && node scripts/bench.mjs",
     "bench:check": "npm run build && node scripts/bench.mjs --check",
     "bench:save": "npm run build && node scripts/bench.mjs --save && prettier --write scripts/bench-baseline.json",
