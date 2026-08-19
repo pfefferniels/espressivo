@@ -44,7 +44,13 @@ import importPlugin from 'eslint-plugin-import';
 const LAYER_ZONES = [
   {
     layer: 'leaves',
-    files: ['src/xml/**/*.ts', 'src/music/**/*.ts', 'src/supplementary/**/*.ts', 'src/version.ts'],
+    files: [
+      'src/prelude/**/*.ts',
+      'src/xml/**/*.ts',
+      'src/music/**/*.ts',
+      'src/supplementary/**/*.ts',
+      'src/version.ts',
+    ],
     forbidden: [
       '**/midi/**',
       '**/msm/**',
