@@ -59,6 +59,7 @@ import type { OrnamentDef } from '../../src/mpm/elements/styles/defs/OrnamentDef
 import { firstChildElement } from '../../src/xml/tree.js';
 import type { Element } from '../../src/xml/XomTypes.js';
 import type { Midi } from '../../src/midi/Midi.js';
+import { messageStatus } from '../../src/midi/MidiTypes.js';
 import type { Performance } from '../../src/mpm/elements/Performance.js';
 
 const FIXTURE_DIR = join(dirname(fileURLToPath(import.meta.url)), 'fixtures-v3');
@@ -227,7 +228,7 @@ function noteEvents(midi: Midi): { tick: number; command: number }[] {
   for (const track of midi.getSequence().getTracks())
     for (let i = 0; i < track.size(); ++i) {
       const event = track.get(i);
-      const command = event.getMessage().getStatus() & 0xf0;
+      const command = messageStatus(event.getMessage()) & 0xf0;
       if (command === NOTE_ON || command === NOTE_OFF)
         events.push({ tick: event.getTick(), command });
     }

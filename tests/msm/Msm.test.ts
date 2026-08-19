@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { Msm } from '../../src/msm/Msm.js';
 import { Element, Attribute, Document } from '../../src/xml/XomTypes.js';
-import { ShortMessage, MetaMessage, Sequence } from '../../src/midi/MidiTypes.js';
+import {
+  Sequence,
+  metaPayload,
+  shortCommand,
+  shortData1,
+  shortData2,
+  type MetaMessage,
+  type ShortMessage,
+} from '../../src/midi/MidiTypes.js';
 import { EventMaker } from '../../src/midi/EventMaker.js';
 
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
@@ -44,14 +52,14 @@ function allEvents(seq: Sequence) {
 function shortMessages(seq: Sequence, command: number) {
   return allEvents(seq).filter((e) => {
     const m = e.getMessage();
-    return m instanceof ShortMessage && m.getCommand() === command;
+    return m.kind === 'short' && shortCommand(m) === command;
   });
 }
 
 function metaMessages(seq: Sequence, type: number) {
   return allEvents(seq).filter((e) => {
     const m = e.getMessage();
-    return m instanceof MetaMessage && m.getType() === type;
+    return m.kind === 'meta' && m.type === type;
   });
 }
 
@@ -787,14 +795,14 @@ describe('Msm', () => {
       const offs = shortMessages(seq, NOTE_OFF);
       expect(ons.map((e) => e.getTick())).toEqual([0, 720]);
       expect(offs.map((e) => e.getTick())).toEqual([720, 1080]);
-      expect(ons.map((e) => (e.getMessage() as ShortMessage).getData1())).toEqual([60, 64]);
+      expect(ons.map((e) => shortData1(e.getMessage() as ShortMessage))).toEqual([60, 64]);
     });
 
     it('should use velocity 100 for a plain (non-expressive) export', () => {
       const seq = msmWithNotes(720, [[0, 720, 60]])
         .exportMidi()!
         .getSequence();
-      expect((shortMessages(seq, NOTE_ON)[0].getMessage() as ShortMessage).getData2()).toBe(100);
+      expect(shortData2(shortMessages(seq, NOTE_ON)[0].getMessage() as ShortMessage)).toBe(100);
     });
 
     it('should generate a program change by default', () => {
@@ -833,7 +841,7 @@ describe('Msm', () => {
       const names = metaMessages(seq, EventMaker.META_Track_Name);
 
       expect(names.length).toBe(1);
-      expect(new TextDecoder().decode((names[0].getMessage() as MetaMessage).getData())).toBe(
+      expect(new TextDecoder().decode(metaPayload(names[0].getMessage() as MetaMessage))).toBe(
         'Piano',
       );
     });
@@ -846,7 +854,7 @@ describe('Msm', () => {
       const seq = msm.exportMidi()!.getSequence();
       const pcs = shortMessages(seq, PROGRAM_CHANGE);
       expect(pcs.length).toBe(1);
-      expect((pcs[0].getMessage() as ShortMessage).getData1()).toBe(
+      expect(shortData1(pcs[0].getMessage() as ShortMessage)).toBe(
         EventMaker.PC_Acoustic_Grand_Piano,
       );
       expect(metaMessages(seq, EventMaker.META_Track_Name).length).toBe(0);
@@ -873,7 +881,7 @@ describe('Msm', () => {
       const markers = metaMessages(msm.exportMidi()!.getSequence(), EventMaker.META_Marker);
       expect(markers.length).toBe(1);
       expect(markers[0].getTick()).toBe(720);
-      expect(new TextDecoder().decode((markers[0].getMessage() as MetaMessage).getData())).toBe(
+      expect(new TextDecoder().decode(metaPayload(markers[0].getMessage() as MetaMessage))).toBe(
         'Rehearsal A',
       );
     });
@@ -899,7 +907,7 @@ describe('Msm', () => {
 
       const keys = metaMessages(seq, EventMaker.META_Key_Signature);
       expect(keys.length).toBe(1);
-      expect((keys[0].getMessage() as MetaMessage).getData()[0]).toBe(2);
+      expect(metaPayload(keys[0].getMessage() as MetaMessage)[0]).toBe(2);
     });
 
     it('should use the programChangeMap instead of the part name when it starts at 0', () => {
@@ -914,7 +922,7 @@ describe('Msm', () => {
 
       const pcs = shortMessages(msm.exportMidi()!.getSequence(), PROGRAM_CHANGE);
       expect(pcs.length).toBe(1);
-      expect((pcs[0].getMessage() as ShortMessage).getData1()).toBe(42);
+      expect(shortData1(pcs[0].getMessage() as ShortMessage)).toBe(42);
     });
 
     it('should still generate a name-based program change when the map has none at date 0', () => {
@@ -967,7 +975,7 @@ describe('Msm', () => {
     it('should take the note velocities from the score', () => {
       const seq = performedMsm([64, 96]).exportExpressiveMidi()!.getSequence();
       expect(
-        shortMessages(seq, NOTE_ON).map((e) => (e.getMessage() as ShortMessage).getData2()),
+        shortMessages(seq, NOTE_ON).map((e) => shortData2(e.getMessage() as ShortMessage)),
       ).toEqual([64, 96]);
     });
 
@@ -981,7 +989,7 @@ describe('Msm', () => {
       msm.addPart(part);
 
       const seq = msm.exportExpressiveMidi()!.getSequence();
-      expect((shortMessages(seq, NOTE_ON)[0].getMessage() as ShortMessage).getData2()).toBe(100);
+      expect(shortData2(shortMessages(seq, NOTE_ON)[0].getMessage() as ShortMessage)).toBe(100);
     });
 
     it('should fall back to duration when milliseconds.date.end is missing', () => {
@@ -1062,11 +1070,11 @@ describe('Msm', () => {
     it('should emit a default channel volume when the part has no channelVolumeMap', () => {
       const seq = performedMsm([100]).exportExpressiveMidi()!.getSequence();
       const volumes = shortMessages(seq, CONTROL_CHANGE).filter(
-        (e) => (e.getMessage() as ShortMessage).getData1() === EventMaker.CC_Channel_Volume,
+        (e) => shortData1(e.getMessage() as ShortMessage) === EventMaker.CC_Channel_Volume,
       );
 
       expect(volumes.length).toBe(1);
-      expect((volumes[0].getMessage() as ShortMessage).getData2()).toBe(100);
+      expect(shortData2(volumes[0].getMessage() as ShortMessage)).toBe(100);
     });
 
     it('should render a channelVolumeMap', () => {
@@ -1088,10 +1096,10 @@ describe('Msm', () => {
       const volumes = shortMessages(
         msm.exportExpressiveMidi()!.getSequence(),
         CONTROL_CHANGE,
-      ).filter((e) => (e.getMessage() as ShortMessage).getData1() === EventMaker.CC_Channel_Volume);
+      ).filter((e) => shortData1(e.getMessage() as ShortMessage) === EventMaker.CC_Channel_Volume);
 
       expect(
-        volumes.map((e) => (e.getMessage() as ShortMessage).getData2()).sort((a, b) => a - b),
+        volumes.map((e) => shortData2(e.getMessage() as ShortMessage)).sort((a, b) => a - b),
       ).toEqual([80, 110]);
     });
 
@@ -1117,15 +1125,15 @@ describe('Msm', () => {
       const volumes = shortMessages(
         msm.exportExpressiveMidi()!.getSequence(),
         CONTROL_CHANGE,
-      ).filter((e) => (e.getMessage() as ShortMessage).getData1() === EventMaker.CC_Channel_Volume);
+      ).filter((e) => shortData1(e.getMessage() as ShortMessage) === EventMaker.CC_Channel_Volume);
 
       // the map is walked backwards from 500; 498 and 495 are dropped, 0 survives
-      expect(
-        volumes.map((e) => [e.getTick(), (e.getMessage() as ShortMessage).getData2()]),
-      ).toEqual([
-        [0, 70],
-        [500, 100],
-      ]);
+      expect(volumes.map((e) => [e.getTick(), shortData2(e.getMessage() as ShortMessage)])).toEqual(
+        [
+          [0, 70],
+          [500, 100],
+        ],
+      );
     });
 
     it('should keep a mandatory channel volume event regardless of density', () => {
@@ -1146,8 +1154,8 @@ describe('Msm', () => {
       dated.appendChild(cvMap);
 
       const values = shortMessages(msm.exportExpressiveMidi()!.getSequence(), CONTROL_CHANGE)
-        .filter((e) => (e.getMessage() as ShortMessage).getData1() === EventMaker.CC_Channel_Volume)
-        .map((e) => (e.getMessage() as ShortMessage).getData2());
+        .filter((e) => shortData1(e.getMessage() as ShortMessage) === EventMaker.CC_Channel_Volume)
+        .map((e) => shortData2(e.getMessage() as ShortMessage));
 
       expect(values).toContain(90);
       expect(values).toContain(100);
@@ -1172,16 +1180,16 @@ describe('Msm', () => {
 
       const ccs = shortMessages(msm.exportExpressiveMidi()!.getSequence(), CONTROL_CHANGE);
       const damper = ccs.find(
-        (e) => (e.getMessage() as ShortMessage).getData1() === EventMaker.CC_Damper_Pedal,
+        (e) => shortData1(e.getMessage() as ShortMessage) === EventMaker.CC_Damper_Pedal,
       );
       const soft = ccs.find(
-        (e) => (e.getMessage() as ShortMessage).getData1() === EventMaker.CC_Soft_Pedal,
+        (e) => shortData1(e.getMessage() as ShortMessage) === EventMaker.CC_Soft_Pedal,
       );
 
       expect(damper).toBeDefined();
-      expect((damper!.getMessage() as ShortMessage).getData2()).toBe(127);
+      expect(shortData2(damper!.getMessage() as ShortMessage)).toBe(127);
       expect(soft).toBeDefined();
-      expect((soft!.getMessage() as ShortMessage).getData2()).toBe(64);
+      expect(shortData2(soft!.getMessage() as ShortMessage)).toBe(64);
     });
   });
 });

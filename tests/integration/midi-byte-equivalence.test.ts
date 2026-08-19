@@ -12,7 +12,13 @@ import { Mei2MsmMpmConverter } from '../../src/mei/Mei2MsmMpmConverter.js';
 import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
 import { Midi } from '../../src/midi/Midi.js';
-import { ShortMessage, MetaMessage } from '../../src/midi/MidiTypes.js';
+import {
+  ShortMessage,
+  shortChannel,
+  shortCommand,
+  shortData1,
+  shortData2,
+} from '../../src/midi/MidiTypes.js';
 
 const __dirname2 = dirname(fileURLToPath(import.meta.url));
 const MEI_DIR = join(__dirname2, 'fixtures', 'mei');
@@ -37,11 +43,11 @@ function extractEvents(midi: Midi): MidiEventInfo[][] {
       const msg = event.getMessage();
       const info: MidiEventInfo = { tick: event.getTick(), type: 'other' };
 
-      if (msg instanceof ShortMessage) {
-        info.channel = msg.getChannel();
-        info.data1 = msg.getData1();
-        info.data2 = msg.getData2();
-        switch (msg.getCommand()) {
+      if (msg.kind === 'short') {
+        info.channel = shortChannel(msg);
+        info.data1 = shortData1(msg);
+        info.data2 = shortData2(msg);
+        switch (shortCommand(msg)) {
           case ShortMessage.NOTE_ON:
             info.type = 'noteOn';
             break;
@@ -57,9 +63,9 @@ function extractEvents(midi: Midi): MidiEventInfo[][] {
           default:
             info.type = 'shortMessage';
         }
-      } else if (msg instanceof MetaMessage) {
+      } else if (msg.kind === 'meta') {
         info.type = 'meta';
-        info.metaType = msg.getType();
+        info.metaType = msg.type;
       }
       events.push(info);
     }
