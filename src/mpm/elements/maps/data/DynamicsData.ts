@@ -1,4 +1,4 @@
-import { Attribute, Element } from '../../../../xml/XomTypes.js';
+import type { Element } from '../../../../xml/XomTypes.js';
 import type { DynamicsStyle } from '../../styles/DynamicsStyle.js';
 import type { DynamicsDef } from '../../styles/defs/DynamicsDef.js';
 import { bezierPoint, innerControlPointsXPositions, sampleSegment, tForDate } from './bezier.js';
@@ -15,6 +15,18 @@ import { bezierPoint, innerControlPointsXPositions, sampleSegment, tForDate } fr
  *
  * Like {@link TempoData}, `volume`/`transitionTo` exist as both a string (what the XML
  * said, possibly a style-relative name such as `"forte"`) and a resolved number.
+ *
+ * This is a **record plus its Bézier evaluation**, with exactly one producer. It does not
+ * parse XML — the port used to carry a `constructor(xml)` transcribing `<dynamics>`, but
+ * nothing called it and it produced objects {@link getDynamicsAt} is not written for. Two
+ * ways: it split `volume` and `volumeString` the way {@link TempoData}'s dead constructor
+ * split bpm (numeric => number only, name => string only and the number NULL FOREVER),
+ * where {@link DynamicsMap.getDynamicsDataOf} always sets both and resolves the name
+ * through the style; and it left a constant instruction's `transitionTo`, `curvature` and
+ * `protraction` null, where the live reader deliberately fills them in (`transitionTo =
+ * volume`, both curve parameters 0) so that `getDynamicsAt` has one code path rather than
+ * a null branch. It also skipped the clamps the live reader applies to `curvature` and
+ * `protraction`. Build these with `getDynamicsDataOf`.
  *
  * Port of meico.mpm.elements.maps.data.DynamicsData
  */
@@ -42,46 +54,6 @@ export class DynamicsData {
 
   private x1: number | null = null;
   private x2: number | null = null;
-
-  constructor(xml?: Element) {
-    if (xml === undefined) return;
-
-    this.xml = xml;
-    this.startDate = parseFloat(xml.getAttributeValue('date')!);
-
-    const volumeAtt = xml.getAttribute('volume');
-    if (volumeAtt !== null) {
-      const val = parseFloat(volumeAtt.getValue());
-      if (!isNaN(val)) {
-        this.volume = val;
-      } else {
-        this.volumeString = volumeAtt.getValue();
-      }
-    }
-
-    const transitionToAtt = xml.getAttribute('transition.to');
-    if (transitionToAtt !== null) {
-      const val = parseFloat(transitionToAtt.getValue());
-      if (!isNaN(val)) {
-        this.transitionTo = val;
-      } else {
-        this.transitionToString = transitionToAtt.getValue();
-      }
-    }
-
-    const curvatureAtt = xml.getAttribute('curvature');
-    if (curvatureAtt !== null) this.curvature = parseFloat(curvatureAtt.getValue());
-
-    const protractionAtt = xml.getAttribute('protraction');
-    if (protractionAtt !== null) this.protraction = parseFloat(protractionAtt.getValue());
-
-    const subNoteDynamicsAtt = xml.getAttribute('subNoteDynamics');
-    if (subNoteDynamicsAtt !== null)
-      this.subNoteDynamics = subNoteDynamicsAtt.getValue() === 'true';
-
-    const id = xml.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
-    if (id !== null) this.xmlId = id.getValue();
-  }
 
   clone(): DynamicsData {
     const c = new DynamicsData();
