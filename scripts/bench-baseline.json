@@ -1,0 +1,95 @@
+{
+  "fixtures": {
+    "articulations.mei": {
+      "ms": 10.12,
+      "midiBytes": 263
+    },
+    "composite_advanced.mei": {
+      "ms": 17.67,
+      "midiBytes": 652
+    },
+    "comprehensive.mei": {
+      "ms": 11.03,
+      "midiBytes": 412
+    },
+    "dynamics.mei": {
+      "ms": 5.38,
+      "midiBytes": 227
+    },
+    "instruments.mei": {
+      "ms": 9.59,
+      "midiBytes": 431
+    },
+    "keys_accidentals.mei": {
+      "ms": 5.38,
+      "midiBytes": 345
+    },
+    "layers_beams.mei": {
+      "ms": 5.53,
+      "midiBytes": 357
+    },
+    "multi_part.mei": {
+      "ms": 5.55,
+      "midiBytes": 290
+    },
+    "repeats_endings.mei": {
+      "ms": 5.49,
+      "midiBytes": 268
+    },
+    "rests_meters.mei": {
+      "ms": 6.14,
+      "midiBytes": 328
+    },
+    "simple_notes.mei": {
+      "ms": 3.21,
+      "midiBytes": 197
+    },
+    "tempo.mei": {
+      "ms": 3.45,
+      "midiBytes": 227
+    },
+    "tempo_dynamics_spans.mei": {
+      "ms": 5.63,
+      "midiBytes": 301
+    },
+    "ties_dots.mei": {
+      "ms": 5.16,
+      "midiBytes": 255
+    },
+    "transposing_octave.mei": {
+      "ms": 5.61,
+      "midiBytes": 345
+    },
+    "tuplets.mei": {
+      "ms": 4.95,
+      "midiBytes": 397
+    }
+  },
+  "fixtureTotalMs": 109.9,
+  "synthetic": {
+    "250": {
+      "convertMs": 117.5,
+      "renderMs": 3,
+      "convertUsPerNote": 470,
+      "renderUsPerNote": 12
+    },
+    "500": {
+      "convertMs": 421.3,
+      "renderMs": 5.3,
+      "convertUsPerNote": 843,
+      "renderUsPerNote": 11
+    },
+    "1000": {
+      "convertMs": 1722.3,
+      "renderMs": 11.9,
+      "convertUsPerNote": 1722,
+      "renderUsPerNote": 12
+    },
+    "2000": {
+      "convertMs": 7235.3,
+      "renderMs": 26,
+      "convertUsPerNote": 3618,
+      "renderUsPerNote": 13
+    }
+  }
+}

@@ -35,6 +35,9 @@ export default defineConfig({
       // explicitly because this list is curated, not a glob (comparison/DESIGN.md §9.7).
       include: [
         'src/version.ts',
+        // The prelude is in scope by definition: it is the vocabulary every other module in
+        // this list is being rewritten in, so a gap in its coverage is a gap in all of them.
+        'src/prelude/**/*.ts',
         'src/units.ts',
         'src/api/**/*.ts',
         'src/comparison/**/*.ts',

@@ -195,6 +195,17 @@ export default tseslint.config(
   ...tseslint.configs.strict,
   ...tseslint.configs.stylistic,
 
+  // Node scripts, not library code. `scripts/bench.mjs` is a measurement tool that runs
+  // against `dist/`, so it is the one place in the repo that legitimately prints to stdout
+  // and reads `process.argv`; the two globals are declared rather than pulled from the
+  // `globals` package to avoid a dependency for two names.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { console: 'readonly', process: 'readonly' },
+    },
+  },
+
   {
     files: ['**/*.ts'],
     languageOptions: {
