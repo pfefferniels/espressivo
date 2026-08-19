@@ -366,7 +366,7 @@ class PerformancePass {
     const space = unparameterizedSpaceOf(row);
     const transformed = gateAndTransform(row, space, value, factor);
     if (!transformed.ok) {
-      this.sink.note(transformed.kind, row.dimension, site, transformed.detail);
+      this.sink.note(transformed.error.kind, row.dimension, site, transformed.error.detail);
       return { present: true, value: null, writes: 0 };
     }
     const outcome = writeNumber(element, row.attribute, transformed.value);
@@ -1087,7 +1087,7 @@ class PerformancePass {
             'atomic-group-skipped',
             'ornamentSpread',
             siteFor(bound.attribute),
-            `${transformed.detail} — the frame is one geometric pair, so neither bound is written`,
+            `${transformed.error.detail} — the frame is one geometric pair, so neither bound is written`,
           );
           return;
         }
@@ -1435,7 +1435,7 @@ class PerformancePass {
             const value = readNumericAttributeValue(target, attribute);
             const transformed = gateAndTransform(row, unparameterizedSpaceOf(row), value, factor);
             if (!transformed.ok) {
-              failed = `@${attribute}: ${transformed.detail}`;
+              failed = `@${attribute}: ${transformed.error.detail}`;
               break;
             }
             planned.push({ element: target, attribute, value: transformed.value });

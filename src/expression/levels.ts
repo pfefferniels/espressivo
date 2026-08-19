@@ -539,7 +539,12 @@ class LevelPass {
       if (!transformed.ok) {
         record.skipped = true;
         this.accumulator.countSkipped();
-        this.sink.note(transformed.kind, this.dimension, record.site, transformed.detail);
+        this.sink.note(
+          transformed.error.kind,
+          this.dimension,
+          record.site,
+          transformed.error.detail,
+        );
         continue;
       }
       const clamped = this.clamp(transformed.value / normalization, record.site);
@@ -566,7 +571,12 @@ class LevelPass {
         if (!transformed.ok) {
           endpoint.skipped = true;
           this.accumulator.countSkipped();
-          this.sink.note(transformed.kind, this.dimension, endpoint.site, transformed.detail);
+          this.sink.note(
+            transformed.error.kind,
+            this.dimension,
+            endpoint.site,
+            transformed.error.detail,
+          );
           continue;
         }
         const clamped = this.clamp(transformed.value / instruction.normalization, endpoint.site);
@@ -860,7 +870,12 @@ class LevelPass {
         level.skipped = true;
         target.skipped = true;
         this.accumulator.countSkipped();
-        this.sink.note(transformed.kind, this.dimension, endpoint.site, transformed.detail);
+        this.sink.note(
+          transformed.error.kind,
+          this.dimension,
+          endpoint.site,
+          transformed.error.detail,
+        );
         return;
       }
       const clamped = this.clamp(transformed.value / instruction.normalization, endpoint.site);

@@ -69,15 +69,15 @@ describe('gateAndTransform — read → validate → transform → validate', ()
     const refused = gateAndTransform(curvature, { kind: 'boundary-power-low' }, 1.5, 2.5);
     expect(refused.ok).toBe(false);
     if (refused.ok) return;
-    expect(refused.kind).toBe('out-of-domain-input');
-    expect(refused.detail).toContain('@curvature');
+    expect(refused.error.kind).toBe('out-of-domain-input');
+    expect(refused.error.detail).toContain('@curvature');
   });
 
   it('reports a saturation refusal as its own kind, not as an ordinary domain failure', () => {
     const refused = gateAndTransform(curvature, { kind: 'boundary-power-low' }, 0.9, 17);
     expect(refused.ok).toBe(false);
     if (refused.ok) return;
-    expect(refused.kind).toBe('saturation-refused');
+    expect(refused.error.kind).toBe('saturation-refused');
   });
 
   it('maps every transform refusal reason onto the report vocabulary', () => {

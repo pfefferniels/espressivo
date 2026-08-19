@@ -26,20 +26,30 @@
  *   changed spelling and IS written. That is why P1's identity guarantee rests on the
  *   dimension-level `s === 1` short-circuit and not on this rule (A2).
  */
+import { andThen, err, mapErr, ok, type Result } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { numberToString, readAttributeValue, writeAttributeValue } from './attributes.js';
 import type { RegistryRow } from './registry.js';
 import type { ReportNoteKind } from './report.js';
 import { transformInSpace, type ScaleSpace, type TransformRefusalReason } from './transforms.js';
 
-/** A gate refusal, already shaped as the note it becomes. */
+/**
+ * A gate refusal, already shaped as the note it becomes — `kind` and `detail` are `note`'s
+ * first and last arguments.
+ *
+ * These two fields used to be spelled *inside* the failure arm (`{ ok: false, kind, detail }`),
+ * which made the refusal unnameable: every one of the seven call sites had to unpack it field
+ * by field, and the one site that wants to add a sentence to the explanation had to rebuild the
+ * whole note by hand. As the error payload of a {@link Result} it is a value — passed whole,
+ * decorated with `mapErr`, and threaded through a pipeline like any other.
+ */
 export interface GateRefusal {
-  readonly ok: false;
   readonly kind: ReportNoteKind;
   readonly detail: string;
 }
 
-export type GateResult = { readonly ok: true; readonly value: number } | GateRefusal;
+/** A gated value, or the refusal that stopped it. */
+export type GateResult = Result<number, GateRefusal>;
 
 /** A3's refusal reasons, mapped onto the report's closed note vocabulary. */
 export function refusalNoteKind(reason: TransformRefusalReason): ReportNoteKind {
@@ -54,8 +64,23 @@ export function refusalNoteKind(reason: TransformRefusalReason): ReportNoteKind 
 }
 
 /**
+ * A domain guard as a value: the number where the predicate holds, the refusal where it does
+ * not. The refusal is a thunk so that the message — which interpolates the offending value — is
+ * built only when there is something to explain.
+ */
+function admit(value: number, admissible: boolean, refusal: () => GateRefusal): GateResult {
+  return admissible ? ok(value) : err(refusal());
+}
+
+/**
  * The whole gate for one scalar site: the row's input predicate, the transform, and the
  * output finiteness check.
+ *
+ * The three steps are this module's own `validate → transform → validate` written as a chain
+ * rather than as three early returns, because that is what the sequence *is*: each step either
+ * hands the next a number or hands the caller a refusal, and `andThen` is the name of that. The
+ * middle step is a plain `mapErr` — `transformInSpace` already answers with a `Result`, and all
+ * this layer adds is registry context (§7's per-row narrowing) on the way past.
  *
  * A value failing the input predicate is refused rather than repaired. The renderer does not
  * enforce these domains, so real documents carry values that render benignly today and become
@@ -68,29 +93,24 @@ export function gateAndTransform(
   value: number,
   factor: number,
 ): GateResult {
-  if (!row.valueDomain(value)) {
-    return {
-      ok: false,
-      kind: 'out-of-domain-input',
-      detail: `@${row.attribute} = ${value} is outside the domain §7 gives it`,
-    };
-  }
-  const result = transformInSpace(space, value, factor);
-  if (!result.ok) {
-    return {
-      ok: false,
-      kind: refusalNoteKind(result.error),
-      detail: `@${row.attribute}: ${result.error} transforming ${value} by s = ${factor}`,
-    };
-  }
-  if (!Number.isFinite(result.value)) {
-    return {
-      ok: false,
+  const input = admit(value, row.valueDomain(value), () => ({
+    kind: 'out-of-domain-input',
+    detail: `@${row.attribute} = ${value} is outside the domain §7 gives it`,
+  }));
+
+  const transformed = andThen(input, (admissible) =>
+    mapErr(transformInSpace(space, admissible, factor), (reason) => ({
+      kind: refusalNoteKind(reason),
+      detail: `@${row.attribute}: ${reason} transforming ${admissible} by s = ${factor}`,
+    })),
+  );
+
+  return andThen(transformed, (result) =>
+    admit(result, Number.isFinite(result), () => ({
       kind: 'non-finite-result',
       detail: `@${row.attribute}: transforming ${value} by s = ${factor} left the finite range`,
-    };
-  }
-  return { ok: true, value: result.value };
+    })),
+  );
 }
 
 /** What {@link writeNumber} did. Only `written` counts toward R4's `totalWrites`. */
