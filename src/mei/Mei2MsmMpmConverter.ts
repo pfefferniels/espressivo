@@ -10,6 +10,7 @@ import {
   cloneElement,
   descendantElements,
   firstChildElement,
+  reverseDescendantElements,
   getAttributeValue,
   getNextSiblingElement,
   parentElement,
@@ -3701,12 +3702,21 @@ export class Mei2MsmMpmConverter {
         break;
       case 'm':
       case 't': {
-        const ps = this.currentPart
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('score')!
-          .query("descendant::*[local-name()='note' and @tie]");
-        for (let i = ps.size() - 1; i >= 0; --i) {
-          const p = ps.get(i) as unknown as Element;
+        // The note this tie continues, looked for from the end of the part's score
+        // backwards — the first one at the same pitch that ends exactly where this one
+        // starts. This was `query("descendant::*[local-name()='note' and @tie]")` over the
+        // whole accumulated score, evaluated once per tied note: a serialise, re-parse and
+        // document-order sort of everything converted so far, per tie. The synthetic
+        // benchmark scores have no ties, so it never showed in a profile, but on a
+        // tie-heavy piece it is the same quadratic the whole-document queries were.
+        // {@link reverseDescendantElements} yields the same elements in the same
+        // back-to-front order this loop already read them in, and stops when the loop does
+        // — which for a tie whose partner is the note just before it is immediately.
+        const ps = reverseDescendantElements(
+          this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('score')!,
+          (element) => element.getLocalName() === 'note' && element.getAttribute('tie') !== null,
+        );
+        for (const p of ps) {
           if (
             p.getAttributeValue('midi.pitch') === s.getAttributeValue('midi.pitch') &&
             parseFloat(p.getAttributeValue('date')!) +

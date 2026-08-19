@@ -207,6 +207,64 @@ export function descendantElements(
 }
 
 /**
+ * Exactly the elements {@link descendantElements} would return, in the opposite order,
+ * produced one at a time.
+ *
+ * This exists for the callers that scan **backwards and stop at the first hit** —
+ * `dateMap.addToMap`, which looks for the last entry not later than the one being
+ * inserted, and the converter's tie handling, which looks for the note a tie continues.
+ * Both used to build the whole array and then read one element off the end of it. That is
+ * a linear pass per insertion, so filling a score of n notes was Θ(n²) even after the
+ * XPath round trip was gone — with a much smaller constant, but the same shape. Here the
+ * walk is lazy: it descends the rightmost spine, yields, and only goes further if the
+ * caller keeps asking. For a map whose entries are childless and whose dates arrive in
+ * order — which is the case on essentially every insertion the converter makes — the
+ * caller stops after one element and the whole call is O(depth).
+ *
+ * Reverse document order is right-to-left post-order: for a node with children c1…ck it is
+ * the reverse of ck's subtree, then of c(k-1)'s, …, then the node itself. `ofThis` is the
+ * bottom frame and is popped without being yielded, which is what makes this `descendant::`
+ * rather than `descendant-or-self::`.
+ *
+ * The traversal keeps a cursor per open frame rather than pushing whole child lists, so a
+ * flat map of n children costs nothing until the caller walks past them, and — as in
+ * {@link descendantElements} — the stack is explicit, so depth cannot overflow.
+ *
+ * The tree must not be mutated while a caller is iterating: the frames hold live indices
+ * into the child lists. Both call sites mutate only after they have stopped.
+ */
+export function* reverseDescendantElements(
+  ofThis: Element,
+  matches: (element: Element) => boolean,
+): Generator<Element> {
+  /** `i` is the next child to descend into, counted downwards from the last. */
+  const stack: { readonly element: Element; i: number }[] = [
+    { element: ofThis, i: ofThis.getChildCount() - 1 },
+  ];
+
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1];
+
+    let child: Element | null = null;
+    while (frame.i >= 0) {
+      const candidate = frame.element.getChild(frame.i--);
+      if (candidate instanceof Element) {
+        child = candidate;
+        break;
+      }
+    }
+
+    if (child !== null) {
+      stack.push({ element: child, i: child.getChildCount() - 1 });
+      continue;
+    }
+
+    stack.pop();
+    if (stack.length > 0 && matches(frame.element)) yield frame.element;
+  }
+}
+
+/**
  * Create a flat list of all descendants of a certain name (beginning with ofThis)
  *
  * Pre-order: an element is pushed before its own descendants are searched, so the result
