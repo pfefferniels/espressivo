@@ -8,6 +8,7 @@ import {
   allChildElements,
   attribute,
   cloneElement,
+  descendantElements,
   firstChildElement,
   getAttributeValue,
   getNextSiblingElement,
@@ -4763,13 +4764,7 @@ export class Mei2MsmMpmConverter {
    * would turn today's TypeError on an empty MSM into a silent no-op.
    */
   public static msmCleanupSingle(msm: Msm): void {
-    const n = msm
-      .getRootElement()!
-      .query(
-        "descendant::*[local-name()='miscMap'] | descendant::*[attribute::currentDate]/attribute::currentDate | descendant::*[attribute::tie]/attribute::tie | descendant::*[attribute::layer]/attribute::layer | descendant::*[attribute::endid]/attribute::endid | descendant::*[attribute::tstamp2]/attribute::tstamp2 | descendant::*[local-name()='goto' and attribute::n]/attribute::n",
-      );
-    for (let i = 0; i < n.size(); ++i) {
-      const node = n.get(i);
+    for (const node of Mei2MsmMpmConverter.msmScaffolding(msm.getRootElement()!)) {
       if (node instanceof Element) {
         const parent = node.getParent();
         if (parent) parent.removeChild(node);
@@ -4780,6 +4775,71 @@ export class Mei2MsmMpmConverter {
       }
     }
     msm.deleteEmptyMaps();
+  }
+
+  /** the working attributes {@link msmScaffolding} strips, in the order the union listed them */
+  private static readonly MSM_SCAFFOLDING_ATTRIBUTES = [
+    'currentDate',
+    'tie',
+    'layer',
+    'endid',
+    'tstamp2',
+  ] as const;
+
+  /**
+   * Every node {@link msmCleanupSingle} has to remove, in document order.
+   *
+   * This was one {@link Element.query} over a seven-branch union:
+   *
+   * ```
+   * descendant::*[local-name()='miscMap']
+   *   | descendant::*[attribute::currentDate]/attribute::currentDate
+   *   | … tie | layer | endid | tstamp2 …
+   *   | descendant::*[local-name()='goto' and attribute::n]/attribute::n
+   * ```
+   *
+   * and it was 72% of a whole MEI-to-MSM conversion. `query` serialises the subtree to
+   * XML text, re-parses it, evaluates the expression over the throwaway copy and maps the
+   * hits back by position — but the cost here is not the round trip, it is what the union
+   * operator does afterwards. `|` puts its operands through XPath's node-set ordering,
+   * which inserts every hit into an AVL tree under a `compareDocumentPosition` comparator;
+   * xmldom implements that by materialising and comparing both ancestor chains. Every
+   * note in an MSM score carries `currentDate` and most carry `tie` and `layer`, so the
+   * node set is several times the size of the score and that sort is what makes the whole
+   * converter quadratic. Walking the tree once costs a single pass instead.
+   *
+   * Faithfulness of the replacement, branch by branch:
+   *
+   * - `descendant::` excludes the root, and {@link descendantElements} does too;
+   * - pre-order matches XPath document order for the elements. Attributes of one element
+   *   are emitted in declaration order, where the union emitted them in whatever order
+   *   `compareDocumentPosition`'s implementation-specific attribute branch produced. That
+   *   difference is invisible: the loop's two removals are independent of each other and
+   *   of order — the node set is a snapshot taken before any removal, removing an
+   *   attribute never affects another node, and removing an element leaves its subtree
+   *   intact so a nested `miscMap` or an attribute inside a removed one is still removed
+   *   from its (now detached) owner, exactly as before;
+   * - the walk descends into `miscMap` as `descendant::` did, so the set is the same set
+   *   and not merely the same effect;
+   * - `getAttribute(name)` matches on local name where `attribute::name` matches only the
+   *   no-namespace attribute. MSM carries no namespaced attribute but `xml:id`, none of
+   *   the six names is ever prefixed, and the fixture corpus is the check on that.
+   */
+  private static msmScaffolding(root: Element): (Element | Attribute)[] {
+    const doomed: (Element | Attribute)[] = [];
+    for (const element of descendantElements(root, () => true)) {
+      const name = element.getLocalName();
+      if (name === 'miscMap') doomed.push(element);
+      for (const attributeName of Mei2MsmMpmConverter.MSM_SCAFFOLDING_ATTRIBUTES) {
+        const found = element.getAttribute(attributeName);
+        if (found) doomed.push(found);
+      }
+      if (name === 'goto') {
+        const n = element.getAttribute('n');
+        if (n) doomed.push(n);
+      }
+    }
+    return doomed;
   }
 
   public static mpmPostprocessing(mpms: Mpm[]): void {
