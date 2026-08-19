@@ -1,5 +1,40 @@
 # meico-ts — Target Architecture (T12)
 
+> ## ⚠ Superseded in part by the functional-core campaign (2026-08-19/20)
+>
+> **Read this box before applying any RULE below.**
+>
+> This document is the design ruling of the T12–T21 campaign, whose job was to make an
+> idiomatic TypeScript port that is provably equivalent to Java meico. It succeeded, and most
+> of what is here still governs. But several of its rules were written to *protect* a port
+> under a byte-equivalence gate, and they now forbid the direction the codebase is being taken
+> in. Those rules are listed here so that nobody applies one in good faith and undoes current
+> work — the same failure mode as a comment that describes what code used to do.
+>
+> The new direction, decided by the project owner: move the architecture toward a functional
+> one with a strong type system — Sean Parent's axes of *no incidental data structures*, *no
+> inheritance*, *no raw loops*, and *regular types with no invalid states* — down to the level
+> of individual expressions. **The only hard gate is byte-equivalence and the test suite.**
+> Public API may break freely.
+>
+> | rule | status |
+> | --- | --- |
+> | **C1** — a type stays class-based if it wraps a live XML subtree | **superseded.** The live XOM tree being the domain model is the *root cause* this campaign exists to remove. `DistributionData` has already become a six-armed sum type; the `*Def` and `*Style` hierarchies are next. |
+> | **C3** — the `*Data` holders stay classes | **superseded**, and already amended in place at its own site. Seven of the eight had a *dead* XML constructor that was a second, divergent reader of every instruction element; all seven are deleted. |
+> | **C5** — no mass `getX()`/`setX()` conversion | **superseded in principle**, but its *reasoning* is still worth reading: (ii) named a real collision hazard, and (iii) correctly observed that a thousand mechanical edits is the worst diff shape for an equivalence review. The conclusion changes; the caution does not. Convert incrementally, per module, gated. |
+> | **E1** — the interior keeps Java's logs-and-returns-null behaviour, bug-for-bug | **narrowed.** Parity of *output* still binds absolutely. What no longer binds is the *mechanism*: returning a `Result` instead of logging to the console and returning `null` skips exactly the same elements and produces exactly the same bytes, while keeping the reason as a value. Behaviour-preserving by construction. |
+> | **I6** — no allocation-heavy immutability in hot loops | **still binding, and now measurable.** `npm run bench` exists; `scripts/bench-baseline.json` pins it. Do not trade a measured win for elegance. |
+> | **N6 / the lint scope** | **extended.** More compiler flags and lint rules are on; see `tsconfig.json`, which documents each one's measured cost and why the two expensive ones are still off. |
+>
+> Two instruments this document names **do not exist** and should not be looked for: the
+> `scratchpad/` pipeline byte-probes and token-stream tools belonged to agent scratchpads and
+> were never in the tree. The byte gate *is* the suite — `npm run gate` runs its four suites,
+> 121 tests, in about two seconds. `npm run bench` is the performance gate.
+>
+> Everything not named above still applies, in particular the unit and type discipline of §7
+> and the parity ledger of §6.3.
+
+
 Status: **design ruling**, produced by the T12 architect on 2026-08-08 against the tree at
 `304e90a` (last green, post-T20b). No code was changed to produce it.
 

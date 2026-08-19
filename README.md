@@ -375,6 +375,8 @@ are deliberately absent. If you need those, use the Java library.
 
 ```sh
 npm run verify        # clean build + typecheck the tests + full suite — the gate
+npm run gate          # the byte surface only: 4 suites, 121 tests, ~2s — what to iterate on
+npm run bench         # rendering benchmark; --check compares against the committed baseline
 npm test              # suite only
 npm run test:coverage # scoped coverage (see vitest.config.ts)
 npm run lint          # eslint, type-aware
@@ -382,10 +384,27 @@ npm run format        # prettier
 npm run build         # tsc; always preceded by a dist wipe, so no stale output can ship
 ```
 
+`npm run verify` does **not** run the formatter — `npx prettier --check .` is a separate step.
+
+### The house style
+
+The interior is being moved from the Java idiom it was ported in toward a functional one:
+algebraic data types instead of classes with correlated nullable fields, dispatch tables
+instead of inheritance, named algorithms instead of raw loops, and failure as a returned value
+instead of a console log and a `null`.
+
+[`src/prelude/`](src/prelude/index.ts) is the vocabulary that work is written in, and the place
+to look first — a `Result` type and its combinators, combinators over `T | null` (the DOM's own
+spelling of absence, unboxed), the sequence algorithms the loops decompose into including
+`lowerBoundBy` / `upperBoundBy` / `partitionPoint`, `matchKind` for exhaustive dispatch, and
+branded newtypes with checked constructors. `src/mpm/elements/maps/data/distribution.ts` is the
+worked example of the transformation applied to a real type.
+
 `npm pack` rebuilds from a clean `dist/` first, and the published tarball contains only `dist/`,
 `src/` (so the declaration maps and source maps resolve to real TypeScript), `PARITY.md`, the
 guides in `docs/`, this README and the manifest. `ARCHITECTURE.md` is the standing architectural
-contract for anyone working _on_ the port; the campaign records behind all of it are in
+contract for anyone working _on_ the port — read the box at the top of it first, which lists
+the rules the current campaign has superseded. The campaign records behind all of it are in
 [`docs/history/`](docs/history/README.md).
 
 ## License
