@@ -1096,12 +1096,16 @@ export class Mei2MsmMpmConverter {
     if (getNextSiblingElement('layer', layer) !== null)
       this.currentPart!.getAttribute('currentDate')!.setValue(oldDate);
     else {
-      const layers = layer.getParent()!.query("child::*[local-name()='layer']");
+      // `query("child::*[local-name()='layer']")` serialised and re-parsed the entire staff
+      // — every note in it — to find the layer's own siblings, once per last layer of every
+      // staff of every measure. `allChildElements` is the child axis walked directly, and
+      // `tests/xml/navigationEquivalence.test.ts` already asserts the two agree over the
+      // fixture corpus. The fold is a maximum, so the backwards loop is kept only because
+      // it was there.
+      const layers = allChildElements(layer.getParent()!, 'layer');
       let latestDate = parseFloat(this.currentPart!.getAttribute('currentDate')!.getValue());
-      for (let j = layers.size() - 1; j >= 0; --j) {
-        const date = parseFloat(
-          (layers.get(j) as unknown as Element).getAttributeValue('currentDate')!,
-        );
+      for (let j = layers.length - 1; j >= 0; --j) {
+        const date = parseFloat(layers[j].getAttributeValue('currentDate')!);
         if (latestDate < date) latestDate = date;
       }
       this.currentPart!.getAttribute('currentDate')!.setValue(String(latestDate));
@@ -4967,16 +4971,23 @@ export class Mei2MsmMpmConverter {
    *
    * The backwards loop combined with `insertChild(subtree, 0)` is what preserves the
    * relative order of the hoisted elements — walking forwards would reverse them.
+   *
+   * The test used to be `subtree.query("descendant-or-self::*[local-name()='staff' or
+   * local-name()='oStaff']").size() === 0`, run once per child of every measure — so every
+   * `<staff>` in the document was serialised to XML text and re-parsed just to establish
+   * that it is a staff. That was 19% of a 32 000-note conversion. Written out, the
+   * `-or-self` half answers for the staves before anything is walked, and the walk that
+   * remains only ever covers a control event's own small subtree.
    */
   protected static reorderMeasureContent(measure: Element): void {
+    const isStaffLike = (element: Element): boolean => {
+      const name = element.getLocalName();
+      return name === 'staff' || name === 'oStaff';
+    };
     const subtrees = measure.getChildElements();
     for (let i = subtrees.size() - 1; i >= 0; --i) {
       const subtree = subtrees.get(i);
-      if (
-        subtree
-          .query("descendant-or-self::*[local-name()='staff' or local-name()='oStaff']")
-          .size() === 0
-      ) {
+      if (!isStaffLike(subtree) && descendantElements(subtree, isStaffLike).length === 0) {
         subtree.detach();
         measure.insertChild(subtree, 0);
       }

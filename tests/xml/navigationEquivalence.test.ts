@@ -281,6 +281,39 @@ describe('the child-axis helpers agree with the XPath they replaced', () => {
     }
   });
 
+  /**
+   * The corpus above is MSM and MPM, which have no `layer` elements — an MSM note carries
+   * `layer` as an *attribute*. So the one MEI shape that reaches `allChildElements`
+   * through this rewrite, `processLayer`'s scan for a layer's siblings, is stated here on
+   * a tree of its own. Without it, breaking that call site leaves the whole suite green:
+   * no fixture has a measure in which an earlier layer ends later than the last one, so
+   * the maximum it folds is never observably a maximum.
+   */
+  it("a staff's layers: allChildElements(staff, 'layer') matches child::*[local-name()='layer']", () => {
+    const staff = new Element('staff');
+    for (const [name, currentDate] of [
+      ['layer', '720.0'],
+      ['clef', ''],
+      ['layer', '1440.0'],
+      ['layer', '360.0'],
+    ] as const) {
+      const child = new Element(name);
+      if (currentDate !== '') child.addAttribute(new Attribute('currentDate', currentDate));
+      staff.appendChild(child);
+    }
+
+    const viaXpath = staff.query("child::*[local-name()='layer']").toArray();
+    const viaWalk = allChildElements(staff, 'layer');
+    expect(viaWalk.length).toBe(3);
+    expect(viaXpath.length).toBe(3);
+    for (let i = 0; i < viaXpath.length; ++i) expect(viaWalk[i] === viaXpath[i]).toBe(true);
+    expect(viaWalk.map((e) => e.getAttributeValue('currentDate'))).toEqual([
+      '720.0',
+      '1440.0',
+      '360.0',
+    ]);
+  });
+
   it('firstChildElement(ofThis, localname) matches the first XPath hit', () => {
     for (const { root } of documents) {
       for (const element of everyElement(root)) {
