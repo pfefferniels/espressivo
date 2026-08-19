@@ -822,20 +822,35 @@ describe('TempoMap', () => {
       expect(td.bpm).toBe(120);
     });
 
-    it('constructor from XML element', () => {
+    // Migrated from a `new TempoData(e)` that no production path ever called. Same
+    // element, same five assertions, pointed at the reader the renderer uses — plus the
+    // three fields the dead constructor could not produce and that make the difference
+    // between a datum that renders and one that does not: `bpmString` (which the
+    // constructor NULLED for a numeric bpm, and which `addTempo(TempoData)` prefers on
+    // the way back out, so the round-trip was not byte-stable), `exponent` (never set at
+    // all, so a declared transition had no curve), and `endDate`.
+    it('reads the same element through getTempoDataOf, and resolves what the raw parse could not', () => {
+      const map = TempoMap.createTempoMap()!;
       const e = new Element('tempo');
       e.addAttribute(new Attribute('date', '100'));
       e.addAttribute(new Attribute('bpm', '120'));
       e.addAttribute(new Attribute('beatLength', '0.25'));
       e.addAttribute(new Attribute('transition.to', '140'));
       e.addAttribute(new Attribute('meanTempoAt', '0.3'));
+      map.addElement(e);
 
-      const td = new TempoData(e);
+      const td = map.getTempoDataOf(0)!;
       expect(td.startDate).toBe(100);
       expect(td.bpm).toBe(120);
       expect(td.beatLength).toBe(0.25);
       expect(td.transitionTo).toBe(140);
       expect(td.meanTempoAt).toBe(0.3);
+
+      expect(td.bpmString).toBe('120');
+      expect(td.transitionToString).toBe('140');
+      expect(td.exponent).not.toBeNull();
+      expect(td.endDate).toBe(Number.MAX_VALUE);
+      expect(td.isConstantTempo()).toBe(false);
     });
   });
 

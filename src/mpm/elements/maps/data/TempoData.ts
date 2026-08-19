@@ -1,4 +1,4 @@
-import { Attribute, Element } from '../../../../xml/XomTypes.js';
+import type { Element } from '../../../../xml/XomTypes.js';
 import type { TempoStyle } from '../../styles/TempoStyle.js';
 
 /**
@@ -11,6 +11,15 @@ import type { TempoStyle } from '../../styles/TempoStyle.js';
  * name such as `"Allegro"`, which only a {@link TempoStyle} can resolve. The
  * numeric field holds the resolved value, or `null` while it is still unknown.
  * Serialization prefers the string, so round-tripping keeps the original wording.
+ *
+ * This is a **plain record with exactly one producer**. It does not parse XML — the port
+ * used to carry a `constructor(xml)` transcribing `<tempo>`, but nothing called it and it
+ * broke the very string/number pairing described above: for a NUMERIC `@bpm` it set `bpm`
+ * and left `bpmString` NULL, so `TempoMap.addTempo(data)`, which prefers the string, wrote
+ * the reparsed number back and lost the original wording; for a NON-numeric one it set the
+ * string and left `bpm` null forever, where `getTempoDataOf` resolves it through the style.
+ * Nor did it apply any of the three transition normalisations or compute `exponent`. Build
+ * these with {@link TempoMap.getTempoDataOf}.
  *
  * Port of meico.mpm.elements.maps.data.TempoData
  */
@@ -35,40 +44,6 @@ export class TempoData {
 
   meanTempoAt: number | null = null;
   exponent: number | null = null;
-
-  constructor(xml?: Element) {
-    if (xml === undefined) return;
-
-    this.xml = xml;
-    this.startDate = parseFloat(xml.getAttributeValue('date')!);
-    this.beatLength = parseFloat(xml.getAttributeValue('beatLength')!);
-
-    const bpmAtt = xml.getAttribute('bpm');
-    if (bpmAtt !== null) {
-      const val = parseFloat(bpmAtt.getValue());
-      if (!isNaN(val)) {
-        this.bpm = val;
-      } else {
-        this.bpmString = bpmAtt.getValue();
-      }
-    }
-
-    const transitionToAtt = xml.getAttribute('transition.to');
-    if (transitionToAtt !== null) {
-      const val = parseFloat(transitionToAtt.getValue());
-      if (!isNaN(val)) {
-        this.transitionTo = val;
-      } else {
-        this.transitionToString = transitionToAtt.getValue();
-      }
-    }
-
-    const meanTempoAtAtt = xml.getAttribute('meanTempoAt');
-    if (meanTempoAtAtt !== null) this.meanTempoAt = parseFloat(meanTempoAtAtt.getValue());
-
-    const id = xml.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
-    if (id !== null) this.xmlId = id.getValue();
-  }
 
   /**
    * PARITY NOTE: `startDateMilliseconds` is deliberately **not** copied — the Java
