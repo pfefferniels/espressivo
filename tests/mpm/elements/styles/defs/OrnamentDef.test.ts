@@ -1424,7 +1424,7 @@ describe('OrnamentDef — alignment (DESIGN.md D2)', () => {
     // (The serializer restates the namespace on the child and writes ` />`; that shape is
     // this port's, not this wave's.)
     expect(d.getXml()!.toXML()).toBe(
-      `<ornamentDef xmlns="${MPM_NS}" name="turn"><temporalSpread xmlns="${MPM_NS}" alignment="at end" /></ornamentDef>`,
+      `<ornamentDef xmlns="${MPM_NS}" name="turn"><temporalSpread alignment="at end" /></ornamentDef>`,
     );
     expect(d.getXml()!.getAttribute('alignment')).toBeNull();
 

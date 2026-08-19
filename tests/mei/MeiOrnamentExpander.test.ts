@@ -264,7 +264,8 @@ describe('createMeiOrnamentDef', () => {
     // Child order is fixed by the order the transformers are set; the unit suffixes are what
     // makes this a v3 def (DESIGN.md D12), and no v2 document can produce one this way.
     expect(createMeiOrnamentDef('trill')!.getXml()!.toXML()).toContain(
-      '<dynamicsGradient xmlns="http://www.cemfi.de/mpm/ns/1.0" transition.from="-1" transition.to="1" />',
+      // The child inherits the namespace its parent <ornamentDef> declares.
+      '<dynamicsGradient transition.from="-1" transition.to="1" />',
     );
     expect(createMeiOrnamentDef('trill')!.getXml()!.toXML()).toContain(
       'frame.offset="0ticks" frameLength="80%"',
