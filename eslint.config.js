@@ -269,6 +269,41 @@ export default tseslint.config(
       '@typescript-eslint/no-unnecessary-condition': 'error',
       '@typescript-eslint/no-unnecessary-type-assertion': 'error',
 
+      // --- The functional turn ---
+      //
+      // A sum type is only worth having if every arm is handled. `src/` has 68 `switch`
+      // statements against 29 exhaustiveness checks, and that gap is where the next arm gets
+      // dropped silently. Type-aware, so it lives in this block rather than the syntactic one.
+      // Each measured against the tree before being turned on; all but the first were
+      // already at zero, so they cost nothing and stop the tree drifting back.
+      //
+      //   no-unnecessary-type-parameters       2 — a type parameter used once is a `any` in
+      //                                            disguise, which is the opposite of the point
+      //   no-unnecessary-template-expression   1
+      //   prefer-reduce-type-parameter         0
+      //   no-unnecessary-boolean-literal-compare 0
+      //   require-array-sort-compare           0 — `.sort()` on numbers sorts lexicographically,
+      //                                            which for a tick list is a silent disaster
+      //
+      // NOT enabled, having been measured and found cosmetic here:
+      //   prefer-nullish-coalescing  56 sites, and they are not the bug hunt they look like.
+      //     41 are `if (x === null) x = d`, where the field is `T | null` and `??=` means
+      //     exactly the same thing. The 15 real `||` were each checked for the failure that
+      //     makes this rule worth having — a falsy-but-valid left operand — and none has it:
+      //     they are `map.get(k) || 0` over a counter, `namespaceURI || ''`, and the like,
+      //     where the falsy value and the default coincide. No `date || …` or `velocity || …`
+      //     anywhere, which is the case that would actually have bitten.
+      //   prefer-optional-chain      17 sites, pure style.
+      '@typescript-eslint/no-unnecessary-type-parameters': 'error',
+      '@typescript-eslint/no-unnecessary-template-expression': 'error',
+      '@typescript-eslint/prefer-reduce-type-parameter': 'error',
+      '@typescript-eslint/no-unnecessary-boolean-literal-compare': 'error',
+      '@typescript-eslint/require-array-sort-compare': 'error',
+      '@typescript-eslint/switch-exhaustiveness-check': [
+        'error',
+        { considerDefaultExhaustiveForUnions: true },
+      ],
+
       // §8.10 audit 4. `src/` reached zero in T16 (the last three sites went with RULE C3's
       // Bézier extraction and the `resolveEntryIndex` rewrite), so promoting this costs
       // nothing here and makes the regression loud. `tests/**` keeps `warn`: the two

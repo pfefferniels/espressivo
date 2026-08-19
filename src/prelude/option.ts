@@ -20,7 +20,8 @@ export function isPresent<T>(x: T | null): x is T {
   return x !== null;
 }
 
-export function isAbsent<T>(x: T | null): x is null {
+/** The negation. Needs no type parameter — a guard narrows the argument's own declared type. */
+export function isAbsent(x: unknown): x is null {
   return x === null;
 }
 

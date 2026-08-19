@@ -82,10 +82,10 @@ export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K,
  * Split into runs of consecutive elements that share a key — the *ordered* sibling of
  * {@link groupBy}, which is what a date-sorted instruction list usually wants.
  */
-export function chunkBy<A, K>(xs: Iterable<A>, key: (a: A) => K): readonly NonEmptyArray<A>[] {
+export function chunkBy<A>(xs: Iterable<A>, key: (a: A) => unknown): readonly NonEmptyArray<A>[] {
   const out: A[][] = [];
   let current: A[] | null = null;
-  let currentKey: K | null = null;
+  let currentKey: unknown = null;
   for (const x of xs) {
     const k = key(x);
     if (current === null || k !== currentKey) {

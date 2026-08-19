@@ -32,7 +32,7 @@ export class RubatoStyle extends GenericStyle<RubatoDef> {
     }
   }
 
-  protected parseData(xml: Element): void {
+  protected override parseData(xml: Element): void {
     super.parseData(xml);
     this.parseDefs(xml, 'rubatoDef', (def) => RubatoDef.createRubatoDef(def));
   }

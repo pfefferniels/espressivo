@@ -41,7 +41,7 @@ export class DynamicsDef extends AbstractDef {
     this.value = parseJavaDouble(valueAttr.getValue(), 'dynamicsDef/@value');
   }
 
-  protected parseData(xml: Element): void {
+  protected override parseData(xml: Element): void {
     this.parseDataInternal(xml);
   }
 

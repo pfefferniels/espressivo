@@ -32,7 +32,7 @@ export class DynamicsStyle extends GenericStyle<DynamicsDef> {
     }
   }
 
-  protected parseData(xml: Element): void {
+  protected override parseData(xml: Element): void {
     super.parseData(xml);
     this.parseDefs(xml, 'dynamicsDef', (def) => DynamicsDef.createDynamicsDef(def));
   }

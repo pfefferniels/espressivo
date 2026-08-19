@@ -76,7 +76,7 @@ export class OrnamentDef extends AbstractDef {
     }
   }
 
-  protected parseData(xml: Element): void {
+  protected override parseData(xml: Element): void {
     this.parseDataInternal(xml);
   }
 

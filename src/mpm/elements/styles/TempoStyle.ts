@@ -32,7 +32,7 @@ export class TempoStyle extends GenericStyle<TempoDef> {
     }
   }
 
-  protected parseData(xml: Element): void {
+  protected override parseData(xml: Element): void {
     super.parseData(xml);
     this.parseDefs(xml, 'tempoDef', (def) => TempoDef.createTempoDef(def));
   }

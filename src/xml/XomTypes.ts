@@ -272,7 +272,7 @@ export class Attribute extends XomNode {
    * for constructed attributes and {@link Element.wrap} for parsed ones. An attribute
    * without it is one no element holds, and detaching it is a no-op by definition.
    */
-  detach(): void {
+  override detach(): void {
     if (this._xomParent) {
       this._xomParent.removeAttribute(this);
     }

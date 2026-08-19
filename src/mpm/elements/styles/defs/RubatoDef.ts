@@ -78,7 +78,7 @@ export class RubatoDef extends AbstractDef {
     this.earlyEnd = le.getValue();
   }
 
-  protected parseData(xml: Element): void {
+  protected override parseData(xml: Element): void {
     this.parseDataInternal(xml);
   }
 

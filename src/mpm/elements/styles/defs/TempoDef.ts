@@ -48,7 +48,7 @@ export class TempoDef extends AbstractDef {
     this.value = parseJavaDouble(valueAttr.getValue(), 'tempoDef/@value');
   }
 
-  protected parseData(xml: Element): void {
+  protected override parseData(xml: Element): void {
     this.parseDataInternal(xml);
   }
 

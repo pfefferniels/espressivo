@@ -326,6 +326,13 @@ export class RandomNumberProvider {
       case RandomNumberProvider.DISTRIBUTION_CORRELATED_COMPENSATING_TRIANGLE:
         d = this.clip(this.compensatingTriangleDistribution());
         break;
+      case RandomNumberProvider.DISTRIBUTION_LIST:
+        // Unreachable, and now provably so rather than by argument: a list distribution
+        // draws from `series` directly in `getValue`, which returns before it can reach the
+        // loop that calls this method, and `getValue` is the only caller. Naming the case
+        // leaves `d` at 0.0 exactly as falling out of the switch did, and lets
+        // `switch-exhaustiveness-check` vouch for the other five.
+        break;
     }
 
     this.series.push(d);

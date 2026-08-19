@@ -72,7 +72,7 @@ export class ArticulationDef extends AbstractDef {
     this.detuneHz = numeric('detuneHz') ?? this.detuneHz;
   }
 
-  protected parseData(xml: Element): void {
+  protected override parseData(xml: Element): void {
     this.parseDataInternal(xml);
   }
 

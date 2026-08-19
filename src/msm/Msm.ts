@@ -477,7 +477,7 @@ export class Msm extends AbstractMsm {
    * `sectionMap` and no `<score>`, the part has a `<score>` and a `miscMap` containing a
    * `tupletSpanMap`. Both orders are Java's.
    */
-  static makePartFromString(
+  static override makePartFromString(
     name: string,
     number: string,
     midiChannel: number,
