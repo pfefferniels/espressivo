@@ -708,7 +708,7 @@ class PerformancePass {
     };
     const trimmed = jointTrimWindow(effective, factor, this.options.minRubatoWindow);
     if (!trimmed.ok) {
-      if (trimmed.reason === 'saturation-to-boundary') {
+      if (trimmed.error === 'saturation-to-boundary') {
         // A6: the guard clamps `t'` below 1, so an ordered pair is guaranteed by construction.
         // Reaching this means the split's own rounding broke that guarantee, and the renderer's
         // answer to a crossed pair is a silent total reset to (0,1) — an engine invariant

@@ -678,35 +678,35 @@ pins it: `relativeDuration=0.5` plus `absoluteDurationChange=-70` on `duration.p
   calls `getTempoDataOf(-1)`, which returns null immediately — one wasted call rather than a
   bug, kept for parity.
 
-### `GenericMap.sort()` is not a sort, and is dormant behind a second defect
+### `GenericMap.sort()` is not a sort
 
-Two findings that must be read together, both in
-`src/mpm/elements/maps/GenericMap.ts`.
+`src/mpm/elements/maps/GenericMap.ts`. The pass computes the leftmost index an element should
+move to and then **swaps** the two positions; an insertion sort shifts the intervening elements
+right instead. Run against the code as written, `[2,3,1]` becomes `[1,3,2]`, `[1,3,2,0]` becomes
+`[0,2,3,1]`, and `[5,4,3,2,1]` becomes `[1,5,4,3,2]` — none of them sorted, and not stable
+either. Java does the same thing (`GenericMap.java`,
+`Collections.swap(this.elements, i, moveToIndex)`), so this is inherited rather than a port
+defect. It does get simple cases right, which is why it has never looked broken: an arrangement
+with a single displaced element belonging at the end comes out sorted, and that is exactly the
+case the existing unit test covers.
 
-**It does not sort.** The pass computes the leftmost index an element should move to and then
-**swaps** the two positions; an insertion sort shifts the intervening elements right instead.
-Run against the code as written, `[2,3,1]` becomes `[1,3,2]`, `[1,3,2,0]` becomes `[0,2,3,1]`,
-and `[5,4,3,2,1]` becomes `[1,5,4,3,2]` — none of them sorted, and not stable either. Java does
-the same thing (`GenericMap.java`, `Collections.swap(this.elements, i, moveToIndex)`), so this
-is inherited rather than a port defect.
+**Why it never fires.** Not for the reason an earlier draft of this entry gave. The index is
+keyed on `@date`, the _symbolic_ date, and that is correct: `parseData` builds every key from
+`@date`, every lookup on the index is symbolic, and `ArticulationMap` compares `getKey()`
+against an articulation's symbolic `@date`. Keying it on `@date.perf` would break every
+symbolic lookup in the renderer. There is no attribute mismatch to repair.
 
-**It reads the wrong attribute, which is why it has never mattered.** The cached keys are
-refreshed from `@date`, but the attribute that carries a shifted performance time is
-`@date.perf` (`ArticulationData.articulateNote`). The only caller is
-`ArticulationMap`'s `if (mapTimingChanged) map.sort()`, so every real call refreshes keys that
-did not change, finds the array already in order, swaps nothing, and rewrites the same XML
-order. No fixture is affected, and none can be while the mismatch stands.
+It never fires because its one caller cannot perturb what it re-checks. `ArticulationMap`'s
+`if (mapTimingChanged) map.sort()` runs after articulating notes, and articulation writes
+`@date.perf`, `@duration.perf` and `@velocity` — never `@date`. The keys really are unchanged
+and the array really is already ordered, so the pass finds nothing to swap. The call is a no-op
+by construction, here and in Java, where `ArticulationMap.java:479` is likewise the only
+`sort()` call in the entire `mpm` package.
 
-Preserved for now on the same grounds as the rest of this section, with one addition that makes
-it more than a curiosity: **the two defects have to be repaired together.** Fixing the
-attribute mismatch alone activates a non-sort over live data and would reorder simultaneous
-instructions; fixing the swap alone changes nothing observable. Whoever takes it needs both, in
-one gated change, with fixture bytes re-checked — the docstring at the method now says so.
-
-The previous version of that docstring asserted the opposite of all of this (a "deliberate",
-"stable" insertion sort that "must not become `Array.prototype.sort`"), which is the reason
-this entry exists: a comment that talks a reader out of looking is worse than the defect it
-describes.
+The defect would surface only if `sort()` were called after `@date` itself had been edited on
+elements already in the map. Nothing does that. Preserved on the same grounds as the rest of
+this section, and now pinned by a unit test that asserts the unsorted result on purpose, so
+that anyone repairing it has to do so deliberately.
 
 ### `TempoData.clone` omits `startDateMilliseconds`
 
