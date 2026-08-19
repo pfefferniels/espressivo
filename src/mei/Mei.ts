@@ -3,7 +3,12 @@ import { Document, Element, Attribute, Nodes } from '../xml/XomTypes.js';
 import { KeyValue } from '../supplementary/KeyValue.js';
 import { duration2decimal } from '../music/duration.js';
 import { getFilenameWithoutExtension } from '../music/text.js';
-import { attribute, firstChildElement, getAttributeValue } from '../xml/tree.js';
+import {
+  attribute,
+  descendantElements,
+  firstChildElement,
+  getAttributeValue,
+} from '../xml/tree.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { Msm } from '../msm/Msm.js';
 import type { Mpm } from '../mpm/Mpm.js';
@@ -330,15 +335,23 @@ export class Mei extends XmlBase {
    *
    * Tuplets are not considered (Java says so explicitly), so this is a lower bound on what
    * a tuplet-bearing score really needs; the converter's own rounding absorbs the rest.
+   *
+   * The `descendant::*[attribute::dur]` this used to hand to {@link Element.query} matches
+   * one element per note, so the node set is the size of the score — and XPath sorts a
+   * node set into document order through xmldom's `compareDocumentPosition`, which walks
+   * both ancestor chains per comparison. That sort was 23% of a conversion on a 2000-note
+   * score. {@link descendantElements} is the same axis walked directly, in the same
+   * pre-order. The backwards loop is kept only because it was there: the fold is a
+   * minimum, so it does not depend on the order.
    */
   computeMinimalPPQ(): number {
     const e = this.getMusic();
     if (e === null) return 0;
 
-    const durs = e.query('descendant::*[attribute::dur]');
+    const durs = descendantElements(e, (element) => element.getAttribute('dur') !== null);
     let dur = 4.0;
-    for (let i = durs.size() - 1; i >= 0; --i) {
-      const elem = durs.get(i) as unknown as Element;
+    for (let i = durs.length - 1; i >= 0; --i) {
+      const elem = durs[i];
       let d =
         elem.getAttribute('dur') !== null ? duration2decimal(elem.getAttributeValue('dur')!) : 4.0;
       let dots = elem.getAttribute('dots') !== null ? parseInt(elem.getAttributeValue('dots')!) : 0;
@@ -399,12 +412,22 @@ export class Mei extends XmlBase {
       const elements = new Map<string, Element>();
       const placeholders = new Map<Element, string>();
 
-      const all = e.query(
-        'descendant::*[attribute::copyof or attribute::sameas or attribute::xml:id]',
+      // Was `e.query('descendant::*[attribute::copyof or attribute::sameas or
+      // attribute::xml:id]')`. Nearly every element in an MEI carries an `xml:id`, so that
+      // node set is the whole document, and XPath sorting it into document order — an AVL
+      // insert per hit under xmldom's ancestor-chain-walking `compareDocumentPosition` —
+      // was 25% of a conversion. The walk below is the same axis in the same order, which
+      // matters here more than anywhere: `placeholders` and `elements` are insertion-ordered
+      // maps whose order decides which duplicate id wins and in what sequence the UUIDs
+      // below are drawn, and that sequence is observable in the output.
+      const all = descendantElements(
+        e,
+        (element) =>
+          element.getAttribute('copyof') !== null ||
+          element.getAttribute('sameas') !== null ||
+          element.getAttribute('id', 'http://www.w3.org/XML/1998/namespace') !== null,
       );
-      for (let i = 0; i < all.size(); ++i) {
-        const element = all.get(i) as unknown as Element;
-
+      for (const element of all) {
         let a = element.getAttribute('copyof');
         if (a === null) a = element.getAttribute('sameas');
         if (a !== null) {
@@ -460,9 +483,16 @@ export class Mei extends XmlBase {
           continue;
         }
 
-        const ids = copy.query('descendant-or-self::*[@xml:id]');
-        for (let j = 0; j < ids.size(); ++j) {
-          const idElement = ids.get(j) as unknown as Element;
+        // `descendant-or-self::*[@xml:id]`, written out: self first, then the subtree in
+        // pre-order, which is the document order XPath returned. The order is load-bearing
+        // — it is the sequence the UUIDs below are drawn in — and the axis is `-or-self`,
+        // so the copy's own root id is renamed too, before the loop after this one
+        // overwrites it with the placeholder's.
+        const hasXmlId = (element: Element) =>
+          element.getAttribute('id', 'http://www.w3.org/XML/1998/namespace') !== null;
+        const ids = descendantElements(copy, hasXmlId);
+        if (hasXmlId(copy)) ids.unshift(copy);
+        for (const idElement of ids) {
           const idAttr = idElement.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
           if (idAttr) {
             const uuid = `${idAttr.getValue()}_meico_${uuidv4()}`;
@@ -501,6 +531,13 @@ export class Mei extends XmlBase {
    * to the back. Java does the same (`parent.appendChild(r.getValue())`), and downstream
    * consumers of these strings — `dynam`, `tempo`, `dir` labels — read the parent's whole
    * value, so the reordering is invisible there. Kept as is.
+   *
+   * `descendant::*[local-name()='rend']` used to go through {@link Element.query}, which
+   * pays XPath's node-set ordering over the whole `music` subtree even when the answer is
+   * a handful of elements — 13% of a conversion of a score with no `rend` in it at all,
+   * because the cost is in the axis, not in the hits. Same walk, same pre-order, so a
+   * `rend` nested in another `rend` is still visited after its container, and still ends
+   * up appending its text to a subtree that has already been detached.
    */
   removeRendElements(): void {
     const e = this.getMusic();
@@ -509,9 +546,8 @@ export class Mei extends XmlBase {
     console.log('Replacing rend elements by their values:');
 
     let count = 0;
-    const rends = e.query("descendant::*[local-name()='rend']");
-    for (let i = 0; i < rends.size(); ++i) {
-      const r = rends.get(i) as unknown as Element;
+    const rends = descendantElements(e, (element) => element.getLocalName() === 'rend');
+    for (const r of rends) {
       const parent = r.getParent();
       if (parent === null) continue;
 

@@ -8,7 +8,9 @@ import {
   allChildElements,
   attribute,
   cloneElement,
+  descendantElements,
   firstChildElement,
+  reverseDescendantElements,
   getAttributeValue,
   getNextSiblingElement,
   parentElement,
@@ -1094,12 +1096,16 @@ export class Mei2MsmMpmConverter {
     if (getNextSiblingElement('layer', layer) !== null)
       this.currentPart!.getAttribute('currentDate')!.setValue(oldDate);
     else {
-      const layers = layer.getParent()!.query("child::*[local-name()='layer']");
+      // `query("child::*[local-name()='layer']")` serialised and re-parsed the entire staff
+      // — every note in it — to find the layer's own siblings, once per last layer of every
+      // staff of every measure. `allChildElements` is the child axis walked directly, and
+      // `tests/xml/navigationEquivalence.test.ts` already asserts the two agree over the
+      // fixture corpus. The fold is a maximum, so the backwards loop is kept only because
+      // it was there.
+      const layers = allChildElements(layer.getParent()!, 'layer');
       let latestDate = parseFloat(this.currentPart!.getAttribute('currentDate')!.getValue());
-      for (let j = layers.size() - 1; j >= 0; --j) {
-        const date = parseFloat(
-          (layers.get(j) as unknown as Element).getAttributeValue('currentDate')!,
-        );
+      for (let j = layers.length - 1; j >= 0; --j) {
+        const date = parseFloat(layers[j].getAttributeValue('currentDate')!);
         if (latestDate < date) latestDate = date;
       }
       this.currentPart!.getAttribute('currentDate')!.setValue(String(latestDate));
@@ -3700,12 +3706,21 @@ export class Mei2MsmMpmConverter {
         break;
       case 'm':
       case 't': {
-        const ps = this.currentPart
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('score')!
-          .query("descendant::*[local-name()='note' and @tie]");
-        for (let i = ps.size() - 1; i >= 0; --i) {
-          const p = ps.get(i) as unknown as Element;
+        // The note this tie continues, looked for from the end of the part's score
+        // backwards — the first one at the same pitch that ends exactly where this one
+        // starts. This was `query("descendant::*[local-name()='note' and @tie]")` over the
+        // whole accumulated score, evaluated once per tied note: a serialise, re-parse and
+        // document-order sort of everything converted so far, per tie. The synthetic
+        // benchmark scores have no ties, so it never showed in a profile, but on a
+        // tie-heavy piece it is the same quadratic the whole-document queries were.
+        // {@link reverseDescendantElements} yields the same elements in the same
+        // back-to-front order this loop already read them in, and stops when the loop does
+        // — which for a tie whose partner is the note just before it is immediately.
+        const ps = reverseDescendantElements(
+          this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('score')!,
+          (element) => element.getLocalName() === 'note' && element.getAttribute('tie') !== null,
+        );
+        for (const p of ps) {
           if (
             p.getAttributeValue('midi.pitch') === s.getAttributeValue('midi.pitch') &&
             parseFloat(p.getAttributeValue('date')!) +
@@ -3764,14 +3779,25 @@ export class Mei2MsmMpmConverter {
    * Run once per movement, before the walk, because MEI references point forward as
    * readily as backward — {@link computeControlEventTiming} depends on being able to find
    * a note that the traversal has not reached yet.
+   *
+   * The `descendant::` expression this used to hand to {@link Element.query} matches once
+   * per note, so the node set is the size of the movement, and XPath sorts a node set into
+   * document order with an AVL insert per hit under xmldom's `compareDocumentPosition`,
+   * which walks both ancestor chains every time. That sort alone was 21% of a conversion
+   * of a 2000-note score. The walk below is the same axis and the same pre-order, which
+   * has to stay that way: the index is last-one-wins, so two elements sharing an `xml:id`
+   * resolve to whichever comes later in the document, exactly as before.
    */
   public indexNotesAndChords(mdiv: Element): void {
     this.allNotesAndChords.clear();
-    const nodes = mdiv.query(
-      "descendant::*[(local-name()='note' or local-name()='chord') and attribute::xml:id]",
-    );
-    for (let i = 0; i < nodes.size(); ++i) {
-      const node = nodes.get(i) as unknown as Element;
+    const nodes = descendantElements(mdiv, (element) => {
+      const name = element.getLocalName();
+      return (
+        (name === 'note' || name === 'chord') &&
+        element.getAttribute('id', 'http://www.w3.org/XML/1998/namespace') !== null
+      );
+    });
+    for (const node of nodes) {
       this.allNotesAndChords.set(getAttributeValue('id', node), node);
     }
   }
@@ -4768,13 +4794,7 @@ export class Mei2MsmMpmConverter {
    * would turn today's TypeError on an empty MSM into a silent no-op.
    */
   public static msmCleanupSingle(msm: Msm): void {
-    const n = msm
-      .getRootElement()!
-      .query(
-        "descendant::*[local-name()='miscMap'] | descendant::*[attribute::currentDate]/attribute::currentDate | descendant::*[attribute::tie]/attribute::tie | descendant::*[attribute::layer]/attribute::layer | descendant::*[attribute::endid]/attribute::endid | descendant::*[attribute::tstamp2]/attribute::tstamp2 | descendant::*[local-name()='goto' and attribute::n]/attribute::n",
-      );
-    for (let i = 0; i < n.size(); ++i) {
-      const node = n.get(i);
+    for (const node of Mei2MsmMpmConverter.msmScaffolding(msm.getRootElement()!)) {
       if (node instanceof Element) {
         const parent = node.getParent();
         if (parent) parent.removeChild(node);
@@ -4785,6 +4805,71 @@ export class Mei2MsmMpmConverter {
       }
     }
     msm.deleteEmptyMaps();
+  }
+
+  /** the working attributes {@link msmScaffolding} strips, in the order the union listed them */
+  private static readonly MSM_SCAFFOLDING_ATTRIBUTES = [
+    'currentDate',
+    'tie',
+    'layer',
+    'endid',
+    'tstamp2',
+  ] as const;
+
+  /**
+   * Every node {@link msmCleanupSingle} has to remove, in document order.
+   *
+   * This was one {@link Element.query} over a seven-branch union:
+   *
+   * ```
+   * descendant::*[local-name()='miscMap']
+   *   | descendant::*[attribute::currentDate]/attribute::currentDate
+   *   | … tie | layer | endid | tstamp2 …
+   *   | descendant::*[local-name()='goto' and attribute::n]/attribute::n
+   * ```
+   *
+   * and it was 72% of a whole MEI-to-MSM conversion. `query` serialises the subtree to
+   * XML text, re-parses it, evaluates the expression over the throwaway copy and maps the
+   * hits back by position — but the cost here is not the round trip, it is what the union
+   * operator does afterwards. `|` puts its operands through XPath's node-set ordering,
+   * which inserts every hit into an AVL tree under a `compareDocumentPosition` comparator;
+   * xmldom implements that by materialising and comparing both ancestor chains. Every
+   * note in an MSM score carries `currentDate` and most carry `tie` and `layer`, so the
+   * node set is several times the size of the score and that sort is what makes the whole
+   * converter quadratic. Walking the tree once costs a single pass instead.
+   *
+   * Faithfulness of the replacement, branch by branch:
+   *
+   * - `descendant::` excludes the root, and {@link descendantElements} does too;
+   * - pre-order matches XPath document order for the elements. Attributes of one element
+   *   are emitted in declaration order, where the union emitted them in whatever order
+   *   `compareDocumentPosition`'s implementation-specific attribute branch produced. That
+   *   difference is invisible: the loop's two removals are independent of each other and
+   *   of order — the node set is a snapshot taken before any removal, removing an
+   *   attribute never affects another node, and removing an element leaves its subtree
+   *   intact so a nested `miscMap` or an attribute inside a removed one is still removed
+   *   from its (now detached) owner, exactly as before;
+   * - the walk descends into `miscMap` as `descendant::` did, so the set is the same set
+   *   and not merely the same effect;
+   * - `getAttribute(name)` matches on local name where `attribute::name` matches only the
+   *   no-namespace attribute. MSM carries no namespaced attribute but `xml:id`, none of
+   *   the six names is ever prefixed, and the fixture corpus is the check on that.
+   */
+  private static msmScaffolding(root: Element): (Element | Attribute)[] {
+    const doomed: (Element | Attribute)[] = [];
+    for (const element of descendantElements(root, () => true)) {
+      const name = element.getLocalName();
+      if (name === 'miscMap') doomed.push(element);
+      for (const attributeName of Mei2MsmMpmConverter.MSM_SCAFFOLDING_ATTRIBUTES) {
+        const found = element.getAttribute(attributeName);
+        if (found) doomed.push(found);
+      }
+      if (name === 'goto') {
+        const n = element.getAttribute('n');
+        if (n) doomed.push(n);
+      }
+    }
+    return doomed;
   }
 
   public static mpmPostprocessing(mpms: Mpm[]): void {
@@ -4886,16 +4971,23 @@ export class Mei2MsmMpmConverter {
    *
    * The backwards loop combined with `insertChild(subtree, 0)` is what preserves the
    * relative order of the hoisted elements — walking forwards would reverse them.
+   *
+   * The test used to be `subtree.query("descendant-or-self::*[local-name()='staff' or
+   * local-name()='oStaff']").size() === 0`, run once per child of every measure — so every
+   * `<staff>` in the document was serialised to XML text and re-parsed just to establish
+   * that it is a staff. That was 19% of a 32 000-note conversion. Written out, the
+   * `-or-self` half answers for the staves before anything is walked, and the walk that
+   * remains only ever covers a control event's own small subtree.
    */
   protected static reorderMeasureContent(measure: Element): void {
+    const isStaffLike = (element: Element): boolean => {
+      const name = element.getLocalName();
+      return name === 'staff' || name === 'oStaff';
+    };
     const subtrees = measure.getChildElements();
     for (let i = subtrees.size() - 1; i >= 0; --i) {
       const subtree = subtrees.get(i);
-      if (
-        subtree
-          .query("descendant-or-self::*[local-name()='staff' or local-name()='oStaff']")
-          .size() === 0
-      ) {
+      if (!isStaffLike(subtree) && descendantElements(subtree, isStaffLike).length === 0) {
         subtree.detach();
         measure.insertChild(subtree, 0);
       }
