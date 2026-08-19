@@ -180,15 +180,33 @@ export class GenericMap extends AbstractXmlSubtree {
   }
 
   /**
-   * Re-sort the map after its elements' `date` attributes have been edited underneath
-   * it — which is exactly what happens when articulation or rubato shifts a note's
-   * timing. The cached keys are refreshed from the XML first, then an insertion sort
-   * runs over the array, and finally the XML children are brought back in line.
+   * Refresh the cached keys from the XML, run a pass that is *meant* to re-order the array,
+   * and bring the XML children back in line.
    *
-   * The insertion sort is deliberate and must not become `Array.prototype.sort`: it is
-   * stable, and it is near-linear on the almost-sorted input this always receives,
-   * whereas swapping in a different algorithm would reorder equal-date elements and
-   * change which of several simultaneous instructions wins.
+   * **This method does not sort, and the previous version of this comment was wrong about it
+   * in every particular.** It claimed a deliberate, stable insertion sort that must not become
+   * `Array.prototype.sort`. What the loop below actually does is find the leftmost index the
+   * element should move to and then **swap** the two positions, where an insertion sort shifts
+   * the intervening elements right. Run against the code as written:
+   *
+   *     [2, 3, 1]       ->  [1, 3, 2]
+   *     [1, 3, 2, 0]    ->  [0, 2, 3, 1]
+   *     [5, 4, 3, 2, 1] ->  [1, 5, 4, 3, 2]
+   *
+   * So it is not a sort, and it is not stable either. Java is identical —
+   * `GenericMap.java`'s `Collections.swap(this.elements, i, moveToIndex)` — so this is an
+   * inherited defect, not a port defect, and it is left alone under the parity rule.
+   *
+   * **Why it has never bitten.** The keys are refreshed from `@date` (below), but the thing
+   * that moves a note's timing is `@date.perf` — see `ArticulationData.articulateNote`, which
+   * writes `date.perf` and nothing else. The only caller is `ArticulationMap`'s
+   * `if (mapTimingChanged) map.sort();`, so every real call re-reads keys that have not
+   * changed, finds the array already ordered, performs no swap, and rewrites the same XML
+   * order. The bug is dormant behind a second bug.
+   *
+   * **If you fix the `@date` / `@date.perf` mismatch, this goes live.** The two must be
+   * repaired together, as one gated change with fixture bytes re-checked — repairing either
+   * alone is worse than repairing neither. Recorded in PARITY.md §3.
    */
   sort(): void {
     for (const e of this.elements) {
