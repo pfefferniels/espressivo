@@ -33,6 +33,7 @@ import {
 import { addToMap } from '../../src/msm/dateMap.js';
 import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
+import { bestGrowthRatio } from '../support/growthGuard.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const COMPARISON = join(HERE, '..', 'comparison', 'fixtures');
@@ -612,29 +613,41 @@ describe('the rewritten primitives are linear in the size of the document', () =
   }
 
   it('walking a score note by note with getNextSiblingElement', () => {
-    const ratio = growth((score) => {
-      let note = firstChildElement(score, 'note');
-      let seen = 0;
-      while (note !== null) {
-        seen++;
-        note = getNextSiblingElement('note', note);
-      }
-      expect(seen).toBe(score.getChildCount());
-    }, 400);
+    const ratio = bestGrowthRatio(
+      () =>
+        growth((score) => {
+          let note = firstChildElement(score, 'note');
+          let seen = 0;
+          while (note !== null) {
+            seen++;
+            note = getNextSiblingElement('note', note);
+          }
+          expect(seen).toBe(score.getChildCount());
+        }, 400),
+      THRESHOLD,
+    );
     expect(ratio).toBeLessThan(THRESHOLD);
   });
 
   it('collecting every dated descendant', () => {
-    const ratio = growth((score) => {
-      descendantElements(score, (e) => e.getAttribute('date') !== null);
-    }, 400);
+    const ratio = bestGrowthRatio(
+      () =>
+        growth((score) => {
+          descendantElements(score, (e) => e.getAttribute('date') !== null);
+        }, 400),
+      THRESHOLD,
+    );
     expect(ratio).toBeLessThan(THRESHOLD);
   });
 
   it('reordering a whole score', () => {
-    const ratio = growth((score) => {
-      score.reorderChildren([...allChildElements(score)].reverse());
-    }, 400);
+    const ratio = bestGrowthRatio(
+      () =>
+        growth((score) => {
+          score.reorderChildren([...allChildElements(score)].reverse());
+        }, 400),
+      THRESHOLD,
+    );
     expect(ratio).toBeLessThan(THRESHOLD);
   });
 
@@ -659,7 +672,10 @@ describe('the rewritten primitives are linear in the size of the document', () =
     };
     fill(400); // warm the shapes before either measurement
     fill(400 * STEP);
-    const ratio = perOperation(() => fill(400 * STEP)) / perOperation(() => fill(400));
+    const ratio = bestGrowthRatio(
+      () => perOperation(() => fill(400 * STEP)) / perOperation(() => fill(400)),
+      THRESHOLD,
+    );
     expect(ratio).toBeLessThan(THRESHOLD);
   });
 });

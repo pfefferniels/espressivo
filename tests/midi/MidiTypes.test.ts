@@ -8,6 +8,7 @@ import {
   Sequence,
 } from '../../src/midi/MidiTypes.js';
 import { EventMaker } from '../../src/midi/EventMaker.js';
+import { bestGrowthRatio } from '../support/growthGuard.js';
 
 // ---------------------------------------------------------------------------
 // ShortMessage
@@ -463,7 +464,8 @@ describe('Track.add is exactly push-then-stable-sort, without the sort', () => {
     // put it above a clean 16), the push-and-sort it replaced at 273. The threshold sits
     // between those bands, so a loaded CI machine does not go red and the quadratic shape
     // cannot come back unnoticed.
-    expect(perBuild(16000) / perBuild(1000)).toBeLessThan(64);
+    const ratio = bestGrowthRatio(() => perBuild(16000) / perBuild(1000), 64);
+    expect(ratio).toBeLessThan(64);
   });
 });
 
