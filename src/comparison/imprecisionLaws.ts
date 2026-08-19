@@ -135,7 +135,7 @@ const SEED_POISONED_FAMILIES: readonly string[] = [BROWNIAN, COMPENSATING, LIST]
 
 /**
  * The renderer's fallback timing basis, and the value every non-timing domain uses
- * (`ImprecisionMap.ts:378-379`).
+ * (`ImprecisionMap.ts:235`, `resolveTimingBasis`).
  */
 export const DEFAULT_TIMING_BASIS_MS = 100.0;
 
@@ -364,7 +364,7 @@ function coerced(reading: NumericReading): number {
  * and **clears `series`** — and `series` is not a cache:
  *
  * - For the two CORRELATED families it holds the walk's current value.
- *   `ImprecisionMap.ts:319-354` calls `doHandover` (which seeds it) and only THEN calls
+ *   `ImprecisionMap.ts:123-145` calls `applyHandover` (which seeds it) and only THEN calls
  *   `setSeed`, so the next draw reads `series[series.length − 1]` on an empty array.
  * - For `distribution.list` it holds the LIST ITSELF
  *   (`createRandomNumberProvider_distributionList` assigns `series = [...list]`), so clearing
@@ -595,7 +595,7 @@ function listValues(element: Element): readonly number[] {
 }
 
 /**
- * §5.9's timing-basis derivation, which is `ImprecisionMap.ts:356-380` verbatim.
+ * §5.9's timing-basis derivation, which is `ImprecisionMap.ts:218-236` (`resolveTimingBasis`) verbatim.
  *
  * Derived ONLY in the timing domain and only when the attribute is absent — from
  * `upper − lower` for uniform / gaussian / brownian, `upperClip − lowerClip` for both

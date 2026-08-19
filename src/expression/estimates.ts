@@ -406,7 +406,7 @@ function scaleOrNull(value: number | null, factor: number): number | null {
  * Toneduration distributions whose offsets can put a note's end before its start.
  *
  * The domain applies its offset to `@milliseconds.date.end` and to nothing else
- * (ImprecisionMap.ts:416-425), so the guard is reached when the widest value a distribution
+ * (ImprecisionMap.ts:587-597), so the guard is reached when the widest value a distribution
  * can draw reaches a note's rendered length — and the same code path skips any note carrying
  * no `@milliseconds.date.end`, which is the second reason a raw score cannot answer this.
  *
