@@ -34,10 +34,12 @@ import { TempoMap } from '../mpm/elements/maps/TempoMap.js';
 import { DynamicsMap } from '../mpm/elements/maps/DynamicsMap.js';
 import { ArticulationMap } from '../mpm/elements/maps/ArticulationMap.js';
 import { OrnamentationMap } from '../mpm/elements/maps/OrnamentationMap.js';
-import { TempoStyle } from '../mpm/elements/styles/TempoStyle.js';
-import { DynamicsStyle } from '../mpm/elements/styles/DynamicsStyle.js';
-import { ArticulationStyle } from '../mpm/elements/styles/ArticulationStyle.js';
-import { OrnamentationStyle } from '../mpm/elements/styles/OrnamentationStyle.js';
+import type {
+  ArticulationStyle,
+  DynamicsStyle,
+  OrnamentationStyle,
+  TempoStyle,
+} from '../mpm/elements/styles/style.js';
 import { TempoDef } from '../mpm/elements/styles/defs/TempoDef.js';
 import { DynamicsDef } from '../mpm/elements/styles/defs/DynamicsDef.js';
 import { ArticulationDef } from '../mpm/elements/styles/defs/ArticulationDef.js';

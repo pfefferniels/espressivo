@@ -1,5 +1,5 @@
 import type { Element } from '../../../../xml/XomTypes.js';
-import type { DynamicsStyle } from '../../styles/DynamicsStyle.js';
+import type { DynamicsStyle } from '../../styles/style.js';
 import type { DynamicsDef } from '../../styles/defs/DynamicsDef.js';
 import { bezierPoint, innerControlPointsXPositions, sampleSegment, tForDate } from './bezier.js';
 

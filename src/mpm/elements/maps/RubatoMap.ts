@@ -1,10 +1,9 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute } from '../../../xml/tree.js';
-import { MPM_NAMESPACE, RUBATO_STYLE } from '../../names.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { RubatoData } from './data/RubatoData.js';
-import { RubatoStyle } from '../styles/RubatoStyle.js';
 
 /**
  * An MPM `rubatoMap`: expressive push and pull of the timing, applied as a repeating
@@ -112,7 +111,7 @@ export class RubatoMap extends GenericMap {
     const att = attribute('id', e);
     if (att !== null) rd.xmlId = att.getValue();
     rd.styleName = this.findStyleNameAt(i) ?? rd.styleName;
-    rd.style = this.getStyle(RUBATO_STYLE, rd.styleName) as RubatoStyle | null;
+    rd.style = this.getStyle('rubato', rd.styleName);
     if (rd.style !== null) {
       const nrAtt = attribute('name.ref', e);
       if (nrAtt !== null) {

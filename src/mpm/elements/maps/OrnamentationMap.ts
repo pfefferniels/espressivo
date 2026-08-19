@@ -5,12 +5,12 @@ import { DEFAULT_EXPAND_ORNAMENTS } from '../../RenderOptions.js';
 import type { RenderContext } from '../../RenderOptions.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
+import { styleOfKind, type OrnamentationStyle } from '../styles/style.js';
 import {
   OrnamentData,
   parseOrnamentNotePool,
   parseOrnamentRepetitions,
 } from './data/OrnamentData.js';
-import { OrnamentationStyle } from '../styles/OrnamentationStyle.js';
 import {
   instantiateOrnaments,
   isV3Ornament,
@@ -269,7 +269,7 @@ export class OrnamentationMap extends GenericMap {
     if (nameRefAtt === null) return null;
     od.ornamentDefName = nameRefAtt.getValue();
     od.styleName = this.findStyleNameAt(i) ?? '';
-    od.style = this.getStyle(ORNAMENTATION_STYLE, od.styleName) as OrnamentationStyle | null;
+    od.style = this.getStyle('ornamentation', od.styleName);
     if (od.style === null) return null;
     od.ornamentDef = od.style.getDef(od.ornamentDefName) ?? null;
     if (od.ornamentDef === null) return null;
@@ -432,17 +432,26 @@ export class OrnamentationMap extends GenericMap {
       if (ornamentXml === null) continue;
 
       // get the lookup style for subsequent ornaments
+      //
+      // Deliberately NOT `GenericMap.getStyle`, which does the same two-header lookup: this
+      // one carries `style` over from the previous `<style>` element, so when there is no
+      // local header at all the first branch does not run, `style` keeps its old value, and
+      // the `style === null` guard then skips the global lookup too. `getStyle` would reset
+      // it. That asymmetry is the reference's and it is observable, so it stays put.
       if (ornamentXml.getLocalName() === 'style') {
-        if (this.getLocalHeader() !== null)
-          style = this.getLocalHeader()!.getStyleDef(
-            ORNAMENTATION_STYLE,
-            getAttributeValue('name.ref', ornamentXml),
-          ) as OrnamentationStyle | null;
-        if (style === null && this.getGlobalHeader() !== null)
-          style = this.getGlobalHeader()!.getStyleDef(
-            ORNAMENTATION_STYLE,
-            getAttributeValue('name.ref', ornamentXml),
-          ) as OrnamentationStyle | null;
+        const nameRef = getAttributeValue('name.ref', ornamentXml);
+        const localHeader = this.getLocalHeader();
+        const globalHeader = this.getGlobalHeader();
+        if (localHeader !== null)
+          style = styleOfKind(
+            localHeader.getStyleDef(ORNAMENTATION_STYLE, nameRef),
+            'ornamentation',
+          );
+        if (style === null && globalHeader !== null)
+          style = styleOfKind(
+            globalHeader.getStyleDef(ORNAMENTATION_STYLE, nameRef),
+            'ornamentation',
+          );
         continue;
       }
 

@@ -1,5 +1,5 @@
 import type { Element } from '../../../../xml/XomTypes.js';
-import type { TempoStyle } from '../../styles/TempoStyle.js';
+import type { TempoStyle } from '../../styles/style.js';
 
 /**
  * All data needed to compute the tempo in force over one span of the timeline —

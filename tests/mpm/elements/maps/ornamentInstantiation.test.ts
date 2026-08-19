@@ -10,7 +10,7 @@ import {
 import { Element, Attribute } from '../../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../../src/mpm/Mpm.js';
 import { Header } from '../../../../src/mpm/elements/Header.js';
-import { OrnamentationStyle } from '../../../../src/mpm/elements/styles/OrnamentationStyle.js';
+import { createStyle } from '../../../../src/mpm/elements/styles/style.js';
 import { OrnamentDef } from '../../../../src/mpm/elements/styles/defs/OrnamentDef.js';
 import {
   FrameDomain,
@@ -95,7 +95,7 @@ function makeDef(name: string, options: DefOptions = {}): OrnamentDef {
 
 function makeMap(defs: OrnamentDef[]): OrnamentationMap {
   const header = Header.createHeader()!;
-  const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
+  const style = createStyle('ornamentation', 'orn style');
   for (const def of defs) style.addDef(def);
   header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
   const map = OrnamentationMap.createOrnamentationMap()!;
@@ -1592,7 +1592,7 @@ describe('MPM v3 ornament instantiation', () => {
     /** A global map: its style comes from the GLOBAL header, so `apply` takes that branch. */
     function makeGlobalMap(defs: OrnamentDef[]): OrnamentationMap {
       const header = Header.createHeader()!;
-      const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
+      const style = createStyle('ornamentation', 'orn style');
       for (const def of defs) style.addDef(def);
       header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
       const map = OrnamentationMap.createOrnamentationMap()!;

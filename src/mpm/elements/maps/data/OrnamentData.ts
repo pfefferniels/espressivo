@@ -1,6 +1,6 @@
 import type { Element } from '../../../../xml/XomTypes.js';
 import { OrnamentNote, readJavaDouble } from './OrnamentNote.js';
-import type { OrnamentationStyle } from '../../styles/OrnamentationStyle.js';
+import type { OrnamentationStyle } from '../../styles/style.js';
 import type { OrnamentDef } from '../../styles/defs/OrnamentDef.js';
 
 /**

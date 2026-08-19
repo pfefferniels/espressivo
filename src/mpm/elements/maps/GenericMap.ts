@@ -3,8 +3,14 @@ import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { Header } from '../Header.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
-import { GenericStyle } from '../styles/GenericStyle.js';
+import {
+  collectionNameOfKind,
+  styleOfKind,
+  type StyleKind,
+  type StyleOfKind,
+} from '../styles/style.js';
 import { lowerBoundBy, upperBoundBy } from '../../../prelude/seq.js';
+import { mapPresent, orCompute } from '../../../prelude/index.js';
 
 const MPM_NAMESPACE = 'http://www.cemfi.de/mpm/ns/1.0';
 
@@ -513,18 +519,34 @@ export class GenericMap extends AbstractXmlSubtree {
     return null;
   }
 
-  getStyle(styleType: string, styleName: string | null): GenericStyle | null {
+  /**
+   * The style of a given kind named `styleName` — the part's own header first, then the
+   * global one.
+   *
+   * Takes the {@link StyleKind} rather than the `…Styles` collection name, although the two
+   * are the same fact ({@link collectionNameOfKind} is the bijection). That is what lets the
+   * return type be one arm of {@link AnyStyle} instead of the whole union, and it is what
+   * removed the six `as TempoStyle | null` casts the six typed maps each carried: a cast
+   * asserts the kind, this checks it. `generic` resolves nothing, because it names no
+   * collection to look in.
+   */
+  getStyle<K extends StyleKind>(kind: K, styleName: string | null): StyleOfKind<K> | null {
     if (styleName === null || styleName === '') return null;
-    let style: GenericStyle | null = null;
-    if (this.getLocalHeader() !== null)
-      style = this.getLocalHeader()!.getStyleDef(styleType, styleName);
-    if (style === null && this.getGlobalHeader() !== null)
-      style = this.getGlobalHeader()!.getStyleDef(styleType, styleName);
-    return style;
+    const styleType = collectionNameOfKind(kind);
+    if (styleType === null) return null;
+
+    // `orCompute` and not `firstPresent`: the global lookup must stay lazy. It is a pure map
+    // read, so evaluating it eagerly would be observationally identical — but this runs once
+    // per styled instruction, and `980ae7e` bought that path its linearity.
+    const found = orCompute(
+      mapPresent(this.getLocalHeader(), (h) => h.getStyleDef(styleType, styleName)),
+      () => mapPresent(this.getGlobalHeader(), (h) => h.getStyleDef(styleType, styleName)),
+    );
+    return styleOfKind(found, kind);
   }
 
-  getStyleAt(date: number, styleType: string): GenericStyle | null {
-    return this.getStyle(styleType, this.getStyleNameAt(date));
+  getStyleAt<K extends StyleKind>(date: number, kind: K): StyleOfKind<K> | null {
+    return this.getStyle(kind, this.getStyleNameAt(date));
   }
 
   size(): number {

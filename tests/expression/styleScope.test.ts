@@ -11,7 +11,8 @@ import {
 } from '../../src/expression/styleScope.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
 import { DynamicsMap } from '../../src/mpm/elements/maps/DynamicsMap.js';
-import { DynamicsStyle } from '../../src/mpm/elements/styles/DynamicsStyle.js';
+import { numericDynamicsValue, parseStyle } from '../../src/mpm/elements/styles/style.js';
+import { unwrapOr } from '../../src/prelude/index.js';
 import { DYNAMICS_MAP, DYNAMICS_STYLE, TEMPO_STYLE } from '../../src/mpm/names.js';
 import { globalEnvironment, partEnvironment, performanceDocument } from './rawFixtures.js';
 
@@ -66,7 +67,7 @@ describe('styleScope', () => {
 
     it('agrees with the renderer, which reads the same two levels as 100 and 48', () => {
       // The renderer's own numbers, from DynamicsMap.getDynamicsDataOf on a separate parse.
-      // 100.0 is DynamicsStyle's unresolvable FALLBACK (DynamicsStyle.ts:55), not a reading
+      // 100.0 is `numericDynamicsValue`'s unresolvable FALLBACK (styles/style.ts), not a reading
       // of the document, which is why the engine reports NaN there and skips the site
       // instead of exaggerating a level nobody wrote.
       const mpm = new Mpm(EQUAL_DATES);
@@ -186,22 +187,22 @@ describe('styleScope', () => {
       },
     );
 
-    it('agrees with DynamicsStyle.getNumericValueStatic everywhere except the fallback', () => {
+    it('agrees with numericDynamicsValue everywhere except the fallback', () => {
       const text = performanceDocument(globalEnvironment(MEI_STYLES, ''));
       const global = globalOf(text);
       const styleDefElement = readPerformances(parseMpmRoot(text))[0]
         .global.styleCollections.get(DYNAMICS_STYLE)!
         .getChildElements('styleDef')
         .get(0);
-      const style = DynamicsStyle.createDynamicsStyle(styleDefElement)!;
+      const style = unwrapOr(parseStyle('dynamics', styleDefElement), null)!;
 
       for (const level of ['f', 'p', '64', '64.5', '120bpm']) {
         expect(resolveLevel(level, 'dynamics', 'MEI export', global, global).value).toBe(
-          style.getNumericValue(level),
+          numericDynamicsValue(level, style),
         );
       }
       // The one divergence, and it is deliberate: 100.0 is invented, NaN is reported.
-      expect(style.getNumericValue('?')).toBe(100);
+      expect(numericDynamicsValue('?', style)).toBe(100);
       expect(resolveLevel('?', 'dynamics', 'MEI export', global, global).value).toBeNaN();
     });
   });

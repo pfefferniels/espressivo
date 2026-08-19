@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { addToListAttribute } from '../../../../xml/ids.js';
 import { attribute } from '../../../../xml/tree.js';
-import type { ArticulationStyle } from '../../styles/ArticulationStyle.js';
+import type { ArticulationStyle } from '../../styles/style.js';
 import type { ArticulationDef } from '../../styles/defs/ArticulationDef.js';
 
 /**
