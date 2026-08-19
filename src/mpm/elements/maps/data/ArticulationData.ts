@@ -19,6 +19,14 @@ import type { ArticulationDef } from '../../styles/defs/ArticulationDef.js';
  * removes them in a later pass. This two-phase split is why the pipeline calls
  * ArticulationMap twice.
  *
+ * This is a **record plus one behaviour** (`articulateNote`), with exactly one producer.
+ * It does not parse XML — the port used to carry a `constructor(xml)` transcribing
+ * `<articulation>`, but nothing called it and it stored `@noteid` verbatim where
+ * {@link ArticulationMap.getArticulationDataOf} strips the leading `#`. Since the map is
+ * keyed by bare IDs, an object built that way targeted a note that cannot exist. Build
+ * these with `getArticulationDataOf`; it is the only reader that also resolves the style,
+ * the `articulationDef` and the style switch's `defaultArticulation`.
+ *
  * Port of meico.mpm.elements.maps.data.ArticulationData
  */
 export class ArticulationData {
@@ -47,67 +55,6 @@ export class ArticulationData {
   relativeVelocity = 1.0;
   detuneCents = 0.0;
   detuneHz = 0.0;
-
-  constructor(xml?: Element) {
-    if (xml === undefined) return;
-
-    this.xml = xml;
-    this.date = parseFloat(xml.getAttributeValue('date')!);
-
-    const nameRef = xml.getAttribute('name.ref');
-    if (nameRef !== null) this.articulationDefName = nameRef.getValue();
-
-    const noteId = xml.getAttribute('noteid');
-    if (noteId !== null) this.noteid = noteId.getValue();
-
-    const absoluteDurationAttr = xml.getAttribute('absoluteDuration');
-    if (absoluteDurationAttr !== null)
-      this.absoluteDuration = parseFloat(absoluteDurationAttr.getValue());
-
-    const absoluteDurationChangeAttr = xml.getAttribute('absoluteDurationChange');
-    if (absoluteDurationChangeAttr !== null)
-      this.absoluteDurationChange = parseFloat(absoluteDurationChangeAttr.getValue());
-
-    const absoluteDurationMsAttr = xml.getAttribute('absoluteDurationMs');
-    if (absoluteDurationMsAttr !== null)
-      this.absoluteDurationMs = parseFloat(absoluteDurationMsAttr.getValue());
-
-    const absoluteDurationChangeMsAttr = xml.getAttribute('absoluteDurationChangeMs');
-    if (absoluteDurationChangeMsAttr !== null)
-      this.absoluteDurationChangeMs = parseFloat(absoluteDurationChangeMsAttr.getValue());
-
-    const relativeDurationAttr = xml.getAttribute('relativeDuration');
-    if (relativeDurationAttr !== null)
-      this.relativeDuration = parseFloat(relativeDurationAttr.getValue());
-
-    const absoluteDelayAttr = xml.getAttribute('absoluteDelay');
-    if (absoluteDelayAttr !== null) this.absoluteDelay = parseFloat(absoluteDelayAttr.getValue());
-
-    const absoluteDelayMsAttr = xml.getAttribute('absoluteDelayMs');
-    if (absoluteDelayMsAttr !== null)
-      this.absoluteDelayMs = parseFloat(absoluteDelayMsAttr.getValue());
-
-    const absoluteVelocityAttr = xml.getAttribute('absoluteVelocity');
-    if (absoluteVelocityAttr !== null)
-      this.absoluteVelocity = parseFloat(absoluteVelocityAttr.getValue());
-
-    const absoluteVelocityChangeAttr = xml.getAttribute('absoluteVelocityChange');
-    if (absoluteVelocityChangeAttr !== null)
-      this.absoluteVelocityChange = parseFloat(absoluteVelocityChangeAttr.getValue());
-
-    const relativeVelocityAttr = xml.getAttribute('relativeVelocity');
-    if (relativeVelocityAttr !== null)
-      this.relativeVelocity = parseFloat(relativeVelocityAttr.getValue());
-
-    const detuneCentsAttr = xml.getAttribute('detuneCents');
-    if (detuneCentsAttr !== null) this.detuneCents = parseFloat(detuneCentsAttr.getValue());
-
-    const detuneHzAttr = xml.getAttribute('detuneHz');
-    if (detuneHzAttr !== null) this.detuneHz = parseFloat(detuneHzAttr.getValue());
-
-    const id = xml.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
-    if (id !== null) this.xmlId = id.getValue();
-  }
 
   clone(): ArticulationData {
     const c = new ArticulationData();

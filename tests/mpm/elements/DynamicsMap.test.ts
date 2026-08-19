@@ -2,11 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { DynamicsMap } from '../../../src/mpm/elements/maps/DynamicsMap.js';
 import { DynamicsData } from '../../../src/mpm/elements/maps/data/DynamicsData.js';
 import { Element, Attribute, Builder } from '../../../src/xml/XomTypes.js';
+import { Mpm } from '../../../src/mpm/Mpm.js';
 
 // ==========================================================================
 //  DynamicsMap Tests
 // ==========================================================================
 describe('DynamicsMap', () => {
+  // Shared by every describe below that needs a real map rather than a bare element: a
+  // `<dynamics>` only means something inside a `dynamicsMap`, because that is what supplies
+  // the entry's date key, its `endDate` and the style in scope.
+  const parse = (xml: string): Element => new Builder().build(xml).getRootElement();
+
+  const mapOf = (dynamics: string): DynamicsMap =>
+    DynamicsMap.createDynamicsMap(
+      parse(`<dynamicsMap xmlns="http://www.cemfi.de/mpm/ns/1.0">${dynamics}</dynamicsMap>`),
+    )!;
+
   // ---------------------------------------------------------------
   //  Construction
   // ---------------------------------------------------------------
@@ -251,13 +262,6 @@ describe('DynamicsMap', () => {
   // with a real curve rendered on the straight Bezier. These tests therefore use literal
   // non-zero values, which no fixture has.
   describe('getDynamicsDataOf reads curvature and protraction', () => {
-    const parse = (xml: string): Element => new Builder().build(xml).getRootElement();
-
-    const mapOf = (dynamics: string): DynamicsMap =>
-      DynamicsMap.createDynamicsMap(
-        parse(`<dynamicsMap xmlns="http://www.cemfi.de/mpm/ns/1.0">${dynamics}</dynamicsMap>`),
-      )!;
-
     it('reads both from a literal transition element', () => {
       const dd = mapOf(
         '<dynamics date="0.0" volume="94.2" transition.to="48.3" curvature="0.4"' +
@@ -1031,35 +1035,65 @@ describe('DynamicsMap', () => {
     });
 
     // ---------------------------------------------------------------
-    //  constructor from XML
+    //  reading an element, through the reader that renders
     // ---------------------------------------------------------------
-    describe('constructor from XML', () => {
-      it('should parse all attributes', () => {
-        const e = new Element('dynamics');
-        e.addAttribute(new Attribute('date', '100'));
-        e.addAttribute(new Attribute('volume', '80'));
-        e.addAttribute(new Attribute('transition.to', '120'));
-        e.addAttribute(new Attribute('curvature', '0.5'));
-        e.addAttribute(new Attribute('protraction', '0.3'));
-        e.addAttribute(new Attribute('subNoteDynamics', 'true'));
+    // Migrated from a `new DynamicsData(e)` constructor that no production path called.
+    // The first case transfers assertion for assertion. The second CANNOT, and that is
+    // the point: `expect(dd.volume).toBeNull()` was pinning a state the renderer never
+    // produces. The dead constructor put a non-numeric `@volume` in `volumeString` and
+    // left `volume` null; `getDynamicsDataOf` always sets the string AND resolves the
+    // number through the style in scope. Rather than drop the case, it is re-pointed at
+    // the resolution that actually happens — which needs a real document, because a
+    // style-relative name means nothing without a style.
+    describe('reading an element through getDynamicsDataOf', () => {
+      it('reads date, volume, transition.to, curvature, protraction and subNoteDynamics', () => {
+        const dd = mapOf(
+          '<dynamics date="100.0" volume="80" transition.to="120" curvature="0.5"' +
+            ' protraction="0.3" subNoteDynamics="true" />',
+        ).getDynamicsDataOf(0)!;
 
-        const dd = new DynamicsData(e);
         expect(dd.startDate).toBe(100);
         expect(dd.volume).toBe(80);
         expect(dd.transitionTo).toBe(120);
         expect(dd.curvature).toBe(0.5);
         expect(dd.protraction).toBe(0.3);
         expect(dd.subNoteDynamics).toBe(true);
+        // The string half of the pair, which the dead constructor NULLED for a numeric
+        // volume even though `addDynamics(DynamicsData)` prefers it on the way back out.
+        expect(dd.volumeString).toBe('80');
       });
 
-      it('should handle string (non-numeric) volume', () => {
-        const e = new Element('dynamics');
-        e.addAttribute(new Attribute('date', '0'));
-        e.addAttribute(new Attribute('volume', 'forte'));
+      it('keeps a style-relative volume as a string AND resolves it through the style', () => {
+        const mpm = new Mpm(
+          `<mpm xmlns="${Mpm.MPM_NAMESPACE}"><performance name="p" pulsesPerQuarter="720">` +
+            '<global><header><dynamicsStyles><styleDef name="s">' +
+            '<dynamicsDef name="forte" value="96.0" />' +
+            '</styleDef></dynamicsStyles></header><dated>' +
+            '<dynamicsMap><style date="0.0" name.ref="s" />' +
+            '<dynamics date="0.0" volume="forte" /></dynamicsMap>' +
+            '</dated></global></performance></mpm>',
+        );
+        // `getMap` is declared to return the base `GenericMap`; the downcast names a
+        // PUBLIC reader, it is not a way in to a private path.
+        const map = mpm
+          .getAllPerformances()[0]
+          .getGlobal()!
+          .getDated()!
+          .getMap('dynamicsMap') as DynamicsMap;
 
-        const dd = new DynamicsData(e);
-        expect(dd.volume).toBeNull();
+        // Entry 0 is the <style> switch, so the instruction is entry 1.
+        const dd = map.getDynamicsDataOf(1)!;
         expect(dd.volumeString).toBe('forte');
+        expect(dd.volume).toBe(96.0);
+      });
+
+      it('falls back to 100 for a name no style resolves, rather than leaving volume null', () => {
+        // Without a style there is no def to consult and no number to parse, so
+        // `DynamicsStyle.getNumericValueStatic` logs and answers 100. The dead
+        // constructor answered null here, and null is what `getDynamicsAt` divides by.
+        const dd = mapOf('<dynamics date="0.0" volume="forte" />').getDynamicsDataOf(0)!;
+        expect(dd.volumeString).toBe('forte');
+        expect(dd.volume).toBe(100.0);
       });
     });
 

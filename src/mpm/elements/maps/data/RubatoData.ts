@@ -1,4 +1,4 @@
-import { Attribute, Element } from '../../../../xml/XomTypes.js';
+import type { Element } from '../../../../xml/XomTypes.js';
 import type { RubatoStyle } from '../../styles/RubatoStyle.js';
 import type { RubatoDef } from '../../styles/defs/RubatoDef.js';
 
@@ -14,6 +14,14 @@ import type { RubatoDef } from '../../styles/defs/RubatoDef.js';
  * Every numeric field is nullable because a `<rubato>` may name a `rubatoDef` instead
  * of spelling the values out; {@link RubatoMap.getRubatoDataOf} fills the gaps from
  * the def and then clamps the window into a valid range.
+ *
+ * This is a **plain record with exactly one producer**. It does not parse XML — the port
+ * used to carry a `constructor(xml)` transcribing `<rubato>`, but nothing ever called it
+ * and its transcription disagreed with the live one (it nulled `intensity`/`lateStart`/
+ * `earlyEnd` for a missing attribute, where `getRubatoDataOf` leaves the initializers
+ * below standing as the identity warp). If you need a `RubatoData` from an element, call
+ * `getRubatoDataOf` — it is the only reader, and the only one that resolves the style,
+ * the def and the `endDate`.
  *
  * Port of meico.mpm.elements.maps.data.RubatoData
  */
@@ -35,40 +43,6 @@ export class RubatoData {
   earlyEnd: number | null = 1.0;
 
   loop = false;
-
-  constructor(xml?: Element) {
-    if (xml === undefined) return;
-
-    this.xml = xml;
-    this.startDate = parseFloat(xml.getAttributeValue('date')!);
-
-    const nameRef = xml.getAttribute('name.ref');
-    if (nameRef !== null) this.rubatoDefString = nameRef.getValue();
-
-    // Note the asymmetry with the field initializers above: those give intensity/
-    // lateStart/earlyEnd the MPM defaults (1.0/0.0/1.0), but parsing an element
-    // *overwrites them with null* when the attribute is absent rather than leaving the
-    // default in place. That is intentional — a missing attribute here means "inherit
-    // from the rubatoDef", and RubatoMap.getRubatoDataOf distinguishes the two cases by
-    // the null. Changing these to `?? default` would silently defeat def inheritance.
-    const frameLengthAtt = xml.getAttribute('frameLength');
-    this.frameLength = frameLengthAtt !== null ? parseFloat(frameLengthAtt.getValue()) : null;
-
-    const intensityAtt = xml.getAttribute('intensity');
-    this.intensity = intensityAtt !== null ? parseFloat(intensityAtt.getValue()) : null;
-
-    const lateStartAtt = xml.getAttribute('lateStart');
-    this.lateStart = lateStartAtt !== null ? parseFloat(lateStartAtt.getValue()) : null;
-
-    const earlyEndAtt = xml.getAttribute('earlyEnd');
-    this.earlyEnd = earlyEndAtt !== null ? parseFloat(earlyEndAtt.getValue()) : null;
-
-    const loopAtt = xml.getAttribute('loop');
-    if (loopAtt !== null) this.loop = loopAtt.getValue() === 'true';
-
-    const id = xml.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
-    if (id !== null) this.xmlId = id.getValue();
-  }
 
   clone(): RubatoData {
     const c = new RubatoData();

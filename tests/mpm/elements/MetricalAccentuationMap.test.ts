@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MetricalAccentuationMap } from '../../../src/mpm/elements/maps/MetricalAccentuationMap.js';
 import { MetricalAccentuationData } from '../../../src/mpm/elements/maps/data/MetricalAccentuationData.js';
-import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 
 describe('MetricalAccentuationMap', () => {
@@ -178,42 +177,88 @@ describe('MetricalAccentuationMap', () => {
       expect(md.scale).toBe(2.0);
       expect(md.loop).toBe(true);
     });
+  });
 
-    it('should parse from XML element', () => {
-      const xml = new Element('accentuationPattern', Mpm.MPM_NAMESPACE);
-      xml.addAttribute(new Attribute('date', '240'));
-      xml.addAttribute(new Attribute('name.ref', 'waltzPattern'));
-      xml.addAttribute(new Attribute('scale', '1.5'));
-      xml.addAttribute(new Attribute('loop', 'true'));
-      xml.addAttribute(new Attribute('stickToMeasures', 'false'));
+  // ---------------------------------------------------------------
+  // getMetricalAccentuationDataOf reads the instruction's own attributes
+  // ---------------------------------------------------------------
+  // These three used to run against a `new MetricalAccentuationData(xml)` constructor
+  // that nothing in `src/` ever called; they are the same five assertions pointed at the
+  // reader the renderer actually uses. The move is not cosmetic — the dead constructor
+  // agreed with `getMetricalAccentuationDataOf` on `@loop` and `@stickToMeasures` only.
+  // It took `startDate` from `parseFloat(@date)` where the live reader takes the map's
+  // own key, and it produced a datum with a NaN `scale` and a null `style` where the
+  // live reader rejects the instruction outright. Asserting the parse through the map
+  // therefore pins strictly more than the old spelling did: the same five values, plus
+  // the style and def resolution that makes the datum renderable at all.
+  describe('getMetricalAccentuationDataOf reads the instruction', () => {
+    // A `<style>` switch and a resolvable styleDef are both required: the reader returns
+    // null when `getStyle` finds nothing, which the describe above already pins.
+    const mapWith = (instructions: string): MetricalAccentuationMap => {
+      const mpm = new Mpm(
+        `<mpm xmlns="${Mpm.MPM_NAMESPACE}"><performance name="p" pulsesPerQuarter="720">` +
+          '<global><header><metricalAccentuationStyles><styleDef name="s">' +
+          '<accentuationPatternDef name="waltzPattern" length="3.0">' +
+          '<accentuation beat="1.0" value="1.0" transitionTo="1.0" />' +
+          '</accentuationPatternDef>' +
+          '<accentuationPatternDef name="pattern" length="4.0">' +
+          '<accentuation beat="1.0" value="1.0" transitionTo="1.0" />' +
+          '</accentuationPatternDef>' +
+          '</styleDef></metricalAccentuationStyles></header><dated>' +
+          `<metricalAccentuationMap><style date="0.0" name.ref="s" />${instructions}` +
+          '</metricalAccentuationMap></dated></global></performance></mpm>',
+      );
+      // `getMap` is declared to return the base `GenericMap`; the downcast is the same one
+      // ArticulationMap.test.ts makes, and it names a PUBLIC reader — not a way in to a
+      // private path.
+      return mpm
+        .getAllPerformances()[0]
+        .getGlobal()!
+        .getDated()!
+        .getMap('metricalAccentuationMap') as MetricalAccentuationMap;
+    };
 
-      const md = new MetricalAccentuationData(xml);
+    // Entry 0 is the <style> switch, so the first instruction is entry 1.
+    it('reads date, name.ref, scale, loop and stickToMeasures off the instruction', () => {
+      const md = mapWith(
+        '<accentuationPattern date="240.0" name.ref="waltzPattern" scale="1.5"' +
+          ' loop="true" stickToMeasures="false" />',
+      ).getMetricalAccentuationDataOf(1)!;
+
       expect(md.startDate).toBe(240);
       expect(md.accentuationPatternDefName).toBe('waltzPattern');
       expect(md.scale).toBe(1.5);
       expect(md.loop).toBe(true);
       expect(md.stickToMeasures).toBe(false);
+      // The half the dead constructor could not do at all.
+      expect(md.styleName).toBe('s');
+      expect(md.accentuationPatternDef).not.toBeNull();
     });
 
-    it('should parse loop=false from XML', () => {
-      const xml = new Element('accentuationPattern', Mpm.MPM_NAMESPACE);
-      xml.addAttribute(new Attribute('date', '0'));
-      xml.addAttribute(new Attribute('name.ref', 'pattern'));
-      xml.addAttribute(new Attribute('scale', '1'));
-      xml.addAttribute(new Attribute('loop', 'false'));
-
-      const md = new MetricalAccentuationData(xml);
+    it('reads loop=false when the attribute says so', () => {
+      const md = mapWith(
+        '<accentuationPattern date="0.0" name.ref="pattern" scale="1.0" loop="false" />',
+      ).getMetricalAccentuationDataOf(1)!;
       expect(md.loop).toBe(false);
     });
 
-    it('should default loop and stickToMeasures when not in XML', () => {
-      const xml = new Element('accentuationPattern', Mpm.MPM_NAMESPACE);
-      xml.addAttribute(new Attribute('date', '0'));
-      xml.addAttribute(new Attribute('name.ref', 'pattern'));
-      xml.addAttribute(new Attribute('scale', '1'));
-
-      const md = new MetricalAccentuationData(xml);
+    it('defaults loop to false and stickToMeasures to true when neither is present', () => {
+      const md = mapWith(
+        '<accentuationPattern date="0.0" name.ref="pattern" scale="1.0" />',
+      ).getMetricalAccentuationDataOf(1)!;
       expect(md.loop).toBe(false);
+      expect(md.stickToMeasures).toBe(true);
+    });
+
+    // The one assertion added rather than migrated, and it was added because a control
+    // measured the hole: with only the `stickToMeasures="false"` and absent cases above,
+    // rewriting the read as `md.stickToMeasures = stmAtt === null` leaves the suite green
+    // — the default and the two tested values coincide. An explicit `"true"` is the case
+    // that tells reading the VALUE apart from noticing the attribute's PRESENCE.
+    it('reads stickToMeasures=true when the attribute says so, not merely by its absence', () => {
+      const md = mapWith(
+        '<accentuationPattern date="0.0" name.ref="pattern" scale="1.0" stickToMeasures="true" />',
+      ).getMetricalAccentuationDataOf(1)!;
       expect(md.stickToMeasures).toBe(true);
     });
   });

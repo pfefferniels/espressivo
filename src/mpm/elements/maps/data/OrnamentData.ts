@@ -1,4 +1,4 @@
-import { Attribute, Element } from '../../../../xml/XomTypes.js';
+import type { Element } from '../../../../xml/XomTypes.js';
 import { OrnamentNote, readJavaDouble } from './OrnamentNote.js';
 import type { OrnamentationStyle } from '../../styles/OrnamentationStyle.js';
 import type { OrnamentDef } from '../../styles/defs/OrnamentDef.js';
@@ -106,6 +106,18 @@ export interface OrnamentGeneration {
  * that in belongs to the renderer waves; keeping this field flat is what lets the v2 path
  * stay byte-frozen while both readings coexist.
  *
+ * This is a **record plus its v2 `apply`**, and it does not parse XML. The port used to
+ * carry a `constructor(xml)` transcribing `<ornament>`, but nothing called it and it
+ * produced objects both live readers treat as unusable: it resolved neither `style` nor
+ * `ornamentDef`, where {@link OrnamentationMap.getOrnamentDataOf} returns null unless it
+ * can resolve BOTH and the inline reader in `OrnamentationMap.apply` `continue`s past the
+ * entry. It was also the only reader here that could throw — `xml.getAttribute('date')!`
+ * and `xml.getAttribute('name.ref')!` dereference unguarded, where both live readers
+ * decline the entry instead. The three v3 field readers it shared with them
+ * ({@link parseOrnamentNotePool}, {@link parseOrnamentRepetitions}, and the `note.order`
+ * split) are module-level functions precisely so that agreement is structural; only the
+ * duplicated, divergent entry point is gone.
+ *
  * Port of meico.mpm.elements.maps.data.OrnamentData
  */
 export class OrnamentData {
@@ -167,39 +179,6 @@ export class OrnamentData {
    * (`OrnamentationMap.apply`) is the code the contract is written for.
    */
   generation: OrnamentGeneration | null = null;
-
-  constructor(xml?: Element) {
-    if (xml === undefined) return;
-
-    this.xml = xml;
-    this.date = parseFloat(xml.getAttribute('date')!.getValue());
-    this.ornamentDefName = xml.getAttribute('name.ref')!.getValue();
-
-    const scaleAttr = xml.getAttribute('scale');
-    if (scaleAttr !== null) this.scale = parseFloat(scaleAttr.getValue());
-
-    const noteOrderAttr = xml.getAttribute('note.order');
-    if (noteOrderAttr !== null) {
-      this.noteOrderText = noteOrderAttr.getValue();
-      const no = noteOrderAttr.getValue().trim();
-      this.noteOrder = [];
-      if (no === 'ascending pitch' || no === 'descending pitch') this.noteOrder.push(no);
-      else this.noteOrder.push(...no.replace(/#/g, '').split(/\s+/));
-    }
-
-    const id = xml.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
-    if (id !== null) this.xmlId = id.getValue();
-
-    // --- v3 additions (DESIGN.md D7, D9, D1); all absent from any v2 document ---
-    const noteidAttr = xml.getAttribute('noteid');
-    if (noteidAttr !== null) this.noteid = noteidAttr.getValue();
-
-    const repetitionsAttr = xml.getAttribute('repetitions');
-    if (repetitionsAttr !== null)
-      this.repetitions = parseOrnamentRepetitions(repetitionsAttr.getValue());
-
-    this.notes = parseOrnamentNotePool(xml);
-  }
 
   /**
    * The {@link noteid} with a leading `#` removed — the form that matches an MSM `xml:id`.
