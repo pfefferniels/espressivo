@@ -1,6 +1,6 @@
 import { Attribute, Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
-import { allChildElements, attribute } from '../../xml/tree.js';
+import { allChildElements, attribute, descendantElements } from '../../xml/tree.js';
 import {
   ARTICULATION_STYLE,
   DYNAMICS_STYLE,
@@ -73,9 +73,11 @@ export class Header extends AbstractXmlSubtree {
     if (xml === null) throw new Error('Cannot generate Header object. XML Element is null.');
     this.setXml(xml);
 
-    const styles = this.getXml().query("descendant::*[contains(local-name(), 'Styles')]");
-    for (let s = 0; s < styles.size(); ++s) {
-      this.addStyleType(styles.get(s) as Element);
+    const styles = descendantElements(this.getXml(), (element) =>
+      element.getLocalName().includes('Styles'),
+    );
+    for (const style of styles) {
+      this.addStyleType(style);
     }
   }
 

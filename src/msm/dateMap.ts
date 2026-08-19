@@ -1,4 +1,5 @@
 import { Element } from '../xml/XomTypes.js';
+import { descendantElements } from '../xml/tree.js';
 
 /**
  * Insertion into a date-sorted MSM map.
@@ -23,8 +24,11 @@ import { Element } from '../xml/XomTypes.js';
  *   — a new element lands behind everything already at the same date, so elements added
  *   at one date keep the order the converter emitted them in, which is what makes the
  *   serialized MSM byte-comparable against the Java reference;
- * - the search uses `descendant::*[attribute::date]` — *descendants*, not children — but
- *   the insertion index comes from `map.indexOf(...)`, which only knows direct children.
+ * - the search covers *descendants*, not children (it was written as
+ *   `descendant::*[attribute::date]` and is now the equivalent
+ *   {@link descendantElements} walk, which does not serialise and re-parse the map on
+ *   every insertion) — but the insertion index comes from `map.indexOf(...)`, which only
+ *   knows direct children.
  *   For a map whose entries have dated grandchildren, the two disagree and `indexOf`
  *   returns -1, making the insert position 0. No MSM map produced by this converter
  *   nests dated elements, so the case does not arise; Java has the identical shape;
@@ -45,19 +49,19 @@ export function addToMap(addThis: Element | null, map: Element | null): number {
     return map.getChildCount() - 1; // and return the index
   }
 
-  const es = map.query('descendant::*[attribute::date]'); // get all elements in the map that have an attribute date
-  if (es.size() === 0) {
+  const es = descendantElements(map, (element) => element.getAttribute('date') !== null); // get all elements in the map that have an attribute date
+  if (es.length === 0) {
     // if there are no elements in the map with a date attribute
     map.appendChild(addThis); // simply append addThis to the end of the map
     return map.getChildCount() - 1; // and return the index
   }
 
   const date = parseFloat(addThis.getAttributeValue('date')!); // get the date of addThis
-  for (let i = es.size() - 1; i >= 0; --i) {
+  for (let i = es.length - 1; i >= 0; --i) {
     // go through the elements
-    if (parseFloat((es.get(i) as Element).getAttributeValue('date')!) <= date) {
+    if (parseFloat(es[i].getAttributeValue('date')!) <= date) {
       // if the element directly before date is found
-      let index = map.indexOf(es.get(i)); // get the index of the element just found
+      let index = map.indexOf(es[i]); // get the index of the element just found
       map.insertChild(addThis, ++index); // insert addThis right after the element
       return index; // return the index
     }

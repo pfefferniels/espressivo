@@ -172,6 +172,13 @@ export class Attribute extends XomNode {
   private _value: string;
   private readonly _namespaceURI: string;
   private readonly _namespacePrefix: string;
+  /**
+   * `prefix:local`, or just `local` when there is no prefix. Computed once because all
+   * three inputs are readonly, and because {@link Element.getAttribute} compares against
+   * it on every miss — building the string there allocated once per attribute per lookup
+   * and was a measurable share of the render's garbage.
+   */
+  private readonly _qualifiedName: string;
 
   /**
    * Two call forms, both XOM's: `(name, value)` and `(name, namespaceURI, value)`.
@@ -201,6 +208,10 @@ export class Attribute extends XomNode {
       this._namespaceURI = '';
       this._value = valueOrNs;
     }
+
+    this._qualifiedName = this._namespacePrefix
+      ? `${this._namespacePrefix}:${this._localName}`
+      : this._localName;
   }
 
   getLocalName(): string {
@@ -208,7 +219,7 @@ export class Attribute extends XomNode {
   }
 
   getQualifiedName(): string {
-    return this._namespacePrefix ? `${this._namespacePrefix}:${this._localName}` : this._localName;
+    return this._qualifiedName;
   }
 
   getValue(): string {
@@ -355,6 +366,22 @@ export class Element extends XomNode {
   private _attributes: Attribute[] = [];
   private _children: XomNode[] = [];
 
+  /**
+   * Memoised node → position map for {@link indexOf}, built lazily and dropped on any
+   * structural change (see {@link invalidateChildIndex}).
+   *
+   * Why it exists: the sibling walkers in `xml/tree.ts` and `msm/Msm.ts` step through a
+   * child list one element at a time and ask for the current node's position on every
+   * step, so a linear `Array.indexOf` turned every full-score walk into an O(n²) one.
+   *
+   * Equivalence with `Array.prototype.indexOf`, which this must not drift from: the map is
+   * filled front-to-back and an already-present key is never overwritten, so a node that
+   * (illegally) appears twice in `_children` still reports its **first** position, exactly
+   * as `indexOf` does. `appendChild` extends the map in place for the same reason —
+   * appending can only ever create a *later* duplicate, which `indexOf` would ignore too.
+   */
+  private _childIndex: Map<XomNode, number> | null = null;
+
   constructor(name: string, namespaceURI?: string) {
     const doc = placeholderDom();
     let elem: globalThis.Element;
@@ -436,6 +463,7 @@ export class Element extends XomNode {
         elem._children.push(text);
       }
     }
+    elem.invalidateChildIndex();
 
     return elem;
   }
@@ -463,13 +491,20 @@ export class Element extends XomNode {
   // --- Attribute operations ---
 
   getAttribute(name: string, namespaceURI?: string): Attribute | null {
-    for (const attr of this._attributes) {
-      if (namespaceURI !== undefined) {
+    // Split on the namespace rather than testing it per attribute. The win is not the
+    // branch — it is that the unnamespaced arm can compare against
+    // {@link Attribute.getQualifiedName}, which is now a stored string rather than one
+    // built per comparison; this is the most-called method in the port and that template
+    // literal was a real share of its garbage. (An indexed loop measures the same as this
+    // one, so the readable form stays.)
+    const attributes = this._attributes;
+    if (namespaceURI !== undefined) {
+      for (const attr of attributes)
         if (attr.getLocalName() === name && attr.getNamespaceURI() === namespaceURI) return attr;
-      } else {
-        if (attr.getLocalName() === name || attr.getQualifiedName() === name) return attr;
-      }
+      return null;
     }
+    for (const attr of attributes)
+      if (attr.getLocalName() === name || attr.getQualifiedName() === name) return attr;
     return null;
   }
 
@@ -531,6 +566,7 @@ export class Element extends XomNode {
       const text = new Text(child);
       text._xomParent = this;
       this._children.push(text);
+      this.noteAppended(text);
     } else {
       // Detach from previous parent if it's an Element
       if (child instanceof Element || child instanceof Text) {
@@ -541,24 +577,44 @@ export class Element extends XomNode {
       }
       child._xomParent = this;
       this._children.push(child);
+      this.noteAppended(child);
     }
   }
 
+  /** Extend {@link _childIndex} by one appended node instead of dropping the whole memo. */
+  private noteAppended(child: XomNode): void {
+    const index = this._childIndex;
+    if (index !== null && !index.has(child)) index.set(child, this._children.length - 1);
+  }
+
   insertChild(child: XomNode | string, position: number): void {
+    // An insert at (or past) the end is an append, and appends leave every existing
+    // position untouched — so the memo survives, extended by one. That is the case
+    // `dateMap.addToMap` hits on almost every call, where dropping the memo would have
+    // made the very next `indexOf` rebuild it from scratch.
+    const isAppend = position >= this._children.length;
     if (typeof child === 'string') {
       const text = new Text(child);
       text._xomParent = this;
       this._children.splice(position, 0, text);
+      if (isAppend) this.noteAppended(text);
+      else this.invalidateChildIndex();
     } else {
       child._xomParent = this;
       this._children.splice(position, 0, child);
+      if (isAppend) this.noteAppended(child);
+      else this.invalidateChildIndex();
     }
   }
 
   removeChild(child: XomNode): boolean {
+    // Deliberately `Array.prototype.indexOf` and not the memoised {@link indexOf}: the
+    // splice below invalidates the memo anyway, so building one here would cost a full
+    // pass over the child list on every removal — measurably worse than the linear scan.
     const idx = this._children.indexOf(child);
     if (idx !== -1) {
       this._children.splice(idx, 1);
+      this.invalidateChildIndex();
       child._xomParent = null;
       return true;
     }
@@ -567,8 +623,45 @@ export class Element extends XomNode {
 
   removeChildAt(index: number): XomNode {
     const removed = this._children.splice(index, 1);
+    this.invalidateChildIndex();
     if (removed[0]) removed[0]._xomParent = null;
     return removed[0];
+  }
+
+  /**
+   * Move `order`'s nodes to the front of the child list, in that order, leaving every
+   * other child after them in its existing relative order.
+   *
+   * This is exactly what a remove-then-insert-at-`i` loop over `order` produces, and it
+   * exists because that loop is quadratic: each `removeChild` scans the child list and
+   * each `insertChild` splices it, so re-ordering a `<score>` of a few thousand notes —
+   * which `GenericMap` does on every parse and after every re-sort — cost more than the
+   * rest of the render put together.
+   *
+   * The two boundary cases the loop had are kept:
+   *
+   * - a node in `order` that is **not** currently a child is adopted, exactly as the
+   *   loop's no-op `removeChild` followed by a real `insertChild` adopted it;
+   * - if `order` names the same node twice the loop's result is not a permutation of the
+   *   child list at all, so that case is handed back to the loop rather than guessed at.
+   */
+  reorderChildren(order: readonly XomNode[]): void {
+    const ordered = new Set(order);
+    if (ordered.size !== order.length) {
+      // Duplicate entries: fall back to the literal loop this replaces.
+      for (let i = 0; i < order.length; ++i) {
+        this.removeChild(order[i]);
+        this.insertChild(order[i], i);
+      }
+      return;
+    }
+
+    const rest: XomNode[] = [];
+    for (const child of this._children) if (!ordered.has(child)) rest.push(child);
+
+    this._children = order.concat(rest);
+    for (const child of order) child._xomParent = this;
+    this.invalidateChildIndex();
   }
 
   removeChildren(): void {
@@ -576,6 +669,7 @@ export class Element extends XomNode {
       child._xomParent = null;
     }
     this._children = [];
+    this.invalidateChildIndex();
   }
 
   replaceChild(oldChild: XomNode, newChild: XomNode): void {
@@ -584,6 +678,7 @@ export class Element extends XomNode {
       oldChild._xomParent = null;
       newChild._xomParent = this;
       this._children[idx] = newChild;
+      this.invalidateChildIndex();
     }
   }
 
@@ -626,8 +721,23 @@ export class Element extends XomNode {
     return null;
   }
 
+  /** Drop the {@link _childIndex} memo. Call after every write to `_children`. */
+  private invalidateChildIndex(): void {
+    this._childIndex = null;
+  }
+
   indexOf(child: XomNode): number {
-    return this._children.indexOf(child);
+    let index = this._childIndex;
+    if (index === null) {
+      index = new Map();
+      const children = this._children;
+      for (let i = 0; i < children.length; ++i) {
+        if (!index.has(children[i])) index.set(children[i], i);
+      }
+      this._childIndex = index;
+    }
+    const found = index.get(child);
+    return found === undefined ? -1 : found;
   }
 
   getValue(): string {

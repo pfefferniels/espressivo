@@ -320,6 +320,154 @@ describe('Track', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Track.add — the binary insertion must be indistinguishable from push-and-sort
+// ---------------------------------------------------------------------------
+describe('Track.add is exactly push-then-stable-sort, without the sort', () => {
+  /** `Track.add` as it was written before T-perf: append, then sort the whole array. */
+  function byPushAndSort(events: MidiEvent[], event: MidiEvent): void {
+    events.push(event);
+    events.sort((a, b) => a.getTick() - b.getTick());
+  }
+
+  /**
+   * Feed the same tick sequence to both implementations and compare the results by
+   * identity, so that a difference in the ordering of equal ticks is caught and not just
+   * a difference in the ticks themselves.
+   */
+  function agree(ticks: readonly number[]): void {
+    const track = new Track();
+    const reference: MidiEvent[] = [];
+    for (const tick of ticks) {
+      // One event object per tick, added to both, so identity comparison is meaningful.
+      const event = new MidiEvent(new ShortMessage(), tick);
+      track.add(event);
+      byPushAndSort(reference, event);
+    }
+    expect(track.size()).toBe(reference.length);
+    for (let i = 0; i < reference.length; ++i)
+      expect(track.get(i) === reference[i], `position ${i}`).toBe(true);
+  }
+
+  it('for strictly ascending ticks', () => {
+    agree([0, 1, 2, 10, 100, 1000, 10000]);
+  });
+
+  it('for descending ticks', () => {
+    agree([1000, 900, 480, 12, 0]);
+  });
+
+  it('for runs of equal ticks — the case that makes stability observable', () => {
+    agree([0, 0, 0, 480, 480, 480, 480, 0, 960, 480]);
+  });
+
+  it('for an interleaving that inserts into the middle of an equal-tick run', () => {
+    agree([100, 100, 100, 50, 100, 150, 100, 50, 0, 100]);
+  });
+
+  it('for a long pseudo-random sequence', () => {
+    // A fixed LCG rather than Math.random, so a failure is reproducible.
+    let state = 12345;
+    const ticks: number[] = [];
+    for (let i = 0; i < 400; ++i) {
+      state = (state * 1103515245 + 12345) % 2147483648;
+      ticks.push(state % 50); // a small range, so equal ticks are frequent
+    }
+    agree(ticks);
+  });
+
+  it('for negative ticks', () => {
+    agree([0, -10, 5, -10, -20, 0]);
+  });
+
+  it('falls back to push-and-sort once a non-finite tick appears, and keeps the rest', () => {
+    const track = new Track();
+    const finite = new MidiEvent(new ShortMessage(), 480);
+    const nonFinite = new MidiEvent(new ShortMessage(), Number.NaN);
+    const later = new MidiEvent(new ShortMessage(), 0);
+    track.add(finite);
+    track.add(nonFinite);
+    track.add(later);
+    // The only guarantee in this degenerate case is that nothing is lost.
+    expect(track.size()).toBe(3);
+    const kept = [track.get(0), track.get(1), track.get(2)];
+    expect(kept).toContain(finite);
+    expect(kept).toContain(nonFinite);
+    expect(kept).toContain(later);
+  });
+
+  it('keeps ticks() a read of the largest tick', () => {
+    const track = new Track();
+    for (const tick of [500, 100, 900, 300]) track.add(new MidiEvent(new ShortMessage(), tick));
+    expect(track.ticks()).toBe(900);
+  });
+
+  it('stays sorted across a remove, so later adds still land correctly', () => {
+    const track = new Track();
+    const middle = new MidiEvent(new ShortMessage(), 480);
+    track.add(new MidiEvent(new ShortMessage(), 0));
+    track.add(middle);
+    track.add(new MidiEvent(new ShortMessage(), 960));
+    track.remove(middle);
+    track.add(new MidiEvent(new ShortMessage(), 240));
+    expect([track.get(0).getTick(), track.get(1).getTick(), track.get(2).getTick()]).toEqual([
+      0, 240, 960,
+    ]);
+  });
+
+  it('builds a score-shaped track in time that does not grow quadratically', () => {
+    // The pattern `Msm.processScore` produces: a text event, a noteOn and a noteOff per
+    // note, the noteOff landing a few notes ahead. Near-append, which is the case the
+    // binary insertion turns into O(1). (Adding in strictly *descending* tick order still
+    // costs an O(n) splice each time — far cheaper than the sort it replaced, but not
+    // constant; no caller builds a long track that way.)
+    const build = (notes: number): void => {
+      const track = new Track();
+      for (let i = 0; i < notes; ++i) {
+        const date = i * 10;
+        track.add(new MidiEvent(new MetaMessage(0x01, new Uint8Array([65]), 1), date));
+        track.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_ON, 0, 60, 100), date));
+        track.add(new MidiEvent(new ShortMessage(ShortMessage.NOTE_OFF, 0, 60, 0), date + 35));
+      }
+      expect(track.size()).toBe(notes * 3);
+    };
+
+    // Cost of one build, in milliseconds: repeat until a batch is long enough to time,
+    // then keep the fastest batch — noise only ever adds time, so the minimum is the
+    // closest a wall clock gets to the work itself. Timing single builds instead was flaky
+    // on a loaded machine.
+    const perBuild = (notes: number, targetMs = 20, samples = 3): number => {
+      let batch = 1;
+      let best = Infinity;
+      for (;;) {
+        const before = performance.now();
+        for (let i = 0; i < batch; ++i) build(notes);
+        const elapsed = performance.now() - before;
+        if (elapsed >= targetMs) {
+          best = elapsed / batch;
+          break;
+        }
+        batch *= 2;
+      }
+      for (let sample = 1; sample < samples; ++sample) {
+        const before = performance.now();
+        for (let i = 0; i < batch; ++i) build(notes);
+        best = Math.min(best, (performance.now() - before) / batch);
+      }
+      return best;
+    };
+
+    build(1000); // warm the shapes before either measurement
+    build(16000);
+    // Sixteenfold input. Calibrated on this machine, idle and under sixfold CPU
+    // oversubscription: the binary insertion lands at 28–30 (allocation and cache effects
+    // put it above a clean 16), the push-and-sort it replaced at 273. The threshold sits
+    // between those bands, so a loaded CI machine does not go red and the quadratic shape
+    // cannot come back unnoticed.
+    expect(perBuild(16000) / perBuild(1000)).toBeLessThan(64);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Sequence
 // ---------------------------------------------------------------------------
 describe('Sequence', () => {

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="asynchrony" pulsesPerQuarter="720">
+<global><header/><dated><tempoMap><tempo date="0.0" bpm="120" beatLength="0.25"/></tempoMap></dated></global>
+<part name="Piano" number="0" midi.channel="0" midi.port="0"><header/><dated>
+<asynchronyMap>
+  <asynchrony xml:id="a0" date="0.0" milliseconds.offset="-30.0"/>
+  <asynchrony xml:id="a1" date="2880.0" milliseconds.offset="15.0"/>
+  <asynchrony xml:id="a2" date="6480.0" milliseconds.offset="-45.0"/>
+  <asynchrony xml:id="a3" date="10800.0" milliseconds.offset="60.0"/>
+</asynchronyMap>
+</dated></part>
+</performance></mpm>

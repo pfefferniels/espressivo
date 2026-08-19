@@ -1,5 +1,6 @@
 import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
+import { descendantElements } from '../../xml/tree.js';
 import { MPM_NAMESPACE } from '../names.js';
 import { GenericMap } from './maps/GenericMap.js';
 import { Header } from './Header.js';
@@ -60,11 +61,12 @@ export class Dated extends AbstractXmlSubtree {
     if (xml === null) throw new Error('Cannot generate Dated object. XML Element is null.');
     this.setXml(xml);
 
-    const maps = this.getXml().query(
-      "descendant::*[contains(local-name(), 'Map') or local-name()='score']",
-    );
-    for (let s = 0; s < maps.size(); ++s) {
-      this.addMapFromXml(maps.get(s) as Element);
+    const maps = descendantElements(this.getXml(), (element) => {
+      const localName = element.getLocalName();
+      return localName.includes('Map') || localName === 'score';
+    });
+    for (const map of maps) {
+      this.addMapFromXml(map);
     }
   }
 

@@ -159,18 +159,18 @@ export class GenericMap extends AbstractXmlSubtree {
   }
 
   /**
-   * Rewrite the XML children into the order {@link elements} is already in, by removing
-   * and re-inserting each one at its index. Detach-then-insert is required: the element
-   * is already a child, and inserting it a second time without removing it first would
-   * be rejected by the XOM emulation.
+   * Rewrite the XML children into the order {@link elements} is already in.
+   *
+   * This was a remove-then-insert-at-`i` loop, which is quadratic in the map's length and
+   * ran twice over every `<score>` on the render path. {@link Element.reorderChildren}
+   * produces the identical child list in one pass — including for the elements this map
+   * does not know about, which keep their relative order and so still drift to the end
+   * exactly as {@link parseData}'s comment describes.
    */
   private sortXml(): void {
-    const xml = this.getXml();
-    for (let i = 0; i < this.elements.length; ++i) {
-      const e = this.elements[i].getValue();
-      xml.removeChild(e);
-      xml.insertChild(e, i);
-    }
+    const order: Element[] = [];
+    for (const e of this.elements) order.push(e.getValue());
+    this.getXml().reorderChildren(order);
   }
 
   /**

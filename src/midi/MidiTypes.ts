@@ -353,27 +353,64 @@ export class Track {
   private readonly events: MidiEvent[] = [];
 
   /**
-   * Appends an event and re-sorts. **This ordering is the exported file's event
-   * order** and is compared event by event against the Java references, so both
+   * Latched once a non-finite tick is added; see {@link add} for why it disables the
+   * binary insertion permanently rather than per event.
+   */
+  private hasNonFiniteTick = false;
+
+  /**
+   * Appends an event, keeping the track sorted. **This ordering is the exported file's
+   * event order** and is compared event by event against the Java references, so both
    * halves of the rule matter:
    *
    * - sorted by tick, ascending;
-   * - `Array.prototype.sort` is stable (ES2019 on), so events sharing a tick keep
-   *   the order they were added in. `Msm.exportMidi` depends on that — it emits a
-   *   text event, then the noteOn, then later the noteOff, all possibly at the same
-   *   date, and the file must come out in that order.
+   * - events sharing a tick keep the order they were added in. `Msm.exportMidi` depends
+   *   on that — it emits a text event, then the noteOn, then later the noteOff, all
+   *   possibly at the same date, and the file must come out in that order.
    *
-   * Sorting on every insert is O(n² log n) over a track built one event at a time.
-   * That is the JDK's contract and it keeps `ticks()` a constant-time read of the
-   * last element; it is not worth trading for a sort-once-at-export scheme, which
-   * would have to reproduce this exact stability.
+   * This used to be `push` followed by a full `Array.prototype.sort`, which is
+   * O(n² log n) over a track built one event at a time — the dominant cost of exporting
+   * a score of any length. It is now an insertion at the position that stable sort would
+   * have put the event in, which is the *upper bound* of its tick: a stable sort of
+   * `[…sorted, newEvent]` leaves everything with a smaller tick before it, everything
+   * with a larger tick after it, and every equal tick before it, because the new event
+   * starts out last. Binary-searching for that index is exact, not approximate — the
+   * emitted byte sequence is unchanged.
+   *
+   * The equivalence rests on the array already being sorted, which holds because `add`
+   * and `remove` are its only mutators and `Midi.addOffset` shifts every tick by the same
+   * constant. One case escapes it: a non-finite tick makes the comparison meaningless, so
+   * a track that has ever seen one falls back to the old push-and-sort for the rest of its
+   * life and reproduces whatever `sort` did with it, bug for bug.
    *
    * @return always true (the JDK returns false if the event was already present)
    */
   add(event: MidiEvent): boolean {
-    this.events.push(event);
-    // Sort events by tick (stable sort preserving insertion order for same tick)
-    this.events.sort((a, b) => a.getTick() - b.getTick());
+    const tick = event.getTick();
+
+    if (this.hasNonFiniteTick || !Number.isFinite(tick)) {
+      this.hasNonFiniteTick = true;
+      this.events.push(event);
+      this.events.sort((a, b) => a.getTick() - b.getTick());
+      return true;
+    }
+
+    const events = this.events;
+    // Fast path for the overwhelmingly common append-in-order case.
+    if (events.length === 0 || events[events.length - 1].getTick() <= tick) {
+      events.push(event);
+      return true;
+    }
+
+    // Upper bound: the first index whose tick is strictly greater than `tick`.
+    let lo = 0;
+    let hi = events.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (events[mid].getTick() <= tick) lo = mid + 1;
+      else hi = mid;
+    }
+    events.splice(lo, 0, event);
     return true;
   }
 

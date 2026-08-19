@@ -55,6 +55,16 @@ export class AsynchronyMap extends GenericMap {
    * happens after the inner loop rather than during it, because splicing mid-iteration
    * would skip entries.
    *
+   * That removal is a **pure optimisation** — it cannot change the output, and it is worth
+   * knowing why, because it means no fixture can ever guard it. An entry only reaches
+   * `done` when its note ends before the next asynchrony starts, and the inner loop only
+   * reaches an entry at all while its onset is before that same date. So on the next pass
+   * both guards fail for it — its onset is below `elements[asynIndex].getKey()` and its end
+   * is below it too — and neither shift, nor the `modified` bookkeeping that hangs off
+   * them, runs. Re-visiting a finished entry is a no-op; removing it just stops the walk
+   * getting longer. (Checked, not only argued: disabling the removal entirely leaves 300
+   * randomly generated multi-asynchrony renders byte-identical.)
+   *
    * Two clamps are deliberate. A shifted start is floored at 0 — a negative asynchrony
    * on the very first note must not produce a negative timestamp. A shifted end is
    * floored at `startDateMs + 1`, guaranteeing every note keeps a duration of at least
@@ -62,7 +72,7 @@ export class AsynchronyMap extends GenericMap {
    */
   renderAsynchronyToMap(map: GenericMap | null): void {
     if (map === null || this.elements.length === 0) return;
-    const mapEntries = [...map.getAllElements()];
+    let mapEntries = [...map.getAllElements()];
     const done: KeyValue<number, Element>[] = [];
     for (let asynIndex = 0; asynIndex < this.size(); ++asynIndex) {
       const asynElement = this.getElement(asynIndex)!;
@@ -100,11 +110,15 @@ export class AsynchronyMap extends GenericMap {
         }
         done.push(mapEntry);
       }
-      for (const removeMe of done) {
-        const idx = mapEntries.indexOf(removeMe);
-        if (idx !== -1) mapEntries.splice(idx, 1);
+      // One filtering pass instead of an indexOf-plus-splice per entry. `done` holds each
+      // entry at most once per iteration and the entries are distinct objects, so removing
+      // by set membership drops exactly the elements the repeated `indexOf`/`splice` did —
+      // in the same surviving order, and without being quadratic in the part's length.
+      if (done.length > 0) {
+        const removals = new Set(done);
+        mapEntries = mapEntries.filter((entry) => !removals.has(entry));
+        done.length = 0;
       }
-      done.length = 0;
     }
   }
 

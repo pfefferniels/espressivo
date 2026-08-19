@@ -76,9 +76,10 @@ function getAllChildElements(name: string, ofThis: Element): Element[] {
  * The next sibling element of `ofThis`, either the next one of any name (one argument) or
  * the next one whose local name is `name` (two arguments).
  *
- * The named form scans **backwards** and returns the last candidate seen before reaching
- * `ofThis`, which is Java's formulation (`Helper.java:182`) and is why it returns the
- * *nearest* following match rather than the last one in the list.
+ * The named form returns the *nearest* following match rather than the last one in the
+ * list — Java writes that as a backward scan (`Helper.java:182`); here it is the
+ * equivalent forward scan from `ofThis`'s own index, which is not quadratic when a caller
+ * uses it to step through a whole child list.
  */
 function getNextSiblingElement(nameOrElement: string | Element, ofThis?: Element): Element | null {
   if (typeof nameOrElement === 'string') {
@@ -89,16 +90,18 @@ function getNextSiblingElement(nameOrElement: string | Element, ofThis?: Element
     const parent = ofThis.getParent();
     if (parent === null) return null;
 
-    const es = parent.getChildElements();
-    let candidate: Element | null = null;
+    // Forward scan anchored on `ofThis`'s own position — same answer as the backward
+    // "last candidate before ofThis" walk (both name the nearest following match, both
+    // return null when `ofThis` is not in the list), without rebuilding and re-walking
+    // the whole child-element list on every step. `Msm.processScore` and its neighbours
+    // drive this once per note, so the old shape made a score export quadratic.
+    const index = parent.indexOf(ofThis);
+    if (index < 0) return null;
 
-    for (let i = es.size() - 1; i >= 0; --i) {
-      if (es.get(i) === ofThis) {
-        return candidate;
-      }
-      if (es.get(i).getLocalName() === name) {
-        candidate = es.get(i);
-      }
+    const count = parent.getChildCount();
+    for (let i = index + 1; i < count; ++i) {
+      const sibling = parent.getChild(i);
+      if (sibling instanceof Element && sibling.getLocalName() === name) return sibling;
     }
     return null;
   } else {

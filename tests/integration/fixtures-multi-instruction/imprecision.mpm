@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="imprecision" pulsesPerQuarter="720">
+<global><header/><dated><tempoMap><tempo date="0.0" bpm="120" beatLength="0.25"/></tempoMap></dated></global>
+<part name="Piano" number="0" midi.channel="0" midi.port="0"><header/><dated>
+<imprecisionMap.timing domain="timing">
+  <distribution.uniform date="0.0" limit.lower="-30.0" limit.upper="30.0" seed="11"/>
+  <distribution.gaussian date="2880.0" deviation.standard="12.0" limit.lower="-25.0" limit.upper="25.0" seed="22"/>
+  <distribution.triangular date="6480.0" limit.lower="-20.0" limit.upper="20.0" mode="0.0" clip.lower="-18.0" clip.upper="18.0" seed="33"/>
+  <distribution.uniform date="10800.0" limit.lower="-40.0" limit.upper="40.0" seed="44"/>
+</imprecisionMap.timing>
+<imprecisionMap.toneduration domain="toneduration">
+  <distribution.uniform date="0.0" limit.lower="-15.0" limit.upper="15.0" seed="55"/>
+  <distribution.uniform date="4320.0" limit.lower="-10.0" limit.upper="10.0" seed="66"/>
+</imprecisionMap.toneduration>
+</dated></part>
+</performance></mpm>

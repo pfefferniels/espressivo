@@ -1,5 +1,6 @@
-import { Element, Attribute, Nodes, Elements, Document } from '../xml/XomTypes.js';
+import { Element, Attribute, Elements, Document } from '../xml/XomTypes.js';
 import { XmlBase } from '../xml/XmlBase.js';
+import { descendantElements } from '../xml/tree.js';
 
 /**
  * This class is a primitive for Msm and Mpm.
@@ -175,12 +176,11 @@ export abstract class AbstractMsm extends XmlBase {
   deleteEmptyMaps(): void {
     if (this.isEmpty()) return;
 
-    const maps: Nodes = this.getRootElement()!.query(
-      "descendant::*[contains(local-name(), 'Map')]",
+    const maps = descendantElements(this.getRootElement()!, (element) =>
+      element.getLocalName().includes('Map'),
     ); // get all elements in the document that have a substring "Map" in their local-name
-    for (let i = 0; i < maps.size(); ++i) {
+    for (const map of maps) {
       // go through all these elements
-      const map = maps.get(i) as unknown as Element; // the map
       if (map.getChildCount() === 0)
         // if the map has no children, it is empty
         map.getParent()!.removeChild(map); // delete it

@@ -450,9 +450,17 @@ export class ImprecisionMap extends GenericMap {
         ImprecisionMap.addToOffsetsMap(offsets, msDate!, offset!);
       }
 
-      // offset the milliseconds.date.end attributes
-      for (let i = 0; i < pendingDurations.length; ++i) {
-        const pd = pendingDurations[i];
+      // Offset the milliseconds.date.end attributes: drain the leading run of pending
+      // durations that end inside this distribution's span, stopping at the first that
+      // does not. The loop this replaces spliced each drained entry out individually and
+      // stepped `i` back, which is the same prefix drain written so that every removal
+      // shifts the whole remainder — quadratic in the number of notes, and the single
+      // largest cost of rendering a long part with an imprecision map. Entries are
+      // consumed in the same order, so the RandomNumberProvider sees the same call
+      // sequence and produces the same offsets.
+      let drained = 0;
+      while (drained < pendingDurations.length) {
+        const pd = pendingDurations[drained];
 
         if (pd.endDate >= dd.endDate!) break;
 
@@ -461,9 +469,9 @@ export class ImprecisionMap extends GenericMap {
         const offset = new KeyValue(random.getValue(endIndex), pd.attribute);
         ImprecisionMap.addToOffsetsMap(offsets, msDate, offset);
 
-        pendingDurations.splice(i, 1);
-        --i;
+        ++drained;
       }
+      if (drained > 0) pendingDurations.splice(0, drained);
     }
 
     if (shakePolyphonicPart) {

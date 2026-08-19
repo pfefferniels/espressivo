@@ -50,12 +50,12 @@ export function firstChildElement(ofThis: Element, localname: string): Element |
  */
 export function firstChildElement(name: string, ofThis: Element): Element | null;
 /**
- * Note that the two named forms do not share an implementation: `(name, ofThis)` walks
- * `getChildElements()` directly, while `(ofThis, localname)` goes through an XPath
- * query — which in this port means serialising the subtree and re-parsing it (see
- * {@link Element.query}). They agree on the result but not on the cost, and the query
- * form additionally returns null for an empty `localname` where the walking form would
- * search for a child literally named `''`. Do not collapse the two: they are two
+ * Note that the two named forms still do not share an implementation: `(name, ofThis)`
+ * walks `getChildElements()` directly, `(ofThis, localname)` asks
+ * `getFirstChildElement()`. They agree on the result, and the second additionally returns
+ * null for an empty `localname` where the first would search for a child literally named
+ * `''` — a difference inherited from the XPath query that form used to run, and kept
+ * deliberately when the query went. Do not collapse the two: they are two
  * implementations, and merging navigation implementations is forbidden without a
  * behavioural probe (ARCHITECTURE.md RULE M2a, §9).
  */
@@ -90,10 +90,11 @@ export function firstChildElement(
     } else {
       // firstChildElement(ofThis: Element, localname: string)
       const localname = arg2 as string;
+      // Kept: the query form returned null for an empty localname, where the walking form
+      // would look for a child literally named `''`. The XPath round trip itself is gone
+      // for the reason given at {@link allChildElements}.
       if (localname === '') return null;
-      const e = ofThis.query(`child::*[local-name()='${localname}']`);
-      if (e.size() === 0) return null;
-      return e.get(0) as Element;
+      return ofThis.getFirstChildElement(localname);
     }
   }
 }
@@ -145,23 +146,64 @@ export function requireFirstChildElement(arg1: Element | string, arg2?: Element 
  * @return the matching child elements, in document order
  */
 export function allChildElements(parent: Element, name?: string): Element[] {
-  if (name !== undefined) {
-    // allChildElements(parent, name)
-    const e = parent.query(`child::*[local-name()='${name}']`);
-    const es: Element[] = [];
-    for (let i = 0; i < e.size(); ++i) {
-      es.push(e.get(i) as Element);
-    }
-    return es;
-  } else {
-    // allChildElements(parent)
-    const e = parent.query('child::*');
-    const es: Element[] = [];
-    for (let i = 0; i < e.size(); ++i) {
-      es.push(e.get(i) as Element);
-    }
-    return es;
+  // Both forms used to go through `parent.query("child::*[…]")`, which in this port means
+  // serialising the whole subtree, re-parsing it, running XPath over the copy and mapping
+  // every hit back by position (see {@link Element.query}). For the *child* axis that is
+  // pure overhead: `getChildElements` already selects element children by local name, in
+  // document order, and returns the live nodes rather than mapped-back ones. This was the
+  // single most-called function on the render path, and the subtree it copied was often
+  // the whole score.
+  const children = parent.getChildElements(name);
+  const es: Element[] = [];
+  for (let i = 0; i < children.size(); ++i) {
+    es.push(children.get(i));
   }
+  return es;
+}
+
+/**
+ * Every element descendant of `ofThis` for which `matches` holds, in document order.
+ *
+ * This is the `descendant::*[…]` axis, written out. The port used to reach it through
+ * {@link Element.query}, which serialises the subtree, re-parses it, runs the expression
+ * over the throwaway copy and maps each hit back by position — and then pays XPath's
+ * node-set ordering pass, whose `compareDocumentPosition` is quadratic in the number of
+ * hits. On a `<dated>` holding a full `<score>` that one call dominated the whole render.
+ *
+ * Semantics that must be preserved by anything replacing this, because callers depend on
+ * all three:
+ *
+ * - **`ofThis` itself is never returned** — `descendant::`, not `descendant-or-self::`;
+ * - **pre-order** — an element is emitted before its own descendants, which is document
+ *   order and is what XPath returns;
+ * - **the whole subtree is searched**, including below a matching element. A `…Map`
+ *   nested inside another one is reported, as it was before.
+ *
+ * The walk is iterative rather than recursive so that a pathologically deep document
+ * cannot overflow the stack; the explicit stack is pushed in reverse so children come off
+ * it left to right.
+ */
+export function descendantElements(
+  ofThis: Element,
+  matches: (element: Element) => boolean,
+): Element[] {
+  const found: Element[] = [];
+  const stack: Element[] = [];
+
+  for (let i = ofThis.getChildCount() - 1; i >= 0; --i) {
+    const child = ofThis.getChild(i);
+    if (child instanceof Element) stack.push(child);
+  }
+
+  for (let element = stack.pop(); element !== undefined; element = stack.pop()) {
+    if (matches(element)) found.push(element);
+    for (let i = element.getChildCount() - 1; i >= 0; --i) {
+      const child = element.getChild(i);
+      if (child instanceof Element) stack.push(child);
+    }
+  }
+
+  return found;
 }
 
 /**
@@ -231,11 +273,9 @@ export function getNextSiblingElement(ofThis: Element): Element | null;
  */
 export function getNextSiblingElement(name: string, ofThis: Element): Element | null;
 /**
- * The named form walks the siblings **backwards** and remembers the most recent match in
- * `candidate`; when the walk reaches `ofThis`, `candidate` is by construction the
- * *nearest following* sibling with that name. Reaching the start of the list without
- * having passed `ofThis` means `ofThis` is not a child of its own parent's element list
- * — which happens for text-node-adjacent cases — and yields null.
+ * The named form returns the *nearest following* sibling element with that name, and null
+ * when there is none — including when `ofThis` is not among its own parent's children at
+ * all, which is how the text-node-adjacent cases resolve.
  *
  * The unnamed form is a plain index step and therefore returns null when the immediate
  * next node is a text node, rather than skipping over it. The two forms are thus not
@@ -256,16 +296,20 @@ export function getNextSiblingElement(
     const parent = ofThis.getParent();
     if (parent == null) return null;
 
-    const es = parent.getChildElements();
-    let candidate: Element | null = null;
+    // Forward scan from `ofThis`'s own position. Identical result to the backward
+    // "remember the last candidate" walk this replaces — both name the *nearest
+    // following* element sibling with that name, and both yield null when `ofThis` is
+    // not in the list at all (there, `indexOf` returns -1 and the loop never starts).
+    // The difference is cost: the backward form materialised the whole child-element
+    // list and walked it end-to-front on every step, so a `for (n = first; n; n =
+    // getNextSiblingElement(name, n))` traversal of a score was quadratic in its length.
+    const index = parent.indexOf(ofThis);
+    if (index < 0) return null;
 
-    for (let i = es.size() - 1; i >= 0; --i) {
-      if (es.get(i) === ofThis) {
-        return candidate;
-      }
-      if (es.get(i).getLocalName() === name) {
-        candidate = es.get(i);
-      }
+    const count = parent.getChildCount();
+    for (let i = index + 1; i < count; ++i) {
+      const sibling = parent.getChild(i);
+      if (sibling instanceof Element && sibling.getLocalName() === name) return sibling;
     }
 
     return null;
@@ -299,7 +343,7 @@ export function getPreviousSiblingElement(ofThis: Element): Element | null;
  * @return
  */
 export function getPreviousSiblingElement(name: string, ofThis: Element): Element | null;
-/** the mirror image of {@link getNextSiblingElement}: forward walk, last match wins */
+/** the mirror image of {@link getNextSiblingElement}: the nearest *preceding* match */
 export function getPreviousSiblingElement(
   arg1: Element | string | null,
   arg2?: Element | null,
@@ -315,16 +359,14 @@ export function getPreviousSiblingElement(
     const parent = ofThis.getParent();
     if (parent == null) return null;
 
-    const es = parent.getChildElements();
-    let candidate: Element | null = null;
+    // The mirror of the forward scan in {@link getNextSiblingElement}, and equivalent to
+    // the front-to-back "last match wins" walk it replaces, for the same reasons.
+    const index = parent.indexOf(ofThis);
+    if (index < 0) return null;
 
-    for (let i = 0; i < es.size(); ++i) {
-      if (ofThis === es.get(i)) {
-        return candidate;
-      }
-      if (es.get(i).getLocalName() === name) {
-        candidate = es.get(i);
-      }
+    for (let i = index - 1; i >= 0; --i) {
+      const sibling = parent.getChild(i);
+      if (sibling instanceof Element && sibling.getLocalName() === name) return sibling;
     }
 
     return null;
