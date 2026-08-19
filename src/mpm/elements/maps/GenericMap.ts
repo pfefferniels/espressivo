@@ -180,15 +180,47 @@ export class GenericMap extends AbstractXmlSubtree {
   }
 
   /**
-   * Re-sort the map after its elements' `date` attributes have been edited underneath
-   * it — which is exactly what happens when articulation or rubato shifts a note's
-   * timing. The cached keys are refreshed from the XML first, then an insertion sort
-   * runs over the array, and finally the XML children are brought back in line.
+   * Refresh the cached keys from the XML, run a pass that is *meant* to re-order the array,
+   * and bring the XML children back in line.
    *
-   * The insertion sort is deliberate and must not become `Array.prototype.sort`: it is
-   * stable, and it is near-linear on the almost-sorted input this always receives,
-   * whereas swapping in a different algorithm would reorder equal-date elements and
-   * change which of several simultaneous instructions wins.
+   * **This method does not sort, and the previous version of this comment was wrong about it
+   * in every particular.** It claimed a deliberate, stable insertion sort that must not become
+   * `Array.prototype.sort`. What the loop below actually does is find the leftmost index the
+   * element should move to and then **swap** the two positions, where an insertion sort shifts
+   * the intervening elements right. Run against the code as written:
+   *
+   *     [2, 3, 1]       ->  [1, 3, 2]
+   *     [1, 3, 2, 0]    ->  [0, 2, 3, 1]
+   *     [5, 4, 3, 2, 1] ->  [1, 5, 4, 3, 2]
+   *
+   * So it is not a sort, and it is not stable either. Java is identical —
+   * `GenericMap.java`'s `Collections.swap(this.elements, i, moveToIndex)` — so this is an
+   * inherited defect, not a port defect, and it is left alone under the parity rule.
+   *
+   * (It does get simple cases right, which is why it has never looked broken: an arrangement
+   * with a single displaced element that belongs at the end comes out sorted.)
+   *
+   * **Why it never fires.** Not because it reads the wrong attribute — it reads the right
+   * one. {@link elements} is keyed on `@date`, the SYMBOLIC date: `parseData` builds every
+   * key from `attribute('date', …)`, every lookup on it is symbolic
+   * ({@link getElementIndexBeforeAt}, {@link getAllElementsAt}), and `ArticulationMap` itself
+   * checks `getKey() !== ad.date` against an articulation's symbolic date. Re-reading `@date`
+   * is the only thing this method could correctly do; keying the index on `date.perf` would
+   * break every symbolic lookup in the renderer.
+   *
+   * It never fires because its one caller cannot perturb what it re-checks. `ArticulationMap`
+   * runs `if (mapTimingChanged) map.sort()` after articulating notes, and articulation writes
+   * `@date.perf`, `@duration.perf` and `@velocity` — never `@date`. So the keys really are
+   * unchanged, the array really is already ordered, and the pass finds nothing to swap. The
+   * call is a no-op by construction, in this port and in Java, where `ArticulationMap.java:479`
+   * is likewise the only `sort()` call in the whole `mpm` package.
+   *
+   * The defect would surface only if `sort()` were called after `@date` itself had been edited
+   * on elements already in the map. Nothing does that today. Recorded in PARITY.md §3.
+   *
+   * Note that the unit test covering this passes: its case moves one element to the end, which
+   * is one of the arrangements the swap happens to get right. `GenericMap.test.ts` now also
+   * pins an arrangement it gets wrong, so the behaviour is visible rather than latent.
    */
   sort(): void {
     for (const e of this.elements) {

@@ -3468,6 +3468,11 @@ export class Mei2MsmMpmConverter {
       case '22':
         result = 36.0;
         break;
+      // `getAttributeValue` is `string | null`, and the guard above has already returned for a
+      // missing `@dis` — so null is unreachable here. Named alongside the default rather than
+      // folded into it, because the reason it cannot happen lives eight lines up and this is
+      // where a reader asks.
+      case null:
       default:
         console.error(
           `An invalid octave transposition occured (dis=${octave.getAttributeValue('dis')}).`,

@@ -4,6 +4,11 @@ export default defineConfig({
   test: {
     globals: true,
     testTimeout: 30000,
+    // Agent worktrees live under `.claude/worktrees/` INSIDE the repo, so without this the
+    // suite discovers every checkout's copy of `tests/**` and reports three times the tests
+    // it has — one green tree plus whatever a half-finished branch is doing. Measured: 5750
+    // became 16980, and the run went from 45s to 158s.
+    exclude: ['**/node_modules/**', '**/dist/**', '.claude/worktrees/**'],
     coverage: {
       // Scope: this port exists for MEI / MSM+MPM => MIDI rendering.
       // Format conversions (MusicXML, MIDI->MSM, MEI->MusicXML), audio,

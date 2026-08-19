@@ -79,8 +79,8 @@ export function gateAndTransform(
   if (!result.ok) {
     return {
       ok: false,
-      kind: refusalNoteKind(result.reason),
-      detail: `@${row.attribute}: ${result.reason} transforming ${value} by s = ${factor}`,
+      kind: refusalNoteKind(result.error),
+      detail: `@${row.attribute}: ${result.error} transforming ${value} by s = ${factor}`,
     };
   }
   if (!Number.isFinite(result.value)) {

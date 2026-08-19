@@ -641,6 +641,27 @@ describe('GenericMap', () => {
       expect(dates).toEqual([100, 200, 300]);
     });
 
+    // PARITY.md §3. `sort()` swaps where an insertion sort would shift, so it is not a sort
+    // and not stable. Java does the same (`Collections.swap`), so it is preserved — and pinned
+    // here, on purpose, asserting the WRONG result. The test above passes only because its
+    // arrangement (one element displaced to the end) is one the swap happens to get right.
+    //
+    // If this test fails, someone has repaired `sort()`. That is a deliberate act with
+    // consequences: read the PARITY entry before updating the expectation.
+    it('does NOT sort a general arrangement — the inherited swap defect, pinned', () => {
+      const map = makeMap([100, 200, 300]);
+      // Rewrite the dates so the keys read 2, 3, 1 once refreshed.
+      map.getElement(0)!.addAttribute(new Attribute('date', '2'));
+      map.getElement(1)!.addAttribute(new Attribute('date', '3'));
+      map.getElement(2)!.addAttribute(new Attribute('date', '1'));
+
+      map.sort();
+
+      const dates = map.getAllElements().map((kv) => kv.getKey());
+      expect(dates).toEqual([1, 3, 2]); // a real sort would give [1, 2, 3]
+      expect(dates).not.toEqual([1, 2, 3]);
+    });
+
     it('sort on an empty map does not throw', () => {
       const map = GenericMap.createGenericMap('tempoMap')!;
       expect(() => map.sort()).not.toThrow();

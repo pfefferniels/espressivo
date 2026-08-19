@@ -186,6 +186,9 @@ export default tseslint.config(
       'dist/**',
       'coverage/**',
       'node_modules/**',
+      // Agent worktrees are checkouts of this same repo nested inside it; linting them lints
+      // another branch's work-in-progress and attributes it here.
+      '.claude/worktrees/**',
       // Java-generated ground truth + MEI inputs. Immutable (charter invariant 2).
       'tests/integration/fixtures/**',
     ],
@@ -310,10 +313,7 @@ export default tseslint.config(
       '@typescript-eslint/prefer-reduce-type-parameter': 'error',
       '@typescript-eslint/no-unnecessary-boolean-literal-compare': 'error',
       '@typescript-eslint/require-array-sort-compare': 'error',
-      '@typescript-eslint/switch-exhaustiveness-check': [
-        'error',
-        { considerDefaultExhaustiveForUnions: true },
-      ],
+      '@typescript-eslint/switch-exhaustiveness-check': 'error',
 
       // §8.10 audit 4. `src/` reached zero in T16 (the last three sites went with RULE C3's
       // Bézier extraction and the `resolveEntryIndex` rewrite), so promoting this costs

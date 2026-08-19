@@ -36,6 +36,30 @@ produces"**. That is enforced mechanically:
   which is why that fix shipped only once the Java fork had been patched and the affected ground
   truth regenerated from it.
 
+## Running the gate
+
+The whole byte surface is four suites, and they run in **about 2.5 seconds**:
+
+```sh
+npm run gate
+```
+
+That is `cross-validation` (MEI ⇒ MSM/MPM), `full-xml-equivalence` (the augmented MSM),
+`midi-byte-equivalence` (event by event, `tickTolerance = 0`) and `all-maps-equivalence` (the 40
+programmatic per-map fixtures) — 121 tests covering MSM+MPM text, augmented MSM, raw MIDI and
+expressive MIDI, from both MEI input and programmatic MSM+MPM input. Their comparison strengths
+differ and the difference matters: **`cross-validation` is the only strict string-equality
+suite**, so it is the one that catches attribute order and numeric formatting; the others
+compare per-attribute with a tolerance, or event by event.
+
+Use it to iterate. It is not a substitute for `npm run verify` (clean build, typecheck of the
+test sources, all 5750 tests), which stays the gate before every commit — and note that
+`verify` does **not** run the formatter, so `npx prettier --check .` is a separate step.
+
+There is deliberately no separate pipeline-probe script in the repo: the byte gate _is_ the
+suite, which is why the suites auto-discover their fixtures and treat a missing reference as a
+failure rather than a skip.
+
 ## What this does not claim
 
 Imprecision output is nondeterministic by design and is never byte-compared (see

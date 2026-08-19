@@ -481,7 +481,7 @@ class LevelPass {
       null,
       population.length === 0
         ? 'the surviving level population is empty, so this dimension has no center'
-        : `the level population has no geometric mean (${mean.reason})`,
+        : `the level population has no geometric mean (${mean.error})`,
     );
     return null;
   }
@@ -843,7 +843,7 @@ class LevelPass {
         'out-of-domain-input',
         this.dimension,
         level.site,
-        `the pair has no geometric mean (${pairCenter.reason})`,
+        `the pair has no geometric mean (${pairCenter.error})`,
       );
       return;
     }

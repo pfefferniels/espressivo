@@ -261,6 +261,9 @@ function legacyFallbackDomain(spread: Element): FrameDomain {
       return 'milliseconds';
     case 'relative':
       return 'relative';
+    // Absent, and anything unrecognised, mean ticks. `null` is spelled out so that "the
+    // attribute is missing" reads as a decision rather than as the bottom of a fallthrough.
+    case null:
     default:
       return 'ticks';
   }
