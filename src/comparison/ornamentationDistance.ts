@@ -125,8 +125,10 @@ function noteOrderValue(atom: OrnamentAtom): number | null {
     case null:
       return 0;
     // An id list and the v3 grammar NAME notes; that is an identity claim, not a magnitude,
-    // and it goes to the finding channel on §5.8's @controller precedent.
-    default:
+    // and it goes to the finding channel on §5.8's @controller precedent. Named rather than
+    // defaulted, so a fourth note-order kind has to choose a side explicitly.
+    case 'id-list':
+    case 'v3-grammar':
       return null;
   }
 }

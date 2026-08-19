@@ -825,7 +825,9 @@ function noteDuration(
       return index < dates.length - 1
         ? dates[index + 1] - dates[index]
         : principalEnd - dates[index];
-    default:
+    // `false` is the third and last member of the enum; named so that adding a fourth is a
+    // compile error rather than a silent alias for it.
+    case NoteOffShift.False:
       return principalEnd - dates[index];
   }
 }

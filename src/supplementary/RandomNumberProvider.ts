@@ -233,7 +233,13 @@ export class RandomNumberProvider {
       case RandomNumberProvider.DISTRIBUTION_CORRELATED_COMPENSATING_TRIANGLE:
         initialValue = this.clip(value);
         break;
-      default:
+      // The uncorrelated distributions have no series to restart, which is what the
+      // docstring's "No-op for the others" means. Enumerated so that "the others" is a
+      // closed list the compiler checks rather than a phrase.
+      case RandomNumberProvider.DISTRIBUTION_UNIFORM:
+      case RandomNumberProvider.DISTRIBUTION_GAUSSIAN:
+      case RandomNumberProvider.DISTRIBUTION_TRIANGULAR:
+      case RandomNumberProvider.DISTRIBUTION_LIST:
         return;
     }
     this.series = [initialValue];

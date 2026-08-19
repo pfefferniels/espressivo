@@ -535,7 +535,12 @@ export function evaluateDimension(
       return evaluateArticulation(a, b, settings);
     case 'ornamentation':
       return evaluateOrnamentation(a, b, settings);
-    default:
+    // The three imprecision dimensions, named rather than defaulted. A twelfth comparison
+    // dimension would otherwise be routed silently down the imprecision path — which is what
+    // a widening `default` buys you, and it is not worth the three lines it saves.
+    case 'imprecisionTiming':
+    case 'imprecisionDynamics':
+    case 'imprecisionDuration':
       return evaluateImprecision(dimension, a, b, settings);
   }
 }
@@ -578,7 +583,12 @@ export function editScriptForDimension(
       return stateEditScript(articulationEditPlan(a, settings), a, b, settings, options);
     case 'ornamentation':
       return stateEditScript(ornamentationEditPlan(a, b, settings), a, b, settings, options);
-    default:
+    // The three imprecision dimensions, named rather than defaulted. A twelfth comparison
+    // dimension would otherwise be routed silently down the imprecision path — which is what
+    // a widening `default` buys you, and it is not worth the three lines it saves.
+    case 'imprecisionTiming':
+    case 'imprecisionDynamics':
+    case 'imprecisionDuration':
       return stateEditScript(imprecisionEditPlan(dimension, a, settings), a, b, settings, options);
   }
 }
@@ -1420,7 +1430,11 @@ export function containerOf(dimension: ComparisonDimension): string {
       return ARTICULATION_MAP;
     case 'ornamentation':
       return ORNAMENTATION_MAP;
-    default:
+    // As above: the three imprecision dimensions are the remainder, and IMPRECISION_MAPS is
+    // keyed by exactly them, so naming them here also makes that index total.
+    case 'imprecisionTiming':
+    case 'imprecisionDynamics':
+    case 'imprecisionDuration':
       return IMPRECISION_MAPS[dimension];
   }
 }

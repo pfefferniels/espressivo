@@ -71,7 +71,9 @@ function lanceWilliams(
       const total = sizeI + sizeJ + sizeM;
       return ((sizeI + sizeM) * dIm + (sizeJ + sizeM) * dJm - sizeM * dIj) / total;
     }
-    default: {
+    // Named rather than left to a `default`, so that a sixth linkage is a compile error
+    // instead of silently being computed as an average.
+    case 'average': {
       const total = sizeI + sizeJ;
       return (sizeI * dIm + sizeJ * dJm) / total;
     }
