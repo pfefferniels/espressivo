@@ -36,6 +36,7 @@
  * does and D-A exists to avoid it, and "repairing" `curvature="1.5"` edits a value the caller
  * never asked to change.
  */
+import { andThen, err, mapErr, mapOk, ok, traverse, type Result } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { readAttributeValue, readNumericAttributeValue } from './attributes.js';
 import { orderedEntries, styleNameAt, type DatedEntry } from './datedView.js';
@@ -1064,41 +1065,45 @@ class PerformancePass {
     this.eachTemporalSpread((spread, siteFor) => {
       const format = detectFrameFormat(spread);
       const reading = format === 'v2' ? readV2Frame(spread) : readV3Frame(spread);
-      if (reading.ok && reading.bounds.length === 0) return;
+      if (reading.ok && reading.value.length === 0) return;
       accumulator.markPresent();
-      if (!reading.ok) {
+
+      // Read and gate are one chain because they refuse the same way: whichever step turns the
+      // pair down, the frame is atomic and neither bound is written. `traverse` is the
+      // short-circuit the hand-written loop was — it stops at the first refused bound and
+      // discards the ones already planned, which is what "the frame is one geometric pair"
+      // means operationally.
+      const planned = andThen(reading, (bounds) =>
+        traverse(bounds, (bound) =>
+          mapOk(
+            mapErr(
+              gateAndTransform(bound.row, unparameterizedSpaceOf(bound.row), bound.value, factor),
+              (refusal): FrameRefusal => ({
+                attribute: bound.attribute,
+                detail: `${refusal.detail} — the frame is one geometric pair, so neither bound is written`,
+              }),
+            ),
+            (value) => ({ ...bound, value }),
+          ),
+        ),
+      );
+      if (!planned.ok) {
         accumulator.countSkipped();
         this.sink.note(
           'atomic-group-skipped',
           'ornamentSpread',
-          siteFor(reading.attribute),
-          reading.detail,
+          siteFor(planned.error.attribute),
+          planned.error.detail,
         );
         return;
       }
 
-      const planned: FrameBound[] = [];
-      for (const bound of reading.bounds) {
-        const space = unparameterizedSpaceOf(bound.row);
-        const transformed = gateAndTransform(bound.row, space, bound.value, factor);
-        if (!transformed.ok) {
-          accumulator.countSkipped();
-          this.sink.note(
-            'atomic-group-skipped',
-            'ornamentSpread',
-            siteFor(bound.attribute),
-            `${transformed.error.detail} — the frame is one geometric pair, so neither bound is written`,
-          );
-          return;
-        }
-        planned.push({ ...bound, value: transformed.value });
-      }
       let writes = 0;
-      for (const { attribute, value, suffix } of planned) {
+      for (const { attribute, value, suffix } of planned.value) {
         writes += writeSuffixedNumber(spread, attribute, value, suffix) === 'written' ? 1 : 0;
       }
       accumulator.countTransformed(writes);
-      this.reportFrameRegime(spread, siteFor, format, planned);
+      this.reportFrameRegime(spread, siteFor, format, planned.value);
     });
   }
 
@@ -1679,15 +1684,27 @@ interface FrameBound {
 }
 
 /**
+ * Why a frame cannot be scaled at all.
+ *
+ * A refusal here is a property of the PAIR rather than of one value — an unreadable v3 value, a
+ * v3 length whose absence is not neutral, or a bound the gate turned down — so it carries the
+ * attribute that caused it and the whole explanation, and the caller turns it into one
+ * `atomic-group-skipped` note.
+ */
+interface FrameRefusal {
+  readonly attribute: string;
+  readonly detail: string;
+}
+
+/**
  * A frame read off one `<temporalSpread>`, or the reason it cannot be scaled at all.
  *
- * A refusal here is a property of the PAIR rather than of one value — an unreadable v3 value,
- * or a v3 length whose absence is not neutral — so it carries the attribute that caused it and
- * the whole explanation, and the caller turns it into one `atomic-group-skipped` note.
+ * This is also the type of the frame after the gate has run over it, which is the point of
+ * spelling it as a `Result` rather than as the anonymous module-private union it used to be:
+ * reading and transforming produce the same shape, so `andThen` chains them and the two
+ * refusal paths that used to be two near-identical blocks at the call site are one.
  */
-type FrameReading =
-  | { readonly ok: true; readonly bounds: readonly FrameBound[] }
-  | { readonly ok: false; readonly attribute: string; readonly detail: string };
+type FrameReading = Result<readonly FrameBound[], FrameRefusal>;
 
 /**
  * The v2 frame: bare doubles under `parseFloat`, exactly as before.
@@ -1707,7 +1724,7 @@ function readV2Frame(spread: Element): FrameReading {
       suffix: '',
     });
   }
-  return { ok: true, bounds };
+  return ok(bounds);
 }
 
 /**
@@ -1734,14 +1751,13 @@ function readV3Frame(spread: Element): FrameReading {
     if (raw === null) continue;
     const temporal = parseTemporalText(raw);
     if (temporal === null) {
-      return {
-        ok: false,
+      return err({
         attribute,
         detail:
           `@${attribute} = ${JSON.stringify(raw)} is no MPM v3 temporal value (a decimal ` +
           'number, optionally suffixed ms, % or ticks), so the renderer ignores it and applies ' +
           'its default — the frame is one geometric pair, so neither bound is written',
-      };
+      });
     }
     bounds.push({
       row: requireRow(TEMPORAL_SPREAD_ELEMENT, attribute),
@@ -1751,17 +1767,16 @@ function readV3Frame(spread: Element): FrameReading {
     });
   }
   if (bounds.length > 0 && readAttributeValue(spread, FRAME_LENGTH_ATTRIBUTE) === null) {
-    return {
-      ok: false,
+    return err({
       attribute: FRAME_LENGTH_ATTRIBUTE,
       detail:
         '@frameLength is absent, and in v3 an absent @frameLength is 100% of the principal ' +
         'note rather than v2’s 0.0 — so the missing bound is not at its neutral, and scaling ' +
         'the offset alone would move the figure without resizing it. Nothing is created and ' +
         'neither bound is written',
-    };
+    });
   }
-  return { ok: true, bounds };
+  return ok(bounds);
 }
 
 /** One bound's domain and where that domain came from, for the v3 `frame-time-unit` note. */
