@@ -4,8 +4,14 @@ import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { Header } from '../Header.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericStyle } from '../styles/GenericStyle.js';
+import { lowerBoundBy, upperBoundBy } from '../../../prelude/seq.js';
 
 const MPM_NAMESPACE = 'http://www.cemfi.de/mpm/ns/1.0';
+
+/** The date an entry of {@link GenericMap.elements} is sorted by. */
+function entryDate(entry: KeyValue<number, Element>): number {
+  return entry.getKey();
+}
 
 /** Map/element names that belong to the MPM namespace */
 const MPM_NAMES = new Set([
@@ -174,15 +180,33 @@ export class GenericMap extends AbstractXmlSubtree {
   }
 
   /**
-   * Re-sort the map after its elements' `date` attributes have been edited underneath
-   * it — which is exactly what happens when articulation or rubato shifts a note's
-   * timing. The cached keys are refreshed from the XML first, then an insertion sort
-   * runs over the array, and finally the XML children are brought back in line.
+   * Refresh the cached keys from the XML, run a pass that is *meant* to re-order the array,
+   * and bring the XML children back in line.
    *
-   * The insertion sort is deliberate and must not become `Array.prototype.sort`: it is
-   * stable, and it is near-linear on the almost-sorted input this always receives,
-   * whereas swapping in a different algorithm would reorder equal-date elements and
-   * change which of several simultaneous instructions wins.
+   * **This method does not sort, and the previous version of this comment was wrong about it
+   * in every particular.** It claimed a deliberate, stable insertion sort that must not become
+   * `Array.prototype.sort`. What the loop below actually does is find the leftmost index the
+   * element should move to and then **swap** the two positions, where an insertion sort shifts
+   * the intervening elements right. Run against the code as written:
+   *
+   *     [2, 3, 1]       ->  [1, 3, 2]
+   *     [1, 3, 2, 0]    ->  [0, 2, 3, 1]
+   *     [5, 4, 3, 2, 1] ->  [1, 5, 4, 3, 2]
+   *
+   * So it is not a sort, and it is not stable either. Java is identical —
+   * `GenericMap.java`'s `Collections.swap(this.elements, i, moveToIndex)` — so this is an
+   * inherited defect, not a port defect, and it is left alone under the parity rule.
+   *
+   * **Why it has never bitten.** The keys are refreshed from `@date` (below), but the thing
+   * that moves a note's timing is `@date.perf` — see `ArticulationData.articulateNote`, which
+   * writes `date.perf` and nothing else. The only caller is `ArticulationMap`'s
+   * `if (mapTimingChanged) map.sort();`, so every real call re-reads keys that have not
+   * changed, finds the array already ordered, performs no swap, and rewrites the same XML
+   * order. The bug is dormant behind a second bug.
+   *
+   * **If you fix the `@date` / `@date.perf` mismatch, this goes live.** The two must be
+   * repaired together, as one gated change with fixture bytes re-checked — repairing either
+   * alone is worse than repairing neither. Recorded in PARITY.md §3.
    */
   sort(): void {
     for (const e of this.elements) {
@@ -283,80 +307,52 @@ export class GenericMap extends AbstractXmlSubtree {
   }
 
   /**
-   * The four `getElementIndex{BeforeAt,Before,After,AtAfter}` searches below are
-   * near-identical binary searches that differ only in which comparisons are strict.
-   * They are **not** interchangeable and they are not duplication to be factored out:
-   * picking "the last element at or before this date" versus "strictly before it"
-   * decides whether an instruction dated exactly on a note applies to that note, and
-   * different callers need different answers. Each returns -1 for "no such element".
+   * The four `getElementIndex{BeforeAt,Before,After,AtAfter}` searches.
    *
-   * Reading them: the two guards at the top handle the out-of-range cases so the loop
-   * can assume a hit exists, and the loop then probes `mid` and `mid + 1` together,
-   * which is what lets it return a boundary rather than an exact match. `mid + 1` is
-   * safe precisely because the guards excluded the case where the answer is the last
-   * element. Every comparison here is load-bearing; verify against the unit tests
-   * before touching any of them.
+   * They are **not** interchangeable: picking "the last element at or before this date"
+   * versus "strictly before it" decides whether an instruction dated exactly on a note
+   * applies to that note, and different callers need different answers. Each returns -1
+   * for "no such element".
+   *
+   * What they no longer are is four separately-debugged binary searches. Each was six
+   * lines of `first`/`last`/`mid` that probed `mid` and `mid + 1` together, guarded by two
+   * range checks that existed so `mid + 1` could not run off the end — carrying a comment
+   * saying every comparison was load-bearing and to verify against the unit tests before
+   * touching any of them. That comment was true, and it is the definition of code that
+   * should be written once.
+   *
+   * All four are the same two questions asked of a sorted sequence, which
+   * `src/prelude/seq.ts` names after their standard meanings:
+   *
+   *   lowerBoundBy  first index whose date is >= the target   (std::lower_bound)
+   *   upperBoundBy  first index whose date is >  the target   (std::upper_bound)
+   *
+   * from which: *last at-or-before* is `upperBound - 1`, *last strictly before* is
+   * `lowerBound - 1`, *first after* is `upperBound`, and *first at-or-after* is
+   * `lowerBound` — with `length` meaning "none", which is what the `-1` conversion below
+   * expresses. `tests/prelude/seq.test.ts` checks that derivation against a brute-force
+   * linear scan over 2000 pseudo-random cases with a deliberately small date range, so
+   * ties and misses dominate.
    */
   getElementIndexBeforeAt(date: number): number {
-    if (this.elements.length === 0 || this.elements[0].getKey() > date) return -1;
-    if (this.elements[this.elements.length - 1].getKey() <= date) return this.elements.length - 1;
-    let first = 0,
-      last = this.elements.length - 1,
-      mid = Math.floor(last / 2);
-    while (first <= last) {
-      if (this.elements[mid + 1].getKey() <= date) first = mid + 1;
-      else if (this.elements[mid].getKey() <= date) return mid;
-      else last = mid - 1;
-      mid = Math.floor((first + last) / 2);
-    }
-    return -1;
+    return upperBoundBy(this.elements, entryDate, date) - 1;
   }
 
   getElementIndexBefore(date: number): number {
-    if (this.elements.length === 0 || this.elements[0].getKey() >= date) return -1;
-    if (this.elements[this.elements.length - 1].getKey() < date) return this.elements.length - 1;
-    let first = 0,
-      last = this.elements.length - 1,
-      mid = Math.floor(last / 2);
-    while (first <= last) {
-      if (this.elements[mid].getKey() >= date) last = mid;
-      else if (this.elements[mid + 1].getKey() >= date) return mid;
-      else first = mid + 1;
-      mid = Math.floor((first + last) / 2);
-    }
-    return -1;
+    return lowerBoundBy(this.elements, entryDate, date) - 1;
   }
 
   getElementIndexAfter(date: number): number {
-    if (this.elements.length === 0 || this.elements[this.elements.length - 1].getKey() <= date)
-      return -1;
-    if (this.elements[0].getKey() > date) return 0;
-    let first = 0,
-      last = this.elements.length - 1,
-      mid = Math.floor(last / 2);
-    while (first <= last) {
-      if (this.elements[mid].getKey() > date) last = mid - 1;
-      else if (this.elements[mid + 1].getKey() > date) return mid + 1;
-      else first = mid + 1;
-      mid = Math.floor((first + last) / 2);
-    }
-    return -1;
+    return this.orNone(upperBoundBy(this.elements, entryDate, date));
   }
 
   getElementIndexAtAfter(date: number): number {
-    if (this.elements.length === 0 || this.elements[this.elements.length - 1].getKey() < date)
-      return -1;
-    if (this.elements[0].getKey() >= date) return 0;
-    let first = 0,
-      last = this.elements.length - 1,
-      mid = Math.floor(last / 2);
-    while (first <= last) {
-      if (this.elements[mid].getKey() >= date) last = mid - 1;
-      else if (this.elements[mid + 1].getKey() >= date) return mid + 1;
-      else first = mid + 1;
-      mid = Math.floor((first + last) / 2);
-    }
-    return -1;
+    return this.orNone(lowerBoundBy(this.elements, entryDate, date));
+  }
+
+  /** A bound of `length` means the sequence has no such element; these searches spell that -1. */
+  private orNone(index: number): number {
+    return index === this.elements.length ? -1 : index;
   }
 
   getElementIndexOf(element: Element | null): number {

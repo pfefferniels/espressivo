@@ -114,7 +114,7 @@ export function resolveComparisonLevel(
       return { value: reading.value, source: 'def', raw: levelString, def: reading.def };
     case 'literal':
       return { value: reading.value, source: 'literal', raw: levelString, def: null };
-    default:
+    case 'unresolvable':
       return {
         value: RENDERER_DEFAULT_LEVEL,
         source: 'renderer-default',

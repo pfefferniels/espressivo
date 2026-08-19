@@ -546,7 +546,11 @@ export class Midi {
             case ShortMessage.PROGRAM_CHANGE: {
               const prg = sm.getData1();
               print += `program change,  number: ${prg}`;
-              // fall through intentionally (matching Java behavior)
+              // Java falls through to `default` from here, so the "Other message" line
+              // is appended too. Written out rather than left as a real fallthrough, so
+              // that `noFallthroughCasesInSwitch` is free to catch the accidental ones.
+              print += `Other message: ${msg.constructor.name}`;
+              break;
             }
             default: {
               print += `Other message: ${msg.constructor.name}`;

@@ -603,5 +603,5 @@ function invertScript(script: EditScript): EditScript {
 
 /** A key that survives the mirror: an op is identified by where it sits in the forward order. */
 function identityOf(op: EditOp): string {
-  return `${String(op.applicationIndex)}`;
+  return String(op.applicationIndex);
 }

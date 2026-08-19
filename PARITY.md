@@ -678,6 +678,36 @@ pins it: `relativeDuration=0.5` plus `absoluteDurationChange=-70` on `duration.p
   calls `getTempoDataOf(-1)`, which returns null immediately — one wasted call rather than a
   bug, kept for parity.
 
+### `GenericMap.sort()` is not a sort, and is dormant behind a second defect
+
+Two findings that must be read together, both in
+`src/mpm/elements/maps/GenericMap.ts`.
+
+**It does not sort.** The pass computes the leftmost index an element should move to and then
+**swaps** the two positions; an insertion sort shifts the intervening elements right instead.
+Run against the code as written, `[2,3,1]` becomes `[1,3,2]`, `[1,3,2,0]` becomes `[0,2,3,1]`,
+and `[5,4,3,2,1]` becomes `[1,5,4,3,2]` — none of them sorted, and not stable either. Java does
+the same thing (`GenericMap.java`, `Collections.swap(this.elements, i, moveToIndex)`), so this
+is inherited rather than a port defect.
+
+**It reads the wrong attribute, which is why it has never mattered.** The cached keys are
+refreshed from `@date`, but the attribute that carries a shifted performance time is
+`@date.perf` (`ArticulationData.articulateNote`). The only caller is
+`ArticulationMap`'s `if (mapTimingChanged) map.sort()`, so every real call refreshes keys that
+did not change, finds the array already in order, swaps nothing, and rewrites the same XML
+order. No fixture is affected, and none can be while the mismatch stands.
+
+Preserved for now on the same grounds as the rest of this section, with one addition that makes
+it more than a curiosity: **the two defects have to be repaired together.** Fixing the
+attribute mismatch alone activates a non-sort over live data and would reorder simultaneous
+instructions; fixing the swap alone changes nothing observable. Whoever takes it needs both, in
+one gated change, with fixture bytes re-checked — the docstring at the method now says so.
+
+The previous version of that docstring asserted the opposite of all of this (a "deliberate",
+"stable" insertion sort that "must not become `Array.prototype.sort`"), which is the reason
+this entry exists: a comment that talks a reader out of looking is worse than the defect it
+describes.
+
 ### `TempoData.clone` omits `startDateMilliseconds`
 
 Java's `TempoData.clone()` omits it too. It is scratch space that `TempoMap.renderTempoToMap`

@@ -35,7 +35,7 @@ export class OrnamentationStyle extends GenericStyle<OrnamentDef> {
     }
   }
 
-  protected parseData(xml: Element): void {
+  protected override parseData(xml: Element): void {
     super.parseData(xml);
     this.parseDefs(xml, 'ornamentDef', (def) => OrnamentDef.createOrnamentDef(def));
   }

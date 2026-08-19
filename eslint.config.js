@@ -44,7 +44,13 @@ import importPlugin from 'eslint-plugin-import';
 const LAYER_ZONES = [
   {
     layer: 'leaves',
-    files: ['src/xml/**/*.ts', 'src/music/**/*.ts', 'src/supplementary/**/*.ts', 'src/version.ts'],
+    files: [
+      'src/prelude/**/*.ts',
+      'src/xml/**/*.ts',
+      'src/music/**/*.ts',
+      'src/supplementary/**/*.ts',
+      'src/version.ts',
+    ],
     forbidden: [
       '**/midi/**',
       '**/msm/**',
@@ -180,6 +186,9 @@ export default tseslint.config(
       'dist/**',
       'coverage/**',
       'node_modules/**',
+      // Agent worktrees are checkouts of this same repo nested inside it; linting them lints
+      // another branch's work-in-progress and attributes it here.
+      '.claude/worktrees/**',
       // Java-generated ground truth + MEI inputs. Immutable (charter invariant 2).
       'tests/integration/fixtures/**',
     ],
@@ -188,6 +197,17 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.strict,
   ...tseslint.configs.stylistic,
+
+  // Node scripts, not library code. `scripts/bench.mjs` is a measurement tool that runs
+  // against `dist/`, so it is the one place in the repo that legitimately prints to stdout
+  // and reads `process.argv`; the two globals are declared rather than pulled from the
+  // `globals` package to avoid a dependency for two names.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { console: 'readonly', process: 'readonly' },
+    },
+  },
 
   {
     files: ['**/*.ts'],
@@ -262,6 +282,38 @@ export default tseslint.config(
       '@typescript-eslint/prefer-readonly': 'error',
       '@typescript-eslint/no-unnecessary-condition': 'error',
       '@typescript-eslint/no-unnecessary-type-assertion': 'error',
+
+      // --- The functional turn ---
+      //
+      // A sum type is only worth having if every arm is handled. `src/` has 68 `switch`
+      // statements against 29 exhaustiveness checks, and that gap is where the next arm gets
+      // dropped silently. Type-aware, so it lives in this block rather than the syntactic one.
+      // Each measured against the tree before being turned on; all but the first were
+      // already at zero, so they cost nothing and stop the tree drifting back.
+      //
+      //   no-unnecessary-type-parameters       2 — a type parameter used once is a `any` in
+      //                                            disguise, which is the opposite of the point
+      //   no-unnecessary-template-expression   1
+      //   prefer-reduce-type-parameter         0
+      //   no-unnecessary-boolean-literal-compare 0
+      //   require-array-sort-compare           0 — `.sort()` on numbers sorts lexicographically,
+      //                                            which for a tick list is a silent disaster
+      //
+      // NOT enabled, having been measured and found cosmetic here:
+      //   prefer-nullish-coalescing  56 sites, and they are not the bug hunt they look like.
+      //     41 are `if (x === null) x = d`, where the field is `T | null` and `??=` means
+      //     exactly the same thing. The 15 real `||` were each checked for the failure that
+      //     makes this rule worth having — a falsy-but-valid left operand — and none has it:
+      //     they are `map.get(k) || 0` over a counter, `namespaceURI || ''`, and the like,
+      //     where the falsy value and the default coincide. No `date || …` or `velocity || …`
+      //     anywhere, which is the case that would actually have bitten.
+      //   prefer-optional-chain      17 sites, pure style.
+      '@typescript-eslint/no-unnecessary-type-parameters': 'error',
+      '@typescript-eslint/no-unnecessary-template-expression': 'error',
+      '@typescript-eslint/prefer-reduce-type-parameter': 'error',
+      '@typescript-eslint/no-unnecessary-boolean-literal-compare': 'error',
+      '@typescript-eslint/require-array-sort-compare': 'error',
+      '@typescript-eslint/switch-exhaustiveness-check': 'error',
 
       // §8.10 audit 4. `src/` reached zero in T16 (the last three sites went with RULE C3's
       // Bézier extraction and the `resolveEntryIndex` rewrite), so promoting this costs

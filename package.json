@@ -56,6 +56,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "bench": "npm run build && node scripts/bench.mjs",
+    "bench:check": "npm run build && node scripts/bench.mjs --check",
+    "bench:save": "npm run build && node scripts/bench.mjs --save && prettier --write scripts/bench-baseline.json",
     "verify": "npm run build && npm run typecheck:tests && vitest run"
   },
   "dependencies": {

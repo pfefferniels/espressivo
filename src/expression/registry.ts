@@ -835,7 +835,13 @@ export function bindRowSpace(space: RowSpace, center: number | null): ScaleSpace
       return null;
     case 'logit':
       return { kind: 'logit', lower: space.lower, upper: space.upper };
-    default:
+    // The four spaces that carry no parameter, so binding one is the identity on its tag.
+    // Enumerated rather than defaulted: a new RowSpace arm that DOES carry a parameter would
+    // otherwise be silently constructed without it.
+    case 'log-around-1':
+    case 'boundary-power-low':
+    case 'gain':
+    case 'gain-ordered':
       return { kind: space.kind };
   }
 }

@@ -60,7 +60,7 @@ export class ImprecisionMap extends GenericMap {
     }
   }
 
-  protected parseData(xml: Element): void {
+  protected override parseData(xml: Element): void {
     super.parseData(xml);
     const localname = this.getXml().getLocalName();
     if (!localname.includes('imprecisionMap'))
