@@ -15,7 +15,7 @@
  * ```
  */
 
-export type { Result, Ok, Err } from './result.js';
+export type { Result, Ok, Err, AnyResult, OkOf, ErrOf } from './result.js';
 export {
   ok,
   err,

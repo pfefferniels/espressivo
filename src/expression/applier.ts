@@ -36,7 +36,16 @@
  * does and D-A exists to avoid it, and "repairing" `curvature="1.5"` edits a value the caller
  * never asked to change.
  */
-import { andThen, err, mapErr, mapOk, ok, traverse, type Result } from '../prelude/index.js';
+import {
+  andThen,
+  err,
+  mapErr,
+  mapOk,
+  ok,
+  traverse,
+  unwrapOrElse,
+  type Result,
+} from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { readAttributeValue, readNumericAttributeValue } from './attributes.js';
 import { orderedEntries, styleNameAt, type DatedEntry } from './datedView.js';
@@ -50,11 +59,10 @@ import {
 } from './mpmTree.js';
 import {
   IDENTITY_FACTOR,
-  requestedFactors,
-  resolveFactors,
-  resolveOptions,
+  resolveRun,
   type ExaggerateOptions,
   type ResolvedOptions,
+  type ResolvedRun,
 } from './options.js';
 import {
   ACCENTUATION_ANCHOR_ELEMENT,
@@ -166,17 +174,34 @@ export function applyExaggeration(
   factors: ExaggerationFactors,
   options: ExaggerateOptions = {},
 ): ExaggerationReport {
-  const resolvedOptions = resolveOptions(options);
-  const appliedFactors = resolveFactors(factors);
-  const requested = requestedFactors(factors);
+  return applyResolvedExaggeration(
+    root,
+    unwrapOrElse(resolveRun(factors, options), (refusal): never => {
+      throw new Error(refusal);
+    }),
+  );
+}
 
-  const performances = selectPerformances(readPerformances(root), resolvedOptions);
+/**
+ * {@link applyExaggeration} on options the caller has ALREADY resolved.
+ *
+ * This is the entry point the facade uses, and it exists so that the option bag is validated
+ * once. The facade has to resolve it anyway — §4 makes it validate before a byte is parsed, and
+ * `options.ts` owns the one definition of what a legal factor record is — and before this split
+ * it threw both resolved objects away and let this function build them again from the same
+ * input. Both resolutions were pure, so nothing was ever *wrong*; it was simply the second
+ * answer to a question already asked.
+ *
+ * @param run everything DESIGN §4 defines, filled in — see {@link resolveRun}
+ */
+export function applyResolvedExaggeration(root: Element, run: ResolvedRun): ExaggerationReport {
+  const performances = selectPerformances(readPerformances(root), run.options);
   const reports = performances.map((performance) =>
-    new PerformancePass(performance, appliedFactors, requested, resolvedOptions).run(),
+    new PerformancePass(performance, run.factors, run.requested, run.options).run(),
   );
 
   return {
-    appliedFactors,
+    appliedFactors: run.factors,
     performances: reports,
     totalWrites: reports.reduce((sum, report) => sum + report.totalWrites, 0),
   };
