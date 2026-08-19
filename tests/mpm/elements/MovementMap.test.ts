@@ -638,23 +638,33 @@ describe('MovementMap', () => {
   // verified the fixes on the Java side.
   // ---------------------------------------------------------------
   describe('movement round-trip fixes', () => {
-    it('MovementData reads controller from the plain, no-namespace attribute', () => {
+    // These two used to run against a `new MovementData(xml)` constructor that no
+    // production path ever called; they are the same assertions pointed at
+    // `getMovementDataOf`, which is where the T20b fix actually has to hold. The
+    // regression they guard is specifically that reading `@controller` does not clobber
+    // `xmlId` — before the fix the controller was looked up in the xml: namespace, where
+    // it never lives, and the result was assigned to `xmlId`.
+    it('getMovementDataOf reads controller from the plain, no-namespace attribute', () => {
+      const map = MovementMap.createMovementMap()!;
       const e = new Element('movement');
       e.addAttribute(new Attribute('date', '0.0'));
       e.addAttribute(new Attribute('controller', 'soft'));
       e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', 'mov-1'));
+      map.addElement(e);
 
-      const md = new MovementData(e);
+      const md = map.getMovementDataOf(0)!;
       expect(md.controller).toBe('soft');
       // ...and does not overwrite xmlId while doing so
       expect(md.xmlId).toBe('mov-1');
     });
 
-    it('MovementData keeps the "sustain" default when there is no controller attribute', () => {
+    it('getMovementDataOf keeps the "sustain" default when there is no controller attribute', () => {
+      const map = MovementMap.createMovementMap()!;
       const e = new Element('movement');
       e.addAttribute(new Attribute('date', '0.0'));
+      map.addElement(e);
 
-      expect(new MovementData(e).controller).toBe('sustain');
+      expect(map.getMovementDataOf(0)!.controller).toBe('sustain');
     });
 
     it('addMovement(MovementData) serializes controller after protraction, before xml:id', () => {

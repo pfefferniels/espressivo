@@ -1,4 +1,4 @@
-import { Attribute, Element } from '../../../../xml/XomTypes.js';
+import type { Element } from '../../../../xml/XomTypes.js';
 import type { Normalized } from '../../../../units.js';
 import { bezierPoint, innerControlPointsXPositions, sampleSegment, tForDate } from './bezier.js';
 
@@ -10,6 +10,14 @@ import { bezierPoint, innerControlPointsXPositions, sampleSegment, tForDate } fr
  * Shares its Bézier machinery with {@link DynamicsData}: `position` → `transitionTo`
  * shaped by `curvature`/`protraction`, with `x1`/`x2` computed lazily. The difference
  * is the output range — {@link getMovementSegment} scales to MIDI's 0-127 at the end.
+ *
+ * This is a **record plus its Bézier evaluation**, with exactly one producer. It does not
+ * parse XML — the port used to carry a `constructor(xml)` transcribing `<movement>`, but
+ * nothing called it, and on the one attribute that matters most it was silently wrong: a
+ * `<movement>` with no `@position` came back sitting at the initializer 0.0, i.e. "fully
+ * released", where {@link MovementMap.getMovementDataOf} inherits the previous movement's
+ * `transition.to` and, failing that, logs and skips the instruction. PARITY.md's P2 entry
+ * is about exactly that wrong-but-plausible 0. Build these with `getMovementDataOf`.
  *
  * Port of meico.mpm.elements.maps.data.MovementData
  */
@@ -30,41 +38,6 @@ export class MovementData {
 
   private x1: number | null = null;
   private x2: number | null = null;
-
-  constructor(xml?: Element) {
-    if (xml === undefined) return;
-
-    this.xml = xml;
-    this.startDate = parseFloat(xml.getAttributeValue('date')!);
-
-    const positionAttr = xml.getAttribute('position');
-    if (positionAttr !== null) {
-      this.position = parseFloat(positionAttr.getValue()) as Normalized;
-    }
-
-    const transitionToAtt = xml.getAttribute('transition.to');
-    if (transitionToAtt !== null) {
-      this.transitionTo = parseFloat(transitionToAtt.getValue()) as Normalized;
-    }
-
-    const curvatureAtt = xml.getAttribute('curvature');
-    if (curvatureAtt !== null) this.curvature = parseFloat(curvatureAtt.getValue());
-
-    const protractionAtt = xml.getAttribute('protraction');
-    if (protractionAtt !== null) this.protraction = parseFloat(protractionAtt.getValue());
-
-    const id = xml.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
-    if (id !== null) this.xmlId = id.getValue();
-
-    // `controller` is a plain attribute in no namespace. Until 2026-08-08 the reference
-    // — and therefore this port — looked it up in the xml: namespace, where it never
-    // lives, and assigned the result to `xmlId`; `controller` was consequently stuck on
-    // its "sustain" default no matter what the XML said. Fixed in MovementData.java:64-66
-    // and mirrored here (item T20b); the ground truth was regenerated from the fixed
-    // reference, so this is now the parity behaviour, not a divergence from it.
-    const controllerAttr = xml.getAttribute('controller');
-    if (controllerAttr !== null) this.controller = controllerAttr.getValue();
-  }
 
   clone(): MovementData {
     const c = new MovementData();
