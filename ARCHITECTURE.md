@@ -789,6 +789,17 @@ lazily-computed private memos (`MovementData.x1`/`x2`), and their methods hold
 parity-critical arithmetic. What changes (T16) is that the *duplicated* arithmetic moves into
 one pure module:
 
+> **AMENDED — `DistributionData` is no longer one of them.** The functional-core campaign
+> replaced it with `src/mpm/elements/maps/data/distribution.ts`: a six-armed discriminated
+> union, one arm per `distribution.*` family, parsed by a free `parseDistribution` returning
+> a `Result`. It met none of the three tests this rule states. It carried no memo; its only
+> arithmetic was a min/max scan over the measurement list, which is now a free function
+> beside the type; and it was the *reason* the rule's parenthetical about parsing from XML
+> was worth honouring least — one class covering six families with ten `| null` fields, all
+> parsed unconditionally, cost thirty non-null assertions at the single read site. The
+> other seven `*Data` classes are untouched by that reasoning, and this rule still governs
+> them.
+
 ```ts
 // src/mpm/elements/maps/data/bezier.ts — pure functions, no classes, no XML
 export function innerControlPointsXPositions(curvature: number, protraction: number): readonly [number, number];

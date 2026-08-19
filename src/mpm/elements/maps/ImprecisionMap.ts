@@ -3,10 +3,237 @@ import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { RandomNumberProvider } from '../../../supplementary/RandomNumberProvider.js';
+import { err, mapOk, mapPresent, matchKind, type Result } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
-import { DistributionData } from './data/DistributionData.js';
+import {
+  DISTRIBUTION_BROWNIAN,
+  DISTRIBUTION_COMPENSATING_TRIANGLE,
+  DISTRIBUTION_GAUSSIAN,
+  DISTRIBUTION_TRIANGULAR,
+  DISTRIBUTION_UNIFORM,
+  minAndMaxOfDistributionList,
+  parseDistribution,
+  type Distribution,
+  type UnknownDistributionFamily,
+} from './data/distribution.js';
 import { deriveSeed } from '../../RenderOptions.js';
 import type { RenderContext } from '../../RenderOptions.js';
+
+/** One distribution together with the stretch of the timeline it governs. */
+export interface DistributionSpan {
+  readonly distribution: Distribution;
+  /**
+   * The date of the immediately following entry, whatever kind of entry that is, or
+   * `Number.MAX_VALUE` for the last one. See {@link ImprecisionMap.distributionAt}.
+   */
+  readonly endDate: number;
+}
+
+/** Why {@link ImprecisionMap.distributionAt} could not produce a {@link DistributionSpan}. */
+export type DistributionEntryProblem =
+  | {
+      /** The map has no entry at that index — it is empty, or the index was negative. */
+      readonly kind: 'noEntry';
+      readonly index: number;
+    }
+  | {
+      /** The entry is something else: a `<style>` switch, most often. */
+      readonly kind: 'notADistribution';
+      readonly localName: string;
+    }
+  | UnknownDistributionFamily;
+
+/**
+ * What one distribution leaves behind for the next.
+ *
+ * A correlated distribution continues its predecessor's sequence rather than starting a
+ * fresh one, and the single thing it needs from that predecessor is the grid the
+ * predecessor's draws were indexed on. Naming that as its own one-field type, rather than
+ * keeping the whole previous `DistributionData` alive to read one field off it, is what
+ * makes the handover's actual dependency visible.
+ *
+ * `timingBasisMs` is `number | null` for one reason only: an unrecognised `distribution.*`
+ * element becomes a predecessor before any basis has been resolved for it, and null is
+ * what the incumbent then divided by. See {@link UnknownDistributionFamily}.
+ */
+interface Predecessor {
+  readonly timingBasisMs: number | null;
+}
+
+/**
+ * A distribution parameter on its way into {@link RandomNumberProvider}.
+ *
+ * The provider's factories are typed `number`, and for a document that declares every
+ * attribute of its family they are. MPM does not require that, and **the port's behaviour
+ * for a document that omits one is specified, measured and depended upon**: the `null`
+ * reaches the provider's arithmetic, where `null - null` is 0, `d > null` is `d > 0`, and
+ * `clip()` can return the `null` itself, which the write-back then adds to an attribute as
+ * a no-op (`attValue + null === attValue`). That is how a clip-less triangular performs
+ * exactly δ₀ rather than `NaN` — see `src/comparison/imprecisionLaws.ts` for the full
+ * nine-case table and `tests/comparison/imprecisionDegenerate.test.ts` for the pin.
+ *
+ * Substituting `0` for the `null` is **not** equivalent, which is why this is a cast and
+ * not a `?? 0`: `RandomNumberProvider.triangularDistribution` opens with
+ * `upperLimit === lowerLimit`, a *strict* comparison that separates a declared `0` from an
+ * absent limit and takes a different number of draws from the sequence depending on the
+ * answer.
+ *
+ * So this is deliberately not the thirty `!`s it replaces. A `!` claims the value is
+ * present, which here is false. This claims something true — that `null` is a legal
+ * argument at this boundary, with a defined meaning — and says it once instead of thirty
+ * times.
+ */
+function asProviderParameter(value: number | null): number {
+  return value as number;
+}
+
+/**
+ * The provider one distribution draws from, correlated handover included.
+ *
+ * Exhaustive by construction: a seventh family added to {@link Distribution} fails to
+ * compile here. The two correlated arms draw from `randomPrev` exactly once, before their
+ * own provider exists — the position of that draw is part of the output sequence (see the
+ * class's randomness contract).
+ */
+function providerFor(
+  distribution: Distribution,
+  randomPrev: RandomNumberProvider | null,
+  predecessor: Predecessor | null,
+): RandomNumberProvider {
+  return matchKind(distribution, {
+    uniform: (d) =>
+      RandomNumberProvider.createRandomNumberProvider_uniformDistribution(
+        asProviderParameter(d.lowerLimit),
+        asProviderParameter(d.upperLimit),
+      ),
+    gaussian: (d) =>
+      RandomNumberProvider.createRandomNumberProvider_gaussianDistribution(
+        asProviderParameter(d.standardDeviation),
+        asProviderParameter(d.lowerLimit),
+        asProviderParameter(d.upperLimit),
+      ),
+    triangular: (d) =>
+      RandomNumberProvider.createRandomNumberProvider_triangularDistribution(
+        asProviderParameter(d.lowerLimit),
+        asProviderParameter(d.upperLimit),
+        asProviderParameter(d.mode),
+        asProviderParameter(d.lowerClip),
+        asProviderParameter(d.upperClip),
+      ),
+    brownian: (d) => {
+      const handover = handoverValue(randomPrev, predecessor, d);
+      const random = RandomNumberProvider.createRandomNumberProvider_brownianNoiseDistribution(
+        asProviderParameter(d.maxStepWidth),
+        asProviderParameter(d.lowerLimit),
+        asProviderParameter(d.upperLimit),
+      );
+      applyHandover(handover, random);
+      return random;
+    },
+    compensatingTriangle: (d) => {
+      const handover = handoverValue(randomPrev, predecessor, d);
+      const random =
+        RandomNumberProvider.createRandomNumberProvider_compensatingTriangleDistribution(
+          asProviderParameter(d.degreeOfCorrelation),
+          asProviderParameter(d.lowerLimit),
+          asProviderParameter(d.upperLimit),
+          asProviderParameter(d.lowerClip),
+          asProviderParameter(d.upperClip),
+        );
+      applyHandover(handover, random);
+      return random;
+    },
+    list: (d) =>
+      RandomNumberProvider.createRandomNumberProvider_distributionList(d.distributionList),
+  });
+}
+
+/**
+ * The value a correlated distribution should continue from when it succeeds another
+ * one — drawn from the *previous* provider at the new distribution's own start date,
+ * so the two sequences meet without a discontinuity.
+ *
+ * Draws from `randomPrev` exactly once, and only when there is a predecessor to draw
+ * from. Both the count and the position of that draw are part of the output sequence
+ * (class doc). Returns null when there is no predecessor, which
+ * {@link applyHandover} then treats as "seed a fresh sequence".
+ *
+ * The date is read off the element with the namespace-tolerant `attribute()` rather than
+ * from the already-parsed `startDate`, and the two are not the same lookup — that is why
+ * {@link Distribution} keeps its source element.
+ */
+function handoverValue(
+  randomPrev: RandomNumberProvider | null,
+  predecessor: Predecessor | null,
+  next: Distribution,
+): number | null {
+  if (predecessor === null || randomPrev === null) return null;
+
+  const ddMsDateEndAtt = attribute('milliseconds.date', next.xml);
+  if (ddMsDateEndAtt === null) return null;
+
+  const ddMsDateEnd = parseFloat(ddMsDateEndAtt.getValue());
+  const endIndex = ddMsDateEnd / asProviderParameter(predecessor.timingBasisMs);
+  return randomPrev.getValue(endIndex);
+}
+
+/**
+ * Seed a correlated distribution's starting value: continue from `value` if a
+ * predecessor supplied one, otherwise start from a random point in the middle half of
+ * the provider's range (the `* 0.5` scale factor plus the `+ scaleFactor * 0.5`
+ * offset), so a fresh sequence does not begin pinned to a limit.
+ *
+ * The fallback uses `Math.random()`, not the provider — this is one of the places the
+ * class doc's "nondeterministic by design" caveat comes from.
+ */
+function applyHandover(value: number | null, random: RandomNumberProvider): void {
+  if (value !== null) {
+    random.setInitialValue(value);
+  } else {
+    const scaleFactor = (random.getUpperLimit() - random.getLowerLimit()) * 0.5;
+    const firstValue = Math.random() * scaleFactor + random.getLowerLimit() + scaleFactor * 0.5;
+    random.setInitialValue(firstValue);
+  }
+}
+
+/**
+ * The sampling grid this distribution's draws are indexed on.
+ *
+ * A declared `milliseconds.timingBasis` is used verbatim, **including a zero or negative
+ * one** — the `<= 0` fallback below guards only the *derived* value, and a declared 0
+ * makes the index infinite and the render throw, which is the ⊥ route
+ * `src/comparison/imprecisionLaws.ts` documents. Keeping that asymmetry is the reason for
+ * the early return rather than one combined test at the end.
+ *
+ * Where nothing is declared, the basis is derived from the family's own spread, and only
+ * in the timing domain, where a spread measured in milliseconds means something. Every
+ * other domain, and every derivation that comes out at zero or below, falls back to 100.
+ *
+ * `?? 0` is not a behaviour change from the incumbent's `upperLimit! - lowerLimit!`:
+ * subtraction ToNumber-coerces, `Number(null)` is 0, so `null - x`, `x - null` and
+ * `null - null` are already `0 - x`, `x - 0` and `0 - 0`. It is spelled out here because
+ * the same substitution is *not* safe at {@link asProviderParameter}, and the difference
+ * between the two sites is worth being able to see.
+ */
+function resolveTimingBasis(distribution: Distribution, isTimingDomain: boolean): number {
+  if (distribution.millisecondsTimingBasis !== null) return distribution.millisecondsTimingBasis;
+
+  const derived = isTimingDomain
+    ? matchKind<Distribution, number | null>(distribution, {
+        uniform: (d) => (d.upperLimit ?? 0) - (d.lowerLimit ?? 0),
+        gaussian: (d) => (d.upperLimit ?? 0) - (d.lowerLimit ?? 0),
+        brownian: (d) => (d.upperLimit ?? 0) - (d.lowerLimit ?? 0),
+        triangular: (d) => (d.upperClip ?? 0) - (d.lowerClip ?? 0),
+        compensatingTriangle: (d) => (d.upperClip ?? 0) - (d.lowerClip ?? 0),
+        list: (d) =>
+          mapPresent(minAndMaxOfDistributionList(d.distributionList), (mm) => mm.max - mm.min),
+      })
+    : null;
+
+  // `NaN <= 0` is false, so a malformed limit derives a NaN basis and keeps it — the
+  // incumbent's behaviour, and the one the index guard in `RandomNumberProvider` catches.
+  return derived === null || derived <= 0.0 ? 100.0 : derived;
+}
 
 /**
  * An MPM `imprecisionMap`: deliberate human inaccuracy — notes that land slightly early
@@ -28,7 +255,7 @@ import type { RenderContext } from '../../RenderOptions.js';
  * `continue`s that skip an entry must keep skipping its draw, the deferred
  * `pendingDurations` pass must stay after the main loop rather than being folded into
  * it, and the handover between successive correlated distributions
- * ({@link getHandoverValue} / {@link doHandover}, which draw exactly once) must keep its
+ * ({@link handoverValue} / {@link applyHandover}, which draw exactly once) must keep its
  * position. Note also that output is nondeterministic by design where no `seed` is given
  * — docs/history/refactor/CHARTER.md exempts this map from byte comparison for that reason, so the test suite
  * will *not* catch a desync here. Reason it through instead.
@@ -102,7 +329,7 @@ export class ImprecisionMap extends GenericMap {
     upperLimit: number,
     seed?: number | null,
   ): number {
-    const e = new Element(DistributionData.UNIFORM, MPM_NAMESPACE);
+    const e = new Element(DISTRIBUTION_UNIFORM, MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('limit.lower', String(lowerLimit)));
     e.addAttribute(new Attribute('limit.upper', String(upperLimit)));
@@ -117,7 +344,7 @@ export class ImprecisionMap extends GenericMap {
     upperLimit: number,
     seed?: number | null,
   ): number {
-    const e = new Element(DistributionData.GAUSSIAN, MPM_NAMESPACE);
+    const e = new Element(DISTRIBUTION_GAUSSIAN, MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('deviation.standard', String(standardDeviation)));
     e.addAttribute(new Attribute('limit.lower', String(lowerLimit)));
@@ -135,7 +362,7 @@ export class ImprecisionMap extends GenericMap {
     upperClip: number,
     seed?: number | null,
   ): number {
-    const e = new Element(DistributionData.TRIANGULAR, MPM_NAMESPACE);
+    const e = new Element(DISTRIBUTION_TRIANGULAR, MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('limit.lower', String(lowerLimit)));
     e.addAttribute(new Attribute('limit.upper', String(upperLimit)));
@@ -154,7 +381,7 @@ export class ImprecisionMap extends GenericMap {
     millisecondsTimingBasis: number,
     seed?: number | null,
   ): number {
-    const e = new Element(DistributionData.BROWNIAN, MPM_NAMESPACE);
+    const e = new Element(DISTRIBUTION_BROWNIAN, MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('stepWidth.max', String(maxStepWidth)));
     e.addAttribute(new Attribute('limit.lower', String(lowerLimit)));
@@ -174,7 +401,7 @@ export class ImprecisionMap extends GenericMap {
     millisecondsTimingBasis: number,
     seed?: number | null,
   ): number {
-    const e = new Element(DistributionData.COMPENSATING_TRIANGLE, MPM_NAMESPACE);
+    const e = new Element(DISTRIBUTION_COMPENSATING_TRIANGLE, MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(
       new Attribute('degreeOfCorrelation', String(Math.max(degreeOfCorrelation, 0.0))),
@@ -195,24 +422,32 @@ export class ImprecisionMap extends GenericMap {
   }
 
   /**
-   * Read the distribution at `index` into a {@link DistributionData}, or null if the
-   * entry is not a `distribution.*` element.
+   * Read the distribution at `index`, together with the span it governs.
    *
    * Unlike the other maps' `getXDataOf`, the end date is the date of the **immediately
    * following entry** whatever it is, rather than of the next entry of the same kind. A
    * distribution is therefore ended by any element in the map, not only by another
    * distribution.
+   *
+   * The three ways this can fail are three different things, and
+   * {@link renderImprecisionToMap} treats them differently, which is why they are named
+   * arms of {@link DistributionEntryProblem} rather than one `null`. The predecessor a
+   * correlated distribution hands over from is carried past a `notADistribution` entry
+   * unchanged, but is *replaced* by an `unknownFamily` one — behaviour inherited verbatim
+   * from the incumbent, where `dd = ddPrev` ran on the first path and not on the second.
    */
-  getDistributionDataOf(index: number): DistributionData | null {
+  distributionAt(index: number): Result<DistributionSpan, DistributionEntryProblem> {
     const i = this.clampEntryIndex(index);
-    if (i < 0) return null;
-    const e = this.getElement(i);
-    if (e !== null && e.getLocalName().startsWith('distribution.')) {
-      const dd = new DistributionData(e);
-      dd.endDate = i < this.size() - 1 ? this.elements[i + 1].getKey() : Number.MAX_VALUE;
-      return dd;
-    }
-    return null;
+    if (i < 0) return err({ kind: 'noEntry', index });
+
+    const e = this.elements[i].getValue();
+    const localName = e.getLocalName();
+    if (!localName.startsWith('distribution.')) return err({ kind: 'notADistribution', localName });
+
+    return mapOk(parseDistribution(e), (distribution) => ({
+      distribution,
+      endDate: i < this.size() - 1 ? this.elements[i + 1].getKey() : Number.MAX_VALUE,
+    }));
   }
 
   /**
@@ -224,15 +459,13 @@ export class ImprecisionMap extends GenericMap {
    * collection has finished. The `offsets` map is keyed by that shared date for exactly
    * this reason.
    *
-   * A distribution that fails to parse hands its predecessor back to `dd` (`dd = ddPrev`)
-   * before continuing, so the *next* correlated distribution still gets a valid handover
-   * partner and the sequence does not restart. That assignment looks redundant and is not.
+   * An entry that is not a distribution leaves {@link Predecessor} standing, so the *next*
+   * correlated distribution still gets a valid handover partner and the sequence does not
+   * restart. That looks redundant and is not — see {@link distributionAt} for the one kind
+   * of failure that does replace the predecessor.
    *
-   * `millisecondsTimingBasis` is the grid the random sequence is indexed on. When absent,
-   * it is derived from the distribution's own spread — but only in the timing domain,
-   * where a spread in milliseconds is meaningful — and otherwise falls back to 100.0.
-   * The fallback also catches a derived value of zero or less, which would make the
-   * index computation divide by zero.
+   * The timing basis is the grid the random sequence is indexed on; {@link resolveTimingBasis}
+   * derives one where the document declares none.
    *
    * `shakePolyphonicPart` addresses simultaneous notes: without it, every note of a chord
    * receives the same offset and the chord stays mechanically together. Shaking re-rolls
@@ -279,113 +512,51 @@ export class ImprecisionMap extends GenericMap {
     const pendingDurations: { endDate: number; msDateEnd: number; attribute: Attribute }[] = [];
     const offsets = new Map<number, KeyValue<number, Attribute>[]>();
     let mapIndex = 0;
-    let dd: DistributionData | null = null;
+    let predecessor: Predecessor | null = null;
     let random: RandomNumberProvider | null = null;
 
     for (let impIndex = 0; impIndex < this.size(); ++impIndex) {
-      const ddPrev: DistributionData | null = dd;
-
-      dd = this.getDistributionDataOf(impIndex);
-      if (dd === null) {
-        dd = ddPrev;
+      const entry = this.distributionAt(impIndex);
+      if (!entry.ok) {
+        // The three ways an entry is not a usable distribution, and what each leaves the
+        // next correlated distribution to hand over from. Written as a table so that the
+        // asymmetry — an unknown family REPLACES the predecessor, the other two do not —
+        // is stated rather than implied by which branch happens to omit an assignment.
+        predecessor = matchKind(entry.error, {
+          noEntry: () => predecessor,
+          notADistribution: () => predecessor,
+          unknownFamily: (e) => ({ timingBasisMs: e.millisecondsTimingBasis }),
+        });
         continue;
       }
+      const { distribution, endDate } = entry.value;
 
       // initialize the seed, generate correlated distribution functions
-      switch (dd.type) {
-        case DistributionData.UNIFORM:
-          random = RandomNumberProvider.createRandomNumberProvider_uniformDistribution(
-            dd.lowerLimit!,
-            dd.upperLimit!,
-          );
-          break;
-        case DistributionData.GAUSSIAN:
-          random = RandomNumberProvider.createRandomNumberProvider_gaussianDistribution(
-            dd.standardDeviation!,
-            dd.lowerLimit!,
-            dd.upperLimit!,
-          );
-          break;
-        case DistributionData.TRIANGULAR:
-          random = RandomNumberProvider.createRandomNumberProvider_triangularDistribution(
-            dd.lowerLimit!,
-            dd.upperLimit!,
-            dd.mode!,
-            dd.lowerClip!,
-            dd.upperClip!,
-          );
-          break;
-        case DistributionData.BROWNIAN: {
-          const imprecisionValueHandover = ImprecisionMap.getHandoverValue(random, ddPrev, dd);
-          random = RandomNumberProvider.createRandomNumberProvider_brownianNoiseDistribution(
-            dd.maxStepWidth!,
-            dd.lowerLimit!,
-            dd.upperLimit!,
-          );
-          ImprecisionMap.doHandover(imprecisionValueHandover, random);
-          break;
-        }
-        case DistributionData.COMPENSATING_TRIANGLE: {
-          const imprecisionValueHandover = ImprecisionMap.getHandoverValue(random, ddPrev, dd);
-          random = RandomNumberProvider.createRandomNumberProvider_compensatingTriangleDistribution(
-            dd.degreeOfCorrelation!,
-            dd.lowerLimit!,
-            dd.upperLimit!,
-            dd.lowerClip!,
-            dd.upperClip!,
-          );
-          ImprecisionMap.doHandover(imprecisionValueHandover, random);
-          break;
-        }
-        case DistributionData.LIST:
-          random = RandomNumberProvider.createRandomNumberProvider_distributionList(
-            dd.distributionList,
-          );
-          break;
-        default:
-          continue;
-      }
+      random = providerFor(distribution, random, predecessor);
 
       // A `seed` in the MPM always wins (RULE F7); `options.seed` supplies one only where
       // the MPM supplies none. With neither, the provider keeps its constructor's
       // Math.random() seed — today's behaviour, deliberately untouched.
-      if (dd.seed !== null) random.setSeed(dd.seed);
+      if (distribution.seed !== null) random.setSeed(distribution.seed);
       else if (ctx?.options.seed !== undefined)
         random.setSeed(deriveSeed(ctx.options.seed, ordinal, impIndex));
 
       // make sure that the timing resolution is specified, and if not, compute a reasonable value
-      if (dd.millisecondsTimingBasis === null) {
-        if (domain === ImprecisionMap.TIMING) {
-          switch (dd.type) {
-            case DistributionData.UNIFORM:
-            case DistributionData.GAUSSIAN:
-            case DistributionData.BROWNIAN:
-              dd.millisecondsTimingBasis = dd.upperLimit! - dd.lowerLimit!;
-              break;
-            case DistributionData.TRIANGULAR:
-            case DistributionData.COMPENSATING_TRIANGLE:
-              dd.millisecondsTimingBasis = dd.upperClip! - dd.lowerClip!;
-              break;
-            case DistributionData.LIST: {
-              const minMax = dd.getMinAndMaxValueInDistributionList();
-              if (minMax !== null) dd.millisecondsTimingBasis = minMax.getValue() - minMax.getKey();
-              break;
-            }
-            default:
-              break;
-          }
-        }
-        if (dd.millisecondsTimingBasis === null || dd.millisecondsTimingBasis <= 0.0)
-          dd.millisecondsTimingBasis = 100.0;
-      }
+      const timingBasisMs = resolveTimingBasis(distribution, domain === ImprecisionMap.TIMING);
+
+      // Only now, after the handover above has read the *previous* distribution's resolved
+      // basis. The incumbent got that ordering from writing the resolved value back into
+      // the `DistributionData` object the next iteration would see as `ddPrev`; the order
+      // of these two statements is what replaces that mutation.
+      predecessor = { timingBasisMs };
 
       // apply distribution to map elements
       for (; mapIndex < map.size(); ++mapIndex) {
         const mapEntry = map.elements[mapIndex];
 
-        if (mapEntry.getKey() < dd.startDate) continue;
+        if (mapEntry.getKey() < distribution.startDate) continue;
 
-        if (mapEntry.getKey() >= dd.endDate!) break;
+        if (mapEntry.getKey() >= endDate) break;
 
         const msDateAtt = attribute('milliseconds.date', mapEntry.getValue());
         if (msDateAtt === null) continue;
@@ -397,7 +568,7 @@ export class ImprecisionMap extends GenericMap {
         switch (domain) {
           case ImprecisionMap.TIMING: {
             msDate = parseFloat(msDateAtt.getValue());
-            index = msDate / dd.millisecondsTimingBasis;
+            index = msDate / timingBasisMs;
             offset = new KeyValue(random.getValue(index), msDateAtt);
 
             const msEndAtt = attribute('milliseconds.date.end', mapEntry.getValue());
@@ -417,7 +588,7 @@ export class ImprecisionMap extends GenericMap {
             const msEndAtt = attribute('milliseconds.date.end', mapEntry.getValue());
             if (msEndAtt !== null) {
               msDate = parseFloat(msEndAtt.getValue());
-              index = msDate / dd.millisecondsTimingBasis;
+              index = msDate / timingBasisMs;
               offset = new KeyValue(random.getValue(index), msEndAtt);
             } else {
               continue;
@@ -428,13 +599,13 @@ export class ImprecisionMap extends GenericMap {
             const velAtt = attribute('velocity', mapEntry.getValue());
             if (velAtt === null) continue;
             msDate = parseFloat(msDateAtt.getValue());
-            index = msDate / dd.millisecondsTimingBasis;
+            index = msDate / timingBasisMs;
             offset = new KeyValue(random.getValue(index), velAtt);
             break;
           }
           case ImprecisionMap.TUNING: {
             msDate = parseFloat(msDateAtt.getValue());
-            index = msDate / dd.millisecondsTimingBasis;
+            index = msDate / timingBasisMs;
             let tuneAtt = attribute('tuning.offset', mapEntry.getValue());
             if (tuneAtt === null) {
               tuneAtt = new Attribute('tuning.offset', '0.0');
@@ -447,7 +618,7 @@ export class ImprecisionMap extends GenericMap {
             continue;
         }
 
-        ImprecisionMap.addToOffsetsMap(offsets, msDate!, offset!);
+        ImprecisionMap.addToOffsetsMap(offsets, msDate, offset);
       }
 
       // Offset the milliseconds.date.end attributes: drain the leading run of pending
@@ -462,10 +633,10 @@ export class ImprecisionMap extends GenericMap {
       while (drained < pendingDurations.length) {
         const pd = pendingDurations[drained];
 
-        if (pd.endDate >= dd.endDate!) break;
+        if (pd.endDate >= endDate) break;
 
         const msDate = pd.msDateEnd;
-        const endIndex = msDate / dd.millisecondsTimingBasis;
+        const endIndex = msDate / timingBasisMs;
         const offset = new KeyValue(random.getValue(endIndex), pd.attribute);
         ImprecisionMap.addToOffsetsMap(offsets, msDate, offset);
 
@@ -494,50 +665,6 @@ export class ImprecisionMap extends GenericMap {
       offsetsMap.set(millisecondsDate, list);
     } else {
       list.push(offsetAndAttribute);
-    }
-  }
-
-  /**
-   * The value a correlated distribution should continue from when it succeeds another
-   * one — drawn from the *previous* provider at the new distribution's own start date,
-   * so the two sequences meet without a discontinuity.
-   *
-   * Draws from `randomPrev` exactly once, and only when there is a predecessor to draw
-   * from. Both the count and the position of that draw are part of the output sequence
-   * (class doc). Returns null when there is no predecessor, which
-   * {@link doHandover} then treats as "seed a fresh sequence".
-   */
-  private static getHandoverValue(
-    randomPrev: RandomNumberProvider | null,
-    ddPrev: DistributionData | null,
-    ddNext: DistributionData,
-  ): number | null {
-    if (ddPrev === null || randomPrev === null) return null;
-
-    const ddMsDateEndAtt = attribute('milliseconds.date', ddNext.xml);
-    if (ddMsDateEndAtt === null) return null;
-
-    const ddMsDateEnd = parseFloat(ddMsDateEndAtt.getValue());
-    const endIndex = ddMsDateEnd / ddPrev.millisecondsTimingBasis!;
-    return randomPrev.getValue(endIndex);
-  }
-
-  /**
-   * Seed a correlated distribution's starting value: continue from `value` if a
-   * predecessor supplied one, otherwise start from a random point in the middle half of
-   * the provider's range (the `* 0.5` scale factor plus the `+ scaleFactor * 0.5`
-   * offset), so a fresh sequence does not begin pinned to a limit.
-   *
-   * The fallback uses `Math.random()`, not the provider — this is one of the places the
-   * class doc's "nondeterministic by design" caveat comes from.
-   */
-  private static doHandover(value: number | null, random: RandomNumberProvider): void {
-    if (value !== null) {
-      random.setInitialValue(value);
-    } else {
-      const scaleFactor = (random.getUpperLimit() - random.getLowerLimit()) * 0.5;
-      const firstValue = Math.random() * scaleFactor + random.getLowerLimit() + scaleFactor * 0.5;
-      random.setInitialValue(firstValue);
     }
   }
 
