@@ -294,6 +294,9 @@ describe('OrnamentationMap', () => {
   // ---------------------------------------------------------------
   // OrnamentData
   // ---------------------------------------------------------------
+  // The `readOrnament` cases below used to build their data with a `new OrnamentData(xml)`
+  // constructor; see that helper's doc for what the two readers disagreed on. Nothing was
+  // weakened in the move — the same assertions run against the reader the renderer uses.
   describe('OrnamentData', () => {
     it('should have correct default values', () => {
       const od = new OrnamentData();
@@ -358,13 +361,13 @@ describe('OrnamentationMap', () => {
       expect(od.scale).toBe(3.0);
     });
 
-    it('should construct from XML element', () => {
+    it('should read date, name.ref and scale off an element', () => {
       const xml = new Element('ornament', Mpm.MPM_NAMESPACE);
       xml.addAttribute(new Attribute('date', '480'));
       xml.addAttribute(new Attribute('name.ref', 'turn'));
       xml.addAttribute(new Attribute('scale', '2.5'));
 
-      const od = new OrnamentData(xml);
+      const od = readOrnament(xml);
       expect(od.date).toBe(480);
       expect(od.ornamentDefName).toBe('turn');
       expect(od.scale).toBe(2.5);
@@ -378,7 +381,7 @@ describe('OrnamentationMap', () => {
         new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', 'orn-xml-1'),
       );
 
-      expect(new OrnamentData(xml).xmlId).toBe('orn-xml-1');
+      expect(readOrnament(xml).xmlId).toBe('orn-xml-1');
     });
 
     it('should leave xmlId null when the XML has no xml:id', () => {
@@ -386,7 +389,7 @@ describe('OrnamentationMap', () => {
       xml.addAttribute(new Attribute('date', '0'));
       xml.addAttribute(new Attribute('name.ref', 'trill'));
 
-      expect(new OrnamentData(xml).xmlId).toBeNull();
+      expect(readOrnament(xml).xmlId).toBeNull();
     });
 
     it('should leave scale at 0.0 when the XML has no scale', () => {
@@ -394,7 +397,7 @@ describe('OrnamentationMap', () => {
       xml.addAttribute(new Attribute('date', '960'));
       xml.addAttribute(new Attribute('name.ref', 'trill'));
 
-      const od = new OrnamentData(xml);
+      const od = readOrnament(xml);
       expect(od.scale).toBe(0.0);
       expect(od.date).toBe(960);
     });
@@ -405,7 +408,7 @@ describe('OrnamentationMap', () => {
       xml.addAttribute(new Attribute('name.ref', 'trill'));
       xml.addAttribute(new Attribute('note.order', '#note1 #note2'));
 
-      const od = new OrnamentData(xml);
+      const od = readOrnament(xml);
       expect(od.noteOrder).not.toBeNull();
       expect(od.noteOrder!.length).toBe(2);
       expect(od.noteOrder![0]).toBe('note1');
@@ -418,7 +421,7 @@ describe('OrnamentationMap', () => {
       xml.addAttribute(new Attribute('name.ref', 'trill'));
       xml.addAttribute(new Attribute('note.order', 'ascending pitch'));
 
-      const od = new OrnamentData(xml);
+      const od = readOrnament(xml);
       expect(od.noteOrder).not.toBeNull();
       expect(od.noteOrder!.length).toBe(1);
       expect(od.noteOrder![0]).toBe('ascending pitch');
@@ -430,7 +433,7 @@ describe('OrnamentationMap', () => {
       xml.addAttribute(new Attribute('name.ref', 'trill'));
       xml.addAttribute(new Attribute('note.order', 'descending pitch'));
 
-      const od = new OrnamentData(xml);
+      const od = readOrnament(xml);
       expect(od.noteOrder).not.toBeNull();
       expect(od.noteOrder!.length).toBe(1);
       expect(od.noteOrder![0]).toBe('descending pitch');
@@ -1307,7 +1310,7 @@ describe('OrnamentationMap', () => {
       xml.addAttribute(new Attribute('date', '480'));
       xml.addAttribute(new Attribute('name.ref', 'turn'));
 
-      const od = new OrnamentData(xml);
+      const od = readOrnament(xml);
       const clone = od.clone();
 
       expect(clone.xml).not.toBeNull();
@@ -1344,6 +1347,47 @@ function parseElement(xml: string): Element {
 /** parse an `<ornament>` given as source text */
 function ornamentElement(body: string): Element {
   return parseElement(`<ornament xmlns="${MPM_NS}" ${body}</ornament>`);
+}
+
+/**
+ * Read an `<ornament>` element the way the renderer does — through
+ * `OrnamentationMap.getOrnamentDataOf`, inside a map with a style in scope and a def the
+ * style knows.
+ *
+ * The cases below used to build their data with `readOrnament(xml)`. That constructor
+ * was deleted because nothing in `src/` called it and it disagreed with both live readers:
+ * it resolved neither the style nor the `ornamentDef`, where `getOrnamentDataOf` REFUSES an
+ * ornament missing either (`return null`) and `apply` skips it — so every object it built
+ * was in a state the renderer treats as unusable. It also dereferenced `@date` and
+ * `@name.ref` unguarded, throwing where both live readers decline.
+ *
+ * The five defs are every `name.ref` this file uses; they carry no transformers because
+ * these cases assert what was READ off the element, not what it renders to.
+ */
+function readOrnament(element: Element): OrnamentData {
+  const map = OrnamentationMap.createOrnamentationMap()!;
+  map.setHeaders(
+    null,
+    makeHeader(
+      ['arpeggio', 'spreadMs', 'trill', 'turn', 'upper turn'].map((name) =>
+        OrnamentDef.createOrnamentDef(name)!,
+      ),
+    ),
+  );
+  map.addStyleSwitch(0, 'orn style');
+  map.addElement(element);
+  // The `<style>` switch shares position 0 with a `date="0.0"` ornament, so scan rather than
+  // assume an index — and throw rather than return null, so a refusal is loud.
+  for (let i = 0; i < map.size(); ++i) {
+    const od = map.getOrnamentDataOf(i);
+    if (od !== null) return od;
+  }
+  throw new Error('getOrnamentDataOf refused the ornament');
+}
+
+/** {@link readOrnament} over an `<ornament>` given as source text. */
+function ornamentDataOf(body: string): OrnamentData {
+  return readOrnament(ornamentElement(body));
 }
 
 /** silence and capture console.error for one call */
@@ -1433,9 +1477,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
 
 describe('OrnamentData — v3 fields', () => {
   it('should default the v3 fields for a v2 ornament', () => {
-    const od = new OrnamentData(
-      ornamentElement('date="0.0" name.ref="arpeggio" note.order="#n1 #n2"/>'),
-    );
+    const od = ornamentDataOf('date="0.0" name.ref="arpeggio" note.order="#n1 #n2"/>');
     expect(od.notes).toEqual([]);
     expect(od.repetitions).toBe(0);
     expect(od.noteid).toBeNull();
@@ -1444,12 +1486,10 @@ describe('OrnamentData — v3 fields', () => {
 
   it('should read a note pool in document order', () => {
     // note.xml:60-64, the "upper turn"
-    const od = new OrnamentData(
-      ornamentElement(
-        'noteid="#princNote1" date="0.0" name.ref="upper turn" note.order="#n2 #princNote1 #n3 #princNote1">' +
-          '<note xml:id="n2" interval.chromatic="1.0"/>' +
-          '<note xml:id="n3" interval.chromatic="-1.0"/>',
-      ),
+    const od = ornamentDataOf(
+      'noteid="#princNote1" date="0.0" name.ref="upper turn" note.order="#n2 #princNote1 #n3 #princNote1">' +
+        '<note xml:id="n2" interval.chromatic="1.0"/>' +
+        '<note xml:id="n3" interval.chromatic="-1.0"/>',
     );
     expect(od.notes.map((n) => n.id)).toEqual(['n2', 'n3']);
     expect(od.notes[0].pitchSpec).toEqual({ kind: 'chromatic', value: 1.0 });
@@ -1460,28 +1500,24 @@ describe('OrnamentData — v3 fields', () => {
     // the schematron asserts @noteid[starts-with(., '#')], so the two spellings are not
     // interchangeable in the document; normalising on read would repair what a validator
     // rejects, and would change bytes the author wrote
-    const withHash = new OrnamentData(
-      ornamentElement('date="0.0" name.ref="trill" noteid="#princNote"/>'),
-    );
+    const withHash = ornamentDataOf('date="0.0" name.ref="trill" noteid="#princNote"/>');
     expect(withHash.noteid).toBe('#princNote');
     expect(withHash.getPrincipalNoteId()).toBe('princNote');
 
-    const withoutHash = new OrnamentData(
-      ornamentElement('date="0.0" name.ref="trill" noteid="princNote"/>'),
-    );
+    const withoutHash = ornamentDataOf('date="0.0" name.ref="trill" noteid="princNote"/>');
     expect(withoutHash.noteid).toBe('princNote');
     expect(withoutHash.getPrincipalNoteId()).toBe('princNote');
   });
 
   it('should read repetitions', () => {
     // ornament.xml:66-72: repetitions="3" means the group is played FOUR times
-    const od = new OrnamentData(ornamentElement('date="720.0" name.ref="trill" repetitions="3"/>'));
+    const od = ornamentDataOf('date="720.0" name.ref="trill" repetitions="3"/>');
     expect(od.repetitions).toBe(3);
   });
 
   it('should accept the -1 fill-the-frame extension', () => {
     // schema-invalid (minInclusive 0) but an established meico extension, DESIGN.md D9
-    const od = new OrnamentData(ornamentElement('date="0.0" name.ref="trill" repetitions="-1"/>'));
+    const od = ornamentDataOf('date="0.0" name.ref="trill" repetitions="-1"/>');
     expect(od.repetitions).toBe(-1);
   });
 
@@ -1493,9 +1529,7 @@ describe('OrnamentData — v3 fields', () => {
     for (const value of ['many', '', '-2', 'NaN', '0x10']) {
       let od: OrnamentData | null = null;
       const messages = captureErrors(() => {
-        od = new OrnamentData(
-          ornamentElement(`date="0.0" name.ref="trill" repetitions="${value}"/>`),
-        );
+        od = ornamentDataOf(`date="0.0" name.ref="trill" repetitions="${value}"/>`);
       });
       expect(od!.repetitions).toBe(0);
       expect(messages.join('\n')).toContain('no usable repeat count');
@@ -1505,19 +1539,17 @@ describe('OrnamentData — v3 fields', () => {
   it('should read Java’s own numeric spellings of a repeat count', () => {
     // `3d` is a legal Java double literal and `Number('3d')` is NaN, so this row moved from
     // "unusable, default 0" to "three extra passes" with the D16 switch.
-    const od = new OrnamentData(ornamentElement('date="0.0" name.ref="trill" repetitions="3d"/>'));
+    const od = ornamentDataOf('date="0.0" name.ref="trill" repetitions="3d"/>');
     expect(od.repetitions).toBe(3);
   });
 
   it('should skip a pool note without an xml:id and log it', () => {
     let od: OrnamentData | null = null;
     const messages = captureErrors(() => {
-      od = new OrnamentData(
-        ornamentElement(
-          'date="0.0" name.ref="turn" note.order="#n2">' +
-            '<note xml:id="n2" interval.chromatic="1.0"/>' +
-            '<note interval.chromatic="-1.0"/>',
-        ),
+      od = ornamentDataOf(
+        'date="0.0" name.ref="turn" note.order="#n2">' +
+          '<note xml:id="n2" interval.chromatic="1.0"/>' +
+          '<note interval.chromatic="-1.0"/>',
       );
     });
     expect(od!.notes.map((n) => n.id)).toEqual(['n2']);
@@ -1525,10 +1557,8 @@ describe('OrnamentData — v3 fields', () => {
   });
 
   it('should ignore children that are not notes', () => {
-    const od = new OrnamentData(
-      ornamentElement(
-        'date="0.0" name.ref="turn"><note xml:id="n2"/><comment/><note xml:id="n3"/>',
-      ),
+    const od = ornamentDataOf(
+      'date="0.0" name.ref="turn"><note xml:id="n2"/><comment/><note xml:id="n3"/>',
     );
     expect(od.notes.map((n) => n.id)).toEqual(['n2', 'n3']);
   });
@@ -1550,7 +1580,7 @@ describe('OrnamentData — v3 fields', () => {
       ornament.appendChild(child);
     }
 
-    const od = new OrnamentData(ornament);
+    const od = readOrnament(ornament);
     expect(od.notes.length).toBe(2000);
     expect(od.notes[1999].id).toBe('n1999');
   });
@@ -1558,30 +1588,26 @@ describe('OrnamentData — v3 fields', () => {
   it('should keep note.order as written alongside the flat v2 view', () => {
     // the flat array is lossy by construction: stripping every '#' makes an id and a
     // repeat mark indistinguishable, so re-prefixing on the way out would write "#:|"
-    const od = new OrnamentData(
-      ornamentElement('date="0.0" name.ref="trill" note.order="|: #n1 #princNote :|"/>'),
-    );
+    const od = ornamentDataOf('date="0.0" name.ref="trill" note.order="|: #n1 #princNote :|"/>');
     expect(od.noteOrderText).toBe('|: #n1 #princNote :|');
     expect(od.noteOrder).toEqual(['|:', 'n1', 'princNote', ':|']);
     expect(od.clone().noteOrderText).toBe('|: #n1 #princNote :|');
   });
 
   it('should leave noteOrderText null when the attribute is absent', () => {
-    const od = new OrnamentData(ornamentElement('date="0.0" name.ref="trill"/>'));
+    const od = ornamentDataOf('date="0.0" name.ref="trill"/>');
     expect(od.noteOrderText).toBeNull();
   });
 
   it('should keep note.order verbatim, untrimmed', () => {
-    const od = new OrnamentData(
-      ornamentElement('date="0.0" name.ref="trill" note.order=" #n1 #n2 "/>'),
-    );
+    const od = ornamentDataOf('date="0.0" name.ref="trill" note.order=" #n1 #n2 "/>');
     expect(od.noteOrderText).toBe(' #n1 #n2 ');
     expect(od.noteOrder).toEqual(['n1', 'n2']); // the v2 view trims, as it always has
   });
 
   it('should carry the v3 fields through clone', () => {
-    const od = new OrnamentData(
-      ornamentElement('date="0.0" name.ref="turn" noteid="#p" repetitions="2"><note xml:id="n2"/>'),
+    const od = ornamentDataOf(
+      'date="0.0" name.ref="turn" noteid="#p" repetitions="2"><note xml:id="n2"/>',
     );
     const c = od.clone();
     expect(c.noteid).toBe('#p');
@@ -1932,7 +1958,7 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
     });
     const source = m.getElement(0)!.toXML();
 
-    const od = new OrnamentData(m.getElement(0)!);
+    const od = readOrnament(m.getElement(0)!);
     const m2 = OrnamentationMap.createOrnamentationMap()!;
     m2.addOrnamentFromData(od);
 
