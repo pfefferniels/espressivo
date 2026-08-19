@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   ImprecisionMap,
+  providerFor,
+  resolveTimingBasis,
   type DistributionSpan,
 } from '../../../src/mpm/elements/maps/ImprecisionMap.js';
 import {
@@ -17,7 +19,8 @@ import {
 } from '../../../src/mpm/elements/maps/data/distribution.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { KeyValue } from '../../../src/supplementary/KeyValue.js';
-import { Element, Attribute } from '../../../src/xml/XomTypes.js';
+import { Builder, Element, Attribute } from '../../../src/xml/XomTypes.js';
+import { RandomNumberProvider } from '../../../src/supplementary/RandomNumberProvider.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 
 /**
@@ -551,6 +554,187 @@ describe('ImprecisionMap', () => {
     });
   });
 
+  /**
+   * A distribution element from its XML text, so that the six families' attribute sets can
+   * be written the way a document writes them rather than assembled attribute by attribute.
+   */
+  const elementFromXml = (xml: string): Element => new Builder().build(xml).getRootElement();
+
+  // ---------------------------------------------------------------
+  // providerFor
+  //
+  // Six positional factory signatures, transcribed six times. Nothing downstream would
+  // notice a triangular built with its `mode` and `clip.lower` the wrong way round — it
+  // still draws plausible numbers — so the parameters are read straight back off the
+  // provider here rather than inferred from a rendered date.
+  // ---------------------------------------------------------------
+  describe('providerFor', () => {
+    const provider = (xml: string): RandomNumberProvider => {
+      const parsed = parseDistribution(elementFromXml(xml));
+      assume(parsed.ok);
+      return providerFor(parsed.value, null, null);
+    };
+
+    it('uniform: the two limits', () => {
+      const p = provider('<distribution.uniform limit.lower="-20" limit.upper="30"/>');
+      expect(p.getDistributionType()).toBe(RandomNumberProvider.DISTRIBUTION_UNIFORM);
+      expect(p.getLowerLimit()).toBe(-20);
+      expect(p.getUpperLimit()).toBe(30);
+    });
+
+    it('gaussian: the deviation and the two limits', () => {
+      const p = provider(
+        '<distribution.gaussian deviation.standard="3.5" limit.lower="-15" limit.upper="15"/>',
+      );
+      expect(p.getDistributionType()).toBe(RandomNumberProvider.DISTRIBUTION_GAUSSIAN);
+      expect(p.getStandardDeviation()).toBe(3.5);
+      expect(p.getLowerLimit()).toBe(-15);
+      expect(p.getUpperLimit()).toBe(15);
+    });
+
+    it('triangular: limits, mode and the two clips, each in its own slot', () => {
+      const p = provider(
+        '<distribution.triangular limit.lower="-20" limit.upper="20" mode="5" clip.lower="-15" clip.upper="12"/>',
+      );
+      expect(p.getDistributionType()).toBe(RandomNumberProvider.DISTRIBUTION_TRIANGULAR);
+      expect(p.getLowerLimit()).toBe(-20);
+      expect(p.getUpperLimit()).toBe(20);
+      expect(p.getMode()).toBe(5);
+      expect(p.getLowCut()).toBe(-15);
+      expect(p.getHighCut()).toBe(12);
+    });
+
+    it('brownian noise: the step width and the two limits', () => {
+      const p = provider(
+        '<distribution.correlated.brownianNoise stepWidth.max="2.5" limit.lower="-10" limit.upper="11"/>',
+      );
+      expect(p.getDistributionType()).toBe(
+        RandomNumberProvider.DISTRIBUTION_CORRELATED_BROWNIANNOISE,
+      );
+      expect(p.getMaxStepWidth()).toBe(2.5);
+      expect(p.getLowerLimit()).toBe(-10);
+      expect(p.getUpperLimit()).toBe(11);
+    });
+
+    it('compensating triangle: the correlation, the limits and the two clips', () => {
+      const p = provider(
+        '<distribution.correlated.compensatingTriangle degreeOfCorrelation="0.8" limit.lower="-10" limit.upper="11" clip.lower="-5" clip.upper="6"/>',
+      );
+      expect(p.getDistributionType()).toBe(
+        RandomNumberProvider.DISTRIBUTION_CORRELATED_COMPENSATING_TRIANGLE,
+      );
+      expect(p.getDegreeOfCorrelation()).toBe(0.8);
+      expect(p.getLowerLimit()).toBe(-10);
+      expect(p.getUpperLimit()).toBe(11);
+      expect(p.getLowCut()).toBe(-5);
+      expect(p.getHighCut()).toBe(6);
+    });
+
+    it('list: the measurements become the series, read cyclically', () => {
+      const p = provider(
+        '<distribution.list><measurement value="-3"/><measurement value="7"/></distribution.list>',
+      );
+      expect(p.getDistributionType()).toBe(RandomNumberProvider.DISTRIBUTION_LIST);
+      expect(p.getValue(0)).toBe(-3);
+      expect(p.getValue(1)).toBe(7);
+      expect(p.getValue(2)).toBe(-3);
+    });
+
+    // The load-bearing one. An absent parameter must reach the provider as `null`, not as
+    // 0: that null is what makes a clip-less triangular perform exactly no imprecision
+    // (`clip()` returns the null, the write-back's `attValue + null` is `attValue`), and it
+    // is what `src/comparison/imprecisionLaws.ts` tabulates the whole degenerate table from.
+    // `?? 0` at that boundary would also change a strict `upperLimit === lowerLimit` in the
+    // provider's own triangular draw.
+    it('hands an absent parameter through as null, not as 0', () => {
+      const p = provider('<distribution.triangular limit.lower="-20" limit.upper="20"/>');
+      expect(p.getMode()).toBeNull();
+      expect(p.getLowCut()).toBeNull();
+      expect(p.getHighCut()).toBeNull();
+      // ... and the declared ones are still numbers, so this is not vacuous.
+      expect(p.getLowerLimit()).toBe(-20);
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // resolveTimingBasis
+  //
+  // Tested here and not through a rendered date because the comparison module keeps its
+  // own independent copy of this derivation (`src/comparison/imprecisionLaws.ts`), and a
+  // test that reads a timing basis through that reader cannot see a mistake in this one.
+  // ---------------------------------------------------------------
+  describe('resolveTimingBasis', () => {
+    const basisOf = (xml: string, isTiming = true): number => {
+      const parsed = parseDistribution(elementFromXml(xml));
+      assume(parsed.ok);
+      return resolveTimingBasis(parsed.value, isTiming);
+    };
+
+    it('uses a declared basis verbatim', () => {
+      expect(basisOf('<distribution.uniform milliseconds.timingBasis="250"/>')).toBe(250);
+    });
+
+    it('uses a declared basis verbatim even when it is zero or negative', () => {
+      // Deliberate: the `<= 0` fallback below guards the DERIVED value only. A declared 0
+      // makes the index infinite and the render throw, which is the ⊥ route
+      // `src/comparison/imprecisionLaws.ts` documents.
+      expect(basisOf('<distribution.uniform milliseconds.timingBasis="0"/>')).toBe(0);
+      expect(basisOf('<distribution.uniform milliseconds.timingBasis="-40"/>')).toBe(-40);
+    });
+
+    it('derives from the LIMITS for uniform, gaussian and brownian noise', () => {
+      expect(basisOf('<distribution.uniform limit.lower="-30" limit.upper="30"/>')).toBe(60);
+      expect(basisOf('<distribution.gaussian limit.lower="-5" limit.upper="20" mode="999"/>')).toBe(
+        25,
+      );
+      expect(
+        basisOf('<distribution.correlated.brownianNoise limit.lower="-4" limit.upper="6"/>'),
+      ).toBe(10);
+    });
+
+    it('derives from the CLIPS for triangular and compensating triangle', () => {
+      // The limits are deliberately a different width from the clips, so a derivation that
+      // reached for the wrong pair would produce the wrong number rather than the same one.
+      expect(
+        basisOf(
+          '<distribution.triangular limit.lower="-100" limit.upper="100" clip.lower="-30" clip.upper="30"/>',
+        ),
+      ).toBe(60);
+      expect(
+        basisOf(
+          '<distribution.correlated.compensatingTriangle limit.lower="-100" limit.upper="100" clip.lower="-8" clip.upper="8"/>',
+        ),
+      ).toBe(16);
+    });
+
+    it('derives from the extent of the measurements for a list', () => {
+      expect(
+        basisOf(
+          '<distribution.list><measurement value="-3"/><measurement value="7"/><measurement value="1"/></distribution.list>',
+        ),
+      ).toBe(10);
+    });
+
+    it('falls back to 100 outside the timing domain, whatever the spread', () => {
+      expect(basisOf('<distribution.uniform limit.lower="-30" limit.upper="30"/>', false)).toBe(
+        100,
+      );
+    });
+
+    it('falls back to 100 where the derivation comes out at zero or below', () => {
+      expect(basisOf('<distribution.uniform/>')).toBe(100);
+      expect(basisOf('<distribution.uniform limit.lower="30" limit.upper="-30"/>')).toBe(100);
+      expect(basisOf('<distribution.list/>')).toBe(100);
+      expect(basisOf('<distribution.triangular limit.lower="-30" limit.upper="30"/>')).toBe(100);
+    });
+
+    it('keeps a NaN derivation rather than falling back', () => {
+      // `NaN <= 0` is false, so the fallback does not catch it — the incumbent's behaviour,
+      // and the one `RandomNumberProvider.requireUsableIndex` is there to reject.
+      expect(basisOf('<distribution.uniform limit.lower="abc" limit.upper="30"/>')).toBeNaN();
+    });
+  });
+
   // ---------------------------------------------------------------
   // minAndMaxOfDistributionList
   // ---------------------------------------------------------------
@@ -604,13 +788,20 @@ describe('ImprecisionMap', () => {
     const handoverProbe = (middle: 'unknown' | 'style'): (() => void) => {
       const map = ImprecisionMap.createImprecisionMap('timing')!;
       map.addDistributionBrownianNoise(0, 2, -10, 10, 500, 7);
-      if (middle === 'unknown') {
-        const foo = new Element('distribution.wibble', Mpm.MPM_NAMESPACE);
-        foo.addAttribute(new Attribute('date', '720'));
-        map.addElement(foo);
-      } else {
-        map.addStyleSwitch(720, 'some style');
-      }
+      // Both middles go in through `addElement`, which places by date. `addStyleSwitch`
+      // would not do: `insertElement(…, firstAtDate = true)` scans forward for the first
+      // entry at or after the new date and, finding none, falls through to index 0 — so a
+      // style switch later than every existing entry lands FIRST. That is a pre-existing
+      // ordering defect in `GenericMap`, unrelated to this file, and it would silently
+      // move the middle entry out from between the two distributions this probe needs it
+      // between.
+      const middleElement =
+        middle === 'unknown'
+          ? new Element('distribution.wibble', Mpm.MPM_NAMESPACE)
+          : new Element('style', Mpm.MPM_NAMESPACE);
+      if (middle === 'style') middleElement.addAttribute(new Attribute('name.ref', 'a style'));
+      middleElement.addAttribute(new Attribute('date', '720'));
+      map.addElement(middleElement);
       map.addDistributionBrownianNoise(1440, 2, -10, 10, 500, 9);
       // The handover reads the successor's own `milliseconds.date`, which the renderer
       // stamps on before this map runs.

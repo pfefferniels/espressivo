@@ -56,7 +56,7 @@ export type DistributionEntryProblem =
  * element becomes a predecessor before any basis has been resolved for it, and null is
  * what the incumbent then divided by. See {@link UnknownDistributionFamily}.
  */
-interface Predecessor {
+export interface Predecessor {
   readonly timingBasisMs: number | null;
 }
 
@@ -94,8 +94,13 @@ function asProviderParameter(value: number | null): number {
  * compile here. The two correlated arms draw from `randomPrev` exactly once, before their
  * own provider exists — the position of that draw is part of the output sequence (see the
  * class's randomness contract).
+ *
+ * Exported for the tests rather than for callers: this table is six transcriptions of six
+ * positional factory signatures, which is precisely the kind of thing that can be wrong in
+ * a way no end-to-end assertion notices — swapping a triangular's `mode` and `clip.lower`
+ * still renders plausible numbers. The suite reads the parameters back off the provider.
  */
-function providerFor(
+export function providerFor(
   distribution: Distribution,
   randomPrev: RandomNumberProvider | null,
   predecessor: Predecessor | null,
@@ -209,13 +214,18 @@ function applyHandover(value: number | null, random: RandomNumberProvider): void
  * in the timing domain, where a spread measured in milliseconds means something. Every
  * other domain, and every derivation that comes out at zero or below, falls back to 100.
  *
+ * Exported for the tests, for the reason {@link providerFor} gives: the comparison module
+ * has its own independent copy of this derivation (`src/comparison/imprecisionLaws.ts`),
+ * so a test that reads a timing basis through *that* reader cannot see a mistake in this
+ * one.
+ *
  * `?? 0` is not a behaviour change from the incumbent's `upperLimit! - lowerLimit!`:
  * subtraction ToNumber-coerces, `Number(null)` is 0, so `null - x`, `x - null` and
  * `null - null` are already `0 - x`, `x - 0` and `0 - 0`. It is spelled out here because
  * the same substitution is *not* safe at {@link asProviderParameter}, and the difference
  * between the two sites is worth being able to see.
  */
-function resolveTimingBasis(distribution: Distribution, isTimingDomain: boolean): number {
+export function resolveTimingBasis(distribution: Distribution, isTimingDomain: boolean): number {
   if (distribution.millisecondsTimingBasis !== null) return distribution.millisecondsTimingBasis;
 
   const derived = isTimingDomain
