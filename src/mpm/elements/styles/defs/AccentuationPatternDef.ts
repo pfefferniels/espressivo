@@ -30,7 +30,7 @@ export class AccentuationPatternDef extends AbstractDef {
     super();
   }
 
-  private parseDataInternal(xml: Element): void {
+  protected override parseData(xml: Element): void {
     super.parseData(xml);
 
     let lengthAttr = attribute('length', xml);
@@ -68,10 +68,6 @@ export class AccentuationPatternDef extends AbstractDef {
     }
   }
 
-  protected override parseData(xml: Element): void {
-    this.parseDataInternal(xml);
-  }
-
   /**
    * Create a pattern from a name and length (optionally with an id), or by parsing an
    * existing element. Returns null — after logging — instead of throwing.
@@ -93,10 +89,10 @@ export class AccentuationPatternDef extends AbstractDef {
         const e = new Element('accentuationPatternDef', MPM_NAMESPACE);
         e.addAttribute(new Attribute('name', nameOrXml));
         e.addAttribute(new Attribute('length', String(length)));
-        apd.parseDataInternal(e);
+        apd.parseData(e);
         if (id !== undefined) apd.setId(id);
       } else {
-        apd.parseDataInternal(nameOrXml);
+        apd.parseData(nameOrXml);
       }
       return apd;
     } catch (e) {

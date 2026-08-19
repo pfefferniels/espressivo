@@ -42,7 +42,7 @@ export class OrnamentDef extends AbstractDef {
    * treated as absent, so a malformed attribute here still lets a well-formed one on the
    * spread through rather than silently forcing the default.
    */
-  private parseDataInternal(xml: Element): void {
+  protected override parseData(xml: Element): void {
     super.parseData(xml);
     for (const transformer of allChildElements(xml)) {
       switch (transformer.getLocalName()) {
@@ -76,10 +76,6 @@ export class OrnamentDef extends AbstractDef {
     }
   }
 
-  protected override parseData(xml: Element): void {
-    this.parseDataInternal(xml);
-  }
-
   /**
    * Create a def either from a name — with no transformers yet — or by parsing an existing
    * element. Returns null after logging instead of throwing.
@@ -92,9 +88,9 @@ export class OrnamentDef extends AbstractDef {
       if (typeof nameOrXml === 'string') {
         const e = new Element('ornamentDef', MPM_NAMESPACE);
         e.addAttribute(new Attribute('name', nameOrXml));
-        od.parseDataInternal(e);
+        od.parseData(e);
       } else {
-        od.parseDataInternal(nameOrXml);
+        od.parseData(nameOrXml);
       }
       return od;
     } catch (e) {

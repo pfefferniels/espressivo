@@ -44,7 +44,7 @@ export class ArticulationDef extends AbstractDef {
    * Java also renames a foreign element to `articulationDef` via `setLocalName()`, which
    * XomTypes cannot do; see the same note on `TempoDef`.
    */
-  private parseDataInternal(xml: Element): void {
+  protected override parseData(xml: Element): void {
     super.parseData(xml);
 
     // null = attribute absent, so the field keeps its default. Present but unparsable is not
@@ -72,10 +72,6 @@ export class ArticulationDef extends AbstractDef {
     this.detuneHz = numeric('detuneHz') ?? this.detuneHz;
   }
 
-  protected override parseData(xml: Element): void {
-    this.parseDataInternal(xml);
-  }
-
   /**
    * Create a def either from a name — with every effect at its neutral default — or by
    * parsing an existing element. Returns null after logging instead of throwing.
@@ -88,9 +84,9 @@ export class ArticulationDef extends AbstractDef {
       if (typeof nameOrXml === 'string') {
         const e = new Element('articulationDef', MPM_NAMESPACE);
         e.addAttribute(new Attribute('name', nameOrXml));
-        ad.parseDataInternal(e);
+        ad.parseData(e);
       } else {
-        ad.parseDataInternal(nameOrXml);
+        ad.parseData(nameOrXml);
       }
       return ad;
     } catch (e) {

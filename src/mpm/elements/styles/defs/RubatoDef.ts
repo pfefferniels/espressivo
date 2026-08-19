@@ -31,7 +31,7 @@ export class RubatoDef extends AbstractDef {
     super();
   }
 
-  private parseDataInternal(xml: Element): void {
+  protected override parseData(xml: Element): void {
     super.parseData(xml);
 
     const frameLengthAttr = attribute('frameLength', xml);
@@ -78,10 +78,6 @@ export class RubatoDef extends AbstractDef {
     this.earlyEnd = le.getValue();
   }
 
-  protected override parseData(xml: Element): void {
-    this.parseDataInternal(xml);
-  }
-
   /**
    * Create a def from a name plus frame length (optionally with the full shape), or by
    * parsing an existing element. Returns null — after logging — instead of throwing, e.g.
@@ -115,9 +111,9 @@ export class RubatoDef extends AbstractDef {
           e.addAttribute(new Attribute('lateStart', String(lateStart)));
           e.addAttribute(new Attribute('earlyEnd', String(earlyEnd)));
         }
-        rd.parseDataInternal(e);
+        rd.parseData(e);
       } else {
-        rd.parseDataInternal(nameOrXml);
+        rd.parseData(nameOrXml);
       }
       return rd;
     } catch (e) {

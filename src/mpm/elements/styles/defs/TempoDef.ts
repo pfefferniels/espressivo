@@ -25,17 +25,17 @@ export class TempoDef extends AbstractDef {
     const e = new Element('tempoDef', MPM_NAMESPACE);
     e.addAttribute(new Attribute('name', name));
     e.addAttribute(new Attribute('value', String(value)));
-    td.parseDataInternal(e);
+    td.parseData(e);
     return td;
   }
 
   private static fromXml(xml: Element): TempoDef {
     const td = new TempoDef();
-    td.parseDataInternal(xml);
+    td.parseData(xml);
     return td;
   }
 
-  private parseDataInternal(xml: Element): void {
+  protected override parseData(xml: Element): void {
     super.parseData(xml);
 
     const valueAttr = attribute('value', xml);
@@ -46,10 +46,6 @@ export class TempoDef extends AbstractDef {
     // createTempoDef turns that into null, so the style skips the def. See PARITY.md,
     // "Fixed bugs", P1 — `parseFloat` used to keep a NaN-valued def instead.
     this.value = parseJavaDouble(valueAttr.getValue(), 'tempoDef/@value');
-  }
-
-  protected override parseData(xml: Element): void {
-    this.parseDataInternal(xml);
   }
 
   /**

@@ -21,17 +21,17 @@ export class DynamicsDef extends AbstractDef {
     const e = new Element('dynamicsDef', MPM_NAMESPACE);
     e.addAttribute(new Attribute('name', name));
     e.addAttribute(new Attribute('value', String(value)));
-    dd.parseDataInternal(e);
+    dd.parseData(e);
     return dd;
   }
 
   private static fromXml(xml: Element): DynamicsDef {
     const dd = new DynamicsDef();
-    dd.parseDataInternal(xml);
+    dd.parseData(xml);
     return dd;
   }
 
-  private parseDataInternal(xml: Element): void {
+  protected override parseData(xml: Element): void {
     super.parseData(xml);
     const valueAttr = attribute('value', xml);
     if (valueAttr === null)
@@ -39,10 +39,6 @@ export class DynamicsDef extends AbstractDef {
     // Malformed value => throw => createDynamicsDef returns null => the style skips the def,
     // as in Java (DynamicsDef.java:88). PARITY.md, "Fixed bugs", P1.
     this.value = parseJavaDouble(valueAttr.getValue(), 'dynamicsDef/@value');
-  }
-
-  protected override parseData(xml: Element): void {
-    this.parseDataInternal(xml);
   }
 
   /**

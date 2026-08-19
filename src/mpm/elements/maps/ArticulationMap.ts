@@ -124,7 +124,7 @@ export class ArticulationMap extends GenericMap {
     }
 
     // null = attribute absent, so the field keeps its default. Same twelve names and the
-    // same shape as ArticulationDef.parseDataInternal, but reading through `parseFloat`
+    // same shape as ArticulationDef.parseData, but reading through `parseFloat`
     // rather than `parseJavaDouble`: a def can be skipped by the factory above it, an
     // articulation entry cannot, so there is nowhere for a NumberFormatError to go. That
     // makes this one of the map-level reads PARITY.md's P1 entry names as still open.

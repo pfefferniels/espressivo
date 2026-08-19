@@ -14,8 +14,17 @@ export abstract class AbstractDef extends AbstractXmlSubtree {
   protected name!: Attribute;
 
   /**
-   * Subclasses call this first from their own parse step; afterwards {@link getXml}
-   * returns the very element passed in here.
+   * Subclasses call this first from their own `parseData` override; afterwards
+   * {@link getXml} returns the very element passed in here.
+   *
+   * The six subclasses each used to carry *two* methods here — a `private
+   * parseDataInternal` doing the real work and a `protected override parseData` whose
+   * whole body was `this.parseDataInternal(xml)`. Every factory called the private one
+   * directly, so the override was unreachable, and deleting it alone would have quietly
+   * downgraded five unit tests to exercising this base implementation instead of the
+   * subclass's parser. Folding the two into one `protected override parseData` deletes
+   * the indirection, keeps those tests pointed at the code they name, and leaves the defs
+   * spelled exactly like their `GenericStyle` siblings.
    */
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate AbstractDef object. XML Element is null.');

@@ -65,6 +65,10 @@ describe('DynamicsDef', () => {
     });
   });
 
+  // `parseData` is the parser the static factories call — the forwarding override that
+  // used to sit in front of it is gone. Re-applying it to a second element is not a path
+  // production takes; what the test is for is the parse itself, and re-application is
+  // simply the only way to observe it separately from construction.
   describe('parseData', () => {
     it('re-reads name, value and xml when applied to another element', () => {
       const dd = DynamicsDef.createDynamicsDef('forte', 97.0)!;
