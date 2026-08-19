@@ -90,8 +90,11 @@ export class RubatoMap extends GenericMap {
    * frame there is nothing to warp, so that case is a hard reject rather than a default.
    *
    * Each of `frameLength`, `intensity`, `lateStart` and `earlyEnd` is taken from the
-   * element if present and otherwise inherited from the referenced `rubatoDef`; see the
-   * note in {@link RubatoData}'s constructor on why the parsed nulls are load-bearing.
+   * element if present and otherwise inherited from the referenced `rubatoDef`. Where
+   * neither supplies a value the field keeps {@link RubatoData}'s own initializer, and
+   * for the last three that initializer (1.0/0.0/1.0) *is* the identity warp — so the
+   * absence of both sources is a no-op rather than an error. `frameLength` is the
+   * exception, and the null return above is why.
    *
    * The final clamps keep the warp window valid: `lateStart` is floored at 0,
    * `earlyEnd` capped at 1, and a window that is inverted or empty
