@@ -3,7 +3,17 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     globals: true,
-    testTimeout: 30000,
+    // 30s was too tight, and the failure mode was the worst kind: under concurrent load a
+    // DIFFERENT test times out on each run, always as a timeout and never as an assertion, so
+    // it reads as a real regression and costs someone a bisect. This repo is developed with
+    // several agents building and running the suite at once, and four separate sessions lost
+    // time to it before anyone traced it.
+    //
+    // Raised rather than removed. A timeout still has a job here: PARITY.md records a
+    // non-terminating loop that was inherited from Java and repaired, so a hang is a real
+    // failure mode in this codebase and must not become an infinite wait. 120s is far above
+    // the slowest honest test (~6s) and far below anything a human would sit through.
+    testTimeout: 120000,
     // Agent worktrees live under `.claude/worktrees/` INSIDE the repo, so without this the
     // suite discovers every checkout's copy of `tests/**` and reports three times the tests
     // it has — one green tree plus whatever a half-finished branch is doing. Measured: 5750
