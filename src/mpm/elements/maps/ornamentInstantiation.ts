@@ -1326,14 +1326,14 @@ export function readKeyFifths(map: GenericMap | null, date: number): number {
 function fifthsFromMap(keySignatureMap: Element | null, date: number): number | null {
   if (keySignatureMap === null) return null;
   let found: Element | null = null;
-  for (const candidate of keySignatureMap.getChildElements('keySignature').toArray()) {
+  for (const candidate of keySignatureMap.getChildElements('keySignature')) {
     const at = readNumber(candidate, 'date');
     if (at !== null && at <= date) found = candidate;
   }
   if (found === null) return null;
 
   let fifths = 0;
-  for (const accidental of found.getChildElements('accidental').toArray()) {
+  for (const accidental of found.getChildElements('accidental')) {
     const value = readNumber(accidental, 'value');
     if (value === null) continue;
     if (value > 0.0) ++fifths;

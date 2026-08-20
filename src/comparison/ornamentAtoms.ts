@@ -307,7 +307,8 @@ function classifyNoteOrder(
  * which no corpus document has.
  */
 function shapeOf(element: Element, noteOrderKind: NoteOrderKind | null): OrnamentShape {
-  if (element.getChildElements('note').toArray().length > 0) return 'v3';
+  // `size()` is the question being asked; `toArray().length` copied the snapshot to ask it.
+  if (element.getChildElements('note').size() > 0) return 'v3';
   if (readAttributeValue(element, 'noteid') !== null) return 'v3';
   if (readAttributeValue(element, 'repetitions') !== null) return 'v3';
   return noteOrderKind === 'v3-grammar' ? 'v3' : 'v2';
@@ -492,7 +493,7 @@ export function readOrnamentAtoms(
     const nameRef = readAttributeValue(element, 'name.ref');
     let def: Element | null = null;
     if (nameRef !== null)
-      for (const candidate of carried.getChildElements('ornamentDef').toArray())
+      for (const candidate of carried.getChildElements('ornamentDef'))
         if (attribute('name', candidate)?.getValue() === nameRef) def = candidate;
 
     if (def === null) {

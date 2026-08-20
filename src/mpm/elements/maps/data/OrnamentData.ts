@@ -27,7 +27,7 @@ import type { OrnamentDef } from '../../styles/defs/OrnamentDef.js';
  */
 export function parseOrnamentNotePool(xml: Element): OrnamentNote[] {
   const pool: OrnamentNote[] = [];
-  for (const child of xml.getChildElements('note').toArray()) {
+  for (const child of xml.getChildElements('note')) {
     const note = OrnamentNote.fromXml(child);
     if (note !== null) pool.push(note);
   }

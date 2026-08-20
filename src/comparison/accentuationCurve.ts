@@ -147,7 +147,7 @@ export function readAccentuationPattern(def: Element): AccentuationPattern {
   const rawLength = readNumericAttributeValue(def, 'length');
   const points: PatternPoint[] = [];
 
-  for (const child of def.getChildElements('accentuation').toArray()) {
+  for (const child of def.getChildElements('accentuation')) {
     const beat = readNumericAttributeValue(child, 'beat');
     if (Number.isNaN(beat)) continue;
     const value = readNumericAttributeValue(child, 'value');
@@ -345,7 +345,7 @@ export function readAccentuationSegments(
     }
 
     let def: Element | null = null;
-    for (const candidate of style.styleDef.getChildElements('accentuationPatternDef').toArray())
+    for (const candidate of style.styleDef.getChildElements('accentuationPatternDef'))
       if (attribute('name', candidate)?.getValue() === nameRef) def = candidate;
 
     if (def === null) {

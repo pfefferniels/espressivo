@@ -219,7 +219,7 @@ function unionOfDimensions(resolved: readonly ResolvedSelection[]): readonly Exp
 function locateIds(root: Element, wanted: ReadonlySet<string>): ReadonlyMap<string, Located> {
   const found = new Map<string, Located>();
   const visit = (parent: Element, imprecisionMap: string | null): void => {
-    for (const child of parent.getChildElements().toArray()) {
+    for (const child of parent.getChildElements()) {
       const localName = child.getLocalName();
       const id = attribute('id', child)?.getValue() ?? null;
       if (id !== null && wanted.has(id) && !found.has(id))

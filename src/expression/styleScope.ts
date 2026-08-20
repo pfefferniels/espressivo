@@ -91,7 +91,7 @@ export type LevelReading =
  */
 function findStyleDefIn(collection: Element, name: string): Element | null {
   let found: Element | null = null;
-  for (const styleDef of collection.getChildElements('styleDef').toArray()) {
+  for (const styleDef of collection.getChildElements('styleDef')) {
     if (attribute('name', styleDef)?.getValue() === name) found = styleDef;
   }
   return found;

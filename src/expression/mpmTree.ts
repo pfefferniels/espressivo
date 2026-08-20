@@ -81,7 +81,7 @@ function indexDescendantsByLocalName(
 ): Map<string, Element> {
   const found = new Map<string, Element>();
   const visit = (parent: Element): void => {
-    for (const child of parent.getChildElements().toArray()) {
+    for (const child of parent.getChildElements()) {
       if (matches(child.getLocalName())) found.set(child.getLocalName(), child);
       visit(child);
     }

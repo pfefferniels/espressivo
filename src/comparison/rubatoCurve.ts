@@ -73,7 +73,7 @@ function findRubatoDef(
   const style = findStyleDef(RUBATO_STYLE, styleName, environment, globalEnvironment);
   if (style === null) return null;
   let found: Element | null = null;
-  for (const candidate of style.styleDef.getChildElements('rubatoDef').toArray())
+  for (const candidate of style.styleDef.getChildElements('rubatoDef'))
     if (attribute('name', candidate)?.getValue() === nameRef) found = candidate;
   return found;
 }

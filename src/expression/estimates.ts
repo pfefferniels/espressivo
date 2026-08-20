@@ -382,7 +382,7 @@ function temporalSpreads(performance: PerformanceView): readonly Element[] {
   const spreads: Element[] = [];
   for (const environment of environmentsOf(performance)) {
     for (const styleDef of styleDefsOf(environment, ORNAMENT_STYLE_COLLECTION)) {
-      for (const ornamentDef of styleDef.getChildElements(ORNAMENT_DEF_ELEMENT).toArray()) {
+      for (const ornamentDef of styleDef.getChildElements(ORNAMENT_DEF_ELEMENT)) {
         spreads.push(...ornamentDef.getChildElements(TEMPORAL_SPREAD_ELEMENT).toArray());
       }
     }
@@ -427,7 +427,7 @@ function imprecisionDurationCliffs(
   for (const environment of environmentsOf(performance)) {
     const map = environment.maps.get(mapName);
     if (map === undefined) continue;
-    for (const distribution of map.getChildElements().toArray()) {
+    for (const distribution of map.getChildElements()) {
       if (!DISTRIBUTION_ELEMENTS.includes(distribution.getLocalName())) continue;
       const widest = widestDrawableValue(distribution);
       if (widest === null) continue;
@@ -450,7 +450,7 @@ function widestDrawableValue(distribution: Element): number | null {
     if (value !== null) magnitudes.push(Math.abs(value));
   }
   if (localName === DISTRIBUTION_LIST_ELEMENT) {
-    for (const measurement of distribution.getChildElements(MEASUREMENT_ELEMENT).toArray()) {
+    for (const measurement of distribution.getChildElements(MEASUREMENT_ELEMENT)) {
       for (const name of imprecisionGroupAttributes('imprecisionDuration', MEASUREMENT_ELEMENT)) {
         const value = numberOrNull(measurement, name);
         if (value !== null) magnitudes.push(Math.abs(value));

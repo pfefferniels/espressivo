@@ -161,7 +161,7 @@ export function readDefaultArticulation(
     }
 
     let def: Element | null = null;
-    for (const candidate of style.styleDef.getChildElements('articulationDef').toArray())
+    for (const candidate of style.styleDef.getChildElements('articulationDef'))
       if (attribute('name', candidate)?.getValue() === name) def = candidate;
 
     // Disposition 3: the def name does not resolve — ALSO a null, with a warning.

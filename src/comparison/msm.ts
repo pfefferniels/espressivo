@@ -144,7 +144,7 @@ function readTimeSignatures(root: Element, ppq: number): readonly TimeSignatureE
   if (map === null) return [];
 
   const entries: TimeSignatureEntry[] = [];
-  for (const element of map.getChildElements('timeSignature').toArray()) {
+  for (const element of map.getChildElements('timeSignature')) {
     const date = readNumericAttributeValue(element, 'date');
     const numerator = readNumericAttributeValue(element, 'numerator');
     const denominator = readNumericAttributeValue(element, 'denominator');
