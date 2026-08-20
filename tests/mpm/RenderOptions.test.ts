@@ -92,7 +92,7 @@ function makeMovementPerformance(): Performance {
 /** Rendered MIDI as bytes, through the full four-hop chain of ARCHITECTURE.md §2.4. */
 function midiBytes(options?: RenderOptions): string {
   const midi = makeMsm().exportExpressiveMidi(makePerformance(), true, options)!;
-  return Buffer.from(midi.exportMidi()!).toString('hex');
+  return Buffer.from(midi.exportMidi()).toString('hex');
 }
 
 /** How many `<position>` events the performance sampled into the augmented MSM. */
@@ -192,7 +192,7 @@ describe('RenderOptions', () => {
     it('lets a seed in the MPM win over options.seed (RULE F7)', () => {
       const withMpmSeed = (options: RenderOptions) =>
         Buffer.from(
-          makeMsm().exportExpressiveMidi(makePerformance(4242), true, options)!.exportMidi()!,
+          makeMsm().exportExpressiveMidi(makePerformance(4242), true, options)!.exportMidi(),
         ).toString('hex');
 
       // Two different option seeds, one MPM seed: the MPM wins, so both renders agree —
@@ -248,7 +248,7 @@ describe('RenderOptions', () => {
       const msm = makeMsm();
       const bytes = (options?: RenderOptions) =>
         Buffer.from(
-          msm.exportExpressiveMidi(makeMovementPerformance(), true, options)!.exportMidi()!,
+          msm.exportExpressiveMidi(makeMovementPerformance(), true, options)!.exportMidi(),
         ).toString('hex');
 
       expect(bytes()).toBe(bytes({}));

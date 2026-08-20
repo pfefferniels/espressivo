@@ -24,9 +24,11 @@ describe('Midi', () => {
   describe('construction', () => {
     it('should create an empty MIDI with default PPQ of 720', () => {
       const midi = new Midi();
-      expect(midi.isEmpty()).toBe(false);
+      // `isEmpty()` used to be asserted here; it answered "the sequence field is null",
+      // which is now unrepresentable, so this asserts what the test meant instead — the
+      // sequence exists and carries nothing yet.
+      expect(midi.getSequence().getTracks()).toHaveLength(0);
       expect(midi.getPPQ()).toBe(720);
-      expect(midi.getSequence()).toBeDefined();
     });
 
     it('should create a MIDI with a custom PPQ', () => {
@@ -160,7 +162,7 @@ describe('Midi', () => {
       const midi = new Midi(480);
       midi.getSequence().createTrack();
 
-      const data = midi.exportMidi()!;
+      const data = midi.exportMidi();
       const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
       expect(view.getUint32(4)).toBe(6); // header length always 6
     });
@@ -169,7 +171,7 @@ describe('Midi', () => {
       const midi = new Midi(480);
       midi.getSequence().createTrack();
 
-      const data = midi.exportMidi()!;
+      const data = midi.exportMidi();
       const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
       // resolution is at offset 12 (after 4 tag + 4 length + 2 format + 2 numTracks)
       expect(view.getUint16(12)).toBe(480);
@@ -180,7 +182,7 @@ describe('Midi', () => {
       midi.getSequence().createTrack();
       midi.getSequence().createTrack();
 
-      const data = midi.exportMidi()!;
+      const data = midi.exportMidi();
       const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
       // numTracks is at offset 10
       expect(view.getUint16(10)).toBe(2);
@@ -191,7 +193,7 @@ describe('Midi', () => {
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100)!);
 
-      const data = midi.exportMidi()!;
+      const data = midi.exportMidi();
       // MTrk starts after the 14-byte MThd header
       const mtrkTag = String.fromCharCode(data[14], data[15], data[16], data[17]);
       expect(mtrkTag).toBe('MTrk');
@@ -216,7 +218,7 @@ describe('Midi', () => {
       track.add(EventMaker.createNoteOff(0, 480, 60, 64)!);
       track.add(EventMaker.createProgramChange(0, 0, EventMaker.PC_Acoustic_Grand_Piano)!);
 
-      const data = midi.exportMidi()!;
+      const data = midi.exportMidi();
       expect(data).not.toBeNull();
 
       // Parse the exported data back
@@ -391,11 +393,12 @@ describe('Midi', () => {
       expect(() => midi.getPPQ()).toThrow(/SMPTE/);
     });
 
-    it('should report format 1 for a null sequence', () => {
-      const midi = new Midi();
-      midi.setSequence(null as unknown as Sequence);
-      expect(midi.isEmpty()).toBe(true);
-      expect(midi.getMidiFileFormat()).toBe(1);
+    it('should report format 0 for a sequence with no tracks', () => {
+      // This replaces 'should report format 1 for a null sequence', which reached its
+      // branch through `setSequence(null as unknown as Sequence)`. The field is total now,
+      // so that input no longer exists; the rule that survives is the track-count one, and
+      // the zero-track end of it had no test.
+      expect(new Midi().getMidiFileFormat()).toBe(0);
     });
   });
 
@@ -529,11 +532,11 @@ describe('Midi', () => {
         .createTrack()
         .add(EventMaker.createNoteOn(0, 0, 60, 100)!);
 
-      midi.append(null as unknown as Midi);
-
-      const empty = new Midi(480);
-      empty.setSequence(null as unknown as Sequence);
-      midi.append(empty);
+      // Was `append(null as unknown as Midi)` plus a Midi whose sequence had been nulled
+      // by cast — the two inputs `Midi.java`'s `(midi == null) || midi.isEmpty()` guard
+      // exists for. Neither is representable now, so this pins the reachable claim that
+      // guard was standing in for: appending a Midi with nothing in it changes nothing.
+      midi.append(new Midi(480));
 
       expect(midi.getSequence().getTracks()[0].size()).toBe(1);
     });
@@ -636,7 +639,7 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('print', () => {
     it('should report the message for a null sequence', () => {
-      expect(Midi.print(null as unknown as Sequence)).toBe('No midi data loaded.');
+      expect(Midi.print(null)).toBe('No midi data loaded.');
     });
 
     it('should list each track with its event count', () => {
@@ -732,7 +735,7 @@ describe('Midi', () => {
         .getSequence()
         .createTrack()
         .add(EventMaker.createNoteOn(0, 0, 60, 100)!);
-      const data = midi.exportMidi()!;
+      const data = midi.exportMidi();
       data[14] = 0x58; // break the MTrk tag
 
       expect(() => new Midi(data)).toThrow(/MTrk/);
@@ -773,7 +776,7 @@ describe('Midi', () => {
       track.add(EventMaker.createNoteOn(0, 0, 60, 100)!);
       track.add(EventMaker.createNoteOff(0, 480, 60, 64)!);
 
-      const parsed = new Midi(midi.exportMidi()!);
+      const parsed = new Midi(midi.exportMidi());
       const readTrack = parsed.getSequence().getTracks()[0];
 
       const trackName = readTrack.get(0) as MidiEvent;
@@ -912,7 +915,7 @@ describe('Midi', () => {
       track.add(EventMaker.createNoteOn(0, 480, 62, 100)!);
       track.add(EventMaker.createNoteOn(0, 1920, 64, 100)!);
 
-      const parsed = new Midi(midi.exportMidi()!);
+      const parsed = new Midi(midi.exportMidi());
       const readTrack = parsed.getSequence().getTracks()[0];
       expect([0, 1, 2].map((i) => readTrack.get(i).getTick())).toEqual([0, 480, 1920]);
     });
@@ -928,7 +931,7 @@ describe('Midi', () => {
         .createTrack()
         .add(EventMaker.createNoteOn(1, 0, 72, 100)!);
 
-      const parsed = new Midi(midi.exportMidi()!);
+      const parsed = new Midi(midi.exportMidi());
       expect(parsed.getSequence().getTracks().length).toBe(2);
     });
   });
@@ -937,14 +940,12 @@ describe('Midi', () => {
   // exportMidi – track chunk details
   // ---------------------------------------------------------------
   describe('exportMidi – track chunk details', () => {
-    it('should return null and complain when there is no sequence', () => {
-      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const midi = new Midi();
-      midi.setSequence(null as unknown as Sequence);
-
-      expect(midi.exportMidi()).toBeNull();
-      expect(errSpy).toHaveBeenCalled();
-      errSpy.mockRestore();
+    it('should export a header even with no tracks at all', () => {
+      // This replaces 'should return null and complain when there is no sequence'.
+      // `exportMidi` no longer has a null return to test, and the sequence it nulled out
+      // by cast cannot exist. The nearest reachable input is a sequence with nothing in
+      // it, which exports the bare 14-byte MThd header and no track chunk.
+      expect(new Midi().exportMidi()).toHaveLength(14);
     });
 
     it('should append an end of track event when the track has none', () => {
@@ -954,7 +955,7 @@ describe('Midi', () => {
         .createTrack()
         .add(EventMaker.createNoteOn(0, 0, 60, 100)!);
 
-      const data = midi.exportMidi()!;
+      const data = midi.exportMidi();
       // delta time 0, then the FF 2F 00 end of track meta event
       expect(Array.from(data.slice(-4))).toEqual([0x00, 0xff, 0x2f, 0x00]);
     });
@@ -965,7 +966,7 @@ describe('Midi', () => {
       track.add(EventMaker.createNoteOn(0, 0, 60, 100)!);
       track.add(new MidiEvent(metaMessage(EventMaker.META_End_of_Track, new Uint8Array(0)), 480));
 
-      const parsed = new Midi(midi.exportMidi()!);
+      const parsed = new Midi(midi.exportMidi());
       const readTrack = parsed.getSequence().getTracks()[0];
       const endOfTracks = Array.from({ length: readTrack.size() }, (_, i) =>
         readTrack.get(i).getMessage(),
@@ -976,7 +977,7 @@ describe('Midi', () => {
     it('should write format 0 for a single track and format 1 for several', () => {
       const single = new Midi(480);
       single.getSequence().createTrack();
-      const singleData = single.exportMidi()!;
+      const singleData = single.exportMidi();
       expect(
         new DataView(singleData.buffer, singleData.byteOffset, singleData.byteLength).getUint16(8),
       ).toBe(0);
@@ -984,7 +985,7 @@ describe('Midi', () => {
       const multi = new Midi(480);
       multi.getSequence().createTrack();
       multi.getSequence().createTrack();
-      const multiData = multi.exportMidi()!;
+      const multiData = multi.exportMidi();
       expect(
         new DataView(multiData.buffer, multiData.byteOffset, multiData.byteLength).getUint16(8),
       ).toBe(1);
@@ -995,7 +996,7 @@ describe('Midi', () => {
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 128, 60, 100)!);
 
-      const data = midi.exportMidi()!;
+      const data = midi.exportMidi();
       // the track chunk data starts at offset 22 with the first delta time
       expect(data[22]).toBe(0x81);
       expect(data[23]).toBe(0x00);
@@ -1008,7 +1009,7 @@ describe('Midi', () => {
         .createTrack()
         .add(EventMaker.createNoteOn(0, 0, 60, 100)!);
 
-      const data = midi.exportMidi()!;
+      const data = midi.exportMidi();
       const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
       const chunkLength = view.getUint32(18);
       expect(data.length).toBe(14 + 8 + chunkLength);

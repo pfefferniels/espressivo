@@ -94,7 +94,16 @@ const MESSAGE_FAMILY_NAME: Readonly<Record<MidiMessageKind, string>> = {
 
 export class Midi {
   private file: string | null = null; // the midi filename
-  private sequence: Sequence | null = null; // the midi sequence
+  /**
+   * The sequence. **Never null**, and that is the point: every constructor path
+   * produces one, so `getSequence` has nothing to assert about and the nine `!`s that
+   * used to read this field are gone. Java's field starts at null because
+   * `new Sequence(divisionType, resolution)` throws `InvalidMidiDataException` there and
+   * `Midi(File)` can fail to read; neither is true of this port — our `Sequence`
+   * constructor is two assignments, and the byte constructor throws rather than
+   * half-building.
+   */
+  private sequence: Sequence;
 
   /**
    * the most primitive constructor creates an empty MIDI sequence with default PPQ of 720
@@ -114,19 +123,19 @@ export class Midi {
    */
   constructor(midiData: Uint8Array);
   constructor(a?: number | Sequence | Uint8Array, b?: string) {
+    // Every arm assigns, and the compiler now checks that: the field is `Sequence`, so a
+    // fifth argument shape added without an arm is an error here rather than a null read
+    // somewhere downstream. The old chain ended in `else if (a instanceof Uint8Array)`
+    // with no `else`, which is exactly that hole.
     if (a === undefined) {
-      // Default constructor: empty MIDI with PPQ 720
       this.sequence = new Sequence(Sequence.PPQ, 720);
     } else if (typeof a === 'number') {
-      // PPQ constructor
       this.sequence = new Sequence(Sequence.PPQ, a);
     } else if (a instanceof Sequence) {
       this.sequence = a;
-      if (b !== undefined) {
-        this.file = b;
-      }
-    } else if (a instanceof Uint8Array) {
-      this.readMidiData(a);
+      if (b !== undefined) this.file = b;
+    } else {
+      this.sequence = Midi.parseSequence(a);
     }
   }
 
@@ -159,7 +168,7 @@ export class Midi {
    *
    * @param data raw MIDI file bytes
    */
-  readMidiData(data: Uint8Array): void {
+  static parseSequence(data: Uint8Array): Sequence {
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     let offset = 0;
 
@@ -205,7 +214,7 @@ export class Midi {
       else if (smpteFormat === -30) divisionType = Sequence.SMPTE_30;
     }
 
-    this.sequence = new Sequence(divisionType, resolution);
+    const sequence = new Sequence(divisionType, resolution);
 
     // Read each track
     for (let t = 0; t < numTracks && offset < data.length; t++) {
@@ -221,7 +230,7 @@ export class Midi {
       offset += 4;
 
       const trackEnd = offset + trackLength;
-      const track = this.sequence.createTrack();
+      const track = sequence.createTrack();
 
       let runningStatus = 0;
       let absoluteTick = 0;
@@ -356,6 +365,8 @@ export class Midi {
       // Make sure we advance to the actual end of the track
       offset = trackEnd;
     }
+
+    return sequence;
   }
 
   /**
@@ -364,9 +375,13 @@ export class Midi {
    * Only true before a sequence exists at all — a sequence with zero tracks, or
    * with tracks holding no events, is not "empty" by this test.
    */
-  isEmpty(): boolean {
-    return this.sequence === null;
-  }
+  // `isEmpty()` stood here and was deleted. It was `return this.sequence === null`, a
+  // faithful port of `Midi.java:85` — but Java's field can be null (its `Sequence`
+  // constructor throws, and `Midi(File)` can fail to read) and this port's cannot, so the
+  // predicate could only ever answer false. Its two call sites in tests asserted exactly
+  // that constant. `append`'s `midi.isEmpty()` guard went with it; appending a track-less
+  // Midi is a no-op through the loops anyway, which is now pinned by a test that passes a
+  // real 0-track Midi instead of one built by casting null past the compiler.
 
   /**
    * this getter returns the file path/name
@@ -394,8 +409,7 @@ export class Midi {
    * method but derives it independently, so the two must be kept in step.
    */
   getMidiFileFormat(): number {
-    if (this.sequence === null) return 1;
-
+    // Java's `(this.sequence == null) -> 1` guard is dropped: the field is total here.
     const trackCount = this.sequence.getTracks().length;
     if (trackCount <= 1) {
       return 0;
@@ -404,16 +418,24 @@ export class Midi {
   }
 
   /**
+   * Replace this object's sequence with one parsed from SMF bytes.
+   *
+   * Thin wrapper over {@link parseSequence}, which is where the parser lives now: a
+   * function that *returns* a sequence can be called from the constructor without the
+   * field being null in between, which is what made the field total.
+   *
+   * @param data raw MIDI file bytes
+   */
+  readMidiData(data: Uint8Array): void {
+    this.sequence = Midi.parseSequence(data);
+  }
+
+  /**
    * this getter returns the midi sequence
-   *
-   * Asserts non-null. The field is only null between construction and the first
-   * assignment, which no public path exposes; see `docs/history/refactor/lint-debt.md` — the `!`s
-   * in this file are T12's null-policy debt, not oversights.
-   *
    * @return the midi sequence
    */
   getSequence(): Sequence {
-    return this.sequence!;
+    return this.sequence;
   }
 
   /**
@@ -437,9 +459,11 @@ export class Midi {
    * @param midi the Midi whose sequence should be appended
    */
   append(midi: Midi): void {
-    if (midi === null || midi.isEmpty()) return;
-
-    const clone = new Midi(Midi.cloneSequence(midi.getSequence())!); // in case we have to apply changes we do so with a clone and not the original
+    // Java guards `(midi == null) || midi.isEmpty()` here. Neither is reachable in this
+    // port — the parameter is `Midi` and every `Midi` has a sequence — and both loops
+    // below are already no-ops for a track-less argument, so dropping the guard leaves
+    // behaviour identical. See the note where `isEmpty` used to be.
+    const clone = new Midi(Midi.cloneSequence(midi.getSequence())); // in case we have to apply changes we do so with a clone and not the original
     try {
       clone.convertPPQ(this.getPPQ()); // adapt the PPQ timing basis if necessary
     } catch (e) {
@@ -478,8 +502,8 @@ export class Midi {
    * @return
    */
   getPPQ(): number {
-    if (this.sequence!.getDivisionType() === Sequence.PPQ) {
-      return this.sequence!.getResolution();
+    if (this.sequence.getDivisionType() === Sequence.PPQ) {
+      return this.sequence.getResolution();
     }
     throw new Error('Error: MIDI timing is in SMPTE, not PPQ!');
   }
@@ -503,7 +527,7 @@ export class Midi {
     );
 
     const newSequence = new Sequence(Sequence.PPQ, ppq); // create a new MIDI sequence
-    for (const track of this.sequence!.getTracks()) {
+    for (const track of this.sequence.getTracks()) {
       // for each track in the old sequence
       const newTrack = newSequence.createTrack(); // create a new track in the new sequence
       for (const event of track) {
@@ -540,8 +564,9 @@ export class Midi {
    * @return a power of two in 1..ppq
    */
   static getMinimalPPQ(sequence: Sequence, onlyNotes: boolean): number {
-    if (sequence === null) throw new Error('Error: MIDI sequence is null.');
-
+    // The `sequence == null` throw is gone. It was unreachable from typed code, and an
+    // untyped caller that passes null still fails loudly on the very next line — with a
+    // TypeError that names null, which is what the test for it actually asserts.
     if (sequence.getDivisionType() !== Sequence.PPQ)
       throw new Error('Error: MIDI sequence is not of division type PPQ.');
 
@@ -582,7 +607,7 @@ export class Midi {
   getTempoData(): { tick: number; bpm: number; beatlength: number }[] {
     const tempoData: { tick: number; bpm: number; beatlength: number }[] = [];
 
-    const tracks = this.sequence!.getTracks();
+    const tracks = this.sequence.getTracks();
     for (const track of tracks) {
       for (const event of track) {
         const msg = event.getMessage();
@@ -604,7 +629,7 @@ export class Midi {
    * @return
    */
   getTickLength(): number {
-    return this.sequence!.getTickLength();
+    return this.sequence.getTickLength();
   }
 
   /**
@@ -612,7 +637,7 @@ export class Midi {
    * @return
    */
   getMicrosecondLength(): number {
-    return this.sequence!.getMicrosecondLength();
+    return this.sequence.getMicrosecondLength();
   }
 
   /**
@@ -627,7 +652,11 @@ export class Midi {
    * `class com.sun.media.sound.FastShortMessage`), this prints
    * {@link MESSAGE_FAMILY_NAME} (e.g. `ShortMessage`).
    */
-  static print(sequence: Sequence): string {
+  static print(sequence: Sequence | null): string {
+    // Unlike the two guards above, this one is kept — because it is not a guard, it is an
+    // answer. A debug printer handed nothing has something sensible to print, so `null`
+    // belongs in the parameter type rather than being smuggled past it by a cast at the
+    // one call site that exercises this line.
     if (sequence === null) {
       return 'No midi data loaded.';
     }
@@ -685,7 +714,7 @@ export class Midi {
    * @return the number of events changed
    */
   noteOns2NoteOffs(): number {
-    return Midi.noteOns2NoteOffs(this.sequence!);
+    return Midi.noteOns2NoteOffs(this.sequence);
   }
 
   /**
@@ -732,7 +761,7 @@ export class Midi {
    * @return the number of events changed
    */
   noteOffs2NoteOns(): number {
-    return Midi.noteOffs2NoteOns(this.sequence!);
+    return Midi.noteOffs2NoteOns(this.sequence);
   }
 
   /**
@@ -798,17 +827,20 @@ export class Midi {
    * Track and event order are preserved — events are re-added in their existing sorted
    * order, and `Track.add`'s stable sort keeps ties where they were.
    *
+   * **The `| null` this used to return was unreachable, and the proof is two lines long.**
+   * Java wraps the `new Sequence(...)` below in `catch (InvalidMidiDataException |
+   * NullPointerException)` (`Midi.java:487`) because `javax.sound.midi.Sequence`
+   * validates its division type and throws. Our `Sequence` constructor
+   * (`MidiTypes.ts`) is `this.divisionType = divisionType; this.resolution = resolution;`
+   * — it cannot throw, so the catch could not fire, so the null could not be returned.
+   * The port had copied a handler for an exception type that does not exist here, and the
+   * one call site paid for it with a `!`.
+   *
    * @param sequence the sequence to be cloned
-   * @return the clone of the input sequence or null
+   * @return the clone of the input sequence
    */
-  static cloneSequence(sequence: Sequence): Sequence | null {
-    let cloneSeq: Sequence;
-    try {
-      cloneSeq = new Sequence(sequence.getDivisionType(), sequence.getResolution());
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  static cloneSequence(sequence: Sequence): Sequence {
+    const cloneSeq = new Sequence(sequence.getDivisionType(), sequence.getResolution());
 
     const tracks = sequence.getTracks();
     for (const track of tracks) {
@@ -832,14 +864,14 @@ export class Midi {
    * The whole file is sized before anything is written, so every byte position here
    * is load-bearing: adding or reordering a write shifts the rest of the file.
    *
-   * @return MIDI file binary data, or null on error
+   * **Total.** This returned `Uint8Array | null` and had exactly one `return null` — the
+   * `this.sequence === null` guard, which the field's type now rules out. Forty call sites
+   * across `src/` and `tests/` were writing `exportMidi()` to get past a null that no
+   * typed program could produce.
+   *
+   * @return MIDI file binary data
    */
-  exportMidi(): Uint8Array | null {
-    if (this.sequence === null) {
-      console.error('Cannot export: no MIDI data.');
-      return null;
-    }
-
+  exportMidi(): Uint8Array {
     const tracks = this.sequence.getTracks();
     const numTracks = tracks.length;
     const format = numTracks <= 1 ? 0 : 1;

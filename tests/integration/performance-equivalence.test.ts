@@ -285,7 +285,7 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
 
         // Round trip: parse the exported MIDI
         const reimported = new Midi(bytes!);
-        expect(reimported.isEmpty()).toBe(false);
+        expect(reimported.getSequence().getTracks().length).toBeGreaterThan(0);
         expect(reimported.getSequence().getTracks().length).toBe(
           midi.getSequence().getTracks().length,
         );
@@ -297,7 +297,7 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
     it('should handle MSM with no parts gracefully', () => {
       const emptyMsm = Msm.createMsm('empty', null, 720);
       // MSM with no parts still produces a MIDI with just the global track
-      const midi = emptyMsm.exportMidi();
+      const midi = emptyMsm.exportMidi()!;
       if (midi !== null) {
         const bytes = midi.exportMidi();
         expect(bytes).not.toBeNull();
@@ -317,7 +317,7 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
       // Should still produce output even if MPM parts don't match
       const augmented = perf.perform(msm);
       expect(augmented).not.toBeNull();
-      const midi = augmented.exportMidi();
+      const midi = augmented.exportMidi()!;
       expect(midi).not.toBeNull();
     });
 
