@@ -1,8 +1,80 @@
 import { describe, it, expect } from 'vitest';
 import { TempoMap } from '../../../src/mpm/elements/maps/TempoMap.js';
 import { TempoData } from '../../../src/mpm/elements/maps/data/TempoData.js';
+import {
+  resolveTempo,
+  type ConstantTempo,
+  type Tempo,
+  type TransitioningTempo,
+} from '../../../src/mpm/elements/maps/data/tempo.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
+
+/**
+ * Narrow a read tempo to the transitioning arm, failing the test if it is not one.
+ *
+ * Stands in for the `td.isConstantTempo()` assertions the old tests made: the predicate is
+ * now the discriminant, so "is a transition" and "has a `transitionTo` to read" are one
+ * check instead of two, and the second one no longer needs a `!`.
+ */
+function expectTransitioning(tempo: Tempo | null): TransitioningTempo {
+  if (tempo === null || tempo.kind !== 'transitioning')
+    throw new Error(`expected a transitioning tempo, got ${JSON.stringify(tempo)}`);
+  return tempo;
+}
+
+/** As {@link expectTransitioning}, for the constant arm. */
+function expectConstant(tempo: Tempo | null): ConstantTempo {
+  if (tempo === null || tempo.kind !== 'constant')
+    throw new Error(`expected a constant tempo, got ${JSON.stringify(tempo)}`);
+  return tempo;
+}
+
+/**
+ * A constant tempo built by hand, for the millisecond computations that take one directly.
+ *
+ * `endDate` defaults to `Number.MAX_VALUE` — what `GenericMap.nextDateOfType` answers for a
+ * last instruction, and what the constant-tempo formula ignores.
+ */
+function constantTempo(o: {
+  startDate: number;
+  endDate?: number;
+  beatLength: number;
+  bpm: number;
+}): ConstantTempo {
+  return {
+    kind: 'constant',
+    startDate: o.startDate,
+    endDate: o.endDate ?? Number.MAX_VALUE,
+    beatLength: o.beatLength,
+    bpmString: String(o.bpm),
+    bpm: o.bpm,
+  };
+}
+
+/** A transitioning tempo built by hand, for the Simpson's-rule tests. */
+function transitioningTempo(o: {
+  startDate: number;
+  endDate: number;
+  beatLength: number;
+  bpm: number;
+  transitionTo: number;
+  meanTempoAt: number;
+  exponent: number;
+}): TransitioningTempo {
+  return {
+    kind: 'transitioning',
+    startDate: o.startDate,
+    endDate: o.endDate,
+    beatLength: o.beatLength,
+    bpmString: String(o.bpm),
+    bpm: o.bpm,
+    transitionToString: String(o.transitionTo),
+    transitionTo: o.transitionTo,
+    meanTempoAt: o.meanTempoAt,
+    exponent: o.exponent,
+  };
+}
 
 // ==========================================================================
 //  TempoMap Tests
@@ -151,9 +223,12 @@ describe('TempoMap', () => {
       const map = TempoMap.createTempoMap()!;
       map.addTempo(0, '120', 0.25);
 
-      const td = map.getTempoDataOf(0)!;
-      expect(td.isConstantTempo()).toBe(true);
-      expect(td.transitionTo).toBeNull();
+      const td = expectConstant(map.getTempoDataOf(0));
+      // The old assertion was `isConstantTempo() === true` plus `transitionTo === null`.
+      // On the constant arm there is no `transitionTo` to be null, which the second
+      // assertion now checks structurally rather than by value.
+      expect(td.kind).toBe('constant');
+      expect('transitionTo' in td).toBe(false);
     });
 
     it('should handle out-of-bounds index by clamping', () => {
@@ -206,12 +281,11 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25); // endpoint
 
-      const td = map.getTempoDataOf(0)!;
+      const td = expectTransitioning(map.getTempoDataOf(0));
       expect(td.bpm).toBe(60);
       expect(td.transitionTo).toBe(120);
       expect(td.meanTempoAt).toBe(0.5);
       expect(td.endDate).toBe(720);
-      expect(td.isConstantTempo()).toBe(false);
     });
 
     it('should set exponent to 1.0 for meanTempoAt = 0.5 (linear)', () => {
@@ -219,7 +293,7 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25);
 
-      const td = map.getTempoDataOf(0)!;
+      const td = expectTransitioning(map.getTempoDataOf(0));
       expect(td.exponent).toBeCloseTo(1.0, 10);
     });
 
@@ -227,33 +301,30 @@ describe('TempoMap', () => {
       const map = TempoMap.createTempoMap()!;
       map.addTempo(0, '120', '120', 0.25, 0.5);
 
-      const td = map.getTempoDataOf(0)!;
-      // transitionTo should be nullified since it equals bpm
-      expect(td.transitionTo).toBeNull();
-      expect(td.isConstantTempo()).toBe(true);
+      // the transition is dropped since the target equals the tempo
+      const td = expectConstant(map.getTempoDataOf(0));
+      expect(td.bpm).toBe(120);
     });
 
     it('should convert to constant bpm at transitionTo when meanTempoAt <= 0', () => {
       const map = TempoMap.createTempoMap()!;
       map.addTempo(0, '60', '120', 0.25, 0);
 
-      const td = map.getTempoDataOf(0)!;
-      // meanTempoAt <= 0 means: instantly jump to transitionTo
-      // bpm should become transitionTo, transitionTo should be nullified
+      // meanTempoAt <= 0 means: instantly jump to transitionTo, and stay there — the
+      // target becomes the tempo, in both its numeric and its written form.
+      const td = expectConstant(map.getTempoDataOf(0));
       expect(td.bpm).toBe(120);
-      expect(td.transitionTo).toBeNull();
-      expect(td.isConstantTempo()).toBe(true);
+      expect(td.bpmString).toBe('120');
     });
 
     it('should convert to constant bpm at original bpm when meanTempoAt >= 1', () => {
       const map = TempoMap.createTempoMap()!;
       map.addTempo(0, '60', '120', 0.25, 1.0);
 
-      const td = map.getTempoDataOf(0)!;
       // meanTempoAt >= 1 means: never reach transitionTo, stay at bpm
+      const td = expectConstant(map.getTempoDataOf(0));
       expect(td.bpm).toBe(60);
-      expect(td.transitionTo).toBeNull();
-      expect(td.isConstantTempo()).toBe(true);
+      expect(td.bpmString).toBe('60');
     });
 
     it('should set default meanTempoAt to 0.5 when transition has no meanTempoAt attribute', () => {
@@ -267,7 +338,7 @@ describe('TempoMap', () => {
       map.addElement(e);
       map.addTempo(720, '120', 0.25);
 
-      const td = map.getTempoDataOf(0)!;
+      const td = expectTransitioning(map.getTempoDataOf(0));
       expect(td.meanTempoAt).toBe(0.5);
       expect(td.exponent).toBeCloseTo(1.0, 10);
     });
@@ -282,7 +353,7 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25);
 
-      const td = map.getTempoDataOf(0)!;
+      const td = expectTransitioning(map.getTempoDataOf(0));
       // ln(0.5)/ln(0.5) = 1.0
       expect(td.exponent).toBeCloseTo(1.0, 10);
     });
@@ -292,12 +363,12 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.3);
       map.addTempo(720, '120', 0.25);
 
-      const td = map.getTempoDataOf(0)!;
+      const td = expectTransitioning(map.getTempoDataOf(0));
       const expected = Math.log(0.5) / Math.log(0.3);
       expect(td.exponent).toBeCloseTo(expected, 10);
       // Verify the approximate value (ln(0.5)/ln(0.3) ≈ 0.57571...)
-      expect(td.exponent!).toBeGreaterThan(0.57);
-      expect(td.exponent!).toBeLessThan(0.58);
+      expect(td.exponent).toBeGreaterThan(0.57);
+      expect(td.exponent).toBeLessThan(0.58);
     });
 
     it('exponent for meanTempoAt=0.7 is ln(0.5)/ln(0.7)', () => {
@@ -305,12 +376,12 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.7);
       map.addTempo(720, '120', 0.25);
 
-      const td = map.getTempoDataOf(0)!;
+      const td = expectTransitioning(map.getTempoDataOf(0));
       const expected = Math.log(0.5) / Math.log(0.7);
       expect(td.exponent).toBeCloseTo(expected, 10);
       // Verify the approximate value (ln(0.5)/ln(0.7) ≈ 1.9433...)
-      expect(td.exponent!).toBeGreaterThan(1.94);
-      expect(td.exponent!).toBeLessThan(1.95);
+      expect(td.exponent).toBeGreaterThan(1.94);
+      expect(td.exponent).toBeLessThan(1.95);
     });
 
     it('exponent for meanTempoAt=0.1', () => {
@@ -318,7 +389,7 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.1);
       map.addTempo(720, '120', 0.25);
 
-      const td = map.getTempoDataOf(0)!;
+      const td = expectTransitioning(map.getTempoDataOf(0));
       const expected = Math.log(0.5) / Math.log(0.1);
       expect(td.exponent).toBeCloseTo(expected, 10);
     });
@@ -328,7 +399,7 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.9);
       map.addTempo(720, '120', 0.25);
 
-      const td = map.getTempoDataOf(0)!;
+      const td = expectTransitioning(map.getTempoDataOf(0));
       const expected = Math.log(0.5) / Math.log(0.9);
       expect(td.exponent).toBeCloseTo(expected, 10);
     });
@@ -466,33 +537,21 @@ describe('TempoMap', () => {
 
     it('120 bpm, ppq=720, date=720: should be 500ms', () => {
       // 15000 * (720-0) / (120 * 0.25 * 720) = 15000 * 720 / (21600) = 10800000 / 21600 = 500
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 120;
-      td.beatLength = 0.25;
-      td.transitionTo = null;
+      const td = constantTempo({ startDate: 0, bpm: 120, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
       expect(ms).toBeCloseTo(500.0, 10);
     });
 
     it('120 bpm, ppq=720, date=1440: should be 1000ms', () => {
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 120;
-      td.beatLength = 0.25;
-      td.transitionTo = null;
+      const td = constantTempo({ startDate: 0, bpm: 120, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(1440, 720, td);
       expect(ms).toBeCloseTo(1000.0, 10);
     });
 
     it('120 bpm, ppq=720, date=0: should be 0ms', () => {
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 120;
-      td.beatLength = 0.25;
-      td.transitionTo = null;
+      const td = constantTempo({ startDate: 0, bpm: 120, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(0, 720, td);
       expect(ms).toBeCloseTo(0.0, 10);
@@ -500,22 +559,14 @@ describe('TempoMap', () => {
 
     it('60 bpm, ppq=720, date=720: one beat at 60bpm = 1000ms', () => {
       // 15000 * 720 / (60 * 0.25 * 720) = 10800000 / 10800 = 1000
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 60;
-      td.beatLength = 0.25;
-      td.transitionTo = null;
+      const td = constantTempo({ startDate: 0, bpm: 60, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
       expect(ms).toBeCloseTo(1000.0, 10);
     });
 
     it('240 bpm, ppq=720, date=720: one beat at 240bpm = 250ms', () => {
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 240;
-      td.beatLength = 0.25;
-      td.transitionTo = null;
+      const td = constantTempo({ startDate: 0, bpm: 240, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
       expect(ms).toBeCloseTo(250.0, 10);
@@ -523,11 +574,7 @@ describe('TempoMap', () => {
 
     it('120 bpm, ppq=480, date=480: should be 500ms (standard MIDI ppq)', () => {
       // 15000 * 480 / (120 * 0.25 * 480) = 7200000 / 14400 = 500
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 120;
-      td.beatLength = 0.25;
-      td.transitionTo = null;
+      const td = constantTempo({ startDate: 0, bpm: 120, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(480, 480, td);
       expect(ms).toBeCloseTo(500.0, 10);
@@ -538,11 +585,7 @@ describe('TempoMap', () => {
       // 1440 ticks = 2 quarter notes = 1 half note at ppq=720.
       // 1 half note at 120 halves/min = 0.5 sec = 500ms.
       // Formula: 15000 * 1440 / (120 * 0.5 * 720) = 21600000 / 43200 = 500
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 120;
-      td.beatLength = 0.5;
-      td.transitionTo = null;
+      const td = constantTempo({ startDate: 0, bpm: 120, beatLength: 0.5 });
 
       const ms = TempoMap.computeDiffTiming(1440, 720, td);
       expect(ms).toBeCloseTo(500.0, 10);
@@ -551,11 +594,7 @@ describe('TempoMap', () => {
     it('non-zero startDate: offset is subtracted', () => {
       // With startDate=360, date=1080: effective duration = 720 ticks
       // 15000 * (1080-360) / (120 * 0.25 * 720) = 15000*720/21600 = 500
-      const td = new TempoData();
-      td.startDate = 360;
-      td.bpm = 120;
-      td.beatLength = 0.25;
-      td.transitionTo = null;
+      const td = constantTempo({ startDate: 360, bpm: 120, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(1080, 720, td);
       expect(ms).toBeCloseTo(500.0, 10);
@@ -609,14 +648,15 @@ describe('TempoMap', () => {
       //
       // ms = (15000 / 180) * 12 * ln(2) = (15000 * 12 * ln(2)) / 180
       //    = (180000 * ln(2)) / 180 = 1000 * ln(2) ≈ 693.147...
-      const td = new TempoData();
-      td.startDate = 0;
-      td.endDate = 720;
-      td.bpm = 60;
-      td.transitionTo = 120;
-      td.beatLength = 0.25;
-      td.meanTempoAt = 0.5;
-      td.exponent = 1.0;
+      const td = transitioningTempo({
+        startDate: 0,
+        endDate: 720,
+        bpm: 60,
+        transitionTo: 120,
+        beatLength: 0.25,
+        meanTempoAt: 0.5,
+        exponent: 1.0,
+      });
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
       const analytical = 1000.0 * Math.log(2);
@@ -634,14 +674,15 @@ describe('TempoMap', () => {
       // When t=0: u=120; t=720: u=60
       // integral = -12 * integral from 120 to 60 of 1/u du = 12 * ln(120/60) = 12 * ln(2)
       // Same result: ms = 1000 * ln(2)
-      const td = new TempoData();
-      td.startDate = 0;
-      td.endDate = 720;
-      td.bpm = 120;
-      td.transitionTo = 60;
-      td.beatLength = 0.25;
-      td.meanTempoAt = 0.5;
-      td.exponent = 1.0;
+      const td = transitioningTempo({
+        startDate: 0,
+        endDate: 720,
+        bpm: 120,
+        transitionTo: 60,
+        beatLength: 0.25,
+        meanTempoAt: 0.5,
+        exponent: 1.0,
+      });
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
       const analytical = 1000.0 * Math.log(2);
@@ -658,14 +699,15 @@ describe('TempoMap', () => {
       // = (15000/180) * 12 * integral from 60 to 90 of 1/u du
       // = (15000/180) * 12 * ln(90/60) = 1000 * ln(1.5)
       // ≈ 1000 * 0.405465... ≈ 405.465
-      const td = new TempoData();
-      td.startDate = 0;
-      td.endDate = 720;
-      td.bpm = 60;
-      td.transitionTo = 120;
-      td.beatLength = 0.25;
-      td.meanTempoAt = 0.5;
-      td.exponent = 1.0;
+      const td = transitioningTempo({
+        startDate: 0,
+        endDate: 720,
+        bpm: 60,
+        transitionTo: 120,
+        beatLength: 0.25,
+        meanTempoAt: 0.5,
+        exponent: 1.0,
+      });
 
       const ms = TempoMap.computeDiffTiming(360, 720, td);
       const analytical = 1000.0 * Math.log(1.5);
@@ -676,27 +718,29 @@ describe('TempoMap', () => {
       // No simple analytical form, but we can verify:
       // 1) The result is positive
       // 2) The result is different from the linear case
-      const td = new TempoData();
-      td.startDate = 0;
-      td.endDate = 720;
-      td.bpm = 60;
-      td.transitionTo = 120;
-      td.beatLength = 0.25;
-      td.meanTempoAt = 0.3;
-      td.exponent = Math.log(0.5) / Math.log(0.3);
+      const td = transitioningTempo({
+        startDate: 0,
+        endDate: 720,
+        bpm: 60,
+        transitionTo: 120,
+        beatLength: 0.25,
+        meanTempoAt: 0.3,
+        exponent: Math.log(0.5) / Math.log(0.3),
+      });
 
       const msNonLinear = TempoMap.computeDiffTiming(720, 720, td);
       expect(msNonLinear).toBeGreaterThan(0);
 
       // Compare with linear
-      const tdLinear = new TempoData();
-      tdLinear.startDate = 0;
-      tdLinear.endDate = 720;
-      tdLinear.bpm = 60;
-      tdLinear.transitionTo = 120;
-      tdLinear.beatLength = 0.25;
-      tdLinear.meanTempoAt = 0.5;
-      tdLinear.exponent = 1.0;
+      const tdLinear = transitioningTempo({
+        startDate: 0,
+        endDate: 720,
+        bpm: 60,
+        transitionTo: 120,
+        beatLength: 0.25,
+        meanTempoAt: 0.5,
+        exponent: 1.0,
+      });
 
       const msLinear = TempoMap.computeDiffTiming(720, 720, tdLinear);
       // With meanTempoAt < 0.5, tempo rises faster, so total time should be less
@@ -704,25 +748,27 @@ describe('TempoMap', () => {
     });
 
     it('non-linear transition with meanTempoAt=0.7, total time should be more than linear', () => {
-      const td = new TempoData();
-      td.startDate = 0;
-      td.endDate = 720;
-      td.bpm = 60;
-      td.transitionTo = 120;
-      td.beatLength = 0.25;
-      td.meanTempoAt = 0.7;
-      td.exponent = Math.log(0.5) / Math.log(0.7);
+      const td = transitioningTempo({
+        startDate: 0,
+        endDate: 720,
+        bpm: 60,
+        transitionTo: 120,
+        beatLength: 0.25,
+        meanTempoAt: 0.7,
+        exponent: Math.log(0.5) / Math.log(0.7),
+      });
 
       const msNonLinear = TempoMap.computeDiffTiming(720, 720, td);
 
-      const tdLinear = new TempoData();
-      tdLinear.startDate = 0;
-      tdLinear.endDate = 720;
-      tdLinear.bpm = 60;
-      tdLinear.transitionTo = 120;
-      tdLinear.beatLength = 0.25;
-      tdLinear.meanTempoAt = 0.5;
-      tdLinear.exponent = 1.0;
+      const tdLinear = transitioningTempo({
+        startDate: 0,
+        endDate: 720,
+        bpm: 60,
+        transitionTo: 120,
+        beatLength: 0.25,
+        meanTempoAt: 0.5,
+        exponent: 1.0,
+      });
 
       const msLinear = TempoMap.computeDiffTiming(720, 720, tdLinear);
       // With meanTempoAt > 0.5, tempo rises slower, so total time should be more
@@ -730,16 +776,17 @@ describe('TempoMap', () => {
     });
 
     it('Simpson rule precision for constant-like transition (same bpm values)', () => {
-      // If bpm == transitionTo, isConstantTempo() returns true, but let's test
-      // with a very small difference to exercise the integration path
-      const td = new TempoData();
-      td.startDate = 0;
-      td.endDate = 720;
-      td.bpm = 120;
-      td.transitionTo = 120.001;
-      td.beatLength = 0.25;
-      td.meanTempoAt = 0.5;
-      td.exponent = 1.0;
+      // If bpm == transitionTo the reader builds the constant arm, so a datum built by
+      // hand with a very small difference is what exercises the integration path.
+      const td = transitioningTempo({
+        startDate: 0,
+        endDate: 720,
+        bpm: 120,
+        transitionTo: 120.001,
+        beatLength: 0.25,
+        meanTempoAt: 0.5,
+        exponent: 1.0,
+      });
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
       // Should be very close to constant 120 bpm: 500ms
@@ -756,41 +803,12 @@ describe('TempoMap', () => {
       expect(td.startDate).toBe(0);
       expect(td.endDate).toBeNull();
       expect(td.bpm).toBeNull();
+      expect(td.bpmString).toBeNull();
       expect(td.transitionTo).toBeNull();
+      expect(td.transitionToString).toBeNull();
       expect(td.beatLength).toBe(0.25);
       expect(td.meanTempoAt).toBeNull();
-      expect(td.exponent).toBeNull();
-      expect(td.xml).toBeNull();
       expect(td.xmlId).toBeNull();
-      expect(td.styleName).toBe('');
-    });
-
-    it('isConstantTempo: null transitionTo', () => {
-      const td = new TempoData();
-      td.bpm = 120;
-      td.transitionTo = null;
-      expect(td.isConstantTempo()).toBe(true);
-    });
-
-    it('isConstantTempo: null bpm', () => {
-      const td = new TempoData();
-      td.bpm = null;
-      td.transitionTo = 120;
-      expect(td.isConstantTempo()).toBe(true);
-    });
-
-    it('isConstantTempo: equal values', () => {
-      const td = new TempoData();
-      td.bpm = 120;
-      td.transitionTo = 120;
-      expect(td.isConstantTempo()).toBe(true);
-    });
-
-    it('isConstantTempo: different values', () => {
-      const td = new TempoData();
-      td.bpm = 60;
-      td.transitionTo = 120;
-      expect(td.isConstantTempo()).toBe(false);
     });
 
     it('clone produces a deep copy', () => {
@@ -803,7 +821,6 @@ describe('TempoMap', () => {
       td.transitionToString = '140';
       td.beatLength = 0.5;
       td.meanTempoAt = 0.3;
-      td.exponent = 1.5;
       td.xmlId = 'test-id';
 
       const clone = td.clone();
@@ -815,7 +832,6 @@ describe('TempoMap', () => {
       expect(clone.transitionToString).toBe('140');
       expect(clone.beatLength).toBe(0.5);
       expect(clone.meanTempoAt).toBe(0.3);
-      expect(clone.exponent).toBe(1.5);
       expect(clone.xmlId).toBe('test-id');
 
       // Modifying clone should not affect original
@@ -840,7 +856,7 @@ describe('TempoMap', () => {
       e.addAttribute(new Attribute('meanTempoAt', '0.3'));
       map.addElement(e);
 
-      const td = map.getTempoDataOf(0)!;
+      const td = expectTransitioning(map.getTempoDataOf(0));
       expect(td.startDate).toBe(100);
       expect(td.bpm).toBe(120);
       expect(td.beatLength).toBe(0.25);
@@ -849,9 +865,82 @@ describe('TempoMap', () => {
 
       expect(td.bpmString).toBe('120');
       expect(td.transitionToString).toBe('140');
-      expect(td.exponent).not.toBeNull();
+      expect(td.exponent).toBeCloseTo(Math.log(0.5) / Math.log(0.3), 10);
       expect(td.endDate).toBe(Number.MAX_VALUE);
-      expect(td.isConstantTempo()).toBe(false);
+    });
+  });
+
+  // ---------------------------------------------------------------
+  //  resolveTempo — the normalisation, unit-tested directly
+  // ---------------------------------------------------------------
+  /**
+   * These replace the four `isConstantTempo()` unit tests that used to sit above.
+   *
+   * That predicate answered three questions at once (`transitionTo == null || bpm == null
+   * || transitionTo == bpm`) about a record that could be in any state; the arms answer
+   * them once, at read time, so the thing worth testing is the read. One of the four old
+   * cases — "null bpm counts as constant" — described a state `resolveTempo` cannot
+   * produce, and the last test here is what makes that true rather than merely asserted.
+   */
+  describe('resolveTempo', () => {
+    const span = { startDate: 0, endDate: 720, beatLength: 0.25 };
+
+    it('no @transition.to at all is the constant arm', () => {
+      const t = resolveTempo(span, '120', null, null, null);
+      expect(t).toEqual({ kind: 'constant', ...span, bpmString: '120', bpm: 120 });
+    });
+
+    it('a @transition.to equal to @bpm is the constant arm', () => {
+      expect(resolveTempo(span, '120', '120', '0.5', null).kind).toBe('constant');
+    });
+
+    it('a differing @transition.to is the transitioning arm, with its exponent', () => {
+      const t = expectTransitioning(resolveTempo(span, '60', '120', '0.3', null));
+      expect(t.transitionTo).toBe(120);
+      expect(t.meanTempoAt).toBe(0.3);
+      expect(t.exponent).toBeCloseTo(Math.log(0.5) / Math.log(0.3), 10);
+    });
+
+    it('an absent @meanTempoAt is a linear ramp', () => {
+      const t = expectTransitioning(resolveTempo(span, '60', '120', null, null));
+      expect(t.meanTempoAt).toBe(0.5);
+      expect(t.exponent).toBe(1.0);
+    });
+
+    it('@meanTempoAt <= 0 collapses onto the target, written form included', () => {
+      const t = expectConstant(resolveTempo(span, '60', '120', '0', null));
+      expect(t.bpm).toBe(120);
+      expect(t.bpmString).toBe('120');
+    });
+
+    it('@meanTempoAt >= 1 collapses onto the original tempo', () => {
+      const t = expectConstant(resolveTempo(span, '60', '120', '1.0', null));
+      expect(t.bpm).toBe(60);
+      expect(t.bpmString).toBe('60');
+    });
+
+    /**
+     * `NaN <= 0` and `NaN >= 1` are both false, so a malformed `@meanTempoAt` falls
+     * through both collapses into the transition arm and poisons the exponent. Pinned
+     * because it is the one place a `<tempo>` can still carry a non-number, and because a
+     * `?? 0.5` "tidy-up" here would silently retime every document that has one.
+     */
+    it('a malformed @meanTempoAt transitions along a NaN exponent', () => {
+      const t = expectTransitioning(resolveTempo(span, '60', '120', 'nonsense', null));
+      expect(t.meanTempoAt).toBeNaN();
+      expect(t.exponent).toBeNaN();
+    });
+
+    /**
+     * The claim the two arms rest on: neither `bpm` nor `transitionTo` can be absent,
+     * because an unresolvable name is resolved to 100.0 rather than to null. The old
+     * `isConstantTempo` treated a null `bpm` as constant and the constant path then
+     * divided by it.
+     */
+    it('an unresolvable name resolves to 100.0, never to an absence', () => {
+      const t = expectConstant(resolveTempo(span, 'Allegro', null, null, null));
+      expect(t.bpm).toBe(100.0);
+      expect(t.bpmString).toBe('Allegro');
     });
   });
 
@@ -906,11 +995,7 @@ describe('TempoMap', () => {
   describe('edge cases', () => {
     it('constant tempo timing: multiple beats', () => {
       // 4 beats at 120 bpm = 2 seconds = 2000ms
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 120;
-      td.beatLength = 0.25;
-      td.transitionTo = null;
+      const td = constantTempo({ startDate: 0, bpm: 120, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(4 * 720, 720, td);
       expect(ms).toBeCloseTo(2000.0, 10);
@@ -918,11 +1003,7 @@ describe('TempoMap', () => {
 
     it('very slow tempo: 30 bpm, one beat', () => {
       // 1 beat at 30 bpm = 2 seconds = 2000ms
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 30;
-      td.beatLength = 0.25;
-      td.transitionTo = null;
+      const td = constantTempo({ startDate: 0, bpm: 30, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
       expect(ms).toBeCloseTo(2000.0, 10);
@@ -930,11 +1011,7 @@ describe('TempoMap', () => {
 
     it('very fast tempo: 480 bpm, one beat', () => {
       // 1 beat at 480 bpm = 0.125 sec = 125ms
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 480;
-      td.beatLength = 0.25;
-      td.transitionTo = null;
+      const td = constantTempo({ startDate: 0, bpm: 480, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
       expect(ms).toBeCloseTo(125.0, 10);

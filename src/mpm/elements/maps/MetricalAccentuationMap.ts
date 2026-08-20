@@ -3,7 +3,7 @@ import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
-import { MetricalAccentuationData } from './data/MetricalAccentuationData.js';
+import type { MetricalAccentuation } from './data/metricalAccentuation.js';
 
 /**
  * An MPM `metricalAccentuationMap`: the emphasis pattern of the metre — the reason a
@@ -50,39 +50,40 @@ export class MetricalAccentuationMap extends GenericMap {
   }
 
   /**
-   * Read the accentuation instruction at `index` into a
-   * {@link MetricalAccentuationData}. Returns null unless everything needed to render is
-   * present: a `<accentuationPattern>` entry with both `name.ref` and `scale`, a style
-   * in scope, and — implicitly — a def that the style can resolve.
+   * Read the accentuation instruction at `index` into a {@link MetricalAccentuation}.
+   * Returns null unless the entry is an `<accentuationPattern>` with both `name.ref` and
+   * `scale`, and a metrical-accentuation style is in scope.
+   *
+   * Note what is NOT required: a def the style can actually resolve. An instruction naming
+   * a def that does not exist comes back with `accentuationPatternDef` null and aborts the
+   * render on first use, which is Java's behaviour and is measured as such — see the header
+   * of {@link MetricalAccentuation}. The no-style case above it is the skip.
    */
-  getMetricalAccentuationDataOf(index: number): MetricalAccentuationData | null {
+  getMetricalAccentuationDataOf(index: number): MetricalAccentuation | null {
     const i = this.resolveEntryIndex(index, 'accentuationPattern');
     if (i < 0) return null;
     const e = this.elements[i].getValue();
-    const md = new MetricalAccentuationData();
+
     const nameRefAtt = attribute('name.ref', e);
     if (nameRefAtt === null) return null;
-    md.accentuationPatternDefName = nameRefAtt.getValue();
     const scaleAtt = attribute('scale', e);
     if (scaleAtt === null) return null;
-    md.scale = parseFloat(scaleAtt.getValue());
-    md.startDate = this.elements[i].getKey();
-    md.endDate = this.nextDateOfType(i, 'accentuationPattern');
-    md.xml = e;
-    const att = attribute('id', e);
-    if (att !== null) md.xmlId = att.getValue();
+    const style = this.getStyle('metricalAccentuation', this.findStyleNameAt(i));
+    if (style === null) return null;
+
+    const accentuationPatternDefName = nameRefAtt.getValue();
     const loopAtt = attribute('loop', e);
-    if (loopAtt !== null) md.loop = loopAtt.getValue() === 'true';
     const stmAtt = attribute('stickToMeasures', e);
-    if (stmAtt !== null) md.stickToMeasures = stmAtt.getValue() === 'true';
-    md.styleName = this.findStyleNameAt(i) ?? '';
-    const gStyle = this.getStyle('metricalAccentuation', md.styleName);
-    if (gStyle !== null) {
-      md.style = gStyle;
-      md.accentuationPatternDef = md.style.getDef(md.accentuationPatternDefName) ?? null;
-      return md;
-    }
-    return null;
+
+    return {
+      startDate: this.elements[i].getKey(),
+      endDate: this.nextDateOfType(i, 'accentuationPattern'),
+      accentuationPatternDefName,
+      accentuationPatternDef: style.getDef(accentuationPatternDefName) ?? null,
+      scale: parseFloat(scaleAtt.getValue()),
+      loop: loopAtt !== null && loopAtt.getValue() === 'true',
+      stickToMeasures: stmAtt === null || stmAtt.getValue() === 'true',
+    };
   }
 
   /**
@@ -119,7 +120,17 @@ export class MetricalAccentuationMap extends GenericMap {
     for (let accIndex = 0; accIndex < this.size(); ++accIndex) {
       const md = this.getMetricalAccentuationDataOf(accIndex);
       if (md === null) continue;
-      let patternLengthTicks = (md.accentuationPatternDef!.getLength() * ppq4) / tsDenominator;
+      // PARITY — the ONE assertion in this file, and it is deliberate. Java reads a datum
+      // whose `accentuationPatternDef` is null when the style is in scope but names no def
+      // by this name, and then dereferences it unguarded: the render aborts with a
+      // NullPointerException. Skipping the instruction instead would render a document the
+      // reference refuses, and `src/comparison/accentuationCurve.ts` (R21) measures the
+      // difference between the two. Binding the null to a non-null-typed local rather than
+      // asserting at each of the three uses keeps the throw where it was — on the
+      // `getLength()` below, and with `getLength` in the TypeError's message, which that
+      // module quotes.
+      const def = md.accentuationPatternDef!;
+      let patternLengthTicks = (def.getLength() * ppq4) / tsDenominator;
       for (; mapIndex < map.size(); ++mapIndex) {
         const mapEntry = map.elements[mapIndex];
         if (mapEntry.getKey() < md.startDate) continue;
@@ -139,11 +150,11 @@ export class MetricalAccentuationMap extends GenericMap {
             tsDenominator = parseInt(getAttributeValue('denominator', timeSign.getValue()));
             ticksPerBeat = ppq4 / tsDenominator;
             tickLengthOfOneMeasure = ticksPerBeat * tsNumerator;
-            patternLengthTicks = (md.accentuationPatternDef!.getLength() * ppq4) / tsDenominator;
+            patternLengthTicks = (def.getLength() * ppq4) / tsDenominator;
           }
         }
         if (
-          mapEntry.getKey() >= md.endDate! ||
+          mapEntry.getKey() >= md.endDate ||
           (!md.loop && mapEntry.getKey() >= md.startDate + patternLengthTicks)
         )
           break;
@@ -152,7 +163,7 @@ export class MetricalAccentuationMap extends GenericMap {
           beat = 1.0 + ((mapEntry.getKey() - tsDate) % tickLengthOfOneMeasure) / ticksPerBeat;
         else beat = 1.0 + ((mapEntry.getKey() - tsDate) % patternLengthTicks) / ticksPerBeat;
         const velocity = parseFloat(velocityAtt.getValue());
-        const accentuation = md.accentuationPatternDef!.getAccentuationAt(beat);
+        const accentuation = def.getAccentuationAt(beat);
         velocityAtt.setValue(String(velocity + accentuation * md.scale));
       }
     }
