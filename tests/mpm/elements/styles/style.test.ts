@@ -41,6 +41,12 @@ import { Element, Attribute } from '../../../../src/xml/XomTypes.js';
  * `midi-byte-equivalence` and `all-maps-equivalence` together — **stays green**. Only unit
  * tests see it: 11 red, across this file and the four map suites.
  *
+ * **If you grep and think this note is wrong, read the second bullet.** `grep -l tempoStyles
+ * tests/integration/fixtures/reference/*.mpm` finds several, and it is tempting to conclude
+ * the hole does not exist. It does: those are the documents nothing ever *parses*. A later
+ * agent on this campaign made exactly that correction, and it was the correction that was
+ * wrong. The distinction that matters is parsed-into-an-`Mpm` versus compared-as-text.
+ *
  * The reason is not that the gate is insensitive to style resolution. Do the same thing to
  * the `metricalAccentuation` row and **4 gate tests go red**. The difference is which
  * documents are *parsed*:

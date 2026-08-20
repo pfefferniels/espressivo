@@ -89,15 +89,15 @@ import { entryTicksAt, type OrderedMapView } from './document.js';
 /** No controller event has been sent yet: the pedal is up (MIDI's CC default). */
 export const PEDAL_NEUTRAL_POSITION = 0;
 
-/** `MovementData.ts:28` — **0.4**, and deliberately not `<dynamics>`'s 0.0 (§5.8/AD-13). */
+/** `data/movement.ts` — **0.4**, and deliberately not `<dynamics>`'s 0.0 (§5.8/AD-13). */
 export const DEFAULT_MOVEMENT_CURVATURE = 0.4;
-/** `MovementData.ts:29`. */
+/** `data/movement.ts`. */
 export const DEFAULT_MOVEMENT_PROTRACTION = 0;
 
 /** The renderer's own `getEndDate` sentinel for "no next movement" (`MovementMap.ts:158`). */
 export const UNBOUNDED_END_TICKS = Number.MAX_VALUE;
 
-/** `'sustain'` — `MovementData.ts:26`, and the only value the MIDI export maps to CC 64. */
+/** `'sustain'` — `data/movement.ts`, and the only value the MIDI export maps to CC 64. */
 export const DEFAULT_CONTROLLER = 'sustain';
 
 /** The two controller names `Msm.parsePositionMap:1445-1449` knows; everything else is CC 0. */
@@ -467,7 +467,7 @@ function shapeOf(raw: RawMovement, notes: PedalCurveNote[]): Valued<PedalShape> 
       dateTicks: raw.dateTicks,
       detail:
         'an unparseable @transition.to: the movement is NOT constant — isConstantMovement ' +
-        'tests for null, not for NaN (MovementData.ts:84-86) — so it transitions towards NaN ' +
+        'tests for null, not for NaN (data/movement.ts) — so it transitions towards NaN ' +
         'and every sampled value after the first is NaN. The span reads ⊥.',
     });
     return bottom('renderer-error');
