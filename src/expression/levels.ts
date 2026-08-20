@@ -45,6 +45,7 @@
  * falls out of asking `resolveLevel` instead of scanning headers, which is the reason to ask
  * `resolveLevel`.
  */
+import { filterMap, groupBy } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { readAttributeValue, readNumericAttributeValue } from './attributes.js';
 import { orderedEntries, styleNameAt, type DatedEntry } from './datedView.js';
@@ -749,13 +750,15 @@ class LevelPass {
    * the report names the collapsed pair and a caller can reject the sample.
    */
   private reportMergedLevels(): void {
-    const byStyleDef = new Map<Element, DefRecord[]>();
-    for (const record of this.defs.values()) {
-      if (record.skipped) continue;
-      const siblings = byStyleDef.get(record.styleDef) ?? [];
-      siblings.push(record);
-      byStyleDef.set(record.styleDef, siblings);
-    }
+    // Drop the skipped records, then bucket what is left by the `<styleDef>` they live in —
+    // `filterMap` and `groupBy`, where the loop this replaces did both at once and re-`set`
+    // the bucket on every element where `groupBy` sets it once. Encounter order inside each
+    // bucket is what makes the pair walk below "every unordered pair, once, in encounter
+    // order", and `groupBy` guarantees it.
+    const byStyleDef = groupBy(
+      filterMap(this.defs.values(), (record) => (record.skipped ? null : record)),
+      (record) => record.styleDef,
+    );
     for (const siblings of byStyleDef.values()) {
       // Every unordered pair, once, in encounter order. Written as `entries()` over the outer
       // element and a `slice` for the tail rather than two index counters, because indices are
@@ -962,11 +965,11 @@ class LevelPass {
 
 /** The `<tempoDef>`/`<dynamicsDef>` elements an instruction's endpoints resolve through. */
 function defsNamedBy(instruction: Instruction): readonly Element[] {
-  const defs: Element[] = [];
-  for (const endpoint of endpointsOf(instruction)) {
-    if (endpoint.reading.kind === 'def') defs.push(endpoint.reading.def);
-  }
-  return defs;
+  // The `kind === 'def'` test is the narrowing as well as the filter, which is exactly what
+  // `filterMap` is for: `endpoint.reading.def` is only a field on that arm.
+  return filterMap(endpointsOf(instruction), (endpoint) =>
+    endpoint.reading.kind === 'def' ? endpoint.reading.def : null,
+  );
 }
 
 function endpointsOf(instruction: Instruction): readonly Endpoint[] {

@@ -39,6 +39,7 @@
 import {
   andThen,
   err,
+  filterMap,
   fromEntriesExact,
   head,
   isNonEmpty,
@@ -1738,17 +1739,21 @@ type FrameReading = Result<readonly FrameBound[], FrameRefusal>;
  * neutral — both v2 defaults are 0.0 — so it is simply not a site.
  */
 function readV2Frame(spread: Element): FrameReading {
-  const bounds: FrameBound[] = [];
-  for (const attribute of [FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE]) {
-    if (readAttributeValue(spread, attribute) === null) continue;
-    bounds.push({
-      row: requireRow(TEMPORAL_SPREAD_ELEMENT, attribute),
-      attribute,
-      value: readNumericAttributeValue(spread, attribute),
-      suffix: '',
-    });
-  }
-  return ok(bounds);
+  // `filterMap`, not a fold: this reader cannot fail, so nothing short-circuits and the
+  // `Result` is always `ok`. Its v3 sibling below is deliberately NOT written this way — it
+  // returns `err` from inside the walk, which `filterMap` has no way to express.
+  return ok(
+    filterMap([FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE], (attribute) =>
+      readAttributeValue(spread, attribute) === null
+        ? null
+        : {
+            row: requireRow(TEMPORAL_SPREAD_ELEMENT, attribute),
+            attribute,
+            value: readNumericAttributeValue(spread, attribute),
+            suffix: '',
+          },
+    ),
+  );
 }
 
 /**

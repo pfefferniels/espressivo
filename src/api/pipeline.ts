@@ -50,7 +50,7 @@ import type {
   PerformedPart,
   XmlText,
 } from './types.js';
-import { zipWith } from '../prelude/seq.js';
+import { groupBy, zipWith } from '../prelude/seq.js';
 
 /** The library version. It is serialization-visible — the converter writes it into MPM metadata. */
 export { VERSION } from '../version.js';
@@ -352,17 +352,31 @@ function readControlChanges(part: Element): ControlChangeStream[] {
 
   const positionMap = firstChildElement('positionMap', dated);
   if (positionMap !== null) {
-    const byController = new Map<string | null, ControlChangePoint[]>();
-    for (const position of allChildElements(positionMap, 'position')) {
-      const controllerAttribute = attribute('controller', position);
-      const controller = controllerAttribute === null ? null : controllerAttribute.getValue();
-      const point = readControlChangePoint(position);
-      const points = byController.get(controller);
-      if (points === undefined) byController.set(controller, [point]);
-      else points.push(point);
-    }
-    for (const [controller, points] of byController)
-      streams.push({ kind: 'position', controller, ccNumber: ccNumberOf(controller), points });
+    // Read every position FIRST, in document order, and only then bucket by controller.
+    //
+    // The obvious spelling — `groupBy(positions, controllerOf)` and `readControlChangePoint`
+    // inside a `.map` per bucket — is wrong here, and not for a performance reason.
+    // `readControlChangePoint` goes through `requiredNumber`, which THROWS a `ParseError`
+    // naming the offending attribute; so on a `<positionMap>` with two malformed positions
+    // under different controllers, the order the positions are read in decides which error the
+    // caller sees. RULE E2 makes that message part of the contract. Reading first keeps it in
+    // document order, exactly as the single fused loop did.
+    //
+    // The bucketing itself is `groupBy`: the get-or-create triple this replaces was its body,
+    // and both orders it guarantees are load-bearing here — points within a stream stay in
+    // document order, and the streams come out in first-appearance order of their controller,
+    // which is what the docstring above pins.
+    const positions = allChildElements(positionMap, 'position').map((position) => ({
+      controller: attribute('controller', position)?.getValue() ?? null,
+      point: readControlChangePoint(position),
+    }));
+    for (const [controller, group] of groupBy(positions, (entry) => entry.controller))
+      streams.push({
+        kind: 'position',
+        controller,
+        ccNumber: ccNumberOf(controller),
+        points: group.map((entry) => entry.point),
+      });
   }
 
   return streams;

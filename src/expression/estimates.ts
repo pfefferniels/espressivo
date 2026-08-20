@@ -38,7 +38,7 @@
  * could fire on. It is a screening estimate and it is stated as one — §7.9's own words are
  * "the report carries the frame magnitude and flags cliff risk rather than a bound".
  */
-import { head, isNonEmpty, last } from '../prelude/index.js';
+import { filterMap, head, isNonEmpty, last } from '../prelude/index.js';
 import { readAttributeValue } from './attributes.js';
 import {
   FRAME_LENGTH_ATTRIBUTE,
@@ -353,29 +353,30 @@ interface FrameBound {
  * at all (§7.15 correction 4), so there is no transformed value here to judge either.
  */
 function frameBounds(spread: Element): readonly FrameBound[] {
-  const bounds: FrameBound[] = [];
+  // Both branches read a fixed list of attribute names, keep the ones that parse and drop the
+  // rest — `filterMap` twice, where the accumulator made the two look like one shared walk
+  // that they never were: the v2 branch returns before the v3 one starts.
   if (detectFrameFormat(spread) === 'v2') {
     const domain = resolveTemporalDomain('', spread);
-    for (const name of [FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE]) {
+    return filterMap([FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE], (name) => {
       const value = numberOrNull(spread, name);
-      if (value !== null) bounds.push({ magnitude: Math.abs(value), domain });
-    }
-    return bounds;
+      return value === null ? null : { magnitude: Math.abs(value), domain };
+    });
   }
 
   const offsetAttribute = v3FrameOffsetAttribute(spread);
-  for (const name of offsetAttribute === null
-    ? [FRAME_LENGTH_ATTRIBUTE]
-    : [offsetAttribute, FRAME_LENGTH_ATTRIBUTE]) {
+  const names =
+    offsetAttribute === null ? [FRAME_LENGTH_ATTRIBUTE] : [offsetAttribute, FRAME_LENGTH_ATTRIBUTE];
+  return filterMap(names, (name) => {
     const text = readAttributeValue(spread, name);
     const temporal = text === null ? null : parseTemporalText(text);
-    if (temporal === null) continue;
-    bounds.push({
-      magnitude: Math.abs(temporal.value),
-      domain: resolveTemporalDomain(temporal.suffix, spread),
-    });
-  }
-  return bounds;
+    return temporal === null
+      ? null
+      : {
+          magnitude: Math.abs(temporal.value),
+          domain: resolveTemporalDomain(temporal.suffix, spread),
+        };
+  });
 }
 
 function temporalSpreads(performance: PerformanceView): readonly Element[] {
