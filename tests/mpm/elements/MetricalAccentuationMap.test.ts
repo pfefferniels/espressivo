@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { MetricalAccentuationMap } from '../../../src/mpm/elements/maps/MetricalAccentuationMap.js';
-import { MetricalAccentuationData } from '../../../src/mpm/elements/maps/data/MetricalAccentuationData.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
+import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
+import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 
 describe('MetricalAccentuationMap', () => {
   // ---------------------------------------------------------------
@@ -125,61 +126,6 @@ describe('MetricalAccentuationMap', () => {
   });
 
   // ---------------------------------------------------------------
-  // MetricalAccentuationData
-  // ---------------------------------------------------------------
-  describe('MetricalAccentuationData', () => {
-    it('should have correct default values', () => {
-      const md = new MetricalAccentuationData();
-      expect(md.startDate).toBe(0.0);
-      expect(md.endDate).toBeNull();
-      expect(md.scale).toBe(1.0);
-      expect(md.loop).toBe(false);
-      expect(md.stickToMeasures).toBe(true);
-      expect(md.styleName).toBe('');
-      expect(md.style).toBeNull();
-      expect(md.accentuationPatternDefName).toBeNull();
-      expect(md.accentuationPatternDef).toBeNull();
-      expect(md.xml).toBeNull();
-      expect(md.xmlId).toBeNull();
-    });
-
-    it('should clone correctly', () => {
-      const md = new MetricalAccentuationData();
-      md.startDate = 100;
-      md.endDate = 500;
-      md.scale = 2.5;
-      md.loop = true;
-      md.stickToMeasures = false;
-      md.styleName = 'testStyle';
-      md.accentuationPatternDefName = 'myPattern';
-      md.xmlId = 'acc-1';
-
-      const clone = md.clone();
-      expect(clone.startDate).toBe(100);
-      expect(clone.endDate).toBe(500);
-      expect(clone.scale).toBe(2.5);
-      expect(clone.loop).toBe(true);
-      expect(clone.stickToMeasures).toBe(false);
-      expect(clone.styleName).toBe('testStyle');
-      expect(clone.accentuationPatternDefName).toBe('myPattern');
-      expect(clone.xmlId).toBe('acc-1');
-    });
-
-    it('clone should be independent of original', () => {
-      const md = new MetricalAccentuationData();
-      md.scale = 2.0;
-      md.loop = true;
-
-      const clone = md.clone();
-      clone.scale = 0.5;
-      clone.loop = false;
-
-      expect(md.scale).toBe(2.0);
-      expect(md.loop).toBe(true);
-    });
-  });
-
-  // ---------------------------------------------------------------
   // getMetricalAccentuationDataOf reads the instruction's own attributes
   // ---------------------------------------------------------------
   // These three used to run against a `new MetricalAccentuationData(xml)` constructor
@@ -230,9 +176,12 @@ describe('MetricalAccentuationMap', () => {
       expect(md.scale).toBe(1.5);
       expect(md.loop).toBe(true);
       expect(md.stickToMeasures).toBe(false);
-      // The half the dead constructor could not do at all.
-      expect(md.styleName).toBe('s');
+      // The half the dead constructor could not do at all. Asserting the resolved def's
+      // own name rather than the `styleName` field the datum used to carry: it pins the
+      // same resolution (style `s` was in scope) plus the fact that it landed on the RIGHT
+      // def, where a `styleName` of `'s'` and a merely non-null def did not.
       expect(md.accentuationPatternDef).not.toBeNull();
+      expect(md.accentuationPatternDef?.getName()).toBe('waltzPattern');
     });
 
     it('reads loop=false when the attribute says so', () => {
@@ -260,6 +209,56 @@ describe('MetricalAccentuationMap', () => {
         '<accentuationPattern date="0.0" name.ref="pattern" scale="1.0" stickToMeasures="true" />',
       ).getMetricalAccentuationDataOf(1)!;
       expect(md.stickToMeasures).toBe(true);
+    });
+
+    /**
+     * The reader does NOT require the def to resolve — and that is the parity-carrying
+     * half of its contract, not an oversight.
+     *
+     * Java returns a datum with a null `accentuationPatternDef` here and
+     * `renderMetricalAccentuationToMap` dereferences it unguarded, so the whole render
+     * dies with a NullPointerException; `src/comparison/accentuationCurve.ts` reports the
+     * case as `⊥` (R21) and distinguishes it from the silent skip an instruction with no
+     * `<style>` in scope gets. Nothing pinned either half of that here before: the render
+     * method had no test at all, so a `return null` added to this reader — turning the
+     * abort into a skip and rendering documents the reference refuses — left the whole
+     * suite and `npm run gate` green. These two tests are that control, discharged.
+     */
+    it('returns a datum with a NULL def when the name does not resolve, rather than skipping', () => {
+      const md = mapWith(
+        '<accentuationPattern date="0.0" name.ref="nosuch" scale="1.0" />',
+      ).getMetricalAccentuationDataOf(1);
+      expect(md).not.toBeNull();
+      expect(md!.accentuationPatternDefName).toBe('nosuch');
+      expect(md!.accentuationPatternDef).toBeNull();
+    });
+
+    it('and the render then ABORTS on it, naming getLength, exactly as Java NPEs', () => {
+      const map = mapWith('<accentuationPattern date="0.0" name.ref="nosuch" scale="1.0" />');
+      const score = GenericMap.createGenericMap('score')!;
+      const note = new Element('note', Mpm.MPM_NAMESPACE);
+      note.addAttribute(new Attribute('date', '0.0'));
+      note.addAttribute(new Attribute('velocity', '64.0'));
+      score.addElement(note);
+
+      expect(() => map.renderMetricalAccentuationToMap(score, null, 720)).toThrow(/getLength/);
+      // and the velocity is untouched, because the abort happens before any note is reached
+      expect(note.getAttributeValue('velocity')).toBe('64.0');
+    });
+
+    it('renders velocity + accentuation * scale where the def DOES resolve', () => {
+      const map = mapWith(
+        '<accentuationPattern date="0.0" name.ref="pattern" scale="2.5" loop="true" />',
+      );
+      const score = GenericMap.createGenericMap('score')!;
+      const note = new Element('note', Mpm.MPM_NAMESPACE);
+      note.addAttribute(new Attribute('date', '0.0'));
+      note.addAttribute(new Attribute('velocity', '64.0'));
+      score.addElement(note);
+
+      map.renderMetricalAccentuationToMap(score, null, 720);
+      // beat 1 of `pattern` accentuates by 1.0, scaled by 2.5
+      expect(note.getAttributeValue('velocity')).toBe('66.5');
     });
   });
 
