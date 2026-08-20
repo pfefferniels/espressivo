@@ -185,24 +185,12 @@ function compareEvents(
         // a track name (0x03). 1024 meta events in the corpus, none of them checked past
         // their type byte until now.
         //
-        // **Text events (0x01) are excluded, and that exclusion is a finding, not a
-        // convenience.** Turning this check on reported 524 payload mismatches across 22
-        // fixtures, every one of them a 0x01 on the RAW midi path, and every one the same
-        // shape: Java writes an empty payload where this port writes the note's id. Verified
-        // against the reference bytes directly — `articulations_raw.mid` contains twelve
-        // `FF 01 00`, twelve text events of length zero.
         //
-        // The cause is one clause in `Element.getAttribute`. `Msm.ts:1352` transcribes
-        // `Msm.java:1034`'s `Helper.getAttributeValue("xml:id", n)` faithfully, and so does
-        // `AsynchronyMap.ts:93`; in Java that returns `""`, because XOM's
-        // `getAttribute(String)` matches a LOCAL name and the attribute's local name is `id`.
-        // This port's `Element.getAttribute` also matches the qualified name, so the same
-        // call finds the id. Removing that clause makes all 43 tests here pass and keeps the
-        // gate at 121 — but it reds 30 tests elsewhere, because twelve test reads and some
-        // converter paths spell the lookup `'xml:id'` too. It is a real divergence with a
-        // one-line cause and a blast radius that deserves its own change rather than a
-        // footnote in a comparator commit. PARITY.md carries it.
-        else if (te.metaType !== 0x01 && te.metaPayload !== re.metaPayload)
+        // Text events (0x01) were excluded here when this check went in, because turning it on
+        // reported 524 mismatches across 22 fixtures — every one a 0x01 on the raw MIDI path,
+        // Java writing an empty payload where this port wrote the note's id. That divergence is
+        // fixed in `xml/tree.ts`'s `attribute`, so the exclusion is gone and the check is total.
+        else if (te.metaPayload !== re.metaPayload)
           diffs.push(
             `Track ${t} event ${i}: meta 0x${(te.metaType ?? 0).toString(16)} payload TS=${te.metaPayload} vs Java=${re.metaPayload}`,
           );

@@ -527,9 +527,8 @@ export class Midi {
     const ppqOld = this.getPPQ();
     if (ppqOld === ppq) return;
 
-    console.log(
-      `Converting timing basis of "${this.getFile() || 'unnamed'}" from ${ppqOld} to ${ppq} pulses per quarter note.`,
-    );
+    // `Midi.java:231` narrates this conversion to stdout. A library converting a timing
+    // basis on request does not need to announce it; the caller asked for it.
 
     const newSequence = new Sequence(Sequence.PPQ, ppq); // create a new MIDI sequence
     for (const track of this.sequence.getTracks()) {

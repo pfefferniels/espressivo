@@ -737,51 +737,46 @@ pins it: `relativeDuration=0.5` plus `absoluteDurationChange=-70` on `duration.p
   calls `getTempoDataOf(-1)`, which returns null immediately — one wasted call rather than a
   bug, kept for parity.
 
-### `Element.getAttribute` matches qualified names, and it reaches the MIDI bytes
+### `attribute()` matched qualified names, and it reached the MIDI bytes — FIXED
 
-`src/xml/XomTypes.ts`. XOM's `Element.getAttribute(String)` matches a **local** name. This
-port's also matches the qualified name:
+`src/xml/tree.ts`. Java's `Helper.getAttribute` (`Helper.java:346-359`) tries three lookups,
+the first being XOM's `Element.getAttribute(String)` — which matches a **local** name in no
+namespace. This port's one-argument `Element.getAttribute` also matches the _qualified_ name,
+so step one hit where Java's missed, and `getAttributeValue('xml:id', n)` returned an id where
+`Helper.getAttributeValue("xml:id", n)` returns `""`.
 
-```ts
-if (attr.getLocalName() === name || attr.getQualifiedName() === name) return attr;
-```
+**Two call sites depended on it and both were byte-visible.** `Msm.ts` writes that value into
+the raw-MIDI text event, and `AsynchronyMap.ts:93` appends it to `@modified`.
 
-The difference is invisible until something asks for `'xml:id'`, whose local name is `id`.
-Java's `Helper.getAttribute` tries three lookups (`Helper.java:346-359`) and all three miss,
-so `Helper.getAttributeValue("xml:id", n)` returns `""`. Here the first one hits.
+Java's own references settle which side is right, and they are unambiguous: **all 105
+`modified` attributes under `all-maps-reference/` are `modified=""`**, and
+`articulations_raw.mid` carries **twelve `FF 01 00`** — twelve text events of length zero,
+where this port emitted `n1`, `n2` and so on. Measured across the corpus: **524 text events in
+22 fixtures**.
 
-**Two call sites transcribe exactly that Java line, and both are byte-visible.**
-`Msm.ts:1352` (`Msm.java:1034`) writes the note's id into the raw-MIDI text event where Java
-writes an empty one, and `AsynchronyMap.ts:93` (`AsynchronyMap.java:127`) appends a real id to
-`@modified` where Java appends nothing.
+It was invisible because `midi-byte-equivalence.test.ts` compared a meta event's type byte and
+nothing else. Two people found that gap independently on the same day, from opposite ends.
 
-Measured, 2026-08-20: **524 text events across 22 fixtures**, all on the raw MIDI path.
-Confirmed against the reference bytes rather than through the port —
-`articulations_raw.mid` contains twelve `FF 01 00`, twelve text events of length zero, where
-this port emits `n1`, `n2` and so on. It was invisible because
-`midi-byte-equivalence.test.ts` compared a meta event's type byte and nothing else; that
-suite now compares payloads for every meta type **except** 0x01, with this entry named at the
-exclusion.
+**Fixed in `attribute()`, deliberately not in `Element.getAttribute`.** Removing the qualified
+match from the XOM emulation also passes the byte gate, which is what makes it a tempting
+one-liner — and it reds 30 tests, `Mei2MsmMpmConverter`'s failures being _counts_ rather than
+ids, because the converter reads qualified names structurally. `attribute()` is the
+transcription of `Helper.getAttribute`, so that is where the fidelity belongs; the XOM
+emulation keeps its convenience for every other caller.
 
-**Not yet fixed, and deleting the clause is the WRONG fix — measured, not assumed.** Removing
-`|| attr.getQualifiedName() === name` makes all 43 tests in that suite pass and leaves the byte
-gate at 121, which is what made it look free. It reds 30 tests in six other files. Twelve of
-those are test-side reads spelling the lookup `getAttributeValue('xml:id')`, which would be a
-mechanical fix — but `Mei2MsmMpmConverter`'s failures are **counts**, not ids: `expected 1 to
-be 2`, `1 to be 3`, `1 to be 4`. The converter reads qualified names structurally (it has eight
-`'xml:id'` sites of its own), so a global change to the XOM emulation changes what the
-converter _builds_, not merely what a test can see.
+Consequences recorded where they land: `tests/msm/navigationEquivalence.test.ts` now scopes its
+agreement claim to unqualified names and pins the intended disagreement, and the 24 `@modified`
+values in `fixtures-multi-instruction/asynchrony_augmented.msm` were rewritten to `""` — only
+those, so every other byte of that snapshot is still the pre-rewrite build's.
 
-So the fix belongs where the divergence is, at the two functions that transcribe
-`Helper.getAttribute`: `Msm.ts`'s file-local `getAttribute` and the shared one
-`AsynchronyMap` uses. Java's version is three lookups against XOM's local-name-only
-primitive; ours inherits the qualified-name match at step one and should not. That is a
-change to two helpers with two call sites between them, and it leaves `Element.getAttribute`
-— which the converter depends on — alone.
-
-Deferred rather than done because both files were being rewritten by other agents when this
-was found. The comparator excludes meta 0x01 and names this entry at the exclusion, so the
-finding cannot go quiet.
+**One judgement call left open for the repository owner.** This makes the port emit _less_
+information than it did: `@modified` no longer says which asynchrony instructions touched a
+note, and the raw MIDI text events no longer carry note ids. Both are strictly more useful
+full than empty. The decision here was that an accidental, undocumented divergence hidden by
+an oracle gap should be closed rather than kept — but this is the same class of call as
+`720.0` versus `720`, where the shorter, non-Java spelling was deliberately kept. If the
+richer output is wanted, reverting is one line in `attribute()` plus this entry rewritten as a
+preserved divergence.
 
 ### `GenericMap.sort()` is not a sort
 

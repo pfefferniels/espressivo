@@ -309,11 +309,27 @@ function elementListDisagreement(
 // ---------------------------------------------------------------------------
 // 1 + 2. getAttribute / getAttributeValue
 // ---------------------------------------------------------------------------
+/**
+ * A qualified name is where the two deliberately differ now, and the difference is a fix.
+ *
+ * The restated `msmGetAttribute` above begins `ofThis.getAttribute(name)`, faithfully to
+ * `Helper.java:349` — but this port's one-argument `Element.getAttribute` matches the
+ * QUALIFIED name as well as the local one, where XOM's matches only a local name in no
+ * namespace. So `getAttribute('xml:id')` found the attribute here and finds nothing in Java,
+ * whose `Helper.getAttributeValue` therefore answers `""`. `xml/tree.ts`'s `attribute` now
+ * spells step one `getAttribute(name, '')` and agrees with Java; the historical copy above is
+ * left exactly as it stood, because that is what it is for.
+ *
+ * The two still agree on every unqualified name, which is what justified the deletion.
+ */
+const isQualified = (name: string): boolean => name.includes(':');
+
 describe('Msm.getAttribute is xml/tree.attribute', () => {
-  it('returns the identical Attribute for every (element, name) in the corpus', () => {
+  it('returns the identical Attribute for every unqualified (element, name) in the corpus', () => {
     const mismatches: string[] = [];
     for (const element of corpus) {
       for (const name of ATTRIBUTE_NAMES) {
+        if (isQualified(name)) continue;
         if (attribute(name, element) !== msmGetAttribute(name, element))
           mismatches.push(`<${element.getLocalName()}> @${name}`);
       }
@@ -326,12 +342,27 @@ describe('Msm.getAttribute is xml/tree.attribute', () => {
     for (const { what, root } of adversarialTrees()) {
       for (const element of everyElement(root)) {
         for (const name of ATTRIBUTE_NAMES) {
+          if (isQualified(name)) continue;
           if (attribute(name, element) !== msmGetAttribute(name, element))
             mismatches.push(`${what}: @${name}`);
         }
       }
     }
     expectAgreement(mismatches);
+  });
+
+  it('declines a QUALIFIED `xml:id` where the deleted copy accepted it — the fix', () => {
+    const [, bothSpellings] = adversarialTrees();
+    const element = bothSpellings!.root;
+
+    // The deleted copy answered it; `attribute` no longer does, and Java never did.
+    expect(msmGetAttribute('xml:id', element)).not.toBeNull();
+    expect(attribute('xml:id', element)).toBeNull();
+    expect(getAttributeValue('xml:id', element)).toBe('');
+
+    // Reading it the way `src/` actually reads it is unaffected — that goes through the third
+    // lookup, on the local name in the XML namespace.
+    expect(attribute('id', element)).not.toBeNull();
   });
 
   it('answers `xml:id` to a bare `id`, in both implementations', () => {
@@ -348,10 +379,11 @@ describe('Msm.getAttribute is xml/tree.attribute', () => {
 });
 
 describe('Msm.getAttributeValue is xml/tree.getAttributeValue', () => {
-  it('returns the identical string for every (element, name) in the corpus', () => {
+  it('returns the identical string for every unqualified (element, name) in the corpus', () => {
     const mismatches: string[] = [];
     for (const element of corpus) {
       for (const name of ATTRIBUTE_NAMES) {
+        if (isQualified(name)) continue;
         if (getAttributeValue(name, element) !== msmGetAttributeValue(name, element))
           mismatches.push(`<${element.getLocalName()}> @${name}`);
       }

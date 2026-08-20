@@ -392,36 +392,24 @@ describe('EventMaker', () => {
   // ---------------------------------------------------------------
   describe('createProgramChangeByName', () => {
     it('should look the instrument name up in the dictionary', () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
       const event = EventMaker.createProgramChangeByName(0, 0, 'Violin');
       const msg = event.getMessage() as ShortMessage;
       expect(shortCommand(msg)).toBe(EventMaker.PROGRAM_CHANGE);
       expect(shortData1(msg)).toBe(EventMaker.PC_Violin);
-
-      logSpy.mockRestore();
     });
 
     it('should resolve a German instrument name too', () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
       const event = EventMaker.createProgramChangeByName(5, 240, 'Cembalo');
       expect(event.getTick()).toBe(240);
       expect(shortChannel(event.getMessage() as ShortMessage)).toBe(5);
       expect(shortData1(event.getMessage() as ShortMessage)).toBe(EventMaker.PC_Harpsichord);
-
-      logSpy.mockRestore();
     });
 
     it('should fall back to Acoustic Grand Piano for an empty name', () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
       const event = EventMaker.createProgramChangeByName(0, 0, '');
       expect(shortData1(event.getMessage() as ShortMessage)).toBe(
         EventMaker.PC_Acoustic_Grand_Piano,
       );
-
-      logSpy.mockRestore();
     });
   });
 

@@ -333,7 +333,6 @@ export class InstrumentsDictionary {
     const n = name.toLowerCase(); // to ignore the case
     let pc = 0; // here comes the result
     let distance = Number.MAX_VALUE; // indicates the distance to the name string
-    let bestKey = ''; // the key `pc` came from; reported below, Java calls it `foo`
 
     // The metric is chosen ONCE, not once per dictionary key.
     //
@@ -355,7 +354,6 @@ export class InstrumentsDictionary {
 
       if (curDistance === 0) {
         // found perfect match
-        console.log(`${name} is mapped to ${key} with ${curDistance}`);
         return value; // return the value
       }
 
@@ -363,10 +361,13 @@ export class InstrumentsDictionary {
       if (curDistance < distance) {
         distance = curDistance;
         pc = value;
-        bestKey = key;
       }
     }
-    console.log(`${name} is mapped to ${bestKey} with ${distance}`);
+    // `InstrumentsDictionary.java:157` prints `<name> is mapped to <key> with <distance>`
+    // here and on the perfect-match branch above. Both are gone: they fire once or twice per
+    // lookup, on a method whose whole job is to be called in a loop over a score's parts, and
+    // a library that prints its intermediate reasoning to the host's stdout is the thing this
+    // campaign is removing. The value returned says the same thing to a caller who wants it.
     return pc;
   }
 
@@ -393,13 +394,11 @@ export class InstrumentsDictionary {
     const gmName = InstrumentsDictionary.DefaultNames[programChangeNumber] ?? '';
     if (useGmDefaultNames) return gmName;
 
-    let dict: InstrumentsDictionary;
-    try {
-      dict = new InstrumentsDictionary();
-    } catch (e) {
-      console.error(e);
-      return gmName;
-    }
+    // Java catches around this and falls back to `gmName`, because its dictionary is read
+    // from a resource file. This port embeds the data as a string literal, so `buildDictionary`
+    // parses a constant and the constructor is total — the same unreachable-handler shape as
+    // `EventMaker`'s fourteen, and the same reason.
+    const dict = new InstrumentsDictionary();
 
     for (const [key, value] of dict.dict.entries()) {
       if (value === programChangeNumber) return key;

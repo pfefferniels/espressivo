@@ -519,7 +519,22 @@ export function cloneElement(e: Element | null): Element | null {
 export function attribute(name: string, ofThis: Element | null): Attribute | null {
   if (ofThis == null) return null;
 
-  let a = ofThis.getAttribute(name);
+  // `getAttribute(name, '')` rather than `getAttribute(name)`: XOM's one-argument form matches
+  // a local name in NO namespace, and this port's also matches the qualified name. That
+  // difference is invisible until something asks for `'xml:id'`, whose local name is `id` —
+  // Java's three lookups all miss and `Helper.getAttributeValue` answers `""`, where step one
+  // here used to hit. Two call sites depend on it and both are byte-visible: `Msm.ts`'s
+  // raw-MIDI text event and `AsynchronyMap`'s `@modified` id. Java's own references settle
+  // which side is right — all 105 `modified` attributes in `all-maps-reference/` are
+  // `modified=""`, and `articulations_raw.mid` carries twelve `FF 01 00`, twelve text events
+  // of length zero.
+  //
+  // The fix is here rather than in `Element.getAttribute` deliberately. Removing the qualified
+  // match there also passes the gate, and reds 30 tests elsewhere — `Mei2MsmMpmConverter`'s
+  // failures being counts, not ids, because it reads qualified names structurally. This
+  // function is the transcription of `Helper.getAttribute`, so this is where the fidelity
+  // belongs; the XOM emulation keeps its convenience for everyone else.
+  let a = ofThis.getAttribute(name, '');
   if (a != null) return a;
 
   a = ofThis.getAttribute(name, ofThis.getNamespaceURI());
