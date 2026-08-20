@@ -68,7 +68,7 @@ import type {
   DiffReport,
   DiffResult,
 } from '../comparison/report.js';
-import { andThen, mapOk, traverse } from '../prelude/index.js';
+import { andThen, fromEntriesExact, mapOk, traverse } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import {
   ComparisonEngineError,
@@ -803,21 +803,17 @@ function checkProfile(profile: CompareMpmOptions['profile']): Checked {
 function resolveWeights(
   weights: ComparisonSettings['weights'],
 ): Record<ComparisonDimension, number> {
-  const resolved = defaultWeights() as Record<ComparisonDimension, number>;
-  const result = { ...resolved };
-  for (const dimension of COMPARISON_DIMENSIONS) {
-    const value = weights?.[dimension];
-    if (value !== undefined) result[dimension] = value;
-  }
-  return result;
+  const defaults = defaultWeights();
+  return fromEntriesExact(
+    COMPARISON_DIMENSIONS,
+    (dimension) => weights?.[dimension] ?? defaults[dimension],
+  );
 }
 
 function resolveInvariance(
   invariance: ComparisonSettings['invariance'],
 ): Record<ComparisonDimension, InvarianceMode> {
-  return Object.fromEntries(
-    COMPARISON_DIMENSIONS.map((dimension) => [dimension, invariance?.[dimension] ?? 'none']),
-  ) as Record<ComparisonDimension, InvarianceMode>;
+  return fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) => invariance?.[dimension] ?? 'none');
 }
 
 /**

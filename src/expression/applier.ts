@@ -39,6 +39,7 @@
 import {
   andThen,
   err,
+  fromEntriesExact,
   mapErr,
   mapOk,
   ok,
@@ -110,7 +111,6 @@ import {
   ReportSink,
   estimatesWithoutMsm,
   finishDimension,
-  type DimensionReport,
   type ExaggerationReport,
   type PerformanceBounds,
   type PerformanceReport,
@@ -287,12 +287,9 @@ class PerformancePass {
     this.reportInertTuningDomain();
     this.reportSubNoteDynamics();
 
-    const dimensions = Object.fromEntries(
-      EXPRESSION_DIMENSIONS.map((dimension) => [
-        dimension,
-        finishDimension(this.sink.dimensions[dimension], this.requested[dimension]),
-      ]),
-    ) as Record<ExpressionDimension, DimensionReport>;
+    const dimensions = fromEntriesExact(EXPRESSION_DIMENSIONS, (dimension) =>
+      finishDimension(this.sink.dimensions[dimension], this.requested[dimension]),
+    );
 
     return {
       performance: { index: this.performance.index, name: this.performance.name },

@@ -32,6 +32,7 @@
  * inequality. The report keeps them in separate fields for that reason and the docs say it once,
  * prominently.
  */
+import { fromEntriesExact, mapValues } from '../prelude/index.js';
 import {
   EVENT_KAPPA_QUARTERS,
   aggregateDistance,
@@ -200,9 +201,7 @@ export function epsilonRecord(): Record<
   EpsilonFamily,
   { readonly relative: number; readonly jnd: number }
 > {
-  return Object.fromEntries(
-    Object.entries(EPSILON_FIGURES).map(([family, figures]) => [family, { ...figures }]),
-  ) as Record<EpsilonFamily, { relative: number; jnd: number }>;
+  return mapValues(EPSILON_FIGURES, (figures) => ({ ...figures }));
 }
 
 /** §7.5's threshold for calling a segment's direction `'mixed'` [convention]. */
@@ -381,14 +380,16 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
     );
   const signedDensity = aggregateSignedDensity(evaluations, options.weights);
 
-  // Every dimension's report row, plus the notes its evaluation produced.
-  const dimensions = {} as Record<ComparisonDimension, DimensionComparison>;
-  for (const dimension of COMPARISON_DIMENSIONS) {
+  // Every dimension's report row, plus the notes its evaluation produced. The callback appends
+  // to `notes` as well as returning the row — the loop this replaces did both, and
+  // `fromEntriesExact` walks the vocabulary in its declared order, so the note log comes out in
+  // the same order it always did.
+  const dimensions = fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) => {
     const rows = evaluations.get(dimension) ?? [];
     const bothNeutral = sides.every(
       ([a, b]) => !hasEntries(a, dimension) && !hasEntries(b, dimension),
     );
-    dimensions[dimension] = dimensionComparison(
+    const comparison = dimensionComparison(
       dimension,
       rows,
       options.weights[dimension],
@@ -413,8 +414,9 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
             'keeps the triangle inequality intact when a ⊥ document is the middle term',
         ),
       );
-    notes.push(...encodingNotes(dimension, sides, dimensions[dimension].distance, pair));
-  }
+    notes.push(...encodingNotes(dimension, sides, comparison.distance, pair));
+    return comparison;
+  });
 
   for (const side of ['a', 'b'] as const)
     for (const finding of plausibilityFindings(
@@ -1253,9 +1255,7 @@ function compareText(x: string, y: string): number {
 }
 
 export function effectiveJnd(overrides: JndOverrides): Record<ComparisonJndKey, number> {
-  return Object.fromEntries(
-    COMPARISON_JND_KEYS.map((key) => [key, comparisonRowWith(key, overrides).jnd]),
-  ) as Record<ComparisonJndKey, number>;
+  return fromEntriesExact(COMPARISON_JND_KEYS, (key) => comparisonRowWith(key, overrides).jnd);
 }
 
 export function resolvedSettings(
@@ -1292,16 +1292,12 @@ function profilesOf(
   const requested = new Set<ComparisonDimension>(profile.dimensions ?? COMPARISON_DIMENSIONS);
   const grid = profile.grid ?? 'refinement';
 
-  const result = {} as Record<ComparisonDimension, ComparisonProfile>;
-  for (const dimension of COMPARISON_DIMENSIONS) {
+  return fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) => {
     const rows = evaluations.get(dimension) ?? [];
-    if (!requested.has(dimension)) {
-      result[dimension] = emptyProfile(rows);
-      continue;
-    }
-    result[dimension] = profileOf(dimension, rows, grid, pair, notes);
-  }
-  return result;
+    return requested.has(dimension)
+      ? profileOf(dimension, rows, grid, pair, notes)
+      : emptyProfile(rows);
+  });
 }
 
 function emptyProfile(rows: readonly DimensionEvaluation[]): ComparisonProfile {

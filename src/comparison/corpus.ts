@@ -27,6 +27,7 @@
  * for the same two documents under the same window are the same number, and the matrix cannot
  * drift from the product it is assembled out of.
  */
+import { fromEntriesExact } from '../prelude/index.js';
 import { agglomerate, pam, silhouette, SILHOUETTE_RELIABLE_MINIMUM } from './clustering.js';
 import type { Linkage } from './clustering.js';
 import { classicalMds, seriationOrder } from './embedding.js';
@@ -237,8 +238,9 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
 
   const pairwise = new Map<string, ComparisonReport>();
   const aggregate = new Array<number>(n * n).fill(0);
-  const byDimension = {} as Record<ComparisonDimension, number[]>;
-  for (const dimension of COMPARISON_DIMENSIONS) byDimension[dimension] = new Array(n * n).fill(0);
+  const byDimension = fromEntriesExact(COMPARISON_DIMENSIONS, () =>
+    (new Array(n * n) as number[]).fill(0),
+  );
   const signed = new Array<Record<ComparisonDimension, number | null>>(n * n);
 
   for (let i = 0; i < n; ++i)
@@ -268,18 +270,17 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
         byDimension[dimension][i * n + j] = value;
         byDimension[dimension][j * n + i] = value;
       }
-      const meanSigned = {} as Record<ComparisonDimension, number | null>;
-      for (const dimension of COMPARISON_DIMENSIONS)
-        meanSigned[dimension] = report.dimensions[dimension].meanSigned;
+      const meanSigned = fromEntriesExact(
+        COMPARISON_DIMENSIONS,
+        (dimension) => report.dimensions[dimension].meanSigned,
+      );
       signed[i * n + j] = meanSigned;
       // The descriptor is antisymmetric where the distance is symmetric: "A is faster than B"
       // read the other way round is "B is slower than A" (§7.5).
-      const flipped = {} as Record<ComparisonDimension, number | null>;
-      for (const dimension of COMPARISON_DIMENSIONS) {
+      signed[j * n + i] = fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) => {
         const value = meanSigned[dimension];
-        flipped[dimension] = value === null ? null : -value;
-      }
-      signed[j * n + i] = flipped;
+        return value === null ? null : -value;
+      });
 
       // EVERY kind, not just `length-mismatch` (W4 MAJOR-9). Filtering to one kind made
       // `capped`, `plausibility`, `renderer-*`, `grid-truncated`, `invariance-space` and
@@ -376,17 +377,18 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
 
   // AD-25.5's normalization, written out as a formula rather than stamped as a constant.
   const normalizationConstants =
-    options.normalization === 'corpus' ? ({} as Record<ComparisonDimension, number | null>) : null;
+    options.normalization === 'corpus'
+      ? fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) => {
+          const nonzero: number[] = [];
+          for (let i = 0; i < n; ++i)
+            for (let j = i + 1; j < n; ++j) {
+              const value = byDimension[dimension][i * n + j];
+              if (value !== 0) nonzero.push(value);
+            }
+          return median(nonzero);
+        })
+      : null;
   if (normalizationConstants !== null) {
-    for (const dimension of COMPARISON_DIMENSIONS) {
-      const nonzero: number[] = [];
-      for (let i = 0; i < n; ++i)
-        for (let j = i + 1; j < n; ++j) {
-          const value = byDimension[dimension][i * n + j];
-          if (value !== 0) nonzero.push(value);
-        }
-      normalizationConstants[dimension] = median(nonzero);
-    }
     // The aggregate is REBUILT from the derived weights, so `aggregate` and `byDimension` stay
     // one function of one weight vector. A dimension with an empty nonzero set keeps the fixed
     // default `ω_k` and its constant is null — stamped, per A3d.
@@ -645,13 +647,12 @@ function profileOf(
   /** Item indices in label order — one canonical summation sequence (AD-72.1's form). */
   order: readonly number[],
 ): CorpusReport['profiles'][number] {
-  const toMedoid = {} as Record<ComparisonDimension, number>;
-  const toMedoidSigned = {} as Record<ComparisonDimension, number | null>;
-  for (const dimension of COMPARISON_DIMENSIONS) {
-    toMedoid[dimension] = medoid === null ? 0 : byDimension[dimension][index * n + medoid];
-    toMedoidSigned[dimension] =
-      medoid === null || index === medoid ? null : (signed[index * n + medoid][dimension] ?? null);
-  }
+  const toMedoid = fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) =>
+    medoid === null ? 0 : byDimension[dimension][index * n + medoid],
+  );
+  const toMedoidSigned = fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) =>
+    medoid === null || index === medoid ? null : (signed[index * n + medoid][dimension] ?? null),
+  );
   // Summed in LABEL order, the sibling AD-72.2 sent me looking for. `toMeanDistance` is a
   // published per-item number and the mean of the SAME set of distances under any permutation —
   // but accumulated in the caller's item order it is not the same double: measured, it differs

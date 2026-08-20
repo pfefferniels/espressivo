@@ -41,7 +41,7 @@
  *   inclusive `lateStart >= earlyEnd` test resets the window to (0,1): no rubato at all,
  *   reached discontinuously. The clamp is what makes §8's "saturates smoothly" true.
  */
-import { andThen, err, mapOk, ok, type Result } from '../prelude/index.js';
+import { andThen, err, fromEntriesExact, mapOk, ok, type Result } from '../prelude/index.js';
 import {
   EXPRESSION_DIMENSIONS,
   factorDomainOf,
@@ -221,13 +221,12 @@ export function resolveFactors(
     }
   }
 
-  const resolved: Partial<Record<ExpressionDimension, number>> = {};
+  // The domain check runs first and over every dimension, so that the record is built only
+  // once nothing can refuse — `fromEntriesExact` has no early exit, and wanting one is the
+  // signal that validation and construction are two passes rather than one.
   for (const dimension of EXPRESSION_DIMENSIONS) {
     const value = factors[dimension];
-    if (value === undefined) {
-      resolved[dimension] = IDENTITY_FACTOR;
-      continue;
-    }
+    if (value === undefined) continue;
     if (!Number.isFinite(value)) {
       return err(`factor for ${dimension} must be finite, got ${value}`);
     }
@@ -237,20 +236,17 @@ export function resolveFactors(
           `so a negative factor leaves the domain), got ${value}`,
       );
     }
-    resolved[dimension] = value;
   }
-  return ok(resolved as Record<ExpressionDimension, number>);
+  return ok(
+    fromEntriesExact(EXPRESSION_DIMENSIONS, (dimension) => factors[dimension] ?? IDENTITY_FACTOR),
+  );
 }
 
 /** Which keys the caller actually supplied — §4's `requestedFactor`, which is null otherwise. */
 export function requestedFactors(
   factors: ExaggerationFactors,
 ): Record<ExpressionDimension, number | null> {
-  const requested: Partial<Record<ExpressionDimension, number | null>> = {};
-  for (const dimension of EXPRESSION_DIMENSIONS) {
-    requested[dimension] = factors[dimension] ?? null;
-  }
-  return requested as Record<ExpressionDimension, number | null>;
+  return fromEntriesExact(EXPRESSION_DIMENSIONS, (dimension) => factors[dimension] ?? null);
 }
 
 /** Everything one exaggeration run needs, validated and defaulted exactly once. */
