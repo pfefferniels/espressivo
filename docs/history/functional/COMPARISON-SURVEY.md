@@ -229,3 +229,34 @@ looks like it should break the rewrite. It does not, and the reason is worth wri
 Confirmed by fuzz as well as by argument: 20,000 deterministic trials over non-decreasing
 arrays with ties, out-of-range targets, and a leading NaN in half of them — `upperBoundBy(...) - 1`
 and "last index whose key <= target" disagreed **zero** times.
+
+
+## Addendum 2 — item 24 ruled: `groupBy` does not get an index parameter
+
+The survey proposed it on the evidence of **two** blocked sites. Its author re-checked and found
+the count was its own inflation; the real number is **zero**.
+
+- **`silhouette` was never blocked by the index.** It buckets item *indices* keyed by cluster,
+  so what it wants is a **value projection** — bucket something derived from the element rather
+  than the element. An index parameter does not provide that: `groupBy(clusters, (cluster, item)
+  => cluster)` still returns buckets of cluster values. It stays a keep for the two reasons
+  already recorded, neither of which is the index.
+- **`composeAnchors` is expressible today.** `groupBy` takes `Iterable<A>` (`seq.ts:251`) and
+  `Array.prototype.entries()` is one, so `groupBy(atoms.entries(), ([index, atom]) =>
+  poolKey(atom, index))` carries both halves in the tuple. Verified at HEAD by running it.
+
+That form is **strictly better** than the parameter would have been. In
+`ornamentationDistance.ts`, measured at HEAD: five `elementAt` calls go (354, 365, 366, 368,
+380); `const [headIndex, headAtom] = head(members)` replaces `elementAt(members, 0,
+POOL_MEMBERS)` with **no guard**, because `groupBy` returns a `NonEmptyArray`; and it fixes the
+O(m²) bucket rebuild at line 344 that was the reason to reach for `groupBy` there at all — so
+it closes items 12 and 24 together.
+
+Against the prelude's own admission criterion — *the shapes this codebase actually contains,
+and nothing added for completeness*, the rule that deleted `chunkBy`, `windows`, `unfold` and
+`stableSortBy` for having zero call sites — zero blocked sites is a clear no.
+
+**The technique generalises and is the durable part:** any "group a projection, keep the index"
+site is `groupBy(xs.entries(), ([i, x]) => …)` with the signature as it stands. A genuine
+*value mapper* would be a different function from an index parameter, and gets argued on its
+own evidence if a third site ever wants one.
