@@ -393,6 +393,42 @@ describe('Mei2MsmMpmConverter – what reset() clears between two mdivs', () => 
     expect(descendants(elementAt(msm, 1, 'the converted movements'), 'slur').length).toBe(0);
   });
 
+  // control: drop `this.tstamp2s = []` from reset()
+  it('drops unresolved tstamp2s, so a later movement cannot count one down', () => {
+    /** one 4/4 measure holding a whole note */
+    const wholeNote = (n: number, id: string, pname: string, extra = ''): string =>
+      `<measure n="${n}"><staff n="1"><layer n="1">
+         <note xml:id="${id}" pname="${pname}" oct="4" dur="1"/>
+       </layer></staff>${extra}</measure>`;
+
+    // `3m+1` means "three measures on, beat one", and movement 1 has no three more measures,
+    // so the entry is still parked when the movement ends. Movement 2 has four.
+    const { mpm } = convertMovements(`<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei">
+  <meiHead><fileDesc><titleStmt><title>Oracle</title></titleStmt><pubStmt/></fileDesc></meiHead>
+  <music><body>
+    <mdiv n="1" xml:id="mdivOne"><score>
+      <scoreDef meter.count="4" meter.unit="4"><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
+      <section>${wholeNote(1, 'm1n1', 'c', '<hairpin xml:id="m1hp" form="cres" tstamp="1" tstamp2="3m+1"/>')}</section>
+    </score></mdiv>
+    <mdiv n="2" xml:id="mdivTwo"><score>
+      <scoreDef meter.count="4" meter.unit="4"><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
+      <section>${wholeNote(1, 'm2n1', 'd')}${wholeNote(2, 'm2n2', 'e')}${wholeNote(3, 'm2n3', 'f')}${wholeNote(4, 'm2n4', 'g')}</section>
+    </score></mdiv>
+  </body></music>
+</mei>`);
+
+    // the hairpin's own entry, and nothing else: a leaked `tstamp2s` list makes movement 2's
+    // third measure resolve movement 1's parked span and append a second `<dynamics>` — at a
+    // date measured in movement 2's ticks — to a performance that was finished
+    const dynamics = descendants(elementAt(mpm, 0, 'the converted performances'), 'dynamics');
+    expect(dynamics.length).toBe(1);
+    expect(elementAt(dynamics, 0, "movement 1's dynamics").getAttributeValue('xml:id')).toBe(
+      'm1hp',
+    );
+    expect(descendants(elementAt(mpm, 1, 'the converted performances'), 'dynamics').length).toBe(0);
+  });
+
   // control: drop `this.currentWork = null` from reset()
   it('forgets the work element, so its fallback tempo reaches only its own movement', () => {
     // Two works, so the single-work shortcut in `makeMovement` cannot fire: movement 1 claims

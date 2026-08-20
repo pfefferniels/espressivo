@@ -4124,6 +4124,20 @@ export class Mei2MsmMpmConverter {
    * left is exactly the accumulators — the deferred lists, the note index and
    * {@link endingCounter} — which is a much easier list to keep honest than "everything the
    * previous movement might have touched".
+   *
+   * Two of the remaining lines are belt-and-braces, and it is worth saying which, because a
+   * later reader running the same controls will find them green:
+   * - `allNotesAndChords.clear()` is redundant — {@link indexNotesAndChords}, which
+   *   `makeMovement` calls immediately after this, clears the map before filling it;
+   * - `accid = []` cannot matter across movements — {@link processMeasure},
+   *   {@link processLayer}, {@link processStaff} and {@link processStaffDef} each clear it on
+   *   the way out, and all music is inside a measure, so it is always empty here.
+   *
+   * The other five are load-bearing and each has a test: `endingCounter`, `endids`,
+   * `tstamp2s`, `arpeggiosToSort` in `tests/mei/Mei2MsmMpmConverter.test.ts`, and `lyrics`
+   * — the exception, still unpinned: the queue is filled and drained inside a single
+   * {@link processNote}, so a leak needs the tie-merge path that returns before the drain,
+   * and no test constructs one.
    */
   protected reset(): void {
     this.endingCounter = 0;
