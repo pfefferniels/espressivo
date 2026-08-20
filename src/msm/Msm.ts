@@ -15,7 +15,7 @@ import {
   requireFirstChildElement,
   requireParentElement,
 } from '../xml/tree.js';
-import { MissingNodeError } from '../xml/errors.js';
+import { MeicoError, MissingNodeError } from '../xml/errors.js';
 import { addUUID } from '../xml/ids.js';
 
 import { Midi } from '../midi/Midi.js';
@@ -50,6 +50,51 @@ function getFilenameWithoutExtension(filename: string): string {
   if (i === 0) return filename;
   if (i === -1) return filename;
   return filename.substring(0, i);
+}
+
+/**
+ * Rename `copy`'s `xml:id` to `meico_repetition_<reps>_<baseId>` and record the step in the
+ * old-id → new-id chain. No-op for a copy with no `xml:id`.
+ *
+ * The two loops in {@link Msm.applySequencingMapToMap} carried this block character for
+ * character, four lines and a backwards `for` each. It is lifted out because it is the same
+ * block, not because the loops around it may be restructured — they may not, and the note on
+ * that method says so at length. Nothing here is reordered: both call sites invoke it exactly
+ * where the block stood.
+ *
+ * **`repetitionIDs` is a chain, not a base-id index**: `base → rep1 → rep2 → …`. The
+ * backwards walk follows it from the base id to the id of the *previous* iteration, which is
+ * the key the new entry belongs under, so a caller can follow any old id forward to its
+ * current one.
+ *
+ * A missing link used to be `repetitionIDs.get(prevId)!`, which on a broken chain assigns
+ * `undefined` to a `string` and then writes an entry under an `undefined` key — a
+ * `Map<string, string>` handed back to the caller with a key that is not a string, and no
+ * error anywhere. The chain cannot be broken from inside this module: an element reaching
+ * `reps` has passed through here `reps - 1` times already, each of those wrote the entry this
+ * step reads, and `resolveSequencingMaps` threads one table through every call. It CAN be
+ * broken by an outside caller of the public `applySequencingMapToMap` who supplies a fresh
+ * table for a second pass, and that is now a thrown error rather than a corrupt result.
+ */
+function recordRepetitionId(repetitionIDs: Map<string, string>, copy: Element, reps: number): void {
+  const id = copy.getAttribute('id', 'http://www.w3.org/XML/1998/namespace'); // get the id of the copy
+  if (id === null) return; // it has no xml:id
+
+  let prevId = id.getValue(); // get the base ID
+  const newId = `meico_repetition_${String(reps)}_${prevId}`; // generate a new ID
+  id.setValue(newId); // set the attribute
+
+  // the key of the map entry should be the ID of the previous iteration, not the base ID
+  for (let r = reps - 1; r > 0; --r) {
+    const linked = repetitionIDs.get(prevId);
+    if (linked === undefined)
+      throw new MeicoError(
+        `the repetition id chain for "${prevId}" is missing its step ${String(r)}; ` +
+          'applySequencingMapToMap was given an id table that an earlier pass did not fill',
+      );
+    prevId = linked;
+  }
+  repetitionIDs.set(prevId, newId);
 }
 
 /**
@@ -92,38 +137,30 @@ export class Msm extends AbstractMsm {
    */
   private static readonly CONTROL_CHANGE_DENSITY: number = 10; // in MPM-to-MIDI export a series of control change events may be generated; this constant limits their density
 
-  /**
-   * constructor — an empty Msm, to be filled by {@link createMsm} or by hand
+  /*
+   * THERE IS NO CONSTRUCTOR HERE, AND THAT IS THE CHANGE.
    *
-   * The three overloads are kept apart on purpose, as in `Mpm`: they are three different
-   * things to start from (nothing, a parsed document, unparsed XML text), not one
-   * parameter that happens to be optional. Collapsing them onto
-   * `Document | string | undefined` would say less than the three signatures do.
+   * `new Msm()`, `new Msm(document)` and `new Msm(xml)` all still work, and none of the 36
+   * call sites moved: {@link AbstractMsm}'s `constructor(source?: Document | string)` accepts
+   * all three and is inherited. What stood here was three overload signatures over a body
+   * that dispatched on `typeof` and then called `super` with the argument it had been handed
+   * — the overloads' whole content, restated as runtime tests the compiler could not tie back
+   * to them.
+   *
+   * The comment defending them said the three modes "are three different things to start from
+   * ... not one parameter that happens to be optional", and that collapsing them "would say
+   * less than the three signatures do". They have the same arity and one parameter each, so
+   * the union lists exactly the same three modes; nothing was said that is no longer said.
+   *
+   * The body's fourth arm, for `new Msm(42)` from untyped JavaScript, is not needed either: a
+   * value that is neither `undefined` nor a `Document` reaches `XmlBase`'s
+   * `typeof arg === 'string' && isXmlString` test, fails it, and leaves the field
+   * initializers standing — `data` and `file` null, `isValidFlag` false — which is exactly
+   * what that arm's bare `super()` produced.
+   *
+   * Named factories (`fromXml`, `fromDocument`, `empty`) would read better still; see
+   * {@link AbstractMsm}'s constructor for why that is a scheduled change and not this one.
    */
-  constructor();
-  /**
-   * constructor
-   * @param msm the msm document of which to instantiate the Msm object
-   */
-  constructor(msm: Document);
-  /**
-   * constructor
-   * @param xml xml code as UTF8 String
-   */
-  constructor(xml: string);
-  constructor(arg?: Document | string) {
-    if (arg === undefined) {
-      super();
-    } else if (arg instanceof Document) {
-      super(arg);
-    } else if (typeof arg === 'string') {
-      super(arg);
-    } else {
-      // unreachable from TypeScript, but reachable from plain JS (`new Msm(42)`); without
-      // it `super()` would never run and the instance would be unusable
-      super();
-    }
-  }
 
   /**
    * this factory creates an initial Msm instance with empty global maps
@@ -769,34 +806,33 @@ export class Msm extends AbstractMsm {
           e = getNextSiblingElement(e)
         ) {
           // go through the map elements
-          currentDate = parseFloat(e.getAttributeValue('date')!); // read its date
+          // `getElementAtAfter` yields only dated elements, but `getNextSiblingElement`
+          // steps to the next sibling of ANY name, so an undated one can arrive here. It
+          // threw before — three lines on, as `eCopy.getAttribute('date')!.setValue(…)`,
+          // once `parseFloat(null)`'s NaN had failed the comparison below — and it throws
+          // here, naming `date` at the point the map's ordering invariant is broken.
+          const dateAttribute = requireAttribute('date', e);
+          currentDate = parseFloat(dateAttribute.getValue()); // read its date
           if (currentDate >= gt.date) break; // if the element's date is at or after the goto don't copy further
           const eCopy = e.copy(); // make a deep copy of the element
-          eCopy.getAttribute('date')!.setValue(String(currentDate + dateOffset)); // draw its date
+          // The copy carries what the original carries, so these two reads cannot miss what
+          // the reads on `e` just found; they are checked rather than asserted because that
+          // is a fact about `copy()`, not one the type system holds.
+          requireAttribute('date', eCopy).setValue(String(currentDate + dateOffset)); // draw its date
 
           const endDate = e.getAttribute('date.end'); // get the date.end attribute
           if (endDate !== null) {
             // if the element has one, update it, too
-            const dur = parseFloat(endDate.getValue()) - parseFloat(e.getAttributeValue('date')!);
-            eCopy.getAttribute('date.end')!.setValue(String(currentDate + dur + dateOffset));
+            const dur = parseFloat(endDate.getValue()) - parseFloat(dateAttribute.getValue());
+            requireAttribute('date.end', eCopy).setValue(String(currentDate + dur + dateOffset));
           }
 
           const repetitionCounter = e.getAttribute('repetitionCounter'); // get the counter
           if (repetitionCounter !== null) {
             // this is not the first time we process this element
-            const reps = 1 + parseInt(e.getAttributeValue('repetitionCounter')!); // increase repetition counter
-            e.getAttribute('repetitionCounter')!.setValue(String(reps)); // write it to the attribute
-            const id = eCopy.getAttribute('id', 'http://www.w3.org/XML/1998/namespace'); // get the id of eCopy
-            if (id !== null) {
-              // if it has an xml:id
-              let prevId = id.getValue(); // get the base ID
-              const newId = `meico_repetition_${reps}_${prevId}`; // generate a new ID
-              id.setValue(newId); // set the attribute
-
-              // the key of the map entry should be the ID of the previous iteration, not the base ID
-              for (let r = reps - 1; r > 0; --r) prevId = repetitionIDs.get(prevId)!;
-              repetitionIDs.set(prevId, newId);
-            }
+            const reps = 1 + parseInt(repetitionCounter.getValue()); // increase repetition counter
+            repetitionCounter.setValue(String(reps)); // write it to the attribute
+            recordRepetitionId(repetitionIDs, eCopy, reps);
           } else {
             // this is the first time we process this element
             e.addAttribute(new Attribute('repetitionCounter', '0')); // add an attribute to count the repetitions
@@ -817,31 +853,24 @@ export class Msm extends AbstractMsm {
       e !== null;
       e = getNextSiblingElement(e)
     ) {
-      currentDate = parseFloat(e.getAttributeValue('date')!); // read its date
+      const dateAttribute = requireAttribute('date', e); // see the note in the loop above
+      currentDate = parseFloat(dateAttribute.getValue()); // read its date
       const eCopy = e.copy(); // make a deep copy
-      eCopy.getAttribute('date')!.setValue(String(currentDate + dateOffset)); // draw its date
+      requireAttribute('date', eCopy).setValue(String(currentDate + dateOffset)); // draw its date
 
       const endDate = e.getAttribute('date.end'); // get the date.end attribute
       if (endDate !== null) {
         // if the element has one, update it, too
-        const dur = parseFloat(endDate.getValue()) - parseFloat(e.getAttributeValue('date')!);
-        eCopy.getAttribute('date.end')!.setValue(String(currentDate + dur + dateOffset));
+        const dur = parseFloat(endDate.getValue()) - parseFloat(dateAttribute.getValue());
+        requireAttribute('date.end', eCopy).setValue(String(currentDate + dur + dateOffset));
       }
 
       const repetitionCounter = e.getAttribute('repetitionCounter'); // get the counter
       if (repetitionCounter !== null) {
         // this is not the first time
-        const reps = 1 + parseInt(e.getAttributeValue('repetitionCounter')!); // increase repetition counter
-        e.getAttribute('repetitionCounter')!.setValue(String(reps)); // write it to the attribute
-        const id = eCopy.getAttribute('id', 'http://www.w3.org/XML/1998/namespace'); // get the id
-        if (id !== null) {
-          let prevId = id.getValue();
-          const newId = `meico_repetition_${reps}_${prevId}`;
-          id.setValue(newId);
-
-          for (let r = reps - 1; r > 0; --r) prevId = repetitionIDs.get(prevId)!;
-          repetitionIDs.set(prevId, newId);
-        }
+        const reps = 1 + parseInt(repetitionCounter.getValue()); // increase repetition counter
+        repetitionCounter.setValue(String(reps)); // write it to the attribute
+        recordRepetitionId(repetitionIDs, eCopy, reps);
       }
 
       newMap.appendChild(eCopy); // append the copy to the new map
@@ -858,7 +887,9 @@ export class Msm extends AbstractMsm {
     const dropRepetitionCounters = (from: Element): void => {
       for (const node of from.query('descendant::*[@repetitionCounter]')) {
         const r = node as unknown as Element;
-        r.removeAttribute(r.getAttribute('repetitionCounter')!);
+        // the query selected `[@repetitionCounter]`, so the attribute is there by the
+        // predicate that produced this node — checked, not asserted.
+        r.removeAttribute(requireAttribute('repetitionCounter', r));
       }
     };
     dropRepetitionCounters(map);

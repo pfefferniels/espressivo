@@ -280,6 +280,37 @@ describe('Msm.applySequencingMapToMap', () => {
     expect(parseFloat(es.get(1).getAttributeValue('date.end')!)).toBe(2160);
   });
 
+  /*
+   * The test above reaches `date.end` only through the TAIL loop — the one that runs after
+   * the last goto. With a single repeat, the goto loop copies its one element while
+   * `dateOffset` is still 0, so the `+ dateOffset` term in the goto loop's own `date.end`
+   * update is invisible there: a control deleting it left all 237 tests green.
+   *
+   * A repeat taken TWICE reaches it. The second pass copies the element with `dateOffset`
+   * already at 720, so the middle copy is the only place in the suite where the goto loop's
+   * offset and a `date.end` meet.
+   */
+  it('shifts date.end inside the goto loop too, once a jump has built up an offset', () => {
+    const pedal = new Element('pedal');
+    pedal.addAttribute(new Attribute('date', '0'));
+    pedal.addAttribute(new Attribute('date.end', '360'));
+    const pedalMap = mapOf('pedalMap', [pedal]);
+
+    const seq = mapOf('sequencingMap', [
+      gotoElement({ date: '720', 'target.date': '0', activity: '110' }),
+    ]);
+    const newMap = Msm.applySequencingMapToMap(seq, pedalMap, new Map())!;
+    const es = newMap.getChildElements();
+
+    expect(es.size()).toBe(3);
+    // pass 1 (goto loop, offset 0), pass 2 (goto loop, offset 720), tail (offset 1440)
+    expect(dates(newMap)).toEqual([0, 720, 1440]);
+    const ends: number[] = [];
+    for (let i = 0; i < es.size(); ++i)
+      ends.push(parseFloat(es.get(i).getAttributeValue('date.end')!));
+    expect(ends).toEqual([360, 1080, 1800]);
+  });
+
   // ---------------------------------------------------------------
   // elements without ids
   // ---------------------------------------------------------------
