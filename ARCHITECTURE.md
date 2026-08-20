@@ -1558,13 +1558,26 @@ Mechanical translation rules — apply these, do not improvise:
 4. **Negative control:** move one case from `DESCEND` to `IGNORE` and prove the integration
    suite goes red. If it does not, that element is not covered by any fixture and the change
    is *unproven* — journal it as such.
-5. **Do not split the cursor.** `currentMdiv`/`currentPart`/`currentLayer`/`currentMeasure`/
-   `currentChord`/`currentMsmMovement`/`currentWork`/`currentPerformance` and the deferred
-   lists (`accid`, `endids`, `tstamp2s`, `lyrics`, `arpeggiosToSort`, `allNotesAndChords`)
-   may be *renamed* into a `ConversionContext` type only if every field moves verbatim.
-   Changing a field's lifetime or a drain point is out of scope: `reset()` semantics and the
-   drain points are subtle (documented in the class comment T10 wrote) and the fixture suite
-   cannot prove lifetime changes.
+5. ~~**Do not split the cursor.**~~ **Superseded 2026-08-20 by the functional-core campaign's
+   milestone 7, which did split it.** The eight `current*` fields are now two records:
+   `WalkContext` (`part`, `layer`, `measure`, `chord`), threaded down `convertElement` as a
+   parameter because each of the four was a hand-written save/restore around the recursive
+   call, i.e. dynamic scoping; and `MovementContext` (`msm`, `work`, `performance`), built
+   once per `mdiv` and reached through `WalkContext.movement`, because those were set once and
+   never restored, i.e. a Reader. `currentMdiv` is a local in `makeMovement`, which was its
+   only reader. The deferred lists (`accid`, `endids`, `tstamp2s`, `lyrics`,
+   `arpeggiosToSort`, `allNotesAndChords`) and `endingCounter` **stay fields**, unchanged and
+   undrained differently: they are accumulators, not positions, and `reset()` is now about
+   exactly them.
+
+   **The hazard this rule named was real and is why the milestone opened with tests.** All
+   sixteen MEI fixtures hold exactly one `mdiv`, so `reset()` runs once per conversion with an
+   empty converter in front of it and the byte suites cannot see a lifetime at all — measured,
+   not assumed. `tests/mei/Mei2MsmMpmConverter.test.ts` now carries a multi-movement section
+   that pins each surviving field's lifetime, written *before* anything moved, and it found a
+   real defect on the way: `arpeggiosToSort` was drained at the end of `makeMovement` and
+   never emptied, so a second `mdiv` overwrote the first one's `note.order` with the empty
+   string. Anyone touching this state again should keep that section as the gate.
 6. Keep `convert(mei: Mei)` as the public entry point with its current name — 10 integration
    test call sites use it. Drop only the `convert(root: Element)` overload, making the walker
    the private `convertElement`. Then **zero** integration test edits are needed.
