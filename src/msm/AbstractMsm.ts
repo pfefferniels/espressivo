@@ -1,6 +1,7 @@
 import { Element, Attribute, Elements, Document } from '../xml/XomTypes.js';
 import { XmlBase } from '../xml/XmlBase.js';
-import { descendantElements } from '../xml/tree.js';
+import { descendantElements, requireParentElement } from '../xml/tree.js';
+import { MissingNodeError } from '../xml/errors.js';
 
 /**
  * This class is a primitive for Msm and Mpm.
@@ -18,32 +19,54 @@ import { descendantElements } from '../xml/tree.js';
  */
 export abstract class AbstractMsm extends XmlBase {
   /**
-   * constructor
+   * Nothing, an already-parsed {@link Document}, or XML source text.
    *
-   * Three overloads for three starting points, kept separate for the same reason as
-   * `Msm`'s: they are distinct construction modes, not one optional parameter.
+   * This used to be three overloads, on the argument that "they are distinct construction
+   * modes, not one optional parameter". The three signatures had the same arity and the
+   * same single parameter, so the only thing they said that `Document | string | undefined`
+   * does not is that the modes are named — and they were not named, they were numbered by
+   * position. What the union loses is nothing; what the overload set cost is a `typeof`
+   * dispatch in the body whose arms the compiler could not tie back to the signatures.
+   * `XmlBase` had already collapsed the same pair for the same reason (T17), keeping its
+   * string form apart only because a *second* argument distinguishes it. There is no second
+   * argument here.
+   *
+   * Named factories (`fromXml`, `fromDocument`, `empty`) would say more still, but the
+   * constructor has 36 call sites, 32 of them in test files outside this charter's scope,
+   * so that is a change to schedule rather than to smuggle in.
+   *
+   * @param source the data as a XOM {@link Document}, or xml code as a UTF8 string, or
+   *   nothing for an empty instance
    */
-  constructor();
-  /**
-   * constructor
-   * @param document the data as XOM Document
-   */
-  constructor(document: Document);
-  /**
-   * constructor
-   * @param xml xml code as UTF8 string
-   */
-  constructor(xml: string);
-  constructor(arg?: Document | string) {
-    if (arg === undefined) {
+  constructor(source?: Document | string) {
+    if (source === undefined) {
       super();
-    } else if (arg instanceof Document) {
-      super(arg);
-    } else if (typeof arg === 'string') {
-      super(arg, true);
+    } else if (source instanceof Document) {
+      super(source);
     } else {
-      super();
+      super(source, true);
     }
+  }
+
+  /**
+   * The root element, or a {@link MissingNodeError} naming the document that has none.
+   *
+   * {@link XmlBase.getRootElement} answers `null` for exactly one reason — there is no
+   * parsed document at all — because a {@link Document} always has a root. Most callers
+   * below have already established that (`isEmpty()` is false, or they built the document
+   * themselves two lines earlier) and used to say so with `getRootElement()!`, which is a
+   * claim the type system cannot check and which arrives, when wrong, as "cannot read
+   * property of null" somewhere inside XOM. This is that claim, checked.
+   *
+   * It replaces an assertion and not a guard: every site that had the `!` threw on an empty
+   * document before this existed too. Where absence is a real answer rather than a broken
+   * invariant, call {@link XmlBase.getRootElement} and branch on the null.
+   */
+  protected requireRootElement(): Element {
+    const root = this.getRootElement();
+    if (root === null)
+      throw new MissingNodeError('this document is empty and therefore has no root element');
+    return root;
   }
 
   /**
@@ -107,8 +130,11 @@ export abstract class AbstractMsm extends XmlBase {
       es = map.getChildElements(name); // search only the elements with this name
 
     for (const e of es) {
-      if (e.getAttribute('date') !== null && parseFloat(e.getAttributeValue('date')!) >= date)
-        return e;
+      // One read, tested and then used, where this was two reads with the second asserted
+      // against the first. Same comparison: an entry with no `date` is skipped rather than
+      // being read as `parseFloat(null)`'s NaN, which fails every comparison anyway.
+      const dateAttribute = e.getAttribute('date');
+      if (dateAttribute !== null && parseFloat(dateAttribute.getValue()) >= date) return e;
     }
     return null;
   }
@@ -151,7 +177,8 @@ export abstract class AbstractMsm extends XmlBase {
 
     for (let i = es.size() - 1; i >= 0; --i) {
       const e = es.get(i);
-      if (e.getAttribute('date') !== null && parseFloat(e.getAttributeValue('date')!) <= date) {
+      const dateAttribute = e.getAttribute('date');
+      if (dateAttribute !== null && parseFloat(dateAttribute.getValue()) <= date) {
         return e;
       }
     }
@@ -179,16 +206,20 @@ export abstract class AbstractMsm extends XmlBase {
    * first removal, which is what makes deleting during the walk safe.
    */
   deleteEmptyMaps(): void {
-    if (this.isEmpty()) return;
+    // `getRootElement() === null` is exactly `isEmpty()` — a parsed Document always has a
+    // root — so this is the same early return, taken on the value the loop needs rather
+    // than on a flag the compiler cannot connect to it.
+    const root = this.getRootElement();
+    if (root === null) return;
 
-    const maps = descendantElements(this.getRootElement()!, (element) =>
-      element.getLocalName().includes('Map'),
-    ); // get all elements in the document that have a substring "Map" in their local-name
+    const maps = descendantElements(root, (element) => element.getLocalName().includes('Map')); // get all elements in the document that have a substring "Map" in their local-name
     for (const map of maps) {
       // go through all these elements
       if (map.getChildCount() === 0)
         // if the map has no children, it is empty
-        map.getParent()!.removeChild(map); // delete it
+        // `descendantElements` returns strict descendants of `root`, so each of them has a
+        // parent; `requireParentElement` is that fact checked rather than asserted.
+        requireParentElement(map).removeChild(map); // delete it
     }
   }
 }
