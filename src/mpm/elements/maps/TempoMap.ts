@@ -120,7 +120,7 @@ export class TempoMap extends GenericMap {
       const beatLengthAtt = attribute('beatLength', e);
       if (beatLengthAtt === null) return null;
       td.startDate = this.elements[i].getKey();
-      td.endDate = this.getEndDate(i);
+      td.endDate = this.nextDateOfType(i, 'tempo');
       td.xml = e;
       td.beatLength = parseFloat(beatLengthAtt.getValue());
       const att = attribute('id', e);
@@ -161,17 +161,6 @@ export class TempoMap extends GenericMap {
       return td;
     }
     return null;
-  }
-
-  private getEndDate(index: number): number {
-    let endDate = Number.MAX_VALUE;
-    for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === 'tempo') {
-        endDate = this.elements[j].getKey();
-        break;
-      }
-    }
-    return endDate;
   }
 
   private static computeExponent(meanTempoAt: number): number {

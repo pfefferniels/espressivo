@@ -153,7 +153,7 @@ export class DynamicsMap extends GenericMap {
     const e = this.elements[i].getValue();
     const dd = new DynamicsData();
     dd.startDate = this.elements[i].getKey();
-    dd.endDate = this.getEndDate(i);
+    dd.endDate = this.nextDateOfType(i, 'dynamics');
     dd.xml = e;
     const att = attribute('id', e);
     if (att !== null) dd.xmlId = att.getValue();
@@ -182,14 +182,6 @@ export class DynamicsMap extends GenericMap {
     const sndAtt = attribute('subNoteDynamics', e);
     if (sndAtt !== null) dd.subNoteDynamics = sndAtt.getValue() === 'true';
     return dd;
-  }
-
-  private getEndDate(index: number): number {
-    for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === 'dynamics')
-        return this.elements[j].getKey();
-    }
-    return Number.MAX_VALUE;
   }
 
   /**

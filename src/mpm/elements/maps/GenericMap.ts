@@ -512,6 +512,35 @@ export class GenericMap extends AbstractXmlSubtree {
   }
 
   /**
+   * Where the instruction at `index` stops being in force: the date of the next entry named
+   * `localName`, or `Number.MAX_VALUE` when there is none.
+   *
+   * This was five private `getEndDate(index)` methods — in `TempoMap`, `DynamicsMap`,
+   * `RubatoMap`, `MetricalAccentuationMap` and `MovementMap` (a reader arriving from a
+   * `…Map.getEndDate:NNN` citation elsewhere in the tree wants this method). Five copies,
+   * not five overrides: none was ever reached through a base-class reference, and they
+   * differed in exactly one token, the local name they scan for — `tempo`, `dynamics`,
+   * `rubato`, `accentuationPattern`, `movement`. Naming that token is the whole of the
+   * unification.
+   *
+   * `MAX_VALUE` and not null because it is what the callers do with it: `endDate` is the
+   * open end of a span they compare dates against, and "there is no next one" means the span
+   * runs to the end of time. Four of the five spelled that as an early `return`, `TempoMap`
+   * as a `break` out of an initialised local; the two are the same function.
+   *
+   * `ImprecisionMap` deliberately does not use this. Its spans end at the next entry of
+   * *any* name, style switches included, which is a different rule and stays written out
+   * where it is (see `DistributionSpan.endDate`).
+   */
+  protected nextDateOfType(index: number, localName: string): number {
+    for (let j = index + 1; j < this.elements.length; ++j) {
+      if (this.elements[j].getValue().getLocalName() === localName)
+        return this.elements[j].getKey();
+    }
+    return Number.MAX_VALUE;
+  }
+
+  /**
    * The `<style>` switch in scope at entry `index`: the nearest one at or before it, or
    * null when no style has been switched on yet. Note the scan starts *at* `index`, so a
    * style switch is in scope for an instruction sharing its position.
