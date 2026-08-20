@@ -475,6 +475,15 @@ export function seriationOrder(embedding: Embedding, labels: readonly string[]):
   // TOTAL at both sorts — `lower(...) ? -1 : 1` answers 1 in both directions for equal labels,
   // which is not a comparator and reintroduces the caller's order through the back door
   // (MINOR-R5). The index fallback settles genuinely equal labels.
+  // The double sort is a KEEP, and `stableSortBy` is the alternative it was weighed against —
+  // recorded because "two `.sort` calls on one array" is exactly the shape a survey flags. There
+  // is nothing to extract: `order` is built three lines up and belongs to nobody, so no caller's
+  // array is mutated and a copy-then-sort helper would prevent no mistake. `Array.prototype.sort`
+  // is stable by specification (ES2019), which is precisely what makes the seed sort load-bearing
+  // rather than redundant, and the comment above spends a paragraph on why. `stableSortBy` was
+  // written for the prelude, shipped, found to have zero call sites tree-wide, and deleted
+  // (`prelude/seq.ts`'s header lists it among the four deliberately-absent shapes); this site is
+  // one of the ~35 that looked like a customer and is not.
   const byLabel = (x: number, y: number) =>
     lower(labels, x, y) ? -1 : lower(labels, y, x) ? 1 : x - y;
   order.sort(byLabel);

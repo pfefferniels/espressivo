@@ -217,6 +217,31 @@ export function readDefaultArticulation(
   };
 }
 
+/*
+ * The two scans below are the shape `segments.ts`'s `coveringSegmentAt` replaces in
+ * `accentuationCurve`, `rubatoCurve` and `pedalCurve` — and they are LEFT AS SCANS, for a reason
+ * that is about this reader and not about the shape.
+ *
+ * `coveringSegmentAt` is a binary search, so it needs `startTicks` non-decreasing. Every sibling
+ * earns that by dropping non-finite dates before it builds its raws — `datedView` sorts a
+ * `NaN`-dated entry to the FRONT (`datedView.ts:19-27`), and a `NaN` start would make the
+ * predicate non-monotone. **This reader has no such guard.** The loop above takes every `<style>`
+ * entry whose style resolves, `dateTicks = entry.date * scaleFactor` and all, so a `<style>` with
+ * an unparseable `@date` reaches `raw` with a `NaN` date.
+ *
+ * One such entry is harmless — it lands at `raw[0]`, and AD-37.1 forces the first step's start to
+ * 0 regardless. TWO are not: `datedView` puts both at the front, so `steps[1].startTicks` is
+ * `NaN` and the non-monotonicity is in the MIDDLE of the array, where the leading-`NaN` argument
+ * ("the bound can only examine index 0 when no later index satisfies the predicate") does not
+ * reach.
+ *
+ * That is worth a second line, because `editState.ts:82-84` states the opposite as settled:
+ * *"`datedView` sorts such entries to the front and every reader skips them"*. Every reader but
+ * this one. Adding the guard would make these two convertible and would align the family — but
+ * it changes what a malformed document READS AS, not how a loop is spelled, so it belongs to
+ * whoever rules on the reading rather than to a loop-shape pass. Reported, not taken.
+ */
+
 /** The default in force at `ticks` — the `<articulationDef>`, or null where none is. */
 export function defaultArticulationAt(
   curve: DefaultArticulationCurve,

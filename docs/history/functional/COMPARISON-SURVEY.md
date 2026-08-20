@@ -260,3 +260,115 @@ and nothing added for completeness*, the rule that deleted `chunkBy`, `windows`,
 site is `groupBy(xs.entries(), ([i, x]) => …)` with the signature as it stands. A genuine
 *value mapper* would be a different function from an index parameter, and gets argued on its
 own evidence if a third site ever wants one.
+
+
+## Addendum 3 — worked, 2026-08-21. Two places the survey was wrong, and four green controls
+
+Written by the agent that executed this charter. Items are marked **done**, **left** or
+**already taken**; the two corrections are the part worth reading.
+
+### Correction 1 — items 21 and 22 diagnosed the site correctly and prescribed the wrong cure
+
+The survey said `xs.slice(index + 1).find(...)` inside the loop over `xs` is "O(n²) plus an
+allocation per iteration", and proposed `xs.find((x, i) => i > index && …)` as "the same answer
+with no slice". The diagnosis is right. **The cure is measurably worse.** Isolated on the shape
+alone, 9 samples per point, median, with 5 % of elements matching:
+
+```
+     n |  slice+find |  find+bound | precomputed
+  4000 |    13.06 ms |    37.16 ms |    0.021 ms
+  8000 |    29.17 ms |    98.21 ms |    0.041 ms
+ 16000 |   166.59 ms |   528.74 ms |    0.072 ms
+```
+
+Both scan forms are quadratic. `slice` is a memcpy of element references; `find` with the bound
+in the predicate pays a **JS predicate call for every element it skips over**, and that is far
+more expensive per element than the copy it saves — 3.2x worse at 16 000 and no better at any
+size. Removing an allocation is not the same as removing work.
+
+The cure is to stop scanning. Each reader now builds the ascending positions of what the
+look-ahead searches for (`filterMap` over the raws) and asks `upperBoundBy` for the first one
+past `index`: O(n) once, O(log n) each. End to end through the real readers at 4000 entries,
+median of 3: pedal 5.8 → 4.5 ms, dynamics 4.0 → 1.7 ms, tempo 4.3 → 2.0 ms, and the µs/entry
+column goes from rising to flat.
+
+The same lesson applies in reverse at `aggregate.maximalScoringRuns` (item 16), where the survey
+was right to keep the scan: a binary search costs log n closure calls where the invariant makes
+the scan cost one comparison.
+
+### Correction 2 — `articulationDefault` is NOT the same shape, and `editState.ts` says something false about it
+
+Addendum 1 marked `articulationDefault` "one step weaker, verify before you touch it". Verified,
+and it does not hold. Every other reader in the family drops non-finite dates before building
+its raws — which is what keeps `startTicks` monotone, since `datedView` sorts a `NaN`-dated
+entry to the front. **`articulationDefault` has no such guard.** One NaN-dated `<style>` is
+harmless (AD-37.1 forces the first step's start to 0 regardless); two are not, because both sort
+to the front and `steps[1].startTicks` is then NaN — non-monotonicity in the MIDDLE of the
+array, where Addendum 1's leading-NaN argument does not reach.
+
+`editState.ts:82-84` states the opposite as settled: *"`datedView` sorts such entries to the
+front and every reader skips them."* Every reader but this one. Adding the guard would align the
+family and make both scans convertible, but it changes what a malformed document READS AS, so it
+is a ruling and not a loop shape. **Open, for whoever owns the reading rules.**
+
+### Item 17 as actually taken: three of six
+
+`src/comparison/segments.ts` — `coveringSegmentAt`, one binary search with the disjointness proof
+in its header. Taken by `accentuationSegmentAt`, `rubatoSegmentAt` and `pedalSegmentAt`. Measured
+through `compareMpm` at n = 400 instructions per side, median of 3: accentuation 123 → 64 ms,
+rubato 234 → 120 ms, pedal 633 → 526 ms (pedal gains least; its cost is `idealCurveParameter`'s
+fifty bisections, not the lookup).
+
+`tempoCurve.segmentAt` and `dynamicsCurve.dynamicsSegmentAt` are **left**, on Addendum 1's own
+escape hatch: the `!isFinite(endTicks)` arm and the `?? last(segments)` fallback both decide what
+a published field says at a tick nothing covers, and the module's hazard is a NaN tick, where a
+wrong answer looks like an answer. `articulationDefault`'s two are left per Correction 2.
+
+### Four negative controls came back green — all four are now closed
+
+1. **`readTimeSignatures`' rejection rule.** Replacing the whole guard with `if (false) return
+   null` left all 1321 tests green. Every document the suite builds writes well-formed numerals.
+   A surviving NaN entry contributes no measures but stays in `timeSignatures`, where
+   `beatGridOf` takes the FIRST entry as the accentuation phase anchor and `compare` counts the
+   array for its estimate-degradation note.
+2. **`readAccentuationPattern`'s `@beat` guard.** Same break, all 1336 green. A NaN-beat point
+   defeats both tests in `accentuationAt`'s backwards scan, so the scan neither returns nor
+   breaks and the contribution comes back NaN.
+   *(1 and 2 closed by `tests/comparison/readerGuards.test.ts`.)*
+3. **The half-open rule in `coveringSegmentAt`.** `ticks <= endTicks` for `ticks < endTicks` left
+   all 1343 green. On a contiguous timeline the relaxation is invisible; the two differ only at
+   the first tick of a GAP — and that tick is a probe point on every comparison with a skipped
+   instruction in it, because `accentuationDistance` and `rubatoDistance` call `*SegmentAt` at
+   `cellStart` and a skipped instruction contributes its date as a breakpoint.
+   *(Closed by `tests/comparison/segmentLookup.test.ts`.)*
+4. **`scape.binOf`'s bin arithmetic.** A one-bin shift left all 1347 green, with real mass
+   moving: instrumenting logged answers in bins 0–7, 14 and 48 carrying masses 1.1 to 7. Nothing
+   noticed because `scape.test.ts` tests INTERNAL CONSISTENCY by its own header, and every case
+   there is invariant under a permutation of mass across bins; its one placement case puts the
+   atom at the window END, the single position where the shift is a no-op.
+   **A scape exists to say where the difference sits, so "the rows add up" is not enough.**
+   *(Closed by `tests/comparison/scapeBinning.test.ts`.)*
+
+### Everything else
+
+**Done:** 5, 6, 7 (`filterMap` + `[...].sort`), 10 (`partitionWith`, with the `filterMap` inside
+`numbered` KEPT — `partitionWith`'s predicate is not a type guard, and the alternative to a test
+that can no longer fire is an `as number`), 11 (`findLast`, slice kept because it is where the
+port states PARITY.md P2's `j > 0` bound), 12 (via Addendum 2's `.entries()`; `ATOMS` and
+`POOL_MEMBERS` deleted for having no uses left), 21, 22.
+**Part done:** 15 — the per-call `edges.slice(1).entries()` allocation is gone (`findIndex`, same
+answer at every input including NaN); `partitionPoint` is rejected and the reason recorded, since
+line 203's bracket does not reject a NaN and the two forms put it in opposite end bins.
+**Left, arguments written at the site:** 13, 14, 16, 17 (two of six), 18, 19, 20.
+**Already taken by other agents before this pass:** 1, 2, 3, 4, 8, 9, 23.
+**Not applicable:** 25 — `withNext` shipped and has the call sites; the survey predates it.
+**`src/prelude/` untouched**, per Addendum 2.
+
+### What was not done
+
+`measurePositionAt` (item 14) is the one left item with a real win behind it — one entry per bar
+up to 100 000, called twice per op and twice per segment. Its NaN answer today is
+`{ number: <the last bar>, beat: NaN }` and the bound's is `null`, which is what the function's
+own docstring promises; the bound is arguably the correct reading and the scan the defect.
+`diff`'s call site is proved finite; `compare`'s `segment.startQuarters` was **not traced to its
+sources**. Trace it, or rule on the NaN, and it is a one-line change.

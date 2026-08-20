@@ -194,17 +194,40 @@ function binnedMass(density: DimensionDensity, edges: readonly number[]): readon
   return bins;
 }
 
-/** The bin a point belongs to: half-open, with the LAST bin closed at the window end. */
+/**
+ * The bin a point belongs to: half-open, with the LAST bin closed at the window end.
+ *
+ * **`partitionPoint` is the considered-and-rejected alternative**, and it is named here because
+ * it is the obvious one and it is nearly right. `edges` is non-decreasing and line 203 has
+ * already bracketed `quarters` inside it, so
+ * `Math.min(count - 1, partitionPoint(count, i => numberAt(edges, i + 1, EDGES) <= quarters))`
+ * reproduces every finite case exactly, including the last-bin-closed rule that
+ * `bin === count - 1` encodes.
+ *
+ * It differs at `NaN`, and not harmlessly. The bracket test on line 203 does NOT reject a `NaN`
+ * — `NaN < low` and `NaN > high` are both false — so a `NaN` position reaches the scan, where
+ * every `quarters < high` fails and the `bin === count - 1` arm puts its mass in the LAST bin.
+ * Under the bound, `edges[i + 1] <= NaN` fails at every `i`, the answer is 0, and the same mass
+ * lands in the FIRST bin. A scape is a published picture of where mass sits in time; silently
+ * moving a bin's worth of it from one end of the window to the other is not a loop-shape change.
+ * Which of the two is *right* is a question about line 203's bracket, not about this scan, and
+ * it belongs to whoever rules on that.
+ *
+ * What did change is the allocation. `edges.slice(1).entries()` copied the edge array on every
+ * call — once per atom, from `binnedMass` — and then allocated a two-element tuple per step on
+ * top of it. `findIndex` is the same walk with neither, and the same answer: the first edge
+ * index past 0 that `quarters` falls short of, whose bin is one less; no such edge means the
+ * closed last bin, which is what `-1` maps to.
+ */
 function binOf(edges: readonly number[], quarters: number): number {
   const count = edges.length - 1;
   // A grid with no bins has no bin to name. The old spelling reached the same answer through
   // `undefined` comparisons that are false either way; this states it.
   if (count <= 0) return -1;
   if (quarters < numberAt(edges, 0, EDGES) || quarters > numberAt(edges, count, EDGES)) return -1;
-  // `edges.slice(1)` is the bins' upper ends, so its index IS the bin number.
-  for (const [bin, high] of edges.slice(1).entries())
-    if (quarters < high || bin === count - 1) return bin;
-  return -1;
+  // Edge `i` for `i >= 1` is bin `i - 1`'s upper end.
+  const edge = edges.findIndex((high, index) => index > 0 && quarters < high);
+  return edge === -1 ? count - 1 : Math.min(edge - 1, count - 1);
 }
 
 /** What an out-of-range read into one of this module's vectors is called (`indexing.ts`). */

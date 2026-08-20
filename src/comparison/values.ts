@@ -125,6 +125,14 @@ export function resolveComparisonLevel(
   globalEnvironment: MpmEnvironment,
 ): ResolvedComparisonLevel {
   const reading = resolveLevel(levelString, domain, styleName, environment, globalEnvironment);
+  // A `switch` on `kind`, and NOT `matchKind` — which is a keep, recorded rather than left to
+  // look like an omission. The tree-wide argument is that a three-arm switch whose arms build
+  // three differently-shaped records reads no better through a dispatch table, and the local one
+  // is stronger: this file's own header spends a paragraph arguing that {@link Valued}'s only
+  // eliminator must be a `kind` switch the caller writes out, because a combinator over it
+  // "compiles, reads correctly, and silently drops the δ_row the density layer is owed". The
+  // sibling union in the same file cannot take a combinator; adopting one HERE would put two
+  // conventions in one file and make the ban on the other look like an oversight.
   switch (reading.kind) {
     case 'def':
       return { value: reading.value, source: 'def', raw: levelString, def: reading.def };

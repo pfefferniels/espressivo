@@ -33,7 +33,7 @@
  * the construction that makes the alignment a metric. It holds because every gap cost here is
  * the same row-wise functional evaluated against the neutral ornament, and not a constant.
  */
-import { filterMap, head, isNonEmpty } from '../prelude/index.js';
+import { filterMap, groupBy, head, isNonEmpty } from '../prelude/index.js';
 
 import { elementAt } from '../prelude/seq.js';
 import {
@@ -338,11 +338,16 @@ function composedSpread(
 }
 
 export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly OrnamentAtom[] {
-  const groups = new Map<string, number[]>();
-  atoms.forEach((atom, index) => {
-    const key = poolKey(atom, index);
-    groups.set(key, [...(groups.get(key) ?? []), index]);
-  });
+  // `groups.set(key, [...(groups.get(key) ?? []), index])` REBUILT the whole bucket on every
+  // append, so a pool of m members cost O(m²) copies to assemble — and it was written by hand
+  // because `groupBy`'s key function takes only the element, where `poolKey` needs the index.
+  //
+  // It does not need a new signature: `groupBy` takes an `Iterable<A>` and `atoms.entries()` is
+  // one, so the tuple carries both. That is better than an index parameter would have been here,
+  // because the body wants the index too — to write back into `composed` — and now has it
+  // without a second lookup. Five checked reads into `atoms` and `members` go with it, and the
+  // head needs no guard at all: `groupBy` buckets are `NonEmptyArray`, so `head` is total.
+  const groups = groupBy(atoms.entries(), ([index, atom]) => poolKey(atom, index));
 
   const composed = [...atoms];
   for (const members of groups.values()) {
@@ -350,8 +355,7 @@ export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly Ornamen
     let from = 0;
     let to = 0;
     let poisoned = false;
-    for (const index of members) {
-      const member = elementAt(atoms, index, ATOMS);
+    for (const [, member] of members) {
       const gradient = gradientOf(member);
       if (isBottom(gradient)) {
         poisoned = true;
@@ -362,10 +366,9 @@ export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly Ornamen
       from += reversed ? gradient.value.to : gradient.value.from;
       to += reversed ? gradient.value.from : gradient.value.to;
     }
-    const headIndex = elementAt(members, 0, POOL_MEMBERS);
-    const headAtom = elementAt(atoms, headIndex, ATOMS);
+    const [headIndex, headAtom] = head(members);
     const rest = members.slice(1);
-    const frame = composedSpread(members.map((index) => spreadOf(elementAt(atoms, index, ATOMS))));
+    const frame = composedSpread(members.map(([, member]) => spreadOf(member)));
     // One poisoned member makes the whole anchor's velocity NaN, which is the anchor's effect.
     composed[headIndex] = {
       ...headAtom,
@@ -376,8 +379,7 @@ export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly Ornamen
         : valued(headAtom.noteOrderKind === 'descending' ? { from: to, to: from } : { from, to }),
       spread: frame ?? headAtom.spread,
     };
-    for (const index of rest) {
-      const member = elementAt(atoms, index, ATOMS);
+    for (const [index, member] of rest) {
       composed[index] = {
         ...member,
         gradient: valued(NEUTRAL_GRADIENT),
@@ -388,12 +390,17 @@ export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly Ornamen
   return composed;
 }
 
-/** What an out-of-range read into one of this module's atom lists is called. */
-const ATOMS = 'the ornament atom list';
+/**
+ * What an out-of-range read into one of this module's atom lists is called.
+ *
+ * `ATOMS` and `POOL_MEMBERS` used to sit here too, naming the whole-list and pool-member reads
+ * that {@link composeAnchors} made. Grouping over `atoms.entries()` carries each atom with its
+ * index, so those five reads have no index left to be out of range — and the two names went with
+ * them rather than being kept for a caller that no longer exists. The a/b pair below is a
+ * different shape: those indices come from the assignment solver, not from an enumeration.
+ */
 const ATOMS_A = 'the a-side ornament atoms';
 const ATOMS_B = 'the b-side ornament atoms';
-/** …and into one composition pool's member indices. */
-const POOL_MEMBERS = "a composition pool's members";
 
 /** The structural differences a matched pair reports without pricing (§5.6). */
 function findingsFor(x: OrnamentAtom, y: OrnamentAtom): OrnamentFinding[] {

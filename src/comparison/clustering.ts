@@ -547,6 +547,21 @@ export function silhouette(
   labels: readonly string[] = [],
 ): readonly number[] {
   const n = matrix.n;
+  // **`groupBy` is the considered-and-rejected alternative here, and it is named so that the
+  // next survey does not re-propose it.** This IS a bucket-by-key loop, and it is the one in
+  // `src/comparison` that stays written out. Two independent reasons, either sufficient:
+  //
+  // 1. **It buckets the wrong thing.** `groupBy` collects the ELEMENTS it iterates, and what
+  //    belongs in a bucket here is the item INDEX, keyed by the cluster at that index — a value
+  //    projection, which `groupBy` does not take. `groupBy(clusters.entries(), ([, cluster]) =>
+  //    cluster)` is expressible (that `.entries()` trick is what `ornamentationDistance.compose-
+  //    Anchors` uses), but it hands back buckets of `[item, cluster]` tuples that all four read
+  //    sites below would have to destructure, for a pair whose second half is the key they were
+  //    already looked up by.
+  // 2. **The buckets are mutated in place, deliberately.** The `members.sort(...)` on the next
+  //    line is AD-72.1's repair; `groupBy` returns `ReadonlyMap<K, NonEmptyArray<A>>`, which has
+  //    no `.sort`, so adopting it would mean spreading every bucket to sort it — an allocation
+  //    per cluster added to remove a five-line loop.
   const groups = new Map<number, number[]>();
   for (const [item, cluster] of clusters.entries()) {
     const members = groups.get(cluster);

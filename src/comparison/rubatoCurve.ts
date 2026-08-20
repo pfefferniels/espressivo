@@ -51,6 +51,7 @@ import { findStyleDef } from '../expression/styleScope.js';
 import type { MpmEnvironment } from '../expression/mpmTree.js';
 import { assertSpanEndRule } from './spanEnds.js';
 import { resolutionAt, type OrderedMapView } from './document.js';
+import { coveringSegmentAt } from './segments.js';
 
 /**
  * The `<rubatoDef name="…">` a `<rubato name.ref="…">` inherits from, or null.
@@ -399,13 +400,15 @@ export function readRubatoSegments(
   };
 }
 
-/** The segment governing `ticks`, right-continuous, or null where nothing warps. */
+/**
+ * The segment governing `ticks`, right-continuous, or null where nothing warps.
+ *
+ * Called once per Gauss-Legendre node, so the linear scan this replaces made one dimension's
+ * integral quadratic in the size of the map it integrates. {@link coveringSegmentAt} carries the
+ * proof that the bound answers identically here — including at `NaN` and `Infinity`.
+ */
 export function rubatoSegmentAt(curve: RubatoCurve, ticks: number): RubatoSegment | null {
-  for (const segment of curve.segments) {
-    if (ticks < segment.startTicks) break;
-    if (ticks < segment.endTicks) return segment;
-  }
-  return null;
+  return coveringSegmentAt(curve.segments, ticks);
 }
 
 /**
