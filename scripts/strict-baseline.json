@@ -2,7 +2,6 @@
   "--noUncheckedIndexedAccess": {
     "src/api": 1,
     "src/expression": 17,
-    "src/mei": 67,
     "src/midi": 87,
     "src/mpm": 4,
     "src/mpm/elements": 4,
