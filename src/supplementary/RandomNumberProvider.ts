@@ -1,4 +1,5 @@
 import { OutOfRangeError } from '../xml/errors.js';
+import { elementAt } from '../prelude/seq.js';
 
 /**
  * Random numbers drawn from one of the distributions MPM's imprecision maps use.
@@ -283,10 +284,18 @@ export class RandomNumberProvider {
     const wholeIndex = Math.floor(clampedIndex);
 
     if (this.distributionType === RandomNumberProvider.DISTRIBUTION_LIST)
-      return this.series[wholeIndex % this.series.length];
+      // An EMPTY list makes this `index % 0`, i.e. NaN, and the reader throws. That is a move
+      // TOWARD the reference: Java computes the same `index % series.size()` on an `int` and
+      // throws ArithmeticException: / by zero. This port returned `undefined` wearing the type
+      // `number`, which every caller's arithmetic then turned into a NaN somewhere else.
+      // Reachable from a `<distribution.list>` with no `<measurement>` children; no fixture
+      // has one.
+      return elementAt(this.series, wholeIndex % this.series.length, 'distribution.list draw');
 
+    // In range by construction — the loop fills the series up to `wholeIndex` — but the
+    // construction is a loop condition, which a type cannot follow.
     while (this.series.length <= wholeIndex) this.nextDouble();
-    return this.series[wholeIndex];
+    return elementAt(this.series, wholeIndex, 'random series draw');
   }
 
   /**
@@ -366,7 +375,9 @@ export class RandomNumberProvider {
   }
 
   private compensatingTriangleDistribution(): number {
-    const prevRandomNum = this.series[this.series.length - 1];
+    // Non-empty by construction: each correlated distribution's factory pushes a first value
+    // before any caller can reach this.
+    const prevRandomNum = elementAt(this.series, this.series.length - 1, 'correlated predecessor');
     const newLowerLimit =
       prevRandomNum - (prevRandomNum - this.lowerLimit) / this.degreeOfCorrelation;
     const newUpperLimit =
@@ -384,7 +395,8 @@ export class RandomNumberProvider {
     let attempts = 0;
     do {
       result =
-        this.series[this.series.length - 1] + (this.nextRandom() - 0.5) * 2.0 * this.maxStepWidth;
+        elementAt(this.series, this.series.length - 1, 'brownian predecessor') +
+        (this.nextRandom() - 0.5) * 2.0 * this.maxStepWidth;
       if (++attempts > 10000) {
         result = Math.max(this.lowerLimit, Math.min(this.upperLimit, result));
         break;

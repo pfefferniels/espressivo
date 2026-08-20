@@ -55,6 +55,7 @@ export {
   isNonEmpty,
   head,
   last,
+  elementAt,
   filterMap,
   partitionWith,
   groupBy,

@@ -242,9 +242,13 @@ export function* reverseDescendantElements(
     { element: ofThis, i: ofThis.getChildCount() - 1 },
   ];
 
-  while (stack.length > 0) {
-    const frame = stack[stack.length - 1];
-
+  // The loop peeks at the top frame and only sometimes pops it, so it cannot be written as
+  // `while ((frame = stack.pop()) !== undefined)`. Taking the peek in the for-header instead
+  // is what lets the compiler see that the body runs only on a frame that exists —
+  // `stack[stack.length - 1]` is `T | undefined` under `noUncheckedIndexedAccess`, and the
+  // invariant that makes it safe lives in the loop condition, where a type cannot follow it.
+  // `continue` runs the update expression, so the re-peek happens on every path.
+  for (let frame = stack.at(-1); frame !== undefined; frame = stack.at(-1)) {
     let child: Element | null = null;
     while (frame.i >= 0) {
       const candidate = frame.element.getChild(frame.i--);

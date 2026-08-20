@@ -34,6 +34,31 @@ export function last<T>(xs: NonEmptyArray<T>): T {
 }
 
 /**
+ * Read `xs[index]`, or throw naming the index, the bound and what was being read.
+ *
+ * For the accesses that survive the algorithms — a genuine random access, where the index came
+ * from a computation rather than from iterating. Under `noUncheckedIndexedAccess` those are the
+ * sites that cannot be typed away, and the two dishonest answers are `!` and `as T`: both
+ * assert the bound rather than checking it, and both fail somewhere else entirely when the
+ * assertion is wrong, usually as "cannot read property of undefined" several frames from the
+ * mistake.
+ *
+ * This is the third answer. The cost is one comparison; the return is that an out-of-range
+ * read says which index, which bound and which sequence, at the point it happens.
+ *
+ * **Prefer not needing it.** A loop that reads `xs[i]` and pushes is {@link filterMap}; one
+ * that reads `xs[i]` and `xs[i + 1]` is {@link pairwise}; one that walks two sequences together
+ * is {@link zipWith}. Reach for this only once those do not fit.
+ */
+export function elementAt<T>(xs: readonly T[], index: number, what: string): T {
+  const value = xs[index];
+  if (value === undefined) {
+    throw new RangeError(`${what}: index ${String(index)} is outside 0..${String(xs.length - 1)}`);
+  }
+  return value;
+}
+
+/**
  * Map and filter in one pass: `f` returns `null` for the elements to drop.
  *
  * The single most common loop shape in this tree — "walk the children, parse each, skip the

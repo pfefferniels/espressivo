@@ -291,6 +291,27 @@ describe('RandomNumberProvider – distribution list', () => {
     expect(rng.getValue(5)).toBe(42);
     expect(rng.getValue(100)).toBe(42);
   });
+
+  /**
+   * An EMPTY list, which is reachable: a `<distribution.list>` carrying no `<measurement>`
+   * children parses to one.
+   *
+   * `getValue` computes `index % series.length`, so an empty series makes that `NaN` and the
+   * read is out of range. This port used to return `undefined` wearing the declared type
+   * `number`, and every caller's arithmetic turned it into a NaN somewhere else entirely.
+   *
+   * It now throws, which is a move TOWARD the reference rather than away from it: Java
+   * computes the same `index % this.series.size()` on an `int` (`RandomNumberProvider.java`,
+   * `getValue(int)`) and throws `ArithmeticException: / by zero`. Both languages refuse; only
+   * the exception type differs, and this one names the index and the bound.
+   *
+   * Pinned here because no fixture reaches it, so nothing else would notice it changing back.
+   */
+  it('throws rather than yielding undefined-as-a-number for an empty list', () => {
+    const rng = RandomNumberProvider.createRandomNumberProvider_distributionList([]);
+    expect(() => rng.getValue(0)).toThrow(RangeError);
+    expect(() => rng.getValue(0)).toThrow(/distribution\.list draw/);
+  });
 });
 
 // ---------------------------------------------------------------------------

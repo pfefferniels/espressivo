@@ -50,6 +50,7 @@ import type {
   PerformedPart,
   XmlText,
 } from './types.js';
+import { zipWith } from '../prelude/seq.js';
 
 /** The library version. It is serialization-visible — the converter writes it into MPM metadata. */
 export { VERSION } from '../version.js';
@@ -456,11 +457,14 @@ export function convertMeiToMsmMpm(
       `MEI: the conversion produced ${msms.length} MSM(s) but ${mpms.length} MPM(s); see the log for the movement it failed on`,
     );
 
-  return msms.map((msm, index) => ({
+  // `zipWith` rather than `map` plus `mpms[index]`: the equal-length check above is what makes
+  // that index safe, and a check three statements away is not something a type can follow.
+  // Walking the two together says it structurally instead.
+  return zipWith(msms, mpms, (msm, mpm, index) => ({
     index,
     title: msm.getTitle(),
     msm: serialize(msm, 'MSM'),
-    mpm: serialize(mpms[index], 'MPM'),
+    mpm: serialize(mpm, 'MPM'),
   }));
 }
 

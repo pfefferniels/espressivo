@@ -40,6 +40,7 @@
 
 import { DOMParser, XMLSerializer, type Document as DomDocument } from '@xmldom/xmldom';
 import xpath from 'xpath';
+import { elementAt } from '../prelude/seq.js';
 
 // Re-export for convenience
 export { DOMParser, XMLSerializer };
@@ -87,7 +88,7 @@ export class Nodes {
   }
 
   get(index: number): XomNode {
-    return this.nodes[index];
+    return elementAt(this.nodes, index, 'Nodes.get');
   }
 
   toArray(): XomNode[] {
@@ -195,9 +196,9 @@ export class Attribute extends XomNode {
     // `prefix:local` splits on the first colon, and a name carrying more than one
     // colon loses everything after the second segment. Well-formed XML has at most
     // one colon, so this only ever bites on malformed input; kept as-is for parity.
-    const parts = name.split(':');
-    this._namespacePrefix = parts.length > 1 ? parts[0] : '';
-    this._localName = parts.length > 1 ? parts[1] : name;
+    const split = splitQualifiedName(name);
+    this._namespacePrefix = split.prefix;
+    this._localName = split.localName;
 
     if (value !== undefined) {
       // 3-arg constructor: name, namespace, value
@@ -327,7 +328,7 @@ export class Elements {
   }
 
   get(index: number): Element {
-    return this.elements[index];
+    return elementAt(this.elements, index, 'Elements.get');
   }
 
   toArray(): Element[] {
@@ -386,9 +387,7 @@ export class Element extends XomNode {
     const doc = placeholderDom();
     let elem: globalThis.Element;
 
-    const parts = name.split(':');
-    const localName = parts.length > 1 ? parts[1] : name;
-    const prefix = parts.length > 1 ? parts[0] : '';
+    const { prefix, localName } = splitQualifiedName(name);
 
     if (namespaceURI) {
       elem = doc.createElementNS(namespaceURI, name) as unknown as globalThis.Element;
@@ -622,10 +621,14 @@ export class Element extends XomNode {
   }
 
   removeChildAt(index: number): XomNode {
-    const removed = this._children.splice(index, 1);
+    // Read before splicing, so the bounds check is the reader's rather than a test on the
+    // splice result — `[removed] = splice(...)` is `XomNode` until noUncheckedIndexedAccess is
+    // on, which makes the `undefined` test read as impossible to `no-unnecessary-condition`.
+    const removed = elementAt(this._children, index, 'Element.removeChildAt');
+    this._children.splice(index, 1);
     this.invalidateChildIndex();
-    if (removed[0]) removed[0]._xomParent = null;
-    return removed[0];
+    removed._xomParent = null;
+    return removed;
   }
 
   /**
@@ -649,9 +652,9 @@ export class Element extends XomNode {
     const ordered = new Set(order);
     if (ordered.size !== order.length) {
       // Duplicate entries: fall back to the literal loop this replaces.
-      for (let i = 0; i < order.length; ++i) {
-        this.removeChild(order[i]);
-        this.insertChild(order[i], i);
+      for (const [i, node] of order.entries()) {
+        this.removeChild(node);
+        this.insertChild(node, i);
       }
       return;
     }
@@ -683,7 +686,7 @@ export class Element extends XomNode {
   }
 
   getChild(index: number): XomNode {
-    return this._children[index];
+    return elementAt(this._children, index, 'Element.getChild');
   }
 
   getChildCount(): number {
@@ -730,9 +733,8 @@ export class Element extends XomNode {
     let index = this._childIndex;
     if (index === null) {
       index = new Map();
-      const children = this._children;
-      for (let i = 0; i < children.length; ++i) {
-        if (!index.has(children[i])) index.set(children[i], i);
+      for (const [i, child] of this._children.entries()) {
+        if (!index.has(child)) index.set(child, i);
       }
       this._childIndex = index;
     }
@@ -981,6 +983,30 @@ export class Document {
  * Only a LEADING one is a signature. Anywhere else U+FEFF is ZERO WIDTH NO-BREAK SPACE and
  * is ordinary content, so exactly one occurrence, at position 0, is removed.
  */
+/**
+ * Split a qualified name into its prefix and local part, exactly as `name.split(':')` and
+ * taking elements 0 and 1 did.
+ *
+ * The truncation is deliberate and is preserved: `a:b:c` yields prefix `a` and local name
+ * `b`, losing `:c`, because the incumbent read `parts[1]` and nothing else. Well-formed XML
+ * has at most one colon so it only bites on malformed input, and it is kept for parity.
+ *
+ * Written with `indexOf`/`slice` rather than `split` plus indices for a specific reason: under
+ * `noUncheckedIndexedAccess` `parts[1]` is `string | undefined`, and the obvious repair —
+ * destructuring and testing for `undefined` — reads as an impossible comparison to
+ * `no-unnecessary-condition` while that flag is still off. Not indexing at all is clean under
+ * both, and is the only formulation that is.
+ */
+function splitQualifiedName(name: string): { readonly prefix: string; readonly localName: string } {
+  const firstColon = name.indexOf(':');
+  if (firstColon < 0) return { prefix: '', localName: name };
+  const secondColon = name.indexOf(':', firstColon + 1);
+  return {
+    prefix: name.slice(0, firstColon),
+    localName: name.slice(firstColon + 1, secondColon < 0 ? undefined : secondColon),
+  };
+}
+
 const BYTE_ORDER_MARK = '﻿';
 
 /**
@@ -1024,10 +1050,11 @@ export class Builder {
 
     // Check for parse errors
     const errorNode = dom.getElementsByTagName('parsererror');
-    if (errorNode.length > 0) {
-      throw new ParsingException(
-        `XML parsing error: ${errorNode[0].textContent || 'Unknown error'}`,
-      );
+    // `.item(0)` is typed `Element | null` whichever way the index flags are set; `[0]` is
+    // not, so the null test here is honest under both.
+    const firstError = errorNode.item(0);
+    if (firstError !== null) {
+      throw new ParsingException(`XML parsing error: ${firstError.textContent || 'Unknown error'}`);
     }
 
     const rootElement = dom.documentElement;
