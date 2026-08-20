@@ -29,11 +29,38 @@ function canonicalizeUuids(xml: string): string {
   });
 }
 
+/**
+ * What this comparison forgives, and why each one is not a blind spot.
+ *
+ * **A normaliser applied to BOTH sides can only ever hide a difference, never reveal one.** So
+ * each entry here has to earn its place by naming something genuinely incomparable, and this
+ * suite has been audited on exactly that basis. It carried five; three were hiding real
+ * divergences from Java output and are gone:
+ *
+ * - the default-namespace declaration, re-emitted on every namespaced element (fixed in
+ *   `Element.toXML`; reinstating the defect now reds 64 tests)
+ * - the XML declaration, hardcoded with `encoding="UTF-8"` where Java writes none (fixed in
+ *   `Document.toXML`)
+ * - the metadata `<comment>`, forgiven for a "version string differs" that does not differ —
+ *   removing it changed nothing, so it was masking exactly zero. If the package version is
+ *   ever bumped, that comment's text WILL change and this suite will red. That is correct:
+ *   bumping the version does change generated output byte for byte, and the person doing it
+ *   should see that rather than have it normalised away.
+ *
+ * What remains is genuinely incomparable, or genuinely open:
+ *
+ * - **generated UUIDs** — nondeterministic by construction, canonicalised by first-occurrence
+ *   order rather than deleted, so `goto/@target.id` to `marker/@xml:id` wiring stays checkable
+ * - **resource URIs** — file paths, which depend on where the fixture lives
+ * - **`="720.0"` versus `="720"`** — the one REAL divergence still standing. Java's
+ *   `Double.toString` keeps the fractional zero and JavaScript's `String(number)` does not.
+ *   Removing this line reds 24 of the 48 tests. It is a genuine difference in output and it is
+ *   recorded as open, not resolved: fixing it means a Java-double formatter at every numeric
+ *   attribute write.
+ */
 function normalizeXml(xml: string): string {
   return (
     canonicalizeUuids(xml)
-      // Remove metadata comment element (version string differs)
-      .replace(/<comment>[^<]*<\/comment>/, '<comment>NORMALIZED</comment>')
       // Replace generated UUIDs in xml:id attributes
       .replace(
         /xml:id="[^"]*_meico_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/g,
