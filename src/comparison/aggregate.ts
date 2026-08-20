@@ -40,7 +40,7 @@
  * WHICH partition is reported. Saying so keeps the headline capability from being entangled
  * with the thresholding — a reader who distrusts the segmentation can still trust `D`.
  */
-import { fromEntriesExact, pairwise, zipWith } from '../prelude/index.js';
+import { filterMap, fromEntriesExact, pairwise, zipWith } from '../prelude/index.js';
 import { elementAt, numberAt } from '../prelude/seq.js';
 import { CompensatedSum, bisectSignChange, gaussLegendre10 } from './quadrature.js';
 import { COMPARISON_DIMENSIONS, type ComparisonDimension } from './registry.js';
@@ -375,15 +375,14 @@ export function segmentPass(
     remainderMass: Math.max(0, remainder),
     remainderUnderflow: remainder < 0 ? -remainder : 0,
     thresholdPerQuarter,
-    cellQuantizedDimensions: densities
-      .filter(
-        (density) =>
-          weights[density.dimension] !== 0 &&
-          density.cells.some(
-            (cell) => cell.densityAt === null && cell.endQuarters > cell.startQuarters,
-          ),
-      )
-      .map((density) => density.dimension),
+    // Test and project in one pass: the two-pass form built an intermediate array of whole
+    // `DimensionEvaluation`s only to read one field off each.
+    cellQuantizedDimensions: filterMap(densities, (density) =>
+      weights[density.dimension] !== 0 &&
+      density.cells.some((cell) => cell.densityAt === null && cell.endQuarters > cell.startQuarters)
+        ? density.dimension
+        : null,
+    ),
   };
 }
 

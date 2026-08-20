@@ -289,7 +289,7 @@ export function readArticulationAtoms(
         resolution.globalEnvironment,
       );
       if (style !== null)
-        for (const candidate of style.styleDef.getChildElements('articulationDef').toArray())
+        for (const candidate of style.styleDef.getChildElements('articulationDef'))
           if (attribute('name', candidate)?.getValue() === nameRef) def = candidate;
 
       if (def === null)

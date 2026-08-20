@@ -28,7 +28,7 @@
  * this module returns is therefore in QUARTERS, or in common ticks derived from a caller-
  * supplied grid — never in the MSM's own ticks, which nothing downstream knows how to read.
  */
-import { head, isNonEmpty, zipWith } from '../prelude/index.js';
+import { head, isNonEmpty, withNext } from '../prelude/index.js';
 import { readMsmFacts, type MsmFacts } from '../expression/msmFacts.js';
 import { readNumericAttributeValue } from '../expression/attributes.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -144,7 +144,7 @@ function readTimeSignatures(root: Element, ppq: number): readonly TimeSignatureE
   if (map === null) return [];
 
   const entries: TimeSignatureEntry[] = [];
-  for (const element of map.getChildElements('timeSignature').toArray()) {
+  for (const element of map.getChildElements('timeSignature')) {
     const date = readNumericAttributeValue(element, 'date');
     const numerator = readNumericAttributeValue(element, 'numerator');
     const denominator = readNumericAttributeValue(element, 'denominator');
@@ -189,12 +189,34 @@ function measureGrid(
   // The neighbour is PAIRED with its own instruction rather than read at `index + 1`. "There is
   // no next one" is then a value — `null` — instead of an out-of-range read that the type system
   // had to be told about with `as … | undefined`.
-  const nexts: readonly (TimeSignatureEntry | null)[] = [...entries.slice(1), null];
-  for (const [entry, next] of zipWith(entries, nexts, (at, after) => [at, after] as const)) {
+  // `withNext` IS this pair of lines: every entry with its successor, and `null` for the
+  // last. The `[...xs.slice(1), null]` array and the zip that consumed it were one shape
+  // spelled out, and it is the shape `pairwise` cannot serve — `pairwise` drops the last
+  // entry, and the last instruction is a span too.
+  for (const [entry, next] of withNext(entries)) {
     const until = Math.min(next?.startQuarters ?? endQuarters, endQuarters);
     const length = measureLengthQuarters(entry);
     if (!(length > 0)) continue;
-    for (let start = entry.startQuarters; start < until; start += length) {
+    // `first + k · length`, and NOT a `start += length` accumulator.
+    //
+    // Repeated addition of a non-representable length compounds its rounding error once per
+    // bar. Every power-of-two denominator — 4/4, 6/8, 7/8, 3/2 — gives a length that IS
+    // representable, so the corpus never showed it; 5/6 gives 3.3333333333333335, and measured,
+    // the accumulated and multiplied grids part company by 1.1e-13 by bar 57 and never
+    // reconverge. `measurePositionAt` then divides the drifted `startQuarters` into the
+    // reported `beat`, and measure numbers and beats are published report fields, so the drift
+    // is observable output rather than an internal detail.
+    //
+    // The sibling computation in `rubatoCurve.ts` already multiplies
+    // (`raw.dateTicks + k * frameLengthTicks`); this is the same arithmetic written the same
+    // way. Nothing is reassociated: `start` was never a running SUM of different quantities,
+    // only the same `length` added k times, and `k · length` is that product computed once.
+    //
+    // `!(start < until)` and not `start >= until`, so a NaN `start` ends the walk exactly as
+    // the old continuation test did rather than running forever.
+    for (let k = 0; ; k += 1) {
+      const start = entry.startQuarters + k * length;
+      if (!(start < until)) break;
       measures.push({
         number,
         startQuarters: start,

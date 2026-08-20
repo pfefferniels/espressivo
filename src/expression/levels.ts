@@ -45,6 +45,7 @@
  * falls out of asking `resolveLevel` instead of scanning headers, which is the reason to ask
  * `resolveLevel`.
  */
+import { filterMap, groupBy } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { readAttributeValue, readNumericAttributeValue } from './attributes.js';
 import { orderedEntries, styleNameAt, type DatedEntry } from './datedView.js';
@@ -749,13 +750,15 @@ class LevelPass {
    * the report names the collapsed pair and a caller can reject the sample.
    */
   private reportMergedLevels(): void {
-    const byStyleDef = new Map<Element, DefRecord[]>();
-    for (const record of this.defs.values()) {
-      if (record.skipped) continue;
-      const siblings = byStyleDef.get(record.styleDef) ?? [];
-      siblings.push(record);
-      byStyleDef.set(record.styleDef, siblings);
-    }
+    // Drop the skipped records, then bucket what is left by the `<styleDef>` they live in —
+    // `filterMap` and `groupBy`, where the loop this replaces did both at once and re-`set`
+    // the bucket on every element where `groupBy` sets it once. Encounter order inside each
+    // bucket is what makes the pair walk below "every unordered pair, once, in encounter
+    // order", and `groupBy` guarantees it.
+    const byStyleDef = groupBy(
+      filterMap(this.defs.values(), (record) => (record.skipped ? null : record)),
+      (record) => record.styleDef,
+    );
     for (const siblings of byStyleDef.values()) {
       // Every unordered pair, once, in encounter order. Written as `entries()` over the outer
       // element and a `slice` for the tail rather than two index counters, because indices are
@@ -897,9 +900,41 @@ class LevelPass {
    * independent levers, so moving the second with the first does not violate D-C's one-site
    * rule — and leaving it behind would put a discontinuity where the document had none.
    *
-   * Detection is the conjunction §7.2 states and nothing looser: the *next* instruction in the
-   * date-stable view, in the same environment, at a strictly later date, constant, and
-   * resolving to exactly the transition's target value in the same normalized space.
+   * Detection is the conjunction §7.2 states: the *next* instruction, in the same environment,
+   * at a strictly later date, constant, and resolving to exactly the transition's target value
+   * in the same normalized space.
+   *
+   * **MEASURED DIVERGENCE — "the next instruction" is the next CLASSIFIED one, which for
+   * `dynamics` is looser than the next one in the view. Do not read this as "nothing looser"
+   * until it is ruled on.**
+   *
+   * `this.instructions` is not the date-stable view: {@link classifyInstruction} returns early
+   * for an element with neither a level nor a target, so `.at(index + 1)` steps over such an
+   * element rather than stopping at it. Whether that is right depends on whether the RENDERER
+   * steps over it too, and the two dimensions answer differently:
+   *
+   * - **tempo — stepping over is correct.** A `<tempo>` without `@beatLength` is skipped by the
+   *   renderer as well (§7.2, and `TempoMap.getTempoDataOf` returns null for it), so it opens
+   *   no span and agreeing with the renderer means ignoring it.
+   * - **dynamics — stepping over is NOT correct.** A `<dynamics>` carrying neither `@volume`
+   *   nor `@transition.to` classifies away here, but the renderer ENDS the previous span with
+   *   it (AD-33.4). Measured through `performMsm` on five notes, with a transition
+   *   `volume="60" transition.to="90"` at 0 and a constant `volume="90"` at 2880:
+   *
+   *       without a bare <dynamics/> at 1440:  60, 67.49…, 75, 82.51…, 90   (one ramp)
+   *       with one:                            60, 75, 100.0, 100.0, 90
+   *
+   *   The ramp stops at the bare instruction and the two notes after it fall to the renderer's
+   *   hard-coded 100.0. So the `volume="90"` at 2880 is separated from the transition endpoint
+   *   by a discontinuity the document already contains — it is not the endpoint repeated, and
+   *   the "they are not independent levers" justification above does not reach it. It is
+   *   nevertheless marked and moved today; `tests/expression/applierLevels.test.ts` pins that
+   *   under `CHARACTERIZES`, so the divergence is visible rather than latent.
+   *
+   * The fix is not simply "compare view positions": that would also stop tempo stepping over
+   * the `<tempo>` it is right to step over. It needs a per-dimension notion of "an element the
+   * renderer ignores entirely" versus "an element the renderer treats as a boundary", which is
+   * a §7.2 ruling and not a refactoring. Flagged, measured, and left alone.
    */
   private markEndMarkerDuplicates(): void {
     for (const [index, instruction] of this.instructions.entries()) {
@@ -962,11 +997,11 @@ class LevelPass {
 
 /** The `<tempoDef>`/`<dynamicsDef>` elements an instruction's endpoints resolve through. */
 function defsNamedBy(instruction: Instruction): readonly Element[] {
-  const defs: Element[] = [];
-  for (const endpoint of endpointsOf(instruction)) {
-    if (endpoint.reading.kind === 'def') defs.push(endpoint.reading.def);
-  }
-  return defs;
+  // The `kind === 'def'` test is the narrowing as well as the filter, which is exactly what
+  // `filterMap` is for: `endpoint.reading.def` is only a field on that arm.
+  return filterMap(endpointsOf(instruction), (endpoint) =>
+    endpoint.reading.kind === 'def' ? endpoint.reading.def : null,
+  );
 }
 
 function endpointsOf(instruction: Instruction): readonly Endpoint[] {

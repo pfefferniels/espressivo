@@ -245,9 +245,9 @@ function intAttribute(xml: Element, name: string): number | null {
 
 /** The `<measurement value="…">` children, in document order. A child with no value is skipped. */
 function measurementValues(xml: Element): readonly number[] {
-  return filterMap(xml.getChildElements('measurement').toArray(), (m) =>
-    floatAttribute(m, 'value'),
-  );
+  // `filterMap` takes an `Iterable`, and `Elements` is one — so the `toArray()` copy that
+  // used to stand between them is gone.
+  return filterMap(xml.getChildElements('measurement'), (m) => floatAttribute(m, 'value'));
 }
 
 /**

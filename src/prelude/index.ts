@@ -69,6 +69,7 @@ export {
   scanl,
   zipWith,
   pairwise,
+  withNext,
   windows,
   unfold,
   stableSortBy,

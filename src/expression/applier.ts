@@ -39,6 +39,7 @@
 import {
   andThen,
   err,
+  filterMap,
   fromEntriesExact,
   head,
   isNonEmpty,
@@ -347,7 +348,7 @@ class PerformancePass {
     for (const environment of environmentsOf(this.performance)) {
       const collection = environment.styleCollections.get(collectionName);
       if (collection === undefined) continue;
-      for (const styleDef of collection.getChildElements('styleDef').toArray()) {
+      for (const styleDef of collection.getChildElements('styleDef')) {
         visit(environment, styleDef);
       }
     }
@@ -360,7 +361,7 @@ class PerformancePass {
     visit: (context: DefContext) => void,
   ): void {
     this.eachStyleDef(collectionName, (environment, styleDef) => {
-      for (const def of styleDef.getChildElements(defElement).toArray()) {
+      for (const def of styleDef.getChildElements(defElement)) {
         visit({
           environment,
           collectionName,
@@ -1044,7 +1045,7 @@ class PerformancePass {
     if (def === null) return 0;
 
     let amplitude = 0;
-    for (const anchor of def.getChildElements(ACCENTUATION_ANCHOR_ELEMENT).toArray()) {
+    for (const anchor of def.getChildElements(ACCENTUATION_ANCHOR_ELEMENT)) {
       const value = presentNumber(anchor, 'value') ?? 0;
       const from = presentNumber(anchor, 'transition.from') ?? value;
       const to = presentNumber(anchor, 'transition.to') ?? from;
@@ -1268,7 +1269,7 @@ class PerformancePass {
       ORNAMENT_DEF_ELEMENT,
       ({ environment, container, def: ornamentDef }) => {
         const label = `${container}/${readAttributeValue(ornamentDef, 'name') ?? ''}`;
-        for (const gradient of ornamentDef.getChildElements(DYNAMICS_GRADIENT_ELEMENT).toArray()) {
+        for (const gradient of ornamentDef.getChildElements(DYNAMICS_GRADIENT_ELEMENT)) {
           const siteFor = (attribute: string): SiteRef =>
             siteRefOf(environment, label, ornamentDef, gradient, attribute);
           const present = rows.filter(
@@ -1350,7 +1351,7 @@ class PerformancePass {
       ORNAMENT_DEF_ELEMENT,
       ({ environment, container, def: ornamentDef }) => {
         const label = `${container}/${readAttributeValue(ornamentDef, 'name') ?? ''}`;
-        for (const spread of ornamentDef.getChildElements(TEMPORAL_SPREAD_ELEMENT).toArray()) {
+        for (const spread of ornamentDef.getChildElements(TEMPORAL_SPREAD_ELEMENT)) {
           visit(spread, (attribute) =>
             siteRefOf(environment, label, ornamentDef, spread, attribute),
           );
@@ -1684,7 +1685,7 @@ function presentNumber(element: Element, attribute: string): number | null {
  */
 function findNamedDef(styleDef: Element, defElement: string, name: string): Element | null {
   let found: Element | null = null;
-  for (const def of styleDef.getChildElements(defElement).toArray()) {
+  for (const def of styleDef.getChildElements(defElement)) {
     if (readAttributeValue(def, 'name') === name) found = def;
   }
   return found;
@@ -1738,17 +1739,21 @@ type FrameReading = Result<readonly FrameBound[], FrameRefusal>;
  * neutral — both v2 defaults are 0.0 — so it is simply not a site.
  */
 function readV2Frame(spread: Element): FrameReading {
-  const bounds: FrameBound[] = [];
-  for (const attribute of [FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE]) {
-    if (readAttributeValue(spread, attribute) === null) continue;
-    bounds.push({
-      row: requireRow(TEMPORAL_SPREAD_ELEMENT, attribute),
-      attribute,
-      value: readNumericAttributeValue(spread, attribute),
-      suffix: '',
-    });
-  }
-  return ok(bounds);
+  // `filterMap`, not a fold: this reader cannot fail, so nothing short-circuits and the
+  // `Result` is always `ok`. Its v3 sibling below is deliberately NOT written this way — it
+  // returns `err` from inside the walk, which `filterMap` has no way to express.
+  return ok(
+    filterMap([FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE], (attribute) =>
+      readAttributeValue(spread, attribute) === null
+        ? null
+        : {
+            row: requireRow(TEMPORAL_SPREAD_ELEMENT, attribute),
+            attribute,
+            value: readNumericAttributeValue(spread, attribute),
+            suffix: '',
+          },
+    ),
+  );
 }
 
 /**

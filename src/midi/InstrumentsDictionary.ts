@@ -283,6 +283,44 @@ export class InstrumentsDictionary {
    *   including a missing argument, falls back to Normalized Levenshtein
    * @return the suggested midi program change number; if instrument unknown, output is 0 (Acoustic Grand Piano)
    */
+  /**
+   * The metric one `distanceMethod` constant names — the arms of the `switch` that used to sit
+   * inside {@link getProgramChange}'s scan.
+   *
+   * Private, because the eleven implementations are: this is the one place inside the class
+   * that can name them all, which is why the dispatch lives here rather than in a module-level
+   * table. The `2` that `ngram` and `qgram` take is the n-gram size the scan always passed,
+   * bound here so every arm has the same two-argument shape.
+   */
+  private static metricFor(distanceMethod: number): (key: string, name: string) => number {
+    switch (distanceMethod) {
+      case InstrumentsDictionary.Levenshtein:
+        return InstrumentsDictionary.levenshteinDistance;
+      case InstrumentsDictionary.NormalizedLevenshtein:
+        return InstrumentsDictionary.normalizedLevenshteinDistance;
+      case InstrumentsDictionary.Damerau:
+        return InstrumentsDictionary.damerauLevenshteinDistance;
+      case InstrumentsDictionary.JaroWinkler:
+        return InstrumentsDictionary.jaroWinklerDistance;
+      case InstrumentsDictionary.LongestCommonSubsequence:
+        return InstrumentsDictionary.lcsDistance;
+      case InstrumentsDictionary.MetricLCS:
+        return InstrumentsDictionary.metricLCSDistance;
+      case InstrumentsDictionary.NGram:
+        return (key, other) => InstrumentsDictionary.ngramDistance(key, other, 2);
+      case InstrumentsDictionary.QGram:
+        return (key, other) => InstrumentsDictionary.qgramDistance(key, other, 2);
+      case InstrumentsDictionary.Cosine:
+        return InstrumentsDictionary.cosineDistance;
+      case InstrumentsDictionary.Jaccard:
+        return InstrumentsDictionary.jaccardDistance;
+      case InstrumentsDictionary.SorensenDice:
+        return InstrumentsDictionary.sorensenDiceDistance;
+      default:
+        return InstrumentsDictionary.normalizedLevenshteinDistance;
+    }
+  }
+
   getProgramChange(name: string, distanceMethod?: number): number {
     if (distanceMethod === undefined) {
       return this.getProgramChange(name, InstrumentsDictionary.NormalizedLevenshtein);
@@ -297,45 +335,23 @@ export class InstrumentsDictionary {
     let distance = Number.MAX_VALUE; // indicates the distance to the name string
     let bestKey = ''; // the key `pc` came from; reported below, Java calls it `foo`
 
+    // The metric is chosen ONCE, not once per dictionary key.
+    //
+    // This was an eleven-arm `switch (distanceMethod)` inside the loop below, and
+    // `distanceMethod` is a parameter — loop-invariant by construction. The dictionary holds
+    // every General MIDI name plus its aliases, so the dispatch ran a few hundred times per
+    // lookup to reach the same arm every time. Selecting the function first is the same
+    // decision made once; the arms, the argument order and the `2` that `ngram`/`qgram` take
+    // are unchanged, so every distance is the same number it was.
+    //
+    // Still a `switch`, moved rather than replaced: the eleven metrics are private statics,
+    // and a module-level table would have to make them public to name them. The `default` arm
+    // keeps carrying the documented fallback — "anything unrecognised, including a missing
+    // argument, falls back to Normalized Levenshtein".
+    const metric = InstrumentsDictionary.metricFor(distanceMethod);
+
     for (const [key, value] of this.dict.entries()) {
-      let curDistance: number;
-      switch (distanceMethod) {
-        case InstrumentsDictionary.Levenshtein:
-          curDistance = InstrumentsDictionary.levenshteinDistance(key, n);
-          break;
-        case InstrumentsDictionary.NormalizedLevenshtein:
-          curDistance = InstrumentsDictionary.normalizedLevenshteinDistance(key, n);
-          break;
-        case InstrumentsDictionary.Damerau:
-          curDistance = InstrumentsDictionary.damerauLevenshteinDistance(key, n);
-          break;
-        case InstrumentsDictionary.JaroWinkler:
-          curDistance = InstrumentsDictionary.jaroWinklerDistance(key, n);
-          break;
-        case InstrumentsDictionary.LongestCommonSubsequence:
-          curDistance = InstrumentsDictionary.lcsDistance(key, n);
-          break;
-        case InstrumentsDictionary.MetricLCS:
-          curDistance = InstrumentsDictionary.metricLCSDistance(key, n);
-          break;
-        case InstrumentsDictionary.NGram:
-          curDistance = InstrumentsDictionary.ngramDistance(key, n, 2);
-          break;
-        case InstrumentsDictionary.QGram:
-          curDistance = InstrumentsDictionary.qgramDistance(key, n, 2);
-          break;
-        case InstrumentsDictionary.Cosine:
-          curDistance = InstrumentsDictionary.cosineDistance(key, n);
-          break;
-        case InstrumentsDictionary.Jaccard:
-          curDistance = InstrumentsDictionary.jaccardDistance(key, n);
-          break;
-        case InstrumentsDictionary.SorensenDice:
-          curDistance = InstrumentsDictionary.sorensenDiceDistance(key, n);
-          break;
-        default:
-          curDistance = InstrumentsDictionary.normalizedLevenshteinDistance(key, n);
-      }
+      const curDistance = metric(key, n);
 
       if (curDistance === 0) {
         // found perfect match

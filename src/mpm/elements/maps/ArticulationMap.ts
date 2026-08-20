@@ -190,6 +190,20 @@ export class ArticulationMap extends GenericMap {
 
     // make a hashmap (note element, articulation data list) for all notes with a specific (i.e. non-default) articulation
     const noteArtics = new Map<Element, ArticulationData[]>();
+    /**
+     * Append to the note's list, starting one where there is none — the get-or-create the
+     * two branches below each wrote out, character for character, fifteen lines apart.
+     *
+     * Not {@link groupBy}: that groups ONE sequence by a key derived from its elements, and
+     * this is the mirror image — one datum filed under several notes, from two different
+     * loops with two different ways of finding them. A multimap append is the shape here,
+     * and the prelude does not have one because this is the only place that wants it.
+     */
+    const fileUnder = (note: Element, ad: ArticulationData): void => {
+      const adList = noteArtics.get(note);
+      if (adList === undefined) noteArtics.set(note, [ad]);
+      else adList.push(ad);
+    };
     let mapTimingChanged = false;
 
     for (let articIndex = 0; articIndex < this.size(); ++articIndex) {
@@ -212,13 +226,7 @@ export class ArticulationMap extends GenericMap {
             // `addArticulationFromData` is handed a datum that has no element yet.
             `Warning: articulation date and referee date do not match!\n    ${this.entryAt(articIndex).getValue().toXML()}\n    ${referee.getValue().toXML()}`,
           );
-        const note = referee.getValue();
-        let adList = noteArtics.get(note);
-        if (adList === undefined) {
-          adList = [];
-          noteArtics.set(note, adList);
-        }
-        adList.push(ad);
+        fileUnder(referee.getValue(), ad);
         continue;
       }
 
@@ -226,12 +234,7 @@ export class ArticulationMap extends GenericMap {
       const elements = map.getAllElementsAt(ad.date);
       for (const element of elements) {
         if (element.getValue().getLocalName() !== 'note') continue;
-        let adList = noteArtics.get(element.getValue());
-        if (adList === undefined) {
-          adList = [];
-          noteArtics.set(element.getValue(), adList);
-        }
-        adList.push(ad);
+        fileUnder(element.getValue(), ad);
       }
     }
 

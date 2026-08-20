@@ -36,7 +36,7 @@
  * 100 default even where a document places an instruction there; the divergence is measure
  * zero for an integral and is documented rather than reproduced.
  */
-import { filterMap, isNonEmpty, last, zipWith } from '../prelude/index.js';
+import { filterMap, isNonEmpty, last, withNext } from '../prelude/index.js';
 import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
@@ -295,8 +295,11 @@ export function readTempoSegments(
   // The neighbour is PAIRED with its own instruction rather than read at `index + 1`. "There is
   // no next one" is then a value — `null` — instead of an out-of-range read that the type system
   // had to be told about with `as … | undefined`.
-  const nexts: readonly (RawTempo | null)[] = [...raws.slice(1), null];
-  const paired = zipWith(raws, nexts, (at, after) => [at, after] as const);
+  // `withNext` IS this pair of lines: every entry with its successor, and `null` for the
+  // last. The `[...xs.slice(1), null]` array and the zip that consumed it were one shape
+  // spelled out, and it is the shape `pairwise` cannot serve — `pairwise` drops the last
+  // entry, and the last instruction is a span too.
+  const paired = withNext(raws);
   // The index survives only as a SLICE bound below, never as a read.
   for (const [index, [raw, next]] of paired.entries()) {
     const isTrailing = next === null;

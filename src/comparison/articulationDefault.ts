@@ -47,7 +47,7 @@
  * cancelling cases. §5.5 named one canceller and one continuer; the third row is the one a
  * reader would guess wrong, because an unknown *def* name looks like an unknown *style* name.
  */
-import { head, isNonEmpty, zipWith } from '../prelude/index.js';
+import { head, isNonEmpty, withNext } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { ARTICULATION_STYLE } from '../mpm/names.js';
@@ -161,7 +161,7 @@ export function readDefaultArticulation(
     }
 
     let def: Element | null = null;
-    for (const candidate of style.styleDef.getChildElements('articulationDef').toArray())
+    for (const candidate of style.styleDef.getChildElements('articulationDef'))
       if (attribute('name', candidate)?.getValue() === name) def = candidate;
 
     // Disposition 3: the def name does not resolve — ALSO a null, with a warning.
@@ -186,12 +186,13 @@ export function readDefaultArticulation(
 
   const firstSwitchTicks = head(raw).dateTicks;
   // Each step runs to the NEXT switch, and the last runs to the end of time — which is exactly
-  // `raw` zipped against its own tail, one entry longer at the far end.
-  const ends = [...raw.slice(1).map((next) => next.dateTicks), Number.POSITIVE_INFINITY];
-  const steps: readonly DefaultArticulationStep[] = zipWith(raw, ends, (step, endTicks, index) => ({
+  // `withNext`: every entry with its successor, and `null` for the one that has none. The
+  // sentinel is read where it is used (`next?.dateTicks ?? Infinity`) rather than baked into a
+  // `[...raw.slice(1).map(…), Infinity]` array that then had to be zipped away.
+  const steps: readonly DefaultArticulationStep[] = withNext(raw).map(([step, next], index) => ({
     // AD-37.1: the first step reaches back to 0.
     startTicks: index === 0 ? 0 : step.dateTicks,
-    endTicks,
+    endTicks: next?.dateTicks ?? Number.POSITIVE_INFINITY,
     def: step.def,
     name: step.name,
     cancelCause: step.cause,

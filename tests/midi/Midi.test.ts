@@ -1014,4 +1014,142 @@ describe('Midi', () => {
       expect(data.length).toBe(14 + 8 + chunkLength);
     });
   });
+
+  // ---------------------------------------------------------------
+  // Reading a file that lies about its own lengths
+  // ---------------------------------------------------------------
+  describe('a declared length that outruns the data', () => {
+    /**
+     * `readMidiData` used to build the meta and sysex payloads with
+     * `new Uint8Array(data.buffer, data.byteOffset + offset, declaredLength)`, which is
+     * bounded by the underlying ArrayBUFFER rather than by the view it was handed. The two
+     * spellings agree for every in-bounds read and part company for exactly the case below:
+     * `metaLength` and `sysexLength` come straight off the file and were never checked
+     * against what remained.
+     *
+     * That mattered because `Buffer` IS a `Uint8Array` and Node pools reads under 4 KB into
+     * one shared 8 KB ArrayBuffer, so `new Midi(readFileSync(path))` put the parser one
+     * addition away from an unrelated allocation. Measured before the fix: a file declaring
+     * a 200-byte text event and supplying none produced a 200-byte payload holding bytes
+     * from elsewhere in the pool — silently, no throw. Over 4 KB, where Node hands out an
+     * exact-size buffer, the same input threw a RangeError instead.
+     *
+     * The suite never caught it because the integration tests wrap their reads in
+     * `new Uint8Array(readFileSync(...))`, which copies into an exact-size buffer. These
+     * cases reproduce the pooled shape on purpose: the MIDI bytes are placed at a non-zero
+     * offset inside a larger buffer whose tail is filled with a recognisable marker, which
+     * is exactly what the pool does.
+     */
+    const POISON = 0xab;
+
+    /** MIDI bytes at a non-zero offset in a bigger buffer, as Node's Buffer pool serves them. */
+    const pooled = (bytes: readonly number[]): Uint8Array => {
+      const pool = new Uint8Array(8192).fill(POISON);
+      const at = 64;
+      pool.set(bytes, at);
+      return pool.subarray(at, at + bytes.length);
+    };
+
+    const HEADER = [
+      0x4d,
+      0x54,
+      0x68,
+      0x64,
+      0x00,
+      0x00,
+      0x00,
+      0x06, // MThd, length 6
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x01,
+      0xe0, // format 0, one track, 480 ppq
+    ];
+
+    it('does not read a meta payload past the end of the data it was given', () => {
+      // MTrk length 5: delta 0, FF 01 (text), declared length 200 (VLQ 0x81 0x48), no payload.
+      const midi = new Midi(
+        pooled([
+          ...HEADER,
+          0x4d,
+          0x54,
+          0x72,
+          0x6b,
+          0x00,
+          0x00,
+          0x00,
+          0x05,
+          0x00,
+          0xff,
+          0x01,
+          0x81,
+          0x48,
+        ]),
+      );
+
+      const events = [...midi.getSequence().getTracks()[0]!];
+      const metas = events
+        .map((event) => event.getMessage())
+        .filter((message): message is MetaMessage => message.kind === 'meta');
+      expect(metas).toHaveLength(1);
+
+      const payload = metaPayload(metas[0]!);
+      // The file supplied no payload bytes, so there are none — not 200 of somebody else's.
+      expect(payload.length).toBe(0);
+      expect([...payload].includes(POISON)).toBe(false);
+    });
+
+    it('does not read a sysex payload past the end of the data it was given', () => {
+      // MTrk length 5: delta 0, F0, declared length 200 (VLQ 0x81 0x48), no payload.
+      const midi = new Midi(
+        pooled([...HEADER, 0x4d, 0x54, 0x72, 0x6b, 0x00, 0x00, 0x00, 0x05, 0x00, 0xf0, 0x81, 0x48]),
+      );
+
+      const events = [...midi.getSequence().getTracks()[0]!];
+      const sysexes = events
+        .map((event) => event.getMessage())
+        .filter((message): message is SysexMessage => message.kind === 'sysex');
+      expect(sysexes).toHaveLength(1);
+
+      // The declared length is kept — that is the message the file describes — but every
+      // byte past what the file actually supplied is zero, never pooled memory.
+      const bytes = messageBytes(sysexes[0]!);
+      expect(bytes.length).toBe(201);
+      expect(bytes[0]).toBe(0xf0);
+      expect([...bytes].includes(POISON)).toBe(false);
+      expect([...bytes.slice(1)].every((byte) => byte === 0)).toBe(true);
+    });
+
+    it('still reads a meta payload that IS there, byte for byte', () => {
+      // The control: same shape, but the three declared bytes are supplied.
+      // MTrk length 8: delta 0, FF 01, length 3, "abc".
+      const midi = new Midi(
+        pooled([
+          ...HEADER,
+          0x4d,
+          0x54,
+          0x72,
+          0x6b,
+          0x00,
+          0x00,
+          0x00,
+          0x08,
+          0x00,
+          0xff,
+          0x01,
+          0x03,
+          0x61,
+          0x62,
+          0x63,
+        ]),
+      );
+
+      const metas = [...midi.getSequence().getTracks()[0]!]
+        .map((event) => event.getMessage())
+        .filter((message): message is MetaMessage => message.kind === 'meta');
+      expect(metas).toHaveLength(1);
+      expect([...metaPayload(metas[0]!)]).toEqual([0x61, 0x62, 0x63]);
+    });
+  });
 });

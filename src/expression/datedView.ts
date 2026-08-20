@@ -27,7 +27,7 @@
  */
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
-import { elementAt } from '../prelude/index.js';
+import { elementAt, optionAt, scanl } from '../prelude/index.js';
 
 /** One entry of the ordered view: an instruction (or a `<style>` switch) and where it sits. */
 export interface DatedEntry {
@@ -128,6 +128,43 @@ export function styleSwitchAt(entries: readonly DatedEntry[], index: number): El
  * distinguishable for reporting.
  */
 export function styleNameAt(entries: readonly DatedEntry[], index: number): string | null {
-  const style = styleSwitchAt(entries, index);
+  return nameOfStyle(styleSwitchAt(entries, index));
+}
+
+/** {@link styleNameAt}'s reading of a switch element, shared with {@link styleNamesOf}. */
+function nameOfStyle(style: Element | null): string | null {
   return style === null ? null : (attribute('name.ref', style)?.getValue() ?? '');
 }
+
+/**
+ * {@link styleNameAt} for EVERY view position at once, in one forward pass.
+ *
+ * "The style in scope here" is a running quantity whose intermediate states are all wanted,
+ * which is {@link scanl} exactly — and the caller that wants them all is
+ * `readScopeMapViews`, which built the same array by calling the backwards scan once per
+ * index. That is quadratic in the map's length, with an XML `getLocalName()` read as the
+ * constant, and a `<dynamicsMap>` over a full movement is not short.
+ *
+ * The `+ 1` is load-bearing rather than an off-by-one to be tidied away. `scanl` is
+ * seed-first: `states[0]` is the seed and `states[i + 1]` is the state AFTER consuming
+ * `entries[i]`. "After consuming `entries[i]`" is precisely {@link styleSwitchAt}'s
+ * inclusive-at-`index` rule — a `<style>` sharing a position with the instruction being
+ * resolved is in scope for it — so `states[i + 1]` is the answer for view position `i`, and
+ * `states[0]`'s `null` is the "no switch yet" that never gets read here.
+ *
+ * `optionAt` and not an indexed read: the sequence legitimately HOLDS nulls, and the two
+ * absences are different questions. It cannot miss — `index + 1` runs to `entries.length`
+ * and `states` has `entries.length + 1` slots — but the read says which one it is asking.
+ *
+ * {@link styleNameAt} and {@link styleSwitchAt} stay: they are the per-position API, they
+ * are tested directly, and a caller resolving ONE instruction should not build an array.
+ */
+export function styleNamesOf(entries: readonly DatedEntry[]): readonly (string | null)[] {
+  const states = scanl<DatedEntry, Element | null>(entries, null, (style, entry) =>
+    entry.element.getLocalName() === 'style' ? entry.element : style,
+  );
+  return entries.map((_entry, index) => nameOfStyle(optionAt(states, index + 1, STYLE_SCOPE)));
+}
+
+/** What an out-of-range read into the style-scope scan is called. */
+const STYLE_SCOPE = 'the style-scope scan';

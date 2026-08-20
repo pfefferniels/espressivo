@@ -41,7 +41,7 @@
  * `@frameLength` is tick-valued and therefore ppq-sensitive; `@intensity` and the window
  * bounds are dimensionless and are not rescaled.
  */
-import { filterMap, zipWith } from '../prelude/index.js';
+import { filterMap, withNext } from '../prelude/index.js';
 import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
@@ -73,7 +73,7 @@ function findRubatoDef(
   const style = findStyleDef(RUBATO_STYLE, styleName, environment, globalEnvironment);
   if (style === null) return null;
   let found: Element | null = null;
-  for (const candidate of style.styleDef.getChildElements('rubatoDef').toArray())
+  for (const candidate of style.styleDef.getChildElements('rubatoDef'))
     if (attribute('name', candidate)?.getValue() === nameRef) found = candidate;
   return found;
 }
@@ -287,8 +287,13 @@ export function readRubatoSegments(
   // The end is PAIRED with its entry rather than read at `index + 1`. "There is no next
   // entry" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
   // system had to be told about with `as (typeof xs)[number] | undefined`.
-  const endsAt = [...raws.slice(1).map((next) => next.dateTicks), Number.POSITIVE_INFINITY];
-  for (const [raw, endTicks] of zipWith(raws, endsAt, (at, ends) => [at, ends] as const)) {
+  // Each entry with its successor, or `null` for the last — `withNext`. The span it opens
+  // then runs to `next?.dateTicks ?? Infinity`, which says at the point of use that the last
+  // entry runs to the end of time. The `[...xs.slice(1).map(…), Infinity]` array this
+  // replaces built that sentinel where it could not be read as one, and built a whole array
+  // to be zipped away.
+  for (const [raw, next] of withNext(raws)) {
+    const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
     const parsed = readRawRubato(
       raw.element,
       raw.styleName,
@@ -439,12 +444,14 @@ export function displacementQuartersAt(
 export function rubatoBottomSpans(
   curve: RubatoCurve,
 ): readonly { readonly startTicks: number; readonly endTicks: number }[] {
-  return curve.segments
-    .filter((segment) => segment.poisonedEndTicks !== null)
-    .map((segment) => ({
-      startTicks: segment.startTicks,
-      endTicks: segment.poisonedEndTicks as number,
-    }));
+  // One pass, and the `as number` goes with the two-pass spelling: the `=== null` test that
+  // used to be a `filter` the type system could not follow now narrows `poisonedEndTicks` in
+  // the branch that reads it.
+  return filterMap(curve.segments, (segment) =>
+    segment.poisonedEndTicks === null
+      ? null
+      : { startTicks: segment.startTicks, endTicks: segment.poisonedEndTicks },
+  );
 }
 
 /** Whether `t` falls in a `⊥` interval — the probe the distance takes at each cell's edge. */

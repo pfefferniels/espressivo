@@ -40,7 +40,7 @@ import {
   type MpmEnvironment,
   type PerformanceView,
 } from '../expression/mpmTree.js';
-import { orderedEntries, styleNameAt, type DatedEntry } from '../expression/datedView.js';
+import { orderedEntries, styleNamesOf, type DatedEntry } from '../expression/datedView.js';
 import {
   PerformanceSelectionAmbiguousError,
   PerformanceSelectionNotFoundError,
@@ -254,7 +254,10 @@ export function readScopeMapViews(scope: ComparisonScope): ReadonlyMap<string, O
       mapName,
       element,
       entries,
-      styleNames: entries.map((_entry, index) => styleNameAt(entries, index)),
+      // One forward pass, where this was `entries.map((_, i) => styleNameAt(entries, i))` —
+      // the per-index backwards scan run once per index, i.e. quadratic in the map's length
+      // with an XML `getLocalName()` as the constant. Same array, same values.
+      styleNames: styleNamesOf(entries),
       spanEndRule: spanEndRuleOf(mapName),
     });
   }

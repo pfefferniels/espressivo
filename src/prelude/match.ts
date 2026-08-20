@@ -8,8 +8,31 @@
  * the handler table is a `Record` keyed by the discriminant and a missing key is a type error
  * at the *definition*, not a lint finding.
  *
- * The tree has 68 `switch` statements against only 29 exhaustiveness checks. That gap is where
- * a future arm will be dropped.
+ * **CORRECTION, measured 2026-08-20 — the gap this module was sized for is already closed by
+ * the toolchain, so do NOT convert the tree's `switch` statements wholesale.**
+ *
+ * This header used to say "68 `switch` statements against only 29 exhaustiveness checks — that
+ * gap is where a future arm will be dropped". Two settings turned on since then make that
+ * unreachable for a switch over a union, and both are errors on `src/`:
+ *
+ *   - `@typescript-eslint/switch-exhaustiveness-check` (eslint.config.js) — "Switch is not
+ *     exhaustive. Cases not matched: …" the moment an arm is added. Currently zero findings.
+ *   - `noImplicitReturns` (tsconfig.json) — an exhaustive-by-return switch with no `default`
+ *     stops compiling when a new arm can fall out of the bottom: TS2366.
+ *
+ * Both were verified against a deliberately non-exhaustive three-arm probe: eslint named the
+ * missing case and `tsc` refused the function. `src/` outside this module holds 51 `switch`
+ * statements and zero `assertNever` calls, and that is not the debt it looks like — the
+ * guarantee is being enforced upstream of the code rather than inside it.
+ *
+ * So {@link matchKind} earns its place where the dispatch is a VALUE (an arm-keyed table read
+ * at a `const`, a lookup built once), not as a mechanical replacement for statements. The
+ * mechanical version has a real cost: a handler table is an object of N closures allocated per
+ * call, and seven of the tree's `switch (law.kind)` sites sit inside `src/comparison`'s numeric
+ * integration, where that is per-quadrature-node. A `switch` is a jump table and allocates
+ * nothing. {@link assertNever} likewise: it is for a value that arrived from outside the type
+ * system — parsed JSON, an `any` from a dependency — where the compile-time proof does not
+ * reach.
  */
 
 /**

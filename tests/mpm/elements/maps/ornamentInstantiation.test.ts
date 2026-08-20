@@ -934,6 +934,58 @@ describe('MPM v3 ornament instantiation', () => {
       map.renderOrnamentationToMap(score);
       expect(notesOf(score)).toHaveLength(1);
     });
+
+    it('lays out every principal group BEFORE any principal-less ornament', () => {
+      /**
+       * A closed oracle gap.
+       *
+       * `instantiateOrnaments` runs in two phases — the ornaments that share a principal
+       * first, then the ones that have none — and the order is byte-visible, because layout
+       * appends generated notes to the score and `GenericMap.addElement` puts a new element
+       * after the last one already at its date.
+       *
+       * Measured: swapping the two phases left all 2788 tests in tests/mpm, tests/ornamentation
+       * and tests/integration green. A probe then showed why — the mixed case never occurs in
+       * the suite. Orphans appear in exactly two tests, and in both of them there is no
+       * parented ornament to be ordered against.
+       */
+      const score = makeScore([makeNote('a', 0, 60)]);
+      const map = makeMap([
+        makeDef('fig', {
+          frameOffset: { value: 0, domain: 'ticks' },
+          frameLength: { value: 480, domain: 'ticks' },
+        }),
+      ]);
+      // The principal-less one is added FIRST, so document order alone would put it first —
+      // which is exactly what makes the assertion below about the phases rather than about
+      // the order the ornaments were encountered in.
+      map.addOrnament({
+        date: 0,
+        nameRef: 'fig',
+        noteOrder: '#n1',
+        notes: [new OrnamentNote('n1', { kind: 'midi', value: 72 })],
+        id: 'ornOrphan',
+      });
+      map.addOrnament({
+        date: 0,
+        nameRef: 'fig',
+        noteid: '#a',
+        noteOrder: '[ #n2 ]',
+        notes: [new OrnamentNote('n2', chromatic(1))],
+        id: 'ornParented',
+      });
+      map.renderOrnamentationToMap(score);
+
+      const refs = notesOf(score).map((note) => note.ref);
+      const parented = refs.indexOf('ornParented');
+      const orphan = refs.indexOf('ornOrphan');
+      // Non-vacuous: both really did generate a note.
+      expect({ parented: parented >= 0, orphan: orphan >= 0 }).toEqual({
+        parented: true,
+        orphan: true,
+      });
+      expect({ parentedBeforeOrphan: parented < orphan }).toEqual({ parentedBeforeOrphan: true });
+    });
   });
 
   // -------------------------------------------------------------------------------------

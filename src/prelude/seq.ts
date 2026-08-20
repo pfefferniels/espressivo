@@ -1,15 +1,47 @@
 /**
  * Named algorithms over sequences — the vocabulary that replaces raw loops.
  *
- * `src/` carries 862 `for` loops, 46 `while` loops, 540 `let` declarations and 407 `.push`
- * calls. Most are one of a handful of shapes wearing different variable names: map-and-filter
- * in one pass, group by a key, fold with a running total, scan a sorted array for a boundary.
- * Written out, each is a place an off-by-one can hide; named, each is a thing the reader
- * already knows.
+ * `src/` carries 809 `for` loops, 42 `while` loops, 543 `let` declarations and 383 `.push`
+ * calls (measured 2026-08-20; the figures this header opened with — 862 / 46 / 540 / 407 —
+ * were taken before the uptake pass). Most are one of a handful of shapes wearing different
+ * variable names: map-and-filter in one pass, group by a key, fold with a running total, scan
+ * a sorted array for a boundary. Written out, each is a place an off-by-one can hide; named,
+ * each is a thing the reader already knows.
  *
  * **The admission criterion is Sean Parent's own.** Using an algorithm must not make the call
  * site worse — so this module holds the shapes this codebase actually contains, and nothing
  * added for completeness. There is no `gather`, no `slide`, no lens, no transducer.
+ *
+ * **The criterion cuts both ways, and it has been measured against.** Three independent
+ * surveys of `src/` (comparison, mpm+msm, expression+xml+midi) went looking for each shape by
+ * hand. Call sites outside this module, as of 2026-08-20:
+ *
+ *     elementAt 133   pairwise 25   filterMap 20   numberAt 19   zipWith 10
+ *     withNext 9      optionAt 7    matchKind 7    groupBy 6     elementAtOrNull 6
+ *     upperBoundBy 4  foldl 4       lowerBoundBy 2 scanl 2       partitionWith 1
+ *     insertionIndexBy 1
+ *     chunkBy 0       windows 0     unfold 0       stableSortBy 0
+ *
+ * The four zeroes are not a backlog; each was looked for and is not there.
+ *
+ * - `chunkBy` — runs of CONSECUTIVE elements sharing a key. Every span builder in the tree is
+ *   "one instruction opens one span", never "consecutive instructions sharing a key form one";
+ *   MPM span ends are decided by the next entry's DATE, which is {@link withNext}, not by a
+ *   key changing. `aggregate.maximalScoringRuns` looks like it and is Ruzzo–Tompa.
+ * - `windows` — every fixed-size walk in the tree is size 2, i.e. `pairwise` or `withNext`.
+ * - `unfold` — the one linked-list walk (`tree.getAllPreviousSiblingElements`) reads better as
+ *   a `while`: a seed/step split returning a tuple is harder to follow than "walk back,
+ *   collecting", and the spread needed to keep the mutable return type costs an array.
+ * - `stableSortBy` — the tree already spreads before sorting at ~35 sites and sorts only
+ *   freshly-built local arrays at the rest. Nothing mutates a caller's array, so there is no
+ *   mistake left for it to prevent; renaming those sites would buy a name and no safety.
+ * - `partitionWith`'s single use is real, but its two candidate sites both declined it for the
+ *   same reason: it does not NARROW. `parts.matchScopes` would still need `filterMap` for the
+ *   half whose key must be non-null, and `selection.resolveSelection`'s two halves have
+ *   DIFFERENT types, which is `partitionResults`, not this.
+ *
+ * If a future pass finds a real site for one of the four, good. If not, they should go — this
+ * module's whole claim is that it is stocked from the code rather than from a catalogue.
  *
  * **On allocation.** Every function here allocates one output array and no intermediates,
  * because the rendering path was just made linear (commit `980ae7e`) and must stay that way.
@@ -21,7 +53,7 @@
 export type NonEmptyArray<T> = readonly [T, ...(readonly T[])];
 
 /*
- * A NOTE ON THE `as` CASTS BELOW — there are seven, and they are the only ones in this module.
+ * A NOTE ON THE `as` CASTS BELOW — there are ten, and they are the only ones in this module.
  *
  * `noUncheckedIndexedAccess` is on, so `xs[i]` is `T | undefined`. In each case below the
  * index is in range by a proof the type system cannot state: `last` reads the final slot of a
@@ -31,8 +63,14 @@ export type NonEmptyArray<T> = readonly [T, ...(readonly T[])];
  * check would be dead code, and constraining the element type would stop these working over
  * sequences that may legitimately hold `null` or `undefined`, which several callers need.
  *
+ * Three of the ten are a different proof: `chunkBy`, `scanl` and `groupBy` each BUILD a
+ * sequence they know to be non-empty — a chunk opens as `[x]`, a scan starts from its seed, a
+ * bucket is created as `[x]` — and say so in their return type. The cast is what carries that
+ * from the construction to the signature, and it earns its place at every call site, which
+ * would otherwise need a guard that can never fire to read a first element.
+ *
  * They are concentrated here on purpose. This module implements the algorithms whose whole
- * job is to let the rest of the tree stop indexing; absorbing seven proofs in one leaf is what
+ * job is to let the rest of the tree stop indexing; absorbing ten proofs in one leaf is what
  * bought zero across fifteen directories. If you are tempted to copy the pattern outward, the
  * answer is almost certainly `filterMap`, `pairwise`, `zipWith` or `elementAt` instead.
  */
@@ -207,8 +245,24 @@ export function partitionWith<A>(
   return { yes, no };
 }
 
-/** Bucket by a derived key, preserving encounter order within each bucket. */
-export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K, readonly A[]> {
+/**
+ * Bucket by a derived key, preserving encounter order within each bucket.
+ *
+ * **Both orders are guaranteed, and callers depend on both.** Within a bucket, the order is
+ * the order the elements were met. Across buckets, it is the order the keys were FIRST met —
+ * `Map` iteration order is insertion order by specification (ECMA-262, `%Map.prototype%`
+ * `[@@iterator]`), not an implementation detail. That is worth stating because a call site in
+ * `src/comparison` was written as an array-plus-linear-search specifically to avoid "relying
+ * on a second structure to remember" the order, which cost it a quadratic scan for a
+ * guarantee it already had.
+ *
+ * A bucket is created as `[x]` and only ever grown, so it cannot be empty — and unlike
+ * {@link chunkBy}, whose chunks carry the same invariant, this signature used to hide it.
+ * Saying `NonEmptyArray` means a caller reading the group's first element does not need a
+ * guard that can never fire or a checked read that can never miss. The cast is the same one
+ * `chunkBy` makes, for the same reason, and it is covered by the note at the top of this file.
+ */
+export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K, NonEmptyArray<A>> {
   const out = new Map<K, A[]>();
   for (const x of xs) {
     const k = key(x);
@@ -216,7 +270,7 @@ export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K,
     if (bucket === undefined) out.set(k, [x]);
     else bucket.push(x);
   }
-  return out;
+  return out as unknown as ReadonlyMap<K, NonEmptyArray<A>>;
 }
 
 /**
@@ -251,10 +305,22 @@ export function foldl<A, B>(xs: Iterable<A>, seed: B, step: (acc: B, a: A, index
 /**
  * A fold that keeps every intermediate state, seed first.
  *
- * This is the shape of every "running quantity over musical time" loop — a running date, a
- * running tempo, an accumulated tick offset — which today is written as a `let` outside a
- * `for` and read back after it. `scanl` makes the states a value, so they can be zipped
- * against the events that produced them.
+ * **NARROWED, 2026-08-20.** This used to claim it was "the shape of every running quantity
+ * over musical time loop — a running date, a running tempo, an accumulated tick offset". A
+ * survey went through those loops and the claim is false as stated: `Midi.buildTrackChunk`'s
+ * `lastTick`, `Sequence.getMicrosecondLength`'s tempo integration and the applier's running
+ * maximum all want only the FINAL state, or write side effects per step. Those are `foldl`,
+ * or a loop, and `scanl` would make each of them worse.
+ *
+ * The distinguishing question is not "is there a running quantity" but **"does anything read
+ * the intermediate states?"** — and where the answer is yes, the payoff is usually more than
+ * vocabulary. `datedView.styleNamesOf` is the one site found: "the `<style>` in scope at view
+ * position i" is a running quantity whose every state is wanted, and its caller was getting
+ * them by re-running a backwards scan once per index, quadratically. As a `scanl` it is one
+ * forward pass.
+ *
+ * Note the seed-first indexing when zipping states back against the elements that produced
+ * them: `out[i + 1]` is the state AFTER consuming `xs[i]`, and `out[0]` is the seed.
  */
 export function scanl<A, B>(
   xs: Iterable<A>,
@@ -293,6 +359,41 @@ export function zipWith<A, B, C>(
 export function pairwise<A>(xs: readonly A[]): readonly (readonly [A, A])[] {
   const out: (readonly [A, A])[] = [];
   for (let i = 1; i < xs.length; ++i) out.push([xs[i - 1] as A, xs[i] as A]);
+  return out;
+}
+
+/**
+ * Each element paired with its successor, and the last one paired with `null`.
+ *
+ * **This is the shape this codebase contains, and {@link pairwise} is not it.** `pairwise`
+ * yields `n − 1` pairs and drops the last element; a span reader needs `n`, because the last
+ * instruction is a span too — it just runs to the end of time instead of to a successor. That
+ * difference is exactly what every one of those readers had to special-case, and nine of them
+ * special-cased it by hand, in two spellings:
+ *
+ * ```ts
+ * const nexts: readonly (T | null)[] = [...xs.slice(1), null];        // ×4
+ * const endsAt = [...xs.slice(1).map((n) => n.dateTicks), Infinity];  // ×5
+ * for (const [at, after] of zipWith(xs, nexts, (a, b) => [a, b] as const)) …
+ * ```
+ *
+ * The second is the first composed with a projection and a default, so one primitive serves
+ * both: `next?.dateTicks ?? Infinity` says at the point of USE what the sentinel means, where
+ * an `Infinity` buried in an array-building expression did not. Both spellings also built a
+ * whole intermediate array only to zip it away; this builds one.
+ *
+ * A `null` second element means "there is no successor", never "the successor is null" — the
+ * sequence's own elements are untouched, so a sequence that legitimately holds nulls still
+ * reports its real last entry correctly.
+ *
+ * It earns its place by this module's own criterion — nine call sites, none of them reachable
+ * with anything already here — which is more evidence than `chunkBy`, `windows`, `unfold` and
+ * `partitionWith` have between them.
+ */
+export function withNext<A>(xs: readonly A[]): readonly (readonly [A, A | null])[] {
+  const out: (readonly [A, A | null])[] = new Array<readonly [A, A | null]>(xs.length);
+  for (let i = 0; i < xs.length; ++i)
+    out[i] = [xs[i] as A, i + 1 < xs.length ? (xs[i + 1] as A) : null];
   return out;
 }
 
