@@ -15,41 +15,6 @@ const MEI_DIR = join(FIXTURES, 'mei');
 const PERF_REF_DIR = join(FIXTURES, 'performance-reference');
 
 /**
- * Normalize augmented MSM XML for comparison with Java reference.
- * Removes/normalizes attributes that are expected to differ between implementations:
- * - UUIDs
- * - Numeric formatting (Java doubles "0.0" vs TS "0")
- * - Namespace declarations
- * - File URIs
- * - Imprecision-related attributes (random values differ between implementations)
- */
-function normalizeAugmentedMsm(xml: string): string {
-  return (
-    xml
-      // Remove XML declaration
-      .replace(/<\?xml[^?]*\?>/, '')
-      // Remove redundant namespace declarations
-      .replace(/ xmlns="[^"]*"/g, (match, offset, str) => {
-        const firstIdx = str.indexOf(match);
-        return offset === firstIdx ? match : '';
-      })
-      // Replace generated UUIDs
-      .replace(/xml:id="[^"]*meico_[0-9a-f-]+"/g, 'xml:id="UUID"')
-      // Normalize URI attributes
-      .replace(/uri="[^"]*"/g, 'uri="NORMALIZED"')
-      // Normalize filename in file attribute
-      .replace(/file="[^"]*"/g, 'file="NORMALIZED"')
-      // Normalize numeric formatting: trailing .0
-      .replace(/="(-?\d+)\.0"/g, '="$1"')
-      // Remove tuning.offset attributes (imprecision-dependent, random)
-      .replace(/ tuning\.offset="[^"]*"/g, '')
-      // Normalize whitespace
-      .replace(/\s+/g, ' ')
-      .trim()
-  );
-}
-
-/**
  * Extract note elements from augmented MSM XML for structural comparison.
  * Returns an array of objects with key note attributes.
  */
