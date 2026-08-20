@@ -301,6 +301,42 @@ describe('Mpm', () => {
   });
 
   // ---------------------------------------------------------------
+  // Parsing
+  // ---------------------------------------------------------------
+  describe('parseData', () => {
+    /**
+     * A closed oracle gap, found by a negative control.
+     *
+     * `Mpm.parseData` reads its performances through a module-local `getAllChildElements`,
+     * and `getPerformance(index)` then answers by position into that list — so the order
+     * the parse produces IS the index the whole `getPerformance` / `getAllPerformances`
+     * surface is addressed by. Reversing that helper left all 1880 tests in `tests/mpm`
+     * green; the only thing in the tree that noticed was `tests/comparison/fixtures.test.ts`,
+     * which pins document order for three real MPM files and does so from another suite
+     * entirely, for another reason.
+     *
+     * So this pins it where it belongs: three `<performance>` children, and the parse has
+     * to hand them back in the order the document lists them, not sorted, not reversed.
+     */
+    it('keeps the performances in document order, which is what indexes them', () => {
+      const mpm = new Mpm(
+        `<?xml version="1.0" encoding="UTF-8"?>` +
+          `<mpm xmlns="${Mpm.MPM_NAMESPACE}">` +
+          `<performance name="zulu" pulsesPerQuarter="720"/>` +
+          `<performance name="alpha" pulsesPerQuarter="720"/>` +
+          `<performance name="mike" pulsesPerQuarter="720"/>` +
+          `</mpm>`,
+      );
+
+      expect(mpm.size()).toBe(3);
+      expect(mpm.getAllPerformances().map((p) => p.getName())).toEqual(['zulu', 'alpha', 'mike']);
+      expect(mpm.getPerformance(0)?.getName()).toBe('zulu');
+      expect(mpm.getPerformance(1)?.getName()).toBe('alpha');
+      expect(mpm.getPerformance(2)?.getName()).toBe('mike');
+    });
+  });
+
+  // ---------------------------------------------------------------
   // XML export
   // ---------------------------------------------------------------
   describe('writeMpm', () => {
