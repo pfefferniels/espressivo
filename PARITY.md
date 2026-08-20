@@ -763,13 +763,25 @@ this port emits `n1`, `n2` and so on. It was invisible because
 suite now compares payloads for every meta type **except** 0x01, with this entry named at the
 exclusion.
 
-**Not yet fixed, and the reason is scope rather than doubt.** Deleting the
-`|| attr.getQualifiedName() === name` clause makes all 43 tests in that suite pass and leaves
-the byte gate at 121 — and reds 30 tests in six other files, because twelve test reads spell
-the lookup `getAttributeValue('xml:id')` and some converter paths do too. Those reads are
-asking for a real attribute and getting `null` back silently, which is the same footgun one
-level up. A one-line cause with that blast radius deserves its own change, with the reads
-corrected and the XOM emulation documented, rather than a footnote in a comparator commit.
+**Not yet fixed, and deleting the clause is the WRONG fix — measured, not assumed.** Removing
+`|| attr.getQualifiedName() === name` makes all 43 tests in that suite pass and leaves the byte
+gate at 121, which is what made it look free. It reds 30 tests in six other files. Twelve of
+those are test-side reads spelling the lookup `getAttributeValue('xml:id')`, which would be a
+mechanical fix — but `Mei2MsmMpmConverter`'s failures are **counts**, not ids: `expected 1 to
+be 2`, `1 to be 3`, `1 to be 4`. The converter reads qualified names structurally (it has eight
+`'xml:id'` sites of its own), so a global change to the XOM emulation changes what the
+converter _builds_, not merely what a test can see.
+
+So the fix belongs where the divergence is, at the two functions that transcribe
+`Helper.getAttribute`: `Msm.ts`'s file-local `getAttribute` and the shared one
+`AsynchronyMap` uses. Java's version is three lookups against XOM's local-name-only
+primitive; ours inherits the qualified-name match at step one and should not. That is a
+change to two helpers with two call sites between them, and it leaves `Element.getAttribute`
+— which the converter depends on — alone.
+
+Deferred rather than done because both files were being rewritten by other agents when this
+was found. The comparator excludes meta 0x01 and names this entry at the exclusion, so the
+finding cannot go quiet.
 
 ### `GenericMap.sort()` is not a sort
 
