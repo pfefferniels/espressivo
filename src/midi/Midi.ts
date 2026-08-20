@@ -14,16 +14,26 @@
  * `exportMidi` and `buildTrackChunk` below — together with `MidiTypes`'
  * `writeVariableLength`, which they share — are therefore a
  * reimplementation of the JDK's `StandardMidiFileWriter`/`Reader`, not a port of
- * meico code — there is no `.java` file to compare them against. What pins them is
- * `tests/integration/midi-byte-equivalence.test.ts`, which parses the Java-generated
- * `.mid` references and compares **event by event**, not byte by byte. Three
- * measured consequences, all pre-existing and none of them bugs to fix:
+ * meico code — there is no `.java` file to compare them against.
+ *
+ * They are pinned by two suites, and it took a deliberate control to notice that one of them
+ * was not pinning the writer at all. `midi-byte-equivalence.test.ts` parses the Java-generated
+ * `.mid` references and compares **event by event** — but it reaches this file only through
+ * `Msm.exportMidi`, which returns a `Midi` *object*, so `exportMidi` and `buildTrackChunk`
+ * below are never called on that path. Making every meta payload declare a length of zero
+ * left all 43 of its tests passing. `midi-writer-equivalence.test.ts` closes that: it reads
+ * each reference and writes it back, and the same defect fails 129 of its 180 tests.
+ *
+ * Three measured consequences of the reimplementation, all pre-existing, none of them bugs:
  *
  * 1. **This writer never uses running status.** Every channel message gets its full
  *    status byte. The JDK's writer does compress consecutive same-status messages,
- *    so of the 48 Java reference `.mid` files, 33 come back byte-identical through
- *    `readMidiData` → `exportMidi` and 15 come out 2–3 bytes longer — all of the
- *    difference is running status the JDK used and this writer re-expands. The
+ *    so of the 48 Java reference `.mid` files, **33 come back byte-identical** through
+ *    `readMidiData` → `exportMidi`, **14 come out longer** by 1 to 13 bytes — all of it
+ *    running status the JDK used and this writer re-expands — and **one comes out 2
+ *    bytes shorter**, for the unrelated reason in (3). (This note used to say "15 come
+ *    out 2-3 bytes longer", wrong in count, range and direction; the exact per-file
+ *    deltas are now a table in the writer suite, so it cannot drift again.) The
  *    reader handles running status on input, which is why the event streams match.
  * 2. **This writer picks format 0 for a single-track sequence**, while Java always
  *    passes 1 to `MidiSystem.write`. Only the header byte differs; the suite does
@@ -35,6 +45,12 @@
  *    32-bit shifts wrap around and recover −18 exactly; `buildTrackChunk` then
  *    clamps the negative delta to 0 on export. That one file is the only reference
  *    whose event stream is not a fixed point of read-then-write.
+ *
+ *    **The effect is not local, which "clamps the delta to 0" makes it sound.** Deltas
+ *    are computed from absolute ticks, so zeroing the first one leaves every later
+ *    delta alone and moves the whole track 18 ticks further from the start: measured,
+ *    all 43 events of track 1 shift by +18 while track 0 is untouched, and not one
+ *    message byte changes. The track is re-anchored, not re-encoded.
  *
  * @author Axel Berndt
  */
