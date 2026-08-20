@@ -33,19 +33,37 @@
 >
 > **Where the campaign got to**, so the numbers above are read against something:
 >
-> | | before | after |
+> | | before | now |
 > | --- | --- | --- |
-> | ESLint findings | 1053 | 356 |
-> | `no-non-null-assertion` | 841 | 170 |
+> | ESLint findings in `src/` | 1053 | 259 |
+> | `no-non-null-assertion` | 841 | 160 |
 > | `noUncheckedIndexedAccess` in `src/` | 885 | 0 — the flag is **on** |
-> | indexed `for (let …)` loops | 337 | ~202 |
-> | tests | 5480 | 6071 |
+> | `for (let …)` loops | 337 | 201 |
+> | converter ambient cursors | 8 | 0 |
+> | `console.*` in `src/` | 167 | 143 |
+> | tests | 5480 | 6141 |
 >
-> Two figures deliberately *not* in that table. `tests/` is at 1047 under
+> **Where the remaining findings are is the more useful number.** Seven of `src/`'s ten
+> directories are at zero: `api`, `comparison`, `expression`, `midi`, `music`, `prelude`,
+> `supplementary`. What is left is `msm` 147, `mpm` 87, `xml` 14, `mei` 11 — and `src/msm` is
+> the last layer nobody had touched, which is why it is now the worst one. That distribution
+> is the same evidence the campaign opened with, read the other way round: the findings track
+> the Java-idiom layers, not taste.
+>
+> One figure deliberately *not* in that table: `tests/` is at 1047 under
 > `noUncheckedIndexedAccess` and opted out in `tsconfig.tests.json`; it is a separate job and
-> `scripts/strict-ratchet.mjs` keeps it monotonic. And `console.*` still stands at 167 in
-> `src/`, because 73 tests spy on it — retiring it is a `Result` campaign with a real
-> test-migration cost, not a sweep.
+> `scripts/strict-ratchet.mjs` keeps it monotonic.
+>
+> **A pattern worth naming, because it recurred and will again.** Three times now the fix has
+> been the same shape: *the port kept Java's exception handlers after replacing Java's
+> throwing constructors with total ones.* `Midi.cloneSequence` caught an
+> `InvalidMidiDataException` that cannot exist here because our `Sequence` constructor is two
+> assignments; all fourteen `EventMaker.createX` functions did the same, because Java's
+> `new ShortMessage(...)` validates where ours masks (`data1 & 0x7f`). Between them that was
+> 15 unreachable `| null` returns and **143 call sites paying a `!` for a value no test in the
+> suite had ever observed**. Before converting a `catch (e) { console.error(e); return null; }`
+> into a `Result`, check whether anything inside it can throw *in this language* — sometimes
+> the honest fix is to delete the branch, not to model it.
 >
 > Everything not named above still applies, in particular the unit and type discipline of §7
 > and the parity ledger of §6.3.
@@ -566,16 +584,17 @@ reference down. Nothing is stored on a class, a module, or `globalThis`.
 `render*ToMap` entry points and so could not actually deliver a seed to the facade's headline
 MIDI function. `Performance.perform` has exactly **one** `src/` caller:
 
-Line numbers below are **as implemented**, re-derived from the committed T19a tree
-(`f947836`); the first draft's were pre-implementation guesses and matched neither the
-baseline nor the work tree.
+Line numbers below are **as implemented**, re-derived from the tree at `b217f36`. They were
+last anchored to `f947836` and had gone stale by roughly 180 lines when `perform` became a
+fold over named stages; re-derive them again rather than trusting them, and prefer the symbol
+names, which have not moved.
 
 | # | hop | file:line |
 |---|---|---|
-| 1 | `Msm.exportExpressiveMidi(performance?, generateProgramChanges?, options?)` → `performance.perform(this, options)` | `src/msm/Msm.ts:1033` (the pass-through; the method signature is a few lines above) |
-| 2 | `Performance.perform(msm, options?)` builds the `RenderContext` | `src/mpm/elements/Performance.ts:354` (signature) |
-| 3 | → `MovementMap.renderMovementToMap(ctx)` | called at `Performance.ts:553` |
-| 4 | → `ImprecisionMap.renderImprecisionToMap(map, shakePolyphonicPart, ctx)` | called at `Performance.ts:457` (global) and `578, 596, 598, 600, 602` (per part) |
+| 1 | `Msm.exportExpressiveMidi(performance?, generateProgramChanges?, options?)` → `performance.perform(this, options)` | `src/msm/Msm.ts:1041` (the pass-through; the method signature is a few lines above) |
+| 2 | `Performance.perform(msm, options?)` builds the `RenderContext` | `src/mpm/elements/Performance.ts:537` (signature) |
+| 3 | → `MovementMap.renderMovementToMap(ctx)` | called at `Performance.ts:885` |
+| 4 | → `ImprecisionMap.renderImprecisionToMap(map, shakePolyphonicPart, ctx)` | called at `Performance.ts:735` and `1011` (pedal maps) and `1030, 1032, 1034, 1036` (the four per-part domains) |
 
 Hop 1 is the one that matters and the one that was missing: without it,
 `renderExpressiveMidi` — the facade function the downstream consumer actually calls — cannot
