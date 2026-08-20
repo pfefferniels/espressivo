@@ -199,11 +199,36 @@ become a one-directional edge. The deep-import hazard documented in `GenericStyl
 the charter then disappears, and the "import `Mpm` first" workaround in every probe script
 becomes unnecessary (leave the probes alone anyway — they still work).
 
-**RULE M4 (registration stays, and stays explicit).** `GenericMap.registerMapFactory` is the
-right pattern and does not change. `Mpm.ts` keeps its nine side-effect imports; T18 replaces
-them with one `import './elements/maps/index.js'` barrel whose only job is to run the
-registrations, with a comment saying so. A worker must not convert the registry to a
-`switch` — that would re-create the cycle in a different shape.
+**RULE M4 (SUPERSEDED — the registry is gone; the table lives in its own module).** As
+written, this rule said that `GenericMap.registerMapFactory` was the right pattern, that
+`Mpm.ts` keeps a bare `import './elements/maps/index.js'` barrel to run the thirteen
+registrations, and that a worker must not convert the registry to a `switch` because that
+would re-create the `Mpm` ⇄ maps cycle in a different shape.
+
+The last clause was the load-bearing one and it was **true only of a table placed inside
+`GenericMap.ts`**: the nine map classes extend `GenericMap`, so a table there imports its own
+subclasses. A table in a *separate* module has the edges the other way round —
+`maps/map.ts` → the nine → `GenericMap` — and is acyclic, which `import/no-cycle` confirms on
+every lint run. That is the same move `styles/style.ts` had already made for the six style
+subclasses.
+
+What the registry cost, measured rather than argued: the registrations ran as import side
+effects, so `package.json` carried
+`"sideEffects": ["./dist/mpm/Mpm.js", "./dist/mpm/elements/maps/*.js"]` to stop a bundler
+eliding the bare barrel import. Bundling the facade with rollup's
+`treeshake.moduleSideEffects: false` — exactly the licence an absent `sideEffects` field
+grants — produced a build in which **all thirteen map names parsed into a plain
+`GenericMap`**, with the whole vitest suite green throughout, because vitest does not
+tree-shake. `Mei2MsmMpmConverter` value-imports four of the nine map modules, so the same
+hazard was already live in a partial form for anyone reaching it without going through
+`Mpm.ts`.
+
+So: **the dispatch table is `MAP_SHAPE` in `src/mpm/elements/maps/map.ts`**, a
+`Record<MapKind, MapShape>` declared total over the thirteen `<dated>` child names
+`mpm/names.ts` publishes; a fourteenth is a compile error there rather than a silent
+fallback. `GenericMap` knows nothing of it, and must not — a table in `GenericMap.ts` is
+still the cycle this rule was written to forbid. `package.json` has no `sideEffects` field
+and must not regain one; the barrel and `Mpm.ts`'s bare import of it are deleted.
 
 **RULE M5 (no directory renames beyond those listed).** `src/supplementary/` keeps its name
 (a Java package name, but renaming it rewrites every import in the tree for zero benefit and
