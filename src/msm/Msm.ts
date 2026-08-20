@@ -330,7 +330,13 @@ export class Msm extends AbstractMsm {
       if (score === null) continue;
       // go through all notes
       for (const note of score.getChildElements('note')) {
-        const dur = Math.round(parseFloat(note.getAttributeValue('duration')!)); // get the note's duration
+        // `getAttributeValue(…)!` here handed `parseFloat` a real null on a note with no
+        // `duration`, which is `NaN`; `NaN % k` is `NaN`, so no `subdivs` ever matched and
+        // the note contributed nothing. `getAttributeValue`'s `''` gives the same `NaN` by
+        // the same route. Note that JAVA DIVERGES on this input — `Double.parseDouble(null)`
+        // throws an NPE that nothing here catches — but no fixture carries a note without a
+        // `duration` or a `date`, and this method has no caller in `src/` at all.
+        const dur = Math.round(parseFloat(getAttributeValue('duration', note))); // get the note's duration
         for (let subdivs = maxSubdivisions; subdivs <= ppq; subdivs *= 2) {
           if (dur % Math.trunc(ppq / subdivs) === 0) {
             maxSubdivisions = Math.max(maxSubdivisions, subdivs);
@@ -338,7 +344,7 @@ export class Msm extends AbstractMsm {
           }
         }
 
-        const date = Math.round(parseFloat(note.getAttributeValue('date')!)); // get the note's date
+        const date = Math.round(parseFloat(getAttributeValue('date', note))); // get the note's date
         for (let subdivs = maxSubdivisions; subdivs <= ppq; subdivs *= 2) {
           if (date % Math.trunc(ppq / subdivs) === 0) {
             maxSubdivisions = Math.max(maxSubdivisions, subdivs);
@@ -374,8 +380,11 @@ export class Msm extends AbstractMsm {
   ): Element {
     const part = AbstractMsm.makePartFromString(name, number, midiChannel, midiPort);
 
-    // add some MSM-specific maps to the dated environment
-    const dated = part.getFirstChildElement('dated')!;
+    // add some MSM-specific maps to the dated environment.
+    // The `<dated>` is one this method's own super call appended two lines ago, which is the
+    // narrow case `requireFirstChildElement` is documented for — "the shape of a document
+    // this port itself built".
+    const dated = requireFirstChildElement(part, 'dated');
     dated.appendChild(new Element('timeSignatureMap'));
     dated.appendChild(new Element('keySignatureMap'));
     dated.appendChild(new Element('markerMap'));
@@ -1118,14 +1127,16 @@ export class Msm extends AbstractMsm {
     channel: number,
     generateProgramChanges: boolean,
   ): void {
-    if (part.getAttribute('name') === null || part.getAttributeValue('name') === '') {
+    // Three reads of `name` — a presence test, an emptiness test, and an asserted read —
+    // become one. `null` and `''` take the same branch here, which is why the value can be
+    // tested for both at once.
+    const name = part.getAttributeValue('name');
+    if (name === null || name === '') {
       if (generateProgramChanges) {
         track.add(EventMaker.createProgramChange(channel, 0, EventMaker.PC_Acoustic_Grand_Piano));
       }
       return;
     }
-
-    const name = part.getAttributeValue('name')!;
 
     if (generateProgramChanges) {
       track.add(EventMaker.createProgramChangeByName(channel, 0, name));
@@ -1151,11 +1162,10 @@ export class Msm extends AbstractMsm {
     channel: number,
     exportExpressive: boolean,
   ): boolean {
-    if (part.getFirstChildElement('dated') === null) return false;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return false;
 
-    const programChangeMap = part
-      .getFirstChildElement('dated')!
-      .getFirstChildElement('programChangeMap');
+    const programChangeMap = dated.getFirstChildElement('programChangeMap');
     if (programChangeMap === null || programChangeMap.getChildCount() === 0) return false;
 
     let weHaveAnInitialPrgCh = false;
@@ -1168,7 +1178,12 @@ export class Msm extends AbstractMsm {
         ? Msm.readMillisecondsDateFromElement(n)
         : Math.round(parseFloat(getAttributeValue('date', n)));
       if (date === 0) weHaveAnInitialPrgCh = true;
-      const value = parseInt(n.getAttributeValue('value')!);
+      // `parseInt(n.getAttributeValue('value')!)` was this, and on a `<programChange>` with
+      // no `value` it handed `parseInt` a real null — the string "null", hence NaN, hence a
+      // program change to instrument NaN, which `channelMessage` masks to 0 (Acoustic Grand
+      // Piano). `getAttributeValue`'s miss is `''`, and `parseInt('')` is NaN too, so this
+      // is the same number by the same route with no lie in the type.
+      const value = parseInt(getAttributeValue('value', n));
       track.add(EventMaker.createProgramChange(channel, date, value));
     }
     return weHaveAnInitialPrgCh;
@@ -1193,20 +1208,20 @@ export class Msm extends AbstractMsm {
    * symbolic branch uses unconditionally.
    */
   private processScore(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      part.getFirstChildElement('dated') === null ||
-      part.getFirstChildElement('dated')!.getFirstChildElement('score') === null ||
-      part.getAttribute('midi.channel') === null
-    )
-      return;
+    // The three-way guard was three tests followed by three assertions re-reading the same
+    // three things; it is now three reads, each tested where it is bound. Same short
+    // circuit, same order, one walk of `part`'s children instead of three.
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const score = dated.getFirstChildElement('score');
+    if (score === null) return;
+    const channelAttribute = part.getAttribute('midi.channel');
+    if (channelAttribute === null) return;
 
-    const chan = parseInt(part.getAttributeValue('midi.channel')!);
+    const chan = parseInt(channelAttribute.getValue());
 
     for (
-      let n = part
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('score')!
-        .getFirstChildElement('note');
+      let n = score.getFirstChildElement('note');
       n !== null;
       n = getNextSiblingElement('note', n)
     ) {
@@ -1263,15 +1278,14 @@ export class Msm extends AbstractMsm {
    * also satisfies since `prevDate` is still its initial sentinel).
    */
   private parseChannelVolumeMap(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      !exportExpressive ||
-      part.getFirstChildElement('dated') === null ||
-      part.getAttribute('midi.channel') === null
-    )
-      return;
+    if (!exportExpressive) return;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const channelAttribute = part.getAttribute('midi.channel');
+    if (channelAttribute === null) return;
 
-    const chan = parseInt(part.getAttributeValue('midi.channel')!);
-    const cvMap = firstChildElement('channelVolumeMap', part.getFirstChildElement('dated')!);
+    const chan = parseInt(channelAttribute.getValue());
+    const cvMap = firstChildElement('channelVolumeMap', dated);
 
     if (cvMap === null) {
       track.add(EventMaker.createControlChange(chan, 0, EventMaker.CC_Channel_Volume, 100));
@@ -1310,15 +1324,14 @@ export class Msm extends AbstractMsm {
    * `sustain` and `soft` are mapped.
    */
   private parsePositionMap(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      !exportExpressive ||
-      part.getFirstChildElement('dated') === null ||
-      part.getAttribute('midi.channel') === null
-    )
-      return;
+    if (!exportExpressive) return;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const channelAttribute = part.getAttribute('midi.channel');
+    if (channelAttribute === null) return;
 
-    const chan = parseInt(part.getAttributeValue('midi.channel')!);
-    const posMap = firstChildElement('positionMap', part.getFirstChildElement('dated')!);
+    const chan = parseInt(channelAttribute.getValue());
+    const posMap = firstChildElement('positionMap', dated);
 
     if (posMap === null) return;
 
@@ -1360,26 +1373,22 @@ export class Msm extends AbstractMsm {
    * behaviour parity beats correctness.
    */
   private parseKeySignatureMap(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      part.getFirstChildElement('dated') === null ||
-      part.getFirstChildElement('dated')!.getFirstChildElement('keySignatureMap') === null
-    )
-      return;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const map = dated.getFirstChildElement('keySignatureMap');
+    if (map === null) return;
 
     for (
-      let e = part
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('keySignatureMap')!
-        .getFirstChildElement('keySignature');
+      let e = map.getFirstChildElement('keySignature');
       e !== null;
       e = getNextSiblingElement('keySignature', e)
     ) {
-      let date: number;
-      if (exportExpressive) {
-        date = Msm.readMillisecondsDateFromElement(e);
-      } else {
-        date = Math.round(parseFloat(e.getAttributeValue('date')!));
-      }
+      // `parseFloat(e.getAttributeValue('date')!)` was this. `getAttributeValue`'s miss is
+      // `''` and `parseFloat('')` is `NaN`, which is exactly what `parseFloat(null)` gave —
+      // an undated entry has always produced an event at tick NaN, and still does.
+      const date = exportExpressive
+        ? Msm.readMillisecondsDateFromElement(e)
+        : Math.round(parseFloat(getAttributeValue('date', e)));
 
       let accids = 0;
       for (
@@ -1387,8 +1396,9 @@ export class Msm extends AbstractMsm {
         a !== null;
         a = getNextSiblingElement('accidental', a)
       ) {
-        if (a.getAttribute('value') !== null) {
-          const value = parseFloat(a.getAttributeValue('value')!);
+        const valueAttribute = a.getAttribute('value');
+        if (valueAttribute !== null) {
+          const value = parseFloat(valueAttribute.getValue());
           if (value > 1.0) {
             accids++;
             continue;
@@ -1403,32 +1413,29 @@ export class Msm extends AbstractMsm {
   }
 
   private parseTimeSignatureMap(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      part.getFirstChildElement('dated') === null ||
-      part.getFirstChildElement('dated')!.getFirstChildElement('timeSignatureMap') === null
-    )
-      return;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const map = dated.getFirstChildElement('timeSignatureMap');
+    if (map === null) return;
 
     for (
-      let e = part
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('timeSignatureMap')!
-        .getFirstChildElement('timeSignature');
+      let e = map.getFirstChildElement('timeSignature');
       e !== null;
       e = getNextSiblingElement('timeSignature', e)
     ) {
-      let date: number;
-      if (exportExpressive) date = Msm.readMillisecondsDateFromElement(e);
-      else date = Math.round(parseFloat(e.getAttributeValue('date')!));
+      const date = exportExpressive
+        ? Msm.readMillisecondsDateFromElement(e)
+        : Math.round(parseFloat(getAttributeValue('date', e)));
 
+      // Absent is 4; present-but-unparsable stays NaN. Reading the attribute once keeps
+      // those two apart, which is the whole reason the test was written against
+      // `getAttribute` rather than against the value.
+      const numeratorAttribute = e.getAttribute('numerator');
       const numerator =
-        e.getAttribute('numerator') === null
-          ? 4
-          : Math.round(parseFloat(e.getAttributeValue('numerator')!));
+        numeratorAttribute === null ? 4 : Math.round(parseFloat(numeratorAttribute.getValue()));
+      const denominatorAttribute = e.getAttribute('denominator');
       const denominator =
-        e.getAttribute('denominator') === null
-          ? 4
-          : Math.round(parseFloat(e.getAttributeValue('denominator')!));
+        denominatorAttribute === null ? 4 : Math.round(parseFloat(denominatorAttribute.getValue()));
       track.add(EventMaker.createTimeSignature(date, numerator, denominator));
     }
   }
@@ -1438,36 +1445,29 @@ export class Msm extends AbstractMsm {
    * anchors that sequencingMap gotos aim at (`target.id` names a marker's `xml:id`, see
    * {@link Goto}). Called once for `<global>` and once per part.
    *
-   * A marker with no `message` becomes the literal `'marker'`. Both the `null` check and
-   * the `try` around it are needed for that: `getAttributeValue` returns `null` when the
-   * attribute is missing, and the `!` on it would otherwise let a null through.
+   * A marker with no `message` becomes the literal `'marker'`; one carrying an EMPTY
+   * `message` keeps the empty string, which is a different event. That distinction used to
+   * be made by `e.getAttributeValue('message')!` — an assertion that typed the null away
+   * and then tested for it anyway, inside a `try` for an accessor that cannot throw. Three
+   * spellings of one question; this is the question.
    */
   private parseMarkerMap(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      part.getFirstChildElement('dated') === null ||
-      part.getFirstChildElement('dated')!.getFirstChildElement('markerMap') === null
-    )
-      return;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const map = dated.getFirstChildElement('markerMap');
+    if (map === null) return;
 
     for (
-      let e = part
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('markerMap')!
-        .getFirstChildElement('marker');
+      let e = map.getFirstChildElement('marker');
       e !== null;
       e = getNextSiblingElement('marker', e)
     ) {
-      let message: string;
-      try {
-        message = e.getAttributeValue('message')!;
-        if (message === null) message = 'marker';
-      } catch {
-        message = 'marker';
-      }
+      const messageValue = e.getAttributeValue('message');
+      const message = messageValue === null ? 'marker' : messageValue;
 
       const date = exportExpressive
         ? Msm.readMillisecondsDateFromElement(e)
-        : Math.round(parseFloat(e.getAttributeValue('date')!));
+        : Math.round(parseFloat(getAttributeValue('date', e)));
       track.add(EventMaker.createMarker(date, message));
     }
   }
@@ -1636,7 +1636,7 @@ export class Msm extends AbstractMsm {
    */
   getEndDate(): number {
     let latestOffset = 0.0;
-    const parts = this.getRootElement()!.getChildElements('part'); // get all parts
+    const parts = this.requireRootElement().getChildElements('part'); // get all parts
 
     // in each part
     for (const part of parts) {
@@ -1652,8 +1652,13 @@ export class Msm extends AbstractMsm {
       // — the two directions answer the same double for every input, NaN included (`NaN >
       // x` is false whichever end you start from).
       for (const note of score.getChildElements('note')) {
-        const date = parseFloat(note.getAttributeValue('date')!); // get its date
-        const dur = parseFloat(note.getAttributeValue('duration')!); // get its duration
+        // Both were `getAttributeValue(…)!`, which hands `parseFloat` a real null on a note
+        // that lacks the attribute — the string "null", so `NaN`. `getAttributeValue`'s miss
+        // is `''`, and `parseFloat('')` is `NaN` too, so an undated or durationless note
+        // still contributes a NaN offset that fails `>` and is ignored. Same number, and
+        // the type no longer claims a string that is not there.
+        const date = parseFloat(getAttributeValue('date', note)); // get its date
+        const dur = parseFloat(getAttributeValue('duration', note)); // get its duration
         const offset = date + dur; // compute the offset date
         if (offset > latestOffset)
           // if its after the last offset known so far
@@ -1674,18 +1679,24 @@ export class Msm extends AbstractMsm {
    * performed produces one error line per element rather than one for the document.
    *
    * The fallback to `date` is a last resort, not a mode: it substitutes a value in MSM
-   * ticks where milliseconds are expected. `dateAtt!` is genuinely unguarded — an element
-   * with neither attribute throws, in both this port and Java.
+   * ticks where milliseconds are expected. An element with **neither** attribute throws, in
+   * this port and in Java (`Msm.java:1424` dereferences the null `Attribute`, giving an NPE;
+   * `dateAtt!.getValue()` here gave a `TypeError`). That stays a throw — the only change is
+   * that it names both attributes it looked for instead of reporting a missing property.
    */
   private static readMillisecondsDateFromElement(e: Element): number {
-    let dateAtt = attribute('milliseconds.date', e);
-    if (dateAtt === null) {
-      console.error(
-        `Missing attribute "milliseconds.date" in element ${e.toXML()}. Using attribute "date" instead.`,
+    const millisecondsDate = attribute('milliseconds.date', e);
+    if (millisecondsDate !== null) return Math.round(parseFloat(millisecondsDate.getValue()));
+
+    console.error(
+      `Missing attribute "milliseconds.date" in element ${e.toXML()}. Using attribute "date" instead.`,
+    );
+    const symbolicDate = attribute('date', e);
+    if (symbolicDate === null)
+      throw new MissingNodeError(
+        `element ${e.toXML()} has neither a "milliseconds.date" nor a "date" attribute`,
       );
-      dateAtt = attribute('date', e);
-    }
-    return Math.round(parseFloat(dateAtt!.getValue())); // Math.round(double) returns number
+    return Math.round(parseFloat(symbolicDate.getValue())); // Math.round(double) returns number
   }
 
   /**
