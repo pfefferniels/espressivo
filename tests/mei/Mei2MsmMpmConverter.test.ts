@@ -506,4 +506,56 @@ describe('Mei2MsmMpmConverter – a cursor stops applying when the walk leaves i
     // the previous measure's layer must not still be in force here
     expect(byId.get('afterLayer')?.getAttributeValue('layer')).toBeNull();
   });
+
+  /**
+   * The other end of the same cursor, and the second control that came back green: making
+   * `processStaffDef` walk its own children under the *enclosing* context — i.e. never opening
+   * the part it just created — changed nothing in 1039 tests.
+   *
+   * It is unobserved because a `staffDef` in this corpus never contains anything the walk
+   * descends into. `layerDef` is the shape that makes the difference visible: `processLayerDef`
+   * writes its defaults into the part's `miscMap` when a part is open and into the *global*
+   * one when none is, so the two contexts send the same three elements to two different
+   * places.
+   */
+  it('opens the part for a staffDef’s own children, not just for the staff that uses it', () => {
+    // `cleanup: false` again: `msmCleanup` prunes the miscMaps this is about
+    const msm = convertToMsm(
+      `<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei">
+  <meiHead><fileDesc><titleStmt><title>Oracle</title></titleStmt><pubStmt/></fileDesc></meiHead>
+  <music><body><mdiv><score>
+    <scoreDef><staffGrp>
+      <staffDef n="1" lines="5"><layerDef n="1" dur.default="8" octave.default="3"/></staffDef>
+    </staffGrp></scoreDef>
+    <section>
+      <measure n="1"><staff n="1"><layer n="1"><note pname="c" oct="4" dur="4"/></layer></staff></measure>
+    </section>
+  </score></mdiv></body></music>
+</mei>`,
+      false,
+    );
+
+    /** the local names of everything the given container's `miscMap` holds */
+    const miscMapContents = (container: Element): string[] =>
+      elementAt(descendants(container, 'miscMap'), 0, 'the miscMaps')
+        .query('descendant::*')
+        .toArray()
+        .map((n) => (n as unknown as Element).getLocalName());
+
+    const parts = descendants(msm, 'part');
+    expect(parts.length).toBe(1);
+    const inPart = miscMapContents(elementAt(parts, 0, 'the MSM parts'));
+    // all three of `processLayerDef`'s outputs belong to the part the staffDef opened
+    expect(inPart).toContain('layerDef');
+    expect(inPart).toContain('dur.default');
+    expect(inPart).toContain('oct.default');
+
+    // …and none of them to the global section, which is where `processLayerDef` sends them
+    // when no part is open — the observable difference between the two contexts
+    const globals = descendants(msm, 'global');
+    expect(miscMapContents(elementAt(globals, 0, 'the MSM global sections'))).not.toContain(
+      'layerDef',
+    );
+  });
 });
