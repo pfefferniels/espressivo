@@ -57,7 +57,16 @@ import { OrnamentData } from '../mpm/elements/maps/data/OrnamentData.js';
 import { Author } from '../mpm/elements/metadata/Author.js';
 import { Comment } from '../mpm/elements/metadata/Comment.js';
 import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
-import { firstPresent, foldl, head, isNonEmpty, mapPresent, orDefault } from '../prelude/index.js';
+import {
+  firstPresent,
+  foldl,
+  head,
+  isNonEmpty,
+  isOk,
+  mapPresent,
+  orDefault,
+  unwrapOr,
+} from '../prelude/index.js';
 import { elementAt, findLast, removeAt } from '../prelude/seq.js';
 
 /**
@@ -670,10 +679,14 @@ export class Mei2MsmMpmConverter {
         const onlyMsm = head(msms);
         const onlyMpm = head(mpms);
         const msmFile = onlyMsm.getFile();
-        const msmRelatedResource =
-          msmFile === null ? null : RelatedResource.createRelatedResource(msmFile, 'msm');
-        if (msmRelatedResource !== null)
-          onlyMpm.getMetadata()?.addRelatedResource(msmRelatedResource);
+        if (msmFile !== null) {
+          // `createRelatedResource` returns its reason now instead of printing it; there is
+          // no reason to have here, since both arguments are non-null strings, but the
+          // check is what says so rather than an `!`.
+          const msmRelatedResource = RelatedResource.createRelatedResource(msmFile, 'msm');
+          if (isOk(msmRelatedResource))
+            onlyMpm.getMetadata()?.addRelatedResource(msmRelatedResource.value);
+        }
       }
     }
 
@@ -1085,24 +1098,32 @@ export class Mei2MsmMpmConverter {
 
     const mpm = Mpm.createMpm();
 
-    // `RelatedResource.createRelatedResource` reports failure with null, and
-    // `Mpm.addMetadata` now says it accepts such an array (T16 closed T10's DISCOVERED
-    // note by widening the consumer, which is what retired this file's `any`).
+    // The three metadata factories return their reason now rather than printing it. None of
+    // the three calls below can produce one — every argument is a non-null string — so the
+    // reasons are flattened back to null with `unwrapOr` and the array keeps its nullable
+    // element type. That is not laziness: `Mpm.addMetadata` passes the array to
+    // `Metadata.createMetadata`, which treats a null element as a caller error and refuses to
+    // build the metadata at all (T16 closed T10's DISCOVERED note by widening the consumer,
+    // which is what retired this file's `any`). Skipping a null here instead would produce a
+    // metadata block that the incumbent would not have produced, and that is a document
+    // difference, not a plumbing one.
     const relatedResources: (RelatedResource | null)[] = [];
     const meiFile = this.requireMei().getFile();
+    const meicoAuthor = (): Author | null =>
+      unwrapOr(Author.createAuthor('meico', null, null), null);
     if (meiFile !== null) {
-      relatedResources.push(RelatedResource.createRelatedResource(meiFile, 'mei'));
+      relatedResources.push(unwrapOr(RelatedResource.createRelatedResource(meiFile, 'mei'), null));
       const comment = Comment.createComment(
         `This MPM has been generated from '${meiFile}' using the meico MEI converter v${VERSION}.`,
         null,
       );
-      mpm.addMetadata(Author.createAuthor('meico', null, null), comment, relatedResources);
+      mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), relatedResources);
     } else {
       const comment = Comment.createComment(
         `This MPM has been generated from MEI code using the meico MEI converter v${VERSION}.`,
         null,
       );
-      mpm.addMetadata(Author.createAuthor('meico', null, null), comment, null);
+      mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), null);
     }
 
     const performance = Performance.createPerformance('MEI export performance');

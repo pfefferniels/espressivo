@@ -1,7 +1,9 @@
 import { Element, Text } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute } from '../../../xml/tree.js';
+import { err, type Result } from '../../../prelude/index.js';
 import { MPM_NAMESPACE } from '../../names.js';
+import { attemptParse, type MpmParseError } from '../parseError.js';
 
 /**
  * An MPM `<comment>` element inside {@link Metadata} — free prose about the performance.
@@ -18,36 +20,35 @@ export class Comment extends AbstractXmlSubtree {
     super();
   }
 
-  static createComment(xml: Element): Comment | null;
-  static createComment(text: string, id: string | null): Comment | null;
-  static createComment(xmlOrText: Element | string, id?: string | null): Comment | null {
-    try {
+  /** As {@link Author.createAuthor}: the reason is returned rather than printed. */
+  static createComment(xml: Element): Result<Comment, MpmParseError>;
+  static createComment(text: string, id: string | null): Result<Comment, MpmParseError>;
+  static createComment(
+    xmlOrText: Element | string | null,
+    id?: string | null,
+  ): Result<Comment, MpmParseError> {
+    if (xmlOrText === null) return err({ kind: 'noElement', what: 'Comment' });
+    return attemptParse('Comment', () => {
+      const c = new Comment();
       if (typeof xmlOrText === 'string') {
-        const commentElt = new Element('comment', MPM_NAMESPACE);
-        const c = new Comment();
-        c.parseData(commentElt);
+        c.parseData(new Element('comment', MPM_NAMESPACE));
         c.setText(xmlOrText);
         c.setId(id ?? null);
-        return c;
       } else {
-        const c = new Comment();
         c.parseData(xmlOrText);
-        return c;
       }
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+      return c;
+    });
   }
 
   /**
    * After this has run, {@link getXml} returns the very element passed in — `setXml` stores
    * it verbatim rather than copying. A `<comment/>` whose first child is not a text node
    * gets an empty one appended, so {@link getText} always has something to read; see
-   * {@link Author.parseData} for the same rule and its one sharp edge.
+   * {@link Author.parseData} for the same rule, its one sharp edge, and where the null
+   * guard went.
    */
   protected parseData(xml: Element): void {
-    if (xml === null) throw new Error('Cannot generate Comment object. XML Element is null.');
     this.setXml(xml);
     if (xml.getChildCount() === 0 || !(xml.getChild(0) instanceof Text)) {
       this.text = new Text('');

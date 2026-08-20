@@ -1,7 +1,9 @@
 import { Attribute, Element, Text } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute } from '../../../xml/tree.js';
+import { err, type Result } from '../../../prelude/index.js';
 import { MPM_NAMESPACE } from '../../names.js';
+import { attemptParse, type MpmParseError } from '../parseError.js';
 
 /**
  * An MPM `<author>` element inside {@link Metadata}.
@@ -21,31 +23,38 @@ export class Author extends AbstractXmlSubtree {
     super();
   }
 
-  static createAuthor(xml: Element): Author | null;
-  static createAuthor(name: string, number: number | null, id: string | null): Author | null;
+  /**
+   * Read an `<author>` element, or build one from a name (with optional number and `xml:id`).
+   *
+   * Where this returned `Author | null` after printing the exception it had caught, it now
+   * returns the reason — see `elements/parseError.ts` for why that is the same control flow
+   * with one fewer thing thrown away. The null element is the one failure a document can
+   * cause here, and it is checked rather than caught.
+   */
+  static createAuthor(xml: Element): Result<Author, MpmParseError>;
   static createAuthor(
-    xmlOrName: Element | string,
+    name: string,
+    number: number | null,
+    id: string | null,
+  ): Result<Author, MpmParseError>;
+  static createAuthor(
+    xmlOrName: Element | string | null,
     number?: number | null,
     id?: string | null,
-  ): Author | null {
-    try {
+  ): Result<Author, MpmParseError> {
+    if (xmlOrName === null) return err({ kind: 'noElement', what: 'Author' });
+    return attemptParse('Author', () => {
+      const a = new Author();
       if (typeof xmlOrName === 'string') {
-        const authorElt = new Element('author', MPM_NAMESPACE);
-        const a = new Author();
-        a.parseData(authorElt);
+        a.parseData(new Element('author', MPM_NAMESPACE));
         a.setName(xmlOrName);
         a.setNumber(number ?? null);
         a.setId(id ?? null);
-        return a;
       } else {
-        const a = new Author();
         a.parseData(xmlOrName);
-        return a;
       }
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+      return a;
+    });
   }
 
   /**
@@ -56,9 +65,11 @@ export class Author extends AbstractXmlSubtree {
    * {@link getName} always has something to read. Note that only child 0 is considered: an
    * author element that leads with a comment or an element is treated as having no name and
    * gains a second, empty text node.
+   *
+   * The `xml === null` guard this used to open with now lives in {@link createAuthor}, which
+   * is its only caller and which can say what a null means without throwing.
    */
   protected parseData(xml: Element): void {
-    if (xml === null) throw new Error('Cannot generate Author object. XML Element is null.');
     this.setXml(xml);
     if (xml.getChildCount() === 0 || !(xml.getChild(0) instanceof Text)) {
       this.nameText = new Text('');
