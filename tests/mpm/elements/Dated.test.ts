@@ -30,7 +30,7 @@ describe('Dated', () => {
     });
 
     it('should report a null xml element rather than printing it', () => {
-      expect(errOf(Dated.createDated(null as unknown as Element))).toEqual({
+      expect(errOf(Dated.createDated(null))).toEqual({
         kind: 'noElement',
         what: 'Dated',
       });
