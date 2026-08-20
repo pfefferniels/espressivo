@@ -292,6 +292,60 @@ describe('scopes, matching and map resolution', () => {
     expect(pair.comparability.instructionCountA).toBe(0);
   });
 
+  it('compares a RENDERABLE part with an unusable @number against neutral, never against its twin', () => {
+    /**
+     * A closed oracle gap, found by a negative control on `matchScopes`.
+     *
+     * `matchScopes` splits renderable parts into numbered and unnumbered, pairs the numbered
+     * ones by number, and pushes each unnumbered one against neutral — A-side block first,
+     * then B-side, which is what makes the result symmetric under a swap. Measured: keying
+     * the unnumbered ones at `-1` instead of dropping them, which would PAIR the two
+     * documents' unnumbered parts with each other, left all 6082 tests green. A probe then
+     * showed why: no test in the tree ever reached that code with an unnumbered part.
+     *
+     * The case is reachable, and only just. `renderable` is decided the way the renderer
+     * decides it — `Part.parseData` throws only when `@number` / `@midi.channel` /
+     * `@midi.port` are absent or empty, never on their VALUE — while the scope's `number` is
+     * `parseInt`, which answers NaN here and is reported as null. So `number="abc"` is a part
+     * the renderer really does construct (with `this.number = NaN`, matching no MSM part) and
+     * that this module really does have to place against neutral.
+     */
+    const unnumbered =
+      '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p" pulsesPerQuarter="720">' +
+      '<global><header/><dated/></global>' +
+      '<part name="V" number="abc" midi.channel="0" midi.port="0"><header/><dated>' +
+      '<tempoMap><tempo date="0.0" bpm="200" beatLength="0.25"/></tempoMap>' +
+      '</dated></part></performance></mpm>';
+
+    // Destructured and checked rather than indexed: `tests/` is on a one-way
+    // `noUncheckedIndexedAccess` ratchet, and `[0]` costs it an error.
+    const [performance] = readPerformances(parseMpmRoot(unnumbered));
+    if (performance === undefined) throw new Error('no performance');
+
+    const scopes = readScopes(performance);
+    const part = scopes.find((scope) => scope.scope === 'part');
+    // Renderable — the renderer builds this part — but with no usable number.
+    expect({ renderable: part?.renderable, number: part?.number }).toEqual({
+      renderable: true,
+      number: null,
+    });
+
+    const parts = matchScopes(scopes, scopes).filter((pairing) => pairing.scope === 'part');
+    // TWO pairings, each against neutral — not one pairing of the part with itself.
+    expect(
+      parts.map((pairing) => ({
+        matched: pairing.matched,
+        numberA: pairing.numberA,
+        numberB: pairing.numberB,
+        hasA: pairing.a !== null,
+        hasB: pairing.b !== null,
+      })),
+    ).toEqual([
+      { matched: false, numberA: null, numberB: null, hasA: true, hasB: false },
+      { matched: false, numberA: null, numberB: null, hasA: false, hasB: true },
+    ]);
+  });
+
   it('lets an EMPTY part-local map shadow a populated global one (AD-16)', () => {
     const text =
       '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p" pulsesPerQuarter="720">' +
