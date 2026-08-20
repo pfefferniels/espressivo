@@ -15,7 +15,7 @@ import {
 import { addUUID } from '../xml/ids.js';
 
 import { Midi } from '../midi/Midi.js';
-import { Sequence, Track, MidiEvent } from '../midi/MidiTypes.js';
+import { Sequence, Track } from '../midi/MidiTypes.js';
 import * as EventMaker from '../midi/EventMaker.js';
 import type { Performance } from '../mpm/elements/Performance.js';
 import type { RenderOptions } from '../mpm/RenderOptions.js';
@@ -1003,12 +1003,10 @@ export class Msm extends AbstractMsm {
       let port = 0;
       if (part.getAttribute('midi.port') !== null)
         port = parseInt(part.getAttributeValue('midi.port')!);
-      const portEvent = EventMaker.createMidiPortEvent(0, port);
-      if (portEvent !== null) track.add(portEvent);
+      track.add(EventMaker.createMidiPortEvent(0, port));
 
       const chan = parseInt(part.getAttributeValue('midi.channel')!);
-      const channelPrefix = EventMaker.createChannelPrefix(0, chan);
-      if (channelPrefix !== null) track.add(channelPrefix);
+      track.add(EventMaker.createChannelPrefix(0, chan));
 
       let reallyGenerateProgramChanges = generateProgramChanges;
       if (reallyGenerateProgramChanges) {
@@ -1067,8 +1065,7 @@ export class Msm extends AbstractMsm {
     } catch {
       beatlength = 0.25;
     }
-    const event = EventMaker.createTempo(0, bpm, beatlength);
-    if (event !== null) track.add(event);
+    track.add(EventMaker.createTempo(0, bpm, beatlength));
   }
 
   /**
@@ -1078,8 +1075,7 @@ export class Msm extends AbstractMsm {
    * conversion anywhere, and the MSM's own ppq survives as the sequence resolution.
    */
   private makeMillisecondTickTempo(track: Track): void {
-    const event = EventMaker.createTempo(0, 60000.0 / this.getPPQ(), 0.25);
-    if (event !== null) track.add(event);
+    track.add(EventMaker.createTempo(0, 60000.0 / this.getPPQ(), 0.25));
   }
 
   /**
@@ -1099,12 +1095,7 @@ export class Msm extends AbstractMsm {
   ): void {
     if (part.getAttribute('name') === null || part.getAttributeValue('name') === '') {
       if (generateProgramChanges) {
-        const event = EventMaker.createProgramChange(
-          channel,
-          0,
-          EventMaker.PC_Acoustic_Grand_Piano,
-        );
-        if (event !== null) track.add(event);
+        track.add(EventMaker.createProgramChange(channel, 0, EventMaker.PC_Acoustic_Grand_Piano));
       }
       return;
     }
@@ -1112,11 +1103,9 @@ export class Msm extends AbstractMsm {
     const name = part.getAttributeValue('name')!;
 
     if (generateProgramChanges) {
-      const event = EventMaker.createProgramChangeByName(channel, 0, name);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createProgramChangeByName(channel, 0, name));
     }
-    const trackNameEvent = EventMaker.createTrackName(0, name);
-    if (trackNameEvent !== null) track.add(trackNameEvent);
+    track.add(EventMaker.createTrackName(0, name));
   }
 
   /**
@@ -1155,8 +1144,7 @@ export class Msm extends AbstractMsm {
         : Math.round(parseFloat(getAttributeValue('date', n)));
       if (date === 0) weHaveAnInitialPrgCh = true;
       const value = parseInt(n.getAttributeValue('value')!);
-      const event = EventMaker.createProgramChange(channel, date, value);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createProgramChange(channel, date, value));
     }
     return weHaveAnInitialPrgCh;
   }
@@ -1207,13 +1195,8 @@ export class Msm extends AbstractMsm {
           velocityAtt === null ? 100 : Math.round(parseFloat(velocityAtt.getValue()));
 
         const xmlId = n.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
-        const textEvent = EventMaker.createTextEvent(
-          date,
-          xmlId === null ? 'unknown' : xmlId.getValue(),
-        );
-        if (textEvent !== null) track.add(textEvent);
-        const noteOn = EventMaker.createNoteOn(chan, date, pitch, velocity);
-        if (noteOn !== null) track.add(noteOn);
+        track.add(EventMaker.createTextEvent(date, xmlId === null ? 'unknown' : xmlId.getValue()));
+        track.add(EventMaker.createNoteOn(chan, date, pitch, velocity));
 
         let dateEnd: number;
         const endAtt = attribute('milliseconds.date.end', n);
@@ -1226,19 +1209,15 @@ export class Msm extends AbstractMsm {
         } else {
           dateEnd = Math.round(parseFloat(endAtt.getValue()));
         }
-        const noteOff = EventMaker.createNoteOff(chan, dateEnd, pitch, 0);
-        if (noteOff !== null) track.add(noteOff);
+        track.add(EventMaker.createNoteOff(chan, dateEnd, pitch, 0));
       } else {
         const date = Math.round(parseFloat(getAttributeValue('date', n)));
         const xmlId = getAttributeValue('xml:id', n);
-        const textEvent = EventMaker.createTextEvent(date, xmlId);
-        if (textEvent !== null) track.add(textEvent);
-        const noteOn = EventMaker.createNoteOn(chan, date, pitch, 100);
-        if (noteOn !== null) track.add(noteOn);
+        track.add(EventMaker.createTextEvent(date, xmlId));
+        track.add(EventMaker.createNoteOn(chan, date, pitch, 100));
 
         const dur = Math.round(parseFloat(getAttributeValue('duration', n)));
-        const noteOff = EventMaker.createNoteOff(chan, date + dur, pitch, 0);
-        if (noteOff !== null) track.add(noteOff);
+        track.add(EventMaker.createNoteOff(chan, date + dur, pitch, 0));
       }
     }
   }
@@ -1270,8 +1249,7 @@ export class Msm extends AbstractMsm {
     const cvMap = firstChildElement('channelVolumeMap', part.getFirstChildElement('dated')!);
 
     if (cvMap === null) {
-      const event = EventMaker.createControlChange(chan, 0, EventMaker.CC_Channel_Volume, 100);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createControlChange(chan, 0, EventMaker.CC_Channel_Volume, 100));
       return;
     }
 
@@ -1286,13 +1264,11 @@ export class Msm extends AbstractMsm {
       if (!mandatory && date >= prevDate - Msm.CONTROL_CHANGE_DENSITY) continue;
       prevDate = date;
       const value = Math.round(parseFloat(getAttributeValue('value', e)));
-      const event = EventMaker.createControlChange(chan, date, EventMaker.CC_Channel_Volume, value);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createControlChange(chan, date, EventMaker.CC_Channel_Volume, value));
     }
 
     if (prevDate > 0) {
-      const event = EventMaker.createControlChange(chan, 0, EventMaker.CC_Channel_Volume, 100);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createControlChange(chan, 0, EventMaker.CC_Channel_Volume, 100));
     }
   }
 
@@ -1337,8 +1313,7 @@ export class Msm extends AbstractMsm {
         controllerNumber = EventMaker.CC_Soft_Pedal;
       }
 
-      const event = EventMaker.createControlChange(chan, date, controllerNumber, value);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createControlChange(chan, date, controllerNumber, value));
     }
   }
 
@@ -1398,8 +1373,7 @@ export class Msm extends AbstractMsm {
           }
         }
       }
-      const event = EventMaker.createKeySignature(date, accids);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createKeySignature(date, accids));
     }
   }
 
@@ -1430,8 +1404,7 @@ export class Msm extends AbstractMsm {
         e.getAttribute('denominator') === null
           ? 4
           : Math.round(parseFloat(e.getAttributeValue('denominator')!));
-      const event = EventMaker.createTimeSignature(date, numerator, denominator);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createTimeSignature(date, numerator, denominator));
     }
   }
 
@@ -1467,15 +1440,10 @@ export class Msm extends AbstractMsm {
         message = 'marker';
       }
 
-      let event: MidiEvent | null;
-      if (exportExpressive)
-        event = EventMaker.createMarker(Msm.readMillisecondsDateFromElement(e), message);
-      else
-        event = EventMaker.createMarker(
-          Math.round(parseFloat(e.getAttributeValue('date')!)),
-          message,
-        );
-      if (event !== null) track.add(event);
+      const date = exportExpressive
+        ? Msm.readMillisecondsDateFromElement(e)
+        : Math.round(parseFloat(e.getAttributeValue('date')!));
+      track.add(EventMaker.createMarker(date, message));
     }
   }
 
