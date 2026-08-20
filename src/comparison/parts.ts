@@ -32,7 +32,7 @@
  * flagged; it is not compared against neutral, because comparing it against neutral would
  * charge exactly the content the renderer drops.
  */
-import { filterMap } from '../prelude/index.js';
+import { filterMap, partitionWith } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import type { MpmEnvironment, PerformanceView } from '../expression/mpmTree.js';
@@ -194,19 +194,32 @@ export function matchScopes(
     },
   ];
 
-  const partsA = a.filter((scope) => scope.scope === 'part' && scope.renderable);
-  const partsB = b.filter((scope) => scope.scope === 'part' && scope.renderable);
+  // The renderable parts of one side, split into the ones a `@number` can match and the ones it
+  // cannot. Both blocks below used to re-filter the whole list — `number !== null` for the map,
+  // `number === null` for the tail — so nothing but a reader's care kept the two predicates
+  // complementary. `partitionWith` makes that structural, and it preserves document order in
+  // each half, which is what the tail block depends on.
+  const renderableParts = (scopes: readonly ComparisonScope[]) =>
+    partitionWith(
+      scopes.filter((scope) => scope.scope === 'part' && scope.renderable),
+      (part) => part.number !== null,
+    );
+  const partsA = renderableParts(a);
+  const partsB = renderableParts(b);
 
   // `filterMap`, so the `=== null` test narrows `scope.number` where the entry is built —
   // the two-pass `.filter().map()` needed `as number` to say what the filter had proved.
+  // `partitionWith`'s predicate is not a type guard, so `yes` still declares `number | null`
+  // and this test is what turns it into a key; it can no longer fire, and that is the point —
+  // the alternative is an `as number` asserting what the split already established.
   const numbered = (scopes: readonly ComparisonScope[]) =>
     new Map(
       filterMap(scopes, (scope) =>
         scope.number === null ? null : ([scope.number, scope] as const),
       ),
     );
-  const byNumberA = numbered(partsA);
-  const byNumberB = numbered(partsB);
+  const byNumberA = numbered(partsA.yes);
+  const byNumberB = numbered(partsB.yes);
 
   const numbers = [...new Set([...byNumberA.keys(), ...byNumberB.keys()])].sort((x, y) => x - y);
   for (const number of numbers) {
@@ -229,7 +242,7 @@ export function matchScopes(
   // Parts with no usable @number, each against neutral. They keep document order, which is
   // symmetric because the A-side block always precedes the B-side block regardless of which
   // document was passed first.
-  for (const scope of partsA.filter((part) => part.number === null))
+  for (const scope of partsA.no)
     pairings.push({
       scope: 'part',
       numberA: null,
@@ -241,7 +254,7 @@ export function matchScopes(
       a: scope,
       b: null,
     });
-  for (const scope of partsB.filter((part) => part.number === null))
+  for (const scope of partsB.no)
     pairings.push({
       scope: 'part',
       numberA: null,

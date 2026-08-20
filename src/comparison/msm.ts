@@ -28,7 +28,7 @@
  * this module returns is therefore in QUARTERS, or in common ticks derived from a caller-
  * supplied grid — never in the MSM's own ticks, which nothing downstream knows how to read.
  */
-import { head, isNonEmpty, withNext } from '../prelude/index.js';
+import { filterMap, head, isNonEmpty, withNext } from '../prelude/index.js';
 import { readMsmFacts, type MsmFacts } from '../expression/msmFacts.js';
 import { readNumericAttributeValue } from '../expression/attributes.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -143,17 +143,25 @@ function readTimeSignatures(root: Element, ppq: number): readonly TimeSignatureE
   const map = dated?.getFirstChildElement('timeSignatureMap') ?? null;
   if (map === null) return [];
 
-  const entries: TimeSignatureEntry[] = [];
-  for (const element of map.getChildElements('timeSignature')) {
-    const date = readNumericAttributeValue(element, 'date');
-    const numerator = readNumericAttributeValue(element, 'numerator');
-    const denominator = readNumericAttributeValue(element, 'denominator');
-    if (!Number.isFinite(date) || !(numerator > 0) || !(denominator > 0)) continue;
-    entries.push({ startQuarters: date / ppq, numerator, denominator });
-  }
+  // Read each child, drop the ones the guard rejects, keep the rest — `filterMap`, with the
+  // `continue` as the `null` return. `date / ppq` still runs only for entries that survive the
+  // guard, because it is inside the same branch it was in.
+  //
+  // The spread is what makes the sort below legal: `filterMap` returns `readonly T[]`, which has
+  // no `.sort`, and `[...f()].sort(cmp)` is this tree's idiom for that (~35 sites). It also
+  // costs nothing that the old spelling did not — `entries.sort` sorted in place only because
+  // the array was already a fresh local one.
   // Date only: two `<timeSignature>` entries at one date keep document order, which is what
   // the renderer's own forward walk sees. One document, so no orientation leaks (W3 MINOR-7).
-  return entries.sort((x, y) => x.startQuarters - y.startQuarters);
+  return [
+    ...filterMap(map.getChildElements('timeSignature'), (element) => {
+      const date = readNumericAttributeValue(element, 'date');
+      const numerator = readNumericAttributeValue(element, 'numerator');
+      const denominator = readNumericAttributeValue(element, 'denominator');
+      if (!Number.isFinite(date) || !(numerator > 0) || !(denominator > 0)) return null;
+      return { startQuarters: date / ppq, numerator, denominator };
+    }),
+  ].sort((x, y) => x.startQuarters - y.startQuarters);
 }
 
 /** A time signature's measure length, in quarters: `numerator · 4 / denominator`. */

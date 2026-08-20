@@ -145,28 +145,33 @@ export function neutralAccentuationCurve(): AccentuationCurve {
  */
 export function readAccentuationPattern(def: Element): AccentuationPattern {
   const rawLength = readNumericAttributeValue(def, 'length');
-  const points: PatternPoint[] = [];
 
-  for (const child of def.getChildElements('accentuation')) {
-    const beat = readNumericAttributeValue(child, 'beat');
-    if (Number.isNaN(beat)) continue;
-    const value = readNumericAttributeValue(child, 'value');
-    const resolvedValue = Number.isNaN(value) ? 0 : value;
-    const from = readNumericAttributeValue(child, 'transition.from');
-    const resolvedFrom = Number.isNaN(from) ? resolvedValue : from;
-    const to = readNumericAttributeValue(child, 'transition.to');
-    points.push({
-      beat,
-      value: resolvedValue,
-      transitionFrom: resolvedFrom,
-      transitionTo: Number.isNaN(to) ? resolvedFrom : to,
-    });
-  }
-
+  // Read each `<accentuation>`, skip the ones with no usable `@beat`, keep the rest —
+  // `filterMap`, with the `continue` as the `null` return. Every NaN repair below stays inside
+  // the branch that already ran it, so the surviving set and its order are unchanged and the
+  // sort sees the same array it always did.
+  //
   // On `@beat` alone: two `<accentuation>` children of one def sharing a beat keep their
   // document order, which is the order the renderer applies them in. Stable, single-document,
   // and therefore invisible to the a/b swap — stated because it was implicit (W3 MINOR-7).
-  points.sort((a, b) => a.beat - b.beat);
+  const points: readonly PatternPoint[] = [
+    ...filterMap(def.getChildElements('accentuation'), (child) => {
+      const beat = readNumericAttributeValue(child, 'beat');
+      if (Number.isNaN(beat)) return null;
+      const value = readNumericAttributeValue(child, 'value');
+      const resolvedValue = Number.isNaN(value) ? 0 : value;
+      const from = readNumericAttributeValue(child, 'transition.from');
+      const resolvedFrom = Number.isNaN(from) ? resolvedValue : from;
+      const to = readNumericAttributeValue(child, 'transition.to');
+      return {
+        beat,
+        value: resolvedValue,
+        transitionFrom: resolvedFrom,
+        transitionTo: Number.isNaN(to) ? resolvedFrom : to,
+      };
+    }),
+  ].sort((a, b) => a.beat - b.beat);
+
   return {
     length: Number.isFinite(rawLength) ? rawLength : DEFAULT_PATTERN_LENGTH,
     points,
