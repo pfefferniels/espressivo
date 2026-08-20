@@ -866,6 +866,19 @@ describe('classical MDS', () => {
     expect(embedding.axes).toBe(5);
     expect(embedding.coordinates).toHaveLength(15);
     expect(embedding.coordinates.every((value) => Number.isFinite(value))).toBe(true);
+
+    // What "padded" MEANS, which finiteness alone does not say: a 3-item corpus has 3
+    // eigenvalues, so axes 3 and 4 have no column to take and must read as absent rather than
+    // as a recycled one. Zero coordinates and a zero variance share are that reading.
+    // [NEGATIVE CONTROL, MEASURED] Turning `classicalMds`'s out-of-range sentinel from `-1` into
+    // any real column index leaves the rest of the suite green and reds these four expectations.
+    for (const axis of [3, 4]) {
+      expect({
+        axis,
+        column: [0, 1, 2].map((item) => embedding.coordinates[item * 5 + axis]),
+      }).toEqual({ axis, column: [0, 0, 0] });
+      expect({ axis, share: embedding.explainedVariance[axis] }).toEqual({ axis, share: 0 });
+    }
   });
 
   it('double-centres as B = −½ J D² J', () => {
@@ -1104,6 +1117,41 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
         ).coordinates,
       );
     expect(seen.size).toBeGreaterThan(1);
+  });
+
+  /**
+   * The same carve-out at the CUT, which is the half of `hasRepeatedAxis`'s contract the test
+   * above cannot reach.
+   *
+   * Its doc says the pair range is "positions `0 … width`, INCLUSIVE of the first dropped one,
+   * because a degeneracy straddling the cut makes the last retained eigenvector just as
+   * arbitrary as one wholly inside". At `axes = 2` the double eigenvalue sits WHOLLY inside the
+   * retained block, so the inclusive end is never the deciding one; at `axes = 1` the same pair
+   * `(λ₀, λ₁) = (9, 9)` straddles it, and the single retained axis is an arbitrary direction in
+   * the plane the two of them span. Only this case distinguishes the inclusive bound from the
+   * exclusive one.
+   *
+   * [NEGATIVE CONTROL, MEASURED] Dropping the `+ 1` from `hasRepeatedAxis`'s pair range leaves
+   * the whole suite green without this test, and reds exactly this one with it.
+   */
+  it('flags a repeated eigenvalue that straddles the retained cut, not only one inside it', () => {
+    const n = 6;
+    const block = (item: number) => Math.floor(item / 2);
+    const matrix: DistanceMatrix = {
+      n,
+      values: Array.from({ length: n * n }, (_unused, index) =>
+        block(Math.floor(index / n)) === block(index % n) ? 0 : 3,
+      ),
+    };
+    const embedding = classicalMds(matrix, 1, labelsOf(n));
+
+    // The pair really does straddle: the first is retained, the second is the first dropped.
+    expect(embedding.axes).toBe(1);
+    expect(embedding.eigenvalues[0]).toBeCloseTo(9, 9);
+    expect(embedding.eigenvalues[1]).toBeCloseTo(9, 9);
+    // …and both carry material variance, so this is the flag's subject and not its tail.
+    expect(embedding.explainedVariance[0]).toBeGreaterThan(0.4);
+    expect(embedding.degenerate).toBe(true);
   });
 
   /**

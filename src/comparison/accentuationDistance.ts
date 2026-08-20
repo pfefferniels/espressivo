@@ -34,6 +34,7 @@
  * be capped at `2·δ_row` or a `⊥` document as middle term breaks the triangle inequality. See
  * `integrateCappedAbsolute`'s note.
  */
+import { pairwise } from '../prelude/index.js';
 import { comparisonRowFor, localDistance } from './registry.js';
 import { CompensatedSum, integrateCappedAbsolute } from './quadrature.js';
 import {
@@ -221,9 +222,7 @@ export function accentuationDistance(
   const contribution = (curve: AccentuationCurve, ticks: number) =>
     accentuationContributionAt(curve, ticks, ticksPerQuarter, grid);
 
-  for (let i = 0; i < gridTicks.length - 1; ++i) {
-    const cellStart = gridTicks[i];
-    const cellEnd = gridTicks[i + 1];
+  for (const [cellStart, cellEnd] of pairwise(gridTicks)) {
     const lengthQuarters = (cellEnd - cellStart) / ticksPerQuarter;
 
     // The cell's ⊥-ness is decided at its left edge, which is where every other dimension

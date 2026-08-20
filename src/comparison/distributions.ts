@@ -85,6 +85,8 @@
  * worth more than one that bypasses it (the same argument that makes `quadrature.ts`
  * re-derive its GL-10 table in a test rather than at run time).
  */
+import { head, isNonEmpty, last, pairwise, type NonEmptyArray } from '../prelude/index.js';
+
 import {
   CompensatedSum,
   gaussLegendre10,
@@ -163,8 +165,15 @@ export interface GaussianLaw {
  */
 export interface ListLaw {
   readonly kind: 'list';
-  /** Non-empty, ascending. Duplicates are meaningful — this is a multiset. */
-  readonly values: readonly number[];
+  /**
+   * Non-empty, ascending. Duplicates are meaningful — this is a multiset.
+   *
+   * Non-emptiness is carried by the TYPE rather than by this sentence: {@link supportOf} and
+   * {@link quantile} both read the first and last entry, and {@link listLaw} is the only
+   * constructor, so the invariant is establishable once at the boundary instead of asserted at
+   * each reader.
+   */
+  readonly values: NonEmptyArray<number>;
 }
 
 export type BaseLaw = DeltaLaw | UniformLaw | TriangularLaw | GaussianLaw | ListLaw;
@@ -261,9 +270,13 @@ export function gaussianLaw(
 
 /** The empirical law of `values`; null for an empty list, which the renderer cannot draw. */
 export function listLaw(values: readonly number[]): DeltaLaw | ListLaw | null {
-  if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
-  if (sorted[0] === sorted[sorted.length - 1]) return deltaLaw(sorted[0]);
+  // The emptiness test and the non-emptiness the rest of the module relies on are the same
+  // fact, so it is established once, here, in the form the type can carry.
+  if (!isNonEmpty(sorted)) return null;
+  const lo = head(sorted);
+  const hi = last(sorted);
+  if (lo === hi) return deltaLaw(lo);
   return { kind: 'list', values: Object.freeze(sorted) };
 }
 
@@ -358,7 +371,7 @@ export function supportOf(law: ImprecisionLaw): readonly [number, number] {
       return [Math.min(law.center - tail, law.lower), Math.max(law.center + tail, law.upper)];
     }
     case 'list':
-      return [law.values[0], law.values[law.values.length - 1]];
+      return [head(law.values), last(law.values)];
     case 'clipped': {
       const [lo, hi] = supportOf(law.base);
       return [Math.max(lo, law.lower), Math.min(hi, law.upper)];
@@ -512,38 +525,44 @@ export function standardNormalQuantile(p: number): number {
   if (p <= 0) return Number.NEGATIVE_INFINITY;
   if (p >= 1) return Number.POSITIVE_INFINITY;
 
-  const a = [
+  // Acklam's coefficients, destructured rather than indexed. The arity is the point: the
+  // central numerator is degree 5 in `r` and its denominator degree 4, the tail numerator
+  // degree 5 in `q` and its denominator degree 3, and naming each coefficient is what makes a
+  // transcription that dropped one fail to compile instead of evaluating `undefined * q`.
+  const [a0, a1, a2, a3, a4, a5] = [
     -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2,
     -3.066479806614716e1, 2.506628277459239,
-  ];
-  const b = [
+  ] as const;
+  const [b0, b1, b2, b3, b4] = [
     -5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1,
     -1.328068155288572e1,
-  ];
-  const c = [
+  ] as const;
+  const [c0, c1, c2, c3, c4, c5] = [
     -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734,
     4.374664141464968, 2.938163982698783,
-  ];
-  const d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
+  ] as const;
+  const [d0, d1, d2, d3] = [
+    7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416,
+  ] as const;
 
   const lowBreak = 0.02425;
   let x: number;
   if (p < lowBreak) {
     const q = Math.sqrt(-2 * Math.log(p));
     x =
-      (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+      (((((c0 * q + c1) * q + c2) * q + c3) * q + c4) * q + c5) /
+      ((((d0 * q + d1) * q + d2) * q + d3) * q + 1);
   } else if (p <= 1 - lowBreak) {
     const q = p - 0.5;
     const r = q * q;
     x =
-      ((((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q) /
-      (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+      ((((((a0 * r + a1) * r + a2) * r + a3) * r + a4) * r + a5) * q) /
+      (((((b0 * r + b1) * r + b2) * r + b3) * r + b4) * r + 1);
   } else {
     const q = Math.sqrt(-2 * Math.log(1 - p));
     x =
-      -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+      -(((((c0 * q + c1) * q + c2) * q + c3) * q + c4) * q + c5) /
+      ((((d0 * q + d1) * q + d2) * q + d3) * q + 1);
   }
 
   // One Halley step on f(x) = Φ(x) − p. Skipped where the density underflows, since the
@@ -671,7 +690,10 @@ export function quantile(law: ImprecisionLaw, u: number): number {
     case 'list': {
       const n = law.values.length;
       const index = Math.min(n - 1, Math.max(0, Math.ceil(u * n) - 1));
-      return law.values[index];
+      // `index` is clamped into `[0, n − 1]` on a list the type says is non-empty, so the read
+      // hits. The fallback is what the upper clamp already means rather than an assertion: for
+      // `index === n − 1` the two spellings name the same element.
+      return law.values[index] ?? last(law.values);
     }
     case 'clipped':
       return Math.min(Math.max(quantile(law.base, u), law.lower), law.upper);
@@ -817,9 +839,7 @@ export function wasserstein1(a: ImprecisionLaw, b: ImprecisionLaw): number {
   const bounds = [lo, ...cuts, hi];
 
   const total = new CompensatedSum();
-  for (let i = 0; i < bounds.length - 1; ++i) {
-    const pieceLo = bounds[i];
-    const pieceHi = bounds[i + 1];
+  for (const [pieceLo, pieceHi] of pairwise(bounds)) {
     if (!(pieceHi > pieceLo)) continue;
 
     const splits: number[] = [];
@@ -898,8 +918,8 @@ export function wasserstein2Decomposition(a: ImprecisionLaw, b: ImprecisionLaw):
   const panels = quantilePanels(a, b);
   const integrate = (g: (u: number) => number): number => {
     const total = new CompensatedSum();
-    for (let i = 0; i < panels.length - 1; ++i)
-      total.add(gaussLegendre10(g, panels[i], panels[i + 1]));
+    for (const [panelLo, panelHi] of pairwise(panels))
+      total.add(gaussLegendre10(g, panelLo, panelHi));
     return total.total;
   };
 
@@ -974,14 +994,23 @@ function quantilePanels(a: ImprecisionLaw, b: ImprecisionLaw): readonly number[]
     points.add(1 - Math.pow(10, -decade));
   }
 
-  const sorted = [...points].filter((u) => u >= 0 && u <= 1).sort((x, y) => x - y);
+  // 0 and 1 bracket the axis by construction — `points` is seeded with them, every structural
+  // breakpoint was filtered to the open interval at the top, and twelve decades of `10^-k` and
+  // `1 − 10^-k` are interior for every `k ≥ 1`. Spelling the two ends out instead of sorting
+  // them in with the rest is what makes the closing endpoint below a `last` on a sequence the
+  // type knows is non-empty, rather than an index that could miss.
+  const sorted: NonEmptyArray<number> = [
+    0,
+    ...[...points].filter((u) => u > 0 && u < 1).sort((x, y) => x - y),
+    1,
+  ];
   const refined: number[] = [];
-  for (let i = 0; i < sorted.length - 1; ++i) {
-    refined.push(sorted[i]);
+  for (const [panelLo, panelHi] of pairwise(sorted)) {
+    refined.push(panelLo);
     for (let k = 1; k < QUANTILE_PANEL_SUBDIVISIONS; ++k)
-      refined.push(sorted[i] + ((sorted[i + 1] - sorted[i]) * k) / QUANTILE_PANEL_SUBDIVISIONS);
+      refined.push(panelLo + ((panelHi - panelLo) * k) / QUANTILE_PANEL_SUBDIVISIONS);
   }
-  refined.push(sorted[sorted.length - 1]);
+  refined.push(last(sorted));
   return refined;
 }
 

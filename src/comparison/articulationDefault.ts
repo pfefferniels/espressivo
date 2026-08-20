@@ -47,6 +47,7 @@
  * cancelling cases. §5.5 named one canceller and one continuer; the third row is the one a
  * reader would guess wrong, because an unknown *def* name looks like an unknown *style* name.
  */
+import { head, isNonEmpty, zipWith } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { ARTICULATION_STYLE } from '../mpm/names.js';
@@ -181,13 +182,16 @@ export function readDefaultArticulation(
     raw.push({ dateTicks, def, name, cause: null });
   }
 
-  if (raw.length === 0) return { ...neutralDefaultArticulation(), notes };
+  if (!isNonEmpty(raw)) return { ...neutralDefaultArticulation(), notes };
 
-  const firstSwitchTicks = raw[0].dateTicks;
-  const steps: DefaultArticulationStep[] = raw.map((step, index) => ({
+  const firstSwitchTicks = head(raw).dateTicks;
+  // Each step runs to the NEXT switch, and the last runs to the end of time — which is exactly
+  // `raw` zipped against its own tail, one entry longer at the far end.
+  const ends = [...raw.slice(1).map((next) => next.dateTicks), Number.POSITIVE_INFINITY];
+  const steps: readonly DefaultArticulationStep[] = zipWith(raw, ends, (step, endTicks, index) => ({
     // AD-37.1: the first step reaches back to 0.
     startTicks: index === 0 ? 0 : step.dateTicks,
-    endTicks: raw[index + 1]?.dateTicks ?? Number.POSITIVE_INFINITY,
+    endTicks,
     def: step.def,
     name: step.name,
     cancelCause: step.cause,

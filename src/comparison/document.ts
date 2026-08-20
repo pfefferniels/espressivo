@@ -31,6 +31,8 @@
  * applied to them. The module also touches no `src/api` file and defines no dimension
  * vocabulary, both of which belong to sibling wave items.
  */
+import { head, isNonEmpty } from '../prelude/index.js';
+import { elementAt } from './indexing.js';
 import type { Element } from '../xml/XomTypes.js';
 import { parseMpmRoot } from '../expression/mpmDocument.js';
 import {
@@ -132,7 +134,10 @@ export function resolutionAt(
 
 /** The common-tick date of entry `index`, which is the one quantity every reader needs. */
 export function entryTicksAt(view: OrderedMapView, index: number, scaleFactor: number): number {
-  return view.entries[index].date * (view.entryResolutions?.[index]?.scaleFactor ?? scaleFactor);
+  return (
+    elementAt(view.entries, index, 'an ordered map view entry list').date *
+    (view.entryResolutions?.[index]?.scaleFactor ?? scaleFactor)
+  );
 }
 
 /** One side of the pair, normalized. */
@@ -216,23 +221,23 @@ function selectPerformance(
 ): PerformanceView {
   const candidates = performances.map((performance) => performance.name);
 
-  if (performances.length === 0)
+  if (!isNonEmpty(performances))
     throw new PerformanceSelectionNotFoundError(role, selector ?? null, candidates);
 
   if (selector === undefined) {
     if (performances.length > 1) throw new PerformanceSelectionAmbiguousError(role, candidates);
-    return performances[0];
+    return head(performances);
   }
 
   if (typeof selector === 'number') {
     if (!Number.isInteger(selector) || selector < 0)
       throw new PerformanceSelectorInvalidError(role, selector);
-    // A bounds test rather than an `=== undefined` test on the indexed read: this project
-    // does not set `noUncheckedIndexedAccess`, so the read is typed non-optional and the
-    // guard would be deleted as unreachable by `no-unnecessary-condition`.
+    // The bounds test stays where it is because it is the DOMAIN error a caller asked for —
+    // "performance 7 of a document with 3" is a named exception carrying the candidates, not an
+    // internal `RangeError`. `elementAt` then reads what that test has already established.
     if (selector >= performances.length)
       throw new PerformanceSelectionNotFoundError(role, selector, candidates);
-    return performances[selector];
+    return elementAt(performances, selector, 'the document performance list');
   }
 
   const found = performances.find((performance) => performance.name === selector);

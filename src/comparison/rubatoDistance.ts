@@ -11,6 +11,7 @@
  * cell that straddled a boundary would have GL-10 integrating across a jump. Putting every
  * boundary in the grid is what keeps each cell smooth.
  */
+import { pairwise } from '../prelude/index.js';
 import { comparisonRowFor, localDistance } from './registry.js';
 import { CompensatedSum, integrateCappedAbsolute, powerCriticalPoint } from './quadrature.js';
 import {
@@ -172,9 +173,7 @@ export function rubatoDistance(
   const total = new CompensatedSum();
   let anyCapped = false;
 
-  for (let i = 0; i < grid.length - 1; ++i) {
-    const cellStart = grid[i];
-    const cellEnd = grid[i + 1];
+  for (const [cellStart, cellEnd] of pairwise(grid)) {
     const lengthQuarters = (cellEnd - cellStart) / ticksPerQuarter;
 
     // MINOR-4 gave this dimension its first `⊥` route, so AD-36.2's capped integrator is now

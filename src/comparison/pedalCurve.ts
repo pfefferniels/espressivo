@@ -76,6 +76,7 @@
  * the domain test). Since the smoothstep's value fraction stays in [0,1], clamping the two
  * endpoints clamps the whole curve.
  */
+import { head, isNonEmpty, zipWith, type NonEmptyArray } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { innerControlPointsXPositions } from '../mpm/elements/maps/data/bezier.js';
 import { readAttributeValue } from '../expression/attributes.js';
@@ -208,8 +209,10 @@ interface RawMovement {
  *   which makes `getMovementDataOf` log and return null and drops the movement entirely.
  */
 function inheritedPosition(entries: OrderedMapView['entries'], index: number): number | null {
-  for (let j = index - 1; j > 0; --j) {
-    const element = entries[j].element;
+  // Entries `1 … index-1`, latest first — the `j > 0` bound is the rule's own (entry 0 has no
+  // predecessor to inherit from), and the slice says it where the loop bound only implied it.
+  for (const entry of entries.slice(1, index).reverse()) {
+    const element = entry.element;
     if (element.getLocalName() !== 'movement') continue;
     const transitionTo = readAttributeValue(element, 'transition.to');
     return transitionTo === null ? null : parseFloat(transitionTo);
@@ -220,8 +223,9 @@ function inheritedPosition(entries: OrderedMapView['entries'], index: number): n
 /** `MovementMap.getEndDate:153-159` — the next entry named `movement`, else `MAX_VALUE`. */
 function endTicksOf(view: OrderedMapView, index: number, scaleFactor: number): number {
   const entries = view.entries;
-  for (let j = index + 1; j < entries.length; ++j)
-    if (entries[j].element.getLocalName() === 'movement') return entryTicksAt(view, j, scaleFactor);
+  for (const [offset, entry] of entries.slice(index + 1).entries())
+    if (entry.element.getLocalName() === 'movement')
+      return entryTicksAt(view, index + 1 + offset, scaleFactor);
   return UNBOUNDED_END_TICKS;
 }
 
@@ -348,7 +352,7 @@ export function readMovementSegments(view: OrderedMapView | null, scaleFactor: n
     });
   }
 
-  if (raws.length === 0) return { ...neutralPedalCurve(), notes, controllers };
+  if (!isNonEmpty(raws)) return { ...neutralPedalCurve(), notes, controllers };
 
   return assembleTimeline(raws, notes, controllers);
 }
@@ -368,23 +372,30 @@ function readNumericOr(element: Element, name: string, fallback: number): number
  * that span emitted are the ones whose dates cannot be trusted.
  */
 function assembleTimeline(
-  raws: readonly RawMovement[],
+  // NON-EMPTY, which is the caller's own guard promoted to the signature: the lead-in below
+  // reads the first movement three times, and every one of those reads is now total.
+  raws: NonEmptyArray<RawMovement>,
   notes: PedalCurveNote[],
   controllers: readonly string[],
 ): PedalCurve {
   const segments: PedalSegment[] = [];
   const breakpoints = new Set<number>([0]);
 
-  if (raws[0].dateTicks > 0)
+  const lead = head(raws);
+  if (lead.dateTicks > 0)
     segments.push({
       startTicks: 0,
-      endTicks: raws[0].dateTicks,
-      controller: raws[0].controller,
+      endTicks: lead.dateTicks,
+      controller: lead.controller,
       source: 'lead-in',
       shape: valued({ kind: 'constant', position: PEDAL_NEUTRAL_POSITION }),
     });
 
-  for (const [index, raw] of raws.entries()) {
+  // The neighbour is PAIRED with its own movement rather than read at `index + 1`. "There is
+  // no next one" is then a value — `null` — instead of an out-of-range read that the type
+  // system had to be told about with `as RawMovement | undefined`.
+  const nexts: readonly (RawMovement | null)[] = [...raws.slice(1), null];
+  for (const [raw, next] of zipWith(raws, nexts, (at, after) => [at, after] as const)) {
     breakpoints.add(raw.dateTicks);
     const shape = shapeOf(raw, notes);
     segments.push({
@@ -414,7 +425,6 @@ function assembleTimeline(
     // The hold between this span's end and the next rendered span's start. `raws` is in entry
     // order and entries are date-ordered, so `next.dateTicks >= raw.endTicks` always; the two
     // are equal for consecutive movements, and the hold is then zero-width and not emitted.
-    const next = raws[index + 1] as RawMovement | undefined;
     const holdEnd = next?.dateTicks ?? Number.POSITIVE_INFINITY;
     if (holdEnd > raw.endTicks) {
       breakpoints.add(raw.endTicks);

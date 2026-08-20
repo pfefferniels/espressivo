@@ -10,6 +10,12 @@
  * P-C6's corpus clause would be false.
  */
 
+import { elementAt, numberAt } from './indexing.js';
+
+/** What an out-of-range read into one of this module's sequences is called (`indexing.ts`). */
+const MATRIX = "the distance matrix's flat N x N buffer";
+const MEDOIDS = 'the medoid list';
+
 /** §8's five linkages. `ward.D2` is named in full because `ward.D` is a silent-wrong-answer trap. */
 export type Linkage = 'average' | 'single' | 'complete' | 'weighted' | 'ward.D2';
 
@@ -145,7 +151,9 @@ export function agglomerate(
     const row = new Map<number, number>();
     for (let j = 0; j < n; ++j) {
       if (i === j) continue;
-      const value = matrix.values[i * n + j];
+      // The same read `at` performs, and now literally it: one place knows the row-major
+      // stride, which is what a second spelling of `i * n + j` was risking.
+      const value = at(matrix, i, j);
       row.set(j, squared ? value * value : value);
     }
     working.set(i, row);
@@ -365,7 +373,7 @@ function exhaustiveMedoids(
 }
 
 const at = (matrix: DistanceMatrix, i: number, j: number): number =>
-  matrix.values[i * matrix.n + j];
+  numberAt(matrix.values, i * matrix.n + j, MATRIX);
 
 /** The nearest medoid's position in `medoids`, ties by lowest LABEL. */
 function nearestMedoid(
@@ -380,7 +388,8 @@ function nearestMedoid(
     const value = at(matrix, item, medoid);
     if (
       value < bestValue ||
-      (value === bestValue && lower(labels[medoid] ?? '', labels[medoids[best]] ?? ''))
+      (value === bestValue &&
+        lower(labels[medoid] ?? '', labels[elementAt(medoids, best, MEDOIDS)] ?? ''))
     ) {
       bestValue = value;
       best = position;
@@ -429,7 +438,8 @@ function partitionCost(
   order: readonly number[],
 ): number {
   let total = 0;
-  for (const i of order) total += at(matrix, i, medoids[nearestMedoid(matrix, medoids, i, labels)]);
+  for (const i of order)
+    total += at(matrix, i, elementAt(medoids, nearestMedoid(matrix, medoids, i, labels), MEDOIDS));
   return total;
 }
 
@@ -551,8 +561,15 @@ export function silhouette(
   // leaves index order: the algorithm-layer callers that pass none get what they got before.
   for (const members of groups.values()) members.sort((x, y) => byLabelThenIndex(labels, x, y));
 
+  // Item -> its own cluster's members, so the walk below reads a MAP rather than indexing
+  // `clusters` at an `item` that may run past it: `n` is the matrix's size and `clusters` is the
+  // caller's, and the `?? [item]` singleton is what the two disagreeing has always meant here.
+  const ownOf = new Map<number, readonly number[]>(
+    clusters.map((cluster, item) => [item, groups.get(cluster) ?? [item]]),
+  );
+
   return Array.from({ length: n }, (_unused, item) => {
-    const own = groups.get(clusters[item]) ?? [item];
+    const own = ownOf.get(item) ?? [item];
     if (own.length <= 1) return 0;
 
     let a = 0;

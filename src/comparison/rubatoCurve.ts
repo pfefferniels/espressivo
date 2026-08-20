@@ -41,6 +41,8 @@
  * `@frameLength` is tick-valued and therefore ppq-sensitive; `@intensity` and the window
  * bounds are dimensionless and are not rescaled.
  */
+import { zipWith } from '../prelude/index.js';
+import { optionAt } from './indexing.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { RUBATO_MAP, RUBATO_STYLE } from '../mpm/names.js';
@@ -272,7 +274,7 @@ export function readRubatoSegments(
     raws.push({
       dateTicks: entry.date * resolution.scaleFactor,
       element: entry.element,
-      styleName: view.styleNames[index],
+      styleName: optionAt(view.styleNames, index, 'a map view style-name list'),
       environment: resolution.environment,
       globalEnvironment: resolution.globalEnvironment,
       scaleFactor: resolution.scaleFactor,
@@ -284,12 +286,13 @@ export function readRubatoSegments(
   const notes: RubatoCurveNote[] = [];
   const breakpoints = new Set<number>([0]);
 
-  for (const [index, raw] of raws.entries()) {
-    // getEndDate scans for the next <rubato> regardless of whether it parses, so a skipped
-    // instruction still ends this span.
-    const next = raws[index + 1] as (typeof raws)[number] | undefined;
-    const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
-
+  // getEndDate scans for the next <rubato> regardless of whether it parses, so a skipped
+  // instruction still ends this span.
+  // The end is PAIRED with its entry rather than read at `index + 1`. "There is no next
+  // entry" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
+  // system had to be told about with `as (typeof xs)[number] | undefined`.
+  const endsAt = [...raws.slice(1).map((next) => next.dateTicks), Number.POSITIVE_INFINITY];
+  for (const [raw, endTicks] of zipWith(raws, endsAt, (at, ends) => [at, ends] as const)) {
     const parsed = readRawRubato(
       raw.element,
       raw.styleName,

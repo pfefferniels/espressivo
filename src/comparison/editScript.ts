@@ -61,6 +61,10 @@
  * same semantics is worth having only once the semantics are pinned.
  */
 
+import { filterMap, zipWith } from '../prelude/index.js';
+
+import { elementAt, numberAt } from './indexing.js';
+
 /** What the DP needs of an instruction: where it sits. Everything else belongs to the caller. */
 export interface EditableInstruction {
   /** The instruction's date in COMMON ticks — both sides already on one grid. */
@@ -283,16 +287,44 @@ export function editStateAt<I extends EditableInstruction>(
   i: number,
   j: number,
 ): readonly I[] {
-  const tagged: { instruction: I; side: 0 | 1; index: number }[] = [];
-  for (let k = 0; k < j; ++k) tagged.push({ instruction: b[k], side: 1, index: k });
-  for (let k = i; k < a.length; ++k) tagged.push({ instruction: a[k], side: 0, index: k });
-  tagged.sort((x, y) => {
-    const dateDelta = x.instruction.dateTicks - y.instruction.dateTicks;
-    if (dateDelta !== 0) return dateDelta;
-    if (x.side !== y.side) return x.side - y.side;
-    return x.index - y.index;
-  });
-  return tagged.map((entry) => entry.instruction);
+  const tagged: TaggedInstruction<I>[] = [
+    ...b.slice(0, j).map((instruction, index) => ({ instruction, side: B_SIDE, index })),
+    // `a`'s survivors keep their ORIGINAL indices, so the slice's own offsets are shifted back.
+    ...a.slice(i).map((instruction, offset) => ({ instruction, side: A_SIDE, index: i + offset })),
+  ];
+  return tagged.sort(inStateOrder).map((entry) => entry.instruction);
+}
+
+/** An instruction with the two keys the state order needs beyond its date. */
+interface TaggedInstruction<I> {
+  readonly instruction: I;
+  readonly side: typeof A_SIDE | typeof B_SIDE;
+  readonly index: number;
+}
+
+/** The side keys, named: B before A at an equal date, which is the ordering rule above. */
+const B_SIDE = 1 as const;
+const A_SIDE = 0 as const;
+
+/** What an out-of-range read into one of the two instruction lists is called (`indexing.ts`). */
+const A_SEQUENCE = 'the A instruction sequence';
+const B_SEQUENCE = 'the B instruction sequence';
+
+/**
+ * The state order, shared by {@link editStateAt} and {@link stateFromFlags}.
+ *
+ * The two functions have to agree — `editStateAt`'s doc explains why the B side wins an equal
+ * date, and `stateFromFlags` "carries the same comparator for the same reason". One comparator
+ * is how that stops being a claim a future edit can falsify in one place and not the other.
+ */
+function inStateOrder<I extends EditableInstruction>(
+  x: TaggedInstruction<I>,
+  y: TaggedInstruction<I>,
+): number {
+  const dateDelta = x.instruction.dateTicks - y.instruction.dateTicks;
+  if (dateDelta !== 0) return dateDelta;
+  if (x.side !== y.side) return x.side - y.side;
+  return x.index - y.index;
 }
 
 /**
@@ -309,18 +341,16 @@ function stateFromFlags<I extends EditableInstruction>(
   removedA: readonly boolean[],
   addedB: readonly boolean[],
 ): readonly I[] {
-  const tagged: { instruction: I; side: 0 | 1; index: number }[] = [];
-  for (let k = 0; k < a.length; ++k)
-    if (!removedA[k]) tagged.push({ instruction: a[k], side: 0, index: k });
-  for (let k = 0; k < b.length; ++k)
-    if (addedB[k]) tagged.push({ instruction: b[k], side: 1, index: k });
-  tagged.sort((x, y) => {
-    const dateDelta = x.instruction.dateTicks - y.instruction.dateTicks;
-    if (dateDelta !== 0) return dateDelta;
-    if (x.side !== y.side) return x.side - y.side;
-    return x.index - y.index;
-  });
-  return tagged.map((entry) => entry.instruction);
+  const tagged: TaggedInstruction<I>[] = [
+    ...filterMap(a, (instruction, index) =>
+      removedA[index] ? null : { instruction, side: A_SIDE, index },
+    ),
+    ...filterMap(b, (instruction, index) =>
+      addedB[index] ? { instruction, side: B_SIDE, index } : null,
+    ),
+  ];
+  // The same comparator {@link editStateAt} sorts with, for the reason its doc gives.
+  return tagged.sort(inStateOrder).map((entry) => entry.instruction);
 }
 
 // ---------------------------------------------------------------------------
@@ -372,6 +402,13 @@ export function editScript<I extends EditableInstruction, S>(
   const span = new Int8Array((n + 1) * width).fill(1);
   const moves = search.moves === true;
 
+  // The three tables are read at computed strides all through the recurrence and the traceback,
+  // which is the one shape `indexing.ts` exists for: the arithmetic IS the algorithm, and a
+  // stride bug should be a `RangeError` naming the table rather than an `undefined` that
+  // arrives in a published cost.
+  const costAt = (row: number, column: number): number =>
+    numberAt(cost, row * width + column, "the edit DP's cost table");
+
   for (let i = 0; i <= n; ++i)
     for (let j = 0; j <= m; ++j) {
       if (i === 0 && j === 0) {
@@ -386,7 +423,7 @@ export function editScript<I extends EditableInstruction, S>(
       // a tie keeps the earlier candidate, so the order of these three blocks IS the rule.
       if (i > 0 && j > 0) {
         best =
-          cost[(i - 1) * width + (j - 1)] +
+          costAt(i - 1, j - 1) +
           pricing.norm(
             phi(i - 1, j - 1),
             phi(i, j),
@@ -397,7 +434,7 @@ export function editScript<I extends EditableInstruction, S>(
       }
       if (i > 0) {
         const candidate =
-          cost[(i - 1) * width + j] +
+          costAt(i - 1, j) +
           pricing.norm(
             phi(i - 1, j),
             phi(i, j),
@@ -411,7 +448,7 @@ export function editScript<I extends EditableInstruction, S>(
       }
       if (j > 0) {
         const candidate =
-          cost[i * width + (j - 1)] +
+          costAt(i, j - 1) +
           pricing.norm(
             phi(i, j - 1),
             phi(i, j),
@@ -431,7 +468,7 @@ export function editScript<I extends EditableInstruction, S>(
         // `fragment`: one `a[i-1]` became `b[j-k .. j)`, `k ≥ 2`.
         for (let k = 2; k <= MAX_MOVE_SPAN && i > 0 && j >= k; ++k) {
           const candidate =
-            cost[(i - 1) * width + (j - k)] +
+            costAt(i - 1, j - k) +
             pricing.norm(
               phi(i - 1, j - k),
               phi(i, j),
@@ -447,7 +484,7 @@ export function editScript<I extends EditableInstruction, S>(
         // `consolidate`: `a[i-k .. i)` became one `b[j-1]`.
         for (let k = 2; k <= MAX_MOVE_SPAN && j > 0 && i >= k; ++k) {
           const candidate =
-            cost[(i - k) * width + (j - 1)] +
+            costAt(i - k, j - 1) +
             pricing.norm(
               phi(i - k, j - 1),
               phi(i, j),
@@ -470,37 +507,41 @@ export function editScript<I extends EditableInstruction, S>(
   // Traceback, then delivery order, then the replay that prices what is delivered.
   const traced: DeliverableStep<I>[] = [];
   for (let i = n, j = m; i > 0 || j > 0;) {
-    const code = from[i * width + j];
-    const k = span[i * width + j];
+    const code = numberAt(from, i * width + j, "the edit DP's backpointer table");
+    const k = numberAt(span, i * width + j, "the edit DP's span table");
     if (code === FROM_SUBSTITUTE) {
+      const consumed = elementAt(a, i - 1, A_SEQUENCE);
+      const produced = elementAt(b, j - 1, B_SEQUENCE);
       traced.push({
         move: 'substitute',
-        a: a[i - 1],
-        b: b[j - 1],
-        aItems: [a[i - 1]],
-        bItems: [b[j - 1]],
+        a: consumed,
+        b: produced,
+        aItems: [consumed],
+        bItems: [produced],
         indexA: i - 1,
         indexB: j - 1,
       });
       i -= 1;
       j -= 1;
     } else if (code === FROM_DELETE) {
+      const consumed = elementAt(a, i - 1, A_SEQUENCE);
       traced.push({
         move: 'delete',
-        a: a[i - 1],
+        a: consumed,
         b: null,
-        aItems: [a[i - 1]],
+        aItems: [consumed],
         bItems: [],
         indexA: i - 1,
         indexB: null,
       });
       i -= 1;
     } else if (code === FROM_FRAGMENT) {
+      const consumed = elementAt(a, i - 1, A_SEQUENCE);
       traced.push({
         move: 'fragment',
-        a: a[i - 1],
-        b: b[j - k],
-        aItems: [a[i - 1]],
+        a: consumed,
+        b: elementAt(b, j - k, B_SEQUENCE),
+        aItems: [consumed],
         bItems: b.slice(j - k, j),
         indexA: i - 1,
         indexB: j - k,
@@ -508,24 +549,26 @@ export function editScript<I extends EditableInstruction, S>(
       i -= 1;
       j -= k;
     } else if (code === FROM_CONSOLIDATE) {
+      const produced = elementAt(b, j - 1, B_SEQUENCE);
       traced.push({
         move: 'consolidate',
-        a: a[i - k],
-        b: b[j - 1],
+        a: elementAt(a, i - k, A_SEQUENCE),
+        b: produced,
         aItems: a.slice(i - k, i),
-        bItems: [b[j - 1]],
+        bItems: [produced],
         indexA: i - k,
         indexB: j - 1,
       });
       i -= k;
       j -= 1;
     } else {
+      const produced = elementAt(b, j - 1, B_SEQUENCE);
       traced.push({
         move: 'insert',
         a: null,
-        b: b[j - 1],
+        b: produced,
         aItems: [],
-        bItems: [b[j - 1]],
+        bItems: [produced],
         indexA: null,
         indexB: j - 1,
       });
@@ -559,13 +602,15 @@ export function editScript<I extends EditableInstruction, S>(
   const replayResidual = pricing.norm(state, phi(n, m), instructions, editStateAt(a, b, n, m));
 
   // Cost rank: descending, ties by the delivered order, so the ranking is a permutation of the
-  // delivery indices and never depends on the sort's own stability.
-  const ranking = replayCosts.map((_price, index) => index);
-  ranking.sort((x, y) => replayCosts[y] - replayCosts[x] || x - y);
-  const costRankOf = new Array<number>(ordered.length);
-  for (const [rank, index] of ranking.entries()) costRankOf[index] = rank;
+  // delivery indices and never depends on the sort's own stability. Decorated with the delivery
+  // index before sorting rather than sorting indices and looking their costs back up — the two
+  // keys then travel together and the comparator reads as the rule it states.
+  const ranking = rankByCostDescending(replayCosts);
+  const ranks = invertPermutation(ranking);
 
-  const steps: EditStep<I>[] = ordered.map((step, index) => ({
+  // `replayCosts` is pushed once per delivered step and `ranks` is its inverse permutation, so
+  // all three sequences are indexed by the same delivery position and can be zipped.
+  const steps = zipWith(ordered, replayCosts, (step, price, index): EditStep<I> => ({
     move: step.move,
     aItems: step.aItems,
     bItems: step.bItems,
@@ -573,15 +618,15 @@ export function editScript<I extends EditableInstruction, S>(
     b: step.b,
     indexA: step.indexA,
     indexB: step.indexB,
-    cost: replayCosts[index],
-    free: replayCosts[index] === 0,
+    cost: price,
+    free: price === 0,
     applicationIndex: index,
-    costRank: costRankOf[index],
+    costRank: numberAt(ranks, index, 'the cost ranking'),
   }));
 
   return {
     steps,
-    scriptCost: cost[n * width + m],
+    scriptCost: costAt(n, m),
     replayedDelta: replayed,
     directDistance: pricing.norm(
       phi(0, 0),
@@ -647,15 +692,33 @@ export function invertSteps<I extends EditableInstruction>(
     }));
 
   const ordered = [...flipped].sort(compareDelivery);
-
-  const ranking = ordered.map((_step, index) => index);
-  ranking.sort((x, y) => ordered[y].cost - ordered[x].cost || x - y);
-  const costRankOf = new Array<number>(ordered.length);
-  for (const [rank, index] of ranking.entries()) costRankOf[index] = rank;
+  const ranks = invertPermutation(rankByCostDescending(ordered.map((step) => step.cost)));
 
   return ordered.map((step, index) => ({
     ...step,
     applicationIndex: index,
-    costRank: costRankOf[index],
+    costRank: numberAt(ranks, index, 'the cost ranking'),
   }));
+}
+
+/**
+ * The delivery indices in cost-descending order, ties by delivery index.
+ *
+ * Shared by the forward path and {@link invertSteps} so the two cannot disagree about what
+ * `costRank` means, which is the same argument {@link inStateOrder} makes for the state order.
+ * Sorting DECORATED pairs rather than bare indices is what keeps the comparator a statement of
+ * the rule instead of two look-ups into a sequence it does not own.
+ */
+function rankByCostDescending(costs: readonly number[]): readonly number[] {
+  return costs
+    .map((cost, index) => ({ cost, index }))
+    .sort((x, y) => y.cost - x.cost || x.index - y.index)
+    .map((entry) => entry.index);
+}
+
+/** `ranks[i]` is where `i` appears in `ranking` — the inverse of a permutation of `0 … n−1`. */
+function invertPermutation(ranking: readonly number[]): readonly number[] {
+  const ranks = new Array<number>(ranking.length).fill(0);
+  for (const [rank, index] of ranking.entries()) ranks[index] = rank;
+  return ranks;
 }

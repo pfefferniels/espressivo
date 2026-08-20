@@ -40,9 +40,15 @@
  * WHICH partition is reported. Saying so keeps the headline capability from being entangled
  * with the thresholding — a reader who distrusts the segmentation can still trust `D`.
  */
-import { fromEntriesExact } from '../prelude/index.js';
+import { fromEntriesExact, pairwise, zipWith } from '../prelude/index.js';
+import { elementAt, numberAt } from './indexing.js';
 import { CompensatedSum, bisectSignChange, gaussLegendre10 } from './quadrature.js';
 import { COMPARISON_DIMENSIONS, type ComparisonDimension } from './registry.js';
+
+/** What an out-of-range read into one of this module's sequences is called (`indexing.ts`). */
+const CELLS = "a segment pass's scored cells";
+const RUNS = "Ruzzo-Tompa's run list";
+const TABLE = "the segment table's cells";
 
 /**
  * §7.1's event constant, in QUARTERS.
@@ -340,18 +346,15 @@ export function segmentPass(
     windowEndQuarters,
   );
 
-  const cells: ScoredCell[] = [];
-  for (let i = 0; i < boundaries.length - 1; ++i) {
-    const start = boundaries[i];
-    const end = boundaries[i + 1];
+  const cells: readonly ScoredCell[] = pairwise(boundaries).map(([start, end]) => {
     const mass = weightedMassIn(densities, weights, start, end);
-    cells.push({
+    return {
       startQuarters: start,
       endQuarters: end,
       mass,
       score: mass - thresholdPerQuarter * (end - start),
-    });
-  }
+    };
+  });
 
   const runs = maximalScoringRuns(cells.map((cell) => cell.score));
   const segments = runs
@@ -360,7 +363,8 @@ export function segmentPass(
     .map((segment, index) => ({ ...segment, rank: index }));
 
   const covered = new CompensatedSum();
-  for (const run of runs) for (let i = run.start; i <= run.end; ++i) covered.add(cells[i].mass);
+  for (const run of runs)
+    for (const cell of cells.slice(run.start, run.end + 1)) covered.add(cell.mass);
   const totalMass = weightedMassIn(densities, weights, windowStartQuarters, windowEndQuarters);
 
   const remainder = totalMass - covered.total;
@@ -450,9 +454,9 @@ function segmentGrid(
   const excess = (quarters: number): number =>
     aggregateDensityAt(densities, weights, quarters) - thresholdPerQuarter;
   const refined = new Set<number>(structural);
-  for (let i = 0; i < structural.length - 1; ++i) {
-    const root = bisectSignChange(excess, structural[i], structural[i + 1]);
-    if (root !== null && root > structural[i] && root < structural[i + 1]) refined.add(root);
+  for (const [low, high] of pairwise(structural)) {
+    const root = bisectSignChange(excess, low, high);
+    if (root !== null && root > low && root < high) refined.add(root);
   }
   return [...refined].sort((x, y) => x - y);
 }
@@ -461,14 +465,13 @@ function summarize(
   cells: readonly ScoredCell[],
   run: { readonly start: number; readonly end: number },
 ): Omit<AggregateSegment, 'rank'> {
-  const startQuarters = cells[run.start].startQuarters;
-  const endQuarters = cells[run.end].endQuarters;
+  const startQuarters = elementAt(cells, run.start, CELLS).startQuarters;
+  const endQuarters = elementAt(cells, run.end, CELLS).endQuarters;
   const mass = new CompensatedSum();
   const score = new CompensatedSum();
   let peak = 0;
   let peakAtQuarters = startQuarters;
-  for (let i = run.start; i <= run.end; ++i) {
-    const cell = cells[i];
+  for (const cell of cells.slice(run.start, run.end + 1)) {
     mass.add(cell.mass);
     score.add(cell.score);
     const length = cell.endQuarters - cell.startQuarters;
@@ -531,8 +534,7 @@ export function maximalScoringRuns(
   const runs: Run[] = [];
   let cumulative = 0;
 
-  for (let i = 0; i < scores.length; ++i) {
-    const score = scores[i];
+  for (const [i, score] of scores.entries()) {
     if (!(score > 0)) {
       cumulative += score;
       continue;
@@ -546,18 +548,23 @@ export function maximalScoringRuns(
     cumulative = candidate.rightTotal;
 
     for (;;) {
+      // The BACKWARD scan is load-bearing: the list's invariant is that `leftTotal` increases
+      // strictly, so the last qualifying run is usually the last one and the loop exits on its
+      // first comparison. A `filter`/`reduce` would be a full pass every time.
       let j = -1;
       for (let k = runs.length - 1; k >= 0; --k)
-        if (runs[k].leftTotal < candidate.leftTotal) {
+        if (elementAt(runs, k, RUNS).leftTotal < candidate.leftTotal) {
           j = k;
           break;
         }
-      if (j < 0 || runs[j].rightTotal >= candidate.rightTotal) break;
+      if (j < 0) break;
+      const absorbed = elementAt(runs, j, RUNS);
+      if (absorbed.rightTotal >= candidate.rightTotal) break;
       // Step 3: absorb runs[j..] into the candidate and reconsider.
       candidate = {
-        start: runs[j].start,
+        start: absorbed.start,
         end: candidate.end,
-        leftTotal: runs[j].leftTotal,
+        leftTotal: absorbed.leftTotal,
         rightTotal: candidate.rightTotal,
       };
       runs.length = j;
@@ -606,8 +613,8 @@ export function attributionTable(
   const columnSums: number[] = [];
   for (let column = 0; column < columnCount; ++column) {
     const total = new CompensatedSum();
-    for (let row = 0; row < dimensions.length; ++row)
-      total.add(weights[dimensions[row]] * cells[row * columnCount + column]);
+    for (const [row, dimension] of dimensions.entries())
+      total.add(weights[dimension] * numberAt(cells, row * columnCount + column, TABLE));
     columnSums.push(total.total);
   }
 
@@ -632,7 +639,10 @@ function aggregateDistanceFromRows(
   weights: DimensionWeights,
 ): number {
   const total = new CompensatedSum();
-  for (let i = 0; i < dimensions.length; ++i) total.add(weights[dimensions[i]] * rowSums[i]);
+  // Zipped rather than indexed: the two sequences are the table's rows, read in the same order
+  // the summation has to keep.
+  for (const term of zipWith(dimensions, rowSums, (dimension, sum) => weights[dimension] * sum))
+    total.add(term);
   return total.total;
 }
 
@@ -693,9 +703,7 @@ function aboveThresholdLength(
   const grid = [...edges].sort((x, y) => x - y);
 
   const total = new CompensatedSum();
-  for (let i = 0; i < grid.length - 1; ++i) {
-    const low = grid[i];
-    const high = grid[i + 1];
+  for (const [low, high] of pairwise(grid)) {
     const length = high - low;
     if (!(length > 0)) continue;
     // Cells only: an ATOM is a point mass, and a set of measure zero is never "above threshold

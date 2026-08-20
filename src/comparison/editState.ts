@@ -36,6 +36,7 @@
  * span, so a state that dropped it would not perform what its document performs and `S(0,0)`
  * would not be `A`.
  */
+import { optionAt } from './indexing.js';
 import type { Element } from '../xml/XomTypes.js';
 import type { DatedEntry } from '../expression/datedView.js';
 import { spanEndRuleOf } from './spanEnds.js';
@@ -86,7 +87,7 @@ export function editInstructionsOf(
       side,
       dateTicks: entry.date * resolution.scaleFactor,
       entry,
-      styleName: view.styleNames[index],
+      styleName: optionAt(view.styleNames, index, 'a map view style-name list'),
       resolution,
       index: instructions.length,
     });

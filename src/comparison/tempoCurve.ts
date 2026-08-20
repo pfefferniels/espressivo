@@ -36,6 +36,8 @@
  * 100 default even where a document places an instruction there; the divergence is measure
  * zero for an integral and is documented rather than reproduced.
  */
+import { isNonEmpty, last, zipWith } from '../prelude/index.js';
+import { optionAt } from './indexing.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { readAttributeValue, readNumericAttributeValue } from '../expression/attributes.js';
@@ -264,7 +266,7 @@ export function readTempoSegments(
         entry.element,
         entry.date,
         resolution.scaleFactor,
-        view.styleNames[index],
+        optionAt(view.styleNames, index, 'a map view style-name list'),
         resolution.environment,
         resolution.globalEnvironment,
       ),
@@ -288,10 +290,15 @@ export function readTempoSegments(
       qbpm: NO_TEMPO_QUARTER_BPM,
     });
 
-  for (const [index, raw] of raws.entries()) {
-    // The next element named `tempo`, valid or not (getEndDate ignores validity).
-    const next = raws[index + 1] as RawTempo | undefined;
-    const isTrailing = next === undefined;
+  // The next element named `tempo`, valid or not (getEndDate ignores validity).
+  // The neighbour is PAIRED with its own instruction rather than read at `index + 1`. "There is
+  // no next one" is then a value — `null` — instead of an out-of-range read that the type system
+  // had to be told about with `as … | undefined`.
+  const nexts: readonly (RawTempo | null)[] = [...raws.slice(1), null];
+  const paired = zipWith(raws, nexts, (at, after) => [at, after] as const);
+  // The index survives only as a SLICE bound below, never as a read.
+  for (const [index, [raw, next]] of paired.entries()) {
+    const isTrailing = next === null;
     const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
 
     if (raw.parsed === null) {
@@ -385,7 +392,7 @@ export function segmentAt(curve: TempoCurve, ticks: number): TempoSegment | null
     if (segment.startTicks > ticks) break;
     if (ticks < segment.endTicks || !Number.isFinite(segment.endTicks)) found = segment;
   }
-  return found ?? (curve.segments.length > 0 ? curve.segments[curve.segments.length - 1] : null);
+  return found ?? (isNonEmpty(curve.segments) ? last(curve.segments) : null);
 }
 
 /** Whether `element` is a `<tempo>` the renderer would skip — exported for the grid. */

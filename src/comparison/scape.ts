@@ -44,7 +44,10 @@
  * Written out because a triangular packing that a consumer has to reverse-engineer is a
  * different kind of defect from a wrong number.
  */
+import { pairwise, scanl, zipWith } from '../prelude/index.js';
+
 import type { DimensionDensity, DimensionWeights } from './aggregate.js';
+import { numberAt } from './indexing.js';
 import { CompensatedSum, gaussLegendre10 } from './quadrature.js';
 import { COMPARISON_DIMENSIONS } from './registry.js';
 
@@ -90,27 +93,32 @@ export function scapeOf(
     bin === count ? endQuarters : startQuarters + bin * width,
   );
 
-  const perBin = new Array<number>(count).fill(0);
+  // Accumulated bin-vector by bin-vector rather than cell by cell: the two are the same
+  // additions in the same dimension order, and zipping says that the two vectors are the same
+  // length instead of trusting two loop bounds to agree.
+  let perBin: readonly number[] = new Array<number>(count).fill(0);
   for (const dimension of COMPARISON_DIMENSIONS) {
     const density = byDimension.get(dimension);
     if (density === undefined) continue;
     const weight = weights[dimension];
     if (weight === 0) continue;
-    for (const [bin, mass] of binnedMass(density, edges).entries()) perBin[bin] += weight * mass;
+    perBin = zipWith(perBin, binnedMass(density, edges), (sum, mass) => sum + weight * mass);
   }
 
-  // Running totals: `prefix[i]` is the mass in `[start, edges[i])`.
-  const prefix = new Array<number>(count + 1).fill(0);
+  // Running totals: `prefix[i]` is the mass in `[start, edges[i])`. `scanl` is the shape —
+  // seed first, one state per bin — so `prefix` has `count + 1` entries by construction rather
+  // than by an off-by-one the reader has to check.
   const running = new CompensatedSum();
-  for (let bin = 0; bin < count; ++bin) {
-    running.add(perBin[bin]);
-    prefix[bin + 1] = running.total;
-  }
+  const prefix = scanl(perBin, 0, (_unused, mass) => {
+    running.add(mass);
+    return running.total;
+  });
 
   const cells = new Array<number>((count * (count + 1)) / 2).fill(0);
   for (let size = 1; size <= count; ++size)
     for (let start = 0; start + size <= count; ++start)
-      cells[scapeIndex(count, size, start)] = prefix[start + size] - prefix[start];
+      cells[scapeIndex(count, size, start)] =
+        numberAt(prefix, start + size, PREFIX) - numberAt(prefix, start, PREFIX);
 
   return { bins: count, cells };
 }
@@ -133,46 +141,54 @@ function binnedMass(density: DimensionDensity, edges: readonly number[]): readon
   const bins = new Array<number>(count).fill(0);
   if (count <= 0) return bins;
 
+  // The one accumulating write, named. `bins[bin] += x` is a READ as well as a write, so under
+  // `noUncheckedIndexedAccess` it needs the same answer every other read here needs — and the
+  // alternative, rebuilding the vector with `zipWith` per cell, would allocate one array per
+  // density cell on a path that has thousands of them.
+  const addTo = (bin: number, mass: number): void => {
+    bins[bin] = numberAt(bins, bin, BINS) + mass;
+  };
+
+  // `pairwise(edges)` IS the bin list: bin `i` is `[edges[i], edges[i+1])`, which is the fact the
+  // two indexed reads used to spell out.
+  const spans = pairwise(edges);
+
   for (const cell of density.cells) {
     if (!(cell.endQuarters > cell.startQuarters)) continue;
-    const shares = new Array<number>(count).fill(0);
-    let total = 0;
-    for (let bin = 0; bin < count; ++bin) {
-      const low = Math.max(cell.startQuarters, edges[bin]);
-      const high = Math.min(cell.endQuarters, edges[bin + 1]);
-      if (!(high > low)) continue;
+    const shares = spans.map(([binLow, binHigh]) => {
+      const low = Math.max(cell.startQuarters, binLow);
+      const high = Math.min(cell.endQuarters, binHigh);
+      if (!(high > low)) return 0;
       const sampler = cell.densityAt;
-      const share = sampler === null ? high - low : Math.abs(gaussLegendre10(sampler, low, high));
-      shares[bin] = share;
-      total += share;
-    }
+      return sampler === null ? high - low : Math.abs(gaussLegendre10(sampler, low, high));
+    });
+    // Adding the skipped bins' exact zeros changes no double, so this is the same total the
+    // `continue`-guarded accumulation produced.
+    const total = shares.reduce((sum, share) => sum + share, 0);
     if (total <= 0) continue;
-    for (let bin = 0; bin < count; ++bin)
-      if (shares[bin] !== 0) bins[bin] += (cell.mass * shares[bin]) / total;
+    for (const [bin, share] of shares.entries())
+      if (share !== 0) addTo(bin, (cell.mass * share) / total);
   }
 
   for (const atom of density.atoms) {
     if (atom.endQuarters === atom.startQuarters) {
       const bin = binOf(edges, atom.startQuarters);
-      if (bin >= 0) bins[bin] += atom.mass;
+      if (bin >= 0) addTo(bin, atom.mass);
       continue;
     }
-    const shares = new Array<number>(count).fill(0);
-    let total = 0;
-    for (let bin = 0; bin < count; ++bin) {
-      const low = Math.max(atom.startQuarters, edges[bin]);
-      const high = Math.min(atom.endQuarters, edges[bin + 1]);
-      if (!(high > low)) continue;
-      shares[bin] = high - low;
-      total += high - low;
-    }
+    const shares = spans.map(([binLow, binHigh]) => {
+      const low = Math.max(atom.startQuarters, binLow);
+      const high = Math.min(atom.endQuarters, binHigh);
+      return high > low ? high - low : 0;
+    });
+    const total = shares.reduce((sum, share) => sum + share, 0);
     if (total <= 0) {
       const bin = binOf(edges, atom.startQuarters);
-      if (bin >= 0) bins[bin] += atom.mass;
+      if (bin >= 0) addTo(bin, atom.mass);
       continue;
     }
-    for (let bin = 0; bin < count; ++bin)
-      if (shares[bin] !== 0) bins[bin] += (atom.mass * shares[bin]) / total;
+    for (const [bin, share] of shares.entries())
+      if (share !== 0) addTo(bin, (atom.mass * share) / total);
   }
 
   return bins;
@@ -181,8 +197,17 @@ function binnedMass(density: DimensionDensity, edges: readonly number[]): readon
 /** The bin a point belongs to: half-open, with the LAST bin closed at the window end. */
 function binOf(edges: readonly number[], quarters: number): number {
   const count = edges.length - 1;
-  if (quarters < edges[0] || quarters > edges[count]) return -1;
-  for (let bin = 0; bin < count; ++bin)
-    if (quarters < edges[bin + 1] || bin === count - 1) return bin;
+  // A grid with no bins has no bin to name. The old spelling reached the same answer through
+  // `undefined` comparisons that are false either way; this states it.
+  if (count <= 0) return -1;
+  if (quarters < numberAt(edges, 0, EDGES) || quarters > numberAt(edges, count, EDGES)) return -1;
+  // `edges.slice(1)` is the bins' upper ends, so its index IS the bin number.
+  for (const [bin, high] of edges.slice(1).entries())
+    if (quarters < high || bin === count - 1) return bin;
   return -1;
 }
+
+/** What an out-of-range read into one of this module's vectors is called (`indexing.ts`). */
+const PREFIX = "the scape's prefix sums";
+const BINS = "the scape's per-bin masses";
+const EDGES = "the scape's bin edges";
