@@ -20,6 +20,7 @@ import { InvalidOptionError, ParseError } from '../../src/api/errors.js';
 import { COMPARISON_DIMENSIONS } from '../../src/comparison/registry.js';
 import type { XmlText } from '../../src/api/types.js';
 import type { CorpusReport } from '../../src/comparison/report.js';
+import { elementAt, numberAt } from '../../src/prelude/index.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const fixture = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'utf-8') as XmlText;
@@ -30,10 +31,37 @@ const ALBERT = fixture('albert-du-mein-einzig-licht');
 /** A window short enough for a whole matrix, long enough to carry every dimension. */
 const SHORT = { start: 0, end: 16 } as const;
 
+interface CorpusItem {
+  mpm: XmlText;
+  performance?: string | number;
+  label?: string;
+}
+
 const corpus = (
-  items: readonly { mpm: XmlText; performance?: string | number; label?: string }[],
+  items: readonly CorpusItem[],
   overrides: Record<string, unknown> = {},
 ): CorpusReport => compareMpmCorpus({ items, window: SHORT, ...overrides }).report;
+
+/**
+ * Checked reads into §8's flat `n × n` matrices, its label list and its per-item products.
+ *
+ * Every read in this file is a computed index — `i * n + j`, an index recovered from
+ * `labels.indexOf`, an item picked out by a permutation — so a slip yields `undefined` and then
+ * `NaN`, and the assertion that fails is several lines from the mistake. These name the array
+ * and the bound instead.
+ */
+const cellOf = (matrix: readonly number[], n: number, i: number, j: number, what: string) =>
+  numberAt(matrix, i * n + j, what);
+
+const labelAt = (report: CorpusReport, item: number) =>
+  elementAt(report.labels, item, 'the corpus label list');
+
+/** `xs` reordered by `order` — a permuted corpus, or a set of medoids read back as labels. */
+const pick = <T extends NonNullable<unknown>>(
+  xs: readonly T[],
+  order: readonly number[],
+  what: string,
+): readonly T[] => order.map((index) => elementAt(xs, index, what));
 
 // ---------------------------------------------------------------------------
 
@@ -48,8 +76,8 @@ describe('the matrix is one function (R3)', () => {
     for (let i = 0; i < report.n; ++i)
       for (let j = 0; j < report.n; ++j) {
         if (i === j) continue;
-        const a = report.items[i];
-        const b = report.items[j];
+        const a = elementAt(report.items, i, 'the corpus item list');
+        const b = elementAt(report.items, j, 'the corpus item list');
         const pair = compareMpm({
           a: a.itemIndex === 0 ? TELEMANN : ALBERT,
           b: b.itemIndex === 0 ? TELEMANN : ALBERT,
@@ -57,7 +85,11 @@ describe('the matrix is one function (R3)', () => {
           performanceB: b.performance,
           window: SHORT,
         }).report;
-        expect({ i, j, d: report.matrices.aggregate[i * report.n + j] }).toEqual({
+        expect({
+          i,
+          j,
+          d: cellOf(report.matrices.aggregate, report.n, i, j, 'the aggregate matrix'),
+        }).toEqual({
           i,
           j,
           d: pair.aggregate.distance,
@@ -67,7 +99,13 @@ describe('the matrix is one function (R3)', () => {
             i,
             j,
             dimension,
-            d: report.matrices.byDimension[dimension][i * report.n + j],
+            d: cellOf(
+              report.matrices.byDimension[dimension],
+              report.n,
+              i,
+              j,
+              `the ${dimension} matrix`,
+            ),
           }).toEqual({ i, j, dimension, d: pair.dimensions[dimension].distance });
       }
   });
@@ -83,9 +121,10 @@ describe('the matrix is one function (R3)', () => {
       ...COMPARISON_DIMENSIONS.map((dimension) => report.matrices.byDimension[dimension]),
     ]) {
       expect(matrix).toHaveLength(n * n);
+      const at = (i: number, j: number) => cellOf(matrix, n, i, j, 'a corpus matrix');
       for (let i = 0; i < n; ++i) {
-        expect(matrix[i * n + i]).toBe(0);
-        for (let j = 0; j < n; ++j) expect(matrix[i * n + j]).toBe(matrix[j * n + i]);
+        expect(at(i, i)).toBe(0);
+        for (let j = 0; j < n; ++j) expect(at(i, j)).toBe(at(j, i));
       }
     }
   });
@@ -177,20 +216,30 @@ describe('P-C6: permuting the items permutes the matrices and relabels the dendr
 
   it('is equivariant, matrix cell by matrix cell and merge by merge', () => {
     const straight = corpus(items);
-    const shuffled = corpus(order.map((index) => items[index]));
+    const shuffled = corpus(pick(items, order, 'the corpus item list'));
     const n = straight.n;
 
     for (let i = 0; i < n; ++i)
       for (let j = 0; j < n; ++j)
-        expect({ i, j, d: shuffled.matrices.aggregate[i * n + j] }).toEqual({
+        expect({
           i,
           j,
-          d: straight.matrices.aggregate[order[i] * n + order[j]],
+          d: cellOf(shuffled.matrices.aggregate, n, i, j, 'the permuted aggregate matrix'),
+        }).toEqual({
+          i,
+          j,
+          d: cellOf(
+            straight.matrices.aggregate,
+            n,
+            elementAt(order, i, 'the permutation'),
+            elementAt(order, j, 'the permutation'),
+            'the aggregate matrix',
+          ),
         });
 
     // The dendrogram RELABELS: leaf `i` in the shuffled run is leaf `order[i]` in the straight
     // one, and internal ids are positional, so the merge lists must coincide exactly.
-    const back = (id: number) => (id < n ? order[id] : id);
+    const back = (id: number) => (id < n ? elementAt(order, id, 'the permutation') : id);
     expect(
       shuffled.dendrogram.merges.map((merge) => ({
         ...merge,
@@ -204,7 +253,7 @@ describe('P-C6: permuting the items permutes the matrices and relabels the dendr
 
   it('is non-vacuous: the permutation really does reorder the labels', () => {
     const straight = corpus(items);
-    const shuffled = corpus(order.map((index) => items[index]));
+    const shuffled = corpus(pick(items, order, 'the corpus item list'));
     expect(shuffled.labels).not.toEqual([...straight.labels]);
     expect([...shuffled.labels].sort()).toEqual([...straight.labels].sort());
   });
@@ -241,19 +290,21 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
 
   it('names the same medoids and the same clusters when two items trade places', () => {
     const straight = corpus(tied, { k: 2 });
-    const shuffled = corpus(
-      swapFirstTwo.map((index) => tied[index]),
-      { k: 2 },
-    );
+    const shuffled = corpus(pick(tied, swapFirstTwo, 'the corpus item list'), { k: 2 });
 
     // Read both back in LABELS. Indices mean different things in the two runs, and the labels
     // are the frame in which "the same answer" is even a statement.
     const medoidsOf = (report: CorpusReport) =>
-      (report.medoids ?? []).map((item) => report.labels[item]);
-    const clustersOf = (report: CorpusReport) =>
-      (report.clusters ?? [])
-        .map((cluster, item) => `${report.labels[item]}→${report.labels[report.medoids![cluster]]}`)
+      pick(report.labels, report.medoids ?? [], 'the corpus label list');
+    const clustersOf = (report: CorpusReport) => {
+      const medoids = report.medoids ?? [];
+      return (report.clusters ?? [])
+        .map(
+          (cluster, item) =>
+            `${labelAt(report, item)}→${labelAt(report, elementAt(medoids, cluster, 'the medoid list'))}`,
+        )
         .sort();
+    };
 
     expect(medoidsOf(shuffled)).toEqual(medoidsOf(straight));
     expect(clustersOf(shuffled)).toEqual(clustersOf(straight));
@@ -275,10 +326,10 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
    */
   it('gives the same seriation and the same embedding when two items trade places', () => {
     const straight = corpus(tied, { k: 2, embeddingAxes: 2 });
-    const shuffled = corpus(
-      swapFirstTwo.map((index) => tied[index]),
-      { k: 2, embeddingAxes: 2 },
-    );
+    const shuffled = corpus(pick(tied, swapFirstTwo, 'the corpus item list'), {
+      k: 2,
+      embeddingAxes: 2,
+    });
 
     expect(shuffled.seriationOrder.map((item) => shuffled.labels[item])).toEqual(
       straight.seriationOrder.map((item) => straight.labels[item]),
@@ -289,18 +340,27 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
     // were widened to absorb, rather than flipping an axis or reordering the plot.
     const pointOf = (report: CorpusReport, label: string) => {
       const item = report.labels.indexOf(label);
-      return [report.embedding.coordinates[item * 2], report.embedding.coordinates[item * 2 + 1]];
+      const what = `the embedding of '${label}'`;
+      return [
+        numberAt(report.embedding.coordinates, item * 2, what),
+        numberAt(report.embedding.coordinates, item * 2 + 1, what),
+      ];
     };
     const extent = Math.max(
-      ...straight.labels.map((label) => Math.abs(pointOf(straight, label)[0])),
+      ...straight.labels.map((label) =>
+        Math.abs(numberAt(pointOf(straight, label), 0, 'the straight point')),
+      ),
     );
     for (const label of straight.labels)
-      for (const axis of [0, 1])
+      for (const axis of [0, 1] as const)
         expect({
           label,
           axis,
           within:
-            Math.abs(pointOf(straight, label)[axis] - pointOf(shuffled, label)[axis]) <
+            Math.abs(
+              numberAt(pointOf(straight, label), axis, 'the straight point') -
+                numberAt(pointOf(shuffled, label), axis, 'the permuted point'),
+            ) <
             1e-9 * extent,
         }).toEqual({ label, axis, within: true });
   });
@@ -328,10 +388,11 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
     const straight = corpus(tied, shorter);
     const readback = (report: CorpusReport) => {
       const byLabel = new Map<string, { silhouette: number; toMeanDistance: number }>();
+      const silhouette = report.silhouette ?? [];
       for (let item = 0; item < report.n; ++item)
-        byLabel.set(report.labels[item], {
-          silhouette: (report.silhouette ?? [])[item],
-          toMeanDistance: report.profiles[item].toMeanDistance,
+        byLabel.set(labelAt(report, item), {
+          silhouette: numberAt(silhouette, item, 'the silhouette scores'),
+          toMeanDistance: elementAt(report.profiles, item, 'the item profiles').toMeanDistance,
         });
       return byLabel;
     };
@@ -345,12 +406,7 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
       [2, 4, 0, 5, 1, 3],
       [3, 1, 5, 0, 4, 2],
     ]) {
-      const shuffled = readback(
-        corpus(
-          order.map((index) => tied[index]),
-          shorter,
-        ),
-      );
+      const shuffled = readback(corpus(pick(tied, order, 'the corpus item list'), shorter));
       for (const [label, values] of base) {
         // `toBe`, not `toBeCloseTo`: the claim is bit-identity, and a tolerance here would be
         // exactly the epsilon AD-72.1 rejected in favour of a canonical order.
@@ -374,10 +430,7 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
         if (straight.matrices.aggregate[i * straight.n + j] === 0) zeros.push([i, j]);
     expect(zeros).toHaveLength(3);
 
-    const shuffled = corpus(
-      swapFirstTwo.map((index) => tied[index]),
-      { k: 2 },
-    );
+    const shuffled = corpus(pick(tied, swapFirstTwo, 'the corpus item list'), { k: 2 });
     expect(shuffled.labels).not.toEqual([...straight.labels]);
   });
 });
@@ -431,14 +484,16 @@ describe('the products §8 reads off the matrix', () => {
     // exactly these four expectations.
     const offDiagonal: number[] = [];
     for (let i = 0; i < 5; ++i)
-      for (let j = i + 1; j < 5; ++j) offDiagonal.push(report.matrices.aggregate[i * 5 + j]);
+      for (let j = i + 1; j < 5; ++j)
+        offDiagonal.push(cellOf(report.matrices.aggregate, 5, i, j, 'the aggregate matrix'));
     const sorted = [...offDiagonal].sort((x, y) => x - y);
     expect(sorted).toHaveLength(10);
 
-    const median = (sorted[4] + sorted[5]) / 2;
+    const sample = (rank: number) => numberAt(sorted, rank, 'the sorted off-diagonal distances');
+    const median = (sample(4) + sample(5)) / 2;
     // The empirical-CDF quantile at `p`: the sample at `p·(n−1)`, linearly between neighbours.
-    const lowerQuartile = sorted[2] + (sorted[3] - sorted[2]) * 0.25;
-    const upperQuartile = sorted[6] + (sorted[7] - sorted[6]) * 0.75;
+    const lowerQuartile = sample(2) + (sample(3) - sample(2)) * 0.25;
+    const upperQuartile = sample(6) + (sample(7) - sample(6)) * 0.75;
 
     expect(report.context?.corpusMedian).toBeCloseTo(median, 9);
     expect(report.context?.noiseFloor).toBeCloseTo(median, 9);
@@ -514,7 +569,13 @@ describe('the products §8 reads off the matrix', () => {
       const nonzero: number[] = [];
       for (let i = 0; i < normalized.n; ++i)
         for (let j = i + 1; j < normalized.n; ++j) {
-          const value = normalized.matrices.byDimension[dimension][i * normalized.n + j];
+          const value = cellOf(
+            normalized.matrices.byDimension[dimension],
+            normalized.n,
+            i,
+            j,
+            `the ${dimension} matrix`,
+          );
           if (value !== 0) nonzero.push(value);
         }
       const constant = normalized.normalizationConstants?.[dimension] ?? null;
@@ -524,8 +585,11 @@ describe('the products §8 reads off the matrix', () => {
       }
       const sorted = [...nonzero].sort((x, y) => x - y);
       const middle = sorted.length >> 1;
+      const what = `the sorted nonzero ${dimension} distances`;
       const expected =
-        sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+        sorted.length % 2 === 1
+          ? numberAt(sorted, middle, what)
+          : (numberAt(sorted, middle - 1, what) + numberAt(sorted, middle, what)) / 2;
       expect(constant).toBeCloseTo(expected, 12);
     }
 
@@ -539,9 +603,19 @@ describe('the products §8 reads off the matrix', () => {
         for (const dimension of COMPARISON_DIMENSIONS) {
           const constant = normalized.normalizationConstants?.[dimension] ?? null;
           const omega = constant === null || constant === 0 ? 1 : 1 / constant;
-          total += omega * normalized.matrices.byDimension[dimension][i * normalized.n + j];
+          total +=
+            omega *
+            cellOf(
+              normalized.matrices.byDimension[dimension],
+              normalized.n,
+              i,
+              j,
+              `the ${dimension} matrix`,
+            );
         }
-        expect(normalized.matrices.aggregate[i * normalized.n + j]).toBeCloseTo(total, 9);
+        expect(
+          cellOf(normalized.matrices.aggregate, normalized.n, i, j, 'the aggregate matrix'),
+        ).toBeCloseTo(total, 9);
       }
   });
 
@@ -570,7 +644,7 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
     expect(single.n).toBe(1);
     expect(single.matrices.aggregate).toEqual([0]);
     expect(single.dendrogram.order).toEqual([0]);
-    expect(single.profiles[0].toMeanDistance).toBe(0);
+    expect(elementAt(single.profiles, 0, 'the item profiles').toMeanDistance).toBe(0);
   });
 
   it('flags a corpus of identical performances as degenerate rather than dividing by zero', () => {
@@ -677,13 +751,13 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
     const counts = new Set<number>();
     const texts = new Set<string>();
     for (const order of orders) {
-      const report = corpus(order.map((index) => three[index]));
+      const report = corpus(pick(three, order, 'the corpus item list'));
       counts.add(report.notes.length);
       texts.add(
         report.notes
           .map(
             (entry) =>
-              `${entry.kind}|${entry.itemIndex === null ? '-' : report.labels[entry.itemIndex]}|${entry.message}`,
+              `${entry.kind}|${entry.itemIndex === null ? '-' : labelAt(report, entry.itemIndex)}|${entry.message}`,
           )
           .sort()
           .join('\n'),
@@ -710,17 +784,20 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
     // all of them — this is symptom (b), where four of the five silently disappeared.
     const mismatch = report.notes.filter((entry) => entry.kind === 'length-mismatch');
     expect(mismatch).toHaveLength(1);
+    const only = elementAt(mismatch, 0, 'the length-mismatch notes');
     expect(report.suspectPairs.length).toBeGreaterThan(1);
     for (const pair of report.suspectPairs) {
-      const [left, right] = [report.labels[pair.i], report.labels[pair.j]].sort();
+      const sides = [labelAt(report, pair.i), labelAt(report, pair.j)].sort();
+      const left = elementAt(sides, 0, 'the suspect pair');
+      const right = elementAt(sides, 1, 'the suspect pair');
       expect({
         pair: `${left} | ${right}`,
-        named: mismatch[0].message.includes(`${left} | ${right}`),
+        named: only.message.includes(`${left} | ${right}`),
       }).toEqual({ pair: `${left} | ${right}`, named: true });
     }
 
     // The pairs are listed in a canonical order, so the sentence is a function of the corpus.
-    const listed = mismatch[0].message.split(':')[0].split('; ');
+    const listed = elementAt(only.message.split(':'), 0, 'the note’s message').split('; ');
     expect(listed).toEqual([...listed].sort());
   });
 
@@ -736,7 +813,9 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
     const plausibility = (report: CorpusReport) =>
       report.notes.filter((entry) => entry.kind === 'plausibility');
     expect(plausibility(banded).length).toBeGreaterThan(plausibility(plain).length);
-    expect(plausibility(banded)[0].message).toContain('outside its plausible band [200, 400]');
+    expect(elementAt(plausibility(banded), 0, 'the plausibility notes').message).toContain(
+      'outside its plausible band [200, 400]',
+    );
     // Every one names the item it is about, so a reader can act on it.
     expect(plausibility(banded).every((entry) => entry.itemIndex !== null)).toBe(true);
   });

@@ -21,6 +21,7 @@ import {
   pam,
   silhouette,
   type DistanceMatrix,
+  type Partition,
 } from '../../src/comparison/clustering.js';
 import {
   classicalMds,
@@ -28,10 +29,29 @@ import {
   jacobiEigen,
   seriationOrder,
 } from '../../src/comparison/embedding.js';
+import { elementAt, numberAt } from '../../src/prelude/index.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Checked random access into the three flat arrays this file spends its time in.
+ *
+ * §8's matrices are `n × n` stored as one row-major `number[]`, so every read here is a
+ * computed index rather than an iteration, and a slip in the arithmetic produces `NaN` several
+ * assertions downstream rather than a failure at the line that made it. These name the array
+ * and the bound instead; the `what` strings are what a `RangeError` will read.
+ */
+const cell = (matrix: DistanceMatrix, row: number, column: number): number =>
+  numberAt(matrix.values, row * matrix.n + column, `a ${String(matrix.n)}-item distance matrix`);
+
+const flatAt = (values: readonly number[], index: number, what: string): number =>
+  numberAt(values, index, what);
+
+/** The labels of a permuted corpus, read back through the permutation. */
+const relabel = (labels: readonly string[], order: readonly number[]): readonly string[] =>
+  order.map((index) => elementAt(labels, index, 'the label list'));
 
 function lcg(seed: number): () => number {
   let state = seed >>> 0;
@@ -41,12 +61,73 @@ function lcg(seed: number): () => number {
   };
 }
 
+/**
+ * `matrix` with its items reordered by `order` — entry `(i, j)` becomes `(order[i], order[j])`.
+ *
+ * Hoisted from the three byte-identical copies that stood in `AD-25.2`, in the silhouette
+ * permutation test and in `AD-67.1`; each of them indexed `order` and `values` by hand.
+ */
+const permute = (matrix: DistanceMatrix, order: readonly number[]): DistanceMatrix => ({
+  n: matrix.n,
+  values: Array.from({ length: matrix.n * matrix.n }, (_unused, index) =>
+    cell(
+      matrix,
+      elementAt(order, Math.floor(index / matrix.n), 'the permutation'),
+      elementAt(order, index % matrix.n, 'the permutation'),
+    ),
+  ),
+});
+
+/**
+ * A Fisher–Yates permutation of `0 … n − 1`, drawn from `next`.
+ *
+ * Three tests built this inline with a destructuring swap; the draws and the swap order are
+ * unchanged, so the permutations each of them sees are the ones it saw before.
+ */
+const shuffleOf = (n: number, next: () => number): readonly number[] => {
+  const order = Array.from({ length: n }, (_unused, index) => index);
+  const what = 'the permutation under construction';
+  for (let i = n - 1; i > 0; --i) {
+    const j = Math.floor(next() * (i + 1));
+    const held = elementAt(order, i, what);
+    order[i] = elementAt(order, j, what);
+    order[j] = held;
+  }
+  return order;
+};
+
+/**
+ * Whether an order really rearranges anything.
+ *
+ * [NEGATIVE CONTROL, MEASURED] Every permutation test below counts `cases` and asserts an
+ * invariance over them — "0 disagreements", "one answer" — and an order that is the IDENTITY
+ * satisfies all of them by comparing a run against itself. Stopping the shuffle loop before its
+ * first iteration, so `shuffleOf` returns `0 … n − 1` unchanged, left all 35 tests in this file
+ * GREEN: the `cases > 500` guards count comparisons, not rearrangements, and nothing here
+ * distinguished the two. The inline shuffles this helper replaced had the same gap.
+ *
+ * The counts are pinned exactly rather than as a fraction: the seeds are fixed, so each is a
+ * constant, and an exact figure reds on a single identity draw where a fraction test would
+ * absorb it. At `n ≥ 12` every draw rearranges; at `n = 4..7` four of 600 do not, which is why
+ * that one pins 596 rather than demanding all of them.
+ */
+const rearranges = (order: readonly number[]): boolean =>
+  order.some((index, position) => index !== position);
+
+/** `pam`'s partition, or a failure naming the corpus that produced none. */
+const partitionOf = (matrix: DistanceMatrix, k: number, labels: readonly string[]): Partition => {
+  const result = pam(matrix, k, labels);
+  if (result === null)
+    throw new Error(`pam found no partition of ${String(matrix.n)} items at k = ${String(k)}`);
+  return result;
+};
+
 /** A symmetric zero-diagonal matrix from a list of points on a line. */
 function fromPoints(points: readonly number[]): DistanceMatrix {
   const n = points.length;
   const values = new Array<number>(n * n).fill(0);
-  for (let i = 0; i < n; ++i)
-    for (let j = 0; j < n; ++j) values[i * n + j] = Math.abs(points[i] - points[j]);
+  for (const [i, from] of points.entries())
+    for (const [j, to] of points.entries()) values[i * n + j] = Math.abs(from - to);
   return { n, values };
 }
 
@@ -54,9 +135,9 @@ function fromPoints(points: readonly number[]): DistanceMatrix {
 function fromPlane(points: readonly (readonly [number, number])[]): DistanceMatrix {
   const n = points.length;
   const values = new Array<number>(n * n).fill(0);
-  for (let i = 0; i < n; ++i)
-    for (let j = 0; j < n; ++j)
-      values[i * n + j] = Math.hypot(points[i][0] - points[j][0], points[i][1] - points[j][1]);
+  for (const [i, [fromX, fromY]] of points.entries())
+    for (const [j, [toX, toY]] of points.entries())
+      values[i * n + j] = Math.hypot(fromX - toX, fromY - toY);
   return { n, values };
 }
 
@@ -81,7 +162,7 @@ function leavesOf(
   node: number,
 ): readonly number[] {
   if (node < n) return [node];
-  const merge = merges[node - n];
+  const merge = elementAt(merges, node - n, 'the dendrogram’s merge list');
   return [...leavesOf(merges, n, merge.left), ...leavesOf(merges, n, merge.right)];
 }
 
@@ -109,8 +190,8 @@ describe('Lance–Williams agglomeration', () => {
             for (const j of right)
               expected =
                 linkage === 'single'
-                  ? Math.min(expected, matrix.values[i * n + j])
-                  : Math.max(expected, matrix.values[i * n + j]);
+                  ? Math.min(expected, cell(matrix, i, j))
+                  : Math.max(expected, cell(matrix, i, j));
           expect({ trial, index, height: merge.height }).toEqual({
             trial,
             index,
@@ -130,7 +211,7 @@ describe('Lance–Williams agglomeration', () => {
         const left = leavesOf(merges, n, merge.left);
         const right = leavesOf(merges, n, merge.right);
         let total = 0;
-        for (const i of left) for (const j of right) total += matrix.values[i * n + j];
+        for (const i of left) for (const j of right) total += cell(matrix, i, j);
         expect(merge.height).toBeCloseTo(total / (left.length * right.length), 10);
       }
     }
@@ -146,7 +227,8 @@ describe('Lance–Williams agglomeration', () => {
       const left = leavesOf(merges, points.length, merge.left);
       const right = leavesOf(merges, points.length, merge.right);
       const centroid = (group: readonly number[]) =>
-        group.reduce((sum, index) => sum + points[index], 0) / group.length;
+        group.reduce((sum, index) => sum + elementAt(points, index, 'the point list'), 0) /
+        group.length;
       const expected =
         Math.sqrt((2 * left.length * right.length) / (left.length + right.length)) *
         Math.abs(centroid(left) - centroid(right));
@@ -190,24 +272,11 @@ describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-
     values: Array.from({ length: n * n }, (_unused, index) => (index % (n + 1) === 0 ? 0 : 1)),
   };
 
-  const permute = (matrix: DistanceMatrix, order: readonly number[]): DistanceMatrix => ({
-    n: matrix.n,
-    values: Array.from({ length: matrix.n * matrix.n }, (_unused, index) => {
-      const i = Math.floor(index / matrix.n);
-      const j = index % matrix.n;
-      return matrix.values[order[i] * matrix.n + order[j]];
-    }),
-  });
-
   it('relabels the dendrogram under a permutation rather than restructuring it', () => {
     const labels = labelsOf(n);
     const order = [3, 1, 4, 0, 2];
     const straight = agglomerate(flat, 'average', labels);
-    const shuffled = agglomerate(
-      permute(flat, order),
-      'average',
-      order.map((index) => labels[index]),
-    );
+    const shuffled = agglomerate(permute(flat, order), 'average', relabel(labels, order));
 
     // Map the permuted result back through the permutation: leaf `i` there is leaf `order[i]`
     // here, and internal ids are positional, so the two merge lists must coincide exactly.
@@ -276,18 +345,18 @@ describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-
     expect(permutations).toHaveLength(24);
 
     for (const order of permutations) {
-      const shuffled = pam(
-        permute(blocks, order),
-        2,
-        order.map((index) => labels[index]),
-      );
-      expect(shuffled?.exhaustive).toBe(true);
+      const shuffled = pam(permute(blocks, order), 2, relabel(labels, order));
+      if (shuffled === null) throw new Error('pam refused a 4-item corpus at k = 2');
+      expect(shuffled.exhaustive).toBe(true);
       // Both products are read back in the caller's OWN labels, which is the only frame in
       // which two differently-ordered corpora can be compared at all.
-      const medoids = shuffled!.medoids.map((item) => labels[order[item]]);
-      const clusters = shuffled!.clusters
+      const own = (item: number) =>
+        elementAt(labels, elementAt(order, item, 'the permutation'), 'the label list');
+      const medoids = shuffled.medoids.map(own);
+      const clusters = shuffled.clusters
         .map(
-          (cluster, item) => `${labels[order[item]]}→${labels[order[shuffled!.medoids[cluster]]]}`,
+          (cluster, item) =>
+            `${own(item)}→${own(elementAt(shuffled.medoids, cluster, 'the medoid list'))}`,
         )
         .sort();
       answers.add(JSON.stringify({ medoids, clusters }));
@@ -297,7 +366,11 @@ describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-
     // set held TWO: `{L00,L01}` under 20 permutations and `{L00,L03}` under the other 4, each
     // reported with `exhaustive: true` — two different global optima for the same corpus.
     expect([...answers]).toHaveLength(1);
-    expect(JSON.parse([...answers][0] as string).medoids).toEqual(['L00', 'L01']);
+    const only = elementAt([...answers], 0, 'the set of distinct answers');
+    expect((JSON.parse(only) as { readonly medoids: readonly string[] }).medoids).toEqual([
+      'L00',
+      'L01',
+    ]);
   });
 
   it('is non-vacuous: the tie-rich matrix really does have cost-equal optima', () => {
@@ -317,7 +390,7 @@ describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-
     const costOf = (chosen: readonly number[]) => {
       let total = 0;
       for (let i = 0; i < size; ++i)
-        total += Math.min(...chosen.map((medoid) => blocks.values[i * size + medoid]));
+        total += Math.min(...chosen.map((medoid) => cell(blocks, i, medoid)));
       return total;
     };
     const optima = [];
@@ -340,7 +413,7 @@ describe('PAM', () => {
       if (chosen.length === k) {
         let total = 0;
         for (let i = 0; i < n; ++i)
-          total += Math.min(...chosen.map((medoid) => matrix.values[i * n + medoid]));
+          total += Math.min(...chosen.map((medoid) => cell(matrix, i, medoid)));
         best = Math.min(best, total);
         return;
       }
@@ -394,8 +467,7 @@ describe('PAM', () => {
         const trial = [...medoids];
         trial[position] = candidate;
         let trialCost = 0;
-        for (let i = 0; i < 60; ++i)
-          trialCost += Math.min(...trial.map((m) => matrix.values[i * 60 + m]));
+        for (let i = 0; i < 60; ++i) trialCost += Math.min(...trial.map((m) => cell(matrix, i, m)));
         expect({ position, candidate, better: trialCost < cost - 1e-9 }).toEqual({
           position,
           candidate,
@@ -476,7 +548,7 @@ describe('PAM', () => {
         );
         let total = 0;
         for (let i = 0; i < n; ++i)
-          total += Math.min(...kept.map((medoid) => matrix.values[i * n + medoid]));
+          total += Math.min(...kept.map((medoid) => cell(matrix, i, medoid)));
         bestCost = Math.min(bestCost, total);
       }
     expect(result?.cost).toBeCloseTo(bestCost, 12);
@@ -488,16 +560,17 @@ describe('silhouette', () => {
     const matrix = fromPoints([0, 1, 2, 10, 11, 12]);
     const clusters = [0, 0, 0, 1, 1, 1];
     const scores = silhouette(matrix, clusters);
-    for (let item = 0; item < matrix.n; ++item) {
+    for (const [item, mine] of clusters.entries()) {
       const own = clusters
         .map((c, i) => [c, i] as const)
-        .filter(([c, i]) => c === clusters[item] && i !== item);
-      const other = clusters.map((c, i) => [c, i] as const).filter(([c]) => c !== clusters[item]);
-      const a =
-        own.reduce((sum, [, i]) => sum + matrix.values[item * matrix.n + i], 0) / own.length;
-      const b =
-        other.reduce((sum, [, i]) => sum + matrix.values[item * matrix.n + i], 0) / other.length;
-      expect(scores[item]).toBeCloseTo((b - a) / Math.max(a, b), 12);
+        .filter(([c, i]) => c === mine && i !== item);
+      const other = clusters.map((c, i) => [c, i] as const).filter(([c]) => c !== mine);
+      const a = own.reduce((sum, [, i]) => sum + cell(matrix, item, i), 0) / own.length;
+      const b = other.reduce((sum, [, i]) => sum + cell(matrix, item, i), 0) / other.length;
+      expect(elementAt(scores, item, 'the silhouette scores')).toBeCloseTo(
+        (b - a) / Math.max(a, b),
+        12,
+      );
     }
   });
 
@@ -520,15 +593,8 @@ describe('silhouette', () => {
     const next = lcg(31337);
     let disagreements = 0;
     let cases = 0;
-
-    const permute = (matrix: DistanceMatrix, order: readonly number[]): DistanceMatrix => ({
-      n: matrix.n,
-      values: Array.from({ length: matrix.n * matrix.n }, (_unused, index) => {
-        const i = Math.floor(index / matrix.n);
-        const j = index % matrix.n;
-        return matrix.values[order[i] * matrix.n + order[j]];
-      }),
-    });
+    let attempts = 0;
+    let rearranged = 0;
 
     for (let trial = 0; trial < 12; ++trial) {
       const n = 12 + Math.floor(next() * 8);
@@ -543,31 +609,34 @@ describe('silhouette', () => {
         }
       const matrix: DistanceMatrix = { n, values };
       const labels = labelsOf(n);
-      const partition = pam(matrix, 3, labels);
-      const straight = silhouette(matrix, partition!.clusters, labels);
-      const byLabel = new Map(labels.map((label, item) => [label, straight[item]]));
+      const straight = silhouette(matrix, partitionOf(matrix, 3, labels).clusters, labels);
+      const byLabel = new Map(
+        labels.map((label, item) => [label, elementAt(straight, item, 'the silhouette scores')]),
+      );
 
       for (let attempt = 0; attempt < 6; ++attempt) {
-        const order = Array.from({ length: n }, (_unused, index) => index);
-        for (let i = n - 1; i > 0; --i) {
-          const j = Math.floor(next() * (i + 1));
-          [order[i], order[j]] = [order[j], order[i]];
-        }
-        const permutedLabels = order.map((index) => labels[index]);
+        const order = shuffleOf(n, next);
+        attempts += 1;
+        if (rearranges(order)) rearranged += 1;
+        const permutedLabels = relabel(labels, order);
         const permuted = permute(matrix, order);
         const shuffled = silhouette(
           permuted,
-          pam(permuted, 3, permutedLabels)!.clusters,
+          partitionOf(permuted, 3, permutedLabels).clusters,
           permutedLabels,
         );
-        for (let item = 0; item < n; ++item) {
+        for (const [item, label] of permutedLabels.entries()) {
           cases += 1;
-          if (byLabel.get(permutedLabels[item]) !== shuffled[item]) disagreements += 1;
+          if (byLabel.get(label) !== elementAt(shuffled, item, 'the permuted silhouette scores'))
+            disagreements += 1;
         }
       }
     }
 
     expect(cases).toBeGreaterThan(1000);
+    // …and every one of those cases really was a rearrangement. See {@link rearranges}: without
+    // this the whole test passes with the shuffle disabled.
+    expect(rearranged).toBe(attempts);
     expect(disagreements).toBe(0);
   });
 
@@ -603,37 +672,27 @@ describe('silhouette', () => {
     const unique = labelsOf(n);
 
     const answers = new Set<string>();
+    let rearranged = 0;
     for (let attempt = 0; attempt < 40; ++attempt) {
-      const order = Array.from({ length: n }, (_unused, index) => index);
-      for (let i = n - 1; i > 0; --i) {
-        const j = Math.floor(next() * (i + 1));
-        [order[i], order[j]] = [order[j], order[i]];
-      }
-      const permuted: DistanceMatrix = {
-        n,
-        values: Array.from({ length: n * n }, (_unused, index) => {
-          const i = Math.floor(index / n);
-          const j = index % n;
-          return matrix.values[order[i] * n + order[j]];
-        }),
-      };
-      const permutedLabels = order.map((index) => unique[index]);
-      const result = pam(permuted, 3, permutedLabels);
+      const order = shuffleOf(n, next);
+      if (rearranges(order)) rearranged += 1;
+      const permuted = permute(matrix, order);
+      const permutedLabels = relabel(unique, order);
+      const result = partitionOf(permuted, 3, permutedLabels);
       answers.add(
         [
-          result!.cost.toPrecision(17),
-          result!.medoids
-            .map((item) => permutedLabels[item])
-            .sort()
-            .join(','),
-          silhouette(permuted, result!.clusters, permutedLabels)
+          result.cost.toPrecision(17),
+          [...relabel(permutedLabels, result.medoids)].sort().join(','),
+          silhouette(permuted, result.clusters, permutedLabels)
             .map((score) => score.toPrecision(17))
             .sort()
             .join(','),
         ].join(' | '),
       );
     }
-    // ONE answer: cost, medoid set and the whole silhouette multiset, over 40 permutations.
+    // ONE answer: cost, medoid set and the whole silhouette multiset, over 40 permutations —
+    // all 40 of which really rearrange the corpus (see {@link rearranges}).
+    expect(rearranged).toBe(40);
     expect(answers.size).toBe(1);
   });
 
@@ -661,15 +720,18 @@ describe('cyclic Jacobi', () => {
         }
       const { values: eigen, vectors } = jacobiEigen({ n, values });
 
+      const vector = (row: number, column: number) =>
+        flatAt(vectors, row * n + column, 'the eigenvector matrix');
+
       for (let i = 0; i < n; ++i)
         for (let j = 0; j < n; ++j) {
           let reconstructed = 0;
           for (let k = 0; k < n; ++k)
-            reconstructed += vectors[i * n + k] * eigen[k] * vectors[j * n + k];
-          expect(reconstructed).toBeCloseTo(values[i * n + j], 10);
+            reconstructed += vector(i, k) * flatAt(eigen, k, 'the spectrum') * vector(j, k);
+          expect(reconstructed).toBeCloseTo(flatAt(values, i * n + j, 'the input matrix'), 10);
 
           let dot = 0;
-          for (let k = 0; k < n; ++k) dot += vectors[k * n + i] * vectors[k * n + j];
+          for (let k = 0; k < n; ++k) dot += vector(k, i) * vector(k, j);
           expect(dot).toBeCloseTo(i === j ? 1 : 0, 10);
         }
     }
@@ -696,13 +758,12 @@ describe('classical MDS', () => {
   it('reproduces a Euclidean corpus’s own distances exactly', () => {
     const matrix = fromPlane(square);
     const embedding = classicalMds(matrix, 2, labelsOf(square.length));
+    const plotted = (item: number, axis: number) =>
+      flatAt(embedding.coordinates, item * 2 + axis, 'the two-axis embedding');
     for (let i = 0; i < matrix.n; ++i)
       for (let j = 0; j < matrix.n; ++j) {
-        const recovered = Math.hypot(
-          embedding.coordinates[i * 2] - embedding.coordinates[j * 2],
-          embedding.coordinates[i * 2 + 1] - embedding.coordinates[j * 2 + 1],
-        );
-        expect(recovered).toBeCloseTo(matrix.values[i * matrix.n + j], 9);
+        const recovered = Math.hypot(plotted(i, 0) - plotted(j, 0), plotted(i, 1) - plotted(j, 1));
+        expect(recovered).toBeCloseTo(cell(matrix, i, j), 9);
       }
     // A planar corpus has no negative mass to report.
     expect(embedding.negativeEigenvalueMass).toBeCloseTo(0, 12);
@@ -733,7 +794,7 @@ describe('classical MDS', () => {
     // this assertion cannot tell the two readings apart; the test below is the one that can.
     const total = embedding.eigenvalues.reduce((sum, value) => sum + Math.abs(value), 0);
     for (const [axis, share] of embedding.explainedVariance.entries())
-      expect(share).toBeCloseTo(embedding.eigenvalues[axis] / total, 12);
+      expect(share).toBeCloseTo(flatAt(embedding.eigenvalues, axis, 'the spectrum') / total, 12);
     const retained = embedding.explainedVariance.reduce<number>(
       (sum, share) => sum + (share ?? 0),
       0,
@@ -827,18 +888,15 @@ describe('classical MDS', () => {
     expect(twice.coordinates).toEqual([...once.coordinates]);
 
     for (let axis = 0; axis < once.axes; ++axis) {
-      const column = Array.from(
-        { length: matrix.n },
-        (_unused, item) => once.coordinates[item * once.axes + axis],
+      const column = Array.from({ length: matrix.n }, (_unused, item) =>
+        flatAt(once.coordinates, item * once.axes + axis, 'the embedding'),
       );
       const peak = Math.max(...column.map((value) => Math.abs(value)));
       if (peak === 0) continue;
       // `labelsOf` is index-ordered, so the first index at the peak IS the lowest label.
       const anchor = column.findIndex((value) => Math.abs(value) >= peak * (1 - 1e-9));
-      expect({ axis, anchored: column[anchor] }).toEqual({
-        axis,
-        anchored: Math.abs(column[anchor]),
-      });
+      const anchored = elementAt(column, anchor, `axis ${String(axis)} of the embedding`);
+      expect({ axis, anchored }).toEqual({ axis, anchored: Math.abs(anchored) });
     }
   });
 
@@ -847,18 +905,19 @@ describe('classical MDS', () => {
     // of axis 0 is a corner of the opposite sign, one ulp above the anchor — which is exactly
     // the ulp the old rule was deciding the plot's orientation on.
     const once = classicalMds(fromPlane(square), 2, labelsOf(square.length));
-    const column = Array.from(
-      { length: square.length },
-      (_unused, item) => once.coordinates[item * once.axes],
+    const column = Array.from({ length: square.length }, (_unused, item) =>
+      flatAt(once.coordinates, item * once.axes, 'axis 0 of the embedding'),
     );
     const peak = Math.max(...column.map((value) => Math.abs(value)));
     const strictest = column.findIndex((value) => Math.abs(value) === peak);
     const anchor = column.findIndex((value) => Math.abs(value) >= peak * (1 - 1e-9));
     expect(strictest).not.toBe(anchor);
-    expect(column[strictest]).toBeLessThan(0);
-    expect(column[anchor]).toBeGreaterThan(0);
+    const strictestValue = elementAt(column, strictest, 'axis 0 of the embedding');
+    const anchoredValue = elementAt(column, anchor, 'axis 0 of the embedding');
+    expect(strictestValue).toBeLessThan(0);
+    expect(anchoredValue).toBeGreaterThan(0);
     // …and the two really are the same number to every digit anyone would print.
-    expect(Math.abs(column[strictest])).toBeCloseTo(Math.abs(column[anchor]), 12);
+    expect(Math.abs(strictestValue)).toBeCloseTo(Math.abs(anchoredValue), 12);
   });
 
   it('pads the retained axes rather than dropping them', () => {
@@ -895,12 +954,15 @@ describe('classical MDS', () => {
         const row = Math.floor(index / n);
         const column = index % n;
         let total = 0;
-        for (let k = 0; k < n; ++k) total += x[row * n + k] * y[k * n + column];
+        for (let k = 0; k < n; ++k)
+          total +=
+            flatAt(x, row * n + k, 'the left factor') *
+            flatAt(y, k * n + column, 'the right factor');
         return total;
       });
     const expected = product(product(j, squared), j).map((value) => -0.5 * value);
     for (const [index, value] of doubleCentered(matrix).values.entries())
-      expect(value).toBeCloseTo(expected[index], 10);
+      expect(value).toBeCloseTo(flatAt(expected, index, 'the independently built −½ J D² J'), 10);
   });
 });
 
@@ -910,7 +972,9 @@ describe('seriation', () => {
     const labels = labelsOf(5);
     const embedding = classicalMds(matrix, 2, labels);
     const order = seriationOrder(embedding, labels);
-    const first = order.map((index) => embedding.coordinates[index * embedding.axes]);
+    const first = order.map((index) =>
+      flatAt(embedding.coordinates, index * embedding.axes, 'axis 0 of the embedding'),
+    );
     expect([...first].sort((x, y) => x - y)).toEqual(first);
     expect([...order].sort((x, y) => x - y)).toEqual([0, 1, 2, 3, 4]);
     // On a one-dimensional corpus the order IS the line, up to the sign the rule fixes.
@@ -932,29 +996,18 @@ describe('seriation', () => {
  * `degenerate` is true. AD-67.1 ruled that narrow-with-data over canonicalising the block.
  */
 describe('AD-67.1: the embedding is permutation-equivariant, and says where it is not', () => {
-  const permuteMatrix = (matrix: DistanceMatrix, order: readonly number[]): DistanceMatrix => ({
-    n: matrix.n,
-    values: Array.from({ length: matrix.n * matrix.n }, (_unused, index) => {
-      const i = Math.floor(index / matrix.n);
-      const j = index % matrix.n;
-      return matrix.values[order[i] * matrix.n + order[j]];
-    }),
-  });
-
   /** Both products read back in the caller's own labels, which is the only comparable frame. */
   const readback = (matrix: DistanceMatrix, labels: readonly string[]) => {
     const embedding = classicalMds(matrix, 2, labels);
     const byLabel = new Map<string, readonly [number, number]>();
-    for (let item = 0; item < matrix.n; ++item)
-      byLabel.set(labels[item], [
-        embedding.coordinates[item * 2],
-        embedding.coordinates[item * 2 + 1],
+    for (const [item, label] of labels.entries())
+      byLabel.set(label, [
+        flatAt(embedding.coordinates, item * 2, 'the two-axis embedding'),
+        flatAt(embedding.coordinates, item * 2 + 1, 'the two-axis embedding'),
       ]);
     return {
       degenerate: embedding.degenerate,
-      seriation: seriationOrder(embedding, labels)
-        .map((item) => labels[item])
-        .join(','),
+      seriation: relabel(labels, seriationOrder(embedding, labels)).join(','),
       byLabel,
       eigenvalues: embedding.eigenvalues,
       coordinates: [...byLabel.entries()]
@@ -1010,6 +1063,7 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
     let mirroredAxes = 0;
     let worstRelative = 0;
     let cases = 0;
+    let rearranged = 0;
 
     for (let trial = 0; trial < 20; ++trial) {
       const n = 4 + Math.floor(next() * 4);
@@ -1025,17 +1079,17 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
       const straight = readback(matrix, labels);
       if (straight.degenerate) continue;
 
+      // Whether this axis carries material spread at all — see the note in the first loop.
+      const material = (axis: 0 | 1) => {
+        const scale = Math.abs(flatAt(straight.eigenvalues, 0, 'the spectrum'));
+        return Math.abs(flatAt(straight.eigenvalues, axis, 'the spectrum')) > 1e-9 * scale;
+      };
+
       for (let attempt = 0; attempt < 30; ++attempt) {
-        const order = Array.from({ length: n }, (_unused, index) => index);
-        for (let i = n - 1; i > 0; --i) {
-          const j = Math.floor(next() * (i + 1));
-          [order[i], order[j]] = [order[j], order[i]];
-        }
-        const shuffled = readback(
-          permuteMatrix(matrix, order),
-          order.map((index) => labels[index]),
-        );
+        const order = shuffleOf(n, next);
+        const shuffled = readback(permute(matrix, order), relabel(labels, order));
         cases += 1;
+        if (rearranges(order)) rearranged += 1;
         if (shuffled.seriation !== straight.seriation) seriationDisagreements += 1;
         for (const axis of [0, 1] as const) {
           // Only an axis that EXISTS can be mirrored. A collinear corpus has
@@ -1043,13 +1097,11 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
           // coordinates peak at `2.6e-8`, and asking which way round it points is not a
           // question. Skipping it is the same materiality rule `classicalMds` uses to decide
           // whether a repeated eigenvalue is worth flagging, applied to the same end.
-          const scale = Math.abs(straight.eigenvalues[0]);
-          if (!(Math.abs(straight.eigenvalues[axis]) > 1e-9 * scale)) continue;
+          if (!material(axis)) continue;
           if (isMirrored(straight.byLabel, shuffled.byLabel, axis)) mirroredAxes += 1;
         }
         for (const axis of [0, 1] as const) {
-          if (!(Math.abs(straight.eigenvalues[axis]) > 1e-9 * Math.abs(straight.eigenvalues[0])))
-            continue;
+          if (!material(axis)) continue;
           // Relative to the AXIS's own extent, not to each coordinate: an item sitting at the
           // corpus centroid is at `~0` on that axis, and a per-coordinate ratio there reports
           // an enormous relative error for a difference no plot could render. The axis extent
@@ -1067,6 +1119,10 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
     }
 
     expect(cases).toBeGreaterThan(500);
+    // …and 596 of them really rearranged the corpus. `n` is 4–7 here, so an identity draw is
+    // not vanishingly rare the way it is at `n = 12` — four of 600 are — and the measured figure
+    // is pinned rather than every case demanded. See {@link rearranges} for why it is asserted.
+    expect({ rearranged, cases }).toEqual({ rearranged: 596, cases: 600 });
     expect({ seriationDisagreements, mirroredAxes }).toEqual({
       seriationDisagreements: 0,
       mirroredAxes: 0,
@@ -1110,12 +1166,7 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
       [2, 3, 0, 1, 4, 5],
       [5, 4, 3, 2, 1, 0],
     ])
-      seen.add(
-        readback(
-          permuteMatrix(matrix, order),
-          order.map((index) => labels[index]),
-        ).coordinates,
-      );
+      seen.add(readback(permute(matrix, order), relabel(labels, order)).coordinates);
     expect(seen.size).toBeGreaterThan(1);
   });
 
