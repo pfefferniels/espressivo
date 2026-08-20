@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DynamicsMap } from '../../../src/mpm/elements/maps/DynamicsMap.js';
 import { DynamicsData } from '../../../src/mpm/elements/maps/data/DynamicsData.js';
+import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute, Builder } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 
@@ -1212,6 +1213,42 @@ describe('DynamicsMap', () => {
           expect(dd.getDynamicsAt(date)).toBeCloseTo(date / 10, 0);
         }
       });
+    });
+  });
+
+  /**
+   * The `dynamicsMap === null` branch of the static entry point: with no dynamics
+   * instructions anywhere, every note gets the default velocity and nothing else is
+   * touched.
+   *
+   * Added because a negative control found it unguarded — skipping the branch's first map
+   * entry entirely left all 6032 tests and `npm run gate` green. It is reachable in
+   * production (`Performance` passes `mpm.dynamics`, which is null for a performance that
+   * declares no `dynamicsMap`), so this is a gap in the oracle rather than dead code.
+   */
+  describe('renderDynamicsToMap with no dynamicsMap at all', () => {
+    it('gives every note the default velocity, first one included, and returns no channelVolumeMap', () => {
+      const map = GenericMap.createGenericMap('score')!;
+      for (const [name, date] of [
+        ['note', 0],
+        ['rest', 10],
+        ['note', 20],
+      ] as const) {
+        const e = new Element(name);
+        e.addAttribute(new Attribute('date', String(date)));
+        map.addElement(e);
+      }
+
+      expect(DynamicsMap.renderDynamicsToMap(map, null)).toBeNull();
+      expect(
+        map
+          .getAllElements()
+          .map((e) => [e.getValue().getLocalName(), e.getValue().getAttributeValue('velocity')]),
+      ).toEqual([
+        ['note', '100.0'],
+        ['rest', null],
+        ['note', '100.0'],
+      ]);
     });
   });
 });

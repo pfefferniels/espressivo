@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { TempoMap } from '../../../src/mpm/elements/maps/TempoMap.js';
 import { TempoData } from '../../../src/mpm/elements/maps/data/TempoData.js';
+import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 
 // ==========================================================================
@@ -937,6 +938,69 @@ describe('TempoMap', () => {
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
       expect(ms).toBeCloseTo(125.0, 10);
+    });
+  });
+
+  /**
+   * The `tempoMap === null` branch of the static entry point: with no tempo instructions
+   * anywhere, the millisecond attributes are the `.perf` ones copied across verbatim.
+   *
+   * Added because a negative control found it unguarded — skipping the branch's first map
+   * entry entirely left all 6032 tests and `npm run gate` green. It is reachable in
+   * production (`Performance` passes `mpm.tempo`, which is null for a performance that
+   * declares no `tempoMap`), so this is a gap in the oracle rather than dead code.
+   */
+  describe('renderTempoToMap with no tempoMap at all', () => {
+    const noteMap = (): GenericMap => {
+      const map = GenericMap.createGenericMap('score')!;
+      for (const [date, dur] of [
+        [0, 100],
+        [100, 50],
+      ]) {
+        const e = new Element('note');
+        e.addAttribute(new Attribute('date', String(date)));
+        e.addAttribute(new Attribute('date.perf', String(date)));
+        e.addAttribute(new Attribute('duration.perf', String(dur)));
+        map.addElement(e);
+      }
+      return map;
+    };
+
+    it('copies date.perf to milliseconds.date on every entry, first one included', () => {
+      const map = noteMap();
+      TempoMap.renderTempoToMap(map, 720, null);
+      expect(
+        map.getAllElements().map((e) => e.getValue().getAttributeValue('milliseconds.date')),
+      ).toEqual(['0', '100']);
+    });
+
+    it('derives date.end.perf from duration.perf and mirrors it into milliseconds.date.end', () => {
+      const map = noteMap();
+      TempoMap.renderTempoToMap(map, 720, null);
+      const values = map
+        .getAllElements()
+        .map((e) => [
+          e.getValue().getAttributeValue('date.end.perf'),
+          e.getValue().getAttributeValue('milliseconds.date.end'),
+        ]);
+      expect(values).toEqual([
+        ['100', '100'],
+        ['150', '150'],
+      ]);
+    });
+
+    it('prefers an existing date.end.perf over recomputing it from the duration', () => {
+      const map = GenericMap.createGenericMap('score')!;
+      const e = new Element('note');
+      e.addAttribute(new Attribute('date', '0'));
+      e.addAttribute(new Attribute('date.perf', '0'));
+      e.addAttribute(new Attribute('date.end.perf', '77'));
+      e.addAttribute(new Attribute('duration.perf', '100'));
+      map.addElement(e);
+
+      TempoMap.renderTempoToMap(map, 720, null);
+      expect(e.getAttributeValue('milliseconds.date.end')).toBe('77');
+      expect(e.getAttributeValue('date.end.perf')).toBe('77');
     });
   });
 });

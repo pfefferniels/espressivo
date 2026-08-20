@@ -3,6 +3,7 @@ import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { descendantElements } from '../../xml/tree.js';
 import { MPM_NAMESPACE } from '../names.js';
 import { GenericMap } from './maps/GenericMap.js';
+import { mapOfKind, parseTypedMap, type MapKind, type MapOfKind } from './maps/map.js';
 import { Header } from './Header.js';
 import type { Global } from './Global.js';
 import type { Part } from './Part.js';
@@ -53,9 +54,9 @@ export class Dated extends AbstractXmlSubtree {
    * it verbatim rather than copying.
    *
    * Like {@link Header.parseData}, maps are discovered by name shape: any descendant whose
-   * local name contains `Map`, plus `score`. {@link GenericMap.createTypedMap} then picks
-   * the subclass for known types and falls back to a plain {@link GenericMap} otherwise,
-   * so an unrecognised `…Map` is preserved rather than dropped.
+   * local name contains `Map`, plus `score`. {@link parseTypedMap} then picks the class for
+   * known types and falls back to a plain {@link GenericMap} otherwise, so an unrecognised
+   * `…Map` is preserved rather than dropped.
    */
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate Dated object. XML Element is null.');
@@ -72,17 +73,14 @@ export class Dated extends AbstractXmlSubtree {
 
   addMapFromXml(xml: Element): GenericMap | null {
     if (xml === null) return null;
-    const type = xml.getLocalName();
-    const m = GenericMap.createTypedMap(type, xml);
-    return this.addMap(m);
+    return this.addMap(parseTypedMap(xml));
   }
 
   addMapByType(type: string): GenericMap | null {
     if (!type) return null;
     const generic = GenericMap.createGenericMap(type); // build the correctly named and namespaced map element
     if (generic === null) return null;
-    const m = GenericMap.createTypedMap(type, generic.getXml()); // if the map is of a known type, generate the corresponding object type
-    return this.addMap(m);
+    return this.addMap(parseTypedMap(generic.getXml())); // and re-read it as its own class, where it has one
   }
 
   /**
@@ -124,6 +122,24 @@ export class Dated extends AbstractXmlSubtree {
   }
   getMap(type: string): GenericMap | null {
     return this.maps.get(type) ?? null;
+  }
+
+  /**
+   * The map of one known kind, typed as that kind — {@link getMap} for the thirteen names
+   * `maps/map.ts` has a class for.
+   *
+   * This is what removed the twenty-four `dated.getMap(TEMPO_MAP) as TempoMap | null` casts
+   * in `Performance`. The two are not the same operation: the cast asserts that whatever is
+   * filed under the key is of that class, and {@link addMap} cannot promise it — it accepts
+   * any `GenericMap` and files it under `map.getType()`, so a plain `GenericMap` built from
+   * a `<tempoMap>` element lands under `tempoMap` and satisfies the cast while answering
+   * none of `TempoMap`'s methods. {@link mapOfKind} checks instead, and returns null for it.
+   *
+   * `getMap` stays for the callers that legitimately take any map — the MSM maps
+   * `Performance` collects have no `MapKind` at all.
+   */
+  getMapOfKind<K extends MapKind>(kind: K): MapOfKind[K] | null {
+    return mapOfKind(this.maps.get(kind) ?? null, kind);
   }
   getAllMaps(): ReadonlyMap<string, GenericMap> {
     return this.maps;

@@ -120,7 +120,7 @@ export class TempoMap extends GenericMap {
       const beatLengthAtt = attribute('beatLength', e);
       if (beatLengthAtt === null) return null;
       td.startDate = this.elements[i].getKey();
-      td.endDate = this.getEndDate(i);
+      td.endDate = this.nextDateOfType(i, 'tempo');
       td.xml = e;
       td.beatLength = parseFloat(beatLengthAtt.getValue());
       const att = attribute('id', e);
@@ -161,17 +161,6 @@ export class TempoMap extends GenericMap {
       return td;
     }
     return null;
-  }
-
-  private getEndDate(index: number): number {
-    let endDate = Number.MAX_VALUE;
-    for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === 'tempo') {
-        endDate = this.elements[j].getKey();
-        break;
-      }
-    }
-    return endDate;
   }
 
   private static computeExponent(meanTempoAt: number): number {
@@ -337,8 +326,11 @@ export class TempoMap extends GenericMap {
       return;
     }
     if (map === null) return;
-    for (let i = 0; i < map.size(); ++i) {
-      const e = map.getElement(i)!;
+    // Walking the index directly rather than `map.getElement(i)!` over `0 ..< map.size()`:
+    // same entries in the same order, and no assertion contradicting an accessor about a
+    // range the loop itself established.
+    for (const entry of map.getAllElements()) {
+      const e = entry.getValue();
       const dateAtt = attribute('date.perf', e);
       if (dateAtt !== null) e.addAttribute(new Attribute('milliseconds.date', dateAtt.getValue()));
       const endAtt = attribute('date.end.perf', e);
@@ -408,5 +400,3 @@ export class TempoMap extends GenericMap {
     return resultConst * resultSum;
   }
 }
-
-GenericMap.registerMapFactory('tempoMap', (xml) => TempoMap.createTempoMap(xml));

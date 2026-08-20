@@ -153,7 +153,7 @@ export class DynamicsMap extends GenericMap {
     const e = this.elements[i].getValue();
     const dd = new DynamicsData();
     dd.startDate = this.elements[i].getKey();
-    dd.endDate = this.getEndDate(i);
+    dd.endDate = this.nextDateOfType(i, 'dynamics');
     dd.xml = e;
     const att = attribute('id', e);
     if (att !== null) dd.xmlId = att.getValue();
@@ -182,14 +182,6 @@ export class DynamicsMap extends GenericMap {
     const sndAtt = attribute('subNoteDynamics', e);
     if (sndAtt !== null) dd.subNoteDynamics = sndAtt.getValue() === 'true';
     return dd;
-  }
-
-  private getEndDate(index: number): number {
-    for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === 'dynamics')
-        return this.elements[j].getKey();
-    }
-    return Number.MAX_VALUE;
   }
 
   /**
@@ -283,12 +275,13 @@ export class DynamicsMap extends GenericMap {
   ): GenericMap | null {
     if (dynamicsMap !== null) return dynamicsMap.renderDynamicsToMap(map);
     if (map === null) return null;
-    for (let i = 0; i < map.size(); ++i) {
-      const e = map.getElement(i)!;
+    // Walking the index directly rather than `map.getElement(i)!` over `0 ..< map.size()`:
+    // same entries in the same order, and the map's own accessor stops having to be
+    // contradicted about the range its caller just established.
+    for (const entry of map.getAllElements()) {
+      const e = entry.getValue();
       if (e.getLocalName() === 'note') e.addAttribute(new Attribute('velocity', '100.0'));
     }
     return null;
   }
 }
-
-GenericMap.registerMapFactory('dynamicsMap', (xml) => DynamicsMap.createDynamicsMap(xml));

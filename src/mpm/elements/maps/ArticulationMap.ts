@@ -245,7 +245,9 @@ export class ArticulationMap extends GenericMap {
       const aDef = aStyle.getDef(defaultArticulationAtt.getValue()) ?? null;
       if (aDef === null)
         console.error(
-          `Warning: attribute ${attribute('defaultArticulation', styleEntry.getValue())!.toXML()} in style element refers to an unknown articulationDef.`,
+          // The attribute node is the one already in hand; the incumbent looked it up a
+          // second time and asserted the result non-null, which is the same node.
+          `Warning: attribute ${defaultArticulationAtt.toXML()} in style element refers to an unknown articulationDef.`,
         );
       defaultArticulations.push(
         new KeyValue<number, ArticulationDef | null>(styleEntry.getKey(), aDef),
@@ -346,7 +348,3 @@ export class ArticulationMap extends GenericMap {
     if (articulationMap !== null) articulationMap.renderArticulationToMap_millisecondModifiers(map);
   }
 }
-
-GenericMap.registerMapFactory('articulationMap', (xml) =>
-  ArticulationMap.createArticulationMap(xml),
-);

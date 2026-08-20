@@ -443,20 +443,18 @@ export class Performance extends AbstractXmlSubtree {
   private resolveGlobalMaps(): MpmMaps {
     const dated = this.getGlobal()!.getDated()!;
     return {
-      rubato: dated.getMap(RUBATO_MAP) as RubatoMap | null,
-      tempo: dated.getMap(TEMPO_MAP) as TempoMap | null,
-      asynchrony: dated.getMap(ASYNCHRONY_MAP) as AsynchronyMap | null,
-      imprecisionTiming: dated.getMap(IMPRECISION_MAP_TIMING) as ImprecisionMap | null,
-      imprecisionDynamics: dated.getMap(IMPRECISION_MAP_DYNAMICS) as ImprecisionMap | null,
-      imprecisionToneduration: dated.getMap(IMPRECISION_MAP_TONEDURATION) as ImprecisionMap | null,
-      imprecisionTuning: dated.getMap(IMPRECISION_MAP_TUNING) as ImprecisionMap | null,
-      dynamics: dated.getMap(DYNAMICS_MAP) as DynamicsMap | null,
-      movement: dated.getMap(MOVEMENT_MAP) as MovementMap | null,
-      metricalAccentuation: dated.getMap(
-        METRICAL_ACCENTUATION_MAP,
-      ) as MetricalAccentuationMap | null,
-      ornamentation: dated.getMap(ORNAMENTATION_MAP) as OrnamentationMap | null,
-      articulation: dated.getMap(ARTICULATION_MAP) as ArticulationMap | null,
+      rubato: dated.getMapOfKind(RUBATO_MAP),
+      tempo: dated.getMapOfKind(TEMPO_MAP),
+      asynchrony: dated.getMapOfKind(ASYNCHRONY_MAP),
+      imprecisionTiming: dated.getMapOfKind(IMPRECISION_MAP_TIMING),
+      imprecisionDynamics: dated.getMapOfKind(IMPRECISION_MAP_DYNAMICS),
+      imprecisionToneduration: dated.getMapOfKind(IMPRECISION_MAP_TONEDURATION),
+      imprecisionTuning: dated.getMapOfKind(IMPRECISION_MAP_TUNING),
+      dynamics: dated.getMapOfKind(DYNAMICS_MAP),
+      movement: dated.getMapOfKind(MOVEMENT_MAP),
+      metricalAccentuation: dated.getMapOfKind(METRICAL_ACCENTUATION_MAP),
+      ornamentation: dated.getMapOfKind(ORNAMENTATION_MAP),
+      articulation: dated.getMapOfKind(ARTICULATION_MAP),
     };
   }
 
@@ -604,30 +602,21 @@ export class Performance extends AbstractXmlSubtree {
     if (mpmPart === null) return globalMaps;
     const dated = mpmPart.getDated()!;
     return {
-      rubato: (dated.getMap(RUBATO_MAP) as RubatoMap | null) ?? globalMaps.rubato,
-      tempo: (dated.getMap(TEMPO_MAP) as TempoMap | null) ?? globalMaps.tempo,
-      asynchrony: (dated.getMap(ASYNCHRONY_MAP) as AsynchronyMap | null) ?? globalMaps.asynchrony,
-      dynamics: (dated.getMap(DYNAMICS_MAP) as DynamicsMap | null) ?? globalMaps.dynamics,
-      movement: (dated.getMap(MOVEMENT_MAP) as MovementMap | null) ?? globalMaps.movement,
+      rubato: dated.getMapOfKind(RUBATO_MAP) ?? globalMaps.rubato,
+      tempo: dated.getMapOfKind(TEMPO_MAP) ?? globalMaps.tempo,
+      asynchrony: dated.getMapOfKind(ASYNCHRONY_MAP) ?? globalMaps.asynchrony,
+      dynamics: dated.getMapOfKind(DYNAMICS_MAP) ?? globalMaps.dynamics,
+      movement: dated.getMapOfKind(MOVEMENT_MAP) ?? globalMaps.movement,
       metricalAccentuation:
-        (dated.getMap(METRICAL_ACCENTUATION_MAP) as MetricalAccentuationMap | null) ??
-        globalMaps.metricalAccentuation,
-      ornamentation:
-        (dated.getMap(ORNAMENTATION_MAP) as OrnamentationMap | null) ?? globalMaps.ornamentation,
-      articulation:
-        (dated.getMap(ARTICULATION_MAP) as ArticulationMap | null) ?? globalMaps.articulation,
-      imprecisionTiming:
-        (dated.getMap(IMPRECISION_MAP_TIMING) as ImprecisionMap | null) ??
-        globalMaps.imprecisionTiming,
+        dated.getMapOfKind(METRICAL_ACCENTUATION_MAP) ?? globalMaps.metricalAccentuation,
+      ornamentation: dated.getMapOfKind(ORNAMENTATION_MAP) ?? globalMaps.ornamentation,
+      articulation: dated.getMapOfKind(ARTICULATION_MAP) ?? globalMaps.articulation,
+      imprecisionTiming: dated.getMapOfKind(IMPRECISION_MAP_TIMING) ?? globalMaps.imprecisionTiming,
       imprecisionDynamics:
-        (dated.getMap(IMPRECISION_MAP_DYNAMICS) as ImprecisionMap | null) ??
-        globalMaps.imprecisionDynamics,
+        dated.getMapOfKind(IMPRECISION_MAP_DYNAMICS) ?? globalMaps.imprecisionDynamics,
       imprecisionToneduration:
-        (dated.getMap(IMPRECISION_MAP_TONEDURATION) as ImprecisionMap | null) ??
-        globalMaps.imprecisionToneduration,
-      imprecisionTuning:
-        (dated.getMap(IMPRECISION_MAP_TUNING) as ImprecisionMap | null) ??
-        globalMaps.imprecisionTuning,
+        dated.getMapOfKind(IMPRECISION_MAP_TONEDURATION) ?? globalMaps.imprecisionToneduration,
+      imprecisionTuning: dated.getMapOfKind(IMPRECISION_MAP_TUNING) ?? globalMaps.imprecisionTuning,
     };
   }
 

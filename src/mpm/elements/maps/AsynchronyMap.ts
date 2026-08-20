@@ -75,7 +75,9 @@ export class AsynchronyMap extends GenericMap {
     let mapEntries = [...map.getAllElements()];
     const done: KeyValue<number, Element>[] = [];
     for (let asynIndex = 0; asynIndex < this.size(); ++asynIndex) {
-      const asynElement = this.getElement(asynIndex)!;
+      // `this.elements[asynIndex]`, not `getElement(asynIndex)!`: the index is this loop's
+      // own bound, and the three lines below already read the entry that way.
+      const asynElement = this.elements[asynIndex].getValue();
       const xmlId = getAttributeValue('xml:id', asynElement);
       const asynEndDate =
         asynIndex < this.elements.length - 1
@@ -126,5 +128,3 @@ export class AsynchronyMap extends GenericMap {
     if (asynchronyMap !== null) asynchronyMap.renderAsynchronyToMap(map);
   }
 }
-
-GenericMap.registerMapFactory('asynchronyMap', (xml) => AsynchronyMap.createAsynchronyMap(xml));

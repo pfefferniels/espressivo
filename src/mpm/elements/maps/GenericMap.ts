@@ -63,46 +63,66 @@ const MPM_NAMES = new Set([
  * {@link sort} — updates both, in that order. Writing to one alone corrupts the map:
  * lookups would disagree with the document that gets serialized.
  *
- * Subclasses are registered rather than switched on. Each map module ends with a
- * `GenericMap.registerMapFactory(localName, factory)` call, and
- * {@link createTypedMap} dispatches on the element's local name, falling back to a
- * plain GenericMap for unknown ones. That is what lets `Dated` parse a map it has
- * never heard of without a central dependency on all the subclasses — but it also means
- * **importing a map module is what registers it**, so the import side effects in the
- * MPM barrel are load-bearing.
+ * Which class a given `<dated>` child is read into is decided by the one exhaustive table
+ * in `maps/map.ts`, which this class does not — and must not — know about: the nine
+ * subclasses import *it*, so a table here would be a nine-way cycle. See that module for
+ * what the table replaced (a static mutable factory registry filled by import side
+ * effects) and why the direction of the edge is the whole point.
  *
  * Port of meico.mpm.elements.maps.GenericMap
  */
 export class GenericMap extends AbstractXmlSubtree {
-  private static readonly _factories = new Map<string, (xml: Element) => GenericMap | null>();
-
-  static registerMapFactory(type: string, factory: (xml: Element) => GenericMap | null): void {
-    GenericMap._factories.set(type, factory);
-  }
-
-  static createTypedMap(type: string, xml: Element): GenericMap | null {
-    const factory = GenericMap._factories.get(type);
-    if (factory) return factory(xml);
-    return GenericMap.createGenericMap(xml);
-  }
-
   elements: KeyValue<number, Element>[] = [];
   private globalHeader: Header | null = null;
   private localHeader: Header | null = null;
 
+  /**
+   * Build a map from a local name (a fresh, empty one) or from an existing element.
+   *
+   * **No virtual call here.** This used to end in `this.parseData(…)`, and `ImprecisionMap`
+   * overrode `parseData` to append its own name check — a base constructor dispatching into
+   * a subclass method whose own field initialisers have not run yet, which is the one real
+   * dispatch edge the map cluster had and the kind of edge that is worth removing rather
+   * than preserving. {@link indexElements} below is `private`, so this call is static; the
+   * subclass check now runs in `ImprecisionMap`'s own constructor, *after* `super(…)`
+   * returns, which keeps the order of the two validations (generic name shape first,
+   * `imprecisionMap` prefix second) exactly as it was.
+   */
   protected constructor(typeOrXml: string | Element) {
     super();
-    if (typeof typeOrXml === 'string') {
-      const type = typeOrXml;
-      if (!type.includes('Map') && type !== 'score')
-        throw new Error(
-          `Cannot generate GenericMap object. Local name "${type}" must contain "Map" or equal "score".`,
-        );
-      if (MPM_NAMES.has(type)) this.parseData(new Element(type, MPM_NAMESPACE));
-      else this.parseData(new Element(type));
-    } else {
-      this.parseData(typeOrXml);
-    }
+    this.indexElements(
+      typeof typeOrXml === 'string' ? GenericMap.elementForType(typeOrXml) : typeOrXml,
+    );
+  }
+
+  /**
+   * The empty element a map of local name `type` starts life as.
+   *
+   * Static, because it runs to produce the argument the constructor needs and so cannot
+   * touch the instance. Only names MPM itself defines get the MPM namespace: an
+   * unrecognised `<xyzMap>` is namespace-less, which is what makes a foreign map round-trip
+   * as it arrived.
+   */
+  private static elementForType(type: string): Element {
+    if (!type.includes('Map') && type !== 'score')
+      throw new Error(
+        `Cannot generate GenericMap object. Local name "${type}" must contain "Map" or equal "score".`,
+      );
+    return MPM_NAMES.has(type) ? new Element(type, MPM_NAMESPACE) : new Element(type);
+  }
+
+  /**
+   * Required by {@link AbstractXmlSubtree}, which declares it to state the invariant "an XML
+   * subtree is constructed by parsing an element" — and which says in as many words that it
+   * is a shape constraint, not a dispatch point.
+   *
+   * This class meets that invariant in its constructor instead. Re-parsing a *different*
+   * element into a live map was never a supported operation — `Dated` indexes maps by the
+   * type of the element they were built from — so this throws rather than silently doing
+   * nothing. `styles/style.ts` states the same thing the same way.
+   */
+  protected parseData(): never {
+    throw new Error('GenericMap is constructed by its factories; parseData is not an entry point.');
   }
 
   /**
@@ -139,8 +159,11 @@ export class GenericMap extends AbstractXmlSubtree {
    * were already out of order in the source document are indexed in date order. It
    * finds the *last* position whose date is `<=` the new one, which makes the pass
    * stable: same-dated children keep their document order.
+   *
+   * Private, and that is load-bearing: it is called from the constructor, where a virtual
+   * call would reach a subclass before that subclass's own initialisation had run.
    */
-  protected parseData(xml: Element): void {
+  private indexElements(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate GenericMap object. XML Element is null.');
     if (!xml.getLocalName().includes('Map') && xml.getLocalName() !== 'score')
       throw new Error(
@@ -486,6 +509,35 @@ export class GenericMap extends AbstractXmlSubtree {
     const i = this.clampEntryIndex(index);
     if (i < 0) return -1;
     return this.elements[i].getValue().getLocalName() === localName ? i : -1;
+  }
+
+  /**
+   * Where the instruction at `index` stops being in force: the date of the next entry named
+   * `localName`, or `Number.MAX_VALUE` when there is none.
+   *
+   * This was five private `getEndDate(index)` methods — in `TempoMap`, `DynamicsMap`,
+   * `RubatoMap`, `MetricalAccentuationMap` and `MovementMap` (a reader arriving from a
+   * `…Map.getEndDate:NNN` citation elsewhere in the tree wants this method). Five copies,
+   * not five overrides: none was ever reached through a base-class reference, and they
+   * differed in exactly one token, the local name they scan for — `tempo`, `dynamics`,
+   * `rubato`, `accentuationPattern`, `movement`. Naming that token is the whole of the
+   * unification.
+   *
+   * `MAX_VALUE` and not null because it is what the callers do with it: `endDate` is the
+   * open end of a span they compare dates against, and "there is no next one" means the span
+   * runs to the end of time. Four of the five spelled that as an early `return`, `TempoMap`
+   * as a `break` out of an initialised local; the two are the same function.
+   *
+   * `ImprecisionMap` deliberately does not use this. Its spans end at the next entry of
+   * *any* name, style switches included, which is a different rule and stays written out
+   * where it is (see `DistributionSpan.endDate`).
+   */
+  protected nextDateOfType(index: number, localName: string): number {
+    for (let j = index + 1; j < this.elements.length; ++j) {
+      if (this.elements[j].getValue().getLocalName() === localName)
+        return this.elements[j].getKey();
+    }
+    return Number.MAX_VALUE;
   }
 
   /**

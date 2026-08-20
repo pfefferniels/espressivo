@@ -106,7 +106,7 @@ export class RubatoMap extends GenericMap {
     const e = this.elements[i].getValue();
     const rd = new RubatoData();
     rd.startDate = this.elements[i].getKey();
-    rd.endDate = this.getEndDate(i);
+    rd.endDate = this.nextDateOfType(i, 'rubato');
     rd.xml = e;
     const att = attribute('id', e);
     if (att !== null) rd.xmlId = att.getValue();
@@ -142,13 +142,6 @@ export class RubatoMap extends GenericMap {
       rd.earlyEnd = 1.0;
     }
     return rd;
-  }
-
-  private getEndDate(index: number): number {
-    for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === 'rubato') return this.elements[j].getKey();
-    }
-    return Number.MAX_VALUE;
   }
 
   /**
@@ -242,5 +235,3 @@ export class RubatoMap extends GenericMap {
     if (rubatoMap !== null) rubatoMap.renderRubatoToMap(map);
   }
 }
-
-GenericMap.registerMapFactory('rubatoMap', (xml) => RubatoMap.createRubatoMap(xml));

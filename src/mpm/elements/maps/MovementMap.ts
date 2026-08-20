@@ -92,7 +92,7 @@ export class MovementMap extends GenericMap {
     const e = this.elements[i].getValue();
     const md = new MovementData();
     md.startDate = this.elements[i].getKey();
-    md.endDate = this.getEndDate(i);
+    md.endDate = this.nextDateOfType(i, 'movement');
     md.xml = e;
     const att = attribute('id', e);
     if (att !== null) md.xmlId = att.getValue();
@@ -150,14 +150,6 @@ export class MovementMap extends GenericMap {
     return 0;
   }
 
-  private getEndDate(index: number): number {
-    for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === 'movement')
-        return this.elements[j].getKey();
-    }
-    return Number.MAX_VALUE;
-  }
-
   /**
    * Sample every movement into a fresh `positionMap` of `<position>` elements.
    *
@@ -211,5 +203,3 @@ export class MovementMap extends GenericMap {
     }
   }
 }
-
-GenericMap.registerMapFactory('movementMap', (xml) => MovementMap.createMovementMap(xml));

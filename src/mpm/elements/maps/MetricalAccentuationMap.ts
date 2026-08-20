@@ -67,7 +67,7 @@ export class MetricalAccentuationMap extends GenericMap {
     if (scaleAtt === null) return null;
     md.scale = parseFloat(scaleAtt.getValue());
     md.startDate = this.elements[i].getKey();
-    md.endDate = this.getEndDate(i);
+    md.endDate = this.nextDateOfType(i, 'accentuationPattern');
     md.xml = e;
     const att = attribute('id', e);
     if (att !== null) md.xmlId = att.getValue();
@@ -83,14 +83,6 @@ export class MetricalAccentuationMap extends GenericMap {
       return md;
     }
     return null;
-  }
-
-  private getEndDate(index: number): number {
-    for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === 'accentuationPattern')
-        return this.elements[j].getKey();
-    }
-    return Number.MAX_VALUE;
   }
 
   /**
@@ -176,7 +168,3 @@ export class MetricalAccentuationMap extends GenericMap {
       metricalAccentuationMap.renderMetricalAccentuationToMap(map, timeSignatureMap, ppq);
   }
 }
-
-GenericMap.registerMapFactory('metricalAccentuationMap', (xml) =>
-  MetricalAccentuationMap.createMetricalAccentuationMap(xml),
-);
