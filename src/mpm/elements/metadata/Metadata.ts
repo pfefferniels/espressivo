@@ -1,4 +1,4 @@
-import { Attribute, Element } from '../../../xml/XomTypes.js';
+import { Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { allChildElements, firstChildElement } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
@@ -35,25 +35,30 @@ export class Metadata extends AbstractXmlSubtree {
    * Build a metadata element from an existing `<metadata>`, from any one of the three
    * content kinds, or from all three at once.
    *
-   * ⚠ The single-argument forms are dispatched by **duck typing**, not by `instanceof`:
-   * `getName`+`getNumber` identifies an {@link Author} and `getText` a {@link Comment}.
-   * That is why the overloads cannot be collapsed onto a union — the argument's *shape* is
-   * what selects the behaviour — and it is also the fragile part of this factory: adding a
-   * `getText` to `Author`, or a `getName` to `Comment`, would silently re-route callers.
-   * The `arg2`/`arg3` reads distinguish the single-argument forms from the three-argument
-   * one, since `undefined` is the only signal available.
+   * The four single-argument forms were four overloads, and the body picked between them by
+   * **duck typing**: `getName`+`getNumber` identified an {@link Author}, `getText` a
+   * {@link Comment}. The comment above them explained that this was why they could not be
+   * collapsed onto a union — the argument's *shape* selected the behaviour — and then named
+   * the hazard that follows from it: adding a `getText` to `Author`, or a `getName` to
+   * `Comment`, would silently re-route callers.
+   *
+   * Both of those are gone together. `Author`, `Comment` and `Element` are classes, so
+   * `instanceof` decides this, and one union signature says exactly what the four said. It
+   * is also closer to the reference than the overload set was: Java's five `createMetadata`
+   * factories are five one-line delegations to ONE private constructor
+   * `Metadata(Author, Comment, Collection<RelatedResource>)` (Metadata.java:37-131), which
+   * is {@link build} below. The duck typing was a port artefact, not a ported behaviour.
    *
    * Returns the reason instead of printing it, as every factory in this cluster now does;
    * note that "no usable content" is one of the failures, and it is the `empty` arm.
    */
-  static createMetadata(xml: Element): Result<Metadata, MpmParseError>;
-  static createMetadata(author: Author): Result<Metadata, MpmParseError>;
-  static createMetadata(comment: Comment): Result<Metadata, MpmParseError>;
-  static createMetadata(relatedResources: RelatedResource[]): Result<Metadata, MpmParseError>;
+  static createMetadata(
+    source: Element | Author | Comment | RelatedResource[],
+  ): Result<Metadata, MpmParseError>;
   /**
    * The resources may individually be null, because the callers build the array out of
    * `RelatedResource.createRelatedResource` results and that factory used to report failure
-   * with null. A null in the array is a caller error, and it stays one — see the loop below.
+   * with null. A null in the array is a caller error, and it stays one — see {@link build}.
    */
   static createMetadata(
     author: Author | null,
@@ -65,68 +70,55 @@ export class Metadata extends AbstractXmlSubtree {
     arg2?: Comment | null,
     arg3?: readonly (RelatedResource | null)[] | null,
   ): Result<Metadata, MpmParseError> {
-    const m = new Metadata();
-    if (arg1 instanceof Element) {
-      return m.readFrom(arg1);
-    } else if (Array.isArray(arg1)) {
-      const metadata = new Element('metadata', MPM_NAMESPACE);
-      if (arg1.length > 0) {
-        const rrElt = new Element('relatedResources', MPM_NAMESPACE);
-        metadata.appendChild(rrElt);
-        for (const r of arg1) rrElt.appendChild(r.getXml());
-      }
-      return m.readFrom(metadata);
-    } else {
-      const metadata = new Element('metadata', MPM_NAMESPACE);
-      // All three arms of the ternary this replaces evaluated to `arg1`; only the
-      // asserted type differed, and assertions erase. In the multi-argument form
-      // reached below, `arg1` *is* the author position.
-      const author = arg1 as Author | null;
-      const comment =
-        arg2 !== undefined
-          ? arg2
-          : arg1 !== null && arg1 !== undefined && 'getText' in arg1
-            ? arg1
-            : null;
-      const relatedResources = arg3 ?? null;
-
-      if (arg2 === undefined && arg3 === undefined) {
-        // Single argument factory
-        if (arg1 !== null && arg1 !== undefined) {
-          if ('getName' in arg1 && 'getNumber' in arg1) {
-            // It's an Author
-            metadata.appendChild(arg1.getXml());
-          } else if ('getText' in arg1) {
-            // It's a Comment
-            metadata.appendChild(arg1.getXml());
-          }
-        }
-      } else {
-        if (author !== null && author !== undefined) metadata.appendChild(author.getXml());
-        if (comment !== null && comment !== undefined) metadata.appendChild(comment.getXml());
-        if (relatedResources !== null && relatedResources.length > 0) {
-          const rrElt = new Element('relatedResources', MPM_NAMESPACE);
-          metadata.appendChild(rrElt);
-          // A null here used to be an `r!` that threw, which the enclosing `try` logged
-          // before returning null. The failure is the same failure — a caller who passed
-          // a `createRelatedResource` result without checking it — and it is still not
-          // repaired, because a guard that skipped the null would silently accept the bad
-          // array. What changes is that it now has a name. The check sits inside the loop
-          // rather than ahead of it so that the resources before the null are re-parented
-          // exactly as the throwing version left them.
-          for (const r of relatedResources) {
-            if (r === null)
-              return err({
-                kind: 'missingArgument',
-                what: 'Metadata',
-                argument: 'relatedResource',
-              });
-            rrElt.appendChild(r.getXml());
-          }
-        }
-      }
-      return m.readFrom(metadata);
+    // `undefined` in both trailing positions is still the only signal that separates the
+    // one-argument forms from the three-argument one, exactly as before — an `Author` in
+    // position 1 means different things in the two.
+    if (arg2 === undefined && arg3 === undefined) {
+      if (arg1 instanceof Element) return new Metadata().readFrom(arg1);
+      if (arg1 instanceof Author) return Metadata.build(arg1, null, null);
+      if (arg1 instanceof Comment) return Metadata.build(null, arg1, null);
+      if (Array.isArray(arg1)) return Metadata.build(null, null, arg1);
+      // `createMetadata(null)`: no content, which `readFrom` reports as `empty`. The
+      // incumbent reached the same answer by falling out of its duck-typing chain.
+      return Metadata.build(null, null, null);
     }
+    return Metadata.build(arg1 instanceof Author ? arg1 : null, arg2 ?? null, arg3 ?? null);
+  }
+
+  /**
+   * Java's private `Metadata(Author, Comment, Collection<RelatedResource>)`, which every one
+   * of its five factories delegates to.
+   *
+   * A null in `relatedResources` used to be an `r!` that threw, which the enclosing `try`
+   * logged before returning null. The failure is the same failure — a caller who passed a
+   * `createRelatedResource` result without checking it — and it is still not repaired,
+   * because a guard that skipped the null would silently accept the bad array. What changes
+   * is that it now has a name. The check sits inside the loop rather than ahead of it so
+   * that the resources before the null are re-parented exactly as the throwing version left
+   * them.
+   */
+  private static build(
+    author: Author | null,
+    comment: Comment | null,
+    relatedResources: readonly (RelatedResource | null)[] | null,
+  ): Result<Metadata, MpmParseError> {
+    const metadata = new Element('metadata', MPM_NAMESPACE);
+    if (author !== null) metadata.appendChild(author.getXml());
+    if (comment !== null) metadata.appendChild(comment.getXml());
+    if (relatedResources !== null && relatedResources.length > 0) {
+      const rrElt = new Element('relatedResources', MPM_NAMESPACE);
+      metadata.appendChild(rrElt);
+      for (const r of relatedResources) {
+        if (r === null)
+          return err({
+            kind: 'missingArgument',
+            what: 'Metadata',
+            argument: 'relatedResource',
+          });
+        rrElt.appendChild(r.getXml());
+      }
+    }
+    return new Metadata().readFrom(metadata);
   }
 
   /**
@@ -181,7 +173,8 @@ export class Metadata extends AbstractXmlSubtree {
     }
   }
 
-  addAuthor(author: Author): number {
+  /** Null is accepted and ignored (Metadata.java:187) — the guard says so; now the type does. */
+  addAuthor(author: Author | null): number {
     if (author === null) return -1;
     this.getXml().appendChild(author.getXml());
     this.authors.push(author);
@@ -217,7 +210,8 @@ export class Metadata extends AbstractXmlSubtree {
     }
   }
 
-  addComment(comment: Comment): number {
+  /** As {@link addAuthor}: null is accepted and ignored, and the type now says so. */
+  addComment(comment: Comment | null): number {
     if (comment === null) return -1;
     this.getXml().appendChild(comment.getXml());
     this.comments.push(comment);
