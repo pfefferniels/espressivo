@@ -194,7 +194,26 @@ function measureGrid(
     const until = Math.min(next?.startQuarters ?? endQuarters, endQuarters);
     const length = measureLengthQuarters(entry);
     if (!(length > 0)) continue;
-    for (let start = entry.startQuarters; start < until; start += length) {
+    // `first + k · length`, and NOT a `start += length` accumulator.
+    //
+    // Repeated addition of a non-representable length compounds its rounding error once per
+    // bar. Every power-of-two denominator — 4/4, 6/8, 7/8, 3/2 — gives a length that IS
+    // representable, so the corpus never showed it; 5/6 gives 3.3333333333333335, and measured,
+    // the accumulated and multiplied grids part company by 1.1e-13 by bar 57 and never
+    // reconverge. `measurePositionAt` then divides the drifted `startQuarters` into the
+    // reported `beat`, and measure numbers and beats are published report fields, so the drift
+    // is observable output rather than an internal detail.
+    //
+    // The sibling computation in `rubatoCurve.ts` already multiplies
+    // (`raw.dateTicks + k * frameLengthTicks`); this is the same arithmetic written the same
+    // way. Nothing is reassociated: `start` was never a running SUM of different quantities,
+    // only the same `length` added k times, and `k · length` is that product computed once.
+    //
+    // `!(start < until)` and not `start >= until`, so a NaN `start` ends the walk exactly as
+    // the old continuation test did rather than running forever.
+    for (let k = 0; ; k += 1) {
+      const start = entry.startQuarters + k * length;
+      if (!(start < until)) break;
       measures.push({
         number,
         startQuarters: start,
