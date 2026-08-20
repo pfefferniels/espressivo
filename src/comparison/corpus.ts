@@ -27,7 +27,7 @@
  * for the same two documents under the same window are the same number, and the matrix cannot
  * drift from the product it is assembled out of.
  */
-import { fromEntriesExact } from '../prelude/index.js';
+import { fromEntriesExact, groupBy } from '../prelude/index.js';
 import { elementAt, elementAtOrNull, numberAt, upperBoundBy } from '../prelude/seq.js';
 import { agglomerate, pam, silhouette, SILHOUETTE_RELIABLE_MINIMUM } from './clustering.js';
 import type { Linkage } from './clustering.js';
@@ -154,14 +154,18 @@ function expand(items: readonly InteriorCorpusItem[]): readonly ExpandedItem[] {
 
 /** Every label that appears more than once, with the item indices that produced it (A8). */
 function collisions(items: readonly ExpandedItem[]): ReadonlyMap<string, readonly number[]> {
-  const byLabel = new Map<string, number[]>();
-  for (const item of items) {
-    const seen = byLabel.get(item.label);
-    if (seen === undefined) byLabel.set(item.label, [item.itemIndex]);
-    else seen.push(item.itemIndex);
-  }
+  // `groupBy`, whose body this loop was: the get-or-create on a Map of arrays, keyed on a
+  // derived value, preserving encounter order inside each bucket — which is what makes the
+  // reported index list read in item order. The projection to `itemIndex` moves to the far
+  // side of the filter, so it now runs only for the labels that actually collided.
+  const byLabel = groupBy(items, (item) => item.label);
   const bad = new Map<string, readonly number[]>();
-  for (const [label, indices] of byLabel) if (indices.length > 1) bad.set(label, indices);
+  for (const [label, group] of byLabel)
+    if (group.length > 1)
+      bad.set(
+        label,
+        group.map((item) => item.itemIndex),
+      );
   return bad;
 }
 

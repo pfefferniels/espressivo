@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, firstChildElement, getAttributeValue } from '../../../xml/tree.js';
 import { addUUID } from '../../../xml/ids.js';
-import { head, isNonEmpty, zipWith } from '../../../prelude/index.js';
+import { groupBy, head, isNonEmpty, partitionWith, zipWith } from '../../../prelude/index.js';
 import { formatNoteOrderPerf, parseNoteOrder } from './data/noteOrder.js';
 import { expandOrnament } from './data/ornamentExpansion.js';
 import { FrameDomain, NoteOffShift, TemporalSpread } from '../styles/defs/TemporalSpread.js';
@@ -339,20 +339,20 @@ export function instantiateOrnaments(
 ): void {
   if (prepared.length === 0) return;
 
-  const groups = new Map<Element, PreparedOrnament[]>();
-  const orphans: PreparedOrnament[] = [];
+  // Two questions, and the loop this replaces asked them both at once: which ornaments have
+  // a principal at all, and which of those share one. They are `partitionWith` and `groupBy`,
+  // and the get-or-create dance in the middle was `groupBy`'s body written out.
+  //
+  // The two phases stay two phases — every group is laid out before any orphan is — because
+  // layout appends generated notes to the target maps and a single interleaved pass would
+  // append them in a different order. `groupBy` preserves encounter order inside each bucket
+  // and Map preserves first-encounter order across them, so both sequences are the ones the
+  // hand-written version produced. `renderGroup` already takes `Element | null`, so the key
+  // needs no narrowing on the way in.
+  const { yes: orphans, no: parented } = partitionWith(prepared, (o) => o.principal === null);
 
-  for (const ornament of prepared) {
-    if (ornament.principal === null) {
-      orphans.push(ornament);
-      continue;
-    }
-    const group = groups.get(ornament.principal);
-    if (group === undefined) groups.set(ornament.principal, [ornament]);
-    else group.push(ornament);
-  }
-
-  for (const [principal, group] of groups) renderGroup(group, principal, owners, maps);
+  for (const [principal, group] of groupBy(parented, (o) => o.principal))
+    renderGroup(group, principal, owners, maps);
   for (const orphan of orphans) renderGroup([orphan], null, owners, maps);
 }
 
