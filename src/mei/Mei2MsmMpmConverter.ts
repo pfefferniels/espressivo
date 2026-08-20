@@ -50,7 +50,40 @@ import { OrnamentData } from '../mpm/elements/maps/data/OrnamentData.js';
 import { Author } from '../mpm/elements/metadata/Author.js';
 import { Comment } from '../mpm/elements/metadata/Comment.js';
 import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
-import { filterMap, foldl, head, isNonEmpty, pairwise } from '../prelude/index.js';
+import { foldl, head, isNonEmpty } from '../prelude/index.js';
+import { elementAt, findLast, removeAt } from './indexing.js';
+
+/**
+ * The circle of fifths as `[midi.pitch, pitchname]` pairs, sharpwards and flatwards — the
+ * accidentals a key signature carries, in the order it accumulates them.
+ *
+ * `makeKeySignature` takes the first `|accidCount|` entries of one of these, so the order is
+ * the whole content: F♯ C♯ G♯ D♯ A♯ E♯ B♯ going sharpwards, B♭ E♭ A♭ D♭ G♭ C♭ F♭ going
+ * flatwards. Java holds them as two parallel arrays indexed by one counter, rebuilt on every
+ * call; as pairs at module scope they are neither indexed nor reallocated.
+ *
+ * The flatward list is the sharpward one reversed, and is written out rather than derived so
+ * that reading either one against a key-signature table needs no mental step.
+ */
+const CIRCLE_OF_FIFTHS_SHARPWARD = [
+  ['5.0', 'F'],
+  ['0.0', 'C'],
+  ['7.0', 'G'],
+  ['2.0', 'D'],
+  ['9.0', 'A'],
+  ['4.0', 'E'],
+  ['11.0', 'B'],
+] as const;
+
+const CIRCLE_OF_FIFTHS_FLATWARD = [
+  ['11.0', 'B'],
+  ['4.0', 'E'],
+  ['9.0', 'A'],
+  ['2.0', 'D'],
+  ['7.0', 'G'],
+  ['0.0', 'C'],
+  ['5.0', 'F'],
+] as const;
 
 /**
  * What the walker does with an element once its handler has run.
@@ -775,7 +808,10 @@ export class Mei2MsmMpmConverter {
         case 0:
           break;
         case 1:
-          this.currentWork = works[0];
+          // The `switch` has just established the length; `elementAt` is how that is said
+          // to a compiler which does not read `switch` bounds, and it names the sequence if
+          // the two ever disagree.
+          this.currentWork = elementAt(works, 0, 'the work list of this MEI');
           break;
         default: {
           if (decls !== null) {
@@ -1113,14 +1149,22 @@ export class Mei2MsmMpmConverter {
       // — every note in it — to find the layer's own siblings, once per last layer of every
       // staff of every measure. `allChildElements` is the child axis walked directly, and
       // `tests/xml/navigationEquivalence.test.ts` already asserts the two agree over the
-      // fixture corpus. The fold is a maximum, so the backwards loop is kept only because
-      // it was there.
+      // fixture corpus. The fold is a maximum, so the backwards loop Java writes is kept
+      // only because it was there — which is to say it is a `foldl`, and now says so.
       const layers = allChildElements(layer.getParent()!, 'layer');
-      let latestDate = parseFloat(this.currentPart!.getAttribute('currentDate')!.getValue());
-      for (let j = layers.length - 1; j >= 0; --j) {
-        const date = parseFloat(layers[j].getAttributeValue('currentDate')!);
-        if (latestDate < date) latestDate = date;
-      }
+      //
+      // A layer the walk has not reached yet carries no `currentDate`, and `parseFloat` of
+      // that is NaN, which loses every `<` comparison and is therefore skipped. That was
+      // already the behaviour when this read `getAttributeValue(…)!`: the assertion is
+      // erased at runtime, so `parseFloat` received the null and answered NaN just the same.
+      const latestDate = foldl(
+        layers,
+        parseFloat(this.currentPart!.getAttribute('currentDate')!.getValue()),
+        (latest, sibling) => {
+          const date = parseFloat(sibling.getAttributeValue('currentDate') ?? '');
+          return latest < date ? date : latest;
+        },
+      );
       this.currentPart!.getAttribute('currentDate')!.setValue(String(latestDate));
     }
   }
@@ -1139,9 +1183,12 @@ export class Mei2MsmMpmConverter {
   private processChoice(choice: Element): void {
     const prefOrder = ['corr', 'reg', 'expan', 'subst', 'choice', 'orig', 'unclear', 'sic', 'abbr'];
 
+    // The first child in preference order, which is a search rather than an index walk: the
+    // loop stops at the first hit, so the names after it are never looked up.
     let c: Element | null = null;
-    for (let i = 0; c === null && i < prefOrder.length; ++i) {
-      c = firstChildElement(choice, prefOrder[i]);
+    for (const preferred of prefOrder) {
+      c = firstChildElement(choice, preferred);
+      if (c !== null) break;
     }
 
     if (c !== null) {
@@ -1193,17 +1240,16 @@ export class Mei2MsmMpmConverter {
       .getFirstChildElement('sequencingMap')!;
 
     let endingText = '';
-    let endingNumbers: number[];
     const activity = '1';
     let n = Number.MIN_SAFE_INTEGER;
     if (ending.getAttribute('n') !== null) endingText = ending.getAttributeValue('n')!;
     else if (ending.getAttribute('label') !== null) endingText = ending.getAttributeValue('label')!;
     if (endingText.toLowerCase().includes('fine')) n = Number.MAX_SAFE_INTEGER;
     else {
-      endingNumbers = extractAllIntegersFromString(endingText);
-      if (endingNumbers.length > 0) {
-        n = endingNumbers[0];
-      }
+      // The first integer in the label, if there is one — `isNonEmpty` carries that "if"
+      // into the type, so `head` needs no index and no assertion.
+      const endingNumbers = extractAllIntegersFromString(endingText);
+      if (isNonEmpty(endingNumbers)) n = head(endingNumbers);
     }
 
     const endingLabel = ending.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
@@ -1426,22 +1472,30 @@ export class Mei2MsmMpmConverter {
     measure.addAttribute(new Attribute('date', String(startDate)));
     this.currentMeasure = measure;
 
-    // process pending tstamp2 elements
-    for (let i = 0; i < this.tstamp2s.length; ++i) {
-      const e = this.tstamp2s[i];
+    // Process pending tstamp2 elements. A measure boundary counts every parked entry down by
+    // one; the entries that reach zero resolve to a `date.end` here and leave the list, and
+    // the rest are rewritten with the smaller count. That is a partition, so this is a filter
+    // that rebuilds the list once rather than the index loop that used to `splice` in place
+    // and step `i` backwards to survive its own mutation.
+    //
+    // Both halves of the split are read through `elementAt` because both are in range by
+    // construction: an entry is only parked when `computeControlEventTiming` saw at least two
+    // parts (a one-part `tstamp2` resolves there and is never parked), and the rewrite below
+    // puts the separator back.
+    this.tstamp2s = this.tstamp2s.filter((e) => {
       const att = e.getAttribute('tstamp2')!;
       const tstamp2Parts = att.getValue().split('m+');
-      const measures = parseInt(tstamp2Parts[0]) - 1;
-      if (measures <= 0) {
-        const endDate = this.tstampToTicks(tstamp2Parts[1], null);
-        e.addAttribute(new Attribute('date.end', String(endDate)));
-        e.removeAttribute(att);
-        this.tstamp2s.splice(i, 1);
-        i--;
-      } else {
-        att.setValue(`${measures}m+${tstamp2Parts[1]}`);
+      const beat = elementAt(tstamp2Parts, 1, "a parked tstamp2 split on 'm+'");
+      const measures = parseInt(elementAt(tstamp2Parts, 0, "a parked tstamp2 split on 'm+'")) - 1;
+      if (measures > 0) {
+        att.setValue(`${measures}m+${beat}`);
+        return true;
       }
-    }
+      const endDate = this.tstampToTicks(beat, null);
+      e.addAttribute(new Attribute('date.end', String(endDate)));
+      e.removeAttribute(att);
+      return false;
+    });
 
     Mei2MsmMpmConverter.reorderMeasureContent(measure);
 
@@ -1509,14 +1563,14 @@ export class Mei2MsmMpmConverter {
           globalTsMap.removeChild(last);
         } else break;
       }
-      const numDenom = [
-        parseFloat(globalTimeSignature.getAttributeValue('numerator')!),
-        parseFloat(globalTimeSignature.getAttributeValue('denominator')!),
-      ];
-      const num = (longestDuration * numDenom[1]) / (this.ppq * 4.0);
-      const newTs = Msm.makeTimeSignature(startDate, num, numDenom[1], null);
+      // A two-element array read back as `[0]` and `[1]` is a pair with the names left off.
+      // Putting them back is the whole fix here.
+      const numerator = parseFloat(globalTimeSignature.getAttributeValue('numerator')!);
+      const denominator = parseFloat(globalTimeSignature.getAttributeValue('denominator')!);
+      const num = (longestDuration * denominator) / (this.ppq * 4.0);
+      const newTs = Msm.makeTimeSignature(startDate, num, denominator, null);
       globalTsMap.appendChild(newTs);
-      const switchBackTs = Msm.makeTimeSignature(endDate, numDenom[0], numDenom[1], null);
+      const switchBackTs = Msm.makeTimeSignature(endDate, numerator, denominator, null);
       globalTsMap.appendChild(switchBackTs);
     }
 
@@ -1534,14 +1588,12 @@ export class Mei2MsmMpmConverter {
           tsMap.removeChild(last);
         } else break;
       }
-      const numDenom = [
-        parseFloat(ts.getAttributeValue('numerator')!),
-        parseFloat(ts.getAttributeValue('denominator')!),
-      ];
-      const num2 = (longestDuration * numDenom[1]) / (this.ppq * 4.0);
-      const newTs2 = Msm.makeTimeSignature(startDate, num2, numDenom[1], null);
+      const numerator2 = parseFloat(ts.getAttributeValue('numerator')!);
+      const denominator2 = parseFloat(ts.getAttributeValue('denominator')!);
+      const num2 = (longestDuration * denominator2) / (this.ppq * 4.0);
+      const newTs2 = Msm.makeTimeSignature(startDate, num2, denominator2, null);
       tsMap.appendChild(newTs2);
-      const switchBackTs2 = Msm.makeTimeSignature(endDate, numDenom[0], numDenom[1], null);
+      const switchBackTs2 = Msm.makeTimeSignature(endDate, numerator2, denominator2, null);
       tsMap.appendChild(switchBackTs2);
     }
 
@@ -2033,18 +2085,16 @@ export class Mei2MsmMpmConverter {
               `Unknown sig or key.sig attribute value in ${meiSource.toXML()}. Assume 0 in the further processing.`,
             );
         }
-        const acsArr =
-          accidCount > 0
-            ? ['5.0', '0.0', '7.0', '2.0', '9.0', '4.0', '11.0']
-            : ['11.0', '4.0', '9.0', '2.0', '7.0', '0.0', '5.0'];
-        const acsnArr =
-          accidCount > 0
-            ? ['F', 'C', 'G', 'D', 'A', 'E', 'B']
-            : ['B', 'E', 'A', 'D', 'G', 'C', 'F'];
-        for (let i = 0; i < Math.abs(accidCount); ++i) {
+        // Java keeps two index-aligned arrays here and walks them with one counter; they are
+        // one sequence of (pitch, name) pairs, and as pairs the loop takes elements instead
+        // of indices. The order within each is the circle of fifths in the corresponding
+        // direction, so the first `|accidCount|` of them are exactly the key's accidentals.
+        const circleOfFifths =
+          accidCount > 0 ? CIRCLE_OF_FIFTHS_SHARPWARD : CIRCLE_OF_FIFTHS_FLATWARD;
+        for (const [midiPitch, pitchName] of circleOfFifths.slice(0, Math.abs(accidCount))) {
           const accidental = new Element('accidental');
-          accidental.addAttribute(new Attribute('midi.pitch', acsArr[i]));
-          accidental.addAttribute(new Attribute('pitchname', acsnArr[i]));
+          accidental.addAttribute(new Attribute('midi.pitch', midiPitch));
+          accidental.addAttribute(new Attribute('pitchname', pitchName));
           accidental.addAttribute(new Attribute('value', accidCount > 0 ? '1.0' : '-1.0'));
           accidentals.push(accidental);
         }
@@ -2564,20 +2614,24 @@ export class Mei2MsmMpmConverter {
     endid: Attribute | null,
     tstamp2: Attribute | null,
   ): number {
+    // The instruction this one continues from: the last entry that starts at or before it.
+    // Java counts an index down, skips the later entries and `break`s on the first hit —
+    // which is a backwards search, and as one the body reads the entry it found instead of
+    // indexing back into the array three more times.
     const previousDynamics = dynamicsMap.getAllElements();
-
-    for (let i = previousDynamics.length - 1; i >= 0; --i) {
-      if (previousDynamics[i].getKey() > dynamicsData.startDate) continue;
-
+    const predecessor = findLast(
+      previousDynamics,
+      (entry) => entry.getKey() <= dynamicsData.startDate,
+    );
+    if (predecessor !== null) {
+      const trans = predecessor.getValue().getAttribute('transition.to');
       if (dynamicsData.transitionToString === null) {
-        const trans = previousDynamics[i].getValue().getAttribute('transition.to');
         if (trans !== null) trans.setValue(dynamicsData.volumeString!);
+      } else if (trans !== null) {
+        dynamicsData.volumeString = trans.getValue();
       } else {
-        const trans = previousDynamics[i].getValue().getAttribute('transition.to');
-        if (trans !== null) dynamicsData.volumeString = trans.getValue();
-        else dynamicsData.volumeString = previousDynamics[i].getValue().getAttributeValue('volume');
+        dynamicsData.volumeString = predecessor.getValue().getAttributeValue('volume');
       }
-      break;
     }
     if (dynamicsData.volumeString === null) dynamicsData.volumeString = '?';
 
@@ -2661,22 +2715,18 @@ export class Mei2MsmMpmConverter {
     endid: Attribute | null,
     tstamp2: Attribute | null,
   ): number {
+    // The same backwards search as {@link addDynamicsToMpm}, over `bpm` instead of `volume`.
     const previousTempo = tempoMap.getAllElements();
-
-    for (let i = previousTempo.length - 1; i >= 0; --i) {
-      if (previousTempo[i].getKey() > tempoData.startDate) continue;
-
+    const predecessor = findLast(previousTempo, (entry) => entry.getKey() <= tempoData.startDate);
+    if (predecessor !== null) {
+      const trans = predecessor.getValue().getAttribute('transition.to');
       if (tempoData.transitionToString === null) {
-        const trans = previousTempo[i].getValue().getAttribute('transition.to');
-        if (trans !== null) {
-          trans.setValue(tempoData.bpmString!);
-        }
+        if (trans !== null) trans.setValue(tempoData.bpmString!);
+      } else if (trans !== null) {
+        tempoData.bpmString = trans.getValue();
       } else {
-        const trans = previousTempo[i].getValue().getAttribute('transition.to');
-        if (trans !== null) tempoData.bpmString = trans.getValue();
-        else tempoData.bpmString = previousTempo[i].getValue().getAttributeValue('bpm');
+        tempoData.bpmString = predecessor.getValue().getAttributeValue('bpm');
       }
-      break;
     }
 
     const index = tempoMap.addTempo(tempoData);
@@ -3088,9 +3138,13 @@ export class Mei2MsmMpmConverter {
       const plist = plistAtt.getValue().trim().replace(/#/g, '').split(/\s+/);
       let multiIds = false;
 
-      // all but the last: the end of the legato bow is not played legato
-      for (let i = plist.length - 2; i >= 0; --i) {
-        const note = this.allNotesAndChords.get(plist[i]);
+      // All but the last: the end of the legato bow is not played legato. Java counts down
+      // from `length - 2`, and the direction is load-bearing — the ids drawn below are
+      // canonicalised by first occurrence, so a forwards walk would move fixture bytes.
+      // Hence the copy is reversed rather than the walk; `slice(0, -1)` of a one- or
+      // zero-element list is empty, which is the loop that did not run.
+      for (const ref of plist.slice(0, -1).reverse()) {
+        const note = this.allNotesAndChords.get(ref);
         if (note !== undefined) {
           note.addAttribute(new Attribute('slur', 'im'));
           if (xmlid !== null) {
@@ -3107,7 +3161,9 @@ export class Mei2MsmMpmConverter {
       }
 
       if (plist.length > 2) {
-        const note = this.allNotesAndChords.get(plist[plist.length - 1]);
+        const note = this.allNotesAndChords.get(
+          elementAt(plist, plist.length - 1, "a slur's plist"),
+        );
         if (note !== undefined) {
           note.addAttribute(new Attribute('slur', 't'));
           if (xmlid !== null) {
@@ -3685,9 +3741,16 @@ export class Mei2MsmMpmConverter {
     const pitch = this.computePitch(note, pitchdata);
     if (pitch === -1) return;
     s.addAttribute(new Attribute('midi.pitch', String(pitch)));
-    s.addAttribute(new Attribute('pitchname', pitchdata[0]));
-    s.addAttribute(new Attribute('accidentals', pitchdata[1]));
-    s.addAttribute(new Attribute('octave', pitchdata[2]));
+    // `computePitch` reports the pitch through its return value and the *spelling* — name,
+    // accidental, octave — by appending three strings to `pitchdata`. It appends all three or
+    // none: the only early return is the `-1` handled on the line above. The three reads are
+    // therefore in range by construction, and `elementAt` is what says so — a spelling that
+    // silently defaulted to `''` would become a note with an empty pitch name that no
+    // downstream stage could tell from a real one.
+    const what = "computePitch's [pitchname, accidental, octave]";
+    s.addAttribute(new Attribute('pitchname', elementAt(pitchdata, 0, what)));
+    s.addAttribute(new Attribute('accidentals', elementAt(pitchdata, 1, what)));
+    s.addAttribute(new Attribute('octave', elementAt(pitchdata, 2, what)));
 
     if (note.getAttribute('accid') !== null) {
       this.accid.push(note);
@@ -3862,8 +3925,8 @@ export class Mei2MsmMpmConverter {
 
   /** one measure in ticks under the time signature in force; `4 * ppq` is a whole note */
   protected getOneMeasureLength(msmPartContext: Element | null): number {
-    const ts = this.getCurrentTimeSignature(msmPartContext);
-    return (4.0 * this.ppq * ts[0]) / ts[1];
+    const [numerator, denominator] = this.getCurrentTimeSignature(msmPartContext);
+    return (4.0 * this.ppq * numerator) / denominator;
   }
 
   /**
@@ -3875,8 +3938,13 @@ export class Mei2MsmMpmConverter {
    * current date — the maps are built in document order as the walk proceeds, so their
    * final entry is the most recent one seen. That holds only while the conversion is
    * running forward through the score, which is why this is not a general lookup.
+   *
+   * The return type is a **pair**, not a `number[]`. Every one of the three paths below
+   * returns exactly two numbers and every caller reads exactly `[0]` and `[1]`, so saying so
+   * in the type is what lets those callers destructure by name instead of indexing into a
+   * length the type had forgotten.
    */
-  protected getCurrentTimeSignature(msmPartContext: Element | null): number[] {
+  protected getCurrentTimeSignature(msmPartContext: Element | null): readonly [number, number] {
     let es: Elements | null = null;
     if (msmPartContext !== null)
       es = msmPartContext
@@ -4017,9 +4085,18 @@ export class Mei2MsmMpmConverter {
     return tempoData;
   }
 
+  /**
+   * The position of the first parked span whose `endid` is `id`, or `-1` — Java's contract.
+   *
+   * An index walk rather than the `findIndex` this obviously is, and measured: {@link checkEndid}
+   * calls it for **every element of the score**, so the predicate closure would be one
+   * allocation per element on the hottest path the converter has. `elementAt` is what keeps
+   * the walk honest — `i` comes from the list's own length, so a miss is a defect here.
+   */
   private getEndid(id: string): number {
     for (let i = 0; i < this.endids.length; ++i) {
-      if (this.endids[i].getAttributeValue('endid') === id) return i;
+      const parked = elementAt(this.endids, i, 'the parked endid worklist');
+      if (parked.getAttributeValue('endid') === id) return i;
     }
     return -1;
   }
@@ -4036,17 +4113,23 @@ export class Mei2MsmMpmConverter {
    */
   protected checkEndid(e: Element): void {
     const id = `#${getAttributeValue('id', e)}`;
-    for (let j = this.getEndid(id); j >= 0; j = this.getEndid(id)) {
-      this.endids[j].addAttribute(
+    // `removeAt` takes the entry out of the worklist and hands it back, which is what lets
+    // this stop indexing into a list it is mutating — and it is also why the `-1` from
+    // `getEndid` is safe to pass straight in: `splice(-1, 1)` would remove the *last* entry,
+    // so the bounds test lives inside the helper and answers null instead.
+    for (
+      let parked = removeAt(this.endids, this.getEndid(id));
+      parked !== null;
+      parked = removeAt(this.endids, this.getEndid(id))
+    ) {
+      parked.addAttribute(
         new Attribute(
           'date.end',
           String(
-            this.getMidiTime() +
-              (this.endids[j].getLocalName() === 'slur' ? 0.0 : this.computeDuration(e)),
+            this.getMidiTime() + (parked.getLocalName() === 'slur' ? 0.0 : this.computeDuration(e)),
           ),
         ),
       );
-      this.endids.splice(j, 1);
     }
   }
 
@@ -4178,7 +4261,10 @@ export class Mei2MsmMpmConverter {
           startidAtt = event.getAttribute('plist');
         }
         if (startidAtt !== null) {
-          const startid = startidAtt.getValue().trim().replace(/#/g, '').split(/\s+/)[0].trim();
+          // `plist` may name several elements; only the first decides where the event goes.
+          // A `split` always yields at least one part, so index 0 is in range for any string.
+          const references = startidAtt.getValue().trim().replace(/#/g, '').split(/\s+/);
+          const startid = elementAt(references, 0, 'a startid/plist reference list').trim();
           const node = this.allNotesAndChords.get(startid);
           if (node !== undefined) {
             const parent = node.getParent()!;
@@ -4202,13 +4288,18 @@ export class Mei2MsmMpmConverter {
       tstamp2 = event.getAttribute('tstamp2.ges');
       if (tstamp2 === null) tstamp2 = event.getAttribute('tstamp2');
       if (tstamp2 !== null) {
+        // `<measures>m+<beat>`. The length tests below are the bounds proof for the two
+        // reads: the one-part form has a part 0, and reaching the `'0'` test means there are
+        // at least two, so both indices are in range and `elementAt` names the sequence if
+        // that ever stops being true.
         const ts2 = tstamp2.getValue().split('m+');
+        const what = "a tstamp2 split on 'm+'";
         if (ts2.length === 0) tstamp2 = null;
         else if (ts2.length === 1) {
-          endDate = this.tstampToTicks(ts2[0], msmPartContext);
+          endDate = this.tstampToTicks(elementAt(ts2, 0, what), msmPartContext);
           tstamp2 = null;
-        } else if (ts2[0] === '0') {
-          endDate = this.tstampToTicks(ts2[1], msmPartContext);
+        } else if (elementAt(ts2, 0, what) === '0') {
+          endDate = this.tstampToTicks(elementAt(ts2, 1, what), msmPartContext);
           tstamp2 = null;
         }
       }
@@ -4358,8 +4449,18 @@ export class Mei2MsmMpmConverter {
       );
     }
 
+    // Backwards, and the direction is arithmetic rather than taste: `dur` accumulates by
+    // multiplication and floating-point multiplication is not associative, so visiting the
+    // spans in the other order would change the last bits of every tuplet duration.
+    //
+    // This one stays an index walk, against the rule the rest of this file now follows,
+    // because it is the innermost thing the converter does — once per note — and `for..of`
+    // over a reversed copy measured 4% slower on a 2000-note score against
+    // `scripts/bench.mjs`'s synthetic corpus. `elementAt` is what makes the walk honest
+    // without allocating an iterator per note: `i` comes from `tps.length`, so a miss would
+    // be a defect here rather than a property of the score.
     for (let i = tps.length - 1; i >= 0; --i) {
-      const ts = tps[i];
+      const ts = elementAt(tps, i, 'the tuplet spans in scope');
       if (
         ts.getAttribute('date.end') !== null &&
         parseFloat(ts.getAttributeValue('date.end')!) <= this.getMidiTime()
@@ -4510,21 +4611,29 @@ export class Mei2MsmMpmConverter {
         accid = ofThis.getAttributeValue('accid')!;
         if (accid !== '') checkKeySign = false;
       } else {
-        for (let i = this.accid.length - 1; i >= 0; --i) {
-          const anAccid = this.accid[i];
-          if (
-            anAccid.getAttribute('pname') !== null &&
-            anAccid.getAttributeValue('pname') === pname &&
-            anAccid.getAttribute('oct') !== null &&
-            parseFloat(anAccid.getAttributeValue('oct')!) === oct
-          ) {
-            if (anAccid.getAttribute('accid.ges') !== null)
-              accid = anAccid.getAttributeValue('accid.ges')!;
-            else if (anAccid.getAttribute('accid') !== null)
-              accid = anAccid.getAttributeValue('accid')!;
-            checkKeySign = accid === '';
-            break;
-          }
+        // The most recent accidental in this measure on the same pitch and octave. Java
+        // counts an index down and `break`s on the first hit, which is a backwards search;
+        // as one, the predicate and the thing done with the hit stop being interleaved, and
+        // reading each attribute value once instead of asking `getAttribute` and then
+        // asserting `getAttributeValue(…)!` retires three assertions with it.
+        //
+        // (`getAttribute('pname') !== null` is dropped from the predicate because it is
+        // subsumed: `pname` is a `string`, and a candidate without the attribute answers
+        // `null`, which is equal to no string.)
+        const anAccid = findLast(this.accid, (candidate) => {
+          const candidateOct = candidate.getAttributeValue('oct');
+          return (
+            candidate.getAttributeValue('pname') === pname &&
+            candidateOct !== null &&
+            parseFloat(candidateOct) === oct
+          );
+        });
+        if (anAccid !== null) {
+          const gestural = anAccid.getAttributeValue('accid.ges');
+          const written = anAccid.getAttributeValue('accid');
+          if (gestural !== null) accid = gestural;
+          else if (written !== null) accid = written;
+          checkKeySign = accid === '';
         }
         if (checkKeySign) {
           const keySigMapLocal =
@@ -4919,10 +5028,9 @@ export class Mei2MsmMpmConverter {
       aMap = perf.getGlobal()?.getDated()?.getMap(Mpm.TEMPO_MAP) ?? null;
       if (aMap !== null) maps.push(aMap);
 
-      const parts = perf.getAllParts();
-      for (let pp = 0; pp < perf.size(); ++pp) {
-        const part = parts[pp];
-
+      // `perf.size()` IS `perf.getAllParts().length`, so the counter never said anything the
+      // sequence did not.
+      for (const part of perf.getAllParts()) {
         aMap = part.getDated()?.getMap(Mpm.DYNAMICS_MAP) ?? null;
         if (aMap !== null) maps.push(aMap);
 
