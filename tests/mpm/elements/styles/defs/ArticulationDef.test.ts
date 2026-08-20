@@ -111,24 +111,37 @@ describe('ArticulationDef', () => {
     });
   });
 
-  // `parseData` is the parser the static factories call — the forwarding override that
-  // used to sit in front of it is gone. Re-applying it to a second element is not a path
-  // production takes; what the test is for is the parse itself, and re-application is
-  // simply the only way to observe it separately from construction.
-  describe('parseData', () => {
-    it('re-reads name and attributes when applied to another element', () => {
-      const ad = ArticulationDef.createArticulationDef('first')!;
-      const other = articulationDefElement({
+  // WAS: `parseData` re-applied to a second element, asserting it re-read name and the
+  // twelve numeric attributes. That test's own comment said re-application "is not a path
+  // production takes … simply the only way to observe [the parse] separately from
+  // construction", and `@name` is no longer part of what it re-reads: it is required, so
+  // the factory reads it and hands it to a `readonly` constructor parameter — which is what
+  // let `AbstractDef`'s `protected name!: Attribute` go. The parse of the twelve is observed
+  // directly by the from-XML cases above; what is left to pin is the name binding.
+  describe('the name is bound at construction', () => {
+    it('writes through the very attribute node the parse read', () => {
+      const xml = articulationDefElement({
         name: 'second',
         relativeDuration: '0.8',
         detuneHz: '2.0',
       });
-      (ad as unknown as { parseData(xml: Element): void }).parseData(other);
-
+      const ad = ArticulationDef.createArticulationDef(xml)!;
+      expect(ad.getXml()).toBe(xml);
       expect(ad.getName()).toBe('second');
       expect(ad.getRelativeDuration()).toBe(0.8);
       expect(ad.getDetuneHz()).toBe(2.0);
-      expect(ad.getXml()).toBe(other);
+
+      const nameNode = xml.getAttribute('name')!;
+      ad.setName('renamed');
+      expect(nameNode.getValue()).toBe('renamed');
+      expect(ad.getName()).toBe('renamed');
+      // No second `name` attribute appended — which for THIS class is the load-bearing half:
+      // its twelve numeric setters go through `addAttribute`, which is remove-then-append in
+      // XomTypes and so moves an existing attribute to the end of the serialized list.
+      // `setName` must not, or renaming a def would reorder its bytes.
+      expect(xml.getAttributeCount()).toBe(3);
+      expect(xml.getChildElements().size()).toBe(0);
+      expect(xml.toXML()).toContain('name="renamed" relativeDuration="0.8" detuneHz="2.0"');
     });
   });
 

@@ -3,7 +3,8 @@ import { allChildElements, attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
-import { AbstractDef } from './AbstractDef.js';
+import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
+import { requireDefName } from './defName.js';
 
 /**
  * An `accentuationPatternDef`: a metrical accentuation pattern over one bar of `length`
@@ -22,22 +23,48 @@ import { AbstractDef } from './AbstractDef.js';
  * Parsing is not read-only: a missing `length` attribute is ADDED to the element with the
  * default 4.0.
  */
-export class AccentuationPatternDef extends AbstractDef {
+export class AccentuationPatternDef extends AbstractXmlSubtree {
+  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  readonly kind = 'accentuationPattern';
   private length = 4.0;
   private readonly accentuations: KeyValue<number[], Element>[] = [];
+  /**
+   * The `@length` node, held so {@link setLength} writes where {@link parseData} read.
+   *
+   * Assigned in `parseData` rather than the constructor because — unlike a `tempoDef`'s
+   * `@value` — this attribute may be *created* there: a pattern that declares no length gets
+   * the default 4.0 written onto its element. The `!` that this would otherwise need is
+   * avoided by initialising it to the same attribute node the default path builds.
+   */
+  private lengthAttr: Attribute;
 
-  private constructor() {
+  private constructor(private readonly nameAttr: Attribute) {
     super();
+    this.lengthAttr = new Attribute('length', String(this.length));
   }
 
-  protected override parseData(xml: Element): void {
-    super.parseData(xml);
+  getName(): string {
+    return this.nameAttr.getValue();
+  }
 
-    let lengthAttr = attribute('length', xml);
-    if (lengthAttr === null) {
-      lengthAttr = new Attribute('length', String(this.length));
-      xml.addAttribute(lengthAttr);
+  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  setName(name: string): void {
+    this.nameAttr.setValue(name);
+  }
+
+  protected parseData(xml: Element): void {
+    this.setXml(xml);
+    this.id = attribute('id', xml);
+
+    const declaredLength = attribute('length', xml);
+    if (declaredLength === null) {
+      // The constructor's placeholder becomes the element's real attribute: same node, so a
+      // later `setLength` writes through to the document exactly as it did before.
+      xml.addAttribute(this.lengthAttr);
+    } else {
+      this.lengthAttr = declaredLength;
     }
+    const lengthAttr = this.lengthAttr;
     // Every read below throws on a malformed value, so createAccentuationPatternDef returns
     // null and the style skips the pattern — Java's behaviour at AccentuationPatternDef.java:
     // 113,122-136, where each is a bare Double.parseDouble in the throwing constructor.
@@ -84,16 +111,17 @@ export class AccentuationPatternDef extends AbstractDef {
     id?: string,
   ): AccentuationPatternDef | null {
     try {
-      const apd = new AccentuationPatternDef();
+      let xml: Element;
       if (typeof nameOrXml === 'string') {
-        const e = new Element('accentuationPatternDef', MPM_NAMESPACE);
-        e.addAttribute(new Attribute('name', nameOrXml));
-        e.addAttribute(new Attribute('length', String(length)));
-        apd.parseData(e);
-        if (id !== undefined) apd.setId(id);
+        xml = new Element('accentuationPatternDef', MPM_NAMESPACE);
+        xml.addAttribute(new Attribute('name', nameOrXml));
+        xml.addAttribute(new Attribute('length', String(length)));
       } else {
-        apd.parseData(nameOrXml);
+        xml = nameOrXml;
       }
+      const apd = new AccentuationPatternDef(requireDefName(xml, 'AccentuationPatternDef'));
+      apd.parseData(xml);
+      if (typeof nameOrXml === 'string' && id !== undefined) apd.setId(id);
       return apd;
     } catch (e) {
       console.error(e);
@@ -287,6 +315,6 @@ export class AccentuationPatternDef extends AbstractDef {
 
   setLength(length: number): void {
     this.length = length;
-    this.getXml().getAttribute('length')!.setValue(String(length));
+    this.lengthAttr.setValue(String(length));
   }
 }

@@ -5,8 +5,8 @@ import { Mpm } from '../../../../../src/mpm/Mpm.js';
 
 /**
  * Reference: meico/src/meico/mpm/elements/styles/defs/TempoDef.java
- * and its base class AbstractDef.java (the AbstractDef behaviour is exercised
- * through TempoDef because AbstractDef itself is abstract).
+ * (the name and id accessors it used to inherit from AbstractDef.java are exercised
+ * here, since the base class is gone and each def now carries its own).
  */
 function tempoDefElement(attributes: Record<string, string>): Element {
   const e = new Element('tempoDef', Mpm.MPM_NAMESPACE);
@@ -97,26 +97,48 @@ describe('TempoDef', () => {
     });
   });
 
-  // `parseData` is the parser the static factories call — the forwarding override that
-  // used to sit in front of it is gone. Re-applying it to a second element is not a path
-  // production takes; what the test is for is the parse itself, and re-application is
-  // simply the only way to observe it separately from construction.
-  describe('parseData', () => {
-    it('re-reads name, value and xml when applied to another element', () => {
-      const td = TempoDef.createTempoDef('Allegro', 147.0)!;
-      const other = tempoDefElement({ name: 'Largo', value: '50.0' });
-      (td as unknown as { parseData(xml: Element): void }).parseData(other);
+  // WAS: `parseData` re-applied to a second element, asserting that it re-read name, value
+  // and xml. That test's own comment said re-application "is not a path production takes …
+  // simply the only way to observe [the parse] separately from construction", and it is no
+  // longer even that: `@name` and `@value` are required, so they are read by the factory and
+  // handed to a `readonly` constructor parameter — which is what let `AbstractDef`'s
+  // `protected name!: Attribute` go. What the old test observed is now observed directly by
+  // the from-XML cases above ('creates a def from an existing element', 'reads an element
+  // that is not named tempoDef'), and what is left to pin is the invariant that replaced it:
+  // the two required attributes are bound once, to the element the def was parsed from.
+  describe('the identity attributes are bound at construction', () => {
+    it('writes name and value back to the element it was parsed from', () => {
+      const xml = tempoDefElement({ name: 'Largo', value: '50.0' });
+      const td = TempoDef.createTempoDef(xml)!;
+      expect(td.getXml()).toBe(xml);
 
-      expect(td.getName()).toBe('Largo');
-      expect(td.getValue()).toBe(50.0);
-      expect(td.getXml()).toBe(other);
+      td.setName('Larghetto');
+      td.setValue(69.0);
+      expect(xml.getAttributeValue('name')).toBe('Larghetto');
+      expect(xml.getAttributeValue('value')).toBe('69');
+      expect(td.getName()).toBe('Larghetto');
+      expect(td.getValue()).toBe(69.0);
+    });
+
+    it('writes through the very attribute nodes the parse read, not a fresh lookup', () => {
+      const xml = tempoDefElement({ name: 'Largo', value: '50.0' });
+      const td = TempoDef.createTempoDef(xml)!;
+      const nameNode = xml.getAttribute('name')!;
+      const valueNode = xml.getAttribute('value')!;
+
+      td.setName('Larghetto');
+      td.setValue(69.0);
+      expect(nameNode.getValue()).toBe('Larghetto');
+      expect(valueNode.getValue()).toBe('69');
+      // …and no second attribute of either name was appended.
+      expect(xml.getAttributeCount()).toBe(2);
     });
   });
 
-  describe('setName (AbstractDef)', () => {
+  describe('setName', () => {
     it('renames the def in the object and in the xml', () => {
       const td = TempoDef.createTempoDef('Allegro', 147.0)!;
-      (td as unknown as { setName(name: string): void }).setName('Allegro molto');
+      td.setName('Allegro molto');
       expect(td.getName()).toBe('Allegro molto');
       expect(td.getXml()!.getAttributeValue('name')).toBe('Allegro molto');
     });
@@ -131,7 +153,7 @@ describe('TempoDef', () => {
     });
   });
 
-  describe('id handling (AbstractDef)', () => {
+  describe('id handling', () => {
     it('adds an xml:id attribute in the XML namespace', () => {
       const td = TempoDef.createTempoDef('Allegro', 147.0)!;
       td.setId('tempo-allegro');

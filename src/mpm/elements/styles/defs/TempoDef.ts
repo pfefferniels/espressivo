@@ -2,7 +2,8 @@ import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
-import { AbstractDef } from './AbstractDef.js';
+import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
+import { requireDefName } from './defName.js';
 
 /**
  * A `tempoDef`: it gives a tempo name ("Allegro", "fast", …) a numeric value in bpm.
@@ -11,41 +12,79 @@ import { AbstractDef } from './AbstractDef.js';
  * PARITY NOTE: Java renames a foreign element to `tempoDef` via `Element.setLocalName()`
  * when parsing. XomTypes has no `setLocalName`, so a def parsed from a differently named
  * element keeps that name here and serializes under it. Nothing in the pipeline reaches
- * that path — `TempoStyle` only ever feeds this factory real `tempoDef` children.
+ * that path — a tempo style only ever feeds this factory real `tempoDef` children.
  */
-export class TempoDef extends AbstractDef {
-  private value = 0.0;
+export class TempoDef extends AbstractXmlSubtree {
+  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  readonly kind = 'tempo';
+  private value: number;
 
-  private constructor() {
+  /**
+   * Both attributes are handed in rather than looked up, because both are *required* and
+   * both are written through later. Holding the nodes is what makes "a `TempoDef` has a name
+   * and a value" structural instead of the pair of promises the incumbent made — a
+   * `name!: Attribute` on the base class, and a `getAttribute('value')!` in every setter.
+   *
+   * It is also the same node in both directions: `setValue` now writes exactly where
+   * {@link parseData} read, where the old `getXml().getAttribute('value')!` did an
+   * unnamespaced lookup that could miss what the namespace-tolerant `attribute()` had found.
+   * Byte-identical for every document that spells the attribute unprefixed, which is every
+   * document MPM produces.
+   */
+  private constructor(
+    private readonly nameAttr: Attribute,
+    private readonly valueAttr: Attribute,
+  ) {
     super();
-  }
-
-  private static fromNameValue(name: string, value: number): TempoDef {
-    const td = new TempoDef();
-    const e = new Element('tempoDef', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('name', name));
-    e.addAttribute(new Attribute('value', String(value)));
-    td.parseData(e);
-    return td;
-  }
-
-  private static fromXml(xml: Element): TempoDef {
-    const td = new TempoDef();
-    td.parseData(xml);
-    return td;
-  }
-
-  protected override parseData(xml: Element): void {
-    super.parseData(xml);
-
-    const valueAttr = attribute('value', xml);
-    if (valueAttr === null)
-      throw new Error('Cannot generate TempoDef object. Missing value attribute.');
-
     // Java throws here on a malformed value (TempoDef.java:88, Double.parseDouble) and
     // createTempoDef turns that into null, so the style skips the def. See PARITY.md,
     // "Fixed bugs", P1 — `parseFloat` used to keep a NaN-valued def instead.
     this.value = parseJavaDouble(valueAttr.getValue(), 'tempoDef/@value');
+  }
+
+  getName(): string {
+    return this.nameAttr.getValue();
+  }
+
+  /**
+   * Rename the def, in the object and in the element.
+   *
+   * Public where `AbstractDef.setName` was `protected` — there are no subclasses left for
+   * `protected` to address, and the one test that exercises it had to cast its way in.
+   */
+  setName(name: string): void {
+    this.nameAttr.setValue(name);
+  }
+
+  private static fromNameValue(name: string, value: number): TempoDef {
+    const e = new Element('tempoDef', MPM_NAMESPACE);
+    e.addAttribute(new Attribute('name', name));
+    e.addAttribute(new Attribute('value', String(value)));
+    return TempoDef.fromXml(e);
+  }
+
+  private static fromXml(xml: Element): TempoDef {
+    const nameAttr = requireDefName(xml, 'TempoDef');
+    const valueAttr = attribute('value', xml);
+    if (valueAttr === null)
+      throw new Error('Cannot generate TempoDef object. Missing value attribute.');
+
+    const td = new TempoDef(nameAttr, valueAttr);
+    td.parseData(xml);
+    return td;
+  }
+
+  /**
+   * What is left to read once the constructor has the two required attributes: the element
+   * itself and the optional `xml:id`.
+   *
+   * The name and value checks moved *ahead* of construction (see the constructor), so this
+   * no longer throws and the order in which a malformed def is rejected is unchanged —
+   * name first, then value, then nothing else can fail.
+   */
+  protected parseData(xml: Element): void {
+    this.setXml(xml);
+    this.id = attribute('id', xml);
   }
 
   /**
@@ -57,7 +96,9 @@ export class TempoDef extends AbstractDef {
   static createTempoDef(nameOrXml: string | Element, value?: number): TempoDef | null {
     try {
       if (typeof nameOrXml === 'string') {
-        return TempoDef.fromNameValue(nameOrXml, value!);
+        // `value` is required by the (name, value) overload, so the implementation signature's
+        // `value?` is the only reason it reads as optional here; `?? 0` would invent a tempo.
+        return TempoDef.fromNameValue(nameOrXml, value as number);
       } else {
         return TempoDef.fromXml(nameOrXml);
       }
@@ -73,7 +114,7 @@ export class TempoDef extends AbstractDef {
 
   setValue(value: number): void {
     this.value = value;
-    this.getXml().getAttribute('value')!.setValue(String(value));
+    this.valueAttr.setValue(String(value));
   }
 
   static createDefaultTempoDef(name: string): TempoDef | null {

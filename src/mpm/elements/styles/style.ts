@@ -11,7 +11,7 @@ import {
   TEMPO_STYLE,
 } from '../../names.js';
 import { err, matchKind, ok, type Result } from '../../../prelude/index.js';
-import type { AbstractDef } from './defs/AbstractDef.js';
+import type { Def } from './defs/def.js';
 import { AccentuationPatternDef } from './defs/AccentuationPatternDef.js';
 import { ArticulationDef } from './defs/ArticulationDef.js';
 import { DynamicsDef } from './defs/DynamicsDef.js';
@@ -72,8 +72,9 @@ import { TempoDef } from './defs/TempoDef.js';
  * `generic` is the open-ended fallback: `Header` discovers style-type collections by name
  * shape (any element whose local name contains `Styles`), so a vendor-specific or future
  * collection gets a style object too. Nothing knows how to read its children, so its defs
- * map is only ever filled through {@link Style.addDef}, and its def type is therefore the
- * common bound rather than one particular def.
+ * map is only ever filled through {@link Style.addDef} — and it therefore holds the whole
+ * {@link Def} sum, which a reader takes apart with `matchDef`. It used to hold the base
+ * class `AbstractDef`, which offered a reader nothing but `getName()`.
  */
 export interface DefOfStyleKind {
   readonly tempo: TempoDef;
@@ -82,7 +83,7 @@ export interface DefOfStyleKind {
   readonly metricalAccentuation: AccentuationPatternDef;
   readonly rubato: RubatoDef;
   readonly ornamentation: OrnamentDef;
-  readonly generic: AbstractDef;
+  readonly generic: Def;
 }
 
 /** The seven style kinds — the six MPM `…Styles` collections plus the fallback. */

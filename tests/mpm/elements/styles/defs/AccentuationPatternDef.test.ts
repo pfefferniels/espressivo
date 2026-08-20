@@ -83,22 +83,42 @@ describe('AccentuationPatternDef', () => {
     });
   });
 
-  // `parseData` is the parser the static factories call — the forwarding override that
-  // used to sit in front of it is gone. Re-applying it to a second element is not a path
-  // production takes; what the test is for is the parse itself, and re-application is
-  // simply the only way to observe it separately from construction.
-  describe('parseData', () => {
-    it('re-reads name, length and accentuations when applied to another element', () => {
-      const apd = AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0)!;
-      const other = patternElement({ name: '3/4', length: '3.0' }, [
+  // WAS: `parseData` re-applied to a second element. See the same note in `TempoDef.test.ts`
+  // — `@name` is required, so it is read by the factory and handed to a `readonly`
+  // constructor parameter, which is what let `AbstractDef`'s `name!` go. The parse of the
+  // length and the accentuation children is observed by the from-XML cases above and below.
+  describe('name and length are bound to the element the def was parsed from', () => {
+    it('writes through the very nodes the parse read', () => {
+      const xml = patternElement({ name: '3/4', length: '3.0' }, [
         accentuation({ beat: '1.0', value: '1.0' }),
       ]);
-      (apd as unknown as { parseData(xml: Element): void }).parseData(other);
+      const apd = AccentuationPatternDef.createAccentuationPatternDef(xml)!;
 
       expect(apd.getName()).toBe('3/4');
       expect(apd.getLength()).toBe(3.0);
-      expect(apd.getXml()).toBe(other);
+      expect(apd.getXml()).toBe(xml);
       expect(apd.getAccentuationAttributes(apd.size() - 1)).toEqual([1.0, 1.0, 1.0, 1.0]);
+
+      const nameNode = xml.getAttribute('name')!;
+      const lengthNode = xml.getAttribute('length')!;
+      apd.setName('6/8');
+      apd.setLength(6.0);
+      expect(nameNode.getValue()).toBe('6/8');
+      expect(lengthNode.getValue()).toBe('6');
+      expect(xml.getAttributeCount()).toBe(2);
+    });
+
+    it('binds the default length it ADDED to a pattern that declares none', () => {
+      // Parsing writes `length="4"` onto an element without one (the class header calls this
+      // out). `setLength` has to write through that same node, or it would update nothing.
+      const xml = patternElement({ name: 'nolength' }, []);
+      const apd = AccentuationPatternDef.createAccentuationPatternDef(xml)!;
+      expect(xml.getAttributeValue('length')).toBe('4');
+      expect(apd.getLength()).toBe(4.0);
+
+      apd.setLength(6.0);
+      expect(xml.getAttributeValue('length')).toBe('6');
+      expect(xml.getAttributeCount()).toBe(2);
     });
   });
 
