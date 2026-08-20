@@ -31,6 +31,43 @@ import { Element, Attribute } from '../../../../src/xml/XomTypes.js';
  * the same `Style`, parameterised by kind, so the split would have meant testing one object
  * from two files. Every assertion from both is here, plus the ones the kind table makes
  * possible (see "the style kind table").
+ *
+ * ## THESE TESTS ARE THE ONLY THING GUARDING HALF OF THE STYLE→DEF WIRING
+ *
+ * A measured hole, found by a deliberate control while collapsing the six style subclasses
+ * into `STYLE_SHAPE`. Point the `tempo` row's `defChildName` at `'dynamicsDef'`, so that
+ * every `tempoStyles` collection in every document silently indexes **no defs at all**, and
+ * `npm run gate` — all 121 byte-equality tests, `cross-validation`, `full-xml-equivalence`,
+ * `midi-byte-equivalence` and `all-maps-equivalence` together — **stays green**. Only unit
+ * tests see it: 11 red, across this file and the four map suites.
+ *
+ * The reason is not that the gate is insensitive to style resolution. Do the same thing to
+ * the `metricalAccentuation` row and **4 gate tests go red**. The difference is which
+ * documents are *parsed*:
+ *
+ * - The only `.mpm` files any gate suite reads into an `Mpm` are
+ *   `fixtures/all-maps-reference/*.mpm` (`all-maps-equivalence:143`,
+ *   `midi-byte-equivalence:253`). Between them those eight documents contain exactly three
+ *   style collections — `articulationStyles`, `metricalAccentuationStyles`,
+ *   `ornamentationStyles`. There is **no `tempoStyles`, `dynamicsStyles` or `rubatoStyles`
+ *   anywhere in them**, so three of the six rows of `STYLE_SHAPE` are never consulted.
+ * - The documents that *do* carry `tempoDef`s — `fixtures/reference/*.mpm`, with
+ *   `bpm="Andante"` resolving to `value="101.0"` and friends — are Java-generated **outputs**.
+ *   `cross-validation` and `full-xml-equivalence` generate the same documents from MEI and
+ *   compare them as text; nothing ever reads one back. And the MEI path builds its styles
+ *   programmatically through `Header.addStyleDef` + `Style.addDef`, which never touches
+ *   `defChildName` at all. Serialization then comes off the live element tree, which a
+ *   style's lookup index does not participate in — an unindexed def is still a child element
+ *   and still comes out verbatim.
+ *
+ * So the byte gate covers the parse path for three style kinds and not for the other three,
+ * and the split is a property of the fixture corpus rather than of the code. The third such
+ * hole this campaign has found, after the SMF writer being unreachable from the byte suite
+ * (see the header of `tests/integration/midi-writer-equivalence.test.ts`) and the imprecision
+ * timing basis being checked only against `comparison/`'s own independent copy. The pattern
+ * repeats: byte-equality over a corpus proves agreement on what the corpus exercises and says
+ * nothing whatever about the rest. Do not delete a unit test here on the grounds that "the
+ * gate covers it" — for tempo, dynamics and rubato styles, it does not.
  */
 function element(
   name: string,

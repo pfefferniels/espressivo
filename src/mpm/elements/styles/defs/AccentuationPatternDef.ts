@@ -91,8 +91,23 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
       else accentuation[3] = accentuation[2];
 
       this.addAccentuationToArrayList(accentuation, ac);
-      this.sortXml();
     }
+    // ONCE, after the loop — it used to run after every parsed accentuation.
+    //
+    // `sortXml` is a full re-layout: it walks the whole list and puts element j at child
+    // index j, so its result depends only on the list and not on the arrangement it starts
+    // from. Running it n times therefore ends where running it once ends, and the first n-1
+    // runs were pure work. That is a whole factor of n: with `removeChild` and `insertChild`
+    // each linear in the child count, the incumbent was CUBIC in the number of accentuations
+    // — measured at ×7-8 per doubling (n=100 1.1 ms, 200 6.9 ms, 400 56 ms, 800 380 ms).
+    //
+    // The non-accentuation children a hand-written pattern may carry are unaffected by the
+    // change: nothing here moves them relative to each other, and each removal-and-reinsert
+    // shifts them the same way whenever it runs. `tests/…/AccentuationPatternDef.test.ts`
+    // pins document order for interleaved foreign children, duplicate beats and a
+    // `beat`-less child, which are the three shapes where "sorted repeatedly" and "sorted
+    // once" could conceivably have parted company.
+    this.sortXml();
   }
 
   /**
