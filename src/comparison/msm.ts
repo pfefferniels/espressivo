@@ -249,6 +249,29 @@ export function measurePositionAt(
   quarters: number,
 ): MeasurePosition | null {
   if (measures.length === 0) return null;
+  // **`upperBoundBy` is the considered-and-rejected alternative, and this is the one place in
+  // the module where I would take it back if someone rules on the `NaN`.** The scan is "the last
+  // measure that starts at or before `quarters`", i.e. `upperBoundBy(measures, m =>
+  // m.startQuarters, quarters) - 1`, and unlike this module's other scans it is over an array
+  // that can be LONG: `measureGrid` builds one entry per bar up to `MAX_MEASURES` (100 000), and
+  // `measurePositionAt` is called twice per §9.3 op and twice per §7.3 segment. That product is a
+  // real quadratic, not a notional one.
+  //
+  // What stops it is the `NaN` answer, and the direction is unusual: today a `NaN` `quarters`
+  // never fires `startQuarters > quarters`, so the loop runs to the end and reports
+  // `{ number: <the last bar in the score>, beat: NaN }` — a bar number for a position that
+  // falls in no bar. Under the bound the answer is `null`, which is what this function's own
+  // docstring promises for exactly that case, and both call sites (`compare.measureRange`,
+  // `diff`'s `measureA`/`measureB`) already handle `null`. So the bound is arguably the CORRECT
+  // reading and the scan is the defect.
+  //
+  // That makes it a ruling about what a report says, not a loop shape, and this pass does not
+  // make those. Reachability was traced far enough to be suggestive and not far enough to be
+  // proof: `diff`'s `dateA` is `step.a.dateTicks / ticksPerQuarter` where `editInstructionsOf`
+  // has already dropped non-finite dates and `ticksPerQuarter` is a positive LCM, so `NaN`
+  // cannot arrive there; `compare`'s `segment.startQuarters` comes from the aggregate cell grid,
+  // which was not traced to its sources. Show that second path finite — or rule that `null` is
+  // the wanted answer — and this becomes a one-line change with a real win behind it.
   let found: MeasureEntry | null = null;
   for (const measure of measures) {
     if (measure.startQuarters > quarters) break;

@@ -204,6 +204,24 @@ export function accentuationAt(pattern: AccentuationPattern, beatPosition: numbe
   if (beatPosition < head(points).beat) return 0;
   if (beatPosition >= pattern.length + 1) return last(points).transitionTo;
 
+  // **`upperBoundBy` is the considered-and-rejected alternative**, named here because the shape
+  // invites it: this is "the last point whose `@beat` is at or before `beatPosition`", which is
+  // `upperBoundBy(points, p => p.beat, beatPosition) - 1`, and it agrees with this scan on every
+  // finite input — ties included, since both land on the LAST point of a tied run.
+  //
+  // Two reasons it stays a scan, and the second is the one that decides it.
+  //
+  // 1. **There is no speed to win.** `points` is the `<accentuation>` children of ONE
+  //    `accentuationPatternDef` — four for a 4/4 pattern, rarely more than a handful. A binary
+  //    search over that costs more closure calls than the scan costs comparisons.
+  // 2. **`NaN` behaviour would change, in the direction the campaign guards against.** A `NaN`
+  //    `beatPosition` fails every test in this scan, so the loop runs to index 0 with `found`
+  //    already assigned and the interpolation returns `NaN`. Under the bound the answer is −1 —
+  //    no point — and the function returns **0**. `beatPosition` comes from `beatAt(...)`, which
+  //    is tick arithmetic on a caller-supplied grid, so `NaN` is reachable in principle rather
+  //    than only in theory; and a 0 in a reported velocity contribution looks like an answer
+  //    where a `NaN` announces itself. Trading a loud wrong number for a quiet one is not a
+  //    loop-shape change, and it is not worth a search over four elements.
   let found: PatternPoint | null = null;
   let segmentEnd = pattern.length + 1;
   for (let i = points.length - 1; i >= 0; --i) {

@@ -550,6 +550,24 @@ export function maximalScoringRuns(
       // The BACKWARD scan is load-bearing: the list's invariant is that `leftTotal` increases
       // strictly, so the last qualifying run is usually the last one and the loop exits on its
       // first comparison. A `filter`/`reduce` would be a full pass every time.
+      //
+      // **`partitionPoint` is the considered-and-rejected alternative, and it is named here
+      // because a future reader will re-propose it.** "The last `k` with `leftTotal_k <
+      // candidate.leftTotal`" over a strictly increasing list is a textbook binary search —
+      // `partitionPoint(runs.length, k => runs[k].leftTotal < candidate.leftTotal) - 1`, and it
+      // is EXACTLY equivalent on well-behaved input. Two reasons it is still worse:
+      //
+      // 1. **It is slower here, not faster.** The invariant makes the answer almost always the
+      //    LAST element, so this scan costs one comparison; a binary search costs log n every
+      //    time, and the constant is a closure call per probe. That is the same measurement the
+      //    section-D look-ahead in `tempoCurve` produced, in the opposite direction.
+      // 2. **A NaN score destroys the sortedness a binary search assumes.** `cumulative` is a
+      //    running sum over `scores`, and one NaN cell poisons every `leftTotal` after it, so
+      //    `leftTotal_k < candidate.leftTotal` stops being monotone in `k` and
+      //    `partitionPoint`'s contract is voided. The scan has no such contract: it just looks
+      //    at every element and takes the last that qualifies. Ruzzo-Tompa is where cell scores
+      //    arrive from an integral, and this module's own `remainderUnderflow` field exists
+      //    because those integrals are not assumed to be well-behaved.
       let j = -1;
       for (let k = runs.length - 1; k >= 0; --k)
         if (elementAt(runs, k, RUNS).leftTotal < candidate.leftTotal) {
