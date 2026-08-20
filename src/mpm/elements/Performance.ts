@@ -1,6 +1,15 @@
 import { Attribute, Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
-import { elementAt, err, isErr, ok, pipe, unwrapOr, type Result } from '../../prelude/index.js';
+import {
+  elementAt,
+  err,
+  isErr,
+  isOk,
+  ok,
+  pipe,
+  unwrapOr,
+  type Result,
+} from '../../prelude/index.js';
 import { type MpmParseError } from './parseError.js';
 import {
   allChildElements,
@@ -431,11 +440,11 @@ export class Performance extends AbstractXmlSubtree {
     const e = firstChildElement(mapName, msmDated);
     if (e !== null) {
       const m = GenericMap.createGenericMap(e);
-      if (m !== null) {
-        list.push(m);
-        Performance.addPerformanceTimingAttributes(m);
-        Performance.addModifiedAttributes(m);
-        return m;
+      if (isOk(m)) {
+        list.push(m.value);
+        Performance.addPerformanceTimingAttributes(m.value);
+        Performance.addModifiedAttributes(m.value);
+        return m.value;
       }
     }
     return null;
@@ -693,7 +702,7 @@ export class Performance extends AbstractXmlSubtree {
           const scoreElt = firstChildElement('score', s);
           if (scoreElt !== null) {
             const m = GenericMap.createGenericMap(scoreElt);
-            if (m !== null) mapsToOrnament.push(m);
+            if (isOk(m)) mapsToOrnament.push(m.value);
           }
         }
       }

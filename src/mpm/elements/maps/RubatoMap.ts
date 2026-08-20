@@ -3,6 +3,8 @@ import { attribute } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import { RubatoData } from './data/RubatoData.js';
 import { resolveRubato, type Rubato } from './data/rubato.js';
 import { elementAt, mapPresent } from '../../../prelude/index.js';
@@ -20,17 +22,24 @@ import { elementAt, mapPresent } from '../../../prelude/index.js';
  * Port of meico.mpm.elements.maps.RubatoMap
  */
 export class RubatoMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createRubatoMap(xml?: Element): RubatoMap | null {
-    try {
-      return xml !== undefined ? new RubatoMap(xml) : new RubatoMap('rubatoMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<rubatoMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createRubatoMap(): RubatoMap;
+  static createRubatoMap(xml: Element): Result<RubatoMap, MpmParseError>;
+  static createRubatoMap(xml?: Element | null): RubatoMap | Result<RubatoMap, MpmParseError> {
+    return xml === undefined
+      ? new RubatoMap(GenericMap.emptyMapElement('rubatoMap'))
+      : GenericMap.makeMap(xml, 'RubatoMap', (elt) => new RubatoMap(elt));
   }
 
   addRubato(

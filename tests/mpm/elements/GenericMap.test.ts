@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { errOf, okValue } from '../../support/result.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { KeyValue } from '../../../src/supplementary/KeyValue.js';
@@ -9,7 +10,7 @@ import { Mpm } from '../../../src/mpm/Mpm.js';
  * Each element is a <tempo> element with a date attribute and a bpm attribute for identification.
  */
 function makeMap(dates: number[]): GenericMap {
-  const map = GenericMap.createGenericMap('tempoMap')!;
+  const map = okValue(GenericMap.createGenericMap('tempoMap'));
   for (const d of dates) {
     const e = new Element('tempo', Mpm.MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(d)));
@@ -31,7 +32,7 @@ function makeMap(dates: number[]): GenericMap {
  */
 class ExposedMap extends GenericMap {
   static make(type: string): ExposedMap {
-    return new ExposedMap(type);
+    return new ExposedMap(GenericMap.emptyMapElement(type));
   }
   styleSwitchAt(index: number): Element | null {
     return this.findStyleSwitchAt(index);
@@ -50,31 +51,47 @@ describe('GenericMap', () => {
   // ---------------------------------------------------------------
   describe('construction', () => {
     it('should create a map from a string name containing "Map"', () => {
-      const map = GenericMap.createGenericMap('tempoMap');
-      expect(map).not.toBeNull();
-      expect(map!.getType()).toBe('tempoMap');
+      expect(okValue(GenericMap.createGenericMap('tempoMap')).getType()).toBe('tempoMap');
     });
 
     it('should create a map from a string name "score"', () => {
-      const map = GenericMap.createGenericMap('score');
-      expect(map).not.toBeNull();
-      expect(map!.getType()).toBe('score');
+      expect(okValue(GenericMap.createGenericMap('score')).getType()).toBe('score');
     });
 
-    it('should return null for invalid type without "Map" and not "score"', () => {
-      const map = GenericMap.createGenericMap('invalid');
-      expect(map).toBeNull();
+    // Was `expect(map).toBeNull()` with the reason on stderr. The rejection is the same one;
+    // what it says is new, and it is what a caller would have had to parse a log line for.
+    it('should name the offending local name for a type that is no map', () => {
+      expect(errOf(GenericMap.createGenericMap('invalid'))).toEqual({
+        kind: 'wrongLocalName',
+        what: 'GenericMap',
+        localName: 'invalid',
+        requirement: 'must contain "Map" or equal "score"',
+      });
+    });
+
+    it('should reject an element that is no map, naming it', () => {
+      expect(errOf(GenericMap.createGenericMap(new Element('note')))).toEqual({
+        kind: 'wrongLocalName',
+        what: 'GenericMap',
+        localName: 'note',
+        requirement: 'must contain "Map" or equal "score"',
+      });
+    });
+
+    it('should reject a null element rather than printing it', () => {
+      expect(errOf(GenericMap.createGenericMap(null as unknown as Element))).toEqual({
+        kind: 'noElement',
+        what: 'GenericMap',
+      });
     });
 
     it('should create a map from an XML element', () => {
       const xml = new Element('dynamicsMap', Mpm.MPM_NAMESPACE);
-      const map = GenericMap.createGenericMap(xml);
-      expect(map).not.toBeNull();
-      expect(map!.getType()).toBe('dynamicsMap');
+      expect(okValue(GenericMap.createGenericMap(xml)).getType()).toBe('dynamicsMap');
     });
 
     it('should start empty', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(map.size()).toBe(0);
       expect(map.isEmpty()).toBe(true);
       expect(map.getAllElements()).toEqual([]);
@@ -86,25 +103,25 @@ describe('GenericMap', () => {
   // ---------------------------------------------------------------
   describe('setId / getId', () => {
     it('should have null id initially', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(map.getId()).toBeNull();
     });
 
     it('should set and get an id', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       map.setId('map-1');
       expect(map.getId()).toBe('map-1');
     });
 
     it('should update an existing id', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       map.setId('map-1');
       map.setId('map-2');
       expect(map.getId()).toBe('map-2');
     });
 
     it('should remove the id when set to null', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       map.setId('map-1');
       expect(map.getId()).toBe('map-1');
       map.setId(null);
@@ -112,7 +129,7 @@ describe('GenericMap', () => {
     });
 
     it('should be idempotent when removing a non-existent id', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       map.setId(null); // no-op, id was already null
       expect(map.getId()).toBeNull();
     });
@@ -123,7 +140,7 @@ describe('GenericMap', () => {
   // ---------------------------------------------------------------
   describe('addElement', () => {
     it('should add a single element', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e = new Element('tempo', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '100'));
       const idx = map.addElement(e);
@@ -132,7 +149,7 @@ describe('GenericMap', () => {
     });
 
     it('should reject an element without a date attribute', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e = new Element('tempo', Mpm.MPM_NAMESPACE);
       const idx = map.addElement(e);
       expect(idx).toBe(-1);
@@ -140,7 +157,7 @@ describe('GenericMap', () => {
     });
 
     it('should reject a style element without name.ref', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e = new Element('style', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '0'));
       const idx = map.addElement(e);
@@ -149,7 +166,7 @@ describe('GenericMap', () => {
     });
 
     it('should accept a style element with name.ref', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e = new Element('style', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '0'));
       e.addAttribute(new Attribute('name.ref', 'myStyle'));
@@ -166,7 +183,7 @@ describe('GenericMap', () => {
     });
 
     it('should place elements with the same date after existing ones (last-at-date)', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e1 = new Element('tempo', Mpm.MPM_NAMESPACE);
       e1.addAttribute(new Attribute('date', '100'));
       e1.addAttribute(new Attribute('bpm', 'first'));
@@ -234,7 +251,7 @@ describe('GenericMap', () => {
     });
 
     it('should remove an element by reference', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e = new Element('tempo', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '100'));
       map.addElement(e);
@@ -258,12 +275,12 @@ describe('GenericMap', () => {
   // ---------------------------------------------------------------
   describe('getFirstElement / getLastElement / getElement', () => {
     it('getFirstElement returns null on empty map', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(map.getFirstElement()).toBeNull();
     });
 
     it('getLastElement returns null on empty map', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(map.getLastElement()).toBeNull();
     });
 
@@ -300,7 +317,7 @@ describe('GenericMap', () => {
   // ---------------------------------------------------------------
   describe('getElementIndexBeforeAt', () => {
     it('returns -1 for an empty map', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(map.getElementIndexBeforeAt(0)).toBe(-1);
     });
 
@@ -350,7 +367,7 @@ describe('GenericMap', () => {
     });
 
     it('handles duplicate dates (returns last at date)', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       for (const d of [100, 100, 200]) {
         const e = new Element('tempo', Mpm.MPM_NAMESPACE);
         e.addAttribute(new Attribute('date', String(d)));
@@ -379,7 +396,7 @@ describe('GenericMap', () => {
   // ---------------------------------------------------------------
   describe('getElementIndexBefore', () => {
     it('returns -1 for an empty map', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(map.getElementIndexBefore(0)).toBe(-1);
     });
 
@@ -441,7 +458,7 @@ describe('GenericMap', () => {
   // ---------------------------------------------------------------
   describe('getElementIndexAfter', () => {
     it('returns -1 for an empty map', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(map.getElementIndexAfter(0)).toBe(-1);
     });
 
@@ -499,7 +516,7 @@ describe('GenericMap', () => {
   // ---------------------------------------------------------------
   describe('getElementIndexAtAfter', () => {
     it('returns -1 for an empty map', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(map.getElementIndexAtAfter(0)).toBe(-1);
     });
 
@@ -559,7 +576,7 @@ describe('GenericMap', () => {
     });
 
     it('returns the correct index for an element in the map', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e = new Element('tempo', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '100'));
       map.addElement(e);
@@ -579,7 +596,7 @@ describe('GenericMap', () => {
     });
 
     it('getAllElementsOfType returns only matching types', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e1 = new Element('tempo', Mpm.MPM_NAMESPACE);
       e1.addAttribute(new Attribute('date', '0'));
       map.addElement(e1);
@@ -594,7 +611,7 @@ describe('GenericMap', () => {
     });
 
     it('getAllElementsAt returns all elements at exact date', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       for (let i = 0; i < 3; i++) {
         const e = new Element('tempo', Mpm.MPM_NAMESPACE);
         e.addAttribute(new Attribute('date', '100'));
@@ -630,7 +647,7 @@ describe('GenericMap', () => {
     });
 
     it('getAllElementsAt returns empty array for empty map', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(map.getAllElementsAt(0)).toEqual([]);
     });
   });
@@ -685,7 +702,7 @@ describe('GenericMap', () => {
     });
 
     it('sort on an empty map does not throw', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(() => map.sort()).not.toThrow();
     });
   });
@@ -695,7 +712,7 @@ describe('GenericMap', () => {
   // ---------------------------------------------------------------
   describe('addStyleSwitch / getStyleNameAt', () => {
     it('addStyleSwitch creates a style element with correct attributes', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const idx = map.addStyleSwitch(0, 'legato');
       expect(idx).toBeGreaterThanOrEqual(0);
       const elem = map.getElement(idx)!;
@@ -705,7 +722,7 @@ describe('GenericMap', () => {
     });
 
     it('addStyleSwitch with optional id', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const idx = map.addStyleSwitch(0, 'legato', 'style-1');
       const elem = map.getElement(idx)!;
       const idAttr = elem.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
@@ -714,7 +731,7 @@ describe('GenericMap', () => {
     });
 
     it('addStyleSwitch is inserted first-at-date (before same-date elements)', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e = new Element('tempo', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '0'));
       map.addElement(e);
@@ -743,7 +760,7 @@ describe('GenericMap', () => {
      * the end of the map instead broke no test at all.
      */
     it('addStyleSwitch past the last element lands at the FRONT (GenericMap.java:559)', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e = new Element('tempo', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '100'));
       map.addElement(e);
@@ -768,7 +785,7 @@ describe('GenericMap', () => {
 
     it('getStyleNameAt returns the most recent style name (only style elements)', () => {
       // Use only style switches to avoid insertElement ordering issues
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       map.addStyleSwitch(0, 'legato');
       // Adding a second style switch at a later date: insertElement with firstAtDate=true
       // works correctly when there is already an element at or after that date.
@@ -786,7 +803,7 @@ describe('GenericMap', () => {
     });
 
     it('getStyleNameAt returns null for date before first style', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       map.addStyleSwitch(100, 'legato');
       expect(map.getStyleNameAt(50)).toBeNull();
     });
@@ -832,7 +849,7 @@ describe('GenericMap', () => {
       // DOM parent-child relationships. In the XomTypes port, insertChild adds to
       // the _children array but the underlying DOM node parentage is not always
       // established. We verify the actual behavior here.
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e = new Element('tempo', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '100'));
       map.addElement(e);
@@ -845,13 +862,13 @@ describe('GenericMap', () => {
     });
 
     it('contains returns false for a non-child element', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e = new Element('tempo', Mpm.MPM_NAMESPACE);
       expect(map.contains(e)).toBe(false);
     });
 
     it('isEmpty is true for a new map, false after adding', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(map.isEmpty()).toBe(true);
       const e = new Element('tempo', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '0'));
@@ -860,7 +877,7 @@ describe('GenericMap', () => {
     });
 
     it('size tracks additions and removals', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       expect(map.size()).toBe(0);
       const e1 = new Element('tempo', Mpm.MPM_NAMESPACE);
       e1.addAttribute(new Attribute('date', '0'));
@@ -880,7 +897,7 @@ describe('GenericMap', () => {
   // ---------------------------------------------------------------
   describe('insertElement firstAtDate mode (via addStyleSwitch)', () => {
     it('style switches at same date go before other elements at that date', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       // Add 3 tempos at date 0
       for (let i = 0; i < 3; i++) {
         const e = new Element('tempo', Mpm.MPM_NAMESPACE);
@@ -894,7 +911,7 @@ describe('GenericMap', () => {
     });
 
     it('inserting multiple style switches at same date preserves insertion order among them', () => {
-      const map = GenericMap.createGenericMap('tempoMap')!;
+      const map = okValue(GenericMap.createGenericMap('tempoMap'));
       map.addStyleSwitch(0, 'first');
       map.addStyleSwitch(0, 'second');
       // Both at date 0; second should go at index 0 because firstAtDate = true

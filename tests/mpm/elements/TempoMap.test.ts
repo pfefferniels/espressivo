@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../../support/result.js';
 import { TempoMap } from '../../../src/mpm/elements/maps/TempoMap.js';
 import { TempoData } from '../../../src/mpm/elements/maps/data/TempoData.js';
 import {
@@ -91,13 +92,13 @@ describe('TempoMap', () => {
     });
 
     it('should start with size 0', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       expect(map.size()).toBe(0);
       expect(map.isEmpty()).toBe(true);
     });
 
     it('should have an XML element', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       expect(map.getXml()).not.toBeNull();
       expect(map.getXml()!.getLocalName()).toBe('tempoMap');
     });
@@ -108,14 +109,14 @@ describe('TempoMap', () => {
   // ---------------------------------------------------------------
   describe('addTempo', () => {
     it('should add a constant tempo instruction', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       const index = map.addTempo(0, '120', 0.25);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should add tempo at the correct date', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '100', 0.25);
       map.addTempo(960, '140', 0.25);
 
@@ -127,7 +128,7 @@ describe('TempoMap', () => {
     });
 
     it('should add a tempo with transition', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       const index = map.addTempo(0, '120', '140', 0.25, 0.5);
       expect(index).toBeGreaterThanOrEqual(0);
 
@@ -139,7 +140,7 @@ describe('TempoMap', () => {
     });
 
     it('should add a tempo with transition and id', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       const index = map.addTempo(0, '120', '140', 0.25, 0.5, 'tempo-1');
 
       const elem = map.getElement(index)!;
@@ -149,7 +150,7 @@ describe('TempoMap', () => {
     });
 
     it('should add a tempo from TempoData', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       const td = new TempoData();
       td.startDate = 0;
       td.bpm = 120;
@@ -162,7 +163,7 @@ describe('TempoMap', () => {
     });
 
     it('should add TempoData with transition', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       const td = new TempoData();
       td.startDate = 0;
       td.bpm = 60;
@@ -180,7 +181,7 @@ describe('TempoMap', () => {
     });
 
     it('should maintain sorted order when adding out of order', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(960, '140', 0.25);
       map.addTempo(0, '100', 0.25);
       map.addTempo(480, '120', 0.25);
@@ -197,18 +198,18 @@ describe('TempoMap', () => {
   // ---------------------------------------------------------------
   describe('getTempoDataOf', () => {
     it('should return null for an empty map', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       expect(map.getTempoDataOf(0)).toBeNull();
     });
 
     it('should return null for negative index', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '120', 0.25);
       expect(map.getTempoDataOf(-1)).toBeNull();
     });
 
     it('should return TempoData for a valid constant tempo', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '120', 0.25);
 
       const td = map.getTempoDataOf(0)!;
@@ -220,7 +221,7 @@ describe('TempoMap', () => {
     });
 
     it('should detect a constant tempo correctly', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '120', 0.25);
 
       const td = expectConstant(map.getTempoDataOf(0));
@@ -232,7 +233,7 @@ describe('TempoMap', () => {
     });
 
     it('should handle out-of-bounds index by clamping', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '120', 0.25);
 
       const td = map.getTempoDataOf(100);
@@ -241,7 +242,7 @@ describe('TempoMap', () => {
     });
 
     it('should set endDate to MAX_VALUE for the last tempo instruction', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '120', 0.25);
 
       const td = map.getTempoDataOf(0)!;
@@ -249,7 +250,7 @@ describe('TempoMap', () => {
     });
 
     it('should set endDate to the start of the next tempo instruction', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '100', 0.25);
       map.addTempo(960, '140', 0.25);
 
@@ -258,7 +259,7 @@ describe('TempoMap', () => {
     });
 
     it('should retrieve multiple tempo instructions', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '100', 0.25);
       map.addTempo(480, '120', 0.25);
       map.addTempo(960, '140', 0.25);
@@ -277,7 +278,7 @@ describe('TempoMap', () => {
     });
 
     it('should correctly parse a transition tempo instruction', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25); // endpoint
 
@@ -289,7 +290,7 @@ describe('TempoMap', () => {
     });
 
     it('should set exponent to 1.0 for meanTempoAt = 0.5 (linear)', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25);
 
@@ -298,7 +299,7 @@ describe('TempoMap', () => {
     });
 
     it('should convert to constant tempo if transitionTo equals bpm', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '120', '120', 0.25, 0.5);
 
       // the transition is dropped since the target equals the tempo
@@ -307,7 +308,7 @@ describe('TempoMap', () => {
     });
 
     it('should convert to constant bpm at transitionTo when meanTempoAt <= 0', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0);
 
       // meanTempoAt <= 0 means: instantly jump to transitionTo, and stay there — the
@@ -318,7 +319,7 @@ describe('TempoMap', () => {
     });
 
     it('should convert to constant bpm at original bpm when meanTempoAt >= 1', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 1.0);
 
       // meanTempoAt >= 1 means: never reach transitionTo, stay at bpm
@@ -328,7 +329,7 @@ describe('TempoMap', () => {
     });
 
     it('should set default meanTempoAt to 0.5 when transition has no meanTempoAt attribute', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       // Manually create a tempo element with transition.to but NO meanTempoAt
       const e = new Element('tempo', 'http://www.cemfi.de/mpm/ns/1.0');
       e.addAttribute(new Attribute('date', '0'));
@@ -349,7 +350,7 @@ describe('TempoMap', () => {
   // ---------------------------------------------------------------
   describe('computeExponent', () => {
     it('exponent for meanTempoAt=0.5 is exactly 1.0', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25);
 
@@ -359,7 +360,7 @@ describe('TempoMap', () => {
     });
 
     it('exponent for meanTempoAt=0.3 is ln(0.5)/ln(0.3)', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.3);
       map.addTempo(720, '120', 0.25);
 
@@ -372,7 +373,7 @@ describe('TempoMap', () => {
     });
 
     it('exponent for meanTempoAt=0.7 is ln(0.5)/ln(0.7)', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.7);
       map.addTempo(720, '120', 0.25);
 
@@ -385,7 +386,7 @@ describe('TempoMap', () => {
     });
 
     it('exponent for meanTempoAt=0.1', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.1);
       map.addTempo(720, '120', 0.25);
 
@@ -395,7 +396,7 @@ describe('TempoMap', () => {
     });
 
     it('exponent for meanTempoAt=0.9', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.9);
       map.addTempo(720, '120', 0.25);
 
@@ -410,13 +411,13 @@ describe('TempoMap', () => {
   // ---------------------------------------------------------------
   describe('getTempoAt', () => {
     it('returns 100 bpm default for an empty map', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       expect(map.getTempoAt(0)).toBe(100.0);
       expect(map.getTempoAt(500)).toBe(100.0);
     });
 
     it('returns constant bpm for dates strictly after the tempo instruction', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '120', 0.25);
 
       // getTempoAt uses getElementIndexBefore (strictly before), so at date=0
@@ -428,7 +429,7 @@ describe('TempoMap', () => {
     });
 
     it('returns bpm at startDate for transition', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25);
 
@@ -445,7 +446,7 @@ describe('TempoMap', () => {
     });
 
     it('returns the transition tempo at midpoint for linear transition (meanTempoAt=0.5)', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25);
 
@@ -457,7 +458,7 @@ describe('TempoMap', () => {
     });
 
     it('returns transitionTo at endDate for transition', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25);
 
@@ -474,7 +475,7 @@ describe('TempoMap', () => {
     });
 
     it('returns correct tempo for accelerando (meanTempoAt=0.3)', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.3);
       map.addTempo(720, '120', 0.25);
 
@@ -494,7 +495,7 @@ describe('TempoMap', () => {
     });
 
     it('returns correct tempo for ritardando (meanTempoAt=0.7)', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '60', '120', 0.25, 0.7);
       map.addTempo(720, '120', 0.25);
 
@@ -513,7 +514,7 @@ describe('TempoMap', () => {
     });
 
     it('handles multiple tempo instructions with correct lookup', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '100', 0.25);
       map.addTempo(480, '140', 0.25);
       map.addTempo(960, '80', 0.25);
@@ -847,7 +848,7 @@ describe('TempoMap', () => {
     // the way back out, so the round-trip was not byte-stable), `exponent` (never set at
     // all, so a declared transition had no curve), and `endDate`.
     it('reads the same element through getTempoDataOf, and resolves what the raw parse could not', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       const e = new Element('tempo');
       e.addAttribute(new Attribute('date', '100'));
       e.addAttribute(new Attribute('bpm', '120'));
@@ -949,7 +950,7 @@ describe('TempoMap', () => {
   // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '100', 0.25);
       map.addTempo(960, '140', 0.25);
 
@@ -959,7 +960,7 @@ describe('TempoMap', () => {
     });
 
     it('should support getElementBeforeAt', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       map.addTempo(0, '100', 0.25);
       map.addTempo(480, '120', 0.25);
       map.addTempo(960, '140', 0.25);
@@ -970,7 +971,7 @@ describe('TempoMap', () => {
     });
 
     it('should support addStyleSwitch', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       const index = map.addStyleSwitch(0, 'myTempoStyle');
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
@@ -981,7 +982,7 @@ describe('TempoMap', () => {
     });
 
     it('should support setId and getId', () => {
-      const map = TempoMap.createTempoMap()!;
+      const map = TempoMap.createTempoMap();
       expect(map.getId()).toBeNull();
 
       map.setId('tempoMap-1');
@@ -1029,7 +1030,7 @@ describe('TempoMap', () => {
    */
   describe('renderTempoToMap with no tempoMap at all', () => {
     const noteMap = (): GenericMap => {
-      const map = GenericMap.createGenericMap('score')!;
+      const map = okValue(GenericMap.createGenericMap('score'));
       for (const [date, dur] of [
         [0, 100],
         [100, 50],
@@ -1067,7 +1068,7 @@ describe('TempoMap', () => {
     });
 
     it('prefers an existing date.end.perf over recomputing it from the duration', () => {
-      const map = GenericMap.createGenericMap('score')!;
+      const map = okValue(GenericMap.createGenericMap('score'));
       const e = new Element('note');
       e.addAttribute(new Attribute('date', '0'));
       e.addAttribute(new Attribute('date.perf', '0'));

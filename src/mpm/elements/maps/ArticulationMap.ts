@@ -4,6 +4,8 @@ import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import { ArticulationData } from './data/ArticulationData.js';
 import { ArticulationDef } from '../styles/defs/ArticulationDef.js';
 
@@ -27,17 +29,26 @@ import { ArticulationDef } from '../styles/defs/ArticulationDef.js';
  * Port of meico.mpm.elements.maps.ArticulationMap
  */
 export class ArticulationMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createArticulationMap(xml?: Element): ArticulationMap | null {
-    try {
-      return xml !== undefined ? new ArticulationMap(xml) : new ArticulationMap('articulationMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<articulationMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createArticulationMap(): ArticulationMap;
+  static createArticulationMap(xml: Element): Result<ArticulationMap, MpmParseError>;
+  static createArticulationMap(
+    xml?: Element | null,
+  ): ArticulationMap | Result<ArticulationMap, MpmParseError> {
+    return xml === undefined
+      ? new ArticulationMap(GenericMap.emptyMapElement('articulationMap'))
+      : GenericMap.makeMap(xml, 'ArticulationMap', (elt) => new ArticulationMap(elt));
   }
 
   addArticulation(

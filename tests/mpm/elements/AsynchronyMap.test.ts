@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../../support/result.js';
 import { AsynchronyMap } from '../../../src/mpm/elements/maps/AsynchronyMap.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
@@ -16,13 +17,13 @@ describe('AsynchronyMap', () => {
     });
 
     it('should start with size 0', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       expect(map.size()).toBe(0);
       expect(map.isEmpty()).toBe(true);
     });
 
     it('should have an XML element', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       expect(map.getXml()).not.toBeNull();
       expect(map.getXml()!.getLocalName()).toBe('asynchronyMap');
     });
@@ -33,14 +34,14 @@ describe('AsynchronyMap', () => {
   // ---------------------------------------------------------------
   describe('addAsynchrony', () => {
     it('should add an asynchrony instruction', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       const index = map.addAsynchrony(0, 50);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store attributes correctly', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       const index = map.addAsynchrony(100, -25.5);
       const elem = map.getElement(index)!;
 
@@ -49,7 +50,7 @@ describe('AsynchronyMap', () => {
     });
 
     it('should maintain sorted order when adding out of order', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(960, 30);
       map.addAsynchrony(0, 50);
       map.addAsynchrony(480, -20);
@@ -61,7 +62,7 @@ describe('AsynchronyMap', () => {
     });
 
     it('should support positive and negative offsets', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(0, 100);
       map.addAsynchrony(480, -50);
       map.addAsynchrony(960, 0);
@@ -77,25 +78,25 @@ describe('AsynchronyMap', () => {
   // ---------------------------------------------------------------
   describe('getAsynchronyAt', () => {
     it('should return 0.0 for an empty map', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       expect(map.getAsynchronyAt(0)).toBe(0.0);
       expect(map.getAsynchronyAt(500)).toBe(0.0);
     });
 
     it('should return 0.0 for a date before any asynchrony', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(100, 50);
       expect(map.getAsynchronyAt(50)).toBe(0.0);
     });
 
     it('should return the offset at the exact date', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(0, 50);
       expect(map.getAsynchronyAt(0)).toBe(50);
     });
 
     it('single asynchrony at date 0: returns offset for any date >= 0', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(0, 50);
 
       expect(map.getAsynchronyAt(0)).toBe(50);
@@ -104,7 +105,7 @@ describe('AsynchronyMap', () => {
     });
 
     it('multiple asynchronies: returns the most recent one before/at date', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(0, 10);
       map.addAsynchrony(480, 20);
       map.addAsynchrony(960, 30);
@@ -133,7 +134,7 @@ describe('AsynchronyMap', () => {
      * before the date being asked about.
      */
     it('steps back over entries that are not asynchronies, and 0.0 when there are only those', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(0, 50);
       map.addStyleSwitch(480, 'some style');
 
@@ -141,25 +142,25 @@ describe('AsynchronyMap', () => {
       // the answer.
       expect(map.getAsynchronyAt(500)).toBe(50);
 
-      const styleOnly = AsynchronyMap.createAsynchronyMap()!;
+      const styleOnly = AsynchronyMap.createAsynchronyMap();
       styleOnly.addStyleSwitch(0, 'some style');
       expect(styleOnly.getAsynchronyAt(500)).toBe(0.0);
     });
 
     it('negative offset is returned correctly', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(0, -75);
       expect(map.getAsynchronyAt(100)).toBe(-75);
     });
 
     it('zero offset is returned correctly', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(0, 0);
       expect(map.getAsynchronyAt(100)).toBe(0);
     });
 
     it('fractional offset values', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(0, 12.75);
       expect(map.getAsynchronyAt(0)).toBeCloseTo(12.75, 5);
     });
@@ -176,7 +177,7 @@ describe('AsynchronyMap', () => {
     function createTestMap(
       entries: { date: number; msDate: number; duration: number; msEnd: number; id?: string }[],
     ): GenericMap {
-      const map = GenericMap.createGenericMap('positionMap')!;
+      const map = okValue(GenericMap.createGenericMap('positionMap'));
       for (const entry of entries) {
         const e = new Element('note', Mpm.MPM_NAMESPACE);
         e.addAttribute(new Attribute('date', String(entry.date)));
@@ -201,7 +202,7 @@ describe('AsynchronyMap', () => {
 
     it('positive offset shifts milliseconds.date and milliseconds.date.end forward', () => {
       // Note at ms=100, end=200, apply offset=50 -> ms=150, end=250
-      const asyncMap = AsynchronyMap.createAsynchronyMap()!;
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, 50);
 
       const map = createTestMap([{ date: 0, msDate: 100, duration: 480, msEnd: 200 }]);
@@ -214,7 +215,7 @@ describe('AsynchronyMap', () => {
     it('negative offset: milliseconds.date clamped to 0', () => {
       // Note at ms=10, apply offset=-20 -> ms=max(0, 10-20)=0
       // end: ms=50 + (-20) = 30, but must be >= startDateMs + 1 = 1
-      const asyncMap = AsynchronyMap.createAsynchronyMap()!;
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, -20);
 
       const map = createTestMap([{ date: 0, msDate: 10, duration: 480, msEnd: 50 }]);
@@ -228,7 +229,7 @@ describe('AsynchronyMap', () => {
       // Note at ms=10, end=15, apply offset=-20
       // startDateMs = max(0, 10 - 20) = 0
       // end = 15 - 20 = -5, but clamped to max(-5, 0+1) = 1
-      const asyncMap = AsynchronyMap.createAsynchronyMap()!;
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, -20);
 
       const map = createTestMap([{ date: 0, msDate: 10, duration: 480, msEnd: 15 }]);
@@ -239,7 +240,7 @@ describe('AsynchronyMap', () => {
     });
 
     it('zero offset does not change values', () => {
-      const asyncMap = AsynchronyMap.createAsynchronyMap()!;
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, 0);
 
       const map = createTestMap([{ date: 0, msDate: 100, duration: 480, msEnd: 200 }]);
@@ -250,14 +251,14 @@ describe('AsynchronyMap', () => {
     });
 
     it('null map is handled gracefully', () => {
-      const asyncMap = AsynchronyMap.createAsynchronyMap()!;
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, 50);
       // Should not throw
       asyncMap.renderAsynchronyToMap(null);
     });
 
     it('empty asynchrony map does nothing', () => {
-      const asyncMap = AsynchronyMap.createAsynchronyMap()!;
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
       const map = createTestMap([{ date: 0, msDate: 100, duration: 480, msEnd: 200 }]);
       asyncMap.renderAsynchronyToMap(map);
 
@@ -266,7 +267,7 @@ describe('AsynchronyMap', () => {
     });
 
     it('multiple asynchrony values apply to respective date ranges', () => {
-      const asyncMap = AsynchronyMap.createAsynchronyMap()!;
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, 10);
       asyncMap.addAsynchrony(480, 20);
 
@@ -284,7 +285,7 @@ describe('AsynchronyMap', () => {
     });
 
     it('static renderAsynchronyToMap delegates correctly', () => {
-      const asyncMap = AsynchronyMap.createAsynchronyMap()!;
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, 50);
 
       const map = createTestMap([{ date: 0, msDate: 100, duration: 480, msEnd: 200 }]);
@@ -300,7 +301,7 @@ describe('AsynchronyMap', () => {
     });
 
     it('large positive offset', () => {
-      const asyncMap = AsynchronyMap.createAsynchronyMap()!;
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, 5000);
 
       const map = createTestMap([{ date: 0, msDate: 100, duration: 480, msEnd: 200 }]);
@@ -312,14 +313,14 @@ describe('AsynchronyMap', () => {
 
     it('notes without duration attribute are still processed for date', () => {
       // Create a map entry without a duration attribute
-      const map = GenericMap.createGenericMap('positionMap')!;
+      const map = okValue(GenericMap.createGenericMap('positionMap'));
       const e = new Element('note', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '0'));
       e.addAttribute(new Attribute('milliseconds.date', '100'));
       // No duration attribute
       map.addElement(e);
 
-      const asyncMap = AsynchronyMap.createAsynchronyMap()!;
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, 25);
       asyncMap.renderAsynchronyToMap(map);
 
@@ -335,7 +336,7 @@ describe('AsynchronyMap', () => {
   // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(0, 50);
       map.addAsynchrony(960, 30);
 
@@ -345,7 +346,7 @@ describe('AsynchronyMap', () => {
     });
 
     it('should support setId and getId', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       expect(map.getId()).toBeNull();
 
       map.setId('asyncMap-1');
@@ -353,7 +354,7 @@ describe('AsynchronyMap', () => {
     });
 
     it('should support addStyleSwitch', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       const index = map.addStyleSwitch(0, 'myStyle');
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
@@ -364,7 +365,7 @@ describe('AsynchronyMap', () => {
     });
 
     it('should support getElementBeforeAt', () => {
-      const map = AsynchronyMap.createAsynchronyMap()!;
+      const map = AsynchronyMap.createAsynchronyMap();
       map.addAsynchrony(0, 10);
       map.addAsynchrony(480, 20);
       map.addAsynchrony(960, 30);

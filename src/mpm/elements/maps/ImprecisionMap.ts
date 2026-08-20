@@ -4,13 +4,16 @@ import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { RandomNumberProvider } from '../../../supplementary/RandomNumberProvider.js';
 import {
+  andThen,
   elementAt,
   err,
   mapOk,
   mapPresent,
   matchKind,
+  ok,
   type Result,
 } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import { GenericMap } from './GenericMap.js';
 import {
   DISTRIBUTION_BROWNIAN,
@@ -285,38 +288,51 @@ export class ImprecisionMap extends GenericMap {
   private static readonly TONEDURATION = 3;
   private static readonly TUNING = 4;
 
-  /**
-   * The one place in the map cluster where a subclass adds to construction, and it now does
-   * so here rather than by overriding `parseData`.
-   *
-   * `GenericMap`'s constructor used to end in `this.parseData(xml)`, which dispatched into
-   * the override below this line; the check therefore ran from inside the base constructor,
-   * before this class had finished being constructed. Running it after `super(…)` returns is
-   * the same check on the same value in the same order — `super` still throws first for a
-   * name that is not a map at all — with no virtual call from a constructor.
-   */
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
-    const localName = this.getXml().getLocalName();
-    if (!localName.includes('imprecisionMap'))
-      throw new Error(
-        `Cannot generate ImprecisionMap object. Local name "${localName}" must contain "imprecisionMap".`,
-      );
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createImprecisionMap(domain: string): ImprecisionMap | null;
-  static createImprecisionMap(xml: Element): ImprecisionMap | null;
-  static createImprecisionMap(domainOrXml: string | Element): ImprecisionMap | null {
-    try {
-      if (typeof domainOrXml === 'string') {
-        const name = `imprecisionMap${domainOrXml === '' ? '' : `.${domainOrXml}`}`;
-        return new ImprecisionMap(name);
-      }
-      return new ImprecisionMap(domainOrXml);
-    } catch (e) {
-      console.error(e);
-      return null;
+  /**
+   * The one place in the map cluster where a subclass adds a check of its own, and **the
+   * order of it is load-bearing**.
+   *
+   * The check ran, in the incumbent, at the foot of this class's constructor — after
+   * `super(…)` had already indexed and **re-sorted** the element's children. So an element
+   * that passes `GenericMap`'s "is a map" test but fails this one comes back with its
+   * children reordered and no map to show for it. That is visible from outside, so the check
+   * stays after construction here too rather than moving up beside its sibling, where it
+   * would read better and would silently stop touching the caller's element.
+   *
+   * (The history is one step older still: `GenericMap`'s constructor used to end in
+   * `this.parseData(xml)`, dispatching into an override in this class before this class's own
+   * field initialisers had run.)
+   */
+  static createImprecisionMap(domain: string): ImprecisionMap;
+  static createImprecisionMap(xml: Element): Result<ImprecisionMap, MpmParseError>;
+  static createImprecisionMap(
+    domainOrXml: string | Element | null,
+  ): ImprecisionMap | Result<ImprecisionMap, MpmParseError> {
+    // Total for a domain, and for the same reason as the other twelve maps' no-argument
+    // form: the name is built from this class's own prefix, so it passes both checks by
+    // construction — `imprecisionMap` contains "Map", and it contains "imprecisionMap".
+    if (typeof domainOrXml === 'string') {
+      const name = `imprecisionMap${domainOrXml === '' ? '' : `.${domainOrXml}`}`;
+      return new ImprecisionMap(GenericMap.emptyMapElement(name));
     }
+    return andThen(
+      GenericMap.makeMap(domainOrXml, 'ImprecisionMap', (elt) => new ImprecisionMap(elt)),
+      (map) => {
+        const localName = map.getXml().getLocalName();
+        return localName.includes('imprecisionMap')
+          ? ok(map)
+          : err<MpmParseError>({
+              kind: 'wrongLocalName',
+              what: 'ImprecisionMap',
+              localName,
+              requirement: 'must contain "imprecisionMap"',
+            });
+      },
+    );
   }
 
   /**

@@ -8,6 +8,7 @@
  * which is the failure mode behind two of W2's three CAPITALs.
  */
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../support/result.js';
 import { Attribute, Element } from '../../src/xml/XomTypes.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
 import { GenericMap } from '../../src/mpm/elements/maps/GenericMap.js';
@@ -75,7 +76,7 @@ function performed(map: string): { duration: number; velocity: number } {
     .getDated()!
     .getMap('articulationMap') as unknown as ArticulationMap;
 
-  const notes = GenericMap.createGenericMap('someMap')!;
+  const notes = okValue(GenericMap.createGenericMap('someMap'));
   const note = new Element('note', NS);
   note.addAttribute(new Attribute('date', '0'));
   note.addAttribute(new Attribute('date.perf', '0'));
@@ -328,7 +329,7 @@ describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
       .getDated()!
       .getMap('articulationMap') as unknown as ArticulationMap;
 
-    const notes = GenericMap.createGenericMap('someMap')!;
+    const notes = okValue(GenericMap.createGenericMap('someMap'));
     for (const date of dates) {
       const note = new Element('note', NS);
       note.addAttribute(new Attribute('date', String(date)));

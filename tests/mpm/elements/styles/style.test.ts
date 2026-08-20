@@ -180,7 +180,7 @@ describe('the style kind table', () => {
     const header = okValue(Header.createHeader());
     header.addStyleDef(Mpm.TEMPO_STYLE, createStyle('rubato', 'misfiled'));
 
-    const map = GenericMap.createGenericMap('tempoMap')!;
+    const map = okValue(GenericMap.createGenericMap('tempoMap'));
     map.setHeaders(header, null);
 
     expect(map.getStyle('tempo', 'misfiled')).toBeNull();

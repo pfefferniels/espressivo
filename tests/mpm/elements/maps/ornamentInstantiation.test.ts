@@ -54,7 +54,7 @@ function makeNote(id: string, date: number, pitch: number, duration = 1440, velo
 }
 
 function makeScore(notes: Element[]): GenericMap {
-  const score = GenericMap.createGenericMap('score')!;
+  const score = okValue(GenericMap.createGenericMap('score'));
   for (const note of notes) score.addElement(note);
   return score;
 }
@@ -99,7 +99,7 @@ function makeMap(defs: OrnamentDef[]): OrnamentationMap {
   const style = createStyle('ornamentation', 'orn style');
   for (const def of defs) style.addDef(def);
   header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
-  const map = OrnamentationMap.createOrnamentationMap()!;
+  const map = OrnamentationMap.createOrnamentationMap();
   map.setHeaders(null, header);
   map.addStyleSwitch(0, 'orn style');
   return map;
@@ -1578,7 +1578,7 @@ describe('MPM v3 ornament instantiation', () => {
       const scoreXml = new Element('score');
       dated.appendChild(scoreXml);
       part.appendChild(dated);
-      return GenericMap.createGenericMap(scoreXml)!;
+      return okValue(GenericMap.createGenericMap(scoreXml));
     };
 
     it('counts sharps positive and flats negative', () => {
@@ -1648,7 +1648,7 @@ describe('MPM v3 ornament instantiation', () => {
       const style = createStyle('ornamentation', 'orn style');
       for (const def of defs) style.addDef(def);
       header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(header, null);
       map.addStyleSwitch(0, 'orn style');
       return map;

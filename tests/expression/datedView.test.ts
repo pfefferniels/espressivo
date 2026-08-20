@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../support/result.js';
 import {
   orderedEntries,
   styleNameAt,
@@ -24,8 +25,8 @@ function viewIds(text: string): string[] {
  * is handed (`sortXml`, GenericMap.ts:157).
  */
 function genericMapIds(text: string): string[] {
-  const parsed = GenericMap.createGenericMap(parseMpmRoot(text));
-  return parsed!.getAllElements().map((kv) => kv.getValue().getAttributeValue('id') ?? '?');
+  const parsed = okValue(GenericMap.createGenericMap(parseMpmRoot(text)));
+  return parsed.getAllElements().map((kv) => kv.getValue().getAttributeValue('id') ?? '?');
 }
 
 describe('datedView', () => {

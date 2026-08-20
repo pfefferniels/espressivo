@@ -1,7 +1,7 @@
 import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { descendantElements } from '../../xml/tree.js';
-import { err, type Result } from '../../prelude/index.js';
+import { err, isErr, unwrapOr, type Result } from '../../prelude/index.js';
 import { attemptParse, type MpmParseError } from './parseError.js';
 import { MPM_NAMESPACE } from '../names.js';
 import { GenericMap } from './maps/GenericMap.js';
@@ -73,16 +73,28 @@ export class Dated extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * The two adders are mutators, and they answer a mutator's question — "is it in?" — so
+   * they keep `GenericMap | null` while `parseTypedMap` below them gained a `Result`.
+   *
+   * That is the boundary, not an oversight. A caller of `addMapByType` is asking this
+   * `dated` to hold a map; whether the element it was handed was readable is `parseTypedMap`'s
+   * business, and it is the one that now says why. Where the reason would go from here is an
+   * open question with no caller behind it: `parseData` below ignores these return values
+   * entirely, and inventing a diagnostics channel on `Dated` for nobody would be the wrong
+   * shape to guess at.
+   */
   addMapFromXml(xml: Element): GenericMap | null {
     if (xml === null) return null;
-    return this.addMap(parseTypedMap(xml));
+    return this.addMap(unwrapOr(parseTypedMap(xml), null));
   }
 
   addMapByType(type: string): GenericMap | null {
     if (!type) return null;
     const generic = GenericMap.createGenericMap(type); // build the correctly named and namespaced map element
-    if (generic === null) return null;
-    return this.addMap(parseTypedMap(generic.getXml())); // and re-read it as its own class, where it has one
+    if (isErr(generic)) return null;
+    // and re-read it as its own class, where it has one
+    return this.addMap(unwrapOr(parseTypedMap(generic.value.getXml()), null));
   }
 
   /**

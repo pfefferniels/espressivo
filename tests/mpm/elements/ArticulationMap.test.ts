@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../../support/result.js';
 import { ArticulationMap } from '../../../src/mpm/elements/maps/ArticulationMap.js';
 import { ArticulationData } from '../../../src/mpm/elements/maps/data/ArticulationData.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
@@ -17,13 +18,13 @@ describe('ArticulationMap', () => {
     });
 
     it('should start with size 0', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       expect(map.size()).toBe(0);
       expect(map.isEmpty()).toBe(true);
     });
 
     it('should have an XML element', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       expect(map.getXml()).not.toBeNull();
       expect(map.getXml()!.getLocalName()).toBe('articulationMap');
     });
@@ -34,14 +35,14 @@ describe('ArticulationMap', () => {
   // ---------------------------------------------------------------
   describe('addArticulation', () => {
     it('should add an articulation instruction', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const index = map.addArticulation(0, 'staccato', 'note1', 'art-1');
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store attributes correctly', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const index = map.addArticulation(0, 'legato', 'note2', 'art-2');
       const elem = map.getElement(index)!;
 
@@ -52,7 +53,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should store xmlId', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const index = map.addArticulation(0, 'staccato', null, 'art-3');
       const elem = map.getElement(index)!;
 
@@ -62,14 +63,14 @@ describe('ArticulationMap', () => {
     });
 
     it('should return -1 for null articulationDefName', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const index = map.addArticulation(0, null, 'note1', 'art-1');
       expect(index).toBe(-1);
       expect(map.size()).toBe(0);
     });
 
     it('should handle null noteid and id gracefully', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const index = map.addArticulation(0, 'staccato', null, null);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
@@ -79,7 +80,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should maintain sorted order when adding out of order', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       map.addArticulation(960, 'staccato', null, null);
       map.addArticulation(0, 'legato', null, null);
       map.addArticulation(480, 'accent', null, null);
@@ -96,7 +97,7 @@ describe('ArticulationMap', () => {
   // ---------------------------------------------------------------
   describe('addArticulationFromData', () => {
     it('should add an articulation from ArticulationData', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const ad = new ArticulationData();
       ad.date = 0;
       ad.articulationDefName = 'staccato';
@@ -107,7 +108,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should store absoluteDurationChange when non-zero', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const ad = new ArticulationData();
       ad.date = 0;
       ad.articulationDefName = 'staccato';
@@ -119,7 +120,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should store relativeDuration when not 1.0', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const ad = new ArticulationData();
       ad.date = 0;
       ad.articulationDefName = 'staccato';
@@ -131,7 +132,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should not store relativeDuration when 1.0 (default)', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const ad = new ArticulationData();
       ad.date = 0;
       ad.articulationDefName = 'staccato';
@@ -143,7 +144,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should not store absoluteDurationChange when 0.0 (default)', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const ad = new ArticulationData();
       ad.date = 0;
       ad.articulationDefName = 'staccato';
@@ -155,7 +156,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should store absoluteDuration when not null', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const ad = new ArticulationData();
       ad.date = 0;
       ad.articulationDefName = 'staccato';
@@ -172,14 +173,14 @@ describe('ArticulationMap', () => {
   // ---------------------------------------------------------------
   describe('addArticulationStyleSwitch', () => {
     it('should add an articulation style switch', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const index = map.addArticulationStyleSwitch(0, 'myArticStyle');
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store the style name', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const index = map.addArticulationStyleSwitch(0, 'myArticStyle');
       const elem = map.getElement(index)!;
 
@@ -188,7 +189,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should store defaultArticulation when provided', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const index = map.addArticulationStyleSwitch(0, 'myStyle', 'legato');
       const elem = map.getElement(index)!;
 
@@ -196,7 +197,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should store id when provided', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       const index = map.addArticulationStyleSwitch(0, 'myStyle', null, 'switch-1');
       const elem = map.getElement(index)!;
 
@@ -211,18 +212,18 @@ describe('ArticulationMap', () => {
   // ---------------------------------------------------------------
   describe('getArticulationDataOf', () => {
     it('should return null for an empty map', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       expect(map.getArticulationDataOf(0)).toBeNull();
     });
 
     it('should return null for negative index', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       map.addArticulation(0, 'staccato', null, null);
       expect(map.getArticulationDataOf(-1)).toBeNull();
     });
 
     it('should return ArticulationData for a valid articulation', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       map.addArticulation(0, 'staccato', 'note1', null);
 
       const ad = map.getArticulationDataOf(0);
@@ -232,7 +233,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should return null for style elements (not articulation)', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       map.addArticulationStyleSwitch(0, 'myStyle');
 
       const ad = map.getArticulationDataOf(0);
@@ -241,7 +242,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should handle out-of-bounds index by clamping', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       map.addArticulation(0, 'staccato', null, null);
 
       const ad = map.getArticulationDataOf(100);
@@ -250,7 +251,7 @@ describe('ArticulationMap', () => {
     });
 
     it('round-trip: addArticulation -> getArticulationDataOf preserves values', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       map.addArticulation(240, 'legato', 'note5', 'art-5');
 
       const ad = map.getArticulationDataOf(0)!;
@@ -271,9 +272,11 @@ describe('ArticulationMap', () => {
     const parse = (xml: string): Element => new Builder().build(xml).getRootElement();
 
     const mapOf = (articulations: string): ArticulationMap =>
-      ArticulationMap.createArticulationMap(
-        parse(`<articulationMap xmlns="${Mpm.MPM_NAMESPACE}">${articulations}</articulationMap>`),
-      )!;
+      okValue(
+        ArticulationMap.createArticulationMap(
+          parse(`<articulationMap xmlns="${Mpm.MPM_NAMESPACE}">${articulations}</articulationMap>`),
+        ),
+      );
 
     it('reads all twelve from a literal articulation element', () => {
       const ad = mapOf(
@@ -395,7 +398,7 @@ describe('ArticulationMap', () => {
       const map = mapOf(
         '<articulation date="0.0" absoluteDurationMs="160.0" absoluteDelayMs="25.0" />',
       );
-      const noteMap = GenericMap.createGenericMap('someMap')!;
+      const noteMap = okValue(GenericMap.createGenericMap('someMap'));
       const note = new Element('note', Mpm.MPM_NAMESPACE);
       note.addAttribute(new Attribute('date', '0'));
       note.addAttribute(new Attribute('date.perf', '0'));
@@ -848,8 +851,8 @@ describe('ArticulationMap', () => {
     }
 
     it('should apply absoluteDelayMs to milliseconds.date', () => {
-      const map = ArticulationMap.createArticulationMap()!;
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const map = ArticulationMap.createArticulationMap();
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       const entry = createMsMapEntry(0, 100, 200);
       entry.addAttribute(new Attribute('articulation.absoluteDelayMs', '25'));
       target.addElement(entry);
@@ -862,8 +865,8 @@ describe('ArticulationMap', () => {
     });
 
     it('should apply absoluteDurationMs to milliseconds.date.end', () => {
-      const map = ArticulationMap.createArticulationMap()!;
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const map = ArticulationMap.createArticulationMap();
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       const entry = createMsMapEntry(0, 100, 200);
       entry.addAttribute(new Attribute('articulation.absoluteDurationMs', '50'));
       target.addElement(entry);
@@ -876,8 +879,8 @@ describe('ArticulationMap', () => {
     });
 
     it('should apply absoluteDurationChangeMs to milliseconds.date.end', () => {
-      const map = ArticulationMap.createArticulationMap()!;
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const map = ArticulationMap.createArticulationMap();
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       const entry = createMsMapEntry(0, 100, 200);
       entry.addAttribute(new Attribute('articulation.absoluteDurationChangeMs', '30'));
       target.addElement(entry);
@@ -889,8 +892,8 @@ describe('ArticulationMap', () => {
     });
 
     it('should combine delay and duration change', () => {
-      const map = ArticulationMap.createArticulationMap()!;
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const map = ArticulationMap.createArticulationMap();
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       const entry = createMsMapEntry(0, 100, 200);
       entry.addAttribute(new Attribute('articulation.absoluteDelayMs', '10'));
       entry.addAttribute(new Attribute('articulation.absoluteDurationChangeMs', '20'));
@@ -905,8 +908,8 @@ describe('ArticulationMap', () => {
     });
 
     it('should not modify if dateNew >= endNew', () => {
-      const map = ArticulationMap.createArticulationMap()!;
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const map = ArticulationMap.createArticulationMap();
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       const entry = createMsMapEntry(0, 100, 110);
       entry.addAttribute(new Attribute('articulation.absoluteDelayMs', '50'));
       target.addElement(entry);
@@ -920,14 +923,14 @@ describe('ArticulationMap', () => {
     });
 
     it('null map is handled gracefully', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       // Should not throw
       map.renderArticulationToMap_millisecondModifiers(null);
     });
 
     it('static renderArticulationToMap_millisecondModifiers delegates correctly', () => {
-      const map = ArticulationMap.createArticulationMap()!;
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const map = ArticulationMap.createArticulationMap();
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       const entry = createMsMapEntry(0, 100, 200);
       entry.addAttribute(new Attribute('articulation.absoluteDelayMs', '25'));
       target.addElement(entry);
@@ -938,7 +941,7 @@ describe('ArticulationMap', () => {
     });
 
     it('static with null articulation map does nothing', () => {
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       ArticulationMap.renderArticulationToMap_millisecondModifiers(target, null);
       // Should not throw
     });
@@ -949,7 +952,7 @@ describe('ArticulationMap', () => {
   // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       map.addArticulation(0, 'staccato', null, null);
       map.addArticulation(960, 'legato', null, null);
 
@@ -959,7 +962,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should support setId and getId', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       expect(map.getId()).toBeNull();
 
       map.setId('articMap-1');
@@ -967,7 +970,7 @@ describe('ArticulationMap', () => {
     });
 
     it('should support getElementBeforeAt', () => {
-      const map = ArticulationMap.createArticulationMap()!;
+      const map = ArticulationMap.createArticulationMap();
       map.addArticulation(0, 'staccato', null, null);
       map.addArticulation(480, 'legato', null, null);
       map.addArticulation(960, 'accent', null, null);

@@ -5,6 +5,8 @@ import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 
 /**
  * An MPM `asynchronyMap`: how far ahead of or behind the beat a part plays, in
@@ -18,17 +20,26 @@ import { GenericMap } from './GenericMap.js';
  * Port of meico.mpm.elements.maps.AsynchronyMap
  */
 export class AsynchronyMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createAsynchronyMap(xml?: Element): AsynchronyMap | null {
-    try {
-      return xml !== undefined ? new AsynchronyMap(xml) : new AsynchronyMap('asynchronyMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<asynchronyMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createAsynchronyMap(): AsynchronyMap;
+  static createAsynchronyMap(xml: Element): Result<AsynchronyMap, MpmParseError>;
+  static createAsynchronyMap(
+    xml?: Element | null,
+  ): AsynchronyMap | Result<AsynchronyMap, MpmParseError> {
+    return xml === undefined
+      ? new AsynchronyMap(GenericMap.emptyMapElement('asynchronyMap'))
+      : GenericMap.makeMap(xml, 'AsynchronyMap', (elt) => new AsynchronyMap(elt));
   }
 
   addAsynchrony(date: number, millisecondsOffset: number): number {

@@ -55,7 +55,7 @@ const curveFor = (map: string): PedalCurve => curveOf(readComparisonPair({ a: do
 function rendererEvents(map: string): readonly (readonly [number, number])[] {
   const xml = new Builder().build(`<movementMap xmlns="${NS}">${map}</movementMap>`);
   const movementMap = MovementMap.createMovementMap(xml.getRootElement());
-  const rendered = movementMap?.renderMovementToMap() ?? null;
+  const rendered = movementMap.ok ? movementMap.value.renderMovementToMap() : null;
   if (rendered === null) return [];
   return rendered
     .getXml()

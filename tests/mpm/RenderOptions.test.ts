@@ -53,11 +53,11 @@ function makeMsm(ppq = 720): Msm {
  */
 function makePerformance(mpmSeed?: number): Performance {
   const perf = okValue(Performance.createPerformance('perf', 720));
-  const tempoMap = TempoMap.createTempoMap()!;
+  const tempoMap = TempoMap.createTempoMap();
   tempoMap.addTempo(0, '120', 0.25);
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
-  const imp = ImprecisionMap.createImprecisionMap('timing')!;
+  const imp = ImprecisionMap.createImprecisionMap('timing');
   imp.addDistributionUniform(0, -30, 30, mpmSeed);
   perf.getGlobal()!.getDated()!.addMap(imp);
 
@@ -68,11 +68,11 @@ function makePerformance(mpmSeed?: number): Performance {
 /** A performance that renders a `positionMap`, for the sampling-step half of the item. */
 function makeMovementPerformance(): Performance {
   const perf = okValue(Performance.createPerformance('perf', 720));
-  const tempoMap = TempoMap.createTempoMap()!;
+  const tempoMap = TempoMap.createTempoMap();
   tempoMap.addTempo(0, '120', 0.25);
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
-  const movMap = MovementMap.createMovementMap()!;
+  const movMap = MovementMap.createMovementMap();
   const md = new MovementData();
   md.startDate = 0;
   md.position = 0.0 as Normalized;
@@ -205,14 +205,14 @@ describe('RenderOptions', () => {
     it('advances the stream ordinal per call, so two maps in one render differ', () => {
       const ctx: RenderContext = { options: { seed: 7 }, streamOrdinal: 0 };
       const render = (c: RenderContext) => {
-        const map = GenericMap.createGenericMap('score')!;
+        const map = okValue(GenericMap.createGenericMap('score'));
         for (let i = 0; i < 6; ++i) {
           const n = new Element('note');
           n.addAttribute(new Attribute('date', String(i * 720)));
           n.addAttribute(new Attribute('milliseconds.date', String(i * 500)));
           map.addElement(n);
         }
-        const imp = ImprecisionMap.createImprecisionMap('timing')!;
+        const imp = ImprecisionMap.createImprecisionMap('timing');
         imp.addDistributionUniform(0, -30, 30);
         imp.renderImprecisionToMap(map, true, c);
         return map.getXml()!.toXML();

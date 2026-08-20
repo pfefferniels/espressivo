@@ -3,6 +3,8 @@ import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import { DynamicsData } from './data/DynamicsData.js';
 import {
   resolveDynamics,
@@ -11,7 +13,7 @@ import {
   type Dynamics,
 } from './data/dynamics.js';
 import { numericDynamicsValue } from '../styles/style.js';
-import { elementAt, mapPresent } from '../../../prelude/index.js';
+import { elementAt, mapPresent, unwrapOr } from '../../../prelude/index.js';
 
 /**
  * An MPM `dynamicsMap`: loudness over the timeline, as constant levels and as
@@ -28,17 +30,24 @@ import { elementAt, mapPresent } from '../../../prelude/index.js';
  * Port of meico.mpm.elements.maps.DynamicsMap
  */
 export class DynamicsMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createDynamicsMap(xml?: Element): DynamicsMap | null {
-    try {
-      return xml !== undefined ? new DynamicsMap(xml) : new DynamicsMap('dynamicsMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<dynamicsMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createDynamicsMap(): DynamicsMap;
+  static createDynamicsMap(xml: Element): Result<DynamicsMap, MpmParseError>;
+  static createDynamicsMap(xml?: Element | null): DynamicsMap | Result<DynamicsMap, MpmParseError> {
+    return xml === undefined
+      ? new DynamicsMap(GenericMap.emptyMapElement('dynamicsMap'))
+      : GenericMap.makeMap(xml, 'DynamicsMap', (elt) => new DynamicsMap(elt));
   }
 
   addDynamics(
@@ -218,7 +227,9 @@ export class DynamicsMap extends GenericMap {
    */
   renderDynamicsToMap(map: GenericMap | null): GenericMap | null {
     if (map === null || this.elements.length === 0) return null;
-    const chanVolMap = GenericMap.createGenericMap('channelVolumeMap');
+    // `'channelVolumeMap'` contains "Map", so this cannot fail; `unwrapOr` keeps the `null`
+    // the guards below already test for rather than asserting the fact with a `!`.
+    const chanVolMap = unwrapOr(GenericMap.createGenericMap('channelVolumeMap'), null);
     let mapIndex = 0;
     for (let dynamicsIndex = 0; dynamicsIndex < this.size(); ++dynamicsIndex) {
       const dd = this.getDynamicsDataOf(dynamicsIndex);

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../../support/result.js';
 import { MetricalAccentuationMap } from '../../../src/mpm/elements/maps/MetricalAccentuationMap.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
@@ -16,13 +17,13 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should start with size 0', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       expect(map.size()).toBe(0);
       expect(map.isEmpty()).toBe(true);
     });
 
     it('should have an XML element', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       expect(map.getXml()).not.toBeNull();
       expect(map.getXml()!.getLocalName()).toBe('metricalAccentuationMap');
     });
@@ -33,14 +34,14 @@ describe('MetricalAccentuationMap', () => {
   // ---------------------------------------------------------------
   describe('addAccentuationPattern', () => {
     it('should add an accentuation pattern with required parameters', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addAccentuationPattern(0, 'myPattern', 1.0);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store attributes correctly', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addAccentuationPattern(0, 'myPattern', 1.5);
       const elem = map.getElement(index)!;
 
@@ -50,7 +51,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should store optional loop parameter', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addAccentuationPattern(0, 'myPattern', 1.0, true);
       const elem = map.getElement(index)!;
 
@@ -58,7 +59,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should store optional stickToMeasures parameter', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addAccentuationPattern(0, 'myPattern', 1.0, true, false);
       const elem = map.getElement(index)!;
 
@@ -67,7 +68,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should maintain sorted order when adding out of order', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(960, 'p3', 1.0);
       map.addAccentuationPattern(0, 'p1', 1.0);
       map.addAccentuationPattern(480, 'p2', 1.0);
@@ -79,7 +80,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should not add loop/stickToMeasures if not provided', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addAccentuationPattern(0, 'myPattern', 1.0);
       const elem = map.getElement(index)!;
 
@@ -94,12 +95,12 @@ describe('MetricalAccentuationMap', () => {
   // ---------------------------------------------------------------
   describe('getMetricalAccentuationDataOf', () => {
     it('should return null for an empty map', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       expect(map.getMetricalAccentuationDataOf(0)).toBeNull();
     });
 
     it('should return null for negative index', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'myPattern', 1.0);
       expect(map.getMetricalAccentuationDataOf(-1)).toBeNull();
     });
@@ -107,7 +108,7 @@ describe('MetricalAccentuationMap', () => {
     it('should return null when no style is configured (style lookup fails)', () => {
       // Without a proper header/style configured, getMetricalAccentuationDataOf
       // returns null because it cannot find the style definition
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'myPattern', 1.0);
 
       const result = map.getMetricalAccentuationDataOf(0);
@@ -116,7 +117,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should handle out-of-bounds index by clamping', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'myPattern', 1.0);
 
       // Even with clamping, it will return null because no style is configured
@@ -235,7 +236,7 @@ describe('MetricalAccentuationMap', () => {
 
     it('and the render then ABORTS on it, naming getLength, exactly as Java NPEs', () => {
       const map = mapWith('<accentuationPattern date="0.0" name.ref="nosuch" scale="1.0" />');
-      const score = GenericMap.createGenericMap('score')!;
+      const score = okValue(GenericMap.createGenericMap('score'));
       const note = new Element('note', Mpm.MPM_NAMESPACE);
       note.addAttribute(new Attribute('date', '0.0'));
       note.addAttribute(new Attribute('velocity', '64.0'));
@@ -250,7 +251,7 @@ describe('MetricalAccentuationMap', () => {
       const map = mapWith(
         '<accentuationPattern date="0.0" name.ref="pattern" scale="2.5" loop="true" />',
       );
-      const score = GenericMap.createGenericMap('score')!;
+      const score = okValue(GenericMap.createGenericMap('score'));
       const note = new Element('note', Mpm.MPM_NAMESPACE);
       note.addAttribute(new Attribute('date', '0.0'));
       note.addAttribute(new Attribute('velocity', '64.0'));
@@ -481,7 +482,7 @@ describe('MetricalAccentuationMap', () => {
   // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'p1', 1.0);
       map.addAccentuationPattern(960, 'p2', 2.0);
 
@@ -491,7 +492,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should support setId and getId', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       expect(map.getId()).toBeNull();
 
       map.setId('maMap-1');
@@ -499,7 +500,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should support addStyleSwitch', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addStyleSwitch(0, 'myAccentuationStyle');
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
@@ -510,7 +511,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should support getElementBeforeAt', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'p1', 1.0);
       map.addAccentuationPattern(480, 'p2', 1.0);
       map.addAccentuationPattern(960, 'p3', 1.0);
