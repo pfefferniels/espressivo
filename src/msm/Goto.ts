@@ -170,8 +170,13 @@ export class Goto {
         const targetCandidates: Nodes = parent.query(
           `descendant::*[attribute::xml:id='${this.targetId}']`,
         ); // find target element (must be a sibling of gt)
-        if (targetCandidates.size() > 0)
-          this.target = targetCandidates.get(0) as unknown as Element; // get it
+        // `descendant::*` yields elements, so the second test cannot fail; it replaces an
+        // `as unknown as Element`, which asserted exactly that and could not be checked.
+        // Both tests are needed: `Nodes.get` is a checked read and throws past the end.
+        if (targetCandidates.size() > 0) {
+          const first = targetCandidates.get(0); // get it
+          if (first instanceof Element) this.target = first;
+        }
       }
     }
 

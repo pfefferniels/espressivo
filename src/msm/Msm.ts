@@ -318,9 +318,14 @@ export class Msm extends AbstractMsm {
     const atts: Nodes = this.requireRootElement().query(
       'descendant::*[attribute::date]/attribute::date | descendant::*[attribute::date.end]/attribute::date.end | descendant::*[attribute::duration]/attribute::duration',
     );
+    // `as unknown as Attribute` was here, on the ground that an `attribute::` step yields
+    // attributes. It does — {@link Element.query} pushes a real {@link Attribute} for every
+    // attribute hit — which is precisely why the claim can be *tested* instead of asserted.
+    // A cast that is right is still a cast, and the same three lines appear at
+    // `dropRepetitionCounters` and `addIds` over `Element`.
     for (const node of atts) {
-      const att = node as unknown as Attribute;
-      att.setValue(String((parseFloat(att.getValue()) * ppq) / ppqOld));
+      if (!(node instanceof Attribute)) continue;
+      node.setValue(String((parseFloat(node.getValue()) * ppq) / ppqOld));
     }
   }
 
@@ -886,10 +891,11 @@ export class Msm extends AbstractMsm {
     // being mutated here.
     const dropRepetitionCounters = (from: Element): void => {
       for (const node of from.query('descendant::*[@repetitionCounter]')) {
-        const r = node as unknown as Element;
-        // the query selected `[@repetitionCounter]`, so the attribute is there by the
-        // predicate that produced this node — checked, not asserted.
-        r.removeAttribute(requireAttribute('repetitionCounter', r));
+        // `descendant::*` yields elements and `[@repetitionCounter]` requires the attribute,
+        // so both facts hold — and both are now tested rather than asserted with
+        // `as unknown as Element` and a `!`.
+        if (!(node instanceof Element)) continue;
+        node.removeAttribute(requireAttribute('repetitionCounter', node));
       }
     };
     dropRepetitionCounters(map);
@@ -1762,8 +1768,11 @@ export class Msm extends AbstractMsm {
     const e: Nodes = root.query(
       "descendant::*[(local-name()='note' or local-name()='rest') and not(@xml:id)]",
     );
-    // go through all the nodes
-    for (const node of e) addUUID(node as unknown as Element); // add the xml:id attribute with a UUID
+    // go through all the nodes. `descendant::*` yields elements, so the `instanceof` cannot
+    // fire; it replaces an `as unknown as Element` and is what lets the return below stay
+    // `e.size()` — the count of what the query SELECTED, which is what Java returns, rather
+    // than a count of what this loop happened to visit.
+    for (const node of e) if (node instanceof Element) addUUID(node); // add the xml:id attribute with a UUID
 
     console.log(' done');
 
