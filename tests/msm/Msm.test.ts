@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Msm } from '../../src/msm/Msm.js';
-import { Element, Attribute, Document } from '../../src/xml/XomTypes.js';
+import { Element, Attribute } from '../../src/xml/XomTypes.js';
 import {
   Sequence,
   metaPayload,
@@ -937,6 +937,110 @@ describe('Msm', () => {
 
       // one from the map, one generated from the part name
       expect(shortMessages(msm.exportMidi()!.getSequence(), PROGRAM_CHANGE).length).toBe(2);
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // makeInitialTempo (Msm.java:928-937)
+  //
+  // Written because a negative control came back green: making a `<timeSignature>` with no
+  // `denominator` fall back to a quarter-note beat instead of producing NaN changed nothing
+  // in 1132 tests. No fixture in the corpus carries a denominator-less or unparsable
+  // `<timeSignature>`, so the whole non-default half of this method was unobserved.
+  // ---------------------------------------------------------------
+  describe('makeInitialTempo: the one tempo event of a non-expressive export', () => {
+    const META_SET_TEMPO = 0x51;
+
+    /** The three payload bytes of the sequence's single Set Tempo event. */
+    function tempoBytes(msm: Msm, bpm = 120): number[] {
+      const midi = msm.exportMidi(bpm);
+      if (midi === null) throw new Error('exportMidi returned null for a non-empty MSM');
+
+      const events = metaMessages(midi.getSequence(), META_SET_TEMPO);
+      expect(events.length).toBe(1);
+      const message = events.at(0)?.getMessage();
+      if (message?.kind !== 'meta') throw new Error('no Set Tempo meta event in the sequence');
+      return [...metaPayload(message)];
+    }
+
+    /** `microseconds per quarter` as the three bytes MIDI writes it in. */
+    function mpqBytes(mpq: number): number[] {
+      return [(mpq >>> 16) & 0xff, (mpq >>> 8) & 0xff, mpq & 0xff];
+    }
+
+    /** The global `<timeSignatureMap>` `createMsm` builds, which starts out empty. */
+    function globalTimeSignatureMap(msm: Msm): Element {
+      return msm
+        .getRootElement()!
+        .getFirstChildElement('global')!
+        .getFirstChildElement('dated')!
+        .getFirstChildElement('timeSignatureMap')!;
+    }
+
+    it('takes the beat from the first global timeSignature denominator', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      globalTimeSignatureMap(msm).appendChild(Msm.makeTimeSignature(0, 3, 2, null));
+
+      // beatlength 1/2, so 120 bpm counts half notes: 60000000 / (120 * 0.5 * 4)
+      expect(tempoBytes(msm)).toEqual(mpqBytes(250000));
+    });
+
+    it('reads only the FIRST timeSignature, whatever follows it', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      const map = globalTimeSignatureMap(msm);
+      map.appendChild(Msm.makeTimeSignature(0, 6, 8, null));
+      map.appendChild(Msm.makeTimeSignature(720, 4, 4, null));
+
+      expect(tempoBytes(msm)).toEqual(mpqBytes(1000000)); // 1/8 beat, not 1/4
+    });
+
+    it('falls back to a quarter-note beat when the map holds no timeSignature', () => {
+      // What `createMsm` alone produces: the map exists and is empty.
+      expect(tempoBytes(msmWithNotes(720, [[0, 720, 60]]))).toEqual(mpqBytes(500000));
+    });
+
+    it('falls back to a quarter-note beat when the whole navigation misses', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      const dated = msm.getRootElement()!.getFirstChildElement('global')!;
+      dated.removeChild(dated.getFirstChildElement('dated')!);
+
+      expect(tempoBytes(msm)).toEqual(mpqBytes(500000));
+    });
+
+    /*
+     * The two below pin a DIVERGENCE FROM JAVA, not agreement with it.
+     *
+     * `Msm.java:932` wraps the whole read in `catch (NumberFormatException |
+     * NullPointerException)`. A missing `<global>`/`<dated>`/`<timeSignatureMap>`/
+     * `<timeSignature>` raises the NullPointerException and lands on 0.25 in both languages
+     * — that is the pair of tests above. But `Integer.parseInt(null)` and
+     * `Integer.parseInt("x")` both raise NumberFormatException in Java, so Java lands on
+     * 0.25 for a denominator that is absent or not an int literal, where JavaScript's
+     * `parseInt` returns NaN and does not throw. The port therefore emits a tempo of NaN
+     * microseconds per quarter, which `intToByteArray` truncates to **zero**.
+     *
+     * No fixture reaches it: every `<timeSignature>` in the reference and comparison corpora
+     * carries an integer `denominator`. These tests exist so that the behaviour is at least
+     * observed, and so that a decision to align with Java is a red test rather than a silent
+     * one. Reported to the conductor; not fixed here, because changing render output on an
+     * unfixtured path is not this charter's to authorise.
+     */
+    it('DIVERGES from Java: a timeSignature with no denominator yields a tempo of zero', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      const timeSignature = Msm.makeTimeSignature(0, 4, 4, null);
+      timeSignature.removeAttribute(timeSignature.getAttribute('denominator')!);
+      globalTimeSignatureMap(msm).appendChild(timeSignature);
+
+      expect(tempoBytes(msm)).toEqual([0, 0, 0]); // Java would give mpqBytes(500000)
+    });
+
+    it('DIVERGES from Java: a non-integer denominator yields a tempo of zero', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      const timeSignature = Msm.makeTimeSignature(0, 4, 4, null);
+      timeSignature.getAttribute('denominator')!.setValue('crotchet');
+      globalTimeSignatureMap(msm).appendChild(timeSignature);
+
+      expect(tempoBytes(msm)).toEqual([0, 0, 0]); // Java would give mpqBytes(500000)
     });
   });
 

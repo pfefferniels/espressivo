@@ -11,7 +11,11 @@ import {
   firstChildElement,
   getAttributeValue,
   getNextSiblingElement,
+  requireAttribute,
+  requireFirstChildElement,
+  requireParentElement,
 } from '../xml/tree.js';
+import { MissingNodeError } from '../xml/errors.js';
 import { addUUID } from '../xml/ids.js';
 
 import { Midi } from '../midi/Midi.js';
@@ -175,12 +179,19 @@ export class Msm extends AbstractMsm {
   /**
    * create a copy of this object
    * @returns the copy of this Msm object
+   * @throws {MissingNodeError} when this Msm is empty — there is then nothing to copy.
+   *   `this.getDocument()!.copy()` is what this was, so an empty Msm threw here before too;
+   *   the difference is that the error says which document and not "cannot read property
+   *   copy of null". `Performance.cloneForRender` is the caller that can reach it.
    */
   clone(): Msm {
-    const cloneDoc = this.getDocument()!.copy();
-    const clone = new Msm(cloneDoc);
+    const document = this.getDocument();
+    if (document === null) throw new MissingNodeError('an empty Msm has no document to clone');
+
+    const clone = new Msm(document.copy());
     clone.isValidFlag = this.isValid();
-    if (this.getFile() !== null) clone.setFile(this.getFile()!);
+    const file = this.getFile();
+    if (file !== null) clone.setFile(file);
     return clone;
   }
 
@@ -188,31 +199,32 @@ export class Msm extends AbstractMsm {
    * This getter method returns the title string from the root element's attribute title.
    * If missing, use the filename without extension or return "".
    * @returns
+   *
+   * **The `try`/`catch` this used to carry could not fire.** It was there to absorb a null
+   * root — `getAttribute('title', this.getRootElement()!)` — but both the local reader this
+   * file used to define and `xml/tree.attribute`, which replaced it, take `Element | null`
+   * and answer `null` for a null element. So the catch arm and the fall-through arm were
+   * the same arm, reached the same way, and the assertion in between claimed a root the
+   * method then did not need. Same three outcomes, no exception path.
    */
   getTitle(): string {
-    try {
-      const title = attribute('title', this.getRootElement());
-      if (title === null) {
-        return this.getFile() !== null ? getFilenameWithoutExtension(this.getFile()!) : '';
-      }
-      return title.getValue();
-    } catch {
-      return this.getFile() !== null ? getFilenameWithoutExtension(this.getFile()!) : '';
-    }
+    const title = attribute('title', this.getRootElement());
+    if (title !== null) return title.getValue();
+
+    const file = this.getFile();
+    return file === null ? '' : getFilenameWithoutExtension(file);
   }
 
   /**
    * this getter returns the timing resolution (pulses per quarternote) of the MSM
-   * @returns
+   * @returns 0 where there is no document, or no `pulsesPerQuarter` on its root
+   *
+   * The `try`/`catch` went for the reason given at {@link getTitle}, and `parseInt` does
+   * not throw — a non-numeric attribute yields `NaN` here as it did before.
    */
   getPPQ(): number {
-    try {
-      const ppq = attribute('pulsesPerQuarter', this.getRootElement());
-      if (ppq === null) return 0;
-      return parseInt(ppq.getValue());
-    } catch {
-      return 0;
-    }
+    const ppq = attribute('pulsesPerQuarter', this.getRootElement());
+    return ppq === null ? 0 : parseInt(ppq.getValue());
   }
 
   /**
@@ -230,7 +242,10 @@ export class Msm extends AbstractMsm {
    * @param ppq
    */
   setPulsesPerQuarter(ppq: number): void {
-    this.getRootElement()!.getAttribute('pulsesPerQuarter')!.setValue(String(ppq));
+    // Two assertions became two named failures. An empty Msm and one whose root carries no
+    // `pulsesPerQuarter` both threw here before — this is a *setter* for an attribute it
+    // does not create, which is the surprise the message now states outright.
+    requireAttribute('pulsesPerQuarter', this.requireRootElement()).setValue(String(ppq));
   }
 
   /**
@@ -263,7 +278,7 @@ export class Msm extends AbstractMsm {
     this.setPPQ(ppq);
 
     // find all attributes date, date.end and duration, and convert their values
-    const atts: Nodes = this.getRootElement()!.query(
+    const atts: Nodes = this.requireRootElement().query(
       'descendant::*[attribute::date]/attribute::date | descendant::*[attribute::date.end]/attribute::date.end | descendant::*[attribute::duration]/attribute::duration',
     );
     for (const node of atts) {
@@ -398,7 +413,7 @@ export class Msm extends AbstractMsm {
    * @param part
    */
   addPart(part: Element): void {
-    this.getRootElement()!.appendChild(part);
+    this.requireRootElement().appendChild(part);
   }
 
   /**
@@ -443,7 +458,7 @@ export class Msm extends AbstractMsm {
    * @returns
    */
   getParts(): Elements {
-    return this.getRootElement()!.getChildElements('part');
+    return this.requireRootElement().getChildElements('part');
   }
 
   /**
@@ -459,7 +474,7 @@ export class Msm extends AbstractMsm {
    * @returns
    */
   getGlobal(): Element | null {
-    return this.getRootElement()!.getFirstChildElement('global');
+    return this.requireRootElement().getFirstChildElement('global');
   }
 
   /**
@@ -499,13 +514,21 @@ export class Msm extends AbstractMsm {
    * first has unlinked the node.
    */
   removeRests(): void {
-    if (this.isEmpty()) return;
+    // `getRootElement() === null` is exactly `isEmpty()` — a parsed Document always has a
+    // root — so the guard now yields the value the query needs.
+    const root = this.getRootElement();
+    if (root === null) return;
 
-    const r: Nodes = this.getRootElement()!.query("descendant::*[local-name()='rest']"); // select all rest elements
+    const r: Nodes = root.query("descendant::*[local-name()='rest']"); // select all rest elements
     // The query result is a fixed snapshot, so unlinking a node from its parent mid-walk
     // cannot disturb the walk — which is what the index loop here was already relying on.
     for (const rest of r) {
-      rest.getParent()!.removeChild(rest); // remove them
+      // A node on the `descendant::` axis has a parent by construction, so this `continue`
+      // is unreachable — it is the total spelling of the `getParent()!` that was here, and
+      // the same shape `XmlBase.removeAllElements` uses over the same kind of query result.
+      const parent = rest.getParent();
+      if (parent === null) continue;
+      parent.removeChild(rest); // remove them
       rest.detach();
     }
   }
@@ -555,20 +578,21 @@ export class Msm extends AbstractMsm {
    */
   resolveSequencingMaps(): Map<string, string> {
     const repetitionIDs = new Map<string, string>();
-    if (this.isEmpty()) return repetitionIDs;
+    const root = this.getRootElement(); // null for exactly one reason: `isEmpty()`
+    if (root === null) return repetitionIDs;
 
-    const globalSequencingMap = this.getRootElement()!
-      .getFirstChildElement('global')!
-      .getFirstChildElement('dated')!
-      .getFirstChildElement('sequencingMap'); // get the global sequencingMap (or null if there is none)
-    const parts = this.getRootElement()!.getChildElements('part'); // get all the parts
+    // Walked once and held, where this used to re-navigate `root → <global> → <dated>` four
+    // separate times and assert both links away on each. The four navigations answered the
+    // same element, and asserting them said nothing the second time that it had not already
+    // claimed the first. A `<global>` or a `<dated>` missing throws here as it did before —
+    // named now, instead of "cannot read property getFirstChildElement of null".
+    const globalDated = requireFirstChildElement(requireFirstChildElement(root, 'global'), 'dated');
+    const globalSequencingMap = globalDated.getFirstChildElement('sequencingMap'); // get the global sequencingMap (or null if there is none)
+    const parts = root.getChildElements('part'); // get all the parts
 
     // expand global maps
     if (globalSequencingMap !== null) {
-      const maps = this.getRootElement()!
-        .getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .getChildElements();
+      const maps = globalDated.getChildElements();
       // go through all maps
       for (const map of maps) {
         if (
@@ -580,18 +604,17 @@ export class Msm extends AbstractMsm {
           continue; // continue with the next
 
         const newMap = Msm.applySequencingMapToMap(globalSequencingMap, map, repetitionIDs); // apply the global sequencingMap to it
-        if (newMap !== null)
-          this.getRootElement()!
-            .getFirstChildElement('global')!
-            .getFirstChildElement('dated')!
-            .replaceChild(map, newMap); // replace the old map by the new one
+        if (newMap !== null) globalDated.replaceChild(map, newMap); // replace the old map by the new one
       }
     }
 
     // go through all parts and expand their maps according to the underlying sequencingMaps
     // for each part
     for (const part of parts) {
-      let sequencingMap = part.getFirstChildElement('dated')!.getFirstChildElement('sequencingMap'); // get the part's local sequencingMap if there is one
+      // A part with no `<dated>` threw here before and throws here now; the three reads of
+      // it are one.
+      const partDated = requireFirstChildElement(part, 'dated');
+      let sequencingMap = partDated.getFirstChildElement('sequencingMap'); // get the part's local sequencingMap if there is one
       let localMap = true;
       if (sequencingMap === null) {
         // if there is none
@@ -603,7 +626,7 @@ export class Msm extends AbstractMsm {
       }
 
       // go through the score and all maps (except the sequencingMap itself) and apply the sequencingMap to them
-      const maps = part.getFirstChildElement('dated')!.getChildElements();
+      const maps = partDated.getChildElements();
       // go through all maps
       for (const map of maps) {
         if (
@@ -615,22 +638,22 @@ export class Msm extends AbstractMsm {
           continue; // continue with the next
 
         const newMap = Msm.applySequencingMapToMap(sequencingMap, map, repetitionIDs); // apply the sequencingMap to it
-        if (newMap !== null) map.getParent()!.replaceChild(map, newMap); // replace the old map by the new one
+        // `map` came out of `partDated.getChildElements()`, so its parent is `partDated`.
+        // Kept as the parent lookup rather than folded into `partDated` because that is
+        // what the line did, and the two differ if anything ever reparents a map mid-loop.
+        if (newMap !== null) requireParentElement(map).replaceChild(map, newMap); // replace the old map by the new one
       }
 
       // delete the local sequencingMap (because it does not apply anymore)
       if (localMap) {
-        part.getFirstChildElement('dated')!.removeChild(sequencingMap);
+        partDated.removeChild(sequencingMap);
         sequencingMap.detach();
       }
     }
 
     // delete the global sequencingMap (because it does not apply anymore)
     if (globalSequencingMap !== null) {
-      this.getRootElement()!
-        .getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .removeChild(globalSequencingMap);
+      globalDated.removeChild(globalSequencingMap);
       globalSequencingMap.detach();
     }
 
@@ -959,9 +982,13 @@ export class Msm extends AbstractMsm {
     generateProgramChanges: boolean,
     exportExpressive: boolean,
   ): Midi | null {
-    console.log(`\nConverting ${this.getFile() !== null ? this.getFile() : 'MSM data'} to MIDI.`);
+    const file = this.getFile();
+    console.log(`\nConverting ${file !== null ? file : 'MSM data'} to MIDI.`);
 
-    if (this.isEmpty()) return null;
+    // `getRootElement() === null` is exactly `isEmpty()`, so the early return and the
+    // navigation below now take the same value.
+    const root = this.getRootElement();
+    if (root === null) return null;
 
     const ppq = this.getPPQ();
     const seq = new Sequence(Sequence.PPQ, ppq);
@@ -975,37 +1002,29 @@ export class Msm extends AbstractMsm {
       this.makeInitialTempo(bpm, track);
     }
 
-    this.parseMarkerMap(
-      this.getRootElement()!.getFirstChildElement('global')!,
-      track,
-      exportExpressive,
-    );
-    this.parseTimeSignatureMap(
-      this.getRootElement()!.getFirstChildElement('global')!,
-      track,
-      exportExpressive,
-    );
-    this.parseKeySignatureMap(
-      this.getRootElement()!.getFirstChildElement('global')!,
-      track,
-      exportExpressive,
-    );
+    // Looked up once. The three calls below asserted `<global>` three times over, each
+    // re-walking the root's children to make the same claim; an MSM without a `<global>`
+    // threw on the first of them then and throws here now.
+    const global = requireFirstChildElement(root, 'global');
+    this.parseMarkerMap(global, track, exportExpressive);
+    this.parseTimeSignatureMap(global, track, exportExpressive);
+    this.parseKeySignatureMap(global, track, exportExpressive);
 
     for (
-      let part = this.getRootElement()!.getFirstChildElement('part');
+      let part = root.getFirstChildElement('part');
       part !== null;
       part = getNextSiblingElement('part', part)
     ) {
-      if (part.getAttribute('midi.channel') === null) continue;
+      const channelAttribute = part.getAttribute('midi.channel');
+      if (channelAttribute === null) continue;
 
       track = seq.createTrack();
 
-      let port = 0;
-      if (part.getAttribute('midi.port') !== null)
-        port = parseInt(part.getAttributeValue('midi.port')!);
+      const portAttribute = part.getAttribute('midi.port');
+      const port = portAttribute === null ? 0 : parseInt(portAttribute.getValue());
       track.add(EventMaker.createMidiPortEvent(0, port));
 
-      const chan = parseInt(part.getAttributeValue('midi.channel')!);
+      const chan = parseInt(channelAttribute.getValue());
       track.add(EventMaker.createChannelPrefix(0, chan));
 
       let reallyGenerateProgramChanges = generateProgramChanges;
@@ -1029,9 +1048,9 @@ export class Msm extends AbstractMsm {
       this.processScore(part, track, exportExpressive);
     }
 
-    if (this.getFile() !== null) {
+    if (file !== null) {
       // same rewrite Java does with Helper.getFilenameWithoutExtension (Msm.java:777)
-      const midi = new Midi(seq, `${getFilenameWithoutExtension(this.getFile()!)}.mid`);
+      const midi = new Midi(seq, `${getFilenameWithoutExtension(file)}.mid`);
       console.log('MSM to MIDI conversion finished.');
       return midi;
     }
@@ -1044,26 +1063,32 @@ export class Msm extends AbstractMsm {
    * The single tempo event of a non-expressive export, at date 0.
    *
    * `bpm` counts *beats*, and a beat is one unit of the first global time signature's
-   * denominator — so 120 bpm in 6/8 means 120 eighths, not 120 quarters. The whole
-   * navigation is inside the `try` on purpose: any missing link in it (no global, no
-   * dated, no timeSignatureMap, no timeSignature, no denominator) throws on a `!` and
-   * falls back to a quarter-note beat, which is what Java's catch-all does.
+   * denominator — so 120 bpm in 6/8 means 120 eighths, not 120 quarters.
+   *
+   * **This method used the `!` as control flow, and the two absences it collapsed are not
+   * the same absence.** The whole five-link navigation sat inside a `try` so that any
+   * missing link — no global, no dated, no timeSignatureMap, no timeSignature — threw a
+   * `TypeError` and fell back to a quarter-note beat, which is Java's catch-all. But the
+   * *sixth* `!`, on `getAttributeValue('denominator')`, does not throw: it hands `parseInt`
+   * a genuine `null`, which coerces to the string "null" and yields `NaN`, so a
+   * `<timeSignature>` with no denominator produced `1.0 / NaN` = `NaN`, NOT the 0.25
+   * fallback. Written out, that difference is visible; written as a `!` chain in a `try`,
+   * it read as if the two cases agreed. Both behaviours are preserved exactly.
    */
   private makeInitialTempo(bpm: number, track: Track): void {
+    const root = this.getRootElement();
+    const global = root === null ? null : root.getFirstChildElement('global');
+    const dated = global === null ? null : global.getFirstChildElement('dated');
+    const map = dated === null ? null : dated.getFirstChildElement('timeSignatureMap');
+    const timeSignature = map === null ? null : map.getFirstChildElement('timeSignature');
+
     let beatlength: number;
-    try {
-      beatlength =
-        1.0 /
-        parseInt(
-          this.getRootElement()!
-            .getFirstChildElement('global')!
-            .getFirstChildElement('dated')!
-            .getFirstChildElement('timeSignatureMap')!
-            .getFirstChildElement('timeSignature')!
-            .getAttributeValue('denominator')!,
-        );
-    } catch {
-      beatlength = 0.25;
+    if (timeSignature === null) {
+      beatlength = 0.25; // the missing-element arm, formerly the `catch`
+    } else {
+      const denominator = timeSignature.getAttributeValue('denominator');
+      // `parseInt(null!)` is `parseInt("null")` is `NaN`; see the note above.
+      beatlength = 1.0 / (denominator === null ? NaN : parseInt(denominator));
     }
     track.add(EventMaker.createTempo(0, bpm, beatlength));
   }
