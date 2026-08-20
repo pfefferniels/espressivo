@@ -230,6 +230,15 @@ export default tseslint.config(
       'prefer-const': 'error',
       'prefer-template': 'error',
 
+      // A leading underscore marks a parameter kept for its POSITION, not its value —
+      // `writeMsmString(_filename)` and `Mpm.writeMpmString(_filename)` both keep Java's
+      // signature while writing to a path the caller already knows. The convention is the
+      // repo's own (`docs/history/refactor/lint-debt.md:596`); this makes it enforceable
+      // instead of each site reaching for an `eslint-disable`. Only `args` — an unused
+      // *local* or import is still an error, which is what caught three stale imports and
+      // an `InstrumentsDictionary` variable that existed solely to feed a deleted log line.
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+
       // Exported API must state its return type; inference is fine internally.
       '@typescript-eslint/explicit-module-boundary-types': 'error',
 

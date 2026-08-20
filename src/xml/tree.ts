@@ -533,6 +533,18 @@ export function attribute(name: string, ofThis: Element | null): Attribute | nul
   // failures being counts, not ids, because it reads qualified names structurally. This
   // function is the transcription of `Helper.getAttribute`, so this is where the fidelity
   // belongs; the XOM emulation keeps its convenience for everyone else.
+  //
+  // **Second consequence, narrower than the first and worth stating so nobody rediscovers it
+  // as a surprise.** The old step one matched a local name in ANY namespace; this one matches
+  // it in none. An attribute in a namespace that is neither empty nor the element's own is
+  // therefore no longer found here — steps two and three do not cover that case either. It is
+  // unreachable from any document in this repository: `xml:id` is the ONLY namespaced
+  // attribute in the whole fixture corpus (1725 of them, all covered by step three), and the
+  // only prefix declaration anywhere is `xmlns:xml` itself. Attributes without a prefix are in
+  // no namespace by XML's own rule, unlike elements, which is why every `@date`, `@number`
+  // and `@name` in MSM and MPM still resolves at step one. Checked end to end after this
+  // change: `comparison/parts.ts`'s `readPartNumber`, which would silently unmatch parts if it
+  // regressed, still reads `1` off a real reference MSM.
   let a = ofThis.getAttribute(name, '');
   if (a != null) return a;
 

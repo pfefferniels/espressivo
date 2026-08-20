@@ -5560,6 +5560,12 @@ export class Mei2MsmMpmConverter {
    * whoever implements the method adds it back at the same time as the code that reads it,
    * which is two lines. Java's signature is recorded here instead:
    * `private static double processClefDis(Element scoreStaffDef)`.
+   *
+   * The repo's `^_` convention (`eslint.config.js`, and lint-debt.md:596) would also cover
+   * this, and deliberately is not used: it marks a parameter kept for its **position** in a
+   * signature an outside caller supplies — `writeMsmString(_filename)` keeps Java's public
+   * shape. This is a `protected static` helper whose only two callers are three lines away in
+   * this file, so there is no signature to keep and nobody to keep it for.
    */
   protected static processClefDis(): number {
     return 0.0;
