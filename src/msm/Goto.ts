@@ -81,28 +81,43 @@ export class Goto {
    * @param gt
    */
   constructor(gt: Element);
+  /**
+   * The implementation signature is a **union of the two argument tuples**, not the five
+   * optional parameters it used to be. Those optionals were the reason the parameter branch
+   * opened `this.source = source!; this.activity = activity!; this.targetDate = targetDate!`
+   * — three assertions restating what the five-argument overload had already promised, and
+   * which the compiler had no way to carry into the body. `args.length` discriminates the
+   * tuples, so the promise now arrives narrowed and the assertions are gone. Neither public
+   * signature changed, so neither did any of the 31 call sites.
+   */
   constructor(
-    dateOrGt: number | Element,
-    targetDate?: number,
-    targetId?: string | null,
-    activity?: string,
-    source?: Element,
+    ...args:
+      | [gt: Element]
+      | [
+          date: number,
+          targetDate: number,
+          targetId: string | null,
+          activity: string,
+          source: Element,
+        ]
   ) {
-    if (typeof dateOrGt === 'number') {
-      // 5-arg constructor: date, targetDate, targetId, activity, source
-      this.date = dateOrGt;
-      this.source = source!;
-      this.activity = activity!;
-      this.targetDate = targetDate!;
-
-      if (targetId !== null && targetId !== undefined) {
-        let tid = targetId;
-        if (tid.startsWith('#')) tid = tid.substring(1, tid.length - 1);
-        this.targetId = tid;
-      }
-    } else {
+    if (args.length === 1) {
       // Element constructor
-      this.initFromElement(dateOrGt);
+      this.initFromElement(args[0]);
+      return;
+    }
+
+    // 5-arg constructor: date, targetDate, targetId, activity, source
+    const [date, targetDate, targetId, activity, source] = args;
+    this.date = date;
+    this.source = source;
+    this.activity = activity;
+    this.targetDate = targetDate;
+
+    if (targetId !== null) {
+      let tid = targetId;
+      if (tid.startsWith('#')) tid = tid.substring(1, tid.length - 1);
+      this.targetId = tid;
     }
   }
 
@@ -131,19 +146,20 @@ export class Goto {
    * several elements share the id, the first in document order wins.
    */
   private initFromElement(gt: Element): void {
-    let a = gt.getAttribute('date'); // get its date attribute
-    if (a === null)
+    const dateAttribute = gt.getAttribute('date'); // get its date attribute
+    if (dateAttribute === null)
       // if it has none
       throw new Error(`Missing attribute date in ${gt.toXML()}`); // the Goto instance cannot be created
-    this.date = parseFloat(gt.getAttributeValue('date')!); // get the date as double
+    this.date = parseFloat(dateAttribute.getValue()); // get the date as double
     if (Number.isNaN(this.date))
       // parseFloat yields NaN where Java's Double.parseDouble throws
       throw new Error(`Invalid attribute date in ${gt.toXML()}`); // the Goto instance cannot be created
 
     // get its target.id and target element
-    if (gt.getAttribute('target.id') !== null && gt.getAttributeValue('target.id')!.length > 0) {
+    const targetIdAttribute = gt.getAttribute('target.id');
+    if (targetIdAttribute !== null && targetIdAttribute.getValue().length > 0) {
       // if there is a nonempty attribute target.id
-      this.targetId = gt.getAttributeValue('target.id')!.trim(); // get target.id
+      this.targetId = targetIdAttribute.getValue().trim(); // get target.id
 
       if (this.targetId.startsWith('#'))
         // remove the # at the start
@@ -160,25 +176,35 @@ export class Goto {
     }
 
     // determine target date
-    a = gt.getAttribute('target.date'); // get its target.date
-    if (a === null) {
+    const targetDateAttribute = gt.getAttribute('target.date'); // get its target.date
+    if (targetDateAttribute === null) {
       // if it has none
       if (this.target === null)
         // and there is no target specified otherwise
         throw new Error(`Missing attribute target.date or a valid target.id in ${gt.toXML()}`); // the Goto instance cannot be created
-      this.targetDate = parseFloat(this.target.getAttributeValue('date')!); // get the date from the target
+
+      // **The absent case is not an error here, it is a NaN.** `parseFloat(
+      // this.target.getAttributeValue('date')!)` — what this line was — hands `parseFloat`
+      // a real `null`, which coerces to the string "null" and yields NaN; the test below is
+      // what turns that into the error. So a target with no `date` and a target with an
+      // unparsable one take the same route and raise the same message, and both are pinned
+      // by `tests/msm/Goto.test.ts`. A `require*` accessor here would raise a
+      // `MissingNodeError` from the first of those and break that pairing.
+      const targetOwnDate = this.target.getAttribute('date');
+      this.targetDate = targetOwnDate === null ? NaN : parseFloat(targetOwnDate.getValue()); // get the date from the target
       if (Number.isNaN(this.targetDate))
         // if it fails
         throw new Error(`The target of ${gt.toXML()} has no valid attribute date.`); // the Goto instance cannot be created
     } else {
       // it has the target.date attribute
-      this.targetDate = parseFloat(gt.getAttributeValue('target.date')!); // get the date as double
+      this.targetDate = parseFloat(targetDateAttribute.getValue()); // get the date as double
       if (Number.isNaN(this.targetDate))
         // parseFloat yields NaN where Java's Double.parseDouble throws
         throw new Error(`Invalid attribute target.date in ${gt.toXML()}`); // the Goto instance cannot be created
     }
 
-    this.activity = gt.getAttribute('activity') === null ? '1' : gt.getAttributeValue('activity')!; // get the activity string
+    const activityAttribute = gt.getAttribute('activity');
+    this.activity = activityAttribute === null ? '1' : activityAttribute.getValue(); // get the activity string
   }
 
   /**
