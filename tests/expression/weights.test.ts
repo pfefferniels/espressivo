@@ -35,6 +35,7 @@ import {
   type ExaggerationWeights,
 } from '../../src/expression/weights.js';
 import { MPM_NAMESPACE } from '../../src/mpm/names.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 const IDENTITY_RECORD: Record<ExpressionDimension, number> = Object.fromEntries(
   EXPRESSION_DIMENSIONS.map((dimension) => [dimension, 1]),
@@ -211,7 +212,9 @@ describe('weightedFactors composes with the engine', () => {
     const { xml, report } = run({ rubato: 0 }, 2);
     expect(xml).toContain('intensity="0.5"');
     expect(xml).toContain('milliseconds.offset="40"');
-    expect(report.performances[0].dimensions.rubato.state).toBe('skipped');
+    expect(
+      elementAt(report.performances, 0, 'the report’s performances').dimensions.rubato.state,
+    ).toBe('skipped');
   });
 });
 

@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { orderedEntries, styleNameAt } from '../../src/expression/datedView.js';
-import { parseMpmRoot } from '../../src/expression/mpmDocument.js';
-import { readPerformances, type MpmEnvironment } from '../../src/expression/mpmTree.js';
+import type { MpmEnvironment } from '../../src/expression/mpmTree.js';
 import {
   findStyleDef,
   readDefValue,
@@ -12,13 +11,24 @@ import {
 import { Mpm } from '../../src/mpm/Mpm.js';
 import { DynamicsMap } from '../../src/mpm/elements/maps/DynamicsMap.js';
 import { numericDynamicsValue, parseStyle } from '../../src/mpm/elements/styles/style.js';
-import { unwrapOr } from '../../src/prelude/index.js';
+import { elementAt, unwrapOr } from '../../src/prelude/index.js';
 import { DYNAMICS_MAP, DYNAMICS_STYLE, TEMPO_STYLE } from '../../src/mpm/names.js';
-import { globalEnvironment, partEnvironment, performanceDocument } from './rawFixtures.js';
+import {
+  globalEnvironment,
+  partAt,
+  partEnvironment,
+  performanceDocument,
+  soleOf,
+} from './rawFixtures.js';
 
 /** The global environment of the first performance of a hand-built document. */
 function globalOf(text: string): MpmEnvironment {
-  return readPerformances(parseMpmRoot(text))[0].global;
+  return soleOf(text).global;
+}
+
+/** Reading `index` of a resolved map, checked. */
+function readingAt(readings: readonly LevelReading[], index: number): LevelReading {
+  return elementAt(readings, index, 'the readings this map resolved to');
 }
 
 /** Resolve every `<dynamics>` of a map the way the engine's walker would. */
@@ -59,10 +69,10 @@ describe('styleScope', () => {
 
     it('leaves the instruction before the equal-dated switch unresolvable', () => {
       const global = globalOf(EQUAL_DATES);
-      const [before, after] = resolveMap(global, global);
-      expect(before.kind).toBe('unresolvable');
-      expect(before.value).toBeNaN();
-      expect(after).toMatchObject({ kind: 'def', value: 48 });
+      const readings = resolveMap(global, global);
+      expect(readingAt(readings, 0).kind).toBe('unresolvable');
+      expect(readingAt(readings, 0).value).toBeNaN();
+      expect(readingAt(readings, 1)).toMatchObject({ kind: 'def', value: 48 });
     });
 
     it('agrees with the renderer, which reads the same two levels as 100 and 48', () => {
@@ -80,9 +90,9 @@ describe('styleScope', () => {
       expect(rendered).toEqual([100, 48]);
 
       const global = globalOf(EQUAL_DATES);
-      const [before, after] = resolveMap(global, global);
-      expect(before.kind).toBe('unresolvable');
-      expect(after.value).toBe(rendered[1]);
+      const readings = resolveMap(global, global);
+      expect(readingAt(readings, 0).kind).toBe('unresolvable');
+      expect(readingAt(readings, 1).value).toBe(elementAt(rendered, 1, 'the rendered levels'));
     });
   });
 
@@ -102,18 +112,16 @@ describe('styleScope', () => {
     );
 
     it('takes the part styleDef whole — a def missing from it does NOT fall back per-def', () => {
-      const performance = readPerformances(parseMpmRoot(SHADOWED))[0];
-      const [p, f] = resolveMap(performance.parts[0], performance.global);
-      expect(p).toMatchObject({ kind: 'def', value: 10 });
+      const performance = soleOf(SHADOWED);
+      const readings = resolveMap(partAt(performance, 0), performance.global);
+      expect(readingAt(readings, 0)).toMatchObject({ kind: 'def', value: 10 });
       // The global "S" HAS an f=97; whole-styleDef shadowing means it is unreachable here.
-      expect(f.kind).toBe('unresolvable');
+      expect(readingAt(readings, 1).kind).toBe('unresolvable');
     });
 
     it('agrees with the renderer on both levels', () => {
       const mpm = new Mpm(SHADOWED);
-      const map = mpm
-        .getPerformance(0)!
-        .getAllParts()[0]
+      const map = elementAt(mpm.getPerformance(0)!.getAllParts(), 0, 'the performance’s parts')
         .getDated()!
         .getMap(DYNAMICS_MAP) as DynamicsMap;
       // Index 0 is the <style> switch; the two instructions follow it.
@@ -130,16 +138,16 @@ describe('styleScope', () => {
             '<dynamicsMap><style date="0.0" name.ref="MEI export"/><dynamics date="0.0" volume="p"/></dynamicsMap>',
           ),
       );
-      const performance = readPerformances(parseMpmRoot(text))[0];
-      const [p] = resolveMap(performance.parts[0], performance.global);
+      const performance = soleOf(text);
+      const p = readingAt(resolveMap(partAt(performance, 0), performance.global), 0);
       expect(p).toMatchObject({ kind: 'def', value: 48 });
       // The site reported is the GLOBAL one — its blast radius is the whole performance.
       expect(p.kind === 'def' && p.environment.scope).toBe('global');
     });
 
     it('reports a part-local def as a part site', () => {
-      const performance = readPerformances(parseMpmRoot(SHADOWED))[0];
-      const [p] = resolveMap(performance.parts[0], performance.global);
+      const performance = soleOf(SHADOWED);
+      const p = readingAt(resolveMap(partAt(performance, 0), performance.global), 0);
       expect(p.kind === 'def' && p.environment.scope).toBe('part');
       expect(p.kind === 'def' && p.environment.partIndex).toBe(0);
     });
@@ -190,7 +198,7 @@ describe('styleScope', () => {
     it('agrees with numericDynamicsValue everywhere except the fallback', () => {
       const text = performanceDocument(globalEnvironment(MEI_STYLES, ''));
       const global = globalOf(text);
-      const styleDefElement = readPerformances(parseMpmRoot(text))[0]
+      const styleDefElement = soleOf(text)
         .global.styleCollections.get(DYNAMICS_STYLE)!
         .getChildElements('styleDef')
         .get(0);

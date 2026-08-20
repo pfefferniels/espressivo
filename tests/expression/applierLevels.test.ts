@@ -17,6 +17,7 @@ import {
   numberAt,
   textAt,
 } from './applierFixtures.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 /** The engine's own accumulation order: `exp(Σ ln xᵢ / n)`, summed in population order. */
 function geomean(...values: readonly number[]): number {
@@ -449,7 +450,9 @@ describe('applyExaggeration — performance selection (A11)', () => {
 
   it('narrows by index', () => {
     const { report } = exaggerate(TWO, { dynamics: 2 }, { performance: 0 });
-    expect(report.performances[0].performance.name).toBe('A');
+    expect(elementAt(report.performances, 0, 'the report’s performances').performance.name).toBe(
+      'A',
+    );
   });
 
   it('produces an empty, zero-write run for a selector that matches nothing', () => {

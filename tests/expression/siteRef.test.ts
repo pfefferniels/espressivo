@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { orderedEntries, styleNameAt } from '../../src/expression/datedView.js';
-import { parseMpmRoot } from '../../src/expression/mpmDocument.js';
-import { readPerformances } from '../../src/expression/mpmTree.js';
 import {
   defContainerLabel,
   defSiteRef,
@@ -11,7 +9,14 @@ import {
 } from '../../src/expression/siteRef.js';
 import { resolveLevel } from '../../src/expression/styleScope.js';
 import { DYNAMICS_MAP, DYNAMICS_STYLE } from '../../src/mpm/names.js';
-import { globalEnvironment, partEnvironment, performanceDocument } from './rawFixtures.js';
+import {
+  globalEnvironment,
+  partAt,
+  partEnvironment,
+  performanceDocument,
+  soleOf,
+} from './rawFixtures.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 const STYLES =
   '<dynamicsStyles><styleDef name="MEI export">' +
@@ -32,7 +37,7 @@ const DOCUMENT = performanceDocument(
 
 /** Every `<dynamics>` of the global dynamicsMap, as (entry, view index) pairs. */
 function instructions(text: string) {
-  const performance = readPerformances(parseMpmRoot(text))[0];
+  const performance = soleOf(text);
   const map = performance.global.maps.get(DYNAMICS_MAP)!;
   const entries = orderedEntries(map);
   return {
@@ -43,6 +48,10 @@ function instructions(text: string) {
       .filter(({ entry }) => entry.element.getLocalName() === 'dynamics'),
   };
 }
+
+/** The `<dynamics>` at `index` of a read, checked. */
+const dynamicAt = <T extends NonNullable<unknown>>(dynamics: readonly T[], index: number): T =>
+  elementAt(dynamics, index, 'the map’s <dynamics> instructions');
 
 describe('siteRef', () => {
   describe('instructionSiteRef', () => {
@@ -64,7 +73,7 @@ describe('siteRef', () => {
       const site = instructionSiteRef(
         performance.global,
         DYNAMICS_MAP,
-        dynamics[1].entry,
+        dynamicAt(dynamics, 1).entry,
         'volume',
       );
       expect(site).toEqual<SiteRef>({
@@ -81,7 +90,8 @@ describe('siteRef', () => {
     it('reports a null xmlId when the element carries none', () => {
       const { performance, dynamics } = instructions(DOCUMENT);
       expect(
-        instructionSiteRef(performance.global, DYNAMICS_MAP, dynamics[0].entry, 'volume').xmlId,
+        instructionSiteRef(performance.global, DYNAMICS_MAP, dynamicAt(dynamics, 0).entry, 'volume')
+          .xmlId,
       ).toBeNull();
     });
 
@@ -92,7 +102,8 @@ describe('siteRef', () => {
       );
       const { performance, dynamics } = instructions(text);
       expect(
-        instructionSiteRef(performance.global, DYNAMICS_MAP, dynamics[0].entry, 'volume').date,
+        instructionSiteRef(performance.global, DYNAMICS_MAP, dynamicAt(dynamics, 0).entry, 'volume')
+          .date,
       ).toBeNull();
     });
 
@@ -112,9 +123,12 @@ describe('siteRef', () => {
             2,
           ),
       );
-      const performance = readPerformances(parseMpmRoot(text))[0];
-      const part = performance.parts[1];
-      const entry = orderedEntries(part.maps.get(DYNAMICS_MAP)!)[0];
+      const part = partAt(soleOf(text), 1);
+      const entry = elementAt(
+        orderedEntries(part.maps.get(DYNAMICS_MAP)!),
+        0,
+        'the part map’s entries',
+      );
       expect(instructionSiteRef(part, DYNAMICS_MAP, entry, 'volume')).toMatchObject({
         scope: 'part',
         partIndex: 1,
@@ -140,7 +154,7 @@ describe('siteRef', () => {
       const site = instructionSiteRef(
         performance.global,
         DYNAMICS_MAP,
-        dynamics[0].entry,
+        dynamicAt(dynamics, 0).entry,
         'volume',
       );
       expect(structuredClone(site)).toEqual(site);
@@ -151,9 +165,9 @@ describe('siteRef', () => {
     it('labels the container as collection/styleDef and indexes among the defs', () => {
       const { performance, entries, dynamics } = instructions(DOCUMENT);
       const reading = resolveLevel(
-        dynamics[0].entry.element.getAttributeValue('volume')!,
+        dynamicAt(dynamics, 0).entry.element.getAttributeValue('volume')!,
         'dynamics',
-        styleNameAt(entries, dynamics[0].index),
+        styleNameAt(entries, dynamicAt(dynamics, 0).index),
         performance.global,
         performance.global,
       );
@@ -186,7 +200,7 @@ describe('siteRef', () => {
           '<imprecisionMap.timing><distribution.uniform xml:id="d1" date="0.0" limit.lower="-1" limit.upper="1"/></imprecisionMap.timing>',
         ),
       );
-      const performance = readPerformances(parseMpmRoot(text))[0];
+      const performance = soleOf(text);
       const map = performance.global.maps.get('imprecisionMap.timing')!;
       const distribution = map.getChildElements().get(0);
       expect(
@@ -203,7 +217,7 @@ describe('siteRef', () => {
     });
 
     it('reports -1 rather than throwing when the element is not in the container', () => {
-      const performance = readPerformances(parseMpmRoot(DOCUMENT))[0];
+      const performance = soleOf(DOCUMENT);
       const map = performance.global.maps.get(DYNAMICS_MAP)!;
       const collection = performance.global.styleCollections.get(DYNAMICS_STYLE)!;
       expect(siteRefOf(performance.global, 'dynamicsMap', map, collection, 'name').index).toBe(-1);

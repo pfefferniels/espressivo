@@ -485,9 +485,8 @@ export function adversarialTriples(): readonly (readonly [
 ])[] {
   const triples: (readonly [AdversarialMember, AdversarialMember, AdversarialMember])[] = [];
   const members = adversarialMembers();
-  for (let i = 0; i < members.length; ++i)
-    for (let j = i + 1; j < members.length; ++j)
-      for (let k = j + 1; k < members.length; ++k)
-        triples.push([members[i], members[j], members[k]]);
+  for (const [i, x] of members.entries())
+    for (const [j, y] of members.slice(i + 1).entries())
+      for (const z of members.slice(i + 1 + j + 1)) triples.push([x, y, z]);
   return triples;
 }

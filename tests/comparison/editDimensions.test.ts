@@ -35,6 +35,7 @@ import { epsilonRecord } from '../../src/comparison/compare.js';
 import { DEFAULT_LAMBDA_DATE } from '../../src/comparison/eventAlignment.js';
 import type { InvarianceMode } from '../../src/comparison/decomposition.js';
 import { ADVERSARIAL_FAMILY, ADVERSARIAL_WINDOW } from './adversarialFamily.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const fixture = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'utf-8');
@@ -629,7 +630,7 @@ describe('the localized norm is exact, not an approximation', () => {
       const whole = scriptsOf(target, { localize: false }, LOCALIZING_DIMENSIONS);
       expect(localized).toHaveLength(whole.length);
       for (const [index, entry] of localized.entries()) {
-        const reference = whole[index];
+        const reference = elementAt(whole, index, 'the whole-window entries');
         expect(entry.dimension).toBe(reference.dimension);
         expect(entry.script.scriptCost).toBe(reference.script.scriptCost);
         expect(entry.script.replayedDelta).toBe(reference.script.replayedDelta);
@@ -657,18 +658,20 @@ describe('the localized norm is exact, not an approximation', () => {
         });
         const localized = scriptsOf(target, {}, LOCALIZING_DIMENSIONS);
         const whole = scriptsOf(target, { localize: false }, LOCALIZING_DIMENSIONS);
-        for (const [index, entry] of localized.entries())
+        for (const [index, entry] of localized.entries()) {
+          const reference = elementAt(whole, index, 'the whole-window entries');
           expect({
             dimension: entry.dimension,
             hazard: `${a.name} | ${b.name}`,
             scriptCost: entry.script.scriptCost,
             replayedDelta: entry.script.replayedDelta,
           }).toEqual({
-            dimension: whole[index].dimension,
+            dimension: reference.dimension,
             hazard: `${a.name} | ${b.name}`,
-            scriptCost: whole[index].script.scriptCost,
-            replayedDelta: whole[index].script.replayedDelta,
+            scriptCost: reference.script.scriptCost,
+            replayedDelta: reference.script.replayedDelta,
           });
+        }
       }
   });
 });

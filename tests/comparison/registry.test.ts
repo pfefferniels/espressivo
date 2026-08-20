@@ -40,6 +40,7 @@ import {
 import type { RegistryRow, RowSpace } from '../../src/expression/registry.js';
 import { compareMpm, performMsm, type XmlText } from '../../src/api/index.js';
 import { forwardInSpace } from '../../src/expression/transforms.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 /** The §3 dimensions with rows: W2's four, plus the two W3a cut 1 brought. */
 const COVERED_DIMENSIONS: readonly ComparisonDimension[] = [
@@ -700,13 +701,11 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
           elements.includes(comparison.element) &&
           dimensions.includes(comparison.dimension),
       );
-      expect(`${row.dimension}/${elements[0]}@${row.attribute}: ${candidates.length}`).toBe(
-        `${row.dimension}/${elements[0]}@${row.attribute}: 1`,
-      );
+      const label = `${row.dimension}/${elementAt(elements, 0, 'the row’s elements')}@${row.attribute}`;
+      expect(`${label}: ${candidates.length}`).toBe(`${label}: 1`);
       const expected = comparisonSpaceOfExpressionRow(row.space);
-      expect(`${candidates[0].key}: ${candidates[0].space.kind}`).toBe(
-        `${candidates[0].key}: ${expected}`,
-      );
+      const only = elementAt(candidates, 0, 'the matching comparison rows');
+      expect(`${only.key}: ${only.space.kind}`).toBe(`${only.key}: ${expected}`);
     }
   });
 
