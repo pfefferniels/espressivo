@@ -1,6 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, firstChildElement, getAttributeValue } from '../../../xml/tree.js';
 import { addUUID } from '../../../xml/ids.js';
+import { elementAt, head, isNonEmpty, zipWith } from '../../../prelude/index.js';
 import { formatNoteOrderPerf, parseNoteOrder } from './data/noteOrder.js';
 import { expandOrnament } from './data/ornamentExpansion.js';
 import { FrameDomain, NoteOffShift, TemporalSpread } from '../styles/defs/TemporalSpread.js';
@@ -630,15 +631,24 @@ function renderGroup(
   owners: ReadonlyMap<Element, GenericMap>,
   maps: readonly GenericMap[],
 ): void {
+  // A group is built by pushing onto `[ornament]` and an orphan arrives as `[orphan]`, so
+  // it is never empty. The guard is what lets the three reads below be reads rather than
+  // assertions; it costs one comparison and answers "nothing to lay out" if it ever fires.
+  if (!isNonEmpty(group)) return;
+  const first = head(group);
+
   const ticks = group.filter((ornament) => ornament.frame.domain === 'ticks');
   const milliseconds = group.filter((ornament) => ornament.frame.domain === 'milliseconds');
   if (ticks.length > 0 && milliseconds.length > 0)
     console.error(
-      `Warning: the note decorated by ${describeOrnament(group[0].ornamentId, group[0].od.date)} carries both tick-domain and millisecond-domain ornaments; they are laid out independently and may overlap.`,
+      `Warning: the note decorated by ${describeOrnament(first.ornamentId, first.od.date)} carries both tick-domain and millisecond-domain ornaments; they are laid out independently and may overlap.`,
     );
 
   const planned = [...planDomain(ticks), ...planDomain(milliseconds)];
-  const geometry = group[0].geometry;
+  // Nothing planned means nothing built, and `every` over the empty `built` would have
+  // returned two lines down anyway.
+  if (!isNonEmpty(planned)) return;
+  const geometry = first.geometry;
   const built = planned.map((plan) => createChords(plan, geometry, principal));
   if (built.every((one) => one.chords.length === 0)) return;
 
@@ -648,14 +658,17 @@ function renderGroup(
     // when the principal is consumed whole does the id move to a generated note. Never both —
     // two elements sharing an xml:id is not a valid document.
     if (!carve(principal, planned, built, geometry, owners))
-      assignPrincipalId(principal, planned[0].ornament.principalPitch, built);
+      assignPrincipalId(principal, head(planned).ornament.principalPitch, built);
   }
 
   const owner = ownerOf(principal, owners, maps);
   if (owner === null) return;
   for (const [index, plan] of planned.entries()) {
-    plan.ornament.od.generation = { chords: built[index].chords, spacing: plan.spacing };
-    for (const chord of plan.ornament.od.apply(built[index].chords))
+    // `built` is `planned.map(…)`, so the two are the same length and this is the plan's own
+    // chords — read once rather than twice.
+    const one = elementAt(built, index, 'built ornament');
+    plan.ornament.od.generation = { chords: one.chords, spacing: plan.spacing };
+    for (const chord of plan.ornament.od.apply(one.chords))
       for (const note of chord) owner.addElement(note);
   }
 }
@@ -671,14 +684,15 @@ function renderGroup(
  * tempo pass, which is the same reason millisecond frames go through markers at all.
  */
 function planDomain(group: readonly PreparedOrnament[]): PlannedOrnament[] {
-  if (group.length === 0) return [];
+  if (!isNonEmpty(group)) return [];
 
-  const geometry = group[0].geometry;
+  const first = head(group);
+  const geometry = first.geometry;
   const front = group.filter((ornament) => ornament.frame.alignment === 'at start');
   const end = group.filter((ornament) => ornament.frame.alignment === 'at end');
   const totalRaw = group.reduce((sum, ornament) => sum + ornament.frame.length, 0.0);
   const scale =
-    group[0].frame.domain === 'milliseconds' || totalRaw <= 0.0
+    first.frame.domain === 'milliseconds' || totalRaw <= 0.0
       ? 1.0
       : Math.min(1.0, geometry.duration / totalRaw);
   const endTotal = end.reduce((sum, ornament) => sum + ornament.frame.length * scale, 0.0);
@@ -692,7 +706,7 @@ function planDomain(group: readonly PreparedOrnament[]): PlannedOrnament[] {
   // The end group is packed so that its last member finishes exactly at the principal's end.
   // A millisecond frame has no tick geometry to measure back from, so its cursor runs from the
   // end itself (negative values, which is what the end-anchored marker of D5 expresses).
-  cursor = group[0].frame.domain === 'milliseconds' ? -endTotal : geometry.duration - endTotal;
+  cursor = first.frame.domain === 'milliseconds' ? -endTotal : geometry.duration - endTotal;
   for (const ornament of end) {
     planned.push(planOrnament(ornament, cursor + ornament.frame.offset, scale, geometry));
     cursor += ornament.frame.length * scale;
@@ -749,11 +763,19 @@ function planOrnament(
   const principalEnd = geometry.date + geometry.duration;
   return {
     ornament,
-    slots: slots.map((slot, index) =>
+    // `dates` is `spacingOffsets(slots.length, …)` mapped, so the two are the same length and
+    // the slot and its date are one zip rather than a map plus a parallel index.
+    slots: zipWith(slots, dates, (slot, date, index) =>
       slot.notes.map((resolved) => ({
         resolved,
-        date: dates[index],
-        duration: noteDuration(frame.noteOffShift, dates, index, geometry.duration, principalEnd),
+        date,
+        duration: noteDuration(
+          frame.noteOffShift,
+          date,
+          dates.at(index + 1) ?? null,
+          geometry.duration,
+          principalEnd,
+        ),
         slotIndex: index,
         repetitionPass: slot.repetitionPass ?? null,
       })),
@@ -813,8 +835,8 @@ function earliestSpacingOffset(
  */
 function noteDuration(
   shift: NoteOffShift,
-  dates: readonly number[],
-  index: number,
+  date: number,
+  nextDate: number | null,
   principalDuration: number,
   principalEnd: number,
 ): number {
@@ -822,13 +844,11 @@ function noteDuration(
     case NoteOffShift.True:
       return principalDuration;
     case NoteOffShift.Monophonic:
-      return index < dates.length - 1
-        ? dates[index + 1] - dates[index]
-        : principalEnd - dates[index];
+      return nextDate === null ? principalEnd - date : nextDate - date;
     // `false` is the third and last member of the enum; named so that adding a fourth is a
     // compile error rather than a silent alias for it.
     case NoteOffShift.False:
-      return principalEnd - dates[index];
+      return principalEnd - date;
   }
 }
 
@@ -876,7 +896,7 @@ function applyMillisecondSpacing(
   const offsets = spacingOffsets(chords.length, start, length, frame.intensity);
   let previous: Element[] | null = null;
   for (const [index, chord] of chords.entries()) {
-    const dateOffset = offsets[index];
+    const dateOffset = elementAt(offsets, index, 'spacing offset');
     for (const note of chord) {
       const ornamentDateAtt = attribute(dateAttName, note);
       if (ornamentDateAtt !== null)
@@ -1082,12 +1102,12 @@ function assignPrincipalId(
   if (id === null) return;
 
   const notes = built.flatMap((one) => one.notes);
-  if (notes.length === 0) return;
+  if (!isNonEmpty(notes)) return;
 
   const heir =
     notes.find((note) => note.resolved.source === 'principal') ??
     notes.find((note) => principalPitch !== null && note.resolved.midiPitch === principalPitch) ??
-    notes[0];
+    head(notes);
   const heirId = attribute('id', heir.element);
   if (heirId !== null) heirId.setValue(id.getValue());
 }
@@ -1156,7 +1176,7 @@ function carve(
     const { frame, ornamentId, od } = plan.ornament;
     if (frame.domain !== 'milliseconds' || frame.alignment !== 'at end') continue;
     const earliest = earliestSpacingOffset(
-      built[index].chords.length,
+      elementAt(built, index, 'built ornament').chords.length,
       plan.start,
       plan.length,
       frame.intensity,
@@ -1242,7 +1262,7 @@ function ownerOf(
     const owner = owners.get(principal);
     if (owner !== undefined) return owner;
   }
-  return maps.length > 0 ? maps[0] : null;
+  return maps.at(0) ?? null;
 }
 
 /**
