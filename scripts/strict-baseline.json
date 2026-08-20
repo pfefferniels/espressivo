@@ -3,7 +3,7 @@
     "tests/api": 112,
     "tests/comparison": 380,
     "tests/expression": 116,
-    "tests/integration": 229,
+    "tests/integration": 189,
     "tests/mei": 12,
     "tests/midi": 45,
     "tests/mpm/elements": 71,

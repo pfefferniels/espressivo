@@ -48,6 +48,7 @@ import {
   shortCommand,
   shortData1,
   shortData2,
+  metaPayload,
 } from '../../src/midi/MidiTypes.js';
 
 const __dirname2 = dirname(fileURLToPath(import.meta.url));
@@ -62,6 +63,7 @@ interface MidiEventInfo {
   data1?: number;
   data2?: number;
   metaType?: number;
+  metaPayload?: string;
 }
 
 function extractEvents(midi: Midi): MidiEventInfo[][] {
@@ -96,6 +98,9 @@ function extractEvents(midi: Midi): MidiEventInfo[][] {
       } else if (msg.kind === 'meta') {
         info.type = 'meta';
         info.metaType = msg.type;
+        info.metaPayload = Array.from(metaPayload(msg))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
       }
       events.push(info);
     }
@@ -116,23 +121,24 @@ function compareEvents(
     return diffs;
   }
 
-  for (let t = 0; t < tsEvents.length; t++) {
-    const tsTrack = tsEvents[t];
-    const refTrack = refEvents[t];
+  const notEndOfTrack = (e: MidiEventInfo): boolean => !(e.type === 'meta' && e.metaType === 0x2f);
+
+  for (const [t, tsTrack] of tsEvents.entries()) {
+    const refTrack = refEvents[t] ?? [];
 
     // Filter out end-of-track meta events for comparison (always present but may differ in placement)
-    const tsFiltered = tsTrack.filter((e) => !(e.type === 'meta' && e.metaType === 0x2f));
-    const refFiltered = refTrack.filter((e) => !(e.type === 'meta' && e.metaType === 0x2f));
+    const tsFiltered = tsTrack.filter(notEndOfTrack);
+    const refFiltered = refTrack.filter(notEndOfTrack);
 
     if (tsFiltered.length !== refFiltered.length) {
       diffs.push(`Track ${t} event count: TS=${tsFiltered.length} vs Java=${refFiltered.length}`);
       // Still compare what we can
     }
 
-    const len = Math.min(tsFiltered.length, refFiltered.length);
-    for (let i = 0; i < len; i++) {
-      const te = tsFiltered[i];
+    for (const [i, te] of tsFiltered.entries()) {
       const re = refFiltered[i];
+      // The length mismatch is already reported above; this walks the common prefix.
+      if (re === undefined) break;
 
       if (te.type !== re.type) {
         diffs.push(`Track ${t} event ${i}: type TS=${te.type} vs Java=${re.type}`);
@@ -143,21 +149,63 @@ function compareEvents(
         diffs.push(`Track ${t} event ${i} (${te.type}): tick TS=${te.tick} vs Java=${re.tick}`);
       }
 
+      // The channel nibble belongs to every channel-voice message, not just notes: a
+      // programChange or a CC on the wrong channel addresses the wrong instrument.
+      if (te.channel !== re.channel)
+        diffs.push(
+          `Track ${t} event ${i} (${te.type}): channel TS=${te.channel} vs Java=${re.channel}`,
+        );
+
       if (te.type === 'noteOn' || te.type === 'noteOff') {
-        if (te.channel !== re.channel)
-          diffs.push(`Track ${t} event ${i}: channel TS=${te.channel} vs Java=${re.channel}`);
         if (te.data1 !== re.data1)
           diffs.push(`Track ${t} event ${i}: pitch TS=${te.data1} vs Java=${re.data1}`);
-        if (te.type === 'noteOn' && te.data2 !== re.data2)
-          diffs.push(`Track ${t} event ${i}: velocity TS=${te.data2} vs Java=${re.data2}`);
+        // Release velocity was excluded by `te.type === 'noteOn' &&`. There are 590 noteOffs
+        // in the reference corpus and nothing checked what they carry.
+        if (te.data2 !== re.data2)
+          diffs.push(
+            `Track ${t} event ${i} (${te.type}): velocity TS=${te.data2} vs Java=${re.data2}`,
+          );
       } else if (te.type === 'controlChange') {
         if (te.data1 !== re.data1)
           diffs.push(`Track ${t} event ${i}: CC# TS=${te.data1} vs Java=${re.data1}`);
         if (te.data2 !== re.data2)
           diffs.push(`Track ${t} event ${i}: CC value TS=${te.data2} vs Java=${re.data2}`);
+      } else if (te.type === 'programChange') {
+        // 58 in the reference corpus, and the program number — the instrument — was compared
+        // by nothing at all: `programChange` matched none of the three branches, so only its
+        // tick and the word "programChange" were ever checked.
+        if (te.data1 !== re.data1)
+          diffs.push(`Track ${t} event ${i}: program TS=${te.data1} vs Java=${re.data1}`);
       } else if (te.type === 'meta') {
         if (te.metaType !== re.metaType)
           diffs.push(`Track ${t} event ${i}: metaType TS=${te.metaType} vs Java=${re.metaType}`);
+        // ...and the payload, which is where a meta event keeps everything that matters: the
+        // microseconds-per-quarter of a set-tempo (0x51), the numerator and denominator of a
+        // time signature (0x58), the accidental count of a key signature (0x59), the text of
+        // a track name (0x03). 1024 meta events in the corpus, none of them checked past
+        // their type byte until now.
+        //
+        // **Text events (0x01) are excluded, and that exclusion is a finding, not a
+        // convenience.** Turning this check on reported 524 payload mismatches across 22
+        // fixtures, every one of them a 0x01 on the RAW midi path, and every one the same
+        // shape: Java writes an empty payload where this port writes the note's id. Verified
+        // against the reference bytes directly — `articulations_raw.mid` contains twelve
+        // `FF 01 00`, twelve text events of length zero.
+        //
+        // The cause is one clause in `Element.getAttribute`. `Msm.ts:1352` transcribes
+        // `Msm.java:1034`'s `Helper.getAttributeValue("xml:id", n)` faithfully, and so does
+        // `AsynchronyMap.ts:93`; in Java that returns `""`, because XOM's
+        // `getAttribute(String)` matches a LOCAL name and the attribute's local name is `id`.
+        // This port's `Element.getAttribute` also matches the qualified name, so the same
+        // call finds the id. Removing that clause makes all 43 tests here pass and keeps the
+        // gate at 121 — but it reds 30 tests elsewhere, because twelve test reads and some
+        // converter paths spell the lookup `'xml:id'` too. It is a real divergence with a
+        // one-line cause and a blast radius that deserves its own change rather than a
+        // footnote in a comparator commit. PARITY.md carries it.
+        else if (te.metaType !== 0x01 && te.metaPayload !== re.metaPayload)
+          diffs.push(
+            `Track ${t} event ${i}: meta 0x${(te.metaType ?? 0).toString(16)} payload TS=${te.metaPayload} vs Java=${re.metaPayload}`,
+          );
       }
     }
   }

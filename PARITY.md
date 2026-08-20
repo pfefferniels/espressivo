@@ -737,6 +737,40 @@ pins it: `relativeDuration=0.5` plus `absoluteDurationChange=-70` on `duration.p
   calls `getTempoDataOf(-1)`, which returns null immediately — one wasted call rather than a
   bug, kept for parity.
 
+### `Element.getAttribute` matches qualified names, and it reaches the MIDI bytes
+
+`src/xml/XomTypes.ts`. XOM's `Element.getAttribute(String)` matches a **local** name. This
+port's also matches the qualified name:
+
+```ts
+if (attr.getLocalName() === name || attr.getQualifiedName() === name) return attr;
+```
+
+The difference is invisible until something asks for `'xml:id'`, whose local name is `id`.
+Java's `Helper.getAttribute` tries three lookups (`Helper.java:346-359`) and all three miss,
+so `Helper.getAttributeValue("xml:id", n)` returns `""`. Here the first one hits.
+
+**Two call sites transcribe exactly that Java line, and both are byte-visible.**
+`Msm.ts:1352` (`Msm.java:1034`) writes the note's id into the raw-MIDI text event where Java
+writes an empty one, and `AsynchronyMap.ts:93` (`AsynchronyMap.java:127`) appends a real id to
+`@modified` where Java appends nothing.
+
+Measured, 2026-08-20: **524 text events across 22 fixtures**, all on the raw MIDI path.
+Confirmed against the reference bytes rather than through the port —
+`articulations_raw.mid` contains twelve `FF 01 00`, twelve text events of length zero, where
+this port emits `n1`, `n2` and so on. It was invisible because
+`midi-byte-equivalence.test.ts` compared a meta event's type byte and nothing else; that
+suite now compares payloads for every meta type **except** 0x01, with this entry named at the
+exclusion.
+
+**Not yet fixed, and the reason is scope rather than doubt.** Deleting the
+`|| attr.getQualifiedName() === name` clause makes all 43 tests in that suite pass and leaves
+the byte gate at 121 — and reds 30 tests in six other files, because twelve test reads spell
+the lookup `getAttributeValue('xml:id')` and some converter paths do too. Those reads are
+asking for a real attribute and getting `null` back silently, which is the same footgun one
+level up. A one-line cause with that blast radius deserves its own change, with the reads
+corrected and the XOM emulation documented, rather than a footnote in a comparator commit.
+
 ### `GenericMap.sort()` is not a sort
 
 `src/mpm/elements/maps/GenericMap.ts`. The pass computes the leftmost index an element should
