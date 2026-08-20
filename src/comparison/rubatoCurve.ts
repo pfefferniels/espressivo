@@ -439,12 +439,14 @@ export function displacementQuartersAt(
 export function rubatoBottomSpans(
   curve: RubatoCurve,
 ): readonly { readonly startTicks: number; readonly endTicks: number }[] {
-  return curve.segments
-    .filter((segment) => segment.poisonedEndTicks !== null)
-    .map((segment) => ({
-      startTicks: segment.startTicks,
-      endTicks: segment.poisonedEndTicks as number,
-    }));
+  // One pass, and the `as number` goes with the two-pass spelling: the `=== null` test that
+  // used to be a `filter` the type system could not follow now narrows `poisonedEndTicks` in
+  // the branch that reads it.
+  return filterMap(curve.segments, (segment) =>
+    segment.poisonedEndTicks === null
+      ? null
+      : { startTicks: segment.startTicks, endTicks: segment.poisonedEndTicks },
+  );
 }
 
 /** Whether `t` falls in a `⊥` interval — the probe the distance takes at each cell's edge. */

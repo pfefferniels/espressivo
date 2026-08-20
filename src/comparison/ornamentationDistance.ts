@@ -33,7 +33,7 @@
  * the construction that makes the alignment a metric. It holds because every gap cost here is
  * the same row-wise functional evaluated against the neutral ornament, and not a constant.
  */
-import { head, isNonEmpty } from '../prelude/index.js';
+import { filterMap, head, isNonEmpty } from '../prelude/index.js';
 
 import { elementAt } from '../prelude/seq.js';
 import {
@@ -319,7 +319,11 @@ function composedSpread(
   spreads: readonly Valued<PerformedSpread>[],
 ): Valued<PerformedSpread> | null {
   if (spreads.some(isBottom)) return bottom('renderer-error');
-  const frames = spreads.filter((spread) => !isBottom(spread)).map((spread) => spread.value);
+  // One pass where there were two, and the `isBottom` test is the NARROWING rather than a
+  // filter: the line above has already returned if any spread is `⊥`, so this drops nothing.
+  // It is here because `some` narrows the predicate, not the array, and there is no way to
+  // tell the type system what that early return established.
+  const frames = filterMap(spreads, (spread) => (isBottom(spread) ? null : spread.value));
   if (!isNonEmpty(frames)) return null;
   const first = head(frames);
   const uniform = frames.every(

@@ -32,7 +32,7 @@
  * is reported for ratification; the difference is not small (|ln(100/40)| = 9.6 JND sustained
  * over the whole part).
  */
-import { head, isNonEmpty, last } from '../prelude/index.js';
+import { filterMap, head, isNonEmpty, last } from '../prelude/index.js';
 import { pairwise } from '../prelude/index.js';
 
 import { accentuationDistance, accentuationSampler } from './accentuationDistance.js';
@@ -230,13 +230,17 @@ function coveredLength(
   startTicks: number,
   endTicks: number,
 ): number {
-  const clipped = intervals
-    .map((interval) => ({
-      low: Math.max(interval.startTicks, startTicks),
-      high: Math.min(interval.endTicks, endTicks),
-    }))
-    .filter((interval) => interval.high > interval.low)
-    .sort((x, y) => x.low - y.low);
+  // Clip and drop in one pass. The two-pass form built a record for every interval and then
+  // threw away the ones the clip had emptied, so `Math.max`/`Math.min` ran for intervals that
+  // contribute nothing. The surviving set and their pre-sort order are unchanged, so the
+  // `total +=` sequence below is the same double in the same order.
+  const clipped = [
+    ...filterMap(intervals, (interval) => {
+      const low = Math.max(interval.startTicks, startTicks);
+      const high = Math.min(interval.endTicks, endTicks);
+      return high > low ? { low, high } : null;
+    }),
+  ].sort((x, y) => x.low - y.low);
 
   let total = 0;
   let reach = startTicks;

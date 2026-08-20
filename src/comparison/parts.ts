@@ -32,6 +32,7 @@
  * flagged; it is not compared against neutral, because comparing it against neutral would
  * charge exactly the content the renderer drops.
  */
+import { filterMap } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import type { MpmEnvironment, PerformanceView } from '../expression/mpmTree.js';
@@ -196,11 +197,13 @@ export function matchScopes(
   const partsA = a.filter((scope) => scope.scope === 'part' && scope.renderable);
   const partsB = b.filter((scope) => scope.scope === 'part' && scope.renderable);
 
+  // `filterMap`, so the `=== null` test narrows `scope.number` where the entry is built —
+  // the two-pass `.filter().map()` needed `as number` to say what the filter had proved.
   const numbered = (scopes: readonly ComparisonScope[]) =>
     new Map(
-      scopes
-        .filter((scope) => scope.number !== null)
-        .map((scope) => [scope.number as number, scope]),
+      filterMap(scopes, (scope) =>
+        scope.number === null ? null : ([scope.number, scope] as const),
+      ),
     );
   const byNumberA = numbered(partsA);
   const byNumberB = numbered(partsB);
