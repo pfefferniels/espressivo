@@ -283,7 +283,31 @@ export class Midi {
             metaLength = (metaLength << 7) | (b & 0x7f);
           } while (b & 0x80);
 
-          const metaData = new Uint8Array(data.buffer, data.byteOffset + offset, metaLength);
+          // `data.subarray`, and NOT `new Uint8Array(data.buffer, data.byteOffset + offset,
+          // metaLength)`. The two agree for every in-bounds read and differ for the one that
+          // matters: the three-argument constructor is bounded by the underlying ArrayBUFFER,
+          // where `subarray` is bounded by this VIEW and clamps.
+          //
+          // `metaLength` is read straight off the file by the VLQ loop above and is never
+          // checked against what remains, so a truncated or hostile `.mid` can declare more
+          // than it supplies. Node's `Buffer` IS a `Uint8Array` and Node POOLS reads under
+          // 4 KB into one 8 KB ArrayBuffer, so `new Midi(readFileSync(path))` — the obvious
+          // spelling — put the parser one addition away from unrelated heap. Measured: a file
+          // declaring a 200-byte text event and supplying none produced a 200-byte meta event
+          // holding bytes from another allocation in the same pool. Silently; no throw. Over
+          // 4 KB Node hands out an exact-size buffer and the same input threw a RangeError
+          // instead — two different wrong answers depending on file size.
+          //
+          // The suite never saw it because `tests/integration/midi-writer-equivalence.test.ts`
+          // wraps its reads in `new Uint8Array(readFileSync(...))`, which copies into an
+          // exact-size buffer. That was accidentally the mitigation, and it is why this was a
+          // latent defect rather than a failing one.
+          //
+          // Clamping is also the RIGHT answer, not merely the safe one: it is the
+          // permissiveness this docstring already claims — the file ran out, so the event body
+          // is what there was of it, and the resynchronisation to `trackEnd` carries on
+          // exactly as before. No well-formed file moves by a byte.
+          const metaData = data.subarray(offset, offset + metaLength);
           offset += metaLength;
 
           const msg = metaMessage(metaType, metaData);
@@ -298,7 +322,12 @@ export class Midi {
 
           const sysexData = new Uint8Array(sysexLength + 1);
           sysexData[0] = statusByte;
-          sysexData.set(new Uint8Array(data.buffer, data.byteOffset + offset, sysexLength), 1);
+          // The same buffer-versus-view bug as the meta read above, and the same fix; see the
+          // comment there for the measurement. `set` copies whatever the clamped view holds,
+          // so a sysex that outruns the file arrives zero-padded to its declared length rather
+          // than padded with someone else's memory — and `sysexData` keeps that length, so
+          // nothing downstream sees a different shape.
+          sysexData.set(data.subarray(offset, offset + sysexLength), 1);
           offset += sysexLength;
 
           const msg = sysexMessage(sysexData);
