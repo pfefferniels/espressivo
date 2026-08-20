@@ -219,6 +219,43 @@ describe('P-C9: Vulpius — the amateur reading is the romantic one, made imprec
     expect(baroqueRomantic.dimensions.tempo.distance).toBeGreaterThan(2000);
   });
 
+  /**
+   * The measure grid across a TIME-SIGNATURE CHANGE, which is the half of `measureGrid`'s
+   * contract a single-signature score cannot reach — and Telemann, where the only other
+   * measure assertion lives, declares one signature for the whole piece.
+   *
+   * Vulpius declares 3/2 at tick 0 and 6/4 at tick 5760, i.e. quarter 12 at this score's
+   * `pulsesPerQuarter="480"`. A 3/2 measure is six quarters, so the first block is measures 1
+   * and 2 at quarters 0 and 6, and the 6/4 block opens exactly AT the change — never past it,
+   * and never with the two blocks' measures interleaved.
+   *
+   * [NEGATIVE CONTROL, MEASURED] Pairing each time signature with the wrong successor, so that
+   * the first block runs to the end of the window instead of to the change, leaves the whole
+   * suite green without this test: the only measure any test had looked at was `measures[0]`.
+   */
+  it('changes time signature mid-piece, and numbers the measures straight through', () => {
+    const grid = baroqueRomantic.measures ?? [];
+    expect(grid.length).toBeGreaterThan(4);
+    expect(
+      grid.slice(0, 4).map((measure) => ({
+        number: measure.number,
+        startQuarters: measure.startQuarters,
+        timeSignature: measure.timeSignature,
+      })),
+    ).toEqual([
+      { number: 1, startQuarters: 0, timeSignature: { numerator: 3, denominator: 2 } },
+      { number: 2, startQuarters: 6, timeSignature: { numerator: 3, denominator: 2 } },
+      { number: 3, startQuarters: 12, timeSignature: { numerator: 6, denominator: 4 } },
+      { number: 4, startQuarters: 18, timeSignature: { numerator: 6, denominator: 4 } },
+    ]);
+
+    // …and the WHOLE grid is one straight numbering over strictly increasing starts, which is
+    // exactly what two overlapping blocks would break.
+    expect(grid.map((measure) => measure.number)).toEqual(grid.map((_measure, index) => index + 1));
+    for (const [index, measure] of grid.entries())
+      if (index > 0) expect(measure.startQuarters).toBeGreaterThan(grid[index - 1].startQuarters);
+  });
+
   it('pins the measured values', () => {
     expect(baroqueRomantic.aggregate.distance).toBeCloseTo(8849.390525, 4);
     expect(baroqueAmateur.aggregate.distance).toBeCloseTo(10294.4973822, 4);
