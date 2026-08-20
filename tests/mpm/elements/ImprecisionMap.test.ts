@@ -821,6 +821,60 @@ describe('ImprecisionMap', () => {
       expect(handoverProbe('style')).not.toThrow();
     });
 
+    /**
+     * The pending-duration drain stops at the FIRST entry that does not fit, and does not
+     * skip it to reach the ones behind it.
+     *
+     * `milliseconds.date.end` offsets are parked while a distribution's span is walked and
+     * drained after it, as the leading run of ends that fall inside the span. The run is a
+     * prefix: an end reaching past the span blocks everything queued behind it, and both it
+     * and they are handed to the NEXT distribution. Draining past the blocker instead would
+     * splice a *different* entry off the front — one that was never offset — so one note
+     * would keep its unperturbed end and another would collect two offsets.
+     *
+     * Nothing pinned that. The corpus reaches this drain (removing it fails the
+     * multi-instruction byte test) but never reaches the stop: turning the `break` into a
+     * `continue` passed the whole suite. The shape it needs is two overlapping notes inside
+     * one span, the longer one first, and the corpus has none.
+     *
+     * A one-value `distribution.list` makes every offset exactly +100, so the two arms are
+     * arithmetic rather than statistical: 5000 -> 5100 and 500 -> 600 under the prefix rule,
+     * against 5000 unchanged and 500 -> 700 under the other.
+     */
+    it('the pending-duration drain stops at the first end past the span (prefix, not filter)', () => {
+      const constantOffset = (): Element => {
+        const list = new Element(DISTRIBUTION_LIST, Mpm.MPM_NAMESPACE);
+        const measurement = new Element('measurement', Mpm.MPM_NAMESPACE);
+        measurement.addAttribute(new Attribute('value', '100'));
+        list.appendChild(measurement);
+        return list;
+      };
+      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      map.addDistributionList(0, constantOffset(), 1);
+      map.addDistributionList(1000, constantOffset(), 1);
+
+      const target = GenericMap.createGenericMap('positionMap')!;
+      const note = (date: string, msDate: string, msEnd: string): Element => {
+        const e = new Element('note', Mpm.MPM_NAMESPACE);
+        e.addAttribute(new Attribute('date', date));
+        e.addAttribute(new Attribute('milliseconds.date', msDate));
+        e.addAttribute(new Attribute('milliseconds.date.end', msEnd));
+        target.addElement(e);
+        return e;
+      };
+      // Both onsets are inside the first span (which ends at 1000); only the second note's
+      // END is. The first note is the blocker.
+      const long = note('0', '0', '5000');
+      const short = note('100', '100', '500');
+
+      map.renderImprecisionToMap(target, false);
+
+      expect(long.getAttributeValue('milliseconds.date')).toBe('100');
+      expect(short.getAttributeValue('milliseconds.date')).toBe('200');
+      expect(long.getAttributeValue('milliseconds.date.end')).toBe('5100');
+      expect(short.getAttributeValue('milliseconds.date.end')).toBe('600');
+    });
+
     it('null map is handled gracefully', () => {
       const map = ImprecisionMap.createImprecisionMap('timing')!;
       map.addDistributionUniform(0, -10, 10);
