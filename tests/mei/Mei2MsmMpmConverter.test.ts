@@ -478,6 +478,54 @@ describe('Mei2MsmMpmConverter – what reset() clears between two mdivs', () => 
 });
 
 // ---------------------------------------------------------------------------
+// the work element — control: give the movement context `work: null` unconditionally
+// ---------------------------------------------------------------------------
+describe('Mei2MsmMpmConverter – the meiHead work a movement claims', () => {
+  /**
+   * The `work` a movement claims has exactly **one** ambient read — the `<meter>` fallback in
+   * `getCurrentTimeSignature`, taken only when neither the part's nor the global
+   * `timeSignatureMap` holds anything — and nothing reached it. Dropping the work from the
+   * movement context entirely left all 1040 tests in `tests/integration` and `tests/mei`
+   * passing, including the fallback-tempo test above, which reads the same lookup's result
+   * inside `makeMovement` and never goes through the context at all.
+   *
+   * A `@tstamp` is the shortest path to it: `tstampToTicks` scales the beat by
+   * `4 * ppq / denominator`, so the work's `unit` moves a control event's date.
+   */
+  it('supplies the time signature when neither the part nor the score states one', () => {
+    /** the MPM date of the one `<dynamics>` entry, for a document whose work carries `meter` */
+    const dynamicsDate = (meter: string): string | null => {
+      const result = new Mei2MsmMpmConverter(720, true, false, false).convert(
+        Mei.fromXml(`<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei">
+  <meiHead><fileDesc><titleStmt><title>Oracle</title></titleStmt><pubStmt/></fileDesc>
+    <workList><work xml:id="w1"><title>One</title>${meter}</work></workList>
+  </meiHead>
+  <music><body><mdiv n="1"><score>
+    <scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
+    <section>
+      <measure n="1">
+        <staff n="1"><layer n="1"><note xml:id="n1" pname="c" oct="4" dur="1"/></layer></staff>
+        <dynam xml:id="d1" tstamp="3">f</dynam>
+      </measure>
+    </section>
+  </score></mdiv></body></music>
+</mei>`),
+      );
+      const mpm = rootOf(elementAt(result.getValue(), 0, 'the converted performances'));
+      const dynamics = descendants(mpm, 'dynamics');
+      expect(dynamics.length).toBe(1);
+      return elementAt(dynamics, 0, 'the dynamics entries').getAttributeValue('date');
+    };
+
+    // beat 3 of a half-note beat: (3 - 1) * 4 * 720 / 2
+    expect(dynamicsDate('<meter count="3" unit="2"/>')).toBe('2880');
+    // …and 4/4 is the default the same document falls back to with no work meter at all
+    expect(dynamicsDate('')).toBe('1440');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // cursor restores — control: delete `this.currentLayer = parentLayer` from processLayer
 // ---------------------------------------------------------------------------
 describe('Mei2MsmMpmConverter – a cursor stops applying when the walk leaves its element', () => {
