@@ -18,7 +18,7 @@
  *
  *     elementAt 133   pairwise 25   filterMap 20   numberAt 19   zipWith 10
  *     withNext 9      optionAt 7    matchKind 7    groupBy 6     elementAtOrNull 6
- *     upperBoundBy 4  foldl 4       lowerBoundBy 2 scanl 1       partitionWith 1
+ *     upperBoundBy 4  foldl 4       lowerBoundBy 2 scanl 2       partitionWith 1
  *     insertionIndexBy 1
  *     chunkBy 0       windows 0     unfold 0       stableSortBy 0
  *
