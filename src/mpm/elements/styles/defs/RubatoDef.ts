@@ -4,7 +4,8 @@ import { MPM_NAMESPACE } from '../../../names.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
-import { requireDefName } from './defName.js';
+import { MissingNodeError } from '../../../../xml/errors.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
 
 /**
  * A `rubatoDef`: a reusable rubato shape that stretches and compresses time inside a
@@ -156,14 +157,15 @@ export class RubatoDef extends AbstractXmlSubtree {
       // spelling, so the order in which a malformed def is rejected is unchanged.
       const frameLengthAttr = attribute('frameLength', xml);
       if (frameLengthAttr === null)
-        throw new Error('Cannot generate RubatoDef object. Missing attribute frameLength.');
+        throw new MissingNodeError(
+          'Cannot generate RubatoDef object. Missing attribute frameLength.',
+        );
 
       const rd = new RubatoDef(nameAttr, frameLengthAttr);
       rd.parseData(xml);
       return rd;
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e);
     }
   }
 

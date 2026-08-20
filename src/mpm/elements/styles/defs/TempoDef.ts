@@ -3,7 +3,8 @@ import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
-import { requireDefName } from './defName.js';
+import { MissingNodeError } from '../../../../xml/errors.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
 
 /**
  * A `tempoDef`: it gives a tempo name ("Allegro", "fast", …) a numeric value in bpm.
@@ -67,7 +68,7 @@ export class TempoDef extends AbstractXmlSubtree {
     const nameAttr = requireDefName(xml, 'TempoDef');
     const valueAttr = attribute('value', xml);
     if (valueAttr === null)
-      throw new Error('Cannot generate TempoDef object. Missing value attribute.');
+      throw new MissingNodeError('Cannot generate TempoDef object. Missing value attribute.');
 
     const td = new TempoDef(nameAttr, valueAttr);
     td.parseData(xml);
@@ -103,8 +104,7 @@ export class TempoDef extends AbstractXmlSubtree {
         return TempoDef.fromXml(nameOrXml);
       }
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e);
     }
   }
 

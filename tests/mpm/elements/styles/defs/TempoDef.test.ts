@@ -85,6 +85,31 @@ describe('TempoDef', () => {
       err.mockRestore();
     });
 
+    /**
+     * The three tests above assert that a malformed *document* is skipped. On their own they
+     * cannot tell that apart from the factory crashing, because the factory used to be
+     * `try { … } catch (e) { console.error(e); return null }` and a bare `catch` absorbs
+     * everything.
+     *
+     * That is not a theoretical gap — it was measured. A deliberate control that broke
+     * `requireDefName`, introduced to prove those tests could see a break, came back GREEN:
+     * the injected fault was a `ReferenceError`, and the catch-all turned it into exactly the
+     * `null` the tests were already expecting. So this file was asserting a behaviour it could
+     * not distinguish from its own absence.
+     *
+     * `skipMalformedDef` now absorbs only `MeicoError`, the root of what this library raises
+     * deliberately. Anything else escapes — and that is what makes the three tests above mean
+     * something, so it needs its own assertion.
+     */
+    it('lets an error that is NOT a malformed document escape instead of skipping the def', () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      // Not an Element: reading `@name` off it is a TypeError, which no MPM document can
+      // cause and which therefore must not be reported as "this def is malformed".
+      expect(() => TempoDef.createTempoDef({} as unknown as Element)).toThrow(TypeError);
+      expect(err).not.toHaveBeenCalled();
+      err.mockRestore();
+    });
+
     it('reads an element that is not named tempoDef', () => {
       // Java renames such an element (TempoDef.java:78-80); the port cannot, because its
       // Element class has no setLocalName. The parsed values are the same either way.

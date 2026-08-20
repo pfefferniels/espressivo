@@ -4,7 +4,7 @@ import { MPM_NAMESPACE } from '../../../names.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
-import { requireDefName } from './defName.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
 
 /**
  * An `accentuationPatternDef`: a metrical accentuation pattern over one bar of `length`
@@ -139,8 +139,7 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
       if (typeof nameOrXml === 'string' && id !== undefined) apd.setId(id);
       return apd;
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e);
     }
   }
 

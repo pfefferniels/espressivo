@@ -3,7 +3,7 @@ import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
-import { requireDefName } from './defName.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
 
 /**
  * An `articulationDef`: the bundle of duration, timing, velocity and detuning changes that
@@ -104,8 +104,7 @@ export class ArticulationDef extends AbstractXmlSubtree {
       ad.parseData(xml);
       return ad;
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e);
     }
   }
 

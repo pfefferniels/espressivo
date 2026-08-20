@@ -3,7 +3,8 @@ import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
-import { requireDefName } from './defName.js';
+import { MissingNodeError } from '../../../../xml/errors.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
 
 /**
  * A `dynamicsDef`: it gives a dynamics name ("forte", "pp", …) a numeric MIDI-velocity
@@ -46,7 +47,7 @@ export class DynamicsDef extends AbstractXmlSubtree {
     const nameAttr = requireDefName(xml, 'DynamicsDef');
     const valueAttr = attribute('value', xml);
     if (valueAttr === null)
-      throw new Error('Cannot generate DynamicsDef object. Missing value attribute.');
+      throw new MissingNodeError('Cannot generate DynamicsDef object. Missing value attribute.');
 
     const dd = new DynamicsDef(nameAttr, valueAttr);
     dd.parseData(xml);
@@ -76,8 +77,7 @@ export class DynamicsDef extends AbstractXmlSubtree {
         return DynamicsDef.fromXml(nameOrXml);
       }
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e);
     }
   }
 

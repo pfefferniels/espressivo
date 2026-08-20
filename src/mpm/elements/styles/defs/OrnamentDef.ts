@@ -2,7 +2,7 @@ import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { allChildElements, attribute, firstChildElement } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
-import { requireDefName } from './defName.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
 import { DynamicsGradient } from './DynamicsGradient.js';
 import {
   TemporalSpread,
@@ -109,8 +109,7 @@ export class OrnamentDef extends AbstractXmlSubtree {
       od.parseData(xml);
       return od;
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e);
     }
   }
 
