@@ -576,9 +576,12 @@ export function renderMidi(
   const midi = msm.exportMidi(options?.bpm ?? 120, options?.generateProgramChanges ?? true);
   if (midi === null) throw new EmptyDocumentError('MSM: nothing to render');
 
-  const bytes = midi.exportMidi();
-  if (bytes === null) throw new EmptyDocumentError('MSM: the rendered MIDI sequence is empty');
-  return bytes;
+  // No `bytes === null` guard: `Midi.exportMidi` is total. It used to return
+  // `Uint8Array | null` with one null route — a null sequence, which the class no longer
+  // allows — so this threw an `EmptyDocumentError` that nothing could reach and no test
+  // named. The `midi === null` check above is a different matter and stays: `Msm.exportMidi`
+  // really can decline.
+  return midi.exportMidi();
 }
 
 /**
@@ -636,7 +639,10 @@ export function renderExpressiveMidi(
 
   if (midi === null) throw new EmptyDocumentError('MSM: nothing to render');
 
-  const bytes = midi.exportMidi();
-  if (bytes === null) throw new EmptyDocumentError('MSM: the rendered MIDI sequence is empty');
-  return bytes;
+  // No `bytes === null` guard: `Midi.exportMidi` is total. It used to return
+  // `Uint8Array | null` with one null route — a null sequence, which the class no longer
+  // allows — so this threw an `EmptyDocumentError` that nothing could reach and no test
+  // named. The `midi === null` check above is a different matter and stays: `Msm.exportMidi`
+  // really can decline.
+  return midi.exportMidi();
 }
