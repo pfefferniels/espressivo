@@ -1,4 +1,4 @@
-import { Element, Attribute, Nodes, Elements, Document } from '../xml/XomTypes.js';
+import { Element, Document } from '../xml/XomTypes.js';
 import { AbstractMsm } from '../msm/AbstractMsm.js';
 import * as names from './names.js';
 import { Performance } from './elements/Performance.js';

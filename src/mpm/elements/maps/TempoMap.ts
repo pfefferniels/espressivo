@@ -326,8 +326,11 @@ export class TempoMap extends GenericMap {
       return;
     }
     if (map === null) return;
-    for (let i = 0; i < map.size(); ++i) {
-      const e = map.getElement(i)!;
+    // Walking the index directly rather than `map.getElement(i)!` over `0 ..< map.size()`:
+    // same entries in the same order, and no assertion contradicting an accessor about a
+    // range the loop itself established.
+    for (const entry of map.getAllElements()) {
+      const e = entry.getValue();
       const dateAtt = attribute('date.perf', e);
       if (dateAtt !== null) e.addAttribute(new Attribute('milliseconds.date', dateAtt.getValue()));
       const endAtt = attribute('date.end.perf', e);

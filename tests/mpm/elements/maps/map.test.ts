@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Element } from '../../../../src/xml/XomTypes.js';
 import {
@@ -181,6 +183,59 @@ describe('Dated.getMapOfKind', () => {
     expect(dated.getMapOfKind(IMPRECISION_MAP_DYNAMICS)!.getDomain()).toBe('dynamics');
     expect(dated.getMapOfKind(IMPRECISION_MAP_TONEDURATION)!.getDomain()).toBe('toneduration');
     expect(dated.getMapOfKind(IMPRECISION_MAP_TUNING)!.getDomain()).toBe('tuning');
+  });
+});
+
+/**
+ * The guard on the `sideEffects` deletion.
+ *
+ * A green suite proves nothing about tree-shaking — vitest does not tree-shake, which is
+ * precisely why the incumbent's hazard survived unnoticed. The real evidence is a bundle:
+ * rollup over the facade with `treeshake.moduleSideEffects: false` used to yield 13/13
+ * plain `GenericMap`s and now yields 13/13 typed classes. That measurement needs a bundler
+ * and so does not live in this suite.
+ *
+ * What DOES live here is the invariant that makes it stay true, and it is cheap to state:
+ * nothing in `src/` may be imported for its side effects alone. Registration-by-import is
+ * the only reason the `sideEffects` field ever existed, so a bare `import './x.js';`
+ * reappearing anywhere in the tree is the regression, and this reds on it.
+ */
+describe('the sideEffects deletion', () => {
+  const root = join(import.meta.dirname, '..', '..', '..', '..');
+
+  /** Every `.ts` under `src/`, path and text. */
+  function sourceFiles(dir: string): { path: string; text: string }[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) return sourceFiles(full);
+      if (!entry.name.endsWith('.ts')) return [];
+      return [{ path: full.slice(root.length + 1), text: readFileSync(full, 'utf8') }];
+    });
+  }
+
+  it('leaves package.json with no sideEffects field to maintain', () => {
+    const pkg: Record<string, unknown> = JSON.parse(
+      readFileSync(join(root, 'package.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    expect(pkg).not.toHaveProperty('sideEffects');
+  });
+
+  it('leaves no module in src/ that is imported for its side effects alone', () => {
+    const offenders = sourceFiles(join(root, 'src'))
+      .filter(({ text }) => /^import\s+['"]/m.test(text))
+      .map(({ path }) => path);
+    expect(offenders).toEqual([]);
+  });
+
+  it('reaches every map class from the dispatch table by an ordinary value import', () => {
+    // The load-bearing half: a bundler may drop a module nothing *uses*, and what uses these
+    // nine is MAP_SHAPE. Checked as text because the alternative — that they are imported —
+    // is exactly what a `import type` regression would leave true at runtime and false in
+    // the bundle.
+    const table = readFileSync(join(root, 'src/mpm/elements/maps/map.ts'), 'utf8');
+    for (const cls of new Set(Object.values(EXPECTED_CLASS))) {
+      expect(table).toContain(`import { ${cls} } from './${cls}.js';`);
+    }
   });
 });
 

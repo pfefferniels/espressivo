@@ -275,8 +275,11 @@ export class DynamicsMap extends GenericMap {
   ): GenericMap | null {
     if (dynamicsMap !== null) return dynamicsMap.renderDynamicsToMap(map);
     if (map === null) return null;
-    for (let i = 0; i < map.size(); ++i) {
-      const e = map.getElement(i)!;
+    // Walking the index directly rather than `map.getElement(i)!` over `0 ..< map.size()`:
+    // same entries in the same order, and the map's own accessor stops having to be
+    // contradicted about the range its caller just established.
+    for (const entry of map.getAllElements()) {
+      const e = entry.getValue();
       if (e.getLocalName() === 'note') e.addAttribute(new Attribute('velocity', '100.0'));
     }
     return null;
