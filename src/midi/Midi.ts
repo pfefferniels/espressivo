@@ -106,37 +106,42 @@ export class Midi {
   private sequence: Sequence;
 
   /**
-   * the most primitive constructor creates an empty MIDI sequence with default PPQ of 720
+   * A Midi is its sequence, so that is what the constructor takes — and it is now the
+   * only one.
+   *
+   * There used to be four overloads over `number | Sequence | Uint8Array`, resolved by a
+   * `typeof`/`instanceof` chain in the body: Java's way of spelling named construction in
+   * a language that has no named constructors. TypeScript does have them. `Midi.empty(480)`
+   * and `new Midi(bytes)` were not building a Midi *out of* a number or a byte array in
+   * any sense the word "constructor" covers — one picks a timing resolution for an empty
+   * one, the other parses a file. Those are {@link Midi.empty} and {@link Midi.fromBytes},
+   * and naming them also removes the reason a reader had to check which branch a literal
+   * argument would take.
+   *
+   * @param sequence the sequence this Midi is
+   * @param midifile optional filename; an existing file is not read, and `exportMidi`
+   *                 would overwrite it
    */
-  constructor();
+  constructor(sequence: Sequence, midifile?: string) {
+    this.sequence = sequence;
+    if (midifile !== undefined) this.file = midifile;
+  }
+
   /**
-   * constructor, creates an empty MIDI sequence with the given PPQ timing resolution
+   * An empty MIDI at the given PPQ timing resolution — Java's `Midi()` and `Midi(int ppq)`,
+   * which differed only in whether they defaulted the resolution to 720.
    */
-  constructor(ppq: number);
+  static empty(ppq = 720): Midi {
+    return new Midi(new Sequence(Sequence.PPQ, ppq));
+  }
+
   /**
-   * constructor, instantiates a Midi object from a sequence, optionally setting the
-   * midi filename (an existing file is not read; `exportMidi` would overwrite it)
+   * A Midi parsed from Standard MIDI File bytes — Java's `Midi(File)`, minus the file
+   * handling. Throws on a missing `MThd` or `MTrk` tag; see {@link parseSequence} for what
+   * it tolerates otherwise.
    */
-  constructor(sequence: Sequence, midifile?: string);
-  /**
-   * constructor, instantiates a Midi object from MIDI binary data
-   */
-  constructor(midiData: Uint8Array);
-  constructor(a?: number | Sequence | Uint8Array, b?: string) {
-    // Every arm assigns, and the compiler now checks that: the field is `Sequence`, so a
-    // fifth argument shape added without an arm is an error here rather than a null read
-    // somewhere downstream. The old chain ended in `else if (a instanceof Uint8Array)`
-    // with no `else`, which is exactly that hole.
-    if (a === undefined) {
-      this.sequence = new Sequence(Sequence.PPQ, 720);
-    } else if (typeof a === 'number') {
-      this.sequence = new Sequence(Sequence.PPQ, a);
-    } else if (a instanceof Sequence) {
-      this.sequence = a;
-      if (b !== undefined) this.file = b;
-    } else {
-      this.sequence = Midi.parseSequence(a);
-    }
+  static fromBytes(midiData: Uint8Array): Midi {
+    return new Midi(Midi.parseSequence(midiData));
   }
 
   /**
@@ -300,7 +305,7 @@ export class Midi {
           // `metaLength` is read straight off the file by the VLQ loop above and is never
           // checked against what remains, so a truncated or hostile `.mid` can declare more
           // than it supplies. Node's `Buffer` IS a `Uint8Array` and Node POOLS reads under
-          // 4 KB into one 8 KB ArrayBuffer, so `new Midi(readFileSync(path))` — the obvious
+          // 4 KB into one 8 KB ArrayBuffer, so `Midi.fromBytes(readFileSync(path))` — the obvious
           // spelling — put the parser one addition away from unrelated heap. Measured: a file
           // declaring a 200-byte text event and supplying none produced a 200-byte meta event
           // holding bytes from another allocation in the same pool. Silently; no throw. Over

@@ -14,7 +14,7 @@ import { EventMaker } from '../../src/midi/EventMaker.js';
  */
 describe('control: append of a track-less Midi is the no-op the deleted guard assumed', () => {
   const withOneNote = () => {
-    const m = new Midi(480);
+    const m = Midi.empty(480);
     m.getSequence()
       .createTrack()
       .add(EventMaker.createNoteOn(0, 0, 60, 100));
@@ -23,7 +23,7 @@ describe('control: append of a track-less Midi is the no-op the deleted guard as
   it('bytes are identical whether or not an empty Midi is appended', () => {
     const a = withOneNote();
     const b = withOneNote();
-    b.append(new Midi(480)); // 0 tracks
+    b.append(Midi.empty(480)); // 0 tracks
     b.append(new Midi(new Sequence(Sequence.PPQ, 480)));
     expect(Array.from(b.exportMidi())).toEqual(Array.from(a.exportMidi()));
   });
@@ -34,7 +34,7 @@ describe('control: append of a track-less Midi is the no-op the deleted guard as
     // the while loop has to create a second track to match.
     const a = withOneNote();
     const b = withOneNote();
-    const twoTracks = new Midi(480);
+    const twoTracks = Midi.empty(480);
     twoTracks.getSequence().createTrack();
     twoTracks.getSequence().createTrack();
     b.append(twoTracks);

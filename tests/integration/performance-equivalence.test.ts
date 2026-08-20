@@ -118,7 +118,7 @@ function compareMidiStructure(
   eventCountsMatch: boolean;
   details: string;
 } {
-  const refMidi = new Midi(refMidiBytes);
+  const refMidi = Midi.fromBytes(refMidiBytes);
   const tsTracks = tsMidi.getSequence().getTracks();
   const refTracks = refMidi.getSequence().getTracks();
 
@@ -284,7 +284,7 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
         expect(bytes!.length).toBeGreaterThan(14);
 
         // Round trip: parse the exported MIDI
-        const reimported = new Midi(bytes!);
+        const reimported = Midi.fromBytes(bytes!);
         expect(reimported.getSequence().getTracks().length).toBeGreaterThan(0);
         expect(reimported.getSequence().getTracks().length).toBe(
           midi.getSequence().getTracks().length,

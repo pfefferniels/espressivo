@@ -23,7 +23,7 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('construction', () => {
     it('should create an empty MIDI with default PPQ of 720', () => {
-      const midi = new Midi();
+      const midi = Midi.empty();
       // `isEmpty()` used to be asserted here; it answered "the sequence field is null",
       // which is now unrepresentable, so this asserts what the test meant instead — the
       // sequence exists and carries nothing yet.
@@ -32,7 +32,7 @@ describe('Midi', () => {
     });
 
     it('should create a MIDI with a custom PPQ', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       expect(midi.getPPQ()).toBe(480);
     });
 
@@ -56,7 +56,7 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('file management', () => {
     it('should get and set the file name', () => {
-      const midi = new Midi();
+      const midi = Midi.empty();
       expect(midi.getFile()).toBeNull();
       midi.setFile('output.mid');
       expect(midi.getFile()).toBe('output.mid');
@@ -68,14 +68,14 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('tracks and events', () => {
     it('should create a track on the sequence', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       expect(midi.getSequence().getTracks().length).toBe(1);
       expect(track).toBeDefined();
     });
 
     it('should add MIDI events to a track', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
 
       const noteOn = EventMaker.createNoteOn(0, 0, 60, 100);
@@ -90,7 +90,7 @@ describe('Midi', () => {
     });
 
     it('should sort events by tick when added out of order', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
 
       const noteOff = EventMaker.createNoteOff(0, 480, 60, 64);
@@ -104,7 +104,7 @@ describe('Midi', () => {
     });
 
     it('should report the correct tick length', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOff(0, 960, 60, 64));
@@ -113,7 +113,7 @@ describe('Midi', () => {
     });
 
     it('should report the correct MIDI file format', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       // No tracks: trackCount is 0, which is <= 1, so format 0
       expect(midi.getMidiFileFormat()).toBe(0);
 
@@ -127,7 +127,7 @@ describe('Midi', () => {
     });
 
     it('should support multiple tracks', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track1 = midi.getSequence().createTrack();
       const track2 = midi.getSequence().createTrack();
 
@@ -145,7 +145,7 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('exportMidi', () => {
     it('should export a valid MIDI binary with MThd header', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOff(0, 480, 60, 64));
@@ -159,7 +159,7 @@ describe('Midi', () => {
     });
 
     it('should write the correct header data length (6)', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi.getSequence().createTrack();
 
       const data = midi.exportMidi();
@@ -168,7 +168,7 @@ describe('Midi', () => {
     });
 
     it('should write the correct PPQ resolution in the header', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi.getSequence().createTrack();
 
       const data = midi.exportMidi();
@@ -178,7 +178,7 @@ describe('Midi', () => {
     });
 
     it('should write the correct number of tracks in the header', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi.getSequence().createTrack();
       midi.getSequence().createTrack();
 
@@ -189,7 +189,7 @@ describe('Midi', () => {
     });
 
     it('should contain MTrk track chunk headers', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
 
@@ -200,19 +200,19 @@ describe('Midi', () => {
     });
 
     it('should return null when sequence is null', () => {
-      const midi = new Midi();
+      const midi = Midi.empty();
       // Replace the internal sequence to simulate null
       midi.setSequence(null as any);
       // We can't actually set it to null through the public API,
       // but exportMidi on a valid midi should work
-      const validMidi = new Midi(480);
+      const validMidi = Midi.empty(480);
       validMidi.getSequence().createTrack();
       const data = validMidi.exportMidi();
       expect(data).not.toBeNull();
     });
 
     it('should be parseable by readMidiData (round-trip)', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOff(0, 480, 60, 64));
@@ -222,7 +222,7 @@ describe('Midi', () => {
       expect(data).not.toBeNull();
 
       // Parse the exported data back
-      const midi2 = new Midi(data);
+      const midi2 = Midi.fromBytes(data);
       expect(midi2.getPPQ()).toBe(480);
       expect(midi2.getSequence().getTracks().length).toBe(1);
     });
@@ -233,7 +233,7 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('noteOns2NoteOffs', () => {
     it('should convert noteOn with velocity 0 to noteOff', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOn(0, 480, 60, 0)); // noteOn vel=0
@@ -246,7 +246,7 @@ describe('Midi', () => {
     });
 
     it('should not change noteOn events with non-zero velocity', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
 
@@ -257,7 +257,7 @@ describe('Midi', () => {
 
   describe('noteOffs2NoteOns', () => {
     it('should convert noteOff to noteOn with velocity 0', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOff(0, 480, 60, 64));
 
@@ -275,7 +275,7 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('addOffset', () => {
     it('should add tick offset to all events', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOff(0, 480, 60, 64));
@@ -287,7 +287,7 @@ describe('Midi', () => {
     });
 
     it('should not allow negative tick values', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 50, 60, 100));
 
@@ -297,7 +297,7 @@ describe('Midi', () => {
     });
 
     it('should do nothing when offset is 0', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 100, 60, 100));
 
@@ -311,7 +311,7 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('cloneSequence', () => {
     it('should create a deep copy of the sequence', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOff(0, 480, 60, 64));
@@ -333,7 +333,7 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('convertPPQ', () => {
     it('should convert event ticks when PPQ changes', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOff(0, 480, 60, 64));
@@ -347,7 +347,7 @@ describe('Midi', () => {
     });
 
     it('should do nothing when PPQ is the same', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 240, 60, 100));
 
@@ -361,7 +361,7 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('getTempoData', () => {
     it('should extract tempo data from the sequence', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createTempo(0, 120, 0.25));
       track.add(EventMaker.createTempo(480, 140, 0.25));
@@ -375,7 +375,7 @@ describe('Midi', () => {
     });
 
     it('should return empty array when there are no tempo events', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
 
@@ -398,7 +398,7 @@ describe('Midi', () => {
       // branch through `setSequence(null as unknown as Sequence)`. The field is total now,
       // so that input no longer exists; the rule that survives is the track-count one, and
       // the zero-track end of it had no test.
-      expect(new Midi().getMidiFileFormat()).toBe(0);
+      expect(Midi.empty().getMidiFileFormat()).toBe(0);
     });
   });
 
@@ -408,7 +408,7 @@ describe('Midi', () => {
   describe('convertPPQ – edge cases', () => {
     it('should truncate rather than round a tick that does not divide evenly', () => {
       // Java computes (tick * ppq) / ppqOld in long arithmetic, i.e. it truncates
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 1, 60, 100)); // 1 * 720 / 480 = 1.5
 
@@ -417,7 +417,7 @@ describe('Midi', () => {
     });
 
     it('should scale down as well as up', () => {
-      const midi = new Midi(960);
+      const midi = Midi.empty(960);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOff(0, 960, 60, 64));
@@ -428,7 +428,7 @@ describe('Midi', () => {
     });
 
     it('should keep every track and clone the messages', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const t0 = midi.getSequence().createTrack();
       const t1 = midi.getSequence().createTrack();
       t0.add(EventMaker.createNoteOn(0, 480, 60, 100));
@@ -455,12 +455,12 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('append', () => {
     it('should shift the appended events behind the current tick length', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOff(0, 480, 60, 64));
 
-      const other = new Midi(480);
+      const other = Midi.empty(480);
       const otherTrack = other.getSequence().createTrack();
       otherTrack.add(EventMaker.createNoteOn(0, 0, 62, 100));
       otherTrack.add(EventMaker.createNoteOff(0, 480, 62, 64));
@@ -472,11 +472,11 @@ describe('Midi', () => {
     });
 
     it('should adapt a differing PPQ before appending', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOff(0, 480, 60, 64));
 
-      const other = new Midi(960);
+      const other = Midi.empty(960);
       const otherTrack = other.getSequence().createTrack();
       otherTrack.add(EventMaker.createNoteOff(0, 960, 62, 64)); // one quarter at ppq 960
 
@@ -488,13 +488,13 @@ describe('Midi', () => {
     });
 
     it('should not modify the appended Midi', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi
         .getSequence()
         .createTrack()
         .add(EventMaker.createNoteOn(0, 240, 60, 100));
 
-      const other = new Midi(960);
+      const other = Midi.empty(960);
       const otherTrack = other.getSequence().createTrack();
       otherTrack.add(EventMaker.createNoteOn(0, 960, 62, 100));
 
@@ -506,10 +506,10 @@ describe('Midi', () => {
     });
 
     it('should create the tracks it is missing', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi.getSequence().createTrack();
 
-      const other = new Midi(480);
+      const other = Midi.empty(480);
       other
         .getSequence()
         .createTrack()
@@ -526,7 +526,7 @@ describe('Midi', () => {
     });
 
     it('should do nothing for null or empty input', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi
         .getSequence()
         .createTrack()
@@ -536,7 +536,7 @@ describe('Midi', () => {
       // by cast — the two inputs `Midi.java`'s `(midi == null) || midi.isEmpty()` guard
       // exists for. Neither is representable now, so this pins the reachable claim that
       // guard was standing in for: appending a Midi with nothing in it changes nothing.
-      midi.append(new Midi(480));
+      midi.append(Midi.empty(480));
 
       expect(midi.getSequence().getTracks()[0].size()).toBe(1);
     });
@@ -547,7 +547,7 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('getMinimalPPQ', () => {
     it('should return 1 when every event sits on a quarter note', () => {
-      const midi = new Midi(720);
+      const midi = Midi.empty(720);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOff(0, 720, 60, 64));
@@ -557,7 +557,7 @@ describe('Midi', () => {
     });
 
     it('should return 2 for eighth note positions', () => {
-      const midi = new Midi(720);
+      const midi = Midi.empty(720);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOn(0, 360, 62, 100));
@@ -566,7 +566,7 @@ describe('Midi', () => {
     });
 
     it('should return 4 for sixteenth note positions', () => {
-      const midi = new Midi(720);
+      const midi = Midi.empty(720);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOn(0, 180, 62, 100));
@@ -575,7 +575,7 @@ describe('Midi', () => {
     });
 
     it('should take the finest subdivision found across all tracks', () => {
-      const midi = new Midi(720);
+      const midi = Midi.empty(720);
       const t0 = midi.getSequence().createTrack();
       const t1 = midi.getSequence().createTrack();
       t0.add(EventMaker.createNoteOn(0, 360, 60, 100));
@@ -585,7 +585,7 @@ describe('Midi', () => {
     });
 
     it('should skip non-note events when onlyNotes is set', () => {
-      const midi = new Midi(720);
+      const midi = Midi.empty(720);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createControlChange(0, 180, EventMaker.CC_Channel_Volume, 100));
@@ -595,7 +595,7 @@ describe('Midi', () => {
     });
 
     it('should count noteOff events as notes as well', () => {
-      const midi = new Midi(720);
+      const midi = Midi.empty(720);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOff(0, 360, 60, 64));
@@ -617,7 +617,7 @@ describe('Midi', () => {
   // ---------------------------------------------------------------
   describe('getMicrosecondLength', () => {
     it('should compute the length from the tempo events', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createTempo(0, 60, 0.25)); // one quarter per second
       track.add(EventMaker.createNoteOff(0, 1920, 60, 64)); // four quarters
@@ -626,7 +626,7 @@ describe('Midi', () => {
     });
 
     it('should assume 120 bpm without any tempo event', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOff(0, 1920, 60, 64));
 
@@ -643,7 +643,7 @@ describe('Midi', () => {
     });
 
     it('should list each track with its event count', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const t0 = midi.getSequence().createTrack();
       const t1 = midi.getSequence().createTrack();
       t0.add(EventMaker.createNoteOn(0, 0, 60, 100));
@@ -663,7 +663,7 @@ describe('Midi', () => {
     // doubled space in "noteOn,  key:", so the one assertion that is worth having here is
     // the whole string.
     it('should emit tracks in sequence order and events in tick order', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const t0 = midi.getSequence().createTrack();
       const t1 = midi.getSequence().createTrack();
       t0.add(EventMaker.createNoteOn(0, 0, 60, 100));
@@ -682,7 +682,7 @@ describe('Midi', () => {
     });
 
     it('should spell out noteOn and noteOff with key and velocity', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(2, 0, 60, 100));
       track.add(EventMaker.createNoteOff(2, 480, 60, 64));
@@ -694,7 +694,7 @@ describe('Midi', () => {
 
     it('should fall through from program change into the default branch, as Java does', () => {
       // Java's switch has no break after the PROGRAM_CHANGE case (Midi.java, method print)
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi
         .getSequence()
         .createTrack()
@@ -706,7 +706,7 @@ describe('Midi', () => {
     });
 
     it('should label non-short messages generically', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi
         .getSequence()
         .createTrack()
@@ -726,11 +726,11 @@ describe('Midi', () => {
   describe('readMidiData', () => {
     it('should reject data that does not start with MThd', () => {
       const data = new Uint8Array([0x4d, 0x54, 0x72, 0x6b, 0, 0, 0, 0]); // MTrk
-      expect(() => new Midi(data)).toThrow(/MThd/);
+      expect(() => Midi.fromBytes(data)).toThrow(/MThd/);
     });
 
     it('should reject a track chunk that does not start with MTrk', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi
         .getSequence()
         .createTrack()
@@ -738,7 +738,7 @@ describe('Midi', () => {
       const data = midi.exportMidi();
       data[14] = 0x58; // break the MTrk tag
 
-      expect(() => new Midi(data)).toThrow(/MTrk/);
+      expect(() => Midi.fromBytes(data)).toThrow(/MTrk/);
     });
 
     it('should read SMPTE division as the matching division type', () => {
@@ -759,13 +759,13 @@ describe('Midi', () => {
         0xe7,
         0x28, // SMPTE 25
       ]);
-      const midi = new Midi(header);
+      const midi = Midi.fromBytes(header);
       expect(midi.getSequence().getDivisionType()).toBe(Sequence.SMPTE_25);
       expect(midi.getSequence().getResolution()).toBe(40);
     });
 
     it('should restore meta, sysex and channel events in a round trip', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createTrackName(0, 'Violin'));
       track.add(EventMaker.createTempo(0, 120, 0.25));
@@ -776,7 +776,7 @@ describe('Midi', () => {
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOff(0, 480, 60, 64));
 
-      const parsed = new Midi(midi.exportMidi());
+      const parsed = Midi.fromBytes(midi.exportMidi());
       const readTrack = parsed.getSequence().getTracks()[0];
 
       const trackName = readTrack.get(0) as MidiEvent;
@@ -841,7 +841,7 @@ describe('Midi', () => {
         0x2f,
         0x00, // end of track
       ]);
-      const midi = new Midi(data);
+      const midi = Midi.fromBytes(data);
       const track = midi.getSequence().getTracks()[0];
 
       const first = track.get(0).getMessage() as ShortMessage;
@@ -901,7 +901,7 @@ describe('Midi', () => {
         ...body.slice(0, 6), // …of which only the first six are actually there
       ]);
 
-      const track = new Midi(data).getSequence().getTracks()[0];
+      const track = Midi.fromBytes(data).getSequence().getTracks()[0];
 
       expect(track.size()).toBe(1);
       expect(shortCommand(track.get(0).getMessage() as ShortMessage)).toBe(ShortMessage.NOTE_ON);
@@ -909,19 +909,19 @@ describe('Midi', () => {
     });
 
     it('should accumulate delta times into absolute ticks', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(EventMaker.createNoteOn(0, 480, 62, 100));
       track.add(EventMaker.createNoteOn(0, 1920, 64, 100));
 
-      const parsed = new Midi(midi.exportMidi());
+      const parsed = Midi.fromBytes(midi.exportMidi());
       const readTrack = parsed.getSequence().getTracks()[0];
       expect([0, 1, 2].map((i) => readTrack.get(i).getTick())).toEqual([0, 480, 1920]);
     });
 
     it('should read a multi-track file', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi
         .getSequence()
         .createTrack()
@@ -931,7 +931,7 @@ describe('Midi', () => {
         .createTrack()
         .add(EventMaker.createNoteOn(1, 0, 72, 100));
 
-      const parsed = new Midi(midi.exportMidi());
+      const parsed = Midi.fromBytes(midi.exportMidi());
       expect(parsed.getSequence().getTracks().length).toBe(2);
     });
   });
@@ -945,11 +945,11 @@ describe('Midi', () => {
       // `exportMidi` no longer has a null return to test, and the sequence it nulled out
       // by cast cannot exist. The nearest reachable input is a sequence with nothing in
       // it, which exports the bare 14-byte MThd header and no track chunk.
-      expect(new Midi().exportMidi()).toHaveLength(14);
+      expect(Midi.empty().exportMidi()).toHaveLength(14);
     });
 
     it('should append an end of track event when the track has none', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi
         .getSequence()
         .createTrack()
@@ -961,12 +961,12 @@ describe('Midi', () => {
     });
 
     it('should not append a second end of track event', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
       track.add(new MidiEvent(metaMessage(EventMaker.META_End_of_Track, new Uint8Array(0)), 480));
 
-      const parsed = new Midi(midi.exportMidi());
+      const parsed = Midi.fromBytes(midi.exportMidi());
       const readTrack = parsed.getSequence().getTracks()[0];
       const endOfTracks = Array.from({ length: readTrack.size() }, (_, i) =>
         readTrack.get(i).getMessage(),
@@ -975,14 +975,14 @@ describe('Midi', () => {
     });
 
     it('should write format 0 for a single track and format 1 for several', () => {
-      const single = new Midi(480);
+      const single = Midi.empty(480);
       single.getSequence().createTrack();
       const singleData = single.exportMidi();
       expect(
         new DataView(singleData.buffer, singleData.byteOffset, singleData.byteLength).getUint16(8),
       ).toBe(0);
 
-      const multi = new Midi(480);
+      const multi = Midi.empty(480);
       multi.getSequence().createTrack();
       multi.getSequence().createTrack();
       const multiData = multi.exportMidi();
@@ -992,7 +992,7 @@ describe('Midi', () => {
     });
 
     it('should encode a delta time above 127 as a variable length quantity', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 128, 60, 100));
 
@@ -1003,7 +1003,7 @@ describe('Midi', () => {
     });
 
     it('should declare the true byte length of each track chunk', () => {
-      const midi = new Midi(480);
+      const midi = Midi.empty(480);
       midi
         .getSequence()
         .createTrack()
@@ -1029,7 +1029,7 @@ describe('Midi', () => {
      * against what remained.
      *
      * That mattered because `Buffer` IS a `Uint8Array` and Node pools reads under 4 KB into
-     * one shared 8 KB ArrayBuffer, so `new Midi(readFileSync(path))` put the parser one
+     * one shared 8 KB ArrayBuffer, so `Midi.fromBytes(readFileSync(path))` put the parser one
      * addition away from an unrelated allocation. Measured before the fix: a file declaring
      * a 200-byte text event and supplying none produced a 200-byte payload holding bytes
      * from elsewhere in the pool — silently, no throw. Over 4 KB, where Node hands out an
@@ -1070,7 +1070,7 @@ describe('Midi', () => {
 
     it('does not read a meta payload past the end of the data it was given', () => {
       // MTrk length 5: delta 0, FF 01 (text), declared length 200 (VLQ 0x81 0x48), no payload.
-      const midi = new Midi(
+      const midi = Midi.fromBytes(
         pooled([
           ...HEADER,
           0x4d,
@@ -1103,7 +1103,7 @@ describe('Midi', () => {
 
     it('does not read a sysex payload past the end of the data it was given', () => {
       // MTrk length 5: delta 0, F0, declared length 200 (VLQ 0x81 0x48), no payload.
-      const midi = new Midi(
+      const midi = Midi.fromBytes(
         pooled([...HEADER, 0x4d, 0x54, 0x72, 0x6b, 0x00, 0x00, 0x00, 0x05, 0x00, 0xf0, 0x81, 0x48]),
       );
 
@@ -1125,7 +1125,7 @@ describe('Midi', () => {
     it('still reads a meta payload that IS there, byte for byte', () => {
       // The control: same shape, but the three declared bytes are supplied.
       // MTrk length 8: delta 0, FF 01, length 3, "abc".
-      const midi = new Midi(
+      const midi = Midi.fromBytes(
         pooled([
           ...HEADER,
           0x4d,

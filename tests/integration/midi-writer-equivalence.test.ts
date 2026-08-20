@@ -89,7 +89,7 @@ const REFERENCES = loadReferences();
 /** Every event in the file, flattened across tracks, as `tick:byte,byte,…`. */
 function eventStream(bytes: Uint8Array): readonly string[] {
   const out: string[] = [];
-  for (const track of new Midi(bytes).getSequence().getTracks()) {
+  for (const track of Midi.fromBytes(bytes).getSequence().getTracks()) {
     for (let i = 0; i < track.size(); ++i) {
       const event = track.get(i);
       out.push(`${String(event.getTick())}:${[...messageBytes(event.getMessage())].join(',')}`);
@@ -102,7 +102,7 @@ function reExport(bytes: Uint8Array): Uint8Array {
   // `exportMidi` returns null for an empty document. None of the references is empty, and a
   // null here would mean the reader silently produced nothing — which is exactly the kind of
   // failure this suite exists to catch, so it is an assertion rather than a `?? new Uint8Array()`.
-  const out = new Midi(bytes).exportMidi();
+  const out = Midi.fromBytes(bytes).exportMidi();
   expect(out).not.toBeNull();
   return out as Uint8Array;
 }

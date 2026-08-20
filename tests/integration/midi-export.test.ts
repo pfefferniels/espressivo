@@ -76,7 +76,7 @@ describe('MIDI export pipeline', () => {
       const { msm } = loadMeiAndConvert('simple_notes.mei');
       const midi = msm.exportMidi()!;
       const bytes = midi.exportMidi();
-      const reimported = new Midi(bytes);
+      const reimported = Midi.fromBytes(bytes);
       expect(reimported.getSequence().getTracks().length).toBeGreaterThan(0);
       expect(reimported.getSequence().getTracks().length).toBe(
         midi.getSequence().getTracks().length,

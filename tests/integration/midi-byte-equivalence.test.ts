@@ -191,7 +191,7 @@ describe('Expressive MIDI event-level equivalence (MEI fixtures)', () => {
       expect(tsMidi).not.toBeNull();
 
       const refBytes = new Uint8Array(readFileSync(refPath));
-      const refMidi = new Midi(refBytes);
+      const refMidi = Midi.fromBytes(refBytes);
 
       const tsEvents = extractEvents(tsMidi);
       const refEvents = extractEvents(refMidi);
@@ -218,7 +218,7 @@ describe('Expressive MIDI event-level equivalence (MEI fixtures)', () => {
       expect(tsMidi).not.toBeNull();
 
       const refBytes = new Uint8Array(readFileSync(refPath));
-      const refMidi = new Midi(refBytes);
+      const refMidi = Midi.fromBytes(refBytes);
 
       const tsEvents = extractEvents(tsMidi);
       const refEvents = extractEvents(refMidi);
@@ -257,7 +257,7 @@ describe('Expressive MIDI event-level equivalence (all-maps fixtures)', () => {
       expect(tsMidi).not.toBeNull();
 
       const refBytes = new Uint8Array(readFileSync(refPath));
-      const refMidi = new Midi(refBytes);
+      const refMidi = Midi.fromBytes(refBytes);
 
       const tsEvents = extractEvents(tsMidi);
       const refEvents = extractEvents(refMidi);
@@ -280,7 +280,7 @@ describe('Expressive MIDI event-level equivalence (all-maps fixtures)', () => {
       expect(tsMidi).not.toBeNull();
 
       const refBytes = new Uint8Array(readFileSync(refPath));
-      const refMidi = new Midi(refBytes);
+      const refMidi = Midi.fromBytes(refBytes);
 
       const tsEvents = extractEvents(tsMidi);
       const refEvents = extractEvents(refMidi);
@@ -304,7 +304,7 @@ describe('Expressive MIDI event-level equivalence (all-maps fixtures)', () => {
     expect(tsMidi).not.toBeNull();
 
     const refBytes = new Uint8Array(readFileSync(refPath));
-    const refMidi = new Midi(refBytes);
+    const refMidi = Midi.fromBytes(refBytes);
 
     const tsEvents = extractEvents(tsMidi);
     const refEvents = extractEvents(refMidi);
