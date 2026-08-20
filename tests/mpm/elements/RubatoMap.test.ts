@@ -699,7 +699,7 @@ describe('RubatoMap', () => {
       map.addRubato(0, 720, 1.0, 0.0, 1.0, true);
       map.addRubato(960, 720, 2.0, 0.0, 1.0, true);
 
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(1);
       expect(map.getElement(0)!.getAttributeValue('intensity')).toBe('2');
     });

@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { silenceConsoleError } from '../../support/console.js';
 import { okValue } from '../../support/result.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Msm } from '../../../src/msm/Msm.js';
@@ -715,7 +716,7 @@ describe('MovementMap', () => {
       map.addMovement(0, 'sustain', 0, 1, 'mov-1');
       map.addMovement(960, 'sustain', 1, 0, 'mov-2');
 
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(1);
       expect(map.getElement(0)!.getAttributeValue('date')).toBe('960');
     });
@@ -1003,7 +1004,7 @@ describe('MovementMap', () => {
 
     /** Runs body with console.error silenced; the skip path logs. */
     function quiet<T>(body: () => T): T {
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const err = silenceConsoleError();
       try {
         return body();
       } finally {
@@ -1041,7 +1042,7 @@ describe('MovementMap', () => {
       map.addElement(movement({ date: '480.0', position: '0.4' }));
       map.addElement(movement({ date: '960.0' }));
 
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const err = silenceConsoleError();
       try {
         map.getMovementDataOf(2);
         expect(err).toHaveBeenCalledTimes(1);

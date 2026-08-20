@@ -89,10 +89,14 @@ export class ArticulationDef extends AbstractXmlSubtree {
 
   /**
    * Create a def either from a name — with every effect at its neutral default — or by
-   * parsing an existing element. Returns null after logging instead of throwing.
+   * parsing an existing element. Returns the reason instead of throwing.
+   *
+   * One signature where there were two overloads, for the same reason as
+   * `GenericMap.createGenericMap`: both arms produce one `xml` and then run one code path
+   * over it, and `string` and `Element` are disjoint, so the pair said nothing the union
+   * does not. Contrast `Header.addStyleType`, which really is two operations with two
+   * bodies and two return types, and is now two methods.
    */
-  static createArticulationDef(name: string): Result<ArticulationDef, MpmParseError>;
-  static createArticulationDef(xml: Element): Result<ArticulationDef, MpmParseError>;
   static createArticulationDef(
     nameOrXml: string | Element,
   ): Result<ArticulationDef, MpmParseError> {

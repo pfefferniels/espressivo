@@ -1,6 +1,7 @@
 import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { allChildElements, descendantElements } from '../../xml/tree.js';
+import { MissingNodeError } from '../../xml/errors.js';
 import { MPM_NAMESPACE } from '../names.js';
 import { err, isErr, type Result } from '../../prelude/index.js';
 import { attemptParse, type MpmParseError } from './parseError.js';
@@ -81,28 +82,38 @@ export class Header extends AbstractXmlSubtree {
       element.getLocalName().includes('Styles'),
     );
     for (const style of styles) {
-      this.addStyleType(style);
+      this.adoptStyleType(style);
     }
   }
 
   /**
-   * Add a whole style-type collection: either create an empty one of the given type, or
-   * adopt an existing `…Styles` element and parse the `<styleDef>` children out of it. Two
-   * genuinely different operations, which is why the overloads are not collapsed onto a
-   * `string | Element` union.
+   * Create an empty style-type collection of the given type and hang it off this header.
+   *
+   * The two-overload set this replaces said "either create an empty one of the given type,
+   * or adopt an existing `…Styles` element", and its own comment said the two were "genuinely
+   * different operations, which is why the overloads are not collapsed onto a `string |
+   * Element` union". They are — so they are two methods, which is how TypeScript spells that,
+   * and the union never has to exist. `unified-signatures` was reading the same fact off the
+   * signature pair.
+   *
+   * Splitting them also lets each say what it actually returns. Only this one can answer
+   * null, and only for the empty type name (`Header.java:79`'s `type.isEmpty()`);
+   * {@link adoptStyleType} always produces a collection.
+   */
+  addStyleType(type: string): Map<string, AnyStyle> | null {
+    if (!type) return null;
+    return this.adoptStyleType(new Element(type, MPM_NAMESPACE));
+  }
+
+  /**
+   * Adopt an existing `…Styles` element: parse the `<styleDef>` children out of it, index
+   * them under its local name, and re-parent the element under this header.
    *
    * An existing collection of the same type is **replaced**, not merged. `styleDef`
    * children that fail to parse are skipped, and duplicates of a name silently keep the
    * last one — the map is keyed by name.
    */
-  addStyleType(type: string): Map<string, AnyStyle> | null;
-  addStyleType(xml: Element): Map<string, AnyStyle> | null;
-  addStyleType(typeOrXml: string | Element): Map<string, AnyStyle> | null {
-    if (typeof typeOrXml === 'string') {
-      if (!typeOrXml) return null;
-      return this.addStyleType(new Element(typeOrXml, MPM_NAMESPACE));
-    }
-    const xml = typeOrXml;
+  adoptStyleType(xml: Element): Map<string, AnyStyle> {
     const type = xml.getLocalName();
     if (this.styleDefs.get(type) !== undefined) this.removeStyleType(type);
 
@@ -180,11 +191,34 @@ export class Header extends AbstractXmlSubtree {
       this.styleDefs.set(type, styleCollection);
     }
     if (styleCollection.has(styleDef.getName())) this.removeStyleDef(type, styleDef.getName());
-    // Namespace-EXACT, and left that way: `tree.ts`'s `requireFirstChildElement(name, …)`
-    // matches on local name alone, which would start finding the `…Styles` collections that
-    // `parseData` discovers outside the MPM namespace. Same reasoning in `removeStyleDef`.
-    this.getXml().getFirstChildElement(type, MPM_NAMESPACE)!.appendChild(styleDef.getXml());
+    this.requireStyleTypeElement(type).appendChild(styleDef.getXml());
     styleCollection.set(styleDef.getName(), styleDef);
+  }
+
+  /**
+   * The `<…Styles>` child element for `type` — and it is a **reachable** failure, not an
+   * invariant, which is what the two `!`s here were hiding.
+   *
+   * The lookup is namespace-EXACT, and left that way: `tree.ts`'s
+   * `requireFirstChildElement(name, …)` matches on local name alone, which would start
+   * finding the `…Styles` collections that {@link parseData} discovers outside the MPM
+   * namespace. But {@link parseData} indexes those very collections — it discovers them by
+   * local name — so a `<header>` carrying, say, a foreign-namespace `<tempoStyles>` gets
+   * `tempoStyles` into {@link styleDefs} while this lookup answers null for it, and both
+   * {@link addStyleDef} and {@link removeStyleDef} then failed with "Cannot read properties
+   * of null (reading 'appendChild')". Measured, not deduced: `Header.test.ts` builds that
+   * header and pins both throws.
+   *
+   * **Java does exactly the same thing** — `Header.java:141,163` dereference
+   * `getFirstChildElement(type, Mpm.MPM_NAMESPACE)` unguarded — so this is not a divergence
+   * to repair here, and repairing it would change which element a def is written into. It is
+   * the same throw, on the same input, saying which collection was missing.
+   */
+  private requireStyleTypeElement(type: string): Element {
+    const elt = this.getXml().getFirstChildElement(type, MPM_NAMESPACE);
+    if (elt === null)
+      throw new MissingNodeError(`this <header> has no <${type}> collection in the MPM namespace`);
+    return elt;
   }
 
   removeStyleDef(type: string, name: string): void {
@@ -194,7 +228,7 @@ export class Header extends AbstractXmlSubtree {
     const styleDef = styleCollection.get(name);
     if (styleDef !== undefined) {
       styleCollection.delete(name);
-      this.getXml().getFirstChildElement(type, MPM_NAMESPACE)!.removeChild(styleDef.getXml());
+      this.requireStyleTypeElement(type).removeChild(styleDef.getXml());
     }
   }
 

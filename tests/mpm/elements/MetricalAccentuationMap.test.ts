@@ -486,7 +486,7 @@ describe('MetricalAccentuationMap', () => {
       map.addAccentuationPattern(0, 'p1', 1.0);
       map.addAccentuationPattern(960, 'p2', 2.0);
 
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(1);
       expect(map.getElement(0)!.getAttributeValue('name.ref')).toBe('p2');
     });

@@ -453,7 +453,7 @@ describe('DynamicsMap', () => {
       map.addDynamics(0, '60');
       map.addDynamics(960, '100');
 
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(1);
       expect(map.getElement(0)!.getAttributeValue('volume')).toBe('100');
     });

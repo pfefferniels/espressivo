@@ -14,14 +14,16 @@ import { attemptParse, type MpmParseError } from '../parseError.js';
  * {@link setId}`(null)` detaches rather than blanks.
  */
 export class Comment extends AbstractXmlSubtree {
-  private text: Text | null = null;
+  /** As {@link Author.nameText}: the placeholder IS the node the defaulting path installs. */
+  private text: Text;
 
   private constructor() {
     super();
+    this.text = new Text('');
   }
 
   /** As {@link Author.createAuthor}: the reason is returned rather than printed. */
-  static createComment(xml: Element): Result<Comment, MpmParseError>;
+  static createComment(xml: Element | null): Result<Comment, MpmParseError>;
   static createComment(text: string, id: string | null): Result<Comment, MpmParseError>;
   static createComment(
     xmlOrText: Element | string | null,
@@ -50,19 +52,16 @@ export class Comment extends AbstractXmlSubtree {
    */
   protected parseData(xml: Element): void {
     this.setXml(xml);
-    if (xml.getChildCount() === 0 || !(xml.getChild(0) instanceof Text)) {
-      this.text = new Text('');
-      xml.appendChild(this.text);
-    } else {
-      this.text = xml.getChild(0) as Text;
-    }
+    const first = xml.getChildCount() === 0 ? null : xml.getChild(0);
+    if (first instanceof Text) this.text = first;
+    else xml.appendChild(this.text);
     this.id = attribute('id', xml);
   }
 
   setText(text: string): void {
-    this.text!.setValue(text);
+    this.text.setValue(text);
   }
   getText(): string {
-    return this.text!.getValue();
+    return this.text.getValue();
   }
 }

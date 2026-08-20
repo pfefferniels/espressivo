@@ -79,7 +79,7 @@ describe('Part', () => {
     );
 
     it('reports a null element rather than printing it', () => {
-      expect(errOf(Part.createPart(null as unknown as Element))).toEqual({
+      expect(errOf(Part.createPart(null))).toEqual({
         kind: 'noElement',
         what: 'Part',
       });
@@ -128,6 +128,57 @@ describe('Part', () => {
     it('accepts an optional id', () => {
       expect(okValue(Part.createPart('Violin', 2, 1, 3, 'part-2')).getId()).toBe('part-2');
       expect(okValue(Part.createPart('Violin', 2, 1, 3)).getId()).toBeNull();
+    });
+  });
+
+  /**
+   * The four setters, which had **no call site anywhere** — not in `src/`, not in a test —
+   * until this block. Found by a negative control: pointing `setNumber` at the `midi.port`
+   * attribute instead of `number` left all 1910 tests in `tests/mpm` green, which means the
+   * whole write-through half of `Part` was unpinned. They are Java's
+   * (`Part.java`'s `setName`/`setNumber`/`setMidiChannel`/`setMidiPort`) and they are public
+   * API of this package, so they are tested rather than deleted.
+   *
+   * Each asserts BOTH halves: the cached field the getter reads, and the attribute node in
+   * the document, which is the whole point of a live view. The last one is what the
+   * `requireAttribute` reads rest on — a setter that wrote to the wrong attribute would now
+   * be caught, and one that wrote to none of them would throw.
+   */
+  describe('setters write through to the element', () => {
+    it('setName retargets the name attribute the part was parsed with', () => {
+      const xml = partElement(COMPLETE);
+      const p = okValue(Part.createPart(xml));
+      p.setName('Cembalo');
+      expect(p.getName()).toBe('Cembalo');
+      expect(xml.getAttributeValue('name')).toBe('Cembalo');
+      expect(xml.getAttributeValue('number')).toBe('1');
+    });
+
+    it('setName also writes through the empty placeholder a nameless part was given', () => {
+      const xml = partElement({ number: '1', 'midi.channel': '0', 'midi.port': '0' });
+      const p = okValue(Part.createPart(xml));
+      p.setName('Cembalo');
+      expect(xml.getAttributeValue('name')).toBe('Cembalo');
+    });
+
+    it.each([
+      ['setNumber', 'number', 7],
+      ['setMidiChannel', 'midi.channel', 9],
+      ['setMidiPort', 'midi.port', 2],
+    ] as const)('%s writes %s and nothing else', (setter, attribute, value) => {
+      const xml = partElement(COMPLETE);
+      const p = okValue(Part.createPart(xml));
+      p[setter](value);
+      expect(xml.getAttributeValue(attribute)).toBe(String(value));
+      for (const [other, was] of Object.entries(COMPLETE))
+        if (other !== attribute) expect(xml.getAttributeValue(other)).toBe(was);
+      expect([p.getNumber(), p.getMidiChannel(), p.getMidiPort()]).toEqual(
+        attribute === 'number'
+          ? [value, 0, 0]
+          : attribute === 'midi.channel'
+            ? [1, value, 0]
+            : [1, 0, value],
+      );
     });
   });
 });

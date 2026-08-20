@@ -1,6 +1,7 @@
 import { Attribute, Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
-import { attribute, firstChildElement } from '../../xml/tree.js';
+import { attribute, firstChildElement, requireAttribute } from '../../xml/tree.js';
+import { MissingNodeError } from '../../xml/errors.js';
 import { err, isErr, ok, unwrapOr, type Result } from '../../prelude/index.js';
 import { MPM_NAMESPACE } from '../names.js';
 import { type MpmParseError } from './parseError.js';
@@ -24,13 +25,22 @@ export class Part extends AbstractXmlSubtree {
   private global: Global | null = null;
   private header: Header | null = null;
   private dated: Dated | null = null;
-  private nameAttr: Attribute | null = null;
+  /**
+   * The `name` attribute node, held so {@link setName} writes where {@link readFrom} read.
+   *
+   * Initialised to the empty node the defaulting path installs, which is why it needs no
+   * `!`: a `<part>` with no `name` gets THIS object added to it, and one that declares a
+   * name hands `readFrom` the declared node to hold instead. Same shape as `RubatoDef`'s
+   * three attributes and `RelatedResource`'s two.
+   */
+  private nameAttr: Attribute;
   private number = 0;
   private midiChannel = 0;
   private midiPort = 0;
 
   private constructor() {
     super();
+    this.nameAttr = new Attribute('name', '');
   }
 
   /**
@@ -49,7 +59,7 @@ export class Part extends AbstractXmlSubtree {
     midiPort: number,
     id?: string,
   ): Result<Part, MpmParseError>;
-  static createPart(xml: Element): Result<Part, MpmParseError>;
+  static createPart(xml: Element | null): Result<Part, MpmParseError>;
   static createPart(
     nameOrXml: string | Element | null,
     number?: number,
@@ -93,11 +103,9 @@ export class Part extends AbstractXmlSubtree {
    * {@link Performance}, and that is when the global header arrives.
    */
   private readFrom(xml: Element): Result<Part, MpmParseError> {
-    this.nameAttr = attribute('name', xml);
-    if (this.nameAttr === null) {
-      this.nameAttr = new Attribute('name', '');
-      xml.addAttribute(this.nameAttr);
-    }
+    const declaredName = attribute('name', xml);
+    if (declaredName === null) xml.addAttribute(this.nameAttr);
+    else this.nameAttr = declaredName;
     const numberAttr = attribute('number', xml);
     if (numberAttr === null || numberAttr.getValue() === '')
       return err({ kind: 'missingAttribute', what: 'Part', attribute: 'number' });
@@ -145,36 +153,59 @@ export class Part extends AbstractXmlSubtree {
   getDated(): Dated | null {
     return this.dated;
   }
+  /**
+   * The dated environment, non-null.
+   *
+   * {@link getDated} keeps its `Dated | null` because it is what the rest of the port reads
+   * — narrowing it would turn eight `?.` in `src/mei/Mei2MsmMpmConverter.ts` into
+   * `no-unnecessary-condition` findings in a directory this charter may not edit. But the
+   * three places that dereferenced it unguarded are not making a guess: {@link readFrom}
+   * returns `err` rather than a `Part` without a `dated`, so no part a caller can hold has
+   * one. This is that claim, checked — the same throw as the `!`, with the invariant named
+   * instead of "cannot read property of null" from inside XOM.
+   */
+  requireDated(): Dated {
+    const dated = this.dated;
+    if (dated === null)
+      throw new MissingNodeError('this part has no dated environment: it was never parsed');
+    return dated;
+  }
   getName(): string {
-    return this.nameAttr!.getValue();
+    return this.nameAttr.getValue();
   }
   setName(name: string): void {
-    this.nameAttr!.setValue(name);
+    this.nameAttr.setValue(name);
   }
   getNumber(): number {
     return this.number;
   }
+  // The three setters below re-read their attribute from the element on every call rather
+  // than holding it as `nameAttr` is held — Java does too (`Part.java`'s
+  // `this.getXml().getAttribute(...)`), and the difference is observable if a caller swaps
+  // the node out. `requireAttribute` keeps the read and names the element's own invariant:
+  // `readFrom` refuses a `<part>` missing any of these three, so a constructed part has all
+  // three. It throws where the `!` threw, on the same input.
   setNumber(number: number): void {
     this.number = number;
-    attribute('number', this.getXml())!.setValue(String(this.number));
+    requireAttribute('number', this.getXml()).setValue(String(this.number));
   }
   getMidiChannel(): number {
     return this.midiChannel;
   }
   setMidiChannel(midiChannel: number): void {
     this.midiChannel = midiChannel;
-    attribute('midi.channel', this.getXml())!.setValue(String(this.midiChannel));
+    requireAttribute('midi.channel', this.getXml()).setValue(String(this.midiChannel));
   }
   getMidiPort(): number {
     return this.midiPort;
   }
   setMidiPort(midiPort: number): void {
     this.midiPort = midiPort;
-    attribute('midi.port', this.getXml())!.setValue(String(this.midiPort));
+    requireAttribute('midi.port', this.getXml()).setValue(String(this.midiPort));
   }
   setGlobal(global: Global | null): void {
     this.global = global;
-    this.getDated()!.setEnvironment(this.global, this);
+    this.requireDated().setEnvironment(this.global, this);
   }
   getGlobal(): Global | null {
     return this.global;

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { errOf, okValue } from '../../../../support/result.js';
 import { AccentuationPatternDef } from '../../../../../src/mpm/elements/styles/defs/AccentuationPatternDef.js';
 import { Element, Attribute } from '../../../../../src/xml/XomTypes.js';

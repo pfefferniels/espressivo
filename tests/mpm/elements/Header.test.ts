@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { silenceConsoleError } from '../../support/console.js';
 import { errOf, okValue } from '../../support/result.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Header } from '../../../src/mpm/elements/Header.js';
@@ -75,7 +76,7 @@ describe('Header', () => {
     // the replacement is stronger — "printed at all" could not tell a null element from any
     // other exception the catch-all absorbed, and this names which one it was.
     it('reports a null element rather than printing it', () => {
-      expect(errOf(Header.createHeader(null as unknown as Element))).toEqual({
+      expect(errOf(Header.createHeader(null))).toEqual({
         kind: 'noElement',
         what: 'Header',
       });
@@ -115,7 +116,7 @@ describe('Header', () => {
 
       for (const [type, kind, defs] of cases) {
         const h = okValue(Header.createHeader());
-        h.addStyleType(element(type, {}, [styleDefElement('default', defs)]));
+        h.adoptStyleType(element(type, {}, [styleDefElement('default', defs)]));
         const style = h.getStyleDef(type, 'default')!;
         // Was `toBeInstanceOf(<the subclass>)`. The kind discriminant is what the six
         // subclasses were carrying, so this is the same claim about the same fact — and the
@@ -128,18 +129,18 @@ describe('Header', () => {
 
     it('falls back to the generic kind for an unknown type', () => {
       const h = okValue(Header.createHeader());
-      h.addStyleType(element('somethingStyles', {}, [styleDefElement('default')]));
+      h.adoptStyleType(element('somethingStyles', {}, [styleDefElement('default')]));
       const style = h.getStyleDef('somethingStyles', 'default')!;
       expect(style.kind).toBe('generic');
       expect(style.getName()).toBe('default');
     });
 
     it('skips styleDef children without a name', () => {
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const err = silenceConsoleError();
       const h = okValue(Header.createHeader());
-      const map = h.addStyleType(
+      const map = h.adoptStyleType(
         element(Mpm.TEMPO_STYLE, {}, [element('styleDef'), styleDefElement('default')]),
-      )!;
+      );
       expect(map.size).toBe(1);
       expect(map.has('default')).toBe(true);
       err.mockRestore();
@@ -147,8 +148,8 @@ describe('Header', () => {
 
     it('replaces a style type that is already present', () => {
       const h = okValue(Header.createHeader());
-      h.addStyleType(element(Mpm.TEMPO_STYLE, {}, [styleDefElement('first')]));
-      h.addStyleType(element(Mpm.TEMPO_STYLE, {}, [styleDefElement('second')]));
+      h.adoptStyleType(element(Mpm.TEMPO_STYLE, {}, [styleDefElement('first')]));
+      h.adoptStyleType(element(Mpm.TEMPO_STYLE, {}, [styleDefElement('second')]));
 
       expect(h.getAllStyleDefs(Mpm.TEMPO_STYLE)!.size).toBe(1);
       expect(h.getStyleDef(Mpm.TEMPO_STYLE, 'first')).toBeNull();
@@ -160,8 +161,42 @@ describe('Header', () => {
       const collection = element(Mpm.TEMPO_STYLE, {}, [styleDefElement('default')]);
       const h = okValue(Header.createHeader(element('header', {}, [collection])));
       expect(childNames(h)).toEqual([Mpm.TEMPO_STYLE]);
-      h.addStyleType(collection);
+      h.adoptStyleType(collection);
       expect(childNames(h)).toEqual([Mpm.TEMPO_STYLE]);
+    });
+
+    /**
+     * The gap between how a style-type collection is FOUND and how it is later LOOKED UP.
+     *
+     * `parseData` discovers `…Styles` collections by local name in any namespace — that is
+     * what makes vendor types work at all — but `addStyleDef` and `removeStyleDef` reach for
+     * the collection with a namespace-EXACT `getFirstChildElement(type, MPM_NAMESPACE)`. So
+     * a foreign-namespace `<tempoStyles>` is indexed under `tempoStyles` and then cannot be
+     * found again, and both writers used to fail with "Cannot read properties of null".
+     *
+     * `Header.java:141,163` dereference the same lookup unguarded, so this is Java's
+     * behaviour and not a divergence; the two `!`s that used to spell it here are gone and
+     * the throw now names the missing collection. This test is what stops either half from
+     * being "tidied" into agreement with the other without a deliberate decision.
+     */
+    it('indexes a foreign-namespace ...Styles collection that the writers cannot find again', () => {
+      const foreign = new Element(Mpm.TEMPO_STYLE, 'http://example.com/not-mpm');
+      const foreignDef = new Element('styleDef', 'http://example.com/not-mpm');
+      foreignDef.addAttribute(new Attribute('name', 'default'));
+      foreign.appendChild(foreignDef);
+      const headerElt = new Element('header', Mpm.MPM_NAMESPACE);
+      headerElt.appendChild(foreign);
+      const h = okValue(Header.createHeader(headerElt));
+
+      expect([...h.getAllStyleTypes().keys()]).toEqual([Mpm.TEMPO_STYLE]);
+      expect(h.getXml().getFirstChildElement(Mpm.TEMPO_STYLE, Mpm.MPM_NAMESPACE)).toBeNull();
+
+      expect(() => h.addStyleDef(Mpm.TEMPO_STYLE, createStyle('tempo', 'x'))).toThrow(
+        /no <tempoStyles> collection in the MPM namespace/,
+      );
+      h.addStyleType(Mpm.RUBATO_STYLE);
+      h.addStyleDef(Mpm.RUBATO_STYLE, createStyle('rubato', 'r'));
+      expect(() => h.removeStyleDef(Mpm.RUBATO_STYLE, 'r')).not.toThrow();
     });
   });
 
