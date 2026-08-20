@@ -34,7 +34,7 @@
  *   are distance 0 on the date axis while driving two different MIDI mechanisms. It is
  *   inert on a map's last instruction, by the same `size()-1` guard as the trailing rule.
  */
-import { isNonEmpty, last, zipWith } from '../prelude/index.js';
+import { filterMap, isNonEmpty, last, zipWith } from '../prelude/index.js';
 import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { innerControlPointsXPositions } from '../mpm/elements/maps/data/bezier.js';
@@ -200,11 +200,14 @@ export function readDynamicsSegments(
 
   if (view === null) return neutralDynamicsCurve();
 
-  const raws: RawDynamics[] = [];
-  for (const [index, entry] of view.entries.entries()) {
+  // Read each entry, skip what is not a dated `<dynamics>`, keep the rest — `filterMap`, with
+  // the two skipping `continue`s as `null` returns. The THIRD `continue` was not a skip at
+  // all: it pushed a volume-less entry and then jumped to the next one, which is the ordinary
+  // early `return` of a function that has produced its answer.
+  const raws: readonly RawDynamics[] = filterMap(view.entries, (entry, index) => {
     const element: Element = entry.element;
-    if (element.getLocalName() !== 'dynamics') continue;
-    if (!Number.isFinite(entry.date)) continue;
+    if (element.getLocalName() !== 'dynamics') return null;
+    if (!Number.isFinite(entry.date)) return null;
 
     const styleName = optionAt(view.styleNames, index, 'a map view style-name list');
     const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
@@ -212,7 +215,7 @@ export function readDynamicsSegments(
 
     if (volumeText === null) {
       // The renderer skips it but still ends the previous span with it (AD-33.4).
-      raws.push({
+      return {
         dateTicks: entry.date * resolution.scaleFactor,
         volume: null,
         transitionTo: null,
@@ -220,8 +223,7 @@ export function readDynamicsSegments(
         protraction: 0,
         subNoteDynamics: false,
         rendererDefault: false,
-      });
-      continue;
+      };
     }
 
     const volume = resolveComparisonLevel(
@@ -243,7 +245,7 @@ export function readDynamicsSegments(
             resolution.globalEnvironment,
           );
 
-    raws.push({
+    return {
       dateTicks: entry.date * resolution.scaleFactor,
       volume: volume.value,
       transitionTo: transitionTo === null ? null : transitionTo.value,
@@ -255,8 +257,8 @@ export function readDynamicsSegments(
       rendererDefault:
         volume.source === 'renderer-default' ||
         (transitionTo !== null && transitionTo.source === 'renderer-default'),
-    });
-  }
+    };
+  });
 
   if (raws.length === 0) return neutralDynamicsCurve();
 

@@ -29,7 +29,12 @@ import {
   type ImprecisionDomain,
   type ImprecisionReading,
 } from '../../src/comparison/imprecisionLaws.js';
-import { DELTA_ZERO, lawsEqual, type ImprecisionLaw } from '../../src/comparison/distributions.js';
+import {
+  DELTA_ZERO,
+  deltaLaw,
+  lawsEqual,
+  type ImprecisionLaw,
+} from '../../src/comparison/distributions.js';
 import { isBottom } from '../../src/comparison/values.js';
 
 // --- the pipeline harness -----------------------------------------------------------------
@@ -305,6 +310,45 @@ describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () 
     expect(performedDates(plain).every((value) => Number.isFinite(Number(value)))).toBe(true);
     expect(isBottomAt(seeded)).toBe(true);
     expect(isBottomAt(plain)).toBe(false);
+  });
+
+  it('reads the list’s @value attributes themselves, dropping only what will not parse', () => {
+    /**
+     * A closed oracle gap.
+     *
+     * Nothing in the tree read a VALUE back out of a `<distribution.list>`. The two tests
+     * around this one ask whether the law is ⊥ and whether the performed dates are finite;
+     * `an EMPTY distribution.list` asks about the empty case. Measured: making the reader
+     * return `value * 7 + 3` for every measurement left all 6064 tests in the repository
+     * green — the list is the one law whose whole content is the numbers written in the
+     * document, and the numbers were not checked anywhere.
+     *
+     * So: the parseable `@value`s, ascending (`listLaw` sorts), and the three ways a
+     * measurement contributes nothing — no attribute at all, text that is not a number, and
+     * a non-finite literal. `parseFloat`'s prefix rule is pinned too, because it is what the
+     * reader uses and it is the half of the behaviour a reader would not guess.
+     */
+    const law = lawOf(
+      '<distribution.list date="0.0" milliseconds.timingBasis="300">' +
+        '<measurement value="40"/>' +
+        '<measurement value="-40"/>' +
+        '<measurement value="0"/>' +
+        '<measurement/>' +
+        '<measurement value="not-a-number"/>' +
+        '<measurement value="Infinity"/>' +
+        '<measurement value="12abc"/>' +
+        '</distribution.list>',
+    );
+    expect(law).toEqual({ kind: 'list', values: [-40, 0, 12, 40] });
+
+    // …and a list whose values all coincide is not a list at all: `listLaw` collapses it.
+    expect(
+      lawOf(
+        '<distribution.list date="0.0" milliseconds.timingBasis="300">' +
+          '<measurement value="17"/><measurement value="17"/>' +
+          '</distribution.list>',
+      ),
+    ).toEqual(deltaLaw(17));
   });
 
   it('an inverted-limit triangular has no monotone quantile, so it reads ⊥', () => {

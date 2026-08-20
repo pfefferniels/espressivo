@@ -72,11 +72,12 @@ export function firstChildElement(
     const ofThis = arg2 as Element | null;
     if (ofThis == null) return null;
 
-    const children = ofThis.getChildElements();
-    for (let i = 0; i < children.size(); ++i) {
-      if (children.get(i).getLocalName() === name) {
-        return children.get(i);
-      }
+    // A walk, and now spelled as one. Still `getChildElements()` and not
+    // `getFirstChildElement(name)`, which would be the same answer by the same comparison —
+    // RULE M2a forbids merging the two navigation implementations without a behavioural
+    // probe, and the block comment above says so at length. Only the index is gone.
+    for (const child of ofThis.getChildElements()) {
+      if (child.getLocalName() === name) return child;
     }
     return null;
   } else {
@@ -153,12 +154,10 @@ export function allChildElements(parent: Element, name?: string): Element[] {
   // document order, and returns the live nodes rather than mapped-back ones. This was the
   // single most-called function on the render path, and the subtree it copied was often
   // the whole score.
-  const children = parent.getChildElements(name);
-  const es: Element[] = [];
-  for (let i = 0; i < children.size(); ++i) {
-    es.push(children.get(i));
-  }
-  return es;
+  // `toArray()` is the copy this loop was making by hand — same elements, same order, one
+  // allocation instead of two (the `Elements` snapshot, then the array). The copy itself is
+  // not optional: the return type is a mutable `Element[]` and callers splice it.
+  return parent.getChildElements(name).toArray();
 }
 
 /**

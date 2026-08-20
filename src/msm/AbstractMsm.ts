@@ -106,8 +106,7 @@ export abstract class AbstractMsm extends XmlBase {
       // if specific name given
       es = map.getChildElements(name); // search only the elements with this name
 
-    for (let i = 0; i < es.size(); ++i) {
-      const e = es.get(i);
+    for (const e of es) {
       if (e.getAttribute('date') !== null && parseFloat(e.getAttributeValue('date')!) >= date)
         return e;
     }
@@ -134,6 +133,12 @@ export abstract class AbstractMsm extends XmlBase {
    * The mirror image of {@link getElementAtAfterByName}: a backward scan stopping at the
    * first hit, so it yields the *latest* entry at or before `date` — the entry in force at
    * that moment. This is the "what is the current tempo / dynamics / key here" lookup.
+   *
+   * Its sibling above walks with `for..of` now that {@link Elements} is iterable; this one
+   * keeps the index, because there is no backwards iterator and the only way to get one is
+   * `toArray().reverse()` — two array allocations on a lookup the expressive export runs
+   * once per note per map. The index is the cheaper honesty here, and it is bounded by
+   * `es.size()`, so `get` never reads past the end.
    */
   static getElementBeforeAtByName(name: string, date: number, map: Element): Element | null {
     let es: Elements;

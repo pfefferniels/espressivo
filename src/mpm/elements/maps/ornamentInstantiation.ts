@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, firstChildElement, getAttributeValue } from '../../../xml/tree.js';
 import { addUUID } from '../../../xml/ids.js';
-import { elementAt, head, isNonEmpty, zipWith } from '../../../prelude/index.js';
+import { head, isNonEmpty, zipWith } from '../../../prelude/index.js';
 import { formatNoteOrderPerf, parseNoteOrder } from './data/noteOrder.js';
 import { expandOrnament } from './data/ornamentExpansion.js';
 import { FrameDomain, NoteOffShift, TemporalSpread } from '../styles/defs/TemporalSpread.js';
@@ -663,10 +663,10 @@ function renderGroup(
 
   const owner = ownerOf(principal, owners, maps);
   if (owner === null) return;
-  for (const [index, plan] of planned.entries()) {
-    // `built` is `planned.map(…)`, so the two are the same length and this is the plan's own
-    // chords — read once rather than twice.
-    const one = elementAt(built, index, 'built ornament');
+  // `built` is `planned.map(…)`, so this is a walk over two sequences that are the same
+  // length by construction — `zipWith`, rather than an index into one of them that has to
+  // prove the bound it was given.
+  for (const [plan, one] of zipWith(planned, built, (p, b) => [p, b] as const)) {
     plan.ornament.od.generation = { chords: one.chords, spacing: plan.spacing };
     for (const chord of plan.ornament.od.apply(one.chords))
       for (const note of chord) owner.addElement(note);
@@ -895,8 +895,11 @@ function applyMillisecondSpacing(
   const durAttName = 'ornament.milliseconds.duration';
   const offsets = spacingOffsets(chords.length, start, length, frame.intensity);
   let previous: Element[] | null = null;
-  for (const [index, chord] of chords.entries()) {
-    const dateOffset = elementAt(offsets, index, 'spacing offset');
+  // Two sequences walked together — `spacingOffsets` produces one offset per chord, and the
+  // `elementAt` this replaces was re-proving that on every step. `zipWith` states it once and
+  // stops at the shorter, which for the one length these two can disagree on (`chords` empty,
+  // where the spacing still pins its last slot) is the empty walk the index loop also made.
+  for (const [chord, dateOffset] of zipWith(chords, offsets, (c, o) => [c, o] as const)) {
     for (const note of chord) {
       const ornamentDateAtt = attribute(dateAttName, note);
       if (ornamentDateAtt !== null)
@@ -1172,11 +1175,13 @@ function carve(
     return true;
   }
 
-  for (const [index, plan] of planned.entries()) {
+  // Same pairing as `instantiateOrnaments`: `built` is `planned.map(…)`, so the plan and the
+  // chords it produced travel together rather than being re-associated through an index.
+  for (const [plan, one] of zipWith(planned, built, (p, b) => [p, b] as const)) {
     const { frame, ornamentId, od } = plan.ornament;
     if (frame.domain !== 'milliseconds' || frame.alignment !== 'at end') continue;
     const earliest = earliestSpacingOffset(
-      elementAt(built, index, 'built ornament').chords.length,
+      one.chords.length,
       plan.start,
       plan.length,
       frame.intensity,

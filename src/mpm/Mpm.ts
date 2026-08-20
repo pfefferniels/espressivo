@@ -30,23 +30,17 @@ import type { RelatedResource } from './elements/metadata/RelatedResource.js';
 function getFirstChildElement(name: string, ofThis: Element): Element | null {
   if (ofThis === null || name.length === 0) return null;
 
-  const es = ofThis.getChildElements();
-  for (let i = 0; i < es.size(); ++i) {
-    if (es.get(i).getLocalName() === name) {
-      return es.get(i);
-    }
+  for (const e of ofThis.getChildElements()) {
+    if (e.getLocalName() === name) return e;
   }
   return null;
 }
 
 function getAllChildElements(name: string, ofThis: Element): Element[] {
   if (ofThis === null || name.length === 0) return [];
-  const es = ofThis.getChildElements(name);
-  const result: Element[] = [];
-  for (let i = 0; i < es.size(); ++i) {
-    result.push(es.get(i));
-  }
-  return result;
+  // `toArray()` is this loop: the same elements in the same order, into a fresh mutable
+  // array. Still a *copy* of the snapshot, because the `Element[]` return type says so.
+  return ofThis.getChildElements(name).toArray();
 }
 
 /**

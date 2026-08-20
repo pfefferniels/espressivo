@@ -82,7 +82,7 @@
  * All three are render-path artifacts of the same kind: they depend on where a note falls,
  * not on what the document declares.
  */
-import { zipWith } from '../prelude/index.js';
+import { filterMap, zipWith } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { readAttributeValue } from '../expression/attributes.js';
 import { bottom, valued, type Valued } from './values.js';
@@ -593,15 +593,14 @@ function bottomReading(cause: ImprecisionBottomCause, detail: string): Distribut
 
 /** The `<measurement value="…">` children, in document order — `DistributionData`'s own read. */
 function listValues(element: Element): readonly number[] {
-  const values: number[] = [];
-  const children = element.getChildElements('measurement');
-  for (let i = 0; i < children.size(); ++i) {
-    const raw = readAttributeValue(children.get(i), 'value');
-    if (raw === null) continue;
+  // Read `@value` off each child, drop the ones that are absent or unparseable, keep the
+  // rest — `filterMap`, with the two rejections as the two `null` returns.
+  return filterMap(element.getChildElements('measurement'), (child) => {
+    const raw = readAttributeValue(child, 'value');
+    if (raw === null) return null;
     const value = parseFloat(raw);
-    if (Number.isFinite(value)) values.push(value);
-  }
-  return values;
+    return Number.isFinite(value) ? value : null;
+  });
 }
 
 /**

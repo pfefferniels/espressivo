@@ -41,7 +41,7 @@
  * `@frameLength` is tick-valued and therefore ppq-sensitive; `@intensity` and the window
  * bounds are dimensionless and are not rescaled.
  */
-import { zipWith } from '../prelude/index.js';
+import { filterMap, zipWith } from '../prelude/index.js';
 import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
@@ -258,28 +258,24 @@ export function readRubatoSegments(
 
   if (view === null) return neutralRubatoCurve();
 
-  const raws: {
-    dateTicks: number;
-    element: Element;
-    styleName: string | null;
-    environment: MpmEnvironment;
-    globalEnvironment: MpmEnvironment;
-    /** This instruction's own tick scale, which its tick-VALUED `@frameLength` is read in. */
-    scaleFactor: number;
-  }[] = [];
-  for (const [index, entry] of view.entries.entries()) {
-    if (entry.element.getLocalName() !== 'rubato') continue;
-    if (!Number.isFinite(entry.date)) continue;
+  // Read each entry, skip what is not a dated `<rubato>`, keep the rest — `filterMap`, with
+  // the two `continue`s as the two `null` returns. The element type is inferred from the
+  // returned object literal, which is why the eight-line annotation the accumulator needed
+  // is gone; the one field a reader would not guess keeps its comment.
+  const raws = filterMap(view.entries, (entry, index) => {
+    if (entry.element.getLocalName() !== 'rubato') return null;
+    if (!Number.isFinite(entry.date)) return null;
     const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
-    raws.push({
+    return {
       dateTicks: entry.date * resolution.scaleFactor,
       element: entry.element,
       styleName: optionAt(view.styleNames, index, 'a map view style-name list'),
       environment: resolution.environment,
       globalEnvironment: resolution.globalEnvironment,
+      /** This instruction's own tick scale, which its tick-VALUED `@frameLength` is read in. */
       scaleFactor: resolution.scaleFactor,
-    });
-  }
+    };
+  });
   if (raws.length === 0) return neutralRubatoCurve();
 
   const segments: RubatoSegment[] = [];

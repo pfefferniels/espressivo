@@ -94,6 +94,14 @@ export class Nodes {
   toArray(): XomNode[] {
     return [...this.nodes];
   }
+
+  /**
+   * Iterate the snapshot — see {@link Elements}`[Symbol.iterator]` for why this exists
+   * and what it costs.
+   */
+  [Symbol.iterator](): IterableIterator<XomNode> {
+    return this.nodes[Symbol.iterator]();
+  }
 }
 
 /**
@@ -333,6 +341,27 @@ export class Elements {
 
   toArray(): Element[] {
     return [...this.elements];
+  }
+
+  /**
+   * Iterate the snapshot directly — no copy, no index.
+   *
+   * XOM's `Elements` has no iterator (it predates `Iterable`), and the port inherited the
+   * `for (let i = 0; i < es.size(); ++i) es.get(i)` shape at forty-odd call sites. Every one
+   * of those is a walk, not a random access: the index is born at 0, dies at `size()` and is
+   * never read for anything but `get`. Making the collection iterable is what lets those call
+   * sites say what they are — `for..of` where the body has effects, `filterMap` where it
+   * parses-and-skips, which is most of them.
+   *
+   * `toArray()` was already an escape hatch to the same place, but it copies, and the copy is
+   * per call on paths that run per element of a score. This does not: the collection is
+   * already a *fixed* snapshot (the constructor takes the array by reference and nothing
+   * mutates it), so handing out its iterator exposes no more than `get` does. Removing a
+   * child from the parent element mid-walk therefore does not disturb the walk — the same
+   * property the index loops were already relying on.
+   */
+  [Symbol.iterator](): IterableIterator<Element> {
+    return this.elements[Symbol.iterator]();
   }
 }
 

@@ -450,6 +450,51 @@ describe('the products §8 reads off the matrix', () => {
     expect(withoutContext.matrices.aggregate).toEqual([...report.matrices.aggregate]);
   });
 
+  it('ranks every off-diagonal cell AT-or-below, which is what makes ties share a rank', () => {
+    /**
+     * A closed oracle gap.
+     *
+     * The block above pins `percentile`'s LENGTH and nothing else, and no other test in the
+     * tree reads a value out of it — `readmeRecipes` asks one cell to be `> 0`. Measured:
+     * replacing the at-or-below count with a strictly-below one (`lowerBoundBy` for
+     * `upperBoundBy`) left all 1313 comparison tests green, even though the matrix is
+     * SYMMETRIC and therefore every off-diagonal value is itself one of the ranked samples —
+     * so the two disagree in every single cell, by that value's own multiplicity.
+     *
+     * The rule the module states is "a rank, so equal distances share a rank": the fraction
+     * of pairs at or below this one, ties included. Derived here from the published aggregate
+     * matrix by the textbook definition, which shares no line with the implementation.
+     */
+    const report = corpus(items, { k: 2, noiseFloor: true });
+    const n = report.n;
+    const percentile = report.context?.percentile;
+    expect(percentile).toBeDefined();
+    if (percentile === undefined) return;
+
+    const offDiagonal: number[] = [];
+    for (let i = 0; i < n; ++i)
+      for (let j = i + 1; j < n; ++j) offDiagonal.push(report.matrices.aggregate[i * n + j]!);
+
+    for (let i = 0; i < n; ++i)
+      for (let j = 0; j < n; ++j) {
+        const cell = percentile[i * n + j];
+        if (i === j) {
+          // The diagonal is never ranked — it is filled with 0 and skipped.
+          expect({ i, j, cell }).toEqual({ i, j, cell: 0 });
+          continue;
+        }
+        const value = report.matrices.aggregate[i * n + j]!;
+        const atOrBelow = offDiagonal.filter((other) => other <= value).length;
+        expect({ i, j, cell }).toEqual({ i, j, cell: atOrBelow / offDiagonal.length });
+        // Non-vacuous, and the exact thing a strictly-below count gets wrong: the cell's own
+        // distance is one of the ranked samples, so no off-diagonal rank can be 0.
+        expect({ i, j, positive: cell! > 0 }).toEqual({ i, j, positive: true });
+      }
+
+    // …and the largest distance in the corpus is at the top of its own ranking.
+    expect(Math.max(...percentile)).toBe(1);
+  });
+
   it('takes profiles against the CORPUS medoid, whatever k was asked for', () => {
     // `toMedoid` is 0 exactly at the corpus medoid, which is the single most typical item.
     const report = corpus(items, { k: 3 });

@@ -176,8 +176,11 @@ export class XmlBase {
     const uniqueIds = new Set<string>();
 
     const attributes = this.getRootElement()!.query('descendant-or-self::node()/attribute::xml:id');
-    for (let i = 0; i < attributes.size(); ++i) {
-      const attribute = attributes.get(i) as unknown as Attribute;
+    // A walk in document order, which is the whole of the "first occurrence keeps it" rule
+    // above; the index was never read for anything else. Not a fold, because the pass is
+    // effects — it rewrites the attributes it visits and feeds the set it tests against.
+    for (const node of attributes) {
+      const attribute = node as unknown as Attribute;
       let duplicate = false;
       while (uniqueIds.has(attribute.getValue())) {
         duplicate = true;

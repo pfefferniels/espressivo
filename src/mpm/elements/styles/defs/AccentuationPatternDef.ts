@@ -232,6 +232,17 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
   /**
    * Insertion-sort the tuple into {@link accentuations} by beat, scanning from the back so
    * that equal beats keep insertion order (the new one lands after its equals).
+   *
+   * That sentence is {@link insertionIndexBy}'s contract word for word, and the scan is
+   * still written out anyway — for the reason `GenericMap.insertionIndexFor` records at
+   * length. `@beat` reaches here through {@link parseJavaDouble}, which accepts the literal
+   * `NaN` exactly as `Double.parseDouble` does. One NaN in the array leaves it unordered,
+   * and on an unordered array a linear backwards scan and a binary upper bound do not agree:
+   * the scan walks past the NaN (`x >= NaN` is false) and keeps going left, where
+   * `partitionPoint` reads it as a boundary and splits on an answer that is false on both
+   * sides. The two agree on every ordered input. The resulting order is serialized —
+   * {@link addAccentuation} uses the returned index as the XML child index — so the
+   * disagreement would be byte-visible, and parity beats the shorter spelling.
    * @returns the index it was inserted at, which is also the XML child index to use
    */
   private addAccentuationToArrayList(accentuation: AccentuationTuple, xml: Element): number {

@@ -3,6 +3,7 @@ import { AbstractMsm } from './AbstractMsm.js';
 import { Goto } from './Goto.js';
 import { KeyValue } from '../supplementary/KeyValue.js';
 import { v4 as uuidv4 } from 'uuid';
+import { filterMap } from '../prelude/index.js';
 
 import { Midi } from '../midi/Midi.js';
 import { Sequence, Track, MidiEvent } from '../midi/MidiTypes.js';
@@ -53,23 +54,17 @@ function getAttributeValue(name: string, ofThis: Element): string {
 function getFirstChildElement(name: string, ofThis: Element): Element | null {
   if (ofThis === null || name.length === 0) return null;
 
-  const es = ofThis.getChildElements();
-  for (let i = 0; i < es.size(); ++i) {
-    if (es.get(i).getLocalName() === name) {
-      return es.get(i);
-    }
+  for (const e of ofThis.getChildElements()) {
+    if (e.getLocalName() === name) return e;
   }
   return null;
 }
 
 function getAllChildElements(name: string, ofThis: Element): Element[] {
   if (ofThis === null || name.length === 0) return [];
-  const es = ofThis.getChildElements(name);
-  const result: Element[] = [];
-  for (let i = 0; i < es.size(); ++i) {
-    result.push(es.get(i));
-  }
-  return result;
+  // `toArray()` is this loop: the same elements in the same order, and a fresh mutable array,
+  // which the `Element[]` return type promises.
+  return ofThis.getChildElements(name).toArray();
 }
 
 /**
@@ -390,8 +385,8 @@ export class Msm extends AbstractMsm {
     const atts: Nodes = this.getRootElement()!.query(
       'descendant::*[attribute::date]/attribute::date | descendant::*[attribute::date.end]/attribute::date.end | descendant::*[attribute::duration]/attribute::duration',
     );
-    for (let i = 0; i < atts.size(); ++i) {
-      const att = atts.get(i) as unknown as Attribute;
+    for (const node of atts) {
+      const att = node as unknown as Attribute;
       att.setValue(String((parseFloat(att.getValue()) * ppq) / ppqOld));
     }
   }
@@ -437,10 +432,8 @@ export class Msm extends AbstractMsm {
       if (dated === null) continue;
       const score = dated.getFirstChildElement('score');
       if (score === null) continue;
-      const notes = score.getChildElements('note');
-      for (let j = 0; j < notes.size(); ++j) {
-        // go through all notes
-        const note = notes.get(j);
+      // go through all notes
+      for (const note of score.getChildElements('note')) {
         const dur = Math.round(parseFloat(note.getAttributeValue('duration')!)); // get the note's duration
         for (let subdivs = maxSubdivisions; subdivs <= ppq; subdivs *= 2) {
           if (dur % Math.trunc(ppq / subdivs) === 0) {
@@ -577,12 +570,7 @@ export class Msm extends AbstractMsm {
    * @returns
    */
   getPartsArray(): Element[] {
-    const parts = this.getParts();
-    const result: Element[] = [];
-    for (let i = 0; i < parts.size(); ++i) {
-      result.push(parts.get(i));
-    }
-    return result;
+    return this.getParts().toArray();
   }
 
   /**
@@ -633,9 +621,11 @@ export class Msm extends AbstractMsm {
     if (this.isEmpty()) return;
 
     const r: Nodes = this.getRootElement()!.query("descendant::*[local-name()='rest']"); // select all rest elements
-    for (let i = 0; i < r.size(); ++i) {
-      r.get(i).getParent()!.removeChild(r.get(i)); // remove them
-      r.get(i).detach();
+    // The query result is a fixed snapshot, so unlinking a node from its parent mid-walk
+    // cannot disturb the walk — which is what the index loop here was already relying on.
+    for (const rest of r) {
+      rest.getParent()!.removeChild(rest); // remove them
+      rest.detach();
     }
   }
 
@@ -698,9 +688,8 @@ export class Msm extends AbstractMsm {
         .getFirstChildElement('global')!
         .getFirstChildElement('dated')!
         .getChildElements();
-      for (let j = 0; j < maps.size(); ++j) {
-        // go through all maps
-        const map = maps.get(j); // one map
+      // go through all maps
+      for (const map of maps) {
         if (
           map.getChildCount() === 0 || // do not expand sequencingMaps
           map.getLocalName() === 'miscMap' || // ignore miscMaps as they will be deleted anyway
@@ -719,9 +708,8 @@ export class Msm extends AbstractMsm {
     }
 
     // go through all parts and expand their maps according to the underlying sequencingMaps
-    for (let i = 0; i < parts.size(); ++i) {
-      // for each part
-      const part = parts.get(i); // get it as element
+    // for each part
+    for (const part of parts) {
       let sequencingMap = part.getFirstChildElement('dated')!.getFirstChildElement('sequencingMap'); // get the part's local sequencingMap if there is one
       let localMap = true;
       if (sequencingMap === null) {
@@ -735,9 +723,8 @@ export class Msm extends AbstractMsm {
 
       // go through the score and all maps (except the sequencingMap itself) and apply the sequencingMap to them
       const maps = part.getFirstChildElement('dated')!.getChildElements();
-      for (let j = 0; j < maps.size(); ++j) {
-        // go through all maps
-        const map = maps.get(j); // one map
+      // go through all maps
+      for (const map of maps) {
         if (
           map.getChildCount() === 0 || // do not expand sequencingMaps
           map.getLocalName() === 'miscMap' || // ignore miscMaps as they will be deleted anyway
@@ -839,17 +826,17 @@ export class Msm extends AbstractMsm {
     const gs = sequencingMap.getChildElements('goto'); // get the gotos
     if (gs.size() === 0) return null; // if there are no gotos in the sequencingMap, i.e. nothing to expand, return null
 
-    // make an Array of Goto instances
-    const gotos: Goto[] = []; // this is the list
-    for (let i = 0; i < gs.size(); ++i) {
-      // fill the goto list, go through all gotos
+    // Make an Array of Goto instances — parse each `<goto>`, keep the ones that parse, and
+    // report the ones that do not. That is `filterMap` exactly: the "skip this one" arm is
+    // the `null` return, so the loop no longer has to say `continue` in a `catch`.
+    const gotos = filterMap(gs, (g) => {
       try {
-        gotos.push(new Goto(gs.get(i))); // from the goto element create a Goto instance
+        return new Goto(g); // from the goto element create a Goto instance
       } catch (e) {
-        // if this fails
         console.error(e); // print the exception and continue with the next
+        return null;
       }
-    }
+    });
 
     // create a new map and fill it by traversing the original map as indicated by the goto elements
     const newMap = cloneElement(map); // make a flat copy of the map (no children so far) to refill it according to the sequencingMap
@@ -948,16 +935,21 @@ export class Msm extends AbstractMsm {
     }
 
     // cleanup: delete all repetitionCounter attributes from all map and newMap elements
-    let rs: Nodes = map.query('descendant::*[@repetitionCounter]');
-    for (let i = rs.size() - 1; i >= 0; --i) {
-      const r = rs.get(i) as unknown as Element;
-      r.removeAttribute(r.getAttribute('repetitionCounter')!);
-    }
-    rs = newMap.query('descendant::*[@repetitionCounter]');
-    for (let i = rs.size() - 1; i >= 0; --i) {
-      const r = rs.get(i) as unknown as Element;
-      r.removeAttribute(r.getAttribute('repetitionCounter')!);
-    }
+    //
+    // One walk written once, run twice — the two blocks here were character-for-character
+    // identical but for the element queried. Forward rather than backwards: a query result
+    // is a fixed snapshot of *distinct* elements, and each visit only strips an attribute
+    // from the element it landed on, so nothing a later step reads depends on an earlier
+    // one. The backwards index was Java's habit for list mutation, and there is no list
+    // being mutated here.
+    const dropRepetitionCounters = (from: Element): void => {
+      for (const node of from.query('descendant::*[@repetitionCounter]')) {
+        const r = node as unknown as Element;
+        r.removeAttribute(r.getAttribute('repetitionCounter')!);
+      }
+    };
+    dropRepetitionCounters(map);
+    dropRepetitionCounters(newMap);
 
     return newMap;
   }
@@ -1772,18 +1764,20 @@ export class Msm extends AbstractMsm {
     let latestOffset = 0.0;
     const parts = this.getRootElement()!.getChildElements('part'); // get all parts
 
-    for (let i = 0; i < parts.size(); ++i) {
-      // in each part
-      const dated = parts.get(i).getFirstChildElement('dated');
+    // in each part
+    for (const part of parts) {
+      const dated = part.getFirstChildElement('dated');
       if (dated === null) continue;
       const score = dated.getFirstChildElement('score');
       if (score === null) continue;
-      const notes = score.getChildElements('note'); // navigate to the note elements
 
-      // compute the offset of each note and keep the last one
-      for (let j = notes.size() - 1; j >= 0; --j) {
-        // go through all notes
-        const note = notes.get(j); // get the note
+      // Compute the offset of each note and keep the largest. Forwards, where Java walks
+      // backwards (`Msm.java:1382`): the loop is a maximum over a set, `latestOffset` is
+      // *assigned* rather than accumulated, and `>` is strict, so a tie keeps a value equal
+      // to the one it would have replaced. No sum is reassociated and no order is observable
+      // — the two directions answer the same double for every input, NaN included (`NaN >
+      // x` is false whichever end you start from).
+      for (const note of score.getChildElements('note')) {
         const date = parseFloat(note.getAttributeValue('date')!); // get its date
         const dur = parseFloat(note.getAttributeValue('duration')!); // get its duration
         const offset = date + dur; // compute the offset date
@@ -1852,9 +1846,8 @@ export class Msm extends AbstractMsm {
     const e: Nodes = root.query(
       "descendant::*[(local-name()='note' or local-name()='rest') and not(@xml:id)]",
     );
-    for (let i = 0; i < e.size(); ++i)
-      // go through all the nodes
-      addUUID(e.get(i) as unknown as Element); // add the xml:id attribute with a UUID
+    // go through all the nodes
+    for (const node of e) addUUID(node as unknown as Element); // add the xml:id attribute with a UUID
 
     console.log(' done');
 
