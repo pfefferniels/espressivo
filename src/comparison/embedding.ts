@@ -62,6 +62,8 @@
 
 import { pairwise } from '../prelude/index.js';
 
+import { elementAt } from './indexing.js';
+
 /** A symmetric matrix in §8's layout: `n` rows of `n`, row-major, `m[i*n + j]`. */
 export interface SquareMatrix {
   readonly n: number;
@@ -69,27 +71,16 @@ export interface SquareMatrix {
 }
 
 /**
- * One read from a flat `N²` buffer, total by construction.
+ * One read from a flat `N²` buffer.
  *
- * Every matrix in this module is a flat `readonly number[]` addressed by computed indices, and
- * one Jacobi sweep does thirty such reads. Under `noUncheckedIndexedAccess` each of them is a
- * `number | undefined`, so the choice is thirty guards, thirty assertions, or one checked
- * reader. This is the reader, and it is the only place the index arithmetic is inspected.
- *
- * It THROWS rather than defaulting, and the difference matters here more than it usually does.
- * A read outside an `n × n` buffer is a bug in this file's own loop bounds — never a property of
- * the corpus — so there is no value that would be the right answer. A substituted `0` would
- * propagate silently into an eigenvalue, and an eigenvalue is exactly what a caller of this
- * module trusts.
+ * Every matrix here is a flat `readonly number[]` addressed by computed indices, and one Jacobi
+ * sweep does thirty such reads: the index arithmetic IS the algorithm, so there is no named
+ * algorithm to replace it with. {@link elementAt} carries the reasoning; this is its name in
+ * this file, so that a stride bug reads as a `RangeError` naming the buffer rather than as a
+ * `NaN` that reaches a published eigenvalue.
  */
 function cell(values: readonly number[], index: number): number {
-  return values[index] ?? outsideBuffer(index, values.length);
-}
-
-function outsideBuffer(index: number, length: number): never {
-  throw new RangeError(
-    `embedding: flat-matrix read at index ${String(index)} outside a buffer of ${String(length)}`,
-  );
+  return elementAt(values, index, 'a flat N² matrix buffer');
 }
 
 export interface Embedding {
