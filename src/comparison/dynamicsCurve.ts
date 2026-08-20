@@ -34,7 +34,14 @@
  *   are distance 0 on the date axis while driving two different MIDI mechanisms. It is
  *   inert on a map's last instruction, by the same `size()-1` guard as the trailing rule.
  */
-import { filterMap, isNonEmpty, last, withNext } from '../prelude/index.js';
+import {
+  elementAtOrNull,
+  filterMap,
+  isNonEmpty,
+  last,
+  upperBoundBy,
+  withNext,
+} from '../prelude/index.js';
 import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { innerControlPointsXPositions } from '../mpm/elements/maps/data/bezier.js';
@@ -265,10 +272,17 @@ export function readDynamicsSegments(
   const segments: DynamicsSegment[] = [];
   const notes: DynamicsCurveNote[] = [];
 
+  // Every VALID instruction with its position in `raws`, ascending — the tempo reader's
+  // structure, for the same reason. The tail-slice look-ahead it replaces was quadratic in time
+  // and in allocation; see `tempoCurve.readTempoSegments` for the measurement, including why the
+  // obvious `raws.find((c, at) => at > index && …)` repair is three times SLOWER than the slice.
+  const valid = filterMap(raws, (raw, at) =>
+    raw.volume === null ? null : { at, dateTicks: raw.dateTicks },
+  );
+
   // The neutral runs to the first VALID instruction, not the first element: a leading skip
   // extends it, exactly as in the tempo reader.
-  const firstValid = raws.find((raw) => raw.volume !== null);
-  const firstValidDate = firstValid?.dateTicks ?? Number.POSITIVE_INFINITY;
+  const firstValidDate = valid[0]?.dateTicks ?? Number.POSITIVE_INFINITY;
   if (firstValidDate > 0)
     segments.push({
       kind: 'constant',
@@ -285,7 +299,7 @@ export function readDynamicsSegments(
   // spelled out, and it is the shape `pairwise` cannot serve — `pairwise` drops the last
   // entry, and the last instruction is a span too.
   const paired = withNext(raws);
-  // The index survives only as a SLICE bound below, never as a read.
+  // The index survives only as a BOUND in the look-ahead predicate below, never as a read.
   for (const [index, [raw, next]] of paired.entries()) {
     const isTrailing = next === null;
     const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
@@ -299,7 +313,10 @@ export function readDynamicsSegments(
           'with it, and pins every note up to the next valid <dynamics> to velocity 100 ' +
           '(DynamicsMap.ts:251-253, AD-33.4)',
       });
-      const nextValid = raws.slice(index + 1).find((candidate) => candidate.volume !== null);
+      const nextValid = elementAtOrNull(
+        valid,
+        upperBoundBy(valid, (entry) => entry.at, index),
+      );
       segments.push({
         kind: 'constant',
         startTicks: raw.dateTicks,
