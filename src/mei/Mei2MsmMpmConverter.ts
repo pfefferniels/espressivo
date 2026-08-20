@@ -3945,6 +3945,17 @@ export class Mei2MsmMpmConverter {
    * note index. {@link ppq}, {@link dontUseChannel10}, {@link movements} and
    * {@link performances} deliberately survive — they belong to the conversion, not to a
    * movement.
+   *
+   * **{@link arpeggiosToSort} was missing from this list, and that was a bug.** The field is
+   * drained at the end of {@link makeMovement} but was never emptied, so the second `mdiv` of
+   * a document re-ran the first one's arpeggios: the parked `note.order` attributes still
+   * pointed at the *previous* movement's MPM ornaments, while the note ids they name were
+   * looked up in an {@link allNotesAndChords} that `reset` had just cleared and refilled from
+   * the new mdiv. Every lookup missed, the sort produced an empty list, and the empty string
+   * was written over a finished movement's note order. No fixture could see it — all sixteen
+   * hold exactly one `mdiv` — so the proof is
+   * `tests/mei/Mei2MsmMpmConverter.test.ts`'s "clears the parked arpeggios", which fails
+   * without the line below.
    */
   protected reset(): void {
     this.endingCounter = 0;
@@ -3960,6 +3971,7 @@ export class Mei2MsmMpmConverter {
     this.endids = [];
     this.tstamp2s = [];
     this.lyrics = [];
+    this.arpeggiosToSort = [];
     this.allNotesAndChords.clear();
   }
 
