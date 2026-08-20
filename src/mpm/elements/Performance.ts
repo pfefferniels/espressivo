@@ -555,7 +555,12 @@ export class Performance extends AbstractXmlSubtree {
    * @returns a new Msm with performance data added
    */
   perform(msm: Msm, options?: RenderOptions): Msm {
-    console.log(`\nRendering performance "${this.getName()}" into "${msm.getTitle()}".`);
+    // The four progress lines this fold used to print — the banner here, "Processing global
+    // data.", "Performing part N: …" per part, and "Performance rendering finished." — are
+    // gone. They were scaffolding: nothing read them, no test asserted on one, and they made
+    // the suite's own output unreadable. A library rendering somebody's score inside an editor
+    // has no business narrating it to stdout. The diagnostics on this path (an MSM part with
+    // no MPM counterpart) stay, on stderr, where they were.
 
     // One context per call, local to it, passed by reference down the render chain. It is
     // never stored anywhere that outlives this method (RULE I1, boundary 6).
@@ -569,7 +574,6 @@ export class Performance extends AbstractXmlSubtree {
       (state) => this.renderParts(state),
     );
 
-    console.log('Performance rendering finished.');
     return rendered.clone;
   }
 
@@ -632,7 +636,6 @@ export class Performance extends AbstractXmlSubtree {
    * The projection at the end is what stage 4 requires: see {@link GlobalRender}.
    */
   private renderGlobal(state: WithGlobalMaps): WithGlobalRender {
-    console.log('Processing global data.');
     const { clone, globalMaps: mpm, ctx } = state;
     const globalDated = firstChildElement('dated', clone.getGlobal()!);
 
@@ -768,7 +771,6 @@ export class Performance extends AbstractXmlSubtree {
         console.error(
           `No MPM part found that corresponds to MSM part ${getAttributeValue('number', msmPart)} "${getAttributeValue('name', msmPart)}"`,
         );
-      else console.log(`Performing part ${mpmPart.getNumber()}: ${mpmPart.getName()}`);
 
       const dated = firstChildElement('dated', msmPart);
       if (dated === null) continue;

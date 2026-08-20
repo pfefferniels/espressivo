@@ -444,8 +444,6 @@ export class Mei extends XmlBase {
     const notResolved: string[] = [];
     let previousPlaceholders = new Map<Element, string>();
 
-    console.log("Resolving copyofs and sameas's:");
-
     while (true) {
       const elements = new Map<string, Element>();
       const placeholders = new Map<Element, string>();
@@ -499,8 +497,6 @@ export class Mei extends XmlBase {
       }
       previousPlaceholders = placeholders;
 
-      console.log(` ${placeholders.size} copyofs and sameas's ...`);
-
       for (const [placeholder, copyofId] of placeholders) {
         const found = elements.get(copyofId);
 
@@ -546,10 +542,12 @@ export class Mei extends XmlBase {
       }
     }
 
-    console.log(' done');
-
+    // A real diagnostic, on the channel diagnostics belong on. The progress lines that used
+    // to surround it ("Resolving copyofs and sameas's:", " done") are gone: a library has no
+    // business narrating its passes to whatever stdout the host happens to have, and nothing
+    // read them — the twenty console.log spies in Mei.test.ts existed only to silence them.
     if (notResolved.length > 0)
-      console.log(`The following placeholders could not be resolved:\n${notResolved.toString()}`);
+      console.error(`The following placeholders could not be resolved:\n${notResolved.toString()}`);
 
     return notResolved;
   }
@@ -581,9 +579,6 @@ export class Mei extends XmlBase {
     const e = this.getMusic();
     if (e === null) return;
 
-    console.log('Replacing rend elements by their values:');
-
-    let count = 0;
     const rends = descendantElements(e, (element) => element.getLocalName() === 'rend');
     for (const r of rends) {
       const parent = r.getParent();
@@ -591,10 +586,7 @@ export class Mei extends XmlBase {
 
       parent.appendChild(r.getValue());
       parent.removeChild(r);
-      count++;
     }
-
-    console.log(` done, ${count} rends replaced`);
   }
 
   /**
@@ -604,7 +596,6 @@ export class Mei extends XmlBase {
    * Skipped entirely when the converter is given `ignoreExpansions`.
    */
   resolveExpansions(): void {
-    console.log('Resolving Expansions:');
     const music = this.getMusic();
     // A non-null `music` implies a non-null root — `getMusic` reads the root to find it —
     // so the second test never fails; writing it out is what removes the assertion, and it
@@ -613,7 +604,6 @@ export class Mei extends XmlBase {
     if (music !== null && root !== null) {
       root.replaceChild(music, this._resolveExpansions(music));
     }
-    console.log(' done');
   }
 
   /**
@@ -739,7 +729,6 @@ export class Mei extends XmlBase {
    * @return how many ids were added
    */
   addIds(): number {
-    console.log('Adding IDs to MEI:');
     const root = this.getRootElement();
     if (root === null) {
       console.error(' Error: no root element found');
@@ -755,7 +744,6 @@ export class Mei extends XmlBase {
       (e.get(i) as unknown as Element).addAttribute(a);
     }
 
-    console.log(' done');
     return e.size();
   }
 

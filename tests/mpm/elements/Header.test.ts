@@ -319,19 +319,15 @@ describe('Header', () => {
     });
 
     it('returns null for an unknown style type', () => {
-      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       expect(
         okValue(Header.createHeader()).renameStyleDef(Mpm.TEMPO_STYLE, 'old', 'new'),
       ).toBeNull();
-      log.mockRestore();
     });
 
     it('returns null for an unknown current name', () => {
-      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       const h = okValue(Header.createHeader());
       h.addStyleDef(Mpm.TEMPO_STYLE, 'other');
       expect(h.renameStyleDef(Mpm.TEMPO_STYLE, 'old', 'new')).toBeNull();
-      log.mockRestore();
     });
   });
 

@@ -208,16 +208,15 @@ export class Header extends AbstractXmlSubtree {
    */
   renameStyleDef(type: string, currentName: string, newName: string): AnyStyle | null {
     if (currentName === newName) return this.getStyleDef(type, currentName);
+    // The two null returns used to print which of them it was — "no styleDef elements for
+    // type X", "no styleDef named Y to be renamed". Both mean the same thing to a caller of a
+    // rename ("nothing was renamed"), and a caller that supplied the type and the name can
+    // already tell them apart from what it supplied. They were narration on somebody else's
+    // stdout, and the two tests that covered these branches only ever spied to silence them.
     const allStyleDefs = this.getAllStyleDefs(type);
-    if (!allStyleDefs || allStyleDefs.size === 0) {
-      console.log(`There are no styleDef elements for type ${type}`);
-      return null;
-    }
+    if (!allStyleDefs || allStyleDefs.size === 0) return null;
     const styleDef = allStyleDefs.get(currentName);
-    if (styleDef === undefined) {
-      console.log(`There is no styleDef element with name "${currentName}" to be renamed.`);
-      return null;
-    }
+    if (styleDef === undefined) return null;
     allStyleDefs.delete(newName);
     // Was `attribute('name', styleDef.getXml())!.setValue(newName)` — the same attribute node
     // `Style` already holds, reached around the object rather than through it.

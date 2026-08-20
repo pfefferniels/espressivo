@@ -595,15 +595,16 @@ export class Mei2MsmMpmConverter {
   /** the whole conversion, step by step; see the class comment for the outline */
   private convertMei(mei: Mei): KeyValue<Msm[], Mpm[]> {
     if (mei === null) {
-      console.log('\nThe provided MEI object is null and cannot be converted.');
+      console.error('The provided MEI object is null and cannot be converted.');
       return new KeyValue<Msm[], Mpm[]>([], []);
     }
 
-    const startTime = Date.now();
-    console.log(
-      `\nConverting ${mei.getFile() !== null ? mei.getFile() : 'MEI data'} to MSM and MPM.`,
-    );
-
+    // The two progress banners this method opened and closed with — "Converting X to MSM and
+    // MPM." and "conversion finished. Time consumed: N milliseconds" — are gone, with the
+    // `startTime` that existed only to feed the second. They were scaffolding: nothing read
+    // them, and a converter running inside an editor or a server has no business narrating to
+    // stdout. The line above is a diagnostic, so it stays — on stderr, where the rest of this
+    // file's diagnostics already are.
     this.mei = mei;
 
     // `getMusic()` is null exactly when the instance is empty, so one read covers both of the
@@ -616,7 +617,7 @@ export class Mei2MsmMpmConverter {
     const originalPPQ = this.ppq;
     if (minPPQ > this.ppq) {
       this.ppq = minPPQ;
-      console.log(
+      console.error(
         `The specified pulses per quarter note resolution (ppq) is too coarse to capture the shortest duration values in the mei source with integer values. Using the minimal required resolution of ${this.ppq} instead`,
       );
     }
@@ -691,10 +692,6 @@ export class Mei2MsmMpmConverter {
         }
       }
     }
-
-    console.log(
-      `MEI to MSM/MPM conversion finished. Time consumed: ${Date.now() - startTime} milliseconds`,
-    );
 
     return new KeyValue<Msm[], Mpm[]>(msms, mpms);
   }
@@ -1432,7 +1429,7 @@ export class Mei2MsmMpmConverter {
       s.addAttribute(new Attribute('currentDate', this.getMidiTimeAsString(ctx)));
       part = s;
     } else {
-      console.log(
+      console.error(
         `There is an undefined staff element in the score with no corresponding staffDef.\n${staff.toXML()}\nGenerating a new part for it.`,
       );
       part = this.makePart(staff, ctx);
@@ -2360,7 +2357,7 @@ export class Mei2MsmMpmConverter {
         const pname = keyAccid.getAttributeValue('pname');
         const accid = keyAccid.getAttributeValue('accid');
         if (pname === null || accid === null) {
-          console.log(
+          console.error(
             `The following keyAccid element requires a pname and accid attribute for processing in meico: ${keyAccid.toXML()}`,
           );
           continue;
@@ -3320,7 +3317,7 @@ export class Mei2MsmMpmConverter {
           }
 
           // create the articulation from tstamp/tstamp.ges
-          console.log(
+          console.error(
             `MEI element ${breath.toXML()} is not associated with a note or chord. If its 'tstamp.ges' or 'tstamp' does not coincide with a note it will have no effect on the music!`,
           );
           const tstamp = att.getValue();
