@@ -1,3 +1,4 @@
+import { withNext } from '../../../prelude/index.js';
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { addToListAttribute } from '../../../xml/ids.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
@@ -78,16 +79,19 @@ export class AsynchronyMap extends GenericMap {
     if (map === null || this.elements.length === 0) return;
     let mapEntries = [...map.getAllElements()];
     const done: KeyValue<number, Element>[] = [];
-    for (let asynIndex = 0; asynIndex < this.size(); ++asynIndex) {
-      // One read of the entry, where there were four: the index is this loop's own bound and
-      // the whole body wants both halves of what it names.
-      const asynEntry = this.entryAt(asynIndex);
+    // `withNext`: every asynchrony with the one that ends its span, and `null` for the last,
+    // whose span runs to the end of time. That is the whole of what `asynIndex` was for — the
+    // body read `entryAt(asynIndex)` and `elements.at(asynIndex + 1)` and nothing else — so
+    // the index goes with it. Unlike the five two-cursor render merges next door, this loop
+    // has no cursor to preserve: `mapEntries` is rebuilt by filtering, not advanced.
+    //
+    // `getAllElements()` hands back the live index by reference, and the body writes to `map`
+    // rather than to `this`, so walking it is safe here.
+    for (const [asynEntry, next] of withNext(this.getAllElements())) {
       const asynElement = asynEntry.getValue();
       const asynStartDate = asynEntry.getKey();
       const xmlId = getAttributeValue('xml:id', asynElement);
-      // No successor means this asynchrony runs to the end of time, which is what the
-      // ternary said and what `at` returning undefined says.
-      const asynEndDate = this.elements.at(asynIndex + 1)?.getKey() ?? Number.MAX_VALUE;
+      const asynEndDate = next?.getKey() ?? Number.MAX_VALUE;
       const offset = parseFloat(getAttributeValue('milliseconds.offset', asynElement));
       for (const mapEntry of mapEntries) {
         if (mapEntry.getKey() >= asynEndDate) break;
