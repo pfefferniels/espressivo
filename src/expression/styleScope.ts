@@ -59,6 +59,13 @@ export interface ResolvedStyleDef {
  * is the def's `@value` and the instruction attribute must be left alone (D-C forbids
  * rewriting a name as a number — it severs the style linkage); `literal` means the
  * instruction attribute is itself the site; `unresolvable` means skip and report.
+ *
+ * **Deliberately not a `Result`.** Reading `unresolvable` as the failure arm would fuse `def`
+ * and `literal` into one success, and those two are not one thing: they name *different
+ * writable sites*, which is the only question this type is asked. Every caller would have to
+ * re-discriminate inside the `ok` arm, so the two-arm shape would buy a combinator nobody can
+ * use and cost a switch everybody still has to write. It is a three-way sum because the
+ * dispositions are three.
  */
 export type LevelReading =
   | {

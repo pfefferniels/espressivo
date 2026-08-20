@@ -15,7 +15,7 @@
  * ```
  */
 
-export type { Result, Ok, Err } from './result.js';
+export type { Result, Ok, Err, AnyResult, OkOf, ErrOf } from './result.js';
 export {
   ok,
   err,
@@ -72,6 +72,7 @@ export {
   insertionIndexBy,
 } from './seq.js';
 
+export { fromEntriesExact, mapValues } from './record.js';
 export { assertNever, matchKind, matchOn } from './match.js';
 export { pipe, flow, identity } from './fn.js';
 export type { Brand, Unbrand } from './newtype.js';

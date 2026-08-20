@@ -40,6 +40,7 @@
  * WHICH partition is reported. Saying so keeps the headline capability from being entangled
  * with the thresholding — a reader who distrusts the segmentation can still trust `D`.
  */
+import { fromEntriesExact } from '../prelude/index.js';
 import { CompensatedSum, bisectSignChange, gaussLegendre10 } from './quadrature.js';
 import { COMPARISON_DIMENSIONS, type ComparisonDimension } from './registry.js';
 
@@ -174,16 +175,12 @@ export type DimensionWeights = Readonly<Record<ComparisonDimension, number>>;
 
 /** `ω_k = 1` for every dimension — §7.2's default, kept because it is defensible, not neutral. */
 export function defaultWeights(): DimensionWeights {
-  return Object.fromEntries(
-    COMPARISON_DIMENSIONS.map((dimension) => [dimension, 1]),
-  ) as DimensionWeights;
+  return fromEntriesExact(COMPARISON_DIMENSIONS, () => 1);
 }
 
 /** `τ_k = 1` JND for every dimension — §7.3's threshold. */
 export function defaultThresholds(): DimensionWeights {
-  return Object.fromEntries(
-    COMPARISON_DIMENSIONS.map((dimension) => [dimension, DEFAULT_THRESHOLD_JND]),
-  ) as DimensionWeights;
+  return fromEntriesExact(COMPARISON_DIMENSIONS, () => DEFAULT_THRESHOLD_JND);
 }
 
 /**

@@ -23,16 +23,16 @@
  * Everything returned is plain data (RULE F1) — the report is already plain in the engine,
  * and `tests/api/expression-facade.test.ts` pins the JSON round trip at this level too.
  */
-import { applyExaggeration } from '../expression/applier.js';
+import { applyResolvedExaggeration } from '../expression/applier.js';
 import { estimatesFromMsm } from '../expression/estimates.js';
 import { parseMpmRoot, serializeMpmRoot } from '../expression/mpmDocument.js';
 import { readPerformances } from '../expression/mpmTree.js';
 import { parseMsmRoot, readMsmFacts, type MsmFacts } from '../expression/msmFacts.js';
 import {
   IDENTITY_FACTOR,
-  resolveFactors,
-  resolveOptions,
+  resolveRun,
   type ExaggerateOptions as EngineOptions,
+  type ResolvedRun,
 } from '../expression/options.js';
 import {
   EXPRESSION_DIMENSIONS,
@@ -43,6 +43,7 @@ import type { ExaggerationReport } from '../expression/report.js';
 import { resolveSelection, type Selection } from '../expression/selection.js';
 import { weightedFactors as computeWeightedFactors } from '../expression/weights.js';
 import type { ExaggerationWeights } from '../expression/weights.js';
+import { andThen, collect, err, mapOk, type Result } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import {
   EngineInvariantError,
@@ -52,6 +53,14 @@ import {
   SelectionNotFoundError,
 } from './errors.js';
 import { parseOrThrow, requireXmlText, type DocumentKind } from './parse.js';
+import {
+  accepted,
+  allOf,
+  orInvalidOption,
+  rejected,
+  requireOptionBag,
+  type Checked,
+} from './validate.js';
 import type {
   ExaggerateOptions,
   ExaggerationResult,
@@ -141,55 +150,54 @@ function toEngineOptions(options: ExaggerateOptions): EngineOptions {
 }
 
 /**
- * Validate every option **before the document is parsed**, per §4.
+ * Validate every option **before the document is parsed**, per §4 — and keep what that
+ * validation produced.
  *
  * The ordering is a contract, not an accident: a caller who both misspells a dimension and
  * hands over a malformed document is told about the misspelling, because that is the error
  * they can act on and the other one may not even be theirs.
  *
- * The engine's own validators are the checkers — there is exactly one definition of "a legal
- * factor record", and it is `options.ts`'s. They throw plain `Error`s with the offender in
- * the message (the part this layer could not reconstruct), and this is where those become
- * {@link InvalidOptionError}. The cost is that `applyExaggeration` resolves the same options a
- * second time; both resolutions are pure, and the alternative is a facade that either
- * duplicates the domain rules or cannot tell an option error from an engine failure.
+ * The engine's own resolvers are the checkers — there is exactly one definition of "a legal
+ * factor record", and it is `options.ts`'s. This function returns what they resolved rather
+ * than discarding it, which is the whole difference from the `check…(options): void` it
+ * replaces. That version called them purely for their throws and threw both resolved objects
+ * away, so `applyExaggeration` resolved the identical bag a second time three lines later; the
+ * comment where this one stands used to explain why that was acceptable. It is now unnecessary
+ * rather than acceptable: {@link resolveRun} answers with a value, the value goes straight to
+ * {@link applyResolvedExaggeration}, and the engine resolves nothing.
  */
-function checkExaggerateOptions(options: ExaggerateOptions): void {
-  // Read as `unknown` deliberately, the same way `options.ts` widens its scope check: these
-  // two guards exist for callers arriving from JavaScript, where the parameter type guarantees
-  // nothing, and comparing against the declared type would let the compiler prove them dead
-  // and the linter delete them. Without them a missing `factors` fails with a `TypeError` from
-  // inside `Object.keys` instead of with this module's own error type.
-  const bag: unknown = options;
-  if (typeof bag !== 'object' || bag === null)
-    throw new InvalidOptionError('options must be an object carrying at least `factors`');
-  const factors: unknown = (bag as ExaggerateOptions).factors;
-  if (typeof factors !== 'object' || factors === null)
-    throw new InvalidOptionError(
-      'options.factors must be a record of dimension names to numbers; pass {} for the identity',
-    );
-
-  // Spelled exactly as `selectPerformance` spells it, because the two must agree: a caller
-  // who narrows one facade by index and the other by the same index gets one answer.
-  if (typeof options.performance === 'number') {
-    const index = options.performance;
-    if (!Number.isInteger(index) || index < 0)
-      throw new InvalidOptionError(
-        `performance index must be a non-negative integer, got ${String(index)}`,
-      );
-  }
-
-  try {
-    resolveEngineOptions(options);
-  } catch (cause) {
-    throw new InvalidOptionError(cause instanceof Error ? cause.message : String(cause), { cause });
-  }
+function resolveExaggerateOptions(options: ExaggerateOptions): Result<ResolvedRun, string> {
+  // The two bag guards exist for callers arriving from JavaScript, where the parameter type
+  // guarantees nothing. Without them a missing `factors` fails with a `TypeError` from inside
+  // `Object.keys` instead of with this module's own error type.
+  return andThen(
+    andThen(
+      requireOptionBag(options, 'options must be an object carrying at least `factors`'),
+      () =>
+        allOf(
+          mapOk(
+            requireOptionBag(
+              options.factors,
+              'options.factors must be a record of dimension names to numbers; pass {} for the identity',
+            ),
+            () => undefined,
+          ),
+          // Spelled exactly as `selectPerformance` spells it, because the two must agree: a
+          // caller who narrows one facade by index and the other by the same index gets one
+          // answer.
+          checkPerformanceIndex(options.performance),
+        ),
+    ),
+    () => resolveRun(options.factors, toEngineOptions(options)),
+  );
 }
 
-/** The engine's own validators, called for their throws; both are pure and their results unused. */
-function resolveEngineOptions(options: ExaggerateOptions): void {
-  resolveFactors(options.factors);
-  resolveOptions(toEngineOptions(options));
+/** A `performance` selector given as an index must be one an array could have. */
+function checkPerformanceIndex(selector: string | number | undefined): Checked {
+  if (typeof selector !== 'number') return accepted;
+  return Number.isInteger(selector) && selector >= 0
+    ? accepted
+    : rejected(`performance index must be a non-negative integer, got ${String(selector)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +258,7 @@ function resolveEngineOptions(options: ExaggerateOptions): void {
  *   the one option value that can provoke it
  */
 export function exaggerateMpm(mpm: XmlText, options: ExaggerateOptions): ExaggerationResult {
-  checkExaggerateOptions(options);
+  const run = orInvalidOption(resolveExaggerateOptions(options));
 
   const root = parseRoot('MPM', mpm, parseMpmRoot);
   // `== null`, not `=== undefined`: the interior's `resolveOptions` normalises every one of
@@ -259,7 +267,7 @@ export function exaggerateMpm(mpm: XmlText, options: ExaggerateOptions): Exagger
   // meanings for one value (ARCHITECTURE RULE N5; `eqeqeq` blesses the idiom for null).
   const facts = options.msm == null ? null : readMsm(options.msm);
 
-  const report = transform(root, options);
+  const report = transform(root, run, options.performance);
 
   return {
     mpm: serializeMpmRoot(root),
@@ -275,9 +283,13 @@ export function exaggerateMpm(mpm: XmlText, options: ExaggerateOptions): Exagger
  * `exaggerateMpm` would parse the document a second time to reach a tree it already holds, and
  * the two parses could only ever agree.
  */
-function transform(root: Element, options: ExaggerateOptions): ExaggerationReport {
-  const report = runEngine(root, options);
-  requireSelectedPerformance(root, options.performance, report);
+function transform(
+  root: Element,
+  run: ResolvedRun,
+  selector: string | number | undefined,
+): ExaggerationReport {
+  const report = runEngine(root, run);
+  requireSelectedPerformance(root, selector, report);
   return report;
 }
 
@@ -292,9 +304,9 @@ function readMsm(msm: XmlText): MsmFacts {
  * here; what remains is A6's `lateStart < earlyEnd` assertion, which is the engine reporting
  * on itself rather than on the caller.
  */
-function runEngine(root: Element, options: ExaggerateOptions): ExaggerationReport {
+function runEngine(root: Element, run: ResolvedRun): ExaggerationReport {
   try {
-    return applyExaggeration(root, options.factors, toEngineOptions(options));
+    return applyResolvedExaggeration(root, run);
   } catch (cause) {
     throw new EngineInvariantError(
       `MPM: the exaggeration engine failed an internal invariant — ${
@@ -404,17 +416,23 @@ function withEstimates(
  * @throws {EngineInvariantError} the engine broke one of its own invariants
  */
 export function spotlightMpm(mpm: XmlText, options: SpotlightOptions): SpotlightResult {
-  const attenuation = checkSpotlightOptions(options);
+  const attenuation = orInvalidOption(checkSpotlightOptions(options));
 
   const root = parseRoot('MPM', mpm, parseMpmRoot);
   const selection = resolveSelection(root, options.ids);
   requireResolvedSelection(selection);
 
-  const report = transform(root, {
-    factors: spotlightFactors(selection.spared, attenuation),
-    performance: options.performance,
-    scope: 'gesture',
-  });
+  // Cannot refuse — `spotlightFactors` builds a full record out of 1 and an attenuation the
+  // guard above has already put in (0,1], and `gesture` is one of the two scopes — but the
+  // resolution is the engine's and the answer is a `Result`, so it is unwrapped like any other
+  // rather than asserted away.
+  const run = orInvalidOption(
+    resolveRun(spotlightFactors(selection.spared, attenuation), {
+      performance: options.performance,
+      scope: 'gesture',
+    }),
+  );
+  const report = transform(root, run, options.performance);
 
   return {
     mpm: serializeMpmRoot(root),
@@ -463,36 +481,28 @@ function spotlightFactors(
  * reads its bag that way: the guards exist for callers arriving from JavaScript, and comparing
  * against the declared type would let the compiler prove them dead and the linter delete them.
  */
-function checkSpotlightOptions(options: SpotlightOptions): number {
-  const bag: unknown = options;
-  if (typeof bag !== 'object' || bag === null)
-    throw new InvalidOptionError('options must be an object carrying `ids` and `attenuation`');
+function checkSpotlightOptions(options: SpotlightOptions): Result<number, string> {
+  return andThen(
+    requireOptionBag(options, 'options must be an object carrying `ids` and `attenuation`'),
+    () => {
+      const ids: unknown = options.ids;
+      if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string'))
+        return err('options.ids must be an array of xml:id strings; pass [] for no selection');
 
-  const ids: unknown = (bag as SpotlightOptions).ids;
-  if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string'))
-    throw new InvalidOptionError(
-      'options.ids must be an array of xml:id strings; pass [] for no selection',
-    );
+      const attenuation: unknown = options.attenuation;
+      if (typeof attenuation !== 'number' || !Number.isFinite(attenuation))
+        return err(
+          `options.attenuation is required and must be a finite number in (0,1], got ${String(attenuation)}`,
+        );
+      if (attenuation <= 0 || attenuation > 1)
+        return err(
+          `options.attenuation must lie in (0,1] — 1 is the identity, and 0 would collapse every ` +
+            `transition pair onto its own geomean and delete the gesture — got ${attenuation}`,
+        );
 
-  const attenuation: unknown = (bag as SpotlightOptions).attenuation;
-  if (typeof attenuation !== 'number' || !Number.isFinite(attenuation))
-    throw new InvalidOptionError(
-      `options.attenuation is required and must be a finite number in (0,1], got ${String(attenuation)}`,
-    );
-  if (attenuation <= 0 || attenuation > 1)
-    throw new InvalidOptionError(
-      `options.attenuation must lie in (0,1] — 1 is the identity, and 0 would collapse every ` +
-        `transition pair onto its own geomean and delete the gesture — got ${attenuation}`,
-    );
-
-  if (typeof options.performance === 'number') {
-    const index = options.performance;
-    if (!Number.isInteger(index) || index < 0)
-      throw new InvalidOptionError(
-        `performance index must be a non-negative integer, got ${String(index)}`,
-      );
-  }
-  return attenuation;
+      return mapOk(checkPerformanceIndex(options.performance), () => attenuation);
+    },
+  );
 }
 
 /**
@@ -502,12 +512,20 @@ function checkSpotlightOptions(options: SpotlightOptions): number {
  * to naming them all is a caller fixing a stale selection one id per exception.
  */
 function requireResolvedSelection(selection: Selection): void {
-  if (selection.offenders.length === 0) return;
-  const lines = selection.offenders.map((offender) => `  - ${offender.kind}: ${offender.detail}`);
+  // `collect` and not `traverse`: A8 is the accumulating applicative, which is the one place in
+  // this facade where every offender at once is the contract rather than a nicety. The
+  // hand-written version formatted the same list by hand — a `.map` into lines and a count
+  // reconstructed by adding the two arrays' lengths — which is `collect`'s error arm written
+  // out. Here the checked thing is each id's disposition, so the count is the length of the
+  // arm and there is nothing to add up.
+  const checked = collect(selection.offenders, (offender) =>
+    err(`  - ${offender.kind}: ${offender.detail}`),
+  );
+  if (checked.ok) return;
   throw new SelectionNotFoundError(
-    `MPM: ${selection.offenders.length} of the ${
-      selection.offenders.length + selection.resolved.length
-    } selected ids could not be spotlit, so nothing was transformed:\n${lines.join('\n')}`,
+    `MPM: ${checked.error.length} of the ${
+      checked.error.length + selection.resolved.length
+    } selected ids could not be spotlit, so nothing was transformed:\n${checked.error.join('\n')}`,
   );
 }
 
@@ -542,6 +560,12 @@ function requireResolvedSelection(selection: Selection): void {
  *   not one of `EXPRESSION_DIMENSIONS`
  */
 export function weightedFactors(s: number, weights: ExaggerationWeights): ExaggerationFactors {
+  // Still a `try`, and deliberately the last one here. `computeWeightedFactors` is total
+  // arithmetic over a record whose only failures are programmer errors at a leaf with no
+  // pipeline around them, and its result flows straight into `exaggerateMpm`; a `Result` return
+  // would make a dozen interior call sites unwrap a value that cannot be recovered from, which
+  // is precisely the "using an algorithm must not make the call site worse" case. So the throw
+  // stays interior and this is its typed-error boundary (RULE E2).
   try {
     return computeWeightedFactors(s, weights);
   } catch (cause) {
