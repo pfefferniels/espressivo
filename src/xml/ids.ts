@@ -23,8 +23,10 @@ import { attribute } from './tree.js';
  * canonicalised output even though every individual id is random. So: do not reorder,
  * hoist, memoise or short-circuit calls to this along the conversion path.
  *
- * Note that `src/msm/Msm.ts` carries its own local copy of this function; the `meico_` ids
- * in the reference MSM files come from *this* one. RULE M2a keeps the two separate.
+ * `src/msm/Msm.ts` used to carry its own local copy of this function, kept separate by RULE
+ * M2a; `tests/msm/navigationEquivalence.test.ts` is the probe that rule asked for, the two
+ * agreed, and `Msm.addIds` now calls this one. The `meico_` ids in the reference MSM files
+ * always came from here.
  *
  * @param toThis
  * @return the generated uuid string

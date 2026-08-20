@@ -4,6 +4,15 @@ import { Goto } from './Goto.js';
 import { KeyValue } from '../supplementary/KeyValue.js';
 import { v4 as uuidv4 } from 'uuid';
 import { filterMap } from '../prelude/index.js';
+import {
+  allChildElements,
+  attribute,
+  cloneElement,
+  firstChildElement,
+  getAttributeValue,
+  getNextSiblingElement,
+} from '../xml/tree.js';
+import { addUUID } from '../xml/ids.js';
 
 import { Midi } from '../midi/Midi.js';
 import { Sequence, Track, MidiEvent } from '../midi/MidiTypes.js';
@@ -12,159 +21,31 @@ import type { Performance } from '../mpm/elements/Performance.js';
 import type { RenderOptions } from '../mpm/RenderOptions.js';
 
 /**
- * Java's `Helper` in miniature, private to this module.
+ * The one module-local navigation helper left, and the reason it is still here.
  *
- * `Msm.java` calls exactly eight `Helper` methods and no others; these are those eight,
- * reimplemented here rather than imported. The same arrangement is used in `Mpm.ts`, and
- * `getFirstChildElement`/`getAllChildElements` below are deliberately byte-identical to
- * their counterparts there.
+ * This file used to open with eight of them — "Java's `Helper` in miniature, private to
+ * this module" — carrying a warning not to deduplicate them against `src/xml/` without a
+ * per-method behavioural comparison (ARCHITECTURE.md RULE M2a). That comparison is
+ * `tests/msm/navigationEquivalence.test.ts`: it restates all eight and feeds both sides the
+ * MSM/MPM fixture corpus plus the adversarial trees the rule names — a namespaced `xml:id`,
+ * children sharing a local name across three namespaces, text nodes between siblings, a
+ * detached element, the empty name. **Seven of the eight agreed everywhere**, so seven are
+ * gone and their callers now use `xml/tree.ts` and `xml/ids.ts`. This is the eighth.
  *
- * Do **not** "deduplicate" these against the shared helpers in `src/xml/tree.ts` and
- * `src/xml/ids.ts` on sight — T14 moved `mei/Helper`'s statics there, and its copies are
- * not everywhere equivalent to these (see the note on {@link cloneElement}). Merging the
- * two sets is T16b's business, and it needs a behavioural comparison per method, not a
- * textual one.
+ * It differs from {@link module:music/text.getFilenameWithoutExtension} on one input:
+ * a filename with **no dot at all**. `lastIndexOf` is then -1, and the shared copy
+ * evaluates `substring(0, -1)` — which JavaScript reads as `substring(0, 0)`, the empty
+ * string — where this one guards for -1 and returns the name. Neither is Java's, whose
+ * `String.substring(0, -1)` throws; this copy is what the reference behaviour of
+ * {@link Msm.getTitle} and {@link Msm.renderMidi} was measured against, and under the
+ * shared copy an extensionless file would title the movement `''` and name its MIDI
+ * `.mid`. The divergence is pinned by the probe rather than left to be rediscovered.
  */
-function getAttribute(name: string, ofThis: Element): Attribute | null {
-  if (ofThis === null) return null;
-
-  let a = ofThis.getAttribute(name);
-  if (a !== null) return a;
-
-  a = ofThis.getAttribute(name, ofThis.getNamespaceURI());
-  if (a !== null) return a;
-
-  a = ofThis.getAttribute(name, 'http://www.w3.org/XML/1998/namespace');
-  if (a !== null) return a;
-
-  return null;
-}
-
-/**
- * The value of {@link getAttribute}, or `''` when the attribute is absent — note that an
- * absent attribute and one with an empty value are indistinguishable through this
- * function. Callers that must tell them apart use {@link getAttribute} directly.
- */
-function getAttributeValue(name: string, ofThis: Element): string {
-  const a = getAttribute(name, ofThis);
-  if (a === null) return '';
-  return a.getValue();
-}
-
-function getFirstChildElement(name: string, ofThis: Element): Element | null {
-  if (ofThis === null || name.length === 0) return null;
-
-  for (const e of ofThis.getChildElements()) {
-    if (e.getLocalName() === name) return e;
-  }
-  return null;
-}
-
-function getAllChildElements(name: string, ofThis: Element): Element[] {
-  if (ofThis === null || name.length === 0) return [];
-  // `toArray()` is this loop: the same elements in the same order, and a fresh mutable array,
-  // which the `Element[]` return type promises.
-  return ofThis.getChildElements(name).toArray();
-}
-
-/**
- * The next sibling element of `ofThis`, either the next one of any name (one argument) or
- * the next one whose local name is `name` (two arguments).
- *
- * The named form returns the *nearest* following match rather than the last one in the
- * list — Java writes that as a backward scan (`Helper.java:182`); here it is the
- * equivalent forward scan from `ofThis`'s own index, which is not quadratic when a caller
- * uses it to step through a whole child list.
- */
-function getNextSiblingElement(nameOrElement: string | Element, ofThis?: Element): Element | null {
-  if (typeof nameOrElement === 'string') {
-    // getNextSiblingElement(name, ofThis)
-    const name = nameOrElement;
-    if (ofThis === undefined || ofThis === null) return null;
-
-    const parent = ofThis.getParent();
-    if (parent === null) return null;
-
-    // Forward scan anchored on `ofThis`'s own position — same answer as the backward
-    // "last candidate before ofThis" walk (both name the nearest following match, both
-    // return null when `ofThis` is not in the list), without rebuilding and re-walking
-    // the whole child-element list on every step. `Msm.processScore` and its neighbours
-    // drive this once per note, so the old shape made a score export quadratic.
-    const index = parent.indexOf(ofThis);
-    if (index < 0) return null;
-
-    const count = parent.getChildCount();
-    for (let i = index + 1; i < count; ++i) {
-      const sibling = parent.getChild(i);
-      if (sibling instanceof Element && sibling.getLocalName() === name) return sibling;
-    }
-    return null;
-  } else {
-    // getNextSiblingElement(ofThis)
-    const elem = nameOrElement;
-    if (elem === null) return null;
-
-    const parent = elem.getParent();
-    if (parent === null) return null;
-
-    const index = parent.indexOf(elem);
-    if (index >= parent.getChildCount() - 1) return null;
-
-    const child = parent.getChild(index + 1);
-    if (child instanceof Element) return child;
-    return null;
-  }
-}
-
-/**
- * A flat copy of `e`: same name, same namespace, copies of all its attributes, no
- * children and no parent.
- *
- * It is implemented as a deep copy with the children stripped afterwards, because
- * {@link Element} exposes no attribute-by-index accessor and therefore no way to walk the
- * attributes directly — Java's version (`Helper.java:328`) builds the clone attribute by
- * attribute instead. That costs a full subtree copy per call; `applySequencingMapToMap`
- * is the only caller and calls it once per map, so it is not in a loop.
- *
- * **Not identical to Java**, and deliberately not "fixed": Java rebuilds each attribute as
- * `new Attribute(localName, value)`, which drops the attribute's namespace, whereas
- * `copy()` preserves it. The difference is only observable on a map element that itself
- * carries a namespaced attribute (e.g. `xml:id`); no fixture produces one.
- */
-function cloneElement(e: Element): Element {
-  if (e === null) return null!;
-
-  const clone = e.copy();
-  while (clone.getChildCount() > 0) {
-    clone.removeChildAt(0);
-  }
-  return clone;
-}
-
 function getFilenameWithoutExtension(filename: string): string {
   const i = filename.lastIndexOf('.');
   if (i === 0) return filename;
   if (i === -1) return filename;
   return filename.substring(0, i);
-}
-
-/**
- * Give `toThis` a fresh `xml:id` of the form `meico_<uuid>` and return it.
- *
- * Its only caller is {@link Msm.addIds}, which nothing in the conversion pipeline invokes
- * — the `meico_` ids in the reference MSM files come from `xml/ids.addUUID`, not from
- * here. So this copy is not itself pinned by the equivalence fixtures; the same discipline
- * still applies to it, because the moment a caller does put it on that path, the number
- * and order of these calls become part of the compared output (the tests canonicalise
- * generated ids by first-occurrence order in the serialised document).
- *
- * Caution, as in Java: an existing `xml:id` is overwritten.
- */
-function addUUID(toThis: Element): string {
-  const uuid = `meico_${uuidv4()}`;
-  const a = new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', uuid);
-  toThis.addAttribute(a);
-  return uuid;
 }
 
 /**
@@ -310,7 +191,7 @@ export class Msm extends AbstractMsm {
    */
   getTitle(): string {
     try {
-      const title = getAttribute('title', this.getRootElement()!);
+      const title = attribute('title', this.getRootElement());
       if (title === null) {
         return this.getFile() !== null ? getFilenameWithoutExtension(this.getFile()!) : '';
       }
@@ -326,7 +207,7 @@ export class Msm extends AbstractMsm {
    */
   getPPQ(): number {
     try {
-      const ppq = getAttribute('pulsesPerQuarter', this.getRootElement()!);
+      const ppq = attribute('pulsesPerQuarter', this.getRootElement());
       if (ppq === null) return 0;
       return parseInt(ppq.getValue());
     } catch {
@@ -535,21 +416,21 @@ export class Msm extends AbstractMsm {
 
     // try to find the part by its number
     for (const part of parts) {
-      const numberAtt = getAttribute('number', part);
+      const numberAtt = attribute('number', part);
       if (numberAtt !== null && parseInt(numberAtt.getValue()) === number) return part;
     }
 
     // try to find the part by its name
     for (const part of parts) {
-      const nameAtt = getAttribute('name', part);
+      const nameAtt = attribute('name', part);
       if (nameAtt !== null && nameAtt.getValue() === name) return part;
     }
 
     // try to find the part by its MIDI port and channel
     for (const part of parts) {
-      const portAtt = getAttribute('midi.port', part);
+      const portAtt = attribute('midi.port', part);
       if (portAtt !== null && parseInt(portAtt.getValue()) === midiPort) {
-        const channelAtt = getAttribute('midi.channel', part);
+        const channelAtt = attribute('midi.channel', part);
         if (channelAtt !== null && parseInt(channelAtt.getValue()) === midiChannel) return part;
       }
     }
@@ -1321,7 +1202,7 @@ export class Msm extends AbstractMsm {
       if (exportExpressive) {
         const date = Msm.readMillisecondsDateFromElement(n);
 
-        const velocityAtt = getAttribute('velocity', n);
+        const velocityAtt = attribute('velocity', n);
         const velocity =
           velocityAtt === null ? 100 : Math.round(parseFloat(velocityAtt.getValue()));
 
@@ -1335,7 +1216,7 @@ export class Msm extends AbstractMsm {
         if (noteOn !== null) track.add(noteOn);
 
         let dateEnd: number;
-        const endAtt = getAttribute('milliseconds.date.end', n);
+        const endAtt = attribute('milliseconds.date.end', n);
         if (endAtt === null) {
           console.error(
             `Missing attribute "milliseconds.date.end" in element ${n.toXML()}. Using attribute "duration" instead.`,
@@ -1386,7 +1267,7 @@ export class Msm extends AbstractMsm {
       return;
 
     const chan = parseInt(part.getAttributeValue('midi.channel')!);
-    const cvMap = getFirstChildElement('channelVolumeMap', part.getFirstChildElement('dated')!);
+    const cvMap = firstChildElement('channelVolumeMap', part.getFirstChildElement('dated')!);
 
     if (cvMap === null) {
       const event = EventMaker.createControlChange(chan, 0, EventMaker.CC_Channel_Volume, 100);
@@ -1401,7 +1282,7 @@ export class Msm extends AbstractMsm {
 
       const date = Msm.readMillisecondsDateFromElement(e);
 
-      const mandatory = getAttribute('mandatory', e) !== null;
+      const mandatory = attribute('mandatory', e) !== null;
       if (!mandatory && date >= prevDate - Msm.CONTROL_CHANGE_DENSITY) continue;
       prevDate = date;
       const value = Math.round(parseFloat(getAttributeValue('value', e)));
@@ -1436,7 +1317,7 @@ export class Msm extends AbstractMsm {
       return;
 
     const chan = parseInt(part.getAttributeValue('midi.channel')!);
-    const posMap = getFirstChildElement('positionMap', part.getFirstChildElement('dated')!);
+    const posMap = firstChildElement('positionMap', part.getFirstChildElement('dated')!);
 
     if (posMap === null) return;
 
@@ -1629,13 +1510,13 @@ export class Msm extends AbstractMsm {
     let highest = -Number.MAX_VALUE;
     const parts = this.getPartsArray();
     for (const part of parts) {
-      const dated = getFirstChildElement('dated', part);
+      const dated = firstChildElement('dated', part);
       if (dated === null) continue;
-      const score = getFirstChildElement('score', dated);
+      const score = firstChildElement('score', dated);
       if (score === null) continue;
-      const notes = getAllChildElements('note', score);
+      const notes = allChildElements(score, 'note');
       for (const note of notes) {
-        const velAtt = getAttribute('velocity', note);
+        const velAtt = attribute('velocity', note);
         if (velAtt === null) continue;
         const value = parseFloat(velAtt.getValue());
         if (value < lowest) lowest = value;
@@ -1804,12 +1685,12 @@ export class Msm extends AbstractMsm {
    * with neither attribute throws, in both this port and Java.
    */
   private static readMillisecondsDateFromElement(e: Element): number {
-    let dateAtt = getAttribute('milliseconds.date', e);
+    let dateAtt = attribute('milliseconds.date', e);
     if (dateAtt === null) {
       console.error(
         `Missing attribute "milliseconds.date" in element ${e.toXML()}. Using attribute "date" instead.`,
       );
-      dateAtt = getAttribute('date', e);
+      dateAtt = attribute('date', e);
     }
     return Math.round(parseFloat(dateAtt!.getValue())); // Math.round(double) returns number
   }
