@@ -21,7 +21,7 @@
 export type NonEmptyArray<T> = readonly [T, ...(readonly T[])];
 
 /*
- * A NOTE ON THE `as` CASTS BELOW — there are eight, and they are the only ones in this module.
+ * A NOTE ON THE `as` CASTS BELOW — there are ten, and they are the only ones in this module.
  *
  * `noUncheckedIndexedAccess` is on, so `xs[i]` is `T | undefined`. In each case below the
  * index is in range by a proof the type system cannot state: `last` reads the final slot of a
@@ -31,14 +31,14 @@ export type NonEmptyArray<T> = readonly [T, ...(readonly T[])];
  * check would be dead code, and constraining the element type would stop these working over
  * sequences that may legitimately hold `null` or `undefined`, which several callers need.
  *
- * Three of the eight are a different proof: `chunkBy`, `scanl` and `groupBy` each BUILD a
+ * Three of the ten are a different proof: `chunkBy`, `scanl` and `groupBy` each BUILD a
  * sequence they know to be non-empty — a chunk opens as `[x]`, a scan starts from its seed, a
  * bucket is created as `[x]` — and say so in their return type. The cast is what carries that
  * from the construction to the signature, and it earns its place at every call site, which
  * would otherwise need a guard that can never fire to read a first element.
  *
  * They are concentrated here on purpose. This module implements the algorithms whose whole
- * job is to let the rest of the tree stop indexing; absorbing eight proofs in one leaf is what
+ * job is to let the rest of the tree stop indexing; absorbing ten proofs in one leaf is what
  * bought zero across fifteen directories. If you are tempted to copy the pattern outward, the
  * answer is almost certainly `filterMap`, `pairwise`, `zipWith` or `elementAt` instead.
  */
@@ -315,6 +315,41 @@ export function zipWith<A, B, C>(
 export function pairwise<A>(xs: readonly A[]): readonly (readonly [A, A])[] {
   const out: (readonly [A, A])[] = [];
   for (let i = 1; i < xs.length; ++i) out.push([xs[i - 1] as A, xs[i] as A]);
+  return out;
+}
+
+/**
+ * Each element paired with its successor, and the last one paired with `null`.
+ *
+ * **This is the shape this codebase contains, and {@link pairwise} is not it.** `pairwise`
+ * yields `n − 1` pairs and drops the last element; a span reader needs `n`, because the last
+ * instruction is a span too — it just runs to the end of time instead of to a successor. That
+ * difference is exactly what every one of those readers had to special-case, and nine of them
+ * special-cased it by hand, in two spellings:
+ *
+ * ```ts
+ * const nexts: readonly (T | null)[] = [...xs.slice(1), null];        // ×4
+ * const endsAt = [...xs.slice(1).map((n) => n.dateTicks), Infinity];  // ×5
+ * for (const [at, after] of zipWith(xs, nexts, (a, b) => [a, b] as const)) …
+ * ```
+ *
+ * The second is the first composed with a projection and a default, so one primitive serves
+ * both: `next?.dateTicks ?? Infinity` says at the point of USE what the sentinel means, where
+ * an `Infinity` buried in an array-building expression did not. Both spellings also built a
+ * whole intermediate array only to zip it away; this builds one.
+ *
+ * A `null` second element means "there is no successor", never "the successor is null" — the
+ * sequence's own elements are untouched, so a sequence that legitimately holds nulls still
+ * reports its real last entry correctly.
+ *
+ * It earns its place by this module's own criterion — nine call sites, none of them reachable
+ * with anything already here — which is more evidence than `chunkBy`, `windows`, `unfold` and
+ * `partitionWith` have between them.
+ */
+export function withNext<A>(xs: readonly A[]): readonly (readonly [A, A | null])[] {
+  const out: (readonly [A, A | null])[] = new Array<readonly [A, A | null]>(xs.length);
+  for (let i = 0; i < xs.length; ++i)
+    out[i] = [xs[i] as A, i + 1 < xs.length ? (xs[i + 1] as A) : null];
   return out;
 }
 

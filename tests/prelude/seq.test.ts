@@ -17,6 +17,7 @@ import {
   unfold,
   upperBoundBy,
   windows,
+  withNext,
   zipWith,
 } from '../../src/prelude/seq.js';
 
@@ -126,6 +127,41 @@ describe('zipWith, pairwise, windows, unfold', () => {
   it('pairwise of fewer than two elements is empty', () => {
     expect(pairwise([1])).toEqual([]);
     expect(pairwise([])).toEqual([]);
+  });
+
+  it('withNext keeps the LAST element, paired with null — the whole difference from pairwise', () => {
+    expect(withNext([1, 2, 3])).toEqual([
+      [1, 2],
+      [2, 3],
+      [3, null],
+    ]);
+    // Stated as the contrast, because it is the reason `withNext` exists: nine span readers
+    // needed n pairs and `pairwise` gives n − 1.
+    expect(withNext([1, 2, 3])).toHaveLength(3);
+    expect(pairwise([1, 2, 3])).toHaveLength(2);
+  });
+
+  it('withNext of one element is that element with null; of none, nothing', () => {
+    expect(withNext([1])).toEqual([[1, null]]);
+    expect(withNext([])).toEqual([]);
+  });
+
+  it('withNext distinguishes a null ELEMENT from the end of the sequence', () => {
+    // A sequence may legitimately hold nulls. Only the tail pairing is manufactured, and a
+    // reader that collapsed the two would end a span early on such a sequence.
+    expect(withNext([1, null, 3])).toEqual([
+      [1, null],
+      [null, 3],
+      [3, null],
+    ]);
+  });
+
+  it('withNext does not mutate or alias its input', () => {
+    const xs = [1, 2, 3];
+    const out = withNext(xs);
+    expect(xs).toEqual([1, 2, 3]);
+    // Each pair is its own tuple, so a caller cannot reach the source array through one.
+    expect(out.map((pair) => pair[0])).toEqual(xs);
   });
 
   it('windows gives overlapping slices and nothing when too short', () => {

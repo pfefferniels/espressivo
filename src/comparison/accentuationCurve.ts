@@ -50,7 +50,7 @@
  * add `length="4"` to the document and reorder its `<accentuation>` children by beat
  * (`AccentuationPatternDef.ts:36-40`, `:67` → `:192-199`), which R1 forbids.
  */
-import { filterMap, head, isNonEmpty, last, zipWith } from '../prelude/index.js';
+import { filterMap, head, isNonEmpty, last, withNext } from '../prelude/index.js';
 import { elementAt, optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
@@ -304,8 +304,13 @@ export function readAccentuationSegments(
   // The end is PAIRED with its instruction rather than read at `index + 1`. "There is no next
   // instruction" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
   // system had to be told about with `as (typeof raws)[number] | undefined`.
-  const endsAt = [...raws.slice(1).map((next) => next.dateTicks), Number.POSITIVE_INFINITY];
-  for (const [raw, endTicks] of zipWith(raws, endsAt, (at, ends) => [at, ends] as const)) {
+  // Each entry with its successor, or `null` for the last — `withNext`. The span it opens
+  // then runs to `next?.dateTicks ?? Infinity`, which says at the point of use that the last
+  // entry runs to the end of time. The `[...xs.slice(1).map(…), Infinity]` array this
+  // replaces built that sentinel where it could not be read as one, and built a whole array
+  // to be zipped away.
+  for (const [raw, next] of withNext(raws)) {
+    const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
     breakpoints.add(raw.dateTicks);
 
     const nameRef = readAttributeValue(raw.element, 'name.ref');

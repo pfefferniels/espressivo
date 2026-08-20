@@ -76,7 +76,7 @@
  * the domain test). Since the smoothstep's value fraction stays in [0,1], clamping the two
  * endpoints clamps the whole curve.
  */
-import { head, isNonEmpty, zipWith, type NonEmptyArray } from '../prelude/index.js';
+import { head, isNonEmpty, withNext, type NonEmptyArray } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { innerControlPointsXPositions } from '../mpm/elements/maps/data/bezier.js';
 import { readAttributeValue } from '../expression/attributes.js';
@@ -394,8 +394,11 @@ function assembleTimeline(
   // The neighbour is PAIRED with its own movement rather than read at `index + 1`. "There is
   // no next one" is then a value — `null` — instead of an out-of-range read that the type
   // system had to be told about with `as RawMovement | undefined`.
-  const nexts: readonly (RawMovement | null)[] = [...raws.slice(1), null];
-  for (const [raw, next] of zipWith(raws, nexts, (at, after) => [at, after] as const)) {
+  // `withNext` IS this pair of lines: every entry with its successor, and `null` for the
+  // last. The `[...xs.slice(1), null]` array and the zip that consumed it were one shape
+  // spelled out, and it is the shape `pairwise` cannot serve — `pairwise` drops the last
+  // entry, and the last instruction is a span too.
+  for (const [raw, next] of withNext(raws)) {
     breakpoints.add(raw.dateTicks);
     const shape = shapeOf(raw, notes);
     segments.push({

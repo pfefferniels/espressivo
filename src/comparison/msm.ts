@@ -28,7 +28,7 @@
  * this module returns is therefore in QUARTERS, or in common ticks derived from a caller-
  * supplied grid — never in the MSM's own ticks, which nothing downstream knows how to read.
  */
-import { head, isNonEmpty, zipWith } from '../prelude/index.js';
+import { head, isNonEmpty, withNext } from '../prelude/index.js';
 import { readMsmFacts, type MsmFacts } from '../expression/msmFacts.js';
 import { readNumericAttributeValue } from '../expression/attributes.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -189,8 +189,11 @@ function measureGrid(
   // The neighbour is PAIRED with its own instruction rather than read at `index + 1`. "There is
   // no next one" is then a value — `null` — instead of an out-of-range read that the type system
   // had to be told about with `as … | undefined`.
-  const nexts: readonly (TimeSignatureEntry | null)[] = [...entries.slice(1), null];
-  for (const [entry, next] of zipWith(entries, nexts, (at, after) => [at, after] as const)) {
+  // `withNext` IS this pair of lines: every entry with its successor, and `null` for the
+  // last. The `[...xs.slice(1), null]` array and the zip that consumed it were one shape
+  // spelled out, and it is the shape `pairwise` cannot serve — `pairwise` drops the last
+  // entry, and the last instruction is a span too.
+  for (const [entry, next] of withNext(entries)) {
     const until = Math.min(next?.startQuarters ?? endQuarters, endQuarters);
     const length = measureLengthQuarters(entry);
     if (!(length > 0)) continue;
