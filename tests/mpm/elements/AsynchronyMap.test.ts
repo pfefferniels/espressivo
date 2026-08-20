@@ -340,7 +340,7 @@ describe('AsynchronyMap', () => {
       map.addAsynchrony(0, 50);
       map.addAsynchrony(960, 30);
 
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(1);
       expect(map.getElement(0)!.getAttributeValue('milliseconds.offset')).toBe('30');
     });

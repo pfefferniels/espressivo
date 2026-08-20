@@ -472,7 +472,7 @@ describe('OrnamentationMap', () => {
       map.addOrnament(0, 'trill');
       map.addOrnament(960, 'mordent');
 
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(1);
       expect(map.getElement(0)!.getAttributeValue('name.ref')).toBe('mordent');
     });

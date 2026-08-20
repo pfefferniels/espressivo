@@ -1,6 +1,22 @@
 import { describe, it, expect } from 'vitest';
+import { silenceConsoleError } from '../support/console.js';
+import { okValue } from '../support/result.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
-import { Element, Attribute, Document } from '../../src/xml/XomTypes.js';
+import { Performance } from '../../src/mpm/elements/Performance.js';
+
+/**
+ * A real {@link Performance}, which is what these tests used to fake.
+ *
+ * Nine of them built `{ getName: () => …, getXml: () => … } as any` and handed that to
+ * `addPerformance`/`removePerformance`. Those objects are not `Performance`s — they have two
+ * of its forty methods — so what the tests measured was `Mpm`'s behaviour against a shape no
+ * caller can construct, and the `as any` was what let them. `createPerformance(name)` builds
+ * the same `<performance name="…">` element the fakes were assembling by hand, plus the
+ * `<global>` child a real one carries, and needs no cast.
+ */
+function performance(name: string): Performance {
+  return okValue(Performance.createPerformance(name));
+}
 
 describe('Mpm', () => {
   // ---------------------------------------------------------------
@@ -159,34 +175,14 @@ describe('Mpm', () => {
   describe('addPerformance', () => {
     it('should add a performance object with getXml', () => {
       const mpm = Mpm.createMpm();
-
-      // Create a mock performance that satisfies the Performance interface
-      const perfElement = new Element('performance', Mpm.MPM_NAMESPACE);
-      perfElement.addAttribute(new Attribute('name', 'default'));
-
-      const mockPerformance = {
-        getName: () => 'default',
-        getXml: () => perfElement,
-      };
-
-      // addPerformance(performance: Performance) returns boolean
-      const result = mpm.addPerformance(mockPerformance as any);
+      const result = mpm.addPerformance(performance('default'));
       expect(result).toBe(true);
       expect(mpm.size()).toBe(1);
     });
 
     it('should access added performance by index', () => {
       const mpm = Mpm.createMpm();
-
-      const perfElement = new Element('performance', Mpm.MPM_NAMESPACE);
-      perfElement.addAttribute(new Attribute('name', 'test-perf'));
-
-      const mockPerformance = {
-        getName: () => 'test-perf',
-        getXml: () => perfElement,
-      };
-
-      mpm.addPerformance(mockPerformance as any);
+      mpm.addPerformance(performance('test-perf'));
       const retrieved = mpm.getPerformance(0);
       expect(retrieved).not.toBeNull();
       expect(retrieved!.getName()).toBe('test-perf');
@@ -194,24 +190,15 @@ describe('Mpm', () => {
 
     it('should access added performance by name', () => {
       const mpm = Mpm.createMpm();
-
-      const perfElement = new Element('performance', Mpm.MPM_NAMESPACE);
-      perfElement.addAttribute(new Attribute('name', 'my-performance'));
-
-      const mockPerformance = {
-        getName: () => 'my-performance',
-        getXml: () => perfElement,
-      };
-
-      mpm.addPerformance(mockPerformance as any);
-      const retrieved = mpm.getPerformance('my-performance');
+      mpm.addPerformance(performance('my-performance'));
+      const retrieved = mpm.getPerformanceByName('my-performance');
       expect(retrieved).not.toBeNull();
       expect(retrieved!.getName()).toBe('my-performance');
     });
 
     it('should return null for a performance name that does not exist', () => {
       const mpm = Mpm.createMpm();
-      expect(mpm.getPerformance('nonexistent')).toBeNull();
+      expect(mpm.getPerformanceByName('nonexistent')).toBeNull();
     });
 
     it('should return null for an out-of-bounds index', () => {
@@ -222,15 +209,7 @@ describe('Mpm', () => {
 
     it('should add multiple performances', () => {
       const mpm = Mpm.createMpm();
-
-      for (let i = 0; i < 3; i++) {
-        const perfElement = new Element('performance', Mpm.MPM_NAMESPACE);
-        perfElement.addAttribute(new Attribute('name', `perf-${i}`));
-        mpm.addPerformance({
-          getName: () => `perf-${i}`,
-          getXml: () => perfElement,
-        } as any);
-      }
+      for (let i = 0; i < 3; i++) mpm.addPerformance(performance(`perf-${i}`));
 
       expect(mpm.size()).toBe(3);
       expect(mpm.getAllPerformances().length).toBe(3);
@@ -238,26 +217,20 @@ describe('Mpm', () => {
 
     it('should reject null performance', () => {
       const mpm = Mpm.createMpm();
-      const result = mpm.addPerformance(null as any);
+      const result = mpm.addPerformance(null);
       expect(result).toBe(false);
       expect(mpm.size()).toBe(0);
     });
 
     it('should append performance XML to the root element', () => {
       const mpm = Mpm.createMpm();
-
-      const perfElement = new Element('performance', Mpm.MPM_NAMESPACE);
-      perfElement.addAttribute(new Attribute('name', 'attached'));
-
-      mpm.addPerformance({
-        getName: () => 'attached',
-        getXml: () => perfElement,
-      } as any);
+      mpm.addPerformance(performance('attached'));
 
       // The performance element should be a child of the root
       const root = mpm.getRootElement()!;
       const performanceChildren = root.getChildElements('performance');
       expect(performanceChildren.size()).toBe(1);
+      expect(performanceChildren.get(0).getAttributeValue('name')).toBe('attached');
     });
   });
 
@@ -267,36 +240,24 @@ describe('Mpm', () => {
   describe('removePerformance', () => {
     it('should remove a performance by reference', () => {
       const mpm = Mpm.createMpm();
+      const perf = performance('toRemove');
 
-      const perfElement = new Element('performance', Mpm.MPM_NAMESPACE);
-      perfElement.addAttribute(new Attribute('name', 'toRemove'));
-
-      const mockPerf = {
-        getName: () => 'toRemove',
-        getXml: () => perfElement,
-      };
-
-      mpm.addPerformance(mockPerf as any);
+      mpm.addPerformance(perf);
       expect(mpm.size()).toBe(1);
 
-      mpm.removePerformance(mockPerf as any);
+      mpm.removePerformance(perf);
       expect(mpm.size()).toBe(0);
+      expect(mpm.getRootElement()!.getChildElements('performance').size()).toBe(0);
     });
 
     it('should remove performances by name', () => {
       const mpm = Mpm.createMpm();
-
-      const perfElement = new Element('performance', Mpm.MPM_NAMESPACE);
-      perfElement.addAttribute(new Attribute('name', 'removable'));
-
-      mpm.addPerformance({
-        getName: () => 'removable',
-        getXml: () => perfElement,
-      } as any);
+      mpm.addPerformance(performance('removable'));
 
       expect(mpm.size()).toBe(1);
-      mpm.removePerformance('removable');
+      mpm.removePerformanceByName('removable');
       expect(mpm.size()).toBe(0);
+      expect(mpm.getRootElement()!.getChildElements('performance').size()).toBe(0);
     });
   });
 
@@ -333,6 +294,52 @@ describe('Mpm', () => {
       expect(mpm.getPerformance(0)?.getName()).toBe('zulu');
       expect(mpm.getPerformance(1)?.getName()).toBe('alpha');
       expect(mpm.getPerformance(2)?.getName()).toBe('mike');
+    });
+
+    /**
+     * What unparsable source actually does, pinned because `parseData` now asserts that it
+     * never arrives — and because the two `getRootElement()!`s it replaces were resting on
+     * this without saying so.
+     *
+     * `XmlBase.parseXmlString` reads as though a bad string yields an EMPTY document: it
+     * catches `ParsingException`, prints it and stores null. That catch never fires.
+     * `@xmldom/xmldom` throws its own `ParseError` from inside `DOMParser.parseFromString`,
+     * so `Builder.build` never reaches either of its own `throw new ParsingException` lines
+     * and the error travels straight out of the constructor. Measured over seven malformed
+     * inputs — every one raises `ParseError: missing root element`. (The dead catch is in
+     * `src/xml`, reported rather than touched from here.)
+     *
+     * Java throws too — `Mpm(String xml)` declares `throws ParsingException` — so the port
+     * agrees with the reference on this input, in a different exception type.
+     */
+    it.each([
+      ['an unclosed tag', '<mpm><performance name="a"'],
+      ['prose', 'not xml at all'],
+      ['the empty string', ''],
+      ['a bare declaration', '<?xml version="1.0" encoding="UTF-8"?>'],
+    ])('throws rather than building an empty document from %s', (_what, source) => {
+      const err = silenceConsoleError();
+      expect(() => new Mpm(source)).toThrow();
+      err.mockRestore();
+    });
+
+    /**
+     * The constructor's fourth arm, which only an untyped (plain-JS) caller can reach — hence
+     * the cast, which is here to SIMULATE such a caller rather than to defeat the compiler on
+     * behalf of typed code.
+     *
+     * It existed in the overload set as an explicit `else` with a comment saying that
+     * deleting it would change behaviour for `new Mpm(<anything else>)`, and it survives the
+     * collapse to one signature because the body tests `instanceof Document || typeof ===
+     * 'string'` rather than `=== undefined`. Testing for undefined instead would send this
+     * caller down the parse path and leave it with no document; the difference is what this
+     * pins.
+     */
+    it('gives an untyped caller passing something else the empty document, not a null one', () => {
+      const mpm = new Mpm(42 as unknown as string);
+      expect(mpm.isEmpty()).toBe(false);
+      expect(mpm.getRootElement()!.getLocalName()).toBe('mpm');
+      expect(mpm.size()).toBe(0);
     });
   });
 

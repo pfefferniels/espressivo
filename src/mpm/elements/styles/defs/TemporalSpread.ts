@@ -540,7 +540,8 @@ export class TemporalSpread {
     if (this.id !== null && this.id !== '')
       ts.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', this.id));
     this.setXml(ts);
-    return this.xml!;
+    // As {@link DynamicsGradient.generateXML}: the element `setXml` just stored.
+    return ts;
   }
 
   toXml(): string {

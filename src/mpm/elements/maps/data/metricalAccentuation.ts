@@ -41,9 +41,10 @@ import type { AccentuationPatternDef } from '../../styles/defs/AccentuationPatte
  * skip, which would silently render documents Java refuses — or fabricating a def. Both
  * change what the renderer does; keeping the null does not.
  *
- * `MetricalAccentuationMap.renderMetricalAccentuationToMap` therefore dereferences it with
- * a single documented assertion, sited so that the `TypeError` names `getLength` exactly as
- * before.
+ * `MetricalAccentuationMap.renderMetricalAccentuationToMap` therefore aborts on it, with an
+ * explicit `throw` that raises the very `TypeError` the unguarded dereference used to —
+ * same class, same message, same line. It was a documented `!` until the functional-core
+ * campaign; the assertion existed only to let the next line throw, which is a branch.
  *
  * Port of meico.mpm.elements.maps.data.MetricalAccentuationData, restructured.
  */

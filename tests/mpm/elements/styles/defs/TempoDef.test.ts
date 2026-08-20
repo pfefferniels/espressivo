@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { defCause, errOf, okValue } from '../../../../support/result.js';
 import { TempoDef } from '../../../../../src/mpm/elements/styles/defs/TempoDef.js';
 import { Element, Attribute } from '../../../../../src/xml/XomTypes.js';

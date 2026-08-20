@@ -795,6 +795,25 @@ guard tests the hoisted local, and the attribute is deliberately not re-read) an
 pins it: `relativeDuration=0.5` plus `absoluteDurationChange=-70` on `duration.perf=200` yields
 **130**, computed from the original 200, not from the 100 that `relativeDuration` just wrote.
 
+### A `…Styles` collection can be indexed and then not found again
+
+`src/mpm/elements/Header.ts`. `Header.parseData` discovers style-type collections by **local
+name in any namespace** — `descendantElements(…, e => e.getLocalName().includes('Styles'))` —
+which is what lets a vendor-specific or future style type be read at all. But `addStyleDef` and
+`removeStyleDef` reach for the collection again with a namespace-**exact**
+`getFirstChildElement(type, MPM_NAMESPACE)`. A `<header>` carrying, say, a foreign-namespace
+`<tempoStyles>` therefore gets `tempoStyles` into the index while that lookup answers null for
+it, and both writers abort.
+
+`Header.java:141,163` dereference the same lookup unguarded, so the reference does the same
+thing with a NullPointerException. Not repaired here: making the lookup match on local name
+would change **which element a def is written into** for any document with two same-named
+collections in different namespaces, and the exact lookup is deliberate — the comment that used
+to sit at the call site said so. The two `!`s that spelled it are gone; the throw is now a
+`MissingNodeError` naming the missing collection, and `tests/mpm/elements/Header.test.ts`
+builds such a header and pins both aborts, so neither half can be "tidied" into agreement with
+the other by accident.
+
 ### Off-by-one loop bounds, both kept
 
 - `MovementMap.getPreviousPosition` runs `j > 0`, not `j >= 0`, so **entry 0 is never

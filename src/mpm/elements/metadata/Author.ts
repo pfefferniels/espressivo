@@ -16,11 +16,21 @@ import { attemptParse, type MpmParseError } from '../parseError.js';
  * rather than blanking it.
  */
 export class Author extends AbstractXmlSubtree {
-  private nameText: Text | null = null;
+  /**
+   * The text node the name lives in, held so the setters write where {@link parseData} read.
+   *
+   * It needs no `!` because it is initialised to the very node the defaulting path installs:
+   * an `<author>` whose first child is not a text node has one APPENDED to it (see the
+   * header comment), so "the empty placeholder" and "the node in the document" are the same
+   * object as soon as parsing has run. Where the element leads with a text node,
+   * `parseData` adopts that one instead. Same shape as `RubatoDef`'s three attributes.
+   */
+  private nameText: Text;
   private number: Attribute | null = null;
 
   private constructor() {
     super();
+    this.nameText = new Text('');
   }
 
   /**
@@ -31,7 +41,7 @@ export class Author extends AbstractXmlSubtree {
    * with one fewer thing thrown away. The null element is the one failure a document can
    * cause here, and it is checked rather than caught.
    */
-  static createAuthor(xml: Element): Result<Author, MpmParseError>;
+  static createAuthor(xml: Element | null): Result<Author, MpmParseError>;
   static createAuthor(
     name: string,
     number: number | null,
@@ -71,21 +81,20 @@ export class Author extends AbstractXmlSubtree {
    */
   protected parseData(xml: Element): void {
     this.setXml(xml);
-    if (xml.getChildCount() === 0 || !(xml.getChild(0) instanceof Text)) {
-      this.nameText = new Text('');
-      xml.appendChild(this.nameText);
-    } else {
-      this.nameText = xml.getChild(0) as Text;
-    }
+    const first = xml.getChildCount() === 0 ? null : xml.getChild(0);
+    // `instanceof` where the incumbent asserted `as Text` after testing the same thing —
+    // one branch, and now the compiler is reading it rather than being told.
+    if (first instanceof Text) this.nameText = first;
+    else xml.appendChild(this.nameText);
     this.number = attribute('number', xml);
     this.id = attribute('id', xml);
   }
 
   setName(name: string): void {
-    this.nameText!.setValue(name);
+    this.nameText.setValue(name);
   }
   getName(): string {
-    return this.nameText!.getValue();
+    return this.nameText.getValue();
   }
 
   setNumber(number: number | null): void {

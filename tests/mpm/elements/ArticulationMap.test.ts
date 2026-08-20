@@ -956,7 +956,7 @@ describe('ArticulationMap', () => {
       map.addArticulation(0, 'staccato', null, null);
       map.addArticulation(960, 'legato', null, null);
 
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(1);
       expect(map.getElement(0)!.getAttributeValue('name.ref')).toBe('legato');
     });

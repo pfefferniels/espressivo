@@ -174,7 +174,7 @@ function selectPerformance(mpm: Mpm, which: string | number | undefined): Perfor
     return byIndex;
   }
 
-  const byName = mpm.getPerformance(selector);
+  const byName = mpm.getPerformanceByName(selector);
   if (byName === null)
     throw new PerformanceNotFoundError(`MPM: no performance named '${selector}'`);
   return byName;

@@ -1,15 +1,6 @@
 {
   "docs/history/ornamentation/tools": 12,
-  "src/mpm": 17,
-  "src/mpm/elements": 24,
-  "src/mpm/elements/maps": 4,
-  "src/mpm/elements/metadata": 21,
-  "src/mpm/elements/styles/defs": 4,
   "tests/integration": 9,
   "tests/midi": 4,
-  "tests/mpm": 10,
-  "tests/mpm/elements": 5,
-  "tests/mpm/elements/styles": 2,
-  "tests/mpm/elements/styles/defs": 5,
   "tests/music": 2
 }
