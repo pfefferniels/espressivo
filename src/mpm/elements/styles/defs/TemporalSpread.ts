@@ -1,6 +1,7 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
+import { isNonEmpty, last } from '../../../../prelude/index.js';
 import { formatTemporalValue, parseTemporalValueLenient } from './TemporalValue.js';
 import type { TemporalDomain, TemporalValue } from './TemporalValue.js';
 
@@ -398,21 +399,20 @@ export class TemporalSpread {
    * mechanism). That resolution is W5's, not this class's.
    */
   apply(chordSequence: Element[][]): void {
-    if (chordSequence.length < 1) return;
+    if (!isNonEmpty(chordSequence)) return;
     let previous: Element[] | null = null;
-    if (chordSequence.length > 1) {
-      for (let i = 0; i < chordSequence.length - 1; ++i) {
-        const dateOffset =
-          Math.pow(i / (chordSequence.length - 1), this.intensity) * this.frameLength +
-          this.frameStart;
-        previous = this.setOrnamentDateAtts(dateOffset, chordSequence[i], previous);
-      }
+    // Every chord but the last, which is written afterwards at the frame's far end. The
+    // `length > 1` test the loop used to sit inside is the same statement as this break: with
+    // one chord `lastIndex` is 0, the first step breaks, and the division that would have been
+    // by zero never happens.
+    const lastIndex = chordSequence.length - 1;
+    for (const [i, chord] of chordSequence.entries()) {
+      if (i === lastIndex) break;
+      const dateOffset =
+        Math.pow(i / lastIndex, this.intensity) * this.frameLength + this.frameStart;
+      previous = this.setOrnamentDateAtts(dateOffset, chord, previous);
     }
-    this.setOrnamentDateAtts(
-      this.frameStart + this.frameLength,
-      chordSequence[chordSequence.length - 1],
-      previous,
-    );
+    this.setOrnamentDateAtts(this.frameStart + this.frameLength, last(chordSequence), previous);
   }
 
   /**

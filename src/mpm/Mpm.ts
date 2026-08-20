@@ -1,4 +1,5 @@
 import { Element, Document } from '../xml/XomTypes.js';
+import { elementAt } from '../prelude/index.js';
 import { AbstractMsm } from '../msm/AbstractMsm.js';
 import * as names from './names.js';
 import { Performance } from './elements/Performance.js';
@@ -342,8 +343,12 @@ export class Mpm extends AbstractMsm {
   getPerformance(name: string): Performance | null;
   getPerformance(nameOrIndex: string | number): Performance | null {
     if (typeof nameOrIndex === 'number') {
+      // Only the upper bound is null, as in Java, where a negative index is an
+      // IndexOutOfBoundsException out of `ArrayList.get` rather than an answer. The read used
+      // to hand back `undefined` for one, typed as a `Performance`; it now throws, naming the
+      // index and the bound.
       if (nameOrIndex >= this.performances.length) return null;
-      return this.performances[nameOrIndex];
+      return elementAt(this.performances, nameOrIndex, 'performance');
     } else {
       return this.getPerformanceByName(nameOrIndex);
     }
@@ -401,7 +406,7 @@ export class Mpm extends AbstractMsm {
    */
   removePerformanceByName(name: string): void {
     for (let i = this.performances.length - 1; i >= 0; --i) {
-      const p = this.performances[i];
+      const p = elementAt(this.performances, i, 'performance');
       if (p.getName() === name) {
         this.performances.splice(i, 1);
         if (p.getXml() !== null) this.getRootElement()!.removeChild(p.getXml());

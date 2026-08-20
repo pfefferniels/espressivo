@@ -35,6 +35,7 @@
  */
 
 import { err, ok, type Err, type Ok, type Result } from '../prelude/result.js';
+import { head, isNonEmpty } from '../prelude/seq.js';
 
 /**
  * Why a transform declined to produce a value. Three reasons, closed:
@@ -685,11 +686,11 @@ export function jointTrimWindow(
  * is its own center, and an all-equal population is that value.
  */
 export function geometricMean(values: readonly number[]): TransformResult {
-  if (values.length === 0) return refused('out-of-domain-input');
+  if (!isNonEmpty(values)) return refused('out-of-domain-input');
 
   let logSum = 0;
   let allEqual = true;
-  const first = values[0];
+  const first = head(values);
   for (const value of values) {
     if (!Number.isFinite(value) || value <= POSITIVE_DOMAIN_INFIMUM) {
       return refused('out-of-domain-input');

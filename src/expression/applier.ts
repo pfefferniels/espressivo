@@ -40,6 +40,8 @@ import {
   andThen,
   err,
   fromEntriesExact,
+  head,
+  isNonEmpty,
   mapErr,
   mapOk,
   ok,
@@ -1200,12 +1202,12 @@ class PerformancePass {
     siteFor: (attribute: string) => SiteRef,
     bounds: readonly FrameBound[],
   ): void {
-    if (bounds.length === 0) return;
+    if (!isNonEmpty(bounds)) return;
     const units = bounds.map((bound) => frameDomainPhrase(spread, bound)).join(', ');
     this.sink.note(
       'frame-time-unit',
       'ornamentSpread',
-      siteFor(bounds[0].attribute),
+      siteFor(head(bounds).attribute),
       `v3 per-value units — ${units}: §8’s ornamentSpread range is stated for the tick domain, ` +
         'so a millisecond frame wants a smaller s for the same audible width',
     );
@@ -1272,7 +1274,7 @@ class PerformancePass {
           const present = rows.filter(
             (row) => readAttributeValue(gradient, row.attribute) !== null,
           );
-          if (present.length === 0) continue;
+          if (!isNonEmpty(present)) continue;
           accumulator.markPresent();
 
           // F9: fire only when `@transition.to` is the endpoint that is actually missing. A
@@ -1295,7 +1297,7 @@ class PerformancePass {
             this.sink.note(
               'ornament-scale-zero',
               'ornamentDynamics',
-              siteFor(present[0].attribute),
+              siteFor(head(present).attribute),
               'every referencing <ornament> has @scale absent or 0, and every term of the ' +
                 'rendered contribution carries it, so this gradient is dead whatever s is',
             );
@@ -1329,7 +1331,7 @@ class PerformancePass {
             this.sink.note(
               'non-finite-result',
               'ornamentDynamics',
-              siteFor(present[0].attribute),
+              siteFor(head(present).attribute),
               `the R6(b) estimate ${magnitude} × ${scale} overflows, so no coefficient is ` +
                 'reported for this site — the written endpoints are unaffected',
             );
