@@ -40,9 +40,9 @@ import { matchKind } from '../prelude/index.js';
  * This is *the* VLQ encoder. It used to have a twin — `Midi.writeVariableLength`
  * appended, `MetaMessage.encodeVariableLength` allocated, and a comment on each said
  * the two had to agree. They no longer can disagree: {@link encodeVariableLength} is
- * this function plus an allocation, and the four length fields a MIDI file contains
- * (delta times, meta payload lengths, sysex payload lengths, and the derived meta wire
- * form) all come out of here.
+ * this function plus an allocation, and every variable-length field the port writes
+ * (delta times, meta payload lengths, sysex payload lengths, and the meta framing
+ * {@link messageBytes} derives) comes out of here.
  *
  * @param bytes the output byte array, appended to in place
  * @param value the value to encode
@@ -101,10 +101,11 @@ function variableLengthSize(value: number): number {
  * misleading in two measurable ways.
  *
  * The hierarchy had **one** virtual method, `clone()`, and every other use of the
- * type discriminated by hand: `Midi.buildTrackChunk` was a four-way `instanceof`
- * chain (meta / sysex / short / "unknown message type — write raw bytes"), and seven
- * more `instanceof` tests sat in `Midi.ts`, `Sequence.getMicrosecondLength` and the
- * tests. So the sum type was already there; inheritance only hid it, and hid it
+ * type discriminated by hand. `Midi.buildTrackChunk` was a four-way `instanceof`
+ * chain (meta / sysex / short / "unknown message type — write raw bytes"); five more
+ * `instanceof` tests sat in `Midi.getTempoData`, `Midi.print`, the two
+ * noteOn/noteOff converters and `Sequence.getMicrosecondLength`, and six more across
+ * the tests. So the sum type was already there; inheritance only hid it, and hid it
  * badly enough that the writer carried a fourth branch for a subclass that cannot
  * exist. That branch is gone: `matchKind` over three arms is exhaustive by
  * construction, and a fourth family could not be added without the compiler naming
