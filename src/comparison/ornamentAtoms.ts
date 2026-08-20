@@ -120,7 +120,7 @@
  * shape gate, the pool bound, the finite guards and the two style-carrying branches replace
  * what that draft and 404fd57 had.
  */
-import { elementAtOrNull } from './indexing.js';
+import { elementAtOrNull } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { ORNAMENTATION_MAP, ORNAMENTATION_STYLE } from '../mpm/names.js';

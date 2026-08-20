@@ -35,7 +35,7 @@
  *   inert on a map's last instruction, by the same `size()-1` guard as the trailing rule.
  */
 import { isNonEmpty, last, zipWith } from '../prelude/index.js';
-import { optionAt } from './indexing.js';
+import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { innerControlPointsXPositions } from '../mpm/elements/maps/data/bezier.js';
 import { readAttributeValue, readNumericAttributeValue } from '../expression/attributes.js';

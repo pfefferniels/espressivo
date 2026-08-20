@@ -51,7 +51,7 @@ import { Author } from '../mpm/elements/metadata/Author.js';
 import { Comment } from '../mpm/elements/metadata/Comment.js';
 import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
 import { foldl, head, isNonEmpty } from '../prelude/index.js';
-import { elementAt, findLast, removeAt } from './indexing.js';
+import { elementAt, findLast, removeAt } from '../prelude/seq.js';
 
 /**
  * The circle of fifths as `[midi.pitch, pitchname]` pairs, sharpwards and flatwards — the

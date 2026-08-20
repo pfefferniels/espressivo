@@ -70,7 +70,7 @@ import {
   type ComparisonRegistryRow,
   type JndOverrides,
 } from './registry.js';
-import { elementAt } from './indexing.js';
+import { elementAt } from '../prelude/seq.js';
 import { CompensatedSum } from './quadrature.js';
 import {
   alignEvents,

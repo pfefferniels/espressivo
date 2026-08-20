@@ -41,7 +41,7 @@
  * with the thresholding — a reader who distrusts the segmentation can still trust `D`.
  */
 import { fromEntriesExact, pairwise, zipWith } from '../prelude/index.js';
-import { elementAt, numberAt } from './indexing.js';
+import { elementAt, numberAt } from '../prelude/seq.js';
 import { CompensatedSum, bisectSignChange, gaussLegendre10 } from './quadrature.js';
 import { COMPARISON_DIMENSIONS, type ComparisonDimension } from './registry.js';
 

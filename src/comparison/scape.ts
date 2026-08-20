@@ -47,7 +47,7 @@
 import { pairwise, scanl, zipWith } from '../prelude/index.js';
 
 import type { DimensionDensity, DimensionWeights } from './aggregate.js';
-import { numberAt } from './indexing.js';
+import { numberAt } from '../prelude/seq.js';
 import { CompensatedSum, gaussLegendre10 } from './quadrature.js';
 import { COMPARISON_DIMENSIONS } from './registry.js';
 

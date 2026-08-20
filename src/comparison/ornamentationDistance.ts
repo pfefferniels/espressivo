@@ -35,7 +35,7 @@
  */
 import { head, isNonEmpty } from '../prelude/index.js';
 
-import { elementAt } from './indexing.js';
+import { elementAt } from '../prelude/seq.js';
 import {
   comparisonRowWith,
   localDistance,

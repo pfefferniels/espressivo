@@ -42,7 +42,7 @@
  * bounds are dimensionless and are not rescaled.
  */
 import { zipWith } from '../prelude/index.js';
-import { optionAt } from './indexing.js';
+import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { RUBATO_MAP, RUBATO_STYLE } from '../mpm/names.js';

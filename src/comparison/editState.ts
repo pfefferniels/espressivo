@@ -36,7 +36,7 @@
  * span, so a state that dropped it would not perform what its document performs and `S(0,0)`
  * would not be `A`.
  */
-import { optionAt } from './indexing.js';
+import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import type { DatedEntry } from '../expression/datedView.js';
 import { spanEndRuleOf } from './spanEnds.js';

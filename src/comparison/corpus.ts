@@ -28,7 +28,7 @@
  * drift from the product it is assembled out of.
  */
 import { fromEntriesExact } from '../prelude/index.js';
-import { elementAt, elementAtOrNull, numberAt } from './indexing.js';
+import { elementAt, elementAtOrNull, numberAt } from '../prelude/seq.js';
 import { agglomerate, pam, silhouette, SILHOUETTE_RELIABLE_MINIMUM } from './clustering.js';
 import type { Linkage } from './clustering.js';
 import { classicalMds, seriationOrder } from './embedding.js';

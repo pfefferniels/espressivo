@@ -51,7 +51,7 @@
  * (`AccentuationPatternDef.ts:36-40`, `:67` → `:192-199`), which R1 forbids.
  */
 import { head, isNonEmpty, last, zipWith } from '../prelude/index.js';
-import { elementAt, optionAt } from './indexing.js';
+import { elementAt, optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { METRICAL_ACCENTUATION_MAP, METRICAL_ACCENTUATION_STYLE } from '../mpm/names.js';

@@ -37,7 +37,7 @@
  * zero for an integral and is documented rather than reproduced.
  */
 import { isNonEmpty, last, zipWith } from '../prelude/index.js';
-import { optionAt } from './indexing.js';
+import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { readAttributeValue, readNumericAttributeValue } from '../expression/attributes.js';

@@ -50,7 +50,7 @@
  * which is which rather than leaving it to be inferred.
  */
 import { head, isNonEmpty } from '../prelude/index.js';
-import { optionAt } from './indexing.js';
+import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { ARTICULATION_MAP, ARTICULATION_STYLE } from '../mpm/names.js';

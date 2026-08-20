@@ -10,7 +10,7 @@
  * P-C6's corpus clause would be false.
  */
 
-import { elementAt, numberAt } from './indexing.js';
+import { elementAt, numberAt } from '../prelude/seq.js';
 
 /** What an out-of-range read into one of this module's sequences is called (`indexing.ts`). */
 const MATRIX = "the distance matrix's flat N x N buffer";

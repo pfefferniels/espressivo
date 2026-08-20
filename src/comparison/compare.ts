@@ -34,7 +34,7 @@
  */
 import { fromEntriesExact, head, isNonEmpty, last, mapValues, pairwise } from '../prelude/index.js';
 
-import { elementAt, elementAtOrNull } from './indexing.js';
+import { elementAt, elementAtOrNull } from '../prelude/seq.js';
 import {
   EVENT_KAPPA_QUARTERS,
   aggregateDistance,

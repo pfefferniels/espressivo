@@ -62,7 +62,7 @@
 
 import { pairwise } from '../prelude/index.js';
 
-import { elementAt } from './indexing.js';
+import { elementAt } from '../prelude/seq.js';
 
 /** A symmetric matrix in §8's layout: `n` rows of `n`, row-major, `m[i*n + j]`. */
 export interface SquareMatrix {

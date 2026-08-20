@@ -63,7 +63,7 @@
 
 import { filterMap, zipWith } from '../prelude/index.js';
 
-import { elementAt, numberAt } from './indexing.js';
+import { elementAt, numberAt } from '../prelude/seq.js';
 
 /** What the DP needs of an instruction: where it sits. Everything else belongs to the caller. */
 export interface EditableInstruction {

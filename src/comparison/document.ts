@@ -32,7 +32,7 @@
  * vocabulary, both of which belong to sibling wave items.
  */
 import { head, isNonEmpty } from '../prelude/index.js';
-import { elementAt } from './indexing.js';
+import { elementAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { parseMpmRoot } from '../expression/mpmDocument.js';
 import {

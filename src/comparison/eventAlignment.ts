@@ -59,7 +59,7 @@
  * way and `[18, 378, 17]` the other. §9.5's P-C2 promise is about the whole report.
  */
 
-import { elementAt } from './indexing.js';
+import { elementAt } from '../prelude/seq.js';
 
 /** The minimum an event must expose to be alignable. */
 export interface AlignableEvent {

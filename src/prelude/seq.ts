@@ -34,29 +34,138 @@ export function last<T>(xs: NonEmptyArray<T>): T {
 }
 
 /**
- * Read `xs[index]`, or throw naming the index, the bound and what was being read.
+ * Checked random access.
  *
- * For the accesses that survive the algorithms — a genuine random access, where the index came
- * from a computation rather than from iterating. Under `noUncheckedIndexedAccess` those are the
- * sites that cannot be typed away, and the two dishonest answers are `!` and `as T`: both
- * assert the bound rather than checking it, and both fail somewhere else entirely when the
- * assertion is wrong, usually as "cannot read property of undefined" several frames from the
- * mistake.
+ * For the reads that survive the algorithms — where the index came from a computation rather
+ * than from iterating. Under `noUncheckedIndexedAccess` those are the sites that cannot be
+ * typed away, and the two dishonest answers are `!` and `as T`: both assert the bound instead
+ * of checking it, and both fail somewhere else entirely when the assertion is wrong, usually
+ * as "cannot read property of undefined" several frames from the mistake. The message is the
+ * whole value here — "index 42 outside a 12-entry eigenvector column" locates a bug that
+ * "cannot read property of undefined" does not.
  *
- * This is the third answer. The cost is one comparison; the return is that an out-of-range
- * read says which index, which bound and which sequence, at the point it happens.
+ * These lived in three places before this — `src/comparison/indexing.ts`, `src/mei/indexing.ts`
+ * and here — each written independently because `no-unnecessary-condition` deletes any guard
+ * written against an indexed read while the flag is still off, so a generic helper is the only
+ * thing that survives both states. Two of the three authors believed a layer boundary stopped
+ * them importing this one. It does not: the prelude is a leaf and no zone forbids it.
  *
- * **Prefer not needing it.** A loop that reads `xs[i]` and pushes is {@link filterMap}; one
- * that reads `xs[i]` and `xs[i + 1]` is {@link pairwise}; one that walks two sequences together
- * is {@link zipWith}. Reach for this only once those do not fit.
+ * **Prefer not needing them.** A loop that reads `xs[i]` and pushes is {@link filterMap}; one
+ * that reads `xs[i]` and `xs[i + 1]` is {@link pairwise}; one walking two sequences together
+ * is {@link zipWith}. Reach for these only once those do not fit.
  */
-export function elementAt<T>(xs: readonly T[], index: number, what: string): T {
+// The checked readers below test `xs[index] === undefined`, and while
+// `noUncheckedIndexedAccess` is still OFF in tsconfig.json that comparison reads as
+// impossible to `no-unnecessary-condition`: the rule is type-aware and resolves against the
+// project config, where an indexed read is still `T`. The rule is right about today's types
+// and wrong about this code's job, which is to be correct in the world the flag creates.
+//
+// The obvious way out — `xs[index] ?? outOfRange(...)` — passes both rules and is WRONG. It
+// conflates a `null` element with a missing one, and this tree has a type that lies about
+// exactly that: `RandomNumberProvider.series` is declared `number[]` and holds `null` on a
+// documented degenerate path, where the null coerces to 0 and yields the delta-0 that
+// `tests/comparison/imprecisionLaws.test.ts` pins. Three tests caught it when this file
+// briefly used `??`.
+//
+// So no formulation satisfies both rules AND correctness, and the disable is the honest
+// resolution rather than a shortcut. DELETE IT in the commit that turns the flag on: the
+// comparisons become necessary then and the rule agrees with them.
+/* eslint-disable @typescript-eslint/no-unnecessary-condition -- see the note above */
+function outOfRange(index: number, length: number, what: string): never {
+  throw new RangeError(
+    `index ${String(index)} is outside ${what}, which has ${String(length)} entries`,
+  );
+}
+
+/**
+ * `xs[index]`, or a `RangeError` naming the index, the bound and the sequence.
+ *
+ * The element type excludes `null` and `undefined` so that the presence test means what it
+ * says: over a sequence that may legitimately hold nullish elements this would report a false
+ * miss, and such a sequence wants {@link optionAt} or the option combinators instead.
+ */
+export function elementAt<T extends NonNullable<unknown>>(
+  xs: readonly T[],
+  index: number,
+  what: string,
+): T {
+  // `=== undefined`, deliberately, and NOT `?? outOfRange(...)`. The two agree for every type
+  // the signature admits, and differ for one that lies about itself — which this codebase
+  // contains. `RandomNumberProvider.series` is declared `number[]` and genuinely holds `null`
+  // on a documented degenerate path: a triangular distribution whose limits are both absent
+  // hits `upperLimit === lowerLimit` and returns `upperLimit`, i.e. `null`. That null then
+  // coerces to 0 in the arithmetic downstream, which IS the delta-0 that
+  // `tests/comparison/imprecisionLaws.test.ts` pins — and `NaN` would not be equivalent,
+  // because `null + 5` is 5 where `NaN + 5` is NaN. A `??` test reads that legitimate null as
+  // a miss and throws. Three tests caught it.
   const value = xs[index];
-  if (value === undefined) {
-    throw new RangeError(`${what}: index ${String(index)} is outside 0..${String(xs.length - 1)}`);
-  }
+  if (value === undefined) outOfRange(index, xs.length, what);
   return value;
 }
+
+/**
+ * `xs[index]`, or `null` where the index misses.
+ *
+ * For callers whose index came from OUTSIDE — a `performance: 7` in an option bag is a
+ * question about the document, and "there is no seventh performance" answers it rather than
+ * indicating a defect.
+ */
+export function elementAtOrNull<T extends NonNullable<unknown>>(
+  xs: readonly T[],
+  index: number,
+): T | null {
+  return xs[index] ?? null;
+}
+
+/**
+ * `xs[index]` over a sequence whose elements may legitimately be `null`.
+ *
+ * A read past the end still throws — the two absences are different questions, and collapsing
+ * them is what loses the distinction {@link elementAt} exists to keep.
+ */
+export function optionAt<T>(xs: readonly (T | null)[], index: number, what: string): T | null {
+  if (index < 0 || index >= xs.length) outOfRange(index, xs.length, what);
+  return xs[index] ?? null;
+}
+
+/**
+ * As {@link elementAt}, for a numeric buffer — a `Float64Array`, an `Int8Array`, or a plain
+ * `number[]` used as one.
+ *
+ * A separate name because a typed array is not an `Array` and satisfies no `readonly T[]`
+ * parameter, and a DP table is a typed array for the reason typed arrays exist: one allocation
+ * rather than a boxed row per line.
+ */
+export function numberAt(
+  buffer: { readonly [index: number]: number; readonly length: number },
+  index: number,
+  what: string,
+): number {
+  const value = buffer[index];
+  if (value === undefined) outOfRange(index, buffer.length, what);
+  return value;
+}
+
+/** The last element satisfying the predicate, or `null`. A backwards scan, named. */
+export function findLast<T extends NonNullable<unknown>>(
+  xs: readonly T[],
+  predicate: (x: T) => boolean,
+): T | null {
+  for (let i = xs.length - 1; i >= 0; --i) {
+    const x = xs[i];
+    if (x !== undefined && predicate(x)) return x;
+  }
+  return null;
+}
+
+/** Remove and return `xs[index]`, or `null` where the index misses. Mutates. */
+export function removeAt<T extends NonNullable<unknown>>(xs: T[], index: number): T | null {
+  if (index < 0 || index >= xs.length) return null;
+  const [removed] = xs.splice(index, 1);
+  return removed ?? null;
+}
+
+/* eslint-enable @typescript-eslint/no-unnecessary-condition */
 
 /**
  * Map and filter in one pass: `f` returns `null` for the elements to drop.
