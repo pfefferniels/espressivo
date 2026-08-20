@@ -60,7 +60,9 @@
     "bench": "npm run build && node scripts/bench.mjs",
     "bench:check": "npm run build && node scripts/bench.mjs --check",
     "bench:save": "npm run build && node scripts/bench.mjs --save && prettier --write scripts/bench-baseline.json",
-    "verify": "npm run build && npm run typecheck:tests && vitest run"
+    "strict:check": "node scripts/strict-ratchet.mjs --check",
+    "strict:save": "node scripts/strict-ratchet.mjs --save && prettier --write scripts/strict-baseline.json",
+    "verify": "npm run build && npm run typecheck:tests && npm run strict:check && vitest run"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.8",
