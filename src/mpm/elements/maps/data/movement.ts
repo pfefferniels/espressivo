@@ -1,5 +1,11 @@
 import type { Normalized } from '../../../../units.js';
-import { bezierPoint, innerControlPointsXPositions, sampleSegment, tForDate } from './bezier.js';
+import {
+  bezierPoint,
+  innerControlPointsXPositions,
+  sampleSegment,
+  tForDate,
+  type CurvePoint,
+} from './bezier.js';
 
 /**
  * One `<movement>` instruction as the renderer samples it: a continuous-controller
@@ -192,7 +198,7 @@ export function positionAt(m: Movement, date: number): number {
 }
 
 /** A constant movement has no curve to evaluate: every `t` yields the start point. */
-function datePosition(m: Movement, t: number): number[] {
+function datePosition(m: Movement, t: number): CurvePoint {
   if (m.kind === 'constant') return [m.startDate, m.position];
 
   return bezierPoint(m.x1, m.x2, m.startDate, m.endDate, m.position, m.transitionTo, t);
@@ -206,18 +212,19 @@ function datePosition(m: Movement, t: number): number[] {
  *   subdivision compares against, not the 0..127 one the result is scaled into. Feeding it
  *   a 0..127 threshold is the 16129 bug of ARCHITECTURE.md §7.
  * @returns `[date, value]` pairs where `value` is already `Midi7Bit` (0..127) and `date` is
- *   symbolic ticks. Deliberately left `number[][]` rather than branded tuples (RULE U4a):
- *   this is the function's own working array, spliced and mutated in place, and a `readonly`
- *   tuple type would forbid exactly that.
+ *   symbolic ticks. {@link CurvePoint}, which is a MUTABLE pair and not a branded one (RULE
+ *   U4a): this is the function's own working array, spliced and mutated in place, and a
+ *   `readonly` tuple type would forbid exactly that — a mutable pair forbids nothing, and it
+ *   is what makes the `tuple[1] *= 127` below a number rather than a `number | undefined`.
  */
-export function movementSegment(m: Movement, maxStepSize: Normalized): number[][] {
+export function movementSegment(m: Movement, maxStepSize: Normalized): CurvePoint[] {
   const series = sampleSegment(maxStepSize, (t) => datePosition(m, t));
 
-  const beginning: number[] = [m.startDate, m.position];
+  const beginning: CurvePoint = [m.startDate, m.position];
   series.unshift(beginning);
 
   if (m.kind === 'transitioning') {
-    const end: number[] = [m.endDate, m.transitionTo];
+    const end: CurvePoint = [m.endDate, m.transitionTo];
     series.push(end);
   }
 

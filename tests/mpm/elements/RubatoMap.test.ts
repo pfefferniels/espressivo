@@ -640,6 +640,53 @@ describe('RubatoMap', () => {
 
       expect(getDatePerf(map, 0)).toBeCloseTo(216, 3);
     });
+
+    /**
+     * The deferred end-date pass is a prefix drain, and stops at the first end that reaches
+     * past the frame instead of skipping it to reach the ones behind it.
+     *
+     * A note whose end falls outside the current rubato's frame keeps its place at the head
+     * of the pending list and blocks everything queued behind it; both go to the next
+     * instruction. Draining past it instead would splice a *different* entry off the front —
+     * one that was never warped — so the blocked note would keep an unwarped `date.end.perf`
+     * while a note behind it got warped by the wrong rubato.
+     *
+     * The corpus reaches the drain (deleting it fails the rubato byte fixtures) but never
+     * reaches the stop: turning the `break` into a `continue` passed every test in the tree.
+     * The shape it needs is two overlapping notes inside one frame with the longer one first,
+     * and no fixture has that.
+     *
+     * Here: note A starts at 0 and ends at 600, past the first rubato's 480-tick frame; note B
+     * starts at 100 and ends at 200, inside it. Under the prefix rule A blocks the drain, both
+     * survive to the second rubato, and only A's end (600, inside that one's span) is warped.
+     * Under the other, A's end is spliced away unwarped and B's is warped by the FIRST rubato.
+     */
+    it('the deferred end-date drain stops at the first end past the frame (prefix, not filter)', () => {
+      const rubatoMap = RubatoMap.createRubatoMap()!;
+      rubatoMap.addRubato(0, 480, 2.0, 0.0, 1.0, false);
+      rubatoMap.addRubato(500, 2000, 2.0, 0.0, 1.0, false);
+
+      const map = GenericMap.createGenericMap('positionMap')!;
+      const note = (date: number, duration: number): Element => {
+        const e = new Element('note', Mpm.MPM_NAMESPACE);
+        e.addAttribute(new Attribute('date', String(date)));
+        e.addAttribute(new Attribute('date.perf', String(date)));
+        e.addAttribute(new Attribute('duration.perf', String(duration)));
+        map.addElement(e);
+        return e;
+      };
+      const long = note(0, 600);
+      const short = note(100, 100);
+
+      rubatoMap.renderRubatoToMap(map);
+
+      // The second rubato warps 600: localDate = 100, d = (100/2000)^2 * 2000 = 5,
+      // so 600 + 5 - 100 = 505.
+      expect(parseFloat(long.getAttributeValue('date.end.perf')!)).toBeCloseTo(505, 5);
+      // …and nothing warps 200: it is before the second rubato's start date, and the first
+      // rubato never got to it.
+      expect(parseFloat(short.getAttributeValue('date.end.perf')!)).toBeCloseTo(200, 5);
+    });
   });
 
   // ---------------------------------------------------------------

@@ -118,6 +118,34 @@ describe('AsynchronyMap', () => {
       expect(map.getAsynchronyAt(2000)).toBe(30);
     });
 
+    /**
+     * The backwards scan steps over entries that are not asynchronies, and answers 0.0 when
+     * it runs off the front without finding one.
+     *
+     * An asynchronyMap holds ordinary dated entries, `<style>` switches included, and
+     * `getElementIndexBeforeAt` finds the nearest of ANY kind. So the entry it lands on may
+     * not be an asynchrony at all, and reading `@milliseconds.offset` off a `<style>` yields
+     * `parseFloat('')`, i.e. NaN — a number that propagates into every millisecond date the
+     * asynchrony pass touches.
+     *
+     * Nothing pinned that skip: deleting the local-name test passed every test in the tree,
+     * because no fixture and no unit test puts a non-asynchrony entry into an asynchronyMap
+     * before the date being asked about.
+     */
+    it('steps back over entries that are not asynchronies, and 0.0 when there are only those', () => {
+      const map = AsynchronyMap.createAsynchronyMap()!;
+      map.addAsynchrony(0, 50);
+      map.addStyleSwitch(480, 'some style');
+
+      // The style switch is the nearest entry at or before 500; the asynchrony behind it is
+      // the answer.
+      expect(map.getAsynchronyAt(500)).toBe(50);
+
+      const styleOnly = AsynchronyMap.createAsynchronyMap()!;
+      styleOnly.addStyleSwitch(0, 'some style');
+      expect(styleOnly.getAsynchronyAt(500)).toBe(0.0);
+    });
+
     it('negative offset is returned correctly', () => {
       const map = AsynchronyMap.createAsynchronyMap()!;
       map.addAsynchrony(0, -75);

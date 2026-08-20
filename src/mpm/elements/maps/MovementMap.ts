@@ -100,7 +100,8 @@ export class MovementMap extends GenericMap {
   getMovementDataOf(index: number): Movement | null {
     const i = this.resolveEntryIndex(index, 'movement');
     if (i < 0) return null;
-    const e = this.elements[i].getValue();
+    const entry = this.entryAt(i);
+    const e = entry.getValue();
 
     const posAtt = attribute('position', e);
     let position: number;
@@ -120,7 +121,7 @@ export class MovementMap extends GenericMap {
     // every rendered movement used the defaults (curvature 0.4, protraction 0, controller
     // "sustain") regardless of the XML.
     return resolveMovement({
-      startDate: this.elements[i].getKey(),
+      startDate: entry.getKey(),
       endDate: this.nextDateOfType(i, 'movement'),
       position: position as Normalized,
       transitionTo: mapPresent(
@@ -153,8 +154,9 @@ export class MovementMap extends GenericMap {
    */
   private getPreviousPosition(index: number): number | null {
     for (let j = index - 1; j > 0; --j) {
-      if (this.elements[j].getValue().getLocalName() === 'movement') {
-        const ttAtt = this.elements[j].getValue().getAttribute('transition.to');
+      const previous = this.entryAt(j).getValue();
+      if (previous.getLocalName() === 'movement') {
+        const ttAtt = previous.getAttribute('transition.to');
         return ttAtt === null ? null : parseFloat(ttAtt.getValue());
       }
     }

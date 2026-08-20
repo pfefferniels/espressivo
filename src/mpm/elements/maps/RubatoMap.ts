@@ -5,7 +5,7 @@ import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { RubatoData } from './data/RubatoData.js';
 import { resolveRubato, type Rubato } from './data/rubato.js';
-import { mapPresent } from '../../../prelude/index.js';
+import { elementAt, mapPresent } from '../../../prelude/index.js';
 
 /**
  * An MPM `rubatoMap`: expressive push and pull of the timing, applied as a repeating
@@ -103,7 +103,8 @@ export class RubatoMap extends GenericMap {
   getRubatoDataOf(index: number): Rubato | null {
     const i = this.resolveEntryIndex(index, 'rubato');
     if (i < 0) return null;
-    const e = this.elements[i].getValue();
+    const entry = this.entryAt(i);
+    const e = entry.getValue();
 
     const style = this.getStyle('rubato', this.findStyleNameAt(i));
     const nameRef = attribute('name.ref', e);
@@ -115,7 +116,7 @@ export class RubatoMap extends GenericMap {
 
     return resolveRubato(
       {
-        startDate: this.elements[i].getKey(),
+        startDate: entry.getKey(),
         endDate: this.nextDateOfType(i, 'rubato'),
       },
       {
@@ -174,7 +175,7 @@ export class RubatoMap extends GenericMap {
       const rd = this.getRubatoDataOf(rubIndex);
       if (rd === null) continue;
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = map.elements[mapIndex];
+        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
         if (mapEntry.getKey() < rd.startDate) continue;
         if (
           mapEntry.getKey() >= rd.endDate ||
@@ -203,15 +204,19 @@ export class RubatoMap extends GenericMap {
         }
       }
 
-      for (let i = 0; i < pendingDurations.length; ++i) {
-        const pd = pendingDurations[i];
+      // A prefix drain, and it always was: the loop this replaces spliced entry `i` out and
+      // stepped `i` back on every pass that did not `break`, so `i` never left 0. Counting
+      // the run and splicing it once is the same removal without the shift-the-whole-array
+      // cost per entry — the same rewrite `ImprecisionMap`'s pending durations already had.
+      let drained = 0;
+      for (const pd of pendingDurations) {
         const dateEnd = pd.getKey();
         if (dateEnd >= rd.endDate || (!rd.loop && dateEnd >= rd.startDate + rd.frameLength)) break;
         if (dateEnd >= rd.startDate)
           pd.getValue().setValue(String(RubatoMap.computeRubatoTransformation(dateEnd, rd)));
-        pendingDurations.splice(i, 1);
-        --i;
+        ++drained;
       }
+      if (drained > 0) pendingDurations.splice(0, drained);
     }
   }
 

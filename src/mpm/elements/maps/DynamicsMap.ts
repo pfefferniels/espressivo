@@ -11,7 +11,7 @@ import {
   type Dynamics,
 } from './data/dynamics.js';
 import { numericDynamicsValue } from '../styles/style.js';
-import { mapPresent } from '../../../prelude/index.js';
+import { elementAt, mapPresent } from '../../../prelude/index.js';
 
 /**
  * An MPM `dynamicsMap`: loudness over the timeline, as constant levels and as
@@ -159,7 +159,8 @@ export class DynamicsMap extends GenericMap {
   getDynamicsDataOf(index: number): Dynamics | null {
     const i = this.resolveEntryIndex(index, 'dynamics');
     if (i < 0) return null;
-    const e = this.elements[i].getValue();
+    const entry = this.entryAt(i);
+    const e = entry.getValue();
 
     const volAtt = attribute('volume', e);
     if (volAtt === null) return null;
@@ -171,7 +172,7 @@ export class DynamicsMap extends GenericMap {
     const sndAtt = attribute('subNoteDynamics', e);
 
     return resolveDynamics({
-      startDate: this.elements[i].getKey(),
+      startDate: entry.getKey(),
       endDate: this.nextDateOfType(i, 'dynamics'),
       volumeString,
       volume: numericDynamicsValue(volumeString, style),
@@ -228,7 +229,7 @@ export class DynamicsMap extends GenericMap {
           // sub-note dynamics: generate volume curve events
           DynamicsMap.generateSubNoteDynamics(dd, chanVolMap);
           for (; mapIndex < map.size(); ++mapIndex) {
-            const mapEntry = map.elements[mapIndex];
+            const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
             if (mapEntry.getKey() < dd.startDate || mapEntry.getValue().getLocalName() !== 'note')
               continue;
             if (mapEntry.getKey() >= dd.endDate) break;
@@ -250,7 +251,7 @@ export class DynamicsMap extends GenericMap {
       }
 
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = map.elements[mapIndex];
+        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
         if (mapEntry.getValue().getLocalName() !== 'note') continue;
         if (mapEntry.getKey() < dd.startDate) {
           mapEntry.getValue().addAttribute(new Attribute('velocity', '100.0'));
@@ -270,15 +271,18 @@ export class DynamicsMap extends GenericMap {
     channelVolumeMap: GenericMap,
   ): void {
     const segment = subNoteDynamicsSegment(dynamicsData, 2.0);
-    const es: Element[] = [];
+    // Only the first event is ever read back, so it is remembered rather than the whole array
+    // being kept to index `[0]` out of once — which is also what removes the second
+    // allocation this method used to make per sub-note transition.
+    let first: Element | null = null;
     for (const event of segment) {
       const e = new Element('volume', channelVolumeMap.getXml().getNamespaceURI());
       e.addAttribute(new Attribute('date', String(event[0])));
       e.addAttribute(new Attribute('value', String(event[1])));
       channelVolumeMap.addElement(e);
-      es.push(e);
+      first ??= e;
     }
-    if (es.length > 0) es[0].addAttribute(new Attribute('mandatory', 'true'));
+    first?.addAttribute(new Attribute('mandatory', 'true'));
   }
 
   static renderDynamicsToMap(

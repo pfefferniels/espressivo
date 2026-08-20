@@ -38,6 +38,7 @@
  * could fire on. It is a screening estimate and it is stated as one — §7.9's own words are
  * "the report carries the frame magnitude and flags cliff risk rather than a bound".
  */
+import { head, isNonEmpty, last } from '../prelude/index.js';
 import { readAttributeValue } from './attributes.js';
 import {
   FRAME_LENGTH_ATTRIBUTE,
@@ -191,17 +192,19 @@ function unreachableLevels(performance: PerformanceView, facts: MsmFacts): numbe
               readAttributeValue(entry.element, 'volume') !== null,
           );
 
-    if (instructions.length === 0) {
+    // `isNonEmpty` rather than `length === 0`: the two say the same thing to the reader, but
+    // only the type guard says it to the compiler, so `head`/`last` below need no bound check.
+    if (!isNonEmpty(instructions)) {
       count += dated.length;
       continue;
     }
 
-    const first = instructions[0].date;
-    const last = instructions[instructions.length - 1];
-    const unterminated = readAttributeValue(last.element, TRANSITION_TO_ATTRIBUTE) !== null;
+    const firstDate = head(instructions).date;
+    const lastEntry = last(instructions);
+    const unterminated = readAttributeValue(lastEntry.element, TRANSITION_TO_ATTRIBUTE) !== null;
     for (const note of dated) {
-      if (note.date < first) count += 1;
-      else if (unterminated && note.date >= last.date) count += 1;
+      if (note.date < firstDate) count += 1;
+      else if (unterminated && note.date >= lastEntry.date) count += 1;
     }
   }
   return count;

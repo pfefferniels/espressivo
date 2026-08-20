@@ -2,6 +2,7 @@ import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { allChildElements, firstChildElement } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
+import { elementAt } from '../../../prelude/index.js';
 import { Author } from './Author.js';
 import { Comment } from './Comment.js';
 import { RelatedResource } from './RelatedResource.js';
@@ -171,8 +172,13 @@ export class Metadata extends AbstractXmlSubtree {
   getAuthors(): Author[] {
     return this.authors;
   }
+  /**
+   * The author at `index`, or null past the end — and a THROW for a negative index, which is
+   * what Java answers there (`ArrayList.get` raises IndexOutOfBoundsException; only the upper
+   * bound is tested). The read used to hand back `undefined` typed as an `Author`.
+   */
   getAuthorByIndex(index: number): Author | null {
-    return index < this.authors.length ? this.authors[index] : null;
+    return index < this.authors.length ? elementAt(this.authors, index, 'author') : null;
   }
   getAuthorByName(name: string): Author[] {
     return this.authors.filter((a) => a.getName() === name);
@@ -202,8 +208,9 @@ export class Metadata extends AbstractXmlSubtree {
   getComments(): Comment[] {
     return this.comments;
   }
+  /** The comment at `index`; out of range throws, as `ArrayList.get` does in Java. */
   getComment(index: number): Comment {
-    return this.comments[index];
+    return elementAt(this.comments, index, 'comment');
   }
   removeCommentByIndex(index: number): void {
     const c = this.getComment(index);
@@ -238,11 +245,18 @@ export class Metadata extends AbstractXmlSubtree {
   getRelatedResources(): RelatedResource[] {
     return this.relatedResources;
   }
+  /** As {@link getAuthorByIndex}: null past the end, a throw below zero. */
   getRelatedResource(index: number): RelatedResource | null {
-    return index < this.relatedResources.length ? this.relatedResources[index] : null;
+    return index < this.relatedResources.length
+      ? elementAt(this.relatedResources, index, 'related resource')
+      : null;
   }
   removeRelatedResourceByIndex(index: number): void {
-    this.removeRelatedResource(this.relatedResources[index]);
+    // Through the bound-checked accessor, so an index past the end is the no-op that
+    // `removeRelatedResource(null)` already spells out. The raw read handed it `undefined`,
+    // which is not `null` and so walked straight past that guard into a property access on
+    // nothing.
+    this.removeRelatedResource(this.getRelatedResource(index));
   }
   removeRelatedResource(relatedResource: RelatedResource | null): void {
     if (relatedResource === null) return;

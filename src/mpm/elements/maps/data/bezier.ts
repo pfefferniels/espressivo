@@ -14,6 +14,19 @@
  * reassociating it changes rendered values, and in {@link tForDate} it can also change the
  * binary search's iteration count. Do not "simplify" anything in this file.
  */
+import { elementAt } from '../../../../prelude/index.js';
+
+/**
+ * One sampled point of a curve: `[date, value]` — Java's `double[2]`.
+ *
+ * A MUTABLE pair, deliberately. {@link sampleSegment} splices midpoints into its series and
+ * `movementSegment` unshifts, pushes and scales in place; a `readonly` tuple would forbid all
+ * of that, which is why those arrays were left as `number[][]`. A mutable pair forbids none of
+ * it, and it is what makes `point[1]` a number rather than a `number | undefined` at each of
+ * the places that read it — including the `tuple[1] *= 127` that turns a normalized position
+ * into a MIDI value.
+ */
+export type CurvePoint = [date: number, value: number];
 
 /**
  * The x-positions of the two inner control points, derived from `curvature` and
@@ -92,8 +105,8 @@ export function bezierPoint(
   from: number,
   to: number,
   t: number,
-): number[] {
-  const result = [0.0, 0.0];
+): CurvePoint {
+  const result: CurvePoint = [0.0, 0.0];
   const x1_3 = 3.0 * x1;
   const x2_3 = 3.0 * x2;
   const u = x1_3 - x2_3 + 1.0;
@@ -119,15 +132,21 @@ export function bezierPoint(
  *
  * @returns the working series itself, so the caller can keep mutating it.
  */
-export function sampleSegment(maxStepSize: number, point: (t: number) => number[]): number[][] {
+export function sampleSegment(maxStepSize: number, point: (t: number) => CurvePoint): CurvePoint[] {
   const ts: number[] = [0.0, 1.0];
-  const series: number[][] = [];
+  const series: CurvePoint[] = [];
   series.push(point(0.0));
   series.push(point(1.0));
 
   for (let i = 0; i < ts.length - 1; ++i) {
-    while (Math.abs(series[i + 1][1] - series[i][1]) > maxStepSize) {
-      const t = (ts[i] + ts[i + 1]) * 0.5;
+    // `series[i]` and `ts[i]` do not move while the `while` runs: every splice inserts at
+    // `i + 1`, which shifts only what is behind them. Reading each once per outer step rather
+    // than once per subdivision leaves both expressions character for character what they
+    // were — this file's arithmetic is parity-frozen, and only the reads around it moved.
+    const from = elementAt(series, i, 'curve sample');
+    const tFrom = elementAt(ts, i, 'curve parameter');
+    while (Math.abs(elementAt(series, i + 1, 'curve sample')[1] - from[1]) > maxStepSize) {
+      const t = (tFrom + elementAt(ts, i + 1, 'curve parameter')) * 0.5;
       ts.splice(i + 1, 0, t);
       series.splice(i + 1, 0, point(t));
     }

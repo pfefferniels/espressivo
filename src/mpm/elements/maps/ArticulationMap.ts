@@ -2,6 +2,7 @@ import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
+import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
 import { ArticulationData } from './data/ArticulationData.js';
 import { ArticulationDef } from '../styles/defs/ArticulationDef.js';
@@ -107,10 +108,11 @@ export class ArticulationMap extends GenericMap {
   getArticulationDataOf(index: number): ArticulationData | null {
     const i = this.resolveEntryIndex(index, 'articulation');
     if (i < 0) return null;
-    const e = this.elements[i].getValue();
+    const entry = this.entryAt(i);
+    const e = entry.getValue();
     const ad = new ArticulationData();
     ad.xml = e;
-    ad.date = this.elements[i].getKey();
+    ad.date = entry.getKey();
     const att = attribute('xml:id', e);
     if (att !== null) ad.xmlId = att.getValue();
     const nidAtt = attribute('noteid', e);
@@ -199,16 +201,16 @@ export class ArticulationMap extends GenericMap {
         if (index < 0) continue;
         // One lookup where there were three. `getAllElements()` hands back the map's own
         // array, so the three reads always named the same entry.
-        const referee = map.getAllElements()[index];
+        const referee = elementAt(map.getAllElements(), index, 'articulation referee');
         if (referee.getKey() !== ad.date)
           console.error(
-            // `this.elements[articIndex]` and not `ad.xml!`: `getArticulationDataOf` sets
+            // `this.entryAt(articIndex)` and not `ad.xml!`: `getArticulationDataOf` sets
             // `xml` from exactly this entry (`resolveEntryIndex` returns its argument
             // unchanged for an in-range index, and the loop bound guarantees one), so the
             // two are the same Element — but only one of them is typed `Element | null`.
             // The field stays nullable for the write half, where
             // `addArticulationFromData` is handed a datum that has no element yet.
-            `Warning: articulation date and referee date do not match!\n    ${this.elements[articIndex].getValue().toXML()}\n    ${referee.getValue().toXML()}`,
+            `Warning: articulation date and referee date do not match!\n    ${this.entryAt(articIndex).getValue().toXML()}\n    ${referee.getValue().toXML()}`,
           );
         const note = referee.getValue();
         let adList = noteArtics.get(note);
@@ -265,8 +267,11 @@ export class ArticulationMap extends GenericMap {
 
     // articulate the map elements
     let defaultArticulationIndex = 0;
-    for (let mapIndex = 0; mapIndex < map.size(); ++mapIndex) {
-      const mapEntry = map.elements[mapIndex];
+    // A plain walk, start to end: unlike the span-driven renderers, this one has no cursor to
+    // preserve across an outer loop and never breaks early, so it iterates rather than
+    // indexes. `defaultArticulationIndex` is the only cursor here, and it indexes a different
+    // list.
+    for (const mapEntry of map.getAllElements()) {
       if (mapEntry.getValue().getLocalName() !== 'note') continue;
 
       const artics = noteArtics.get(mapEntry.getValue());
@@ -281,13 +286,19 @@ export class ArticulationMap extends GenericMap {
       if (defaultArticulations.length === 0) continue;
 
       // make sure we use the latest default articulation
+      // `at(…) ?? Infinity` says the same thing as the length test it replaces: no successor
+      // means no later switch to advance to, and a date past every note never compares less.
       while (
-        defaultArticulationIndex + 1 < defaultArticulations.length &&
-        defaultArticulations[defaultArticulationIndex + 1].getKey() <= mapEntry.getKey()
+        (defaultArticulations.at(defaultArticulationIndex + 1)?.getKey() ?? Infinity) <=
+        mapEntry.getKey()
       )
         defaultArticulationIndex++;
 
-      const defaultArticulationDef = defaultArticulations[defaultArticulationIndex].getValue();
+      const defaultArticulationDef = elementAt(
+        defaultArticulations,
+        defaultArticulationIndex,
+        'default articulation',
+      ).getValue();
       if (defaultArticulationDef === null) continue;
 
       mapTimingChanged =

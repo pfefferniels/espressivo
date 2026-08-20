@@ -1,5 +1,6 @@
 import { Attribute, Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
+import { elementAt } from '../../prelude/index.js';
 import {
   allChildElements,
   attribute,
@@ -261,20 +262,26 @@ export class Performance extends AbstractXmlSubtree {
   }
 
   removePartByNumber(number: number): void {
-    for (let i = this.parts.length - 1; i >= 0; i--) {
-      if (this.parts[i].getNumber() === number) {
-        this.getXml().removeChild(this.parts[i].getXml());
-        this.parts.splice(i, 1);
-      }
-    }
+    this.removePartsWhere((part) => part.getNumber() === number);
   }
 
   removePartByName(name: string): void {
+    this.removePartsWhere((part) => part.getName() === name);
+  }
+
+  /**
+   * Remove every part the predicate accepts, from the list and from the XML.
+   *
+   * The two public removers were the same six lines with one getter swapped, each reading its
+   * entry twice. The walk stays backwards and the splice stays per match, so the removals
+   * happen in the same order they always did.
+   */
+  private removePartsWhere(matches: (part: Part) => boolean): void {
     for (let i = this.parts.length - 1; i >= 0; i--) {
-      if (this.parts[i].getName() === name) {
-        this.getXml().removeChild(this.parts[i].getXml());
-        this.parts.splice(i, 1);
-      }
+      const part = elementAt(this.parts, i, 'part');
+      if (!matches(part)) continue;
+      this.getXml().removeChild(part.getXml());
+      this.parts.splice(i, 1);
     }
   }
 

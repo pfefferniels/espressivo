@@ -3,7 +3,14 @@ import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { RandomNumberProvider } from '../../../supplementary/RandomNumberProvider.js';
-import { err, mapOk, mapPresent, matchKind, type Result } from '../../../prelude/index.js';
+import {
+  elementAt,
+  err,
+  mapOk,
+  mapPresent,
+  matchKind,
+  type Result,
+} from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
 import {
   DISTRIBUTION_BROWNIAN,
@@ -325,8 +332,9 @@ export class ImprecisionMap extends GenericMap {
   }
 
   getDomain(): string {
-    const parts = this.getXml().getLocalName().split('.');
-    return parts.length < 2 ? '' : parts[1];
+    // `.at(1)` and not `[1]`: the length test it replaces said exactly this, and `at` answers
+    // `undefined` for the missing slot whether or not the strict-index flag is on.
+    return this.getXml().getLocalName().split('.').at(1) ?? '';
   }
 
   /** `"Hertz"` is normalised to `"Hz"`; any other spelling is stored verbatim. */
@@ -456,13 +464,19 @@ export class ImprecisionMap extends GenericMap {
     const i = this.clampEntryIndex(index);
     if (i < 0) return err({ kind: 'noEntry', index });
 
-    const e = this.elements[i].getValue();
+    // `clampEntryIndex` has already answered -1 for an empty map and pulled everything else
+    // into range, so this is never null. Asking rather than asserting costs one comparison and
+    // keeps the "-1 means nothing" contract in the one place that states it.
+    const e = this.getElement(i);
+    if (e === null) return err({ kind: 'noEntry', index });
     const localName = e.getLocalName();
     if (!localName.startsWith('distribution.')) return err({ kind: 'notADistribution', localName });
 
     return mapOk(parseDistribution(e), (distribution) => ({
       distribution,
-      endDate: i < this.size() - 1 ? this.elements[i + 1].getKey() : Number.MAX_VALUE,
+      // The span ends at the next entry of ANY name, or at the end of time when there is
+      // none — which is what `at(i + 1)` returning undefined says.
+      endDate: this.elements.at(i + 1)?.getKey() ?? Number.MAX_VALUE,
     }));
   }
 
@@ -568,7 +582,10 @@ export class ImprecisionMap extends GenericMap {
 
       // apply distribution to map elements
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = map.elements[mapIndex];
+        // A random access and not an iteration: `mapIndex` is a cursor that survives the
+        // distribution loop around this one, and the `break` below deliberately leaves the
+        // entry that ended this span for the next distribution to re-examine.
+        const mapEntry = elementAt(map.elements, mapIndex, 'imprecision target');
 
         if (mapEntry.getKey() < distribution.startDate) continue;
 
@@ -646,9 +663,7 @@ export class ImprecisionMap extends GenericMap {
       // consumed in the same order, so the RandomNumberProvider sees the same call
       // sequence and produces the same offsets.
       let drained = 0;
-      while (drained < pendingDurations.length) {
-        const pd = pendingDurations[drained];
-
+      for (const pd of pendingDurations) {
         if (pd.endDate >= endDate) break;
 
         const msDate = pd.msDateEnd;
@@ -690,10 +705,10 @@ export class ImprecisionMap extends GenericMap {
 
       const keepOffset = Math.floor(Math.random() * entries.length);
 
-      for (let i = 0; i < entries.length; ++i) {
+      for (const [i, entry] of entries.entries()) {
         if (i === keepOffset) continue;
 
-        entries[i].setKey(ImprecisionMap.shake(entries[i].getKey()));
+        entry.setKey(ImprecisionMap.shake(entry.getKey()));
       }
     }
   }
@@ -706,7 +721,7 @@ export class ImprecisionMap extends GenericMap {
       const pitchOffsetTuplet = new Map<number, number>();
 
       // as this applies also to the element that keeps its offset, it should be added to the hashmap first
-      const keeper = entries[keepOffset];
+      const keeper = elementAt(entries, keepOffset, 'shake keeper');
       const keeperParent = keeper.getValue().getParent();
       if (keeperParent !== null) {
         const pitchAtt = attribute('midi.pitch', keeperParent);
@@ -716,10 +731,8 @@ export class ImprecisionMap extends GenericMap {
         }
       }
 
-      for (let i = 0; i < entries.length; ++i) {
+      for (const [i, entry] of entries.entries()) {
         if (i === keepOffset) continue;
-
-        const entry = entries[i];
 
         // check whether we have already an offset value for this pitch
         const entryParent = entry.getValue().getParent();

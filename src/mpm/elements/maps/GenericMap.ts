@@ -9,7 +9,7 @@ import {
   type StyleKind,
   type StyleOfKind,
 } from '../styles/style.js';
-import { lowerBoundBy, upperBoundBy } from '../../../prelude/seq.js';
+import { elementAt, lowerBoundBy, upperBoundBy } from '../../../prelude/seq.js';
 import { mapPresent, orCompute } from '../../../prelude/index.js';
 
 const MPM_NAMESPACE = 'http://www.cemfi.de/mpm/ns/1.0';
@@ -158,7 +158,8 @@ export class GenericMap extends AbstractXmlSubtree {
    * The insertion is a backwards linear scan rather than an append, so children that
    * were already out of order in the source document are indexed in date order. It
    * finds the *last* position whose date is `<=` the new one, which makes the pass
-   * stable: same-dated children keep their document order.
+   * stable: same-dated children keep their document order. That scan is
+   * {@link insertionIndexFor}, shared with {@link insertElement}.
    *
    * Private, and that is load-bearing: it is called from the constructor, where a virtual
    * call would reach a subclass before that subclass's own initialisation had run.
@@ -180,14 +181,7 @@ export class GenericMap extends AbstractXmlSubtree {
       if (d === null) continue;
       if (e.getLocalName() === 'style' && attribute('name.ref', e) === null) continue;
       const date = parseFloat(d.getValue());
-      let index = 0;
-      for (let j = this.elements.length - 1; j >= 0; --j) {
-        if (date >= this.elements[j].getKey()) {
-          index = j + 1;
-          break;
-        }
-      }
-      this.elements.splice(index, 0, new KeyValue(date, e));
+      this.elements.splice(this.insertionIndexFor(date), 0, new KeyValue(date, e));
     }
     this.sortXml();
     this.id = attribute('id', this.getXml());
@@ -257,13 +251,15 @@ export class GenericMap extends AbstractXmlSubtree {
       if (e.getKey() !== date) e.setKey(date);
     }
     for (let i = 1; i < this.size(); ++i) {
-      const e = this.elements[i];
+      const e = elementAt(this.elements, i, 'GenericMap.sort');
       let moveToIndex = i;
-      for (let j = i - 1; j >= 0 && e.getKey() < this.elements[j].getKey(); --j) moveToIndex = j;
+      for (let j = i - 1; j >= 0 && e.getKey() < elementAt(this.elements, j, 'sort').getKey(); --j)
+        moveToIndex = j;
+      // `e` is still what `this.elements[i]` holds — the scan above only reads — so it is
+      // the `tmp` the swap used to take a second time.
       if (moveToIndex !== i) {
-        const tmp = this.elements[i];
-        this.elements[i] = this.elements[moveToIndex];
-        this.elements[moveToIndex] = tmp;
+        this.elements[i] = elementAt(this.elements, moveToIndex, 'sort');
+        this.elements[moveToIndex] = e;
       }
     }
     this.sortXml();
@@ -307,46 +303,53 @@ export class GenericMap extends AbstractXmlSubtree {
   getAllElementsOfType(type: string): readonly KeyValue<number, Element>[] {
     return this.elements.filter((e) => e.getValue().getLocalName() === type);
   }
+  /**
+   * The entries dated exactly `date` — plus, when there is none, the first entry after it.
+   *
+   * That asymmetry is the loop this replaces: it pushed the at-or-after entry *before*
+   * testing anything and only then walked on while the date still matched. So a lookup at a
+   * date the map does not carry answers with the next entry rather than with nothing, and
+   * that is Java's answer too (`GenericMap.getAllElementsAt`).
+   *
+   * As a range: the run of matching entries on a date-sorted index ends at the upper bound
+   * for `date`, which is where the walk stopped. When the first entry is dated after `date`
+   * that bound sits at or before `start`, and the `max` is what keeps the unconditional
+   * first push — one entry, and no more.
+   */
   getAllElementsAt(date: number): readonly KeyValue<number, Element>[] {
-    const results: KeyValue<number, Element>[] = [];
-    let index = this.getElementIndexAtAfter(date);
-    if (index >= 0) {
-      results.push(this.elements[index]);
-      for (++index; index < this.size() && this.elements[index].getKey() === date; ++index)
-        results.push(this.elements[index]);
-    }
-    return results;
+    const start = this.getElementIndexAtAfter(date);
+    if (start < 0) return [];
+    const end = upperBoundBy(this.elements, entryDate, date);
+    return this.elements.slice(start, Math.max(end, start + 1));
   }
 
   getFirstElement(): Element | null {
-    return this.elements.length === 0 ? null : this.elements[0].getValue();
+    return this.elements.at(0)?.getValue() ?? null;
   }
   getLastElement(): Element | null {
-    return this.elements.length === 0 ? null : this.elements[this.size() - 1].getValue();
+    return this.elements.at(-1)?.getValue() ?? null;
   }
+  /**
+   * The entry at `index`, or null when there is none — including for a negative index, which
+   * is why the explicit test stays: `Array.prototype.at` reads a negative index from the END,
+   * so `getElement(-1)` would start answering with the last entry rather than with null.
+   */
   getElement(index: number): Element | null {
-    return index >= this.elements.length || index < 0 ? null : this.elements[index].getValue();
+    return index < 0 ? null : (this.elements.at(index)?.getValue() ?? null);
   }
 
   getElementByID(id: string): Element | null {
-    const i = this.getElementIndexByID(id);
-    return i < 0 ? null : this.elements[i].getValue();
+    return this.getElement(this.getElementIndexByID(id));
   }
   getElementIndexByID(id: string): number {
-    for (let i = 0; i < this.size(); ++i) {
-      const a = attribute('id', this.elements[i].getValue());
-      if (a !== null && a.getValue() === id) return i;
-    }
-    return -1;
+    return this.elements.findIndex((e) => attribute('id', e.getValue())?.getValue() === id);
   }
 
   getElementBeforeAt(date: number): Element | null {
-    const i = this.getElementIndexBeforeAt(date);
-    return i < 0 ? null : this.elements[i].getValue();
+    return this.getElement(this.getElementIndexBeforeAt(date));
   }
   getElementAfter(date: number): Element | null {
-    const i = this.getElementIndexAfter(date);
-    return i < 0 ? null : this.elements[i].getValue();
+    return this.getElement(this.getElementIndexAfter(date));
   }
 
   /**
@@ -400,9 +403,7 @@ export class GenericMap extends AbstractXmlSubtree {
 
   getElementIndexOf(element: Element | null): number {
     if (element === null) return -1;
-    for (let i = 0; i < this.elements.length; ++i)
-      if (this.elements[i].getValue() === element) return i;
-    return -1;
+    return this.elements.findIndex((e) => e.getValue() === element);
   }
 
   addElement(xml: Element): number {
@@ -433,26 +434,39 @@ export class GenericMap extends AbstractXmlSubtree {
    * ordinary instructions use false so they queue up in insertion order.
    */
   protected insertElement(element: KeyValue<number, Element>, firstAtDate = false): number {
-    if (firstAtDate) {
-      for (let i = 0; i < this.elements.length; ++i) {
-        if (this.elements[i].getKey() >= element.getKey()) {
-          this.elements.splice(i, 0, element);
-          this.getXml().insertChild(element.getValue(), i);
-          return i;
-        }
-      }
-    } else {
-      for (let i = this.elements.length - 1; i >= 0; --i) {
-        if (this.elements[i].getKey() <= element.getKey()) {
-          const index = i + 1;
-          this.elements.splice(index, 0, element);
-          this.getXml().insertChild(element.getValue(), index);
-          return index;
-        }
-      }
+    const index = firstAtDate
+      ? this.elements.findIndex((e) => e.getKey() >= element.getKey())
+      : this.insertionIndexFor(element.getKey());
+    // `findIndex` says -1 for "every existing entry is earlier", and the loop this replaces
+    // said the same thing by falling out of the bottom into the insert-at-0 below. That is
+    // a quirk rather than a rounding of it: a `firstAtDate` insert whose date is past every
+    // entry lands at the FRONT of the map, not at the back. Java does the same, and the one
+    // caller — `addStyleSwitch` — is why a style switch after the last instruction takes
+    // effect from the top of the map. Kept exactly.
+    const at = index < 0 ? 0 : index;
+    this.elements.splice(at, 0, element);
+    this.getXml().insertChild(element.getValue(), at);
+    return at;
+  }
+
+  /**
+   * The position a new entry dated `date` takes: one past the last entry at or before it, or
+   * 0 when there is none. The backwards scan {@link indexElements} and {@link insertElement}
+   * both used, written once.
+   *
+   * Linear from the end and not {@link upperBoundBy}, although this class binary-searches the
+   * same array in four other places. Those four only READ an index that is already ordered;
+   * this one decides what the order will be, and it is reached with a date straight out of
+   * `parseFloat`, which answers NaN for a malformed `@date`. Every comparison against NaN is
+   * false, so the scan puts such an entry at 0 and walks past it when placing later ones —
+   * where a binary search would probe it as a partition point and split the array on an
+   * answer that is false on both sides. The two agree on every ordered input; they do not
+   * agree on that one, and the ordering is serialized (`sortXml`), so it is byte-visible.
+   */
+  private insertionIndexFor(date: number): number {
+    for (let j = this.elements.length - 1; j >= 0; --j) {
+      if (elementAt(this.elements, j, 'GenericMap entry').getKey() <= date) return j + 1;
     }
-    this.elements.splice(0, 0, element);
-    this.getXml().insertChild(element.getValue(), 0);
     return 0;
   }
 
@@ -460,17 +474,18 @@ export class GenericMap extends AbstractXmlSubtree {
   removeElement(xml: Element): void;
   removeElement(indexOrXml: number | Element): void {
     if (typeof indexOrXml === 'number') {
+      // An index past the end is a no-op; a NEGATIVE one throws, as it always has — the read
+      // used to produce undefined and fail on `.getValue()`, and now says which index and
+      // which bound. Only the message changed. There is no `< 0` guard because adding one
+      // would turn that throw into a silent no-op, which is a different contract.
       if (indexOrXml >= this.elements.length) return;
-      this.getXml().removeChild(this.elements[indexOrXml].getValue());
+      this.getXml().removeChild(elementAt(this.elements, indexOrXml, 'removeElement').getValue());
       this.elements.splice(indexOrXml, 1);
     } else {
-      for (let i = 0; i < this.elements.length; i++) {
-        if (this.elements[i].getValue() === indexOrXml) {
-          this.getXml().removeChild(indexOrXml);
-          this.elements.splice(i, 1);
-          return;
-        }
-      }
+      const at = this.getElementIndexOf(indexOrXml);
+      if (at < 0) return;
+      this.getXml().removeChild(indexOrXml);
+      this.elements.splice(at, 1);
     }
   }
 
@@ -508,7 +523,22 @@ export class GenericMap extends AbstractXmlSubtree {
   protected resolveEntryIndex(index: number, localName: string): number {
     const i = this.clampEntryIndex(index);
     if (i < 0) return -1;
-    return this.elements[i].getValue().getLocalName() === localName ? i : -1;
+    return this.getElement(i)?.getLocalName() === localName ? i : -1;
+  }
+
+  /**
+   * The entry an already-resolved index names — both halves of it, the element to read
+   * attributes off and the key that is the instruction's start date.
+   *
+   * The eight `get*DataOf` accessors reach for both after {@link resolveEntryIndex} or
+   * {@link clampEntryIndex} has put the index in range, and each used to re-read
+   * `this.elements[i]` twice to get them. This is that read, written once so the bound is
+   * proved in one place rather than in sixteen. An index rather than the entry comes back out
+   * of the resolvers because the accessors need it for {@link nextDateOfType} and
+   * {@link findStyleNameAt} as well, and returning a pair would allocate per instruction.
+   */
+  protected entryAt(index: number): KeyValue<number, Element> {
+    return elementAt(this.elements, index, 'map entry');
   }
 
   /**
@@ -534,8 +564,8 @@ export class GenericMap extends AbstractXmlSubtree {
    */
   protected nextDateOfType(index: number, localName: string): number {
     for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === localName)
-        return this.elements[j].getKey();
+      const entry = elementAt(this.elements, j, 'nextDateOfType');
+      if (entry.getValue().getLocalName() === localName) return entry.getKey();
     }
     return Number.MAX_VALUE;
   }
@@ -547,7 +577,7 @@ export class GenericMap extends AbstractXmlSubtree {
    */
   protected findStyleSwitchAt(index: number): Element | null {
     for (let j = index; j >= 0; --j) {
-      const s = this.elements[j].getValue();
+      const s = elementAt(this.elements, j, 'findStyleSwitchAt').getValue();
       if (s.getLocalName() === 'style') return s;
     }
     return null;
@@ -563,12 +593,24 @@ export class GenericMap extends AbstractXmlSubtree {
     return s === null ? null : getAttributeValue('name.ref', s);
   }
 
+  /**
+   * The style name in force at `date` by DATE — the date-based sibling of the positional
+   * {@link findStyleNameAt}, and not the same lookup (see `expression/datedView.ts`'s
+   * `styleSwitchAt`, which documents where the two diverge and why the renderer wants the
+   * positional one).
+   *
+   * A forward pass keeping the last qualifying switch, where this was a backwards scan with
+   * a break: both answer with the highest-positioned switch dated at or before `date`, and
+   * the forward one needs no index to say so. The early exit it gives up is worth nothing
+   * here — `list` is already a filtered copy holding only the `<style>` children, of which a
+   * map carries a handful.
+   */
   getStyleNameAt(date: number): string | null {
-    const list = this.getAllElementsOfType('style');
-    for (let i = list.length - 1; i >= 0; --i) {
-      if (list[i].getKey() <= date) return getAttributeValue('name.ref', list[i].getValue());
+    let inForce: KeyValue<number, Element> | null = null;
+    for (const entry of this.getAllElementsOfType('style')) {
+      if (entry.getKey() <= date) inForce = entry;
     }
-    return null;
+    return inForce === null ? null : getAttributeValue('name.ref', inForce.getValue());
   }
 
   /**

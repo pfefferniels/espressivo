@@ -27,6 +27,7 @@
  */
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
+import { elementAt } from '../prelude/index.js';
 
 /** One entry of the ordered view: an instruction (or a `<style>` switch) and where it sits. */
 export interface DatedEntry {
@@ -66,9 +67,14 @@ export function orderedEntries(map: Element): readonly DatedEntry[] {
     if (element.getLocalName() === 'style' && attribute('name.ref', element) === null) continue;
 
     const date = parseFloat(dateAttribute.getValue());
+    // Linear from the end and not a binary search, for the reason `GenericMap.insertionIndexFor`
+    // states at length: `parseFloat` answers NaN for a malformed `@date`, NaN compares false
+    // against everything, and this scan therefore puts such an entry at 0 and steps over it —
+    // where a bisection would split on a partition point that is false on both sides. The two
+    // agree on every ordered input; this module exists to agree with `GenericMap` on all of them.
     let index = 0;
     for (let j = entries.length - 1; j >= 0; --j) {
-      if (date >= entries[j].date) {
+      if (date >= elementAt(entries, j, 'dated entry').date) {
         index = j + 1;
         break;
       }
@@ -105,7 +111,7 @@ export function orderedEntries(map: Element): readonly DatedEntry[] {
  */
 export function styleSwitchAt(entries: readonly DatedEntry[], index: number): Element | null {
   for (let j = index; j >= 0; --j) {
-    const element = entries[j].element;
+    const element = elementAt(entries, j, 'dated entry').element;
     if (element.getLocalName() === 'style') return element;
   }
   return null;

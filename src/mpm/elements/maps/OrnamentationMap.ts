@@ -3,6 +3,7 @@ import { attribute, firstChildElement, getAttributeValue } from '../../../xml/tr
 import { MPM_NAMESPACE, ORNAMENTATION_STYLE } from '../../names.js';
 import { DEFAULT_EXPAND_ORNAMENTS } from '../../RenderOptions.js';
 import type { RenderContext } from '../../RenderOptions.js';
+import { elementAt } from '../../../prelude/index.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { styleOfKind, type OrnamentationStyle } from '../styles/style.js';
@@ -263,7 +264,8 @@ export class OrnamentationMap extends GenericMap {
   getOrnamentDataOf(index: number): OrnamentData | null {
     const i = this.resolveEntryIndex(index, 'ornament');
     if (i < 0) return null;
-    const xml = this.elements[i].getValue();
+    const entry = this.entryAt(i);
+    const xml = entry.getValue();
     const od = new OrnamentData();
     const nameRefAtt = attribute('name.ref', xml);
     if (nameRefAtt === null) return null;
@@ -273,7 +275,7 @@ export class OrnamentationMap extends GenericMap {
     if (od.style === null) return null;
     od.ornamentDef = od.style.getDef(od.ornamentDefName) ?? null;
     if (od.ornamentDef === null) return null;
-    od.date = this.elements[i].getKey();
+    od.date = entry.getKey();
     od.xml = xml;
     const noteOrderAtt = xml.getAttribute('note.order');
     if (noteOrderAtt !== null) {
@@ -467,7 +469,7 @@ export class OrnamentationMap extends GenericMap {
       od.ornamentDef = od.style.getDef(od.ornamentDefName) ?? null;
       if (od.ornamentDef === null) continue;
 
-      od.date = this.elements[i].getKey();
+      od.date = this.entryAt(i).getKey();
 
       const scaleAtt = attribute('scale', ornamentXml);
       if (scaleAtt !== null) od.scale = parseFloat(scaleAtt.getValue());
@@ -535,16 +537,20 @@ export class OrnamentationMap extends GenericMap {
         // sort the chords in the indicated order on the basis of the chord's first note's pitch
         const finalNoteOrderAscending = noteOrderAscending;
         chordSequence.sort((n1, n2) => {
-          const pitch1 = parseFloat(getAttributeValue('midi.pitch', n1[0]));
-          const pitch2 = parseFloat(getAttributeValue('midi.pitch', n2[0]));
+          const pitch1 = parseFloat(getAttributeValue('midi.pitch', elementAt(n1, 0, 'chord')));
+          const pitch2 = parseFloat(getAttributeValue('midi.pitch', elementAt(n2, 0, 'chord')));
           return Math.sign(pitch1 - pitch2) * finalNoteOrderAscending;
         });
       }
 
       // apply the ornament to the notes
+      // Generated notes go into the FIRST map, whatever part the principals came from —
+      // the reference's choice, kept. Reaching here at all means `chordSequence` was not
+      // empty, and every way of filling it reads from `maps`, so there is one.
+      const primary = elementAt(maps, 0, 'ornamentation target');
       for (const chord of od.apply(chordSequence)) {
         for (const note of chord) {
-          maps[0].addElement(note);
+          primary.addElement(note);
         }
       }
     }

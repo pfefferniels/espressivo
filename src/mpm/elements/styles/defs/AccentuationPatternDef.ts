@@ -5,6 +5,20 @@ import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
 import { requireDefName, skipMalformedDef } from './defName.js';
+import { elementAt, head, isNonEmpty, last } from '../../../../prelude/index.js';
+
+/**
+ * One accentuation's four numbers, in Java's order: `[beat, value, transition.from,
+ * transition.to]`.
+ *
+ * A tuple and not a `number[]`, because the length is the whole contract — every read in this
+ * file is one of exactly four slots, and `double[4]` is what Java stores. Written as
+ * `number[]` the compiler cannot tell `[1]` from `[97]`, which under
+ * `noUncheckedIndexedAccess` made every one of those reads `number | undefined` and every
+ * write to `[2]` a type error. Naming the shape answers all of them at once, and it is the
+ * reason `getAccentuationAt` no longer needs the four non-null assertions it carried.
+ */
+export type AccentuationTuple = [beat: number, value: number, from: number, to: number];
 
 /**
  * An `accentuationPatternDef`: a metrical accentuation pattern over one bar of `length`
@@ -27,7 +41,7 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
   /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
   readonly kind = 'accentuationPattern';
   private length = 4.0;
-  private readonly accentuations: KeyValue<number[], Element>[] = [];
+  private readonly accentuations: KeyValue<AccentuationTuple, Element>[] = [];
   /**
    * The `@length` node, held so {@link setLength} writes where {@link parseData} read.
    *
@@ -74,7 +88,12 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
     for (const ac of allChildElements(xml, 'accentuation')) {
       const att = attribute('beat', ac);
       if (att === null) continue;
-      const accentuation = [parseJavaDouble(att.getValue(), 'accentuation/@beat'), 0.0, 0.0, 0.0];
+      const accentuation: AccentuationTuple = [
+        parseJavaDouble(att.getValue(), 'accentuation/@beat'),
+        0.0,
+        0.0,
+        0.0,
+      ];
 
       const valAtt = attribute('value', ac);
       if (valAtt !== null)
@@ -184,7 +203,12 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
   addAccentuationFromXml(xml: Element): number {
     const att = xml.getAttribute('beat');
     if (att === null) return -1;
-    const accentuation = [parseJavaDouble(att.getValue(), 'accentuation/@beat'), 0.0, 0.0, 0.0];
+    const accentuation: AccentuationTuple = [
+      parseJavaDouble(att.getValue(), 'accentuation/@beat'),
+      0.0,
+      0.0,
+      0.0,
+    ];
 
     const valAtt = xml.getAttribute('value');
     if (valAtt !== null)
@@ -210,9 +234,9 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
    * that equal beats keep insertion order (the new one lands after its equals).
    * @returns the index it was inserted at, which is also the XML child index to use
    */
-  private addAccentuationToArrayList(accentuation: number[], xml: Element): number {
+  private addAccentuationToArrayList(accentuation: AccentuationTuple, xml: Element): number {
     for (let j = this.accentuations.length - 1; j >= 0; --j) {
-      if (accentuation[0] >= this.accentuations[j].getKey()[0]) {
+      if (accentuation[0] >= elementAt(this.accentuations, j, 'accentuation').getKey()[0]) {
         this.accentuations.splice(j + 1, 0, new KeyValue(accentuation, xml));
         return j + 1;
       }
@@ -229,8 +253,8 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
    */
   private sortXml(): void {
     const xml = this.getXml();
-    for (let i = 0; i < this.accentuations.length; ++i) {
-      const accentuation = this.accentuations[i].getValue();
+    for (const [i, entry] of this.accentuations.entries()) {
+      const accentuation = entry.getValue();
       xml.removeChild(accentuation);
       xml.insertChild(accentuation, i);
     }
@@ -243,24 +267,34 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
    * the upper bound — as Java does. A negative index falls through the guard and throws.
    */
   removeAccentuation(index: number): void {
-    if (index >= this.accentuations.length) return;
-    this.getXml().removeChild(this.accentuations[index].getValue());
+    const entry = this.entryAt(index);
+    if (entry === null) return;
+    this.getXml().removeChild(entry.getValue());
     this.accentuations.splice(index, 1);
   }
 
+  /**
+   * The entry at `index` under Java's asymmetric bound rule, stated once for the three
+   * accessors that share it: past the end is "no such accentuation", and a NEGATIVE index
+   * throws rather than answering — as it did when the read produced `undefined` and failed on
+   * the property access, only now naming the index and the bound.
+   */
+  private entryAt(index: number): KeyValue<AccentuationTuple, Element> | null {
+    if (index >= this.accentuations.length) return null;
+    return elementAt(this.accentuations, index, 'accentuation');
+  }
+
   /** The live list, not a copy — mutating it desynchronises the def from its XML. */
-  getAllAccentuations(): KeyValue<number[], Element>[] {
+  getAllAccentuations(): KeyValue<AccentuationTuple, Element>[] {
     return this.accentuations;
   }
 
-  getAccentuationAttributes(index: number): number[] | null {
-    if (index >= this.accentuations.length) return null;
-    return this.accentuations[index].getKey();
+  getAccentuationAttributes(index: number): AccentuationTuple | null {
+    return this.entryAt(index)?.getKey() ?? null;
   }
 
   getAccentuationXml(index: number): Element | null {
-    if (index >= this.accentuations.length) return null;
-    return this.accentuations[index].getValue();
+    return this.entryAt(index)?.getValue() ?? null;
   }
 
   /**
@@ -297,25 +331,33 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
    * `MetricalAccentuationMap` only reach it through parsed patterns that have some.
    */
   getAccentuationAt(beatPosition: number): number {
-    if (beatPosition < this.accentuations[0].getKey()[0]) return 0.0;
-    if (beatPosition >= this.length + 1.0)
-      return this.accentuations[this.accentuations.length - 1].getKey()[3];
+    const all = this.accentuations;
+    if (!isNonEmpty(all))
+      throw new RangeError('accentuationPatternDef has no accentuation to read a beat position at');
+    if (beatPosition < head(all).getKey()[0]) return 0.0;
+    if (beatPosition >= this.length + 1.0) return last(all).getKey()[3];
 
-    let accentuation: number[] | null = null;
+    // Seeded with the FIRST accentuation instead of null, which is where the four non-null
+    // assertions went. It is not a fallback: the loop's last possible iteration is `i === 0`,
+    // and it assigns exactly this. The guard above has already established
+    // `beatPosition >= all[0].beat`, so that iteration either returns (equal) or breaks
+    // (greater) — it cannot fall out of the bottom leaving the seed in place, and if it
+    // somehow did, the seed is still the value the loop would have left.
+    let accentuation: AccentuationTuple = head(all).getKey();
     let segmentEnd = this.length + 1.0;
-    for (let i = this.accentuations.length - 1; i >= 0; --i) {
-      accentuation = this.accentuations[i].getKey();
+    for (let i = all.length - 1; i >= 0; --i) {
+      accentuation = elementAt(all, i, 'accentuation').getKey();
       if (beatPosition === accentuation[0]) return accentuation[1];
       if (beatPosition > accentuation[0]) {
-        if (i < this.accentuations.length - 1) segmentEnd = this.accentuations[i + 1].getKey()[0];
+        if (i < all.length - 1) segmentEnd = elementAt(all, i + 1, 'accentuation').getKey()[0];
         break;
       }
     }
 
     return (
-      ((beatPosition - accentuation![0]) * (accentuation![3] - accentuation![2])) /
-        (segmentEnd - accentuation![0]) +
-      accentuation![2]
+      ((beatPosition - accentuation[0]) * (accentuation[3] - accentuation[2])) /
+        (segmentEnd - accentuation[0]) +
+      accentuation[2]
     );
   }
 

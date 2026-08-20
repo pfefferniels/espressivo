@@ -625,6 +625,35 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
     expect(estimates.unreachableLevels).toBeGreaterThan(0);
   });
 
+  it('counts the notes before the FIRST instruction, and only those (§7.4)', () => {
+    // The other half of `unreachableLevels`, and the half the corpus does not pin: the render
+    // loop writes a flat 100.0 onto every note EARLIER than the first `<dynamics>`, so the
+    // window that counts opens at that instruction's date and not at the map's last one.
+    // Nothing in the suite distinguished the two — a build with `last` in place of `first`
+    // passed every test in the tree — because the fixtures with a dynamics map either start
+    // it at date 0 or carry an unterminated final transition that swamps the count.
+    //
+    // Two instructions, the second WITHOUT `@transition.to`, so the unterminated-ramp arm
+    // contributes nothing and the number below is the before-the-first count alone.
+    const mpm = document(
+      performance(
+        'P',
+        '<dynamicsMap><dynamics date="1440.0" volume="60.0"/>' +
+          '<dynamics date="2880.0" volume="90.0"/></dynamicsMap>',
+      ),
+    );
+    const notes = [0, 720, 1440, 2160, 2880, 3600]
+      .map((date, i) => `<note xml:id="n${String(i)}" date="${String(date)}.0" duration="720.0"/>`)
+      .join('');
+    const msm =
+      `<msm pulsesPerQuarter="720"><part name="X" number="1"><dated><score>${notes}` +
+      `</score></dated></part></msm>`;
+
+    const { estimates } = exaggerateMpm(mpm, { factors, msm: msm as XmlText }).report
+      .performances[0]!;
+    expect(estimates.unreachableLevels).toBe(2);
+  });
+
   it('counts every note when no dynamics map governs the part at all', () => {
     // `tempo.mpm` has a tempoMap and nothing else, so every note gets the renderer's hardcoded
     // 100.0 and no dynamics factor can move any of them.

@@ -757,10 +757,13 @@ class LevelPass {
       byStyleDef.set(record.styleDef, siblings);
     }
     for (const siblings of byStyleDef.values()) {
-      for (let i = 0; i < siblings.length; ++i) {
-        for (let j = i + 1; j < siblings.length; ++j) {
-          const first = siblings[i];
-          const second = siblings[j];
+      // Every unordered pair, once, in encounter order. Written as `entries()` over the outer
+      // element and a `slice` for the tail rather than two index counters, because indices are
+      // the only thing the old spelling needed them for and an indexed read is a bound the
+      // reader has to re-prove. A sibling group is one style def's worth of level names, so
+      // the slice per outer step is bounded by a handful of elements.
+      for (const [i, first] of siblings.entries()) {
+        for (const second of siblings.slice(i + 1)) {
           if (first.value === second.value || first.after !== second.after) continue;
           const firstName = readAttributeValue(first.def, 'name') ?? '';
           const secondName = readAttributeValue(second.def, 'name') ?? '';
