@@ -1,13 +1,12 @@
 {
   "--noUncheckedIndexedAccess": {
     "src/api": 1,
-    "src/comparison": 454,
     "src/expression": 17,
     "src/mei": 67,
     "src/midi": 87,
     "src/mpm": 4,
     "src/mpm/elements": 4,
-    "src/mpm/elements/maps": 160,
+    "src/mpm/elements/maps": 153,
     "src/mpm/elements/maps/data": 19,
     "src/mpm/elements/metadata": 4,
     "src/mpm/elements/styles/defs": 29,
