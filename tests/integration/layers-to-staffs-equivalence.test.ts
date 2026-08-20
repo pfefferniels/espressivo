@@ -39,22 +39,33 @@ function canonicalizeUuids(xml: string): string {
   });
 }
 
-/** Kept in step with `cross-validation.test.ts`'s function of the same name. */
+/**
+ * Kept in step with `cross-validation.test.ts`'s function of the same name — which it had
+ * stopped being.
+ *
+ * That suite shed four normalisers as the defects they were hiding got fixed: the XML
+ * declaration hardcoded with `encoding="UTF-8"`, the default-namespace declaration re-emitted
+ * on every namespaced element, a `<comment>` normaliser masking exactly zero, and a trailing
+ * `.trim()` covering a missing final newline. This one kept all four, and its comment claiming
+ * otherwise is how that went unnoticed.
+ *
+ * Measured before removing them: each of the four can be deleted on its own with all 48 tests
+ * still green, and all four together likewise. They were masking nothing here either — the
+ * serializer fixes reached this suite too, it just never dropped the scaffolding.
+ *
+ * What is left is what `cross-validation` kept, and for the same reasons: UUIDs canonicalised
+ * by first-occurrence order rather than deleted, so `goto/@target.id` to `marker/@xml:id`
+ * wiring stays checkable; resource URIs, which are file paths; and `="720.0"` versus `="720"`,
+ * the one examined and accepted difference from Java's `Double.toString`.
+ */
 function normalizeXml(xml: string): string {
   return canonicalizeUuids(xml)
-    .replace(/<\?xml[^?]*\?>/, '')
-    .replace(/ xmlns="http:\/\/www\.cemfi\.de\/mpm\/ns\/1\.0"/g, (match, offset, str) => {
-      const firstIdx = str.indexOf(' xmlns="http://www.cemfi.de/mpm/ns/1.0"');
-      return offset === firstIdx ? match : '';
-    })
-    .replace(/<comment>[^<]*<\/comment>/, '<comment>NORMALIZED</comment>')
     .replace(
       /xml:id="[^"]*_meico_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/g,
       'xml:id="UUID_PLACEHOLDER"',
     )
     .replace(/uri="[^"]*\.(mei|msm|mpm)"/g, 'uri="NORMALIZED.$1"')
-    .replace(/="(-?\d+)\.0"/g, '="$1"')
-    .trim();
+    .replace(/="(-?\d+)\.0"/g, '="$1"');
 }
 
 const meiFiles = readdirSync(MEI_DIR).filter((f) => f.endsWith('.mei'));
