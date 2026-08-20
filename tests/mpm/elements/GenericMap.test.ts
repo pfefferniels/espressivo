@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { errOf, okValue } from '../../support/result.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
-import { KeyValue } from '../../../src/supplementary/KeyValue.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 
 /**
@@ -79,7 +78,7 @@ describe('GenericMap', () => {
     });
 
     it('should reject a null element rather than printing it', () => {
-      expect(errOf(GenericMap.createGenericMap(null as unknown as Element))).toEqual({
+      expect(errOf(GenericMap.createGenericMap(null))).toEqual({
         kind: 'noElement',
         what: 'GenericMap',
       });
@@ -224,7 +223,7 @@ describe('GenericMap', () => {
   describe('removeElement', () => {
     it('should remove an element by index', () => {
       const map = makeMap([100, 200, 300]);
-      map.removeElement(1);
+      map.removeElementAt(1);
       expect(map.size()).toBe(2);
       const dates = map.getAllElements().map((kv) => kv.getKey());
       expect(dates).toEqual([100, 300]);
@@ -232,20 +231,20 @@ describe('GenericMap', () => {
 
     it('should do nothing for an out-of-range index', () => {
       const map = makeMap([100, 200]);
-      map.removeElement(10);
+      map.removeElementAt(10);
       expect(map.size()).toBe(2);
     });
 
     it('should remove the first element by index 0', () => {
       const map = makeMap([100, 200, 300]);
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(2);
       expect(map.getAllElements()[0].getKey()).toBe(200);
     });
 
     it('should remove the last element by its index', () => {
       const map = makeMap([100, 200, 300]);
-      map.removeElement(2);
+      map.removeElementAt(2);
       expect(map.size()).toBe(2);
       expect(map.getAllElements()[1].getKey()).toBe(200);
     });
@@ -887,7 +886,7 @@ describe('GenericMap', () => {
       e2.addAttribute(new Attribute('date', '100'));
       map.addElement(e2);
       expect(map.size()).toBe(2);
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(1);
     });
   });

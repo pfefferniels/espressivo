@@ -137,16 +137,20 @@ export class MetricalAccentuationMap extends GenericMap {
     for (let accIndex = 0; accIndex < this.size(); ++accIndex) {
       const md = this.getMetricalAccentuationDataOf(accIndex);
       if (md === null) continue;
-      // PARITY — the ONE assertion in this file, and it is deliberate. Java reads a datum
-      // whose `accentuationPatternDef` is null when the style is in scope but names no def
-      // by this name, and then dereferences it unguarded: the render aborts with a
+      // PARITY — the abort, and it is deliberate. Java reads a datum whose
+      // `accentuationPatternDef` is null when the style is in scope but names no def by this
+      // name, and then dereferences it unguarded: the render dies with a
       // NullPointerException. Skipping the instruction instead would render a document the
       // reference refuses, and `src/comparison/accentuationCurve.ts` (R21) measures the
-      // difference between the two. Binding the null to a non-null-typed local rather than
-      // asserting at each of the three uses keeps the throw where it was — on the
-      // `getLength()` below, and with `getLength` in the TypeError's message, which that
-      // module quotes.
-      const def = md.accentuationPatternDef!;
+      // difference between the two.
+      //
+      // This used to be `md.accentuationPatternDef!` — the one assertion in the file, whose
+      // whole job was to let the very next line throw. The branch says the same thing and
+      // raises the same error: same class, same message, same line, so R21's quoted
+      // `TypeError: Cannot read properties of null (reading 'getLength')` is still literally
+      // what a caller sees. Do not "improve" the message without reading that module first.
+      const def = md.accentuationPatternDef;
+      if (def === null) throw new TypeError("Cannot read properties of null (reading 'getLength')");
       let patternLengthTicks = (def.getLength() * ppq4) / tsDenominator;
       for (; mapIndex < map.size(); ++mapIndex) {
         const mapEntry = elementAt(map.elements, mapIndex, 'target entry');

@@ -189,16 +189,24 @@ export class GenericMap extends AbstractXmlSubtree {
 
   /**
    * Create a map either from a local name (a fresh, empty map) or from an existing
-   * element (parsed). The two overloads are kept separate rather than merged into
-   * `string | Element` because they are genuinely different construction modes, and the
-   * signature is the only place that says so.
+   * element (parsed).
+   *
+   * The two used to be two overloads, kept apart on the argument that they are "genuinely
+   * different construction modes, and the signature is the only place that says so". The
+   * signature was not saying it: both arms go to {@link makeMap}, whose own parameter is
+   * this union, and `string` and `Element` are disjoint — so unlike `Header.addStyleType`,
+   * where the two modes really do have different bodies and different return types, there is
+   * nothing here for two signatures to state that one does not. What the pair DID do was
+   * hide the third case the implementation has always accepted and reported on, `null`,
+   * which a test was reaching by casting past the compiler.
+   *
+   * 90 call sites, split roughly evenly between the two forms and almost all in tests; none
+   * of them moves.
    *
    * Reports the reason instead of printing it — the whole MPM parse stays best-effort, and
    * a malformed map still must not abort the surrounding document, but "which map, and why"
    * is now something the surrounding document's reader can find out.
    */
-  static createGenericMap(name: string): Result<GenericMap, MpmParseError>;
-  static createGenericMap(xml: Element): Result<GenericMap, MpmParseError>;
   static createGenericMap(nameOrXml: string | Element | null): Result<GenericMap, MpmParseError> {
     return GenericMap.makeMap(nameOrXml, 'GenericMap', (xml) => new GenericMap(xml));
   }
@@ -458,7 +466,8 @@ export class GenericMap extends AbstractXmlSubtree {
     return this.elements.findIndex((e) => e.getValue() === element);
   }
 
-  addElement(xml: Element): number {
+  /** Null is accepted and refused with a reason on stderr, as `GenericMap.java` does. */
+  addElement(xml: Element | null): number {
     if (xml === null) {
       console.error('Cannot add the Element to GenericMap. XML Element is null.');
       return -1;
@@ -522,23 +531,32 @@ export class GenericMap extends AbstractXmlSubtree {
     return 0;
   }
 
-  removeElement(index: number): void;
-  removeElement(xml: Element): void;
-  removeElement(indexOrXml: number | Element): void {
-    if (typeof indexOrXml === 'number') {
-      // An index past the end is a no-op; a NEGATIVE one throws, as it always has — the read
-      // used to produce undefined and fail on `.getValue()`, and now says which index and
-      // which bound. Only the message changed. There is no `< 0` guard because adding one
-      // would turn that throw into a silent no-op, which is a different contract.
-      if (indexOrXml >= this.elements.length) return;
-      this.getXml().removeChild(elementAt(this.elements, indexOrXml, 'removeElement').getValue());
-      this.elements.splice(indexOrXml, 1);
-    } else {
-      const at = this.getElementIndexOf(indexOrXml);
-      if (at < 0) return;
-      this.getXml().removeChild(indexOrXml);
-      this.elements.splice(at, 1);
-    }
+  /**
+   * Remove the entry at `index`.
+   *
+   * An index past the end is a no-op; a NEGATIVE one throws, as it always has — the read
+   * used to produce undefined and fail on `.getValue()`, and now says which index and
+   * which bound. Only the message changed. There is no `< 0` guard because adding one
+   * would turn that throw into a silent no-op, which is a different contract.
+   *
+   * This and {@link removeElement} were one overload set (`removeElement(index)` /
+   * `removeElement(xml)`) picked apart by a `typeof` in the body. They remove different
+   * things — a position in the sequence, and a particular element — so they are two methods
+   * with two names, which is the same information the overload pair carried and the only
+   * form of it the compiler agrees is not one signature written twice.
+   */
+  removeElementAt(index: number): void {
+    if (index >= this.elements.length) return;
+    this.getXml().removeChild(elementAt(this.elements, index, 'removeElement').getValue());
+    this.elements.splice(index, 1);
+  }
+
+  /** Remove this very element, if it is in the map; an element it does not hold is a no-op. */
+  removeElement(xml: Element): void {
+    const at = this.getElementIndexOf(xml);
+    if (at < 0) return;
+    this.getXml().removeChild(xml);
+    this.elements.splice(at, 1);
   }
 
   addStyleSwitch(date: number, styleName: string, id?: string | null): number {
