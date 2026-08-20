@@ -75,7 +75,7 @@ import {
   type MidiMessageKind,
 } from './MidiTypes.js';
 import * as EventMaker from './EventMaker.js';
-import { matchKind } from '../prelude/index.js';
+import { matchKind, zipWith } from '../prelude/index.js';
 
 /**
  * The name {@link Midi.print} gives each message family.
@@ -139,6 +139,15 @@ export class Midi {
    * malformed event body costs one track rather than the file. It throws only on a
    * missing tag.
    *
+   * Permissive is not the same as credulous, and one case used to blur the two: a track
+   * chunk whose declared length runs past the end of the file. The event loop's bound
+   * tests where an event *starts*, so the last event could still read its status byte off
+   * the end — and `data[offset]` there was `undefined`, which compares false against
+   * everything, so the track gained a phantom channel message on command 0 with undefined
+   * data bytes. That message is now not read: the status read is the one place the end of
+   * the data ends the track, and the resynchronisation to `trackEnd` does the rest.
+   * Every well-formed file is unaffected, and no reference `.mid` changes by a byte.
+   *
    * Two decoding details the exported bytes depend on:
    *
    * - **Running status.** A byte below 0x80 where a status byte is expected reuses
@@ -154,8 +163,12 @@ export class Midi {
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     let offset = 0;
 
-    // Read MThd header chunk
-    const headerTag = String.fromCharCode(data[0], data[1], data[2], data[3]);
+    // Read MThd header chunk. Spreading a four-byte view rather than subscripting four
+    // times keeps the short-file case an *answer* instead of four absent bytes: a file with
+    // two bytes in it produces a two-character tag, which is not 'MThd', which is the error
+    // below. (`String.fromCharCode(undefined, …)` used to produce NUL characters and reach
+    // the same throw, so the behaviour is unchanged — it just no longer depends on that.)
+    const headerTag = String.fromCharCode(...data.subarray(0, 4));
     if (headerTag !== 'MThd') {
       throw new Error('Invalid MIDI file: missing MThd header');
     }
@@ -196,13 +209,9 @@ export class Midi {
 
     // Read each track
     for (let t = 0; t < numTracks && offset < data.length; t++) {
-      // Read MTrk header
-      const trackTag = String.fromCharCode(
-        data[offset],
-        data[offset + 1],
-        data[offset + 2],
-        data[offset + 3],
-      );
+      // Read MTrk header — as the MThd read above, a four-byte view rather than four
+      // subscripts, so a chunk header cut short by the end of the file is a short tag.
+      const trackTag = String.fromCharCode(...data.subarray(offset, offset + 4));
       if (trackTag !== 'MTrk') {
         throw new Error(`Invalid MIDI file: missing MTrk header at offset ${offset}`);
       }
@@ -218,19 +227,42 @@ export class Midi {
       let absoluteTick = 0;
 
       while (offset < trackEnd && offset < data.length) {
-        // Read delta time (variable-length quantity)
+        // Read delta time (variable-length quantity).
+        //
+        // `?? 0` for a group past the end of the data is not a new decision: `undefined`
+        // coerces to `NaN` and `NaN & 0x7f` is 0, so the group already contributed nothing
+        // and `NaN & 0x80` already stopped the loop. Naming the 0 makes that visible
+        // instead of leaving it to a coercion three operators away.
+        //
+        // **A control on that 0 comes back green** — `?? 1` passes all 458 tests — and the
+        // reason is a proof rather than a gap in the suite. `offset` only ever grows, so a
+        // group read past the end guarantees the status read below is past the end too,
+        // which breaks out of the track; `deltaTime` and the `absoluteTick` it was just
+        // added to are discarded unread. The fallback here is unreachable *in its effect*,
+        // whatever value it takes, and no test could distinguish 0 from 1.
         let deltaTime = 0;
         let b: number;
         do {
-          b = data[offset++];
+          b = data[offset++] ?? 0;
           deltaTime = (deltaTime << 7) | (b & 0x7f);
         } while (b & 0x80);
 
         absoluteTick += deltaTime;
 
-        // Read the status byte
-        let statusByte = data[offset];
+        // Read the status byte.
+        //
+        // This is the one read where the end of the data is a real possibility and the old
+        // spelling got it wrong. The `while` above only tests where an *event* starts, so a
+        // delta time that runs to the last byte leaves nothing for the status; `data[offset]`
+        // was then `undefined`, every comparison against it was false, and the track ended
+        // with a phantom channel message on command 0 carrying undefined data bytes. There is
+        // no such message. A track chunk whose declared length outruns the file is over,
+        // whatever the length claimed, so stop reading it — the resynchronisation to
+        // `trackEnd` below then does what it always did.
+        const firstByte = data.at(offset);
+        if (firstByte === undefined) break;
 
+        let statusByte = firstByte;
         if (statusByte < 0x80) {
           // Running status: use previous status byte
           statusByte = runningStatus;
@@ -244,10 +276,10 @@ export class Midi {
         // Parse the message based on type
         if (statusByte === 0xff) {
           // Meta event
-          const metaType = data[offset++];
+          const metaType = data[offset++] ?? 0;
           let metaLength = 0;
           do {
-            b = data[offset++];
+            b = data[offset++] ?? 0;
             metaLength = (metaLength << 7) | (b & 0x7f);
           } while (b & 0x80);
 
@@ -260,7 +292,7 @@ export class Midi {
           // SysEx event
           let sysexLength = 0;
           do {
-            b = data[offset++];
+            b = data[offset++] ?? 0;
             sysexLength = (sysexLength << 7) | (b & 0x7f);
           } while (b & 0x80);
 
@@ -275,7 +307,9 @@ export class Midi {
           // Channel message (ShortMessage)
           const command = statusByte & 0xf0;
           const channel = statusByte & 0x0f;
-          const data1 = data[offset++];
+          // A data byte the file does not have reads as 0. `channelMessage` masks its
+          // arguments to seven bits, so the old `undefined` reached the wire as 0 anyway.
+          const data1 = data[offset++] ?? 0;
 
           if (command === 0xc0 || command === 0xd0) {
             // Program Change or Channel Aftertouch: 1 data byte
@@ -283,7 +317,7 @@ export class Midi {
             track.add(new MidiEvent(msg, absoluteTick));
           } else {
             // All other channel messages: 2 data bytes
-            const data2 = data[offset++];
+            const data2 = data[offset++] ?? 0;
             const msg = channelMessage(command, channel, data1, data2);
             track.add(new MidiEvent(msg, absoluteTick));
           }
@@ -389,13 +423,20 @@ export class Midi {
     }
     const tickLength = this.getSequence().getTickLength(); // get length of the sequence so far
 
-    for (let t = 0; t < clone.getSequence().getTracks().length; ++t) {
-      // go through all tracks of the sequence to be added
-      const sourceTrack = clone.getSequence().getTracks()[t];
-      const targetTrack = this.getSequence().getTracks()[t];
+    // "Matched by index" is a zip, and the loop above has just made it a total one: this
+    // sequence now has at least as many tracks as the clone, so `zipWith`'s stop-at-the-
+    // shorter rule stops at the clone's last track, which is exactly the old loop bound.
+    // Pairing them up front is what removes the two `getTracks()[t]` reads that no length
+    // check could justify to the compiler; the pair array it builds is one entry per track.
+    const trackPairs = zipWith(
+      clone.getSequence().getTracks(),
+      this.getSequence().getTracks(),
+      (source, target) => [source, target] as const,
+    );
 
-      for (let e = 0; e < sourceTrack.size(); ++e) {
-        const event = sourceTrack.get(e);
+    for (const [sourceTrack, targetTrack] of trackPairs) {
+      // go through all tracks of the sequence to be added
+      for (const event of sourceTrack) {
         const message = event.getMessage();
         const newTick = event.getTick() + tickLength;
         targetTrack.add(new MidiEvent(message, newTick));
@@ -436,9 +477,8 @@ export class Midi {
     for (const track of this.sequence!.getTracks()) {
       // for each track in the old sequence
       const newTrack = newSequence.createTrack(); // create a new track in the new sequence
-      for (let e = 0; e < track.size(); ++e) {
+      for (const event of track) {
         // for each MIDI event in the old track
-        const event = track.get(e);
         const newDate = Math.trunc((event.getTick() * ppq) / ppqOld); // scale its date to the new ppq timing basis
         const newEvent = new MidiEvent(event.getMessage(), newDate); // create a new event carrying the same (immutable) message
         newTrack.add(newEvent); // add it to the new track
@@ -480,8 +520,7 @@ export class Midi {
     let maxSubdivisions = 1;
 
     for (const track of sequence.getTracks()) {
-      for (let e = 0; e < track.size(); ++e) {
-        const event = track.get(e);
+      for (const event of track) {
         const command = messageStatus(event.getMessage()) & 0xf0;
 
         if (onlyNotes && command !== EventMaker.NOTE_ON && command !== EventMaker.NOTE_OFF)
@@ -516,8 +555,7 @@ export class Midi {
 
     const tracks = this.sequence!.getTracks();
     for (const track of tracks) {
-      for (let e = 0; e < track.size(); ++e) {
-        const event = track.get(e);
+      for (const event of track) {
         const msg = event.getMessage();
         if (msg.kind === 'meta') {
           if (msg.type === EventMaker.META_Set_Tempo) {
@@ -567,11 +605,15 @@ export class Midi {
 
     let print = '';
 
-    for (let t = 0; t < sequence.getTracks().length; ++t) {
-      print += `Track ${t} contains ${sequence.getTracks()[t].size()} events.\n`;
-      for (let e = 0; e < sequence.getTracks()[t].size(); ++e) {
-        print += `@${sequence.getTracks()[t].get(e).getTick()} `;
-        const msg = sequence.getTracks()[t].get(e).getMessage();
+    // `entries()` because the track *number* is part of the output; the events are not
+    // numbered, so they are simply iterated. Between them the two loops retire four
+    // repetitions of `sequence.getTracks()[t]`, which re-read the track list once per
+    // printed field.
+    for (const [t, track] of sequence.getTracks().entries()) {
+      print += `Track ${t} contains ${track.size()} events.\n`;
+      for (const event of track) {
+        print += `@${event.getTick()} `;
+        const msg = event.getMessage();
         const familyName = MESSAGE_FAMILY_NAME[msg.kind];
         if (msg.kind === 'short') {
           print += `Channel: ${shortChannel(msg)} Command: ${shortCommand(msg)} `;
@@ -636,9 +678,8 @@ export class Midi {
     let eventsChanged = 0;
     for (const track of sequence.getTracks()) {
       // for all tracks
-      for (let e = 0; e < track.size(); ++e) {
+      for (const event of track) {
         // for all events in the track
-        const event = track.get(e);
         const msg = event.getMessage();
         if (msg.kind === 'short') {
           // if it is a ShortMessage
@@ -680,9 +721,8 @@ export class Midi {
     let eventsChanged = 0;
     for (const track of sequence.getTracks()) {
       // for all tracks
-      for (let e = 0; e < track.size(); ++e) {
+      for (const event of track) {
         // for all events in the track
-        const event = track.get(e);
         const msg = event.getMessage();
         if (msg.kind === 'short') {
           // if it is a ShortMessage
@@ -711,8 +751,7 @@ export class Midi {
     if (offsetInTicks === 0) return;
 
     for (const track of this.getSequence().getTracks()) {
-      for (let i = 0; i < track.size(); ++i) {
-        const e = track.get(i);
+      for (const e of track) {
         e.setTick(Math.max(0, e.getTick() + offsetInTicks)); // we do not allow negative tick values
       }
     }
@@ -745,8 +784,7 @@ export class Midi {
     const tracks = sequence.getTracks();
     for (const track of tracks) {
       const newTrack = cloneSeq.createTrack();
-      for (let e = 0; e < track.size(); ++e) {
-        const event = track.get(e);
+      for (const event of track) {
         const newEvent = new MidiEvent(event.getMessage(), event.getTick());
         newTrack.add(newEvent);
       }
@@ -862,8 +900,7 @@ export class Midi {
     let lastTick = 0;
     let hasEndOfTrack = false;
 
-    for (let i = 0; i < track.size(); i++) {
-      const event = track.get(i);
+    for (const event of track) {
       const msg = event.getMessage();
       const tick = event.getTick();
 
@@ -888,11 +925,15 @@ export class Midi {
           return m.type === 0x2f; // End of Track
         },
         sysex: (m) => {
-          // SysEx: status byte, then the length of the remaining bytes, then those bytes
-          bytes.push(m.bytes[0]);
+          // SysEx: status byte, then the length of the remaining bytes, then those bytes.
+          // A message with no bytes at all — which `readMidiData` cannot produce but a
+          // caller can — used to push `undefined` here and encode a length of −1; the
+          // buffer is copied into a `Uint8Array` at the end, where both become 0, so
+          // writing 0 and slicing an empty tail emits the same two bytes it always did.
+          bytes.push(m.bytes.at(0) ?? 0);
           writeVariableLength(bytes, m.bytes.length - 1);
-          for (let j = 1; j < m.bytes.length; j++) {
-            bytes.push(m.bytes[j]);
+          for (const byte of m.bytes.subarray(1)) {
+            bytes.push(byte);
           }
           return false;
         },

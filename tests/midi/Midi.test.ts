@@ -652,6 +652,32 @@ describe('Midi', () => {
       expect(print).toContain('---');
     });
 
+    // Every other test in this describe asserts with `toContain`, which says nothing about
+    // ORDER: reversing the track list, or the events inside a track, left all of them
+    // green. That was measured, not assumed — a control that reversed
+    // `sequence.getTracks()` passed 458 of 458. Java emits tracks in sequence order and
+    // events in tick order, and this file reproduces `Midi.java`'s print quirks down to the
+    // doubled space in "noteOn,  key:", so the one assertion that is worth having here is
+    // the whole string.
+    it('should emit tracks in sequence order and events in tick order', () => {
+      const midi = new Midi(480);
+      const t0 = midi.getSequence().createTrack();
+      const t1 = midi.getSequence().createTrack();
+      t0.add(EventMaker.createNoteOn(0, 0, 60, 100)!);
+      t0.add(EventMaker.createNoteOff(0, 480, 60, 64)!);
+      t1.add(EventMaker.createNoteOn(1, 0, 72, 90)!);
+
+      expect(Midi.print(midi.getSequence())).toBe(
+        'Track 0 contains 2 events.\n' +
+          '@0 Channel: 0 Command: 144 noteOn,  key: 60 velocity: 100\n' +
+          '@480 Channel: 0 Command: 128 noteOff,  key: 60 velocity: 64\n' +
+          '---' +
+          'Track 1 contains 1 events.\n' +
+          '@0 Channel: 1 Command: 144 noteOn,  key: 72 velocity: 90\n' +
+          '---',
+      );
+    });
+
     it('should spell out noteOn and noteOff with key and velocity', () => {
       const midi = new Midi(480);
       const track = midi.getSequence().createTrack();
@@ -821,6 +847,62 @@ describe('Midi', () => {
       expect(shortCommand(second)).toBe(ShortMessage.NOTE_ON);
       expect(shortData1(second)).toBe(62);
       expect(track.get(1).getTick()).toBe(96);
+    });
+
+    // A chunk length that outruns the file. The reader's loop bound tests where an *event*
+    // starts, so the delta time of the cut-off event is read happily and the status byte
+    // then falls off the end. That read used to yield `undefined`, which compares false
+    // against every status test, so the truncated event arrived as a channel message on
+    // command 0 with zeroed data bytes — a message the MIDI specification does not have,
+    // manufactured out of bytes the file never contained. The parser is permissive by
+    // design, and staying permissive means dropping the unreadable tail, not inventing it.
+    it('should not invent an event from a track chunk that outruns the file', () => {
+      const body = [
+        0x00,
+        0x90,
+        0x3c,
+        0x64, // @0 noteOn 60
+        0x81,
+        0x70, // delta 240 — and then the file stops
+        0x80,
+        0x3c,
+        0x40, // @240 noteOff 60, never delivered
+        0x00,
+        0xff,
+        0x2f,
+        0x00, // end of track, never delivered
+      ];
+      const data = new Uint8Array([
+        0x4d,
+        0x54,
+        0x68,
+        0x64,
+        0,
+        0,
+        0,
+        6,
+        0,
+        0,
+        0,
+        1,
+        0x01,
+        0xe0, // MThd, 1 track, ppq 480
+        0x4d,
+        0x54,
+        0x72,
+        0x6b,
+        0,
+        0,
+        0,
+        body.length, // MTrk, claiming all 13 body bytes
+        ...body.slice(0, 6), // …of which only the first six are actually there
+      ]);
+
+      const track = new Midi(data).getSequence().getTracks()[0];
+
+      expect(track.size()).toBe(1);
+      expect(shortCommand(track.get(0).getMessage() as ShortMessage)).toBe(ShortMessage.NOTE_ON);
+      expect(track.get(0).getTick()).toBe(0);
     });
 
     it('should accumulate delta times into absolute ticks', () => {
