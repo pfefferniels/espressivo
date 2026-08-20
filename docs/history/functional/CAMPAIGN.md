@@ -13,16 +13,25 @@ overturned; `PARITY.md` is the live divergence ledger. Neither is repeated here.
 
 | | branch point | now |
 | --- | --- | --- |
-| ESLint findings in `src/` | 1053 | 94 |
-| `src/` directories at zero | 5 of 10 | 8 of 10 |
-| non-null assertions in `src/` | 841 | 42 |
+| **ESLint findings in `src/`** | **1053** | **0** |
+| **non-null assertions in `src/`** | **841** | **0** |
+| `src/` directories at zero | 5 of 10 | **10 of 10** |
+| ESLint findings, whole repo | — | 27, none in source |
 | `noUncheckedIndexedAccess` in `src/` | 885 errors, flag off | 0, **flag on** |
+| `noUncheckedIndexedAccess` in `tests/` | 1047, opted out | 397, ratcheted |
 | `for (let …)` loops in `src/` | 337 | 199 |
 | converter ambient cursors | 8 | 0 |
-| tests | 5480 | 6204 |
+| tests | 5480 | **6277** |
 | `convertMeiToMsmMpm`, 4000-note score | 32,100 ms | 235 ms |
+| bench drift, µs/note over 250→2000 notes | — | convert ×1.0, render ×0.9 |
 
-200 commits, 249 files.
+236 commits. `npm run verify` green at 6277 tests / 147 files, exit 0; `npm run bench --check`
+reports no regression on a quiet machine.
+
+`src/` reaching zero is what settles the opening argument. The claim was that the findings were
+not a matter of taste but tracked the five Java-idiom layers, and the distribution held the
+whole way down — including in reverse, when `src/msm`, the one layer nobody had touched, *rose*
+to become the worst directory in the repo while everything around it fell.
 
 ## The diagnosis, and whether it held up
 
