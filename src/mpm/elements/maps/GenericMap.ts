@@ -174,9 +174,9 @@ export class GenericMap extends AbstractXmlSubtree {
     this.elements = [];
     this.setXml(xml);
 
-    const es = this.getXml().getChildElements();
-    for (let i = 0; i < es.size(); ++i) {
-      const e = es.get(i);
+    // The child list is a fixed snapshot, so the splice below — which rewrites `elements`,
+    // not the XML — cannot disturb the walk.
+    for (const e of this.getXml().getChildElements()) {
       const d = attribute('date', e);
       if (d === null) continue;
       if (e.getLocalName() === 'style' && attribute('name.ref', e) === null) continue;

@@ -428,10 +428,17 @@ export class OrnamentationMap extends GenericMap {
     // Built on first use, so that a document with no v3 ornament never walks the notes twice.
     let owners: ReadonlyMap<Element, GenericMap> | null = null;
 
-    // process each ornament entry in this ornamentationMap
-    for (let i = 0; i < this.size(); ++i) {
-      const ornamentXml = this.getElement(i);
-      if (ornamentXml === null) continue;
+    // Process each ornament entry in this ornamentationMap.
+    //
+    // Over the entries rather than over an index into them: the body wanted *both* halves
+    // of the entry — `getElement(i)` for the element and `entryAt(i).getKey()` for its date,
+    // a hundred lines apart — and looked each up separately. `getAllElements()` hands back
+    // the live index by reference, so this costs no copy, and the null test the indexed read
+    // needed goes with it: an entry's value is an `Element`, never null. Nothing in the body
+    // adds to or removes from *this* map (it writes into `maps`, which are the score's), so
+    // iterating the live array is safe here in a way it would not be in `addElement`.
+    for (const entry of this.getAllElements()) {
+      const ornamentXml = entry.getValue();
 
       // get the lookup style for subsequent ornaments
       //
@@ -469,7 +476,7 @@ export class OrnamentationMap extends GenericMap {
       od.ornamentDef = od.style.getDef(od.ornamentDefName) ?? null;
       if (od.ornamentDef === null) continue;
 
-      od.date = this.entryAt(i).getKey();
+      od.date = entry.getKey();
 
       const scaleAtt = attribute('scale', ornamentXml);
       if (scaleAtt !== null) od.scale = parseFloat(scaleAtt.getValue());

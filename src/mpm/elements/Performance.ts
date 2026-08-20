@@ -566,9 +566,7 @@ export class Performance extends AbstractXmlSubtree {
     globalTimeSignatureMap: GenericMap | null,
     ctx: RenderContext,
   ): void {
-    const parts = clone.getParts();
-    for (let p = 0; p < parts.size(); ++p) {
-      const msmPart = parts.get(p);
+    for (const msmPart of clone.getParts()) {
       const mpmPart = this.getCorrespondingPart(msmPart);
       if (mpmPart === null)
         console.error(
@@ -681,8 +679,12 @@ export class Performance extends AbstractXmlSubtree {
     } else {
       // fallback: add default velocity to all notes
       if (score !== null) {
-        for (let i = 0; i < score.size(); ++i) {
-          const e = score.getElement(i)!;
+        // Over the live entry index rather than an index into it — `getAllElements()` returns
+        // it by reference, so this is the same walk without the bound to re-prove and without
+        // the `!` that the `Element | null` from `getElement(i)` demanded. The body only adds
+        // an attribute; it does not touch the index it is walking.
+        for (const entry of score.getAllElements()) {
+          const e = entry.getValue();
           if (e.getLocalName() === 'note') e.addAttribute(new Attribute('velocity', '100.0'));
         }
       }
@@ -783,10 +785,9 @@ export class Performance extends AbstractXmlSubtree {
    * Read-only — it builds a new list and touches neither the MSM nor this performance.
    */
   private getAllMsmPartsAffectedByGlobalMap(msm: Msm, mapType: string): Element[] {
-    const msmPartsWithoutLocalMap: Element[] = [];
-
-    const parts = msm.getParts();
-    for (let i = 0; i < parts.size(); ++i) msmPartsWithoutLocalMap.push(parts.get(i));
+    // A copy of the part list, which the splices below then whittle down. `toArray()` is
+    // that copy — the loop it replaces built the same array one `get` at a time.
+    const msmPartsWithoutLocalMap: Element[] = msm.getParts().toArray();
 
     for (const part of this.getAllParts()) {
       if (part.getDated()!.getMap(mapType) !== null) {
@@ -827,8 +828,11 @@ export class Performance extends AbstractXmlSubtree {
       return;
     }
     if (map === null) return;
-    for (let i = 0; i < map.size(); ++i) {
-      const e = map.getElement(i)!;
+    // The live entry index, walked directly: the `!` this loop used to need was proving a
+    // bound that `for..of` never opens. No arithmetic moved — the sum below is the same
+    // expression in the same order.
+    for (const entry of map.getAllElements()) {
+      const e = entry.getValue();
       const dateAtt = attribute('date.perf', e);
       if (dateAtt !== null) e.addAttribute(new Attribute('milliseconds.date', dateAtt.getValue()));
       const endAtt = attribute('date.end.perf', e);

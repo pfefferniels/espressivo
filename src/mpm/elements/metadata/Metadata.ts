@@ -135,9 +135,7 @@ export class Metadata extends AbstractXmlSubtree {
   protected parseData(xml: Element): void {
     if (xml === null) throw new Error('Cannot generate Metadata object. XML Element is null.');
     this.setXml(xml);
-    const children = this.getXml().getChildElements();
-    for (let i = 0; i < children.size(); ++i) {
-      const child = children.get(i);
+    for (const child of this.getXml().getChildElements()) {
       switch (child.getLocalName()) {
         case 'author': {
           const a = Author.createAuthor(child);
