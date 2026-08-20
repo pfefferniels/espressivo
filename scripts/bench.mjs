@@ -20,11 +20,25 @@
  *       2000              3901               29
  *       4000              8025               15
  *
- * `renderExpressiveMidi` is flat — commit 980ae7e made it linear and it has stayed that way.
- * `convertMeiToMsmMpm` is quadratic, and 980ae7e never touched it: its 32 000-note figure was
- * the render stage alone. A 4000-note score — a modest piano piece — spends 32 seconds in the
- * converter and 60 milliseconds in the renderer. Keep the two columns separate or the
- * converter's curve hides inside a total.
+ * That table is **historical**: the converter was quadratic because every structural lookup
+ * went through `Element.query`, which serialises the subtree to XML text, re-parses it, and
+ * then pays XPath's node-set ordering — `compareDocumentPosition` over a flat `<score>` is
+ * O(n) per comparison. Replacing those with tree walks made it linear. Current figures are in
+ * `bench-baseline.json`; the same 4000-note score now takes about 235 ms.
+ *
+ * **Where the next win is, measured and not yet taken.** A `--cpu-prof` of the full pipeline
+ * at 16 000 notes now attributes **46.8% of self time to `descendantElements`** — the walk
+ * that replaced `query` — plus 16% to the garbage collector, while `Element.query` does not
+ * appear in the top twelve at all. Timing shows the residual shape: 4000 → 8000 → 16 000 notes
+ * costs 235 → 346 → 621 ms (roughly linear), but 16 000 → 32 000 costs 621 → 1926 ms, which is
+ * 3.1x for 2x the notes. So a Θ(n)-per-call walk is still being made O(n) times somewhere, with
+ * a constant small enough that it only shows past 16 000 notes. Two candidates worth measuring
+ * before optimising: the generator allocation per call (16% GC is a lot), and whichever caller
+ * runs it per note. Not chased here — the absolute numbers are fine and the remaining shape is
+ * beyond the size of a real score — but it is the next thing, and this is where it is written
+ * down.
+ *
+ * Keep the two columns separate regardless, or one stage's curve hides inside a total.
  *
  *   node scripts/bench.mjs                 measure and print
  *   node scripts/bench.mjs --save          write scripts/bench-baseline.json

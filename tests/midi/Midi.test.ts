@@ -2,11 +2,18 @@ import { describe, it, expect, vi } from 'vitest';
 import { Midi } from '../../src/midi/Midi.js';
 import {
   Sequence,
-  Track,
   MidiEvent,
   ShortMessage,
-  MetaMessage,
-  SysexMessage,
+  messageBytes,
+  messageLength,
+  metaMessage,
+  metaPayload,
+  shortCommand,
+  shortData1,
+  shortData2,
+  sysexMessage,
+  type MetaMessage,
+  type SysexMessage,
 } from '../../src/midi/MidiTypes.js';
 import { EventMaker } from '../../src/midi/EventMaker.js';
 
@@ -233,7 +240,7 @@ describe('Midi', () => {
       expect(changed).toBe(1);
 
       const msg = track.get(1).getMessage() as ShortMessage;
-      expect(msg.getCommand()).toBe(EventMaker.NOTE_OFF);
+      expect(shortCommand(msg)).toBe(EventMaker.NOTE_OFF);
     });
 
     it('should not change noteOn events with non-zero velocity', () => {
@@ -256,8 +263,8 @@ describe('Midi', () => {
       expect(changed).toBe(1);
 
       const msg = track.get(0).getMessage() as ShortMessage;
-      expect(msg.getCommand()).toBe(EventMaker.NOTE_ON);
-      expect(msg.getData2()).toBe(0);
+      expect(shortCommand(msg)).toBe(EventMaker.NOTE_ON);
+      expect(shortData2(msg)).toBe(0);
     });
   });
 
@@ -431,7 +438,7 @@ describe('Midi', () => {
       expect(tracks[0].get(0).getTick()).toBe(960);
       // the original event objects are not reused
       expect(tracks[0].get(0)).not.toBe(t0.get(0));
-      expect((tracks[1].get(0).getMessage() as ShortMessage).getData1()).toBe(42);
+      expect(shortData1(tracks[1].get(0).getMessage() as ShortMessage)).toBe(42);
     });
 
     it('should throw for a SMPTE sequence because getPPQ throws', () => {
@@ -734,7 +741,7 @@ describe('Midi', () => {
       track.add(EventMaker.createTrackName(0, 'Violin')!);
       track.add(EventMaker.createTempo(0, 120, 0.25)!);
       track.add(
-        new MidiEvent(new SysexMessage(new Uint8Array([0xf0, 0x7e, 0x7f, 0x09, 0x01, 0xf7])), 0),
+        new MidiEvent(sysexMessage(new Uint8Array([0xf0, 0x7e, 0x7f, 0x09, 0x01, 0xf7])), 0),
       );
       track.add(EventMaker.createProgramChange(0, 0, 40)!);
       track.add(EventMaker.createNoteOn(0, 0, 60, 100)!);
@@ -744,28 +751,28 @@ describe('Midi', () => {
       const readTrack = parsed.getSequence().getTracks()[0];
 
       const trackName = readTrack.get(0) as MidiEvent;
-      expect((trackName.getMessage() as MetaMessage).getType()).toBe(EventMaker.META_Track_Name);
-      expect(new TextDecoder().decode((trackName.getMessage() as MetaMessage).getData())).toBe(
+      expect((trackName.getMessage() as MetaMessage).type).toBe(EventMaker.META_Track_Name);
+      expect(new TextDecoder().decode(metaPayload(trackName.getMessage() as MetaMessage))).toBe(
         'Violin',
       );
 
       const tempo = readTrack.get(1).getMessage() as MetaMessage;
-      expect(tempo.getType()).toBe(EventMaker.META_Set_Tempo);
-      expect(EventMaker.byteArrayToInt(tempo.getData())).toBe(500000);
+      expect(tempo.type).toBe(EventMaker.META_Set_Tempo);
+      expect(EventMaker.byteArrayToInt(metaPayload(tempo))).toBe(500000);
 
       const sysex = readTrack.get(2).getMessage() as SysexMessage;
-      expect(sysex).toBeInstanceOf(SysexMessage);
-      expect(Array.from(sysex.getMessage())).toEqual([0xf0, 0x7e, 0x7f, 0x09, 0x01, 0xf7]);
+      expect(sysex.kind).toBe('sysex');
+      expect(Array.from(messageBytes(sysex))).toEqual([0xf0, 0x7e, 0x7f, 0x09, 0x01, 0xf7]);
 
       const pc = readTrack.get(3).getMessage() as ShortMessage;
-      expect(pc.getCommand()).toBe(ShortMessage.PROGRAM_CHANGE);
-      expect(pc.getData1()).toBe(40);
-      expect(pc.getLength()).toBe(2);
+      expect(shortCommand(pc)).toBe(ShortMessage.PROGRAM_CHANGE);
+      expect(shortData1(pc)).toBe(40);
+      expect(messageLength(pc)).toBe(2);
 
       // the export appends an end of track meta event
       const last = readTrack.get(readTrack.size() - 1).getMessage() as MetaMessage;
-      expect(last.getType()).toBe(EventMaker.META_End_of_Track);
-      expect(last instanceof MetaMessage).toBe(true);
+      expect(last.type).toBe(EventMaker.META_End_of_Track);
+      expect(last.kind).toBe('meta');
     });
 
     it('should resolve running status', () => {
@@ -810,9 +817,9 @@ describe('Midi', () => {
 
       const first = track.get(0).getMessage() as ShortMessage;
       const second = track.get(1).getMessage() as ShortMessage;
-      expect(first.getCommand()).toBe(ShortMessage.NOTE_ON);
-      expect(second.getCommand()).toBe(ShortMessage.NOTE_ON);
-      expect(second.getData1()).toBe(62);
+      expect(shortCommand(first)).toBe(ShortMessage.NOTE_ON);
+      expect(shortCommand(second)).toBe(ShortMessage.NOTE_ON);
+      expect(shortData1(second)).toBe(62);
       expect(track.get(1).getTick()).toBe(96);
     });
 
@@ -874,15 +881,13 @@ describe('Midi', () => {
       const midi = new Midi(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100)!);
-      track.add(
-        new MidiEvent(new MetaMessage(EventMaker.META_End_of_Track, new Uint8Array(0), 0), 480),
-      );
+      track.add(new MidiEvent(metaMessage(EventMaker.META_End_of_Track, new Uint8Array(0)), 480));
 
       const parsed = new Midi(midi.exportMidi()!);
       const readTrack = parsed.getSequence().getTracks()[0];
       const endOfTracks = Array.from({ length: readTrack.size() }, (_, i) =>
         readTrack.get(i).getMessage(),
-      ).filter((m) => m instanceof MetaMessage && m.getType() === EventMaker.META_End_of_Track);
+      ).filter((m) => m.kind === 'meta' && m.type === EventMaker.META_End_of_Track);
       expect(endOfTracks.length).toBe(1);
     });
 

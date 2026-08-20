@@ -1869,7 +1869,7 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
     );
     expect(e.toXML()).toBe(
       `<ornament xmlns="${MPM_NS}" date="720" name.ref="trill" noteid="#princNote" scale="0" note.order="|: #n1 #princNote :|" repetitions="3">` +
-        `<note xmlns="${MPM_NS}" xml:id="n1" interval.chromatic="1" />` +
+        `<note xml:id="n1" interval.chromatic="1" />` +
         `</ornament>`,
     );
   });
