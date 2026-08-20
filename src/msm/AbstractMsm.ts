@@ -1,7 +1,6 @@
 import { Element, Attribute, Elements, Document } from '../xml/XomTypes.js';
 import { XmlBase } from '../xml/XmlBase.js';
 import { descendantElements, requireParentElement } from '../xml/tree.js';
-import { MissingNodeError } from '../xml/errors.js';
 
 /**
  * This class is a primitive for Msm and Mpm.
@@ -48,26 +47,13 @@ export abstract class AbstractMsm extends XmlBase {
     }
   }
 
-  /**
-   * The root element, or a {@link MissingNodeError} naming the document that has none.
-   *
-   * {@link XmlBase.getRootElement} answers `null` for exactly one reason — there is no
-   * parsed document at all — because a {@link Document} always has a root. Most callers
-   * below have already established that (`isEmpty()` is false, or they built the document
-   * themselves two lines earlier) and used to say so with `getRootElement()!`, which is a
-   * claim the type system cannot check and which arrives, when wrong, as "cannot read
-   * property of null" somewhere inside XOM. This is that claim, checked.
-   *
-   * It replaces an assertion and not a guard: every site that had the `!` threw on an empty
-   * document before this existed too. Where absence is a real answer rather than a broken
-   * invariant, call {@link XmlBase.getRootElement} and branch on the null.
+  /*
+   * `requireRootElement` was declared here and is now inherited from {@link XmlBase},
+   * verbatim — docstring, message and all. `XmlBase` grew it for its own three tree-wide
+   * operations, which had the same three `getRootElement()!` assertions this was written to
+   * remove, and a third copy existed in `Mei`. Nothing below changes: the inherited method
+   * is the same method.
    */
-  protected requireRootElement(): Element {
-    const root = this.getRootElement();
-    if (root === null)
-      throw new MissingNodeError('this document is empty and therefore has no root element');
-    return root;
-  }
 
   /**
    * Generate a "raw" part element with its corresponding attributes and empty "header" and "dated" environments.

@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { XmlBase } from '../../src/xml/XmlBase.js';
-import { Document, Element, Attribute, Builder } from '../../src/xml/XomTypes.js';
+import { MissingNodeError } from '../../src/xml/errors.js';
+import { Document, Element, Attribute } from '../../src/xml/XomTypes.js';
 
 const SIMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <root>
@@ -42,6 +43,49 @@ describe('XmlBase – construction', () => {
     const xb = new XmlBase(SIMPLE_XML, true);
     expect(xb.isEmpty()).toBe(false);
     expect(xb.getRootElement()!.getLocalName()).toBe('root');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// what actually happens to malformed XML — PARITY.md XB1
+// ---------------------------------------------------------------------------
+/**
+ * `parseXmlString` reads as "catch the parse failure, leave the document empty", which is
+ * what Java's `XmlBase` does. Under `@xmldom/xmldom` it is not what happens, and these two
+ * tests are the measurement rather than the intention. See PARITY.md, `XB1`.
+ */
+describe('XmlBase – malformed XML throws, and only a <parsererror> yields an empty document', () => {
+  it.each([
+    ['plain text', 'this is not xml at all'],
+    ['empty source', ''],
+    ['no root element', '<!-- just a comment -->'],
+    ['two root elements', '<a/><b/>'],
+    ['an invalid element name', '<1a/>'],
+    ['an undeclared prefix', '<p:a/>'],
+    ['an unterminated CDATA', '<a><![CDATA[x</a>'],
+  ])('throws rather than yielding an empty document for %s', (_what, xml) => {
+    // Not a `ParsingException`: xmldom's own `ParseError` is raised inside
+    // `DOMParser.parseFromString`, before `Builder` can look for a `parsererror` node, so
+    // `parseXmlString`'s `else { throw e }` is the arm that runs. Java answers all seven of
+    // these with `isEmpty() === true`.
+    expect(() => new XmlBase(xml, true)).toThrow();
+  });
+
+  it('reports a well-formed document containing <parsererror> as a failed parse', () => {
+    // `Builder.build`'s `parsererror` probe is browser-`DOMParser` semantics — a browser
+    // signals a parse failure by *returning* a document containing that element, and xmldom
+    // never does. So the probe only ever fires as a false positive, and this is it: the one
+    // input that reaches `parseXmlString`'s `ParsingException` arm, and therefore the one way
+    // a document type in this port can be constructed with `isEmpty()` true.
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      expect(new XmlBase('<parsererror/>', true).isEmpty()).toBe(true);
+      // …and it does not have to be the root, nor the whole document
+      expect(new XmlBase('<root><parsererror/></root>', true).isEmpty()).toBe(true);
+      expect(errSpy).toHaveBeenCalled();
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });
 
@@ -145,6 +189,23 @@ describe('XmlBase – removeAllAttributes', () => {
     const xb = new XmlBase(SIMPLE_XML, true);
     const count = xb.removeAllAttributes('nonexistent');
     expect(count).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the three tree-wide operations on an empty document
+// ---------------------------------------------------------------------------
+describe('XmlBase – tree operations on an empty document', () => {
+  // All three used to reach the root with `getRootElement()!` and therefore died on an
+  // empty instance with "cannot read properties of null (reading 'query')". They now go
+  // through `requireRootElement`, so the failure names the document rather than the
+  // property — same set of inputs that fail, a different sentence when they do.
+  it.each([
+    ['removeAllElements', (xb: XmlBase) => xb.removeAllElements('child')],
+    ['removeAllAttributes', (xb: XmlBase) => xb.removeAllAttributes('color')],
+    ['fixDuplicateIds', (xb: XmlBase) => xb.fixDuplicateIds()],
+  ])('%s reports the missing root rather than a TypeError', (_name, run) => {
+    expect(() => run(new XmlBase())).toThrow(MissingNodeError);
   });
 });
 

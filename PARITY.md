@@ -591,12 +591,14 @@ _is_ the fixture bytes — and is commented as such at the site.
 
 ## 2. Frozen divergences
 
-Known, journaled, and deliberately **not** repaired. None is reachable from the MEI/MSM ⇒ MIDI
-pipeline **on a well-formed document** — the one exception is `IMP1` below, which is reachable
-only from defective imprecision input and where both sides destroy the performance by different
-means. The first three come from capability gaps in the XML layer rather than from choices; the
-fourth is a choice, and is the one place where this port returns something Java's own code
-computes and then throws away.
+Known, journaled, and deliberately **not** repaired. Three are reachable on input a caller can
+supply: `IMP1`, from defective imprecision input, where both sides destroy the performance by
+different means; `TS1`, from a well-formed MEI with a directional work-level tempo, which is
+the one plain defect here; and `XB1`, from any source text that is not well-formed XML, where
+this port throws and Java hands back an empty document. The first
+three bullets come from capability gaps in the XML layer rather than from choices; the fourth is
+a choice, and is the one place where this port returns something Java's own code computes and
+then throws away.
 
 - **The `setLocalName` family.** Java renames an element in place when parsing a foreign one
   (`GenericMap.setType`, `ImprecisionMap.setDomain`, and the `tempoDef` / `rubatoDef` /
@@ -633,6 +635,73 @@ computes and then throws away.
   `tests/mpm/elements/OrnamentationMap.test.ts` pin the returned shape, including the v3 fields.
   Flagged by the ornamentation programme's v2 semantics survey (ORN-1 §3.2/§5.3) as the last
   ornamentation divergence this ledger had not recorded; recorded now.
+
+### `XB1` — malformed XML throws here and yields an empty document there
+
+| Item                      | `XB1` (functional-core campaign, `src/xml` sweep)                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Java                      | `XmlBase`'s string constructor: `try { data = builder.build(xml); } catch (ParsingException e) { print; data = null; }` |
+| TypeScript                | `src/xml/XmlBase.ts` `parseXmlString`, and `Builder.build` in `src/xml/XomTypes.ts`                                     |
+| Guard tests               | `tests/xml/XmlBase.test.ts` — "malformed XML throws, and only a `<parsererror>` yields an empty document"               |
+| Reachable from a fixture? | No fixture is malformed. Reachable from any caller who hands a document type text that is not well-formed XML           |
+
+**The catch arm and the rethrow arm have swapped roles, and both halves were measured.**
+Java's XOM `Builder` throws `ParsingException` for malformed XML, `XmlBase` catches it, and
+the caller gets a document whose `isEmpty()` is true. This port's `Builder.build` also throws
+`ParsingException` — twice, for a `parsererror` node and for a missing root element — but
+under `@xmldom/xmldom` neither throw is reached for malformed input: `DOMParser.parseFromString`
+raises **its own** `ParseError` first. Probed across seven categories (plain text, empty source,
+comment-only, two roots, invalid element name, undeclared prefix, unterminated CDATA); all seven
+throw out of the constructor, where Java answers all seven with an empty document.
+
+The `parsererror` probe is browser-`DOMParser` semantics — a browser signals a parse failure by
+_returning_ a document containing that element — so under xmldom it fires only as a **false
+positive**: a perfectly well-formed document containing an element named `parsererror`, at any
+depth and in any namespace, is reported as a failed parse. That is the one and only way a `Mei`,
+`Msm` or `Mpm` can leave a constructor with `isEmpty()` true, and four tests in
+`tests/mei/Mei.test.ts` now use it instead of forging the state with `Object.create`.
+
+Frozen deliberately. The throwing behaviour is the one `src/api/parse.ts` is built on — its
+`parseOrThrow` exists precisely because "a fatal parser error escapes as `@xmldom/xmldom`'s
+`ParseError`" — so restoring Java's silent-empty-document would change the facade's contract,
+not just an internal. The `parsererror` false positive cannot bite a real document: no MEI, MSM
+or MPM schema has such an element. What is worth correcting is the _comment_ in
+`src/api/pipeline.ts`'s `checkParsed`, which states the Java behaviour ("`XmlBase` swallows the
+`ParsingException` and leaves `data` null") as though it were this port's; that file is outside
+the charter that found this.
+
+### `TS1` — the work-level tempo's style switch is written even with no style to point at
+
+| Item                      | `TS1` (functional-core campaign, `src/mei` sweep)                                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Java                      | `Mei2MsmMpmConverter.convert`'s per-`mdiv` epilogue: `if (…getAllStyleTypes().get(Mpm.TEMPO_STYLE) != null) tempoMap.addStyleSwitch(0.0, "MEI export");` |
+| TypeScript                | `src/mei/Mei2MsmMpmConverter.ts`, `finishMdiv`'s "finalize the tempoMap" block                                                                           |
+| Guard tests               | `tests/mei/Mei2MsmMpmConverter.test.ts` — "the work-level tempo style switch (Java divergence)"                                                          |
+| Reachable from a fixture? | No. Reachable from any MEI whose only tempo is a **directional** `meiHead/workList/work/tempo`                                                           |
+
+**A transcription slip, found by lint and pinned rather than repaired.** Java's guard means
+"switch to the MEI-export tempo style only if one was actually defined". The port kept the
+literal `!= null` while the collection it queries became a JavaScript `Map`, whose `get`
+answers **`undefined`** for an absent key — so the test was true whatever the header held and
+`no-unnecessary-condition` flagged it as a comparison whose types have no overlap. The same
+Java line appears a second time in `parseTempo` and is transcribed `!== undefined` there,
+correctly, which is what identifies this one as a slip and not a decision.
+
+What it produces is a dangling reference. A work-level tempo that is a purely directional
+descriptor — `ritardando`, `accelerando`, `calando`, and the other words `parseTempo` routes to
+its `transitionTo` arm — defines no style at all, so the MPM is written with
+`<style … name.ref="MEI export"/>` in a document that carries no `<tempoStyles>` element. A
+named tempo (`Allegro`) takes the other arm, defines the style, and the two spellings agree.
+
+Measured, both directions: instrumenting the branch shows it is entered **exactly once** in the
+whole 6208-test suite, and on that one input the style is present — so aligning the condition
+with Java leaves every test green. Four tests now pin the behaviour, three of them on the
+directional descriptors; aligning the condition reds all three.
+
+Frozen rather than fixed because the repair changes output bytes on a path no Java-generated
+reference in this repo covers, so nothing here can adjudicate it. It is the one entry in this
+section that is a **defect** rather than a capability gap or a choice: if a reference MEI with a
+directional work-level tempo is ever generated, this should move to §1.
 
 ### `IMP1` — an imprecision map the reference CRASHES on renders NaN-poisoned output here
 

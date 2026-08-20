@@ -1,7 +1,29 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Mei } from '../../src/mei/Mei.js';
 import { getAttributeValue } from '../../src/xml/tree.js';
-import { Document, Element, Attribute, Builder } from '../../src/xml/XomTypes.js';
+import { Element, Attribute, Builder } from '../../src/xml/XomTypes.js';
+
+/**
+ * An empty `Mei` — one whose `isEmpty()` is true — reached through the constructor.
+ *
+ * Four tests below used to forge this state with `Object.create(Mei.prototype)` and a poke
+ * at the private `data` field. That skips the constructor, types the result `any` (so every
+ * assertion made on it was unchecked), and asserts about a state nobody had shown a caller
+ * could reach. It is reachable, by exactly one route, and this is it: `Builder.build`
+ * screens the parsed document for a `<parsererror>` element — browser-`DOMParser` semantics
+ * that `@xmldom/xmldom` never produces — so a *well-formed* document containing one is
+ * reported as a failed parse and `XmlBase.parseXmlString` leaves `data` null. Every actually
+ * malformed source throws instead. Both halves are measured and pinned in
+ * `tests/xml/XmlBase.test.ts`, and recorded in PARITY.md as `XB1`.
+ */
+function emptyMei(): Mei {
+  const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    return Mei.fromXml('<parsererror/>');
+  } finally {
+    errSpy.mockRestore();
+  }
+}
 
 /** put the given markup into a minimal but complete MEI score, inside measure 1 / staff 1 / layer 1 */
 function wrap(inner: string): string {
@@ -93,12 +115,10 @@ describe('Mei – getMeiHead', () => {
   });
 
   it('should return null for empty MEI', () => {
-    const mei = new Mei();
-    // Default MEI has a meiHead, but let's test with a truly empty one
-    // We can construct an empty XmlBase via the base class
-    const emptyMei = Object.create(Mei.prototype);
-    emptyMei['data'] = null;
-    expect(emptyMei.getMeiHead()).toBeNull();
+    // The default `new Mei()` is built from MINIMAL_MEI and therefore does have a meiHead —
+    // stated here because the old comment claimed it without checking it.
+    expect(new Mei().getMeiHead()).not.toBeNull();
+    expect(emptyMei().getMeiHead()).toBeNull();
   });
 });
 
@@ -114,9 +134,7 @@ describe('Mei – getMusic', () => {
   });
 
   it('should return null for empty document', () => {
-    const emptyMei = Object.create(Mei.prototype);
-    emptyMei['data'] = null;
-    expect(emptyMei.getMusic()).toBeNull();
+    expect(emptyMei().getMusic()).toBeNull();
   });
 });
 
@@ -447,13 +465,16 @@ describe('Mei – addIds', () => {
   });
 
   it('should return 0 when there is no root element', () => {
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const empty = Object.create(Mei.prototype);
-    empty['data'] = null;
-
-    expect(empty.addIds()).toBe(0);
-    expect(errSpy).toHaveBeenCalled();
-    errSpy.mockRestore();
+    // `emptyMei()` installs and restores a spy of its own, so it has to finish before this
+    // one is installed — nesting them makes the inner `mockRestore` undo the outer spy.
+    const empty = emptyMei();
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      expect(empty.addIds()).toBe(0);
+      expect(errSpy).toHaveBeenCalled();
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });
 
@@ -562,7 +583,7 @@ describe('Mei – resolveCopyofs', () => {
   });
 
   it('should detect a circular reference and give up', () => {
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const mei = new Mei(
       wrap('<note xml:id="n1" copyof="#n2"/><note xml:id="n2" copyof="#n1"/>'),
       true,
@@ -612,9 +633,7 @@ describe('Mei – resolveCopyofs', () => {
   });
 
   it('should return null when there is no root element', () => {
-    const empty = Object.create(Mei.prototype);
-    empty['data'] = null;
-    expect(empty.resolveCopyofs()).toBeNull();
+    expect(emptyMei().resolveCopyofs()).toBeNull();
   });
 });
 

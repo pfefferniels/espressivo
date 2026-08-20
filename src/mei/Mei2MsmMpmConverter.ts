@@ -594,17 +594,15 @@ export class Mei2MsmMpmConverter {
 
   /** the whole conversion, step by step; see the class comment for the outline */
   private convertMei(mei: Mei): KeyValue<Msm[], Mpm[]> {
-    if (mei === null) {
-      console.error('The provided MEI object is null and cannot be converted.');
-      return new KeyValue<Msm[], Mpm[]>([], []);
-    }
-
+    // Java opens with `if (mei == null) { print; return empty; }`. Nothing can reach it here:
+    // the sole caller is {@link convert}, whose parameter is a non-nullable `Mei`. The case it
+    // was really guarding — a `Mei` with nothing in it — is not null at all and is caught two
+    // lines below, where `getMusic()` answers null for exactly that. The branch is deleted
+    // rather than reworded, along with the `console.error` the console sweep moved into it.
+    //
     // The two progress banners this method opened and closed with — "Converting X to MSM and
-    // MPM." and "conversion finished. Time consumed: N milliseconds" — are gone, with the
-    // `startTime` that existed only to feed the second. They were scaffolding: nothing read
-    // them, and a converter running inside an editor or a server has no business narrating to
-    // stdout. The line above is a diagnostic, so it stays — on stderr, where the rest of this
-    // file's diagnostics already are.
+    // MPM." and "conversion finished. Time consumed: N milliseconds" — went in that sweep,
+    // with the `startTime` that existed only to feed the second.
     this.mei = mei;
 
     // `getMusic()` is null exactly when the instance is empty, so one read covers both of the
@@ -1268,11 +1266,25 @@ export class Mei2MsmMpmConverter {
               ?.getDated()
               ?.addMap(TempoMap.createTempoMap()) as TempoMap | null | undefined;
 
-            if (
-              performance.getGlobal()?.getHeader()?.getAllStyleTypes()?.get(Mpm.TEMPO_STYLE) !==
-              null
-            )
-              globalTempoMap?.addStyleSwitch(0.0, 'MEI export');
+            // **A divergence from Java, pinned rather than fixed.** Java guards this with
+            // `if (…getAllStyleTypes().get(Mpm.TEMPO_STYLE) != null)` — switch to the
+            // MEI-export tempo style only if one was actually defined. Transcribed literally,
+            // the `!= null` landed on a `Map.get` that answers **`undefined`** for an absent
+            // key, so the test was true whatever the header held and the switch was written
+            // unconditionally. It is written unconditionally here too, because that is what
+            // the code has always done; the condition is gone rather than corrected. The same
+            // Java line in `parseTempo` is transcribed `!== undefined` and is correct, which
+            // is what identifies this one as a slip rather than a decision.
+            //
+            // Reachable, and what it produces is a dangling reference: an MEI whose
+            // `workList/work/tempo` is a purely directional descriptor ("ritardando",
+            // "accelerando", "calando") never reaches the arm of `parseTempo` that defines the
+            // style, so the MPM gets `<style … name.ref="MEI export"/>` in a document with no
+            // `<tempoStyles>` element at all. No fixture carries a work-level tempo of that
+            // shape, which is why aligning the condition with Java leaves all 6208 tests
+            // green — measured. See PARITY.md, and the test in
+            // `tests/mei/Mei2MsmMpmConverter.test.ts` that reds if someone aligns it.
+            globalTempoMap?.addStyleSwitch(0.0, 'MEI export');
           }
           tempoData.startDate = 0.0;
           globalTempoMap?.addTempo(tempoData);
@@ -1333,7 +1345,7 @@ export class Mei2MsmMpmConverter {
       const transSemi = scoreDef.getAttributeValue('trans.semi');
       let trans = 0;
       trans = transSemi === null ? 0.0 : parseFloat(transSemi);
-      trans += Mei2MsmMpmConverter.processClefDis(scoreDef);
+      trans += Mei2MsmMpmConverter.processClefDis();
       const d = new Element('transposition');
       d.addAttribute(new Attribute('date', this.getMidiTimeAsString(ctx)));
       d.addAttribute(new Attribute('semi', String(trans)));
@@ -1396,7 +1408,7 @@ export class Mei2MsmMpmConverter {
       const transSemi = staffDef.getAttributeValue('trans.semi');
       let trans = 0;
       trans = transSemi === null ? 0.0 : parseFloat(transSemi);
-      trans += Mei2MsmMpmConverter.processClefDis(staffDef);
+      trans += Mei2MsmMpmConverter.processClefDis();
       const d = new Element('transposition');
       d.addAttribute(new Attribute('semi', String(trans)));
       d.addAttribute(new Attribute('date', this.getMidiTimeAsString(inPart)));
@@ -1550,11 +1562,11 @@ export class Mei2MsmMpmConverter {
       return;
     }
 
+    // No preferred child: fall back to the first child of any name. `Elements.get` returns a
+    // non-nullable `Element` and the size test above has already established there is one, so
+    // Java's second null check had nothing left to test.
     const children = choice.getChildElements();
-    if (children.size() > 0) {
-      c = children.get(0);
-      if (c !== null) this.convertElement(c, ctx);
-    }
+    if (children.size() > 0) this.convertElement(children.get(0), ctx);
   }
 
   private processRestore(restore: Element): void {
@@ -1928,8 +1940,11 @@ export class Mei2MsmMpmConverter {
       const tsData = partsTsMapAndTs.get(part);
       if (tsData === undefined || partsDefaultDurations.get(part) === longestDuration) continue;
       const tsMap = tsData.getKey();
+      // The entry exists only where a `timeSignature` was actually found (see the loop that
+      // fills `partsTsMapAndTs` above), and `Elements.get` throws rather than answering null,
+      // so the pair's value is an element whenever the `undefined` test above lets us through.
+      // Java's extra null check on it tested the same thing the map lookup already had.
       const ts = tsData.getValue();
-      if (ts === null) continue;
 
       while (tsMap.getChildElements().size() > 0) {
         const last = tsMap.getChildElements().get(tsMap.getChildCount() - 1);
@@ -4313,7 +4328,10 @@ export class Mei2MsmMpmConverter {
   }
 
   protected getPart(id: string, ctx: WalkContext): Element | null {
-    if (id === null || id === '') return null;
+    // The empty string is the miss this really screens for: `getAttributeValue` hands back
+    // `''` for an absent attribute, and every caller here reads the id that way. Java's
+    // `id == null` half had no counterpart once the parameter became a `string`.
+    if (id === '') return null;
     const parts = requireMovement(ctx).msm.getChildElements('part');
     for (let i = parts.size() - 1; i >= 0; --i) {
       if (
@@ -5530,12 +5548,26 @@ export class Mei2MsmMpmConverter {
   /**
    * Octave-displacement clefs (`clef.dis`, e.g. a tenor G clef sounding an octave down).
    *
-   * **Not implemented — always 0.** Java computes a semitone offset here; this port never
-   * ported it, so a displaced clef is converted as an undisplaced one. Latent for the
-   * fixtures, which contain no `clef.dis`. Left as a stub rather than removed so the gap
-   * stays visible and the call sites keep their shape against the Java original.
+   * **Not implemented — always 0.** Java computes a semitone offset from the `clef.dis` and
+   * `clef.dis.place` attributes here; this port never ported it, so a displaced clef is
+   * converted as an undisplaced one. Latent for the fixtures, which contain no `clef.dis` —
+   * grep says zero hits across `tests/integration/fixtures/`, so nothing in the corpus can
+   * tell the stub from the real thing. Left as a stub rather than removed so the gap stays
+   * visible at the two `trans += processClefDis()` call sites.
+   *
+   * The `scoreStaffDef` parameter is **gone**, not renamed with an underscore. The body has
+   * never read it, so declaring it claimed a dependence this function does not have;
+   * whoever implements the method adds it back at the same time as the code that reads it,
+   * which is two lines. Java's signature is recorded here instead:
+   * `private static double processClefDis(Element scoreStaffDef)`.
+   *
+   * The repo's `^_` convention (`eslint.config.js`, and lint-debt.md:596) would also cover
+   * this, and deliberately is not used: it marks a parameter kept for its **position** in a
+   * signature an outside caller supplies — `writeMsmString(_filename)` keeps Java's public
+   * shape. This is a `protected static` helper whose only two callers are three lines away in
+   * this file, so there is no signature to keep and nobody to keep it for.
    */
-  protected static processClefDis(_scoreStaffDef: Element): number {
+  protected static processClefDis(): number {
     return 0.0;
   }
 

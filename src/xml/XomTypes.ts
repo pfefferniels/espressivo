@@ -457,22 +457,23 @@ export class Element extends XomNode {
 
     // Sync attributes. Array.from snapshots the live NamedNodeMap in index order;
     // nothing below mutates domElement, so the snapshot and the map agree.
+    // `domElement.attributes` needs no guard: every DOM element has a NamedNodeMap, empty
+    // when it carries no attributes, so the truthiness test this used to open with could
+    // only ever be true.
     elem._attributes = [];
-    if (domElement.attributes) {
-      for (const attr of Array.from(domElement.attributes)) {
-        const attrNs = attr.namespaceURI || '';
-        const attrName = attr.name;
-        if (attrName.startsWith('xmlns')) continue; // skip namespace declarations
-        const wrapped = attrNs
-          ? new Attribute(attrName, attrNs, attr.value)
-          : new Attribute(attrName, attr.value);
-        // Parented like the child nodes below, and for the same reason: `_xomParent` is
-        // the only route {@link Attribute.detach} has back to the list it must remove
-        // itself from. Assigned directly rather than via `addAttribute`, which would
-        // additionally dedupe by local name and could drop a parsed attribute.
-        wrapped._xomParent = elem;
-        elem._attributes.push(wrapped);
-      }
+    for (const attr of Array.from(domElement.attributes)) {
+      const attrNs = attr.namespaceURI || '';
+      const attrName = attr.name;
+      if (attrName.startsWith('xmlns')) continue; // skip namespace declarations
+      const wrapped = attrNs
+        ? new Attribute(attrName, attrNs, attr.value)
+        : new Attribute(attrName, attr.value);
+      // Parented like the child nodes below, and for the same reason: `_xomParent` is
+      // the only route {@link Attribute.detach} has back to the list it must remove
+      // itself from. Assigned directly rather than via `addAttribute`, which would
+      // additionally dedupe by local name and could drop a parsed attribute.
+      wrapped._xomParent = elem;
+      elem._attributes.push(wrapped);
     }
 
     // Sync children
@@ -795,7 +796,12 @@ export class Element extends XomNode {
     // We need to serialize and re-parse to use xpath properly
     const xmlStr = this.toXML();
     const doc = new DOMParser().parseFromString(xmlStr, 'text/xml');
-    const contextNode = doc.documentElement!;
+    const contextNode = doc.documentElement;
+    // `toXML()` always writes at least this element, so the re-parse always has a root and
+    // this branch is not reachable from any document this port can build. It replaces a `!`
+    // with the answer the rest of the method already gives for input it cannot handle —
+    // an empty node set, not a `TypeError` from inside the xpath library.
+    if (contextNode === null) return new Nodes([]);
 
     const select = xpath.useNamespaces(this.collectNamespaces());
 
@@ -873,10 +879,12 @@ export class Element extends XomNode {
    * keeps the DOM indices and `getChildElements()` indices in step.
    */
   private findCorrespondingElement(domNode: globalThis.Element): Element | null {
-    // Build the path from root to the target node
+    // Build the path from root to the target node. `current` starts at a node and is only
+    // ever reassigned to a parent the loop has already tested, so it is never null — the
+    // walk stops at the parent, not at the node.
     const path: number[] = [];
-    let current: globalThis.Node | null = domNode;
-    while (current && current.parentNode && current.parentNode.nodeType === 1) {
+    let current: globalThis.Node = domNode;
+    while (current.parentNode && current.parentNode.nodeType === 1) {
       const parent: globalThis.Node = current.parentNode;
       let index = 0;
       // Array.from snapshots the live NodeList in index order; the copy is not being

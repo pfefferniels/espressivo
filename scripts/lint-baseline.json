@@ -1,10 +1,6 @@
 {
   "docs/history/ornamentation/tools": 12,
-  "src/mei": 10,
-  "src/xml": 14,
   "tests/integration": 9,
-  "tests/mei": 4,
   "tests/midi": 4,
-  "tests/music": 2,
-  "tests/xml": 2
+  "tests/music": 2
 }
