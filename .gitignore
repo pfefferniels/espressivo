@@ -1,6 +1,10 @@
-node_modules/
-dist/
-coverage/
+# No trailing slashes: a trailing slash matches directories ONLY, and every agent working in
+# a git worktree symlinks `node_modules` in from the main checkout. That symlink is a FILE, so
+# `node_modules/` did not ignore it and one got committed (mode 120000) — after which every
+# checkout of that commit tries to lay a self-referential symlink over the real directory.
+node_modules
+dist
+coverage
 .DS_Store
 *.tsbuildinfo
 .claude/
