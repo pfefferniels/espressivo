@@ -56,6 +56,21 @@ export function elementAt<T extends NonNullable<unknown>>(
 }
 
 /**
+ * As {@link elementAt}, for a sequence whose elements may legitimately be `null`.
+ *
+ * `OrderedMapView.styleNames` is the case this exists for: it is index-aligned with `entries`
+ * and `null` there means "no `<style>` in scope yet", which is a real reading rather than an
+ * absence. `??` therefore cannot distinguish a present null from a missing entry, so the bounds
+ * are tested directly — and a read past the end still throws, because a `styleNames` shorter
+ * than the entries it is aligned with is a bug in the view builder and not a document without
+ * styles.
+ */
+export function optionAt<T>(xs: readonly (T | null)[], index: number, what: string): T | null {
+  if (index < 0 || index >= xs.length) outOfRange(index, xs.length, what);
+  return xs[index] ?? null;
+}
+
+/**
  * As {@link elementAt}, for a numeric buffer — a `Float64Array`, an `Int8Array`, or a plain
  * `number[]` used as one.
  *

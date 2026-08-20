@@ -233,8 +233,13 @@ export function parseFrameValue(
   text: string,
 ): { value: number; domain: FrameDomain | null } | null {
   const suffixed = SUFFIXED.exec(text);
-  if (suffixed !== null)
-    return { value: Number(suffixed[1]), domain: DOMAIN_BY_SUFFIX[suffixed[2]] };
+  if (suffixed !== null) {
+    // Both groups are mandatory in the pattern, so a match has both — but a capture read is a
+    // `string | undefined` whatever the pattern says. The defaults reach the same answers the
+    // old reads did: `Number('')` is 0, and no key of the suffix table is the empty string.
+    const [, digits = '', suffix = ''] = suffixed;
+    return { value: Number(digits), domain: DOMAIN_BY_SUFFIX[suffix] ?? null };
+  }
   if (!UNSUFFIXED.test(text)) return null;
   return { value: Number(text), domain: null };
 }

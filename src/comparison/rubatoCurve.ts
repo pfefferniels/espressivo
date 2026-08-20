@@ -41,6 +41,7 @@
  * `@frameLength` is tick-valued and therefore ppq-sensitive; `@intensity` and the window
  * bounds are dimensionless and are not rescaled.
  */
+import { optionAt } from './indexing.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { RUBATO_MAP, RUBATO_STYLE } from '../mpm/names.js';
@@ -272,7 +273,7 @@ export function readRubatoSegments(
     raws.push({
       dateTicks: entry.date * resolution.scaleFactor,
       element: entry.element,
-      styleName: view.styleNames[index],
+      styleName: optionAt(view.styleNames, index, 'a map view style-name list'),
       environment: resolution.environment,
       globalEnvironment: resolution.globalEnvironment,
       scaleFactor: resolution.scaleFactor,

@@ -32,6 +32,7 @@
  * is reported for ratification; the difference is not small (|ln(100/40)| = 9.6 JND sustained
  * over the whole part).
  */
+import { head, isNonEmpty, last } from '../prelude/index.js';
 import { pairwise } from '../prelude/index.js';
 
 import { accentuationDistance, accentuationSampler } from './accentuationDistance.js';
@@ -72,6 +73,7 @@ import type { EventAtomMass } from './eventAlignment.js';
 import { imprecisionDistance, type ImprecisionDecomposition } from './imprecisionDistance.js';
 import {
   readImprecisionSpans,
+  IMPRECISION_DOMAINS,
   type ImprecisionDomain,
   type ImprecisionReading,
 } from './imprecisionLaws.js';
@@ -260,8 +262,9 @@ function documentGrid(
 
 /** `∫ g dt / L` over a grid, in the grid's own abscissa. */
 function meanOverGrid(g: SampledCurve, grid: readonly number[]): number | null {
-  if (grid.length < 2) return null;
-  const length = grid[grid.length - 1] - grid[0];
+  // The grid's own span, or 0 where it is too short to have one — `decomposition.gridSpan` and
+  // `compare.integrateOverGrid` state the same fact the same way.
+  const length = isNonEmpty(grid) ? last(grid) - head(grid) : 0;
   if (!(length > 0)) return null;
   const total = new CompensatedSum();
   for (const [low, high] of pairwise(grid)) total.add(gaussLegendre10(g, low, high));
@@ -844,16 +847,15 @@ function ornamentationEditPlan(
 
 /** §5.9's spans, priced by the same `W₁` the semantic level uses, with invariance off. */
 function imprecisionEditPlan(
-  dimension: ComparisonDimension,
+  dimension: ImprecisionDomain,
   a: ScopeSide,
   settings: DimensionSettings,
 ): EditPlan<ImprecisionReading> {
-  const domain = dimension as ImprecisionDomain;
   const resolution = resolutionOf(a);
   return {
     dimension,
-    container: IMPRECISION_MAPS[dimension],
-    represent: (view) => readImprecisionSpans(view, domain, resolution.scaleFactor),
+    container: IMPRECISION_DOMAINS[dimension],
+    represent: (view) => readImprecisionSpans(view, dimension, resolution.scaleFactor),
     norm: (x, y, window) =>
       imprecisionDistance(x, y, window, settings.ticksPerQuarter, 'none', settings.jnd).distance,
     localize: () => true,
@@ -868,12 +870,6 @@ const ACCENTUATION_MAP = 'metricalAccentuationMap';
 const MOVEMENT_MAP = 'movementMap';
 const ARTICULATION_MAP = 'articulationMap';
 const ORNAMENTATION_MAP = 'ornamentationMap';
-
-const IMPRECISION_MAPS: Readonly<Record<string, string>> = {
-  imprecisionTiming: 'imprecisionMap.timing',
-  imprecisionDynamics: 'imprecisionMap.dynamics',
-  imprecisionDuration: 'imprecisionMap.toneduration',
-};
 
 function tempoPlan(settings: DimensionSettings): CurvePlan<TempoCurve> {
   return {
@@ -1306,15 +1302,14 @@ function evaluateOrnamentation(
 // --- the distribution dimensions --------------------------------------------
 
 function evaluateImprecision(
-  dimension: ComparisonDimension,
+  dimension: ImprecisionDomain,
   a: ScopeSide,
   b: ScopeSide,
   settings: DimensionSettings,
 ): DimensionEvaluation {
-  const domain = dimension as ImprecisionDomain;
-  const container = IMPRECISION_MAPS[dimension];
+  const container = IMPRECISION_DOMAINS[dimension];
   const read = (side: ScopeSide): ImprecisionReading =>
-    readImprecisionSpans(viewOf(side, container), domain, side.document.scaleFactor);
+    readImprecisionSpans(viewOf(side, container), dimension, side.document.scaleFactor);
   const readingA = read(a);
   const readingB = read(b);
 
@@ -1327,7 +1322,7 @@ function evaluateImprecision(
     settings.jnd,
   );
 
-  const row = comparisonRowFor(marginalKey(domain));
+  const row = comparisonRowFor(marginalKey(dimension));
   const startTicks = settings.window.startQuarters * settings.ticksPerQuarter;
   const endTicks = settings.window.endQuarters * settings.ticksPerQuarter;
 
@@ -1371,8 +1366,8 @@ function evaluateImprecision(
       ) / settings.ticksPerQuarter,
     cappedCells: result.cells.filter((cell) => cell.capped).length,
     rowDistances: [
-      { key: marginalKey(domain), distance: result.distance - result.processDistance },
-      { key: processKey(domain), distance: result.processDistance },
+      { key: marginalKey(dimension), distance: result.distance - result.processDistance },
+      { key: processKey(dimension), distance: result.processDistance },
     ],
     notes,
     timeSignatureSource: null,
@@ -1432,12 +1427,12 @@ export function containerOf(dimension: ComparisonDimension): string {
       return ARTICULATION_MAP;
     case 'ornamentation':
       return ORNAMENTATION_MAP;
-    // As above: the three imprecision dimensions are the remainder, and IMPRECISION_MAPS is
+    // As above: the three imprecision dimensions are the remainder, and IMPRECISION_DOMAINS is
     // keyed by exactly them, so naming them here also makes that index total.
     case 'imprecisionTiming':
     case 'imprecisionDynamics':
     case 'imprecisionDuration':
-      return IMPRECISION_MAPS[dimension];
+      return IMPRECISION_DOMAINS[dimension];
   }
 }
 

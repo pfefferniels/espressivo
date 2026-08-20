@@ -50,6 +50,8 @@
  * add `length="4"` to the document and reorder its `<accentuation>` children by beat
  * (`AccentuationPatternDef.ts:36-40`, `:67` → `:192-199`), which R1 forbids.
  */
+import { head, isNonEmpty, last } from '../prelude/index.js';
+import { elementAt, optionAt } from './indexing.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { METRICAL_ACCENTUATION_MAP, METRICAL_ACCENTUATION_STYLE } from '../mpm/names.js';
@@ -192,17 +194,19 @@ export function readAccentuationPattern(def: Element): AccentuationPattern {
  */
 export function accentuationAt(pattern: AccentuationPattern, beatPosition: number): number {
   const points = pattern.points;
-  if (points.length === 0) return 0;
-  if (beatPosition < points[0].beat) return 0;
-  if (beatPosition >= pattern.length + 1) return points[points.length - 1].transitionTo;
+  if (!isNonEmpty(points)) return 0;
+  if (beatPosition < head(points).beat) return 0;
+  if (beatPosition >= pattern.length + 1) return last(points).transitionTo;
 
   let found: PatternPoint | null = null;
   let segmentEnd = pattern.length + 1;
   for (let i = points.length - 1; i >= 0; --i) {
-    found = points[i];
-    if (beatPosition === found.beat) return found.value;
-    if (beatPosition > found.beat) {
-      if (i < points.length - 1) segmentEnd = points[i + 1].beat;
+    const point = elementAt(points, i, 'an accentuation pattern point list');
+    found = point;
+    if (beatPosition === point.beat) return point.value;
+    if (beatPosition > point.beat) {
+      if (i < points.length - 1)
+        segmentEnd = elementAt(points, i + 1, 'an accentuation pattern point list').beat;
       break;
     }
   }
@@ -291,7 +295,7 @@ export function readAccentuationSegments(
     raws.push({
       dateTicks: entry.date * resolution.scaleFactor,
       element: entry.element,
-      styleName: view.styleNames[index],
+      styleName: optionAt(view.styleNames, index, 'a map view style-name list'),
       environment: resolution.environment,
       globalEnvironment: resolution.globalEnvironment,
     });

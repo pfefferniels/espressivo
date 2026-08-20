@@ -581,8 +581,12 @@ function invertScript(script: EditScript): EditScript {
     };
   });
 
-  const ranking = ops.map((_op, index) => index);
-  ranking.sort((x, y) => ops[y].cost - ops[x].cost || x - y);
+  // Decorated before sorting, `editScript.rankByCostDescending`'s shape: the cost travels with
+  // its delivery index, so the comparator states the rule rather than indexing `ops` twice.
+  const ranking = ops
+    .map((op, index) => ({ cost: op.cost, index }))
+    .sort((x, y) => y.cost - x.cost || x.index - y.index)
+    .map((entry) => entry.index);
 
   return {
     ...script,

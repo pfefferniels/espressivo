@@ -34,6 +34,8 @@
  *   are distance 0 on the date axis while driving two different MIDI mechanisms. It is
  *   inert on a map's last instruction, by the same `size()-1` guard as the trailing rule.
  */
+import { isNonEmpty, last } from '../prelude/index.js';
+import { optionAt } from './indexing.js';
 import type { Element } from '../xml/XomTypes.js';
 import { innerControlPointsXPositions } from '../mpm/elements/maps/data/bezier.js';
 import { readAttributeValue, readNumericAttributeValue } from '../expression/attributes.js';
@@ -204,7 +206,7 @@ export function readDynamicsSegments(
     if (element.getLocalName() !== 'dynamics') continue;
     if (!Number.isFinite(entry.date)) continue;
 
-    const styleName = view.styleNames[index];
+    const styleName = optionAt(view.styleNames, index, 'a map view style-name list');
     const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
     const volumeText = readAttributeValue(element, 'volume');
 
@@ -393,7 +395,7 @@ export function dynamicsSegmentAt(curve: DynamicsCurve, ticks: number): Dynamics
     if (segment.startTicks > ticks) break;
     if (ticks < segment.endTicks || !Number.isFinite(segment.endTicks)) found = segment;
   }
-  return found ?? (curve.segments.length > 0 ? curve.segments[curve.segments.length - 1] : null);
+  return found ?? (isNonEmpty(curve.segments) ? last(curve.segments) : null);
 }
 
 /** `volume(t)` on the ideal curve, at a position in common ticks. */
