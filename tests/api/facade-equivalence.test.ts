@@ -125,10 +125,10 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
         canonicalise(classicPerformance.perform(classicMsm).getRootElement()!.toXML()),
       );
       expect(hex(renderExpressiveMidi(movements[0]))).toBe(
-        hex(classicMsm.exportExpressiveMidi(classicPerformance, true)!.exportMidi()!),
+        hex(classicMsm.exportExpressiveMidi(classicPerformance, true)!.exportMidi()),
       );
       expect(hex(renderMidi({ msm: movements[0].msm }))).toBe(
-        hex(classicMsm.exportMidi(120, true)!.exportMidi()!),
+        hex(classicMsm.exportMidi(120, true)!.exportMidi()),
       );
     });
   }
@@ -226,7 +226,7 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
           hex(
             new Msm(msmText)
               .exportExpressiveMidi(new Mpm(mpmText).getAllPerformances()[0], true)!
-              .exportMidi()!,
+              .exportMidi(),
           ),
         );
       }

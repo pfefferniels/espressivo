@@ -17,7 +17,7 @@ describe('control: append of a track-less Midi is the no-op the deleted guard as
     const m = new Midi(480);
     m.getSequence()
       .createTrack()
-      .add(EventMaker.createNoteOn(0, 0, 60, 100)!);
+      .add(EventMaker.createNoteOn(0, 0, 60, 100));
     return m;
   };
   it('bytes are identical whether or not an empty Midi is appended', () => {

@@ -615,7 +615,7 @@ describe('Sequence.getMicrosecondLength', () => {
   it('should apply a tempo event from tick 0 onwards', () => {
     const seq = new Sequence(Sequence.PPQ, 480);
     const track = seq.createTrack();
-    track.add(EventMaker.createTempo(0, 60, 0.25)!); // 1000000 microseconds per quarter
+    track.add(EventMaker.createTempo(0, 60, 0.25)); // 1000000 microseconds per quarter
     track.add(new MidiEvent(anyMessage(), 1920)); // 4 quarter notes
 
     expect(seq.getMicrosecondLength()).toBe(4000000);
@@ -624,8 +624,8 @@ describe('Sequence.getMicrosecondLength', () => {
   it('should switch tempo at the tick of a later tempo event', () => {
     const seq = new Sequence(Sequence.PPQ, 480);
     const track = seq.createTrack();
-    track.add(EventMaker.createTempo(0, 120, 0.25)!); // 500000 us/quarter
-    track.add(EventMaker.createTempo(960, 60, 0.25)!); // 1000000 us/quarter from quarter 2 on
+    track.add(EventMaker.createTempo(0, 120, 0.25)); // 500000 us/quarter
+    track.add(EventMaker.createTempo(960, 60, 0.25)); // 1000000 us/quarter from quarter 2 on
     track.add(new MidiEvent(anyMessage(), 1920));
 
     // 2 quarters at 500000 + 2 quarters at 1000000
@@ -636,8 +636,8 @@ describe('Sequence.getMicrosecondLength', () => {
     const seq = new Sequence(Sequence.PPQ, 480);
     const conductor = seq.createTrack();
     const music = seq.createTrack();
-    conductor.add(EventMaker.createTempo(960, 60, 0.25)!);
-    conductor.add(EventMaker.createTempo(0, 120, 0.25)!);
+    conductor.add(EventMaker.createTempo(960, 60, 0.25));
+    conductor.add(EventMaker.createTempo(0, 120, 0.25));
     music.add(new MidiEvent(anyMessage(), 1920));
 
     expect(seq.getMicrosecondLength()).toBe(3000000);
