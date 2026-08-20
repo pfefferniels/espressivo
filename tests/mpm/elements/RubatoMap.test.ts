@@ -268,7 +268,7 @@ describe('RubatoMap', () => {
     };
 
     const def = (frameLength: number, intensity: number, lateStart: number, earlyEnd: number) =>
-      RubatoDef.createRubatoDef('d', frameLength, intensity, lateStart, earlyEnd)!;
+      okValue(RubatoDef.createRubatoDef('d', frameLength, intensity, lateStart, earlyEnd));
 
     it('rejects an instruction with no frame from either source', () => {
       expect(resolveRubato(span, absent, null)).toBeNull();

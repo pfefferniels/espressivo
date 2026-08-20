@@ -5,6 +5,8 @@ import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
 import { MissingNodeError } from '../../../../xml/errors.js';
 import { requireDefName, skipMalformedDef } from './defName.js';
+import { ok, type Result } from '../../../../prelude/index.js';
+import { type MpmParseError } from '../../parseError.js';
 
 /**
  * A `tempoDef`: it gives a tempo name ("Allegro", "fast", …) a numeric value in bpm.
@@ -90,21 +92,27 @@ export class TempoDef extends AbstractXmlSubtree {
 
   /**
    * Create a def either from a name and a bpm value, or by parsing an existing element.
-   * Returns null — after logging — instead of throwing, e.g. when `value` is missing.
+   *
+   * Reports the reason rather than printing it. The failure is always a `MeicoError` the
+   * library raised deliberately — an absent `@name` or `@value`, or a `@value` that is not a
+   * Java double — and `defs/defName.ts` explains why the catch keeps its narrowing to those.
    */
-  static createTempoDef(name: string, value: number): TempoDef | null;
-  static createTempoDef(xml: Element): TempoDef | null;
-  static createTempoDef(nameOrXml: string | Element, value?: number): TempoDef | null {
+  static createTempoDef(name: string, value: number): Result<TempoDef, MpmParseError>;
+  static createTempoDef(xml: Element): Result<TempoDef, MpmParseError>;
+  static createTempoDef(
+    nameOrXml: string | Element,
+    value?: number,
+  ): Result<TempoDef, MpmParseError> {
     try {
       if (typeof nameOrXml === 'string') {
         // `value` is required by the (name, value) overload, so the implementation signature's
         // `value?` is the only reason it reads as optional here; `?? 0` would invent a tempo.
-        return TempoDef.fromNameValue(nameOrXml, value as number);
+        return ok(TempoDef.fromNameValue(nameOrXml, value as number));
       } else {
-        return TempoDef.fromXml(nameOrXml);
+        return ok(TempoDef.fromXml(nameOrXml));
       }
     } catch (e) {
-      return skipMalformedDef(e);
+      return skipMalformedDef(e, 'TempoDef');
     }
   }
 
@@ -117,7 +125,7 @@ export class TempoDef extends AbstractXmlSubtree {
     this.valueAttr.setValue(String(value));
   }
 
-  static createDefaultTempoDef(name: string): TempoDef | null {
+  static createDefaultTempoDef(name: string): Result<TempoDef, MpmParseError> {
     return TempoDef.createTempoDef(name, TempoDef.getDefaultTempo(name));
   }
 

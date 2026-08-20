@@ -27,3 +27,24 @@ export function errOf<R extends AnyResult>(r: R): ErrOf<R> {
   if (r.ok) throw new Error(`expected an error, got the value ${String(r.value)}`);
   return r.error as ErrOf<R>;
 }
+
+/**
+ * The library error a `*Def` factory refused with — `MpmParseError`'s `malformedDef` payload.
+ *
+ * Two assertions in one, and both are new. `expect(def).toBeNull()` could not tell a rejected
+ * def from any other route to null; it could not say WHICH of a def's several required
+ * attributes was at fault; and it could not distinguish a `MissingNodeError` (this document is
+ * incomplete) from a `NumberFormatError` (this value is not a Java double) — which is the
+ * distinction PARITY.md P1 is about. This fails unless the result failed, unless the failure
+ * is the def arm, and then hands the caller the error class to check.
+ *
+ * The local structural type is the narrowing: `ErrOf<R>` is the whole `MpmParseError` union
+ * here, and `tests/support` may not import the arm type without pulling `src/mpm` into every
+ * file that wants an assertion.
+ */
+export function defCause<R extends AnyResult>(r: R): unknown {
+  const e = errOf(r) as { readonly kind?: unknown; readonly cause?: unknown };
+  if (e.kind !== 'malformedDef')
+    throw new Error(`expected a malformedDef failure, got ${JSON.stringify(e)}`);
+  return e.cause;
+}

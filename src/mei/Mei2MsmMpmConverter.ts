@@ -2684,7 +2684,7 @@ export class Mei2MsmMpmConverter {
       ) as OrnamentationStyle;
     if (ornamentationStyle.getDef(od.ornamentDefName) === undefined) {
       const def = OrnamentDef.createDefaultOrnamentDef(od.ornamentDefName);
-      if (def !== null) ornamentationStyle.addDef(def);
+      if (isOk(def)) ornamentationStyle.addDef(def.value);
     }
 
     // parse the staff attribute
@@ -2797,7 +2797,7 @@ export class Mei2MsmMpmConverter {
       ) as OrnamentationStyle;
     if (ornamentationStyle.getDef(resolved.defName) === undefined) {
       const def = createMeiOrnamentDef(resolved.defName);
-      if (def !== null) ornamentationStyle.addDef(def);
+      if (isOk(def)) ornamentationStyle.addDef(def.value);
     }
 
     // parse the staff attribute
@@ -2880,7 +2880,7 @@ export class Mei2MsmMpmConverter {
 
           if (dynamicsStyle.getDef(dd.volumeString) === undefined) {
             const def = DynamicsDef.createDefaultDynamicsDef(dd.volumeString);
-            if (def !== null) dynamicsStyle.addDef(def);
+            if (isOk(def)) dynamicsStyle.addDef(def.value);
           }
         }
         break;
@@ -3135,7 +3135,7 @@ export class Mei2MsmMpmConverter {
         'MEI export',
       ) as ArticulationStyle;
       const nonlegatoDef = ArticulationDef.createDefaultArticulationDef('nonlegato');
-      if (nonlegatoDef !== null) articulationStyle.addDef(nonlegatoDef);
+      if (isOk(nonlegatoDef)) articulationStyle.addDef(nonlegatoDef.value);
     }
 
     // find the local articulationMap
@@ -3278,11 +3278,15 @@ export class Mei2MsmMpmConverter {
     for (const artic of articulations) {
       if (articulationStyle.getDef(artic) === undefined) {
         const def = ArticulationDef.createDefaultArticulationDef(artic);
-        if (def === null) {
-          console.error(`Failed to generate articulationDef for "${artic}".`);
+        if (isErr(def)) {
+          // Still printed, and now with the reason in it: the def factory used to print its
+          // own exception and hand back a bare null, so this line could only say "it failed".
+          console.error(
+            `Failed to generate articulationDef for "${artic}". ${describeMpmParseError(def.error)}`,
+          );
           continue;
         }
-        articulationStyle.addDef(def);
+        articulationStyle.addDef(def.value);
       }
       articulationMap.addArticulation(date, artic, noteid === null ? null : `#${noteid}`, id);
     }
@@ -4395,10 +4399,11 @@ export class Mei2MsmMpmConverter {
           tempoStyle = globalHeader(ctx).addStyleDef(Mpm.TEMPO_STYLE, 'MEI export') as TempoStyle;
 
         if (tempoStyle.getDef(descriptor) === undefined) {
-          let tempoDef: TempoDef | null;
-          if (tempoData.bpmString === null) tempoDef = TempoDef.createDefaultTempoDef(descriptor);
-          else tempoDef = TempoDef.createTempoDef(descriptor, parseFloat(tempoData.bpmString));
-          if (tempoDef !== null) tempoStyle.addDef(tempoDef);
+          const tempoDef =
+            tempoData.bpmString === null
+              ? TempoDef.createDefaultTempoDef(descriptor)
+              : TempoDef.createTempoDef(descriptor, parseFloat(tempoData.bpmString));
+          if (isOk(tempoDef)) tempoStyle.addDef(tempoDef.value);
         }
         tempoData.bpmString = descriptor;
       }

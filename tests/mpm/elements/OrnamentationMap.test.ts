@@ -79,7 +79,7 @@ function makePart(notes: Element[]): Element {
 
 /** the "arpeggio" ornamentDef of the Java reference fixture (ornamentation.mpm) */
 function arpeggioDef(): OrnamentDef {
-  const def = OrnamentDef.createOrnamentDef('arpeggio')!;
+  const def = okValue(OrnamentDef.createOrnamentDef('arpeggio'));
   def.setDynamicsGradientValues(-1.0, 1.0);
   def.setTemporalSpreadValues(-22.0, 44.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
   return def;
@@ -87,7 +87,7 @@ function arpeggioDef(): OrnamentDef {
 
 /** the "spreadMs" ornamentDef of the Java reference fixture (ornamentation.mpm) */
 function spreadMsDef(): OrnamentDef {
-  const def = OrnamentDef.createOrnamentDef('spreadMs')!;
+  const def = okValue(OrnamentDef.createOrnamentDef('spreadMs'));
   def.setDynamicsGradientValues(-0.5, 0.5);
   def.setTemporalSpreadValues(-30.0, 60.0, FrameDomain.Milliseconds, 2.0, NoteOffShift.True);
   return def;
@@ -1265,7 +1265,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should apply only the dynamics gradient when there is no temporal spread', () => {
-      const def = OrnamentDef.createOrnamentDef('dynOnly')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('dynOnly'));
       def.setDynamicsGradientValues(-3.0, 3.0);
 
       const od = new OrnamentData();
@@ -1281,7 +1281,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should apply only the temporal spread when there is no dynamics gradient', () => {
-      const def = OrnamentDef.createOrnamentDef('spreadOnly')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('spreadOnly'));
       def.setTemporalSpreadValues(-10.0, 20.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
 
       const od = new OrnamentData();
@@ -1299,7 +1299,7 @@ describe('OrnamentationMap', () => {
 
     it('should add nothing for a def without transformers', () => {
       const od = new OrnamentData();
-      od.ornamentDef = OrnamentDef.createOrnamentDef('plain')!;
+      od.ornamentDef = okValue(OrnamentDef.createOrnamentDef('plain'));
 
       const n = makeNote('n1', 0, 60);
       expect(od.apply([[n]])).toEqual([]);
@@ -1371,7 +1371,7 @@ function readOrnament(element: Element): OrnamentData {
     null,
     makeHeader(
       ['arpeggio', 'spreadMs', 'trill', 'turn', 'upper turn'].map((name) =>
-        OrnamentDef.createOrnamentDef(name)!,
+        okValue(OrnamentDef.createOrnamentDef(name)),
       ),
     ),
   );

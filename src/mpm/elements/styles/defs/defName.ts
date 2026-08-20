@@ -1,6 +1,8 @@
 import type { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MeicoError, MissingNodeError } from '../../../../xml/errors.js';
+import { err, type Err } from '../../../../prelude/index.js';
+import type { MpmParseError } from '../../parseError.js';
 
 /**
  * What every MPM `*Def` factory needs before it can build anything: the `@name` its style
@@ -45,16 +47,16 @@ export function requireDefName(xml: Element | null, what: string): Attribute {
 }
 
 /**
- * Absorb a malformed *document*, and only that.
+ * Absorb a malformed *document*, and only that — as a value.
  *
- * The six def factories are `try { … } catch (e) { console.error(e); return null }`, which is
+ * The six def factories were `try { … } catch (e) { console.error(e); return null }`, which is
  * Java's shape and is the right *behaviour*: a def whose `@value` is not a number, or which
  * has no `@name`, is skipped and the rest of the style survives (PARITY.md, "Fixed bugs", P1).
- * What was wrong with it is the *scope*. A bare `catch` absorbs every failure, including the
- * ones that mean this port is broken rather than the input, and turns them all into the same
- * silent `null`.
+ * Two things were wrong with it, and they were fixed in two passes.
  *
- * That is not hypothetical. It was measured: a deliberate control that broke
+ * The first was the *scope*. A bare `catch` absorbs every failure, including the ones that
+ * mean this port is broken rather than the input, and turns them all into the same silent
+ * `null`. That is not hypothetical. It was measured: a deliberate control that broke
  * {@link requireDefName} — introduced to prove the six "returns null when the name attribute
  * is missing" tests could see a break — came back GREEN, because the injected fault was a
  * `ReferenceError` and the catch-all made a crash indistinguishable from the rejection it had
@@ -67,11 +69,14 @@ export function requireDefName(xml: Element | null, what: string): Attribute {
  * is not a Java double. A `TypeError`, a `ReferenceError` or anything else escapes to the
  * caller, where it belongs, because no MPM document can cause one.
  *
- * @returns null, always — so a factory can write `catch (e) { return skipMalformedDef(e); }`
+ * The second was the `console.error`, and this is that pass: the error it narrowed to is now
+ * *returned*, under {@link MpmParseError}'s `malformedDef` arm, and the caller — `Style`,
+ * indexing a collection's children — decides what a skipped def is worth saying.
+ *
+ * @returns the failure arm, so a factory can write `catch (e) { return skipMalformedDef(e, 'TempoDef'); }`
  * @throws whatever it was handed, when that is not a {@link MeicoError}
  */
-export function skipMalformedDef(e: unknown): null {
+export function skipMalformedDef(e: unknown, what: string): Err<MpmParseError> {
   if (!(e instanceof MeicoError)) throw e;
-  console.error(e);
-  return null;
+  return err({ kind: 'malformedDef', what, cause: e });
 }

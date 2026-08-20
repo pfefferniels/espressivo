@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
+import { defCause, errOf, okValue } from '../../../../support/result.js';
 import { TempoDef } from '../../../../../src/mpm/elements/styles/defs/TempoDef.js';
 import { Element, Attribute } from '../../../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../../../src/mpm/Mpm.js';
+import { NumberFormatError } from '../../../../../src/xml/errors.js';
 
 /**
  * Reference: meico/src/meico/mpm/elements/styles/defs/TempoDef.java
@@ -15,20 +17,10 @@ function tempoDefElement(attributes: Record<string, string>): Element {
   return e;
 }
 
-/** Runs body with console.error silenced; the factories log before returning null. */
-function quiet<T>(body: () => T): T {
-  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-  try {
-    return body();
-  } finally {
-    err.mockRestore();
-  }
-}
-
 describe('TempoDef', () => {
   describe('createTempoDef from name and value', () => {
     it('stores name and value and builds a tempoDef element', () => {
-      const td = TempoDef.createTempoDef('Allegro', 147.0)!;
+      const td = okValue(TempoDef.createTempoDef('Allegro', 147.0));
       expect(td).not.toBeNull();
       expect(td.getName()).toBe('Allegro');
       expect(td.getValue()).toBe(147.0);
@@ -39,50 +31,52 @@ describe('TempoDef', () => {
     });
 
     it('has no id unless one is set', () => {
-      const td = TempoDef.createTempoDef('Largo', 50.0)!;
+      const td = okValue(TempoDef.createTempoDef('Largo', 50.0));
       expect(td.getId()).toBeNull();
     });
   });
 
   describe('createTempoDef from xml', () => {
     it('reads name and value off the element', () => {
-      const td = TempoDef.createTempoDef(tempoDefElement({ name: 'Presto', value: '189.0' }))!;
+      const td = okValue(
+        TempoDef.createTempoDef(tempoDefElement({ name: 'Presto', value: '189.0' })),
+      );
       expect(td.getName()).toBe('Presto');
       expect(td.getValue()).toBe(189.0);
     });
 
     it('keeps the very element it was built from', () => {
       const xml = tempoDefElement({ name: 'Presto', value: '189.0' });
-      const td = TempoDef.createTempoDef(xml)!;
+      const td = okValue(TempoDef.createTempoDef(xml));
       expect(td.getXml()).toBe(xml);
     });
 
     it('picks up an existing xml:id', () => {
       const xml = tempoDefElement({ name: 'Presto', value: '189.0' });
       xml.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', 'tempo-1'));
-      const td = TempoDef.createTempoDef(xml)!;
+      const td = okValue(TempoDef.createTempoDef(xml));
       expect(td.getId()).toBe('tempo-1');
     });
 
-    it('returns null when the value attribute is missing', () => {
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-      expect(TempoDef.createTempoDef(tempoDefElement({ name: 'Presto' }))).toBeNull();
-      expect(err).toHaveBeenCalled();
-      err.mockRestore();
+    it('reports a missing value attribute rather than printing it', () => {
+      expect(errOf(TempoDef.createTempoDef(tempoDefElement({ name: 'Presto' })))).toMatchObject({
+        kind: 'malformedDef',
+        what: 'TempoDef',
+      });
     });
 
-    it('returns null when the name attribute is missing', () => {
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-      expect(TempoDef.createTempoDef(tempoDefElement({ value: '120.0' }))).toBeNull();
-      expect(err).toHaveBeenCalled();
-      err.mockRestore();
+    it('reports a missing name attribute rather than printing it', () => {
+      expect(errOf(TempoDef.createTempoDef(tempoDefElement({ value: '120.0' })))).toMatchObject({
+        kind: 'malformedDef',
+        what: 'TempoDef',
+      });
     });
 
-    it('returns null for a null element', () => {
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-      expect(TempoDef.createTempoDef(null as unknown as Element)).toBeNull();
-      expect(err).toHaveBeenCalled();
-      err.mockRestore();
+    it('reports a null element rather than printing it', () => {
+      expect(errOf(TempoDef.createTempoDef(null as unknown as Element))).toMatchObject({
+        kind: 'malformedDef',
+        what: 'TempoDef',
+      });
     });
 
     /**
@@ -102,12 +96,9 @@ describe('TempoDef', () => {
      * something, so it needs its own assertion.
      */
     it('lets an error that is NOT a malformed document escape instead of skipping the def', () => {
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
       // Not an Element: reading `@name` off it is a TypeError, which no MPM document can
       // cause and which therefore must not be reported as "this def is malformed".
       expect(() => TempoDef.createTempoDef({} as unknown as Element)).toThrow(TypeError);
-      expect(err).not.toHaveBeenCalled();
-      err.mockRestore();
     });
 
     it('reads an element that is not named tempoDef', () => {
@@ -116,7 +107,7 @@ describe('TempoDef', () => {
       const foreign = new Element('somethingElse', Mpm.MPM_NAMESPACE);
       foreign.addAttribute(new Attribute('name', 'Presto'));
       foreign.addAttribute(new Attribute('value', '189.0'));
-      const td = TempoDef.createTempoDef(foreign)!;
+      const td = okValue(TempoDef.createTempoDef(foreign));
       expect(td.getName()).toBe('Presto');
       expect(td.getValue()).toBe(189.0);
     });
@@ -134,7 +125,7 @@ describe('TempoDef', () => {
   describe('the identity attributes are bound at construction', () => {
     it('writes name and value back to the element it was parsed from', () => {
       const xml = tempoDefElement({ name: 'Largo', value: '50.0' });
-      const td = TempoDef.createTempoDef(xml)!;
+      const td = okValue(TempoDef.createTempoDef(xml));
       expect(td.getXml()).toBe(xml);
 
       td.setName('Larghetto');
@@ -147,7 +138,7 @@ describe('TempoDef', () => {
 
     it('writes through the very attribute nodes the parse read, not a fresh lookup', () => {
       const xml = tempoDefElement({ name: 'Largo', value: '50.0' });
-      const td = TempoDef.createTempoDef(xml)!;
+      const td = okValue(TempoDef.createTempoDef(xml));
       const nameNode = xml.getAttribute('name')!;
       const valueNode = xml.getAttribute('value')!;
 
@@ -162,7 +153,7 @@ describe('TempoDef', () => {
 
   describe('setName', () => {
     it('renames the def in the object and in the xml', () => {
-      const td = TempoDef.createTempoDef('Allegro', 147.0)!;
+      const td = okValue(TempoDef.createTempoDef('Allegro', 147.0));
       td.setName('Allegro molto');
       expect(td.getName()).toBe('Allegro molto');
       expect(td.getXml()!.getAttributeValue('name')).toBe('Allegro molto');
@@ -171,7 +162,7 @@ describe('TempoDef', () => {
 
   describe('setValue', () => {
     it('updates the field and the xml attribute', () => {
-      const td = TempoDef.createTempoDef('Allegro', 147.0)!;
+      const td = okValue(TempoDef.createTempoDef('Allegro', 147.0));
       td.setValue(132.5);
       expect(td.getValue()).toBe(132.5);
       expect(td.getXml()!.getAttributeValue('value')).toBe('132.5');
@@ -180,7 +171,7 @@ describe('TempoDef', () => {
 
   describe('id handling', () => {
     it('adds an xml:id attribute in the XML namespace', () => {
-      const td = TempoDef.createTempoDef('Allegro', 147.0)!;
+      const td = okValue(TempoDef.createTempoDef('Allegro', 147.0));
       td.setId('tempo-allegro');
       expect(td.getId()).toBe('tempo-allegro');
       const idAtt = td.getXml()!.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
@@ -189,7 +180,7 @@ describe('TempoDef', () => {
     });
 
     it('overwrites an existing id instead of adding a second attribute', () => {
-      const td = TempoDef.createTempoDef('Allegro', 147.0)!;
+      const td = okValue(TempoDef.createTempoDef('Allegro', 147.0));
       td.setId('first');
       const countAfterFirst = td.getXml()!.getAttributeCount();
       td.setId('second');
@@ -198,14 +189,14 @@ describe('TempoDef', () => {
     });
 
     it('clears the id when set to null', () => {
-      const td = TempoDef.createTempoDef('Allegro', 147.0)!;
+      const td = okValue(TempoDef.createTempoDef('Allegro', 147.0));
       td.setId('tempo-allegro');
       td.setId(null);
       expect(td.getId()).toBeNull();
     });
 
     it('tolerates clearing an id that was never set', () => {
-      const td = TempoDef.createTempoDef('Allegro', 147.0)!;
+      const td = okValue(TempoDef.createTempoDef('Allegro', 147.0));
       td.setId(null);
       expect(td.getId()).toBeNull();
     });
@@ -262,13 +253,13 @@ describe('TempoDef', () => {
 
   describe('createDefaultTempoDef', () => {
     it('names the def after the descriptor and resolves its bpm value', () => {
-      const td = TempoDef.createDefaultTempoDef('Andante')!;
+      const td = okValue(TempoDef.createDefaultTempoDef('Andante'));
       expect(td.getName()).toBe('Andante');
       expect(td.getValue()).toBe(101.0);
     });
 
     it('uses the 100 bpm fallback for unknown descriptors', () => {
-      const td = TempoDef.createDefaultTempoDef('irgendwas')!;
+      const td = okValue(TempoDef.createDefaultTempoDef('irgendwas'));
       expect(td.getValue()).toBe(100.0);
     });
   });
@@ -276,21 +267,19 @@ describe('TempoDef', () => {
   // (TempoDef.java:88) and createTempoDef turns that into null, so the style skips the def.
   // The port used parseFloat and kept a NaN-valued def instead.
   describe('malformed value attribute', () => {
-    it('returns null instead of a NaN-valued def', () => {
-      const td = quiet(() => TempoDef.createTempoDef(tempoDefElement({ name: 'x', value: 'abc' })));
-      expect(td).toBeNull();
+    it('refuses a NaN-valued def, and says the value would not parse', () => {
+      const td = TempoDef.createTempoDef(tempoDefElement({ name: 'x', value: 'abc' }));
+      expect(defCause(td)).toBeInstanceOf(NumberFormatError);
     });
 
     it('rejects a value parseFloat would have silently truncated', () => {
       // parseFloat('120bpm') === 120; Double.parseDouble throws.
-      const td = quiet(() =>
-        TempoDef.createTempoDef(tempoDefElement({ name: 'x', value: '120bpm' })),
-      );
-      expect(td).toBeNull();
+      const td = TempoDef.createTempoDef(tempoDefElement({ name: 'x', value: '120bpm' }));
+      expect(defCause(td)).toBeInstanceOf(NumberFormatError);
     });
 
     it('still parses a well-formed neighbour', () => {
-      const td = TempoDef.createTempoDef(tempoDefElement({ name: 'x', value: '120' }))!;
+      const td = okValue(TempoDef.createTempoDef(tempoDefElement({ name: 'x', value: '120' })));
       expect(td.getValue()).toBe(120);
     });
   });

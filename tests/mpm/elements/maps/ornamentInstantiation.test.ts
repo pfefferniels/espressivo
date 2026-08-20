@@ -73,7 +73,7 @@ interface DefOptions {
 }
 
 function makeDef(name: string, options: DefOptions = {}): OrnamentDef {
-  const def = OrnamentDef.createOrnamentDef(name)!;
+  const def = okValue(OrnamentDef.createOrnamentDef(name));
   if (options.gradient !== undefined)
     def.setDynamicsGradientValues(options.gradient[0], options.gradient[1]);
   if (options.noSpread !== true) {

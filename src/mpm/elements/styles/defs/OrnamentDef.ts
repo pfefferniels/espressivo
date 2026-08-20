@@ -3,6 +3,8 @@ import { allChildElements, attribute, firstChildElement } from '../../../../xml/
 import { MPM_NAMESPACE } from '../../../names.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
 import { requireDefName, skipMalformedDef } from './defName.js';
+import { isErr, ok, type Result } from '../../../../prelude/index.js';
+import { type MpmParseError } from '../../parseError.js';
 import { DynamicsGradient } from './DynamicsGradient.js';
 import {
   TemporalSpread,
@@ -94,9 +96,9 @@ export class OrnamentDef extends AbstractXmlSubtree {
    * Create a def either from a name — with no transformers yet — or by parsing an existing
    * element. Returns null after logging instead of throwing.
    */
-  static createOrnamentDef(name: string): OrnamentDef | null;
-  static createOrnamentDef(xml: Element): OrnamentDef | null;
-  static createOrnamentDef(nameOrXml: string | Element): OrnamentDef | null {
+  static createOrnamentDef(name: string): Result<OrnamentDef, MpmParseError>;
+  static createOrnamentDef(xml: Element): Result<OrnamentDef, MpmParseError>;
+  static createOrnamentDef(nameOrXml: string | Element): Result<OrnamentDef, MpmParseError> {
     try {
       let xml: Element;
       if (typeof nameOrXml === 'string') {
@@ -107,9 +109,9 @@ export class OrnamentDef extends AbstractXmlSubtree {
       }
       const od = new OrnamentDef(requireDefName(xml, 'OrnamentDef'));
       od.parseData(xml);
-      return od;
+      return ok(od);
     } catch (e) {
-      return skipMalformedDef(e);
+      return skipMalformedDef(e, 'OrnamentDef');
     }
   }
 
@@ -229,15 +231,16 @@ export class OrnamentDef extends AbstractXmlSubtree {
    * The gradient is set BEFORE the spread, which fixes the child order of the serialized
    * element (`dynamicsGradient` then `temporalSpread`). Do not swap the two calls.
    */
-  static createDefaultOrnamentDef(name: string): OrnamentDef | null {
-    const def = OrnamentDef.createOrnamentDef(name);
-    if (def === null) return null;
+  static createDefaultOrnamentDef(name: string): Result<OrnamentDef, MpmParseError> {
+    const created = OrnamentDef.createOrnamentDef(name);
+    if (isErr(created)) return created;
+    const def = created.value;
     switch (name.trim().toLowerCase()) {
       case 'arpeg':
       case 'arpeggio':
         def.setDynamicsGradientValues(-1.0, 1.0);
         def.setTemporalSpreadValues(-22.0, 44.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
     }
-    return def;
+    return created;
   }
 }

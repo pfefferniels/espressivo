@@ -13,6 +13,7 @@
  * reader reads the element raw.
  */
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../support/result.js';
 import { Builder } from '../../src/xml/XomTypes.js';
 import '../../src/mpm/Mpm.js';
 import { AccentuationPatternDef } from '../../src/mpm/elements/styles/defs/AccentuationPatternDef.js';
@@ -102,13 +103,12 @@ describe('accentuationAt agrees with the renderer, bit for bit', () => {
     const element = parseDef(xml);
     const mine = readAccentuationPattern(element);
     // copy(): constructing the def adds @length and reorders children.
-    const renderer = AccentuationPatternDef.createAccentuationPatternDef(element.copy());
-    expect(renderer).not.toBeNull();
+    const renderer = okValue(AccentuationPatternDef.createAccentuationPatternDef(element.copy()));
 
     for (let beat = 0; beat <= 6.02; beat += 0.01) {
       const position = Math.round(beat * 100) / 100;
       expect(accentuationAt(mine, position), `beat ${String(position)}`).toBe(
-        renderer!.getAccentuationAt(position),
+        renderer.getAccentuationAt(position),
       );
     }
   });

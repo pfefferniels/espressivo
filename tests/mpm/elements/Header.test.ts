@@ -228,7 +228,7 @@ describe('Header', () => {
     it('replaces a styleDef of the same name', () => {
       const h = okValue(Header.createHeader());
       const first = h.addStyleDef(Mpm.TEMPO_STYLE, 'default');
-      styleOfKind(first, 'tempo')!.addDef(TempoDef.createTempoDef('Allegro', 147.0)!);
+      styleOfKind(first, 'tempo')!.addDef(okValue(TempoDef.createTempoDef('Allegro', 147.0)));
       const second = h.addStyleDef(Mpm.TEMPO_STYLE, 'default');
 
       expect(second).not.toBe(first);
