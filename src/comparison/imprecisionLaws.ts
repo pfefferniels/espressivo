@@ -338,22 +338,29 @@ interface DistributionReading {
  * `absent` is NOT `unusable`, and keeping them apart is the whole content of AD-47: an absent
  * attribute reaches the provider as `null` and coerces to 0, while an unusable one reaches it
  * as `NaN` and destroys every note in the span.
+ *
+ * **Deliberately not a `Result`.** That sentence is the reason. A `Result<number, …>` has one
+ * failure arm, and folding two of these three into it would put the distinction AD-47 exists
+ * to preserve inside the error payload — where the combinators would then treat both the same,
+ * since `mapOk` and `andThen` short-circuit on any failure alike. This is a genuine three-way
+ * sum and it stays one; the only thing the prelude gives it is the discriminant name, `kind`,
+ * which is what makes `matchKind` applicable here as everywhere else.
  */
 type NumericReading =
-  | { readonly state: 'present'; readonly value: number }
-  | { readonly state: 'absent' }
-  | { readonly state: 'unusable'; readonly raw: string };
+  | { readonly kind: 'present'; readonly value: number }
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'unusable'; readonly raw: string };
 
 function readNumeric(element: Element, name: string): NumericReading {
   const raw = readAttributeValue(element, name);
-  if (raw === null) return { state: 'absent' };
+  if (raw === null) return { kind: 'absent' };
   const value = parseFloat(raw);
-  return Number.isFinite(value) ? { state: 'present', value } : { state: 'unusable', raw };
+  return Number.isFinite(value) ? { kind: 'present', value } : { kind: 'unusable', raw };
 }
 
 /** The renderer's coercion: absent means the number 0. */
 function coerced(reading: NumericReading): number {
-  return reading.state === 'present' ? reading.value : 0;
+  return reading.kind === 'present' ? reading.value : 0;
 }
 
 /**
@@ -413,7 +420,7 @@ function readDistribution(
 
   // 1. An unusable numeric attribute is `NaN` all the way to `milliseconds.date="NaN"`.
   for (const [name, reading] of unusable)
-    if (reading.state === 'unusable')
+    if (reading.kind === 'unusable')
       return bottomReading(
         'unusable-parameter',
         `@${name}="${reading.raw}" parses to NaN, which reaches every draw and makes every note in the span vanish from the MIDI export (R24)`,
@@ -429,12 +436,12 @@ function readDistribution(
   //    negative, `getValue` clamps it to 0, and every note draws `series[0]` — one draw from
   //    the law, repeated. The marginal is unchanged, so it is the same kind of render artifact
   //    as the basis's ordinary effect (AD-14iii) and costs nothing.
-  if (basis.state === 'unusable')
+  if (basis.kind === 'unusable')
     return bottomReading(
       'unusable-timing-basis',
       `@milliseconds.timingBasis="${basis.raw}" makes the provider index NaN, and RandomNumberProvider.requireUsableIndex throws rather than returning a value — the render aborts (R21)`,
     );
-  if (basis.state === 'present' && basis.value === 0)
+  if (basis.kind === 'present' && basis.value === 0)
     return bottomReading(
       'unusable-timing-basis',
       '@milliseconds.timingBasis="0" divides the millisecond date by zero, so the provider index is ±∞ and requireUsableIndex throws — the render aborts (R21). The renderer’s own ≤ 0 fallback repairs only an ABSENT basis, never a written zero',
@@ -486,7 +493,7 @@ function readDistribution(
     }
 
     case BROWNIAN: {
-      if (stepWidth.state === 'present')
+      if (stepWidth.kind === 'present')
         processParameters.push({ attribute: 'stepWidth.max', value: stepWidth.value });
       // AD-14iii: for a correlated family the basis sets the step rate per unit time, which
       // is a property of the PROCESS, so it joins the component rather than being reported
@@ -616,7 +623,7 @@ function deriveTimingBasis(
     values: readonly number[];
   },
 ): { value: number; derived: boolean } {
-  if (parts.basis.state === 'present') return { value: parts.basis.value, derived: false };
+  if (parts.basis.kind === 'present') return { value: parts.basis.value, derived: false };
 
   let derived: number | null = null;
   if (domain === 'imprecisionTiming')

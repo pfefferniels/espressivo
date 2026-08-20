@@ -46,7 +46,23 @@ export interface Bottom {
   readonly cause: BottomCause;
 }
 
-/** A value that may be `⊥`. */
+/**
+ * A value that may be `⊥`.
+ *
+ * **Deliberately not `Result<T, BottomCause>`**, though it is the same two-arm shape and the
+ * temptation is obvious. A `Result`'s failure arm means *this computation produced nothing*,
+ * and every combinator over it is built on that meaning: `mapOk` skips it, `andThen`
+ * short-circuits on it, `unwrapOr` substitutes for it. §5.0 says the opposite in as many words
+ * — "the domain is total, nothing is ever excluded from `[start, end]`" — and §4 gives `⊥` its
+ * own arithmetic, `δ_row` from everything and 0 from itself. It is a **member of the value
+ * domain**, not the absence of one.
+ *
+ * So the danger is not that `Result` would be inexpressive; it is that it would be expressive
+ * in the wrong direction. `mapOk(row, f)` over a `⊥` compiles, reads correctly, and silently
+ * drops the `δ_row` the density layer is owed — which is the single defect this type was
+ * introduced to make impossible. A domain-specific sum with an ugly-on-purpose name, whose only
+ * eliminator is a `kind` switch every caller has to write out, is what keeps that honest.
+ */
 export type Valued<T> = { readonly kind: 'value'; readonly value: T } | Bottom;
 
 export function valued<T>(value: T): Valued<T> {
