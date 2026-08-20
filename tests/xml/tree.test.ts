@@ -136,8 +136,16 @@ describe('firstChildElement', () => {
     expect(firstChildElement(parent)).toBeNull();
   });
 
-  it('should return null for null input', () => {
-    expect(firstChildElement(null as unknown as Element)).toBeNull();
+  it('answers null for a null element — the guard no typed caller can reach', () => {
+    // The cast this used to carry (`null as unknown as Element`) tested what happens when the
+    // type system is defeated. The directive tests something stronger and self-maintaining:
+    // that the parameter is **not** nullable. Widen it to `Element | null` and this becomes an
+    // unused-directive error, so the claim cannot rot into a lie the way a cast can. What the
+    // guard is for is the untyped JavaScript caller, which a published library still has.
+    // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
+    expect(firstChildElement(null)).toBeNull();
+    // …and the reachable spelling of "nothing to return", which is what callers actually hit
+    expect(firstChildElement(new Element('staff'))).toBeNull();
   });
 
   it('should find first child by name using (Element, string) overload', () => {
@@ -165,8 +173,10 @@ describe('firstChildElement', () => {
     expect(result!.getLocalName()).toBe('note');
   });
 
-  it('should return null for (string, null) overload', () => {
-    expect(firstChildElement('note', null as unknown as Element)).toBeNull();
+  it('answers null for (string, null) — same guard, name-first form', () => {
+    // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
+    expect(firstChildElement('note', null)).toBeNull();
+    expect(firstChildElement('note', new Element('layer'))).toBeNull();
   });
 });
 
@@ -235,8 +245,10 @@ describe('allChildElements', () => {
   // guards used to hide. All 16 call sites in `src/` pass a live element and either a string
   // literal name or none, so neither case is reachable from the pipeline.
   it('throws on a null element now that the null guards are gone (RULE N2b)', () => {
-    expect(() => allChildElements(null as unknown as Element)).toThrow();
-    expect(() => allChildElements(null as unknown as Element, 'note')).toThrow();
+    // @ts-expect-error the parameter is non-nullable — which is exactly what is being pinned
+    expect(() => allChildElements(null)).toThrow();
+    // @ts-expect-error the parameter is non-nullable — which is exactly what is being pinned
+    expect(() => allChildElements(null, 'note')).toThrow();
   });
 
   it('searches for a literally empty name rather than returning null (RULE N2b)', () => {
@@ -316,7 +328,8 @@ describe('getNextSiblingElement', () => {
 
   it('should return null for an element without a parent', () => {
     expect(getNextSiblingElement(new Element('note'))).toBeNull();
-    expect(getNextSiblingElement(null as unknown as Element)).toBeNull();
+    // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
+    expect(getNextSiblingElement(null)).toBeNull();
   });
 
   it('should skip to the next sibling of a given name', () => {
@@ -334,7 +347,8 @@ describe('getNextSiblingElement', () => {
 
   it('should return null for the named overload without a parent', () => {
     expect(getNextSiblingElement('note', new Element('note'))).toBeNull();
-    expect(getNextSiblingElement('note', null as unknown as Element)).toBeNull();
+    // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
+    expect(getNextSiblingElement('note', null)).toBeNull();
   });
 });
 
@@ -351,7 +365,8 @@ describe('getPreviousSiblingElement', () => {
 
   it('should return null for an element without a parent', () => {
     expect(getPreviousSiblingElement(new Element('note'))).toBeNull();
-    expect(getPreviousSiblingElement(null as unknown as Element)).toBeNull();
+    // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
+    expect(getPreviousSiblingElement(null)).toBeNull();
   });
 
   it('should skip back to the previous sibling of a given name', () => {
@@ -369,7 +384,8 @@ describe('getPreviousSiblingElement', () => {
 
   it('should return null for the named overload without a parent', () => {
     expect(getPreviousSiblingElement('note', new Element('note'))).toBeNull();
-    expect(getPreviousSiblingElement('note', null as unknown as Element)).toBeNull();
+    // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
+    expect(getPreviousSiblingElement('note', null)).toBeNull();
   });
 });
 

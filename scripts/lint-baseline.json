@@ -7,12 +7,10 @@
   "src/mpm/elements/styles/defs": 4,
   "src/msm": 1,
   "tests/integration": 9,
-  "tests/mei": 4,
   "tests/midi": 4,
   "tests/mpm": 10,
   "tests/mpm/elements": 5,
   "tests/mpm/elements/styles": 2,
   "tests/mpm/elements/styles/defs": 5,
-  "tests/music": 2,
-  "tests/xml": 2
+  "tests/music": 2
 }

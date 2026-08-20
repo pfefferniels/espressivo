@@ -57,15 +57,30 @@ export class XmlBase {
   /**
    * Parse XML source into {@link data}, or leave it null and report why on `console.error`.
    *
-   * The handler is live, unlike several the port inherited from Java: `Builder.build`
-   * really does throw {@link ParsingException}, for a `parsererror` node and for a source
-   * with no root element.
+   * **The `ParsingException` arm is not the malformed-XML arm, and the `throw e` is not the
+   * exceptional one.** Measured, against the pinned `@xmldom/xmldom`: for every category of
+   * malformed input probed — plain text, empty source, a comment or PI with no root, two
+   * root elements, an invalid element name, an undeclared prefix, an unterminated CDATA —
+   * `DOMParser.parseFromString` throws **its own** `ParseError` before `Builder.build` can
+   * reach either of its `ParsingException` throws, so control takes the `else` and leaves
+   * this method by throwing. Java's `XmlBase` catches XOM's `ParsingException` here and
+   * leaves `data` null, i.e. malformed MEI yields an *empty document* there and an
+   * *exception* here. That divergence is recorded in PARITY.md as `XB1`; `src/api/parse.ts`
+   * already compensates for it at the facade, and its sibling comment in
+   * `src/api/pipeline.ts` — "`XmlBase` swallows the `ParsingException` and leaves `data`
+   * null" — describes something that does not happen.
+   *
+   * What *does* reach the `ParsingException` arm is `Builder.build`'s `parsererror` probe,
+   * which is browser-`DOMParser` semantics: browsers report a parse failure by returning a
+   * document containing a `<parsererror>` element, and xmldom never does. So the probe
+   * fires only as a **false positive**, on a well-formed document that happens to contain an
+   * element named `parsererror` — which is the one and only way a `Mei`, `Msm` or `Mpm` can
+   * come out of a constructor with `isEmpty()` true. `tests/xml/XmlBase.test.ts` pins both
+   * halves.
    *
    * The `console.error` **stays**, and it is the only one left in this class. Unlike
    * `exportXml`'s, it carries something no caller can recover: *why* the parse failed.
-   * `src/api/pipeline.ts`'s `checkParsed` says so in its own words — "a document that did
-   * not parse is indistinguishable from an empty one at the class API" — and answers both
-   * with one message. Giving it the reason means adding a channel to this class, and the
+   * Giving `src/api/pipeline.ts` that reason means adding a channel to this class, and the
    * cheap version of that (a stored error plus an accessor) has exactly one consumer, in a
    * directory outside this charter. Left deliberately, and reported rather than smuggled.
    */

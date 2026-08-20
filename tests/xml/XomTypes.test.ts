@@ -9,7 +9,6 @@ import {
   Elements,
   ParsingException,
   ValidityException,
-  XomNode,
 } from '../../src/xml/XomTypes.js';
 
 // ---------------------------------------------------------------------------
@@ -687,10 +686,20 @@ describe('XomNode – parent and detach', () => {
     const parent = new Element('parent');
     const child = new Element('child');
     parent.appendChild(child);
-    // getParent works through the Element children array, but the XomNode.getParent
-    // is based on DOM parentNode. Since we keep our own _children array, let's verify
-    // via indexOf.
+    // The comment this replaces said `XomNode.getParent` "is based on DOM parentNode" and
+    // then checked `indexOf` instead — but `getParent` consults `_xomParent` first and only
+    // falls back to the DOM for nodes that came out of the parser and were never re-wired
+    // here. `appendChild` wires it, so the direct claim holds and is worth asserting.
+    expect(child.getParent()).toBe(parent);
     expect(parent.indexOf(child)).toBe(0);
+  });
+
+  it('falls back to the wrapped DOM node for a parsed child, which nothing re-wired', () => {
+    // `Element.wrap` parents what it builds, so the fallback is reached through `Nodes`:
+    // `query` maps element hits back onto this tree, and a text node comes back as a fresh
+    // `Text` whose only link to anything is the DOM node it wraps.
+    const root = new Builder().build('<a><b/></a>').getRootElement();
+    expect(root.getFirstChildElement('b')!.getParent()).toBe(root);
   });
 
   it('removeChild should return false for non-children', () => {
