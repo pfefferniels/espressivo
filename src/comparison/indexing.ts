@@ -55,6 +55,22 @@ export function elementAt<T extends NonNullable<unknown>>(
   return xs[index] ?? outOfRange(index, xs.length, what);
 }
 
+/**
+ * As {@link elementAt}, for a numeric buffer — a `Float64Array`, an `Int8Array`, or a plain
+ * `number[]` used as one.
+ *
+ * A separate name because a typed array is not an `Array` and satisfies no `readonly T[]`
+ * parameter, and the DP tables of `editScript.ts` are typed arrays for the reason typed arrays
+ * exist: `(n+1) × (m+1)` doubles allocated once rather than `n+1` boxed rows.
+ */
+export function numberAt(
+  buffer: { readonly [index: number]: number; readonly length: number },
+  index: number,
+  what: string,
+): number {
+  return buffer[index] ?? outOfRange(index, buffer.length, what);
+}
+
 function outOfRange(index: number, length: number, what: string): never {
   throw new RangeError(
     `comparison: index ${String(index)} is outside ${what}, which has ${String(length)} entries`,
