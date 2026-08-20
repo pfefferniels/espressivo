@@ -197,11 +197,20 @@ export class ArticulationMap extends GenericMap {
       if (ad.noteid !== null) {
         const index = map.getElementIndexByID(ad.noteid);
         if (index < 0) continue;
-        if (map.getAllElements()[index].getKey() !== ad.date)
+        // One lookup where there were three. `getAllElements()` hands back the map's own
+        // array, so the three reads always named the same entry.
+        const referee = map.getAllElements()[index];
+        if (referee.getKey() !== ad.date)
           console.error(
-            `Warning: articulation date and referee date do not match!\n    ${ad.xml!.toXML()}\n    ${map.getAllElements()[index].getValue().toXML()}`,
+            // `this.elements[articIndex]` and not `ad.xml!`: `getArticulationDataOf` sets
+            // `xml` from exactly this entry (`resolveEntryIndex` returns its argument
+            // unchanged for an in-range index, and the loop bound guarantees one), so the
+            // two are the same Element — but only one of them is typed `Element | null`.
+            // The field stays nullable for the write half, where
+            // `addArticulationFromData` is handed a datum that has no element yet.
+            `Warning: articulation date and referee date do not match!\n    ${this.elements[articIndex].getValue().toXML()}\n    ${referee.getValue().toXML()}`,
           );
-        const note = map.getAllElements()[index].getValue();
+        const note = referee.getValue();
         let adList = noteArtics.get(note);
         if (adList === undefined) {
           adList = [];

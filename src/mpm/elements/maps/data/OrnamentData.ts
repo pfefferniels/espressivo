@@ -250,11 +250,16 @@ export class OrnamentData {
 
     const tempChordSequence: Element[][] = [...chordSequence];
 
-    if (this.ornamentDef.getDynamicsGradient() !== null)
-      this.ornamentDef.getDynamicsGradient()!.apply(tempChordSequence, this.scale);
+    // Java calls each getter twice — `if (getX() != null) getX().apply(...)` — and this
+    // port asserted on the second call. Both are plain field reads
+    // (`OrnamentDef.ts:116-118` and `:156-158`: `return this.temporalSpread;`), so binding
+    // the result once is the same two values in the same order, with nothing left to
+    // assert. This is the spelling {@link applyGeneration} below already uses.
+    const gradient = this.ornamentDef.getDynamicsGradient();
+    if (gradient !== null) gradient.apply(tempChordSequence, this.scale);
 
-    if (this.ornamentDef.getTemporalSpread() !== null)
-      this.ornamentDef.getTemporalSpread()!.apply(tempChordSequence);
+    const spread = this.ornamentDef.getTemporalSpread();
+    if (spread !== null) spread.apply(tempChordSequence);
 
     return chordsToAdd;
   }
@@ -273,8 +278,6 @@ export class OrnamentData {
 
     const tempChordSequence: Element[][] = [...generation.chords];
 
-    // The v2 branch above spells this `getDynamicsGradient()!` twice, which is the shape the
-    // Java reference has and is frozen there; new code does not add to that debt.
     const gradient = this.ornamentDef.getDynamicsGradient();
     if (gradient !== null) gradient.apply(tempChordSequence, this.scale);
 
