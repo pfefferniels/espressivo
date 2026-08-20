@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { okValue } from '../../../support/result.js';
 import { OrnamentationMap } from '../../../../src/mpm/elements/maps/OrnamentationMap.js';
 import { GenericMap } from '../../../../src/mpm/elements/maps/GenericMap.js';
 import { OrnamentData } from '../../../../src/mpm/elements/maps/data/OrnamentData.js';
@@ -94,7 +95,7 @@ function makeDef(name: string, options: DefOptions = {}): OrnamentDef {
 }
 
 function makeMap(defs: OrnamentDef[]): OrnamentationMap {
-  const header = Header.createHeader()!;
+  const header = okValue(Header.createHeader());
   const style = createStyle('ornamentation', 'orn style');
   for (const def of defs) style.addDef(def);
   header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
@@ -1643,7 +1644,7 @@ describe('MPM v3 ornament instantiation', () => {
 
     /** A global map: its style comes from the GLOBAL header, so `apply` takes that branch. */
     function makeGlobalMap(defs: OrnamentDef[]): OrnamentationMap {
-      const header = Header.createHeader()!;
+      const header = okValue(Header.createHeader());
       const style = createStyle('ornamentation', 'orn style');
       for (const def of defs) style.addDef(def);
       header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);

@@ -1,6 +1,7 @@
 import { Attribute, Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
-import { elementAt, pipe } from '../../prelude/index.js';
+import { elementAt, err, isErr, ok, pipe, unwrapOr, type Result } from '../../prelude/index.js';
+import { type MpmParseError } from './parseError.js';
 import {
   allChildElements,
   attribute,
@@ -219,36 +220,35 @@ export class Performance extends AbstractXmlSubtree {
 
   /**
    * Create a performance from scratch (`name`, optionally `pulsesPerQuarter` and `id`) or
-   * by parsing an existing `<performance>` element. Returns null — after logging — instead
-   * of throwing, which is how every factory in this cluster reports a malformed input.
+   * by parsing an existing `<performance>` element.
+   *
+   * Reports the reason rather than printing it — see `elements/parseError.ts`. A
+   * `<performance>` with no `@name` is the one thing a document can get wrong here, and it
+   * is the difference between "this MPM has no performances" and "this MPM has one that
+   * could not be read", which a bare null could not say.
    */
   static createPerformance(
     name: string,
     pulsesPerQuarter?: number,
     id?: string,
-  ): Performance | null;
-  static createPerformance(xml: Element): Performance | null;
+  ): Result<Performance, MpmParseError>;
+  static createPerformance(xml: Element): Result<Performance, MpmParseError>;
   static createPerformance(
-    nameOrXml: string | Element,
+    nameOrXml: string | Element | null,
     pulsesPerQuarter?: number,
     id?: string,
-  ): Performance | null {
-    try {
-      const p = new Performance();
-      if (typeof nameOrXml === 'string') {
-        const performance = new Element('performance', MPM_NAMESPACE);
-        performance.addAttribute(new Attribute('name', nameOrXml));
-        p.parseData(performance);
-        if (pulsesPerQuarter !== undefined) p.setPulsesPerQuarter(pulsesPerQuarter);
-        if (id !== undefined) p.setId(id);
-      } else {
-        p.parseData(nameOrXml);
-      }
-      return p;
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  ): Result<Performance, MpmParseError> {
+    if (nameOrXml === null) return err({ kind: 'noElement', what: 'Performance' });
+    const p = new Performance();
+    if (typeof nameOrXml !== 'string') return p.readFrom(nameOrXml);
+
+    const performance = new Element('performance', MPM_NAMESPACE);
+    performance.addAttribute(new Attribute('name', nameOrXml));
+    const parsed = p.readFrom(performance);
+    if (isErr(parsed)) return parsed;
+    if (pulsesPerQuarter !== undefined) p.setPulsesPerQuarter(pulsesPerQuarter);
+    if (id !== undefined) p.setId(id);
+    return parsed;
   }
 
   /**
@@ -260,13 +260,13 @@ export class Performance extends AbstractXmlSubtree {
    * Parsing is not read-only: a `<performance>` without `pulsesPerQuarter` gets one added
    * (defaulting to 720) and one without a `<global>` child gets an empty one appended, so
    * that every performance is renderable afterwards. `<part>` children that fail to parse
-   * are skipped with a logged error rather than aborting the whole performance.
+   * are skipped — the same ones as before, and now with the reason available at the skip
+   * rather than on somebody's stderr from inside `Part.createPart`.
    */
-  protected parseData(xml: Element): void {
-    if (xml === null) throw new Error('Cannot generate Performance object. XML Element is null.');
+  private readFrom(xml: Element): Result<Performance, MpmParseError> {
     const name = attribute('name', xml);
     if (name === null || name.getValue() === '')
-      throw new Error('Cannot generate Performance object. Attribute name is missing or empty.');
+      return err({ kind: 'missingAttribute', what: 'Performance', attribute: 'name' });
     this.setXml(xml);
     this.nameAttr = attribute('name', this.getXml());
     this.id = attribute('id', this.getXml());
@@ -282,19 +282,30 @@ export class Performance extends AbstractXmlSubtree {
 
     const globalElt = firstChildElement('global', this.getXml());
     if (globalElt === null) {
-      this.global = Global.createGlobal()!;
+      const fresh = Global.createGlobal();
+      if (isErr(fresh))
+        return err({ kind: 'childFailed', what: 'Performance', cause: fresh.error });
+      this.global = fresh.value;
       this.getXml().appendChild(this.global.getXml());
     } else {
-      this.global = Global.createGlobal(globalElt);
+      // A `<global>` that will not parse leaves this null and the performance usable — the
+      // incumbent's behaviour, where only the from-scratch branch's `!` was fatal.
+      this.global = unwrapOr(Global.createGlobal(globalElt), null);
     }
 
     const parts = allChildElements(this.getXml(), 'part');
     for (const element of parts) {
       const part = Part.createPart(element);
-      if (part === null) continue;
-      part.setGlobal(this.global);
-      this.parts.push(part);
+      if (isErr(part)) continue;
+      part.value.setGlobal(this.global);
+      this.parts.push(part.value);
     }
+    return ok(this);
+  }
+
+  /** Not an entry point — see {@link Global.parseData} for the shape and the reason. */
+  protected parseData(): never {
+    throw new Error('Performance is constructed by its factory; parseData is not an entry point.');
   }
 
   size(): number {

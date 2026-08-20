@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { okValue } from '../../../support/result.js';
 import { Mpm } from '../../../../src/mpm/Mpm.js';
 import { Header } from '../../../../src/mpm/elements/Header.js';
 import { GenericMap } from '../../../../src/mpm/elements/maps/GenericMap.js';
@@ -176,7 +177,7 @@ describe('the style kind table', () => {
    * its kind, so nothing in the corpus distinguishes the two. This is the control.
    */
   it('does not hand back a style filed under the wrong collection', () => {
-    const header = Header.createHeader()!;
+    const header = okValue(Header.createHeader());
     header.addStyleDef(Mpm.TEMPO_STYLE, createStyle('rubato', 'misfiled'));
 
     const map = GenericMap.createGenericMap('tempoMap')!;

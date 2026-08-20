@@ -1,6 +1,8 @@
 import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { descendantElements } from '../../xml/tree.js';
+import { err, type Result } from '../../prelude/index.js';
+import { attemptParse, type MpmParseError } from './parseError.js';
 import { MPM_NAMESPACE } from '../names.js';
 import { GenericMap } from './maps/GenericMap.js';
 import { mapOfKind, parseTypedMap, type MapKind, type MapOfKind } from './maps/map.js';
@@ -34,19 +36,20 @@ export class Dated extends AbstractXmlSubtree {
   }
 
   /**
-   * Create an empty `dated`, or one parsed from an existing `<dated>` element. Returns null
-   * — after logging — instead of throwing, as every factory in this cluster does.
+   * Create an empty `dated`, or one parsed from an existing `<dated>` element.
+   *
+   * Reports the reason rather than printing it — see `elements/parseError.ts`. The null
+   * element is the one failure a caller can cause, and it is now checked here instead of
+   * thrown from {@link parseData} and swallowed.
    */
-  static createDated(xml?: Element): Dated | null {
-    try {
+  static createDated(xml?: Element | null): Result<Dated, MpmParseError> {
+    const source = xml === undefined ? new Element('dated', MPM_NAMESPACE) : xml;
+    if (source === null) return err({ kind: 'noElement', what: 'Dated' });
+    return attemptParse('Dated', () => {
       const d = new Dated();
-      if (xml !== undefined) d.parseData(xml);
-      else d.parseData(new Element('dated', MPM_NAMESPACE));
+      d.parseData(source);
       return d;
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+    });
   }
 
   /**
@@ -59,7 +62,6 @@ export class Dated extends AbstractXmlSubtree {
    * `…Map` is preserved rather than dropped.
    */
   protected parseData(xml: Element): void {
-    if (xml === null) throw new Error('Cannot generate Dated object. XML Element is null.');
     this.setXml(xml);
 
     const maps = descendantElements(this.getXml(), (element) => {

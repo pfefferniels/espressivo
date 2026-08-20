@@ -2,7 +2,8 @@ import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { allChildElements, descendantElements } from '../../xml/tree.js';
 import { MPM_NAMESPACE } from '../names.js';
-import { isErr } from '../../prelude/index.js';
+import { err, isErr, type Result } from '../../prelude/index.js';
+import { attemptParse, type MpmParseError } from './parseError.js';
 import {
   createStyle,
   describeStyleError,
@@ -44,19 +45,18 @@ export class Header extends AbstractXmlSubtree {
   }
 
   /**
-   * Create an empty header, or one parsed from an existing `<header>` element. Returns null
-   * — after logging — instead of throwing, as every factory in this cluster does.
+   * Create an empty header, or one parsed from an existing `<header>` element.
+   *
+   * Reports the reason rather than printing it — see `elements/parseError.ts`.
    */
-  static createHeader(xml?: Element): Header | null {
-    try {
+  static createHeader(xml?: Element | null): Result<Header, MpmParseError> {
+    const source = xml === undefined ? new Element('header', MPM_NAMESPACE) : xml;
+    if (source === null) return err({ kind: 'noElement', what: 'Header' });
+    return attemptParse('Header', () => {
       const h = new Header();
-      if (xml !== undefined) h.parseData(xml);
-      else h.parseData(new Element('header', MPM_NAMESPACE));
+      h.parseData(source);
       return h;
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+    });
   }
 
   /**
@@ -69,13 +69,12 @@ export class Header extends AbstractXmlSubtree {
    * is why {@link styleKindOfCollection} answers `'generic'` for unknown types rather than
    * rejecting them.
    *
-   * The parameter is `Element | null` rather than the base class's `Element` because the
-   * null really does arrive — `Header.test.ts:75` pins `createHeader(null as unknown as
-   * Element)` returning null — and saying so is what lets the guard below be a check the
-   * type system agrees is reachable instead of a `no-unnecessary-condition` finding.
+   * The null that really does arrive here — `Header.test.ts` pins `createHeader(null as
+   * unknown as Element)` — is now rejected by {@link createHeader}, whose parameter says
+   * `Element | null` for the reason this one used to: so that the check is one the type
+   * system agrees is reachable rather than a `no-unnecessary-condition` finding.
    */
-  protected parseData(xml: Element | null): void {
-    if (xml === null) throw new Error('Cannot generate Header object. XML Element is null.');
+  protected parseData(xml: Element): void {
     this.setXml(xml);
 
     const styles = descendantElements(this.getXml(), (element) =>

@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { okValue } from '../../../support/result.js';
 import { Element } from '../../../../src/xml/XomTypes.js';
 import {
   ARTICULATION_MAP,
@@ -150,7 +151,7 @@ describe('mapOfKind', () => {
 
 describe('Dated.getMapOfKind', () => {
   it('returns the typed map for a kind it holds, and null for one it does not', () => {
-    const dated = Dated.createDated()!;
+    const dated = okValue(Dated.createDated());
     dated.addMapByType(TEMPO_MAP);
 
     const tempoMap = dated.getMapOfKind(TEMPO_MAP);
@@ -160,7 +161,7 @@ describe('Dated.getMapOfKind', () => {
   });
 
   it('returns null where getMap returns a map of the wrong class', () => {
-    const dated = Dated.createDated()!;
+    const dated = okValue(Dated.createDated());
     const impostor = GenericMap.createGenericMap(TEMPO_MAP)!;
     dated.addMap(impostor);
 
@@ -169,7 +170,7 @@ describe('Dated.getMapOfKind', () => {
   });
 
   it('keeps the four imprecision domains apart', () => {
-    const dated = Dated.createDated()!;
+    const dated = okValue(Dated.createDated());
     for (const kind of [
       IMPRECISION_MAP_TIMING,
       IMPRECISION_MAP_DYNAMICS,

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../support/result.js';
 import { Msm } from '../../src/msm/Msm.js';
 import { Performance } from '../../src/mpm/elements/Performance.js';
 import { Part } from '../../src/mpm/elements/Part.js';
@@ -51,7 +52,7 @@ function makeMsm(ppq = 720): Msm {
  * `seed` attribute into the MPM itself, which RULE F7 says must beat `options.seed`.
  */
 function makePerformance(mpmSeed?: number): Performance {
-  const perf = Performance.createPerformance('perf', 720)!;
+  const perf = okValue(Performance.createPerformance('perf', 720));
   const tempoMap = TempoMap.createTempoMap()!;
   tempoMap.addTempo(0, '120', 0.25);
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
@@ -60,13 +61,13 @@ function makePerformance(mpmSeed?: number): Performance {
   imp.addDistributionUniform(0, -30, 30, mpmSeed);
   perf.getGlobal()!.getDated()!.addMap(imp);
 
-  perf.addPart(Part.createPart('Piano', 1, 0, 0)!);
+  perf.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
   return perf;
 }
 
 /** A performance that renders a `positionMap`, for the sampling-step half of the item. */
 function makeMovementPerformance(): Performance {
-  const perf = Performance.createPerformance('perf', 720)!;
+  const perf = okValue(Performance.createPerformance('perf', 720));
   const tempoMap = TempoMap.createTempoMap()!;
   tempoMap.addTempo(0, '120', 0.25);
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
@@ -85,7 +86,7 @@ function makeMovementPerformance(): Performance {
   movMap.addMovement(term);
   perf.getGlobal()!.getDated()!.addMap(movMap);
 
-  perf.addPart(Part.createPart('Piano', 1, 0, 0)!);
+  perf.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
   return perf;
 }
 

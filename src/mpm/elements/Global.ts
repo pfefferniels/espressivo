@@ -1,7 +1,9 @@
 import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { firstChildElement } from '../../xml/tree.js';
+import { err, isErr, ok, unwrapOr, type Result } from '../../prelude/index.js';
 import { MPM_NAMESPACE } from '../names.js';
+import { type MpmParseError } from './parseError.js';
 import { Header } from './Header.js';
 import { Dated } from './Dated.js';
 
@@ -25,19 +27,13 @@ export class Global extends AbstractXmlSubtree {
 
   /**
    * Create an empty global environment, or one parsed from an existing `<global>` element.
-   * Returns null — after logging — instead of throwing, as every factory in this cluster
-   * does.
+   *
+   * Reports the reason rather than printing it — see `elements/parseError.ts`.
    */
-  static createGlobal(xml?: Element): Global | null {
-    try {
-      const g = new Global();
-      if (xml !== undefined) g.parseData(xml);
-      else g.parseData(new Element('global', MPM_NAMESPACE));
-      return g;
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  static createGlobal(xml?: Element | null): Result<Global, MpmParseError> {
+    const source = xml === undefined ? new Element('global', MPM_NAMESPACE) : xml;
+    if (source === null) return err({ kind: 'noElement', what: 'Global' });
+    return new Global().readFrom(source);
   }
 
   /**
@@ -48,30 +44,43 @@ export class Global extends AbstractXmlSubtree {
    * `<global/>` still yields a usable environment. The closing `setEnvironment(this, null)`
    * is what gives this global's maps access to its header for style lookup; `null` for the
    * part, because a global environment has no local header.
+   *
+   * **The two children are not equally required, and that asymmetry is the incumbent's.**
+   * A `<header>` that will not parse leaves {@link getHeader} null and the global usable; a
+   * `<dated>` that will not parse is fatal. Both used to be spelled with a `!` and a `throw`
+   * that the factory's `catch` printed; they are the same two outcomes here, with the
+   * failing child's own reason carried under `childFailed` instead of discarded.
    */
-  protected parseData(xml: Element): void {
-    if (xml === null) throw new Error('Cannot generate Global object. XML Element is null.');
+  private readFrom(xml: Element): Result<Global, MpmParseError> {
     this.setXml(xml);
 
     const headerElt = firstChildElement('header', this.getXml());
     if (headerElt === null) {
-      this.header = Header.createHeader()!;
+      const fresh = Header.createHeader();
+      if (isErr(fresh)) return err({ kind: 'childFailed', what: 'Global', cause: fresh.error });
+      this.header = fresh.value;
       this.getXml().appendChild(this.header.getXml());
     } else {
-      this.header = Header.createHeader(headerElt);
+      this.header = unwrapOr(Header.createHeader(headerElt), null);
     }
 
     const datedElt = firstChildElement('dated', this.getXml());
-    if (datedElt === null) {
-      this.dated = Dated.createDated()!;
-      this.getXml().appendChild(this.dated.getXml());
-    } else {
-      this.dated = Dated.createDated(datedElt);
-    }
+    const dated = Dated.createDated(datedElt ?? undefined);
+    if (isErr(dated)) return err({ kind: 'childFailed', what: 'Global', cause: dated.error });
+    this.dated = dated.value;
+    if (datedElt === null) this.getXml().appendChild(this.dated.getXml());
 
-    if (this.dated === null)
-      throw new Error('Cannot generate Global object. Failed to generate Dated object.');
     this.dated.setEnvironment(this, null);
+    return ok(this);
+  }
+
+  /**
+   * Not an entry point: a `Global` is built by {@link createGlobal}, which needs to report
+   * a failing child and so cannot be a `void` method. Same shape and same reason as
+   * `maps/GenericMap.parseData` and `styles/style.ts`.
+   */
+  protected parseData(): never {
+    throw new Error('Global is constructed by its factory; parseData is not an entry point.');
   }
 
   getHeader(): Header | null {

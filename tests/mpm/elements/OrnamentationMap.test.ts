@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { okValue } from '../../support/result.js';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -94,7 +95,7 @@ function spreadMsDef(): OrnamentDef {
 
 /** a header carrying an ornamentationStyle named "orn style" with the given defs */
 function makeHeader(defs: OrnamentDef[], styleName = 'orn style'): Header {
-  const header = Header.createHeader()!;
+  const header = okValue(Header.createHeader());
   const style = createStyle('ornamentation', styleName);
   for (const d of defs) style.addDef(d);
   header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
@@ -1223,7 +1224,7 @@ describe('OrnamentationMap', () => {
       const score = makeScore([n1, n2]);
 
       const map = OrnamentationMap.createOrnamentationMap()!;
-      map.setHeaders(makeHeader([arpeggioDef()]), Header.createHeader()!); // empty local header
+      map.setHeaders(makeHeader([arpeggioDef()]), okValue(Header.createHeader())); // empty local header
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio', 2.0);
 

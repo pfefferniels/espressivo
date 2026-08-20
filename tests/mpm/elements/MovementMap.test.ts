@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { okValue } from '../../support/result.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Msm } from '../../../src/msm/Msm.js';
 import { Performance } from '../../../src/mpm/elements/Performance.js';
@@ -858,7 +859,7 @@ describe('MovementMap', () => {
       controller: string,
     ): Mpm {
       const mpm = Mpm.createMpm();
-      const perf = Performance.createPerformance('perf', 720)!;
+      const perf = okValue(Performance.createPerformance('perf', 720));
       mpm.addPerformance(perf);
 
       const tempoMap = TempoMap.createTempoMap()!;
@@ -885,7 +886,7 @@ describe('MovementMap', () => {
         movMap.addMovement(term);
       }
       perf.getGlobal()!.getDated()!.addMap(movMap);
-      perf.addPart(Part.createPart('Piano', 1, 0, 0)!);
+      perf.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
       return mpm;
     }
 

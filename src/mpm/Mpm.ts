@@ -1,5 +1,5 @@
 import { Element, Document } from '../xml/XomTypes.js';
-import { elementAt, unwrapOr } from '../prelude/index.js';
+import { elementAt, isErr, unwrapOr } from '../prelude/index.js';
 import { AbstractMsm } from '../msm/AbstractMsm.js';
 import * as names from './names.js';
 import { Performance } from './elements/Performance.js';
@@ -149,8 +149,8 @@ export class Mpm extends AbstractMsm {
     for (const perf of perfs) {
       // go through all performance elements
       const p = Performance.createPerformance(perf); // generate an instance of class Performance from it
-      if (p === null) continue;
-      this.performances.push(p);
+      if (isErr(p)) continue;
+      this.performances.push(p.value);
     }
   }
 
@@ -378,9 +378,9 @@ export class Mpm extends AbstractMsm {
     if (typeof performanceOrName === 'string') {
       // addPerformance(name: string)
       const performance = Performance.createPerformance(performanceOrName);
-      if (performance === null) return null;
-      this.addPerformanceObject(performance);
-      return performance;
+      if (isErr(performance)) return null;
+      this.addPerformanceObject(performance.value);
+      return performance.value;
     } else {
       // addPerformance(performance: Performance)
       return this.addPerformanceObject(performanceOrName);

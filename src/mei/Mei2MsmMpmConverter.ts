@@ -20,6 +20,7 @@ import {
   parentElement,
 } from '../xml/tree.js';
 import { MissingNodeError } from '../xml/errors.js';
+import { describeMpmParseError } from '../mpm/elements/parseError.js';
 import { Mei } from './Mei.js';
 import {
   buildOrnamentData,
@@ -61,6 +62,7 @@ import {
   firstPresent,
   foldl,
   head,
+  isErr,
   isNonEmpty,
   isOk,
   mapPresent,
@@ -1126,11 +1128,19 @@ export class Mei2MsmMpmConverter {
       mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), null);
     }
 
-    const performance = Performance.createPerformance('MEI export performance');
-    if (performance === null) {
-      console.error(`Failed to generate an instance of Performance. Skipping mdiv ${titleString}`);
+    // Still printed, and that is the point of the change rather than an omission: the
+    // converter is the code that knows a human asked for this conversion, so it is the code
+    // entitled to say something. What it can say is new — `createPerformance` used to print
+    // its exception itself and hand back a bare null, so this message could only report
+    // *that* the performance failed.
+    const created = Performance.createPerformance('MEI export performance');
+    if (isErr(created)) {
+      console.error(
+        `Failed to generate an instance of Performance. Skipping mdiv ${titleString}. ${describeMpmParseError(created.error)}`,
+      );
       return;
     }
+    const performance = created.value;
     performance.setPulsesPerQuarter(this.ppq);
     mpm.addPerformance(performance);
     this.performances.push(mpm);
@@ -2248,9 +2258,9 @@ export class Mei2MsmMpmConverter {
     // built once its performance exists (`makeMovement` returns early otherwise). The record
     // carries the performance beside the MSM, so the pairing is now in the type.
     const performancePart = MpmPart.createPart(label, parseInt(number), midiChannel, midiPort);
-    if (performancePart !== null) {
-      requirePerformance(ctx).addPart(performancePart);
-      if (xmlId !== null) performancePart.setId(xmlId.getValue());
+    if (isOk(performancePart)) {
+      requirePerformance(ctx).addPart(performancePart.value);
+      if (xmlId !== null) performancePart.value.setId(xmlId.getValue());
     }
 
     return part;
