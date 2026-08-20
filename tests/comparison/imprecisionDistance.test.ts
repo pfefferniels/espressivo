@@ -212,9 +212,9 @@ describe('the grid, and reading the law at a cell’s left edge', () => {
       '<distribution.triangular date="0.0" limit.lower="-30" limit.upper="30" mode="0" clip.lower="-30" clip.upper="30" milliseconds.timingBasis="300"/>',
       '<distribution.list date="0.0"/>',
     ];
-    for (let i = 0; i < bodies.length; ++i)
-      for (let j = i + 1; j < bodies.length; ++j)
-        expect(distanceOf(bodies[i], bodies[j], 8).distance).toBeGreaterThan(1e-6);
+    for (const [i, left] of bodies.entries())
+      for (const right of bodies.slice(i + 1))
+        expect(distanceOf(left, right, 8).distance).toBeGreaterThan(1e-6);
   });
 });
 

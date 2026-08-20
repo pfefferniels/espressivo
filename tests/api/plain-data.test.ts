@@ -20,6 +20,7 @@ import {
   renderExpressiveMidi,
   renderMidi,
 } from '../../src/api/index.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'integration', 'fixtures');
 const mei = (name: string) => readFileSync(join(FIXTURES, 'mei', `${name}.mei`), 'utf-8');
@@ -28,7 +29,12 @@ const allMaps = (name: string, ext: 'msm' | 'mpm') =>
 
 /** A movement with notes, sub-note dynamics and a movement (position) stream. */
 const movementInput = { msm: allMaps('movement', 'msm'), mpm: allMaps('movement', 'mpm') };
-const meiMovement = () => convertMeiToMsmMpm(mei('comprehensive'), { sourceName: 'x.mei' })[0];
+const meiMovement = () =>
+  elementAt(
+    convertMeiToMsmMpm(mei('comprehensive'), { sourceName: 'x.mei' }),
+    0,
+    'the converted movement list',
+  );
 
 /**
  * An MPM v3 document whose ornament generates notes, so that the walks below actually visit
@@ -289,8 +295,14 @@ describe('facade outputs support referential-equality memoization (RULE I3)', ()
   });
 
   it('holds for the nested milliseconds object, which is the deepest node', () => {
-    const first = performMsmToData(movementInput).parts[0].notes[0].milliseconds;
-    const second = performMsmToData(movementInput).parts[0].notes[0].milliseconds;
+    const firstNote = () =>
+      elementAt(
+        elementAt(performMsmToData(movementInput).parts, 0, 'the performance’s parts').notes,
+        0,
+        'the part’s note list',
+      );
+    const first = firstNote().milliseconds;
+    const second = firstNote().milliseconds;
     expect(second).toEqual(first);
     expect(second).not.toBe(first);
   });

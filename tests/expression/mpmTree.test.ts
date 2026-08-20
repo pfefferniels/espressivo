@@ -10,8 +10,11 @@ import {
 import {
   globalEnvironment,
   mpmDocument,
+  partAt,
   partEnvironment,
   performanceDocument,
+  soleIn,
+  soleOf,
 } from './rawFixtures.js';
 
 const FULL = performanceDocument(
@@ -35,7 +38,7 @@ describe('mpmTree', () => {
     });
 
     it('gives an unnamed performance the empty name rather than null', () => {
-      expect(readPerformances(parseMpmRoot(mpmDocument('<performance/>')))[0].name).toBe('');
+      expect(soleOf(mpmDocument('<performance/>')).name).toBe('');
     });
 
     it('finds no performances in a document that has none', () => {
@@ -43,7 +46,7 @@ describe('mpmTree', () => {
     });
 
     it('scopes and indexes the environments', () => {
-      const [performance] = readPerformances(parseMpmRoot(FULL));
+      const performance = soleOf(FULL);
       expect(environmentsOf(performance).map((e) => [e.scope, e.partIndex])).toEqual([
         ['global', null],
         ['part', 0],
@@ -54,15 +57,15 @@ describe('mpmTree', () => {
 
   describe('maps', () => {
     it('indexes maps by element local name, imprecision domains included', () => {
-      const [performance] = readPerformances(parseMpmRoot(FULL));
+      const performance = soleOf(FULL);
       expect([...performance.global.maps.keys()]).toEqual([TEMPO_MAP, IMPRECISION_MAP_TIMING]);
       expect(performance.global.maps.get(TEMPO_MAP)!.getLocalName()).toBe('tempoMap');
     });
 
     it('gives each part only the maps physically present in it', () => {
-      const [performance] = readPerformances(parseMpmRoot(FULL));
-      expect([...performance.parts[0].maps.keys()]).toEqual(['dynamicsMap']);
-      expect([...performance.parts[1].maps.keys()]).toEqual(['articulationMap']);
+      const performance = soleOf(FULL);
+      expect([...partAt(performance, 0).maps.keys()]).toEqual(['dynamicsMap']);
+      expect([...partAt(performance, 1).maps.keys()]).toEqual(['articulationMap']);
     });
 
     it('keeps the LAST of two maps of the same type, and deletes neither', () => {
@@ -72,7 +75,7 @@ describe('mpmTree', () => {
         globalEnvironment('', '<tempoMap id="first"/><tempoMap id="second"/>'),
       );
       const root = parseMpmRoot(text);
-      const [performance] = readPerformances(root);
+      const performance = soleIn(root);
       expect(performance.global.maps.get(TEMPO_MAP)!.getAttributeValue('id')).toBe('second');
       expect(serializeMpmRoot(root)).toContain('id="first"');
     });
@@ -80,7 +83,7 @@ describe('mpmTree', () => {
     it('yields no maps when the environment has no <dated>, and appends none', () => {
       const text = performanceDocument('<global><header/></global>');
       const root = parseMpmRoot(text);
-      const [performance] = readPerformances(root);
+      const performance = soleIn(root);
       expect(performance.global.dated).toBeNull();
       expect(performance.global.maps.size).toBe(0);
       expect(serializeMpmRoot(root)).not.toContain('dated');
@@ -89,13 +92,13 @@ describe('mpmTree', () => {
 
   describe('style collections', () => {
     it('indexes collections by kind', () => {
-      const [performance] = readPerformances(parseMpmRoot(FULL));
+      const performance = soleOf(FULL);
       expect([...performance.global.styleCollections.keys()]).toEqual([
         TEMPO_STYLE,
         DYNAMICS_STYLE,
       ]);
-      expect([...performance.parts[0].styleCollections.keys()]).toEqual([DYNAMICS_STYLE]);
-      expect(performance.parts[1].styleCollections.size).toBe(0);
+      expect([...partAt(performance, 0).styleCollections.keys()]).toEqual([DYNAMICS_STYLE]);
+      expect(partAt(performance, 1).styleCollections.size).toBe(0);
     });
 
     it('discovers a collection by name shape, not by an allow-list', () => {
@@ -104,14 +107,12 @@ describe('mpmTree', () => {
       const text = performanceDocument(
         globalEnvironment('<vendorStyles><styleDef name="V"/></vendorStyles>', ''),
       );
-      expect([...readPerformances(parseMpmRoot(text))[0].global.styleCollections.keys()]).toEqual([
-        'vendorStyles',
-      ]);
+      expect([...soleOf(text).global.styleCollections.keys()]).toEqual(['vendorStyles']);
     });
 
     it('yields nothing when the environment has no <header>', () => {
       const text = performanceDocument('<global><dated/></global>');
-      const [performance] = readPerformances(parseMpmRoot(text));
+      const performance = soleOf(text);
       expect(performance.global.header).toBeNull();
       expect(performance.global.styleCollections.size).toBe(0);
     });
@@ -121,7 +122,7 @@ describe('mpmTree', () => {
     it('yields an empty global environment instead of throwing, and appends nothing', () => {
       const text = performanceDocument(partEnvironment('', '<dynamicsMap/>'));
       const root = parseMpmRoot(text);
-      const [performance] = readPerformances(root);
+      const performance = soleIn(root);
       expect(performance.global.scope).toBe('global');
       expect(performance.global.maps.size).toBe(0);
       expect(performance.parts).toHaveLength(1);

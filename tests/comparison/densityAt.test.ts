@@ -49,6 +49,7 @@ import { readImprecisionSpans } from '../../src/comparison/imprecisionLaws.js';
 import { imprecisionDistance } from '../../src/comparison/imprecisionDistance.js';
 import { comparisonRowFor, localDistance } from '../../src/comparison/registry.js';
 import { isBottom } from '../../src/comparison/values.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
 const WINDOW = { start: 0, end: 4 };
@@ -299,9 +300,13 @@ describe('every cell-bearing dimension exposes the integrand it integrated (AD-5
     const result = imprecisionDistance(read('a'), read('b'), pair.window, pair.ppq.lcm);
     // The two components §5.9 sums, read off the cell they were computed for: this dimension's
     // reading is piecewise constant, so its "definition at a point" IS the covering cell's.
-    const cellAt = (quarters: number) =>
-      result.cells.find((cell) => quarters >= cell.startQuarters && quarters < cell.endQuarters) ??
-      result.cells[result.cells.length - 1];
+    const cellAt = (quarters: number) => {
+      const covering = result.cells.find(
+        (cell) => quarters >= cell.startQuarters && quarters < cell.endQuarters,
+      );
+      // Past the last cell's end — the window's own right edge — the covering cell is the last.
+      return covering ?? elementAt(result.cells, result.cells.length - 1, 'the distance’s cells');
+    };
     checkCells(result.cells, result.distance, (quarters) => {
       const cell = cellAt(quarters);
       return cell.density + cell.processDensity;

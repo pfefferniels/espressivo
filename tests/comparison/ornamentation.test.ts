@@ -25,6 +25,11 @@ import {
 } from '../../src/comparison/ornamentationDistance.js';
 import { comparisonRowFor, COMPARISON_JND_KEYS } from '../../src/comparison/registry.js';
 import { isBottom } from '../../src/comparison/values.js';
+import { elementAt } from '../../src/prelude/index.js';
+
+/** Ornament atom `index` of a read, checked. */
+const ornamentAt = (read: OrnamentAtoms, index = 0): OrnamentAtom =>
+  elementAt(read.atoms, index, 'the atoms this ornamentation map read');
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
 const PPQ = 720;
@@ -117,7 +122,7 @@ describe('AD-43.1 — a GLOBAL ornamentationMap performs', () => {
     const global = atomsOf(GRAD, `${STYLE0}${ORN()}`, 'global');
     expect(global.atoms).toHaveLength(1);
     expect(global.notes.map((note) => note.kind)).not.toContain('global-scope-inert');
-    expect(global.atoms[0].gradient).toEqual({ kind: 'value', value: { from: -20, to: 20 } });
+    expect(ornamentAt(global).gradient).toEqual({ kind: 'value', value: { from: -20, to: 20 } });
   });
 });
 
@@ -126,7 +131,7 @@ describe('the gradient the renderer actually performs', () => {
     const flat = '<ornamentDef name="g"><dynamicsGradient transition.from="-20.0"/></ornamentDef>';
     // A −20 → 0 reading predicts 80/90/100; the renderer performs a flat ramp.
     expect(chordVelocities(flat, `${STYLE0}${ORN()}`)).toEqual([80, 80, 80]);
-    expect(atomsOf(flat, `${STYLE0}${ORN()}`).atoms[0].gradient).toEqual({
+    expect(ornamentAt(atomsOf(flat, `${STYLE0}${ORN()}`)).gradient).toEqual({
       kind: 'value',
       value: { from: -20, to: -20 },
     });
@@ -191,8 +196,8 @@ describe('absence has a NEUTRAL, measured (AD-42.3, AD-43.2ii)', () => {
       '<ornamentDef name="g"><dynamicsGradient transition.from="-40" transition.to="40"/></ornamentDef>',
       `${STYLE0}${ORN()}`,
     );
-    const dropSmall = deviationFromNeutral(small.atoms[0], PPQ);
-    const dropLarge = deviationFromNeutral(large.atoms[0], PPQ);
+    const dropSmall = deviationFromNeutral(ornamentAt(small), PPQ);
+    const dropLarge = deviationFromNeutral(ornamentAt(large), PPQ);
     expect(dropSmall).toBeGreaterThan(0);
     expect(dropLarge).toBeGreaterThan(dropSmall);
   });
@@ -233,7 +238,7 @@ describe('the frame: four cells, one of them dead', () => {
     const negative =
       '<ornamentDef name="g"><temporalSpread frame.start="-22.0" frameLength="-44"/></ornamentDef>';
     expect(chordOnsets(negative, `${STYLE0}${ORN()}`)).toEqual([-22, -22, -22]);
-    const spread = atomsOf(negative, `${STYLE0}${ORN()}`).atoms[0].spread;
+    const spread = ornamentAt(atomsOf(negative, `${STYLE0}${ORN()}`)).spread;
     expect(spread !== null && !isBottom(spread) && spread.value.frameLength).toBe(0);
   });
 
@@ -294,8 +299,8 @@ describe('@note.order (AD-41.1)', () => {
   it('so the enumerated pair is a priced row, not a structural finding', () => {
     const up = atomsOf(GRAD, `${STYLE0}${ORN(' note.order="ascending pitch"')}`);
     const down = atomsOf(GRAD, `${STYLE0}${ORN(' note.order="descending pitch"')}`);
-    expect(up.atoms[0].noteOrderKind).toBe('ascending');
-    expect(down.atoms[0].noteOrderKind).toBe('descending');
+    expect(ornamentAt(up).noteOrderKind).toBe('ascending');
+    expect(ornamentAt(down).noteOrderKind).toBe('descending');
     expect(distance(up, down)).toBeCloseTo(
       1 / comparisonRowFor('ornamentation/ornament@note.order').jnd,
       9,
@@ -316,8 +321,8 @@ describe('@note.order (AD-41.1)', () => {
 
   it('sends an explicit id list to the finding channel', () => {
     const list = atomsOf(GRAD, `${STYLE0}${ORN(' note.order="#n1 #n2"')}`);
-    expect(list.atoms[0].noteOrderKind).toBe('id-list');
-    expect(list.atoms[0].poolBound).toBe(2);
+    expect(ornamentAt(list).noteOrderKind).toBe('id-list');
+    expect(ornamentAt(list).poolBound).toBe(2);
     const result = ornamentationDistance(
       list,
       atomsOf(GRAD, `${STYLE0}${ORN(' note.order="#n2 #n1"')}`),
@@ -332,8 +337,8 @@ describe('a one-note pool collapses both families (AD-40.3)', () => {
   it('performs @transition.to alone, so the reader flattens the ramp to it', () => {
     const one = `${STYLE0}${ORN(' note.order="#n2"')}`;
     const performed = perform(GRAD, one).filter((note) => note.id === 'n2');
-    expect(performed[0].velocity).toBe(120);
-    expect(atomsOf(GRAD, one).atoms[0].gradient).toEqual({
+    expect(elementAt(performed, 0, 'the performed n2 notes').velocity).toBe(120);
+    expect(ornamentAt(atomsOf(GRAD, one)).gradient).toEqual({
       kind: 'value',
       value: { from: 20, to: 20 },
     });
@@ -354,7 +359,7 @@ describe('a one-note pool collapses both families (AD-40.3)', () => {
       '<ornamentDef name="g"><temporalSpread frame.start="-22.0" frameLength="44.0" intensity="3"/></ornamentDef>';
     const one = `${STYLE0}${ORN(' note.order="#n2"')}`;
     expect(perform(wide, one).find((note) => note.id === 'n2')!.datePerf).toBe(22);
-    const spread = atomsOf(wide, one).atoms[0].spread;
+    const spread = ornamentAt(atomsOf(wide, one)).spread;
     expect(spread !== null && !isBottom(spread) && spread.value).toEqual({
       frameStart: 22,
       frameLength: 0,
@@ -369,7 +374,7 @@ describe('unusable values (AD-42.4)', () => {
   it('an unusable @scale poisons every velocity, so the gradient reads ⊥', () => {
     const map = `${STYLE0}<ornament date="0.0" name.ref="g" scale="abc"/>`;
     expect(chordVelocities(GRAD, map).every(Number.isNaN)).toBe(true);
-    const atom = atomsOf(GRAD, map).atoms[0];
+    const atom = ornamentAt(atomsOf(GRAD, map));
     expect(atom.gradient).toEqual({ kind: 'bottom', cause: 'renderer-error' });
     expect(atomsOf(GRAD, map).notes.map((note) => note.kind)).toContain('scale-unusable');
   });
@@ -378,7 +383,7 @@ describe('unusable values (AD-42.4)', () => {
     const bad =
       '<ornamentDef name="g"><temporalSpread frame.start="-22.0" frameLength="abc"/></ornamentDef>';
     expect(chordOnsets(bad, `${STYLE0}${ORN()}`).every(Number.isNaN)).toBe(true);
-    expect(atomsOf(bad, `${STYLE0}${ORN()}`).atoms[0].spread).toEqual({
+    expect(ornamentAt(atomsOf(bad, `${STYLE0}${ORN()}`)).spread).toEqual({
       kind: 'bottom',
       cause: 'renderer-error',
     });
@@ -636,8 +641,9 @@ describe('ornament atom placement (AD-51.2)', () => {
     );
     expect(result.matched).toBe(1);
     expect(result.atoms).toHaveLength(1);
-    expect([result.atoms[0].startTicks, result.atoms[0].endTicks]).toEqual([0, 45]);
-    expect(result.atoms[0].datePositionKnown).toBe(true);
+    const placed = elementAt(result.atoms, 0, 'the atoms this distance decomposes into');
+    expect([placed.startTicks, placed.endTicks]).toEqual([0, 45]);
+    expect(placed.datePositionKnown).toBe(true);
   });
 
   it('is symmetric under the swap, placement and mass together (P-C2)', () => {

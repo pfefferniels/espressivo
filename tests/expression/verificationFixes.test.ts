@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { ReportSink } from '../../src/expression/report.js';
 import {
   exaggerate,
+  firstNoteOfKind,
   globalDocument,
   logAroundCenter,
   noteKinds,
@@ -146,7 +147,7 @@ describe('F2 — the end-marker duplicate is written in its OWN beat unit', () =
 
   it('says so in the note when the two beat units differ', () => {
     const { performance } = exaggerate(HETEROGENEOUS_DUPLICATE, { tempo: 2 }, { scope: 'gesture' });
-    expect(notesOfKind(performance, 'end-marker-moved')[0].detail).toContain('quarter-note bpm');
+    expect(firstNoteOfKind(performance, 'end-marker-moved').detail).toContain('quarter-note bpm');
   });
 
   it('is unchanged where the two instructions share a beat unit', () => {
@@ -255,8 +256,8 @@ describe('F5 — the §7.16 "read it" obligations are discharged as report chann
         '<ornament date="0.0" name.ref="arp" scale="1"/></ornamentationMap>',
     );
     const { performance } = exaggerate(SPREAD, { ornamentSpread: 2 });
-    expect(notesOfKind(performance, 'frame-time-unit')[0].detail).toContain('milliseconds');
-    expect(notesOfKind(performance, 'frame-noteoff-shift')[0].detail).toContain('LENGTHENS');
+    expect(firstNoteOfKind(performance, 'frame-time-unit').detail).toContain('milliseconds');
+    expect(firstNoteOfKind(performance, 'frame-noteoff-shift').detail).toContain('LENGTHENS');
   });
 
   it('reports the sub-note dynamics regime, where the velocityRange clamp is the wrong model', () => {
@@ -292,7 +293,7 @@ describe('F5 — the §7.16 "read it" obligations are discharged as report chann
     const spans = notesOfKind(performance, 'span-flags');
     expect(spans).toHaveLength(1);
     // The asymmetry a caller cannot guess: @loop defaults false, @stickToMeasures defaults TRUE.
-    expect(spans[0].detail).toContain('defaults to TRUE');
+    expect(firstNoteOfKind(performance, 'span-flags').detail).toContain('defaults to TRUE');
   });
 
   it('reports rubato’s span flag, which is never inherited from the def', () => {
@@ -301,7 +302,7 @@ describe('F5 — the §7.16 "read it" obligations are discharged as report chann
       '<rubatoMap><rubato id="r1" date="0.0" intensity="1.5" loop="false"/></rubatoMap>',
     );
     const { performance } = exaggerate(RUBATO, { rubato: 2 });
-    expect(notesOfKind(performance, 'span-flags')[0].detail).toContain('span cutoff');
+    expect(firstNoteOfKind(performance, 'span-flags').detail).toContain('span cutoff');
   });
 });
 
@@ -417,7 +418,7 @@ describe('F10 — a pitch lever makes an articulation site partial too', () => {
     const { root, performance } = exaggerate(DETUNED, { articulation: 2 });
     expect(textAt(root, 'd', 'detuneCents')).toBe('20');
     expect(performance.dimensions.articulation.state).toBe('partial');
-    expect(notesOfKind(performance, 'articulation-component-excluded')[0].attribute).toBe(
+    expect(firstNoteOfKind(performance, 'articulation-component-excluded').attribute).toBe(
       'detuneCents',
     );
   });
@@ -438,10 +439,10 @@ describe('F11 — the population is built from gate-surviving values (A5)', () =
 
   it('skips the offending site and names it, instead of inerting the dimension', () => {
     const { performance } = exaggerate(UNDERFLOWING_PRODUCT, { tempo: 2 });
-    const refusals = notesOfKind(performance, 'out-of-domain-input');
-    expect(refusals).toHaveLength(1);
-    expect(refusals[0].attribute).toBe('bpm');
-    expect(refusals[0].detail).toContain('normalized');
+    expect(notesOfKind(performance, 'out-of-domain-input')).toHaveLength(1);
+    const refusal = firstNoteOfKind(performance, 'out-of-domain-input');
+    expect(refusal.attribute).toBe('bpm');
+    expect(refusal.detail).toContain('normalized');
     expect(noteKinds(performance)).not.toContain('no-center');
   });
 
