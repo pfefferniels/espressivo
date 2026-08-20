@@ -469,12 +469,35 @@ describe('Document', () => {
     expect(doc.getRootElement().getLocalName()).toBe('new');
   });
 
-  it('should serialize with XML declaration', () => {
+  /**
+   * A CONSTRUCTED document gets XOM's own default declaration — no encoding.
+   *
+   * This test used to assert `encoding="UTF-8"`, which is what the port hardcoded and is not
+   * what Java writes: every Java-generated reference under `tests/integration/fixtures/`
+   * begins with `<?xml version="1.0"?>`. The difference was invisible because
+   * `cross-validation.test.ts` stripped the declaration from both sides before comparing; that
+   * normaliser is now deleted and this assertion is the shape the references actually have.
+   */
+  it('should serialize a constructed document with XOM’s default declaration', () => {
     const root = new Element('root');
     const doc = new Document(root);
     const xml = doc.toXML();
-    expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
+    expect(xml).toContain('<?xml version="1.0"?>');
+    expect(xml).not.toContain('encoding=');
     expect(xml).toContain('<root');
+  });
+
+  /** A PARSED document writes back the declaration it arrived with, encoding and all. */
+  it('should round-trip the declaration a parsed document arrived with', () => {
+    const withEncoding = '<?xml version="1.0" encoding="UTF-8"?>\n<root />';
+    expect(new Builder().build(withEncoding).toXML()).toContain(
+      '<?xml version="1.0" encoding="UTF-8"?>',
+    );
+
+    const withoutEncoding = '<?xml version="1.0"?>\n<root />';
+    const plain = new Builder().build(withoutEncoding).toXML();
+    expect(plain).toContain('<?xml version="1.0"?>');
+    expect(plain).not.toContain('encoding=');
   });
 
   it('should deep-copy', () => {

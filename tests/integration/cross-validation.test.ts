@@ -32,8 +32,6 @@ function canonicalizeUuids(xml: string): string {
 function normalizeXml(xml: string): string {
   return (
     canonicalizeUuids(xml)
-      // Normalize XML declaration variations
-      .replace(/<\?xml[^?]*\?>/, '')
       // Remove metadata comment element (version string differs)
       .replace(/<comment>[^<]*<\/comment>/, '<comment>NORMALIZED</comment>')
       // Replace generated UUIDs in xml:id attributes

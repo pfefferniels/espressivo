@@ -15,18 +15,29 @@ import { Builder } from '../../src/xml/XomTypes.js';
  * As of today, attribute order, child order, escaping and whitespace all survive a round trip
  * byte for byte. The four things that do not:
  *
- *   1. The XML declaration gains `encoding="UTF-8"`.
- *   2. A trailing newline is dropped.
- *   3. An empty element is always written `<x />`, never `<x/>`. This one was found by this
+ *   1. A trailing newline is dropped.
+ *   2. An empty element is always written `<x />`, never `<x/>`. This one was found by this
  *      test rather than before it: every Java-generated reference already uses the spaced
  *      form, so it is invisible against the fixtures that matter and shows up only against
  *      the hand-written MEI inputs. It is a normalisation, not a divergence from meico.
  *
- * A fourth used to be here and is now **fixed**: the default-namespace declaration was
+ * Two more used to be here and are now **fixed**.
+ *
+ * The XML declaration was hardcoded to `<?xml version="1.0" encoding="UTF-8"?>`, where Java's
+ * XOM writes `<?xml version="1.0"?>` and every reference fixture begins with exactly that. A
+ * parsed document now carries its own declaration back out, and a constructed one gets XOM's
+ * default — so `cross-validation.test.ts` lost its declaration normaliser too.
+ *
+ * And the default-namespace declaration was
  * re-emitted on every namespaced element instead of once on the root, turning a 2185-byte
  * MPM fixture into 3527 bytes. `Element.toXML` now emits it only where the namespace
- * changes, so the namespace count round-trips exactly and the normaliser that hid the
- * difference has been deleted from `cross-validation.test.ts`.
+ * changes, so the namespace count round-trips exactly.
+ *
+ * Both were the same shape: a real divergence from Java output, invisible because the
+ * equivalence suite normalised it away on both sides before comparing. **`cross-validation`
+ * now carries one normaliser where it carried three**, and the survivor is load-bearing —
+ * Java writes `720.0` where this port writes `720`, and removing it turns 24 of that suite's
+ * 48 tests red.
  *
  * One normaliser remains in `cross-validation.test.ts` and is load-bearing: Java writes
  * `720.0` where this port writes `720`. Measured — removing it turns 24 of that suite's 48
@@ -38,23 +49,18 @@ import { Builder } from '../../src/xml/XomTypes.js';
 const REFERENCE_DIR = join(import.meta.dirname, 'fixtures', 'reference');
 const MEI_DIR = join(import.meta.dirname, 'fixtures', 'mei');
 
-/** Known loss (1): the serializer always writes an encoding into the declaration. */
-function normalizeDeclaration(xml: string): string {
-  return xml.replace(/<\?xml version="1\.0"( encoding="UTF-8")?\?>/, '<?xml version="1.0"?>');
-}
-
-/** Known loss (2). */
+/** Known loss (1). */
 function normalizeTrailingNewline(xml: string): string {
   return xml.replace(/\n+$/, '');
 }
 
-/** Known loss (3): the serializer always spaces the solidus of an empty element. */
+/** Known loss (2): the serializer always spaces the solidus of an empty element. */
 function normalizeSelfClosing(xml: string): string {
   return xml.replace(/\s*\/>/g, ' />');
 }
 
 function normalizeKnownLosses(xml: string): string {
-  return normalizeSelfClosing(normalizeTrailingNewline(normalizeDeclaration(xml)));
+  return normalizeSelfClosing(normalizeTrailingNewline(xml));
 }
 
 function roundTrip(xml: string): string {
@@ -94,7 +100,7 @@ describe('XML round trip', () => {
   });
 
   describe.each(FIXTURES)('$name', ({ text }) => {
-    it('survives parse and serialize once the three known losses are normalised', () => {
+    it('survives parse and serialize once the two known losses are normalised', () => {
       expect(normalizeKnownLosses(roundTrip(text))).toBe(normalizeKnownLosses(text));
     });
 

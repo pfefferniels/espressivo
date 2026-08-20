@@ -985,8 +985,9 @@ export class Element extends XomNode {
 export class Document {
   private _rootElement: Element;
 
-  constructor(rootElement: Element) {
+  constructor(rootElement: Element, declaration = XML_DECLARATION) {
     this._rootElement = rootElement;
+    this._declaration = declaration;
   }
 
   getRootElement(): Element {
@@ -997,12 +998,28 @@ export class Document {
     this._rootElement = element;
   }
 
+  /**
+   * The declaration this document was parsed with, or XOM's own default.
+   *
+   * Java's XOM writes `<?xml version="1.0"?>` — every Java-generated reference under
+   * `tests/integration/fixtures/` begins with exactly that, and none carries an encoding. This
+   * port hardcoded `<?xml version="1.0" encoding="UTF-8"?>`, which is a real divergence and
+   * was invisible because `cross-validation.test.ts` strips the declaration from both sides
+   * before comparing. Same shape as the `xmlns` defect fixed earlier: a normaliser hiding an
+   * output difference rather than a normalisation of something genuinely incomparable.
+   *
+   * A parsed document round-trips the declaration it arrived with, so
+   * `serialize ∘ parse = id` gains one of the three exceptions it had. A constructed document
+   * gets XOM's default, which is what makes generated MSM and MPM match the reference.
+   */
+  private readonly _declaration: string;
+
   toXML(): string {
-    return `<?xml version="1.0" encoding="UTF-8"?>\n${this._rootElement.toXML()}`;
+    return `${this._declaration}\n${this._rootElement.toXML()}`;
   }
 
   copy(): Document {
-    return new Document(this._rootElement.copy());
+    return new Document(this._rootElement.copy(), this._declaration);
   }
 }
 
@@ -1035,6 +1052,15 @@ function splitQualifiedName(name: string): { readonly prefix: string; readonly l
     localName: name.slice(firstColon + 1, secondColon < 0 ? undefined : secondColon),
   };
 }
+
+/**
+ * What XOM writes when a document has no declaration of its own — and what every
+ * Java-generated reference fixture begins with. Notably NOT `encoding="UTF-8"`.
+ */
+const XML_DECLARATION = '<?xml version="1.0"?>';
+
+/** Captures a leading declaration so a parsed document can be written back as it arrived. */
+const XML_DECLARATION_PATTERN = /^\s*<\?xml[^?]*\?>/;
 
 const BYTE_ORDER_MARK = '﻿';
 
@@ -1091,7 +1117,13 @@ export class Builder {
       throw new ParsingException('No root element found');
     }
 
-    return new Document(Element.wrap(rootElement as unknown as globalThis.Element));
+    // Carry the source's own declaration so the document writes back as it arrived. A source
+    // with no declaration gets XOM's default, which is also what a constructed document gets.
+    const declared = XML_DECLARATION_PATTERN.exec(stripByteOrderMark(xml));
+    return new Document(
+      Element.wrap(rootElement as unknown as globalThis.Element),
+      declared === null ? XML_DECLARATION : declared[0].trimStart(),
+    );
   }
 }
 
