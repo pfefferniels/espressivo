@@ -34,12 +34,6 @@ function normalizeXml(xml: string): string {
     canonicalizeUuids(xml)
       // Normalize XML declaration variations
       .replace(/<\?xml[^?]*\?>/, '')
-      // Remove redundant namespace declarations on child elements (our XOM port adds them; Java XOM doesn't)
-      .replace(/ xmlns="http:\/\/www\.cemfi\.de\/mpm\/ns\/1\.0"/g, (match, offset, str) => {
-        // Keep the first occurrence (on root element), remove all others
-        const firstIdx = str.indexOf(' xmlns="http://www.cemfi.de/mpm/ns/1.0"');
-        return offset === firstIdx ? match : '';
-      })
       // Remove metadata comment element (version string differs)
       .replace(/<comment>[^<]*<\/comment>/, '<comment>NORMALIZED</comment>')
       // Replace generated UUIDs in xml:id attributes

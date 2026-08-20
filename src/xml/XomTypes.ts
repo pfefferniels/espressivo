@@ -865,20 +865,43 @@ export class Element extends XomNode {
    * Serialize this element and everything under it.
    *
    * This method IS the byte-compatibility contract documented at the top of the file —
-   * emission order, the ` />` spelling of empty elements, and the placement of `xmlns`
-   * declarations are all fixed by the Java reference output that the integration suite
-   * compares against. Treat it as frozen.
+   * emission order and the ` />` spelling of empty elements are fixed by the Java reference
+   * output the integration suite compares against.
+   *
+   * **The `xmlns` placement was not.** Until this commit the default-namespace declaration
+   * was emitted on *every* namespaced element rather than only where it changes, so a 2185-
+   * byte reference MPM came back out at 3527 bytes with `xmlns` repeated 32 times where Java
+   * writes it once, on the root. The integration suite did not catch it because
+   * `cross-validation.test.ts` normalised the repeats away before comparing — so the gate was
+   * comparing a laundered version of our output rather than our output.
+   *
+   * The rule now is the one XML actually specifies: a default-namespace declaration is
+   * emitted only when this element's namespace differs from the one it inherits, and children
+   * are serialized against whatever this element leaves in scope. Three consequences worth
+   * stating, because each is a case the old code could not express:
+   *
+   * - the root of a namespaced document still declares, since it inherits nothing;
+   * - a child in its parent's namespace declares nothing, which is the fix;
+   * - a child with *no* namespace inside a namespaced parent emits `xmlns=""`, undeclaring
+   *   it. That is required — without it the child would silently inherit the parent's
+   *   namespace on reparse, so the old code was not merely verbose there but wrong.
+   *
+   * A prefixed element declares its own prefix and leaves the default namespace in scope
+   * untouched, so its children inherit what it inherited.
+   *
+   * @param inheritedDefault the default namespace in scope at this element, `''` at the root
    */
-  toXML(): string {
+  toXML(inheritedDefault = ''): string {
     let xml = `<${this.getQualifiedName()}`;
+    let defaultForChildren = inheritedDefault;
 
-    // Add namespace declaration if present
-    if (this._namespaceURI) {
-      if (this._namespacePrefix) {
+    if (this._namespacePrefix) {
+      if (this._namespaceURI) {
         xml += ` xmlns:${this._namespacePrefix}="${this._namespaceURI}"`;
-      } else {
-        xml += ` xmlns="${this._namespaceURI}"`;
       }
+    } else if (this._namespaceURI !== inheritedDefault) {
+      xml += ` xmlns="${this._namespaceURI}"`;
+      defaultForChildren = this._namespaceURI;
     }
 
     // Add attributes
@@ -900,7 +923,7 @@ export class Element extends XomNode {
     } else {
       xml += '>';
       for (const child of this._children) {
-        xml += child.toXML();
+        xml += child instanceof Element ? child.toXML(defaultForChildren) : child.toXML();
       }
       xml += `</${this.getQualifiedName()}>`;
     }

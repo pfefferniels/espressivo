@@ -74,7 +74,7 @@ describe('MEI ornament signs → MPM', () => {
       // repetitions is left at the schema default, so it is not written at all (DESIGN.md D12).
       expect(mpm).not.toContain('repetitions');
       // The def lands in the same global "MEI export" style the rest of the MEI conversion uses.
-      expect(mpm).toContain('<styleDef xmlns="http://www.cemfi.de/mpm/ns/1.0" name="MEI export">');
+      expect(mpm).toContain('<styleDef name="MEI export">');
       expect(mpm).toContain('frame.offset="0ticks" frameLength="80%"');
     },
     TIMEOUT,
@@ -452,14 +452,12 @@ describe('expansion is asymmetric between the converter and the facade, on purpo
       expect(mpm).toContain('noteid="#n20"');
       // The pool the dict's trill prescribes: |: 0 1 :| over two distinct steps.
       expect(mpm).toContain('note.order="|: #tr1_n0 #tr1_n1 :|"');
-      expect(mpm).toContain(
-        '<note xmlns="http://www.cemfi.de/mpm/ns/1.0" xml:id="tr1_n0" interval.diatonic="0" />',
-      );
-      expect(mpm).toContain(
-        '<note xmlns="http://www.cemfi.de/mpm/ns/1.0" xml:id="tr1_n1" interval.diatonic="1" />',
-      );
+      expect(mpm).toContain('<note xml:id="tr1_n0" interval.diatonic="0" />');
+      expect(mpm).toContain('<note xml:id="tr1_n1" interval.diatonic="1" />');
       // The def the expander generates for that name — the default row of the table.
-      expect(mpm).toContain('<ornamentDef xmlns="http://www.cemfi.de/mpm/ns/1.0" name="trill">');
+      // No `xmlns` here: the declaration is on the <mpm> root, and the serializer now emits
+      // one only where the namespace changes rather than on every namespaced element.
+      expect(mpm).toContain('<ornamentDef name="trill">');
       expect(mpm).toContain(
         'frame.offset="0ticks" frameLength="80%" intensity="0.9" noteoff.shift="monophonic"',
       );

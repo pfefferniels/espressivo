@@ -17,18 +17,22 @@ import { Builder } from '../../src/xml/XomTypes.js';
  *
  *   1. The XML declaration gains `encoding="UTF-8"`.
  *   2. A trailing newline is dropped.
- *   3. **MPM only:** the default-namespace declaration is re-emitted on every namespaced
- *      element instead of once on the root, which turns a 2185-byte fixture into 3527 bytes.
- *   4. An empty element is always written `<x />`, never `<x/>`. This one was found by this
+ *   3. An empty element is always written `<x />`, never `<x/>`. This one was found by this
  *      test rather than before it: every Java-generated reference already uses the spaced
  *      form, so it is invisible against the fixtures that matter and shows up only against
  *      the hand-written MEI inputs. It is a normalisation, not a divergence from meico.
  *
- * (3) is a genuine divergence from what Java meico writes, and
- * `tests/integration/cross-validation.test.ts` normalises it away before comparing — so the
- * equivalence gate is currently comparing a laundered version of our output. Fixing the
- * serializer lets that normaliser be deleted, which makes the gate stricter. When that
- * happens, `expectsNamespaceInflation` below goes to `false` and this test says so.
+ * A fourth used to be here and is now **fixed**: the default-namespace declaration was
+ * re-emitted on every namespaced element instead of once on the root, turning a 2185-byte
+ * MPM fixture into 3527 bytes. `Element.toXML` now emits it only where the namespace
+ * changes, so the namespace count round-trips exactly and the normaliser that hid the
+ * difference has been deleted from `cross-validation.test.ts`.
+ *
+ * One normaliser remains in `cross-validation.test.ts` and is load-bearing: Java writes
+ * `720.0` where this port writes `720`. Measured — removing it turns 24 of that suite's 48
+ * tests red. It is the same *kind* of thing the namespace defect was, but with a blast radius
+ * across every numeric attribute in the tree rather than one line in the serializer, so it is
+ * recorded here rather than fixed in passing.
  */
 
 const REFERENCE_DIR = join(import.meta.dirname, 'fixtures', 'reference');
@@ -44,28 +48,13 @@ function normalizeTrailingNewline(xml: string): string {
   return xml.replace(/\n+$/, '');
 }
 
-/** Known loss (4): the serializer always spaces the solidus of an empty element. */
+/** Known loss (3): the serializer always spaces the solidus of an empty element. */
 function normalizeSelfClosing(xml: string): string {
   return xml.replace(/\s*\/>/g, ' />');
 }
 
-/**
- * Known loss (3): keep only the first occurrence of each default-namespace declaration, which
- * is where a correct serializer would have put the only one.
- */
-function collapseRepeatedNamespaces(xml: string): string {
-  const seen = new Set<string>();
-  return xml.replace(/ xmlns="([^"]*)"/g, (match, uri: string) => {
-    if (seen.has(uri)) return '';
-    seen.add(uri);
-    return match;
-  });
-}
-
 function normalizeKnownLosses(xml: string): string {
-  return normalizeSelfClosing(
-    collapseRepeatedNamespaces(normalizeTrailingNewline(normalizeDeclaration(xml))),
-  );
+  return normalizeSelfClosing(normalizeTrailingNewline(normalizeDeclaration(xml)));
 }
 
 function roundTrip(xml: string): string {
@@ -75,8 +64,6 @@ function roundTrip(xml: string): string {
 interface Fixture {
   readonly name: string;
   readonly text: string;
-  /** MPM is the only vocabulary with a default namespace, so the only one loss (3) touches. */
-  readonly expectsNamespaceInflation: boolean;
 }
 
 function loadFixtures(): readonly Fixture[] {
@@ -86,7 +73,6 @@ function loadFixtures(): readonly Fixture[] {
     out.push({
       name: `reference/${file}`,
       text: readFileSync(join(REFERENCE_DIR, file), 'utf8'),
-      expectsNamespaceInflation: file.endsWith('.mpm'),
     });
   }
   for (const file of readdirSync(MEI_DIR).sort()) {
@@ -94,7 +80,6 @@ function loadFixtures(): readonly Fixture[] {
     out.push({
       name: `mei/${file}`,
       text: readFileSync(join(MEI_DIR, file), 'utf8'),
-      expectsNamespaceInflation: true,
     });
   }
   return out;
@@ -108,8 +93,8 @@ describe('XML round trip', () => {
     expect(FIXTURES.length).toBeGreaterThanOrEqual(40);
   });
 
-  describe.each(FIXTURES)('$name', ({ text, expectsNamespaceInflation }) => {
-    it('survives parse and serialize once the four known losses are normalised', () => {
+  describe.each(FIXTURES)('$name', ({ text }) => {
+    it('survives parse and serialize once the three known losses are normalised', () => {
       expect(normalizeKnownLosses(roundTrip(text))).toBe(normalizeKnownLosses(text));
     });
 
@@ -139,18 +124,13 @@ describe('XML round trip', () => {
       );
     });
 
-    it('pins the namespace-inflation defect, so closing it cannot pass unnoticed', () => {
+    it('declares each namespace exactly as often as the source did', () => {
+      // Was a pin on the inflation defect, phrased `toBeGreaterThanOrEqual` so it could not
+      // fail spuriously — which meant it also could not notice the fix. Now that
+      // `Element.toXML` emits a default-namespace declaration only where the namespace
+      // changes, this is the law it was always meant to be.
       const count = (xml: string): number => (xml.match(/ xmlns="/g) ?? []).length;
-      const before = count(text);
-      const after = count(roundTrip(text));
-      if (expectsNamespaceInflation) {
-        // Today the serializer repeats the declaration. When that is fixed, this assertion
-        // is the one that fails, and it should be inverted to `toBe(before)` in the same
-        // commit that deletes the normaliser in cross-validation.test.ts.
-        expect(after).toBeGreaterThanOrEqual(before);
-      } else {
-        expect(after).toBe(before);
-      }
+      expect(count(roundTrip(text))).toBe(count(text));
     });
   });
 });

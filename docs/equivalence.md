@@ -97,7 +97,13 @@ any reference fixture:
    `NullPointerException` and the port used to render it at position 0.
 7. **The random-number provider rejects an unusable index** — `NaN`, infinite, or absurdly large —
    instead of overflowing the stack or allocating without bound, as both Java and the port did.
-8. **`AccentuationPatternDef.getAccentuationAt` ramps each segment to the next accentuation**,
+8. **The default namespace is declared once, not on every element.** `Element.toXML` emitted
+   `xmlns` for every namespaced element where Java emits it only where the namespace changes,
+   inflating a 2185-byte MPM to 3527. The equivalence suite had a normaliser that hid it, so
+   this fix also **deleted the normaliser** — the suite now compares raw bytes on that
+   question, and reinstating the defect turns 80 tests red.
+
+9. **`AccentuationPatternDef.getAccentuationAt` ramps each segment to the next accentuation**,
    where a guard that can never hold (`i > size - 1`) made every segment ramp to the end of the
    whole pattern. This is the one fix that moves fixture bytes, so it shipped the way entry 2 did:
    the fork was patched first and the affected ground truth regenerated from it.

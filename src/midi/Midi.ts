@@ -11,7 +11,8 @@
  * `Midi.java` does not serialise anything itself: `writeMidi` delegates to
  * `MidiSystem.write(sequence, 1, file)` and the constructor reads through
  * `MidiSystem.getSequence(file)` (`Midi.java:77,538`). `readMidiData`,
- * `exportMidi`, `buildTrackChunk` and `writeVariableLength` below are therefore a
+ * `exportMidi` and `buildTrackChunk` below — together with `MidiTypes`'
+ * `writeVariableLength`, which they share — are therefore a
  * reimplementation of the JDK's `StandardMidiFileWriter`/`Reader`, not a port of
  * meico code — there is no `.java` file to compare them against. What pins them is
  * `tests/integration/midi-byte-equivalence.test.ts`, which parses the Java-generated
@@ -44,9 +45,36 @@ import {
   MidiEvent,
   ShortMessage,
   MetaMessage,
-  SysexMessage,
+  channelMessage,
+  metaMessage,
+  messageStatus,
+  metaPayload,
+  sysexMessage,
+  shortChannel,
+  shortCommand,
+  shortData1,
+  shortData2,
+  writeVariableLength,
+  type MidiMessage,
+  type MidiMessageKind,
 } from './MidiTypes.js';
 import * as EventMaker from './EventMaker.js';
+import { matchKind } from '../prelude/index.js';
+
+/**
+ * The name {@link Midi.print} gives each message family.
+ *
+ * Java prints `getMessage().getClass()`, which yields the JDK's *implementation* class
+ * (`class com.sun.media.sound.FastShortMessage`); the port has always printed the
+ * plain name instead, and these are the three names it printed back when the messages
+ * were classes and this was `msg.constructor.name`. A `Record` over the union rather
+ * than a `switch`, so a fourth family could not be printed as `undefined`.
+ */
+const MESSAGE_FAMILY_NAME: Readonly<Record<MidiMessageKind, string>> = {
+  short: 'ShortMessage',
+  meta: 'MetaMessage',
+  sysex: 'SysexMessage',
+};
 
 export class Midi {
   private file: string | null = null; // the midi filename
@@ -210,7 +238,7 @@ export class Midi {
           const metaData = new Uint8Array(data.buffer, data.byteOffset + offset, metaLength);
           offset += metaLength;
 
-          const msg = new MetaMessage(metaType, metaData, metaLength);
+          const msg = metaMessage(metaType, metaData);
           track.add(new MidiEvent(msg, absoluteTick));
         } else if (statusByte === 0xf0 || statusByte === 0xf7) {
           // SysEx event
@@ -225,7 +253,7 @@ export class Midi {
           sysexData.set(new Uint8Array(data.buffer, data.byteOffset + offset, sysexLength), 1);
           offset += sysexLength;
 
-          const msg = new SysexMessage(sysexData);
+          const msg = sysexMessage(sysexData);
           track.add(new MidiEvent(msg, absoluteTick));
         } else {
           // Channel message (ShortMessage)
@@ -235,12 +263,12 @@ export class Midi {
 
           if (command === 0xc0 || command === 0xd0) {
             // Program Change or Channel Aftertouch: 1 data byte
-            const msg = new ShortMessage(command, channel, data1, 0);
+            const msg = channelMessage(command, channel, data1, 0);
             track.add(new MidiEvent(msg, absoluteTick));
           } else {
             // All other channel messages: 2 data bytes
             const data2 = data[offset++];
-            const msg = new ShortMessage(command, channel, data1, data2);
+            const msg = channelMessage(command, channel, data1, data2);
             track.add(new MidiEvent(msg, absoluteTick));
           }
         }
@@ -324,7 +352,8 @@ export class Midi {
    * sequence extends track 0 of this one, and missing tracks are created empty. The
    * offset is this sequence's current tick length, so the two pieces butt up against
    * each other with no gap and no overlap. The argument is not modified — a clone is
-   * converted and read.
+   * converted and read, and the new events share their messages with it, which is
+   * safe because a message is a value.
    *
    * @param midi the Midi whose sequence should be appended
    */
@@ -353,7 +382,7 @@ export class Midi {
         const event = sourceTrack.get(e);
         const message = event.getMessage();
         const newTick = event.getTick() + tickLength;
-        targetTrack.add(new MidiEvent(message.clone(), newTick));
+        targetTrack.add(new MidiEvent(message, newTick));
       }
     }
   }
@@ -394,9 +423,8 @@ export class Midi {
       for (let e = 0; e < track.size(); ++e) {
         // for each MIDI event in the old track
         const event = track.get(e);
-        const newMessage = event.getMessage().clone(); // clone its message
         const newDate = Math.trunc((event.getTick() * ppq) / ppqOld); // scale its date to the new ppq timing basis
-        const newEvent = new MidiEvent(newMessage, newDate); // create a new event
+        const newEvent = new MidiEvent(event.getMessage(), newDate); // create a new event carrying the same (immutable) message
         newTrack.add(newEvent); // add it to the new track
       }
     }
@@ -438,7 +466,7 @@ export class Midi {
     for (const track of sequence.getTracks()) {
       for (let e = 0; e < track.size(); ++e) {
         const event = track.get(e);
-        const command = event.getMessage().getStatus() & 0xf0;
+        const command = messageStatus(event.getMessage()) & 0xf0;
 
         if (onlyNotes && command !== EventMaker.NOTE_ON && command !== EventMaker.NOTE_OFF)
           continue;
@@ -475,9 +503,9 @@ export class Midi {
       for (let e = 0; e < track.size(); ++e) {
         const event = track.get(e);
         const msg = event.getMessage();
-        if (msg instanceof MetaMessage) {
-          if (msg.getType() === EventMaker.META_Set_Tempo) {
-            const mpq = EventMaker.byteArrayToInt(msg.getData());
+        if (msg.kind === 'meta') {
+          if (msg.type === EventMaker.META_Set_Tempo) {
+            const mpq = EventMaker.byteArrayToInt(metaPayload(msg));
             const bpm = 60000000.0 / mpq;
             tempoData.push({ tick: event.getTick(), bpm: bpm, beatlength: 0.25 });
           }
@@ -511,9 +539,10 @@ export class Midi {
    * rather than repaired: the `PROGRAM_CHANGE` case has no `break`, so a program
    * change prints its own line *and* the `default` branch's "Other message" text
    * (`Midi.java:370-376`), and the two-space gap in `"noteOn,  key:"` comes from
-   * Java's `"noteOn, " + " key: "`. The one intentional divergence is the class name:
-   * Java prints `getMessage().getClass()` (e.g. `class com.sun.media.sound.FastShortMessage`),
-   * this prints `constructor.name` (e.g. `ShortMessage`).
+   * Java's `"noteOn, " + " key: "`. The one intentional divergence is the family
+   * name: Java prints `getMessage().getClass()` (e.g.
+   * `class com.sun.media.sound.FastShortMessage`), this prints
+   * {@link MESSAGE_FAMILY_NAME} (e.g. `ShortMessage`).
    */
   static print(sequence: Sequence): string {
     if (sequence === null) {
@@ -527,37 +556,32 @@ export class Midi {
       for (let e = 0; e < sequence.getTracks()[t].size(); ++e) {
         print += `@${sequence.getTracks()[t].get(e).getTick()} `;
         const msg = sequence.getTracks()[t].get(e).getMessage();
-        if (msg instanceof ShortMessage) {
-          const sm = msg;
-          print += `Channel: ${sm.getChannel()} Command: ${sm.getCommand()} `;
-          switch (sm.getCommand()) {
+        const familyName = MESSAGE_FAMILY_NAME[msg.kind];
+        if (msg.kind === 'short') {
+          print += `Channel: ${shortChannel(msg)} Command: ${shortCommand(msg)} `;
+          switch (shortCommand(msg)) {
             case ShortMessage.NOTE_ON: {
-              const key = sm.getData1();
-              const velocity = sm.getData2();
-              print += `noteOn,  key: ${key} velocity: ${velocity}`;
+              print += `noteOn,  key: ${shortData1(msg)} velocity: ${shortData2(msg)}`;
               break;
             }
             case ShortMessage.NOTE_OFF: {
-              const key = sm.getData1();
-              const velocity = sm.getData2();
-              print += `noteOff,  key: ${key} velocity: ${velocity}`;
+              print += `noteOff,  key: ${shortData1(msg)} velocity: ${shortData2(msg)}`;
               break;
             }
             case ShortMessage.PROGRAM_CHANGE: {
-              const prg = sm.getData1();
-              print += `program change,  number: ${prg}`;
+              print += `program change,  number: ${shortData1(msg)}`;
               // Java falls through to `default` from here, so the "Other message" line
               // is appended too. Written out rather than left as a real fallthrough, so
               // that `noFallthroughCasesInSwitch` is free to catch the accidental ones.
-              print += `Other message: ${msg.constructor.name}`;
+              print += `Other message: ${familyName}`;
               break;
             }
             default: {
-              print += `Other message: ${msg.constructor.name}`;
+              print += `Other message: ${familyName}`;
             }
           }
         } else {
-          print += `Other message: ${msg.constructor.name}`;
+          print += `Other message: ${familyName}`;
         }
         print += '\n';
       }
@@ -581,9 +605,11 @@ export class Midi {
    * In MIDI noteOff events are often encoded as noteOn events with velocity 0.
    * With this method these events are converted to real noteOffs.
    *
-   * Rewrites the messages **in place** through `ShortMessage.setMessage`, so no event
-   * is removed and re-added and no track is re-sorted — the sequence's event order is
-   * untouched. The two directions are not inverses: converting back with
+   * Swaps the messages **in place** through `MidiEvent.setMessage`, so no event is
+   * removed and re-added and no track is re-sorted — the sequence's event order is
+   * untouched. (It used to write through `ShortMessage.setMessage`, back when a
+   * message's bytes were mutable; the guarantee is the same one, one level up.)
+   * The two directions are not inverses: converting back with
    * `noteOffs2NoteOns` gives a noteOn with velocity 0, which this method would convert
    * again, so the pair is idempotent in each direction but lossy across the round trip.
    *
@@ -596,12 +622,15 @@ export class Midi {
       // for all tracks
       for (let e = 0; e < track.size(); ++e) {
         // for all events in the track
-        const msg = track.get(e).getMessage();
-        if (msg instanceof ShortMessage) {
+        const event = track.get(e);
+        const msg = event.getMessage();
+        if (msg.kind === 'short') {
           // if it is a ShortMessage
-          if (msg.getCommand() === ShortMessage.NOTE_ON && msg.getData2() === 0) {
+          if (shortCommand(msg) === ShortMessage.NOTE_ON && shortData2(msg) === 0) {
             // if this is a noteOn with velocity 0
-            msg.setMessage(EventMaker.NOTE_OFF, msg.getChannel(), msg.getData1(), 0); // convert it to noteOff
+            event.setMessage(
+              channelMessage(EventMaker.NOTE_OFF, shortChannel(msg), shortData1(msg), 0),
+            ); // convert it to noteOff
             eventsChanged++;
           }
         }
@@ -637,12 +666,15 @@ export class Midi {
       // for all tracks
       for (let e = 0; e < track.size(); ++e) {
         // for all events in the track
-        const msg = track.get(e).getMessage();
-        if (msg instanceof ShortMessage) {
+        const event = track.get(e);
+        const msg = event.getMessage();
+        if (msg.kind === 'short') {
           // if it is a ShortMessage
-          if (msg.getCommand() === ShortMessage.NOTE_OFF) {
+          if (shortCommand(msg) === ShortMessage.NOTE_OFF) {
             // if this is a noteOff
-            msg.setMessage(EventMaker.NOTE_ON, msg.getChannel(), msg.getData1(), 0); // convert it to a noteOn with 0 velocity
+            event.setMessage(
+              channelMessage(EventMaker.NOTE_ON, shortChannel(msg), shortData1(msg), 0),
+            ); // convert it to a noteOn with 0 velocity
             eventsChanged++;
           }
         }
@@ -673,10 +705,14 @@ export class Midi {
   /**
    * this creates a copy of the input sequence
    *
-   * A deep copy: every message is cloned, so rewriting the clone's messages (as
-   * `noteOns2NoteOffs` does) cannot reach the original. Track and event order are
-   * preserved — events are re-added in their existing sorted order, and `Track.add`'s
-   * stable sort keeps ties where they were.
+   * Every track and every event is new; the **messages are shared**, and that is what
+   * makes this a deep enough copy. `noteOns2NoteOffs` on the clone swaps the message
+   * an event holds rather than writing into the message, so the original's events
+   * still hold theirs. (This used to call `MidiMessage.clone()` per event, which was
+   * the sole reason the message hierarchy had a virtual method at all.)
+   *
+   * Track and event order are preserved — events are re-added in their existing sorted
+   * order, and `Track.add`'s stable sort keeps ties where they were.
    *
    * @param sequence the sequence to be cloned
    * @return the clone of the input sequence or null
@@ -695,7 +731,7 @@ export class Midi {
       const newTrack = cloneSeq.createTrack();
       for (let e = 0; e < track.size(); ++e) {
         const event = track.get(e);
-        const newEvent = new MidiEvent(event.getMessage().clone(), event.getTick());
+        const newEvent = new MidiEvent(event.getMessage(), event.getTick());
         newTrack.add(newEvent);
       }
     }
@@ -782,13 +818,21 @@ export class Midi {
    * - **Delta = this tick minus the previous tick, floored at 0.** The floor only
    *   fires on a negative absolute tick, which the reader can produce from a Java
    *   file (see the class comment) but nothing in the port generates.
-   * - **Meta events are re-framed, not copied.** `FF`, the type byte, then a fresh
-   *   length VLQ over `getData()` — the message's own stored framing is not reused.
+   * - **Meta events are framed here.** `FF`, the type byte, then a length VLQ over the
+   *   payload. The message carries only the payload, so there is no second framing it
+   *   could disagree with; when there was one, this writer ignored it.
    * - **SysEx keeps its leading `F0`/`F7` and counts the remainder**, terminator
    *   included, which is what the format asks for.
-   * - **Channel messages are copied verbatim, status byte and all.** No running
+   * - **Channel messages are written verbatim, status byte and all.** No running
    *   status: this is where the 15 byte-level differences against the Java references
    *   come from, and they are semantically empty.
+   *
+   * The `instanceof` chain this used to be had a fourth branch, for a `MidiMessage`
+   * that was none of the three — an unreachable state the class hierarchy allowed and
+   * the sum type does not. `matchKind` is exhaustive at compile time, so the branch is
+   * gone rather than merely unexercised. Each arm is also read directly instead of
+   * through `getMessage()`, which used to allocate a `Uint8Array` per event only to
+   * copy it into `bytes` one element at a time.
    *
    * The final `if (!hasEndOfTrack)` synthesises an end-of-track only if the track
    * carried none. Note it checks for one *anywhere* in the track, not at the end, so
@@ -809,80 +853,53 @@ export class Midi {
 
       // Write delta time
       const delta = Math.max(0, tick - lastTick);
-      Midi.writeVariableLength(bytes, delta);
+      writeVariableLength(bytes, delta);
       lastTick = tick;
 
-      // Write message bytes
-      if (msg instanceof MetaMessage) {
-        if (msg.getType() === 0x2f) {
-          // End of Track
-          hasEndOfTrack = true;
-        }
-        // Meta event: FF type length data
-        bytes.push(0xff);
-        bytes.push(msg.getType() & 0xff);
-        const data = msg.getData();
-        Midi.writeVariableLength(bytes, data.length);
-        for (const byte of data) {
-          bytes.push(byte);
-        }
-      } else if (msg instanceof SysexMessage) {
-        // SysEx: status byte, then the length of the remaining bytes, then those bytes
-        const rawData = msg.getMessage();
-        bytes.push(rawData[0]);
-        Midi.writeVariableLength(bytes, rawData.length - 1);
-        for (let j = 1; j < rawData.length; j++) {
-          bytes.push(rawData[j]);
-        }
-      } else if (msg instanceof ShortMessage) {
-        // Channel message
-        for (const byte of msg.getMessage()) {
-          bytes.push(byte);
-        }
-      } else {
-        // Unknown message type - write raw bytes
-        for (const byte of msg.getMessage()) {
-          bytes.push(byte);
-        }
-      }
+      // Write the message bytes, and report back whether this was the end-of-track
+      // marker. Reporting it rather than setting the flag from inside an arm keeps
+      // `hasEndOfTrack` written in one place: a `let` assigned from a callback is a
+      // variable whose value no reader — and no narrowing — can follow.
+      const wroteEndOfTrack = matchKind<MidiMessage, boolean>(msg, {
+        meta: (m) => {
+          // Meta event: FF type length data
+          bytes.push(MetaMessage.META);
+          bytes.push(m.type);
+          writeVariableLength(bytes, m.payload.length);
+          for (const byte of m.payload) {
+            bytes.push(byte);
+          }
+          return m.type === 0x2f; // End of Track
+        },
+        sysex: (m) => {
+          // SysEx: status byte, then the length of the remaining bytes, then those bytes
+          bytes.push(m.bytes[0]);
+          writeVariableLength(bytes, m.bytes.length - 1);
+          for (let j = 1; j < m.bytes.length; j++) {
+            bytes.push(m.bytes[j]);
+          }
+          return false;
+        },
+        short: (m) => {
+          // Channel message
+          bytes.push(m.status);
+          for (const byte of m.data) {
+            bytes.push(byte);
+          }
+          return false;
+        },
+      });
+      hasEndOfTrack ||= wroteEndOfTrack;
     }
 
     // Ensure there is an End of Track meta event at the end
     if (!hasEndOfTrack) {
-      Midi.writeVariableLength(bytes, 0); // delta time 0
-      bytes.push(0xff); // meta event
+      writeVariableLength(bytes, 0); // delta time 0
+      bytes.push(MetaMessage.META); // meta event
       bytes.push(0x2f); // End of Track
       bytes.push(0x00); // length 0
     }
 
     return new Uint8Array(bytes);
-  }
-
-  /**
-   * Write a variable-length quantity to the byte array.
-   *
-   * Seven bits per byte, most significant group first, high bit set on every byte
-   * but the last; negative values become a single `00`. Appends in place rather than
-   * returning an array — `MetaMessage.encodeVariableLength` is the allocating twin,
-   * and the two must stay in agreement.
-   *
-   * @param bytes the output byte array
-   * @param value the value to encode
-   */
-  private static writeVariableLength(bytes: number[], value: number): void {
-    let rest = value < 0 ? 0 : value;
-
-    // Build the variable-length bytes in reverse
-    const vlqBytes: number[] = [];
-    vlqBytes.push(rest & 0x7f);
-    rest >>= 7;
-    while (rest > 0) {
-      vlqBytes.push((rest & 0x7f) | 0x80);
-      rest >>= 7;
-    }
-    // Push in reverse order (MSB first)
-    for (let i = vlqBytes.length - 1; i >= 0; i--) {
-      bytes.push(vlqBytes[i]);
-    }
   }
 }

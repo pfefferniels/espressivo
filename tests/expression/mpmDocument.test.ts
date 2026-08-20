@@ -38,16 +38,34 @@ describe('mpmDocument', () => {
       expect(twice).toBe(once);
     });
 
-    it('is NOT the identity on the input bytes, because the serializer re-emits xmlns', () => {
-      // The reason §1.1 contracts identity against canonicalBaseline() and never against the
-      // caller's own text: Element.wrap drops namespace declarations at parse
-      // (XomTypes.ts:410) and Element.toXML re-emits one on every namespaced element with no
-      // check for an inherited declaration (XomTypes.ts:766-771). No applier can avoid this.
+    it('is NOT the identity on the input bytes — but no longer because of xmlns', () => {
+      // Why §1.1 contracts identity against canonicalBaseline() and never against the
+      // caller's own text. This used to have three reasons and the largest is now gone.
+      //
+      // `Element.wrap` drops namespace declarations at parse, and `Element.toXML` used to
+      // re-emit one on EVERY namespaced element with no check for an inherited declaration —
+      // so this seven-element document came back carrying seven declarations where it went in
+      // with one, and the comment here said "no applier can avoid this". The serializer now
+      // emits a default-namespace declaration only where the namespace actually changes, so
+      // the count round-trips exactly and a document does not grow just by being read.
+      //
+      // One reason remains for THIS fixture, and it is a normalisation rather than a defect:
+      // an element written as an empty start/end pair comes back self-closing, so this
+      // document's `<header></header>` serializes as `<header />`. (A second applies to
+      // documents that carry one: the XML declaration is not re-emitted, RULE F2a.)
       const baseline = canonicalBaseline(FLAT);
       expect(baseline).not.toBe(FLAT);
-      expect(baseline.length).toBeGreaterThan(FLAT.length);
-      expect(baseline.match(/xmlns="/g)).toHaveLength(7); // one per element, inherited or not
+      expect(baseline.match(/xmlns="/g)).toHaveLength(1);
       expect(FLAT.match(/xmlns="/g)).toHaveLength(1);
+
+      // The document now gets SHORTER, not longer — the inflation is gone.
+      expect(baseline.length).toBeLessThan(FLAT.length);
+
+      // And that one reason is the whole of the difference, asserted rather than described so
+      // a new one cannot hide behind this comment.
+      expect(FLAT).toContain('<header></header>');
+      expect(baseline).toContain('<header />');
+      expect(baseline).toBe(FLAT.replace('<header></header>', '<header />'));
     });
 
     it('carries the canonical baseline as its own fixed point', () => {

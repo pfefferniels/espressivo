@@ -357,6 +357,35 @@ not either: it showed the guard as a dead branch, which proves only that the _bu
 never fires, not that no fixture reaches the _fixed_ one. What does the work is the unit tests: the
 same reverted tree fails four of them, in both the direct and the parse path.
 
+### `Element.toXML` declared the default namespace on every element instead of once
+
+`src/xml/XomTypes.ts`. The serializer emitted `xmlns="…"` for every element carrying a
+namespace URI, where Java XOM emits it only where the namespace changes — in practice once, on
+the root. A 2185-byte reference MPM came back out at 3527 bytes with the declaration repeated
+32 times.
+
+**It was invisible because the gate was laundering it.** `cross-validation.test.ts` carried a
+normaliser that collapsed the repeats on both sides before comparing, so the suite compared a
+cleaned-up version of our output rather than our output. The normaliser has been deleted and
+the suite now compares the raw bytes; with the defect deliberately reinstated, 80 tests across
+the round-trip and cross-validation suites go red, where before it went entirely unnoticed.
+
+The rule now applied is the one XML specifies: a default-namespace declaration is emitted only
+when an element's namespace differs from the one it inherits. Three consequences, the third of
+which means the old behaviour was not merely verbose but wrong:
+
+- the root of a namespaced document still declares, having inherited nothing;
+- a child in its parent's namespace declares nothing;
+- a child with **no** namespace inside a namespaced parent emits `xmlns=""`, undeclaring it.
+  Without that the child would silently inherit its parent's namespace on reparse.
+
+A prefixed element declares its own prefix and leaves the default namespace in scope untouched.
+
+**One normaliser in that suite remains, and is load-bearing:** Java writes `720.0` where this
+port writes `720`. Measured — removing it turns 24 of cross-validation's 48 tests red. It is
+the same kind of divergence, with a blast radius across every numeric attribute in the tree
+rather than one line in the serializer, and is left for its own change.
+
 ### `Attribute.detach()` was a silent no-op on everything that came out of the parser
 
 |                           |                                                                                                                                                         |

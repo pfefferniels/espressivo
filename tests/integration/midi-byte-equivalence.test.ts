@@ -2,6 +2,36 @@
  * MIDI byte-level equivalence tests.
  * Compares TS MIDI output event-by-event against Java reference MIDI files.
  * Tests both MEI-based and programmatic (all-maps) fixtures.
+ *
+ * ## What this oracle does and does not see
+ *
+ * Despite the file's name it never compares bytes. `Msm.exportMidi` and
+ * `exportExpressiveMidi` return a `Midi` **object**, so the TS side is an in-memory
+ * `Sequence` that is never serialised; the Java side is a reference `.mid` read back
+ * through **this port's own** `Midi.readMidiData`. Both are then reduced to
+ * {@link MidiEventInfo} by {@link extractEvents} and compared field by field, with
+ * `tickTolerance = 0`. That is deliberate — `src/midi/Midi.ts`'s header lists three
+ * ways the writer's bytes legitimately differ from the JDK's — but it leaves two
+ * blind spots worth knowing before trusting a green run. Both were measured by
+ * executing the break and watching this suite stay green:
+ *
+ * 1. **The SMF writer is not in the loop at all.** `Midi.exportMidi` and
+ *    `buildTrackChunk` are never called here, so corrupting the meta payload length
+ *    a track chunk writes leaves all 43 tests passing. What pins the writer is the
+ *    round-trip in `tests/midi/Midi.test.ts` — export, re-read, compare — which is a
+ *    self-consistency check, not a comparison against Java.
+ * 2. **A defect on the shared construction path cancels.** `channelMessage` builds
+ *    the short messages on *both* sides, so swapping its two data bytes, or making a
+ *    program change emit a second one, leaves every comparison here equal.
+ *    `tests/midi/MidiTypes.test.ts` and `tests/msm/Msm.test.ts` catch both, because
+ *    they pin bytes against literals rather than against a re-read.
+ *
+ * So `npm run gate` alone is not sufficient for a change to the message constructors
+ * or to the SMF writer; `npm run verify` is. What this suite does catch on its own is
+ * the whole MSM+MPM → `Sequence` rendering pipeline — event order, ticks, channels,
+ * payload contents — and the reader.
+ * (`tests/integration/performance-equivalence.test.ts` re-reads the reference the same
+ * way, and compares only track and event counts.)
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, existsSync } from 'fs';
@@ -12,7 +42,13 @@ import { Mei2MsmMpmConverter } from '../../src/mei/Mei2MsmMpmConverter.js';
 import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
 import { Midi } from '../../src/midi/Midi.js';
-import { ShortMessage, MetaMessage } from '../../src/midi/MidiTypes.js';
+import {
+  ShortMessage,
+  shortChannel,
+  shortCommand,
+  shortData1,
+  shortData2,
+} from '../../src/midi/MidiTypes.js';
 
 const __dirname2 = dirname(fileURLToPath(import.meta.url));
 const MEI_DIR = join(__dirname2, 'fixtures', 'mei');
@@ -37,11 +73,11 @@ function extractEvents(midi: Midi): MidiEventInfo[][] {
       const msg = event.getMessage();
       const info: MidiEventInfo = { tick: event.getTick(), type: 'other' };
 
-      if (msg instanceof ShortMessage) {
-        info.channel = msg.getChannel();
-        info.data1 = msg.getData1();
-        info.data2 = msg.getData2();
-        switch (msg.getCommand()) {
+      if (msg.kind === 'short') {
+        info.channel = shortChannel(msg);
+        info.data1 = shortData1(msg);
+        info.data2 = shortData2(msg);
+        switch (shortCommand(msg)) {
           case ShortMessage.NOTE_ON:
             info.type = 'noteOn';
             break;
@@ -57,9 +93,9 @@ function extractEvents(midi: Midi): MidiEventInfo[][] {
           default:
             info.type = 'shortMessage';
         }
-      } else if (msg instanceof MetaMessage) {
+      } else if (msg.kind === 'meta') {
         info.type = 'meta';
-        info.metaType = msg.getType();
+        info.metaType = msg.type;
       }
       events.push(info);
     }
