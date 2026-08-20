@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { XmlBase } from '../../src/xml/XmlBase.js';
+import { MissingNodeError } from '../../src/xml/errors.js';
 import { Document, Element, Attribute, Builder } from '../../src/xml/XomTypes.js';
 
 const SIMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -145,6 +146,23 @@ describe('XmlBase – removeAllAttributes', () => {
     const xb = new XmlBase(SIMPLE_XML, true);
     const count = xb.removeAllAttributes('nonexistent');
     expect(count).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the three tree-wide operations on an empty document
+// ---------------------------------------------------------------------------
+describe('XmlBase – tree operations on an empty document', () => {
+  // All three used to reach the root with `getRootElement()!` and therefore died on an
+  // empty instance with "cannot read properties of null (reading 'query')". They now go
+  // through `requireRootElement`, so the failure names the document rather than the
+  // property — same set of inputs that fail, a different sentence when they do.
+  it.each([
+    ['removeAllElements', (xb: XmlBase) => xb.removeAllElements('child')],
+    ['removeAllAttributes', (xb: XmlBase) => xb.removeAllAttributes('color')],
+    ['fixDuplicateIds', (xb: XmlBase) => xb.fixDuplicateIds()],
+  ])('%s reports the missing root rather than a TypeError', (_name, run) => {
+    expect(() => run(new XmlBase())).toThrow(MissingNodeError);
   });
 });
 

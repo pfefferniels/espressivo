@@ -29,25 +29,28 @@ import { MissingNodeError } from './errors.js';
  * `getFirstChildElement(Element)` and `getFirstChildElement(String, Element)`, and the
  * port added `(Element, String)` on top. TypeScript dispatches them at runtime by
  * inspecting `typeof arg1`, which is why the implementation signature is widened to
- * `Element | string | null`. The `unified-signatures` lint entries this produces are
- * knowingly left standing — collapsing name-first and name-last into one signature is an
- * API change and belongs to T16.
+ * `Element | string | null`.
+ *
+ * Two of the four overloads were `(Element)` and `(Element, String)`, which differ only by
+ * a trailing argument and are therefore one signature with an optional parameter —
+ * `unified-signatures` said so, and it was right: the collapsed form accepts exactly the
+ * call shapes the pair accepted. What stays split is name-first against name-last, because
+ * those select **different implementations** (see below), and collapsing them would be an
+ * API change rather than a spelling one.
  */
 
 /**
- * Get the first child element of an xml element (no name filter).
+ * Get the first child element of an xml element, optionally filtered by local name.
+ *
+ * XOM's `getFirstChild(String)` sometimes doesn't seem to work even though an XPath query
+ * finds something. For those situations this method can be used as a workaround.
+ *
  * @param ofThis
- * @return the first child element or null
+ * @param localname restrict to the first child with this local name; omit for the first
+ *   child element of any name
+ * @return the first matching child element or null
  */
-export function firstChildElement(ofThis: Element): Element | null;
-/**
- * XOM's method getFirstChild(String) sometimes doesn't seem to work even though an XPath query finds something.
- * For these situations this method can be used as workaround.
- * @param ofThis
- * @param localname
- * @return the first child element with the given localname or null
- */
-export function firstChildElement(ofThis: Element, localname: string): Element | null;
+export function firstChildElement(ofThis: Element, localname?: string): Element | null;
 /**
  * this function became necessary because the XOM methods sometimes do not seem to work for whatever reason
  * @param name
@@ -70,7 +73,7 @@ export function firstChildElement(
   arg2?: Element | string | null,
 ): Element | null {
   // Determine which overload was called
-  if (arg1 === null || arg1 === undefined) return null;
+  if (arg1 == null) return null;
 
   if (typeof arg1 === 'string') {
     // firstChildElement(name: string, ofThis: Element)
@@ -115,15 +118,11 @@ export function firstChildElement(
  * earlier in the same function, or the shape of a document this port itself built. On a
  * path where absence is possible, keep {@link firstChildElement} and handle the null.
  * @param ofThis
+ * @param localname restrict to the first child with this local name; omit for the first
+ *   child element of any name
  * @return the first child element
  */
-export function requireFirstChildElement(ofThis: Element): Element;
-/**
- * @param ofThis
- * @param localname
- * @return the first child element with the given localname
- */
-export function requireFirstChildElement(ofThis: Element, localname: string): Element;
+export function requireFirstChildElement(ofThis: Element, localname?: string): Element;
 /**
  * @param name
  * @param ofThis
@@ -652,8 +651,10 @@ export function getClosest(name: string, ofThis: Element): Element | null {
 export function getClosestByAttr(attrName: string, ofThis: Element): Element | null {
   let parent = parentElement(ofThis);
   while (parent != null) {
+    // `getAttributeValue` answers `''` for an absent attribute rather than null, so the
+    // empty-string test is the whole of "carries this attribute" here.
     const attr = getAttributeValue(attrName, parent);
-    if (attr != null && attr !== '') return parent;
+    if (attr !== '') return parent;
     parent = parentElement(parent);
   }
   return null;

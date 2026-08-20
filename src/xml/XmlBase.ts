@@ -1,4 +1,5 @@
 import { Document, Element, Attribute, Builder, ParsingException } from './XomTypes.js';
+import { MissingNodeError } from './errors.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -53,6 +54,21 @@ export class XmlBase {
     }
   }
 
+  /**
+   * Parse XML source into {@link data}, or leave it null and report why on `console.error`.
+   *
+   * The handler is live, unlike several the port inherited from Java: `Builder.build`
+   * really does throw {@link ParsingException}, for a `parsererror` node and for a source
+   * with no root element.
+   *
+   * The `console.error` **stays**, and it is the only one left in this class. Unlike
+   * `exportXml`'s, it carries something no caller can recover: *why* the parse failed.
+   * `src/api/pipeline.ts`'s `checkParsed` says so in its own words — "a document that did
+   * not parse is indistinguishable from an empty one at the class API" — and answers both
+   * with one message. Giving it the reason means adding a channel to this class, and the
+   * cheap version of that (a stored error plus an accessor) has exactly one consumer, in a
+   * directory outside this charter. Left deliberately, and reported rather than smuggled.
+   */
   protected parseXmlString(xml: string): void {
     const builder = new Builder();
     this.isValidFlag = false;
@@ -100,8 +116,8 @@ export class XmlBase {
   }
 
   toXML(): string {
-    if (this.isEmpty()) return '';
-    return this.data!.toXML();
+    if (this.data === null) return '';
+    return this.data.toXML();
   }
 
   getDocument(): Document | null {
@@ -114,8 +130,35 @@ export class XmlBase {
   }
 
   getRootElement(): Element | null {
-    if (this.isEmpty()) return null;
-    return this.data!.getRootElement();
+    if (this.data === null) return null;
+    return this.data.getRootElement();
+  }
+
+  /**
+   * The root element, or a {@link MissingNodeError} naming the document that has none.
+   *
+   * {@link getRootElement} answers `null` for exactly one reason — there is no parsed
+   * document at all — because a {@link Document} always has a root. Most callers have
+   * already established that (`isEmpty()` is false, or they built the document themselves
+   * two lines earlier) and used to say so with `getRootElement()!`, which is a claim the
+   * type system cannot check and which arrives, when wrong, as "cannot read property of
+   * null" somewhere inside XOM. This is that claim, checked.
+   *
+   * It replaces an assertion and not a guard: every site that had the `!` threw on an empty
+   * document before this existed too. Where absence is a real answer rather than a broken
+   * invariant, call {@link getRootElement} and branch on the null.
+   *
+   * Lifted here from `AbstractMsm`, where the same method and the same argument were
+   * written for `Msm`/`Mpm` — the three methods below wanted it too, and it belongs to
+   * every `XmlBase` descendant rather than to one branch of them. `Mei`'s private copy is
+   * gone; `AbstractMsm`'s is now a byte-identical override and could go the same way, but
+   * that file is outside this charter and is being edited concurrently.
+   */
+  protected requireRootElement(): Element {
+    const root = this.getRootElement();
+    if (root === null)
+      throw new MissingNodeError('this document is empty and therefore has no root element');
+    return root;
   }
 
   /**
@@ -126,7 +169,7 @@ export class XmlBase {
    */
   removeAllElements(localName: string): number {
     let deletions = 0;
-    const matches = this.getRootElement()!.query(`descendant::*[local-name()='${localName}']`);
+    const matches = this.requireRootElement().query(`descendant::*[local-name()='${localName}']`);
 
     for (const node of matches.toArray()) {
       const parent = node.getParent();
@@ -146,7 +189,7 @@ export class XmlBase {
    * {@link removeAllElements}, the return value is the number of elements *matched*.
    */
   removeAllAttributes(attributeName: string): number {
-    const matches = this.getRootElement()!.query(`descendant::*[@${attributeName}]`);
+    const matches = this.requireRootElement().query(`descendant::*[@${attributeName}]`);
 
     for (const node of matches.toArray()) {
       const element = node as unknown as Element;
@@ -175,7 +218,9 @@ export class XmlBase {
     let duplicates = 0;
     const uniqueIds = new Set<string>();
 
-    const attributes = this.getRootElement()!.query('descendant-or-self::node()/attribute::xml:id');
+    const attributes = this.requireRootElement().query(
+      'descendant-or-self::node()/attribute::xml:id',
+    );
     // A walk in document order, which is the whole of the "first occurrence keeps it" rule
     // above; the index was never read for anything else. Not a fold, because the pass is
     // effects — it rewrites the attributes it visits and feeds the set it tests against.
@@ -197,13 +242,20 @@ export class XmlBase {
   }
 
   /**
-   * Export the XML as a string (browser-compatible replacement for writeFile)
+   * Export the XML as a string (browser-compatible replacement for writeFile), or null
+   * when there is no document to export.
+   *
+   * The `console.error` that used to accompany the null is deleted, on the reasoning the
+   * `console.log` sweep applied to `Header.renameStyleDef`: `null` has exactly one cause
+   * here — `isEmpty()` — and the caller can ask that question itself, so the line said
+   * nothing the caller did not already have, on a channel the caller did not choose. All
+   * five call sites (`Mei.exportMei`, `Mpm.exportMpm` ×2, `Msm.exportMsm` ×2) are a bare
+   * `return this.exportXml()`, so nothing downstream changes shape.
+   *
+   * `parseXmlString`'s `console.error` is a different case and stays — see there.
    */
   exportXml(): string | null {
-    if (this.isEmpty()) {
-      console.error('Empty document, cannot export.');
-      return null;
-    }
+    if (this.isEmpty()) return null;
     return this.toXML();
   }
 }

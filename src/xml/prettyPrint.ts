@@ -29,8 +29,10 @@ export function prettyXml(xml: string | null): string {
   let pretty = '';
   const rows = xml.trim().replace(/>/g, '>\n').replace(/</g, '\n<').split('\n');
 
+  // `String.split` never yields a null element, so Java's per-row null check has nothing to
+  // test here; the empty-row skip it was written alongside does all the work.
   for (const rawRow of rows) {
-    if (rawRow == null || rawRow.trim().length === 0) continue;
+    if (rawRow.trim().length === 0) continue;
 
     const row = rawRow.trim();
     if (row.startsWith('<?')) {

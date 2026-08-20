@@ -9,7 +9,6 @@ import {
   firstChildElement,
   getAttributeValue,
 } from '../xml/tree.js';
-import { MissingNodeError } from '../xml/errors.js';
 import { foldl } from '../prelude/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { Msm } from '../msm/Msm.js';
@@ -270,23 +269,15 @@ export class Mei extends XmlBase {
     return result;
   }
 
-  /**
-   * The root element, where this instance being empty would be a broken invariant rather
-   * than an outcome the caller handles (ARCHITECTURE.md RULE N2a, applied to the one
-   * `XmlBase` accessor `Mei` reads without a null branch).
-   *
-   * `getRootElement()` returns null exactly when `isEmpty()`, and the three callers below
-   * are all reached only with data in hand. Where absence *is* possible — `getMeiHead`,
-   * `getMusic`, `resolveExpansions` — the nullable accessor stays and the null is branched
-   * on. The difference to the `!` this replaces is the message: a `MissingNodeError` saying
-   * the MEI is empty, rather than a `TypeError` from whatever property the caller reached
-   * for next.
+  /*
+   * `requireRootElement` used to be declared here — the root element, where this instance
+   * being empty would be a broken invariant rather than an outcome the caller handles
+   * (ARCHITECTURE.md RULE N2a, applied to the one `XmlBase` accessor `Mei` reads without a
+   * null branch). It is now inherited from {@link XmlBase}, which grew the identical method
+   * for its own three tree-wide operations; `AbstractMsm` had written it a third time. Where
+   * absence *is* possible in this file — `getMeiHead`, `getMusic`, `resolveExpansions` — the
+   * nullable accessor stays and the null is branched on.
    */
-  private requireRootElement(): Element {
-    const root = this.getRootElement();
-    if (root === null) throw new MissingNodeError('this MEI instance holds no document');
-    return root;
-  }
 
   /** all variant encodings — `choice` and `app` elements — anywhere in this document */
   getAllVariantEncodings(): Nodes {
