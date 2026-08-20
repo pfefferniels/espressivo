@@ -2,6 +2,28 @@
  * MIDI byte-level equivalence tests.
  * Compares TS MIDI output event-by-event against Java reference MIDI files.
  * Tests both MEI-based and programmatic (all-maps) fixtures.
+ *
+ * ## What this oracle does and does not see
+ *
+ * Despite the file's name it never compares bytes. The TS side is a `Midi` built in
+ * memory and never serialised; the Java side is a reference `.mid` read back through
+ * **this port's own** `Midi.readMidiData`. Both sides are then reduced to
+ * {@link MidiEventInfo} by {@link extractEvents} and compared field by field, with
+ * `tickTolerance = 0`. That is deliberate — `src/midi/Midi.ts`'s header lists three
+ * ways the writer's bytes legitimately differ from the JDK's — but it has a
+ * consequence worth knowing before trusting a green run:
+ *
+ * **A defect on the shared construction path cancels.** `channelMessage` builds the
+ * short messages on *both* sides, so swapping its two data bytes, or making a program
+ * change emit a second one, leaves every comparison here equal and this suite green.
+ * Both were executed as negative controls; both are caught instead by the unit tests
+ * in `tests/midi/MidiTypes.test.ts` and `tests/msm/Msm.test.ts`, which pin the bytes
+ * against literals rather than against a re-read. `npm run gate` alone is therefore
+ * not sufficient for a change to the message constructors or to the reader's channel
+ * branch; `npm run verify` is. What this suite does catch on its own is everything
+ * asymmetric: the writer's framing, event order, ticks, and the reader.
+ * (`tests/integration/performance-equivalence.test.ts` re-reads the reference the same
+ * way, and compares only track and event counts.)
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, existsSync } from 'fs';
