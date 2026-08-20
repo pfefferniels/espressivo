@@ -52,11 +52,17 @@ function canonicalizeUuids(xml: string): string {
  * - **generated UUIDs** — nondeterministic by construction, canonicalised by first-occurrence
  *   order rather than deleted, so `goto/@target.id` to `marker/@xml:id` wiring stays checkable
  * - **resource URIs** — file paths, which depend on where the fixture lives
- * - **`="720.0"` versus `="720"`** — the one REAL divergence still standing. Java's
- *   `Double.toString` keeps the fractional zero and JavaScript's `String(number)` does not.
- *   Removing this line reds 24 of the 48 tests. It is a genuine difference in output and it is
- *   recorded as open, not resolved: fixing it means a Java-double formatter at every numeric
- *   attribute write.
+ * - **`="720.0"` versus `="720"`** — a genuine difference in output, and an **accepted** one.
+ *   Java's `Double.toString` keeps the fractional zero and JavaScript's `String(number)` does
+ *   not. The repository owner decided (2026-08-20) that the shorter spelling is the better
+ *   one: both parse to the same double, nothing downstream distinguishes them, and a
+ *   Java-double formatter at every numeric write would add a layer to the whole output path to
+ *   reproduce a difference nobody wants. So this line stays, and unlike the three deleted
+ *   above it is not hiding anything — it forgives a difference that has been examined and
+ *   accepted, which is what a normaliser is for. Removing it reds 24 of the 48 tests.
+ *   PARITY.md carries the decision, and one latent case it does not cover: Java switches to
+ *   scientific notation at `>= 1e7` where JavaScript waits until `1e21`, which no fixture
+ *   reaches but a long score would.
  */
 function normalizeXml(xml: string): string {
   return (

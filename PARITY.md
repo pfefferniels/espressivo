@@ -675,6 +675,36 @@ is correct against both codebases.
 
 ---
 
+### Numbers are written `720`, not `720.0` — accepted, not a defect
+
+Java's `Double.toString` keeps the fractional zero on a whole number; JavaScript's
+`String(number)` does not. Every numeric attribute this port writes therefore differs from the
+reference by a trailing `.0` — **1488 occurrences** across the reference corpus, concentrated
+in `@date` (397), `@midi.pitch` (242), `@duration` (238), `@octave` (227) and `@accidentals`
+(227).
+
+**This is a deliberate, permanent divergence, decided by the repository owner (2026-08-20).**
+The two spellings parse to the same double, nothing downstream distinguishes them, and the
+shorter form is the better one. A Java-double formatter at every numeric write was considered
+and rejected: it would add a formatting layer to the whole output path to reproduce a
+difference nobody wants.
+
+`tests/integration/cross-validation.test.ts` keeps one normaliser for it. That normaliser is
+therefore _not_ the blind-spot kind — it forgives a difference that has been examined and
+accepted, which is exactly what a normaliser is for. Removing it reds 24 of that suite's 48
+tests, and should not be removed.
+
+**One latent case this does not cover, recorded because no fixture reaches it.** Java switches
+`Double.toString` to scientific notation at `>= 1e7` (and `< 1e-3`), where JavaScript does not
+until `1e21`. So a `date` of 12345678 would be `1.2345678E7` in Java and `12345678` here — a
+difference the `="N.0"` normaliser does not match, which would surface as a red test rather
+than as silent drift. At 720 ppq that threshold is about **3472 bars of 4/4**, so it is
+reachable by a long score even though the corpus tops out at `date="23040"`. If it ever fires,
+this entry is the explanation; the fix would be to accept the JavaScript spelling there too and
+widen the normaliser.
+
+---
+
 ## 3. Bug-for-bug preservations
 
 Behaviours that look like defects and are reproduced anyway. Unlike §1's entries these are not

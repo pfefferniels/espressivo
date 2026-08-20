@@ -60,6 +60,25 @@ There is deliberately no separate pipeline-probe script in the repo: the byte ga
 suite, which is why the suites auto-discover their fixtures and treat a missing reference as a
 failure rather than a skip.
 
+## The one accepted difference in generated output
+
+Java's `Double.toString` writes `720.0` where JavaScript's `String(number)` writes `720`, so
+every numeric attribute this port generates differs from the reference by a trailing `.0` —
+1488 occurrences across the corpus, mostly `@date`, `@midi.pitch`, `@duration`, `@octave` and
+`@accidentals`.
+
+**This is accepted, not outstanding.** The two spellings parse to the same double, nothing
+downstream distinguishes them, and the shorter one is better; reproducing Java's would mean a
+formatting layer over the whole output path. The equivalence suite normalises it, and that is
+the _only_ normaliser in `cross-validation` that forgives a real difference — the other two
+cover generated UUIDs and file paths, which are genuinely incomparable. Three further
+normalisers were deleted in August 2026 once it turned out they were hiding defects rather than
+forgiving differences: a repeated `xmlns`, a hardcoded `encoding="UTF-8"`, and a metadata
+comment that did not actually differ.
+
+So "produces what meico produces" means, precisely: **byte-identical apart from the trailing
+`.0` on whole numbers, generated identifiers, and file paths.**
+
 ## What this does not claim
 
 Imprecision output is nondeterministic by design and is never byte-compared (see
