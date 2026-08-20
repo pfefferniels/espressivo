@@ -6,7 +6,6 @@ import { attemptParse, type MpmParseError } from './parseError.js';
 import { MPM_NAMESPACE } from '../names.js';
 import { GenericMap } from './maps/GenericMap.js';
 import { mapOfKind, parseTypedMap, type MapKind, type MapOfKind } from './maps/map.js';
-import { Header } from './Header.js';
 import type { Global } from './Global.js';
 import type { Part } from './Part.js';
 
@@ -84,7 +83,8 @@ export class Dated extends AbstractXmlSubtree {
    * entirely, and inventing a diagnostics channel on `Dated` for nobody would be the wrong
    * shape to guess at.
    */
-  addMapFromXml(xml: Element): GenericMap | null {
+  /** Null is accepted and refused, as `Dated.java:97-98` does; the type now says so. */
+  addMapFromXml(xml: Element | null): GenericMap | null {
     if (xml === null) return null;
     return this.addMap(unwrapOr(parseTypedMap(xml), null));
   }

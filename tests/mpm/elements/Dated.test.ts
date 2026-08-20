@@ -130,7 +130,7 @@ describe('Dated', () => {
     });
 
     it('should return null for a null element', () => {
-      expect(okValue(Dated.createDated()).addMapFromXml(null as unknown as Element)).toBeNull();
+      expect(okValue(Dated.createDated()).addMapFromXml(null)).toBeNull();
     });
   });
 
