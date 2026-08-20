@@ -1,8 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Performance } from '../../../src/mpm/elements/Performance.js';
 import { Part } from '../../../src/mpm/elements/Part.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Msm } from '../../../src/msm/Msm.js';
+import { AsynchronyMap } from '../../../src/mpm/elements/maps/AsynchronyMap.js';
+import { ImprecisionMap } from '../../../src/mpm/elements/maps/ImprecisionMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
@@ -536,5 +538,306 @@ describe('Performance', () => {
         expect(() => p.perform(msm)).not.toThrow();
       });
     });
+
+    // -----------------------------------------------------------
+    // the pipeline's ordering edges
+    // -----------------------------------------------------------
+    /**
+     * Six edges of `perform`'s stage order that nothing tested, each found by breaking the
+     * order on purpose and watching the suite stay green.
+     *
+     * The byte-equivalence gate cannot see any of them, and for three different reasons —
+     * which is why they are pinned here, structurally, rather than by a fixture:
+     *
+     * - **No fixture in `tests/integration/fixtures/` contains a single `<pedal>` element.**
+     *   Every pedalMap in the corpus is empty, so both calls of the global millisecond stage
+     *   and the first two of the part's are no-ops throughout. (T19's verifier found the
+     *   narrower version of this — no fixture puts an asynchronyMap or imprecisionMap in
+     *   `<global>` — and left it open.)
+     * - **The imprecision fixtures are compared with imprecision-affected attributes
+     *   filtered out**, deliberately and correctly: Java's RNG is not this one's. So every
+     *   edge whose only effect is on the order of RNG draws — the cross-part stream ordinal,
+     *   the order of the four imprecision domains — is invisible to the reference comparison
+     *   by construction, and can only be held by assertions like these.
+     * - **No fixture sets `subNoteDynamics`**, so every channelVolumeMap in the corpus has
+     *   exactly one entry, at date 0, where rubato is the identity.
+     *
+     * Each test states an invariant rather than a recorded number, so none of them has to be
+     * regenerated when an unrelated value moves.
+     */
+    describe('stage order', () => {
+      /** `count` parts with identical notes, so any difference between them is not the music. */
+      function makeMsmWithParts(count: number, ppq = 720): Msm {
+        const msm = Msm.createMsm('Test', 'msm-id', ppq);
+        for (let p = 0; p < count; ++p) {
+          const part = Msm.makePart(`Part${p + 1}`, p + 1, p, 0);
+          const score = part.getFirstChildElement('dated')!.getFirstChildElement('score')!;
+          for (let i = 0; i < 4; ++i) {
+            const n = new Element('note');
+            n.addAttribute(new Attribute('xml:id', XML_NS, `p${p}n${i}`));
+            n.addAttribute(new Attribute('date', String(i * ppq)));
+            n.addAttribute(new Attribute('duration', String(ppq)));
+            n.addAttribute(new Attribute('midi.pitch', '60'));
+            score.appendChild(n);
+          }
+          msm.addPart(part);
+        }
+        return msm;
+      }
+
+      /** Global imprecision maps, in the domains named — none with a seed, so `options.seed` governs. */
+      function performanceWithImprecision(...domains: string[]): Performance {
+        const p = Performance.createPerformance('P', 720)!;
+        for (const domain of domains) {
+          const map = ImprecisionMap.createImprecisionMap(domain)!;
+          map.addDistributionUniform(0, -30, 30);
+          p.getGlobal()!.getDated()!.addMap(map);
+        }
+        return p;
+      }
+
+      const partNotes = (msm: Msm, part: number): Element[] =>
+        msm
+          .getParts()
+          .get(part)
+          .getFirstChildElement('dated')!
+          .getFirstChildElement('score')!
+          .getChildElements('note')
+          .toArray();
+
+      const timings = (msm: Msm, part: number): number[] =>
+        partNotes(msm, part).map((n) => num(n, 'milliseconds.date'));
+
+      it('gives two identical parts different imprecision offsets', () => {
+        // `ctx.streamOrdinal` counts imprecision CALLS across the whole render, and
+        // `deriveSeed(seed, ordinal, impIndex)` folds it into the seed. Reset it per part and
+        // the two parts here — same notes, same map — would come out identically shaken.
+        const performed = performanceWithImprecision('timing').perform(makeMsmWithParts(2), {
+          seed: 7,
+        });
+
+        expect(timings(performed, 0)).not.toEqual(timings(performed, 1));
+      });
+
+      it('leaves a part unaffected by the parts that come after it', () => {
+        // The ordinal a part's imprecision call sees depends on the calls BEFORE it, so
+        // rendering the parts in document order makes part 1 independent of part 2's
+        // existence. Walk the parts in any other order and this stops being true.
+        const alone = performanceWithImprecision('timing').perform(makeMsmWithParts(1), {
+          seed: 7,
+        });
+        const withSecond = performanceWithImprecision('timing').perform(makeMsmWithParts(2), {
+          seed: 7,
+        });
+
+        expect(timings(withSecond, 0)).toEqual(timings(alone, 0));
+      });
+
+      it('renders the same bytes twice for the same seed', () => {
+        const render = () =>
+          performanceWithImprecision('timing', 'dynamics')
+            .perform(makeMsmWithParts(2), { seed: 99 })
+            .getRootElement()!
+            .toXML();
+
+        expect(render()).toBe(render());
+      });
+
+      it('runs the timing imprecision pass before the other three domains', () => {
+        // Same argument one level down: the four domains advance the same counter, so if
+        // timing is first among them its result cannot depend on whether the other three are
+        // there at all. Only `milliseconds.date` is compared, which is the only attribute the
+        // timing domain writes — and only the FIRST part, because from the second part on the
+        // extra domains of the parts before it have already advanced the counter, which is the
+        // same reason the test above renders part 1 alone to compare against.
+        const timingOnly = performanceWithImprecision('timing').perform(makeMsmWithParts(2), {
+          seed: 7,
+        });
+        const allFour = performanceWithImprecision(
+          'timing',
+          'dynamics',
+          'toneduration',
+          'tuning',
+        ).perform(makeMsmWithParts(2), { seed: 7 });
+
+        expect(timings(allFour, 0)).toEqual(timings(timingOnly, 0));
+      });
+
+      it('runs the millisecond passes in the reference order', () => {
+        // Asynchrony and imprecision are both millisecond-domain shifts, so it would be easy
+        // to assume they commute. They do not: an imprecision draw is indexed on the note's
+        // millisecond date (`index = msDate / timingBasisMs`), so shifting first changes which
+        // value is drawn. The number of calls does not depend on which maps the MSM has —
+        // a missing map is passed as null and returns early — so the whole sequence can be
+        // pinned rather than one pair of it.
+        const msm = makeMsmWithParts(1);
+        const globalPedal = msm
+          .getGlobal()!
+          .getFirstChildElement('dated')!
+          .getFirstChildElement('pedalMap')!;
+        for (const date of [0, 720]) {
+          const pedal = new Element('pedal');
+          pedal.addAttribute(new Attribute('date', String(date)));
+          globalPedal.appendChild(pedal);
+        }
+
+        const p = Performance.createPerformance('P', 720)!;
+        const asynchrony = AsynchronyMap.createAsynchronyMap()!;
+        asynchrony.addAsynchrony(0, 25);
+        p.getGlobal()!.getDated()!.addMap(asynchrony);
+        const imprecision = ImprecisionMap.createImprecisionMap('timing')!;
+        imprecision.addDistributionUniform(0, -30, 30);
+        p.getGlobal()!.getDated()!.addMap(imprecision);
+
+        const asynchronySpy = vi.spyOn(asynchrony, 'renderAsynchronyToMap');
+        const imprecisionSpy = vi.spyOn(imprecision, 'renderImprecisionToMap');
+
+        p.perform(msm, { seed: 7 });
+
+        const named = (spy: { mock: { invocationCallOrder: readonly number[] } }, name: string) =>
+          spy.mock.invocationCallOrder.map((order) => ({ order, name }));
+        const order = [
+          ...named(asynchronySpy, 'asynchrony'),
+          ...named(imprecisionSpy, 'imprecision'),
+        ]
+          .sort((a, b) => a.order - b.order)
+          .map((call) => call.name);
+
+        expect(order).toEqual([
+          'asynchrony', // the global pedalMap
+          'imprecision', //  "     "     "
+          'asynchrony', // the part's pedalMap
+          'imprecision', //  "     "      "
+          'asynchrony', // the channelVolumeMap, after its own tempo pass
+          'asynchrony', // the positionMap, likewise
+          'asynchrony', // the score
+          'imprecision', // the score, last of all
+        ]);
+      });
+
+      it('accentuates a part that has no timeSignatureMap against the global one', () => {
+        // The one thing the global scope hands the part scope besides its ornamentation, and
+        // the only consumer of it. Every all-maps fixture part carries its own
+        // timeSignatureMap, so dropping the fallback entirely leaves the whole suite green.
+        const velocities = (numerator: string): number[] => {
+          const mpm = new Mpm(accentuationMpm());
+          const msm = new Msm(accentuationMsm(numerator));
+          return mpm
+            .getPerformance(0)!
+            .perform(msm)
+            .getParts()
+            .get(0)
+            .getFirstChildElement('dated')!
+            .getFirstChildElement('score')!
+            .getChildElements('note')
+            .toArray()
+            .map((n) => num(n, 'velocity'));
+        };
+
+        // Same notes, same pattern, different GLOBAL time signature: the beat each note falls
+        // on changes, so the accentuation does. Ignore the fallback and both come out alike.
+        expect(velocities('4.0')).not.toEqual(velocities('3.0'));
+      });
+
+      it('keeps the rubato pass off the channelVolumeMap', () => {
+        // The sub-note volume curve is deliberately not in the list rubato and tempo walk —
+        // rubato's high-frequency wobble does not belong in a dynamics curve. Put it in the
+        // list and these dates move; the score's dates move either way, which is what the
+        // second assertion checks the fixture is actually exercising rubato.
+        const dates = (withRubato: boolean) => {
+          const performed = new Mpm(subNoteDynamicsMpm(withRubato))
+            .getPerformance(0)!
+            .perform(new Msm(subNoteDynamicsMsm()));
+          const dated = performed.getParts().get(0).getFirstChildElement('dated')!;
+          const read = (map: string, child: string) =>
+            dated
+              .getFirstChildElement(map)!
+              .getChildElements(child)
+              .toArray()
+              .map((e) => e.getAttributeValue('date.perf'));
+          return { volume: read('channelVolumeMap', 'volume'), score: read('score', 'note') };
+        };
+
+        const withRubato = dates(true);
+        const withoutRubato = dates(false);
+
+        expect(withRubato.volume.length).toBeGreaterThan(1);
+        expect(withRubato.volume).toEqual(withoutRubato.volume);
+        expect(withRubato.score).not.toEqual(withoutRubato.score);
+      });
+    });
   });
 });
+
+/** Four notes and a global 4/4 or 3/4, in a part that brings no timeSignatureMap of its own. */
+function accentuationMsm(numerator: string): string {
+  const notes = [0, 720, 1440, 2160]
+    .map((d, i) => `<note xml:id="n${i}" date="${d}.0" midi.pitch="60.0" duration="720.0" />`)
+    .join('');
+  return (
+    '<?xml version="1.0"?><msm title="Accentuation" pulsesPerQuarter="720">' +
+    '<global><header /><dated>' +
+    `<timeSignatureMap><timeSignature date="0.0" numerator="${numerator}" denominator="4" /></timeSignatureMap>` +
+    '<keySignatureMap /><markerMap /><sectionMap /><phraseMap /><sequencingMap /><pedalMap /><miscMap />' +
+    '</dated></global>' +
+    '<part name="Piano" number="1" midi.channel="0" midi.port="0"><header /><dated>' +
+    `<keySignatureMap /><markerMap /><sequencingMap /><pedalMap /><phraseMap /><miscMap /><score>${notes}</score>` +
+    '</dated></part></msm>'
+  );
+}
+
+/** A global metricalAccentuationMap whose pattern sticks to measures, so the meter matters. */
+function accentuationMpm(): string {
+  return (
+    '<?xml version="1.0"?><mpm xmlns="http://www.cemfi.de/mpm/ns/1.0">' +
+    '<performance name="accentuation" pulsesPerQuarter="720"><global>' +
+    '<header><metricalAccentuationStyles><styleDef name="s">' +
+    '<accentuationPatternDef name="p" length="4.0">' +
+    '<accentuation beat="1.0" value="20.0" transition.from="0.0" transition.to="1.0" />' +
+    '<accentuation beat="2.0" value="-10.0" transition.from="0.0" transition.to="1.0" />' +
+    '<accentuation beat="3.0" value="10.0" transition.from="0.0" transition.to="1.0" />' +
+    '<accentuation beat="4.0" value="-10.0" transition.from="0.0" transition.to="1.0" />' +
+    '</accentuationPatternDef></styleDef></metricalAccentuationStyles></header>' +
+    '<dated><metricalAccentuationMap><style date="0.0" name.ref="s" />' +
+    '<accentuationPattern date="0.0" name.ref="p" scale="1.0" loop="true" stickToMeasures="true" />' +
+    '</metricalAccentuationMap></dated></global>' +
+    '<part name="Piano" number="1" midi.channel="0" midi.port="0"><header /><dated /></part>' +
+    '</performance></mpm>'
+  );
+}
+
+/** Eight notes over two bars — long enough for a rubato frame to displace the later ones. */
+function subNoteDynamicsMsm(): string {
+  const notes = Array.from(
+    { length: 8 },
+    (_, i) => `<note xml:id="n${i}" date="${i * 720}.0" midi.pitch="60.0" duration="720.0" />`,
+  ).join('');
+  return (
+    '<?xml version="1.0"?><msm title="SubNote" pulsesPerQuarter="720">' +
+    '<global><header /><dated><timeSignatureMap /><keySignatureMap /><markerMap /><sectionMap />' +
+    '<phraseMap /><sequencingMap /><pedalMap /><miscMap /></dated></global>' +
+    '<part name="Piano" number="1" midi.channel="0" midi.port="0"><header /><dated>' +
+    `<keySignatureMap /><markerMap /><sequencingMap /><pedalMap /><phraseMap /><miscMap /><score>${notes}</score>` +
+    '</dated></part></msm>'
+  );
+}
+
+/**
+ * `subNoteDynamics` on a bounded ramp is what makes `renderDynamicsToMap` emit a volume curve
+ * at all — without the flag, or without a following instruction to bound the ramp, the map it
+ * returns holds a single entry at date 0, where rubato happens to be the identity.
+ */
+function subNoteDynamicsMpm(withRubato: boolean): string {
+  const rubatoMap = withRubato
+    ? '<rubatoMap><rubato date="0.0" frameLength="2880.0" intensity="0.5" lateStart="0.0" earlyEnd="1.0" loop="true" /></rubatoMap>'
+    : '';
+  return (
+    '<?xml version="1.0"?><mpm xmlns="http://www.cemfi.de/mpm/ns/1.0">' +
+    `<performance name="subnote" pulsesPerQuarter="720"><global><header /><dated>${rubatoMap}` +
+    '<dynamicsMap><dynamics date="0.0" volume="60" transition.to="110" curvature="0.0" protraction="0.0" subNoteDynamics="true" />' +
+    '<dynamics date="5040.0" volume="110" /></dynamicsMap>' +
+    '</dated></global>' +
+    '<part name="Piano" number="1" midi.channel="0" midi.port="0"><header /><dated /></part>' +
+    '</performance></mpm>'
+  );
+}
