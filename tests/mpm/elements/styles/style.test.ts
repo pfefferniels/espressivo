@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { silenceConsoleError } from '../../../support/console.js';
 import { okValue } from '../../../support/result.js';
 import { Mpm } from '../../../../src/mpm/Mpm.js';
 import { Header } from '../../../../src/mpm/elements/Header.js';
@@ -94,7 +95,7 @@ function styleDefElement(name: string, children: Element[] = []): Element {
 
 /** Runs body with console.error silenced. */
 function quiet<T>(body: () => T): T {
-  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const err = silenceConsoleError();
   try {
     return body();
   } finally {
@@ -325,7 +326,7 @@ describe('Style, whatever the kind', () => {
     });
 
     it('logs and does nothing when asked to add null', () => {
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const err = silenceConsoleError();
       const gs = createStyle('tempo', 'myStyle');
       gs.addDef(null as never);
       expect(gs.size()).toBe(0);

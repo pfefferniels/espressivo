@@ -28,6 +28,7 @@ import {
 import type { ReportNoteKind } from '../../src/expression/report.js';
 import { parseTemporalText } from '../../src/expression/temporalValue.js';
 import { exaggerate, globalDocument, numberAt, textAt } from './applierFixtures.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 /**
  * A document that reaches every one of the fifteen dimensions.
@@ -119,8 +120,12 @@ function collectAttributes(xml: string): Map<string, string> {
   const found = new Map<string, string>();
   let elementIndex = 0;
   for (const tag of xml.matchAll(/<([a-zA-Z][\w.:-]*)((?:\s+[\w.:-]+\s*=\s*"[^"]*")*)/g)) {
-    for (const attribute of tag[2].matchAll(/([\w.:-]+)\s*=\s*"([^"]*)"/g)) {
-      found.set(`${elementIndex}:${tag[1]}@${attribute[1]}`, attribute[2]);
+    const [, localName, attributes] = tag;
+    if (localName === undefined || attributes === undefined) continue;
+    for (const attribute of attributes.matchAll(/([\w.:-]+)\s*=\s*"([^"]*)"/g)) {
+      const [, name, value] = attribute;
+      if (name === undefined || value === undefined) continue;
+      found.set(`${elementIndex}:${localName}@${name}`, value);
     }
     elementIndex += 1;
   }
@@ -205,7 +210,9 @@ describe('P2 composition on the clamp-free subdomain (§1.1, A3)', () => {
     const root = parseMpmRoot(text);
     const report = applyExaggeration(root, uniformFactors(factor));
     const clamps = EXPRESSION_DIMENSIONS.reduce(
-      (sum, dimension) => sum + report.performances[0].dimensions[dimension].clamps,
+      (sum, dimension) =>
+        sum +
+        elementAt(report.performances, 0, 'the report’s performances').dimensions[dimension].clamps,
       0,
     );
     return { text: serializeMpmRoot(root), clamps, writes: report.totalWrites };
@@ -231,7 +238,11 @@ describe('P2 composition on the clamp-free subdomain (§1.1, A3)', () => {
     let comparedNumbers = 0;
     for (const [key, composedText] of composed) {
       const directText = direct.get(key)!;
-      const [, elementLocalName, attributeName] = /^\d+:([^@]+)@(.+)$/.exec(key)!;
+      const parsed = /^\d+:([^@]+)@(.+)$/.exec(key);
+      const elementLocalName = parsed?.[1];
+      const attributeName = parsed?.[2];
+      if (elementLocalName === undefined || attributeName === undefined)
+        throw new Error(`the collected key ${key} is not '<index>:<element>@<attribute>'`);
       const row = rowFor(elementLocalName, attributeName);
 
       const composedValue = numericPart(composedText);

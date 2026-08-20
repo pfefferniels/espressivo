@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { defCause, errOf, okValue } from '../../../../support/result.js';
 import { RubatoDef } from '../../../../../src/mpm/elements/styles/defs/RubatoDef.js';
 import { Element, Attribute } from '../../../../../src/xml/XomTypes.js';

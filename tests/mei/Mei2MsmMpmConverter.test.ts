@@ -23,13 +23,20 @@ import type { Element } from '../../src/xml/XomTypes.js';
  * - exactly one fixture carries a standalone `<accid>` element, on the only note of its
  *   pitch in its measure, so the deferred-accidental list it feeds is never read back.
  *
- * The fourth blind spot has its own section at the bottom of this file, and is the largest of
- * them: **every one of the sixteen MEI fixtures holds exactly one `mdiv`**, so nothing in the
- * corpus ever crosses a movement boundary and `reset()` — which decides the *lifetime* of
- * eleven fields — is executed once per run with nothing before it to clear. That is the
- * hazard ARCHITECTURE.md §8.5 named when it ruled the converter's cursor out of scope: a
- * change to a field's lifetime is invisible to a byte-equivalence suite. See
- * "per-movement lifetimes" below.
+ * The fourth blind spot has its own section further down, and is the largest of them: **every
+ * one of the sixteen MEI fixtures holds exactly one `mdiv`**, so nothing in the corpus ever
+ * crosses a movement boundary and `reset()` — which decides the *lifetime* of eleven fields —
+ * is executed once per run with nothing before it to clear. That is the hazard
+ * ARCHITECTURE.md §8.5 named when it ruled the converter's cursor out of scope: a change to a
+ * field's lifetime is invisible to a byte-equivalence suite. See "per-movement lifetimes"
+ * below.
+ *
+ * The fifth is the plainest: **no MEI fixture contains a `<choice>` element**, so the whole
+ * editorial-variant selector `processChoice` was never executed by the byte gate. See
+ * "processChoice picks one editorial reading".
+ *
+ * The last section of this file is not a blind spot but a **divergence from Java**, pinned so
+ * that repairing it cannot happen silently. See "the work-level tempo style switch".
  */
 
 /** the MEI everything below is a variation of: one staff, `sectionInner` inside `section` */
@@ -50,6 +57,16 @@ function convertToMsm(xml: string, cleanup = true): Element {
   const msms = result.getKey();
   expect(msms.length).toBe(1);
   const root = msms[0]?.getRootElement();
+  expect(root).not.toBeNull();
+  return root as Element;
+}
+
+/** convert `xml`, returning the single MPM's root element */
+function convertToMpm(xml: string): Element {
+  const result = new Mei2MsmMpmConverter(720, true, false, true).convert(Mei.fromXml(xml));
+  const mpms = result.getValue();
+  expect(mpms.length).toBe(1);
+  const root = mpms[0]?.getRootElement();
   expect(root).not.toBeNull();
   return root as Element;
 }
@@ -642,4 +659,134 @@ describe('Mei2MsmMpmConverter – a cursor stops applying when the walk leaves i
       'layerDef',
     );
   });
+});
+
+// ---------------------------------------------------------------------------
+// processChoice — control: convert `children.get(1)` instead of `children.get(0)`
+// ---------------------------------------------------------------------------
+/**
+ * The fifth blind spot, and the plainest: **no MEI fixture in the corpus contains a
+ * `<choice>` element at all**, so `processChoice` — the whole editorial-variant selector —
+ * has never been executed by the byte gate. The control that found it changed the fallback
+ * arm from "convert the first child" to "convert the second" and left all 6212 tests green.
+ *
+ * The method has three behaviours worth pinning and they are independent of each other: the
+ * preference order over the nine editorial names, the recursion into a nested `choice`, and
+ * the any-name fallback for a `choice` holding none of the nine.
+ */
+describe('Mei2MsmMpmConverter – processChoice picks one editorial reading', () => {
+  /** the `xml:id`s of the MSM notes, which is which MEI branch survived selection */
+  const noteIds = (msm: Element): (string | null)[] =>
+    descendants(msm, 'note').map((n) => n.getAttributeValue('xml:id'));
+
+  /** a one-measure score whose single layer holds `content` */
+  const inLayer = (content: string): string =>
+    score(
+      `<section><measure n="1"><staff n="1"><layer n="1">${content}</layer></staff></measure></section>`,
+    );
+
+  it('takes the first child in preference order, not in document order', () => {
+    // `sic` comes first in the document and last but one in `prefOrder`; `corr` is first.
+    const msm = convertToMsm(
+      inLayer(`<choice>
+        <sic><note xml:id="SIC" pname="c" oct="4" dur="4"/></sic>
+        <corr><note xml:id="CORR" pname="d" oct="4" dur="4"/></corr>
+      </choice>`),
+    );
+    expect(noteIds(msm)).toEqual(['CORR']);
+  });
+
+  it('recurses when the preferred child is itself a choice', () => {
+    const msm = convertToMsm(
+      inLayer(`<choice>
+        <choice><corr><note xml:id="INNER" pname="e" oct="4" dur="4"/></corr></choice>
+      </choice>`),
+    );
+    expect(noteIds(msm)).toEqual(['INNER']);
+  });
+
+  it('falls back to the first child of any name, and converts only that one', () => {
+    // Neither `add` nor `supplied` is in the preference list, so the fallback decides — and
+    // it takes exactly one child. This is the case the green control mutated.
+    const msm = convertToMsm(
+      inLayer(`<choice>
+        <add><note xml:id="FIRST" pname="e" oct="4" dur="4"/></add>
+        <supplied><note xml:id="SECOND" pname="f" oct="4" dur="4"/></supplied>
+      </choice>`),
+    );
+    expect(noteIds(msm)).toEqual(['FIRST']);
+  });
+
+  it('converts nothing for an empty choice, and does not disturb what follows it', () => {
+    const msm = convertToMsm(inLayer(`<choice/><note xml:id="AFTER" pname="g" oct="4" dur="4"/>`));
+    expect(noteIds(msm)).toEqual(['AFTER']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the work-level tempo's style switch — a DIVERGENCE FROM JAVA, pinned not fixed
+// ---------------------------------------------------------------------------
+/**
+ * `finishMdiv`'s last act is to seed the global tempoMap from `meiHead/workList/work/tempo`
+ * when the score itself produced no tempo. Java guards the accompanying style switch with
+ * `getAllStyleTypes().get(Mpm.TEMPO_STYLE) != null` — write it only if an MEI-export tempo
+ * style was actually defined. This port transcribed the `!= null` literally onto a `Map.get`
+ * that answers `undefined` for an absent key, so the guard was true whatever the header held.
+ *
+ * The result is a dangling reference. A work-level tempo that is a purely directional
+ * descriptor — "ritardando", "accelerando", "calando" — takes the arm of `parseTempo` that
+ * sets `transitionTo` and defines **no** style, so the MPM ends up with
+ * `<style name.ref="MEI export"/>` in a document that has no `<tempoStyles>` element for it
+ * to refer to. A named tempo ("Allegro") takes the other arm, defines the style, and the two
+ * spellings agree — which is why the one place in the whole corpus that reaches this branch
+ * cannot see the difference, and why aligning the condition with Java left all 6208 tests
+ * green when that was measured.
+ *
+ * These tests pin the behaviour as it is, so that correcting it is a deliberate act with a
+ * red test attached rather than a silent byte change. See PARITY.md, "Known divergences".
+ */
+describe('Mei2MsmMpmConverter – the work-level tempo style switch (Java divergence)', () => {
+  /** an MEI whose only tempo is the work-level one, so `finishMdiv`'s seeding branch runs */
+  function workTempo(descriptor: string): string {
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei">
+  <meiHead>
+    <fileDesc><titleStmt><title>Oracle</title></titleStmt><pubStmt/></fileDesc>
+    <workList><work><title>Oracle</title><tempo>${descriptor}</tempo></work></workList>
+  </meiHead>
+  <music><body><mdiv><score>
+    <scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
+    <section>
+      <measure n="1"><staff n="1"><layer n="1"><note pname="c" oct="4" dur="4"/></layer></staff></measure>
+    </section>
+  </score></mdiv></body></music>
+</mei>`;
+  }
+
+  /** the `name.ref`s of every style switch in the MPM, and whether a tempoStyles def exists */
+  function styleSwitches(mpm: Element): {
+    readonly refs: string[];
+    readonly hasTempoStyles: boolean;
+  } {
+    return {
+      refs: descendants(mpm, 'style').map((s) => s.getAttributeValue('name.ref') ?? ''),
+      hasTempoStyles: descendants(mpm, 'tempoStyles').length > 0,
+    };
+  }
+
+  it('a named tempo defines the style and switches to it — where Java and this port agree', () => {
+    const { refs, hasTempoStyles } = styleSwitches(convertToMpm(workTempo('Allegro')));
+    expect(hasTempoStyles).toBe(true);
+    expect(refs).toContain('MEI export');
+  });
+
+  it.each(['ritardando', 'accelerando', 'calando'])(
+    'a directional tempo (%s) still emits the switch, with nothing for it to refer to',
+    (descriptor) => {
+      const { refs, hasTempoStyles } = styleSwitches(convertToMpm(workTempo(descriptor)));
+      // This is the divergence: Java writes no <style> here, because no tempoStyles exists.
+      expect(hasTempoStyles).toBe(false);
+      expect(refs).toContain('MEI export');
+    },
+  );
 });

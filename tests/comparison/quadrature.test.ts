@@ -22,6 +22,7 @@ import {
   neumaierSum,
   powerCriticalPoint,
 } from '../../src/comparison/quadrature.js';
+import { numberAt } from '../../src/prelude/index.js';
 
 // ---------------------------------------------------------------------------
 // Independent re-derivation of the rule (the auditability test)
@@ -64,13 +65,13 @@ describe('Gauss-Legendre order 10: the hard-coded table', () => {
 
   it('matches an independent Newton re-derivation to 1e-15', () => {
     expect(GAUSS_LEGENDRE_10_NODES).toHaveLength(10);
-    for (let i = 0; i < 10; ++i)
-      expect(GAUSS_LEGENDRE_10_NODES[i]).toBeCloseTo(derived.nodes[i], 15);
+    for (const [i, node] of GAUSS_LEGENDRE_10_NODES.entries())
+      expect(node).toBeCloseTo(numberAt(derived.nodes, i, 'the re-derived nodes'), 15);
   });
 
   it('matches the re-derived weights to 1e-15', () => {
-    for (let i = 0; i < 10; ++i)
-      expect(GAUSS_LEGENDRE_10_WEIGHTS[i]).toBeCloseTo(derived.weights[i], 15);
+    for (const [i, weight] of GAUSS_LEGENDRE_10_WEIGHTS.entries())
+      expect(weight).toBeCloseTo(numberAt(derived.weights, i, 'the re-derived weights'), 15);
   });
 
   it('has weights summing to the interval width', () => {
@@ -79,8 +80,14 @@ describe('Gauss-Legendre order 10: the hard-coded table', () => {
 
   it('is symmetric about the origin', () => {
     for (let i = 0; i < 10; ++i) {
-      expect(GAUSS_LEGENDRE_10_NODES[i]).toBeCloseTo(-GAUSS_LEGENDRE_10_NODES[9 - i], 15);
-      expect(GAUSS_LEGENDRE_10_WEIGHTS[i]).toBeCloseTo(GAUSS_LEGENDRE_10_WEIGHTS[9 - i], 15);
+      expect(numberAt(GAUSS_LEGENDRE_10_NODES, i, 'the nodes')).toBeCloseTo(
+        -numberAt(GAUSS_LEGENDRE_10_NODES, 9 - i, 'the nodes'),
+        15,
+      );
+      expect(numberAt(GAUSS_LEGENDRE_10_WEIGHTS, i, 'the weights')).toBeCloseTo(
+        numberAt(GAUSS_LEGENDRE_10_WEIGHTS, 9 - i, 'the weights'),
+        15,
+      );
     }
   });
 

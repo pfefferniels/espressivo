@@ -1,4 +1,5 @@
 import { Attribute, Element } from './XomTypes.js';
+import { MissingNodeError } from './errors.js';
 
 /** The namespace `xml:id` lives in — fixed by the XML spec, not by MPM. */
 const XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace';
@@ -35,9 +36,20 @@ export abstract class AbstractXmlSubtree {
    *
    * Use {@link getXmlOrNull} in the one situation this does not cover: code holding a
    * subtree whose `parseData` has not run yet.
+   *
+   * The argument above is a real invariant but not one the type system can see — the field
+   * has to start at null because the base class has no constructor that takes an element,
+   * and giving it one would rewrite the twenty subclasses in `src/mpm`. So the claim is
+   * checked rather than asserted: what used to be `this.xml!` is a
+   * {@link MissingNodeError} naming the un-parsed state, instead of a `TypeError` from
+   * whichever `Element` member the caller reached for next. No call site can reach it;
+   * `tests/xml/AbstractXmlSubtree.test.ts` reaches it through a local subclass.
    */
   getXml(): Element {
-    return this.xml!;
+    const xml = this.xml;
+    if (xml === null)
+      throw new MissingNodeError('this subtree has no element yet — parseData has not run');
+    return xml;
   }
 
   /** As {@link getXml}, but honest about the pre-`parseData` state. */

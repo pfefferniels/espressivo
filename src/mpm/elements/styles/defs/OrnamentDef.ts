@@ -94,10 +94,12 @@ export class OrnamentDef extends AbstractXmlSubtree {
 
   /**
    * Create a def either from a name — with no transformers yet — or by parsing an existing
-   * element. Returns null after logging instead of throwing.
+   * element. Returns the reason instead of throwing.
+   *
+   * One signature where there were two overloads; see
+   * {@link ArticulationDef.createArticulationDef} for why the pair said nothing the union
+   * does not.
    */
-  static createOrnamentDef(name: string): Result<OrnamentDef, MpmParseError>;
-  static createOrnamentDef(xml: Element): Result<OrnamentDef, MpmParseError>;
   static createOrnamentDef(nameOrXml: string | Element): Result<OrnamentDef, MpmParseError> {
     try {
       let xml: Element;

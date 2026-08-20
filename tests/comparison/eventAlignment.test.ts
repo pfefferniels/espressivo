@@ -15,6 +15,7 @@ import {
   type AlignableEvent,
   type AlignmentCost,
 } from '../../src/comparison/eventAlignment.js';
+import { elementAt, pairwise } from '../../src/prelude/index.js';
 
 interface Event extends AlignableEvent {
   readonly value: number;
@@ -39,12 +40,14 @@ function bruteForce(a: readonly Event[], b: readonly Event[], c: AlignmentCost<E
   const best = (i: number, j: number): number => {
     if (i === a.length && j === b.length) return 0;
     const options: number[] = [];
-    if (i < a.length && j < b.length) {
-      const displacement = Math.abs(a[i].dateTicks - b[j].dateTicks) / PPQ;
-      options.push(c.matched(a[i], b[j]) + c.lambdaDate * displacement + best(i + 1, j + 1));
+    const left = a[i];
+    const right = b[j];
+    if (left !== undefined && right !== undefined) {
+      const displacement = Math.abs(left.dateTicks - right.dateTicks) / PPQ;
+      options.push(c.matched(left, right) + c.lambdaDate * displacement + best(i + 1, j + 1));
     }
-    if (i < a.length) options.push(c.unmatched(a[i]) + best(i + 1, j));
-    if (j < b.length) options.push(c.unmatched(b[j]) + best(i, j + 1));
+    if (left !== undefined) options.push(c.unmatched(left) + best(i + 1, j));
+    if (right !== undefined) options.push(c.unmatched(right) + best(i, j + 1));
     return Math.min(...options);
   };
   return best(0, 0);
@@ -89,9 +92,9 @@ describe('the alignment minimizes §5.6’s functional', () => {
     const a = [event(0, 1), event(360, 2), event(720, 3), event(1080, 4)];
     const b = [event(0, 1), event(720, 3), event(1080, 9)];
     const { pairs } = alignEvents(a, b, cost, PPQ);
-    for (let k = 1; k < pairs.length; ++k) {
-      expect(pairs[k].a).toBeGreaterThan(pairs[k - 1].a);
-      expect(pairs[k].b).toBeGreaterThan(pairs[k - 1].b);
+    for (const [previous, current] of pairwise(pairs)) {
+      expect(current.a).toBeGreaterThan(previous.a);
+      expect(current.b).toBeGreaterThan(previous.b);
     }
   });
 
@@ -257,7 +260,11 @@ describe('AD-7’s placement rule', () => {
   it('spreads a matched pair uniformly over the interval between its two dates', () => {
     const a = [event(0, 10)];
     const b = [event(720, 10)];
-    const [atom] = chargeAtoms(a, b, alignEvents(a, b, cost, PPQ), () => true, WINDOW);
+    const atom = elementAt(
+      chargeAtoms(a, b, alignEvents(a, b, cost, PPQ), () => true, WINDOW),
+      0,
+      'the charge atoms',
+    );
     expect(atom.startTicks).toBe(0);
     expect(atom.endTicks).toBe(720);
     // The whole charge here IS the date term: the values agree, so nothing else is priced.
@@ -267,7 +274,11 @@ describe('AD-7’s placement rule', () => {
   it('makes a co-dated pair a point mass, which is the coincident case of the same rule', () => {
     const a = [event(720, 10)];
     const b = [event(720, 14)];
-    const [atom] = chargeAtoms(a, b, alignEvents(a, b, cost, PPQ), () => true, WINDOW);
+    const atom = elementAt(
+      chargeAtoms(a, b, alignEvents(a, b, cost, PPQ), () => true, WINDOW),
+      0,
+      'the charge atoms',
+    );
     expect(atom.startTicks).toBe(720);
     expect(atom.endTicks).toBe(720);
     expect(atom.mass).toBeCloseTo(4, 12);
@@ -276,7 +287,11 @@ describe('AD-7’s placement rule', () => {
   it('charges an unmatched event at its own date', () => {
     const a = [event(1440, 30)];
     const alignment = alignEvents(a, [], cost, PPQ);
-    const [atom] = chargeAtoms(a, [] as Event[], alignment, () => true, WINDOW);
+    const atom = elementAt(
+      chargeAtoms(a, [] as Event[], alignment, () => true, WINDOW),
+      0,
+      'the charge atoms',
+    );
     expect(atom.kind).toBe('unmatched-a');
     expect([atom.startTicks, atom.endTicks]).toEqual([1440, 1440]);
     expect(atom.mass).toBe(30);
@@ -300,7 +315,11 @@ describe('AD-7’s placement rule', () => {
   it('spreads an anchor of unknown position over the whole window, and says so', () => {
     const a = [event(360, 10, 'n1')];
     const b = [event(360, 30, 'n1')];
-    const [atom] = chargeAtoms(a, b, alignEvents(a, b, cost, PPQ), () => false, WINDOW);
+    const atom = elementAt(
+      chargeAtoms(a, b, alignEvents(a, b, cost, PPQ), () => false, WINDOW),
+      0,
+      'the charge atoms',
+    );
     expect(atom.datePositionKnown).toBe(false);
     expect([atom.startTicks, atom.endTicks]).toEqual([WINDOW.startTicks, WINDOW.endTicks]);
     expect(atom.mass).toBe(20);
@@ -317,6 +336,6 @@ describe('AD-7’s placement rule', () => {
       WINDOW,
     );
     expect(atoms.map((atom) => atom.datePositionKnown)).toEqual([false, true]);
-    expect(atoms[1].startTicks).toBe(720);
+    expect(elementAt(atoms, 1, 'the charge atoms').startTicks).toBe(720);
   });
 });

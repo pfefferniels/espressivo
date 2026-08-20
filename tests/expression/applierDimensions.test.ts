@@ -13,6 +13,7 @@ import {
   globalDocument,
   logAroundOne,
   logit,
+  firstNoteOfKind,
   noteKinds,
   notesOfKind,
   numberAt,
@@ -150,9 +151,8 @@ describe('rubato — intensity and the joint trim (§7.6, RESOLVED-2, A6)', () =
     expect(textAt(root, 'r1', 'lateStart')).toBe('0.85');
     expect(textAt(root, 'defR', 'lateStart')).toBe('0.1');
     expect(textAt(root, 'defR', 'earlyEnd')).toBe('0.9');
-    const crossings = notesOfKind(performance, 'cross-site-rubato-window');
-    expect(crossings).toHaveLength(1);
-    expect(crossings[0].attribute).toBe('lateStart');
+    expect(notesOfKind(performance, 'cross-site-rubato-window')).toHaveLength(1);
+    expect(firstNoteOfKind(performance, 'cross-site-rubato-window').attribute).toBe('lateStart');
   });
 
   it('never touches @frameLength, which has no neutral (§7.16)', () => {
@@ -237,7 +237,7 @@ describe('articulation — the seven live modifiers (§7.7, D-B)', () => {
     const { root, performance } = exaggerate(ARTICULATION, { articulation: 2 });
     expect(textAt(root, 'stacc', 'absoluteDurationMs')).toBe('160');
     expect(numberAt(root, 'stacc', 'absoluteVelocityChange')).toBe(-10);
-    expect(notesOfKind(performance, 'articulation-component-excluded')[0].attribute).toBe(
+    expect(firstNoteOfKind(performance, 'articulation-component-excluded').attribute).toBe(
       'absoluteDurationMs',
     );
     // F8: this document ALSO holds fully-reachable sites, and §4-as-amended orders
@@ -467,7 +467,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
       });
       expect(textAt(root, 'spread', 'frame.offset')).toBe('-22.0ticks');
       expect(performance.dimensions.ornamentSpread.sitesSkipped).toBe(1);
-      expect(notesOfKind(performance, 'atomic-group-skipped')[0].detail).toContain('100%');
+      expect(firstNoteOfKind(performance, 'atomic-group-skipped').detail).toContain('100%');
     });
 
     it('does NOT refuse an absent offset, whose v3 default 0.0ticks IS the neutral', () => {
@@ -486,7 +486,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
       );
       expect(textAt(root, 'spread', 'frameLength')).toBe('80abc');
       expect(textAt(root, 'spread', 'frame.offset')).toBe('0ticks');
-      expect(notesOfKind(performance, 'atomic-group-skipped')[0].detail).toContain(
+      expect(firstNoteOfKind(performance, 'atomic-group-skipped').detail).toContain(
         'no MPM v3 temporal value',
       );
     });
@@ -509,7 +509,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
       );
       expect(textAt(root, 'spread', 'frame.offset')).toBe('-44ticks');
       expect(textAt(root, 'spread', 'frame.start')).toBe('-11.0');
-      expect(notesOfKind(performance, 'frame-alias-shadowed')[0].attribute).toBe('frame.start');
+      expect(firstNoteOfKind(performance, 'frame-alias-shadowed').attribute).toBe('frame.start');
     });
   });
 
@@ -518,7 +518,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
       const { performance } = exaggerate(withSpread('frame.offset="22ms" frameLength="90%"'), {
         ornamentSpread: 2,
       });
-      const note = notesOfKind(performance, 'frame-time-unit')[0];
+      const note = firstNoteOfKind(performance, 'frame-time-unit');
       expect(note.detail).toContain('@frame.offset = milliseconds');
       expect(note.detail).toContain('@frameLength = relative');
       expect(note.attribute).toBe('frame.offset');
@@ -529,7 +529,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
         withSpread('frame.offset="22" frameLength="90" time.unit="milliseconds"'),
         { ornamentSpread: 2 },
       );
-      const note = notesOfKind(performance, 'frame-time-unit')[0];
+      const note = firstNoteOfKind(performance, 'frame-time-unit');
       expect(note.detail).toContain('@frame.offset = milliseconds (no suffix, so the legacy');
       expect(note.detail).toContain('@frameLength = milliseconds');
     });
@@ -538,7 +538,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
       const { performance } = exaggerate(withSpread('frame.offset="22" frameLength="90"'), {
         ornamentSpread: 2,
       });
-      expect(notesOfKind(performance, 'frame-time-unit')[0].detail).toContain(
+      expect(firstNoteOfKind(performance, 'frame-time-unit').detail).toContain(
         'no suffix and no @time.unit, so the ticks default',
       );
     });
@@ -548,7 +548,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
         withSpread('frame.start="-22" frameLength="44" time.unit="milliseconds"'),
         { ornamentSpread: 2 },
       );
-      const note = notesOfKind(performance, 'frame-time-unit')[0];
+      const note = firstNoteOfKind(performance, 'frame-time-unit');
       expect(note.detail).toContain('@time.unit = "milliseconds"');
       expect(note.attribute).toBe('time.unit');
     });
@@ -576,7 +576,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
         withSpread('frame.offset="0ticks" frameLength="44ticks" noteoff.shift="monophonic"'),
         { ornamentSpread: 2 },
       );
-      expect(notesOfKind(performance, 'frame-noteoff-shift')[0].detail).toContain('LENGTHENS');
+      expect(firstNoteOfKind(performance, 'frame-noteoff-shift').detail).toContain('LENGTHENS');
     });
 
     it('scales gradient endpoints on a v3 document with no v3 branch of its own (§7.11)', () => {

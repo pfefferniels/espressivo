@@ -30,6 +30,7 @@ import {
 import { pedalDistance, pedalGridTicks } from '../../src/comparison/pedalDistance.js';
 import { PEDAL_POSITION_JND_RATIO, comparisonRowFor } from '../../src/comparison/registry.js';
 import { isBottom } from '../../src/comparison/values.js';
+import { pairwise } from '../../src/prelude/index.js';
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
 const PPQ = 720;
@@ -378,9 +379,7 @@ describe('⊥ — where there is no date ↦ position function at all (§4, §5.
     // VALUE defect: sorted by date, an authored 0 → 1 ramp no longer ascends. There is no
     // date ↦ position function here, which is exactly what §4's domain gate is for.
     const positions = rendererEvents(map).map(([, position]) => position);
-    const ascending = positions.every(
-      (position, index) => index === 0 || position >= positions[index - 1],
-    );
+    const ascending = pairwise(positions).every(([previous, position]) => position >= previous);
     expect(ascending).toBe(false);
   });
 

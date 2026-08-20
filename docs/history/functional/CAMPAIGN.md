@@ -102,12 +102,27 @@ Roughly forty green negative controls across the campaign. The pattern behind mo
   only the normalisers it could see* — a bare `.trim()` sat past the named ones and was covering
   a missing trailing newline on every document.
 
-**Fixture coverage is the other half, and it is not fixed.** No fixture in the corpus contains a
-single `<pedal>` element; none sets `subNoteDynamics`; none contains a malformed `<part>`,
-though `Performance.readFrom` has documented that skip since the port was written. The
-imprecision fixtures are compared with imprecision-affected attributes filtered out, correctly,
-which makes every RNG-draw-order edge unverifiable against the reference **by construction**.
-Where the gate cannot reach, the tests have to be written first.
+**Fixture coverage is the other half, and two of its gaps are now closed.** The corpus contained
+no `<pedal>` element at all — all 50 `pedalMap`s empty — and set `subNoteDynamics` nowhere, so
+every `channelVolumeMap` had exactly one entry at date 0. Both now have Java ground truth,
+generated from `meico@1d662105` (the same fork commit as every other reference family) into
+`fixtures-pedal/` and `fixtures-subnote-dynamics/`, each with its generator and provenance
+committed alongside.
+
+The pedal measurement is the one that shows why this mattered: **breaking the pedal path leaves
+all 6204 existing tests green.** Routing every pedal to the global map regardless of `@staff` —
+one line — passes the byte gate and the whole suite. So does deleting the `@endid` deferred
+resolution. `subNoteDynamics` turned out narrower and the difference was worth measuring rather
+than assuming: forcing it off leaves the gate green but reds two existing tests, one asserting
+the attribute is *parsed* and one of milestone 5's ordering edges that incidentally depends on
+it. So its reading was covered; its rendered output had never been compared to Java.
+
+**What remains uncovered:** no fixture contains a `<phrase>`, a `<tupletSpan>`, or a malformed
+`<part>` — though `Performance.readFrom` has documented that skip since the port was written —
+and `programChangeMap` appears in no byte-compared MIDI fixture. The imprecision fixtures are
+compared with imprecision-affected attributes filtered out, correctly, which makes every
+RNG-draw-order edge unverifiable against the reference **by construction**. Where the gate
+cannot reach, the tests have to be written first.
 
 Turning the checks on found one real divergence: `attribute()` matched qualified names where
 XOM matches local ones, so `getAttributeValue('xml:id', n)` returned an id where Java's

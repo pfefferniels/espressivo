@@ -30,6 +30,11 @@ import {
   accentuationGridTicks,
   accentuationSampler,
 } from '../../src/comparison/accentuationDistance.js';
+import { elementAt } from '../../src/prelude/index.js';
+
+/** Scope 0 — the global one — of one side of a comparison pair, checked. */
+const sideScope = (pair: ComparisonPair, side: 'a' | 'b') =>
+  elementAt(pair[side].scopes, 0, `document ${side}'s scopes`);
 
 /** A uniform grid over [0, span], fine enough that GL-10 sees smooth cells. */
 const uniformGrid = (span: number, cells: number): number[] =>
@@ -322,7 +327,7 @@ describe('decomposition on the W3a cut 1 dimensions', () => {
 
   const pedalCurveOf = (pair: ComparisonPair, side: 'a' | 'b') =>
     readMovementSegments(
-      readScopeMapViews(pair[side].scopes[0]).get('movementMap') ?? null,
+      readScopeMapViews(sideScope(pair, side)).get('movementMap') ?? null,
       pair[side].scaleFactor,
     );
 
@@ -390,9 +395,9 @@ describe('decomposition on the W3a cut 1 dimensions', () => {
     });
     const curveFor = (side: 'a' | 'b') =>
       readAccentuationSegments(
-        readScopeMapViews(pair[side].scopes[0]).get('metricalAccentuationMap') ?? null,
+        readScopeMapViews(sideScope(pair, side)).get('metricalAccentuationMap') ?? null,
         pair[side].scaleFactor,
-        pair[side].scopes[0].environment,
+        sideScope(pair, side).environment,
         pair[side].performance.global,
       );
     const a = accentuationSampler(curveFor('a'), pair.window, pair.ppq.lcm);
@@ -426,15 +431,15 @@ describe('decomposition on a real tempo pair', () => {
 
     const pair = readComparisonPair({ a: text, b: other });
     const curveA = readTempoSegments(
-      readScopeMapViews(pair.a.scopes[0]).get('tempoMap') ?? null,
+      readScopeMapViews(sideScope(pair, 'a')).get('tempoMap') ?? null,
       pair.a.scaleFactor,
-      pair.a.scopes[0].environment,
+      sideScope(pair, 'a').environment,
       pair.a.performance.global,
     );
     const curveB = readTempoSegments(
-      readScopeMapViews(pair.b.scopes[0]).get('tempoMap') ?? null,
+      readScopeMapViews(sideScope(pair, 'b')).get('tempoMap') ?? null,
       pair.b.scaleFactor,
-      pair.b.scopes[0].environment,
+      sideScope(pair, 'b').environment,
       pair.b.performance.global,
     );
     const grid = refinementGridTicks(curveA, curveB, pair.window, pair.ppq.lcm);

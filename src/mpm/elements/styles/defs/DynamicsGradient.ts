@@ -92,7 +92,9 @@ export class DynamicsGradient {
     if (this.id !== null && this.id !== '')
       dg.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', this.id));
     this.setXml(dg);
-    return this.xml!;
+    // The very element `setXml` just stored. The `this.xml!` this replaces asserted that
+    // the assignment two characters earlier had happened.
+    return dg;
   }
 
   toXml(): string {

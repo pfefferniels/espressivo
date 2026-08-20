@@ -42,6 +42,13 @@ import {
   type XmlText,
 } from '../../src/api/index.js';
 
+import { elementAt } from '../../src/prelude/index.js';
+import type { ExaggerationReport } from '../../src/api/index.js';
+
+/** The sole performance sub-report of a spotlight run, checked. */
+const soleReport = (report: ExaggerationReport) =>
+  elementAt(report.performances, 0, 'the report’s performances');
+
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'integration', 'fixtures');
 const reference = (name: string) =>
   readFileSync(join(FIXTURES, 'reference', `${name}.mpm`), 'utf-8') as XmlText;
@@ -201,7 +208,7 @@ describe('spotlightMpm: a selection spares its dimensions and damps the rest', (
 
   it('damps everything the selection does not cover, and only that', () => {
     const { report } = spotlight(ALL_MAPS, ['pickTempo']);
-    const dimensions = report.performances[0].dimensions;
+    const dimensions = soleReport(report).dimensions;
     expect(dimensions.tempo.state).toBe('skipped'); // A2's identity short-circuit: not walked
     expect(dimensions.tempoShape.state).toBe('skipped');
     expect(report.totalWrites).toBeGreaterThan(0);
@@ -288,7 +295,7 @@ describe('spotlightMpm: the spotlit instruction does not move while the backgrou
     // never reached an ornament def at all, since `ornamentation.mpm`'s only other map is a
     // lone constant tempo and the spared run writes nothing.
     const { mpm, report } = spotlight(ORNAMENTATION_TEMPO, ['pickTempo']);
-    const dimensions = report.performances[0].dimensions;
+    const dimensions = soleReport(report).dimensions;
     for (const dimension of ['ornamentSpread', 'ornamentSpacing', 'ornamentDynamics'] as const)
       expect(dimensions[dimension].writes, dimension).toBeGreaterThan(0);
     // frame (−22, 44) halves, the spacing exponent 2.0 → √2, the gradient ±1.0 → ±0.5.
@@ -319,11 +326,11 @@ describe('spotlightMpm: gesture scope has nothing to shrink on a constant map (A
     // idle in fact — which the report has to say, or a caller sampling spotlights would count
     // this as a tempo transform that happened to change nothing.
     const { report } = spotlight(COMPREHENSIVE, ['n4']);
-    const dimensions = report.performances[0].dimensions;
+    const dimensions = soleReport(report).dimensions;
     expect(dimensions.tempo.state).toBe('inert');
     expect(dimensions.tempo.writes).toBe(0);
     expect(dimensions.tempo.sitesInert).toBeGreaterThan(0);
-    expect(report.performances[0].notes.some((note) => note.kind === 'constant-instruction')).toBe(
+    expect(soleReport(report).notes.some((note) => note.kind === 'constant-instruction')).toBe(
       true,
     );
   });
@@ -505,10 +512,13 @@ describe('spotlightMpm: the option surface', () => {
     // TYPE_DIMENSIONS map — a caller holding the result as `unknown[]` can push into what the
     // type calls readonly, and would be editing the mapping table for the rest of the process.
     const first = spotlight(ALL_MAPS, ['pickTempo']);
-    (first.resolvedIds[0].dimensions as ExpressionDimension[]).push('rubato');
+    const resolved = (run: {
+      readonly resolvedIds: readonly { readonly dimensions: readonly ExpressionDimension[] }[];
+    }) => elementAt(run.resolvedIds, 0, 'the ids this spotlight resolved');
+    (resolved(first).dimensions as ExpressionDimension[]).push('rubato');
 
     const second = spotlight(ALL_MAPS, ['pickTempo']);
-    expect(second.resolvedIds[0].dimensions).toEqual(['tempo', 'tempoShape']);
+    expect(resolved(second).dimensions).toEqual(['tempo', 'tempoShape']);
     expect(second.spared).toEqual(['tempo', 'tempoShape']);
   });
 });

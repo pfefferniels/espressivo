@@ -169,3 +169,94 @@ dependence and hot-path allocation:
 **Set-then-sort grid builders** (~14, the `[...set].sort()` shape where the spread IS the
 materialization): `dimensions.ts:257-260`, `articulationDistance.ts:551-555`,
 `aggregate.ts:432-461`, and the sibling readers.
+
+
+---
+
+## Addendum, 2026-08-21 — item 17 settled, and the survey corrects itself
+
+The surveying agent re-read `src/comparison` at HEAD and **withdrew its own objection**, which
+is the most useful thing in this document. Its original wording was: *"accentuation and rubato
+take the FIRST covering segment, pedal and dynamics take the LAST, so one `upperBoundBy`
+reproduces two and not the other two."* That framing does not survive the read. The readers do
+differ — **but with disjoint segments the difference is unobservable**, because at most one
+segment covers any tick. Item 17 is convertible for all six, not two.
+
+**Four are provably disjoint.** In `accentuationCurve` and `rubatoCurve` every segment is
+`[raw.dateTicks, next?.dateTicks ?? Infinity)` from `withNext(raws)`, and a skipped raw pushes
+*nothing* — so the segments are a subsequence of the contiguous partition induced by consecutive
+raw dates. Skips make gaps, never overlaps. Co-dated instructions give a zero-width `[d, d)`
+that covers nothing, and the bound lands on the later real segment: same answer. `pedalCurve`'s
+span-plus-hold abut by the ordering its own comment states, and the `UNBOUNDED_END_TICKS`
+"resurrected movement" cannot overlap anything because the sentinel is only returned when no
+later entry is named `movement`. `articulationDefault` is the same shape (read at `f55caa3`,
+not re-read — treat as one step weaker).
+
+**Two do overlap, harmlessly.** `tempoCurve` and `dynamicsCurve` push a skip gap running to the
+*next valid* instruction, so two consecutive skips give `[d1, dv)` and `[d2, dv)`. Every
+overlapping family shares its right endpoint, and only invalid raws can lie strictly inside a
+gap — so nested-with-common-end preserves last-start-wins, which is the rule those two
+`segmentAt`s implement.
+
+**What actually blocks those two is not overlap but two clauses a bare bound drops:**
+
+1. `if (ticks < segment.endTicks || !Number.isFinite(segment.endTicks))` — an Infinity-ended
+   segment always counts as covering, so the containment test must carry the `!isFinite` arm.
+2. `return found ?? (isNonEmpty(curve.segments) ? last(curve.segments) : null)` — when nothing
+   covers, return the **last** segment rather than null. For `ticks` past the end that agrees
+   with `upperBoundBy - 1`; for `ticks` *before* the first segment it does not. Likely
+   unreachable (tempo pushes a `[0, firstValidDate)` segment and dates are non-negative), and
+   the one thing to put a negative control on.
+
+### The ordering assumption, which the survey flagged as unverified — checked
+
+Everything above rests on `datedView`'s entries being date-ordered, which the survey could only
+support from two comments. Read: `src/expression/datedView.ts:76-82` is an insertion loop
+scanning backwards for the first `j` with `date >= entries[j].date`. It produces a
+non-decreasing order **with one deliberate exception, documented at lines 19-27: a `NaN` date
+falls through to `index = 0` and goes to the FRONT.**
+
+So the assumption holds *except* for NaN, and a leading NaN makes the predicate
+`key(xs[i]) <= target` **non-monotone**, which is exactly what `partitionPoint` assumes. That
+looks like it should break the rewrite. It does not, and the reason is worth writing down:
+
+> `partitionPoint` only ever probes index 0 once the search has narrowed to `[0, 1)`, and that
+> requires `holds(mid)` to have been false for every `mid >= 1` — i.e. no later element
+> satisfies the predicate. In that case the correct answer is "none", and both the bound and
+> the linear scan return it. **A leading NaN can only be examined when it cannot change the
+> answer.**
+
+Confirmed by fuzz as well as by argument: 20,000 deterministic trials over non-decreasing
+arrays with ties, out-of-range targets, and a leading NaN in half of them — `upperBoundBy(...) - 1`
+and "last index whose key <= target" disagreed **zero** times.
+
+
+## Addendum 2 — item 24 ruled: `groupBy` does not get an index parameter
+
+The survey proposed it on the evidence of **two** blocked sites. Its author re-checked and found
+the count was its own inflation; the real number is **zero**.
+
+- **`silhouette` was never blocked by the index.** It buckets item *indices* keyed by cluster,
+  so what it wants is a **value projection** — bucket something derived from the element rather
+  than the element. An index parameter does not provide that: `groupBy(clusters, (cluster, item)
+  => cluster)` still returns buckets of cluster values. It stays a keep for the two reasons
+  already recorded, neither of which is the index.
+- **`composeAnchors` is expressible today.** `groupBy` takes `Iterable<A>` (`seq.ts:251`) and
+  `Array.prototype.entries()` is one, so `groupBy(atoms.entries(), ([index, atom]) =>
+  poolKey(atom, index))` carries both halves in the tuple. Verified at HEAD by running it.
+
+That form is **strictly better** than the parameter would have been. In
+`ornamentationDistance.ts`, measured at HEAD: five `elementAt` calls go (354, 365, 366, 368,
+380); `const [headIndex, headAtom] = head(members)` replaces `elementAt(members, 0,
+POOL_MEMBERS)` with **no guard**, because `groupBy` returns a `NonEmptyArray`; and it fixes the
+O(m²) bucket rebuild at line 344 that was the reason to reach for `groupBy` there at all — so
+it closes items 12 and 24 together.
+
+Against the prelude's own admission criterion — *the shapes this codebase actually contains,
+and nothing added for completeness*, the rule that deleted `chunkBy`, `windows`, `unfold` and
+`stableSortBy` for having zero call sites — zero blocked sites is a clear no.
+
+**The technique generalises and is the durable part:** any "group a projection, keep the index"
+site is `groupBy(xs.entries(), ([i, x]) => …)` with the signature as it stands. A genuine
+*value mapper* would be a different function from an index parameter, and gets argued on its
+own evidence if a third site ever wants one.

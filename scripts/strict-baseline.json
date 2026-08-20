@@ -1,13 +1,10 @@
 {
   "--noUncheckedIndexedAccess": {
-    "tests/api": 112,
-    "tests/comparison": 380,
-    "tests/expression": 116,
     "tests/integration": 189,
     "tests/mei": 12,
     "tests/midi": 45,
     "tests/mpm/elements": 71,
-    "tests/mpm/elements/maps": 35,
+    "tests/mpm/elements/maps": 33,
     "tests/mpm/elements/maps/data": 14,
     "tests/mpm/elements/metadata": 6,
     "tests/mpm/elements/styles/defs": 1,

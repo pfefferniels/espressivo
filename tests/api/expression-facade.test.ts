@@ -26,8 +26,25 @@ import {
   performMsm,
   type ExaggerateOptions,
   type ExaggerationFactors,
+  type ExaggerationReport,
   type XmlText,
 } from '../../src/api/index.js';
+
+import { elementAt } from '../../src/prelude/index.js';
+
+/**
+ * The sole performance sub-report of a run, checked.
+ *
+ * Every test below exaggerates a one-performance document — or narrows a two-performance one
+ * to a single sub-report and asserts the length first — and then reads `performances[0]`.
+ * A run that produced none used to fail as "cannot read properties of undefined" on whichever
+ * field the test happened to read; this says there were none.
+ */
+const soleReport = (report: ExaggerationReport) =>
+  elementAt(report.performances, 0, 'the report’s performances');
+
+/** As {@link soleReport}, for a caller holding the whole run rather than just its report. */
+const soleReportOf = (run: { readonly report: ExaggerationReport }) => soleReport(run.report);
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'integration', 'fixtures');
 const reference = (name: string, extension: 'msm' | 'mpm') =>
@@ -90,7 +107,7 @@ describe('P1: the identity transform returns the canonical baseline byte for byt
 
   it('reports every dimension skipped with an identity-factor note, not absent', () => {
     const { report } = exaggerateMpm(SPANS, { factors: uniformFactors(1) });
-    const [only] = report.performances;
+    const only = soleReport(report);
     for (const dimension of EXPRESSION_DIMENSIONS) {
       expect(only.dimensions[dimension].state, dimension).toBe('skipped');
       expect(only.dimensions[dimension].requestedFactor, dimension).toBe(1);
@@ -193,7 +210,7 @@ describe('RULE F1: the result is plain data', () => {
     expect(second).toEqual(first);
     expect(second).not.toBe(first);
     expect(second.report).not.toBe(first.report);
-    expect(second.report.performances[0].notes).not.toBe(first.report.performances[0].notes);
+    expect(soleReport(second.report).notes).not.toBe(soleReport(first.report).notes);
   });
 });
 
@@ -486,7 +503,7 @@ describe('options', () => {
       performance: selector,
     });
     expect(report.performances).toHaveLength(1);
-    expect(report.performances[0].performance).toEqual({ index: 1, name: 'Second' });
+    expect(soleReport(report).performance).toEqual({ index: 1, name: 'Second' });
   });
 
   it('leaves the unselected performance byte-identical', () => {
@@ -497,25 +514,25 @@ describe('options', () => {
     const both = exaggerateMpm(twoPerformances, { factors: { tempo: 2 } }).mpm;
     expect(narrowed).not.toBe(both);
     // The second performance still carries the values it started with.
-    expect(narrowed.split('name="Second"')[1]).toBe(
-      canonicalMpm(twoPerformances).split('name="Second"')[1],
-    );
+    const tail = (xml: string) =>
+      elementAt(xml.split('name="Second"'), 1, 'the text after the second performance’s name');
+    expect(tail(narrowed)).toBe(tail(canonicalMpm(twoPerformances)));
   });
 
   it('gesture scope leaves constants and defs alone where global moves them', () => {
     const global = exaggerateMpm(SPANS, { factors: { dynamics: 2 } });
     const gesture = exaggerateMpm(SPANS, { factors: { dynamics: 2 }, scope: 'gesture' });
     expect(gesture.mpm).not.toBe(global.mpm);
-    expect(
-      gesture.report.performances[0].notes.some((n) => n.kind === 'untouched-in-gesture'),
-    ).toBe(true);
+    expect(soleReport(gesture.report).notes.some((n) => n.kind === 'untouched-in-gesture')).toBe(
+      true,
+    );
   });
 
   it('a center override replaces the computed center and is echoed in the report', () => {
     const computed = exaggerateMpm(SPANS, { factors: { tempo: 2 } });
     const overridden = exaggerateMpm(SPANS, { factors: { tempo: 2 }, center: { tempo: 90 } });
-    expect(computed.report.performances[0].centers.tempo).not.toBe(90);
-    expect(overridden.report.performances[0].centers.tempo).toBe(90);
+    expect(soleReport(computed.report).centers.tempo).not.toBe(90);
+    expect(soleReport(overridden.report).centers.tempo).toBe(90);
     expect(overridden.mpm).not.toBe(computed.mpm);
   });
 
@@ -525,8 +542,8 @@ describe('options', () => {
       factors: { dynamics: 2 },
       velocityRange: { min: 1, max: 1000 },
     });
-    expect(clamped.report.performances[0].dimensions.dynamics.clamps).toBeGreaterThan(0);
-    expect(widened.report.performances[0].dimensions.dynamics.clamps).toBe(0);
+    expect(soleReport(clamped.report).dimensions.dynamics.clamps).toBeGreaterThan(0);
+    expect(soleReport(widened.report).dimensions.dynamics.clamps).toBe(0);
     expect(widened.mpm).not.toBe(clamped.mpm);
   });
 
@@ -537,8 +554,8 @@ describe('options', () => {
     expect(report.appliedFactors.rubato).toBe(1);
     // `requestedFactor` keeps the two apart: what the caller asked for is null where the
     // default filled in, which is what lets a consumer diff two samples' intent.
-    expect(report.performances[0].dimensions.tempo.requestedFactor).toBe(1.5);
-    expect(report.performances[0].dimensions.rubato.requestedFactor).toBeNull();
+    expect(soleReport(report).dimensions.tempo.requestedFactor).toBe(1.5);
+    expect(soleReport(report).dimensions.rubato.requestedFactor).toBeNull();
   });
 });
 
@@ -559,19 +576,19 @@ describe('report states', () => {
       ),
     );
     const { report } = exaggerateMpm(placeholders, { factors: { dynamics: 2 } });
-    const dynamics = report.performances[0].dimensions.dynamics;
+    const dynamics = soleReport(report).dimensions.dynamics;
 
     expect(dynamics.state).toBe('inert');
     expect(dynamics.sitesSkipped).toBeGreaterThan(0);
     expect(dynamics.writes).toBe(0);
-    expect(report.performances[0].notes.map((note) => note.kind)).toContain('unresolvable-level');
+    expect(soleReport(report).notes.map((note) => note.kind)).toContain('unresolvable-level');
   });
 
   it('distinguishes absent from inert: a dimension with no sites at all is absent', () => {
     const noDynamics = document(performance('P', TWO_TEMPI));
     const { report } = exaggerateMpm(noDynamics, { factors: uniformFactors(2) });
-    expect(report.performances[0].dimensions.dynamics.state).toBe('absent');
-    expect(report.performances[0].dimensions.tempo.state).toBe('transformed');
+    expect(soleReport(report).dimensions.dynamics.state).toBe('absent');
+    expect(soleReport(report).dimensions.tempo.state).toBe('transformed');
   });
 
   it('reports a lopsided articulation def as partial, never transformed (D-B)', () => {
@@ -580,11 +597,13 @@ describe('report states', () => {
     const { report } = exaggerateMpm(reference('articulations', 'mpm'), {
       factors: { articulation: 2 },
     });
-    const notes = report.performances[0].notes.filter(
+    const notes = soleReport(report).notes.filter(
       (note) => note.kind === 'articulation-component-excluded',
     );
     expect(notes.length).toBeGreaterThan(0);
-    expect(notes[0].detail).toMatch(/absoluteDurationMs/);
+    expect(elementAt(notes, 0, 'the articulation-component-excluded notes').detail).toMatch(
+      /absoluteDurationMs/,
+    );
   });
 });
 
@@ -603,7 +622,7 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
   });
 
   it('leaves every estimate null when it is omitted', () => {
-    const { estimates } = exaggerateMpm(ALL_MAPS, { factors }).report.performances[0];
+    const { estimates } = soleReportOf(exaggerateMpm(ALL_MAPS, { factors }));
     expect(estimates.unreachableLevels).toBeNull();
     expect(estimates.articulationCommitCliffs).toBeNull();
     expect(estimates.ornamentSpreadCliffs).toBeNull();
@@ -613,7 +632,7 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
   it('reads a null msm as absent, not as XML text that failed to parse', () => {
     // Same rule as `performance` next door: `null` means absent throughout this option bag.
     const nulled = exaggerateMpm(ALL_MAPS, { factors, msm: null as unknown as undefined });
-    expect(nulled.report.performances[0].estimates.unreachableLevels).toBeNull();
+    expect(soleReport(nulled.report).estimates.unreachableLevels).toBeNull();
     expect(nulled.mpm).toBe(exaggerateMpm(ALL_MAPS, { factors }).mpm);
   });
 
@@ -621,7 +640,7 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
     // `all_maps`'s last <dynamics> carries a `@transition.to`, and `getEndDate` answers
     // MAX_VALUE for the last instruction in a map — so the ramp runs to infinity and its
     // target is scaled but never rendered.
-    const { estimates } = exaggerateMpm(ALL_MAPS, { factors, msm: score }).report.performances[0];
+    const { estimates } = soleReportOf(exaggerateMpm(ALL_MAPS, { factors, msm: score }));
     expect(estimates.unreachableLevels).toBeGreaterThan(0);
   });
 
@@ -649,18 +668,19 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
       `<msm pulsesPerQuarter="720"><part name="X" number="1"><dated><score>${notes}` +
       `</score></dated></part></msm>`;
 
-    const { estimates } = exaggerateMpm(mpm, { factors, msm: msm as XmlText }).report
-      .performances[0]!;
+    const { estimates } = soleReportOf(exaggerateMpm(mpm, { factors, msm: msm as XmlText }));
     expect(estimates.unreachableLevels).toBe(2);
   });
 
   it('counts every note when no dynamics map governs the part at all', () => {
     // `tempo.mpm` has a tempoMap and nothing else, so every note gets the renderer's hardcoded
     // 100.0 and no dynamics factor can move any of them.
-    const { estimates } = exaggerateMpm(reference('tempo', 'mpm'), {
-      factors,
-      msm: reference('tempo', 'msm'),
-    }).report.performances[0];
+    const { estimates } = soleReportOf(
+      exaggerateMpm(reference('tempo', 'mpm'), {
+        factors,
+        msm: reference('tempo', 'msm'),
+      }),
+    );
     const noteCount = (reference('tempo', 'msm').match(/<note /g) ?? []).length;
     expect(noteCount).toBeGreaterThan(0);
     expect(estimates.unreachableLevels).toBe(noteCount);
@@ -678,12 +698,12 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
     );
     const raw = reference('tempo', 'msm');
     expect(
-      exaggerateMpm(wideFrame, { factors: { ornamentSpread: 8 }, msm: raw }).report.performances[0]
-        .estimates.ornamentSpreadCliffs,
+      soleReportOf(exaggerateMpm(wideFrame, { factors: { ornamentSpread: 8 }, msm: raw })).estimates
+        .ornamentSpreadCliffs,
     ).toBe(1);
     expect(
-      exaggerateMpm(wideFrame, { factors: { ornamentSpread: 0.001 }, msm: raw }).report
-        .performances[0].estimates.ornamentSpreadCliffs,
+      soleReportOf(exaggerateMpm(wideFrame, { factors: { ornamentSpread: 0.001 }, msm: raw }))
+        .estimates.ornamentSpreadCliffs,
     ).toBe(0);
   });
 
@@ -704,8 +724,12 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
         ),
       );
     const cliffs = (ppq: number) =>
-      exaggerateMpm(frame(ppq), { factors: { ornamentSpread: 2 }, msm: reference('tempo', 'msm') })
-        .report.performances[0].estimates.ornamentSpreadCliffs;
+      soleReportOf(
+        exaggerateMpm(frame(ppq), {
+          factors: { ornamentSpread: 2 },
+          msm: reference('tempo', 'msm'),
+        }),
+      ).estimates.ornamentSpreadCliffs;
 
     expect(cliffs(360)).toBe(1);
     expect(cliffs(720)).toBe(0);
@@ -721,7 +745,7 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
       `<temporalSpread frame.start="0.0" frameLength="${frameLength}"/>` +
       '</ornamentDef></styleDef></ornamentationStyles>';
     const cliffs = (mpm: XmlText, msm: XmlText) =>
-      exaggerateMpm(mpm, { factors: { ornamentSpread: 2 }, msm }).report.performances[0].estimates
+      soleReportOf(exaggerateMpm(mpm, { factors: { ornamentSpread: 2 }, msm })).estimates
         .ornamentSpreadCliffs;
 
     // (a) The PERFORMANCE declares no `@pulsesPerQuarter`. `tempo.msm`'s shortest note is one
@@ -764,10 +788,12 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
         '<articulationStyles><styleDef name="S"><articulationDef name="late" absoluteDelayMs="900.0"/></styleDef></articulationStyles>',
       ),
     );
-    const raw = exaggerateMpm(millisecondSites, {
-      factors: uniformFactors(2),
-      msm: reference('tempo', 'msm'),
-    }).report.performances[0].estimates;
+    const raw = soleReportOf(
+      exaggerateMpm(millisecondSites, {
+        factors: uniformFactors(2),
+        msm: reference('tempo', 'msm'),
+      }),
+    ).estimates;
     expect(raw.articulationCommitCliffs).toBeNull();
     expect(raw.imprecisionDurationCliffs).toBeNull();
 
@@ -776,10 +802,12 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
       msm: reference('tempo', 'msm'),
       mpm: reference('tempo', 'mpm'),
     });
-    const answered = exaggerateMpm(millisecondSites, {
-      factors: uniformFactors(2),
-      msm: performed,
-    }).report.performances[0].estimates;
+    const answered = soleReportOf(
+      exaggerateMpm(millisecondSites, {
+        factors: uniformFactors(2),
+        msm: performed,
+      }),
+    ).estimates;
     expect(answered.articulationCommitCliffs).toBe(1);
     expect(answered.imprecisionDurationCliffs).toBe(1);
   });
@@ -796,8 +824,8 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
       mpm: reference('tempo', 'mpm'),
     });
     expect(
-      exaggerateMpm(gentle, { factors: { imprecisionDuration: 2 }, msm: performed }).report
-        .performances[0].estimates.imprecisionDurationCliffs,
+      soleReportOf(exaggerateMpm(gentle, { factors: { imprecisionDuration: 2 }, msm: performed }))
+        .estimates.imprecisionDurationCliffs,
     ).toBe(0);
   });
 
@@ -805,11 +833,11 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
     const score = allMaps('metrical_accentuation', 'msm');
     const mpm = allMaps('metrical_accentuation', 'mpm');
     expect(
-      exaggerateMpm(mpm, { factors: { accentuation: 2 }, msm: score }).report.performances[0]
-        .estimates.beatsUnverifiable,
+      soleReportOf(exaggerateMpm(mpm, { factors: { accentuation: 2 }, msm: score })).estimates
+        .beatsUnverifiable,
     ).toBe(true);
     expect(
-      exaggerateMpm(mpm, { factors: { tempo: 2 }, msm: score }).report.performances[0].estimates
+      soleReportOf(exaggerateMpm(mpm, { factors: { tempo: 2 }, msm: score })).estimates
         .beatsUnverifiable,
     ).toBe(false);
   });

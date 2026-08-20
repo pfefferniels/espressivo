@@ -1,6 +1,7 @@
 import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { firstChildElement } from '../../xml/tree.js';
+import { MissingNodeError } from '../../xml/errors.js';
 import { err, isErr, ok, unwrapOr, type Result } from '../../prelude/index.js';
 import { MPM_NAMESPACE } from '../names.js';
 import { type MpmParseError } from './parseError.js';
@@ -88,5 +89,12 @@ export class Global extends AbstractXmlSubtree {
   }
   getDated(): Dated | null {
     return this.dated;
+  }
+  /** As {@link Part.requireDated}: `readFrom` returns `err` rather than a `Global` without one. */
+  requireDated(): Dated {
+    const dated = this.dated;
+    if (dated === null)
+      throw new MissingNodeError('this global has no dated environment: it was never parsed');
+    return dated;
   }
 }

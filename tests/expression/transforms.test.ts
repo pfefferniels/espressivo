@@ -39,6 +39,7 @@ import type {
   ScaleSpaceTag,
   TransformResult,
 } from '../../src/expression/transforms.js';
+import { numberAt, pairwise } from '../../src/prelude/index.js';
 
 /**
  * A3 contracts P2 as exact "only on the clamp-free subdomain and only to ~1 ULP". Measured
@@ -600,7 +601,11 @@ describe('the validation gate refuses non-finite inputs (DESIGN §1.2)', () => {
         expect(byValue.ok).toBe(false);
         if (!byValue.ok) expect(byValue.error).toBe('out-of-domain-input');
 
-        const byFactor = transformInSpace(space, values[0], bad);
+        const byFactor = transformInSpace(
+          space,
+          numberAt(values, 0, `the ${space.kind} probe values`),
+          bad,
+        );
         expect(byFactor.ok).toBe(false);
         if (!byFactor.ok) expect(byFactor.error).toBe('out-of-domain-input');
       }
@@ -631,7 +636,7 @@ describe('the validation gate refuses non-finite inputs (DESIGN §1.2)', () => {
       [0, 0],
       [NaN, 1],
       [0, Infinity],
-    ]) {
+    ] as const) {
       expect(logit(0.5, 2, lower, upper).ok).toBe(false);
     }
   });
@@ -812,7 +817,11 @@ describe('metric anchors — the numbers DESIGN chose, not merely a valid T', ()
     expect(expectOk(logAroundCenter(36, 2, center))).toBeCloseTo(center / 4, 12);
     // And the log-difference of a transition pair scales by s regardless of the center (§1.3).
     const pair = [60, 120].map((x) => expectOk(logAroundCenter(x, 2, center)));
-    expect(Math.log(pair[1] / pair[0])).toBeCloseTo(2 * Math.log(120 / 60), 12);
+    const what = 'the transformed transition pair';
+    expect(Math.log(numberAt(pair, 1, what) / numberAt(pair, 0, what))).toBeCloseTo(
+      2 * Math.log(120 / 60),
+      12,
+    );
   });
 
   it('ratio gains and signed offsets (§7.6, §7.10, §7.12)', () => {
@@ -921,12 +930,14 @@ describe('forward maps — `T` itself (comparison/DESIGN.md §4)', () => {
   it('is strictly monotone on each domain, which is what makes |T(x) - T(y)| a metric', () => {
     for (const { name, space, values } of SPACES) {
       const forwards = values.map((x) => forwardInSpace(space, x));
+      const image = `the forward image of ${name}`;
       // Direction is per space and carries no meaning for a distance: boundary-power(low)'s
       // `ln(1 - x)` decreases, every other space here increases.
-      const ascending = forwards[1] > forwards[0];
-      for (let i = 1; i < forwards.length; i += 1) {
-        const ordered = ascending ? forwards[i] > forwards[i - 1] : forwards[i] < forwards[i - 1];
-        expect(`${name} @ ${values[i]}: ${ordered}`).toBe(`${name} @ ${values[i]}: true`);
+      const ascending = numberAt(forwards, 1, image) > numberAt(forwards, 0, image);
+      for (const [i, [previous, current]] of pairwise(forwards).entries()) {
+        const ordered = ascending ? current > previous : current < previous;
+        const at = numberAt(values, i + 1, `the ${name} probe values`);
+        expect(`${name} @ ${at}: ${ordered}`).toBe(`${name} @ ${at}: true`);
       }
     }
   });

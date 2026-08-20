@@ -27,6 +27,7 @@ import {
   scapeIndex,
 } from '../../src/api/comparison.js';
 import type { XmlText } from '../../src/api/types.js';
+import { elementAt, numberAt } from '../../src/prelude/index.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const mpm = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'utf-8') as XmlText;
@@ -222,7 +223,7 @@ describe('the cookbook, run as printed', () => {
     let seen = 0;
     for (const script of report.scripts)
       for (const index of script.topByCost.slice(0, 3)) {
-        const op = script.ops[index];
+        const op = elementAt(script.ops, index, 'the script’s ops');
         expect(typeof op.op).toBe('string');
         expect(Number.isFinite(op.cost)).toBe(true);
         // `measureA` is non-null wherever the op has a date and the MSM covers it.
@@ -254,16 +255,20 @@ describe('the cookbook, run as printed', () => {
       .map((segment, column) => ({
         segment,
         share:
-          report.table.columnSums[column] === 0
+          numberAt(report.table.columnSums, column, 'the table’s column sums') === 0
             ? 0
-            : report.table.cells[row * report.table.columnCount + column] /
-              report.table.columnSums[column],
+            : numberAt(
+                report.table.cells,
+                row * report.table.columnCount + column,
+                'the table’s cells',
+              ) / numberAt(report.table.columnSums, column, 'the table’s column sums'),
       }))
       .sort((x, y) => y.share - x.share);
     expect(ranked.length).toBeGreaterThan(0);
     // The guide's 33 %, read from the same sentence as the 475 ms above.
-    expect(ranked[0].share).toBeCloseTo(quoted(/carrying \*\*([\d.]+) %\*\* of the/) / 100, 2);
-    expect(ranked[0].segment.measure).not.toBeNull();
+    const leading = elementAt(ranked, 0, 'the share-ranked segments');
+    expect(leading.share).toBeCloseTo(quoted(/carrying \*\*([\d.]+) %\*\* of the/) / 100, 2);
+    expect(leading.segment.measure).not.toBeNull();
 
     // The guide's stated limit: this corpus yields ONE segment per pair, because the whole
     // piece is above the one-JND threshold, so there is nothing to localise within.
@@ -312,8 +317,13 @@ describe('the cookbook, run as printed', () => {
       noiseFloor: true,
     });
     expect(report.medoids).not.toBeNull();
-    expect(report.labels[(report.medoids ?? [0])[0]]).toBeTypeOf('string');
-    expect(report.matrices.aggregate[0 * report.n + 1]).toBeGreaterThan(0);
+    const medoids = report.medoids ?? [];
+    expect(
+      elementAt(report.labels, elementAt(medoids, 0, 'the corpus medoids'), 'the corpus labels'),
+    ).toBeTypeOf('string');
+    expect(
+      numberAt(report.matrices.aggregate, 0 * report.n + 1, 'the aggregate matrix'),
+    ).toBeGreaterThan(0);
     expect(report.embedding.coordinates).toHaveLength(report.n * report.embedding.axes);
     expect(report.context?.percentile[0 * report.n + 1]).toBeGreaterThan(0);
     expect(report.silhouetteReliable).toBe(false);

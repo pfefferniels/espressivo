@@ -19,7 +19,8 @@ import {
   renderExpressiveMidi,
   renderMidi,
 } from '../../src/api/index.js';
-import type { PerformanceData, PerformOptions } from '../../src/api/index.js';
+import type { MovementDocuments, PerformanceData, PerformOptions } from '../../src/api/index.js';
+import { elementAt } from '../../src/prelude/index.js';
 import {
   EmptyDocumentError,
   InvalidOptionError,
@@ -86,53 +87,73 @@ const ONE_NOTE =
   '<note xml:id="n1" date="0.0" midi.pitch="60.0" duration="720.0" ' +
   'milliseconds.date="0.0" milliseconds.date.end="720.0" velocity="64.0" />';
 
+/**
+ * The movement at `index` of a conversion, checked.
+ *
+ * Nearly every test here converts a single-mdiv fixture and reads movement 0. Written as
+ * `convertMeiToMsmMpm(...)[0].msm` a conversion that returned nothing failed as "cannot read
+ * properties of undefined" inside whichever assertion happened to touch it first; this fails at
+ * the read, saying how many movements there actually were.
+ */
+const movementAt = (movements: readonly MovementDocuments[], index = 0): MovementDocuments =>
+  elementAt(movements, index, 'the converted movement list');
+
+/** Part `index` of a performance's data, checked. Every fixture read here is single-part. */
+const partAt = (data: PerformanceData, index = 0) =>
+  elementAt(data.parts, index, 'the performance’s part list');
+
 describe('facade: convertMeiToMsmMpm', () => {
   it('returns one index-aligned MSM+MPM pair per mdiv, as text', () => {
     const movements = convertMeiToMsmMpm(mei('simple_notes'));
 
     expect(movements).toHaveLength(1);
-    expect(movements[0].index).toBe(0);
-    expect(movements[0].title).toBe('Simple Notes Test');
-    expect(movements[0].msm.startsWith('<msm ')).toBe(true);
-    expect(movements[0].mpm.startsWith('<mpm ')).toBe(true);
+    const only = movementAt(movements);
+    expect(only.index).toBe(0);
+    expect(only.title).toBe('Simple Notes Test');
+    expect(only.msm.startsWith('<msm ')).toBe(true);
+    expect(only.mpm.startsWith('<mpm ')).toBe(true);
   });
 
   it('serializes without an XML declaration (RULE F2a)', () => {
     // The declaration-free form is what the equivalence fixtures are compared as; the two
     // other spellings in the tree (`Document.toXML`, the Java fixtures) both add one.
-    const movements = convertMeiToMsmMpm(mei('simple_notes'));
-    expect(movements[0].msm).not.toContain('<?xml');
-    expect(movements[0].mpm).not.toContain('<?xml');
+    const only = movementAt(convertMeiToMsmMpm(mei('simple_notes')));
+    expect(only.msm).not.toContain('<?xml');
+    expect(only.mpm).not.toContain('<?xml');
   });
 
   it('honours ppq as a floor', () => {
-    expect(convertMeiToMsmMpm(mei('simple_notes'), { ppq: 480 })[0].msm).toContain(
+    expect(movementAt(convertMeiToMsmMpm(mei('simple_notes'), { ppq: 480 })).msm).toContain(
       'pulsesPerQuarter="480"',
     );
     // …but raises it where the source needs a finer grid than the floor allows.
-    expect(convertMeiToMsmMpm(mei('tuplets'), { ppq: 1 })[0].msm).not.toContain(
+    expect(movementAt(convertMeiToMsmMpm(mei('tuplets'), { ppq: 1 })).msm).not.toContain(
       'pulsesPerQuarter="1"',
     );
   });
 
   it('sets both the relatedResource URI and the comment text from sourceName (§8.4)', () => {
-    const withName = convertMeiToMsmMpm(mei('dynamics'), { sourceName: 'dynamics.mei' })[0].mpm;
+    const withName = movementAt(
+      convertMeiToMsmMpm(mei('dynamics'), { sourceName: 'dynamics.mei' }),
+    ).mpm;
     expect(withName).toContain('uri="dynamics.mei"');
     expect(withName).toContain('uri="dynamics.msm"');
     expect(withName).toContain("generated from 'dynamics.mei' using the meico MEI converter");
 
-    const withoutName = convertMeiToMsmMpm(mei('dynamics'))[0].mpm;
+    const withoutName = movementAt(convertMeiToMsmMpm(mei('dynamics'))).mpm;
     expect(withoutName).not.toContain('uri=');
     expect(withoutName).toContain('generated from MEI code using the meico MEI converter');
   });
 
   it('threads ignoreExpansions and cleanup through to the converter', () => {
-    const expanded = convertMeiToMsmMpm(mei('repeats_endings'))[0].msm;
-    const asWritten = convertMeiToMsmMpm(mei('repeats_endings'), { ignoreExpansions: true })[0].msm;
+    const expanded = movementAt(convertMeiToMsmMpm(mei('repeats_endings'))).msm;
+    const asWritten = movementAt(
+      convertMeiToMsmMpm(mei('repeats_endings'), { ignoreExpansions: true }),
+    ).msm;
     expect(asWritten).not.toBe(expanded);
 
-    const cleaned = convertMeiToMsmMpm(mei('ties_dots'))[0].msm;
-    const uncleaned = convertMeiToMsmMpm(mei('ties_dots'), { cleanup: false })[0].msm;
+    const cleaned = movementAt(convertMeiToMsmMpm(mei('ties_dots'))).msm;
+    const uncleaned = movementAt(convertMeiToMsmMpm(mei('ties_dots'), { cleanup: false })).msm;
     expect(uncleaned.length).toBeGreaterThan(cleaned.length);
   });
 
@@ -165,7 +186,7 @@ describe('facade: convertMeiToMsmMpm', () => {
 
 describe('facade: listPerformances', () => {
   it('reports the performances an MPM offers', () => {
-    const [movement] = convertMeiToMsmMpm(mei('simple_notes'));
+    const movement = movementAt(convertMeiToMsmMpm(mei('simple_notes')));
     expect(listPerformances(movement.mpm)).toEqual([
       { index: 0, name: 'MEI export performance', ppq: 720 },
     ]);
@@ -177,7 +198,7 @@ describe('facade: listPerformances', () => {
 });
 
 describe('facade: performMsm', () => {
-  const movement = () => convertMeiToMsmMpm(mei('dynamics'))[0];
+  const movement = () => movementAt(convertMeiToMsmMpm(mei('dynamics')));
 
   it('augments the MSM with performance attributes', () => {
     const result = performMsm(movement());
@@ -274,22 +295,24 @@ describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
     expect(data.title).toBe('Dynamics Test');
     expect(data.ppq).toBe(720);
     expect(data.parts).toHaveLength(1);
-    expect(data.parts[0]).toMatchObject({ index: 0, name: '', midiChannel: 0, midiPort: 0 });
+    const part = partAt(data);
+    expect(part).toMatchObject({ index: 0, name: '', midiChannel: 0, midiPort: 0 });
 
     const expected = notesFromXml(xml);
     expect(expected.length).toBeGreaterThan(0);
-    expect(data.parts[0].notes).toEqual(expected);
+    expect(part.notes).toEqual(expected);
   });
 
   it('reads sub-note dynamics as a channelVolume stream on controller 7', () => {
     const data = extractPerformanceData(augmented('dynamics'));
-    const volume = data.parts[0].controlChanges.find((s) => s.kind === 'channelVolume');
+    const volume = partAt(data).controlChanges.find((s) => s.kind === 'channelVolume');
 
     expect(volume).toBeDefined();
-    expect(volume!.controller).toBeNull();
-    expect(volume!.ccNumber).toBe(7);
-    expect(volume!.points.length).toBeGreaterThan(0);
-    for (const point of volume!.points) {
+    if (volume === undefined) throw new Error('no channelVolume stream in the dynamics fixture');
+    expect(volume.controller).toBeNull();
+    expect(volume.ccNumber).toBe(7);
+    expect(volume.points.length).toBeGreaterThan(0);
+    for (const point of volume.points) {
       expect(Number.isFinite(point.date)).toBe(true);
       expect(Number.isFinite(point.milliseconds)).toBe(true);
       expect(point.value).toBeGreaterThanOrEqual(0);
@@ -334,7 +357,7 @@ describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
         '<position date="2880.0" value="0.0" controller="sustain" milliseconds.date="1700.0" />' +
         '</positionMap>',
     );
-    const streams = extractPerformanceData(mixed).parts[0].controlChanges;
+    const streams = partAt(extractPerformanceData(mixed)).controlChanges;
 
     expect(streams.map((s) => [s.kind, s.controller, s.ccNumber, s.points.length])).toEqual([
       ['position', 'sustain', 64, 2],
@@ -343,13 +366,20 @@ describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
       ['position', null, 0, 1],
     ]);
     // The two `sustain` entries keep document order inside their own stream.
-    expect(streams[0].points.map((p) => p.date)).toEqual([0, 2880]);
+    expect(elementAt(streams, 0, 'the control-change streams').points.map((p) => p.date)).toEqual([
+      0, 2880,
+    ]);
     // A point with no `milliseconds.date` falls back to `date`, as the interior does.
     const noMs = msmWith(
       ONE_NOTE,
       '<positionMap><position date="360.0" value="1.0" /></positionMap>',
     );
-    expect(extractPerformanceData(noMs).parts[0].controlChanges[0].points[0]).toEqual({
+    const onlyStream = elementAt(
+      partAt(extractPerformanceData(noMs)).controlChanges,
+      0,
+      'the control-change streams',
+    );
+    expect(elementAt(onlyStream.points, 0, 'the stream’s points')).toEqual({
       date: 360,
       milliseconds: 360,
       value: 1,
@@ -400,7 +430,9 @@ describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
         'milliseconds.date="0.0" milliseconds.date.end="500.0" velocity="64.0" />' +
         '<note xml:id="n2" date="720.0" midi.pitch="62.0" duration="360.0" />',
     );
-    const [first, second] = extractPerformanceData(partial).parts[0].notes;
+    const partialNotes = partAt(extractPerformanceData(partial)).notes;
+    const first = elementAt(partialNotes, 0, 'the part’s note list');
+    const second = elementAt(partialNotes, 1, 'the part’s note list');
 
     // The ornamentation sextet on a document with no ornamentation map at all: `false` and
     // five nulls, spelled out rather than matched loosely, because RULE N4's whole point is
@@ -438,7 +470,11 @@ describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
     const anonymous = msmWith(
       '<note date="0.0" midi.pitch="60.0" duration="720.0" milliseconds.date="0.0" />',
     );
-    const [note] = extractPerformanceData(anonymous).parts[0].notes;
+    const note = elementAt(
+      partAt(extractPerformanceData(anonymous)).notes,
+      0,
+      'the part’s note list',
+    );
     expect(note.id).toBeNull();
     expect('id' in note).toBe(true);
   });
@@ -750,7 +786,7 @@ describe('facade: expandOrnaments (D15)', () => {
 });
 
 describe('facade: renderMidi / renderExpressiveMidi', () => {
-  const movement = () => convertMeiToMsmMpm(mei('comprehensive'))[0];
+  const movement = () => movementAt(convertMeiToMsmMpm(mei('comprehensive')));
 
   it('writes a MIDI file as bytes', () => {
     const bytes = renderMidi({ msm: movement().msm });
@@ -824,7 +860,7 @@ describe('facade: error hierarchy (RULE E2)', () => {
   });
 
   it('never returns null (RULE N4/E2)', () => {
-    const [movement] = convertMeiToMsmMpm(mei('simple_notes'));
+    const movement = movementAt(convertMeiToMsmMpm(mei('simple_notes')));
     expect(performMsm(movement)).not.toBeNull();
     expect(performMsmToData(movement)).not.toBeNull();
     expect(renderMidi({ msm: movement.msm })).not.toBeNull();
@@ -835,7 +871,7 @@ describe('facade: error hierarchy (RULE E2)', () => {
 describe('facade: VERSION', () => {
   it('is the serialization-visible converter version, not package.json’s', () => {
     expect(VERSION).toBe('0.11.2');
-    expect(convertMeiToMsmMpm(mei('simple_notes'))[0].mpm).toContain(
+    expect(movementAt(convertMeiToMsmMpm(mei('simple_notes'))).mpm).toContain(
       `meico MEI converter v${VERSION}`,
     );
   });

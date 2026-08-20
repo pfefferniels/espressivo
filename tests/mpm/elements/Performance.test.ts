@@ -100,7 +100,7 @@ describe('Performance', () => {
     });
 
     it('should report a null xml element rather than printing it', () => {
-      expect(errOf(Performance.createPerformance(null as unknown as Element))).toEqual({
+      expect(errOf(Performance.createPerformance(null))).toEqual({
         kind: 'noElement',
         what: 'Performance',
       });
@@ -253,19 +253,19 @@ describe('Performance', () => {
     });
 
     it('should find a part by name', () => {
-      expect(threePartPerformance().getPart('Cello')!.getNumber()).toBe(3);
+      expect(threePartPerformance().getPartByName('Cello')!.getNumber()).toBe(3);
     });
 
     it('should find a part by midi channel and port', () => {
-      expect(threePartPerformance().getPart(2, 1)!.getName()).toBe('Cello');
+      expect(threePartPerformance().getPartByMidi(2, 1)!.getName()).toBe('Cello');
     });
 
     it('should return null when no part matches', () => {
       const p = threePartPerformance();
 
       expect(p.getPart(99)).toBeNull();
-      expect(p.getPart('Tuba')).toBeNull();
-      expect(p.getPart(9, 9)).toBeNull();
+      expect(p.getPartByName('Tuba')).toBeNull();
+      expect(p.getPartByMidi(9, 9)).toBeNull();
     });
 
     it('should remove a part by number', () => {
@@ -282,17 +282,17 @@ describe('Performance', () => {
       p.removePartByName('Piano');
 
       expect(p.size()).toBe(2);
-      expect(p.getPart('Piano')).toBeNull();
+      expect(p.getPartByName('Piano')).toBeNull();
       expect(p.getXml()!.getChildElements('part').size()).toBe(2);
     });
 
     it('should remove a part by reference', () => {
       const p = threePartPerformance();
-      const cello = p.getPart('Cello')!;
+      const cello = p.getPartByName('Cello')!;
       p.removePart(cello);
 
       expect(p.size()).toBe(2);
-      expect(p.getPart('Cello')).toBeNull();
+      expect(p.getPartByName('Cello')).toBeNull();
     });
 
     it('should ignore removal requests that match nothing', () => {

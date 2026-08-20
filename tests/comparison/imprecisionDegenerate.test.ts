@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { performMsm } from '../../src/index.js';
+import { filterMap } from '../../src/prelude/index.js';
 
 const MSM = `<?xml version="1.0" encoding="UTF-8"?>
 <msm title="probe" pulsesPerQuarter="720" xmlns:xml="http://www.w3.org/XML/1998/namespace">
@@ -59,8 +60,8 @@ describe('AD-46 probe: clip-less triangular through the full pipeline', () => {
     const rNone = performMsm({ msm: MSM, mpm: none });
     const rClips = performMsm({ msm: MSM, mpm: withClips });
 
-    const msDates = (xml: string): string[] =>
-      [...xml.matchAll(/milliseconds\.date="([^"]+)"/g)].map((m) => m[1]);
+    const msDates = (xml: string): readonly string[] =>
+      filterMap([...xml.matchAll(/milliseconds\.date="([^"]+)"/g)], (m) => m[1] ?? null);
 
     const a = msDates(rClipless);
     const b = msDates(rNone);

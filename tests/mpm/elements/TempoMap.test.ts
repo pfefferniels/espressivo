@@ -954,7 +954,7 @@ describe('TempoMap', () => {
       map.addTempo(0, '100', 0.25);
       map.addTempo(960, '140', 0.25);
 
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(1);
       expect(map.getElement(0)!.getAttributeValue('bpm')).toBe('140');
     });

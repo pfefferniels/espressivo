@@ -47,11 +47,16 @@ describe('addToListAttribute', () => {
     expect(getAttributeValue('classes', el)).toBe('foo bar');
   });
 
+  // No cast: `addToListAttribute` declares all three parameters nullable, so every call
+  // below is one a typed caller can make. The `as unknown as string` these two used to carry
+  // was defeating a type system that was not in the way.
   it('should do nothing with null/empty arguments', () => {
     addToListAttribute(null, 'x', 'y'); // Should not throw
     const el = new Element('note');
-    addToListAttribute(el, null as unknown as string, 'y'); // Should not throw
-    addToListAttribute(el, 'x', null as unknown as string); // Should not throw
+    addToListAttribute(el, null, 'y'); // Should not throw
+    addToListAttribute(el, 'x', null); // Should not throw
+    addToListAttribute(el, '', 'y'); // the empty name, which the same guard screens
+    addToListAttribute(el, 'x', ''); // and the empty value
     expect(el.getAttributeCount()).toBe(0);
   });
 });

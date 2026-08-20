@@ -19,7 +19,6 @@ import {
   type Distribution,
 } from '../../../src/mpm/elements/maps/data/distribution.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
-import { KeyValue } from '../../../src/supplementary/KeyValue.js';
 import { Builder, Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { RandomNumberProvider } from '../../../src/supplementary/RandomNumberProvider.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
@@ -906,7 +905,7 @@ describe('ImprecisionMap', () => {
       map.addDistributionUniform(0, -10, 10);
       map.addDistributionGaussian(480, 5, -20, 20);
 
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(1);
     });
 

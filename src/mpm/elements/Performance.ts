@@ -16,7 +16,10 @@ import {
   attribute,
   firstChildElement,
   getAttributeValue,
+  requireAttribute,
 } from '../../xml/tree.js';
+import { MissingNodeError } from '../../xml/errors.js';
+import type { Dated } from './Dated.js';
 import {
   ARTICULATION_MAP,
   ASYNCHRONY_MAP,
@@ -32,7 +35,6 @@ import {
   RUBATO_MAP,
   TEMPO_MAP,
 } from '../names.js';
-import { KeyValue } from '../../supplementary/KeyValue.js';
 import { Global } from './Global.js';
 import { Part } from './Part.js';
 import { GenericMap } from './maps/GenericMap.js';
@@ -218,13 +220,23 @@ interface GlobalRender {
  * (`import/no-cycle`, the deep-import battery) is already being run for other reasons.
  */
 export class Performance extends AbstractXmlSubtree {
-  private nameAttr: Attribute | null = null;
+  /**
+   * The `name` attribute node, held so {@link setName} writes where {@link readFrom} read.
+   *
+   * Unlike `Part`'s namesake there is no defaulting path here — {@link readFrom} REFUSES a
+   * `<performance>` with no `name` — so the placeholder this is initialised to is never the
+   * one in the document: `readFrom` always replaces it with the declared node before the
+   * object can escape the factory. It exists so the field can be non-nullable, which is what
+   * the two `!`s in the accessors were asserting.
+   */
+  private nameAttr: Attribute;
   private pulsesPerQuarter = 720;
   private global: Global | null = null;
   private readonly parts: Part[] = [];
 
   private constructor() {
     super();
+    this.nameAttr = new Attribute('name', '');
   }
 
   /**
@@ -241,7 +253,7 @@ export class Performance extends AbstractXmlSubtree {
     pulsesPerQuarter?: number,
     id?: string,
   ): Result<Performance, MpmParseError>;
-  static createPerformance(xml: Element): Result<Performance, MpmParseError>;
+  static createPerformance(xml: Element | null): Result<Performance, MpmParseError>;
   static createPerformance(
     nameOrXml: string | Element | null,
     pulsesPerQuarter?: number,
@@ -277,7 +289,7 @@ export class Performance extends AbstractXmlSubtree {
     if (name === null || name.getValue() === '')
       return err({ kind: 'missingAttribute', what: 'Performance', attribute: 'name' });
     this.setXml(xml);
-    this.nameAttr = attribute('name', this.getXml());
+    this.nameAttr = name;
     this.id = attribute('id', this.getXml());
 
     let ppqAtt = attribute('pulsesPerQuarter', this.getXml());
@@ -325,29 +337,35 @@ export class Performance extends AbstractXmlSubtree {
   }
 
   /**
-   * Three genuinely different lookups, which is why these overloads are not collapsed onto
-   * a union or an optional parameter: by part number, by part name, or by the MIDI
-   * channel/port pair. `getPart(1)` and `getPart(1, 0)` answer different questions, and the
-   * signature is the only place that says so. Each returns the *first* match.
+   * Three genuinely different lookups — by part number, by part name, or by the MIDI
+   * channel/port pair — and now three methods, because that is how TypeScript spells "these
+   * are different operations". The overload set that said the same thing could not: nothing
+   * in the signature distinguished `getPart(1)` from `getPart(1, 0)` except an arity the
+   * compiler was free to unify away, which is exactly what `unified-signatures` reported.
+   *
+   * `getPart` KEEPS the by-number form and only that one. All seven call sites in `src/`
+   * outside this class are `src/mei/Mei2MsmMpmConverter.ts` passing a number, so `src/`
+   * needed no edit at all — the same reason `Midi`'s surviving constructor was chosen
+   * earlier in this campaign. Each returns the *first* match.
    */
-  getPart(number: number): Part | null;
-  getPart(name: string): Part | null;
-  getPart(midiChannel: number, midiPort: number): Part | null;
-  getPart(arg1: number | string, arg2?: number): Part | null {
-    if (typeof arg1 === 'string') {
-      for (const p of this.parts) if (p.getName() === arg1) return p;
-      return null;
-    }
-    if (arg2 !== undefined) {
-      for (const p of this.parts)
-        if (p.getMidiChannel() === arg1 && p.getMidiPort() === arg2) return p;
-      return null;
-    }
-    for (const p of this.parts) if (p.getNumber() === arg1) return p;
+  getPart(number: number): Part | null {
+    for (const p of this.parts) if (p.getNumber() === number) return p;
     return null;
   }
 
-  addPart(part: Part): boolean {
+  getPartByName(name: string): Part | null {
+    for (const p of this.parts) if (p.getName() === name) return p;
+    return null;
+  }
+
+  getPartByMidi(midiChannel: number, midiPort: number): Part | null {
+    for (const p of this.parts)
+      if (p.getMidiChannel() === midiChannel && p.getMidiPort() === midiPort) return p;
+    return null;
+  }
+
+  /** Null is accepted and refused (`Performance.java`'s `part == null`); the type says so. */
+  addPart(part: Part | null): boolean {
     if (part === null || this.parts.includes(part)) return false;
     const parent = part.getXml().getParent();
     if (parent === null || parent !== this.getXml()) {
@@ -393,11 +411,32 @@ export class Performance extends AbstractXmlSubtree {
   getGlobal(): Global | null {
     return this.global;
   }
+
+  /**
+   * The global environment's `dated`, which every render stage reads.
+   *
+   * This was `this.getGlobal()!.getDated()!`, and only ONE of the two assertions was an
+   * invariant. {@link readFrom} builds a `<global>` when the document has none, but a
+   * `<global>` that will not PARSE leaves {@link global} null and the performance usable —
+   * that asymmetry is the incumbent's, it is documented at the assignment, and it means a
+   * caller really can hold a `Performance` whose `global` is null and call `perform` on it.
+   * Java would NPE on the same input (`Performance.java`'s `this.global.getDated()`), so the
+   * throw stays; what changes is that it names which half was missing instead of arriving as
+   * "cannot read property getDated of null".
+   */
+  private requireGlobalDated(): Dated {
+    const global = this.global;
+    if (global === null)
+      throw new MissingNodeError(
+        `the performance '${this.getName()}' has no readable <global> environment`,
+      );
+    return global.requireDated();
+  }
   getName(): string {
-    return this.nameAttr!.getValue();
+    return this.nameAttr.getValue();
   }
   setName(name: string): void {
-    this.nameAttr!.setValue(name);
+    this.nameAttr.setValue(name);
   }
   getPulsesPerQuarter(): number {
     return this.pulsesPerQuarter;
@@ -407,7 +446,10 @@ export class Performance extends AbstractXmlSubtree {
   }
   setPulsesPerQuarter(ppq: number): void {
     this.pulsesPerQuarter = ppq;
-    attribute('pulsesPerQuarter', this.getXml())!.setValue(String(ppq));
+    // Re-read from the element on every call, as Java does, and checked rather than
+    // asserted: `readFrom` ADDS a `pulsesPerQuarter` where the document omits one, so a
+    // constructed performance always carries the attribute this writes to.
+    requireAttribute('pulsesPerQuarter', this.getXml()).setValue(String(ppq));
   }
   setPPQ(ppq: number): void {
     this.setPulsesPerQuarter(ppq);
@@ -417,7 +459,7 @@ export class Performance extends AbstractXmlSubtree {
     if (msmPart === null) return null;
     let mpmPart = this.getPart(parseInt(getAttributeValue('number', msmPart)));
     if (mpmPart === null) {
-      mpmPart = this.getPart(getAttributeValue('name', msmPart));
+      mpmPart = this.getPartByName(getAttributeValue('name', msmPart));
     }
     return mpmPart;
   }
@@ -587,8 +629,8 @@ export class Performance extends AbstractXmlSubtree {
    */
   private cloneForRender(state: RenderInput): ClonedMsm {
     const clone = state.msm.clone();
-    if (clone.getFile() !== null) {
-      const origFile = clone.getFile()!;
+    const origFile = clone.getFile();
+    if (origFile !== null) {
       const dotIdx = origFile.lastIndexOf('.');
       const base = dotIdx > 0 ? origFile.substring(0, dotIdx) : origFile;
       clone.setFile(`${base}_${this.getName()}.msm`);
@@ -607,7 +649,7 @@ export class Performance extends AbstractXmlSubtree {
    * fold anyway because what it *writes* — the global map set — is what stages 3 and 4 read.
    */
   private resolveGlobalMaps(state: ClonedMsm): WithGlobalMaps {
-    const dated = this.getGlobal()!.getDated()!;
+    const dated = this.requireGlobalDated();
     return {
       ...state,
       globalMaps: {
@@ -637,7 +679,12 @@ export class Performance extends AbstractXmlSubtree {
    */
   private renderGlobal(state: WithGlobalMaps): WithGlobalRender {
     const { clone, globalMaps: mpm, ctx } = state;
-    const globalDated = firstChildElement('dated', clone.getGlobal()!);
+    // `Msm.getGlobal()` answers null for an MSM with no `<global>`, and the `!` that used to
+    // stand here did NOT make that a throw: `firstChildElement` returns null for a null
+    // parent, so the null flowed on into `collectGlobalMaps`, whose parameter says
+    // `Element | null` and always has. Same value, now by a route the compiler can read.
+    const globalElt = clone.getGlobal();
+    const globalDated = globalElt === null ? null : firstChildElement('dated', globalElt);
 
     const rendered = pipe(
       Performance.collectGlobalMaps(globalDated),
@@ -813,7 +860,7 @@ export class Performance extends AbstractXmlSubtree {
    */
   private static resolvePartMaps(mpmPart: Part | null, globalMaps: MpmMaps): MpmMaps {
     if (mpmPart === null) return globalMaps;
-    const dated = mpmPart.getDated()!;
+    const dated = mpmPart.requireDated();
     return {
       rubato: dated.getMapOfKind(RUBATO_MAP) ?? globalMaps.rubato,
       tempo: dated.getMapOfKind(TEMPO_MAP) ?? globalMaps.tempo,
@@ -1069,7 +1116,7 @@ export class Performance extends AbstractXmlSubtree {
     const msmPartsWithoutLocalMap: Element[] = msm.getParts().toArray();
 
     for (const part of this.getAllParts()) {
-      if (part.getDated()!.getMap(mapType) !== null) {
+      if (part.requireDated().getMap(mapType) !== null) {
         const msmPart = msm.getPart(
           part.getNumber(),
           part.getName(),

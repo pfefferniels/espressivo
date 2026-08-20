@@ -115,7 +115,7 @@ describe('Author', () => {
   });
 
   it('reports a null element rather than printing it', () => {
-    expect(errOf(Author.createAuthor(null as unknown as Element))).toEqual({
+    expect(errOf(Author.createAuthor(null))).toEqual({
       kind: 'noElement',
       what: 'Author',
     });
@@ -174,7 +174,7 @@ describe('Comment', () => {
   });
 
   it('reports a null element rather than printing it', () => {
-    expect(errOf(Comment.createComment(null as unknown as Element))).toEqual({
+    expect(errOf(Comment.createComment(null))).toEqual({
       kind: 'noElement',
       what: 'Comment',
     });
@@ -221,13 +221,15 @@ describe('RelatedResource', () => {
   });
 
   it('reports a missing type, mirroring the null check in Java', () => {
-    expect(
-      errOf(RelatedResource.createRelatedResource('a.mei', undefined as unknown as string)),
-    ).toEqual({ kind: 'missingArgument', what: 'RelatedResource', argument: 'type' });
+    expect(errOf(RelatedResource.createRelatedResource('a.mei', null))).toEqual({
+      kind: 'missingArgument',
+      what: 'RelatedResource',
+      argument: 'type',
+    });
   });
 
   it('reports a null element rather than printing it', () => {
-    expect(errOf(RelatedResource.createRelatedResource(null as unknown as Element))).toEqual({
+    expect(errOf(RelatedResource.createRelatedResource(null))).toEqual({
       kind: 'noElement',
       what: 'RelatedResource',
     });
