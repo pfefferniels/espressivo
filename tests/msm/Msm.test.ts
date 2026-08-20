@@ -945,9 +945,14 @@ describe('Msm', () => {
   //
   // Every one of these was found by a negative control that came back GREEN — the marker
   // message default, the time-signature numerator default and the ported key-signature
-  // threshold could each be changed with 1138 tests passing. The shared root cause is that
-  // `midi-byte-equivalence.test.ts` reduces a meta event to its `metaType` and compares only
-  // that, so no meta PAYLOAD is ever checked against Java. These pin the payloads directly.
+  // threshold could each be changed with 1138 tests passing. The shared cause was that
+  // `midi-byte-equivalence.test.ts` reduced a meta event to its `metaType` and compared only
+  // that, so no meta PAYLOAD was checked against Java.
+  //
+  // `8bdd00e` has since closed that, and the key-signature threshold now reddens six
+  // fixtures there as well as the test below. The other two still need these: the corpus has
+  // no marker without a `message` and no `<timeSignature>` without a `numerator`, so only a
+  // hand-built document reaches those branches at all.
   // ---------------------------------------------------------------
   describe('the map parsers’ defaults for an incomplete entry', () => {
     /** The global `<dated>` of a fresh MSM with one note. */
@@ -1037,8 +1042,14 @@ describe('Msm', () => {
   //
   // Written because a negative control came back green: making a `<timeSignature>` with no
   // `denominator` fall back to a quarter-note beat instead of producing NaN changed nothing
-  // in 1132 tests. No fixture in the corpus carries a denominator-less or unparsable
-  // `<timeSignature>`, so the whole non-default half of this method was unobserved.
+  // in 1132 tests, and so did doubling the parsed beat length. The cause was that
+  // `midi-byte-equivalence` reduced a meta event to its type byte and compared only that, so
+  // no Set Tempo PAYLOAD was ever checked against Java.
+  //
+  // That gap is now closed — `8bdd00e` compares meta payloads, and the parsed arm reddens
+  // `rests_meters` there. These tests still earn their place, because the corpus cannot reach
+  // the other three arms: no fixture carries a `<timeSignature>` without a `denominator`,
+  // with an unparsable one, or a global `timeSignatureMap` that is empty.
   // ---------------------------------------------------------------
   describe('makeInitialTempo: the one tempo event of a non-expressive export', () => {
     const META_SET_TEMPO = 0x51;
