@@ -1,6 +1,5 @@
 {
   "--noUncheckedIndexedAccess": {
-    "tests/comparison": 231,
     "tests/integration": 189,
     "tests/mei": 12,
     "tests/midi": 45,

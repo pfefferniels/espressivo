@@ -25,6 +25,12 @@ import {
   type DimensionWeights,
 } from '../../src/comparison/aggregate.js';
 import { COMPARISON_DIMENSIONS } from '../../src/comparison/registry.js';
+import { elementAt, numberAt } from '../../src/prelude/index.js';
+import type { AggregateSegment, SegmentPass } from '../../src/comparison/aggregate.js';
+
+/** Segment `index` of a segmentation pass, checked. */
+const segmentAt = (pass: SegmentPass, index = 0): AggregateSegment =>
+  elementAt(pass.segments, index, 'the segments this pass found');
 
 /** A dimension whose density is constant `value` on `[start, end)`. */
 const flat = (
@@ -64,7 +70,7 @@ function bruteForceMaximalRuns(
 ): readonly { start: number; end: number }[] {
   const sum = (start: number, end: number): number => {
     let total = 0;
-    for (let i = start; i <= end; ++i) total += scores[i];
+    for (let i = start; i <= end; ++i) total += numberAt(scores, i, 'the score sequence');
     return total;
   };
   /** (1) every PROPER subsequence scores strictly lower. */
@@ -172,12 +178,15 @@ describe('§7.2: D = Σ ω_k d_k', () => {
     expect(aggregateDistance(densities, weights)).toBeCloseTo(12, 12);
     // The dimension is still computed — AD-19's whole point, and what makes §7.4's
     // dimension-selective recipe a recipe rather than a deletion.
-    expect(densities[1].distance).toBeCloseTo(20, 12);
+    expect(elementAt(densities, 1, 'the dimension densities').distance).toBeCloseTo(20, 12);
   });
 
   it('is summed in COMPARISON_DIMENSIONS order, not arrival order (R2)', () => {
     const forward = [flat('tempo', 0, 4, 0.1), flat('pedal', 0, 4, 0.2)];
-    const reversed = [forward[1], forward[0]];
+    const reversed = [
+      elementAt(forward, 1, 'the arrival-ordered densities'),
+      elementAt(forward, 0, 'the arrival-ordered densities'),
+    ];
     expect(aggregateDistance(forward, defaultWeights())).toBe(
       aggregateDistance(reversed, defaultWeights()),
     );
@@ -248,11 +257,12 @@ describe('§7.3: the segment pass', () => {
     ]);
     const pass = segmentPass([density], defaultWeights(), thresholds, 0, 8);
     expect(pass.segments).toHaveLength(1);
-    expect(pass.segments[0].startQuarters).toBe(2);
-    expect(pass.segments[0].endQuarters).toBe(4);
-    expect(pass.segments[0].mass).toBeCloseTo(10, 12);
-    expect(pass.segments[0].mean).toBeCloseTo(5, 12);
-    expect(pass.segments[0].peak).toBeCloseTo(5, 12);
+    const only = segmentAt(pass);
+    expect(only.startQuarters).toBe(2);
+    expect(only.endQuarters).toBe(4);
+    expect(only.mass).toBeCloseTo(10, 12);
+    expect(only.mean).toBeCloseTo(5, 12);
+    expect(only.peak).toBeCloseTo(5, 12);
     expect(pass.remainderMass).toBeCloseTo(0.2 * 6, 12);
   });
 
@@ -272,7 +282,8 @@ describe('§7.3: the segment pass', () => {
     // The two 1-quarter runs carry equal mass, so the tie falls to the earlier start.
     const ties = pass.segments.filter((segment) => Math.abs(segment.mass - 6) < 1e-9);
     expect(ties.length).toBeGreaterThanOrEqual(2);
-    expect(ties[0].startQuarters).toBeLessThan(ties[1].startQuarters);
+    const tie = (index: number) => elementAt(ties, index, 'the equal-mass segments');
+    expect(tie(0).startQuarters).toBeLessThan(tie(1).startQuarters);
     expect(pass.segments.map((segment) => segment.rank)).toEqual(
       pass.segments.map((_, index) => index),
     );
@@ -292,9 +303,10 @@ describe('§7.3: the segment pass', () => {
     };
     const pass = segmentPass([density], defaultWeights(), defaultThresholds(), 0, 8);
     expect(pass.segments).toHaveLength(1);
-    expect(pass.segments[0].startQuarters).toBeCloseTo(4, 6);
-    expect(pass.segments[0].endQuarters).toBe(8);
-    expect(pass.segments[0].mass).toBeCloseTo(6, 6);
+    const only = segmentAt(pass);
+    expect(only.startQuarters).toBeCloseTo(4, 6);
+    expect(only.endQuarters).toBe(8);
+    expect(only.mass).toBeCloseTo(6, 6);
     expect(pass.cellQuantizedDimensions).toEqual([]);
   });
 
@@ -321,10 +333,10 @@ describe('§7.3: the segment pass', () => {
     };
     const pass = segmentPass([density], defaultWeights(), thresholds, 0, 8);
     expect(pass.segments).toHaveLength(1);
-    expect(pass.segments[0].mass).toBeCloseTo(9, 12);
+    expect(segmentAt(pass).mass).toBeCloseTo(9, 12);
     // A zero-width segment has no continuous density, so `peak` reports 0 rather than ∞ —
     // §9.6's finiteness discipline, and the mass is where the atom is visible.
-    expect(Number.isFinite(pass.segments[0].peak)).toBe(true);
+    expect(Number.isFinite(segmentAt(pass).peak)).toBe(true);
   });
 });
 

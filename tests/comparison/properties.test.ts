@@ -27,6 +27,19 @@ import {
 } from '../../src/api/index.js';
 import type { ComparisonNote, ComparisonReport } from '../../src/api/index.js';
 import { compareNotes } from '../../src/comparison/compare.js';
+import { elementAt, pairwise } from '../../src/prelude/index.js';
+
+/**
+ * `record[key]`, checked — a `Record<string, T>` lookup is `T | undefined` under the flag.
+ *
+ * The keys here are all `COMPARISON_DIMENSIONS` members, so a miss means the report is missing
+ * a dimension the registry declares, which is the failure worth naming.
+ */
+const recordAt = <T>(record: Record<string, T>, key: string, what: string): T => {
+  const value = record[key];
+  if (value === undefined) throw new Error(`${what} has no entry for ${key}`);
+  return value;
+};
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const fixture = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'utf-8');
@@ -72,7 +85,11 @@ function mirror(report: ComparisonReport): ComparisonReport {
   swap(comparability, 'instructionCountA', 'instructionCountB');
 
   for (const dimension of COMPARISON_DIMENSIONS) {
-    const entry = (copy.dimensions as Record<string, Mutable>)[dimension];
+    const entry = recordAt(
+      copy.dimensions as Record<string, Mutable>,
+      dimension,
+      'the report’s dimensions',
+    );
     swap(entry.events as Mutable, 'unmatchedA', 'unmatchedB');
     entry.meanSigned = negate(entry.meanSigned);
     const decomposition = entry.decomposition as Mutable | null;
@@ -104,7 +121,7 @@ function mirror(report: ComparisonReport): ComparisonReport {
   const profiles = copy.profiles as Record<string, Mutable> | null;
   if (profiles !== null)
     for (const dimension of COMPARISON_DIMENSIONS) {
-      const profile = profiles[dimension];
+      const profile = recordAt(profiles, dimension, 'the report’s per-dimension profiles');
       swap(profile, 'valueA', 'valueB');
       profile.signed = (profile.signed as number[]).map((value) => negate(value));
     }
@@ -280,9 +297,7 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
         performanceB: pair.performanceB,
         msm: pair.msm,
       }).report;
-      for (let i = 0; i + 1 < report.notes.length; ++i) {
-        const x = report.notes[i];
-        const y = report.notes[i + 1];
+      for (const [x, y] of pairwise(report.notes)) {
         if (compareNotes(x, y) !== 0) continue;
         expect(JSON.stringify(x), `${pair.name}: two distinct notes compare equal`).toBe(
           JSON.stringify(y),
@@ -290,8 +305,8 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       }
       // Sorted, and by THIS comparator — an array in some other order would make the check above
       // vacuous, since it only inspects adjacent pairs.
-      for (let i = 0; i + 1 < report.notes.length; ++i)
-        expect(compareNotes(report.notes[i], report.notes[i + 1])).toBeLessThanOrEqual(0);
+      for (const [x, y] of pairwise(report.notes))
+        expect(compareNotes(x, y)).toBeLessThanOrEqual(0);
     }
   });
 
@@ -313,8 +328,7 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
     expect(sameMessage.length).toBeGreaterThan(1);
     const sites = new Set(sameMessage.map((note) => JSON.stringify(note.site)));
     expect(sites.size).toBe(sameMessage.length);
-    for (let i = 0; i + 1 < sameMessage.length; ++i)
-      expect(compareNotes(sameMessage[i], sameMessage[i + 1])).toBeLessThan(0);
+    for (const [x, y] of pairwise(sameMessage)) expect(compareNotes(x, y)).toBeLessThan(0);
   });
 
   /**
@@ -425,7 +439,8 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       'replayResidual',
     ]);
     // The script and its ops, which are the shapes a consumer walks most.
-    expect(Object.keys(diff.scripts[0])).toEqual([
+    const script = elementAt(diff.scripts, 0, 'the diff’s edit scripts');
+    expect(Object.keys(script)).toEqual([
       'part',
       'map',
       'dimension',
@@ -433,7 +448,7 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       'topByCost',
       'opCounts',
     ]);
-    expect(Object.keys(diff.scripts[0].ops[0])).toEqual([
+    expect(Object.keys(elementAt(script.ops, 0, 'the script’s ops'))).toEqual([
       'op',
       'map',
       'part',
@@ -493,7 +508,10 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       'negativeEigenvalueMass',
       'axes',
     ]);
-    expect(Object.keys(corpus.items[0])).toEqual(['itemIndex', 'performance']);
+    expect(Object.keys(elementAt(corpus.items, 0, 'the corpus items'))).toEqual([
+      'itemIndex',
+      'performance',
+    ]);
     expect(Object.keys(corpus.matrices.byDimension)).toEqual([...COMPARISON_DIMENSIONS]);
   });
 
@@ -643,7 +661,7 @@ describe('P-C11: every number of every result is finite or null (§9.6)', () => 
     });
 
   it('answers null rather than dividing by zero when the window has no length (§9.6)', () => {
-    const report = DEGENERATE[0].run();
+    const report = elementAt(DEGENERATE, 0, 'the degenerate cases').run();
     expect(report.window.endQuarters).toBe(report.window.startQuarters);
     expect(report.aggregate.mean).toBeNull();
     for (const dimension of COMPARISON_DIMENSIONS)
@@ -657,7 +675,7 @@ describe('P-C11: every number of every result is finite or null (§9.6)', () => 
   });
 
   it('reports every dimension under all-zero weights, and excludes them all from D (§7.3)', () => {
-    const report = DEGENERATE[1].run();
+    const report = elementAt(DEGENERATE, 1, 'the degenerate cases').run();
     expect(report.aggregate.distance).toBe(0);
     expect(report.dimensions.tempo.distance).toBeGreaterThan(0);
     expect(report.dimensions.tempo.weight).toBe(0);

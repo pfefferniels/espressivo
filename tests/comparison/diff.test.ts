@@ -22,6 +22,7 @@ import { InvalidOptionError, ParseError, PerformanceNotFoundError } from '../../
 import { COMPARISON_DIMENSIONS } from '../../src/comparison/registry.js';
 import type { XmlText } from '../../src/api/types.js';
 import type { DiffReport, EditOp } from '../../src/comparison/report.js';
+import { elementAt, pairwise } from '../../src/prelude/index.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const fixture = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'utf-8') as XmlText;
@@ -87,8 +88,10 @@ function mirrorOf(report: DiffReport): unknown {
           MOVE_RANK[x.op] - MOVE_RANK[y.op] ||
           x.applicationIndex - y.applicationIndex,
       );
+      const costOfOrdered = (index: number) =>
+        elementAt(ordered, index, 'the date-ordered ops').cost;
       const ranking = ordered.map((_op, index) => index);
-      ranking.sort((x, y) => ordered[y].cost - ordered[x].cost || x - y);
+      ranking.sort((x, y) => costOfOrdered(y) - costOfOrdered(x) || x - y);
       const costRankOf = new Array<number>(ordered.length);
       for (const [rank, index] of ranking.entries()) costRankOf[index] = rank;
       return {
@@ -141,7 +144,7 @@ function mirrorOf(report: DiffReport): unknown {
 }
 
 /** A-Q5's pair inverts with the plain one: one-became-several read backwards is the reverse. */
-const INVERSE: Readonly<Record<string, EditOp['op']>> = {
+const INVERSE: Readonly<Record<EditOp['op'], EditOp['op']>> = {
   insert: 'delete',
   delete: 'insert',
   substitute: 'substitute',
@@ -149,7 +152,7 @@ const INVERSE: Readonly<Record<string, EditOp['op']>> = {
   consolidate: 'fragment',
 };
 
-const MOVE_RANK: Readonly<Record<string, number>> = {
+const MOVE_RANK: Readonly<Record<EditOp['op'], number>> = {
   substitute: 0,
   delete: 1,
   insert: 2,
@@ -307,9 +310,12 @@ describe('P-C2: diffMpm(a, b) and diffMpm(b, a) are exact mirrors (§6.4)', () =
 
     const key = (script: (typeof report.scripts)[number]) =>
       [script.part ?? -1, script.map, script.dimension] as const;
-    for (let index = 1; index < report.scripts.length; ++index) {
-      const previous = key(report.scripts[index - 1]);
-      const current = key(report.scripts[index]);
+    for (const [position, [before, after]] of pairwise(report.scripts).entries()) {
+      // `pairwise` is 0-based over the PAIRS; the reported index names the later script, as the
+      // hand-written `for (let index = 1; …)` this replaced did.
+      const index = position + 1;
+      const previous = key(before);
+      const current = key(after);
       const ordered =
         previous[0] < current[0] ||
         (previous[0] === current[0] &&
@@ -324,7 +330,7 @@ describe('P-C2: diffMpm(a, b) and diffMpm(b, a) are exact mirrors (§6.4)', () =
 
     // The global scope sorts FIRST, which is what `part ?? -1` encodes and what `parts` reports.
     if (report.scripts.some((script) => script.part === null))
-      expect(report.scripts[0].part).toBeNull();
+      expect(elementAt(report.scripts, 0, 'the diff’s edit scripts').part).toBeNull();
 
     // `(part, map)` is ALREADY total: no bucket holds two scripts, so the `dimension` key is
     // never consulted. If a future map name were shared between two dimensions this would fail
@@ -422,7 +428,9 @@ describe('the ops carry what §9.3 says they carry', () => {
       expect(script.ops.map((op) => op.applicationIndex)).toEqual(
         script.ops.map((_op, index) => index),
       );
-      const ranked = script.topByCost.map((index) => script.ops[index].cost);
+      const ranked = script.topByCost.map(
+        (index) => elementAt(script.ops, index, 'the script’s ops').cost,
+      );
       expect([...ranked].sort((x, y) => y - x)).toEqual(ranked);
       for (const op of script.ops) {
         expect(op.site.container).toBe(script.map);
@@ -449,7 +457,7 @@ describe('the ops carry what §9.3 says they carry', () => {
       const deltas = op.attributes.map((entry) => entry.deltaJnd);
       expect([...deltas].sort((x, y) => y - x)).toEqual(deltas);
       // The site names the attribute the op is most about, which is what makes it worth a look.
-      expect(op.site.attribute).toBe(op.attributes[0].name);
+      expect(op.site.attribute).toBe(elementAt(op.attributes, 0, 'the op’s attributes').name);
       for (const entry of op.attributes) {
         expect(entry.deltaJnd).toBeGreaterThanOrEqual(0);
         expect(Number.isFinite(entry.deltaJnd)).toBe(true);
@@ -601,7 +609,9 @@ describe('the surface (§9.4)', () => {
     const plain = diffMpm(base).report;
     expect(plain.scopes.rule).toBe('mpm');
     expect(plain.notes.map((entry) => entry.kind)).toEqual(['estimate-degradation']);
-    expect(plain.notes[0].message).toContain('Supply an `msm` for the counted quantity');
+    expect(elementAt(plain.notes, 0, 'the diff’s notes').message).toContain(
+      'Supply an `msm` for the counted quantity',
+    );
 
     // With a band the documents violate, `plausibility` fires — 56 of them, one per site, which
     // is the same count `compareMpm` produces from the same two documents, because
@@ -611,7 +621,7 @@ describe('the surface (§9.4)', () => {
     const banded = diffMpm({ ...base, ...(band as object) }).report;
     const plausibility = banded.notes.filter((entry) => entry.kind === 'plausibility');
     expect(plausibility).toHaveLength(56);
-    expect(plausibility[0].message).toBe(
+    expect(elementAt(plausibility, 0, 'the plausibility notes').message).toBe(
       '@bpm = 58 is outside its plausible band [200, 400]; the distance is unchanged',
     );
     expect(plausibility.every((entry) => entry.dimension === 'tempo')).toBe(true);
@@ -672,7 +682,8 @@ describe('the surface (§9.4)', () => {
       (entry) => entry.kind === 'plausibility' && entry.startQuarters === 0,
     );
     expect(shared).toHaveLength(2);
-    expect(shared[0].message).toBe(shared[1].message);
+    const sharedAt = (index: number) => elementAt(shared, index, 'the shared plausibility notes');
+    expect(sharedAt(0).message).toBe(sharedAt(1).message);
     expect(shared.map((entry) => entry.document)).toEqual(['a', 'b']);
   });
 

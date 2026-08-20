@@ -36,6 +36,7 @@ import {
 } from '../../src/comparison/accentuationDistance.js';
 import { comparisonRowFor } from '../../src/comparison/registry.js';
 import { isBottom } from '../../src/comparison/values.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
 
@@ -305,12 +306,14 @@ describe('accentuation spans: loop, skips and ⊥', () => {
       '<style date="0.0" name.ref="M"/><accentuationPattern date="0.0" name.ref="p" scale="1.0"/>',
       HEADER,
     );
-    expect(curve.segments[0].stickToMeasures).toBe(true);
+    expect(elementAt(curve.segments, 0, 'the accentuation segments').stickToMeasures).toBe(true);
     const explicit = curveFor(
       '<style date="0.0" name.ref="M"/><accentuationPattern date="0.0" name.ref="p" scale="1.0" stickToMeasures="false"/>',
       HEADER,
     );
-    expect(explicit.segments[0].stickToMeasures).toBe(false);
+    expect(elementAt(explicit.segments, 0, 'the accentuation segments').stickToMeasures).toBe(
+      false,
+    );
   });
 });
 
