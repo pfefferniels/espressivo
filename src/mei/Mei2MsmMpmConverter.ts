@@ -10,11 +10,16 @@ import {
   cloneElement,
   descendantElements,
   firstChildElement,
+  requireAttribute,
+  requireAttributeValue,
+  requireFirstChildElement,
+  requireParentElement,
   reverseDescendantElements,
   getAttributeValue,
   getNextSiblingElement,
   parentElement,
 } from '../xml/tree.js';
+import { MissingNodeError } from '../xml/errors.js';
 import { Mei } from './Mei.js';
 import {
   buildOrnamentData,
@@ -28,6 +33,8 @@ import { Msm } from '../msm/Msm.js';
 import { Mpm } from '../mpm/Mpm.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Performance } from '../mpm/elements/Performance.js';
+import type { Header } from '../mpm/elements/Header.js';
+import type { Dated } from '../mpm/elements/Dated.js';
 import { Part as MpmPart } from '../mpm/elements/Part.js';
 import { GenericMap } from '../mpm/elements/maps/GenericMap.js';
 import { TempoMap } from '../mpm/elements/maps/TempoMap.js';
@@ -105,6 +112,36 @@ type Traversal = 'done' | 'descend';
  * converter (see the class comment on the cursor fields).
  */
 type ElementHandler = (c: Mei2MsmMpmConverter, e: Element) => Traversal;
+
+/**
+ * The `dated/<name>` map of an MSM `global` or `part` element, or null if it holds no such map.
+ *
+ * MSM puts every timed list under a `dated` wrapper, so essentially every map access in this
+ * converter is a two-step descent. Written out, that step was
+ * `container.getFirstChildElement('dated')!.getFirstChildElement(name)` — seventy-odd sites,
+ * each asserting a `dated` that {@link Msm.createMsm} and {@link Mei2MsmMpmConverter.makePart}
+ * build unconditionally, and which is therefore *required* here rather than asserted.
+ *
+ * The map itself stays nullable: maps are created on demand, and most callers pass the result
+ * straight to `addToMap`, whose contract already includes "null map, nothing to do".
+ */
+function datedMap(container: Element, name: string): Element | null {
+  return firstChildElement(requireFirstChildElement(container, 'dated'), name);
+}
+
+/**
+ * {@link datedMap} for the callers that go on to read or write the map, where its absence is a
+ * broken skeleton rather than an outcome.
+ *
+ * `Msm.createMsm` gives every `global/dated` a `timeSignatureMap`, `keySignatureMap`,
+ * `markerMap`, `sectionMap`, `phraseMap`, `sequencingMap`, `pedalMap` and `miscMap`, and
+ * `Msm.addPart` gives every part's `dated` the same set minus `sectionMap` plus `score`. Those
+ * are the only names asked for here, and the empty ones are not pruned until `msmCleanup`
+ * runs at the very end of the conversion — long after every read below.
+ */
+function requireDatedMap(container: Element, name: string): Element {
+  return requireFirstChildElement(requireFirstChildElement(container, 'dated'), name);
+}
 
 /** element without effect on the sounding result: skipped whole, not descended into */
 const IGNORE: ElementHandler = () => 'done';
@@ -229,6 +266,113 @@ export class Mei2MsmMpmConverter {
   protected currentPerformance: Performance | null = null;
   protected movements: Msm[] = [];
   protected performances: Mpm[] = [];
+
+  // --- reading the cursor without asserting it (ARCHITECTURE.md RULE N2a) ---
+  //
+  // The cursor fields are `| null` because {@link reset} clears them between movements, and
+  // roughly ninety reads of them stood as `this.currentX!` — an assertion of exactly the fact
+  // the walk guarantees and the type cannot. These accessors state it instead: the same
+  // control flow, but a failure names the cursor that was empty rather than surfacing as
+  // "cannot read property of null" inside whatever XOM call came next.
+  //
+  // Every one of them is reached only from a handler that {@link convertElement} dispatched
+  // *below* the element that sets the field — `makeMovement` assigns `currentMsmMovement` and
+  // `currentPerformance` before descending into the mdiv, `processStaffDef`/`processPart`
+  // assign `currentPart` before descending into the staff, `processChord` assigns
+  // `currentChord` before descending into its notes — so on every path a fixture reaches the
+  // field is set. **They read the cursor; they do not restructure it.** Its lifetime, its
+  // save/restore discipline around recursive calls and `reset()`'s semantics are untouched,
+  // which is what ARCHITECTURE.md §8.5 rules out changing.
+  //
+  // Where a null cursor is a *possible outcome* rather than a broken invariant — the several
+  // sites that already read `this.currentPart === null ? … : …`, or `checkEndid`'s tolerance
+  // of being called outside a part — the field is still read directly and branched on. These
+  // are for the sites that previously said `!`.
+
+  /** the MSM movement being filled; see the block comment above */
+  private requireMsmMovement(): Element {
+    if (this.currentMsmMovement === null)
+      throw new MissingNodeError('no MSM movement is currently being converted');
+    return this.currentMsmMovement;
+  }
+
+  /** the MPM performance being filled; see the block comment above */
+  private requirePerformance(): Performance {
+    if (this.currentPerformance === null)
+      throw new MissingNodeError('no MPM performance is currently being converted');
+    return this.currentPerformance;
+  }
+
+  /** the MSM part the walk is inside; see the block comment above */
+  private requirePart(): Element {
+    if (this.currentPart === null) throw new MissingNodeError('the walk is not inside a part');
+    return this.currentPart;
+  }
+
+  /** the MEI chord the walk is inside; see the block comment above */
+  private requireChord(): Element {
+    if (this.currentChord === null) throw new MissingNodeError('the walk is not inside a chord');
+    return this.currentChord;
+  }
+
+  /** the MEI being converted, set by {@link convertMei} before anything below it runs */
+  private requireMei(): Mei {
+    if (this.mei === null) throw new MissingNodeError('no MEI is currently being converted');
+    return this.mei;
+  }
+
+  /**
+   * The `global/dated/<name>` map of the MSM movement being filled.
+   *
+   * This path is read thirty-odd times, and used to be spelled out at each of them as
+   * `this.currentMsmMovement!.getFirstChildElement('global')!.getFirstChildElement('dated')!
+   * .getFirstChildElement(name)` — three assertions per site for a skeleton
+   * {@link Msm.createMsm} builds unconditionally. `global` and `dated` are therefore
+   * required; the map itself is not, because a map is created on demand and several callers
+   * hand the result straight to `addToMap`, which treats a null map as "nowhere to add".
+   */
+  private globalDatedMap(name: string): Element | null {
+    return datedMap(requireFirstChildElement(this.requireMsmMovement(), 'global'), name);
+  }
+
+  /** {@link globalDatedMap} for the callers that read or write the map; see {@link requireDatedMap} */
+  private requireGlobalDatedMap(name: string): Element {
+    return requireDatedMap(requireFirstChildElement(this.requireMsmMovement(), 'global'), name);
+  }
+
+  /** the `dated/<name>` map of the MSM part the walk is inside; see {@link globalDatedMap} */
+  private partDatedMap(name: string): Element | null {
+    return datedMap(this.requirePart(), name);
+  }
+
+  /** {@link partDatedMap} for the callers that read or write the map */
+  private requirePartDatedMap(name: string): Element {
+    return requireDatedMap(this.requirePart(), name);
+  }
+
+  /**
+   * The MPM performance's global `header`, where the styles this converter authors live.
+   *
+   * `Performance.createPerformance` builds `global`, its `header` and its `dated` together, so
+   * neither can be absent once a performance exists — which is what the two assertions in
+   * `this.globalHeader()` were claiming, once per style lookup.
+   */
+  private globalHeader(): Header {
+    const global = this.requirePerformance().getGlobal();
+    if (global === null) throw new MissingNodeError('the MPM performance has no global section');
+    const header = global.getHeader();
+    if (header === null) throw new MissingNodeError('the MPM global section has no header');
+    return header;
+  }
+
+  /** the MPM performance's global `dated`, where its maps live; see {@link globalHeader} */
+  private globalDated(): Dated {
+    const global = this.requirePerformance().getGlobal();
+    if (global === null) throw new MissingNodeError('the MPM performance has no global section');
+    const dated = global.getDated();
+    if (dated === null) throw new MissingNodeError('the MPM global section has no dated');
+    return dated;
+  }
 
   /**
    * constructor with default settings
@@ -921,23 +1065,13 @@ export class Mei2MsmMpmConverter {
     // time signature
     s = this.makeTimeSignature(scoreDef);
     if (s !== null) {
-      addToMap(
-        s,
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('timeSignatureMap'),
-      );
+      addToMap(s, this.globalDatedMap('timeSignatureMap'));
     }
 
     // key signature
     s = this.makeKeySignature(scoreDef);
     if (s !== null) {
-      addToMap(
-        s,
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('keySignatureMap'),
-      );
+      addToMap(s, this.globalDatedMap('keySignatureMap'));
     }
 
     // store default values in miscMap
@@ -946,12 +1080,7 @@ export class Mei2MsmMpmConverter {
       d.addAttribute(new Attribute('date', this.getMidiTimeAsString()));
       d.addAttribute(new Attribute('dur', scoreDef.getAttributeValue('dur.default')!));
       copyId(scoreDef, d);
-      addToMap(
-        d,
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('miscMap'),
-      );
+      addToMap(d, this.globalDatedMap('miscMap'));
     }
 
     if (scoreDef.getAttribute('octave.default') !== null) {
@@ -959,12 +1088,7 @@ export class Mei2MsmMpmConverter {
       d.addAttribute(new Attribute('date', this.getMidiTimeAsString()));
       d.addAttribute(new Attribute('oct', scoreDef.getAttributeValue('octave.default')!));
       copyId(scoreDef, d);
-      addToMap(
-        d,
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('miscMap'),
-      );
+      addToMap(d, this.globalDatedMap('miscMap'));
     }
 
     {
@@ -978,20 +1102,10 @@ export class Mei2MsmMpmConverter {
       d.addAttribute(new Attribute('date', this.getMidiTimeAsString()));
       d.addAttribute(new Attribute('semi', String(trans)));
       copyId(scoreDef, d);
-      addToMap(
-        d,
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('miscMap'),
-      );
+      addToMap(d, this.globalDatedMap('miscMap'));
     }
 
-    addToMap(
-      cloneElement(scoreDef),
-      this.currentMsmMovement!.getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('miscMap'),
-    );
+    addToMap(cloneElement(scoreDef), this.globalDatedMap('miscMap'));
   }
 
   private processStaffDef(staffDef: Element): void {
@@ -1002,18 +1116,12 @@ export class Mei2MsmMpmConverter {
 
     let t = this.makeTimeSignature(staffDef);
     if (t !== null) {
-      addToMap(
-        t,
-        this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('timeSignatureMap'),
-      );
+      addToMap(t, this.partDatedMap('timeSignatureMap'));
     }
 
     t = this.makeKeySignature(staffDef);
     if (t !== null) {
-      addToMap(
-        t,
-        this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('keySignatureMap'),
-      );
+      addToMap(t, this.partDatedMap('keySignatureMap'));
     }
 
     if (staffDef.getAttribute('dur.default') !== null) {
@@ -1021,7 +1129,7 @@ export class Mei2MsmMpmConverter {
       d.addAttribute(new Attribute('date', this.getMidiTimeAsString()));
       d.addAttribute(new Attribute('dur', staffDef.getAttributeValue('dur.default')!));
       copyId(staffDef, d);
-      addToMap(d, this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('miscMap'));
+      addToMap(d, this.partDatedMap('miscMap'));
     }
 
     if (staffDef.getAttribute('octave.default') !== null) {
@@ -1029,7 +1137,7 @@ export class Mei2MsmMpmConverter {
       d.addAttribute(new Attribute('date', this.getMidiTimeAsString()));
       d.addAttribute(new Attribute('oct', staffDef.getAttributeValue('octave.default')!));
       copyId(staffDef, d);
-      addToMap(d, this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('miscMap'));
+      addToMap(d, this.partDatedMap('miscMap'));
     }
 
     {
@@ -1043,13 +1151,10 @@ export class Mei2MsmMpmConverter {
       d.addAttribute(new Attribute('semi', String(trans)));
       d.addAttribute(new Attribute('date', this.getMidiTimeAsString()));
       copyId(staffDef, d);
-      addToMap(d, this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('miscMap'));
+      addToMap(d, this.partDatedMap('miscMap'));
     }
 
-    addToMap(
-      cloneElement(staffDef),
-      this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('miscMap'),
-    );
+    addToMap(cloneElement(staffDef), this.partDatedMap('miscMap'));
 
     this.convertElement(staffDef);
     this.accid = [];
@@ -1082,9 +1187,7 @@ export class Mei2MsmMpmConverter {
 
     if (layerDef.getAttribute('dur.default') !== null) {
       const d = new Element('dur.default');
-      this.currentPart!.getFirstChildElement('dated')!
-        .getFirstChildElement('miscMap')!
-        .appendChild(d);
+      this.requirePartDatedMap('miscMap').appendChild(d);
       d.addAttribute(new Attribute('dur', layerDef.getAttributeValue('dur.default')!));
       copyId(layerDef, d);
       this.addLayerAttribute(d);
@@ -1092,28 +1195,18 @@ export class Mei2MsmMpmConverter {
 
     if (layerDef.getAttribute('octave.default') !== null) {
       const d = new Element('oct.default');
-      this.currentPart!.getFirstChildElement('dated')!
-        .getFirstChildElement('miscMap')!
-        .appendChild(d);
+      this.requirePartDatedMap('miscMap').appendChild(d);
       d.addAttribute(new Attribute('oct', layerDef.getAttributeValue('octave.default')!));
       copyId(layerDef, d);
       this.addLayerAttribute(d);
     }
 
     if (this.currentPart === null) {
-      addToMap(
-        cloneElement(layerDef),
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('miscMap'),
-      );
+      addToMap(cloneElement(layerDef), this.globalDatedMap('miscMap'));
       return;
     }
 
-    addToMap(
-      cloneElement(layerDef),
-      this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('miscMap'),
-    );
+    addToMap(cloneElement(layerDef), this.partDatedMap('miscMap'));
   }
 
   /**
@@ -1235,9 +1328,7 @@ export class Mei2MsmMpmConverter {
   private processEnding(ending: Element): void {
     const startDate = this.getMidiTime();
     const endingCount = this.endingCounter++;
-    const sequencingMap = this.currentMsmMovement!.getFirstChildElement('global')!
-      .getFirstChildElement('dated')!
-      .getFirstChildElement('sequencingMap')!;
+    const sequencingMap = this.requireGlobalDatedMap('sequencingMap');
 
     let endingText = '';
     const activity = '1';
@@ -1392,9 +1483,7 @@ export class Mei2MsmMpmConverter {
         this.endids.push(phraseMapEntry);
       }
 
-      const phraseMap = this.currentMsmMovement!.getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('phraseMap')!;
+      const phraseMap = this.requireGlobalDatedMap('phraseMap');
       addToMap(phraseMapEntry, phraseMap);
     } else {
       const staffString = att.getValue();
@@ -1423,10 +1512,7 @@ export class Mei2MsmMpmConverter {
             this.endids.push(phraseMapEntry);
           }
 
-          const phraseMap = parts
-            .get(p)
-            .getFirstChildElement('dated')!
-            .getFirstChildElement('phraseMap')!;
+          const phraseMap = requireDatedMap(parts.get(p), 'phraseMap');
           addToMap(phraseMapEntry, phraseMap);
           this.addLayerAttribute(phraseMapEntry);
         }
@@ -1442,9 +1528,7 @@ export class Mei2MsmMpmConverter {
     else if (section.getAttribute('n') !== null)
       sectionMapEntry.addAttribute(new Attribute('label', section.getAttributeValue('n')!));
     copyId(section, sectionMapEntry);
-    const sectionMap = this.currentMsmMovement!.getFirstChildElement('global')!
-      .getFirstChildElement('dated')!
-      .getFirstChildElement('sectionMap')!;
+    const sectionMap = this.requireGlobalDatedMap('sectionMap');
     sectionMap.appendChild(sectionMapEntry);
     this.convertElement(section);
     sectionMapEntry.addAttribute(new Attribute('date.end', this.getMidiTimeAsString()));
@@ -1509,9 +1593,7 @@ export class Mei2MsmMpmConverter {
 
     let defaultGlobalMeasureDuration = 0.0;
     let globalTimeSignature: Element | null = null;
-    const globalTsMap = this.currentMsmMovement!.getFirstChildElement('global')!
-      .getFirstChildElement('dated')!
-      .getFirstChildElement('timeSignatureMap')!;
+    const globalTsMap = this.requireGlobalDatedMap('timeSignatureMap');
     if (globalTsMap.getChildCount() > 0) {
       const tss = globalTsMap.getChildElements('timeSignature');
       globalTimeSignature = tss.get(tss.size() - 1);
@@ -1527,7 +1609,7 @@ export class Mei2MsmMpmConverter {
     const parts = this.currentMsmMovement!.getChildElements('part');
     for (let pi = 0; pi < parts.size(); ++pi) {
       const part = parts.get(pi);
-      const tsMap = part.getFirstChildElement('dated')!.getFirstChildElement('timeSignatureMap')!;
+      const tsMap = requireDatedMap(part, 'timeSignatureMap');
       let ts: Element | null = null;
       if (tsMap.getChildCount() > 0) {
         const tss = tsMap.getChildElements('timeSignature');
@@ -1603,17 +1685,13 @@ export class Mei2MsmMpmConverter {
       Mei2MsmMpmConverter.barline2SequencingCommand(
         measure.getAttributeValue('left')!,
         startDate,
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('sequencingMap')!,
+        this.requireGlobalDatedMap('sequencingMap'),
       );
     if (measure.getAttribute('right') !== null)
       Mei2MsmMpmConverter.barline2SequencingCommand(
         measure.getAttributeValue('right')!,
         endDate,
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('sequencingMap')!,
+        this.requireGlobalDatedMap('sequencingMap'),
       );
   }
 
@@ -1621,17 +1699,9 @@ export class Mei2MsmMpmConverter {
     const s = this.makeTimeSignature(meterSig);
     if (s === null) return;
     if (this.currentPart !== null) {
-      addToMap(
-        s,
-        this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('timeSignatureMap'),
-      );
+      addToMap(s, this.partDatedMap('timeSignatureMap'));
     } else {
-      addToMap(
-        s,
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('timeSignatureMap'),
-      );
+      addToMap(s, this.globalDatedMap('timeSignatureMap'));
     }
   }
 
@@ -1639,17 +1709,9 @@ export class Mei2MsmMpmConverter {
     const s = this.makeKeySignature(keySig);
     if (s === null) return;
     if (this.currentPart !== null) {
-      addToMap(
-        s,
-        this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('keySignatureMap'),
-      );
+      addToMap(s, this.partDatedMap('keySignatureMap'));
     } else {
-      addToMap(
-        s,
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('keySignatureMap'),
-      );
+      addToMap(s, this.globalDatedMap('keySignatureMap'));
     }
   }
 
@@ -1725,15 +1787,9 @@ export class Mei2MsmMpmConverter {
             oct = parentNote.getAttributeValue('oct.ges');
           } else {
             if (this.currentPart !== null) {
-              let octs = this.currentPart
-                .getFirstChildElement('dated')!
-                .getFirstChildElement('miscMap')!
-                .getChildElements('oct.default');
+              let octs = this.requirePartDatedMap('miscMap').getChildElements('oct.default');
               if (octs.size() === 0) {
-                octs = this.currentMsmMovement!.getFirstChildElement('global')!
-                  .getFirstChildElement('dated')!
-                  .getFirstChildElement('miscMap')!
-                  .getChildElements('oct.default');
+                octs = this.requireGlobalDatedMap('miscMap').getChildElements('oct.default');
               }
               for (let i2 = octs.size() - 1; i2 >= 0; --i2) {
                 if (
@@ -2201,10 +2257,7 @@ export class Mei2MsmMpmConverter {
         this.endids.push(clone);
       }
 
-      const tsMap = this.currentMsmMovement!.getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('miscMap')!
-        .getFirstChildElement('tupletSpanMap')!;
+      const tsMap = this.requireGlobalDatedMap('miscMap').getFirstChildElement('tupletSpanMap')!;
       addToMap(clone, tsMap);
     } else {
       const staffString = att.getValue();
@@ -2226,11 +2279,9 @@ export class Mei2MsmMpmConverter {
             this.endids.push(clone);
           }
 
-          const tsMap = parts
-            .get(p)
-            .getFirstChildElement('dated')!
-            .getFirstChildElement('miscMap')!
-            .getFirstChildElement('tupletSpanMap')!;
+          const tsMap = requireDatedMap(parts.get(p), 'miscMap').getFirstChildElement(
+            'tupletSpanMap',
+          )!;
           addToMap(clone, tsMap);
           this.addLayerAttribute(clone);
         }
@@ -2317,13 +2368,15 @@ export class Mei2MsmMpmConverter {
     }
 
     // make sure that the arpeggio is defined in a global ornamentation style
-    let ornamentationStyle = this.currentPerformance!.getGlobal()!
-      .getHeader()!
-      .getStyleDef(Mpm.ORNAMENTATION_STYLE, 'MEI export') as OrnamentationStyle | null;
+    let ornamentationStyle = this.globalHeader().getStyleDef(
+      Mpm.ORNAMENTATION_STYLE,
+      'MEI export',
+    ) as OrnamentationStyle | null;
     if (ornamentationStyle === null)
-      ornamentationStyle = this.currentPerformance!.getGlobal()!
-        .getHeader()!
-        .addStyleDef(Mpm.ORNAMENTATION_STYLE, 'MEI export') as OrnamentationStyle | null;
+      ornamentationStyle = this.globalHeader().addStyleDef(
+        Mpm.ORNAMENTATION_STYLE,
+        'MEI export',
+      ) as OrnamentationStyle | null;
     if (ornamentationStyle!.getDef(od.ornamentDefName) === undefined) {
       const def = OrnamentDef.createDefaultOrnamentDef(od.ornamentDefName);
       if (def !== null) ornamentationStyle!.addDef(def);
@@ -2334,13 +2387,13 @@ export class Mei2MsmMpmConverter {
     let att = arpeg.getAttribute('part');
     if (att === null) att = arpeg.getAttribute('staff');
     if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-      ornamentationMap = this.currentPerformance!.getGlobal()!
-        .getDated()!
-        .getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
+      ornamentationMap = this.globalDated().getMap(
+        Mpm.ORNAMENTATION_MAP,
+      ) as OrnamentationMap | null;
       if (ornamentationMap === null) {
-        ornamentationMap = this.currentPerformance!.getGlobal()!
-          .getDated()!
-          .addMap(OrnamentationMap.createOrnamentationMap()) as OrnamentationMap;
+        ornamentationMap = this.globalDated().addMap(
+          OrnamentationMap.createOrnamentationMap(),
+        ) as OrnamentationMap;
         ornamentationMap.addStyleSwitch(0.0, 'MEI export');
       }
       const index = ornamentationMap.addOrnamentFromData(od);
@@ -2432,13 +2485,15 @@ export class Mei2MsmMpmConverter {
     const date = timingData[0];
 
     // make sure that the ornament is defined in a global ornamentation style
-    let ornamentationStyle = this.currentPerformance!.getGlobal()!
-      .getHeader()!
-      .getStyleDef(Mpm.ORNAMENTATION_STYLE, 'MEI export') as OrnamentationStyle | null;
+    let ornamentationStyle = this.globalHeader().getStyleDef(
+      Mpm.ORNAMENTATION_STYLE,
+      'MEI export',
+    ) as OrnamentationStyle | null;
     if (ornamentationStyle === null)
-      ornamentationStyle = this.currentPerformance!.getGlobal()!
-        .getHeader()!
-        .addStyleDef(Mpm.ORNAMENTATION_STYLE, 'MEI export') as OrnamentationStyle | null;
+      ornamentationStyle = this.globalHeader().addStyleDef(
+        Mpm.ORNAMENTATION_STYLE,
+        'MEI export',
+      ) as OrnamentationStyle | null;
     if (ornamentationStyle!.getDef(resolved.defName) === undefined) {
       const def = createMeiOrnamentDef(resolved.defName);
       if (def !== null) ornamentationStyle!.addDef(def);
@@ -2449,13 +2504,13 @@ export class Mei2MsmMpmConverter {
     let att = sign.getAttribute('part');
     if (att === null) att = sign.getAttribute('staff');
     if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-      ornamentationMap = this.currentPerformance!.getGlobal()!
-        .getDated()!
-        .getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
+      ornamentationMap = this.globalDated().getMap(
+        Mpm.ORNAMENTATION_MAP,
+      ) as OrnamentationMap | null;
       if (ornamentationMap === null) {
-        ornamentationMap = this.currentPerformance!.getGlobal()!
-          .getDated()!
-          .addMap(OrnamentationMap.createOrnamentationMap()) as OrnamentationMap;
+        ornamentationMap = this.globalDated().addMap(
+          OrnamentationMap.createOrnamentationMap(),
+        ) as OrnamentationMap;
         ornamentationMap.addStyleSwitch(0.0, 'MEI export');
       }
       ornamentationMap.addOrnamentFromData(
@@ -2514,13 +2569,15 @@ export class Mei2MsmMpmConverter {
           dd.volumeString = '?';
           dd.transitionToString = '+';
         } else {
-          let dynamicsStyle = this.currentPerformance!.getGlobal()!
-            .getHeader()!
-            .getStyleDef(Mpm.DYNAMICS_STYLE, 'MEI export') as DynamicsStyle | null;
+          let dynamicsStyle = this.globalHeader().getStyleDef(
+            Mpm.DYNAMICS_STYLE,
+            'MEI export',
+          ) as DynamicsStyle | null;
           if (dynamicsStyle === null)
-            dynamicsStyle = this.currentPerformance!.getGlobal()!
-              .getHeader()!
-              .addStyleDef(Mpm.DYNAMICS_STYLE, 'MEI export') as DynamicsStyle | null;
+            dynamicsStyle = this.globalHeader().addStyleDef(
+              Mpm.DYNAMICS_STYLE,
+              'MEI export',
+            ) as DynamicsStyle | null;
 
           if (dynamicsStyle !== null && dynamicsStyle.getDef(dd.volumeString) === undefined) {
             const def = DynamicsDef.createDefaultDynamicsDef(dd.volumeString);
@@ -2574,13 +2631,9 @@ export class Mei2MsmMpmConverter {
     let att = dynam.getAttribute('part');
     if (att === null) att = dynam.getAttribute('staff');
     if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-      dynamicsMap = this.currentPerformance!.getGlobal()!
-        .getDated()!
-        .getMap(Mpm.DYNAMICS_MAP) as DynamicsMap | null;
+      dynamicsMap = this.globalDated().getMap(Mpm.DYNAMICS_MAP) as DynamicsMap | null;
       if (dynamicsMap === null) {
-        dynamicsMap = this.currentPerformance!.getGlobal()!
-          .getDated()!
-          .addMap(DynamicsMap.createDynamicsMap()) as DynamicsMap;
+        dynamicsMap = this.globalDated().addMap(DynamicsMap.createDynamicsMap()) as DynamicsMap;
         dynamicsMap.addStyleSwitch(0.0, 'MEI export');
       }
 
@@ -2669,20 +2722,11 @@ export class Mei2MsmMpmConverter {
     let att = tempo.getAttribute('part');
     if (att === null) att = tempo.getAttribute('staff');
     if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-      tempoMap = this.currentPerformance!.getGlobal()!
-        .getDated()!
-        .getMap(Mpm.TEMPO_MAP) as TempoMap | null;
+      tempoMap = this.globalDated().getMap(Mpm.TEMPO_MAP) as TempoMap | null;
       if (tempoMap === null) {
-        tempoMap = this.currentPerformance!.getGlobal()!
-          .getDated()!
-          .addMap(TempoMap.createTempoMap()) as TempoMap;
+        tempoMap = this.globalDated().addMap(TempoMap.createTempoMap()) as TempoMap;
 
-        if (
-          this.currentPerformance!.getGlobal()!
-            .getHeader()!
-            .getAllStyleTypes()
-            .get(Mpm.TEMPO_STYLE) !== undefined
-        )
+        if (this.globalHeader().getAllStyleTypes().get(Mpm.TEMPO_STYLE) !== undefined)
           tempoMap.addStyleSwitch(0.0, 'MEI export');
       }
 
@@ -2762,13 +2806,15 @@ export class Mei2MsmMpmConverter {
     if (articId !== null) xmlid = articId.getValue();
 
     // make sure there is a styleDef in MPM for articulation definitions
-    let articulationStyle = this.currentPerformance!.getGlobal()!
-      .getHeader()!
-      .getStyleDef(Mpm.ARTICULATION_STYLE, 'MEI export') as ArticulationStyle | null;
+    let articulationStyle = this.globalHeader().getStyleDef(
+      Mpm.ARTICULATION_STYLE,
+      'MEI export',
+    ) as ArticulationStyle | null;
     if (articulationStyle === null) {
-      articulationStyle = this.currentPerformance!.getGlobal()!
-        .getHeader()!
-        .addStyleDef(Mpm.ARTICULATION_STYLE, 'MEI export') as ArticulationStyle | null;
+      articulationStyle = this.globalHeader().addStyleDef(
+        Mpm.ARTICULATION_STYLE,
+        'MEI export',
+      ) as ArticulationStyle | null;
       const nonlegatoDef = ArticulationDef.createDefaultArticulationDef('nonlegato');
       if (nonlegatoDef !== null) articulationStyle!.addDef(nonlegatoDef);
     }
@@ -2955,13 +3001,15 @@ export class Mei2MsmMpmConverter {
           const tstamp = att.getValue();
 
           // make sure there is a styleDef in MPM for articulation definitions
-          let articulationStyle = this.currentPerformance!.getGlobal()!
-            .getHeader()!
-            .getStyleDef(Mpm.ARTICULATION_STYLE, 'MEI export') as ArticulationStyle | null;
+          let articulationStyle = this.globalHeader().getStyleDef(
+            Mpm.ARTICULATION_STYLE,
+            'MEI export',
+          ) as ArticulationStyle | null;
           if (articulationStyle === null) {
-            articulationStyle = this.currentPerformance!.getGlobal()!
-              .getHeader()!
-              .addStyleDef(Mpm.ARTICULATION_STYLE, 'MEI export') as ArticulationStyle | null;
+            articulationStyle = this.globalHeader().addStyleDef(
+              Mpm.ARTICULATION_STYLE,
+              'MEI export',
+            ) as ArticulationStyle | null;
             articulationStyle!.getDef('defaultArticulation');
           }
 
@@ -2970,13 +3018,13 @@ export class Mei2MsmMpmConverter {
           att = breath.getAttribute('part');
           if (att === null) att = breath.getAttribute('staff');
           if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-            articulationMap = this.currentPerformance!.getGlobal()!
-              .getDated()!
-              .getMap(Mpm.ARTICULATION_MAP) as ArticulationMap | null;
+            articulationMap = this.globalDated().getMap(
+              Mpm.ARTICULATION_MAP,
+            ) as ArticulationMap | null;
             if (articulationMap === null) {
-              articulationMap = this.currentPerformance!.getGlobal()!
-                .getDated()!
-                .addMap(ArticulationMap.createArticulationMap()) as ArticulationMap;
+              articulationMap = this.globalDated().addMap(
+                ArticulationMap.createArticulationMap(),
+              ) as ArticulationMap;
               articulationMap.addArticulationStyleSwitch(0.0, 'MEI export', 'nonlegato');
             }
             const date = this.tstampToTicks(tstamp, this.currentPart);
@@ -3230,12 +3278,7 @@ export class Mei2MsmMpmConverter {
         this.tstamp2s.push(slurMisc);
       }
 
-      addToMap(
-        slurMisc,
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('miscMap')!,
-      );
+      addToMap(slurMisc, this.requireGlobalDatedMap('miscMap'));
       return;
     }
 
@@ -3279,7 +3322,7 @@ export class Mei2MsmMpmConverter {
           this.tstamp2s.push(slurMisc);
         }
 
-        addToMap(slurMisc, part.getFirstChildElement('dated')!.getFirstChildElement('miscMap')!);
+        addToMap(slurMisc, requireDatedMap(part, 'miscMap'));
       }
     }
   }
@@ -3309,14 +3352,9 @@ export class Mei2MsmMpmConverter {
   }
 
   private processBeatRpt(_beatRpt: Element): void {
-    let es = this.currentPart!.getFirstChildElement('dated')!
-      .getFirstChildElement('timeSignatureMap')!
-      .getChildElements('timeSignature');
+    let es = this.requirePartDatedMap('timeSignatureMap').getChildElements('timeSignature');
     if (es.size() === 0) {
-      es = this.currentMsmMovement!.getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('timeSignatureMap')!
-        .getChildElements('timeSignature');
+      es = this.requireGlobalDatedMap('timeSignatureMap').getChildElements('timeSignature');
     }
     let beatLength =
       es.size() === 0 ? 4 : parseFloat(es.get(es.size() - 1).getAttributeValue('denominator')!);
@@ -3364,11 +3402,7 @@ export class Mei2MsmMpmConverter {
   private processRepeat(timeframe: number): void {
     if (
       this.currentPart === null ||
-      this.currentPart
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('score')!
-        .getChildElements()
-        .size() === 0
+      this.requirePartDatedMap('score').getChildElements().size() === 0
     ) {
       return;
     }
@@ -3378,10 +3412,7 @@ export class Mei2MsmMpmConverter {
     const layer = Mei.getLayerId(this.currentLayer);
     const els: Element[] = [];
 
-    const scoreChildren = this.currentPart
-      .getFirstChildElement('dated')!
-      .getFirstChildElement('score')!
-      .getChildElements();
+    const scoreChildren = this.requirePartDatedMap('score').getChildElements();
     for (let idx = scoreChildren.size() - 1; idx >= 0; --idx) {
       const e = scoreChildren.get(idx);
       const date = parseFloat(e.getAttributeValue('date')!);
@@ -3399,7 +3430,7 @@ export class Mei2MsmMpmConverter {
     }
 
     for (const el of els) {
-      addToMap(el, this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('score'));
+      addToMap(el, this.partDatedMap('score'));
     }
 
     this.currentPart.getAttribute('currentDate')!.setValue(String(currentDate + timeframe));
@@ -3409,7 +3440,7 @@ export class Mei2MsmMpmConverter {
     if (this.currentPart === null) return;
     const rest = this.makeMeasureRest(mRest);
     if (rest === null) return;
-    addToMap(rest, this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('score'));
+    addToMap(rest, this.partDatedMap('score'));
     this.currentPart
       .getAttribute('currentDate')!
       .setValue(
@@ -3427,28 +3458,16 @@ export class Mei2MsmMpmConverter {
 
     if (
       this.currentPart !== null &&
-      this.currentPart
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('timeSignatureMap')!
-        .getFirstChildElement('timeSignature') !== null
+      this.requirePartDatedMap('timeSignatureMap').getFirstChildElement('timeSignature') !== null
     ) {
-      const es = this.currentPart
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('timeSignatureMap')!
-        .getChildElements('timeSignature');
+      const es = this.requirePartDatedMap('timeSignatureMap').getChildElements('timeSignature');
       dur =
         (4.0 * this.ppq * parseFloat(es.get(es.size() - 1).getAttributeValue('numerator')!)) /
         parseFloat(es.get(es.size() - 1).getAttributeValue('denominator')!);
     } else if (
-      this.currentMsmMovement!.getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('timeSignatureMap')!
-        .getFirstChildElement('timeSignature') !== null
+      this.requireGlobalDatedMap('timeSignatureMap').getFirstChildElement('timeSignature') !== null
     ) {
-      const es = this.currentMsmMovement!.getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('timeSignatureMap')!
-        .getChildElements('timeSignature');
+      const es = this.requireGlobalDatedMap('timeSignatureMap').getChildElements('timeSignature');
       dur =
         (4.0 * this.ppq * parseFloat(es.get(es.size() - 1).getAttributeValue('numerator')!)) /
         parseFloat(es.get(es.size() - 1).getAttributeValue('denominator')!);
@@ -3466,7 +3485,7 @@ export class Mei2MsmMpmConverter {
     const rest = this.makeMeasureRest(multiRest);
     if (rest === null) return;
     rest.addAttribute(new Attribute('date', this.getMidiTimeAsString()));
-    addToMap(rest, this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('score'));
+    addToMap(rest, this.partDatedMap('score'));
     const num =
       multiRest.getAttribute('num') === null ? 1 : parseInt(multiRest.getAttributeValue('num')!);
     if (num > 1)
@@ -3494,7 +3513,7 @@ export class Mei2MsmMpmConverter {
     this.currentPart!.getAttribute('currentDate')!.setValue(
       String(parseFloat(this.currentPart!.getAttributeValue('currentDate')!) + dur),
     );
-    addToMap(s, this.currentPart!.getFirstChildElement('dated')!.getFirstChildElement('score'));
+    addToMap(s, this.partDatedMap('score'));
     rest.addAttribute(new Attribute('date', s.getAttributeValue('date')!));
     rest.addAttribute(new Attribute('midi.dur', s.getAttributeValue('duration')!));
   }
@@ -3588,9 +3607,7 @@ export class Mei2MsmMpmConverter {
         trans.addAttribute(new Attribute('endid', endid.getValue()));
         this.endids.push(trans);
       }
-      const miscMap = this.currentMsmMovement!.getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('miscMap')!;
+      const miscMap = this.requireGlobalDatedMap('miscMap');
       addToMap(trans, miscMap);
     } else {
       const staffString = att.getValue();
@@ -3616,10 +3633,7 @@ export class Mei2MsmMpmConverter {
             trans.addAttribute(new Attribute('endid', endid.getValue()));
             this.endids.push(trans);
           }
-          const miscMap = parts
-            .get(p)
-            .getFirstChildElement('dated')!
-            .getFirstChildElement('miscMap')!;
+          const miscMap = requireDatedMap(parts.get(p), 'miscMap');
           addToMap(trans, miscMap);
           this.addLayerAttribute(trans);
           multiIDs = true;
@@ -3656,9 +3670,7 @@ export class Mei2MsmMpmConverter {
         pedalMapEntry.addAttribute(new Attribute('endid', endid.getValue()));
         this.endids.push(pedalMapEntry);
       }
-      const pedalMap = this.currentMsmMovement!.getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('pedalMap')!;
+      const pedalMap = this.requireGlobalDatedMap('pedalMap');
       addToMap(pedalMapEntry, pedalMap);
     } else {
       const staffString = att.getValue();
@@ -3683,10 +3695,7 @@ export class Mei2MsmMpmConverter {
             pedalMapEntry.addAttribute(new Attribute('endid', endid.getValue()));
             this.endids.push(pedalMapEntry);
           }
-          const pedalMap = parts
-            .get(p)
-            .getFirstChildElement('dated')!
-            .getFirstChildElement('pedalMap')!;
+          const pedalMap = requireDatedMap(parts.get(p), 'pedalMap');
           addToMap(pedalMapEntry, pedalMap);
           this.addLayerAttribute(pedalMapEntry);
           multiIDs = true;
@@ -3794,7 +3803,7 @@ export class Mei2MsmMpmConverter {
         // back-to-front order this loop already read them in, and stops when the loop does
         // — which for a tie whose partner is the note just before it is immediately.
         const ps = reverseDescendantElements(
-          this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('score')!,
+          this.requirePartDatedMap('score'),
           (element) => element.getLocalName() === 'note' && element.getAttribute('tie') !== null,
         );
         for (const p of ps) {
@@ -3821,7 +3830,7 @@ export class Mei2MsmMpmConverter {
     this.lyrics = [];
 
     this.addLayerAttribute(s);
-    addToMap(s, this.currentPart.getFirstChildElement('dated')!.getFirstChildElement('score'));
+    addToMap(s, this.partDatedMap('score'));
   }
 
   /**
@@ -3948,15 +3957,9 @@ export class Mei2MsmMpmConverter {
   protected getCurrentTimeSignature(msmPartContext: Element | null): readonly [number, number] {
     let es: Elements | null = null;
     if (msmPartContext !== null)
-      es = msmPartContext
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('timeSignatureMap')!
-        .getChildElements();
+      es = requireDatedMap(msmPartContext, 'timeSignatureMap').getChildElements();
     if (es === null || es.size() === 0)
-      es = this.currentMsmMovement!.getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('timeSignatureMap')!
-        .getChildElements();
+      es = this.requireGlobalDatedMap('timeSignatureMap').getChildElements();
     if (es.size() === 0 && this.currentWork !== null) {
       const meter = this.currentWork.getFirstChildElement('meter');
       if (meter !== null) {
@@ -4054,13 +4057,15 @@ export class Mei2MsmMpmConverter {
         tempoData.transitionToString = '+';
       } else {
         // this instruction might be added to the global styleDef
-        let tempoStyle = this.currentPerformance!.getGlobal()!
-          .getHeader()!
-          .getStyleDef(Mpm.TEMPO_STYLE, 'MEI export') as TempoStyle | null;
+        let tempoStyle = this.globalHeader().getStyleDef(
+          Mpm.TEMPO_STYLE,
+          'MEI export',
+        ) as TempoStyle | null;
         if (tempoStyle === null)
-          tempoStyle = this.currentPerformance!.getGlobal()!
-            .getHeader()!
-            .addStyleDef(Mpm.TEMPO_STYLE, 'MEI export') as TempoStyle | null;
+          tempoStyle = this.globalHeader().addStyleDef(
+            Mpm.TEMPO_STYLE,
+            'MEI export',
+          ) as TempoStyle | null;
 
         if (tempoStyle !== null && tempoStyle.getDef(descriptor) === undefined) {
           let tempoDef: TempoDef | null;
@@ -4150,10 +4155,7 @@ export class Mei2MsmMpmConverter {
    * considered first.
    */
   protected checkSlurs(e: Element): void {
-    let slurs = this.currentMsmMovement!.getFirstChildElement('global')!
-      .getFirstChildElement('dated')!
-      .getFirstChildElement('miscMap')!
-      .getChildElements('slur');
+    let slurs = this.requireGlobalDatedMap('miscMap').getChildElements('slur');
 
     for (let i = slurs.size() - 1; i >= 0; --i) {
       if (
@@ -4176,10 +4178,7 @@ export class Mei2MsmMpmConverter {
 
     if (this.currentPart !== null) {
       const layerId = Mei.getLayerId(Mei.getLayer(e));
-      slurs = this.currentPart
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('miscMap')!
-        .getChildElements('slur');
+      slurs = this.requirePartDatedMap('miscMap').getChildElements('slur');
 
       for (let i = slurs.size() - 1; i >= 0; --i) {
         if (!Mei2MsmMpmConverter.isSameLayer(slurs.get(i), layerId)) continue;
@@ -4366,15 +4365,9 @@ export class Mei2MsmMpmConverter {
         } else {
           if (this.currentPart === null) return 0.0;
           const layerId = Mei.getLayerId(Mei.getLayer(ofThis));
-          let durdefaults = this.currentPart
-            .getFirstChildElement('dated')!
-            .getFirstChildElement('miscMap')!
-            .getChildElements('dur.default');
+          let durdefaults = this.requirePartDatedMap('miscMap').getChildElements('dur.default');
           if (durdefaults.size() === 0) {
-            durdefaults = this.currentMsmMovement!.getFirstChildElement('global')!
-              .getFirstChildElement('dated')!
-              .getFirstChildElement('miscMap')!
-              .getChildElements('dur.default');
+            durdefaults = this.requireGlobalDatedMap('miscMap').getChildElements('dur.default');
           }
           for (let i = durdefaults.size() - 1; i >= 0; --i) {
             if (
@@ -4434,18 +4427,12 @@ export class Mei2MsmMpmConverter {
     let tps: Element[];
     if (this.currentPart !== null) {
       tps = allChildElements(
-        this.currentPart
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('miscMap')!
-          .getFirstChildElement('tupletSpanMap')!,
+        this.requirePartDatedMap('miscMap').getFirstChildElement('tupletSpanMap')!,
         'tupletSpan',
       );
     } else {
       tps = allChildElements(
-        this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('miscMap')!
-          .getFirstChildElement('tupletSpanMap')!,
+        this.requireGlobalDatedMap('miscMap').getFirstChildElement('tupletSpanMap')!,
         'tupletSpan',
       );
     }
@@ -4466,10 +4453,7 @@ export class Mei2MsmMpmConverter {
         ts.getAttribute('date.end') !== null &&
         parseFloat(ts.getAttributeValue('date.end')!) <= this.getMidiTime()
       ) {
-        this.currentPart!.getFirstChildElement('dated')!
-          .getFirstChildElement('miscMap')!
-          .getFirstChildElement('tupletSpanMap')!
-          .removeChild(ts);
+        this.requirePartDatedMap('miscMap').getFirstChildElement('tupletSpanMap')!.removeChild(ts);
         continue;
       }
       if (!Mei2MsmMpmConverter.isSameLayer(ts, Mei.getLayerId(this.currentLayer))) continue;
@@ -4580,15 +4564,9 @@ export class Mei2MsmMpmConverter {
         oct = parseFloat(ofThis.getAttributeValue('oct')!);
       } else {
         if (this.currentPart !== null) {
-          let octs = this.currentPart
-            .getFirstChildElement('dated')!
-            .getFirstChildElement('miscMap')!
-            .getChildElements('oct.default');
+          let octs = this.requirePartDatedMap('miscMap').getChildElements('oct.default');
           if (octs.size() === 0) {
-            octs = this.currentMsmMovement!.getFirstChildElement('global')!
-              .getFirstChildElement('dated')!
-              .getFirstChildElement('miscMap')!
-              .getChildElements('oct.default');
+            octs = this.requireGlobalDatedMap('miscMap').getChildElements('oct.default');
           }
           for (let i = octs.size() - 1; i >= 0; --i) {
             if (
@@ -4638,14 +4616,8 @@ export class Mei2MsmMpmConverter {
         }
         if (checkKeySign) {
           const keySigMapLocal =
-            this.currentPart === null
-              ? null
-              : this.currentPart
-                  .getFirstChildElement('dated')!
-                  .getFirstChildElement('keySignatureMap');
-          const keySigMapGlobal = this.currentMsmMovement!.getFirstChildElement('global')!
-            .getFirstChildElement('dated')!
-            .getFirstChildElement('keySignatureMap');
+            this.currentPart === null ? null : this.partDatedMap('keySignatureMap');
+          const keySigMapGlobal = this.globalDatedMap('keySignatureMap');
 
           let keySigLocal: Element | null = null;
           if (keySigMapLocal !== null) {
@@ -4716,10 +4688,7 @@ export class Mei2MsmMpmConverter {
     // transpositions
     if (ofThis.getAttribute('pname.ges') === null || ofThis.getAttribute('oct.ges') === null) {
       {
-        const globalTrans = this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('miscMap')!
-          .getChildElements('transposition');
+        const globalTrans = this.requireGlobalDatedMap('miscMap').getChildElements('transposition');
         for (let i = globalTrans.size() - 1; i >= 0; --i) {
           if (
             globalTrans.get(i).getAttributeValue('date') !== null &&
@@ -4737,10 +4706,8 @@ export class Mei2MsmMpmConverter {
         }
       }
       {
-        const globalAddTrans = this.currentMsmMovement!.getFirstChildElement('global')!
-          .getFirstChildElement('dated')!
-          .getFirstChildElement('miscMap')!
-          .getChildElements('addTransposition');
+        const globalAddTrans =
+          this.requireGlobalDatedMap('miscMap').getChildElements('addTransposition');
         for (let i = globalAddTrans.size() - 1; i >= 0; --i) {
           if (
             globalAddTrans.get(i).getAttributeValue('date') !== null &&
@@ -4758,10 +4725,7 @@ export class Mei2MsmMpmConverter {
       }
       if (this.currentPart !== null) {
         {
-          const localTrans = this.currentPart
-            .getFirstChildElement('dated')!
-            .getFirstChildElement('miscMap')!
-            .getChildElements('transposition');
+          const localTrans = this.requirePartDatedMap('miscMap').getChildElements('transposition');
           for (let i = localTrans.size() - 1; i >= 0; --i) {
             if (
               localTrans.get(i).getAttributeValue('date') !== null &&
@@ -4779,10 +4743,8 @@ export class Mei2MsmMpmConverter {
           }
         }
         {
-          const localAddTrans = this.currentPart
-            .getFirstChildElement('dated')!
-            .getFirstChildElement('miscMap')!
-            .getChildElements('addTransposition');
+          const localAddTrans =
+            this.requirePartDatedMap('miscMap').getChildElements('addTransposition');
           for (let i = localAddTrans.size() - 1; i >= 0; --i) {
             if (
               localAddTrans.get(i).getAttributeValue('date') !== null &&
