@@ -1,4 +1,10 @@
-import { bezierPoint, innerControlPointsXPositions, sampleSegment, tForDate } from './bezier.js';
+import {
+  bezierPoint,
+  innerControlPointsXPositions,
+  sampleSegment,
+  tForDate,
+  type CurvePoint,
+} from './bezier.js';
 
 /**
  * One `<dynamics>` instruction as the renderer evaluates it: a loudness at the start, a
@@ -172,7 +178,7 @@ export function dynamicsAt(d: Dynamics, date: number): number {
  * Unlike `movement.ts`'s `movementSegment` this adds no exact endpoints and applies no
  * scaling — the raw {@link sampleSegment} series is the answer.
  */
-export function subNoteDynamicsSegment(d: Dynamics, maxStepSize: number): number[][] {
+export function subNoteDynamicsSegment(d: Dynamics, maxStepSize: number): CurvePoint[] {
   return sampleSegment(maxStepSize, (t) =>
     bezierPoint(d.x1, d.x2, d.startDate, d.endDate, d.volume, d.transitionTo, t),
   );

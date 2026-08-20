@@ -2,6 +2,7 @@ import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { MPM_NAMESPACE } from '../../../names.js';
+import { elementAt } from '../../../../prelude/index.js';
 
 /**
  * One `<note>` of an MPM v3 `<ornament>`'s note pool: an auxiliary note the ornament may
@@ -138,7 +139,7 @@ function parsePitchSpec(xml: Element): OrnamentPitchSpec | null {
   const present = [midi, chromatic, diatonic].filter((att) => att !== null);
   if (present.length > 1)
     console.error(
-      `Warning: ornament pool note ${xml.toXML()} sets more than one of midi.pitch, interval.chromatic and interval.diatonic; only ${present[0].getQualifiedName()} is used.`,
+      `Warning: ornament pool note ${xml.toXML()} sets more than one of midi.pitch, interval.chromatic and interval.diatonic; only ${elementAt(present, 0, 'pitch attribute').getQualifiedName()} is used.`,
     );
 
   if (midi !== null) return readPitchValue('midi', midi);
