@@ -1015,7 +1015,14 @@ export class Document {
   private readonly _declaration: string;
 
   toXML(): string {
-    return `${this._declaration}\n${this._rootElement.toXML()}`;
+    // The trailing newline is Java's: XOM's `Serializer` ends the document with one, all 32
+    // reference fixtures carry exactly one, and this port emitted none. It was invisible
+    // because `cross-validation.test.ts` ended its normaliser chain with a `.trim()` that its
+    // own audit of what it forgives did not mention. Note that the byte-compared public API
+    // path serialises through `getRootElement().toXML()` (RULE F2a) and is unaffected — this
+    // is the whole-document spelling, which is what `XmlBase.toXML` and the reference
+    // comparison use.
+    return `${this._declaration}\n${this._rootElement.toXML()}\n`;
   }
 
   copy(): Document {

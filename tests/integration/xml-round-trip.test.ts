@@ -8,20 +8,26 @@ import { Builder } from '../../src/xml/XomTypes.js';
  *
  * The model layer replaces the live XOM tree with immutable data parsed from the document and
  * written back out, so everything downstream rests on the serializer being able to reproduce
- * its input. This file measures how far that already holds, and pins the three places it does
- * not — so that closing any of them is a deliberate, visible act rather than a silent change
- * of output.
+ * its input. This file measures how far that already holds, and pins the place it does not —
+ * so that closing it is a deliberate, visible act rather than a silent change of output.
  *
- * As of today, attribute order, child order, escaping and whitespace all survive a round trip
- * byte for byte. The four things that do not:
+ * As of today, attribute order, child order, escaping, whitespace and the trailing newline all
+ * survive a round trip byte for byte. **One thing does not:**
  *
- *   1. A trailing newline is dropped.
- *   2. An empty element is always written `<x />`, never `<x/>`. This one was found by this
+ *   1. An empty element is always written `<x />`, never `<x/>`. This one was found by this
  *      test rather than before it: every Java-generated reference already uses the spaced
  *      form, so it is invisible against the fixtures that matter and shows up only against
  *      the hand-written MEI inputs. It is a normalisation, not a divergence from meico.
  *
- * Two more used to be here and are now **fixed**.
+ * Three more used to be here and are now **fixed**.
+ *
+ * The trailing newline was dropped: `Document.toXML` wrote the declaration, a newline and the
+ * root element, and stopped. Every one of the 32 Java reference documents ends with a newline
+ * and every one of the 16 MEI fixtures does too — measured, all 48 with exactly one. This was
+ * invisible for the same reason as the two below: `cross-validation.test.ts` ended its
+ * normaliser chain with a `.trim()` that was not in its own audited list of what it forgives.
+ * Removing that `.trim()` without fixing the serializer reds 32 of its tests, which is what
+ * makes it a divergence rather than a formatting preference.
  *
  * The XML declaration was hardcoded to `<?xml version="1.0" encoding="UTF-8"?>`, where Java's
  * XOM writes `<?xml version="1.0"?>` and every reference fixture begins with exactly that. A
@@ -49,18 +55,13 @@ import { Builder } from '../../src/xml/XomTypes.js';
 const REFERENCE_DIR = join(import.meta.dirname, 'fixtures', 'reference');
 const MEI_DIR = join(import.meta.dirname, 'fixtures', 'mei');
 
-/** Known loss (1). */
-function normalizeTrailingNewline(xml: string): string {
-  return xml.replace(/\n+$/, '');
-}
-
-/** Known loss (2): the serializer always spaces the solidus of an empty element. */
+/** The one remaining known loss: the serializer always spaces the solidus of an empty element. */
 function normalizeSelfClosing(xml: string): string {
   return xml.replace(/\s*\/>/g, ' />');
 }
 
 function normalizeKnownLosses(xml: string): string {
-  return normalizeSelfClosing(normalizeTrailingNewline(xml));
+  return normalizeSelfClosing(xml);
 }
 
 function roundTrip(xml: string): string {
@@ -100,7 +101,7 @@ describe('XML round trip', () => {
   });
 
   describe.each(FIXTURES)('$name', ({ text }) => {
-    it('survives parse and serialize once the two known losses are normalised', () => {
+    it('survives parse and serialize once the one known loss is normalised', () => {
       expect(normalizeKnownLosses(roundTrip(text))).toBe(normalizeKnownLosses(text));
     });
 

@@ -34,9 +34,15 @@ function canonicalizeUuids(xml: string): string {
  *
  * **A normaliser applied to BOTH sides can only ever hide a difference, never reveal one.** So
  * each entry here has to earn its place by naming something genuinely incomparable, and this
- * suite has been audited on exactly that basis. It carried five; three were hiding real
+ * suite has been audited on exactly that basis. It carried five; **four** were hiding real
  * divergences from Java output and are gone:
  *
+ * - a bare `.trim()` on the end of the chain, which was not in this list at all when the first
+ *   four entries were audited — the audit checked the normalisers it could see. It forgave a
+ *   missing trailing newline: all 32 Java reference documents end with one and this port's
+ *   `Document.toXML` emitted none. Fixed in the serializer; removing the `.trim()` without
+ *   that fix reds 32 tests, so it was load-bearing, and `xml-round-trip.test.ts` dropped a
+ *   known loss at the same time.
  * - the default-namespace declaration, re-emitted on every namespaced element (fixed in
  *   `Element.toXML`; reinstating the defect now reds 64 tests)
  * - the XML declaration, hardcoded with `encoding="UTF-8"` where Java writes none (fixed in
@@ -76,8 +82,6 @@ function normalizeXml(xml: string): string {
       .replace(/uri="[^"]*\.(mei|msm|mpm)"/g, 'uri="NORMALIZED.$1"')
       // Normalize numeric formatting: "0.0" → "0", "720.0" → "720", "-5.0" → "-5" (Java uses doubles, TS uses numbers)
       .replace(/="(-?\d+)\.0"/g, '="$1"')
-      // Trim
-      .trim()
   );
 }
 
