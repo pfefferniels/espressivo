@@ -1456,8 +1456,9 @@ export class Mei2MsmMpmConverter {
    * Three things happen around the recursive descent:
    * - **before**: parked {@link tstamp2s} are counted down one measure. `tstamp2` is
    *   written `<measures>m+<beat>`, so each measure boundary decrements the count and only
-   *   the entry that reaches zero resolves to a `date.end` here. The in-place `splice`
-   *   with `i--` is why this is an index loop and not a `for..of`;
+   *   the entry that reaches zero resolves to a `date.end` here. Java splices the resolved
+   *   entries out in place and steps its index backwards to survive the mutation; here the
+   *   two outcomes are a partition, so the list is rebuilt by a filter instead;
    * - **before**: {@link reorderMeasureContent} hoists control events ahead of the staves;
    * - **after**: {@link accid} is cleared, because MEI accidentals last exactly one measure.
    *
