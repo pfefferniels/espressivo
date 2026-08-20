@@ -2,7 +2,8 @@ import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
-import { AbstractDef } from './AbstractDef.js';
+import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
 
 /**
  * An `articulationDef`: the bundle of duration, timing, velocity and detuning changes that
@@ -15,7 +16,9 @@ import { AbstractDef } from './AbstractDef.js';
  * {@link articulateNote} writes them onto the note as `articulation.*` attributes for the
  * millisecond-domain pass to pick up later.
  */
-export class ArticulationDef extends AbstractDef {
+export class ArticulationDef extends AbstractXmlSubtree {
+  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  readonly kind = 'articulation';
   private absoluteDuration: number | null = null;
   private absoluteDurationChange = 0.0;
   private absoluteDurationMs: number | null = null;
@@ -29,8 +32,17 @@ export class ArticulationDef extends AbstractDef {
   private detuneCents = 0.0;
   private detuneHz = 0.0;
 
-  private constructor() {
+  private constructor(private readonly nameAttr: Attribute) {
     super();
+  }
+
+  getName(): string {
+    return this.nameAttr.getValue();
+  }
+
+  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  setName(name: string): void {
+    this.nameAttr.setValue(name);
   }
 
   /**
@@ -44,8 +56,9 @@ export class ArticulationDef extends AbstractDef {
    * Java also renames a foreign element to `articulationDef` via `setLocalName()`, which
    * XomTypes cannot do; see the same note on `TempoDef`.
    */
-  protected override parseData(xml: Element): void {
-    super.parseData(xml);
+  protected parseData(xml: Element): void {
+    this.setXml(xml);
+    this.id = attribute('id', xml);
 
     // null = attribute absent, so the field keeps its default. Present but unparsable is not
     // a third outcome: it throws, createArticulationDef returns null and the style skips the
@@ -80,18 +93,18 @@ export class ArticulationDef extends AbstractDef {
   static createArticulationDef(xml: Element): ArticulationDef | null;
   static createArticulationDef(nameOrXml: string | Element): ArticulationDef | null {
     try {
-      const ad = new ArticulationDef();
+      let xml: Element;
       if (typeof nameOrXml === 'string') {
-        const e = new Element('articulationDef', MPM_NAMESPACE);
-        e.addAttribute(new Attribute('name', nameOrXml));
-        ad.parseData(e);
+        xml = new Element('articulationDef', MPM_NAMESPACE);
+        xml.addAttribute(new Attribute('name', nameOrXml));
       } else {
-        ad.parseData(nameOrXml);
+        xml = nameOrXml;
       }
+      const ad = new ArticulationDef(requireDefName(xml, 'ArticulationDef'));
+      ad.parseData(xml);
       return ad;
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e);
     }
   }
 

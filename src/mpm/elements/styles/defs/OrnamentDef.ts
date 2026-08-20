@@ -1,7 +1,8 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { allChildElements, attribute, firstChildElement } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
-import { AbstractDef } from './AbstractDef.js';
+import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
 import { DynamicsGradient } from './DynamicsGradient.js';
 import {
   TemporalSpread,
@@ -21,14 +22,25 @@ import type { MpmSourceFormat, OrnamentAlignment } from './TemporalSpread.js';
  * the start of its principal note or at its end (`ornamentDef.xml:25-33`). Everything else
  * v3 changed about ornament definitions lives inside {@link TemporalSpread}.
  */
-export class OrnamentDef extends AbstractDef {
+export class OrnamentDef extends AbstractXmlSubtree {
+  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  readonly kind = 'ornament';
   private temporalSpread: TemporalSpread | null = null;
   private dynamicsGradient: DynamicsGradient | null = null;
   private alignment: OrnamentAlignment = DEFAULT_ORNAMENT_ALIGNMENT;
   private sourceFormat: MpmSourceFormat = 'v2';
 
-  private constructor() {
+  private constructor(private readonly nameAttr: Attribute) {
     super();
+  }
+
+  getName(): string {
+    return this.nameAttr.getValue();
+  }
+
+  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  setName(name: string): void {
+    this.nameAttr.setValue(name);
   }
 
   /**
@@ -42,8 +54,10 @@ export class OrnamentDef extends AbstractDef {
    * treated as absent, so a malformed attribute here still lets a well-formed one on the
    * spread through rather than silently forcing the default.
    */
-  protected override parseData(xml: Element): void {
-    super.parseData(xml);
+  protected parseData(xml: Element): void {
+    this.setXml(xml);
+    this.id = attribute('id', xml);
+
     for (const transformer of allChildElements(xml)) {
       switch (transformer.getLocalName()) {
         case 'dynamicsGradient':
@@ -84,18 +98,18 @@ export class OrnamentDef extends AbstractDef {
   static createOrnamentDef(xml: Element): OrnamentDef | null;
   static createOrnamentDef(nameOrXml: string | Element): OrnamentDef | null {
     try {
-      const od = new OrnamentDef();
+      let xml: Element;
       if (typeof nameOrXml === 'string') {
-        const e = new Element('ornamentDef', MPM_NAMESPACE);
-        e.addAttribute(new Attribute('name', nameOrXml));
-        od.parseData(e);
+        xml = new Element('ornamentDef', MPM_NAMESPACE);
+        xml.addAttribute(new Attribute('name', nameOrXml));
       } else {
-        od.parseData(nameOrXml);
+        xml = nameOrXml;
       }
+      const od = new OrnamentDef(requireDefName(xml, 'OrnamentDef'));
+      od.parseData(xml);
       return od;
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e);
     }
   }
 

@@ -1,10 +1,9 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { METRICAL_ACCENTUATION_STYLE, MPM_NAMESPACE } from '../../names.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { MetricalAccentuationData } from './data/MetricalAccentuationData.js';
-import { MetricalAccentuationStyle } from '../styles/MetricalAccentuationStyle.js';
 
 /**
  * An MPM `metricalAccentuationMap`: the emphasis pattern of the metre — the reason a
@@ -77,10 +76,7 @@ export class MetricalAccentuationMap extends GenericMap {
     const stmAtt = attribute('stickToMeasures', e);
     if (stmAtt !== null) md.stickToMeasures = stmAtt.getValue() === 'true';
     md.styleName = this.findStyleNameAt(i) ?? '';
-    const gStyle = this.getStyle(
-      METRICAL_ACCENTUATION_STYLE,
-      md.styleName,
-    ) as MetricalAccentuationStyle | null;
+    const gStyle = this.getStyle('metricalAccentuation', md.styleName);
     if (gStyle !== null) {
       md.style = gStyle;
       md.accentuationPatternDef = md.style.getDef(md.accentuationPatternDefName) ?? null;

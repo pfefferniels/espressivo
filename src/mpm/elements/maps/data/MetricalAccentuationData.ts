@@ -1,5 +1,5 @@
 import type { Element } from '../../../../xml/XomTypes.js';
-import type { MetricalAccentuationStyle } from '../../styles/MetricalAccentuationStyle.js';
+import type { MetricalAccentuationStyle } from '../../styles/style.js';
 import type { AccentuationPatternDef } from '../../styles/defs/AccentuationPatternDef.js';
 
 /**

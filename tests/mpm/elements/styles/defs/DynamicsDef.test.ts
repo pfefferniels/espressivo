@@ -65,19 +65,25 @@ describe('DynamicsDef', () => {
     });
   });
 
-  // `parseData` is the parser the static factories call — the forwarding override that
-  // used to sit in front of it is gone. Re-applying it to a second element is not a path
-  // production takes; what the test is for is the parse itself, and re-application is
-  // simply the only way to observe it separately from construction.
-  describe('parseData', () => {
-    it('re-reads name, value and xml when applied to another element', () => {
-      const dd = DynamicsDef.createDynamicsDef('forte', 97.0)!;
-      const other = dynamicsDefElement({ name: 'pp', value: '36.0' });
-      (dd as unknown as { parseData(xml: Element): void }).parseData(other);
+  // WAS: `parseData` re-applied to a second element. See the same note in `TempoDef.test.ts`
+  // — `@name` and `@value` are required, so they are read by the factory and handed to
+  // `readonly` constructor parameters, which is what let `AbstractDef`'s `name!` go. The
+  // parse itself is observed by the from-XML cases above; this pins what replaced it.
+  describe('the identity attributes are bound at construction', () => {
+    it('writes through the very attribute nodes the parse read', () => {
+      const xml = dynamicsDefElement({ name: 'pp', value: '36.0' });
+      const dd = DynamicsDef.createDynamicsDef(xml)!;
+      expect(dd.getXml()).toBe(xml);
+      const nameNode = xml.getAttribute('name')!;
+      const valueNode = xml.getAttribute('value')!;
 
-      expect(dd.getName()).toBe('pp');
-      expect(dd.getValue()).toBe(36.0);
-      expect(dd.getXml()).toBe(other);
+      dd.setName('ppp');
+      dd.setValue(12.0);
+      expect(nameNode.getValue()).toBe('ppp');
+      expect(valueNode.getValue()).toBe('12');
+      expect(dd.getName()).toBe('ppp');
+      expect(dd.getValue()).toBe(12.0);
+      expect(xml.getAttributeCount()).toBe(2);
     });
   });
 

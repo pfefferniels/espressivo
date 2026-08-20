@@ -1,10 +1,9 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { ARTICULATION_STYLE, MPM_NAMESPACE } from '../../names.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { ArticulationData } from './data/ArticulationData.js';
-import { ArticulationStyle } from '../styles/ArticulationStyle.js';
 import { ArticulationDef } from '../styles/defs/ArticulationDef.js';
 
 /**
@@ -158,7 +157,7 @@ export class ArticulationMap extends GenericMap {
     const s = this.findStyleSwitchAt(index);
     if (s === null) return;
     ad.styleName = getAttributeValue('name.ref', s);
-    ad.style = this.getStyle(ARTICULATION_STYLE, ad.styleName) as ArticulationStyle | null;
+    ad.style = this.getStyle('articulation', ad.styleName);
     const att = attribute('defaultArticulation', s);
     if (att !== null) {
       ad.defaultArticulation = att.getValue();
@@ -230,9 +229,9 @@ export class ArticulationMap extends GenericMap {
     const styleSwitchList = this.getAllElementsOfType('style');
     for (const styleEntry of styleSwitchList) {
       const aStyle = this.getStyle(
-        ARTICULATION_STYLE,
+        'articulation',
         getAttributeValue('name.ref', styleEntry.getValue()),
-      ) as ArticulationStyle | null;
+      );
       if (aStyle === null) continue;
 
       const defaultArticulationAtt = attribute('defaultArticulation', styleEntry.getValue());

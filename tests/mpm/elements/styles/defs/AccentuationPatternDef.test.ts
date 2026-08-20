@@ -3,6 +3,7 @@ import { AccentuationPatternDef } from '../../../../../src/mpm/elements/styles/d
 import { Element, Attribute } from '../../../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../../../src/mpm/Mpm.js';
 import { NumberFormatError } from '../../../../../src/xml/errors.js';
+import { bestGrowthRatio } from '../../../../support/growthGuard.js';
 
 /**
  * Reference: meico/src/meico/mpm/elements/styles/defs/AccentuationPatternDef.java
@@ -83,22 +84,42 @@ describe('AccentuationPatternDef', () => {
     });
   });
 
-  // `parseData` is the parser the static factories call — the forwarding override that
-  // used to sit in front of it is gone. Re-applying it to a second element is not a path
-  // production takes; what the test is for is the parse itself, and re-application is
-  // simply the only way to observe it separately from construction.
-  describe('parseData', () => {
-    it('re-reads name, length and accentuations when applied to another element', () => {
-      const apd = AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0)!;
-      const other = patternElement({ name: '3/4', length: '3.0' }, [
+  // WAS: `parseData` re-applied to a second element. See the same note in `TempoDef.test.ts`
+  // — `@name` is required, so it is read by the factory and handed to a `readonly`
+  // constructor parameter, which is what let `AbstractDef`'s `name!` go. The parse of the
+  // length and the accentuation children is observed by the from-XML cases above and below.
+  describe('name and length are bound to the element the def was parsed from', () => {
+    it('writes through the very nodes the parse read', () => {
+      const xml = patternElement({ name: '3/4', length: '3.0' }, [
         accentuation({ beat: '1.0', value: '1.0' }),
       ]);
-      (apd as unknown as { parseData(xml: Element): void }).parseData(other);
+      const apd = AccentuationPatternDef.createAccentuationPatternDef(xml)!;
 
       expect(apd.getName()).toBe('3/4');
       expect(apd.getLength()).toBe(3.0);
-      expect(apd.getXml()).toBe(other);
+      expect(apd.getXml()).toBe(xml);
       expect(apd.getAccentuationAttributes(apd.size() - 1)).toEqual([1.0, 1.0, 1.0, 1.0]);
+
+      const nameNode = xml.getAttribute('name')!;
+      const lengthNode = xml.getAttribute('length')!;
+      apd.setName('6/8');
+      apd.setLength(6.0);
+      expect(nameNode.getValue()).toBe('6/8');
+      expect(lengthNode.getValue()).toBe('6');
+      expect(xml.getAttributeCount()).toBe(2);
+    });
+
+    it('binds the default length it ADDED to a pattern that declares none', () => {
+      // Parsing writes `length="4"` onto an element without one (the class header calls this
+      // out). `setLength` has to write through that same node, or it would update nothing.
+      const xml = patternElement({ name: 'nolength' }, []);
+      const apd = AccentuationPatternDef.createAccentuationPatternDef(xml)!;
+      expect(xml.getAttributeValue('length')).toBe('4');
+      expect(apd.getLength()).toBe(4.0);
+
+      apd.setLength(6.0);
+      expect(xml.getAttributeValue('length')).toBe('6');
+      expect(xml.getAttributeCount()).toBe(2);
     });
   });
 
@@ -158,6 +179,116 @@ describe('AccentuationPatternDef', () => {
       const apd = AccentuationPatternDef.createAccentuationPatternDef(xml)!;
       expect(apd.getAllAccentuations().map((kv) => kv.getKey()[0])).toEqual([1.0, 2.0, 3.0]);
       expect(xmlBeats(apd)).toEqual(['1.0', '2.0', '3.0']);
+    });
+
+    /**
+     * The three shapes where re-sorting the children after EVERY parsed accentuation could
+     * conceivably have ended somewhere different from re-sorting them once at the end.
+     *
+     * Parsing used to call `sortXml()` inside its loop, which made it cubic in the number of
+     * accentuations (measured: n=100 1.1 ms, 200 6.9 ms, 400 56 ms, 800 380 ms — ×7-8 per
+     * doubling). It is now called once. That is safe because `sortXml` is a full re-layout
+     * whose result depends only on the list, not on the arrangement it starts from — but
+     * "only on the list" is exactly the claim that needs pinning, and it is only interesting
+     * where something OTHER than a well-formed sorted accentuation is in the child list.
+     */
+    it('keeps non-accentuation children after the sorted accentuations', () => {
+      const foreign = (n: string) => {
+        const e = new Element('somethingElse', Mpm.MPM_NAMESPACE);
+        e.addAttribute(new Attribute('n', n));
+        return e;
+      };
+      const xml = patternElement({ name: '4/4', length: '4.0' }, [
+        accentuation({ beat: '3.0', value: '0.3' }),
+        foreign('a'),
+        accentuation({ beat: '1.0', value: '0.1' }),
+        foreign('b'),
+        accentuation({ beat: '2.0', value: '0.2' }),
+      ]);
+      AccentuationPatternDef.createAccentuationPatternDef(xml)!;
+
+      const kids = xml.getChildElements();
+      const shape: string[] = [];
+      for (let i = 0; i < kids.size(); ++i) {
+        const k = kids.get(i);
+        shape.push(
+          k.getLocalName() === 'accentuation'
+            ? `beat=${k.getAttributeValue('beat')}`
+            : `foreign=${k.getAttributeValue('n')}`,
+        );
+      }
+      // The accentuations take positions 0..2 in beat order; the two foreign children are
+      // pushed after them and keep their own relative order.
+      expect(shape).toEqual(['beat=1.0', 'beat=2.0', 'beat=3.0', 'foreign=a', 'foreign=b']);
+    });
+
+    it('keeps equal beats in document order, and their elements in the matching places', () => {
+      const xml = patternElement({ name: '4/4', length: '4.0' }, [
+        accentuation({ beat: '2.0', value: '0.21' }),
+        accentuation({ beat: '1.0', value: '0.11' }),
+        accentuation({ beat: '2.0', value: '0.22' }),
+        accentuation({ beat: '2.0', value: '0.23' }),
+      ]);
+      const apd = AccentuationPatternDef.createAccentuationPatternDef(xml)!;
+
+      expect(apd.getAllAccentuations().map((kv) => kv.getKey()[1])).toEqual([
+        0.11, 0.21, 0.22, 0.23,
+      ]);
+      const kids = xml.getChildElements();
+      const values: string[] = [];
+      for (let i = 0; i < kids.size(); ++i) values.push(kids.get(i).getAttributeValue('value')!);
+      expect(values).toEqual(['0.11', '0.21', '0.22', '0.23']);
+    });
+
+    it('leaves a beat-less accentuation in the child list, after the sorted ones', () => {
+      const xml = patternElement({ name: '4/4', length: '4.0' }, [
+        accentuation({ beat: '2.0', value: '0.2' }),
+        accentuation({ value: '0.99' }),
+        accentuation({ beat: '1.0', value: '0.1' }),
+      ]);
+      const apd = AccentuationPatternDef.createAccentuationPatternDef(xml)!;
+
+      expect(apd.size()).toBe(2);
+      const kids = xml.getChildElements();
+      const values: string[] = [];
+      for (let i = 0; i < kids.size(); ++i) values.push(kids.get(i).getAttributeValue('value')!);
+      // The skipped child is in no list, so `sortXml` never places it — it ends up after the
+      // two it does place.
+      expect(values).toEqual(['0.1', '0.2', '0.99']);
+    });
+
+    it('parses a large pattern without the cubic blow-up the in-loop sort caused', () => {
+      const build = (n: number): Element =>
+        patternElement(
+          { name: 'big', length: String(n) },
+          // Reverse order, so every accentuation is inserted at the FRONT of the list and
+          // `sortXml` has the most work to do — the worst case for the shape being guarded.
+          [...Array(n).keys()].map((i) =>
+            accentuation({ beat: String(n - i), value: String((n - i) / n) }),
+          ),
+        );
+
+      const perParse = (n: number): number => {
+        let best = Infinity;
+        for (let sample = 0; sample < 3; ++sample) {
+          const xml = build(n);
+          const before = performance.now();
+          AccentuationPatternDef.createAccentuationPatternDef(xml);
+          best = Math.min(best, performance.now() - before);
+        }
+        return best;
+      };
+
+      AccentuationPatternDef.createAccentuationPatternDef(build(100)); // warm the shapes
+      AccentuationPatternDef.createAccentuationPatternDef(build(800));
+
+      // Eightfold input. One `sortXml` leaves the parse quadratic (both `removeChild` and the
+      // insertion sort are linear per element), so ~64 is the band to expect and the cubic it
+      // replaced would be ~512. Measured on this machine: ~30 after, ~350 before. The
+      // threshold sits between the two bands so a loaded machine stays green and a
+      // reintroduced `sortXml()` inside the loop does not.
+      const ratio = bestGrowthRatio(() => perParse(800) / perParse(100), 150);
+      expect(ratio).toBeLessThan(150);
     });
   });
 

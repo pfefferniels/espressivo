@@ -3,7 +3,9 @@ import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
-import { AbstractDef } from './AbstractDef.js';
+import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
+import { MissingNodeError } from '../../../../xml/errors.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
 
 /**
  * A `rubatoDef`: a reusable rubato shape that stretches and compresses time inside a
@@ -21,59 +23,94 @@ import { AbstractDef } from './AbstractDef.js';
  * element keeps that name here. `RubatoStyle` only ever feeds this factory real
  * `rubatoDef` children, so the pipeline never reaches that difference.
  */
-export class RubatoDef extends AbstractDef {
+export class RubatoDef extends AbstractXmlSubtree {
+  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  readonly kind = 'rubato';
   private frameLength = 0.0;
   private intensity = 1.0;
   private lateStart = 0.0;
   private earlyEnd = 1.0;
 
-  private constructor() {
+  /**
+   * The three attributes MPM lets a `rubatoDef` omit, held so the setters write where
+   * {@link parseData} read.
+   *
+   * Initialised to the very nodes the defaulting path installs, which is why they need no
+   * `!`: this class ADDS a missing `intensity`, `lateStart` or `earlyEnd` to the caller's
+   * element (see the header comment), so "the default node" and "the node in the document"
+   * are the same object as soon as parsing has run. Where the document declares one,
+   * `parseData` replaces the placeholder with the declared node instead.
+   */
+  private intensityAttr: Attribute;
+  private lateStartAttr: Attribute;
+  private earlyEndAttr: Attribute;
+
+  private constructor(
+    private readonly nameAttr: Attribute,
+    private readonly frameLengthAttr: Attribute,
+  ) {
     super();
+    this.intensityAttr = new Attribute('intensity', String(this.intensity));
+    this.lateStartAttr = new Attribute('lateStart', String(this.lateStart));
+    this.earlyEndAttr = new Attribute('earlyEnd', String(this.earlyEnd));
   }
 
-  protected override parseData(xml: Element): void {
-    super.parseData(xml);
+  getName(): string {
+    return this.nameAttr.getValue();
+  }
 
-    const frameLengthAttr = attribute('frameLength', xml);
-    if (frameLengthAttr === null)
-      throw new Error('Cannot generate RubatoDef object. Missing attribute frameLength.');
+  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  setName(name: string): void {
+    this.nameAttr.setValue(name);
+  }
 
-    let intensityAttr = attribute('intensity', xml);
-    if (intensityAttr === null) {
-      intensityAttr = new Attribute('intensity', String(this.intensity));
-      xml.addAttribute(intensityAttr);
+  /**
+   * NOT read-only, and that is the point of the class's header comment: three attributes are
+   * ADDED to the caller's element where they are absent, and out-of-range values are clamped
+   * in place.
+   *
+   * The name check that used to open this (via `AbstractDef.parseData`) now happens in
+   * {@link createRubatoDef} before the object exists, which keeps the rejection order
+   * unchanged — a `rubatoDef` with no `@name` is refused before anything is written to it.
+   */
+  protected parseData(xml: Element): void {
+    this.setXml(xml);
+    this.id = attribute('id', xml);
+
+    const declaredIntensity = attribute('intensity', xml);
+    if (declaredIntensity === null) {
+      xml.addAttribute(this.intensityAttr);
     } else {
+      this.intensityAttr = declaredIntensity;
       // Each of these four reads throws on a malformed value, which createRubatoDef turns
       // into null so the style skips the def — Java's behaviour at RubatoDef.java:135,148,
       // 153-154. PARITY.md, "Fixed bugs", P1.
-      intensityAttr.setValue(
+      declaredIntensity.setValue(
         String(
           RubatoDef.ensureIntensityBoundaries(
-            parseJavaDouble(intensityAttr.getValue(), 'rubatoDef/@intensity'),
+            parseJavaDouble(declaredIntensity.getValue(), 'rubatoDef/@intensity'),
           ),
         ),
       );
     }
 
-    let lateStartAttr = attribute('lateStart', xml);
-    if (lateStartAttr === null) {
-      lateStartAttr = new Attribute('lateStart', String(this.lateStart));
-      xml.addAttribute(lateStartAttr);
-    }
-    let earlyEndAttr = attribute('earlyEnd', xml);
-    if (earlyEndAttr === null) {
-      earlyEndAttr = new Attribute('earlyEnd', String(this.earlyEnd));
-      xml.addAttribute(earlyEndAttr);
-    }
-    const le = RubatoDef.ensureLateStartEarlyEndBoundaries(
-      parseJavaDouble(lateStartAttr.getValue(), 'rubatoDef/@lateStart'),
-      parseJavaDouble(earlyEndAttr.getValue(), 'rubatoDef/@earlyEnd'),
-    );
-    lateStartAttr.setValue(String(le.getKey()));
-    earlyEndAttr.setValue(String(le.getValue()));
+    const declaredLateStart = attribute('lateStart', xml);
+    if (declaredLateStart === null) xml.addAttribute(this.lateStartAttr);
+    else this.lateStartAttr = declaredLateStart;
 
-    this.frameLength = parseJavaDouble(frameLengthAttr.getValue(), 'rubatoDef/@frameLength');
-    this.intensity = parseJavaDouble(intensityAttr.getValue(), 'rubatoDef/@intensity');
+    const declaredEarlyEnd = attribute('earlyEnd', xml);
+    if (declaredEarlyEnd === null) xml.addAttribute(this.earlyEndAttr);
+    else this.earlyEndAttr = declaredEarlyEnd;
+
+    const le = RubatoDef.ensureLateStartEarlyEndBoundaries(
+      parseJavaDouble(this.lateStartAttr.getValue(), 'rubatoDef/@lateStart'),
+      parseJavaDouble(this.earlyEndAttr.getValue(), 'rubatoDef/@earlyEnd'),
+    );
+    this.lateStartAttr.setValue(String(le.getKey()));
+    this.earlyEndAttr.setValue(String(le.getValue()));
+
+    this.frameLength = parseJavaDouble(this.frameLengthAttr.getValue(), 'rubatoDef/@frameLength');
+    this.intensity = parseJavaDouble(this.intensityAttr.getValue(), 'rubatoDef/@intensity');
     this.lateStart = le.getKey();
     this.earlyEnd = le.getValue();
   }
@@ -101,24 +138,34 @@ export class RubatoDef extends AbstractDef {
     earlyEnd?: number,
   ): RubatoDef | null {
     try {
-      const rd = new RubatoDef();
+      let xml: Element;
       if (typeof nameOrXml === 'string') {
-        const e = new Element('rubatoDef', MPM_NAMESPACE);
-        e.addAttribute(new Attribute('name', nameOrXml));
-        e.addAttribute(new Attribute('frameLength', String(frameLength)));
+        xml = new Element('rubatoDef', MPM_NAMESPACE);
+        xml.addAttribute(new Attribute('name', nameOrXml));
+        xml.addAttribute(new Attribute('frameLength', String(frameLength)));
         if (intensity !== undefined) {
-          e.addAttribute(new Attribute('intensity', String(intensity)));
-          e.addAttribute(new Attribute('lateStart', String(lateStart)));
-          e.addAttribute(new Attribute('earlyEnd', String(earlyEnd)));
+          xml.addAttribute(new Attribute('intensity', String(intensity)));
+          xml.addAttribute(new Attribute('lateStart', String(lateStart)));
+          xml.addAttribute(new Attribute('earlyEnd', String(earlyEnd)));
         }
-        rd.parseData(e);
       } else {
-        rd.parseData(nameOrXml);
+        xml = nameOrXml;
       }
+      const nameAttr = requireDefName(xml, 'RubatoDef');
+      // Moved ahead of construction because it is required and written through by
+      // `setFrameLength`. Nothing is written to the element before this point in either
+      // spelling, so the order in which a malformed def is rejected is unchanged.
+      const frameLengthAttr = attribute('frameLength', xml);
+      if (frameLengthAttr === null)
+        throw new MissingNodeError(
+          'Cannot generate RubatoDef object. Missing attribute frameLength.',
+        );
+
+      const rd = new RubatoDef(nameAttr, frameLengthAttr);
+      rd.parseData(xml);
       return rd;
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e);
     }
   }
 
@@ -127,7 +174,7 @@ export class RubatoDef extends AbstractDef {
   }
   setFrameLength(frameLength: number): void {
     this.frameLength = Math.max(frameLength, 0.0);
-    this.getXml().getAttribute('frameLength')!.setValue(String(this.frameLength));
+    this.frameLengthAttr.setValue(String(this.frameLength));
   }
 
   getIntensity(): number {
@@ -135,7 +182,7 @@ export class RubatoDef extends AbstractDef {
   }
   setIntensity(intensity: number): void {
     this.intensity = RubatoDef.ensureIntensityBoundaries(intensity);
-    this.getXml().getAttribute('intensity')!.setValue(String(this.intensity));
+    this.intensityAttr.setValue(String(this.intensity));
   }
 
   getLateStart(): number {
@@ -153,7 +200,7 @@ export class RubatoDef extends AbstractDef {
       value = 0.0;
     }
     this.lateStart = value;
-    this.getXml().getAttribute('lateStart')!.setValue(String(this.lateStart));
+    this.lateStartAttr.setValue(String(this.lateStart));
   }
 
   getEarlyEnd(): number {
@@ -171,7 +218,7 @@ export class RubatoDef extends AbstractDef {
       value = 1.0;
     }
     this.earlyEnd = value;
-    this.getXml().getAttribute('earlyEnd')!.setValue(String(this.earlyEnd));
+    this.earlyEndAttr.setValue(String(this.earlyEnd));
   }
 
   /**
@@ -181,9 +228,9 @@ export class RubatoDef extends AbstractDef {
   setLateStartAndEarlyEnd(lateStart: number, earlyEnd: number): void {
     const le = RubatoDef.ensureLateStartEarlyEndBoundaries(lateStart, earlyEnd);
     this.earlyEnd = le.getValue();
-    this.getXml().getAttribute('earlyEnd')!.setValue(String(this.earlyEnd));
+    this.earlyEndAttr.setValue(String(this.earlyEnd));
     this.lateStart = le.getKey();
-    this.getXml().getAttribute('lateStart')!.setValue(String(this.lateStart));
+    this.lateStartAttr.setValue(String(this.lateStart));
   }
 
   /** Intensity must be non-zero and positive: 0 becomes 0.01, negatives are inverted. */

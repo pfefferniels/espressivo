@@ -1,10 +1,10 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { MPM_NAMESPACE, TEMPO_STYLE } from '../../names.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { TempoData } from './data/TempoData.js';
-import { TempoStyle } from '../styles/TempoStyle.js';
+import { numericBpmValue } from '../styles/style.js';
 
 /**
  * An MPM `tempoMap`: the tempo in force across the timeline, and the map that converts
@@ -126,14 +126,14 @@ export class TempoMap extends GenericMap {
       const att = attribute('id', e);
       if (att !== null) td.xmlId = att.getValue();
       td.styleName = this.findStyleNameAt(i) ?? td.styleName;
-      const gStyle = this.getStyle(TEMPO_STYLE, td.styleName) as TempoStyle | null;
+      const gStyle = this.getStyle('tempo', td.styleName);
       if (gStyle !== null) td.style = gStyle;
       td.bpmString = bpmAtt.getValue();
-      td.bpm = TempoStyle.getNumericBpmValueStatic(td.bpmString, td.style);
+      td.bpm = numericBpmValue(td.bpmString, td.style);
       const ttAtt = attribute('transition.to', e);
       if (ttAtt !== null) {
         td.transitionToString = ttAtt.getValue();
-        td.transitionTo = TempoStyle.getNumericBpmValueStatic(td.transitionToString, td.style);
+        td.transitionTo = numericBpmValue(td.transitionToString, td.style);
         if (td.transitionTo === td.bpm) {
           td.transitionToString = null;
           td.transitionTo = null;

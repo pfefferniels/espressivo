@@ -98,28 +98,62 @@ describe('RubatoDef', () => {
     });
   });
 
-  // `parseData` is the parser the static factories call — the forwarding override that
-  // used to sit in front of it is gone. Re-applying it to a second element is not a path
-  // production takes; what the test is for is the parse itself, and re-application is
-  // simply the only way to observe it separately from construction.
-  describe('parseData', () => {
-    it('re-reads all attributes when applied to another element', () => {
-      const rd = RubatoDef.createRubatoDef('r', 720.0)!;
-      const other = rubatoDefElement({
+  // WAS: `parseData` re-applied to a second element. See the same note in `TempoDef.test.ts`.
+  // The five attributes this def owns are now held as nodes rather than looked up again on
+  // every setter, so the claim worth pinning is that a set lands on the node the parse read —
+  // including for the three attributes the parse itself may have *created*, which is the
+  // case a fresh `getAttribute` lookup used to paper over.
+  describe('the attributes are bound to the element the def was parsed from', () => {
+    it('writes through the very nodes the parse read', () => {
+      const xml = rubatoDefElement({
         name: 'other',
         frameLength: '360',
         intensity: '2.0',
         lateStart: '0.2',
         earlyEnd: '0.7',
       });
-      (rd as unknown as { parseData(xml: Element): void }).parseData(other);
-
+      const rd = RubatoDef.createRubatoDef(xml)!;
+      expect(rd.getXml()).toBe(xml);
       expect(rd.getName()).toBe('other');
       expect(rd.getFrameLength()).toBe(360.0);
       expect(rd.getIntensity()).toBe(2.0);
       expect(rd.getLateStart()).toBe(0.2);
       expect(rd.getEarlyEnd()).toBe(0.7);
-      expect(rd.getXml()).toBe(other);
+
+      const nodes = {
+        name: xml.getAttribute('name')!,
+        frameLength: xml.getAttribute('frameLength')!,
+        intensity: xml.getAttribute('intensity')!,
+        lateStart: xml.getAttribute('lateStart')!,
+        earlyEnd: xml.getAttribute('earlyEnd')!,
+      };
+      rd.setName('renamed');
+      rd.setFrameLength(180.0);
+      rd.setIntensity(3.0);
+      rd.setLateStartAndEarlyEnd(0.1, 0.9);
+
+      expect(nodes.name.getValue()).toBe('renamed');
+      expect(nodes.frameLength.getValue()).toBe('180');
+      expect(nodes.intensity.getValue()).toBe('3');
+      expect(nodes.lateStart.getValue()).toBe('0.1');
+      expect(nodes.earlyEnd.getValue()).toBe('0.9');
+      expect(xml.getAttributeCount()).toBe(5);
+    });
+
+    it('binds the defaults it ADDED to the element, not a copy of them', () => {
+      // `intensity`, `lateStart` and `earlyEnd` are written onto a def that declares none
+      // (the class header calls this out). The nodes the setters write through have to be
+      // those same three, or a later set would silently update nothing in the document.
+      const xml = rubatoDefElement({ name: 'plain', frameLength: '360' });
+      const rd = RubatoDef.createRubatoDef(xml)!;
+      expect(xml.getAttributeCount()).toBe(5);
+
+      rd.setIntensity(2.5);
+      rd.setLateStartAndEarlyEnd(0.25, 0.75);
+      expect(xml.getAttributeValue('intensity')).toBe('2.5');
+      expect(xml.getAttributeValue('lateStart')).toBe('0.25');
+      expect(xml.getAttributeValue('earlyEnd')).toBe('0.75');
+      expect(xml.getAttributeCount()).toBe(5);
     });
   });
 

@@ -1,10 +1,10 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { DYNAMICS_STYLE, MPM_NAMESPACE } from '../../names.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { DynamicsData } from './data/DynamicsData.js';
-import { DynamicsStyle } from '../styles/DynamicsStyle.js';
+import { numericDynamicsValue } from '../styles/style.js';
 
 /**
  * An MPM `dynamicsMap`: loudness over the timeline, as constant levels and as
@@ -158,15 +158,15 @@ export class DynamicsMap extends GenericMap {
     const att = attribute('id', e);
     if (att !== null) dd.xmlId = att.getValue();
     dd.styleName = this.findStyleNameAt(i) ?? dd.styleName;
-    dd.style = this.getStyle(DYNAMICS_STYLE, dd.styleName) as DynamicsStyle | null;
+    dd.style = this.getStyle('dynamics', dd.styleName);
     const volAtt = attribute('volume', e);
     if (volAtt === null) return null;
     dd.volumeString = volAtt.getValue();
-    dd.volume = DynamicsStyle.getNumericValueStatic(dd.volumeString, dd.style);
+    dd.volume = numericDynamicsValue(dd.volumeString, dd.style);
     const ttAtt = attribute('transition.to', e);
     if (ttAtt !== null) {
       dd.transitionToString = ttAtt.getValue();
-      dd.transitionTo = DynamicsStyle.getNumericValueStatic(dd.transitionToString, dd.style);
+      dd.transitionTo = numericDynamicsValue(dd.transitionToString, dd.style);
       const curvAtt = attribute('curvature', e);
       if (curvAtt !== null)
         dd.curvature = DynamicsMap.clampCurvature(parseFloat(curvAtt.getValue()));

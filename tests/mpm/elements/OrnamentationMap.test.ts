@@ -10,7 +10,7 @@ import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute, Builder } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Header } from '../../../src/mpm/elements/Header.js';
-import { OrnamentationStyle } from '../../../src/mpm/elements/styles/OrnamentationStyle.js';
+import { createStyle } from '../../../src/mpm/elements/styles/style.js';
 import { OrnamentDef } from '../../../src/mpm/elements/styles/defs/OrnamentDef.js';
 import { FrameDomain, NoteOffShift } from '../../../src/mpm/elements/styles/defs/TemporalSpread.js';
 import type { RenderContext } from '../../../src/mpm/RenderOptions.js';
@@ -95,7 +95,7 @@ function spreadMsDef(): OrnamentDef {
 /** a header carrying an ornamentationStyle named "orn style" with the given defs */
 function makeHeader(defs: OrnamentDef[], styleName = 'orn style'): Header {
   const header = Header.createHeader()!;
-  const style = OrnamentationStyle.createOrnamentationStyle(styleName)!;
+  const style = createStyle('ornamentation', styleName);
   for (const d of defs) style.addDef(d);
   header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
   return header;
@@ -574,7 +574,7 @@ describe('OrnamentationMap', () => {
     it('should pick the style that is in effect at the ornament', () => {
       const map = OrnamentationMap.createOrnamentationMap()!;
       const header = makeHeader([arpeggioDef()]);
-      const second = OrnamentationStyle.createOrnamentationStyle('late style')!;
+      const second = createStyle('ornamentation', 'late style');
       second.addDef(arpeggioDef());
       header.addStyleDef(Mpm.ORNAMENTATION_STYLE, second);
       map.setHeaders(null, header);
@@ -1320,7 +1320,7 @@ describe('OrnamentationMap', () => {
 
     it('should carry style and ornamentDef references over to the clone', () => {
       const od = new OrnamentData();
-      od.style = OrnamentationStyle.createOrnamentationStyle('orn style');
+      od.style = createStyle('ornamentation', 'orn style');
       od.ornamentDef = arpeggioDef();
 
       const clone = od.clone();

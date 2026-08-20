@@ -1,13 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Header } from '../../../src/mpm/elements/Header.js';
-import { TempoStyle } from '../../../src/mpm/elements/styles/TempoStyle.js';
-import { DynamicsStyle } from '../../../src/mpm/elements/styles/DynamicsStyle.js';
-import { ArticulationStyle } from '../../../src/mpm/elements/styles/ArticulationStyle.js';
-import { RubatoStyle } from '../../../src/mpm/elements/styles/RubatoStyle.js';
-import { MetricalAccentuationStyle } from '../../../src/mpm/elements/styles/MetricalAccentuationStyle.js';
-import { OrnamentationStyle } from '../../../src/mpm/elements/styles/OrnamentationStyle.js';
-import { GenericStyle } from '../../../src/mpm/elements/styles/GenericStyle.js';
+import { createStyle, styleOfKind } from '../../../src/mpm/elements/styles/style.js';
+import type { StyleKind } from '../../../src/mpm/elements/styles/style.js';
 import { TempoDef } from '../../../src/mpm/elements/styles/defs/TempoDef.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 
@@ -59,10 +54,14 @@ describe('Header', () => {
       const h = Header.createHeader(xml)!;
 
       expect(h.getAllStyleTypes().size).toBe(2);
-      const tempoStyle = h.getStyleDef(Mpm.TEMPO_STYLE, 'default') as TempoStyle;
-      expect(tempoStyle).toBeInstanceOf(TempoStyle);
-      expect(tempoStyle.getDef('Allegro')!.getValue()).toBe(147.0);
-      expect(h.getStyleDef(Mpm.DYNAMICS_STYLE, 'default')).toBeInstanceOf(DynamicsStyle);
+      // `styleOfKind` where this used to be `as TempoStyle` + `toBeInstanceOf(TempoStyle)`:
+      // one class now serves every kind, so what identifies a tempo style is its `kind`
+      // discriminant, and `styleOfKind` returning non-null IS that assertion — plus it is
+      // what gives `getDef` the `TempoDef` return type the cast used to supply.
+      const tempoStyle = styleOfKind(h.getStyleDef(Mpm.TEMPO_STYLE, 'default'), 'tempo');
+      expect(tempoStyle).not.toBeNull();
+      expect(tempoStyle!.getDef('Allegro')!.getValue()).toBe(147.0);
+      expect(styleOfKind(h.getStyleDef(Mpm.DYNAMICS_STYLE, 'default'), 'dynamics')).not.toBeNull();
     });
 
     it('ignores header children whose name does not contain "Styles"', () => {
@@ -91,60 +90,42 @@ describe('Header', () => {
       expect(Header.createHeader()!.addStyleType('')).toBeNull();
     });
 
-    it('builds the matching style class for each known type', () => {
-      const cases: [string, string, Element[], Function][] = [
+    it('builds a style of the matching kind for each known type, and indexes its defs', () => {
+      const cases: [string, StyleKind, Element[]][] = [
         [
           Mpm.ARTICULATION_STYLE,
-          'articulationDef',
+          'articulation',
           [element('articulationDef', { name: 'staccato' })],
-          ArticulationStyle,
         ],
-        [
-          Mpm.TEMPO_STYLE,
-          'tempoDef',
-          [element('tempoDef', { name: 'Allegro', value: '147.0' })],
-          TempoStyle,
-        ],
-        [
-          Mpm.DYNAMICS_STYLE,
-          'dynamicsDef',
-          [element('dynamicsDef', { name: 'ff', value: '111.0' })],
-          DynamicsStyle,
-        ],
+        [Mpm.TEMPO_STYLE, 'tempo', [element('tempoDef', { name: 'Allegro', value: '147.0' })]],
+        [Mpm.DYNAMICS_STYLE, 'dynamics', [element('dynamicsDef', { name: 'ff', value: '111.0' })]],
         [
           Mpm.METRICAL_ACCENTUATION_STYLE,
-          'accentuationPatternDef',
+          'metricalAccentuation',
           [element('accentuationPatternDef', { name: '4/4', length: '4.0' })],
-          MetricalAccentuationStyle,
         ],
-        [
-          Mpm.RUBATO_STYLE,
-          'rubatoDef',
-          [element('rubatoDef', { name: 'r', frameLength: '720.0' })],
-          RubatoStyle,
-        ],
-        [
-          Mpm.ORNAMENTATION_STYLE,
-          'ornamentDef',
-          [element('ornamentDef', { name: 'trill' })],
-          OrnamentationStyle,
-        ],
+        [Mpm.RUBATO_STYLE, 'rubato', [element('rubatoDef', { name: 'r', frameLength: '720.0' })]],
+        [Mpm.ORNAMENTATION_STYLE, 'ornamentation', [element('ornamentDef', { name: 'trill' })]],
       ];
 
-      for (const [type, , defs, styleClass] of cases) {
+      for (const [type, kind, defs] of cases) {
         const h = Header.createHeader()!;
         h.addStyleType(element(type, {}, [styleDefElement('default', defs)]));
         const style = h.getStyleDef(type, 'default')!;
-        expect(style).toBeInstanceOf(styleClass);
+        // Was `toBeInstanceOf(<the subclass>)`. The kind discriminant is what the six
+        // subclasses were carrying, so this is the same claim about the same fact — and the
+        // `size()` check below still proves the kind picked the right def parser, which is
+        // the part `instanceof` never actually established.
+        expect(style.kind).toBe(kind);
         expect(style.size()).toBe(1);
       }
     });
 
-    it('falls back to GenericStyle for an unknown type', () => {
+    it('falls back to the generic kind for an unknown type', () => {
       const h = Header.createHeader()!;
       h.addStyleType(element('somethingStyles', {}, [styleDefElement('default')]));
       const style = h.getStyleDef('somethingStyles', 'default')!;
-      expect(style).toBeInstanceOf(GenericStyle);
+      expect(style.kind).toBe('generic');
       expect(style.getName()).toBe('default');
     });
 
@@ -213,9 +194,9 @@ describe('Header', () => {
   describe('addStyleDef by name', () => {
     it('creates the style type on the fly and returns the new styleDef', () => {
       const h = Header.createHeader()!;
-      const style = h.addStyleDef(Mpm.TEMPO_STYLE, 'default') as TempoStyle;
+      const style = h.addStyleDef(Mpm.TEMPO_STYLE, 'default');
 
-      expect(style).toBeInstanceOf(TempoStyle);
+      expect(style.kind).toBe('tempo');
       expect(style.getName()).toBe('default');
       expect(h.getStyleDef(Mpm.TEMPO_STYLE, 'default')).toBe(style);
       expect(childNames(h)).toEqual([Mpm.TEMPO_STYLE]);
@@ -225,26 +206,25 @@ describe('Header', () => {
       expect(collection.getChildElements().get(0)).toBe(style.getXml());
     });
 
-    it('creates the matching style class for each known type', () => {
-      const cases: [string, Function][] = [
-        [Mpm.DYNAMICS_STYLE, DynamicsStyle],
-        [Mpm.ARTICULATION_STYLE, ArticulationStyle],
-        [Mpm.METRICAL_ACCENTUATION_STYLE, MetricalAccentuationStyle],
-        [Mpm.TEMPO_STYLE, TempoStyle],
-        [Mpm.RUBATO_STYLE, RubatoStyle],
-        [Mpm.ORNAMENTATION_STYLE, OrnamentationStyle],
-        ['somethingStyles', GenericStyle],
+    it('creates a style of the matching kind for each known type', () => {
+      const cases: [string, StyleKind][] = [
+        [Mpm.DYNAMICS_STYLE, 'dynamics'],
+        [Mpm.ARTICULATION_STYLE, 'articulation'],
+        [Mpm.METRICAL_ACCENTUATION_STYLE, 'metricalAccentuation'],
+        [Mpm.TEMPO_STYLE, 'tempo'],
+        [Mpm.RUBATO_STYLE, 'rubato'],
+        [Mpm.ORNAMENTATION_STYLE, 'ornamentation'],
+        ['somethingStyles', 'generic'],
       ];
       const h = Header.createHeader()!;
-      for (const [type, styleClass] of cases)
-        expect(h.addStyleDef(type, 'default')).toBeInstanceOf(styleClass);
+      for (const [type, kind] of cases) expect(h.addStyleDef(type, 'default').kind).toBe(kind);
     });
 
     it('replaces a styleDef of the same name', () => {
       const h = Header.createHeader()!;
-      const first = h.addStyleDef(Mpm.TEMPO_STYLE, 'default') as TempoStyle;
-      first.addDef(TempoDef.createTempoDef('Allegro', 147.0)!);
-      const second = h.addStyleDef(Mpm.TEMPO_STYLE, 'default') as TempoStyle;
+      const first = h.addStyleDef(Mpm.TEMPO_STYLE, 'default');
+      styleOfKind(first, 'tempo')!.addDef(TempoDef.createTempoDef('Allegro', 147.0)!);
+      const second = h.addStyleDef(Mpm.TEMPO_STYLE, 'default');
 
       expect(second).not.toBe(first);
       expect(h.getAllStyleDefs(Mpm.TEMPO_STYLE)!.size).toBe(1);
@@ -259,21 +239,21 @@ describe('Header', () => {
   describe('addStyleDef by instance', () => {
     it('adds an existing style object', () => {
       const h = Header.createHeader()!;
-      const style = TempoStyle.createTempoStyle('default')!;
+      const style = createStyle('tempo', 'default');
       h.addStyleDef(Mpm.TEMPO_STYLE, style);
       expect(h.getStyleDef(Mpm.TEMPO_STYLE, 'default')).toBe(style);
     });
 
     it('ignores an empty type', () => {
       const h = Header.createHeader()!;
-      h.addStyleDef('', TempoStyle.createTempoStyle('default')!);
+      h.addStyleDef('', createStyle('tempo', 'default'));
       expect(h.getAllStyleTypes().size).toBe(0);
     });
 
     it('reuses an existing style type element', () => {
       const h = Header.createHeader()!;
-      h.addStyleDef(Mpm.TEMPO_STYLE, TempoStyle.createTempoStyle('a')!);
-      h.addStyleDef(Mpm.TEMPO_STYLE, TempoStyle.createTempoStyle('b')!);
+      h.addStyleDef(Mpm.TEMPO_STYLE, createStyle('tempo', 'a'));
+      h.addStyleDef(Mpm.TEMPO_STYLE, createStyle('tempo', 'b'));
 
       expect(childNames(h)).toEqual([Mpm.TEMPO_STYLE]);
       expect(h.getAllStyleDefs(Mpm.TEMPO_STYLE)!.size).toBe(2);
@@ -283,7 +263,7 @@ describe('Header', () => {
   describe('removeStyleDef', () => {
     it('removes the styleDef from the map and the xml', () => {
       const h = Header.createHeader()!;
-      const a = h.addStyleDef(Mpm.TEMPO_STYLE, 'a')!;
+      const a = h.addStyleDef(Mpm.TEMPO_STYLE, 'a');
       h.addStyleDef(Mpm.TEMPO_STYLE, 'b');
       h.removeStyleDef(Mpm.TEMPO_STYLE, 'a');
 
@@ -306,7 +286,7 @@ describe('Header', () => {
   describe('renameStyleDef', () => {
     it('renames the styleDef in the map and in the xml', () => {
       const h = Header.createHeader()!;
-      const style = h.addStyleDef(Mpm.TEMPO_STYLE, 'old')!;
+      const style = h.addStyleDef(Mpm.TEMPO_STYLE, 'old');
       const renamed = h.renameStyleDef(Mpm.TEMPO_STYLE, 'old', 'new');
 
       expect(renamed).toBe(style);
@@ -318,7 +298,7 @@ describe('Header', () => {
 
     it('returns the unchanged styleDef when old and new name are equal', () => {
       const h = Header.createHeader()!;
-      const style = h.addStyleDef(Mpm.TEMPO_STYLE, 'same')!;
+      const style = h.addStyleDef(Mpm.TEMPO_STYLE, 'same');
       expect(h.renameStyleDef(Mpm.TEMPO_STYLE, 'same', 'same')).toBe(style);
       expect(h.getAllStyleDefs(Mpm.TEMPO_STYLE)!.size).toBe(1);
     });
@@ -326,7 +306,7 @@ describe('Header', () => {
     it('overwrites a styleDef that already carries the new name', () => {
       const h = Header.createHeader()!;
       h.addStyleDef(Mpm.TEMPO_STYLE, 'victim');
-      const survivor = h.addStyleDef(Mpm.TEMPO_STYLE, 'old')!;
+      const survivor = h.addStyleDef(Mpm.TEMPO_STYLE, 'old');
       h.renameStyleDef(Mpm.TEMPO_STYLE, 'old', 'victim');
 
       expect(h.getAllStyleDefs(Mpm.TEMPO_STYLE)!.size).toBe(1);

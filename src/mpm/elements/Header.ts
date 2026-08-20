@@ -1,22 +1,15 @@
-import { Attribute, Element } from '../../xml/XomTypes.js';
+import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
-import { allChildElements, attribute, descendantElements } from '../../xml/tree.js';
+import { allChildElements, descendantElements } from '../../xml/tree.js';
+import { MPM_NAMESPACE } from '../names.js';
+import { isErr } from '../../prelude/index.js';
 import {
-  ARTICULATION_STYLE,
-  DYNAMICS_STYLE,
-  METRICAL_ACCENTUATION_STYLE,
-  MPM_NAMESPACE,
-  ORNAMENTATION_STYLE,
-  RUBATO_STYLE,
-  TEMPO_STYLE,
-} from '../names.js';
-import { GenericStyle } from './styles/GenericStyle.js';
-import { ArticulationStyle } from './styles/ArticulationStyle.js';
-import { TempoStyle } from './styles/TempoStyle.js';
-import { DynamicsStyle } from './styles/DynamicsStyle.js';
-import { MetricalAccentuationStyle } from './styles/MetricalAccentuationStyle.js';
-import { RubatoStyle } from './styles/RubatoStyle.js';
-import { OrnamentationStyle } from './styles/OrnamentationStyle.js';
+  createStyle,
+  describeStyleError,
+  parseStyle,
+  styleKindOfCollection,
+  type AnyStyle,
+} from './styles/style.js';
 
 /**
  * An MPM `<header>` element: the style definitions available to the instruction maps that
@@ -25,8 +18,15 @@ import { OrnamentationStyle } from './styles/OrnamentationStyle.js';
  *
  * The shape is two levels deep, and {@link styleDefs} mirrors it: *style type*
  * (`tempoStyles`, `dynamicsStyles`, … — the `Mpm.*_STYLE` constants) → *style name* →
- * {@link GenericStyle}. A map instruction naming `style="foo"` is resolved by looking `foo`
+ * {@link AnyStyle}. A map instruction naming `style="foo"` is resolved by looking `foo`
  * up under its own type, first in the part's local header and then in the global one.
+ *
+ * The index is kind-erased — a header holds styles of every kind at once — but it erases to
+ * the *union* {@link AnyStyle}, not to a base class. That is what lets a reader recover the
+ * kind with `styleOfKind` instead of the unchecked `as TempoStyle | null` the previous
+ * `GenericStyle`-typed index forced on it. Which kind a collection holds is decided in one
+ * place, {@link styleKindOfCollection}, where this class used to carry two copies of the
+ * same seven-armed `switch`.
  *
  * Both a `Global` and a `Part` own a header, which is what makes that two-stage lookup
  * possible — see `GenericMap.setHeaders`.
@@ -37,7 +37,7 @@ import { OrnamentationStyle } from './styles/OrnamentationStyle.js';
  * Never insert into it directly.
  */
 export class Header extends AbstractXmlSubtree {
-  private readonly styleDefs = new Map<string, Map<string, GenericStyle>>();
+  private readonly styleDefs = new Map<string, Map<string, AnyStyle>>();
 
   private constructor() {
     super();
@@ -66,10 +66,15 @@ export class Header extends AbstractXmlSubtree {
    * Style-type collections are discovered by *name shape*, not by an allow-list: any
    * descendant whose local name contains `Styles` is treated as one. That is how the six
    * `Mpm.*_STYLE` types and any future or vendor-specific one are picked up alike, and it
-   * is why {@link addStyleType} falls back to a plain {@link GenericStyle} for unknown types
-   * rather than rejecting them.
+   * is why {@link styleKindOfCollection} answers `'generic'` for unknown types rather than
+   * rejecting them.
+   *
+   * The parameter is `Element | null` rather than the base class's `Element` because the
+   * null really does arrive — `Header.test.ts:75` pins `createHeader(null as unknown as
+   * Element)` returning null — and saying so is what lets the guard below be a check the
+   * type system agrees is reachable instead of a `no-unnecessary-condition` finding.
    */
-  protected parseData(xml: Element): void {
+  protected parseData(xml: Element | null): void {
     if (xml === null) throw new Error('Cannot generate Header object. XML Element is null.');
     this.setXml(xml);
 
@@ -91,9 +96,9 @@ export class Header extends AbstractXmlSubtree {
    * children that fail to parse are skipped, and duplicates of a name silently keep the
    * last one — the map is keyed by name.
    */
-  addStyleType(type: string): Map<string, GenericStyle> | null;
-  addStyleType(xml: Element): Map<string, GenericStyle> | null;
-  addStyleType(typeOrXml: string | Element): Map<string, GenericStyle> | null {
+  addStyleType(type: string): Map<string, AnyStyle> | null;
+  addStyleType(xml: Element): Map<string, AnyStyle> | null;
+  addStyleType(typeOrXml: string | Element): Map<string, AnyStyle> | null {
     if (typeof typeOrXml === 'string') {
       if (!typeOrXml) return null;
       return this.addStyleType(new Element(typeOrXml, MPM_NAMESPACE));
@@ -102,35 +107,21 @@ export class Header extends AbstractXmlSubtree {
     const type = xml.getLocalName();
     if (this.styleDefs.get(type) !== undefined) this.removeStyleType(type);
 
-    const styleDefElements = allChildElements(xml, 'styleDef');
-    const styleDefsMap = new Map<string, GenericStyle>();
+    const kind = styleKindOfCollection(type);
+    const styleDefsMap = new Map<string, AnyStyle>();
 
-    for (const styleDef of styleDefElements) {
-      let sd: GenericStyle | null;
-      switch (type) {
-        case ARTICULATION_STYLE:
-          sd = ArticulationStyle.createArticulationStyle(styleDef);
-          break;
-        case TEMPO_STYLE:
-          sd = TempoStyle.createTempoStyle(styleDef);
-          break;
-        case DYNAMICS_STYLE:
-          sd = DynamicsStyle.createDynamicsStyle(styleDef);
-          break;
-        case METRICAL_ACCENTUATION_STYLE:
-          sd = MetricalAccentuationStyle.createMetricalAccentuationStyle(styleDef);
-          break;
-        case RUBATO_STYLE:
-          sd = RubatoStyle.createRubatoStyle(styleDef);
-          break;
-        case ORNAMENTATION_STYLE:
-          sd = OrnamentationStyle.createOrnamentationStyle(styleDef);
-          break;
-        default:
-          sd = GenericStyle.createGenericStyle(styleDef);
+    for (const styleDef of allChildElements(xml, 'styleDef')) {
+      // A `styleDef` that will not parse is skipped, not fatal — one malformed collection
+      // member must not lose the rest. Where the incumbent's factory logged the exception it
+      // had caught and returned a bare null, the reason now arrives here as a value and this
+      // — the caller, which knows it is converting somebody's document — is what decides to
+      // print it.
+      const parsed = parseStyle(kind, styleDef);
+      if (isErr(parsed)) {
+        console.error(describeStyleError(parsed.error));
+        continue;
       }
-      if (sd === null) continue;
-      styleDefsMap.set(sd.getName(), sd);
+      styleDefsMap.set(parsed.value.getName(), parsed.value);
     }
 
     const parent = xml.getParent();
@@ -149,62 +140,40 @@ export class Header extends AbstractXmlSubtree {
     }
   }
 
-  getAllStyleTypes(): Map<string, Map<string, GenericStyle>> {
+  getAllStyleTypes(): Map<string, Map<string, AnyStyle>> {
     return this.styleDefs;
   }
-  getAllStyleDefs(type: string): Map<string, GenericStyle> | undefined {
+  getAllStyleDefs(type: string): Map<string, AnyStyle> | undefined {
     return this.styleDefs.get(type);
   }
 
-  getStyleDef(type: string, name: string): GenericStyle | null {
+  getStyleDef(type: string, name: string): AnyStyle | null {
     const styleType = this.styleDefs.get(type);
     if (styleType === undefined) return null;
     return styleType.get(name) ?? null;
   }
 
   /**
-   * Add one style definition under a style type, either an existing {@link GenericStyle} or
-   * a fresh empty one created from a name. The type's collection is created on demand, and
-   * an existing def of the same name is removed first, so a name never appears twice.
+   * Add one style definition under a style type, either an existing {@link AnyStyle} or a
+   * fresh empty one created from a name. The type's collection is created on demand, and an
+   * existing def of the same name is removed first, so a name never appears twice.
    *
-   * The `switch` picks the subclass that knows how to parse that type's defs; an unknown
-   * type falls back to {@link GenericStyle}, matching {@link parseData}'s open-ended
-   * discovery.
+   * The name form no longer returns `AnyStyle | null`: {@link createStyle} builds its own
+   * element, so the `@name` it then needs is one it just wrote and cannot be missing. The
+   * seven-armed `switch` that used to pick a subclass here is now the one-line kind lookup
+   * it always was.
    */
-  addStyleDef(type: string, styleDef: GenericStyle): void;
-  addStyleDef(type: string, name: string): GenericStyle | null;
-  addStyleDef(type: string, styleDefOrName: GenericStyle | string): GenericStyle | null | void {
+  addStyleDef(type: string, styleDef: AnyStyle): void;
+  addStyleDef(type: string, name: string): AnyStyle;
+  addStyleDef(type: string, styleDefOrName: AnyStyle | string): AnyStyle | void {
     if (typeof styleDefOrName === 'string') {
-      let styleDef: GenericStyle | null;
-      switch (type) {
-        case DYNAMICS_STYLE:
-          styleDef = DynamicsStyle.createDynamicsStyle(styleDefOrName);
-          break;
-        case ARTICULATION_STYLE:
-          styleDef = ArticulationStyle.createArticulationStyle(styleDefOrName);
-          break;
-        case METRICAL_ACCENTUATION_STYLE:
-          styleDef = MetricalAccentuationStyle.createMetricalAccentuationStyle(styleDefOrName);
-          break;
-        case TEMPO_STYLE:
-          styleDef = TempoStyle.createTempoStyle(styleDefOrName);
-          break;
-        case RUBATO_STYLE:
-          styleDef = RubatoStyle.createRubatoStyle(styleDefOrName);
-          break;
-        case ORNAMENTATION_STYLE:
-          styleDef = OrnamentationStyle.createOrnamentationStyle(styleDefOrName);
-          break;
-        default:
-          styleDef = GenericStyle.createGenericStyle(styleDefOrName);
-      }
-      if (styleDef === null) return null;
+      const styleDef = createStyle(styleKindOfCollection(type), styleDefOrName);
       this.addStyleDef(type, styleDef);
       return styleDef;
     }
 
     const styleDef = styleDefOrName;
-    if (!type || styleDef === null) return;
+    if (!type) return;
     let styleCollection = this.styleDefs.get(type);
     if (styleCollection === undefined) {
       this.getXml().appendChild(new Element(type, MPM_NAMESPACE));
@@ -212,6 +181,9 @@ export class Header extends AbstractXmlSubtree {
       this.styleDefs.set(type, styleCollection);
     }
     if (styleCollection.has(styleDef.getName())) this.removeStyleDef(type, styleDef.getName());
+    // Namespace-EXACT, and left that way: `tree.ts`'s `requireFirstChildElement(name, …)`
+    // matches on local name alone, which would start finding the `…Styles` collections that
+    // `parseData` discovers outside the MPM namespace. Same reasoning in `removeStyleDef`.
     this.getXml().getFirstChildElement(type, MPM_NAMESPACE)!.appendChild(styleDef.getXml());
     styleCollection.set(styleDef.getName(), styleDef);
   }
@@ -235,7 +207,7 @@ export class Header extends AbstractXmlSubtree {
    * occupied name wins, and note that the loser is removed from the index only: its element
    * stays in the XML. Renaming to the current name is a no-op that returns the def.
    */
-  renameStyleDef(type: string, currentName: string, newName: string): GenericStyle | null {
+  renameStyleDef(type: string, currentName: string, newName: string): AnyStyle | null {
     if (currentName === newName) return this.getStyleDef(type, currentName);
     const allStyleDefs = this.getAllStyleDefs(type);
     if (!allStyleDefs || allStyleDefs.size === 0) {
@@ -248,7 +220,9 @@ export class Header extends AbstractXmlSubtree {
       return null;
     }
     allStyleDefs.delete(newName);
-    attribute('name', styleDef.getXml())!.setValue(newName);
+    // Was `attribute('name', styleDef.getXml())!.setValue(newName)` — the same attribute node
+    // `Style` already holds, reached around the object rather than through it.
+    styleDef.setName(newName);
     allStyleDefs.delete(currentName);
     allStyleDefs.set(newName, styleDef);
     return styleDef;

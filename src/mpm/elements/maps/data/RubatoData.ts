@@ -1,5 +1,5 @@
 import type { Element } from '../../../../xml/XomTypes.js';
-import type { RubatoStyle } from '../../styles/RubatoStyle.js';
+import type { RubatoStyle } from '../../styles/style.js';
 import type { RubatoDef } from '../../styles/defs/RubatoDef.js';
 
 /**
