@@ -49,11 +49,21 @@ That is `cross-validation` (MEI ⇒ MSM/MPM), `full-xml-equivalence` (the augmen
 programmatic per-map fixtures) — 121 tests covering MSM+MPM text, augmented MSM, raw MIDI and
 expressive MIDI, from both MEI input and programmatic MSM+MPM input. Their comparison strengths
 differ and the difference matters: **`cross-validation` is the only strict string-equality
-suite**, so it is the one that catches attribute order and numeric formatting; the others
-compare per-attribute with a tolerance, or event by event.
+suite**, so it is the one that catches numeric formatting; the others compare per-attribute
+with a tolerance, or event by event.
+
+**Attribute order and extra attributes are checked on all four** as of 2026-08-20. They were
+not before: `full-xml-equivalence` and `all-maps-equivalence` loaded each side's attributes
+into a `Map` keyed on name and iterated the reference's, so reversing the attribute order on
+every `<note>` of a reference file left both green, and so did adding an attribute Java does
+not have — `full-xml-equivalence` had an extra-attribute loop with an empty body. Closing it
+cost nothing: 24 fixtures, 0 mismatches. It matters because on this corpus **attribute order
+encodes which render passes touched a note** — `RubatoMap` adds `date.end.perf` before tempo
+runs, so a note under a rubato instruction carries it earlier in the list than one that is
+not, and seven distinct note attribute orders appear across the rendered corpus.
 
 Use it to iterate. It is not a substitute for `npm run verify` (clean build, typecheck of the
-test sources, all 5750 tests), which stays the gate before every commit — and note that
+test sources, all 6141 tests), which stays the gate before every commit — and note that
 `verify` does **not** run the formatter, so `npx prettier --check .` is a separate step.
 
 There is deliberately no separate pipeline-probe script in the repo: the byte gate _is_ the
