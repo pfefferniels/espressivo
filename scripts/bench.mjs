@@ -125,13 +125,22 @@ function renderAll(meiText) {
   return bytes;
 }
 
-/** The two stages timed apart, because only one of them is linear. */
+/**
+ * The two stages timed apart, because only one of them was ever the problem.
+ *
+ * **Median of {@link REPEATS}, not one sample.** This took a single measurement per size until
+ * an agent noticed the same commit reporting "x2.7 SUPERLINEAR" and "x1.2 linear enough" ten
+ * minutes apart. One unlucky sample at the smallest size is enough to invert the verdict,
+ * because the drift is a ratio and the smallest size is its noisiest term. The fixture block
+ * had always taken a median; the synthetic block, which is the one the verdict is computed
+ * from, had not.
+ */
 function timeStages(meiText) {
   let movements = [];
-  const convertMs = timeMs(() => (movements = api.convertMeiToMsmMpm(meiText)), 1);
+  const convertMs = timeMs(() => (movements = api.convertMeiToMsmMpm(meiText)));
   const renderMs = timeMs(() => {
     for (const m of movements) api.renderExpressiveMidi({ msm: m.msm, mpm: m.mpm });
-  }, 1);
+  });
   return { convertMs, renderMs };
 }
 
@@ -209,8 +218,14 @@ function report(now, base) {
     const xs = Object.values(now.synthetic).map(pick);
     return xs[xs.length - 1] / xs[0];
   };
+  // Advisory, not a gate. It is a ratio of two medians and the smallest size is its noisiest
+  // term, so on a loaded machine it can flip. `--check` gates on the per-size TIMES against a
+  // committed baseline — a comparison of like with like — and not on this. Read a SUPERLINEAR
+  // verdict as "go measure properly", never as a failure.
   const verdict = (x) =>
-    x > 2 ? `x${x.toFixed(1)}  SUPERLINEAR` : `x${x.toFixed(1)}  linear enough`;
+    x > 2
+      ? `x${x.toFixed(1)}  SUPERLINEAR (advisory — re-run on a quiet machine)`
+      : `x${x.toFixed(1)}  linear enough`;
   const lo = SYNTHETIC_SIZES[0];
   const hi = SYNTHETIC_SIZES[SYNTHETIC_SIZES.length - 1];
   console.log(`\n  us/note drift ${lo}..${hi} notes`);
