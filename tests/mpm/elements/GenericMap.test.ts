@@ -19,6 +19,28 @@ function makeMap(dates: number[]): GenericMap {
   return map;
 }
 
+/**
+ * A map that exposes the two `protected` positional lookups, so the contract their doc
+ * comments state can be checked at all.
+ *
+ * Every production caller reaches `findStyleSwitchAt` through `resolveEntryIndex`, which has
+ * already established that the entry at that index is an instruction of a named kind — never
+ * a `<style>`. So the one thing those comments call load-bearing, that the scan starts *at*
+ * the index rather than before it, is unreachable from outside this class, and moving the
+ * start to `index - 1` broke no test in the tree. It is pinned here instead.
+ */
+class ExposedMap extends GenericMap {
+  static make(type: string): ExposedMap {
+    return new ExposedMap(type);
+  }
+  styleSwitchAt(index: number): Element | null {
+    return this.findStyleSwitchAt(index);
+  }
+  styleNameAt(index: number): string | null {
+    return this.findStyleNameAt(index);
+  }
+}
+
 // ==========================================================================
 //  GenericMap Tests
 // ==========================================================================
@@ -703,6 +725,41 @@ describe('GenericMap', () => {
       expect(map.getElement(1)!.getLocalName()).toBe('tempo');
     });
 
+    /**
+     * PARITY — the fallthrough the test below calls "the fallthrough bug", pinned rather than
+     * worked around.
+     *
+     * `insertElement(…, firstAtDate = true)` scans FORWARD for the first entry at or after the
+     * new date and inserts before it. When there is none — the new switch is later than
+     * everything in the map — the scan falls out of the bottom into the shared
+     * `add(0, element)` tail, so a style switch dated after the last instruction lands at the
+     * FRONT of the map and takes effect from the top of it.
+     *
+     * That tail is written for the other branch: `GenericMap.java:559` comments it "if the map
+     * is empty or its elements are all after the date of the new element", which is true of
+     * the backwards `firstAtDate = false` scan and false of this one. It is Java's, the port
+     * copies it, and until now nothing held it in place — the strict-index pass rewrote the
+     * two loops as `findIndex` and a shared `insertionIndexFor`, and moving the fallback to
+     * the end of the map instead broke no test at all.
+     */
+    it('addStyleSwitch past the last element lands at the FRONT (GenericMap.java:559)', () => {
+      const map = GenericMap.createGenericMap('tempoMap')!;
+      const e = new Element('tempo', Mpm.MPM_NAMESPACE);
+      e.addAttribute(new Attribute('date', '100'));
+      map.addElement(e);
+
+      const at = map.addStyleSwitch(200, 'staccato');
+      expect(at).toBe(0);
+      expect(map.getElement(0)!.getLocalName()).toBe('style');
+      expect(map.getElement(1)!.getLocalName()).toBe('tempo');
+      // …and the XML is moved with it, which is what makes the placement observable.
+      expect(map.getXml().getChildElements().get(0)!.getLocalName()).toBe('style');
+      // The date-based lookup then reports the switch as in force from the top of the map,
+      // although its own `@date` is 200.
+      expect(map.getStyleNameAt(0)).toBeNull();
+      expect(map.getStyleNameAt(200)).toBe('staccato');
+    });
+
     it('getStyleNameAt returns null when no styles exist', () => {
       const map = makeMap([100, 200]);
       expect(map.getStyleNameAt(0)).toBeNull();
@@ -732,6 +789,37 @@ describe('GenericMap', () => {
       const map = GenericMap.createGenericMap('tempoMap')!;
       map.addStyleSwitch(100, 'legato');
       expect(map.getStyleNameAt(50)).toBeNull();
+    });
+
+    it('findStyleSwitchAt scans from the index inclusive, and is positional not date-based', () => {
+      const map = ExposedMap.make('tempoMap');
+      const tempo = new Element('tempo', Mpm.MPM_NAMESPACE);
+      tempo.addAttribute(new Attribute('date', '0'));
+      map.addElement(tempo);
+      // `addStyleSwitch` is first-at-date, so this lands at 0, ahead of the tempo.
+      map.addStyleSwitch(0, 'legato');
+      expect(map.getElement(0)!.getLocalName()).toBe('style');
+
+      // Inclusive: asked about the switch's own position, the scan answers with the switch.
+      expect(map.styleSwitchAt(0)!.getAttributeValue('name.ref')).toBe('legato');
+      expect(map.styleNameAt(0)).toBe('legato');
+      // …and about the instruction after it, with the same one.
+      expect(map.styleNameAt(1)).toBe('legato');
+
+      // Positional and not date-based: a switch at the SAME date but a later position is not
+      // in scope for the instruction ahead of it, although `getStyleNameAt(0)` would find it.
+      // This is the divergence `expression/datedView.ts` documents at length.
+      const map2 = ExposedMap.make('tempoMap');
+      const t2 = new Element('tempo', Mpm.MPM_NAMESPACE);
+      t2.addAttribute(new Attribute('date', '0'));
+      map2.addElement(t2);
+      const style2 = new Element('style', Mpm.MPM_NAMESPACE);
+      style2.addAttribute(new Attribute('date', '0'));
+      style2.addAttribute(new Attribute('name.ref', 'staccato'));
+      map2.addElement(style2); // last-at-date, so it lands AFTER the tempo
+      expect(map2.getElement(1)!.getLocalName()).toBe('style');
+      expect(map2.styleNameAt(0)).toBeNull();
+      expect(map2.getStyleNameAt(0)).toBe('staccato');
     });
   });
 
