@@ -372,3 +372,55 @@ up to 100 000, called twice per op and twice per segment. Its NaN answer today i
 own docstring promises; the bound is arguably the correct reading and the scan the defect.
 `diff`'s call site is proved finite; `compare`'s `segment.startQuarters` was **not traced to its
 sources**. Trace it, or rule on the NaN, and it is a one-line change.
+
+
+## Addendum 3 — worked, and the survey was wrong twice
+
+Landed 2026-08-21. Both corrections came from measuring rather than from re-reading, and both
+are worth more than the items they replaced.
+
+**Items 21/22 — right diagnosis, wrong cure.** The survey proposed
+`xs.find((x, i) => i > index && …)` in place of `xs.slice(index + 1).find(...)`, "the same
+answer with no slice". It is the same answer and it is **measurably slower**: isolated on the
+shape at n=16000, nine samples per point, slice+find 167 ms against find+bound **529 ms**. Both
+are quadratic; `slice` is a memcpy while `find` pays a JS predicate call per skipped element.
+The real fix is neither — precompute the valid positions once with `filterMap` and binary-search
+them: 0.07 ms on the same probe, and end-to-end at 4000 entries pedal 5.8 → 4.5 ms,
+dynamics 4.0 → 1.7, tempo 4.3 → 2.0, with µs/entry flat instead of rising.
+
+**`articulationDefault` is not the shape its siblings are.** Addendum 1 marked it "read at
+`f55caa3`, not re-read — treat as one step weaker", and that caution paid. It is the **only one
+of seven readers with no `Number.isFinite(entry.date)` guard**. So two NaN-dated `<style>`
+entries put a NaN `startTicks` in the *middle* of `steps`, where addendum 1's leading-NaN
+argument does not reach. One is harmless — AD-37.1 forces the first step's start to 0 anyway.
+
+It contradicts a documented invariant: `editState.ts:82-84` states as settled that *"datedView
+sorts such entries to the front and every reader skips them."* Every reader but this one.
+**Open**, argued at the site: adding the guard changes what a malformed document reads as, which
+belongs to whoever rules on the reading rather than to a loop-shape pass.
+
+**Four green controls, root-caused and closed** — `readTimeSignatures`' whole rejection guard,
+`readAccentuationPattern`'s `@beat` guard, `ticks <= endTicks` versus `<` in the new segment
+lookup (they differ only at the first tick of a *gap*, which `accentuationDistance` probes on
+every comparison with a skipped instruction), and the best of them: **`scape.binOf` shifted by
+one bin left 1347 tests green.** `scape.test.ts` tests internal consistency by its own header,
+every case is invariant under a permutation of mass across bins, and its one placement case sits
+at the window end — the single position where the shift is a no-op. A scape exists to say
+*where* the difference sits.
+
+**Item 17 landed for three of six.** `src/comparison/segments.ts` holds `coveringSegmentAt` with
+the disjointness proof. `compareMpm` at n=400: accentuation 123 → 64 ms, rubato 234 → 120,
+pedal 633 → 526. Item 15 part done — the per-call allocation is gone via `findIndex`, and
+`partitionPoint` was **rejected** because `scape.ts:203`'s bracket does not reject NaN and the
+two forms put it in *opposite end bins*.
+
+## The two questions left open
+
+1. **`articulationDefault`'s missing `isFinite` guard** — above. Aligns the family and unblocks
+   the last of item 17; changes malformed-document behaviour.
+2. **`measurePositionAt` (item 14)** — one entry per bar up to 100 000, called twice per op and
+   twice per segment, so the win is real. It is blocked on a *question*, not on work: today a
+   NaN gives `{number: <last bar>, beat: NaN}` where the bound gives `null` — which is what its
+   own docstring promises, so the bound is arguably correct and the scan is the defect.
+   `diff`'s call site is proved finite; `compare`'s `segment.startQuarters` was never traced to
+   its sources. Trace it or rule on the NaN, and it is one line.
