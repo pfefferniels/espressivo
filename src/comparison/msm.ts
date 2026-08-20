@@ -28,6 +28,7 @@
  * this module returns is therefore in QUARTERS, or in common ticks derived from a caller-
  * supplied grid — never in the MSM's own ticks, which nothing downstream knows how to read.
  */
+import { head, isNonEmpty, zipWith } from '../prelude/index.js';
 import { readMsmFacts, type MsmFacts } from '../expression/msmFacts.js';
 import { readNumericAttributeValue } from '../expression/attributes.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -185,8 +186,11 @@ function measureGrid(
   const measures: MeasureEntry[] = [];
   let number = 1;
 
-  for (const [index, entry] of entries.entries()) {
-    const next = entries[index + 1] as TimeSignatureEntry | undefined;
+  // The neighbour is PAIRED with its own instruction rather than read at `index + 1`. "There is
+  // no next one" is then a value — `null` — instead of an out-of-range read that the type system
+  // had to be told about with `as … | undefined`.
+  const nexts: readonly (TimeSignatureEntry | null)[] = [...entries.slice(1), null];
+  for (const [entry, next] of zipWith(entries, nexts, (at, after) => [at, after] as const)) {
     const until = Math.min(next?.startQuarters ?? endQuarters, endQuarters);
     const length = measureLengthQuarters(entry);
     if (!(length > 0)) continue;
@@ -235,8 +239,8 @@ export function measurePositionAt(
  * default in force — the same answer, differently stamped.
  */
 export function beatGridOf(msm: ComparisonMsm, ticksPerQuarter: number): BeatGrid | null {
-  const first = msm.timeSignatures[0] as TimeSignatureEntry | undefined;
-  if (first === undefined) return null;
+  if (!isNonEmpty(msm.timeSignatures)) return null;
+  const first = head(msm.timeSignatures);
   return {
     tsDate: first.startQuarters * ticksPerQuarter,
     numerator: first.numerator,

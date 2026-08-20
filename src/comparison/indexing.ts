@@ -1,5 +1,17 @@
 /**
- * The one checked read this module's random access is allowed to use.
+ * The checked reads this module's random access is allowed to use.
+ *
+ * Four functions, and the choice between them is a statement about what a MISS would mean:
+ *
+ * | function            | element type            | on a miss |
+ * |---------------------|-------------------------|-----------|
+ * | {@link elementAt}   | never nullish           | throws    |
+ * | {@link numberAt}    | a numeric buffer        | throws    |
+ * | {@link optionAt}    | may legitimately be null| throws    |
+ * | {@link elementAtOrNull} | never nullish       | `null`    |
+ *
+ * The first three are for an index this directory computed itself; the last is for one that
+ * arrived from a caller, where a miss is an answer rather than a defect.
  *
  * ## Why a reader rather than an algorithm
  *
@@ -53,6 +65,25 @@ export function elementAt<T extends NonNullable<unknown>>(
   what: string,
 ): T {
   return xs[index] ?? outOfRange(index, xs.length, what);
+}
+
+/**
+ * `xs[index]`, or `null` where the index misses.
+ *
+ * The counterpart to {@link elementAt}, for the callers whose index came from OUTSIDE: a
+ * `performance: 7` in a caller's option bag is a question about the document, and "there is no
+ * seventh performance" is an answer to it rather than a defect in this directory's arithmetic.
+ * Those callers get `null` and decide; the ones indexing with their own loop bounds get the
+ * throw.
+ *
+ * `.at()` is deliberately not used for this. It reads a NEGATIVE index from the end, so
+ * `performance: -1` would silently select the last performance instead of missing.
+ */
+export function elementAtOrNull<T extends NonNullable<unknown>>(
+  xs: readonly T[],
+  index: number,
+): T | null {
+  return xs[index] ?? null;
 }
 
 /**

@@ -76,7 +76,7 @@
  * the domain test). Since the smoothstep's value fraction stays in [0,1], clamping the two
  * endpoints clamps the whole curve.
  */
-import { head, isNonEmpty, type NonEmptyArray } from '../prelude/index.js';
+import { head, isNonEmpty, zipWith, type NonEmptyArray } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { innerControlPointsXPositions } from '../mpm/elements/maps/data/bezier.js';
 import { readAttributeValue } from '../expression/attributes.js';
@@ -391,7 +391,11 @@ function assembleTimeline(
       shape: valued({ kind: 'constant', position: PEDAL_NEUTRAL_POSITION }),
     });
 
-  for (const [index, raw] of raws.entries()) {
+  // The neighbour is PAIRED with its own movement rather than read at `index + 1`. "There is
+  // no next one" is then a value — `null` — instead of an out-of-range read that the type
+  // system had to be told about with `as RawMovement | undefined`.
+  const nexts: readonly (RawMovement | null)[] = [...raws.slice(1), null];
+  for (const [raw, next] of zipWith(raws, nexts, (at, after) => [at, after] as const)) {
     breakpoints.add(raw.dateTicks);
     const shape = shapeOf(raw, notes);
     segments.push({
@@ -421,7 +425,6 @@ function assembleTimeline(
     // The hold between this span's end and the next rendered span's start. `raws` is in entry
     // order and entries are date-ordered, so `next.dateTicks >= raw.endTicks` always; the two
     // are equal for consecutive movements, and the hold is then zero-width and not emitted.
-    const next = raws[index + 1] as RawMovement | undefined;
     const holdEnd = next?.dateTicks ?? Number.POSITIVE_INFINITY;
     if (holdEnd > raw.endTicks) {
       breakpoints.add(raw.endTicks);

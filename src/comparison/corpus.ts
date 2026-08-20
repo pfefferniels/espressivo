@@ -28,7 +28,7 @@
  * drift from the product it is assembled out of.
  */
 import { fromEntriesExact } from '../prelude/index.js';
-import { elementAt, numberAt } from './indexing.js';
+import { elementAt, elementAtOrNull, numberAt } from './indexing.js';
 import { agglomerate, pam, silhouette, SILHOUETTE_RELIABLE_MINIMUM } from './clustering.js';
 import type { Linkage } from './clustering.js';
 import { classicalMds, seriationOrder } from './embedding.js';
@@ -112,10 +112,13 @@ function expand(items: readonly InteriorCorpusItem[]): readonly ExpandedItem[] {
     const performances = readPerformances(item.root);
 
     if (item.performance !== undefined) {
+      // A caller's `performance: 7` is a question about the document, so a miss is an ANSWER
+      // — the label falls back to the selector as written — rather than a defect. That is what
+      // `elementAtOrNull` is for, and it is why the old `as … | undefined` was here at all.
       const named =
         typeof item.performance === 'number'
-          ? (performances[item.performance] as (typeof performances)[number] | undefined)
-          : performances.find((candidate) => candidate.name === item.performance);
+          ? elementAtOrNull(performances, item.performance)
+          : (performances.find((candidate) => candidate.name === item.performance) ?? null);
       expanded.push({
         root: item.root,
         itemIndex,

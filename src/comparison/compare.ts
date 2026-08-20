@@ -34,7 +34,7 @@
  */
 import { fromEntriesExact, head, isNonEmpty, last, mapValues, pairwise } from '../prelude/index.js';
 
-import { elementAt } from './indexing.js';
+import { elementAt, elementAtOrNull } from './indexing.js';
 import {
   EVENT_KAPPA_QUARTERS,
   aggregateDistance,
@@ -768,7 +768,10 @@ function dimensionComparison(
     for (const entry of row.rowDistances)
       rowDistances.set(entry.key, (rowDistances.get(entry.key) ?? 0) + entry.distance);
 
-  const first = rows[0] as DimensionEvaluation | undefined;
+  // A dimension evaluated over NO scope has no unit and no space to report, which is what the
+  // `?? …` defaults below already say. `elementAtOrNull` says the same thing about the read
+  // itself, in place of an `as … | undefined` that was hand-rolling the flag.
+  const first = elementAtOrNull(rows, 0);
 
   return {
     state: bothNeutral ? 'both-neutral' : 'compared',
@@ -1316,7 +1319,10 @@ function profilesOf(
 }
 
 function emptyProfile(rows: readonly DimensionEvaluation[]): ComparisonProfile {
-  const first = rows[0] as DimensionEvaluation | undefined;
+  // A dimension evaluated over NO scope has no unit and no space to report, which is what the
+  // `?? …` defaults below already say. `elementAtOrNull` says the same thing about the read
+  // itself, in place of an `as … | undefined` that was hand-rolling the flag.
+  const first = elementAtOrNull(rows, 0);
   return {
     dates: [],
     density: [],
@@ -1339,7 +1345,10 @@ function profileOf(
   const density = dates.map((quarters) => densityAtOf(rows, quarters));
   const signed = dates.map((quarters) => signedAtOf(rows, quarters));
   const shared = sharedCurves(rows, dates);
-  const first = rows[0] as DimensionEvaluation | undefined;
+  // A dimension evaluated over NO scope has no unit and no space to report, which is what the
+  // `?? …` defaults below already say. `elementAtOrNull` says the same thing about the read
+  // itself, in place of an `as … | undefined` that was hand-rolling the flag.
+  const first = elementAtOrNull(rows, 0);
 
   return {
     dates,

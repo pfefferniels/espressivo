@@ -417,6 +417,34 @@ describe('the products §8 reads off the matrix', () => {
     // AD-26.3's context is CONTEXT: the matrices are untouched by it.
     expect(report.context).not.toBeNull();
     expect(report.context?.percentile).toHaveLength(25);
+
+    // …and the three figures are the quantiles of the off-diagonal distances the report also
+    // ships, which is what makes them readable beside the matrix rather than beside nothing.
+    //
+    // Five items give TEN off-diagonal pairs, so every one of the three positions falls
+    // BETWEEN two order statistics — `0.5·9 = 4.5`, `0.25·9 = 2.25`, `0.75·9 = 6.75` — and the
+    // interpolation is therefore the whole of the answer. The median is stated as the textbook
+    // average of the two central samples, which shares no line with the implementation.
+    //
+    // [NEGATIVE CONTROL, MEASURED] Making the interpolation read its LOWER neighbour twice, so
+    // that a percentile degenerates to a selection, leaves the other 1311 tests green and reds
+    // exactly these four expectations.
+    const offDiagonal: number[] = [];
+    for (let i = 0; i < 5; ++i)
+      for (let j = i + 1; j < 5; ++j) offDiagonal.push(report.matrices.aggregate[i * 5 + j]);
+    const sorted = [...offDiagonal].sort((x, y) => x - y);
+    expect(sorted).toHaveLength(10);
+
+    const median = (sorted[4] + sorted[5]) / 2;
+    // The empirical-CDF quantile at `p`: the sample at `p·(n−1)`, linearly between neighbours.
+    const lowerQuartile = sorted[2] + (sorted[3] - sorted[2]) * 0.25;
+    const upperQuartile = sorted[6] + (sorted[7] - sorted[6]) * 0.75;
+
+    expect(report.context?.corpusMedian).toBeCloseTo(median, 9);
+    expect(report.context?.noiseFloor).toBeCloseTo(median, 9);
+    expect(report.context?.corpusIqr).toBeCloseTo(upperQuartile - lowerQuartile, 9);
+    // Non-vacuous: an interpolated quantile is not one of the samples it sits between.
+    expect(sorted).not.toContain(report.context?.noiseFloor);
     const withoutContext = corpus(items, { k: 2, embeddingAxes: 2 });
     expect(withoutContext.context).toBeNull();
     expect(withoutContext.matrices.aggregate).toEqual([...report.matrices.aggregate]);

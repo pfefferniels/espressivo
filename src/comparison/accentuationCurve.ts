@@ -50,7 +50,7 @@
  * add `length="4"` to the document and reorder its `<accentuation>` children by beat
  * (`AccentuationPatternDef.ts:36-40`, `:67` → `:192-199`), which R1 forbids.
  */
-import { head, isNonEmpty, last } from '../prelude/index.js';
+import { head, isNonEmpty, last, zipWith } from '../prelude/index.js';
 import { elementAt, optionAt } from './indexing.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
@@ -306,9 +306,11 @@ export function readAccentuationSegments(
   const notes: AccentuationCurveNote[] = [];
   const breakpoints = new Set<number>([0]);
 
-  for (const [index, raw] of raws.entries()) {
-    const next = raws[index + 1] as (typeof raws)[number] | undefined;
-    const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
+  // The end is PAIRED with its instruction rather than read at `index + 1`. "There is no next
+  // instruction" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
+  // system had to be told about with `as (typeof raws)[number] | undefined`.
+  const endsAt = [...raws.slice(1).map((next) => next.dateTicks), Number.POSITIVE_INFINITY];
+  for (const [raw, endTicks] of zipWith(raws, endsAt, (at, ends) => [at, ends] as const)) {
     breakpoints.add(raw.dateTicks);
 
     const nameRef = readAttributeValue(raw.element, 'name.ref');

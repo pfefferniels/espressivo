@@ -82,6 +82,7 @@
  * All three are render-path artifacts of the same kind: they depend on where a note falls,
  * not on what the document declares.
  */
+import { zipWith } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { readAttributeValue } from '../expression/attributes.js';
 import { bottom, valued, type Valued } from './values.js';
@@ -282,13 +283,15 @@ export function readImprecisionSpans(
   const notes: ImprecisionNote[] = [];
   const breakpoints = new Set<number>([0]);
 
-  for (const [index, entry] of entries.entries()) {
+  // ANY next entry ends the span (AD-14ii/R12) — the imprecision maps and asynchronyMap are
+  // the only two with this rule, and `spanEnds.ts` is asserted above so the two cannot drift.
+  // The end is PAIRED with its entry rather than read at `index + 1`. "There is no next
+  // entry" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
+  // system had to be told about with `as (typeof xs)[number] | undefined`.
+  const endsAt = [...entries.slice(1).map((next) => next.ticks), Number.POSITIVE_INFINITY];
+  for (const [entry, endTicks] of zipWith(entries, endsAt, (at, ends) => [at, ends] as const)) {
     const element: Element = entry.element;
     const startTicks = entry.ticks;
-    // ANY next entry ends the span (AD-14ii/R12) — the imprecision maps and asynchronyMap are
-    // the only two with this rule, and `spanEnds.ts` is asserted above so the two cannot drift.
-    const next = entries[index + 1] as (typeof entries)[number] | undefined;
-    const endTicks = next === undefined ? Number.POSITIVE_INFINITY : next.ticks;
 
     breakpoints.add(startTicks);
 
