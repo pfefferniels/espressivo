@@ -591,12 +591,13 @@ _is_ the fixture bytes — and is commented as such at the site.
 
 ## 2. Frozen divergences
 
-Known, journaled, and deliberately **not** repaired. None is reachable from the MEI/MSM ⇒ MIDI
-pipeline **on a well-formed document** — the one exception is `IMP1` below, which is reachable
-only from defective imprecision input and where both sides destroy the performance by different
-means. The first three come from capability gaps in the XML layer rather than from choices; the
-fourth is a choice, and is the one place where this port returns something Java's own code
-computes and then throws away.
+Known, journaled, and deliberately **not** repaired. Two are reachable from the MEI/MSM ⇒ MIDI
+pipeline on a well-formed document: `IMP1` below, from defective imprecision input, where both
+sides destroy the performance by different means; and `TS1`, from a well-formed MEI with a
+directional work-level tempo, which is the only entry here that is a plain defect. The first
+three bullets come from capability gaps in the XML layer rather than from choices; the fourth is
+a choice, and is the one place where this port returns something Java's own code computes and
+then throws away.
 
 - **The `setLocalName` family.** Java renames an element in place when parsing a foreign one
   (`GenericMap.setType`, `ImprecisionMap.setDomain`, and the `tempoDef` / `rubatoDef` /
@@ -633,6 +634,39 @@ computes and then throws away.
   `tests/mpm/elements/OrnamentationMap.test.ts` pin the returned shape, including the v3 fields.
   Flagged by the ornamentation programme's v2 semantics survey (ORN-1 §3.2/§5.3) as the last
   ornamentation divergence this ledger had not recorded; recorded now.
+
+### `TS1` — the work-level tempo's style switch is written even with no style to point at
+
+| Item                      | `TS1` (functional-core campaign, `src/mei` sweep)                                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Java                      | `Mei2MsmMpmConverter.convert`'s per-`mdiv` epilogue: `if (…getAllStyleTypes().get(Mpm.TEMPO_STYLE) != null) tempoMap.addStyleSwitch(0.0, "MEI export");` |
+| TypeScript                | `src/mei/Mei2MsmMpmConverter.ts`, `finishMdiv`'s "finalize the tempoMap" block                                                                           |
+| Guard tests               | `tests/mei/Mei2MsmMpmConverter.test.ts` — "the work-level tempo style switch (Java divergence)"                                                          |
+| Reachable from a fixture? | No. Reachable from any MEI whose only tempo is a **directional** `meiHead/workList/work/tempo`                                                           |
+
+**A transcription slip, found by lint and pinned rather than repaired.** Java's guard means
+"switch to the MEI-export tempo style only if one was actually defined". The port kept the
+literal `!= null` while the collection it queries became a JavaScript `Map`, whose `get`
+answers **`undefined`** for an absent key — so the test was true whatever the header held and
+`no-unnecessary-condition` flagged it as a comparison whose types have no overlap. The same
+Java line appears a second time in `parseTempo` and is transcribed `!== undefined` there,
+correctly, which is what identifies this one as a slip and not a decision.
+
+What it produces is a dangling reference. A work-level tempo that is a purely directional
+descriptor — `ritardando`, `accelerando`, `calando`, and the other words `parseTempo` routes to
+its `transitionTo` arm — defines no style at all, so the MPM is written with
+`<style … name.ref="MEI export"/>` in a document that carries no `<tempoStyles>` element. A
+named tempo (`Allegro`) takes the other arm, defines the style, and the two spellings agree.
+
+Measured, both directions: instrumenting the branch shows it is entered **exactly once** in the
+whole 6208-test suite, and on that one input the style is present — so aligning the condition
+with Java leaves every test green. Four tests now pin the behaviour, three of them on the
+directional descriptors; aligning the condition reds all three.
+
+Frozen rather than fixed because the repair changes output bytes on a path no Java-generated
+reference in this repo covers, so nothing here can adjudicate it. It is the one entry in this
+section that is a **defect** rather than a capability gap or a choice: if a reference MEI with a
+directional work-level tempo is ever generated, this should move to §1.
 
 ### `IMP1` — an imprecision map the reference CRASHES on renders NaN-poisoned output here
 

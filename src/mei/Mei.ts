@@ -100,17 +100,25 @@ export interface StaffProvenance {
  * @author Axel Berndt
  */
 export class Mei extends XmlBase {
-  /** an empty MEI built from the {@link MINIMAL_MEI} template */
-  constructor();
-  /** wrap an already parsed document (taken over, not copied) */
-  constructor(mei: Document);
+  /**
+   * An already parsed document (taken over, not copied), or — with no argument at all — an
+   * empty MEI built from the {@link MINIMAL_MEI} template.
+   */
+  constructor(mei?: Document);
   /** parse MEI from an XML string */
   constructor(xml: string, isXmlString: true);
   /**
-   * Three genuinely different things to start from — nothing, a parsed tree, or XML
-   * source — which is why this stays an overload set rather than one optional parameter
-   * (`unified-signatures` is knowingly left standing; collapsing it is T16's call, and it
-   * would make `new Mei(someString)` silently mean "empty" instead of "parse this").
+   * Three genuinely different things to start from — nothing, a parsed tree, or XML source.
+   *
+   * The first two were separate overloads, and `unified-signatures` was right that they are
+   * one signature with an optional parameter: `mei?: Document` accepts exactly the two call
+   * forms `()` and `(document)` accepted, and dispatches on the same `arg === undefined`
+   * the body already tested. The objection recorded here — that collapsing would make
+   * `new Mei(someString)` silently mean "empty" — applies to the *string* overload, which
+   * stays separate because its second argument is what distinguishes it; a lone string is
+   * still a type error. `XmlBase` had already made the identical split for the identical
+   * reason (T17), and `AbstractMsm` after it.
+   *
    * Java has eight constructors here; the five that take `File`, `InputStream` or a
    * validation schema have no counterpart in this port.
    */
@@ -435,7 +443,11 @@ export class Mei extends XmlBase {
     const notResolved: string[] = [];
     let previousPlaceholders = new Map<Element, string>();
 
-    while (true) {
+    // `for (;;)` rather than `while (true)`: the loop really has no entry condition — it
+    // ends on one of two `break`s below, nothing resolved left to do or the same placeholder
+    // set twice running — and spelling that as a condition that is always true is what
+    // `no-unnecessary-condition` objects to. Same loop, no test at the top.
+    for (;;) {
       const elements = new Map<string, Element>();
       const placeholders = new Map<Element, string>();
 
@@ -674,14 +686,16 @@ export class Mei extends XmlBase {
       let child = firstChildElement(regularizedRoot);
       while (child !== null) {
         child.detach();
-        const id = getAttributeValue('id', child);
-        if (id !== null) childHash.set(id, child);
+        // `getAttributeValue` answers `''` rather than null for an absent `@xml:id`, so
+        // Java's `id != null` here was true for every child and the guard it opened never
+        // skipped one. An unidentified child is keyed under `''`, as it always has been.
+        childHash.set(getAttributeValue('id', child), child);
         child = firstChildElement(regularizedRoot);
       }
 
       for (const plistEntry of plist) {
         const c = childHash.get(plistEntry);
-        if (c === null || c === undefined) continue;
+        if (c === undefined) continue;
 
         try {
           regularizedRoot.appendChild(c);
