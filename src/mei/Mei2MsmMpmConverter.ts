@@ -50,6 +50,7 @@ import { OrnamentData } from '../mpm/elements/maps/data/OrnamentData.js';
 import { Author } from '../mpm/elements/metadata/Author.js';
 import { Comment } from '../mpm/elements/metadata/Comment.js';
 import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
+import { filterMap, foldl, head, isNonEmpty, pairwise } from '../prelude/index.js';
 
 /**
  * What the walker does with an element once its handler has run.
@@ -291,23 +292,33 @@ export class Mei2MsmMpmConverter {
       Mei2MsmMpmConverter.msmCleanup(msms);
     }
 
-    if (this.mei.getFile() !== null) {
-      if (msms.length === 1)
-        msms[0].setFile(`${getFilenameWithoutExtension(this.mei.getFile()!)}.msm`);
-      else {
-        for (let i = 0; i < msms.length; ++i) {
-          msms[i].setFile(`${getFilenameWithoutExtension(this.mei.getFile()!)}-${i}.msm`);
-        }
-      }
-      if (mpms.length === 1) {
-        mpms[0].setFile(`${getFilenameWithoutExtension(this.mei.getFile()!)}.mpm`);
-        const msmRelatedResource = RelatedResource.createRelatedResource(msms[0].getFile()!, 'msm');
+    const meiFile = this.mei.getFile();
+    if (meiFile !== null) {
+      // Java writes this as four loops: a lone export is named after the source file, a
+      // series after the source file plus its index, once for MSM and once for MPM. It is
+      // one rule with two suffixes, so it is stated once here and applied by iteration —
+      // which also lets `getFile()` be read a single time rather than asserted non-null on
+      // each of the four passes.
+      const stem = getFilenameWithoutExtension(meiFile);
+      const exportName = (index: number, count: number, extension: string): string =>
+        count === 1 ? `${stem}.${extension}` : `${stem}-${index}.${extension}`;
+
+      msms.forEach((msm, i) => msm.setFile(exportName(i, msms.length, 'msm')));
+      mpms.forEach((mpm, i) => mpm.setFile(exportName(i, mpms.length, 'mpm')));
+
+      // A lone performance additionally carries a back-reference to the movement it
+      // renders. `makeMovement` appends to `movements` and `performances` together, so one
+      // performance means one movement, and `firstPair` is that fact stated rather than
+      // asserted: a pairing that somehow failed to hold yields no related resource instead
+      // of dereferencing an absent movement.
+      if (mpms.length === 1 && isNonEmpty(msms) && isNonEmpty(mpms)) {
+        const onlyMsm = head(msms);
+        const onlyMpm = head(mpms);
+        const msmFile = onlyMsm.getFile();
+        const msmRelatedResource =
+          msmFile === null ? null : RelatedResource.createRelatedResource(msmFile, 'msm');
         if (msmRelatedResource !== null)
-          mpms[0].getMetadata()?.addRelatedResource(msmRelatedResource);
-      } else {
-        for (let i = 0; i < mpms.length; ++i) {
-          mpms[i].setFile(`${getFilenameWithoutExtension(this.mei.getFile()!)}-${i}.mpm`);
-        }
+          onlyMpm.getMetadata()?.addRelatedResource(msmRelatedResource);
       }
     }
 

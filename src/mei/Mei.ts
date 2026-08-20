@@ -9,6 +9,7 @@ import {
   firstChildElement,
   getAttributeValue,
 } from '../xml/tree.js';
+import { foldl } from '../prelude/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { Msm } from '../msm/Msm.js';
 import type { Mpm } from '../mpm/Mpm.js';
@@ -341,23 +342,28 @@ export class Mei extends XmlBase {
    * node set into document order through xmldom's `compareDocumentPosition`, which walks
    * both ancestor chains per comparison. That sort was 23% of a conversion on a 2000-note
    * score. {@link descendantElements} is the same axis walked directly, in the same
-   * pre-order. The backwards loop is kept only because it was there: the fold is a
-   * minimum, so it does not depend on the order.
+   * pre-order. The reverse loop this used to be was kept only because Java writes one; the
+   * fold is a minimum, so it does not depend on the order, and {@link foldl} says that.
+   *
+   * The dot loop stays a loop on purpose: `d /= 2` per dot is the accumulation Java
+   * performs, and the closed form `d / 2 ** dots` is a different sequence of roundings.
    */
   computeMinimalPPQ(): number {
     const e = this.getMusic();
     if (e === null) return 0;
 
     const durs = descendantElements(e, (element) => element.getAttribute('dur') !== null);
-    let dur = 4.0;
-    for (let i = durs.length - 1; i >= 0; --i) {
-      const elem = durs[i];
-      let d =
-        elem.getAttribute('dur') !== null ? duration2decimal(elem.getAttributeValue('dur')!) : 4.0;
-      let dots = elem.getAttribute('dots') !== null ? parseInt(elem.getAttributeValue('dots')!) : 0;
+    // `durs` was selected on `dur` being present, so the ternaries below can never take
+    // their `4.0`/`0` arm — but they are Java's, and reading the value once instead of
+    // asking twice is what lets the two `!` assertions go.
+    const dur = foldl(durs, 4.0, (smallest, elem) => {
+      const durValue = elem.getAttributeValue('dur');
+      let d = durValue !== null ? duration2decimal(durValue) : 4.0;
+      const dotsValue = elem.getAttributeValue('dots');
+      let dots = dotsValue !== null ? parseInt(dotsValue) : 0;
       for (; dots > 0; --dots) d /= 2;
-      if (dur > d) dur = d;
-    }
+      return smallest > d ? d : smallest;
+    });
 
     const result = 0.25 / dur;
 
