@@ -1,3 +1,4 @@
+import { foldl } from '../prelude/index.js';
 import type { Normalized } from '../units.js';
 
 /**
@@ -93,10 +94,11 @@ export interface RenderContext {
  * the same parts in the same order.
  */
 export function deriveSeed(base: number, ...parts: readonly number[]): number {
-  let h = base >>> 0; // initial h is the base seed itself, unsigned
-  for (const p of parts) {
-    // fold left-to-right, in argument order
-    h = Math.imul(h ^ (p >>> 0), 0x27d4eb2d) >>> 0;
-  }
+  // "Fold left-to-right, in argument order" was the comment on the loop this replaces, and it
+  // is the whole normative content of the function — so it is the code now. The seed is `base`
+  // unsigned, the step is the mix, and neither the operations nor their order moved: `foldl`
+  // walks front to back and threads the accumulator exactly as the `let` did. Integer
+  // arithmetic throughout (`Math.imul`, `^`, `>>>`), so there is no float to reassociate.
+  const h = foldl(parts, base >>> 0, (acc, p) => Math.imul(acc ^ (p >>> 0), 0x27d4eb2d) >>> 0);
   return h || 1; // 0 -> 1, matching RandomNumberProvider's own guard
 }
