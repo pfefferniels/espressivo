@@ -357,24 +357,6 @@ not either: it showed the guard as a dead branch, which proves only that the _bu
 never fires, not that no fixture reaches the _fixed_ one. What does the work is the unit tests: the
 same reverted tree fails four of them, in both the direct and the parse path.
 
-### An empty `distribution.list` refuses instead of yielding `undefined` as a `number`
-
-`src/supplementary/RandomNumberProvider.ts`. `getValue` reads
-`series[index % series.length]`. A `<distribution.list>` carrying no `<measurement>` children
-parses to an empty series, so that index is `NaN` and the read is out of range — and because
-the method declares `: number`, the `undefined` it returned was typed as a number. Every
-caller's arithmetic then turned it into a `NaN` somewhere else entirely, which is the worst
-place to discover it.
-
-**Both languages refuse; only the manner differs.** Java computes the same
-`index % this.series.size()` on an `int` and throws `ArithmeticException: / by zero`
-(`RandomNumberProvider.java`, `getValue(int)`). This port now throws a `RangeError` naming the
-index and the bound. So this is a move toward the reference rather than a divergence from it —
-the previous silent `undefined` was the divergence.
-
-No fixture reaches the path, which is why nothing caught it; it is pinned by its own unit test
-so that a change back would be visible.
-
 ### `Element.toXML` declared the default namespace on every element instead of once
 
 `src/xml/XomTypes.ts`. The serializer emitted `xmlns="…"` for every element carrying a

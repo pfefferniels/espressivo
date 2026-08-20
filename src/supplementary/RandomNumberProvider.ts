@@ -284,13 +284,17 @@ export class RandomNumberProvider {
     const wholeIndex = Math.floor(clampedIndex);
 
     if (this.distributionType === RandomNumberProvider.DISTRIBUTION_LIST)
-      // An EMPTY list makes this `index % 0`, i.e. NaN, and the reader throws. That is a move
-      // TOWARD the reference: Java computes the same `index % series.size()` on an `int` and
-      // throws ArithmeticException: / by zero. This port returned `undefined` wearing the type
-      // `number`, which every caller's arithmetic then turned into a NaN somewhere else.
-      // Reachable from a `<distribution.list>` with no `<measurement>` children; no fixture
-      // has one.
-      return elementAt(this.series, wholeIndex % this.series.length, 'distribution.list draw');
+      // An EMPTY list makes this `index % 0`, i.e. NaN, and the read is out of range. The
+      // `?? NaN` is behaviour-preserving, NOT a repair: the incumbent returned `undefined`
+      // wearing the type `number`, and NaN is what every caller's arithmetic and every
+      // comparison already made of it.
+      //
+      // It is deliberately not a throw, though Java's `index % series.size()` on an `int`
+      // throws ArithmeticException here. The NaN is a DOCUMENTED bottom route that the
+      // comparison module models and pins — `imprecisionLaws.test.ts` asserts that an empty
+      // `<distribution.list>` makes every note's date NaN, and `isBottomAt` reports it as
+      // bottom. Refusing instead would delete a modelled degeneracy, not fix a defect.
+      return this.series[wholeIndex % this.series.length] ?? Number.NaN;
 
     // In range by construction — the loop fills the series up to `wholeIndex` — but the
     // construction is a loop condition, which a type cannot follow.
@@ -375,9 +379,11 @@ export class RandomNumberProvider {
   }
 
   private compensatingTriangleDistribution(): number {
-    // Non-empty by construction: each correlated distribution's factory pushes a first value
-    // before any caller can reach this.
-    const prevRandomNum = elementAt(this.series, this.series.length - 1, 'correlated predecessor');
+    // NOT non-empty by construction, though the factories do push a first value: `setSeed`
+    // clears `series` — its own doc says so — so any document that puts a `@seed` on a
+    // correlated distribution reaches this with an empty series. NaN then propagates through
+    // the whole performance, which `imprecisionLaws.test.ts` pins as a bottom route.
+    const prevRandomNum = this.series[this.series.length - 1] ?? Number.NaN;
     const newLowerLimit =
       prevRandomNum - (prevRandomNum - this.lowerLimit) / this.degreeOfCorrelation;
     const newUpperLimit =
@@ -395,7 +401,7 @@ export class RandomNumberProvider {
     let attempts = 0;
     do {
       result =
-        elementAt(this.series, this.series.length - 1, 'brownian predecessor') +
+        (this.series[this.series.length - 1] ?? Number.NaN) +
         (this.nextRandom() - 0.5) * 2.0 * this.maxStepWidth;
       if (++attempts > 10000) {
         result = Math.max(this.lowerLimit, Math.min(this.upperLimit, result));
