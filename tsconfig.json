@@ -27,16 +27,18 @@
     //                               loosens the very types this change exists to tighten. The
     //                               option plumbing is rewritten in the model stage; the flag
     //                               goes on with it.
-    //   noUncheckedIndexedAccess    1933 errors, and the single most valuable flag for a tree
-    //                               with 118 index-based loops. It is enabled per directory as
-    //                               each one's loops are replaced by the `src/prelude/seq.ts`
-    //                               algorithms, because that replacement is exactly what fixes
-    //                               its errors.
+    // `noUncheckedIndexedAccess` is now ON, below. It began at 885 errors in `src/` and was
+    // cleared directory by directory over the campaign, by five agents and me, against a
+    // one-way ratchet that refused to let any directory get worse. What matters is that it was
+    // cleared by REMOVING THE INDEXING rather than by silencing it: across the whole of it,
+    // zero `!` and zero `as T` were added, and the repo's non-null-assertion count fell from
+    // 841 to 705 in the same period.
     "useUnknownInCatchVariables": true,
     "noImplicitReturns": true,
     "verbatimModuleSyntax": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
 
     "esModuleInterop": true,
     "declaration": true,

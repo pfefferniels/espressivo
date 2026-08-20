@@ -1,6 +1,11 @@
 /**
  * A one-way ratchet for the compiler flags that are not on yet.
  *
+ * **Now pointed at `tests/`.** It did this job for `src/` first — 885 errors to zero across
+ * fifteen directories, by five agents and me, and `noUncheckedIndexedAccess` is now ON in
+ * `tsconfig.json` so the compiler enforces that side directly. `tsconfig.tests.json` opts the
+ * test project out for the moment, at 1047, and this script keeps that number falling.
+ *
  * `noUncheckedIndexedAccess` is the strongest remaining check available to this codebase and
  * the last one still off: it makes `xs[i]` have type `T | undefined`, which is exactly the
  * mistake a tree full of index-based loops is prone to. It reports 885 errors in `src/`, so it
@@ -15,10 +20,18 @@
  *   node scripts/strict-ratchet.mjs            report the current counts against the baseline
  *   node scripts/strict-ratchet.mjs --check     exit 1 if any directory regressed
  *   node scripts/strict-ratchet.mjs --save      re-record the baseline (only ever downward)
+ *   node scripts/strict-ratchet.mjs --reseed    establish a baseline from scratch
  *
  * `--save` refuses to record a worse number for any directory, which is what makes it a
- * ratchet rather than a rubber stamp. If a regression is genuinely intended, delete that
- * directory's line from the baseline by hand and say why in the commit message.
+ * ratchet rather than a rubber stamp. A directory absent from the baseline counts as zero, so
+ * a new folder cannot arrive with a fresh allowance either.
+ *
+ * `--reseed` is the deliberate exception, and exists because that guard is otherwise total:
+ * pointing the ratchet at a NEW target — as happened when `src/` reached zero and this turned
+ * to `tests/` — means every directory looks like a regression from an implied zero, and
+ * `--save` correctly refuses all of them. Reseeding is not a way to launder a regression: it
+ * records whatever is there now, so use it only when the thing being measured has changed,
+ * and say so in the commit.
  */
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -29,17 +42,21 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE = join(ROOT, 'scripts/strict-baseline.json');
 const FLAGS = ['--noUncheckedIndexedAccess'];
 
-/** Errors per source directory, for one flag. */
+/** Errors per test directory, for one flag. */
 function measure(flag) {
   let out = '';
   try {
-    execSync(`npx tsc --noEmit ${flag}`, { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' });
+    execSync(`npx tsc -p tsconfig.tests.json --noEmit ${flag}`, {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
   } catch (e) {
     out = `${e.stdout ?? ''}${e.stderr ?? ''}`;
   }
   const counts = {};
   for (const line of out.split('\n')) {
-    const m = /^(src\/.*)\([0-9]+,[0-9]+\): error TS/.exec(line);
+    const m = /^(tests\/.*)\([0-9]+,[0-9]+\): error TS/.exec(line);
     if (m === null) continue;
     const dir = m[1].slice(0, m[1].lastIndexOf('/'));
     counts[dir] = (counts[dir] ?? 0) + 1;
@@ -52,7 +69,18 @@ for (const flag of FLAGS) now[flag] = measure(flag);
 
 let base = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : {};
 
-if (process.argv.includes('--save')) {
+if (process.argv.includes('--reseed')) {
+  const seeded = {};
+  for (const flag of FLAGS) {
+    seeded[flag] = {};
+    for (const [dir, count] of Object.entries(now[flag]).sort()) {
+      if (count > 0) seeded[flag][dir] = count;
+    }
+  }
+  writeFileSync(BASELINE, `${JSON.stringify(seeded, null, 2)}\n`);
+  base = seeded;
+  console.log('baseline RESEEDED from current counts — this is not a ratchet operation');
+} else if (process.argv.includes('--save')) {
   const merged = {};
   let refused = false;
   for (const flag of FLAGS) {

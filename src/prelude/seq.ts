@@ -20,6 +20,22 @@
 /** A sequence that is known to have a first element, so `head` needs no null check. */
 export type NonEmptyArray<T> = readonly [T, ...(readonly T[])];
 
+/*
+ * A NOTE ON THE `as` CASTS BELOW — there are seven, and they are the only ones in this module.
+ *
+ * `noUncheckedIndexedAccess` is on, so `xs[i]` is `T | undefined`. In each case below the
+ * index is in range by a proof the type system cannot state: `last` reads the final slot of a
+ * type that guarantees a first one; `zipWith` bounds `i` by the shorter length; `pairwise`
+ * starts at 1; the two bound searches probe an index `partitionPoint` derived from
+ * `xs.length`. For an unconstrained `T` there is no narrowing that expresses this — a runtime
+ * check would be dead code, and constraining the element type would stop these working over
+ * sequences that may legitimately hold `null` or `undefined`, which several callers need.
+ *
+ * They are concentrated here on purpose. This module implements the algorithms whose whole
+ * job is to let the rest of the tree stop indexing; absorbing seven proofs in one leaf is what
+ * bought zero across fifteen directories. If you are tempted to copy the pattern outward, the
+ * answer is almost certainly `filterMap`, `pairwise`, `zipWith` or `elementAt` instead.
+ */
 export function isNonEmpty<T>(xs: readonly T[]): xs is NonEmptyArray<T> {
   return xs.length > 0;
 }
@@ -29,8 +45,7 @@ export function head<T>(xs: NonEmptyArray<T>): T {
 }
 
 export function last<T>(xs: NonEmptyArray<T>): T {
-  // Non-emptiness is carried by the type, which index signatures cannot see.
-  return xs[xs.length - 1];
+  return xs[xs.length - 1] as T;
 }
 
 /**
@@ -54,23 +69,17 @@ export function last<T>(xs: NonEmptyArray<T>): T {
  * that reads `xs[i]` and `xs[i + 1]` is {@link pairwise}; one walking two sequences together
  * is {@link zipWith}. Reach for these only once those do not fit.
  */
-// The checked readers below test `xs[index] === undefined`, and while
-// `noUncheckedIndexedAccess` is still OFF in tsconfig.json that comparison reads as
-// impossible to `no-unnecessary-condition`: the rule is type-aware and resolves against the
-// project config, where an indexed read is still `T`. The rule is right about today's types
-// and wrong about this code's job, which is to be correct in the world the flag creates.
-//
-// The obvious way out — `xs[index] ?? outOfRange(...)` — passes both rules and is WRONG. It
-// conflates a `null` element with a missing one, and this tree has a type that lies about
-// exactly that: `RandomNumberProvider.series` is declared `number[]` and holds `null` on a
+// These test `xs[index] === undefined` and NOT `xs[index] ?? outOfRange(...)`. The two agree
+// for every type the signature admits and differ for one that lies about itself, which this
+// tree contains: `RandomNumberProvider.series` is declared `number[]` and holds `null` on a
 // documented degenerate path, where the null coerces to 0 and yields the delta-0 that
-// `tests/comparison/imprecisionLaws.test.ts` pins. Three tests caught it when this file
-// briefly used `??`.
+// `tests/comparison/imprecisionLaws.test.ts` pins. `??` reads that legitimate null as a miss
+// and throws; three tests caught it when this file briefly used it.
 //
-// So no formulation satisfies both rules AND correctness, and the disable is the honest
-// resolution rather than a shortcut. DELETE IT in the commit that turns the flag on: the
-// comparisons become necessary then and the rule agrees with them.
-/* eslint-disable @typescript-eslint/no-unnecessary-condition -- see the note above */
+// This block carried an `eslint-disable` for `no-unnecessary-condition` until
+// `noUncheckedIndexedAccess` was turned on, because the rule resolves against the project
+// config and read the comparison as impossible while the flag was off. The flag is on; the
+// comparisons are necessary; the disable is gone.
 function outOfRange(index: number, length: number, what: string): never {
   throw new RangeError(
     `index ${String(index)} is outside ${what}, which has ${String(length)} entries`,
@@ -164,8 +173,6 @@ export function removeAt<T extends NonNullable<unknown>>(xs: T[], index: number)
   const [removed] = xs.splice(index, 1);
   return removed ?? null;
 }
-
-/* eslint-enable @typescript-eslint/no-unnecessary-condition */
 
 /**
  * Map and filter in one pass: `f` returns `null` for the elements to drop.
@@ -272,7 +279,7 @@ export function zipWith<A, B, C>(
 ): readonly C[] {
   const n = Math.min(as.length, bs.length);
   const out: C[] = new Array<C>(n);
-  for (let i = 0; i < n; ++i) out[i] = f(as[i], bs[i], i);
+  for (let i = 0; i < n; ++i) out[i] = f(as[i] as A, bs[i] as B, i);
   return out;
 }
 
@@ -285,7 +292,7 @@ export function zipWith<A, B, C>(
  */
 export function pairwise<A>(xs: readonly A[]): readonly (readonly [A, A])[] {
   const out: (readonly [A, A])[] = [];
-  for (let i = 1; i < xs.length; ++i) out.push([xs[i - 1], xs[i]]);
+  for (let i = 1; i < xs.length; ++i) out.push([xs[i - 1] as A, xs[i] as A]);
   return out;
 }
 
@@ -346,7 +353,7 @@ export function partitionPoint(length: number, holds: (index: number) => boolean
  * Returns `xs.length` when every key is smaller.
  */
 export function lowerBoundBy<A>(xs: readonly A[], key: (a: A) => number, target: number): number {
-  return partitionPoint(xs.length, (i) => key(xs[i]) < target);
+  return partitionPoint(xs.length, (i) => key(xs[i] as A) < target);
 }
 
 /**
@@ -354,7 +361,7 @@ export function lowerBoundBy<A>(xs: readonly A[], key: (a: A) => number, target:
  * Returns `xs.length` when no key is larger.
  */
 export function upperBoundBy<A>(xs: readonly A[], key: (a: A) => number, target: number): number {
-  return partitionPoint(xs.length, (i) => key(xs[i]) <= target);
+  return partitionPoint(xs.length, (i) => key(xs[i] as A) <= target);
 }
 
 /**
