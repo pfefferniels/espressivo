@@ -10,7 +10,8 @@ import {
   RUBATO_STYLE,
   TEMPO_STYLE,
 } from '../../names.js';
-import { err, matchKind, ok, type Result } from '../../../prelude/index.js';
+import { err, isErr, matchKind, ok, type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import type { Def } from './defs/def.js';
 import { AccentuationPatternDef } from './defs/AccentuationPatternDef.js';
 import { ArticulationDef } from './defs/ArticulationDef.js';
@@ -98,8 +99,8 @@ interface StyleShape<K extends StyleKind> {
   readonly collectionName: string | null;
   /** The def child element to index, or null where there is nothing to index. */
   readonly defChildName: string | null;
-  /** Read one such child, or null — already logged — where it is malformed. */
-  readonly parseDef: (xml: Element) => DefOfStyleKind[K] | null;
+  /** Read one such child, or say why it could not be read. */
+  readonly parseDef: (xml: Element) => Result<DefOfStyleKind[K], MpmParseError>;
 }
 
 /**
@@ -149,7 +150,7 @@ const STYLE_SHAPE: { readonly [K in StyleKind]: StyleShape<K> } = {
   generic: {
     collectionName: null,
     defChildName: null,
-    parseDef: () => null,
+    parseDef: () => err({ kind: 'noElement', what: 'GenericStyle' }),
   },
 };
 
@@ -312,8 +313,11 @@ export class Style<K extends StyleKind = StyleKind> extends AbstractXmlSubtree {
     if (defChildName === null) return;
     for (const child of allChildElements(xml, defChildName)) {
       const def = parseDef(child);
-      if (def === null) continue;
-      this.defs.set(def.getName(), def);
+      // Same skip as before, and the reason is now a value rather than a line on stderr. It
+      // is dropped here because a `Style` has nowhere to keep it and no caller asking for it;
+      // what changes is that nothing prints it on the way past.
+      if (isErr(def)) continue;
+      this.defs.set(def.value.getName(), def.value);
     }
   }
 

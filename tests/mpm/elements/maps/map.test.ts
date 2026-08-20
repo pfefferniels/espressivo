@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { Element } from '../../../../src/xml/XomTypes.js';
+import { errOf, okValue } from '../../../support/result.js';
+import { Attribute, Element } from '../../../../src/xml/XomTypes.js';
 import {
   ARTICULATION_MAP,
   ASYNCHRONY_MAP,
@@ -83,17 +84,16 @@ describe('the map dispatch table', () => {
 
   it.each(MAP_KINDS)('reads a <%s> into its own class', (kind) => {
     const xml = new Element(kind, MPM_NAMESPACE);
-    const map = parseTypedMap(xml);
+    const map = okValue(parseTypedMap(xml));
 
-    expect(map).not.toBeNull();
-    expect(map!.constructor.name).toBe(EXPECTED_CLASS[kind]);
-    expect(map!.getType()).toBe(kind);
+    expect(map.constructor.name).toBe(EXPECTED_CLASS[kind]);
+    expect(map.getType()).toBe(kind);
     // The element is adopted, not copied — the map and the document are the same tree.
-    expect(map!.getXml()).toBe(xml);
+    expect(map.getXml()).toBe(xml);
   });
 
   it.each(MAP_KINDS)('recognises a freshly parsed <%s> as its own kind', (kind) => {
-    const map = parseTypedMap(new Element(kind, MPM_NAMESPACE));
+    const map = okValue(parseTypedMap(new Element(kind, MPM_NAMESPACE)));
     expect(mapOfKind(map, kind)).toBe(map);
   });
 
@@ -107,15 +107,20 @@ describe('the map dispatch table', () => {
   });
 
   it('falls back to a plain GenericMap for a name it does not know', () => {
-    const map = parseTypedMap(new Element('vendorMap'));
-    expect(map).not.toBeNull();
-    expect(map!.constructor.name).toBe('GenericMap');
-    expect(map!.getType()).toBe('vendorMap');
+    const map = okValue(parseTypedMap(new Element('vendorMap')));
+    expect(map.constructor.name).toBe('GenericMap');
+    expect(map.getType()).toBe('vendorMap');
   });
 
-  it('returns null for an element that is no map at all', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    expect(parseTypedMap(new Element('note'))).toBeNull();
+  // Was: silence `console.error`, assert null. The silencing is gone with the printing, and
+  // the assertion says which element was refused and against which rule.
+  it('reports an element that is no map at all', () => {
+    expect(errOf(parseTypedMap(new Element('note')))).toEqual({
+      kind: 'wrongLocalName',
+      what: 'GenericMap',
+      localName: 'note',
+      requirement: 'must contain "Map" or equal "score"',
+    });
   });
 });
 
@@ -124,13 +129,13 @@ describe('mapOfKind', () => {
     // This is exactly the object the tree-shaken bundle used to produce for every map: the
     // right element name, the wrong class. `as TempoMap | null` accepted it and the first
     // `getTempoDataOf` call then threw.
-    const impostor = GenericMap.createGenericMap(TEMPO_MAP)!;
+    const impostor = okValue(GenericMap.createGenericMap(TEMPO_MAP));
     expect(impostor.getType()).toBe(TEMPO_MAP);
     expect(mapOfKind(impostor, TEMPO_MAP)).toBeNull();
   });
 
   it('rejects a typed map asked for as a different kind', () => {
-    const tempoMap = TempoMap.createTempoMap()!;
+    const tempoMap = TempoMap.createTempoMap();
     expect(mapOfKind(tempoMap, RUBATO_MAP)).toBeNull();
     expect(mapOfKind(tempoMap, TEMPO_MAP)).toBe(tempoMap);
   });
@@ -143,14 +148,14 @@ describe('mapOfKind', () => {
     // Deliberate and documented: five kinds share one class, so the class test cannot tell
     // them apart. What tells them apart is which key the caller looked under, which
     // `Dated.getMapOfKind` supplies. The test below pins that end of it.
-    const timing = ImprecisionMap.createImprecisionMap('timing')!;
+    const timing = ImprecisionMap.createImprecisionMap('timing');
     expect(mapOfKind(timing, IMPRECISION_MAP_TUNING)).toBe(timing);
   });
 });
 
 describe('Dated.getMapOfKind', () => {
   it('returns the typed map for a kind it holds, and null for one it does not', () => {
-    const dated = Dated.createDated()!;
+    const dated = okValue(Dated.createDated());
     dated.addMapByType(TEMPO_MAP);
 
     const tempoMap = dated.getMapOfKind(TEMPO_MAP);
@@ -160,8 +165,8 @@ describe('Dated.getMapOfKind', () => {
   });
 
   it('returns null where getMap returns a map of the wrong class', () => {
-    const dated = Dated.createDated()!;
-    const impostor = GenericMap.createGenericMap(TEMPO_MAP)!;
+    const dated = okValue(Dated.createDated());
+    const impostor = okValue(GenericMap.createGenericMap(TEMPO_MAP));
     dated.addMap(impostor);
 
     expect(dated.getMap(TEMPO_MAP)).toBe(impostor);
@@ -169,7 +174,7 @@ describe('Dated.getMapOfKind', () => {
   });
 
   it('keeps the four imprecision domains apart', () => {
-    const dated = Dated.createDated()!;
+    const dated = okValue(Dated.createDated());
     for (const kind of [
       IMPRECISION_MAP_TIMING,
       IMPRECISION_MAP_DYNAMICS,
@@ -242,28 +247,68 @@ describe('the sideEffects deletion', () => {
 describe('construction without a virtual call from the base constructor', () => {
   /**
    * `ImprecisionMap`'s name check used to live in a `parseData` override that
-   * `GenericMap`'s constructor reached by virtual dispatch. It now runs in
-   * `ImprecisionMap`'s own constructor after `super(...)` returns. These two pin that the
-   * check still fires and that the two validations still fire in the same ORDER — the
-   * generic name-shape one first — which is the observable the move could have changed.
+   * `GenericMap`'s constructor reached by virtual dispatch. It then moved into
+   * `ImprecisionMap`'s own constructor after `super(...)` returned, and it now runs in its
+   * factory after construction — the same position in the sequence each time. These two pin
+   * that the check still fires and that the two validations still fire in the same ORDER,
+   * which is the observable each of those moves could have changed.
+   *
+   * The assertion used to read the first argument of a `console.error` spy for a substring.
+   * It reads the returned error instead, and is strictly stronger for it: a substring match
+   * would pass on a message that happened to mention the phrase, and `spy.mock.calls[0]`
+   * could not distinguish "this check fired first" from "this check fired at all while some
+   * other call had been made and restored".
    */
   it('rejects an element whose name is not an imprecisionMap', () => {
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    expect(ImprecisionMap.createImprecisionMap(new Element(TEMPO_MAP, MPM_NAMESPACE))).toBeNull();
-    expect(String(spy.mock.calls[0][0])).toContain('must contain "imprecisionMap"');
+    expect(
+      errOf(ImprecisionMap.createImprecisionMap(new Element(TEMPO_MAP, MPM_NAMESPACE))),
+    ).toEqual({
+      kind: 'wrongLocalName',
+      what: 'ImprecisionMap',
+      localName: TEMPO_MAP,
+      requirement: 'must contain "imprecisionMap"',
+    });
   });
 
   it('lets the generic name-shape check fire first for a name that is no map at all', () => {
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    expect(ImprecisionMap.createImprecisionMap(new Element('bogus'))).toBeNull();
-    expect(String(spy.mock.calls[0][0])).toContain('must contain "Map" or equal "score"');
+    expect(errOf(ImprecisionMap.createImprecisionMap(new Element('bogus')))).toEqual({
+      kind: 'wrongLocalName',
+      what: 'GenericMap',
+      localName: 'bogus',
+      requirement: 'must contain "Map" or equal "score"',
+    });
+  });
+
+  /**
+   * The side effect of the rejection above, which is what keeps the check where it is.
+   *
+   * `GenericMap`'s constructor indexes and re-sorts the element's children, and it runs
+   * BEFORE `ImprecisionMap`'s own name test. So an element that is a map but not an
+   * imprecision map comes back with its children reordered and no map to show for it. Moving
+   * the test up beside its sibling would read better and would quietly stop touching the
+   * caller's document; this is the assertion that would notice.
+   */
+  it('has already re-sorted the element it then rejects', () => {
+    const xml = new Element(TEMPO_MAP, MPM_NAMESPACE);
+    for (const date of ['2', '0', '1']) {
+      const tempo = new Element('tempo', MPM_NAMESPACE);
+      tempo.addAttribute(new Attribute('date', date));
+      xml.appendChild(tempo);
+    }
+    expect(ImprecisionMap.createImprecisionMap(xml).ok).toBe(false);
+    expect(
+      xml
+        .getChildElements()
+        .toArray()
+        .map((e) => e.getAttributeValue('date')),
+    ).toEqual(['0', '1', '2']);
   });
 
   it('refuses parseData as an entry point', () => {
     // Protected, and reachable only through this cast — which is the point: nothing in the
     // tree calls it, and a caller that finds it should get the reason rather than a map
     // whose element and index have silently drifted apart.
-    const map = GenericMap.createGenericMap(TEMPO_MAP)! as unknown as {
+    const map = okValue(GenericMap.createGenericMap(TEMPO_MAP)) as unknown as {
       parseData: (xml: Element) => void;
     };
     expect(() => {

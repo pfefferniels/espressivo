@@ -3,9 +3,11 @@ import { attribute, firstChildElement, getAttributeValue } from '../../../xml/tr
 import { MPM_NAMESPACE, ORNAMENTATION_STYLE } from '../../names.js';
 import { DEFAULT_EXPAND_ORNAMENTS } from '../../RenderOptions.js';
 import type { RenderContext } from '../../RenderOptions.js';
-import { elementAt } from '../../../prelude/index.js';
+import { elementAt, isOk } from '../../../prelude/index.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import { styleOfKind, type OrnamentationStyle } from '../styles/style.js';
 import {
   OrnamentData,
@@ -111,19 +113,26 @@ function noteOrderAttributeValue(noteOrder: readonly string[]): string {
  * Port of meico.mpm.elements.maps.OrnamentationMap
  */
 export class OrnamentationMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createOrnamentationMap(xml?: Element): OrnamentationMap | null {
-    try {
-      return xml !== undefined
-        ? new OrnamentationMap(xml)
-        : new OrnamentationMap('ornamentationMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<ornamentationMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createOrnamentationMap(): OrnamentationMap;
+  static createOrnamentationMap(xml: Element): Result<OrnamentationMap, MpmParseError>;
+  static createOrnamentationMap(
+    xml?: Element | null,
+  ): OrnamentationMap | Result<OrnamentationMap, MpmParseError> {
+    return xml === undefined
+      ? new OrnamentationMap(GenericMap.emptyMapElement('ornamentationMap'))
+      : GenericMap.makeMap(xml, 'OrnamentationMap', (elt) => new OrnamentationMap(elt));
   }
 
   /**
@@ -338,7 +347,7 @@ export class OrnamentationMap extends GenericMap {
         const score = firstChildElement('score', s);
         if (score !== null) {
           const m = GenericMap.createGenericMap(score);
-          if (m !== null) mapsToOrnament.push(m);
+          if (isOk(m)) mapsToOrnament.push(m.value);
         }
       }
     }

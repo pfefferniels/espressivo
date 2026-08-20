@@ -397,7 +397,6 @@ describe('Mei – getAllVariantEncodings', () => {
 // ---------------------------------------------------------------------------
 describe('Mei – addIds', () => {
   it('should give every id-worthy element an xml:id and report how many', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(wrap('<note dur="4"/><rest dur="4"/><chord><note dur="8"/></chord>'), true);
 
     const added = mei.addIds();
@@ -407,11 +406,9 @@ describe('Mei – addIds', () => {
     const root = mei.getRootElement()!;
     expect(root.query("descendant::*[local-name()='note' and @xml:id]").size()).toBe(2);
     expect(root.query("descendant::*[local-name()='chord' and @xml:id]").size()).toBe(1);
-    logSpy.mockRestore();
   });
 
   it('should generate ids with the meico prefix', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(wrap('<note dur="4"/>'), true);
     mei.addIds();
 
@@ -422,11 +419,9 @@ describe('Mei – addIds', () => {
     expect(note.getAttribute('id', 'http://www.w3.org/XML/1998/namespace')!.getValue()).toMatch(
       /^meico_/,
     );
-    logSpy.mockRestore();
   });
 
   it('should leave existing ids alone', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(wrap('<note xml:id="keepme" dur="4"/><note dur="4"/>'), true);
 
     const added = mei.addIds();
@@ -438,11 +433,9 @@ describe('Mei – addIds', () => {
     );
     // measure, section, mdiv and the second note
     expect(added).toBe(4);
-    logSpy.mockRestore();
   });
 
   it('should not touch elements outside the id-worthy set', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(wrap('<note dur="4"/>'), true);
     mei.addIds();
 
@@ -451,18 +444,15 @@ describe('Mei – addIds', () => {
       .query("descendant::*[local-name()='layer']")
       .get(0) as unknown as Element;
     expect(layer.getAttribute('id', 'http://www.w3.org/XML/1998/namespace')).toBeNull();
-    logSpy.mockRestore();
   });
 
   it('should return 0 when there is no root element', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const empty = Object.create(Mei.prototype);
     empty['data'] = null;
 
     expect(empty.addIds()).toBe(0);
     expect(errSpy).toHaveBeenCalled();
-    logSpy.mockRestore();
     errSpy.mockRestore();
   });
 });
@@ -472,7 +462,6 @@ describe('Mei – addIds', () => {
 // ---------------------------------------------------------------------------
 describe('Mei – removeRendElements', () => {
   it('should replace a rend element by its text content', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(wrap('<dir><rend fontweight="bold">forte</rend></dir>'), true);
 
     (mei as unknown as { removeRendElements(): void }).removeRendElements();
@@ -481,11 +470,9 @@ describe('Mei – removeRendElements', () => {
     expect(music.query("descendant::*[local-name()='rend']").size()).toBe(0);
     const dir = music.query("descendant::*[local-name()='dir']").get(0) as unknown as Element;
     expect(dir.getValue()).toContain('forte');
-    logSpy.mockRestore();
   });
 
   it('should handle several rends and nested content', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(wrap('<dir><rend>a</rend><rend>b</rend></dir>'), true);
 
     (mei as unknown as { removeRendElements(): void }).removeRendElements();
@@ -496,11 +483,9 @@ describe('Mei – removeRendElements', () => {
       .get(0) as unknown as Element;
     expect(dir.getValue()).toContain('a');
     expect(dir.getValue()).toContain('b');
-    logSpy.mockRestore();
   });
 
   it('should do nothing when there is no music element', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei"><meiHead/></mei>`;
     const mei = new Mei(xml, true);
@@ -508,7 +493,6 @@ describe('Mei – removeRendElements', () => {
     expect(() =>
       (mei as unknown as { removeRendElements(): void }).removeRendElements(),
     ).not.toThrow();
-    logSpy.mockRestore();
   });
 });
 
@@ -517,7 +501,6 @@ describe('Mei – removeRendElements', () => {
 // ---------------------------------------------------------------------------
 describe('Mei – resolveCopyofs', () => {
   it('should replace a copyof placeholder by a copy of its target', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(
       wrap('<note xml:id="n1" dur="4" pname="c" oct="4"/><note xml:id="n2" copyof="#n1"/>'),
       true,
@@ -531,11 +514,9 @@ describe('Mei – resolveCopyofs', () => {
     const second = notes.get(1) as unknown as Element;
     expect(second.getAttributeValue('pname')).toBe('c');
     expect(second.getAttributeValue('dur')).toBe('4');
-    logSpy.mockRestore();
   });
 
   it('should keep the placeholder id on the inserted copy', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(
       wrap('<note xml:id="n1" dur="4" pname="c"/><note xml:id="n2" copyof="#n1"/>'),
       true,
@@ -550,11 +531,9 @@ describe('Mei – resolveCopyofs', () => {
     expect(second.getAttribute('id', 'http://www.w3.org/XML/1998/namespace')!.getValue()).toBe(
       'n2',
     );
-    logSpy.mockRestore();
   });
 
   it('should resolve sameas just like copyof', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(
       wrap('<note xml:id="n1" dur="8" pname="d"/><note xml:id="n2" sameas="#n1"/>'),
       true,
@@ -567,11 +546,9 @@ describe('Mei – resolveCopyofs', () => {
       .query("descendant::*[local-name()='note']")
       .get(1) as unknown as Element;
     expect(second.getAttributeValue('pname')).toBe('d');
-    logSpy.mockRestore();
   });
 
   it('should report and drop a placeholder whose target does not exist', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(
       wrap('<note xml:id="n1" dur="4"/><note xml:id="n2" copyof="#missing"/>'),
       true,
@@ -582,11 +559,9 @@ describe('Mei – resolveCopyofs', () => {
     expect(notResolved.length).toBe(1);
     expect(notResolved[0]).toContain('copyof');
     expect(mei.getMusic()!.query("descendant::*[local-name()='note']").size()).toBe(1);
-    logSpy.mockRestore();
   });
 
   it('should detect a circular reference and give up', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const mei = new Mei(
       wrap('<note xml:id="n1" copyof="#n2"/><note xml:id="n2" copyof="#n1"/>'),
@@ -597,12 +572,10 @@ describe('Mei – resolveCopyofs', () => {
 
     expect(notResolved.length).toBeGreaterThan(0);
     expect(errSpy).toHaveBeenCalled();
-    logSpy.mockRestore();
     errSpy.mockRestore();
   });
 
   it('should give the copied descendants fresh ids', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(
       wrap(
         '<chord xml:id="c1"><note xml:id="n1" dur="4"/></chord><chord xml:id="c2" copyof="#c1"/>',
@@ -622,11 +595,9 @@ describe('Mei – resolveCopyofs', () => {
 
     expect(copied).not.toBe(original);
     expect(copied).toContain('_meico_');
-    logSpy.mockRestore();
   });
 
   it('resolveCopyofsAndSameas should be the same operation', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(
       wrap('<note xml:id="n1" dur="4" pname="e"/><note xml:id="n2" copyof="#n1"/>'),
       true,
@@ -638,7 +609,6 @@ describe('Mei – resolveCopyofs', () => {
       .query("descendant::*[local-name()='note']")
       .get(1) as unknown as Element;
     expect(second.getAttributeValue('pname')).toBe('e');
-    logSpy.mockRestore();
   });
 
   it('should return null when there is no root element', () => {
@@ -666,13 +636,11 @@ describe('Mei – resolveExpansions', () => {
 </mei>`;
 
   it('should drop the expansion element itself', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(withExpansion, true);
 
     mei.resolveExpansions();
 
     expect(mei.getMusic()!.query("descendant::*[local-name()='expansion']").size()).toBe(0);
-    logSpy.mockRestore();
   });
 
   const sectionOrder = (mei: Mei): string[] => {
@@ -689,13 +657,11 @@ describe('Mei – resolveExpansions', () => {
   };
 
   it('should lay the sections out in the order the plist prescribes', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(withExpansion.replace('plist="#a #b #a"', 'plist="#b #a"'), true);
 
     mei.resolveExpansions();
 
     expect(sectionOrder(mei)).toEqual(['b', 'a']);
-    logSpy.mockRestore();
   });
 
   it('should currently move rather than copy a section the plist repeats', () => {
@@ -703,27 +669,22 @@ describe('Mei – resolveExpansions', () => {
     // has a parent is appended, and only then makes the copy with fresh ids
     // (Mei.java, resolveExpansions). XomTypes.appendChild re-parents silently
     // instead, so the repeat moves the section rather than duplicating it.
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(withExpansion, true);
 
     mei.resolveExpansions();
 
     expect(sectionOrder(mei)).toEqual(['b', 'a']);
-    logSpy.mockRestore();
   });
 
   it('should leave a score without expansions untouched', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const mei = new Mei(SAMPLE_MEI, true);
 
     mei.resolveExpansions();
 
     expect(mei.getMusic()!.query("descendant::*[local-name()='note']").size()).toBe(4);
-    logSpy.mockRestore();
   });
 
   it('should drop siblings that the plist does not mention', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const xml = withExpansion.replace('plist="#a #b #a"', 'plist="#b"');
     const mei = new Mei(xml, true);
 
@@ -735,7 +696,6 @@ describe('Mei – resolveExpansions', () => {
     expect(
       mei.getMusic()!.query("descendant::*[local-name()='section' and @xml:id='b']").size(),
     ).toBe(1);
-    logSpy.mockRestore();
   });
 });
 

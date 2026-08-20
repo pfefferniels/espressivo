@@ -10,7 +10,8 @@ import {
   type StyleOfKind,
 } from '../styles/style.js';
 import { elementAt, lowerBoundBy, upperBoundBy } from '../../../prelude/seq.js';
-import { mapPresent, orCompute } from '../../../prelude/index.js';
+import { err, isErr, mapPresent, ok, orCompute, type Result } from '../../../prelude/index.js';
+import { attemptParse, type MpmParseError } from '../parseError.js';
 
 const MPM_NAMESPACE = 'http://www.cemfi.de/mpm/ns/1.0';
 
@@ -77,37 +78,98 @@ export class GenericMap extends AbstractXmlSubtree {
   private localHeader: Header | null = null;
 
   /**
-   * Build a map from a local name (a fresh, empty one) or from an existing element.
+   * Build a map from an element that {@link sourceElement} has already accepted.
    *
    * **No virtual call here.** This used to end in `this.parseData(…)`, and `ImprecisionMap`
    * overrode `parseData` to append its own name check — a base constructor dispatching into
    * a subclass method whose own field initialisers have not run yet, which is the one real
    * dispatch edge the map cluster had and the kind of edge that is worth removing rather
    * than preserving. {@link indexElements} below is `private`, so this call is static; the
-   * subclass check now runs in `ImprecisionMap`'s own constructor, *after* `super(…)`
-   * returns, which keeps the order of the two validations (generic name shape first,
-   * `imprecisionMap` prefix second) exactly as it was.
+   * subclass check now runs in `ImprecisionMap`'s own factory, *after* construction, which
+   * keeps the order of the two validations (generic name shape first, `imprecisionMap`
+   * prefix second) and of their side effects exactly as it was.
+   *
+   * **And no throw here either.** The `string | Element` union and the two name checks moved
+   * out to {@link sourceElement}, which answers with a `Result` instead. A constructor that
+   * can fail is a constructor whose failure has to be caught somewhere, and "somewhere" was
+   * the eleven `catch (e) { console.error(e); return null }` factories this replaced.
    */
-  protected constructor(typeOrXml: string | Element) {
+  protected constructor(xml: Element) {
     super();
-    this.indexElements(
-      typeof typeOrXml === 'string' ? GenericMap.elementForType(typeOrXml) : typeOrXml,
+    this.indexElements(xml);
+  }
+
+  /**
+   * The element a map will be built from, or why the name it was given is not a map's.
+   *
+   * Two jobs the incumbent did in two places and in two ways: `elementForType` threw for a
+   * bad *name* before creating the element, and `indexElements` threw for a null or badly
+   * named *element* after. Both are one question — "is this a map?" — asked before anything
+   * is built, so they are one function, answering with a value.
+   *
+   * Only names MPM itself defines get the MPM namespace: an unrecognised `<xyzMap>` is
+   * namespace-less, which is what makes a foreign map round-trip as it arrived.
+   */
+  protected static sourceElement(
+    typeOrXml: string | Element | null,
+    what: string,
+  ): Result<Element, MpmParseError> {
+    if (typeOrXml === null) return err({ kind: 'noElement', what });
+    const localName = typeof typeOrXml === 'string' ? typeOrXml : typeOrXml.getLocalName();
+    if (!localName.includes('Map') && localName !== 'score')
+      return err({
+        kind: 'wrongLocalName',
+        what,
+        localName,
+        requirement: 'must contain "Map" or equal "score"',
+      });
+    if (typeof typeOrXml !== 'string') return ok(typeOrXml);
+    return ok(
+      MPM_NAMES.has(typeOrXml) ? new Element(typeOrXml, MPM_NAMESPACE) : new Element(typeOrXml),
     );
   }
 
   /**
-   * The empty element a map of local name `type` starts life as.
+   * The eleven map factories, as one function.
    *
-   * Static, because it runs to produce the argument the constructor needs and so cannot
-   * touch the instance. Only names MPM itself defines get the MPM namespace: an
-   * unrecognised `<xyzMap>` is namespace-less, which is what makes a foreign map round-trip
-   * as it arrived.
+   * Every one of them was `try { return new XMap(…) } catch (e) { console.error(e); return
+   * null }` over the same two checks, so the checks live in {@link sourceElement} and the
+   * only thing a subclass supplies is which constructor to call. `build` is a closure rather
+   * than a `new (…) => M` field because every one of those constructors is `private`, which
+   * is exactly what such a field may not hold — the same reason `maps/map.ts` spells its
+   * `is` predicates out per row.
+   *
+   * `what` is the subclass's name and reaches only the {@link attemptParse} residue; the two
+   * name checks report as `GenericMap`, because it is `GenericMap`'s rule they enforce and
+   * that is the object the incumbent's message named.
    */
-  private static elementForType(type: string): Element {
-    if (!type.includes('Map') && type !== 'score')
-      throw new Error(
-        `Cannot generate GenericMap object. Local name "${type}" must contain "Map" or equal "score".`,
-      );
+  protected static makeMap<M extends GenericMap>(
+    typeOrXml: string | Element | null,
+    what: string,
+    build: (xml: Element) => M,
+  ): Result<M, MpmParseError> {
+    const source = GenericMap.sourceElement(typeOrXml, 'GenericMap');
+    if (isErr(source)) return source;
+    return attemptParse(what, () => build(source.value));
+  }
+
+  /**
+   * The empty element a map of this class starts life as — **and the reason the no-argument
+   * factories are total** where the parsing ones are not.
+   *
+   * {@link sourceElement} can refuse exactly two things: a null element, and a name that is
+   * not a map name. The no-argument form supplies neither — the class passes its own
+   * `names.ts` constant, which the thirteen-row table in `maps/map.ts` already establishes is
+   * a map name — so there is nothing left for it to refuse and nothing for the caller to
+   * check. `indexElements` on a childless element cannot fail either: it reads no children
+   * and reorders none.
+   *
+   * This is the move `styles/style.ts` made for `createStyle`, and it is worth its own
+   * function rather than a `!` on `makeMap`'s result: the totality is a property of *not
+   * consulting the caller*, which the signature can then state, and an assertion would only
+   * have hidden the same fact behind a claim.
+   */
+  protected static emptyMapElement(type: string): Element {
     return MPM_NAMES.has(type) ? new Element(type, MPM_NAMESPACE) : new Element(type);
   }
 
@@ -131,18 +193,14 @@ export class GenericMap extends AbstractXmlSubtree {
    * `string | Element` because they are genuinely different construction modes, and the
    * signature is the only place that says so.
    *
-   * Returns null instead of throwing when the input is not a valid map — the whole MPM
-   * parse is best-effort, and a malformed map must not abort the surrounding document.
+   * Reports the reason instead of printing it — the whole MPM parse stays best-effort, and
+   * a malformed map still must not abort the surrounding document, but "which map, and why"
+   * is now something the surrounding document's reader can find out.
    */
-  static createGenericMap(name: string): GenericMap | null;
-  static createGenericMap(xml: Element): GenericMap | null;
-  static createGenericMap(nameOrXml: string | Element): GenericMap | null {
-    try {
-      return new GenericMap(nameOrXml);
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  static createGenericMap(name: string): Result<GenericMap, MpmParseError>;
+  static createGenericMap(xml: Element): Result<GenericMap, MpmParseError>;
+  static createGenericMap(nameOrXml: string | Element | null): Result<GenericMap, MpmParseError> {
+    return GenericMap.makeMap(nameOrXml, 'GenericMap', (xml) => new GenericMap(xml));
   }
 
   /**
@@ -165,12 +223,6 @@ export class GenericMap extends AbstractXmlSubtree {
    * call would reach a subclass before that subclass's own initialisation had run.
    */
   private indexElements(xml: Element): void {
-    if (xml === null) throw new Error('Cannot generate GenericMap object. XML Element is null.');
-    if (!xml.getLocalName().includes('Map') && xml.getLocalName() !== 'score')
-      throw new Error(
-        `Cannot generate GenericMap object. Local name "${xml.getLocalName()}" must contain "Map" or equal "score".`,
-      );
-
     this.elements = [];
     this.setXml(xml);
 

@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
+import { defCause, errOf, okValue } from '../../../../support/result.js';
 import { ArticulationDef } from '../../../../../src/mpm/elements/styles/defs/ArticulationDef.js';
 import { Element, Attribute } from '../../../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../../../src/mpm/Mpm.js';
+import { NumberFormatError } from '../../../../../src/xml/errors.js';
 
 /**
  * Reference: meico/src/meico/mpm/elements/styles/defs/ArticulationDef.java
@@ -21,20 +23,10 @@ function note(attributes: Record<string, string>): Element {
   return e;
 }
 
-/** Runs body with console.error silenced; the factory logs before returning null. */
-function quiet<T>(body: () => T): T {
-  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-  try {
-    return body();
-  } finally {
-    err.mockRestore();
-  }
-}
-
 describe('ArticulationDef', () => {
   describe('createArticulationDef', () => {
     it('creates a def with the documented default values', () => {
-      const ad = ArticulationDef.createArticulationDef('myArticulation')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('myArticulation'));
       expect(ad.getName()).toBe('myArticulation');
       expect(ad.getXml()!.getLocalName()).toBe('articulationDef');
       expect(ad.getXml()!.getNamespaceURI()).toBe(Mpm.MPM_NAMESPACE);
@@ -54,23 +46,25 @@ describe('ArticulationDef', () => {
     });
 
     it('parses every supported attribute from xml', () => {
-      const ad = ArticulationDef.createArticulationDef(
-        articulationDefElement({
-          name: 'full',
-          absoluteDuration: '360.0',
-          absoluteDurationChange: '-70.0',
-          absoluteDurationMs: '160.0',
-          absoluteDurationChangeMs: '-400.0',
-          relativeDuration: '0.8',
-          absoluteDelay: '12.0',
-          absoluteDelayMs: '30.0',
-          absoluteVelocity: '127.0',
-          relativeVelocity: '0.7',
-          absoluteVelocityChange: '25.0',
-          detuneCents: '-14.0',
-          detuneHz: '3.5',
-        }),
-      )!;
+      const ad = okValue(
+        ArticulationDef.createArticulationDef(
+          articulationDefElement({
+            name: 'full',
+            absoluteDuration: '360.0',
+            absoluteDurationChange: '-70.0',
+            absoluteDurationMs: '160.0',
+            absoluteDurationChangeMs: '-400.0',
+            relativeDuration: '0.8',
+            absoluteDelay: '12.0',
+            absoluteDelayMs: '30.0',
+            absoluteVelocity: '127.0',
+            relativeVelocity: '0.7',
+            absoluteVelocityChange: '25.0',
+            detuneCents: '-14.0',
+            detuneHz: '3.5',
+          }),
+        ),
+      );
 
       expect(ad.getAbsoluteDuration()).toBe(360.0);
       expect(ad.getAbsoluteDurationChange()).toBe(-70.0);
@@ -87,27 +81,35 @@ describe('ArticulationDef', () => {
     });
 
     it('ignores unknown attributes', () => {
-      const ad = ArticulationDef.createArticulationDef(
-        articulationDefElement({ name: 'x', somethingElse: '5' }),
-      )!;
+      const ad = okValue(
+        ArticulationDef.createArticulationDef(
+          articulationDefElement({ name: 'x', somethingElse: '5' }),
+        ),
+      );
       expect(ad.getName()).toBe('x');
       expect(ad.getRelativeDuration()).toBe(1.0);
     });
 
-    it('returns null when the name attribute is missing', () => {
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    it('reports a missing name attribute rather than printing it', () => {
       expect(
-        ArticulationDef.createArticulationDef(articulationDefElement({ relativeDuration: '0.8' })),
-      ).toBeNull();
-      expect(err).toHaveBeenCalled();
-      err.mockRestore();
+        errOf(
+          ArticulationDef.createArticulationDef(
+            articulationDefElement({ relativeDuration: '0.8' }),
+          ),
+        ),
+      ).toMatchObject({
+        kind: 'malformedDef',
+        what: 'ArticulationDef',
+      });
     });
 
-    it('returns null for a null element', () => {
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-      expect(ArticulationDef.createArticulationDef(null as unknown as Element)).toBeNull();
-      expect(err).toHaveBeenCalled();
-      err.mockRestore();
+    it('reports a null element rather than printing it', () => {
+      expect(
+        errOf(ArticulationDef.createArticulationDef(null as unknown as Element)),
+      ).toMatchObject({
+        kind: 'malformedDef',
+        what: 'ArticulationDef',
+      });
     });
   });
 
@@ -125,7 +127,7 @@ describe('ArticulationDef', () => {
         relativeDuration: '0.8',
         detuneHz: '2.0',
       });
-      const ad = ArticulationDef.createArticulationDef(xml)!;
+      const ad = okValue(ArticulationDef.createArticulationDef(xml));
       expect(ad.getXml()).toBe(xml);
       expect(ad.getName()).toBe('second');
       expect(ad.getRelativeDuration()).toBe(0.8);
@@ -147,7 +149,7 @@ describe('ArticulationDef', () => {
 
   describe('setters', () => {
     it('write both the field and the xml attribute', () => {
-      const ad = ArticulationDef.createArticulationDef('setters')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('setters'));
       const xml = ad.getXml()!;
 
       ad.setAbsoluteDuration(360.0);
@@ -200,7 +202,7 @@ describe('ArticulationDef', () => {
     });
 
     it('replace rather than duplicate an attribute when called twice', () => {
-      const ad = ArticulationDef.createArticulationDef('twice')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('twice'));
       ad.setRelativeDuration(0.8);
       const count = ad.getXml()!.getAttributeCount();
       ad.setRelativeDuration(0.5);
@@ -211,23 +213,25 @@ describe('ArticulationDef', () => {
 
   describe('resetAttribute', () => {
     it('removes the attribute and restores the default for every supported name', () => {
-      const ad = ArticulationDef.createArticulationDef(
-        articulationDefElement({
-          name: 'full',
-          absoluteDuration: '360.0',
-          absoluteDurationChange: '-70.0',
-          absoluteDurationMs: '160.0',
-          absoluteDurationChangeMs: '-400.0',
-          relativeDuration: '0.8',
-          absoluteDelay: '12.0',
-          absoluteDelayMs: '30.0',
-          absoluteVelocity: '127.0',
-          relativeVelocity: '0.7',
-          absoluteVelocityChange: '25.0',
-          detuneCents: '-14.0',
-          detuneHz: '3.5',
-        }),
-      )!;
+      const ad = okValue(
+        ArticulationDef.createArticulationDef(
+          articulationDefElement({
+            name: 'full',
+            absoluteDuration: '360.0',
+            absoluteDurationChange: '-70.0',
+            absoluteDurationMs: '160.0',
+            absoluteDurationChangeMs: '-400.0',
+            relativeDuration: '0.8',
+            absoluteDelay: '12.0',
+            absoluteDelayMs: '30.0',
+            absoluteVelocity: '127.0',
+            relativeVelocity: '0.7',
+            absoluteVelocityChange: '25.0',
+            detuneCents: '-14.0',
+            detuneHz: '3.5',
+          }),
+        ),
+      );
 
       for (const name of [
         'absoluteDuration',
@@ -262,16 +266,18 @@ describe('ArticulationDef', () => {
     });
 
     it('does nothing when the attribute is not present', () => {
-      const ad = ArticulationDef.createArticulationDef('empty')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('empty'));
       ad.setRelativeDuration(0.8);
       ad.resetAttribute('absoluteDuration');
       expect(ad.getRelativeDuration()).toBe(0.8);
     });
 
     it('leaves the def untouched for an unknown attribute name', () => {
-      const ad = ArticulationDef.createArticulationDef(
-        articulationDefElement({ name: 'x', somethingElse: '5' }),
-      )!;
+      const ad = okValue(
+        ArticulationDef.createArticulationDef(
+          articulationDefElement({ name: 'x', somethingElse: '5' }),
+        ),
+      );
       ad.resetAttribute('somethingElse');
       expect(ad.getXml()!.getAttribute('somethingElse')).toBeNull();
       expect(ad.getName()).toBe('x');
@@ -281,7 +287,7 @@ describe('ArticulationDef', () => {
   describe('createDefaultArticulationDef', () => {
     it('gives accent a velocity boost', () => {
       for (const name of ['accent', 'acc']) {
-        const d = ArticulationDef.createDefaultArticulationDef(name)!;
+        const d = okValue(ArticulationDef.createDefaultArticulationDef(name));
         expect(d.getName()).toBe(name);
         expect(d.getAbsoluteVelocityChange()).toBe(25.0);
       }
@@ -289,7 +295,7 @@ describe('ArticulationDef', () => {
 
     it('shortens and softens breath / caesura', () => {
       for (const name of ['breath', 'cesura', 'caesura']) {
-        const d = ArticulationDef.createDefaultArticulationDef(name)!;
+        const d = okValue(ArticulationDef.createDefaultArticulationDef(name));
         expect(d.getAbsoluteDurationChangeMs()).toBe(-400.0);
         expect(d.getAbsoluteVelocityChange()).toBe(-5.0);
       }
@@ -297,48 +303,56 @@ describe('ArticulationDef', () => {
 
     it('lengthens legatissimo', () => {
       expect(
-        ArticulationDef.createDefaultArticulationDef('legatissimo')!.getAbsoluteDurationChangeMs(),
+        okValue(
+          ArticulationDef.createDefaultArticulationDef('legatissimo'),
+        ).getAbsoluteDurationChangeMs(),
       ).toBe(250.0);
     });
 
     it('leaves legato at full length', () => {
       for (const name of ['legato', 'leg'])
-        expect(ArticulationDef.createDefaultArticulationDef(name)!.getRelativeDuration()).toBe(1.0);
+        expect(
+          okValue(ArticulationDef.createDefaultArticulationDef(name)).getRelativeDuration(),
+        ).toBe(1.0);
     });
 
     it('shortens and softens legatoStop', () => {
-      const d = ArticulationDef.createDefaultArticulationDef('legatoStop')!;
+      const d = okValue(ArticulationDef.createDefaultArticulationDef('legatoStop'));
       expect(d.getRelativeDuration()).toBe(0.8);
       expect(d.getRelativeVelocity()).toBe(0.7);
     });
 
     it('shortens and accents marcato', () => {
       for (const name of ['marcato', 'marc']) {
-        const d = ArticulationDef.createDefaultArticulationDef(name)!;
+        const d = okValue(ArticulationDef.createDefaultArticulationDef(name));
         expect(d.getRelativeDuration()).toBe(0.8);
         expect(d.getAbsoluteVelocityChange()).toBe(25.0);
       }
     });
 
     it('barely shortens nonlegato', () => {
-      expect(ArticulationDef.createDefaultArticulationDef('nonlegato')!.getRelativeDuration()).toBe(
-        0.95,
-      );
+      expect(
+        okValue(ArticulationDef.createDefaultArticulationDef('nonlegato')).getRelativeDuration(),
+      ).toBe(0.95);
     });
 
     it('gives the pizzicato family a fixed absolute duration', () => {
       for (const name of ['pizzicato', 'pizz', 'left-hand pizzicato', 'lhpizz'])
-        expect(ArticulationDef.createDefaultArticulationDef(name)!.getAbsoluteDuration()).toBe(1.0);
+        expect(
+          okValue(ArticulationDef.createDefaultArticulationDef(name)).getAbsoluteDuration(),
+        ).toBe(1.0);
     });
 
     it('shortens portato', () => {
       for (const name of ['portato', 'port'])
-        expect(ArticulationDef.createDefaultArticulationDef(name)!.getRelativeDuration()).toBe(0.8);
+        expect(
+          okValue(ArticulationDef.createDefaultArticulationDef(name)).getRelativeDuration(),
+        ).toBe(0.8);
     });
 
     it('pins the sforzato family to maximum velocity', () => {
       for (const name of ['sf', 'sfz', 'fz', 'sforzato']) {
-        const d = ArticulationDef.createDefaultArticulationDef(name)!;
+        const d = okValue(ArticulationDef.createDefaultArticulationDef(name));
         expect(d.getAbsoluteVelocity()).toBe(127.0);
         expect(d.getRelativeDuration()).toBe(0.8);
       }
@@ -346,7 +360,7 @@ describe('ArticulationDef', () => {
 
     it('combines a fixed duration and an accent for snap pizzicato', () => {
       for (const name of ['snap', 'snap pizzicato']) {
-        const d = ArticulationDef.createDefaultArticulationDef(name)!;
+        const d = okValue(ArticulationDef.createDefaultArticulationDef(name));
         expect(d.getAbsoluteDuration()).toBe(1.0);
         expect(d.getAbsoluteVelocityChange()).toBe(25.0);
       }
@@ -354,7 +368,7 @@ describe('ArticulationDef', () => {
 
     it('gives spiccato a short millisecond duration and an accent', () => {
       for (const name of ['spiccato', 'spicc']) {
-        const d = ArticulationDef.createDefaultArticulationDef(name)!;
+        const d = okValue(ArticulationDef.createDefaultArticulationDef(name));
         expect(d.getAbsoluteDurationMs()).toBe(140.0);
         expect(d.getAbsoluteVelocityChange()).toBe(25.0);
       }
@@ -362,7 +376,7 @@ describe('ArticulationDef', () => {
 
     it('gives staccato a short millisecond duration and a slight drop in velocity', () => {
       for (const name of ['staccato', 'stacc']) {
-        const d = ArticulationDef.createDefaultArticulationDef(name)!;
+        const d = okValue(ArticulationDef.createDefaultArticulationDef(name));
         expect(d.getAbsoluteDurationMs()).toBe(160.0);
         expect(d.getAbsoluteVelocityChange()).toBe(-5.0);
       }
@@ -370,7 +384,7 @@ describe('ArticulationDef', () => {
 
     it('makes staccatissimo shorter and slightly louder than staccato', () => {
       for (const name of ['staccatissimo', 'stacciss']) {
-        const d = ArticulationDef.createDefaultArticulationDef(name)!;
+        const d = okValue(ArticulationDef.createDefaultArticulationDef(name));
         expect(d.getAbsoluteDurationMs()).toBe(140.0);
         expect(d.getAbsoluteVelocityChange()).toBe(5.0);
       }
@@ -378,15 +392,15 @@ describe('ArticulationDef', () => {
 
     it('shortens the standard articulation by a fixed amount of ticks', () => {
       expect(
-        ArticulationDef.createDefaultArticulationDef(
-          'standardArticulation',
-        )!.getAbsoluteDurationChange(),
+        okValue(
+          ArticulationDef.createDefaultArticulationDef('standardArticulation'),
+        ).getAbsoluteDurationChange(),
       ).toBe(-70.0);
     });
 
     it('slightly shortens and accents tenuto', () => {
       for (const name of ['tenuto', 'ten']) {
-        const d = ArticulationDef.createDefaultArticulationDef(name)!;
+        const d = okValue(ArticulationDef.createDefaultArticulationDef(name));
         expect(d.getRelativeDuration()).toBe(0.9);
         expect(d.getAbsoluteVelocityChange()).toBe(12.0);
       }
@@ -394,7 +408,7 @@ describe('ArticulationDef', () => {
 
     it('produces a neutral def for bowing marks and unknown names', () => {
       for (const name of ['down bow', 'dnbow', 'up bow', 'upbow', 'somethingUnheardOf']) {
-        const d = ArticulationDef.createDefaultArticulationDef(name)!;
+        const d = okValue(ArticulationDef.createDefaultArticulationDef(name));
         expect(d.getName()).toBe(name);
         expect(d.getRelativeDuration()).toBe(1.0);
         expect(d.getRelativeVelocity()).toBe(1.0);
@@ -404,7 +418,7 @@ describe('ArticulationDef', () => {
     });
 
     it('matches the name case-insensitively but keeps the original spelling', () => {
-      const d = ArticulationDef.createDefaultArticulationDef('  Staccato ')!;
+      const d = okValue(ArticulationDef.createDefaultArticulationDef('  Staccato '));
       expect(d.getName()).toBe('  Staccato ');
       expect(d.getAbsoluteDurationMs()).toBe(160.0);
     });
@@ -412,19 +426,19 @@ describe('ArticulationDef', () => {
 
   describe('articulateNote', () => {
     it('returns false for a null note', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       expect(ad.articulateNote(null)).toBe(false);
     });
 
     it('leaves a note without any of the relevant attributes alone', () => {
-      const ad = ArticulationDef.createDefaultArticulationDef('staccato')!;
+      const ad = okValue(ArticulationDef.createDefaultArticulationDef('staccato'));
       const n = note({ pitch: '60' });
       expect(ad.articulateNote(n)).toBe(false);
       expect(n.getAttributeCount()).toBe(1);
     });
 
     it('replaces the performance duration with absoluteDuration', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDuration(120.0);
       const n = note({ 'duration.perf': '360.0' });
       expect(ad.articulateNote(n)).toBe(false);
@@ -432,7 +446,7 @@ describe('ArticulationDef', () => {
     });
 
     it('scales the performance duration by relativeDuration', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setRelativeDuration(0.5);
       const n = note({ 'duration.perf': '360.0' });
       ad.articulateNote(n);
@@ -440,7 +454,7 @@ describe('ArticulationDef', () => {
     });
 
     it('applies absoluteDuration before relativeDuration', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDuration(200.0);
       ad.setRelativeDuration(0.5);
       const n = note({ 'duration.perf': '360.0' });
@@ -449,7 +463,7 @@ describe('ArticulationDef', () => {
     });
 
     it('adds absoluteDurationChange to the performance duration', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDurationChange(-70.0);
       const n = note({ 'duration.perf': '360.0' });
       ad.articulateNote(n);
@@ -458,7 +472,7 @@ describe('ArticulationDef', () => {
 
     it('halves an absoluteDurationChange until the duration stays positive', () => {
       // 100 - 150 = -50 <= 0, so the change is halved once: 100 - 75 = 25.
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDurationChange(-150.0);
       const n = note({ 'duration.perf': '100.0' });
       ad.articulateNote(n);
@@ -467,7 +481,7 @@ describe('ArticulationDef', () => {
 
     it('keeps halving while the result is still zero or negative', () => {
       // -400 -> -200 -> -100 (duration 0, still not positive) -> -50 => 50.
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDurationChange(-400.0);
       const n = note({ 'duration.perf': '100.0' });
       ad.articulateNote(n);
@@ -475,7 +489,7 @@ describe('ArticulationDef', () => {
     });
 
     it('skips the duration change when the duration is not greater than zero', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDurationChange(-70.0);
       const n = note({ 'duration.perf': '0.0' });
       ad.articulateNote(n);
@@ -483,7 +497,7 @@ describe('ArticulationDef', () => {
     });
 
     it('lets absoluteDurationMs take over and leaves the symbolic duration untouched', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDurationMs(160.0);
       ad.setAbsoluteDuration(120.0);
       ad.setRelativeDuration(0.5);
@@ -495,7 +509,7 @@ describe('ArticulationDef', () => {
     });
 
     it('passes absoluteDurationChangeMs on to the note', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDurationChangeMs(-400.0);
       const n = note({ 'duration.perf': '360.0' });
       ad.articulateNote(n);
@@ -505,7 +519,7 @@ describe('ArticulationDef', () => {
     });
 
     it('ignores all duration modifiers when the note has no duration.perf', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDurationMs(160.0);
       ad.setAbsoluteDurationChangeMs(-400.0);
       const n = note({ velocity: '64.0' });
@@ -515,7 +529,7 @@ describe('ArticulationDef', () => {
     });
 
     it('shifts date.perf by absoluteDelay and reports the change', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDelay(15.0);
       const n = note({ 'date.perf': '720.0' });
       expect(ad.articulateNote(n)).toBe(true);
@@ -523,7 +537,7 @@ describe('ArticulationDef', () => {
     });
 
     it('passes absoluteDelayMs on without reporting a date change', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDelayMs(30.0);
       const n = note({ 'date.perf': '720.0' });
       expect(ad.articulateNote(n)).toBe(false);
@@ -532,7 +546,7 @@ describe('ArticulationDef', () => {
     });
 
     it('ignores the delay modifiers when the note has no date.perf', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteDelay(15.0);
       ad.setAbsoluteDelayMs(30.0);
       const n = note({ velocity: '64.0' });
@@ -541,7 +555,7 @@ describe('ArticulationDef', () => {
     });
 
     it('replaces the velocity with absoluteVelocity', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteVelocity(127.0);
       const n = note({ velocity: '64.0' });
       ad.articulateNote(n);
@@ -549,7 +563,7 @@ describe('ArticulationDef', () => {
     });
 
     it('scales the velocity by relativeVelocity', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setRelativeVelocity(0.5);
       const n = note({ velocity: '64.0' });
       ad.articulateNote(n);
@@ -557,7 +571,7 @@ describe('ArticulationDef', () => {
     });
 
     it('applies absolute, relative and change in that order', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteVelocity(100.0);
       ad.setRelativeVelocity(0.5);
       ad.setAbsoluteVelocityChange(25.0);
@@ -567,7 +581,7 @@ describe('ArticulationDef', () => {
     });
 
     it('ignores the velocity modifiers when the note has no velocity', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setAbsoluteVelocity(127.0);
       const n = note({ 'duration.perf': '360.0' });
       ad.articulateNote(n);
@@ -575,7 +589,7 @@ describe('ArticulationDef', () => {
     });
 
     it('adds the detune attributes regardless of the other note attributes', () => {
-      const ad = ArticulationDef.createArticulationDef('x')!;
+      const ad = okValue(ArticulationDef.createArticulationDef('x'));
       ad.setDetuneCents(-14.0);
       ad.setDetuneHz(3.5);
       const n = note({ pitch: '60' });
@@ -585,7 +599,7 @@ describe('ArticulationDef', () => {
     });
 
     it('applies a default staccato def end to end', () => {
-      const ad = ArticulationDef.createDefaultArticulationDef('staccato')!;
+      const ad = okValue(ArticulationDef.createDefaultArticulationDef('staccato'));
       const n = note({ 'duration.perf': '360.0', 'date.perf': '720.0', velocity: '64.0' });
       expect(ad.articulateNote(n)).toBe(false);
       expect(parseFloat(n.getAttributeValue('articulation.absoluteDurationMs')!)).toBe(160.0);
@@ -612,14 +626,15 @@ describe('ArticulationDef', () => {
       'detuneHz',
     ];
 
-    it.each(NUMERIC_ATTRIBUTES)('returns null when %s is not a number', (attributeName) => {
-      const def = quiet(() =>
-        ArticulationDef.createArticulationDef(
+    it.each(NUMERIC_ATTRIBUTES)(
+      'refuses the def when %s is not a number, and says so',
+      (attributeName) => {
+        const def = ArticulationDef.createArticulationDef(
           articulationDefElement({ name: 'x', [attributeName]: 'abc' }),
-        ),
-      );
-      expect(def).toBeNull();
-    });
+        );
+        expect(defCause(def)).toBeInstanceOf(NumberFormatError);
+      },
+    );
 
     it('covers every numeric attribute the class reads', () => {
       // If someone adds a thirteenth attribute, this count fails and the list above has to
@@ -629,18 +644,23 @@ describe('ArticulationDef', () => {
 
     it('rejects a value parseFloat would have silently truncated', () => {
       expect(
-        quiet(() =>
+        errOf(
           ArticulationDef.createArticulationDef(
             articulationDefElement({ name: 'x', relativeDuration: '0.5x' }),
           ),
         ),
-      ).toBeNull();
+      ).toMatchObject({
+        kind: 'malformedDef',
+        what: 'ArticulationDef',
+      });
     });
 
     it('still parses a well-formed neighbour', () => {
-      const def = ArticulationDef.createArticulationDef(
-        articulationDefElement({ name: 'x', relativeDuration: '0.5' }),
-      )!;
+      const def = okValue(
+        ArticulationDef.createArticulationDef(
+          articulationDefElement({ name: 'x', relativeDuration: '0.5' }),
+        ),
+      );
       expect(def.getRelativeDuration()).toBe(0.5);
     });
   });

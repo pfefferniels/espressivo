@@ -20,6 +20,7 @@ import {
   parentElement,
 } from '../xml/tree.js';
 import { MissingNodeError } from '../xml/errors.js';
+import { describeMpmParseError } from '../mpm/elements/parseError.js';
 import { Mei } from './Mei.js';
 import {
   buildOrnamentData,
@@ -57,7 +58,17 @@ import { OrnamentData } from '../mpm/elements/maps/data/OrnamentData.js';
 import { Author } from '../mpm/elements/metadata/Author.js';
 import { Comment } from '../mpm/elements/metadata/Comment.js';
 import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
-import { firstPresent, foldl, head, isNonEmpty, mapPresent, orDefault } from '../prelude/index.js';
+import {
+  firstPresent,
+  foldl,
+  head,
+  isErr,
+  isNonEmpty,
+  isOk,
+  mapPresent,
+  orDefault,
+  unwrapOr,
+} from '../prelude/index.js';
 import { elementAt, findLast, removeAt } from '../prelude/seq.js';
 
 /**
@@ -584,15 +595,16 @@ export class Mei2MsmMpmConverter {
   /** the whole conversion, step by step; see the class comment for the outline */
   private convertMei(mei: Mei): KeyValue<Msm[], Mpm[]> {
     if (mei === null) {
-      console.log('\nThe provided MEI object is null and cannot be converted.');
+      console.error('The provided MEI object is null and cannot be converted.');
       return new KeyValue<Msm[], Mpm[]>([], []);
     }
 
-    const startTime = Date.now();
-    console.log(
-      `\nConverting ${mei.getFile() !== null ? mei.getFile() : 'MEI data'} to MSM and MPM.`,
-    );
-
+    // The two progress banners this method opened and closed with — "Converting X to MSM and
+    // MPM." and "conversion finished. Time consumed: N milliseconds" — are gone, with the
+    // `startTime` that existed only to feed the second. They were scaffolding: nothing read
+    // them, and a converter running inside an editor or a server has no business narrating to
+    // stdout. The line above is a diagnostic, so it stays — on stderr, where the rest of this
+    // file's diagnostics already are.
     this.mei = mei;
 
     // `getMusic()` is null exactly when the instance is empty, so one read covers both of the
@@ -605,7 +617,7 @@ export class Mei2MsmMpmConverter {
     const originalPPQ = this.ppq;
     if (minPPQ > this.ppq) {
       this.ppq = minPPQ;
-      console.log(
+      console.error(
         `The specified pulses per quarter note resolution (ppq) is too coarse to capture the shortest duration values in the mei source with integer values. Using the minimal required resolution of ${this.ppq} instead`,
       );
     }
@@ -670,16 +682,16 @@ export class Mei2MsmMpmConverter {
         const onlyMsm = head(msms);
         const onlyMpm = head(mpms);
         const msmFile = onlyMsm.getFile();
-        const msmRelatedResource =
-          msmFile === null ? null : RelatedResource.createRelatedResource(msmFile, 'msm');
-        if (msmRelatedResource !== null)
-          onlyMpm.getMetadata()?.addRelatedResource(msmRelatedResource);
+        if (msmFile !== null) {
+          // `createRelatedResource` returns its reason now instead of printing it; there is
+          // no reason to have here, since both arguments are non-null strings, but the
+          // check is what says so rather than an `!`.
+          const msmRelatedResource = RelatedResource.createRelatedResource(msmFile, 'msm');
+          if (isOk(msmRelatedResource))
+            onlyMpm.getMetadata()?.addRelatedResource(msmRelatedResource.value);
+        }
       }
     }
-
-    console.log(
-      `MEI to MSM/MPM conversion finished. Time consumed: ${Date.now() - startTime} milliseconds`,
-    );
 
     return new KeyValue<Msm[], Mpm[]>(msms, mpms);
   }
@@ -1085,31 +1097,47 @@ export class Mei2MsmMpmConverter {
 
     const mpm = Mpm.createMpm();
 
-    // `RelatedResource.createRelatedResource` reports failure with null, and
-    // `Mpm.addMetadata` now says it accepts such an array (T16 closed T10's DISCOVERED
-    // note by widening the consumer, which is what retired this file's `any`).
+    // The three metadata factories return their reason now rather than printing it. None of
+    // the three calls below can produce one — every argument is a non-null string — so the
+    // reasons are flattened back to null with `unwrapOr` and the array keeps its nullable
+    // element type. That is not laziness: `Mpm.addMetadata` passes the array to
+    // `Metadata.createMetadata`, which treats a null element as a caller error and refuses to
+    // build the metadata at all (T16 closed T10's DISCOVERED note by widening the consumer,
+    // which is what retired this file's `any`). Skipping a null here instead would produce a
+    // metadata block that the incumbent would not have produced, and that is a document
+    // difference, not a plumbing one.
     const relatedResources: (RelatedResource | null)[] = [];
     const meiFile = this.requireMei().getFile();
+    const meicoAuthor = (): Author | null =>
+      unwrapOr(Author.createAuthor('meico', null, null), null);
     if (meiFile !== null) {
-      relatedResources.push(RelatedResource.createRelatedResource(meiFile, 'mei'));
+      relatedResources.push(unwrapOr(RelatedResource.createRelatedResource(meiFile, 'mei'), null));
       const comment = Comment.createComment(
         `This MPM has been generated from '${meiFile}' using the meico MEI converter v${VERSION}.`,
         null,
       );
-      mpm.addMetadata(Author.createAuthor('meico', null, null), comment, relatedResources);
+      mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), relatedResources);
     } else {
       const comment = Comment.createComment(
         `This MPM has been generated from MEI code using the meico MEI converter v${VERSION}.`,
         null,
       );
-      mpm.addMetadata(Author.createAuthor('meico', null, null), comment, null);
+      mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), null);
     }
 
-    const performance = Performance.createPerformance('MEI export performance');
-    if (performance === null) {
-      console.error(`Failed to generate an instance of Performance. Skipping mdiv ${titleString}`);
+    // Still printed, and that is the point of the change rather than an omission: the
+    // converter is the code that knows a human asked for this conversion, so it is the code
+    // entitled to say something. What it can say is new — `createPerformance` used to print
+    // its exception itself and hand back a bare null, so this message could only report
+    // *that* the performance failed.
+    const created = Performance.createPerformance('MEI export performance');
+    if (isErr(created)) {
+      console.error(
+        `Failed to generate an instance of Performance. Skipping mdiv ${titleString}. ${describeMpmParseError(created.error)}`,
+      );
       return;
     }
+    const performance = created.value;
     performance.setPulsesPerQuarter(this.ppq);
     mpm.addPerformance(performance);
     this.performances.push(mpm);
@@ -1401,7 +1429,7 @@ export class Mei2MsmMpmConverter {
       s.addAttribute(new Attribute('currentDate', this.getMidiTimeAsString(ctx)));
       part = s;
     } else {
-      console.log(
+      console.error(
         `There is an undefined staff element in the score with no corresponding staffDef.\n${staff.toXML()}\nGenerating a new part for it.`,
       );
       part = this.makePart(staff, ctx);
@@ -2227,9 +2255,9 @@ export class Mei2MsmMpmConverter {
     // built once its performance exists (`makeMovement` returns early otherwise). The record
     // carries the performance beside the MSM, so the pairing is now in the type.
     const performancePart = MpmPart.createPart(label, parseInt(number), midiChannel, midiPort);
-    if (performancePart !== null) {
-      requirePerformance(ctx).addPart(performancePart);
-      if (xmlId !== null) performancePart.setId(xmlId.getValue());
+    if (isOk(performancePart)) {
+      requirePerformance(ctx).addPart(performancePart.value);
+      if (xmlId !== null) performancePart.value.setId(xmlId.getValue());
     }
 
     return part;
@@ -2329,7 +2357,7 @@ export class Mei2MsmMpmConverter {
         const pname = keyAccid.getAttributeValue('pname');
         const accid = keyAccid.getAttributeValue('accid');
         if (pname === null || accid === null) {
-          console.log(
+          console.error(
             `The following keyAccid element requires a pname and accid attribute for processing in meico: ${keyAccid.toXML()}`,
           );
           continue;
@@ -2653,7 +2681,7 @@ export class Mei2MsmMpmConverter {
       ) as OrnamentationStyle;
     if (ornamentationStyle.getDef(od.ornamentDefName) === undefined) {
       const def = OrnamentDef.createDefaultOrnamentDef(od.ornamentDefName);
-      if (def !== null) ornamentationStyle.addDef(def);
+      if (isOk(def)) ornamentationStyle.addDef(def.value);
     }
 
     // parse the staff attribute
@@ -2766,7 +2794,7 @@ export class Mei2MsmMpmConverter {
       ) as OrnamentationStyle;
     if (ornamentationStyle.getDef(resolved.defName) === undefined) {
       const def = createMeiOrnamentDef(resolved.defName);
-      if (def !== null) ornamentationStyle.addDef(def);
+      if (isOk(def)) ornamentationStyle.addDef(def.value);
     }
 
     // parse the staff attribute
@@ -2849,7 +2877,7 @@ export class Mei2MsmMpmConverter {
 
           if (dynamicsStyle.getDef(dd.volumeString) === undefined) {
             const def = DynamicsDef.createDefaultDynamicsDef(dd.volumeString);
-            if (def !== null) dynamicsStyle.addDef(def);
+            if (isOk(def)) dynamicsStyle.addDef(def.value);
           }
         }
         break;
@@ -3104,7 +3132,7 @@ export class Mei2MsmMpmConverter {
         'MEI export',
       ) as ArticulationStyle;
       const nonlegatoDef = ArticulationDef.createDefaultArticulationDef('nonlegato');
-      if (nonlegatoDef !== null) articulationStyle.addDef(nonlegatoDef);
+      if (isOk(nonlegatoDef)) articulationStyle.addDef(nonlegatoDef.value);
     }
 
     // find the local articulationMap
@@ -3247,11 +3275,15 @@ export class Mei2MsmMpmConverter {
     for (const artic of articulations) {
       if (articulationStyle.getDef(artic) === undefined) {
         const def = ArticulationDef.createDefaultArticulationDef(artic);
-        if (def === null) {
-          console.error(`Failed to generate articulationDef for "${artic}".`);
+        if (isErr(def)) {
+          // Still printed, and now with the reason in it: the def factory used to print its
+          // own exception and hand back a bare null, so this line could only say "it failed".
+          console.error(
+            `Failed to generate articulationDef for "${artic}". ${describeMpmParseError(def.error)}`,
+          );
           continue;
         }
-        articulationStyle.addDef(def);
+        articulationStyle.addDef(def.value);
       }
       articulationMap.addArticulation(date, artic, noteid === null ? null : `#${noteid}`, id);
     }
@@ -3285,7 +3317,7 @@ export class Mei2MsmMpmConverter {
           }
 
           // create the articulation from tstamp/tstamp.ges
-          console.log(
+          console.error(
             `MEI element ${breath.toXML()} is not associated with a note or chord. If its 'tstamp.ges' or 'tstamp' does not coincide with a note it will have no effect on the music!`,
           );
           const tstamp = att.getValue();
@@ -4364,10 +4396,11 @@ export class Mei2MsmMpmConverter {
           tempoStyle = globalHeader(ctx).addStyleDef(Mpm.TEMPO_STYLE, 'MEI export') as TempoStyle;
 
         if (tempoStyle.getDef(descriptor) === undefined) {
-          let tempoDef: TempoDef | null;
-          if (tempoData.bpmString === null) tempoDef = TempoDef.createDefaultTempoDef(descriptor);
-          else tempoDef = TempoDef.createTempoDef(descriptor, parseFloat(tempoData.bpmString));
-          if (tempoDef !== null) tempoStyle.addDef(tempoDef);
+          const tempoDef =
+            tempoData.bpmString === null
+              ? TempoDef.createDefaultTempoDef(descriptor)
+              : TempoDef.createTempoDef(descriptor, parseFloat(tempoData.bpmString));
+          if (isOk(tempoDef)) tempoStyle.addDef(tempoDef.value);
         }
         tempoData.bpmString = descriptor;
       }

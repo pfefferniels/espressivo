@@ -6,6 +6,8 @@ import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
 import { MissingNodeError } from '../../../../xml/errors.js';
 import { requireDefName, skipMalformedDef } from './defName.js';
+import { ok, type Result } from '../../../../prelude/index.js';
+import { type MpmParseError } from '../../parseError.js';
 
 /**
  * A `rubatoDef`: a reusable rubato shape that stretches and compresses time inside a
@@ -121,22 +123,22 @@ export class RubatoDef extends AbstractXmlSubtree {
    * when `frameLength` is missing. Passing `intensity` also requires `lateStart` and
    * `earlyEnd`; that is why they travel as one 5-argument overload.
    */
-  static createRubatoDef(name: string, frameLength: number): RubatoDef | null;
+  static createRubatoDef(name: string, frameLength: number): Result<RubatoDef, MpmParseError>;
   static createRubatoDef(
     name: string,
     frameLength: number,
     intensity: number,
     lateStart: number,
     earlyEnd: number,
-  ): RubatoDef | null;
-  static createRubatoDef(xml: Element): RubatoDef | null;
+  ): Result<RubatoDef, MpmParseError>;
+  static createRubatoDef(xml: Element): Result<RubatoDef, MpmParseError>;
   static createRubatoDef(
     nameOrXml: string | Element,
     frameLength?: number,
     intensity?: number,
     lateStart?: number,
     earlyEnd?: number,
-  ): RubatoDef | null {
+  ): Result<RubatoDef, MpmParseError> {
     try {
       let xml: Element;
       if (typeof nameOrXml === 'string') {
@@ -163,9 +165,9 @@ export class RubatoDef extends AbstractXmlSubtree {
 
       const rd = new RubatoDef(nameAttr, frameLengthAttr);
       rd.parseData(xml);
-      return rd;
+      return ok(rd);
     } catch (e) {
-      return skipMalformedDef(e);
+      return skipMalformedDef(e, 'RubatoDef');
     }
   }
 

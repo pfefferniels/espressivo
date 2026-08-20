@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { okValue } from '../../../support/result.js';
 import { OrnamentationMap } from '../../../../src/mpm/elements/maps/OrnamentationMap.js';
 import { GenericMap } from '../../../../src/mpm/elements/maps/GenericMap.js';
 import { OrnamentData } from '../../../../src/mpm/elements/maps/data/OrnamentData.js';
@@ -53,7 +54,7 @@ function makeNote(id: string, date: number, pitch: number, duration = 1440, velo
 }
 
 function makeScore(notes: Element[]): GenericMap {
-  const score = GenericMap.createGenericMap('score')!;
+  const score = okValue(GenericMap.createGenericMap('score'));
   for (const note of notes) score.addElement(note);
   return score;
 }
@@ -72,7 +73,7 @@ interface DefOptions {
 }
 
 function makeDef(name: string, options: DefOptions = {}): OrnamentDef {
-  const def = OrnamentDef.createOrnamentDef(name)!;
+  const def = okValue(OrnamentDef.createOrnamentDef(name));
   if (options.gradient !== undefined)
     def.setDynamicsGradientValues(options.gradient[0], options.gradient[1]);
   if (options.noSpread !== true) {
@@ -94,11 +95,11 @@ function makeDef(name: string, options: DefOptions = {}): OrnamentDef {
 }
 
 function makeMap(defs: OrnamentDef[]): OrnamentationMap {
-  const header = Header.createHeader()!;
+  const header = okValue(Header.createHeader());
   const style = createStyle('ornamentation', 'orn style');
   for (const def of defs) style.addDef(def);
   header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
-  const map = OrnamentationMap.createOrnamentationMap()!;
+  const map = OrnamentationMap.createOrnamentationMap();
   map.setHeaders(null, header);
   map.addStyleSwitch(0, 'orn style');
   return map;
@@ -1577,7 +1578,7 @@ describe('MPM v3 ornament instantiation', () => {
       const scoreXml = new Element('score');
       dated.appendChild(scoreXml);
       part.appendChild(dated);
-      return GenericMap.createGenericMap(scoreXml)!;
+      return okValue(GenericMap.createGenericMap(scoreXml));
     };
 
     it('counts sharps positive and flats negative', () => {
@@ -1643,11 +1644,11 @@ describe('MPM v3 ornament instantiation', () => {
 
     /** A global map: its style comes from the GLOBAL header, so `apply` takes that branch. */
     function makeGlobalMap(defs: OrnamentDef[]): OrnamentationMap {
-      const header = Header.createHeader()!;
+      const header = okValue(Header.createHeader());
       const style = createStyle('ornamentation', 'orn style');
       for (const def of defs) style.addDef(def);
       header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(header, null);
       map.addStyleSwitch(0, 'orn style');
       return map;

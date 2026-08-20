@@ -7,6 +7,7 @@
  * calls, and a knob that is validated and then dropped would pass every test T19a wrote.
  */
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../support/result.js';
 import { Element, Attribute } from '../../src/xml/XomTypes.js';
 import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
@@ -50,12 +51,12 @@ function msmText(): string {
 }
 
 function mpmTextOf(...maps: GenericMap[]): string {
-  const performance = Performance.createPerformance('facade test', PPQ)!;
+  const performance = okValue(Performance.createPerformance('facade test', PPQ));
   const tempoMap = TempoMap.createTempoMap()!;
   tempoMap.addTempo(0, '120', 0.25);
   performance.getGlobal()!.getDated()!.addMap(tempoMap);
   for (const map of maps) performance.getGlobal()!.getDated()!.addMap(map);
-  performance.addPart(Part.createPart('Piano', 1, 0, 0)!);
+  performance.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
 
   const mpm = Mpm.createMpm();
   mpm.addPerformance(performance);

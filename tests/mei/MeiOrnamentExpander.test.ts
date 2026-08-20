@@ -8,6 +8,7 @@
  * performance — is `tests/integration/mei-ornament-expansion.test.ts`.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { okValue } from '../support/result.js';
 import { Builder } from '../../src/xml/XomTypes.js';
 import type { Element } from '../../src/xml/XomTypes.js';
 import {
@@ -204,7 +205,7 @@ describe('buildOrnamentData', () => {
 describe('createMeiOrnamentDef', () => {
   /** The values the blueprint records for the reference's createDefaultOrnamentDef table (§3.7). */
   const spreadOf = (name: string) => {
-    const def = createMeiOrnamentDef(name)!;
+    const def = okValue(createMeiOrnamentDef(name));
     const ts = def.getTemporalSpread()!;
     return {
       offset: ts.getFrameOffset(),
@@ -263,14 +264,14 @@ describe('createMeiOrnamentDef', () => {
   it('serializes canonical v3, gradient before spread', () => {
     // Child order is fixed by the order the transformers are set; the unit suffixes are what
     // makes this a v3 def (DESIGN.md D12), and no v2 document can produce one this way.
-    expect(createMeiOrnamentDef('trill')!.getXml()!.toXML()).toContain(
+    expect(okValue(createMeiOrnamentDef('trill')).getXml()!.toXML()).toContain(
       // The child inherits the namespace its parent <ornamentDef> declares.
       '<dynamicsGradient transition.from="-1" transition.to="1" />',
     );
-    expect(createMeiOrnamentDef('trill')!.getXml()!.toXML()).toContain(
+    expect(okValue(createMeiOrnamentDef('trill')).getXml()!.toXML()).toContain(
       'frame.offset="0ticks" frameLength="80%"',
     );
-    expect(createMeiOrnamentDef('upper turn delayed')!.getXml()!.toXML()).toContain(
+    expect(okValue(createMeiOrnamentDef('upper turn delayed')).getXml()!.toXML()).toContain(
       'alignment="at end"',
     );
   });
@@ -280,12 +281,14 @@ describe('createMeiOrnamentDef', () => {
     // that DESIGN.md D6 freezes, and a row named "arpeggio" here could only ever shadow it. This
     // table therefore does NOT know the name — it answers with the default row — while the v2
     // function next door still answers with the frame the Java reference fixtures contain.
-    expect(createMeiOrnamentDef('arpeggio')!.getTemporalSpread()!.getFrameLengthValue()).toEqual({
+    expect(
+      okValue(createMeiOrnamentDef('arpeggio')).getTemporalSpread()!.getFrameLengthValue(),
+    ).toEqual({
       value: 80.0,
       domain: 'relative',
     });
 
-    const v2 = OrnamentDef.createDefaultOrnamentDef('arpeggio')!.getTemporalSpread()!;
+    const v2 = okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio')).getTemporalSpread()!;
     expect(v2.frameStart).toBe(-22.0);
     expect(v2.getFrameLength()).toBe(44.0);
     expect(v2.frameDomain).toBe(FrameDomain.Ticks);

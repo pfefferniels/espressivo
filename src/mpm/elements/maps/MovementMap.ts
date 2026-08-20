@@ -3,9 +3,11 @@ import { attribute } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import { MovementData } from './data/MovementData.js';
 import { movementSegment, resolveMovement, type Movement } from './data/movement.js';
-import { mapPresent } from '../../../prelude/index.js';
+import { mapPresent, unwrapOr } from '../../../prelude/index.js';
 import { DEFAULT_MOVEMENT_SAMPLE_MAX_STEP } from '../../RenderOptions.js';
 import type { RenderContext } from '../../RenderOptions.js';
 import type { Normalized } from '../../../units.js';
@@ -22,17 +24,24 @@ import type { Normalized } from '../../../units.js';
  * Port of meico.mpm.elements.maps.MovementMap
  */
 export class MovementMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createMovementMap(xml?: Element): MovementMap | null {
-    try {
-      return xml !== undefined ? new MovementMap(xml) : new MovementMap('movementMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<movementMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createMovementMap(): MovementMap;
+  static createMovementMap(xml: Element): Result<MovementMap, MpmParseError>;
+  static createMovementMap(xml?: Element | null): MovementMap | Result<MovementMap, MpmParseError> {
+    return xml === undefined
+      ? new MovementMap(GenericMap.emptyMapElement('movementMap'))
+      : GenericMap.makeMap(xml, 'MovementMap', (elt) => new MovementMap(elt));
   }
 
   addMovement(
@@ -176,7 +185,9 @@ export class MovementMap extends GenericMap {
    *   generated with.
    */
   renderMovementToMap(ctx?: RenderContext): GenericMap | null {
-    const movementMap = GenericMap.createGenericMap('positionMap');
+    // As in `DynamicsMap.renderDynamicsToMap`: `'positionMap'` contains "Map", so the only
+    // arm this can take is the value, and the `!== null` guard below stays a guard.
+    const movementMap = unwrapOr(GenericMap.createGenericMap('positionMap'), null);
     for (let movementIndex = 0; movementIndex < this.size(); ++movementIndex) {
       const md = this.getMovementDataOf(movementIndex);
       if (md === null) continue;

@@ -4,6 +4,8 @@ import { MPM_NAMESPACE } from '../../../names.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
 import { requireDefName, skipMalformedDef } from './defName.js';
+import { isErr, ok, type Result } from '../../../../prelude/index.js';
+import { type MpmParseError } from '../../parseError.js';
 
 /**
  * An `articulationDef`: the bundle of duration, timing, velocity and detuning changes that
@@ -89,9 +91,11 @@ export class ArticulationDef extends AbstractXmlSubtree {
    * Create a def either from a name — with every effect at its neutral default — or by
    * parsing an existing element. Returns null after logging instead of throwing.
    */
-  static createArticulationDef(name: string): ArticulationDef | null;
-  static createArticulationDef(xml: Element): ArticulationDef | null;
-  static createArticulationDef(nameOrXml: string | Element): ArticulationDef | null {
+  static createArticulationDef(name: string): Result<ArticulationDef, MpmParseError>;
+  static createArticulationDef(xml: Element): Result<ArticulationDef, MpmParseError>;
+  static createArticulationDef(
+    nameOrXml: string | Element,
+  ): Result<ArticulationDef, MpmParseError> {
     try {
       let xml: Element;
       if (typeof nameOrXml === 'string') {
@@ -102,9 +106,9 @@ export class ArticulationDef extends AbstractXmlSubtree {
       }
       const ad = new ArticulationDef(requireDefName(xml, 'ArticulationDef'));
       ad.parseData(xml);
-      return ad;
+      return ok(ad);
     } catch (e) {
-      return skipMalformedDef(e);
+      return skipMalformedDef(e, 'ArticulationDef');
     }
   }
 
@@ -252,9 +256,10 @@ export class ArticulationDef extends AbstractXmlSubtree {
    * Build a def pre-filled with meico's default meaning for a known articulation name.
    * An unknown name yields an empty (no-op) def rather than null.
    */
-  static createDefaultArticulationDef(name: string): ArticulationDef | null {
-    const d = ArticulationDef.createArticulationDef(name);
-    if (d === null) return null;
+  static createDefaultArticulationDef(name: string): Result<ArticulationDef, MpmParseError> {
+    const created = ArticulationDef.createArticulationDef(name);
+    if (isErr(created)) return created;
+    const d = created.value;
     switch (name.trim().toLowerCase()) {
       case 'accent':
       case 'acc':
@@ -331,7 +336,7 @@ export class ArticulationDef extends AbstractXmlSubtree {
         d.setAbsoluteVelocityChange(12.0);
         break;
     }
-    return d;
+    return created;
   }
 
   /**

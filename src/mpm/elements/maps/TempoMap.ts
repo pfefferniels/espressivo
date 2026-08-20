@@ -4,6 +4,8 @@ import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import { TempoData } from './data/TempoData.js';
 import {
   resolveTempo,
@@ -31,17 +33,24 @@ import {
  * Port of meico.mpm.elements.maps.TempoMap
  */
 export class TempoMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createTempoMap(xml?: Element): TempoMap | null {
-    try {
-      return xml !== undefined ? new TempoMap(xml) : new TempoMap('tempoMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<tempoMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createTempoMap(): TempoMap;
+  static createTempoMap(xml: Element): Result<TempoMap, MpmParseError>;
+  static createTempoMap(xml?: Element | null): TempoMap | Result<TempoMap, MpmParseError> {
+    return xml === undefined
+      ? new TempoMap(GenericMap.emptyMapElement('tempoMap'))
+      : GenericMap.makeMap(xml, 'TempoMap', (elt) => new TempoMap(elt));
   }
 
   addTempo(date: number, bpm: string, beatLength: number): number;

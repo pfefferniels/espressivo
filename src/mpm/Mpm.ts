@@ -1,5 +1,5 @@
 import { Element, Document } from '../xml/XomTypes.js';
-import { elementAt } from '../prelude/index.js';
+import { elementAt, isErr, unwrapOr } from '../prelude/index.js';
 import { AbstractMsm } from '../msm/AbstractMsm.js';
 import * as names from './names.js';
 import { Performance } from './elements/Performance.js';
@@ -136,7 +136,12 @@ export class Mpm extends AbstractMsm {
   private parseData(): void {
     // parse the metadata
     const metadataElement = getFirstChildElement('metadata', this.getRootElement()!);
-    if (metadataElement !== null) this.metadata = Metadata.createMetadata(metadataElement);
+    // An unreadable `<metadata>` is skipped exactly as it was — what changes is that the
+    // reason arrives here as a value instead of going to the host's stderr from inside the
+    // factory. Nothing in this class has anywhere to put it yet, so it is dropped here, and
+    // that is the one place a caller could later be given it.
+    if (metadataElement !== null)
+      this.metadata = unwrapOr(Metadata.createMetadata(metadataElement), null);
 
     // parse the performances
     const perfs: Element[] = getAllChildElements('performance', this.getRootElement()!);
@@ -144,8 +149,8 @@ export class Mpm extends AbstractMsm {
     for (const perf of perfs) {
       // go through all performance elements
       const p = Performance.createPerformance(perf); // generate an instance of class Performance from it
-      if (p === null) continue;
-      this.performances.push(p);
+      if (isErr(p)) continue;
+      this.performances.push(p.value);
     }
   }
 
@@ -276,7 +281,7 @@ export class Mpm extends AbstractMsm {
       return true;
     }
 
-    this.metadata = Metadata.createMetadata(author, comment, relatedResources);
+    this.metadata = unwrapOr(Metadata.createMetadata(author, comment, relatedResources), null);
     if (this.metadata === null) return false;
 
     this.getRootElement()!.appendChild(this.metadata.getXml());
@@ -373,9 +378,9 @@ export class Mpm extends AbstractMsm {
     if (typeof performanceOrName === 'string') {
       // addPerformance(name: string)
       const performance = Performance.createPerformance(performanceOrName);
-      if (performance === null) return null;
-      this.addPerformanceObject(performance);
-      return performance;
+      if (isErr(performance)) return null;
+      this.addPerformanceObject(performance.value);
+      return performance.value;
     } else {
       // addPerformance(performance: Performance)
       return this.addPerformanceObject(performanceOrName);

@@ -1,6 +1,8 @@
 import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { descendantElements } from '../../xml/tree.js';
+import { err, isErr, unwrapOr, type Result } from '../../prelude/index.js';
+import { attemptParse, type MpmParseError } from './parseError.js';
 import { MPM_NAMESPACE } from '../names.js';
 import { GenericMap } from './maps/GenericMap.js';
 import { mapOfKind, parseTypedMap, type MapKind, type MapOfKind } from './maps/map.js';
@@ -34,19 +36,20 @@ export class Dated extends AbstractXmlSubtree {
   }
 
   /**
-   * Create an empty `dated`, or one parsed from an existing `<dated>` element. Returns null
-   * — after logging — instead of throwing, as every factory in this cluster does.
+   * Create an empty `dated`, or one parsed from an existing `<dated>` element.
+   *
+   * Reports the reason rather than printing it — see `elements/parseError.ts`. The null
+   * element is the one failure a caller can cause, and it is now checked here instead of
+   * thrown from {@link parseData} and swallowed.
    */
-  static createDated(xml?: Element): Dated | null {
-    try {
+  static createDated(xml?: Element | null): Result<Dated, MpmParseError> {
+    const source = xml === undefined ? new Element('dated', MPM_NAMESPACE) : xml;
+    if (source === null) return err({ kind: 'noElement', what: 'Dated' });
+    return attemptParse('Dated', () => {
       const d = new Dated();
-      if (xml !== undefined) d.parseData(xml);
-      else d.parseData(new Element('dated', MPM_NAMESPACE));
+      d.parseData(source);
       return d;
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+    });
   }
 
   /**
@@ -59,7 +62,6 @@ export class Dated extends AbstractXmlSubtree {
    * `…Map` is preserved rather than dropped.
    */
   protected parseData(xml: Element): void {
-    if (xml === null) throw new Error('Cannot generate Dated object. XML Element is null.');
     this.setXml(xml);
 
     const maps = descendantElements(this.getXml(), (element) => {
@@ -71,16 +73,28 @@ export class Dated extends AbstractXmlSubtree {
     }
   }
 
+  /**
+   * The two adders are mutators, and they answer a mutator's question — "is it in?" — so
+   * they keep `GenericMap | null` while `parseTypedMap` below them gained a `Result`.
+   *
+   * That is the boundary, not an oversight. A caller of `addMapByType` is asking this
+   * `dated` to hold a map; whether the element it was handed was readable is `parseTypedMap`'s
+   * business, and it is the one that now says why. Where the reason would go from here is an
+   * open question with no caller behind it: `parseData` below ignores these return values
+   * entirely, and inventing a diagnostics channel on `Dated` for nobody would be the wrong
+   * shape to guess at.
+   */
   addMapFromXml(xml: Element): GenericMap | null {
     if (xml === null) return null;
-    return this.addMap(parseTypedMap(xml));
+    return this.addMap(unwrapOr(parseTypedMap(xml), null));
   }
 
   addMapByType(type: string): GenericMap | null {
     if (!type) return null;
     const generic = GenericMap.createGenericMap(type); // build the correctly named and namespaced map element
-    if (generic === null) return null;
-    return this.addMap(parseTypedMap(generic.getXml())); // and re-read it as its own class, where it has one
+    if (isErr(generic)) return null;
+    // and re-read it as its own class, where it has one
+    return this.addMap(unwrapOr(parseTypedMap(generic.value.getXml()), null));
   }
 
   /**

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { okValue } from '../../support/result.js';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -60,7 +61,7 @@ function makePerformedNote(
 
 /** an MSM score map holding the given notes */
 function makeScore(notes: Element[]): GenericMap {
-  const score = GenericMap.createGenericMap('score')!;
+  const score = okValue(GenericMap.createGenericMap('score'));
   for (const n of notes) score.addElement(n);
   return score;
 }
@@ -78,7 +79,7 @@ function makePart(notes: Element[]): Element {
 
 /** the "arpeggio" ornamentDef of the Java reference fixture (ornamentation.mpm) */
 function arpeggioDef(): OrnamentDef {
-  const def = OrnamentDef.createOrnamentDef('arpeggio')!;
+  const def = okValue(OrnamentDef.createOrnamentDef('arpeggio'));
   def.setDynamicsGradientValues(-1.0, 1.0);
   def.setTemporalSpreadValues(-22.0, 44.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
   return def;
@@ -86,7 +87,7 @@ function arpeggioDef(): OrnamentDef {
 
 /** the "spreadMs" ornamentDef of the Java reference fixture (ornamentation.mpm) */
 function spreadMsDef(): OrnamentDef {
-  const def = OrnamentDef.createOrnamentDef('spreadMs')!;
+  const def = okValue(OrnamentDef.createOrnamentDef('spreadMs'));
   def.setDynamicsGradientValues(-0.5, 0.5);
   def.setTemporalSpreadValues(-30.0, 60.0, FrameDomain.Milliseconds, 2.0, NoteOffShift.True);
   return def;
@@ -94,7 +95,7 @@ function spreadMsDef(): OrnamentDef {
 
 /** a header carrying an ornamentationStyle named "orn style" with the given defs */
 function makeHeader(defs: OrnamentDef[], styleName = 'orn style'): Header {
-  const header = Header.createHeader()!;
+  const header = okValue(Header.createHeader());
   const style = createStyle('ornamentation', styleName);
   for (const d of defs) style.addDef(d);
   header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
@@ -113,13 +114,13 @@ describe('OrnamentationMap', () => {
     });
 
     it('should start with size 0', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       expect(map.size()).toBe(0);
       expect(map.isEmpty()).toBe(true);
     });
 
     it('should have an XML element', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       expect(map.getXml()).not.toBeNull();
       expect(map.getXml()!.getLocalName()).toBe('ornamentationMap');
     });
@@ -130,14 +131,14 @@ describe('OrnamentationMap', () => {
   // ---------------------------------------------------------------
   describe('addOrnament', () => {
     it('should add an ornament with required parameters only', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addOrnament(0, 'trill');
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store date and name.ref', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addOrnament(240, 'mordent');
       const elem = map.getElement(index)!;
 
@@ -147,7 +148,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should not store scale if it is 1.0 (default)', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addOrnament(0, 'trill', 1.0);
       const elem = map.getElement(index)!;
 
@@ -155,7 +156,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should store scale if not 1.0', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addOrnament(0, 'trill', 2.0);
       const elem = map.getElement(index)!;
 
@@ -163,7 +164,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should store note.order with individual note IDs', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addOrnament(0, 'trill', 1.0, ['note1', 'note2', 'note3']);
       const elem = map.getElement(index)!;
 
@@ -175,7 +176,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should store note.order with ascending pitch', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addOrnament(0, 'trill', 1.0, ['ascending pitch']);
       const elem = map.getElement(index)!;
 
@@ -183,7 +184,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should store note.order with descending pitch', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addOrnament(0, 'trill', 1.0, ['descending pitch']);
       const elem = map.getElement(index)!;
 
@@ -191,7 +192,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should not store note.order if null', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addOrnament(0, 'trill', 1.0, null);
       const elem = map.getElement(index)!;
 
@@ -199,7 +200,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should store xml:id if provided', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addOrnament(0, 'trill', 1.0, null, 'orn-1');
       const elem = map.getElement(index)!;
 
@@ -209,7 +210,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should not store xml:id if null', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addOrnament(0, 'trill', 1.0, null, null);
       const elem = map.getElement(index)!;
 
@@ -217,7 +218,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should not store xml:id if empty string', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addOrnament(0, 'trill', 1.0, null, '');
       const elem = map.getElement(index)!;
 
@@ -225,7 +226,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should maintain sorted order when adding out of order', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.addOrnament(960, 'mordent');
       map.addOrnament(0, 'trill');
       map.addOrnament(480, 'turn');
@@ -242,7 +243,7 @@ describe('OrnamentationMap', () => {
   // ---------------------------------------------------------------
   describe('addOrnamentFromData', () => {
     it('should return -1 if no ornamentDef and no ornamentDefName', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const od = new OrnamentData();
       od.date = 0;
       od.ornamentDef = null;
@@ -254,7 +255,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should add ornament with ornamentDefName', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const od = new OrnamentData();
       od.date = 100;
       od.ornamentDefName = 'trill';
@@ -271,19 +272,19 @@ describe('OrnamentationMap', () => {
   // ---------------------------------------------------------------
   describe('getOrnamentDataOf', () => {
     it('should return null for an empty map', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       expect(map.getOrnamentDataOf(0)).toBeNull();
     });
 
     it('should return null for negative index', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.addOrnament(0, 'trill');
       expect(map.getOrnamentDataOf(-1)).toBeNull();
     });
 
     it('should return null when no style is configured', () => {
       // Without a proper header/style configured, getOrnamentDataOf returns null
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.addOrnament(0, 'trill');
 
       const result = map.getOrnamentDataOf(0);
@@ -445,14 +446,14 @@ describe('OrnamentationMap', () => {
   // ---------------------------------------------------------------
   describe('render methods', () => {
     it('renderOrnamentationToMap with null map does not throw', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.addOrnament(0, 'trill');
       // Should not throw
       map.renderOrnamentationToMap(null);
     });
 
     it('static renderOrnamentationToMap with null ornamentation map does not throw', () => {
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       // Should not throw
       OrnamentationMap.renderOrnamentationToMap(target, null);
     });
@@ -467,7 +468,7 @@ describe('OrnamentationMap', () => {
   // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.addOrnament(0, 'trill');
       map.addOrnament(960, 'mordent');
 
@@ -477,7 +478,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should support setId and getId', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       expect(map.getId()).toBeNull();
 
       map.setId('ornMap-1');
@@ -485,7 +486,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should support addStyleSwitch', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const index = map.addStyleSwitch(0, 'myOrnStyle');
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
@@ -496,7 +497,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should support getElementBeforeAt', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.addOrnament(0, 'trill');
       map.addOrnament(480, 'mordent');
       map.addOrnament(960, 'turn');
@@ -512,7 +513,7 @@ describe('OrnamentationMap', () => {
   // ---------------------------------------------------------------
   describe('getOrnamentDataOf with a style', () => {
     function mapWithStyle(): OrnamentationMap {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef(), spreadMsDef()]));
       map.addStyleSwitch(0, 'orn style');
       return map;
@@ -572,7 +573,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should pick the style that is in effect at the ornament', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       const header = makeHeader([arpeggioDef()]);
       const second = createStyle('ornamentation', 'late style');
       second.addDef(arpeggioDef());
@@ -590,7 +591,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should return null for an unknown style name', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'no such style');
       map.addOrnament(0, 'arpeggio');
@@ -632,7 +633,7 @@ describe('OrnamentationMap', () => {
       const n3 = makePerformedNote('n3', 0, 67);
       const score = makeScore([n1, n2, n3]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio');
@@ -670,7 +671,7 @@ describe('OrnamentationMap', () => {
       const n6 = makePerformedNote('n6', 1440, 69);
       const score = makeScore([n4, n5, n6]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(1440, 'arpeggio', 2.0, ['descending pitch']);
@@ -708,7 +709,7 @@ describe('OrnamentationMap', () => {
       const n9 = makePerformedNote('n9', 2880, 71);
       const score = makeScore([n7, n8, n9]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([spreadMsDef()]));
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(2880, 'spreadMs');
@@ -738,7 +739,7 @@ describe('OrnamentationMap', () => {
       const n9 = makePerformedNote('n9', 2880, 71);
       const score = makeScore([n7, n8, n9]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([spreadMsDef()]));
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(2880, 'spreadMs');
@@ -778,7 +779,7 @@ describe('OrnamentationMap', () => {
       const byId = new Map(notes.map((n) => [n.getAttribute('id', XML_NS)!.getValue(), n]));
       const score = makeScore(notes);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef(), spreadMsDef()]));
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio', 1.0, null, 'orn1');
@@ -808,7 +809,7 @@ describe('OrnamentationMap', () => {
       const c = makePerformedNote('c', 1920, 64);
       const score = makeScore([a, b, c]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio', 2.0, ['c', 'a', 'b']);
@@ -829,7 +830,7 @@ describe('OrnamentationMap', () => {
       const b = makePerformedNote('b', 0, 64);
       const score = makeScore([a, b]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio', 2.0, ['a', 'ghost', 'b']);
@@ -848,7 +849,7 @@ describe('OrnamentationMap', () => {
       const low = makePerformedNote('low', 0, 60);
       const score = makeScore([high, low]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio', 2.0, ['ascending pitch']);
@@ -860,7 +861,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should do nothing for a null map', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       expect(() => map.renderOrnamentationToMap(null)).not.toThrow();
     });
@@ -872,7 +873,7 @@ describe('OrnamentationMap', () => {
       n.addAttribute(new Attribute('ornament.date.offset', '-22'));
       const score = makeScore([n]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(makeHeader([arpeggioDef()]), null);
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio', 2.0);
@@ -892,7 +893,7 @@ describe('OrnamentationMap', () => {
   describe('non-milliseconds modifier rendering', () => {
     /** an ornamentationMap without headers only renders modifiers, it does not apply ornaments */
     function modifierOnlyMap(): OrnamentationMap {
-      return OrnamentationMap.createOrnamentationMap()!;
+      return OrnamentationMap.createOrnamentationMap();
     }
 
     it('should add ornament.dynamics to the velocity', () => {
@@ -998,7 +999,7 @@ describe('OrnamentationMap', () => {
   //  renderMillisecondsModifiersToMap
   // ---------------------------------------------------------------
   describe('renderMillisecondsModifiersToMap', () => {
-    const ornMap = () => OrnamentationMap.createOrnamentationMap()!;
+    const ornMap = () => OrnamentationMap.createOrnamentationMap();
 
     it('should do nothing when either argument is null', () => {
       expect(() => OrnamentationMap.renderMillisecondsModifiersToMap(null, null)).not.toThrow();
@@ -1085,7 +1086,7 @@ describe('OrnamentationMap', () => {
       const partA = makePart([a1, a2]);
       const partB = makePart([b1]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(makeHeader([arpeggioDef()]), null); // a global map has a global header
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio', 2.0);
@@ -1113,7 +1114,7 @@ describe('OrnamentationMap', () => {
       OrnamentationMap.renderGlobalOrnamentationToParts([part], null);
       OrnamentationMap.renderGlobalOrnamentationToParts(
         [part],
-        OrnamentationMap.createOrnamentationMap()!,
+        OrnamentationMap.createOrnamentationMap(),
       );
 
       expect(n.getAttribute('ornament.date.offset')).toBeNull();
@@ -1124,7 +1125,7 @@ describe('OrnamentationMap', () => {
       const datedOnly = new Element('part');
       datedOnly.appendChild(new Element('dated'));
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(makeHeader([arpeggioDef()]), null);
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio', 2.0);
@@ -1135,7 +1136,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should do nothing for an empty map list', () => {
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(makeHeader([arpeggioDef()]), null);
       map.addOrnament(0, 'arpeggio');
 
@@ -1151,7 +1152,7 @@ describe('OrnamentationMap', () => {
       const n = makePerformedNote('n1', 0, 60);
       const score = makeScore([n]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio', 2.0);
       map.renderGlobalOrnamentationMap([score]);
@@ -1165,7 +1166,7 @@ describe('OrnamentationMap', () => {
       const late = makePerformedNote('late', 960, 60);
       const score = makeScore([early, late]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addOrnament(0, 'arpeggio', 2.0); // before the style switch
       map.addOrnament(960, 'arpeggio', 2.0); // after the style switch
@@ -1182,7 +1183,7 @@ describe('OrnamentationMap', () => {
       const n = makePerformedNote('n1', 0, 60);
       const score = makeScore([n]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'no such style');
       map.addOrnament(0, 'arpeggio', 2.0);
@@ -1195,7 +1196,7 @@ describe('OrnamentationMap', () => {
       const n = makePerformedNote('n1', 0, 60);
       const score = makeScore([n]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'nosuchdef', 2.0);
@@ -1208,7 +1209,7 @@ describe('OrnamentationMap', () => {
       const n = makePerformedNote('n1', 0, 60);
       const score = makeScore([n]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(9600, 'arpeggio', 2.0); // no note at or after this date
@@ -1222,8 +1223,8 @@ describe('OrnamentationMap', () => {
       const n2 = makePerformedNote('n2', 0, 64);
       const score = makeScore([n1, n2]);
 
-      const map = OrnamentationMap.createOrnamentationMap()!;
-      map.setHeaders(makeHeader([arpeggioDef()]), Header.createHeader()!); // empty local header
+      const map = OrnamentationMap.createOrnamentationMap();
+      map.setHeaders(makeHeader([arpeggioDef()]), okValue(Header.createHeader())); // empty local header
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio', 2.0);
 
@@ -1264,7 +1265,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should apply only the dynamics gradient when there is no temporal spread', () => {
-      const def = OrnamentDef.createOrnamentDef('dynOnly')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('dynOnly'));
       def.setDynamicsGradientValues(-3.0, 3.0);
 
       const od = new OrnamentData();
@@ -1280,7 +1281,7 @@ describe('OrnamentationMap', () => {
     });
 
     it('should apply only the temporal spread when there is no dynamics gradient', () => {
-      const def = OrnamentDef.createOrnamentDef('spreadOnly')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('spreadOnly'));
       def.setTemporalSpreadValues(-10.0, 20.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
 
       const od = new OrnamentData();
@@ -1298,7 +1299,7 @@ describe('OrnamentationMap', () => {
 
     it('should add nothing for a def without transformers', () => {
       const od = new OrnamentData();
-      od.ornamentDef = OrnamentDef.createOrnamentDef('plain')!;
+      od.ornamentDef = okValue(OrnamentDef.createOrnamentDef('plain'));
 
       const n = makeNote('n1', 0, 60);
       expect(od.apply([[n]])).toEqual([]);
@@ -1365,12 +1366,12 @@ function ornamentElement(body: string): Element {
  * these cases assert what was READ off the element, not what it renders to.
  */
 function readOrnament(element: Element): OrnamentData {
-  const map = OrnamentationMap.createOrnamentationMap()!;
+  const map = OrnamentationMap.createOrnamentationMap();
   map.setHeaders(
     null,
     makeHeader(
       ['arpeggio', 'spreadMs', 'trill', 'turn', 'upper turn'].map((name) =>
-        OrnamentDef.createOrnamentDef(name)!,
+        okValue(OrnamentDef.createOrnamentDef(name)),
       ),
     ),
   );
@@ -1408,7 +1409,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
     [
       'required parameters only',
       () => {
-        const m = OrnamentationMap.createOrnamentationMap()!;
+        const m = OrnamentationMap.createOrnamentationMap();
         m.addOrnament(0.0, 'arpeggio');
         return m.getElement(0)!;
       },
@@ -1417,7 +1418,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
     [
       'scale, an ID list and an xml:id',
       () => {
-        const m = OrnamentationMap.createOrnamentationMap()!;
+        const m = OrnamentationMap.createOrnamentationMap();
         m.addOrnament(720.0, 'arpeggio', 20.0, ['n96', 'n97', 'n98'], 'orn1');
         return m.getElement(0)!;
       },
@@ -1426,7 +1427,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
     [
       'scale 1.0 omitted, empty id omitted, pitch keyword',
       () => {
-        const m = OrnamentationMap.createOrnamentationMap()!;
+        const m = OrnamentationMap.createOrnamentationMap();
         m.addOrnament(1440.0, 'trill', 1.0, ['ascending pitch'], '');
         return m.getElement(0)!;
       },
@@ -1435,7 +1436,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
     [
       'scale 0.0 written',
       () => {
-        const m = OrnamentationMap.createOrnamentationMap()!;
+        const m = OrnamentationMap.createOrnamentationMap();
         m.addOrnament(2160.0, 'trill', 0.0, ['descending pitch'], null);
         return m.getElement(0)!;
       },
@@ -1444,7 +1445,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
     [
       'ids normalised on write',
       () => {
-        const m = OrnamentationMap.createOrnamentationMap()!;
+        const m = OrnamentationMap.createOrnamentationMap();
         m.addOrnament(2880.0, 'trill', 1.0, ['#n1', ' n2 '], 'orn5');
         return m.getElement(0)!;
       },
@@ -1467,7 +1468,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
     data.noteOrder = ['n96', 'n97', 'n98'];
     data.xmlId = 'orn1';
 
-    const m = OrnamentationMap.createOrnamentationMap()!;
+    const m = OrnamentationMap.createOrnamentationMap();
     m.addOrnamentFromData(data);
     expect(m.getElement(0)!.toXML()).toBe(
       `<ornament xmlns="${MPM_NS}" date="720" name.ref="arpeggio" scale="20" note.order="#n96 #n97 #n98" xml:id="orn1" />`,
@@ -1621,7 +1622,7 @@ describe('OrnamentData — v3 fields', () => {
 
 describe('OrnamentationMap — reading v3 ornaments', () => {
   function v3Map(): OrnamentationMap {
-    const map = OrnamentationMap.createOrnamentationMap()!;
+    const map = OrnamentationMap.createOrnamentationMap();
     map.setHeaders(null, makeHeader([arpeggioDef()]));
     map.addStyleSwitch(0, 'orn style');
     return map;
@@ -1676,7 +1677,7 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
     const n3 = makePerformedNote('n3', 0, 67);
     const score = makeScore([n1, n2, n3]);
 
-    const map = OrnamentationMap.createOrnamentationMap()!;
+    const map = OrnamentationMap.createOrnamentationMap();
     map.setHeaders(null, makeHeader([arpeggioDef()]));
     map.addStyleSwitch(0, 'orn style');
     map.addOrnament({
@@ -1713,7 +1714,7 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
     const n1 = makePerformedNote('n1', 0, 60);
     const score = makeScore([n1, makePerformedNote('n2', 0, 64)]);
 
-    const map = OrnamentationMap.createOrnamentationMap()!;
+    const map = OrnamentationMap.createOrnamentationMap();
     map.setHeaders(null, makeHeader([arpeggioDef()]));
     map.addStyleSwitch(0, 'orn style');
     map.addOrnament({
@@ -1748,7 +1749,7 @@ describe('OrnamentationMap — expandOrnaments (D15)', () => {
   /** The score + map of the v3 case above, which generates two notes out of one principal. */
   function v3Case(): { score: GenericMap; map: OrnamentationMap } {
     const score = makeScore([makePerformedNote('n1', 0, 60), makePerformedNote('n2', 0, 64)]);
-    const map = OrnamentationMap.createOrnamentationMap()!;
+    const map = OrnamentationMap.createOrnamentationMap();
     map.setHeaders(null, makeHeader([arpeggioDef()]));
     map.addStyleSwitch(0, 'orn style');
     map.addOrnament({
@@ -1833,7 +1834,7 @@ describe('OrnamentationMap — expandOrnaments (D15)', () => {
         makePerformedNote('n3', 0, 67),
       ];
       const score = makeScore(notes);
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
       map.addOrnament(0, 'arpeggio', 2.0, null, null);
@@ -1849,7 +1850,7 @@ describe('OrnamentationMap — expandOrnaments (D15)', () => {
 
 describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
   function firstElement(build: (m: OrnamentationMap) => void): Element {
-    const m = OrnamentationMap.createOrnamentationMap()!;
+    const m = OrnamentationMap.createOrnamentationMap();
     build(m);
     return m.getElement(0)!;
   }
@@ -1933,7 +1934,7 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
   });
 
   it('should keep the map sorted by date like the v2 form', () => {
-    const m = OrnamentationMap.createOrnamentationMap()!;
+    const m = OrnamentationMap.createOrnamentationMap();
     m.addOrnament({ date: 1440, nameRef: 'trill' });
     m.addOrnament({ date: 0, nameRef: 'trill' });
     m.addOrnament(720, 'trill');
@@ -1945,7 +1946,7 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
   });
 
   it('should round-trip a v3 ornament through OrnamentData', () => {
-    const m = OrnamentationMap.createOrnamentationMap()!;
+    const m = OrnamentationMap.createOrnamentationMap();
     m.addOrnament({
       date: 720,
       nameRef: 'trill',
@@ -1959,7 +1960,7 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
     const source = m.getElement(0)!.toXML();
 
     const od = readOrnament(m.getElement(0)!);
-    const m2 = OrnamentationMap.createOrnamentationMap()!;
+    const m2 = OrnamentationMap.createOrnamentationMap();
     m2.addOrnamentFromData(od);
 
     expect(m2.getElement(0)!.toXML()).toBe(source);
@@ -1981,7 +1982,7 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
     withPool.notes = [new OrnamentNote('n1', { kind: 'midi', value: 60 })];
 
     for (const data of [withNoteid, withRepetitions, withPool]) {
-      const m = OrnamentationMap.createOrnamentationMap()!;
+      const m = OrnamentationMap.createOrnamentationMap();
       m.addOrnamentFromData(data);
       // the v3 form always writes scale; the v2 form would have omitted it at 0.0... no:
       // the v2 form omits it only at 1.0, so the discriminating marker is the v3 attribute
@@ -2060,7 +2061,7 @@ describe('OrnamentationMap — the duplicated millisecond pass', () => {
       // One note per branch of the pass: a plain onset offset, an absolute duration, a
       // note-off shift, the v3 end-anchored offset, and one with no marker at all.
       const build = (): GenericMap => {
-        const map = GenericMap.createGenericMap('score')!;
+        const map = okValue(GenericMap.createGenericMap('score'));
         const note = (id: string, markers: Record<string, string>) => {
           const n = makeNote(id, 0, 60, {
             'milliseconds.date': '1000',

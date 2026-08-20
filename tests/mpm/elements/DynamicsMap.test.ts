@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../../support/result.js';
 import { DynamicsMap } from '../../../src/mpm/elements/maps/DynamicsMap.js';
 import { DynamicsData } from '../../../src/mpm/elements/maps/data/DynamicsData.js';
 import {
@@ -56,9 +57,11 @@ describe('DynamicsMap', () => {
   const parse = (xml: string): Element => new Builder().build(xml).getRootElement();
 
   const mapOf = (dynamics: string): DynamicsMap =>
-    DynamicsMap.createDynamicsMap(
-      parse(`<dynamicsMap xmlns="http://www.cemfi.de/mpm/ns/1.0">${dynamics}</dynamicsMap>`),
-    )!;
+    okValue(
+      DynamicsMap.createDynamicsMap(
+        parse(`<dynamicsMap xmlns="http://www.cemfi.de/mpm/ns/1.0">${dynamics}</dynamicsMap>`),
+      ),
+    );
 
   // ---------------------------------------------------------------
   //  Construction
@@ -71,13 +74,13 @@ describe('DynamicsMap', () => {
     });
 
     it('should start with size 0', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       expect(map.size()).toBe(0);
       expect(map.isEmpty()).toBe(true);
     });
 
     it('should have an XML element', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       expect(map.getXml()).not.toBeNull();
       expect(map.getXml()!.getLocalName()).toBe('dynamicsMap');
     });
@@ -88,14 +91,14 @@ describe('DynamicsMap', () => {
   // ---------------------------------------------------------------
   describe('addDynamics', () => {
     it('should add a constant dynamics instruction', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const index = map.addDynamics(0, '80');
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should add dynamics at the correct date', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '60');
       map.addDynamics(960, '100');
 
@@ -107,7 +110,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should add dynamics with transition', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const index = map.addDynamics(0, '60', '100');
 
       const elem = map.getElement(index)!;
@@ -116,7 +119,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should add dynamics with curvature and protraction', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const index = map.addDynamics(0, '60', '100', 0.5, 0.3);
 
       const elem = map.getElement(index)!;
@@ -125,7 +128,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should add dynamics with subNoteDynamics flag', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const index = map.addDynamics(0, '60', '100', 0.5, 0.3, true);
 
       const elem = map.getElement(index)!;
@@ -133,7 +136,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should add dynamics with id', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const index = map.addDynamics(0, '80', undefined, undefined, undefined, undefined, 'dyn-1');
 
       const elem = map.getElement(index)!;
@@ -143,7 +146,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should add dynamics from DynamicsData', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const dd = new DynamicsData();
       dd.startDate = 0;
       dd.volume = 80;
@@ -155,7 +158,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should add DynamicsData with all fields', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const dd = new DynamicsData();
       dd.startDate = 0;
       dd.volume = 50;
@@ -177,7 +180,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should reject DynamicsData without volume', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const dd = new DynamicsData();
       dd.startDate = 0;
       dd.volume = null;
@@ -189,7 +192,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should maintain sorted order when adding out of order', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(960, '100');
       map.addDynamics(0, '60');
       map.addDynamics(480, '80');
@@ -206,18 +209,18 @@ describe('DynamicsMap', () => {
   // ---------------------------------------------------------------
   describe('getDynamicsDataOf', () => {
     it('should return null for an empty map', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       expect(map.getDynamicsDataOf(0)).toBeNull();
     });
 
     it('should return null for negative index', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '80');
       expect(map.getDynamicsDataOf(-1)).toBeNull();
     });
 
     it('should return DynamicsData for a valid constant dynamics', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '80');
 
       const dd = map.getDynamicsDataOf(0)!;
@@ -228,7 +231,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should detect constant dynamics correctly (no transition.to attribute)', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '80');
 
       const dd = map.getDynamicsDataOf(0)!;
@@ -239,7 +242,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should handle out-of-bounds index by clamping', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '80');
 
       const dd = map.getDynamicsDataOf(100);
@@ -248,7 +251,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should set endDate to MAX_VALUE for the last dynamics instruction', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '80');
 
       const dd = map.getDynamicsDataOf(0)!;
@@ -256,7 +259,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should set endDate to the start of the next dynamics instruction', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '60');
       map.addDynamics(960, '100');
 
@@ -265,7 +268,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should retrieve dynamics with a transition', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '60', '100');
 
       const dd = map.getDynamicsDataOf(0)!;
@@ -276,7 +279,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should retrieve multiple dynamics instructions', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '60');
       map.addDynamics(480, '80');
       map.addDynamics(960, '100');
@@ -375,7 +378,7 @@ describe('DynamicsMap', () => {
   // ---------------------------------------------------------------
   describe('addDynamics clamps the curve parameters', () => {
     it('clamps what addDynamics writes into the element', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const index = map.addDynamics(0, '60', '100', 1.5, -2.0);
       const elem = map.getElement(index)!;
 
@@ -386,7 +389,7 @@ describe('DynamicsMap', () => {
     it('clamps what addDynamicsFromData writes, and corrects the data object too', () => {
       // Java writes the corrected value back into the caller's object, so a caller that
       // reuses it does not keep a value the document does not carry.
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const data = new DynamicsData();
       data.startDate = 0;
       data.volumeString = '60';
@@ -403,7 +406,7 @@ describe('DynamicsMap', () => {
     });
 
     it('leaves an in-range value untouched', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const elem = map.getElement(map.addDynamics(0, '60', '100', 0.4, -0.44))!;
 
       expect(elem.getAttributeValue('curvature')).toBe('0.4');
@@ -416,12 +419,12 @@ describe('DynamicsMap', () => {
   // ---------------------------------------------------------------
   describe('getDynamicsDataAt', () => {
     it('should return null for an empty map', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       expect(map.getDynamicsDataAt(0)).toBeNull();
     });
 
     it('should return the dynamics data active at a given date', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '60');
       map.addDynamics(480, '100');
 
@@ -431,7 +434,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should return the most recent dynamics at the exact date', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '60');
       map.addDynamics(480, '100');
 
@@ -446,7 +449,7 @@ describe('DynamicsMap', () => {
   // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '60');
       map.addDynamics(960, '100');
 
@@ -456,7 +459,7 @@ describe('DynamicsMap', () => {
     });
 
     it('should support getElementBeforeAt', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       map.addDynamics(0, '60');
       map.addDynamics(480, '80');
       map.addDynamics(960, '100');
@@ -467,14 +470,14 @@ describe('DynamicsMap', () => {
     });
 
     it('should support setId and getId', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       expect(map.getId()).toBeNull();
       map.setId('dynamicsMap-1');
       expect(map.getId()).toBe('dynamicsMap-1');
     });
 
     it('should support addStyleSwitch', () => {
-      const map = DynamicsMap.createDynamicsMap()!;
+      const map = DynamicsMap.createDynamicsMap();
       const index = map.addStyleSwitch(0, 'myDynamicsStyle');
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
@@ -1288,7 +1291,7 @@ describe('DynamicsMap', () => {
    */
   describe('renderDynamicsToMap with no dynamicsMap at all', () => {
     it('gives every note the default velocity, first one included, and returns no channelVolumeMap', () => {
-      const map = GenericMap.createGenericMap('score')!;
+      const map = okValue(GenericMap.createGenericMap('score'));
       for (const [name, date] of [
         ['note', 0],
         ['rest', 10],

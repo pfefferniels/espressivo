@@ -190,7 +190,8 @@ export class XmlBase {
       duplicates += duplicate ? 1 : 0;
     }
 
-    console.log(`Duplicate IDs found and fixed: ${duplicates}`);
+    // The count this used to print is the value it returns; the line said nothing the caller
+    // did not already have, on a channel the caller did not choose.
 
     return duplicates;
   }

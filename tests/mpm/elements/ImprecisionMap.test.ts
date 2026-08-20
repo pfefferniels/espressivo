@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../../support/result.js';
 import {
   ImprecisionMap,
   providerFor,
@@ -84,18 +85,18 @@ describe('ImprecisionMap', () => {
     });
 
     it('should start with size 0', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       expect(map.size()).toBe(0);
       expect(map.isEmpty()).toBe(true);
     });
 
     it('getDomain should return the domain string', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       expect(map.getDomain()).toBe('timing');
     });
 
     it('getDomain for empty domain returns empty string', () => {
-      const map = ImprecisionMap.createImprecisionMap('')!;
+      const map = ImprecisionMap.createImprecisionMap('');
       expect(map.getDomain()).toBe('');
     });
   });
@@ -105,19 +106,19 @@ describe('ImprecisionMap', () => {
   // ---------------------------------------------------------------
   describe('detuneUnit', () => {
     it('should set and get detune unit', () => {
-      const map = ImprecisionMap.createImprecisionMap('tuning')!;
+      const map = ImprecisionMap.createImprecisionMap('tuning');
       map.setDetuneUnit('cents');
       expect(map.getDetuneUnit()).toBe('cents');
     });
 
     it('should convert "Hertz" to "Hz"', () => {
-      const map = ImprecisionMap.createImprecisionMap('tuning')!;
+      const map = ImprecisionMap.createImprecisionMap('tuning');
       map.setDetuneUnit('Hertz');
       expect(map.getDetuneUnit()).toBe('Hz');
     });
 
     it('should return empty string when no detune unit set', () => {
-      const map = ImprecisionMap.createImprecisionMap('tuning')!;
+      const map = ImprecisionMap.createImprecisionMap('tuning');
       expect(map.getDetuneUnit()).toBe('');
     });
   });
@@ -127,14 +128,14 @@ describe('ImprecisionMap', () => {
   // ---------------------------------------------------------------
   describe('addDistributionUniform', () => {
     it('should add a uniform distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionUniform(0, -10, 10);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store attributes correctly', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionUniform(0, -20, 30);
       const elem = map.getElement(index)!;
 
@@ -145,7 +146,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should store optional seed', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionUniform(0, -10, 10, 42);
       const elem = map.getElement(index)!;
 
@@ -153,7 +154,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should not store seed if null', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionUniform(0, -10, 10, null);
       const elem = map.getElement(index)!;
 
@@ -166,14 +167,14 @@ describe('ImprecisionMap', () => {
   // ---------------------------------------------------------------
   describe('addDistributionGaussian', () => {
     it('should add a gaussian distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionGaussian(0, 5.0, -20, 20);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store attributes correctly', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionGaussian(100, 3.5, -15, 15);
       const elem = map.getElement(index)!;
 
@@ -185,7 +186,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should store optional seed', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionGaussian(0, 5, -10, 10, 99);
       const elem = map.getElement(index)!;
 
@@ -198,14 +199,14 @@ describe('ImprecisionMap', () => {
   // ---------------------------------------------------------------
   describe('addDistributionTriangular', () => {
     it('should add a triangular distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionTriangular(0, -10, 10, 0, -5, 5);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store all attributes correctly', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionTriangular(50, -20, 20, 5, -15, 15);
       const elem = map.getElement(index)!;
 
@@ -219,7 +220,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should store optional seed', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionTriangular(0, -10, 10, 0, -5, 5, 123);
       const elem = map.getElement(index)!;
 
@@ -232,14 +233,14 @@ describe('ImprecisionMap', () => {
   // ---------------------------------------------------------------
   describe('addDistributionBrownianNoise', () => {
     it('should add a brownian noise distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionBrownianNoise(0, 2.0, -10, 10, 100);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store all attributes correctly', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionBrownianNoise(0, 3.5, -20, 20, 500);
       const elem = map.getElement(index)!;
 
@@ -251,7 +252,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should store optional seed', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionBrownianNoise(0, 2, -10, 10, 100, 77);
       const elem = map.getElement(index)!;
 
@@ -264,14 +265,14 @@ describe('ImprecisionMap', () => {
   // ---------------------------------------------------------------
   describe('addDistributionCompensatingTriangle', () => {
     it('should add a compensating triangle distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionCompensatingTriangle(0, 0.8, -10, 10, -5, 5, 200);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store all attributes correctly', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionCompensatingTriangle(0, 0.75, -15, 15, -10, 10, 300);
       const elem = map.getElement(index)!;
 
@@ -285,7 +286,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should clamp negative degreeOfCorrelation to 0', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const index = map.addDistributionCompensatingTriangle(0, -0.5, -10, 10, -5, 5, 200);
       const elem = map.getElement(index)!;
 
@@ -299,7 +300,7 @@ describe('ImprecisionMap', () => {
   // ---------------------------------------------------------------
   describe('addDistributionList', () => {
     it('should add a list distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const listElem = new Element('distribution.list', Mpm.MPM_NAMESPACE);
       const index = map.addDistributionList(0, listElem, 500);
       expect(index).toBeGreaterThanOrEqual(0);
@@ -307,7 +308,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should set date and milliseconds.timingBasis on the element', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const listElem = new Element('distribution.list', Mpm.MPM_NAMESPACE);
       const index = map.addDistributionList(100, listElem, 750);
 
@@ -322,14 +323,14 @@ describe('ImprecisionMap', () => {
   // ---------------------------------------------------------------
   describe('distributionAt', () => {
     it('should fail with `noEntry` for an empty map', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const r = map.distributionAt(0);
       assume(!r.ok);
       expect(r.error.kind).toBe('noEntry');
     });
 
     it('should fail with `noEntry` for a negative index', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionUniform(0, -10, 10);
       const r = map.distributionAt(-1);
       assume(!r.ok);
@@ -337,7 +338,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should fail with `notADistribution` for an entry that is not one', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addStyleSwitch(0, 'some style');
 
       const r = map.distributionAt(0);
@@ -347,7 +348,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should fail with `unknownFamily` for an unrecognised distribution.* name', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const e = new Element('distribution.wibble', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '0.0'));
       e.addAttribute(new Attribute('milliseconds.timingBasis', '250.0'));
@@ -363,7 +364,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should read a uniform distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionUniform(0, -10, 10, 42);
 
       const d = distributionOf(map, 0);
@@ -376,7 +377,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should read a gaussian distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionGaussian(50, 3.5, -15, 15, 99);
 
       const d = distributionOf(map, 0);
@@ -389,7 +390,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should read a triangular distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionTriangular(0, -20, 20, 5, -15, 15);
 
       const d = distributionOf(map, 0);
@@ -401,7 +402,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should read a brownian noise distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionBrownianNoise(0, 2.5, -10, 10, 500, 77);
 
       const d = distributionOf(map, 0);
@@ -413,7 +414,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should read a compensating triangle distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionCompensatingTriangle(0, 0.8, -10, 10, -5, 5, 300);
 
       const d = distributionOf(map, 0);
@@ -423,7 +424,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should read a distribution list from its measurement children', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       const listElem = new Element(DISTRIBUTION_LIST, Mpm.MPM_NAMESPACE);
       for (const v of ['-3.5', '0.0', '7.25']) {
         const m = new Element('measurement', Mpm.MPM_NAMESPACE);
@@ -442,14 +443,14 @@ describe('ImprecisionMap', () => {
     });
 
     it('should set endDate to MAX_VALUE for the last distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionUniform(0, -10, 10);
 
       expect(spanOf(map, 0).endDate).toBe(Number.MAX_VALUE);
     });
 
     it('should set endDate to the start of the next distribution', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionUniform(0, -10, 10);
       map.addDistributionGaussian(480, 5, -20, 20);
 
@@ -457,7 +458,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should handle out-of-bounds index by clamping', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionUniform(0, -10, 10);
 
       const d = distributionOf(map, 100);
@@ -466,7 +467,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('round-trip: add then get preserves all values for uniform', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionUniform(200, -25, 30, 55);
 
       const d = distributionOf(map, 0);
@@ -786,7 +787,7 @@ describe('ImprecisionMap', () => {
     // "throws" versus "does not throw", and these two tests are each other's control.
     // -------------------------------------------------------------
     const handoverProbe = (middle: 'unknown' | 'style'): (() => void) => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionBrownianNoise(0, 2, -10, 10, 500, 7);
       // Both middles go in through `addElement`, which places by date. `addStyleSwitch`
       // would not do: `insertElement(…, firstAtDate = true)` scans forward for the first
@@ -807,7 +808,7 @@ describe('ImprecisionMap', () => {
       // stamps on before this map runs.
       map.getElement(2)!.addAttribute(new Attribute('milliseconds.date', '2000'));
 
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       return () => {
         map.renderImprecisionToMap(target, false);
       };
@@ -849,11 +850,11 @@ describe('ImprecisionMap', () => {
         list.appendChild(measurement);
         return list;
       };
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionList(0, constantOffset(), 1);
       map.addDistributionList(1000, constantOffset(), 1);
 
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       const note = (date: string, msDate: string, msEnd: string): Element => {
         const e = new Element('note', Mpm.MPM_NAMESPACE);
         e.addAttribute(new Attribute('date', date));
@@ -876,21 +877,21 @@ describe('ImprecisionMap', () => {
     });
 
     it('null map is handled gracefully', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionUniform(0, -10, 10);
       // Should not throw
       map.renderImprecisionToMap(null, false);
     });
 
     it('empty map is handled gracefully', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       // Should not throw
       map.renderImprecisionToMap(target, false);
     });
 
     it('static renderImprecisionToMap with null imprecision map does nothing', () => {
-      const target = GenericMap.createGenericMap('positionMap')!;
+      const target = okValue(GenericMap.createGenericMap('positionMap'));
       // Should not throw
       ImprecisionMap.renderImprecisionToMap(target, null, false);
     });
@@ -901,7 +902,7 @@ describe('ImprecisionMap', () => {
   // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionUniform(0, -10, 10);
       map.addDistributionGaussian(480, 5, -20, 20);
 
@@ -910,7 +911,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should support setId and getId', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       expect(map.getId()).toBeNull();
 
       map.setId('impMap-1');
@@ -918,7 +919,7 @@ describe('ImprecisionMap', () => {
     });
 
     it('should maintain sorted order', () => {
-      const map = ImprecisionMap.createImprecisionMap('timing')!;
+      const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionUniform(960, -10, 10);
       map.addDistributionGaussian(0, 5, -20, 20);
       map.addDistributionTriangular(480, -10, 10, 0, -5, 5);

@@ -5,6 +5,8 @@ import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
 import { MissingNodeError } from '../../../../xml/errors.js';
 import { requireDefName, skipMalformedDef } from './defName.js';
+import { ok, type Result } from '../../../../prelude/index.js';
+import { type MpmParseError } from '../../parseError.js';
 
 /**
  * A `dynamicsDef`: it gives a dynamics name ("forte", "pp", …) a numeric MIDI-velocity
@@ -65,19 +67,22 @@ export class DynamicsDef extends AbstractXmlSubtree {
    * element. Returns null — after logging — instead of throwing, e.g. when `value` is
    * missing.
    */
-  static createDynamicsDef(name: string, value: number): DynamicsDef | null;
-  static createDynamicsDef(xml: Element): DynamicsDef | null;
-  static createDynamicsDef(nameOrXml: string | Element, value?: number): DynamicsDef | null {
+  static createDynamicsDef(name: string, value: number): Result<DynamicsDef, MpmParseError>;
+  static createDynamicsDef(xml: Element): Result<DynamicsDef, MpmParseError>;
+  static createDynamicsDef(
+    nameOrXml: string | Element,
+    value?: number,
+  ): Result<DynamicsDef, MpmParseError> {
     try {
       if (typeof nameOrXml === 'string') {
         // Required by the (name, value) overload; optional only in the implementation
         // signature. See the same note on `TempoDef.createTempoDef`.
-        return DynamicsDef.fromNameValue(nameOrXml, value as number);
+        return ok(DynamicsDef.fromNameValue(nameOrXml, value as number));
       } else {
-        return DynamicsDef.fromXml(nameOrXml);
+        return ok(DynamicsDef.fromXml(nameOrXml));
       }
     } catch (e) {
-      return skipMalformedDef(e);
+      return skipMalformedDef(e, 'DynamicsDef');
     }
   }
 
@@ -90,7 +95,7 @@ export class DynamicsDef extends AbstractXmlSubtree {
     this.valueAttr.setValue(String(value));
   }
 
-  static createDefaultDynamicsDef(name: string): DynamicsDef | null {
+  static createDefaultDynamicsDef(name: string): Result<DynamicsDef, MpmParseError> {
     return DynamicsDef.createDynamicsDef(name, DynamicsDef.getDefaultVolumeLevel(name));
   }
 

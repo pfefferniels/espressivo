@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../support/result.js';
 import { Msm } from '../../src/msm/Msm.js';
 import { Performance } from '../../src/mpm/elements/Performance.js';
 import { Part } from '../../src/mpm/elements/Part.js';
@@ -51,27 +52,27 @@ function makeMsm(ppq = 720): Msm {
  * `seed` attribute into the MPM itself, which RULE F7 says must beat `options.seed`.
  */
 function makePerformance(mpmSeed?: number): Performance {
-  const perf = Performance.createPerformance('perf', 720)!;
-  const tempoMap = TempoMap.createTempoMap()!;
+  const perf = okValue(Performance.createPerformance('perf', 720));
+  const tempoMap = TempoMap.createTempoMap();
   tempoMap.addTempo(0, '120', 0.25);
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
-  const imp = ImprecisionMap.createImprecisionMap('timing')!;
+  const imp = ImprecisionMap.createImprecisionMap('timing');
   imp.addDistributionUniform(0, -30, 30, mpmSeed);
   perf.getGlobal()!.getDated()!.addMap(imp);
 
-  perf.addPart(Part.createPart('Piano', 1, 0, 0)!);
+  perf.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
   return perf;
 }
 
 /** A performance that renders a `positionMap`, for the sampling-step half of the item. */
 function makeMovementPerformance(): Performance {
-  const perf = Performance.createPerformance('perf', 720)!;
-  const tempoMap = TempoMap.createTempoMap()!;
+  const perf = okValue(Performance.createPerformance('perf', 720));
+  const tempoMap = TempoMap.createTempoMap();
   tempoMap.addTempo(0, '120', 0.25);
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
-  const movMap = MovementMap.createMovementMap()!;
+  const movMap = MovementMap.createMovementMap();
   const md = new MovementData();
   md.startDate = 0;
   md.position = 0.0 as Normalized;
@@ -85,7 +86,7 @@ function makeMovementPerformance(): Performance {
   movMap.addMovement(term);
   perf.getGlobal()!.getDated()!.addMap(movMap);
 
-  perf.addPart(Part.createPart('Piano', 1, 0, 0)!);
+  perf.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
   return perf;
 }
 
@@ -204,14 +205,14 @@ describe('RenderOptions', () => {
     it('advances the stream ordinal per call, so two maps in one render differ', () => {
       const ctx: RenderContext = { options: { seed: 7 }, streamOrdinal: 0 };
       const render = (c: RenderContext) => {
-        const map = GenericMap.createGenericMap('score')!;
+        const map = okValue(GenericMap.createGenericMap('score'));
         for (let i = 0; i < 6; ++i) {
           const n = new Element('note');
           n.addAttribute(new Attribute('date', String(i * 720)));
           n.addAttribute(new Attribute('milliseconds.date', String(i * 500)));
           map.addElement(n);
         }
-        const imp = ImprecisionMap.createImprecisionMap('timing')!;
+        const imp = ImprecisionMap.createImprecisionMap('timing');
         imp.addDistributionUniform(0, -30, 30);
         imp.renderImprecisionToMap(map, true, c);
         return map.getXml()!.toXML();

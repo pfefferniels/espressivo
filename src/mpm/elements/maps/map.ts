@@ -1,4 +1,6 @@
 import type { Element } from '../../../xml/XomTypes.js';
+import type { Result } from '../../../prelude/index.js';
+import type { MpmParseError } from '../parseError.js';
 import {
   ARTICULATION_MAP,
   ASYNCHRONY_MAP,
@@ -109,8 +111,8 @@ export type MapKind = keyof MapOfKind;
 
 /** How one kind of `<dated>` child is read, and how one is recognised once read. */
 interface MapShape<K extends MapKind> {
-  /** Read the element as this kind of map, or null — already logged — where it is malformed. */
-  readonly parse: (xml: Element) => MapOfKind[K] | null;
+  /** Read the element as this kind of map, or say why it could not be read. */
+  readonly parse: (xml: Element) => Result<MapOfKind[K], MpmParseError>;
   /**
    * Whether an already-parsed map is one of these.
    *
@@ -219,7 +221,7 @@ export function isMapKind(localName: string): localName is MapKind {
  * always the same fact — both call sites passed either `xml.getLocalName()` or the name the
  * element had just been built from — and a pair that must agree is a pair that can disagree.
  */
-export function parseTypedMap(xml: Element): GenericMap | null {
+export function parseTypedMap(xml: Element): Result<GenericMap, MpmParseError> {
   const localName = xml.getLocalName();
   return isMapKind(localName) ? MAP_SHAPE[localName].parse(xml) : GenericMap.createGenericMap(xml);
 }

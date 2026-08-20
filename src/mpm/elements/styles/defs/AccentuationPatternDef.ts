@@ -5,6 +5,8 @@ import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
 import { requireDefName, skipMalformedDef } from './defName.js';
+import { ok, type Result } from '../../../../prelude/index.js';
+import { type MpmParseError } from '../../parseError.js';
 import { elementAt, head, isNonEmpty, last } from '../../../../prelude/index.js';
 
 /**
@@ -137,13 +139,13 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
     name: string,
     length: number,
     id?: string,
-  ): AccentuationPatternDef | null;
-  static createAccentuationPatternDef(xml: Element): AccentuationPatternDef | null;
+  ): Result<AccentuationPatternDef, MpmParseError>;
+  static createAccentuationPatternDef(xml: Element): Result<AccentuationPatternDef, MpmParseError>;
   static createAccentuationPatternDef(
     nameOrXml: string | Element,
     length?: number,
     id?: string,
-  ): AccentuationPatternDef | null {
+  ): Result<AccentuationPatternDef, MpmParseError> {
     try {
       let xml: Element;
       if (typeof nameOrXml === 'string') {
@@ -156,9 +158,9 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
       const apd = new AccentuationPatternDef(requireDefName(xml, 'AccentuationPatternDef'));
       apd.parseData(xml);
       if (typeof nameOrXml === 'string' && id !== undefined) apd.setId(id);
-      return apd;
+      return ok(apd);
     } catch (e) {
-      return skipMalformedDef(e);
+      return skipMalformedDef(e, 'AccentuationPatternDef');
     }
   }
 

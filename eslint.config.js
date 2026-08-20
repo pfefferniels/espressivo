@@ -323,6 +323,38 @@ export default tseslint.config(
     },
   },
 
+  // --- A library does not narrate to stdout ---
+  //
+  // `console.log` is progress, and progress is the host's business, not a library's. The
+  // six directories below reached zero of them when the factories stopped printing their
+  // failures: nine narration lines in `Mei.ts` ("Resolving copyofs and sameas's:", " done"),
+  // four in `Performance.perform`, two conversion banners, and four sites that were
+  // *diagnostics* filed under `log` and now sit on `error` beside their own neighbours. The
+  // ban is what stops the count going back up.
+  //
+  // Scoped to these six and not to `src/**` for one reason: `src/msm/**` (11) and
+  // `src/midi/**` (20) still have theirs, and they belong to other people's work. Widen the
+  // glob when they are done.
+  //
+  // `console.error` is deliberately NOT banned. ~55 sites remain in `src/mpm` and they are a
+  // different species from the ones this campaign converted: "this value is out of range,
+  // here is the clamped one", not "this element cannot be read". Converting a warn-and-repair
+  // site to a `Result` means changing what the function returns on the SUCCESS path too, and
+  // that is a larger and separately-argued change.
+  {
+    files: [
+      'src/mpm/**/*.ts',
+      'src/mei/**/*.ts',
+      'src/xml/**/*.ts',
+      'src/music/**/*.ts',
+      'src/expression/**/*.ts',
+      'src/prelude/**/*.ts',
+    ],
+    rules: {
+      'no-console': ['error', { allow: ['error'] }],
+    },
+  },
+
   // --- Architecture enforcement (T18; ARCHITECTURE.md §1.2, RULES M1/M3/M4) ---
 
   {

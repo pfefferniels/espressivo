@@ -4,6 +4,8 @@ import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import type { MetricalAccentuation } from './data/metricalAccentuation.js';
 
 /**
@@ -18,19 +20,32 @@ import type { MetricalAccentuation } from './data/metricalAccentuation.js';
  * Port of meico.mpm.elements.maps.MetricalAccentuationMap
  */
 export class MetricalAccentuationMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createMetricalAccentuationMap(xml?: Element): MetricalAccentuationMap | null {
-    try {
-      return xml !== undefined
-        ? new MetricalAccentuationMap(xml)
-        : new MetricalAccentuationMap('metricalAccentuationMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<metricalAccentuationMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createMetricalAccentuationMap(): MetricalAccentuationMap;
+  static createMetricalAccentuationMap(
+    xml: Element,
+  ): Result<MetricalAccentuationMap, MpmParseError>;
+  static createMetricalAccentuationMap(
+    xml?: Element | null,
+  ): MetricalAccentuationMap | Result<MetricalAccentuationMap, MpmParseError> {
+    return xml === undefined
+      ? new MetricalAccentuationMap(GenericMap.emptyMapElement('metricalAccentuationMap'))
+      : GenericMap.makeMap(
+          xml,
+          'MetricalAccentuationMap',
+          (elt) => new MetricalAccentuationMap(elt),
+        );
   }
 
   addAccentuationPattern(

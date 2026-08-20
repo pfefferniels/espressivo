@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { errOf, okValue } from '../../support/result.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Header } from '../../../src/mpm/elements/Header.js';
 import { createStyle, styleOfKind } from '../../../src/mpm/elements/styles/style.js';
@@ -36,7 +37,7 @@ function childNames(header: Header): string[] {
 describe('Header', () => {
   describe('createHeader', () => {
     it('creates an empty header element', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       expect(h.getXml()!.getLocalName()).toBe('header');
       expect(h.getXml()!.getNamespaceURI()).toBe(Mpm.MPM_NAMESPACE);
       expect(h.getAllStyleTypes().size).toBe(0);
@@ -51,7 +52,7 @@ describe('Header', () => {
           styleDefElement('default', [element('dynamicsDef', { name: 'ff', value: '111.0' })]),
         ]),
       ]);
-      const h = Header.createHeader(xml)!;
+      const h = okValue(Header.createHeader(xml));
 
       expect(h.getAllStyleTypes().size).toBe(2);
       // `styleOfKind` where this used to be `as TempoStyle` + `toBeInstanceOf(TempoStyle)`:
@@ -65,21 +66,25 @@ describe('Header', () => {
     });
 
     it('ignores header children whose name does not contain "Styles"', () => {
-      const h = Header.createHeader(element('header', {}, [element('metadata')]))!;
+      const h = okValue(Header.createHeader(element('header', {}, [element('metadata')])));
       expect(h.getAllStyleTypes().size).toBe(0);
     });
 
-    it('returns null for a null element', () => {
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-      expect(Header.createHeader(null as unknown as Element)).toBeNull();
-      expect(err).toHaveBeenCalled();
-      err.mockRestore();
+    // Was: spy on `console.error`, assert the factory returned null, assert something was
+    // printed. The assertion that something was printed is what the `Result` replaces, and
+    // the replacement is stronger — "printed at all" could not tell a null element from any
+    // other exception the catch-all absorbed, and this names which one it was.
+    it('reports a null element rather than printing it', () => {
+      expect(errOf(Header.createHeader(null as unknown as Element))).toEqual({
+        kind: 'noElement',
+        what: 'Header',
+      });
     });
   });
 
   describe('addStyleType', () => {
     it('creates an empty collection for a type name', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       const map = h.addStyleType(Mpm.TEMPO_STYLE)!;
       expect(map.size).toBe(0);
       expect(h.getAllStyleDefs(Mpm.TEMPO_STYLE)).toBe(map);
@@ -87,7 +92,7 @@ describe('Header', () => {
     });
 
     it('rejects an empty type name', () => {
-      expect(Header.createHeader()!.addStyleType('')).toBeNull();
+      expect(okValue(Header.createHeader()).addStyleType('')).toBeNull();
     });
 
     it('builds a style of the matching kind for each known type, and indexes its defs', () => {
@@ -109,7 +114,7 @@ describe('Header', () => {
       ];
 
       for (const [type, kind, defs] of cases) {
-        const h = Header.createHeader()!;
+        const h = okValue(Header.createHeader());
         h.addStyleType(element(type, {}, [styleDefElement('default', defs)]));
         const style = h.getStyleDef(type, 'default')!;
         // Was `toBeInstanceOf(<the subclass>)`. The kind discriminant is what the six
@@ -122,7 +127,7 @@ describe('Header', () => {
     });
 
     it('falls back to the generic kind for an unknown type', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       h.addStyleType(element('somethingStyles', {}, [styleDefElement('default')]));
       const style = h.getStyleDef('somethingStyles', 'default')!;
       expect(style.kind).toBe('generic');
@@ -131,7 +136,7 @@ describe('Header', () => {
 
     it('skips styleDef children without a name', () => {
       const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       const map = h.addStyleType(
         element(Mpm.TEMPO_STYLE, {}, [element('styleDef'), styleDefElement('default')]),
       )!;
@@ -141,7 +146,7 @@ describe('Header', () => {
     });
 
     it('replaces a style type that is already present', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       h.addStyleType(element(Mpm.TEMPO_STYLE, {}, [styleDefElement('first')]));
       h.addStyleType(element(Mpm.TEMPO_STYLE, {}, [styleDefElement('second')]));
 
@@ -153,7 +158,7 @@ describe('Header', () => {
 
     it('does not re-append a collection that is already a child of the header', () => {
       const collection = element(Mpm.TEMPO_STYLE, {}, [styleDefElement('default')]);
-      const h = Header.createHeader(element('header', {}, [collection]))!;
+      const h = okValue(Header.createHeader(element('header', {}, [collection])));
       expect(childNames(h)).toEqual([Mpm.TEMPO_STYLE]);
       h.addStyleType(collection);
       expect(childNames(h)).toEqual([Mpm.TEMPO_STYLE]);
@@ -162,7 +167,7 @@ describe('Header', () => {
 
   describe('removeStyleType', () => {
     it('removes the collection from the map and the xml', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       h.addStyleType(Mpm.TEMPO_STYLE);
       h.addStyleType(Mpm.DYNAMICS_STYLE);
       h.removeStyleType(Mpm.TEMPO_STYLE);
@@ -172,7 +177,7 @@ describe('Header', () => {
     });
 
     it('ignores an unknown type', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       h.addStyleType(Mpm.TEMPO_STYLE);
       h.removeStyleType(Mpm.RUBATO_STYLE);
       expect(childNames(h)).toEqual([Mpm.TEMPO_STYLE]);
@@ -181,11 +186,11 @@ describe('Header', () => {
 
   describe('getStyleDef', () => {
     it('returns null for an unknown type', () => {
-      expect(Header.createHeader()!.getStyleDef(Mpm.TEMPO_STYLE, 'default')).toBeNull();
+      expect(okValue(Header.createHeader()).getStyleDef(Mpm.TEMPO_STYLE, 'default')).toBeNull();
     });
 
     it('returns null for an unknown name within a known type', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       h.addStyleType(Mpm.TEMPO_STYLE);
       expect(h.getStyleDef(Mpm.TEMPO_STYLE, 'default')).toBeNull();
     });
@@ -193,7 +198,7 @@ describe('Header', () => {
 
   describe('addStyleDef by name', () => {
     it('creates the style type on the fly and returns the new styleDef', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       const style = h.addStyleDef(Mpm.TEMPO_STYLE, 'default');
 
       expect(style.kind).toBe('tempo');
@@ -216,14 +221,14 @@ describe('Header', () => {
         [Mpm.ORNAMENTATION_STYLE, 'ornamentation'],
         ['somethingStyles', 'generic'],
       ];
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       for (const [type, kind] of cases) expect(h.addStyleDef(type, 'default').kind).toBe(kind);
     });
 
     it('replaces a styleDef of the same name', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       const first = h.addStyleDef(Mpm.TEMPO_STYLE, 'default');
-      styleOfKind(first, 'tempo')!.addDef(TempoDef.createTempoDef('Allegro', 147.0)!);
+      styleOfKind(first, 'tempo')!.addDef(okValue(TempoDef.createTempoDef('Allegro', 147.0)));
       const second = h.addStyleDef(Mpm.TEMPO_STYLE, 'default');
 
       expect(second).not.toBe(first);
@@ -238,20 +243,20 @@ describe('Header', () => {
 
   describe('addStyleDef by instance', () => {
     it('adds an existing style object', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       const style = createStyle('tempo', 'default');
       h.addStyleDef(Mpm.TEMPO_STYLE, style);
       expect(h.getStyleDef(Mpm.TEMPO_STYLE, 'default')).toBe(style);
     });
 
     it('ignores an empty type', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       h.addStyleDef('', createStyle('tempo', 'default'));
       expect(h.getAllStyleTypes().size).toBe(0);
     });
 
     it('reuses an existing style type element', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       h.addStyleDef(Mpm.TEMPO_STYLE, createStyle('tempo', 'a'));
       h.addStyleDef(Mpm.TEMPO_STYLE, createStyle('tempo', 'b'));
 
@@ -262,7 +267,7 @@ describe('Header', () => {
 
   describe('removeStyleDef', () => {
     it('removes the styleDef from the map and the xml', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       const a = h.addStyleDef(Mpm.TEMPO_STYLE, 'a');
       h.addStyleDef(Mpm.TEMPO_STYLE, 'b');
       h.removeStyleDef(Mpm.TEMPO_STYLE, 'a');
@@ -274,7 +279,7 @@ describe('Header', () => {
     });
 
     it('ignores an empty type, an unknown type and an unknown name', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       h.addStyleDef(Mpm.TEMPO_STYLE, 'a');
       h.removeStyleDef('', 'a');
       h.removeStyleDef(Mpm.RUBATO_STYLE, 'a');
@@ -285,7 +290,7 @@ describe('Header', () => {
 
   describe('renameStyleDef', () => {
     it('renames the styleDef in the map and in the xml', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       const style = h.addStyleDef(Mpm.TEMPO_STYLE, 'old');
       const renamed = h.renameStyleDef(Mpm.TEMPO_STYLE, 'old', 'new');
 
@@ -297,14 +302,14 @@ describe('Header', () => {
     });
 
     it('returns the unchanged styleDef when old and new name are equal', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       const style = h.addStyleDef(Mpm.TEMPO_STYLE, 'same');
       expect(h.renameStyleDef(Mpm.TEMPO_STYLE, 'same', 'same')).toBe(style);
       expect(h.getAllStyleDefs(Mpm.TEMPO_STYLE)!.size).toBe(1);
     });
 
     it('overwrites a styleDef that already carries the new name', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       h.addStyleDef(Mpm.TEMPO_STYLE, 'victim');
       const survivor = h.addStyleDef(Mpm.TEMPO_STYLE, 'old');
       h.renameStyleDef(Mpm.TEMPO_STYLE, 'old', 'victim');
@@ -314,23 +319,21 @@ describe('Header', () => {
     });
 
     it('returns null for an unknown style type', () => {
-      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-      expect(Header.createHeader()!.renameStyleDef(Mpm.TEMPO_STYLE, 'old', 'new')).toBeNull();
-      log.mockRestore();
+      expect(
+        okValue(Header.createHeader()).renameStyleDef(Mpm.TEMPO_STYLE, 'old', 'new'),
+      ).toBeNull();
     });
 
     it('returns null for an unknown current name', () => {
-      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       h.addStyleDef(Mpm.TEMPO_STYLE, 'other');
       expect(h.renameStyleDef(Mpm.TEMPO_STYLE, 'old', 'new')).toBeNull();
-      log.mockRestore();
     });
   });
 
   describe('clear', () => {
     it('drops every style type and every header child', () => {
-      const h = Header.createHeader()!;
+      const h = okValue(Header.createHeader());
       h.addStyleDef(Mpm.TEMPO_STYLE, 'a');
       h.addStyleDef(Mpm.DYNAMICS_STYLE, 'b');
       h.clear();

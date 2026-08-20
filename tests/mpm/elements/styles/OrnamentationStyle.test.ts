@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../../../support/result.js';
 import {
   createStyle,
   describeStyleError,
@@ -200,7 +201,7 @@ describe('OrnamentationStyle', () => {
   describe('def management', () => {
     it('should add a def and make it retrievable by name', () => {
       const style = createStyle('ornamentation', 'orn style');
-      const def = OrnamentDef.createDefaultOrnamentDef('arpeggio')!;
+      const def = okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio'));
       style.addDef(def);
 
       expect(style.size()).toBe(1);
@@ -215,8 +216,8 @@ describe('OrnamentationStyle', () => {
 
     it('should replace a def that is added under an existing name', () => {
       const style = createStyle('ornamentation', 'orn style');
-      const first = OrnamentDef.createDefaultOrnamentDef('arpeggio')!;
-      const second = OrnamentDef.createOrnamentDef('arpeggio')!;
+      const first = okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio'));
+      const second = okValue(OrnamentDef.createOrnamentDef('arpeggio'));
       second.setDynamicsGradientValues(-9.0, 9.0);
 
       style.addDef(first);
@@ -230,7 +231,7 @@ describe('OrnamentationStyle', () => {
 
     it('should remove a def by name', () => {
       const style = createStyle('ornamentation', 'orn style');
-      style.addDef(OrnamentDef.createDefaultOrnamentDef('arpeggio')!);
+      style.addDef(okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio')));
       style.removeDef('arpeggio');
 
       expect(style.isEmpty()).toBe(true);
@@ -240,7 +241,7 @@ describe('OrnamentationStyle', () => {
 
     it('should ignore removal of an unknown def name', () => {
       const style = createStyle('ornamentation', 'orn style');
-      style.addDef(OrnamentDef.createDefaultOrnamentDef('arpeggio')!);
+      style.addDef(okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio')));
 
       expect(() => style.removeDef('nope')).not.toThrow();
       expect(style.size()).toBe(1);
@@ -248,8 +249,8 @@ describe('OrnamentationStyle', () => {
 
     it('should hold several defs side by side', () => {
       const style = createStyle('ornamentation', 'orn style');
-      style.addDef(OrnamentDef.createDefaultOrnamentDef('arpeggio')!);
-      style.addDef(OrnamentDef.createOrnamentDef('trill')!);
+      style.addDef(okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio')));
+      style.addDef(okValue(OrnamentDef.createOrnamentDef('trill')));
 
       expect(style.size()).toBe(2);
       expect(style.getXml()!.getChildElements('ornamentDef').size()).toBe(2);
@@ -261,7 +262,7 @@ describe('OrnamentationStyle', () => {
   // ---------------------------------------------------------------
   it('should survive an XML round trip', () => {
     const style = createStyle('ornamentation', 'orn style');
-    style.addDef(OrnamentDef.createDefaultOrnamentDef('arpeggio')!);
+    style.addDef(okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio')));
 
     const reparsed = parsedStyle(style.getXml());
     expect(reparsed.getName()).toBe('orn style');
