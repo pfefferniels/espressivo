@@ -32,7 +32,9 @@
  * inequality. The report keeps them in separate fields for that reason and the docs say it once,
  * prominently.
  */
-import { fromEntriesExact, mapValues, pairwise } from '../prelude/index.js';
+import { fromEntriesExact, head, isNonEmpty, last, mapValues, pairwise } from '../prelude/index.js';
+
+import { elementAt } from './indexing.js';
 import {
   EVENT_KAPPA_QUARTERS,
   aggregateDistance,
@@ -816,10 +818,11 @@ function dimensionComparison(
  */
 function mergedDecomposition(rows: readonly DimensionEvaluation[]): Decomposition | null {
   const withCurves = rows.filter((row) => row.decomposition !== null);
-  if (withCurves.length === 0) return null;
-  const unit = withCurves[0].unit;
+  if (!isNonEmpty(withCurves)) return null;
+  const first = head(withCurves);
+  const unit = first.unit;
   if (withCurves.length === 1) {
-    const only = withCurves[0].decomposition as Omit<Decomposition, 'unit'>;
+    const only = first.decomposition as Omit<Decomposition, 'unit'>;
     return { ...only, unit };
   }
 
@@ -856,9 +859,16 @@ function averagedDecomposition(unit: string, rows: readonly DimensionEvaluation[
 function unionDecomposition(unit: string, rows: readonly DimensionEvaluation[]): Decomposition {
   const spans = rows.map((row) => {
     const grid = row.pairGridQuarters;
-    return { row, start: grid[0], end: grid[grid.length - 1] };
+    // An EMPTY pair grid has no span, and `0` is the reading the `1e-12` note below already
+    // describes: the union degenerates to the first row's curve. The old spelling read
+    // `undefined` at both ends, which made `length` NaN, `index` NaN, and `spans[NaN]`
+    // `undefined` — a crash rather than a degenerate answer.
+    return isNonEmpty(grid)
+      ? { row, start: head(grid), end: last(grid) }
+      : { row, start: 0, end: 0 };
   });
-  const length = spans[0].end - spans[0].start;
+  const firstSpan = elementAt(spans, 0, SPANS);
+  const length = firstSpan.end - firstSpan.start;
 
   // The virtual abscissa: row `p` occupies `[p·length, (p+1)·length)`.
   //
@@ -870,7 +880,7 @@ function unionDecomposition(unit: string, rows: readonly DimensionEvaluation[]):
   // It substitutes for no VALUE: `length` itself is never replaced, only the divisor.
   const locate = (x: number): { row: DimensionEvaluation; quarters: number } => {
     const index = Math.min(rows.length - 1, Math.max(0, Math.floor(x / Math.max(length, 1e-12))));
-    const span = spans[index];
+    const span = elementAt(spans, index, SPANS);
     return { row: span.row, quarters: span.start + (x - index * length) };
   };
   const sampleA = (x: number): number => {
@@ -886,7 +896,7 @@ function unionDecomposition(unit: string, rows: readonly DimensionEvaluation[]):
   for (const [index, span] of spans.entries())
     for (const quarters of span.row.pairGridQuarters) {
       const x = index * length + (quarters - span.start);
-      if (grid.length === 0 || x > grid[grid.length - 1]) grid.push(x);
+      if (!isNonEmpty(grid) || x > last(grid)) grid.push(x);
     }
 
   const momentsA = momentsOverGrid(sampleA, grid);
@@ -914,10 +924,15 @@ function unionDecomposition(unit: string, rows: readonly DimensionEvaluation[]):
   };
 }
 
+/** What an out-of-range read into one of this module's sequences is called (`indexing.ts`). */
+const SPANS = "the union decomposition's per-scope spans";
+const SCOPE_SIDES = "the pair's scope sides";
+
 /** `∫ g dx / L` over a grid that partitions it. */
 function integrateOverGrid(g: (x: number) => number, grid: readonly number[]): number {
-  if (grid.length < 2) return 0;
-  const length = grid[grid.length - 1] - grid[0];
+  // The grid's own span, or 0 where it is too short to have one — `decomposition.ts` states the
+  // same fact the same way, and the `!(length > 0)` test is the only guard either needs.
+  const length = isNonEmpty(grid) ? last(grid) - head(grid) : 0;
   if (!(length > 0)) return 0;
   const total = new CompensatedSum();
   for (const [low, high] of pairwise(grid)) total.add(gaussLegendre10(g, low, high));
@@ -1006,7 +1021,7 @@ function driftOf(
   sides: readonly (readonly [ScopeSide, ScopeSide])[],
   ticksPerQuarter: number,
 ): CumulativeDrift {
-  const [a, b] = sides[0];
+  const [a, b] = elementAt(sides, 0, SCOPE_SIDES);
   const read = (side: ScopeSide) =>
     readTempoSegments(
       readScopeTempoView(side),
@@ -1431,17 +1446,21 @@ function sharedCurves(
   dates: readonly number[],
 ): { readonly a: readonly number[]; readonly b: readonly number[] } | null {
   const withCurves = rows.filter((row) => row.valueA !== null && row.valueB !== null);
-  if (withCurves.length === 0 || withCurves.length !== rows.length) return null;
+  if (!isNonEmpty(withCurves) || withCurves.length !== rows.length) return null;
 
+  const first = head(withCurves);
   const a: number[] = [];
   const b: number[] = [];
   for (const quarters of dates) {
-    const valuesA = withCurves.map((row) => row.valueA?.(quarters) ?? 0);
-    const valuesB = withCurves.map((row) => row.valueB?.(quarters) ?? 0);
-    if (valuesA.some((value) => value !== valuesA[0])) return null;
-    if (valuesB.some((value) => value !== valuesB[0])) return null;
-    a.push(valuesA[0]);
-    b.push(valuesB[0]);
+    // "Every scope agrees at this date" is a statement ABOUT the first scope's value, so that
+    // value is taken once and the rest are compared against it — which is what the old
+    // `valuesA.some((value) => value !== valuesA[0])` meant, with the representative named.
+    const valueA = first.valueA?.(quarters) ?? 0;
+    const valueB = first.valueB?.(quarters) ?? 0;
+    if (withCurves.some((row) => (row.valueA?.(quarters) ?? 0) !== valueA)) return null;
+    if (withCurves.some((row) => (row.valueB?.(quarters) ?? 0) !== valueB)) return null;
+    a.push(valueA);
+    b.push(valueB);
   }
   return { a, b };
 }

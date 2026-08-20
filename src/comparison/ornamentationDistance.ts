@@ -33,6 +33,9 @@
  * the construction that makes the alignment a metric. It holds because every gap cost here is
  * the same row-wise functional evaluated against the neutral ornament, and not a constant.
  */
+import { head, isNonEmpty } from '../prelude/index.js';
+
+import { elementAt } from './indexing.js';
 import {
   comparisonRowWith,
   localDistance,
@@ -317,8 +320,8 @@ function composedSpread(
 ): Valued<PerformedSpread> | null {
   if (spreads.some(isBottom)) return bottom('renderer-error');
   const frames = spreads.filter((spread) => !isBottom(spread)).map((spread) => spread.value);
-  if (frames.length === 0) return null;
-  const first = frames[0];
+  if (!isNonEmpty(frames)) return null;
+  const first = head(frames);
   const uniform = frames.every(
     (frame) => frame.intensity === first.intensity && frame.domain === first.domain,
   );
@@ -344,39 +347,49 @@ export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly Ornamen
     let to = 0;
     let poisoned = false;
     for (const index of members) {
-      const gradient = gradientOf(atoms[index]);
+      const member = elementAt(atoms, index, ATOMS);
+      const gradient = gradientOf(member);
       if (isBottom(gradient)) {
         poisoned = true;
         continue;
       }
       // A descending ornament walks the same pool from the other end.
-      const reversed = atoms[index].noteOrderKind === 'descending';
+      const reversed = member.noteOrderKind === 'descending';
       from += reversed ? gradient.value.to : gradient.value.from;
       to += reversed ? gradient.value.from : gradient.value.to;
     }
-    const [head, ...rest] = members;
-    const frame = composedSpread(members.map((index) => spreadOf(atoms[index])));
+    const headIndex = elementAt(members, 0, POOL_MEMBERS);
+    const headAtom = elementAt(atoms, headIndex, ATOMS);
+    const rest = members.slice(1);
+    const frame = composedSpread(members.map((index) => spreadOf(elementAt(atoms, index, ATOMS))));
     // One poisoned member makes the whole anchor's velocity NaN, which is the anchor's effect.
-    composed[head] = {
-      ...atoms[head],
+    composed[headIndex] = {
+      ...headAtom,
       // The composed ramp is stated in the head's own direction, so a group whose head is
       // descending carries it back the way that head reads it.
       gradient: poisoned
         ? bottom('renderer-error')
-        : valued(
-            atoms[head].noteOrderKind === 'descending' ? { from: to, to: from } : { from, to },
-          ),
-      spread: frame ?? atoms[head].spread,
+        : valued(headAtom.noteOrderKind === 'descending' ? { from: to, to: from } : { from, to }),
+      spread: frame ?? headAtom.spread,
     };
-    for (const index of rest)
+    for (const index of rest) {
+      const member = elementAt(atoms, index, ATOMS);
       composed[index] = {
-        ...atoms[index],
+        ...member,
         gradient: valued(NEUTRAL_GRADIENT),
-        spread: frame === null ? atoms[index].spread : valued(NEUTRAL_SPREAD),
+        spread: frame === null ? member.spread : valued(NEUTRAL_SPREAD),
       };
+    }
   }
   return composed;
 }
+
+/** What an out-of-range read into one of this module's atom lists is called. */
+const ATOMS = 'the ornament atom list';
+const ATOMS_A = 'the a-side ornament atoms';
+const ATOMS_B = 'the b-side ornament atoms';
+/** …and into one composition pool's member indices. */
+const POOL_MEMBERS = "a composition pool's members";
 
 /** The structural differences a matched pair reports without pricing (§5.6). */
 function findingsFor(x: OrnamentAtom, y: OrnamentAtom): OrnamentFinding[] {
@@ -440,7 +453,10 @@ export function ornamentationDistance(
   );
 
   const findings: OrnamentFinding[] = [];
-  for (const pair of alignment.pairs) findings.push(...findingsFor(atomsA[pair.a], atomsB[pair.b]));
+  for (const pair of alignment.pairs)
+    findings.push(
+      ...findingsFor(elementAt(atomsA, pair.a, ATOMS_A), elementAt(atomsB, pair.b, ATOMS_B)),
+    );
 
   return {
     distance: alignment.cost,
@@ -466,9 +482,19 @@ function cappedAnchorsOf(
   for (const charge of alignment.charges) {
     const flag = { capped: false };
     if (charge.a !== null && charge.b !== null)
-      ornamentDistance(a[charge.a], b[charge.b], ticksPerQuarter, jnd, flag);
+      ornamentDistance(
+        elementAt(a, charge.a, ATOMS_A),
+        elementAt(b, charge.b, ATOMS_B),
+        ticksPerQuarter,
+        jnd,
+        flag,
+      );
     else {
-      const only = charge.a === null ? b[charge.b as number] : a[charge.a];
+      // One of the two is non-null — a charge with neither side is not a charge — and reading
+      // the other side through `elementAt` is what retires the `as number` that used to assert
+      // it. `null` on both would now be a named `RangeError` rather than a silent `undefined`.
+      const only =
+        charge.a === null ? elementAt(b, charge.b ?? -1, ATOMS_B) : elementAt(a, charge.a, ATOMS_A);
       deviationFromNeutral(only, ticksPerQuarter, jnd, flag);
     }
     if (flag.capped) count += 1;
