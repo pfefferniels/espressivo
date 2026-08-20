@@ -31,6 +31,22 @@
 > were never in the tree. The byte gate *is* the suite — `npm run gate` runs its four suites,
 > 121 tests, in about two seconds. `npm run bench` is the performance gate.
 >
+> **Where the campaign got to**, so the numbers above are read against something:
+>
+> | | before | after |
+> | --- | --- | --- |
+> | ESLint findings | 1053 | 356 |
+> | `no-non-null-assertion` | 841 | 170 |
+> | `noUncheckedIndexedAccess` in `src/` | 885 | 0 — the flag is **on** |
+> | indexed `for (let …)` loops | 337 | ~202 |
+> | tests | 5480 | 6071 |
+>
+> Two figures deliberately *not* in that table. `tests/` is at 1047 under
+> `noUncheckedIndexedAccess` and opted out in `tsconfig.tests.json`; it is a separate job and
+> `scripts/strict-ratchet.mjs` keeps it monotonic. And `console.*` still stands at 167 in
+> `src/`, because 73 tests spy on it — retiring it is a `Result` campaign with a real
+> test-migration cost, not a sweep.
+>
 > Everything not named above still applies, in particular the unit and type discipline of §7
 > and the parity ledger of §6.3.
 
@@ -640,10 +656,31 @@ today.
 
 ## 3. Null-vs-undefined policy
 
-The tree carries **1080** `no-non-null-assertion` violations. They are a symptom: the port
-maps Java's implicitly-nullable returns to honest `T | null` types and then asserts `!` at
-every call site. The cure is narrowing *return types*, never bulk-deleting `!` and never
-bulk-adding guards.
+> **Figures updated 2026-08-20.** This section opened by saying the tree carried **1080**
+> `no-non-null-assertion` violations. It carries **170**. The diagnosis below was right and is
+> left standing because it is what the cure was built on; only the count has moved.
+
+The port maps Java's implicitly-nullable returns to honest `T | null` types and then asserts
+`!` at every call site. That is the symptom. **The cure is narrowing *return types*, never
+bulk-deleting `!` and never bulk-adding guards** — and that instruction turned out to be the
+load-bearing one. `src/mei` alone went from 532 to zero without a single `!` becoming an `as`:
+roughly 290 collapsed into a named path or accessor, 110 were restructured to read once and
+branch instead of test-then-assert, 75 became a `require*` call that throws a typed
+`MissingNodeError` naming what was missing, and 57 were fixed at the *type* rather than the
+call site — `addStyleDef`'s spurious `| null` alone accounted for 15.
+
+Two things that made it mechanical rather than risky, worth knowing before the next 170:
+
+- `src/xml/tree.ts` gained `requireAttributeValue`, whose docstring carries the proof that it
+  is **exactly** `element.getAttributeValue(name)!` — this port's `Element.getAttribute`
+  already matches on local name, so `attribute()`'s namespaced fallbacks are unreachable when
+  the plain lookup misses. That proof is what let ~150 sites convert without a behaviour
+  question.
+- Java's behaviour on a missing value is the spec. Java NPEs where a reference is unresolved,
+  so a `require*` throw is usually the parity-correct answer and a `continue` is not. Where
+  Java would *not* throw, converting is a behaviour change and needs a control — and there was
+  exactly one such site (`makeTimeSignature`'s `sym` block, reached by either `@sym` or
+  `@meter.sym`, where the assertion was already false and harmlessly so).
 
 **RULE N1 (the meaning split, everywhere).** `null` means *"the domain says there is nothing
 here"*. `undefined` means *"the caller did not supply this"*. They are never
@@ -790,7 +827,7 @@ and a gate that cannot fail is not a gate.
 | **T16** | N3's `getXml()` narrowing and the `!` deletions it enables across `mpm/elements/**`; N1 to every signature it rewrites |
 | **T13** | N4 |
 | **T15** | N1/N2 opportunistically inside the converter — but never as part of a dispatch-table hunk |
-| **T21** | audits: `no-non-null-assertion` count must be strictly below 1080 and journaled |
+| **T21** | audits: `no-non-null-assertion` count must be strictly below 1080 and journaled *(historical threshold; the count is now 170 — see §3)* |
 
 > **EQ-RISK (N2a).** Replacing `f(...)!` with `requireF(...)` moves the failure from "the
 > next property access throws `TypeError`" to "the accessor throws `MissingNodeError`". On
@@ -1654,7 +1691,7 @@ enablement *first*, then audits:
 6. `no-unnecessary-condition` — every finding is either fixed or journaled; this is the rule
    that catches leftover `?? []` guards from N2b and redundant `!` from N3;
 7. `import/no-cycle` clean;
-8. `no-non-null-assertion` strictly below 1080 with the delta journaled;
+8. `no-non-null-assertion` strictly below 1080 with the delta journaled *(historical; now 170)*;
 9. coverage per charter invariant 7;
 10. `vitest.config.ts`'s include list updated for the moved paths (mechanical only — note that
     `src/api/**`, `src/music/**`, `src/xml/**`, `src/units.ts` must be **in** scope, and
