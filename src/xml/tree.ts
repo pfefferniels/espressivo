@@ -543,6 +543,34 @@ export function getAttributeValue(name: string, ofThis: Element | null): string 
 }
 
 /**
+ * The throwing sibling of {@link getAttributeValue} (ARCHITECTURE.md RULE N2a), completing the
+ * pair for the accessor that dominates the converter's call sites.
+ *
+ * The non-throwing form answers a missing attribute with `''`, which is the *value* an empty
+ * attribute would have carried — so a caller that needs to tell "absent" from "present and
+ * empty" cannot use it, and 150-odd sites in `mei/` therefore read
+ * `element.getAttributeValue(name)!` (XOM's own accessor, which returns `null`) and assert.
+ * This is that read, with the assertion replaced by an error that names the attribute.
+ *
+ * **Exactly equivalent to `ofThis.getAttributeValue(name)!`**, which is what makes converting
+ * those sites mechanical rather than a behaviour change. That is not obvious, because
+ * {@link attribute} adds two namespaced lookups on top of the plain one — but in this port
+ * they are unreachable: `Element.getAttribute(name)` with no namespace already matches on
+ * `getLocalName() === name` (or the qualified name), i.e. it is namespace-agnostic, so if it
+ * finds nothing then no attribute carries that local name and neither namespaced retry can
+ * find one either. The fallbacks earn their keep against Java XOM, whose one-argument
+ * `getAttribute` matches unnamespaced attributes only; they are kept for that documentary
+ * value rather than deleted under RULE N2b.
+ *
+ * @param name
+ * @param ofThis
+ * @return the attribute's value
+ */
+export function requireAttributeValue(name: string, ofThis: Element | null): string {
+  return requireAttribute(name, ofThis).getValue();
+}
+
+/**
  * returns the parent element of ofThis as element or null
  * @param ofThis
  * @return
