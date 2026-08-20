@@ -63,7 +63,8 @@ import type { MovementMap } from './maps/MovementMap.js';
  * claim, not a shrug: the metrical accentuation and dynamics passes read the map's *symbolic
  * key* and write `velocity`, so they commute with rubato. The comment that used to justify
  * their position ("rubato shifts the symbolic dates the accentuation pattern is measured
- * against") was wrong, and a negative control confirms it — see {@link Performance.perform}.
+ * against") was wrong, and a negative control confirms it — see
+ * {@link Performance.renderPartAccentuation}.
  *
  * The marker is a phantom property in the sense of `src/units.ts`: `phase` is `declare`d, so it
  * has no runtime existence and no value can carry it. The mechanism therefore emits nothing at
@@ -492,15 +493,13 @@ export class Performance extends AbstractXmlSubtree {
    * symbolic half before rubato, rubato before tempo, every millisecond pass after tempo,
    * articulation's and ornamentation's millisecond halves after their symbolic ones).
    *
-   * Written down and held by negative controls only — each of these has been broken on purpose
-   * and the suite watched:
+   * Written down only — each of these has been broken on purpose and the suite watched, and
+   * `Performance.test.ts`'s "stage order" block now holds the four of them that nothing held
+   * before:
    *
-   * - *rubato and tempo interleave per map*, not per stage: {@link renderGlobalTiming} runs
-   *   `rubato(m); tempo(m)` for each map in turn, so splitting it into two loops changes which
-   *   dates tempo sees. The part scope does not interleave them, because the two run over
-   *   different map sets there.
-   * - *asynchrony before timing imprecision*, in both millisecond stages.
-   * - *articulation's millisecond half before ornamentation's*, on the score.
+   * - *asynchrony before timing imprecision*, in both millisecond stages. Not a commuting pair,
+   *   although two additive millisecond shifts look like one: an imprecision draw is indexed on
+   *   the note's millisecond date, so shifting first changes which value is drawn.
    * - *the four imprecision maps last, in the order timing, dynamics, toneduration, tuning* —
    *   an RNG draw order, and therefore byte-visible (RULE F7's seeds are derived from the
    *   ordinal these calls advance).
@@ -508,7 +507,15 @@ export class Performance extends AbstractXmlSubtree {
    *   rubato loop nor the tempo loop reaches them; they get their own tempo+asynchrony
    *   treatment in {@link renderPartMilliseconds}, which is what keeps rubato's wobble out of
    *   the dynamics and position curves.
-   * - *parts are otherwise independent of each other* — except through `ctx` (below).
+   * - *parts are rendered in document order* — they are independent of each other except
+   *   through `ctx` (below), and that is enough to make the order byte-visible.
+   * - *articulation's millisecond half before ornamentation's*, on the score. This one is a
+   *   control that came back green: with both halves present the two are additive shifts of the
+   *   same two attributes and commute. It would stop commuting for an ornament that sets an
+   *   absolute `ornament.milliseconds.duration`, which measures from a `milliseconds.date` that
+   *   articulation would already have moved — and no fixture has one.
+   * - *rubato and tempo interleave per map* in {@link renderGlobalTiming}, which is a shape
+   *   preserved rather than an edge enforced; the reason is with that method.
    *
    * ## The one cross-part cell
    *
@@ -685,12 +692,22 @@ export class Performance extends AbstractXmlSubtree {
   }
 
   /**
-   * The global symbolic → millisecond crossing. Rubato and tempo are interleaved in one
-   * pass over the collected maps, exactly as the reference has them: rubato shifts a map's
-   * symbolic dates and tempo immediately converts that map, so splitting the loop in two
-   * would change which dates tempo sees.
+   * The global symbolic → millisecond crossing. Rubato and tempo are interleaved in one pass
+   * over the collected maps, exactly as the reference has them: rubato shifts a map's symbolic
+   * dates and tempo immediately converts that map.
    *
-   * That interleaving is why this stage's signature skips a phase. The global scope never
+   * The comment here used to add "so splitting the loop in two would change which dates tempo
+   * sees", and that is **not true** — it was measured. Each pass reads and writes only the map
+   * it is handed and keeps no state between calls (`RubatoMap.renderRubatoToMap` and
+   * `TempoMap.renderTempoToMap` are local-variable-only over `this.elements`), and the maps
+   * collected here are disjoint. So `for m: {rubato(m); tempo(m)}` and `for m: rubato(m); for m:
+   * tempo(m)` agree by construction, and a negative control that split the loop produced
+   * byte-identical output on all 20 traced scenarios. **The interleave stays anyway**: this is
+   * a parity-frozen path, the reference's shape is the shape, and "provably equivalent" is not
+   * a reason to move a line on it. What is gone is the false justification, which would have
+   * sent the next reader looking for a dependency that is not there.
+   *
+   * The interleaving is why this stage's signature skips a phase. The global scope never
    * *rests* in `displaced`: each map passes through it alone, inside the loop body, and the
    * state as a whole goes from `symbolic` straight to `milliseconds`. The part scope, where
    * the two passes run over different map sets and cannot be interleaved, does have a
@@ -887,8 +904,8 @@ export class Performance extends AbstractXmlSubtree {
    * `GenericMap`'s key is `@date` — the symbolic date, which rubato does not touch (rubato
    * rewrites `date.perf` and `date.end.perf`). It reads `velocity` and writes `velocity`;
    * rubato reads and writes neither. The two commute, the signature says so, and a negative
-   * control that ran this stage *after* rubato left all 6071 tests and every byte of the
-   * fixtures unchanged. The edge that is real is the one above it — dynamics must have run —
+   * control that ran this stage *after* rubato left the whole suite green and every byte of
+   * all twenty traced render scenarios unchanged. The edge that is real is the one above it — dynamics must have run —
    * and that one is enforced by {@link PartRender}.
    */
   private renderPartAccentuation<P extends Phase>(
