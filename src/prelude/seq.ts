@@ -21,7 +21,7 @@
 export type NonEmptyArray<T> = readonly [T, ...(readonly T[])];
 
 /*
- * A NOTE ON THE `as` CASTS BELOW — there are seven, and they are the only ones in this module.
+ * A NOTE ON THE `as` CASTS BELOW — there are eight, and they are the only ones in this module.
  *
  * `noUncheckedIndexedAccess` is on, so `xs[i]` is `T | undefined`. In each case below the
  * index is in range by a proof the type system cannot state: `last` reads the final slot of a
@@ -31,8 +31,14 @@ export type NonEmptyArray<T> = readonly [T, ...(readonly T[])];
  * check would be dead code, and constraining the element type would stop these working over
  * sequences that may legitimately hold `null` or `undefined`, which several callers need.
  *
+ * Three of the eight are a different proof: `chunkBy`, `scanl` and `groupBy` each BUILD a
+ * sequence they know to be non-empty — a chunk opens as `[x]`, a scan starts from its seed, a
+ * bucket is created as `[x]` — and say so in their return type. The cast is what carries that
+ * from the construction to the signature, and it earns its place at every call site, which
+ * would otherwise need a guard that can never fire to read a first element.
+ *
  * They are concentrated here on purpose. This module implements the algorithms whose whole
- * job is to let the rest of the tree stop indexing; absorbing seven proofs in one leaf is what
+ * job is to let the rest of the tree stop indexing; absorbing eight proofs in one leaf is what
  * bought zero across fifteen directories. If you are tempted to copy the pattern outward, the
  * answer is almost certainly `filterMap`, `pairwise`, `zipWith` or `elementAt` instead.
  */
@@ -207,8 +213,24 @@ export function partitionWith<A>(
   return { yes, no };
 }
 
-/** Bucket by a derived key, preserving encounter order within each bucket. */
-export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K, readonly A[]> {
+/**
+ * Bucket by a derived key, preserving encounter order within each bucket.
+ *
+ * **Both orders are guaranteed, and callers depend on both.** Within a bucket, the order is
+ * the order the elements were met. Across buckets, it is the order the keys were FIRST met —
+ * `Map` iteration order is insertion order by specification (ECMA-262, `%Map.prototype%`
+ * `[@@iterator]`), not an implementation detail. That is worth stating because a call site in
+ * `src/comparison` was written as an array-plus-linear-search specifically to avoid "relying
+ * on a second structure to remember" the order, which cost it a quadratic scan for a
+ * guarantee it already had.
+ *
+ * A bucket is created as `[x]` and only ever grown, so it cannot be empty — and unlike
+ * {@link chunkBy}, whose chunks carry the same invariant, this signature used to hide it.
+ * Saying `NonEmptyArray` means a caller reading the group's first element does not need a
+ * guard that can never fire or a checked read that can never miss. The cast is the same one
+ * `chunkBy` makes, for the same reason, and it is covered by the note at the top of this file.
+ */
+export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K, NonEmptyArray<A>> {
   const out = new Map<K, A[]>();
   for (const x of xs) {
     const k = key(x);
@@ -216,7 +238,7 @@ export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K,
     if (bucket === undefined) out.set(k, [x]);
     else bucket.push(x);
   }
-  return out;
+  return out as unknown as ReadonlyMap<K, NonEmptyArray<A>>;
 }
 
 /**
