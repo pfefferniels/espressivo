@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Msm } from '../../src/msm/Msm.js';
-import { Element, Attribute, Document } from '../../src/xml/XomTypes.js';
+import { Element, Attribute } from '../../src/xml/XomTypes.js';
 import {
   Sequence,
   metaPayload,
@@ -941,6 +941,213 @@ describe('Msm', () => {
   });
 
   // ---------------------------------------------------------------
+  // The defaults the map parsers apply to an incomplete entry.
+  //
+  // Every one of these was found by a negative control that came back GREEN — the marker
+  // message default, the time-signature numerator default and the ported key-signature
+  // threshold could each be changed with 1138 tests passing. The shared cause was that
+  // `midi-byte-equivalence.test.ts` reduced a meta event to its `metaType` and compared only
+  // that, so no meta PAYLOAD was checked against Java.
+  //
+  // `8bdd00e` has since closed that, and the key-signature threshold now reddens six
+  // fixtures there as well as the test below. The other two still need these: the corpus has
+  // no marker without a `message` and no `<timeSignature>` without a `numerator`, so only a
+  // hand-built document reaches those branches at all.
+  // ---------------------------------------------------------------
+  describe('the map parsers’ defaults for an incomplete entry', () => {
+    /** The global `<dated>` of a fresh MSM with one note. */
+    function globalDated(msm: Msm): Element {
+      return msm.getGlobal()!.getFirstChildElement('dated')!;
+    }
+
+    function markerPayload(msm: Msm): string {
+      const markers = metaMessages(msm.exportMidi()!.getSequence(), EventMaker.META_Marker);
+      expect(markers.length).toBe(1);
+      const message = markers.at(0)?.getMessage();
+      if (message?.kind !== 'meta') throw new Error('no marker meta event');
+      return new TextDecoder().decode(metaPayload(message));
+    }
+
+    function addMarker(msm: Msm, attributes: Record<string, string>): void {
+      const marker = new Element('marker');
+      marker.addAttribute(new Attribute('date', '720'));
+      for (const [k, v] of Object.entries(attributes)) marker.addAttribute(new Attribute(k, v));
+      globalDated(msm).getFirstChildElement('markerMap')!.appendChild(marker);
+    }
+
+    it('a marker with no message carries the literal "marker"', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      addMarker(msm, {});
+      expect(markerPayload(msm)).toBe('marker');
+    });
+
+    it('a marker with an EMPTY message keeps the empty string, not the default', () => {
+      // The distinction the old `getAttributeValue('message')!` + `=== null` test was making,
+      // now made by the value rather than around an assertion.
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      addMarker(msm, { message: '' });
+      expect(markerPayload(msm)).toBe('');
+    });
+
+    it('a timeSignature with neither numerator nor denominator defaults to 4/4', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      const timeSignature = new Element('timeSignature');
+      timeSignature.addAttribute(new Attribute('date', '0'));
+      globalDated(msm).getFirstChildElement('timeSignatureMap')!.appendChild(timeSignature);
+
+      const events = metaMessages(msm.exportMidi()!.getSequence(), EventMaker.META_Time_Signature);
+      expect(events.length).toBe(1);
+      const message = events.at(0)?.getMessage();
+      if (message?.kind !== 'meta') throw new Error('no time signature meta event');
+      // numerator 4, denominator as the exponent of two: 4 -> 2
+      expect([...metaPayload(message)].slice(0, 2)).toEqual([4, 2]);
+    });
+
+    /**
+     * The accidental count uses `value > 1.0` / `value < 1.0` where it should use `> 0` /
+     * `< 0`, so a sharp — which `Mei2MsmMpmConverter` writes as exactly `1.0` — is not
+     * counted at all while a flat (`-1.0`) is. The docstring on `parseKeySignatureMap` calls
+     * this a ported bug and says not to fix it; nothing pinned that, and changing `>` to
+     * `>=` left 1138 tests green.
+     */
+    it('PORTED BUG: sharps at value 1.0 count as zero accidentals, flats at -1.0 count', () => {
+      function accidentalCount(values: string[]): number {
+        const msm = msmWithNotes(720, [[0, 720, 60]]);
+        const keySignature = new Element('keySignature');
+        keySignature.addAttribute(new Attribute('date', '0'));
+        for (const value of values) {
+          const accidental = new Element('accidental');
+          accidental.addAttribute(new Attribute('value', value));
+          keySignature.appendChild(accidental);
+        }
+        globalDated(msm).getFirstChildElement('keySignatureMap')!.appendChild(keySignature);
+
+        const keys = metaMessages(msm.exportMidi()!.getSequence(), EventMaker.META_Key_Signature);
+        expect(keys.length).toBe(1);
+        const message = keys.at(0)?.getMessage();
+        if (message?.kind !== 'meta') throw new Error('no key signature meta event');
+        // one signed byte, masked to 0..255 by `createKeySignature`
+        const byte = metaPayload(message).at(0) ?? 0;
+        return byte > 127 ? byte - 256 : byte;
+      }
+
+      expect(accidentalCount(['1.0', '1.0', '1.0'])).toBe(0); // three sharps read as none
+      expect(accidentalCount(['-1.0', '-1.0'])).toBe(-2); // two flats read correctly
+      expect(accidentalCount(['1.5', '1.5'])).toBe(2); // strictly above 1.0 does count
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // makeInitialTempo (Msm.java:928-937)
+  //
+  // Written because a negative control came back green: making a `<timeSignature>` with no
+  // `denominator` fall back to a quarter-note beat instead of producing NaN changed nothing
+  // in 1132 tests, and so did doubling the parsed beat length. The cause was that
+  // `midi-byte-equivalence` reduced a meta event to its type byte and compared only that, so
+  // no Set Tempo PAYLOAD was ever checked against Java.
+  //
+  // That gap is now closed — `8bdd00e` compares meta payloads, and the parsed arm reddens
+  // `rests_meters` there. These tests still earn their place, because the corpus cannot reach
+  // the other three arms: no fixture carries a `<timeSignature>` without a `denominator`,
+  // with an unparsable one, or a global `timeSignatureMap` that is empty.
+  // ---------------------------------------------------------------
+  describe('makeInitialTempo: the one tempo event of a non-expressive export', () => {
+    const META_SET_TEMPO = 0x51;
+
+    /** The three payload bytes of the sequence's single Set Tempo event. */
+    function tempoBytes(msm: Msm, bpm = 120): number[] {
+      const midi = msm.exportMidi(bpm);
+      if (midi === null) throw new Error('exportMidi returned null for a non-empty MSM');
+
+      const events = metaMessages(midi.getSequence(), META_SET_TEMPO);
+      expect(events.length).toBe(1);
+      const message = events.at(0)?.getMessage();
+      if (message?.kind !== 'meta') throw new Error('no Set Tempo meta event in the sequence');
+      return [...metaPayload(message)];
+    }
+
+    /** `microseconds per quarter` as the three bytes MIDI writes it in. */
+    function mpqBytes(mpq: number): number[] {
+      return [(mpq >>> 16) & 0xff, (mpq >>> 8) & 0xff, mpq & 0xff];
+    }
+
+    /** The global `<timeSignatureMap>` `createMsm` builds, which starts out empty. */
+    function globalTimeSignatureMap(msm: Msm): Element {
+      return msm
+        .getRootElement()!
+        .getFirstChildElement('global')!
+        .getFirstChildElement('dated')!
+        .getFirstChildElement('timeSignatureMap')!;
+    }
+
+    it('takes the beat from the first global timeSignature denominator', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      globalTimeSignatureMap(msm).appendChild(Msm.makeTimeSignature(0, 3, 2, null));
+
+      // beatlength 1/2, so 120 bpm counts half notes: 60000000 / (120 * 0.5 * 4)
+      expect(tempoBytes(msm)).toEqual(mpqBytes(250000));
+    });
+
+    it('reads only the FIRST timeSignature, whatever follows it', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      const map = globalTimeSignatureMap(msm);
+      map.appendChild(Msm.makeTimeSignature(0, 6, 8, null));
+      map.appendChild(Msm.makeTimeSignature(720, 4, 4, null));
+
+      expect(tempoBytes(msm)).toEqual(mpqBytes(1000000)); // 1/8 beat, not 1/4
+    });
+
+    it('falls back to a quarter-note beat when the map holds no timeSignature', () => {
+      // What `createMsm` alone produces: the map exists and is empty.
+      expect(tempoBytes(msmWithNotes(720, [[0, 720, 60]]))).toEqual(mpqBytes(500000));
+    });
+
+    it('falls back to a quarter-note beat when the whole navigation misses', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      const dated = msm.getRootElement()!.getFirstChildElement('global')!;
+      dated.removeChild(dated.getFirstChildElement('dated')!);
+
+      expect(tempoBytes(msm)).toEqual(mpqBytes(500000));
+    });
+
+    /*
+     * The two below pin a DIVERGENCE FROM JAVA, not agreement with it.
+     *
+     * `Msm.java:932` wraps the whole read in `catch (NumberFormatException |
+     * NullPointerException)`. A missing `<global>`/`<dated>`/`<timeSignatureMap>`/
+     * `<timeSignature>` raises the NullPointerException and lands on 0.25 in both languages
+     * — that is the pair of tests above. But `Integer.parseInt(null)` and
+     * `Integer.parseInt("x")` both raise NumberFormatException in Java, so Java lands on
+     * 0.25 for a denominator that is absent or not an int literal, where JavaScript's
+     * `parseInt` returns NaN and does not throw. The port therefore emits a tempo of NaN
+     * microseconds per quarter, which `intToByteArray` truncates to **zero**.
+     *
+     * No fixture reaches it: every `<timeSignature>` in the reference and comparison corpora
+     * carries an integer `denominator`. These tests exist so that the behaviour is at least
+     * observed, and so that a decision to align with Java is a red test rather than a silent
+     * one. Reported to the conductor; not fixed here, because changing render output on an
+     * unfixtured path is not this charter's to authorise.
+     */
+    it('DIVERGES from Java: a timeSignature with no denominator yields a tempo of zero', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      const timeSignature = Msm.makeTimeSignature(0, 4, 4, null);
+      timeSignature.removeAttribute(timeSignature.getAttribute('denominator')!);
+      globalTimeSignatureMap(msm).appendChild(timeSignature);
+
+      expect(tempoBytes(msm)).toEqual([0, 0, 0]); // Java would give mpqBytes(500000)
+    });
+
+    it('DIVERGES from Java: a non-integer denominator yields a tempo of zero', () => {
+      const msm = msmWithNotes(720, [[0, 720, 60]]);
+      const timeSignature = Msm.makeTimeSignature(0, 4, 4, null);
+      timeSignature.getAttribute('denominator')!.setValue('crotchet');
+      globalTimeSignatureMap(msm).appendChild(timeSignature);
+
+      expect(tempoBytes(msm)).toEqual([0, 0, 0]); // Java would give mpqBytes(500000)
+    });
+  });
+
+  // ---------------------------------------------------------------
   // expressive MIDI export (Msm.java:667-703)
   // ---------------------------------------------------------------
   describe('exportExpressiveMidi', () => {
@@ -970,6 +1177,37 @@ describe('Msm', () => {
     it('should use the millisecond tick tempo', () => {
       const seq = performedMsm([100]).exportExpressiveMidi()!.getSequence();
       expect(metaMessages(seq, EventMaker.META_Set_Tempo).length).toBe(1);
+    });
+
+    /*
+     * `readMillisecondsDateFromElement`'s two absences. Written because a control came back
+     * green: replacing its throw with `return 0` left 3027 tests passing. Nothing on the
+     * pipeline path can reach it — `Performance.perform` writes `milliseconds.date` onto
+     * every dated element and the converter writes `date` onto all of them anyway — so only
+     * a hand-built MSM observes either arm.
+     */
+    it('falls back to the symbolic date when milliseconds.date is missing', () => {
+      const msm = Msm.createMsm('Test', 'id', 720);
+      const part = Msm.makePart('Piano', 1, 0, 0);
+      const score = part.getFirstChildElement('dated')!.getFirstChildElement('score')!;
+      // `date` in MSM ticks, read where milliseconds are expected — the documented last
+      // resort, and the reason it logs.
+      addNote(score, 480, 720, 60, { 'milliseconds.date.end': '1000' });
+      msm.addPart(part);
+
+      const seq = msm.exportExpressiveMidi()!.getSequence();
+      expect(shortMessages(seq, NOTE_ON).map((e) => e.getTick())).toEqual([480]);
+    });
+
+    it('throws when an element carries neither milliseconds.date nor date', () => {
+      const msm = Msm.createMsm('Test', 'id', 720);
+      const part = Msm.makePart('Piano', 1, 0, 0);
+      const score = part.getFirstChildElement('dated')!.getFirstChildElement('score')!;
+      const note = addNote(score, 0, 720, 60);
+      note.removeAttribute(note.getAttribute('date')!);
+      msm.addPart(part);
+
+      expect(() => msm.exportExpressiveMidi()).toThrow(/neither a "milliseconds.date" nor a/);
     });
 
     it('should take the note velocities from the score', () => {

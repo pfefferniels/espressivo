@@ -6,7 +6,7 @@
   "src/mpm/elements/maps": 6,
   "src/mpm/elements/metadata": 26,
   "src/mpm/elements/styles/defs": 4,
-  "src/msm": 147,
+  "src/msm": 1,
   "src/xml": 14,
   "tests/integration": 9,
   "tests/mei": 24,
@@ -16,7 +16,6 @@
   "tests/mpm/elements/metadata": 1,
   "tests/mpm/elements/styles": 2,
   "tests/mpm/elements/styles/defs": 16,
-  "tests/msm": 1,
   "tests/music": 2,
   "tests/xml": 2
 }

@@ -1,5 +1,5 @@
 import { Element } from '../xml/XomTypes.js';
-import { reverseDescendantElements } from '../xml/tree.js';
+import { requireAttributeValue, reverseDescendantElements } from '../xml/tree.js';
 
 /**
  * Insertion into a date-sorted MSM map.
@@ -55,13 +55,14 @@ export function addToMap(addThis: Element | null, map: Element | null): number {
     // no map or no element to insert
     return -1; // no insertion
 
-  if (addThis.getAttribute('date') == null) {
+  const dateAttribute = addThis.getAttribute('date');
+  if (dateAttribute === null) {
     // no attribute date
     map.appendChild(addThis); // simply append addThis to the end of the map
     return map.getChildCount() - 1; // and return the index
   }
 
-  const date = parseFloat(addThis.getAttributeValue('date')!); // get the date of addThis
+  const date = parseFloat(dateAttribute.getValue()); // get the date of addThis
   let sawDated = false; // whether the map holds any dated element at all
   for (const dated of reverseDescendantElements(
     map,
@@ -69,7 +70,14 @@ export function addToMap(addThis: Element | null, map: Element | null): number {
   )) {
     // go through the elements in the map that have an attribute date, back to front
     sawDated = true;
-    if (parseFloat(dated.getAttributeValue('date')!) <= date) {
+    // The walk's own predicate is what guarantees the attribute is there, and a predicate
+    // is not something a type can carry — so the read is checked rather than asserted, and
+    // an impossible miss names `date` instead of arriving as `parseFloat(null)`'s NaN two
+    // comparisons later. Exactly `dated.getAttributeValue('date')!`: this port's
+    // `Element.getAttribute(name)` already matches on local name, so the two namespaced
+    // retries `requireAttributeValue` makes on top of it cannot find anything the plain
+    // lookup missed (see its docstring).
+    if (parseFloat(requireAttributeValue('date', dated)) <= date) {
       // if the element directly before date is found
       let index = map.indexOf(dated); // get the index of the element just found
       map.insertChild(addThis, ++index); // insert addThis right after the element

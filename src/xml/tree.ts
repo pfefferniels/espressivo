@@ -10,9 +10,15 @@ import { MissingNodeError } from './errors.js';
  * and ignores the namespace, which is the single most load-bearing property of this module.**
  *
  * Moved verbatim out of `mei/Helper` by T14 (ARCHITECTURE.md §8.2). Two other copies of some
- * of these functions exist — `src/msm/Msm.ts` has eight module-local ones and `src/mpm/Mpm.ts`
- * two — and they have behaviourally drifted from these (T9). RULE M2a forbids merging them
- * without a per-method behavioural probe; that is item T16b's, not this module's.
+ * of these functions used to exist — `src/msm/Msm.ts` had eight module-local ones and
+ * `src/mpm/Mpm.ts` has two — believed to have behaviourally drifted from these (T9). RULE M2a
+ * forbids merging them without a per-method behavioural probe. `Msm.ts`'s eight now have one:
+ * `tests/msm/navigationEquivalence.test.ts` restates each and feeds both sides the MSM/MPM
+ * fixture corpus plus namespaced attributes, same-local-name children in three namespaces,
+ * text-separated siblings and the empty name. Seven agreed everywhere and their `Msm.ts`
+ * copies are gone; the eighth, `getFilenameWithoutExtension`, does NOT agree with
+ * `music/text.ts`'s on a dotless filename, and stays duplicated with the difference pinned.
+ * `src/mpm/Mpm.ts`'s two are still unprobed.
  *
  * Port of the navigation half of `meico.mei.Helper`.
  * @author Axel Berndt

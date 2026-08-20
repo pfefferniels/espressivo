@@ -4,143 +4,47 @@ import { Goto } from './Goto.js';
 import { KeyValue } from '../supplementary/KeyValue.js';
 import { v4 as uuidv4 } from 'uuid';
 import { filterMap } from '../prelude/index.js';
+import {
+  allChildElements,
+  attribute,
+  cloneElement,
+  firstChildElement,
+  getAttributeValue,
+  getNextSiblingElement,
+  requireAttribute,
+  requireFirstChildElement,
+  requireParentElement,
+} from '../xml/tree.js';
+import { MeicoError, MissingNodeError } from '../xml/errors.js';
+import { addUUID } from '../xml/ids.js';
 
 import { Midi } from '../midi/Midi.js';
-import { Sequence, Track, MidiEvent } from '../midi/MidiTypes.js';
+import { Sequence, Track } from '../midi/MidiTypes.js';
 import * as EventMaker from '../midi/EventMaker.js';
 import type { Performance } from '../mpm/elements/Performance.js';
 import type { RenderOptions } from '../mpm/RenderOptions.js';
 
 /**
- * Java's `Helper` in miniature, private to this module.
+ * The one module-local navigation helper left, and the reason it is still here.
  *
- * `Msm.java` calls exactly eight `Helper` methods and no others; these are those eight,
- * reimplemented here rather than imported. The same arrangement is used in `Mpm.ts`, and
- * `getFirstChildElement`/`getAllChildElements` below are deliberately byte-identical to
- * their counterparts there.
+ * This file used to open with eight of them — "Java's `Helper` in miniature, private to
+ * this module" — carrying a warning not to deduplicate them against `src/xml/` without a
+ * per-method behavioural comparison (ARCHITECTURE.md RULE M2a). That comparison is
+ * `tests/msm/navigationEquivalence.test.ts`: it restates all eight and feeds both sides the
+ * MSM/MPM fixture corpus plus the adversarial trees the rule names — a namespaced `xml:id`,
+ * children sharing a local name across three namespaces, text nodes between siblings, a
+ * detached element, the empty name. **Seven of the eight agreed everywhere**, so seven are
+ * gone and their callers now use `xml/tree.ts` and `xml/ids.ts`. This is the eighth.
  *
- * Do **not** "deduplicate" these against the shared helpers in `src/xml/tree.ts` and
- * `src/xml/ids.ts` on sight — T14 moved `mei/Helper`'s statics there, and its copies are
- * not everywhere equivalent to these (see the note on {@link cloneElement}). Merging the
- * two sets is T16b's business, and it needs a behavioural comparison per method, not a
- * textual one.
+ * It differs from {@link module:music/text.getFilenameWithoutExtension} on one input:
+ * a filename with **no dot at all**. `lastIndexOf` is then -1, and the shared copy
+ * evaluates `substring(0, -1)` — which JavaScript reads as `substring(0, 0)`, the empty
+ * string — where this one guards for -1 and returns the name. Neither is Java's, whose
+ * `String.substring(0, -1)` throws; this copy is what the reference behaviour of
+ * {@link Msm.getTitle} and {@link Msm.renderMidi} was measured against, and under the
+ * shared copy an extensionless file would title the movement `''` and name its MIDI
+ * `.mid`. The divergence is pinned by the probe rather than left to be rediscovered.
  */
-function getAttribute(name: string, ofThis: Element): Attribute | null {
-  if (ofThis === null) return null;
-
-  let a = ofThis.getAttribute(name);
-  if (a !== null) return a;
-
-  a = ofThis.getAttribute(name, ofThis.getNamespaceURI());
-  if (a !== null) return a;
-
-  a = ofThis.getAttribute(name, 'http://www.w3.org/XML/1998/namespace');
-  if (a !== null) return a;
-
-  return null;
-}
-
-/**
- * The value of {@link getAttribute}, or `''` when the attribute is absent — note that an
- * absent attribute and one with an empty value are indistinguishable through this
- * function. Callers that must tell them apart use {@link getAttribute} directly.
- */
-function getAttributeValue(name: string, ofThis: Element): string {
-  const a = getAttribute(name, ofThis);
-  if (a === null) return '';
-  return a.getValue();
-}
-
-function getFirstChildElement(name: string, ofThis: Element): Element | null {
-  if (ofThis === null || name.length === 0) return null;
-
-  for (const e of ofThis.getChildElements()) {
-    if (e.getLocalName() === name) return e;
-  }
-  return null;
-}
-
-function getAllChildElements(name: string, ofThis: Element): Element[] {
-  if (ofThis === null || name.length === 0) return [];
-  // `toArray()` is this loop: the same elements in the same order, and a fresh mutable array,
-  // which the `Element[]` return type promises.
-  return ofThis.getChildElements(name).toArray();
-}
-
-/**
- * The next sibling element of `ofThis`, either the next one of any name (one argument) or
- * the next one whose local name is `name` (two arguments).
- *
- * The named form returns the *nearest* following match rather than the last one in the
- * list — Java writes that as a backward scan (`Helper.java:182`); here it is the
- * equivalent forward scan from `ofThis`'s own index, which is not quadratic when a caller
- * uses it to step through a whole child list.
- */
-function getNextSiblingElement(nameOrElement: string | Element, ofThis?: Element): Element | null {
-  if (typeof nameOrElement === 'string') {
-    // getNextSiblingElement(name, ofThis)
-    const name = nameOrElement;
-    if (ofThis === undefined || ofThis === null) return null;
-
-    const parent = ofThis.getParent();
-    if (parent === null) return null;
-
-    // Forward scan anchored on `ofThis`'s own position — same answer as the backward
-    // "last candidate before ofThis" walk (both name the nearest following match, both
-    // return null when `ofThis` is not in the list), without rebuilding and re-walking
-    // the whole child-element list on every step. `Msm.processScore` and its neighbours
-    // drive this once per note, so the old shape made a score export quadratic.
-    const index = parent.indexOf(ofThis);
-    if (index < 0) return null;
-
-    const count = parent.getChildCount();
-    for (let i = index + 1; i < count; ++i) {
-      const sibling = parent.getChild(i);
-      if (sibling instanceof Element && sibling.getLocalName() === name) return sibling;
-    }
-    return null;
-  } else {
-    // getNextSiblingElement(ofThis)
-    const elem = nameOrElement;
-    if (elem === null) return null;
-
-    const parent = elem.getParent();
-    if (parent === null) return null;
-
-    const index = parent.indexOf(elem);
-    if (index >= parent.getChildCount() - 1) return null;
-
-    const child = parent.getChild(index + 1);
-    if (child instanceof Element) return child;
-    return null;
-  }
-}
-
-/**
- * A flat copy of `e`: same name, same namespace, copies of all its attributes, no
- * children and no parent.
- *
- * It is implemented as a deep copy with the children stripped afterwards, because
- * {@link Element} exposes no attribute-by-index accessor and therefore no way to walk the
- * attributes directly — Java's version (`Helper.java:328`) builds the clone attribute by
- * attribute instead. That costs a full subtree copy per call; `applySequencingMapToMap`
- * is the only caller and calls it once per map, so it is not in a loop.
- *
- * **Not identical to Java**, and deliberately not "fixed": Java rebuilds each attribute as
- * `new Attribute(localName, value)`, which drops the attribute's namespace, whereas
- * `copy()` preserves it. The difference is only observable on a map element that itself
- * carries a namespaced attribute (e.g. `xml:id`); no fixture produces one.
- */
-function cloneElement(e: Element): Element {
-  if (e === null) return null!;
-
-  const clone = e.copy();
-  while (clone.getChildCount() > 0) {
-    clone.removeChildAt(0);
-  }
-  return clone;
-}
-
 function getFilenameWithoutExtension(filename: string): string {
   const i = filename.lastIndexOf('.');
   if (i === 0) return filename;
@@ -149,22 +53,48 @@ function getFilenameWithoutExtension(filename: string): string {
 }
 
 /**
- * Give `toThis` a fresh `xml:id` of the form `meico_<uuid>` and return it.
+ * Rename `copy`'s `xml:id` to `meico_repetition_<reps>_<baseId>` and record the step in the
+ * old-id → new-id chain. No-op for a copy with no `xml:id`.
  *
- * Its only caller is {@link Msm.addIds}, which nothing in the conversion pipeline invokes
- * — the `meico_` ids in the reference MSM files come from `xml/ids.addUUID`, not from
- * here. So this copy is not itself pinned by the equivalence fixtures; the same discipline
- * still applies to it, because the moment a caller does put it on that path, the number
- * and order of these calls become part of the compared output (the tests canonicalise
- * generated ids by first-occurrence order in the serialised document).
+ * The two loops in {@link Msm.applySequencingMapToMap} carried this block character for
+ * character, four lines and a backwards `for` each. It is lifted out because it is the same
+ * block, not because the loops around it may be restructured — they may not, and the note on
+ * that method says so at length. Nothing here is reordered: both call sites invoke it exactly
+ * where the block stood.
  *
- * Caution, as in Java: an existing `xml:id` is overwritten.
+ * **`repetitionIDs` is a chain, not a base-id index**: `base → rep1 → rep2 → …`. The
+ * backwards walk follows it from the base id to the id of the *previous* iteration, which is
+ * the key the new entry belongs under, so a caller can follow any old id forward to its
+ * current one.
+ *
+ * A missing link used to be `repetitionIDs.get(prevId)!`, which on a broken chain assigns
+ * `undefined` to a `string` and then writes an entry under an `undefined` key — a
+ * `Map<string, string>` handed back to the caller with a key that is not a string, and no
+ * error anywhere. The chain cannot be broken from inside this module: an element reaching
+ * `reps` has passed through here `reps - 1` times already, each of those wrote the entry this
+ * step reads, and `resolveSequencingMaps` threads one table through every call. It CAN be
+ * broken by an outside caller of the public `applySequencingMapToMap` who supplies a fresh
+ * table for a second pass, and that is now a thrown error rather than a corrupt result.
  */
-function addUUID(toThis: Element): string {
-  const uuid = `meico_${uuidv4()}`;
-  const a = new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', uuid);
-  toThis.addAttribute(a);
-  return uuid;
+function recordRepetitionId(repetitionIDs: Map<string, string>, copy: Element, reps: number): void {
+  const id = copy.getAttribute('id', 'http://www.w3.org/XML/1998/namespace'); // get the id of the copy
+  if (id === null) return; // it has no xml:id
+
+  let prevId = id.getValue(); // get the base ID
+  const newId = `meico_repetition_${String(reps)}_${prevId}`; // generate a new ID
+  id.setValue(newId); // set the attribute
+
+  // the key of the map entry should be the ID of the previous iteration, not the base ID
+  for (let r = reps - 1; r > 0; --r) {
+    const linked = repetitionIDs.get(prevId);
+    if (linked === undefined)
+      throw new MeicoError(
+        `the repetition id chain for "${prevId}" is missing its step ${String(r)}; ` +
+          'applySequencingMapToMap was given an id table that an earlier pass did not fill',
+      );
+    prevId = linked;
+  }
+  repetitionIDs.set(prevId, newId);
 }
 
 /**
@@ -207,38 +137,30 @@ export class Msm extends AbstractMsm {
    */
   private static readonly CONTROL_CHANGE_DENSITY: number = 10; // in MPM-to-MIDI export a series of control change events may be generated; this constant limits their density
 
-  /**
-   * constructor — an empty Msm, to be filled by {@link createMsm} or by hand
+  /*
+   * THERE IS NO CONSTRUCTOR HERE, AND THAT IS THE CHANGE.
    *
-   * The three overloads are kept apart on purpose, as in `Mpm`: they are three different
-   * things to start from (nothing, a parsed document, unparsed XML text), not one
-   * parameter that happens to be optional. Collapsing them onto
-   * `Document | string | undefined` would say less than the three signatures do.
+   * `new Msm()`, `new Msm(document)` and `new Msm(xml)` all still work, and none of the 36
+   * call sites moved: {@link AbstractMsm}'s `constructor(source?: Document | string)` accepts
+   * all three and is inherited. What stood here was three overload signatures over a body
+   * that dispatched on `typeof` and then called `super` with the argument it had been handed
+   * — the overloads' whole content, restated as runtime tests the compiler could not tie back
+   * to them.
+   *
+   * The comment defending them said the three modes "are three different things to start from
+   * ... not one parameter that happens to be optional", and that collapsing them "would say
+   * less than the three signatures do". They have the same arity and one parameter each, so
+   * the union lists exactly the same three modes; nothing was said that is no longer said.
+   *
+   * The body's fourth arm, for `new Msm(42)` from untyped JavaScript, is not needed either: a
+   * value that is neither `undefined` nor a `Document` reaches `XmlBase`'s
+   * `typeof arg === 'string' && isXmlString` test, fails it, and leaves the field
+   * initializers standing — `data` and `file` null, `isValidFlag` false — which is exactly
+   * what that arm's bare `super()` produced.
+   *
+   * Named factories (`fromXml`, `fromDocument`, `empty`) would read better still; see
+   * {@link AbstractMsm}'s constructor for why that is a scheduled change and not this one.
    */
-  constructor();
-  /**
-   * constructor
-   * @param msm the msm document of which to instantiate the Msm object
-   */
-  constructor(msm: Document);
-  /**
-   * constructor
-   * @param xml xml code as UTF8 String
-   */
-  constructor(xml: string);
-  constructor(arg?: Document | string) {
-    if (arg === undefined) {
-      super();
-    } else if (arg instanceof Document) {
-      super(arg);
-    } else if (typeof arg === 'string') {
-      super(arg);
-    } else {
-      // unreachable from TypeScript, but reachable from plain JS (`new Msm(42)`); without
-      // it `super()` would never run and the instance would be unusable
-      super();
-    }
-  }
 
   /**
    * this factory creates an initial Msm instance with empty global maps
@@ -294,12 +216,19 @@ export class Msm extends AbstractMsm {
   /**
    * create a copy of this object
    * @returns the copy of this Msm object
+   * @throws {MissingNodeError} when this Msm is empty — there is then nothing to copy.
+   *   `this.getDocument()!.copy()` is what this was, so an empty Msm threw here before too;
+   *   the difference is that the error says which document and not "cannot read property
+   *   copy of null". `Performance.cloneForRender` is the caller that can reach it.
    */
   clone(): Msm {
-    const cloneDoc = this.getDocument()!.copy();
-    const clone = new Msm(cloneDoc);
+    const document = this.getDocument();
+    if (document === null) throw new MissingNodeError('an empty Msm has no document to clone');
+
+    const clone = new Msm(document.copy());
     clone.isValidFlag = this.isValid();
-    if (this.getFile() !== null) clone.setFile(this.getFile()!);
+    const file = this.getFile();
+    if (file !== null) clone.setFile(file);
     return clone;
   }
 
@@ -307,31 +236,32 @@ export class Msm extends AbstractMsm {
    * This getter method returns the title string from the root element's attribute title.
    * If missing, use the filename without extension or return "".
    * @returns
+   *
+   * **The `try`/`catch` this used to carry could not fire.** It was there to absorb a null
+   * root — `getAttribute('title', this.getRootElement()!)` — but both the local reader this
+   * file used to define and `xml/tree.attribute`, which replaced it, take `Element | null`
+   * and answer `null` for a null element. So the catch arm and the fall-through arm were
+   * the same arm, reached the same way, and the assertion in between claimed a root the
+   * method then did not need. Same three outcomes, no exception path.
    */
   getTitle(): string {
-    try {
-      const title = getAttribute('title', this.getRootElement()!);
-      if (title === null) {
-        return this.getFile() !== null ? getFilenameWithoutExtension(this.getFile()!) : '';
-      }
-      return title.getValue();
-    } catch {
-      return this.getFile() !== null ? getFilenameWithoutExtension(this.getFile()!) : '';
-    }
+    const title = attribute('title', this.getRootElement());
+    if (title !== null) return title.getValue();
+
+    const file = this.getFile();
+    return file === null ? '' : getFilenameWithoutExtension(file);
   }
 
   /**
    * this getter returns the timing resolution (pulses per quarternote) of the MSM
-   * @returns
+   * @returns 0 where there is no document, or no `pulsesPerQuarter` on its root
+   *
+   * The `try`/`catch` went for the reason given at {@link getTitle}, and `parseInt` does
+   * not throw — a non-numeric attribute yields `NaN` here as it did before.
    */
   getPPQ(): number {
-    try {
-      const ppq = getAttribute('pulsesPerQuarter', this.getRootElement()!);
-      if (ppq === null) return 0;
-      return parseInt(ppq.getValue());
-    } catch {
-      return 0;
-    }
+    const ppq = attribute('pulsesPerQuarter', this.getRootElement());
+    return ppq === null ? 0 : parseInt(ppq.getValue());
   }
 
   /**
@@ -349,7 +279,10 @@ export class Msm extends AbstractMsm {
    * @param ppq
    */
   setPulsesPerQuarter(ppq: number): void {
-    this.getRootElement()!.getAttribute('pulsesPerQuarter')!.setValue(String(ppq));
+    // Two assertions became two named failures. An empty Msm and one whose root carries no
+    // `pulsesPerQuarter` both threw here before — this is a *setter* for an attribute it
+    // does not create, which is the surprise the message now states outright.
+    requireAttribute('pulsesPerQuarter', this.requireRootElement()).setValue(String(ppq));
   }
 
   /**
@@ -382,12 +315,17 @@ export class Msm extends AbstractMsm {
     this.setPPQ(ppq);
 
     // find all attributes date, date.end and duration, and convert their values
-    const atts: Nodes = this.getRootElement()!.query(
+    const atts: Nodes = this.requireRootElement().query(
       'descendant::*[attribute::date]/attribute::date | descendant::*[attribute::date.end]/attribute::date.end | descendant::*[attribute::duration]/attribute::duration',
     );
+    // `as unknown as Attribute` was here, on the ground that an `attribute::` step yields
+    // attributes. It does — {@link Element.query} pushes a real {@link Attribute} for every
+    // attribute hit — which is precisely why the claim can be *tested* instead of asserted.
+    // A cast that is right is still a cast, and the same three lines appear at
+    // `dropRepetitionCounters` and `addIds` over `Element`.
     for (const node of atts) {
-      const att = node as unknown as Attribute;
-      att.setValue(String((parseFloat(att.getValue()) * ppq) / ppqOld));
+      if (!(node instanceof Attribute)) continue;
+      node.setValue(String((parseFloat(node.getValue()) * ppq) / ppqOld));
     }
   }
 
@@ -434,7 +372,13 @@ export class Msm extends AbstractMsm {
       if (score === null) continue;
       // go through all notes
       for (const note of score.getChildElements('note')) {
-        const dur = Math.round(parseFloat(note.getAttributeValue('duration')!)); // get the note's duration
+        // `getAttributeValue(…)!` here handed `parseFloat` a real null on a note with no
+        // `duration`, which is `NaN`; `NaN % k` is `NaN`, so no `subdivs` ever matched and
+        // the note contributed nothing. `getAttributeValue`'s `''` gives the same `NaN` by
+        // the same route. Note that JAVA DIVERGES on this input — `Double.parseDouble(null)`
+        // throws an NPE that nothing here catches — but no fixture carries a note without a
+        // `duration` or a `date`, and this method has no caller in `src/` at all.
+        const dur = Math.round(parseFloat(getAttributeValue('duration', note))); // get the note's duration
         for (let subdivs = maxSubdivisions; subdivs <= ppq; subdivs *= 2) {
           if (dur % Math.trunc(ppq / subdivs) === 0) {
             maxSubdivisions = Math.max(maxSubdivisions, subdivs);
@@ -442,7 +386,7 @@ export class Msm extends AbstractMsm {
           }
         }
 
-        const date = Math.round(parseFloat(note.getAttributeValue('date')!)); // get the note's date
+        const date = Math.round(parseFloat(getAttributeValue('date', note))); // get the note's date
         for (let subdivs = maxSubdivisions; subdivs <= ppq; subdivs *= 2) {
           if (date % Math.trunc(ppq / subdivs) === 0) {
             maxSubdivisions = Math.max(maxSubdivisions, subdivs);
@@ -478,8 +422,11 @@ export class Msm extends AbstractMsm {
   ): Element {
     const part = AbstractMsm.makePartFromString(name, number, midiChannel, midiPort);
 
-    // add some MSM-specific maps to the dated environment
-    const dated = part.getFirstChildElement('dated')!;
+    // add some MSM-specific maps to the dated environment.
+    // The `<dated>` is one this method's own super call appended two lines ago, which is the
+    // narrow case `requireFirstChildElement` is documented for — "the shape of a document
+    // this port itself built".
+    const dated = requireFirstChildElement(part, 'dated');
     dated.appendChild(new Element('timeSignatureMap'));
     dated.appendChild(new Element('keySignatureMap'));
     dated.appendChild(new Element('markerMap'));
@@ -517,7 +464,7 @@ export class Msm extends AbstractMsm {
    * @param part
    */
   addPart(part: Element): void {
-    this.getRootElement()!.appendChild(part);
+    this.requireRootElement().appendChild(part);
   }
 
   /**
@@ -535,21 +482,21 @@ export class Msm extends AbstractMsm {
 
     // try to find the part by its number
     for (const part of parts) {
-      const numberAtt = getAttribute('number', part);
+      const numberAtt = attribute('number', part);
       if (numberAtt !== null && parseInt(numberAtt.getValue()) === number) return part;
     }
 
     // try to find the part by its name
     for (const part of parts) {
-      const nameAtt = getAttribute('name', part);
+      const nameAtt = attribute('name', part);
       if (nameAtt !== null && nameAtt.getValue() === name) return part;
     }
 
     // try to find the part by its MIDI port and channel
     for (const part of parts) {
-      const portAtt = getAttribute('midi.port', part);
+      const portAtt = attribute('midi.port', part);
       if (portAtt !== null && parseInt(portAtt.getValue()) === midiPort) {
-        const channelAtt = getAttribute('midi.channel', part);
+        const channelAtt = attribute('midi.channel', part);
         if (channelAtt !== null && parseInt(channelAtt.getValue()) === midiChannel) return part;
       }
     }
@@ -562,7 +509,7 @@ export class Msm extends AbstractMsm {
    * @returns
    */
   getParts(): Elements {
-    return this.getRootElement()!.getChildElements('part');
+    return this.requireRootElement().getChildElements('part');
   }
 
   /**
@@ -578,7 +525,7 @@ export class Msm extends AbstractMsm {
    * @returns
    */
   getGlobal(): Element | null {
-    return this.getRootElement()!.getFirstChildElement('global');
+    return this.requireRootElement().getFirstChildElement('global');
   }
 
   /**
@@ -618,13 +565,21 @@ export class Msm extends AbstractMsm {
    * first has unlinked the node.
    */
   removeRests(): void {
-    if (this.isEmpty()) return;
+    // `getRootElement() === null` is exactly `isEmpty()` — a parsed Document always has a
+    // root — so the guard now yields the value the query needs.
+    const root = this.getRootElement();
+    if (root === null) return;
 
-    const r: Nodes = this.getRootElement()!.query("descendant::*[local-name()='rest']"); // select all rest elements
+    const r: Nodes = root.query("descendant::*[local-name()='rest']"); // select all rest elements
     // The query result is a fixed snapshot, so unlinking a node from its parent mid-walk
     // cannot disturb the walk — which is what the index loop here was already relying on.
     for (const rest of r) {
-      rest.getParent()!.removeChild(rest); // remove them
+      // A node on the `descendant::` axis has a parent by construction, so this `continue`
+      // is unreachable — it is the total spelling of the `getParent()!` that was here, and
+      // the same shape `XmlBase.removeAllElements` uses over the same kind of query result.
+      const parent = rest.getParent();
+      if (parent === null) continue;
+      parent.removeChild(rest); // remove them
       rest.detach();
     }
   }
@@ -674,20 +629,21 @@ export class Msm extends AbstractMsm {
    */
   resolveSequencingMaps(): Map<string, string> {
     const repetitionIDs = new Map<string, string>();
-    if (this.isEmpty()) return repetitionIDs;
+    const root = this.getRootElement(); // null for exactly one reason: `isEmpty()`
+    if (root === null) return repetitionIDs;
 
-    const globalSequencingMap = this.getRootElement()!
-      .getFirstChildElement('global')!
-      .getFirstChildElement('dated')!
-      .getFirstChildElement('sequencingMap'); // get the global sequencingMap (or null if there is none)
-    const parts = this.getRootElement()!.getChildElements('part'); // get all the parts
+    // Walked once and held, where this used to re-navigate `root → <global> → <dated>` four
+    // separate times and assert both links away on each. The four navigations answered the
+    // same element, and asserting them said nothing the second time that it had not already
+    // claimed the first. A `<global>` or a `<dated>` missing throws here as it did before —
+    // named now, instead of "cannot read property getFirstChildElement of null".
+    const globalDated = requireFirstChildElement(requireFirstChildElement(root, 'global'), 'dated');
+    const globalSequencingMap = globalDated.getFirstChildElement('sequencingMap'); // get the global sequencingMap (or null if there is none)
+    const parts = root.getChildElements('part'); // get all the parts
 
     // expand global maps
     if (globalSequencingMap !== null) {
-      const maps = this.getRootElement()!
-        .getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .getChildElements();
+      const maps = globalDated.getChildElements();
       // go through all maps
       for (const map of maps) {
         if (
@@ -699,18 +655,17 @@ export class Msm extends AbstractMsm {
           continue; // continue with the next
 
         const newMap = Msm.applySequencingMapToMap(globalSequencingMap, map, repetitionIDs); // apply the global sequencingMap to it
-        if (newMap !== null)
-          this.getRootElement()!
-            .getFirstChildElement('global')!
-            .getFirstChildElement('dated')!
-            .replaceChild(map, newMap); // replace the old map by the new one
+        if (newMap !== null) globalDated.replaceChild(map, newMap); // replace the old map by the new one
       }
     }
 
     // go through all parts and expand their maps according to the underlying sequencingMaps
     // for each part
     for (const part of parts) {
-      let sequencingMap = part.getFirstChildElement('dated')!.getFirstChildElement('sequencingMap'); // get the part's local sequencingMap if there is one
+      // A part with no `<dated>` threw here before and throws here now; the three reads of
+      // it are one.
+      const partDated = requireFirstChildElement(part, 'dated');
+      let sequencingMap = partDated.getFirstChildElement('sequencingMap'); // get the part's local sequencingMap if there is one
       let localMap = true;
       if (sequencingMap === null) {
         // if there is none
@@ -722,7 +677,7 @@ export class Msm extends AbstractMsm {
       }
 
       // go through the score and all maps (except the sequencingMap itself) and apply the sequencingMap to them
-      const maps = part.getFirstChildElement('dated')!.getChildElements();
+      const maps = partDated.getChildElements();
       // go through all maps
       for (const map of maps) {
         if (
@@ -734,22 +689,22 @@ export class Msm extends AbstractMsm {
           continue; // continue with the next
 
         const newMap = Msm.applySequencingMapToMap(sequencingMap, map, repetitionIDs); // apply the sequencingMap to it
-        if (newMap !== null) map.getParent()!.replaceChild(map, newMap); // replace the old map by the new one
+        // `map` came out of `partDated.getChildElements()`, so its parent is `partDated`.
+        // Kept as the parent lookup rather than folded into `partDated` because that is
+        // what the line did, and the two differ if anything ever reparents a map mid-loop.
+        if (newMap !== null) requireParentElement(map).replaceChild(map, newMap); // replace the old map by the new one
       }
 
       // delete the local sequencingMap (because it does not apply anymore)
       if (localMap) {
-        part.getFirstChildElement('dated')!.removeChild(sequencingMap);
+        partDated.removeChild(sequencingMap);
         sequencingMap.detach();
       }
     }
 
     // delete the global sequencingMap (because it does not apply anymore)
     if (globalSequencingMap !== null) {
-      this.getRootElement()!
-        .getFirstChildElement('global')!
-        .getFirstChildElement('dated')!
-        .removeChild(globalSequencingMap);
+      globalDated.removeChild(globalSequencingMap);
       globalSequencingMap.detach();
     }
 
@@ -856,34 +811,33 @@ export class Msm extends AbstractMsm {
           e = getNextSiblingElement(e)
         ) {
           // go through the map elements
-          currentDate = parseFloat(e.getAttributeValue('date')!); // read its date
+          // `getElementAtAfter` yields only dated elements, but `getNextSiblingElement`
+          // steps to the next sibling of ANY name, so an undated one can arrive here. It
+          // threw before — three lines on, as `eCopy.getAttribute('date')!.setValue(…)`,
+          // once `parseFloat(null)`'s NaN had failed the comparison below — and it throws
+          // here, naming `date` at the point the map's ordering invariant is broken.
+          const dateAttribute = requireAttribute('date', e);
+          currentDate = parseFloat(dateAttribute.getValue()); // read its date
           if (currentDate >= gt.date) break; // if the element's date is at or after the goto don't copy further
           const eCopy = e.copy(); // make a deep copy of the element
-          eCopy.getAttribute('date')!.setValue(String(currentDate + dateOffset)); // draw its date
+          // The copy carries what the original carries, so these two reads cannot miss what
+          // the reads on `e` just found; they are checked rather than asserted because that
+          // is a fact about `copy()`, not one the type system holds.
+          requireAttribute('date', eCopy).setValue(String(currentDate + dateOffset)); // draw its date
 
           const endDate = e.getAttribute('date.end'); // get the date.end attribute
           if (endDate !== null) {
             // if the element has one, update it, too
-            const dur = parseFloat(endDate.getValue()) - parseFloat(e.getAttributeValue('date')!);
-            eCopy.getAttribute('date.end')!.setValue(String(currentDate + dur + dateOffset));
+            const dur = parseFloat(endDate.getValue()) - parseFloat(dateAttribute.getValue());
+            requireAttribute('date.end', eCopy).setValue(String(currentDate + dur + dateOffset));
           }
 
           const repetitionCounter = e.getAttribute('repetitionCounter'); // get the counter
           if (repetitionCounter !== null) {
             // this is not the first time we process this element
-            const reps = 1 + parseInt(e.getAttributeValue('repetitionCounter')!); // increase repetition counter
-            e.getAttribute('repetitionCounter')!.setValue(String(reps)); // write it to the attribute
-            const id = eCopy.getAttribute('id', 'http://www.w3.org/XML/1998/namespace'); // get the id of eCopy
-            if (id !== null) {
-              // if it has an xml:id
-              let prevId = id.getValue(); // get the base ID
-              const newId = `meico_repetition_${reps}_${prevId}`; // generate a new ID
-              id.setValue(newId); // set the attribute
-
-              // the key of the map entry should be the ID of the previous iteration, not the base ID
-              for (let r = reps - 1; r > 0; --r) prevId = repetitionIDs.get(prevId)!;
-              repetitionIDs.set(prevId, newId);
-            }
+            const reps = 1 + parseInt(repetitionCounter.getValue()); // increase repetition counter
+            repetitionCounter.setValue(String(reps)); // write it to the attribute
+            recordRepetitionId(repetitionIDs, eCopy, reps);
           } else {
             // this is the first time we process this element
             e.addAttribute(new Attribute('repetitionCounter', '0')); // add an attribute to count the repetitions
@@ -904,31 +858,24 @@ export class Msm extends AbstractMsm {
       e !== null;
       e = getNextSiblingElement(e)
     ) {
-      currentDate = parseFloat(e.getAttributeValue('date')!); // read its date
+      const dateAttribute = requireAttribute('date', e); // see the note in the loop above
+      currentDate = parseFloat(dateAttribute.getValue()); // read its date
       const eCopy = e.copy(); // make a deep copy
-      eCopy.getAttribute('date')!.setValue(String(currentDate + dateOffset)); // draw its date
+      requireAttribute('date', eCopy).setValue(String(currentDate + dateOffset)); // draw its date
 
       const endDate = e.getAttribute('date.end'); // get the date.end attribute
       if (endDate !== null) {
         // if the element has one, update it, too
-        const dur = parseFloat(endDate.getValue()) - parseFloat(e.getAttributeValue('date')!);
-        eCopy.getAttribute('date.end')!.setValue(String(currentDate + dur + dateOffset));
+        const dur = parseFloat(endDate.getValue()) - parseFloat(dateAttribute.getValue());
+        requireAttribute('date.end', eCopy).setValue(String(currentDate + dur + dateOffset));
       }
 
       const repetitionCounter = e.getAttribute('repetitionCounter'); // get the counter
       if (repetitionCounter !== null) {
         // this is not the first time
-        const reps = 1 + parseInt(e.getAttributeValue('repetitionCounter')!); // increase repetition counter
-        e.getAttribute('repetitionCounter')!.setValue(String(reps)); // write it to the attribute
-        const id = eCopy.getAttribute('id', 'http://www.w3.org/XML/1998/namespace'); // get the id
-        if (id !== null) {
-          let prevId = id.getValue();
-          const newId = `meico_repetition_${reps}_${prevId}`;
-          id.setValue(newId);
-
-          for (let r = reps - 1; r > 0; --r) prevId = repetitionIDs.get(prevId)!;
-          repetitionIDs.set(prevId, newId);
-        }
+        const reps = 1 + parseInt(repetitionCounter.getValue()); // increase repetition counter
+        repetitionCounter.setValue(String(reps)); // write it to the attribute
+        recordRepetitionId(repetitionIDs, eCopy, reps);
       }
 
       newMap.appendChild(eCopy); // append the copy to the new map
@@ -944,8 +891,11 @@ export class Msm extends AbstractMsm {
     // being mutated here.
     const dropRepetitionCounters = (from: Element): void => {
       for (const node of from.query('descendant::*[@repetitionCounter]')) {
-        const r = node as unknown as Element;
-        r.removeAttribute(r.getAttribute('repetitionCounter')!);
+        // `descendant::*` yields elements and `[@repetitionCounter]` requires the attribute,
+        // so both facts hold — and both are now tested rather than asserted with
+        // `as unknown as Element` and a `!`.
+        if (!(node instanceof Element)) continue;
+        node.removeAttribute(requireAttribute('repetitionCounter', node));
       }
     };
     dropRepetitionCounters(map);
@@ -1078,9 +1028,13 @@ export class Msm extends AbstractMsm {
     generateProgramChanges: boolean,
     exportExpressive: boolean,
   ): Midi | null {
-    console.log(`\nConverting ${this.getFile() !== null ? this.getFile() : 'MSM data'} to MIDI.`);
+    const file = this.getFile();
+    console.log(`\nConverting ${file !== null ? file : 'MSM data'} to MIDI.`);
 
-    if (this.isEmpty()) return null;
+    // `getRootElement() === null` is exactly `isEmpty()`, so the early return and the
+    // navigation below now take the same value.
+    const root = this.getRootElement();
+    if (root === null) return null;
 
     const ppq = this.getPPQ();
     const seq = new Sequence(Sequence.PPQ, ppq);
@@ -1094,40 +1048,30 @@ export class Msm extends AbstractMsm {
       this.makeInitialTempo(bpm, track);
     }
 
-    this.parseMarkerMap(
-      this.getRootElement()!.getFirstChildElement('global')!,
-      track,
-      exportExpressive,
-    );
-    this.parseTimeSignatureMap(
-      this.getRootElement()!.getFirstChildElement('global')!,
-      track,
-      exportExpressive,
-    );
-    this.parseKeySignatureMap(
-      this.getRootElement()!.getFirstChildElement('global')!,
-      track,
-      exportExpressive,
-    );
+    // Looked up once. The three calls below asserted `<global>` three times over, each
+    // re-walking the root's children to make the same claim; an MSM without a `<global>`
+    // threw on the first of them then and throws here now.
+    const global = requireFirstChildElement(root, 'global');
+    this.parseMarkerMap(global, track, exportExpressive);
+    this.parseTimeSignatureMap(global, track, exportExpressive);
+    this.parseKeySignatureMap(global, track, exportExpressive);
 
     for (
-      let part = this.getRootElement()!.getFirstChildElement('part');
+      let part = root.getFirstChildElement('part');
       part !== null;
       part = getNextSiblingElement('part', part)
     ) {
-      if (part.getAttribute('midi.channel') === null) continue;
+      const channelAttribute = part.getAttribute('midi.channel');
+      if (channelAttribute === null) continue;
 
       track = seq.createTrack();
 
-      let port = 0;
-      if (part.getAttribute('midi.port') !== null)
-        port = parseInt(part.getAttributeValue('midi.port')!);
-      const portEvent = EventMaker.createMidiPortEvent(0, port);
-      if (portEvent !== null) track.add(portEvent);
+      const portAttribute = part.getAttribute('midi.port');
+      const port = portAttribute === null ? 0 : parseInt(portAttribute.getValue());
+      track.add(EventMaker.createMidiPortEvent(0, port));
 
-      const chan = parseInt(part.getAttributeValue('midi.channel')!);
-      const channelPrefix = EventMaker.createChannelPrefix(0, chan);
-      if (channelPrefix !== null) track.add(channelPrefix);
+      const chan = parseInt(channelAttribute.getValue());
+      track.add(EventMaker.createChannelPrefix(0, chan));
 
       let reallyGenerateProgramChanges = generateProgramChanges;
       if (reallyGenerateProgramChanges) {
@@ -1150,9 +1094,9 @@ export class Msm extends AbstractMsm {
       this.processScore(part, track, exportExpressive);
     }
 
-    if (this.getFile() !== null) {
+    if (file !== null) {
       // same rewrite Java does with Helper.getFilenameWithoutExtension (Msm.java:777)
-      const midi = new Midi(seq, `${getFilenameWithoutExtension(this.getFile()!)}.mid`);
+      const midi = new Midi(seq, `${getFilenameWithoutExtension(file)}.mid`);
       console.log('MSM to MIDI conversion finished.');
       return midi;
     }
@@ -1165,29 +1109,34 @@ export class Msm extends AbstractMsm {
    * The single tempo event of a non-expressive export, at date 0.
    *
    * `bpm` counts *beats*, and a beat is one unit of the first global time signature's
-   * denominator — so 120 bpm in 6/8 means 120 eighths, not 120 quarters. The whole
-   * navigation is inside the `try` on purpose: any missing link in it (no global, no
-   * dated, no timeSignatureMap, no timeSignature, no denominator) throws on a `!` and
-   * falls back to a quarter-note beat, which is what Java's catch-all does.
+   * denominator — so 120 bpm in 6/8 means 120 eighths, not 120 quarters.
+   *
+   * **This method used the `!` as control flow, and the two absences it collapsed are not
+   * the same absence.** The whole five-link navigation sat inside a `try` so that any
+   * missing link — no global, no dated, no timeSignatureMap, no timeSignature — threw a
+   * `TypeError` and fell back to a quarter-note beat, which is Java's catch-all. But the
+   * *sixth* `!`, on `getAttributeValue('denominator')`, does not throw: it hands `parseInt`
+   * a genuine `null`, which coerces to the string "null" and yields `NaN`, so a
+   * `<timeSignature>` with no denominator produced `1.0 / NaN` = `NaN`, NOT the 0.25
+   * fallback. Written out, that difference is visible; written as a `!` chain in a `try`,
+   * it read as if the two cases agreed. Both behaviours are preserved exactly.
    */
   private makeInitialTempo(bpm: number, track: Track): void {
+    const root = this.getRootElement();
+    const global = root === null ? null : root.getFirstChildElement('global');
+    const dated = global === null ? null : global.getFirstChildElement('dated');
+    const map = dated === null ? null : dated.getFirstChildElement('timeSignatureMap');
+    const timeSignature = map === null ? null : map.getFirstChildElement('timeSignature');
+
     let beatlength: number;
-    try {
-      beatlength =
-        1.0 /
-        parseInt(
-          this.getRootElement()!
-            .getFirstChildElement('global')!
-            .getFirstChildElement('dated')!
-            .getFirstChildElement('timeSignatureMap')!
-            .getFirstChildElement('timeSignature')!
-            .getAttributeValue('denominator')!,
-        );
-    } catch {
-      beatlength = 0.25;
+    if (timeSignature === null) {
+      beatlength = 0.25; // the missing-element arm, formerly the `catch`
+    } else {
+      const denominator = timeSignature.getAttributeValue('denominator');
+      // `parseInt(null!)` is `parseInt("null")` is `NaN`; see the note above.
+      beatlength = 1.0 / (denominator === null ? NaN : parseInt(denominator));
     }
-    const event = EventMaker.createTempo(0, bpm, beatlength);
-    if (event !== null) track.add(event);
+    track.add(EventMaker.createTempo(0, bpm, beatlength));
   }
 
   /**
@@ -1197,8 +1146,7 @@ export class Msm extends AbstractMsm {
    * conversion anywhere, and the MSM's own ppq survives as the sequence resolution.
    */
   private makeMillisecondTickTempo(track: Track): void {
-    const event = EventMaker.createTempo(0, 60000.0 / this.getPPQ(), 0.25);
-    if (event !== null) track.add(event);
+    track.add(EventMaker.createTempo(0, 60000.0 / this.getPPQ(), 0.25));
   }
 
   /**
@@ -1216,26 +1164,21 @@ export class Msm extends AbstractMsm {
     channel: number,
     generateProgramChanges: boolean,
   ): void {
-    if (part.getAttribute('name') === null || part.getAttributeValue('name') === '') {
+    // Three reads of `name` — a presence test, an emptiness test, and an asserted read —
+    // become one. `null` and `''` take the same branch here, which is why the value can be
+    // tested for both at once.
+    const name = part.getAttributeValue('name');
+    if (name === null || name === '') {
       if (generateProgramChanges) {
-        const event = EventMaker.createProgramChange(
-          channel,
-          0,
-          EventMaker.PC_Acoustic_Grand_Piano,
-        );
-        if (event !== null) track.add(event);
+        track.add(EventMaker.createProgramChange(channel, 0, EventMaker.PC_Acoustic_Grand_Piano));
       }
       return;
     }
 
-    const name = part.getAttributeValue('name')!;
-
     if (generateProgramChanges) {
-      const event = EventMaker.createProgramChangeByName(channel, 0, name);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createProgramChangeByName(channel, 0, name));
     }
-    const trackNameEvent = EventMaker.createTrackName(0, name);
-    if (trackNameEvent !== null) track.add(trackNameEvent);
+    track.add(EventMaker.createTrackName(0, name));
   }
 
   /**
@@ -1256,11 +1199,10 @@ export class Msm extends AbstractMsm {
     channel: number,
     exportExpressive: boolean,
   ): boolean {
-    if (part.getFirstChildElement('dated') === null) return false;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return false;
 
-    const programChangeMap = part
-      .getFirstChildElement('dated')!
-      .getFirstChildElement('programChangeMap');
+    const programChangeMap = dated.getFirstChildElement('programChangeMap');
     if (programChangeMap === null || programChangeMap.getChildCount() === 0) return false;
 
     let weHaveAnInitialPrgCh = false;
@@ -1273,9 +1215,13 @@ export class Msm extends AbstractMsm {
         ? Msm.readMillisecondsDateFromElement(n)
         : Math.round(parseFloat(getAttributeValue('date', n)));
       if (date === 0) weHaveAnInitialPrgCh = true;
-      const value = parseInt(n.getAttributeValue('value')!);
-      const event = EventMaker.createProgramChange(channel, date, value);
-      if (event !== null) track.add(event);
+      // `parseInt(n.getAttributeValue('value')!)` was this, and on a `<programChange>` with
+      // no `value` it handed `parseInt` a real null — the string "null", hence NaN, hence a
+      // program change to instrument NaN, which `channelMessage` masks to 0 (Acoustic Grand
+      // Piano). `getAttributeValue`'s miss is `''`, and `parseInt('')` is NaN too, so this
+      // is the same number by the same route with no lie in the type.
+      const value = parseInt(getAttributeValue('value', n));
+      track.add(EventMaker.createProgramChange(channel, date, value));
     }
     return weHaveAnInitialPrgCh;
   }
@@ -1299,20 +1245,20 @@ export class Msm extends AbstractMsm {
    * symbolic branch uses unconditionally.
    */
   private processScore(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      part.getFirstChildElement('dated') === null ||
-      part.getFirstChildElement('dated')!.getFirstChildElement('score') === null ||
-      part.getAttribute('midi.channel') === null
-    )
-      return;
+    // The three-way guard was three tests followed by three assertions re-reading the same
+    // three things; it is now three reads, each tested where it is bound. Same short
+    // circuit, same order, one walk of `part`'s children instead of three.
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const score = dated.getFirstChildElement('score');
+    if (score === null) return;
+    const channelAttribute = part.getAttribute('midi.channel');
+    if (channelAttribute === null) return;
 
-    const chan = parseInt(part.getAttributeValue('midi.channel')!);
+    const chan = parseInt(channelAttribute.getValue());
 
     for (
-      let n = part
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('score')!
-        .getFirstChildElement('note');
+      let n = score.getFirstChildElement('note');
       n !== null;
       n = getNextSiblingElement('note', n)
     ) {
@@ -1321,21 +1267,16 @@ export class Msm extends AbstractMsm {
       if (exportExpressive) {
         const date = Msm.readMillisecondsDateFromElement(n);
 
-        const velocityAtt = getAttribute('velocity', n);
+        const velocityAtt = attribute('velocity', n);
         const velocity =
           velocityAtt === null ? 100 : Math.round(parseFloat(velocityAtt.getValue()));
 
         const xmlId = n.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
-        const textEvent = EventMaker.createTextEvent(
-          date,
-          xmlId === null ? 'unknown' : xmlId.getValue(),
-        );
-        if (textEvent !== null) track.add(textEvent);
-        const noteOn = EventMaker.createNoteOn(chan, date, pitch, velocity);
-        if (noteOn !== null) track.add(noteOn);
+        track.add(EventMaker.createTextEvent(date, xmlId === null ? 'unknown' : xmlId.getValue()));
+        track.add(EventMaker.createNoteOn(chan, date, pitch, velocity));
 
         let dateEnd: number;
-        const endAtt = getAttribute('milliseconds.date.end', n);
+        const endAtt = attribute('milliseconds.date.end', n);
         if (endAtt === null) {
           console.error(
             `Missing attribute "milliseconds.date.end" in element ${n.toXML()}. Using attribute "duration" instead.`,
@@ -1345,19 +1286,15 @@ export class Msm extends AbstractMsm {
         } else {
           dateEnd = Math.round(parseFloat(endAtt.getValue()));
         }
-        const noteOff = EventMaker.createNoteOff(chan, dateEnd, pitch, 0);
-        if (noteOff !== null) track.add(noteOff);
+        track.add(EventMaker.createNoteOff(chan, dateEnd, pitch, 0));
       } else {
         const date = Math.round(parseFloat(getAttributeValue('date', n)));
         const xmlId = getAttributeValue('xml:id', n);
-        const textEvent = EventMaker.createTextEvent(date, xmlId);
-        if (textEvent !== null) track.add(textEvent);
-        const noteOn = EventMaker.createNoteOn(chan, date, pitch, 100);
-        if (noteOn !== null) track.add(noteOn);
+        track.add(EventMaker.createTextEvent(date, xmlId));
+        track.add(EventMaker.createNoteOn(chan, date, pitch, 100));
 
         const dur = Math.round(parseFloat(getAttributeValue('duration', n)));
-        const noteOff = EventMaker.createNoteOff(chan, date + dur, pitch, 0);
-        if (noteOff !== null) track.add(noteOff);
+        track.add(EventMaker.createNoteOff(chan, date + dur, pitch, 0));
       }
     }
   }
@@ -1378,19 +1315,17 @@ export class Msm extends AbstractMsm {
    * also satisfies since `prevDate` is still its initial sentinel).
    */
   private parseChannelVolumeMap(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      !exportExpressive ||
-      part.getFirstChildElement('dated') === null ||
-      part.getAttribute('midi.channel') === null
-    )
-      return;
+    if (!exportExpressive) return;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const channelAttribute = part.getAttribute('midi.channel');
+    if (channelAttribute === null) return;
 
-    const chan = parseInt(part.getAttributeValue('midi.channel')!);
-    const cvMap = getFirstChildElement('channelVolumeMap', part.getFirstChildElement('dated')!);
+    const chan = parseInt(channelAttribute.getValue());
+    const cvMap = firstChildElement('channelVolumeMap', dated);
 
     if (cvMap === null) {
-      const event = EventMaker.createControlChange(chan, 0, EventMaker.CC_Channel_Volume, 100);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createControlChange(chan, 0, EventMaker.CC_Channel_Volume, 100));
       return;
     }
 
@@ -1401,17 +1336,15 @@ export class Msm extends AbstractMsm {
 
       const date = Msm.readMillisecondsDateFromElement(e);
 
-      const mandatory = getAttribute('mandatory', e) !== null;
+      const mandatory = attribute('mandatory', e) !== null;
       if (!mandatory && date >= prevDate - Msm.CONTROL_CHANGE_DENSITY) continue;
       prevDate = date;
       const value = Math.round(parseFloat(getAttributeValue('value', e)));
-      const event = EventMaker.createControlChange(chan, date, EventMaker.CC_Channel_Volume, value);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createControlChange(chan, date, EventMaker.CC_Channel_Volume, value));
     }
 
     if (prevDate > 0) {
-      const event = EventMaker.createControlChange(chan, 0, EventMaker.CC_Channel_Volume, 100);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createControlChange(chan, 0, EventMaker.CC_Channel_Volume, 100));
     }
   }
 
@@ -1428,15 +1361,14 @@ export class Msm extends AbstractMsm {
    * `sustain` and `soft` are mapped.
    */
   private parsePositionMap(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      !exportExpressive ||
-      part.getFirstChildElement('dated') === null ||
-      part.getAttribute('midi.channel') === null
-    )
-      return;
+    if (!exportExpressive) return;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const channelAttribute = part.getAttribute('midi.channel');
+    if (channelAttribute === null) return;
 
-    const chan = parseInt(part.getAttributeValue('midi.channel')!);
-    const posMap = getFirstChildElement('positionMap', part.getFirstChildElement('dated')!);
+    const chan = parseInt(channelAttribute.getValue());
+    const posMap = firstChildElement('positionMap', dated);
 
     if (posMap === null) return;
 
@@ -1456,8 +1388,7 @@ export class Msm extends AbstractMsm {
         controllerNumber = EventMaker.CC_Soft_Pedal;
       }
 
-      const event = EventMaker.createControlChange(chan, date, controllerNumber, value);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createControlChange(chan, date, controllerNumber, value));
     }
   }
 
@@ -1479,26 +1410,22 @@ export class Msm extends AbstractMsm {
    * behaviour parity beats correctness.
    */
   private parseKeySignatureMap(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      part.getFirstChildElement('dated') === null ||
-      part.getFirstChildElement('dated')!.getFirstChildElement('keySignatureMap') === null
-    )
-      return;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const map = dated.getFirstChildElement('keySignatureMap');
+    if (map === null) return;
 
     for (
-      let e = part
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('keySignatureMap')!
-        .getFirstChildElement('keySignature');
+      let e = map.getFirstChildElement('keySignature');
       e !== null;
       e = getNextSiblingElement('keySignature', e)
     ) {
-      let date: number;
-      if (exportExpressive) {
-        date = Msm.readMillisecondsDateFromElement(e);
-      } else {
-        date = Math.round(parseFloat(e.getAttributeValue('date')!));
-      }
+      // `parseFloat(e.getAttributeValue('date')!)` was this. `getAttributeValue`'s miss is
+      // `''` and `parseFloat('')` is `NaN`, which is exactly what `parseFloat(null)` gave —
+      // an undated entry has always produced an event at tick NaN, and still does.
+      const date = exportExpressive
+        ? Msm.readMillisecondsDateFromElement(e)
+        : Math.round(parseFloat(getAttributeValue('date', e)));
 
       let accids = 0;
       for (
@@ -1506,8 +1433,9 @@ export class Msm extends AbstractMsm {
         a !== null;
         a = getNextSiblingElement('accidental', a)
       ) {
-        if (a.getAttribute('value') !== null) {
-          const value = parseFloat(a.getAttributeValue('value')!);
+        const valueAttribute = a.getAttribute('value');
+        if (valueAttribute !== null) {
+          const value = parseFloat(valueAttribute.getValue());
           if (value > 1.0) {
             accids++;
             continue;
@@ -1517,40 +1445,35 @@ export class Msm extends AbstractMsm {
           }
         }
       }
-      const event = EventMaker.createKeySignature(date, accids);
-      if (event !== null) track.add(event);
+      track.add(EventMaker.createKeySignature(date, accids));
     }
   }
 
   private parseTimeSignatureMap(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      part.getFirstChildElement('dated') === null ||
-      part.getFirstChildElement('dated')!.getFirstChildElement('timeSignatureMap') === null
-    )
-      return;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const map = dated.getFirstChildElement('timeSignatureMap');
+    if (map === null) return;
 
     for (
-      let e = part
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('timeSignatureMap')!
-        .getFirstChildElement('timeSignature');
+      let e = map.getFirstChildElement('timeSignature');
       e !== null;
       e = getNextSiblingElement('timeSignature', e)
     ) {
-      let date: number;
-      if (exportExpressive) date = Msm.readMillisecondsDateFromElement(e);
-      else date = Math.round(parseFloat(e.getAttributeValue('date')!));
+      const date = exportExpressive
+        ? Msm.readMillisecondsDateFromElement(e)
+        : Math.round(parseFloat(getAttributeValue('date', e)));
 
+      // Absent is 4; present-but-unparsable stays NaN. Reading the attribute once keeps
+      // those two apart, which is the whole reason the test was written against
+      // `getAttribute` rather than against the value.
+      const numeratorAttribute = e.getAttribute('numerator');
       const numerator =
-        e.getAttribute('numerator') === null
-          ? 4
-          : Math.round(parseFloat(e.getAttributeValue('numerator')!));
+        numeratorAttribute === null ? 4 : Math.round(parseFloat(numeratorAttribute.getValue()));
+      const denominatorAttribute = e.getAttribute('denominator');
       const denominator =
-        e.getAttribute('denominator') === null
-          ? 4
-          : Math.round(parseFloat(e.getAttributeValue('denominator')!));
-      const event = EventMaker.createTimeSignature(date, numerator, denominator);
-      if (event !== null) track.add(event);
+        denominatorAttribute === null ? 4 : Math.round(parseFloat(denominatorAttribute.getValue()));
+      track.add(EventMaker.createTimeSignature(date, numerator, denominator));
     }
   }
 
@@ -1559,42 +1482,30 @@ export class Msm extends AbstractMsm {
    * anchors that sequencingMap gotos aim at (`target.id` names a marker's `xml:id`, see
    * {@link Goto}). Called once for `<global>` and once per part.
    *
-   * A marker with no `message` becomes the literal `'marker'`. Both the `null` check and
-   * the `try` around it are needed for that: `getAttributeValue` returns `null` when the
-   * attribute is missing, and the `!` on it would otherwise let a null through.
+   * A marker with no `message` becomes the literal `'marker'`; one carrying an EMPTY
+   * `message` keeps the empty string, which is a different event. That distinction used to
+   * be made by `e.getAttributeValue('message')!` — an assertion that typed the null away
+   * and then tested for it anyway, inside a `try` for an accessor that cannot throw. Three
+   * spellings of one question; this is the question.
    */
   private parseMarkerMap(part: Element, track: Track, exportExpressive: boolean): void {
-    if (
-      part.getFirstChildElement('dated') === null ||
-      part.getFirstChildElement('dated')!.getFirstChildElement('markerMap') === null
-    )
-      return;
+    const dated = part.getFirstChildElement('dated');
+    if (dated === null) return;
+    const map = dated.getFirstChildElement('markerMap');
+    if (map === null) return;
 
     for (
-      let e = part
-        .getFirstChildElement('dated')!
-        .getFirstChildElement('markerMap')!
-        .getFirstChildElement('marker');
+      let e = map.getFirstChildElement('marker');
       e !== null;
       e = getNextSiblingElement('marker', e)
     ) {
-      let message: string;
-      try {
-        message = e.getAttributeValue('message')!;
-        if (message === null) message = 'marker';
-      } catch {
-        message = 'marker';
-      }
+      const messageValue = e.getAttributeValue('message');
+      const message = messageValue === null ? 'marker' : messageValue;
 
-      let event: MidiEvent | null;
-      if (exportExpressive)
-        event = EventMaker.createMarker(Msm.readMillisecondsDateFromElement(e), message);
-      else
-        event = EventMaker.createMarker(
-          Math.round(parseFloat(e.getAttributeValue('date')!)),
-          message,
-        );
-      if (event !== null) track.add(event);
+      const date = exportExpressive
+        ? Msm.readMillisecondsDateFromElement(e)
+        : Math.round(parseFloat(getAttributeValue('date', e)));
+      track.add(EventMaker.createMarker(date, message));
     }
   }
 
@@ -1629,13 +1540,13 @@ export class Msm extends AbstractMsm {
     let highest = -Number.MAX_VALUE;
     const parts = this.getPartsArray();
     for (const part of parts) {
-      const dated = getFirstChildElement('dated', part);
+      const dated = firstChildElement('dated', part);
       if (dated === null) continue;
-      const score = getFirstChildElement('score', dated);
+      const score = firstChildElement('score', dated);
       if (score === null) continue;
-      const notes = getAllChildElements('note', score);
+      const notes = allChildElements(score, 'note');
       for (const note of notes) {
-        const velAtt = getAttribute('velocity', note);
+        const velAtt = attribute('velocity', note);
         if (velAtt === null) continue;
         const value = parseFloat(velAtt.getValue());
         if (value < lowest) lowest = value;
@@ -1762,7 +1673,7 @@ export class Msm extends AbstractMsm {
    */
   getEndDate(): number {
     let latestOffset = 0.0;
-    const parts = this.getRootElement()!.getChildElements('part'); // get all parts
+    const parts = this.requireRootElement().getChildElements('part'); // get all parts
 
     // in each part
     for (const part of parts) {
@@ -1778,8 +1689,13 @@ export class Msm extends AbstractMsm {
       // — the two directions answer the same double for every input, NaN included (`NaN >
       // x` is false whichever end you start from).
       for (const note of score.getChildElements('note')) {
-        const date = parseFloat(note.getAttributeValue('date')!); // get its date
-        const dur = parseFloat(note.getAttributeValue('duration')!); // get its duration
+        // Both were `getAttributeValue(…)!`, which hands `parseFloat` a real null on a note
+        // that lacks the attribute — the string "null", so `NaN`. `getAttributeValue`'s miss
+        // is `''`, and `parseFloat('')` is `NaN` too, so an undated or durationless note
+        // still contributes a NaN offset that fails `>` and is ignored. Same number, and
+        // the type no longer claims a string that is not there.
+        const date = parseFloat(getAttributeValue('date', note)); // get its date
+        const dur = parseFloat(getAttributeValue('duration', note)); // get its duration
         const offset = date + dur; // compute the offset date
         if (offset > latestOffset)
           // if its after the last offset known so far
@@ -1800,18 +1716,24 @@ export class Msm extends AbstractMsm {
    * performed produces one error line per element rather than one for the document.
    *
    * The fallback to `date` is a last resort, not a mode: it substitutes a value in MSM
-   * ticks where milliseconds are expected. `dateAtt!` is genuinely unguarded — an element
-   * with neither attribute throws, in both this port and Java.
+   * ticks where milliseconds are expected. An element with **neither** attribute throws, in
+   * this port and in Java (`Msm.java:1424` dereferences the null `Attribute`, giving an NPE;
+   * `dateAtt!.getValue()` here gave a `TypeError`). That stays a throw — the only change is
+   * that it names both attributes it looked for instead of reporting a missing property.
    */
   private static readMillisecondsDateFromElement(e: Element): number {
-    let dateAtt = getAttribute('milliseconds.date', e);
-    if (dateAtt === null) {
-      console.error(
-        `Missing attribute "milliseconds.date" in element ${e.toXML()}. Using attribute "date" instead.`,
+    const millisecondsDate = attribute('milliseconds.date', e);
+    if (millisecondsDate !== null) return Math.round(parseFloat(millisecondsDate.getValue()));
+
+    console.error(
+      `Missing attribute "milliseconds.date" in element ${e.toXML()}. Using attribute "date" instead.`,
+    );
+    const symbolicDate = attribute('date', e);
+    if (symbolicDate === null)
+      throw new MissingNodeError(
+        `element ${e.toXML()} has neither a "milliseconds.date" nor a "date" attribute`,
       );
-      dateAtt = getAttribute('date', e);
-    }
-    return Math.round(parseFloat(dateAtt!.getValue())); // Math.round(double) returns number
+    return Math.round(parseFloat(symbolicDate.getValue())); // Math.round(double) returns number
   }
 
   /**
@@ -1846,8 +1768,11 @@ export class Msm extends AbstractMsm {
     const e: Nodes = root.query(
       "descendant::*[(local-name()='note' or local-name()='rest') and not(@xml:id)]",
     );
-    // go through all the nodes
-    for (const node of e) addUUID(node as unknown as Element); // add the xml:id attribute with a UUID
+    // go through all the nodes. `descendant::*` yields elements, so the `instanceof` cannot
+    // fire; it replaces an `as unknown as Element` and is what lets the return below stay
+    // `e.size()` — the count of what the query SELECTED, which is what Java returns, rather
+    // than a count of what this loop happened to visit.
+    for (const node of e) if (node instanceof Element) addUUID(node); // add the xml:id attribute with a UUID
 
     console.log(' done');
 
