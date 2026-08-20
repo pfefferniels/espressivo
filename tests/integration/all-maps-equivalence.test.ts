@@ -119,6 +119,22 @@ function compareElements(
       diffs.push(`${fp}@${name}: TS="${tsV}" vs Java="${refV}"`);
     }
   }
+  // Extra attributes and attribute ORDER, neither of which this comparator checked: it
+  // iterates the reference's attributes out of a name-keyed Map, so an attribute we emit and
+  // Java does not was invisible, and so was emitting the same set in a different sequence.
+  // Both were confirmed by mutating a reference file and watching this stay green.
+  const keep = (n: string): boolean =>
+    !SKIP_ATTRS.has(n) && !(skipImprecision && IMPRECISION_SENSITIVE_ATTRS.has(n));
+  for (const [name, tsV] of tsA) {
+    if (!keep(name) || refA.has(name)) continue;
+    if (name === 'xml:id' || name === 'id') continue; // alias rule above
+    diffs.push(`${fp}: extra attr "${name}"="${tsV}" (Java has none)`);
+  }
+  const tsOrder = tsEl.attrs.map((a) => a.name).filter(keep);
+  const refOrder = refEl.attrs.map((a) => a.name).filter(keep);
+  if (tsOrder.length === refOrder.length && tsOrder.join(',') !== refOrder.join(','))
+    diffs.push(`${fp}: attribute order TS=[${tsOrder.join(',')}] vs Java=[${refOrder.join(',')}]`);
+
   if (tsEl.children.length !== refEl.children.length)
     diffs.push(`${fp}: child count TS=${tsEl.children.length} vs Java=${refEl.children.length}`);
   for (let i = 0; i < Math.min(tsEl.children.length, refEl.children.length); i++)
