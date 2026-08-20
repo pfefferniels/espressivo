@@ -38,11 +38,15 @@ export class AsynchronyMap extends GenericMap {
   }
 
   getAsynchronyAt(date: number): number {
-    let i = this.getElementIndexBeforeAt(date);
-    if (i < 0) return 0.0;
-    while (!this.elements[i].getValue().getLocalName().includes('asynchrony'))
-      if (--i < 0) return 0.0;
-    return parseFloat(getAttributeValue('milliseconds.offset', this.elements[i].getValue()));
+    // The nearest entry at or before `date` whose name says `asynchrony`, skipping back over
+    // the `<style>` switches in between. The `while` this replaces read the entry twice and
+    // spelled the lower bound in two places; the `for` says the same thing once.
+    for (let i = this.getElementIndexBeforeAt(date); i >= 0; --i) {
+      const e = this.entryAt(i).getValue();
+      if (e.getLocalName().includes('asynchrony'))
+        return parseFloat(getAttributeValue('milliseconds.offset', e));
+    }
+    return 0.0;
   }
 
   /**
@@ -75,19 +79,20 @@ export class AsynchronyMap extends GenericMap {
     let mapEntries = [...map.getAllElements()];
     const done: KeyValue<number, Element>[] = [];
     for (let asynIndex = 0; asynIndex < this.size(); ++asynIndex) {
-      // `this.elements[asynIndex]`, not `getElement(asynIndex)!`: the index is this loop's
-      // own bound, and the three lines below already read the entry that way.
-      const asynElement = this.elements[asynIndex].getValue();
+      // One read of the entry, where there were four: the index is this loop's own bound and
+      // the whole body wants both halves of what it names.
+      const asynEntry = this.entryAt(asynIndex);
+      const asynElement = asynEntry.getValue();
+      const asynStartDate = asynEntry.getKey();
       const xmlId = getAttributeValue('xml:id', asynElement);
-      const asynEndDate =
-        asynIndex < this.elements.length - 1
-          ? this.elements[asynIndex + 1].getKey()
-          : Number.MAX_VALUE;
+      // No successor means this asynchrony runs to the end of time, which is what the
+      // ternary said and what `at` returning undefined says.
+      const asynEndDate = this.elements.at(asynIndex + 1)?.getKey() ?? Number.MAX_VALUE;
       const offset = parseFloat(getAttributeValue('milliseconds.offset', asynElement));
       for (const mapEntry of mapEntries) {
         if (mapEntry.getKey() >= asynEndDate) break;
         let startDateMs = 0.0;
-        if (mapEntry.getKey() >= this.elements[asynIndex].getKey()) {
+        if (mapEntry.getKey() >= asynStartDate) {
           const att = attribute('milliseconds.date', mapEntry.getValue());
           if (att !== null) {
             startDateMs = Math.max(0.0, parseFloat(att.getValue()) + offset);
@@ -102,7 +107,7 @@ export class AsynchronyMap extends GenericMap {
         }
         const end = parseFloat(dur.getValue()) + mapEntry.getKey();
         if (end >= asynEndDate) continue;
-        if (end >= this.elements[asynIndex].getKey()) {
+        if (end >= asynStartDate) {
           const att = attribute('milliseconds.date.end', mapEntry.getValue());
           if (att !== null) {
             const ms = parseFloat(att.getValue()) + offset;
