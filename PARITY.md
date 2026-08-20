@@ -767,6 +767,23 @@ elements already in the map. Nothing does that. Preserved on the same grounds as
 this section, and now pinned by a unit test that asserts the unsorted result on purpose, so
 that anyone repairing it has to do so deliberately.
 
+**Measured, 2026-08-20, rather than only argued.** The paragraphs above reason that the call is
+a no-op by construction; that reasoning had never been checked against the corpus. Instrumenting
+`sort()` to compare the key sequence before and after itself, and running the whole of
+`tests/integration` and `tests/mpm`: **28 calls, 26 of them no-ops.** The two that reorder
+anything are both in `tests/mpm/elements/GenericMap.test.ts` — the test that edits `@date` by
+hand, and the test that pins this very defect — and the second produces `100,200,300 -> 1,3,2`,
+i.e. a sort whose output is not sorted, exactly as described above. Across every MEI fixture,
+every all-maps fixture and every render in the suite, `sort()` never once changes an order.
+
+Two consequences worth stating plainly. First, deleting `if (mapTimingChanged) map.sort()`
+outright leaves the entire suite green (2796 tests in `tests/mpm` + `tests/integration`) — so
+**the suite cannot protect this call**, and it belongs on the fixture-coverage gap list next to
+`<pedal>` and `subNoteDynamics`. Second, the call is not merely unnecessary here, it is a
+loaded gun: if a future change ever did write `@date` mid-render, this would fire and produce a
+_wrongly_ ordered map rather than a correctly ordered one. Anyone adding such a write must fix
+the sort first.
+
 ### `TempoData.clone` omits `startDateMilliseconds`
 
 Java's `TempoData.clone()` omits it too. It is scratch space that `TempoMap.renderTempoToMap`
