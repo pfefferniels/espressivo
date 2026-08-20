@@ -699,7 +699,8 @@ describe('XomNode – parent and detach', () => {
     // `query` maps element hits back onto this tree, and a text node comes back as a fresh
     // `Text` whose only link to anything is the DOM node it wraps.
     const root = new Builder().build('<a><b/></a>').getRootElement();
-    expect(root.getFirstChildElement('b')!.getParent()).toBe(root);
+    // `Elements.get` is non-nullable, so the parsed child needs no assertion to reach.
+    expect(root.getChildElements().get(0).getParent()).toBe(root);
   });
 
   it('removeChild should return false for non-children', () => {
