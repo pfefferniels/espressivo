@@ -423,6 +423,41 @@ migrates in this commit. Green by construction — nothing existing changes.
 
 ---
 
+## 5.4 Conductor's correction to §5.1 — there are two readers, not three
+
+§5.1 counts "three independent read-only MSM projections ... totalling ~610 lines with three
+different and mutually incompatible absence policies", and §6.3 correctly flags that
+`src/comparison/msm.ts` was read by its exported signatures only. Checked: **it is not an
+independent reader.** It imports `readMsmFacts` (`comparison/msm.ts:32`), calls it at `:103`,
+re-exports `parseMsmRoot` at `:37`, and holds the result as a field —
+`ComparisonMsm.facts: MsmFacts`. Its own header says so at line 12: "The note-level facts stay
+in `expression/msmFacts.ts`, which already reads them." What it adds on top is a measure grid
+and part scopes, which are comparison concepts and belong nowhere else.
+
+So the topology is one reader **composed** by a second consumer, plus one genuinely independent
+reader in the facade:
+
+| module | lines | relationship |
+| --- | --- | --- |
+| `src/expression/msmFacts.ts` | 162 | the reader; used by `api/expression.ts` and by comparison |
+| `src/comparison/msm.ts` | 272 | **composes** it — not duplication, and correctly done |
+| `src/api/pipeline.ts` (`noteElements` / `readNote`) | ~180 | genuinely independent; imports nothing from `expression/` |
+
+The duplication is therefore ~340 lines across two readers with two absence policies, not ~610
+across three with three. **That materially weakens §5.1, which is the main argument for building
+the model as a standalone commit** — and §5.2 already concedes the slice removes zero non-null
+assertions and migrates no consumer. A model that nothing uses would be a *fourth* reading of
+the document, which is the incidental-data-structure problem the campaign exists to remove, not
+a step away from it.
+
+The rest of the study stands, and §3.4 in particular is decisive and was verified independently:
+the render holds `Attribute` objects as handles and walks `getParent()` back up from one, so
+records cannot carry it. **Milestone 6's MSM model is deferred, with that as the measured
+reason.** The work that remains in `src/msm` is its 112 non-null assertions and `Goto`'s
+two-armed sum — both real, both smaller, neither requiring a model first.
+
+---
+
 ## 6. Method, and what I could not verify
 
 ### 6.1 The negative controls I ran
