@@ -52,6 +52,7 @@
  */
 import { filterMap, head, isNonEmpty, last, withNext } from '../prelude/index.js';
 import { elementAt, optionAt } from '../prelude/seq.js';
+import { coveringSegmentAt } from './segments.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { METRICAL_ACCENTUATION_MAP, METRICAL_ACCENTUATION_STYLE } from '../mpm/names.js';
@@ -399,16 +400,18 @@ export function readAccentuationSegments(
   };
 }
 
-/** The segment governing `ticks`, right-continuous (A-B1), or null where none does. */
+/**
+ * The segment governing `ticks`, right-continuous (A-B1), or null where none does.
+ *
+ * Called once per Gauss-Legendre node, so the linear scan this replaces made one dimension's
+ * integral quadratic in the size of the map it integrates. {@link coveringSegmentAt} carries the
+ * proof that the bound answers identically here — including at `NaN` and `Infinity`.
+ */
 export function accentuationSegmentAt(
   curve: AccentuationCurve,
   ticks: number,
 ): AccentuationSegment | null {
-  for (const segment of curve.segments) {
-    if (ticks < segment.startTicks) break;
-    if (ticks < segment.endTicks) return segment;
-  }
-  return null;
+  return coveringSegmentAt(curve.segments, ticks);
 }
 
 /**

@@ -415,7 +415,15 @@ export function readDynamicsSegments(
   };
 }
 
-/** The segment governing `ticks`, right-continuous (A-B1). */
+/**
+ * The segment governing `ticks`, right-continuous (A-B1).
+ *
+ * **A SCAN, deliberately** — the same three reasons `tempoCurve.segmentAt` gives, in the same
+ * shape: the `!Number.isFinite(endTicks)` arm, the `?? last(curve.segments)` fallback, and skip
+ * gaps that nest. The accentuation, rubato and pedal siblings share `segments.ts`'s
+ * `coveringSegmentAt`; these two do not, and the reason is recorded rather than left as an
+ * omission for someone to "finish".
+ */
 export function dynamicsSegmentAt(curve: DynamicsCurve, ticks: number): DynamicsSegment | null {
   let found: DynamicsSegment | null = null;
   for (const segment of curve.segments) {

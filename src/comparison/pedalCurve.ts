@@ -86,6 +86,7 @@ import {
   withNext,
   type NonEmptyArray,
 } from '../prelude/index.js';
+import { coveringSegmentAt } from './segments.js';
 import type { Element } from '../xml/XomTypes.js';
 import { innerControlPointsXPositions } from '../mpm/elements/maps/data/bezier.js';
 import { readAttributeValue } from '../expression/attributes.js';
@@ -548,14 +549,16 @@ function endValueOf(shape: Valued<PedalShape>): Valued<PedalShape> {
   });
 }
 
-/** The segment governing `ticks`, right-continuous (A-B1), or null where none does. */
+/**
+ * The segment governing `ticks`, right-continuous (A-B1), or null where none does.
+ *
+ * The scan this replaces took the LAST covering segment where accentuation and rubato take the
+ * first; on a timeline whose spans and holds abut, those are the same segment, and
+ * {@link coveringSegmentAt} carries that argument along with the `NaN`/`Infinity` cases. Called
+ * once per Gauss-Legendre node, which is what made the scan quadratic in the map's size.
+ */
 export function pedalSegmentAt(curve: PedalCurve, ticks: number): PedalSegment | null {
-  let found: PedalSegment | null = null;
-  for (const segment of curve.segments) {
-    if (segment.startTicks > ticks) break;
-    if (ticks < segment.endTicks) found = segment;
-  }
-  return found;
+  return coveringSegmentAt(curve.segments, ticks);
 }
 
 /**

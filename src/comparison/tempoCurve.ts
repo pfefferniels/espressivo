@@ -412,7 +412,29 @@ export function quarterBpmAt(curve: TempoCurve, ticks: number): number {
   return segment.qbpm0 + (segment.qbpm1 - segment.qbpm0) * Math.pow(u, segment.exponent);
 }
 
-/** The segment governing `ticks`, right-continuous: `[start, end)`. */
+/**
+ * The segment governing `ticks`, right-continuous: `[start, end)`.
+ *
+ * **A SCAN, deliberately, where the accentuation, rubato and pedal siblings are a binary
+ * search** — see `segments.ts`'s `coveringSegmentAt`, which they share and this does not. Three
+ * differences, and each of them alone is enough:
+ *
+ * 1. `|| !Number.isFinite(segment.endTicks)` makes an `Infinity`-ended segment count as covering
+ *    a tick it does not contain. A bare containment test after the bound drops that arm, which
+ *    is a silent behaviour change and not a speed-up.
+ * 2. `?? last(curve.segments)` returns the LAST segment where the bound returns `null`. Past the
+ *    end the two coincide; BEFORE the first segment they do not, and the bound gives −1.
+ * 3. The segments genuinely overlap, where the other three provably do not: a skipped
+ *    instruction opens a gap running to the next VALID instruction, so two consecutive skips
+ *    give `[d1, dv)` and `[d2, dv)` — nested, sharing a right end. `coveringSegmentAt`'s whole
+ *    proof is that at most one segment covers a tick, and that does not hold here.
+ *
+ * The overlap is survivable — every overlapping family shares its right endpoint, and only
+ * invalid instructions lie strictly inside a gap, so "last start wins" is preserved. Clauses 1
+ * and 2 are not: both decide what a published report field says at a tick nothing covers, and
+ * the metric's own hazard is a `NaN` tick, where a wrong answer LOOKS like an answer. Left as a
+ * scan until someone can show the two clauses are unreachable rather than merely unlikely.
+ */
 export function segmentAt(curve: TempoCurve, ticks: number): TempoSegment | null {
   let found: TempoSegment | null = null;
   for (const segment of curve.segments) {
