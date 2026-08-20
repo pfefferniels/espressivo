@@ -1,6 +1,5 @@
 {
   "--noUncheckedIndexedAccess": {
-    "tests/api": 61,
     "tests/comparison": 231,
     "tests/integration": 189,
     "tests/mei": 12,
