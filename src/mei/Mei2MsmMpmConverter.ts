@@ -2970,8 +2970,9 @@ export class Mei2MsmMpmConverter {
         if (att !== null)
           this.addArticulationToMap(date, att.getValue(), xmlid, noteId, map, articulationStyle);
         if (slur !== null) {
-          const slurid =
-            artic.getAttribute('slurid') === null ? null : artic.getAttributeValue('slurid');
+          // the ternary this replaces asked whether the attribute was there and then read it,
+          // which is what `getAttributeValue` answers in one call
+          const slurid = artic.getAttributeValue('slurid');
           if (slur.getValue().includes('t'))
             this.addArticulationToMap(date, 'legatoStop', slurid, noteId, map, articulationStyle);
           else if (slur.getValue().includes('i') || slur.getValue().includes('m'))
