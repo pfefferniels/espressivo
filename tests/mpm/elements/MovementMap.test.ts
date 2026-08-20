@@ -271,6 +271,27 @@ describe('MovementMap', () => {
   // MovementData.getPositionAt - Bezier curve mathematics
   // ---------------------------------------------------------------
   describe('MovementData.getPositionAt', () => {
+    /**
+     * `positionAt` is dead on the rendering path — `MovementMap` samples whole segments
+     * and never asks for a single date — and it is dead in meico too, so no rendered byte
+     * depends on it. That is what licenses the one behaviour this rewrite changed: a
+     * CONSTANT movement past its own `startDate` used to fall through to `return
+     * this.transitionTo!` and hand back a literal `null` typed as `number`, or, inside the
+     * span, evaluate `(3-2t)t²·(null - position) + position`, which JavaScript coerces to
+     * `position·(1 - (3-2t)t²)`. Java agrees with neither and NPEs at both places
+     * (MovementData.java:166 and :170). A constant movement holds its position, which is
+     * what the one branch of the method that WAS reachable already returned; the three
+     * dates below are the ones that used to disagree.
+     */
+    it('a constant movement holds its position across and past its whole span', () => {
+      const md = mov({ startDate: 0, endDate: 960, position: norm(0.5) });
+
+      expect(positionAt(md, 0)).toBe(0.5);
+      expect(positionAt(md, 480)).toBe(0.5);
+      expect(positionAt(md, 960)).toBe(0.5);
+      expect(positionAt(md, 2000)).toBe(0.5);
+    });
+
     it('constant movement returns position at any date', () => {
       const md = mov({ startDate: 0, endDate: 960, position: norm(0.5), transitionTo: null });
 
@@ -607,6 +628,40 @@ describe('MovementMap', () => {
       const segment = movementSegment(md, norm(0.1));
       expect(segment[0][1]).toBeCloseTo(0, 5);
       expect(segment[segment.length - 1][1]).toBeCloseTo(127, 5);
+    });
+
+    /**
+     * The structural difference between the two arms, and the reason `Movement` is a sum
+     * where `Dynamics` is not: a transition gets an exact `[endDate, transitionTo]` pushed
+     * onto the back after subdivision, a constant gets nothing. Both still get the exact
+     * start point unshifted onto the front, which is why the flat series is 3 long and not
+     * 2 — the sampled t=0 point coincides with it and is deliberately duplicated.
+     *
+     * Added because a control measured the hole: pushing an end point onto the constant arm
+     * as well left `npm run gate` at 121/121 AND this whole file green, and was caught only
+     * by `tests/comparison/pedal.test.ts`, three layers away.
+     */
+    it('a constant movement gets NO exact end point, where a transition does', () => {
+      const flat = mov({ startDate: 0, endDate: 1000, position: norm(0.5) });
+      const flatSegment = movementSegment(flat, norm(0.1));
+      // [startDate, position], then the sampler's own t=0 and t=1, both the same point
+      expect(flatSegment.length).toBe(3);
+      expect(flatSegment.map((p) => p[0])).toEqual([0, 0, 0]);
+      expect(flatSegment.map((p) => p[1])).toEqual([63.5, 63.5, 63.5]);
+
+      const moving = mov({
+        startDate: 0,
+        endDate: 1000,
+        position: norm(0.5),
+        transitionTo: norm(0.5),
+        curvature: 0.0,
+        protraction: 0.0,
+      });
+      const movingSegment = movementSegment(moving, norm(0.1));
+      // Same endpoints and so the same (nil) subdivision, but one entry longer: the
+      // pushed [endDate, transitionTo].
+      expect(movingSegment.length).toBe(4);
+      expect(movingSegment[movingSegment.length - 1]).toEqual([1000, 63.5]);
     });
   });
 
