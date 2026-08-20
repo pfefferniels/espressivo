@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { silenceConsoleError } from '../../support/console.js';
 import { errOf, okValue } from '../../support/result.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Header } from '../../../src/mpm/elements/Header.js';
@@ -135,7 +136,7 @@ describe('Header', () => {
     });
 
     it('skips styleDef children without a name', () => {
-      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const err = silenceConsoleError();
       const h = okValue(Header.createHeader());
       const map = h.adoptStyleType(
         element(Mpm.TEMPO_STYLE, {}, [element('styleDef'), styleDefElement('default')]),

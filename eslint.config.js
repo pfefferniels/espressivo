@@ -230,6 +230,20 @@ export default tseslint.config(
       'prefer-const': 'error',
       'prefer-template': 'error',
 
+      // A parameter kept for API parity with Java and deliberately unused is spelled with a
+      // leading underscore, which is the language's own convention for saying so. Without
+      // this, `Msm.writeMsmString(_filename)` and `Mpm.writeMpmString(_filename)` — both
+      // Java's `write*(String filename)`, both returning the XML instead of writing a file —
+      // are the last `no-unused-vars` finding in their directories, and the only way to clear
+      // them is to delete a published parameter or to scatter `eslint-disable` comments.
+      // `docs/history/refactor/lint-debt.md:564,596` and `log.md:2694,3175,3643` each named
+      // this exact fix and each deferred it to "whoever owns the config"; three deferrals is
+      // enough. It only RELAXES the rule, and only for parameters, so nothing that was caught
+      // before stops being caught: the default `args: 'after-used'` already ignores an unused
+      // parameter that is followed by a used one, which is every other `_`-prefixed parameter
+      // in the tree (81 of them, all in callbacks like `(_unused, index) => …`).
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+
       // Exported API must state its return type; inference is fine internally.
       '@typescript-eslint/explicit-module-boundary-types': 'error',
 
