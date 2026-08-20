@@ -16,44 +16,30 @@
  * surveys of `src/` (comparison, mpm+msm, expression+xml+midi) went looking for each shape by
  * hand. Call sites outside this module, as of 2026-08-20:
  *
- *     elementAt 133   pairwise 25   filterMap 20   numberAt 19   zipWith 10
- *     withNext 9      optionAt 7    matchKind 7    groupBy 6     elementAtOrNull 6
- *     upperBoundBy 4  foldl 4       lowerBoundBy 2 scanl 2       partitionWith 1
- *     insertionIndexBy 1
- *     chunkBy 0       windows 0     unfold 0       stableSortBy 0
+ * **Four shapes were considered and are deliberately absent**, having been looked for across
+ * the tree and not found. Recorded so the next person does not add them on spec:
  *
- * The four zeroes are not a backlog; each was looked for and is not there.
- *
- * - `chunkBy` — runs of CONSECUTIVE elements sharing a key. Every span builder in the tree is
- *   "one instruction opens one span", never "consecutive instructions sharing a key form one";
- *   MPM span ends are decided by the next entry's DATE, which is {@link withNext}, not by a
- *   key changing. `aggregate.maximalScoringRuns` looks like it and is Ruzzo–Tompa.
- * - `windows` — every fixed-size walk in the tree is size 2, i.e. `pairwise` or `withNext`.
- * - `unfold` — the one linked-list walk (`tree.getAllPreviousSiblingElements`) reads better as
- *   a `while`: a seed/step split returning a tuple is harder to follow than "walk back,
- *   collecting", and the spread needed to keep the mutable return type costs an array.
+ * - `chunkBy` — runs of CONSECUTIVE elements sharing a key. Every span builder here is "one
+ *   instruction opens one span"; MPM span ends are decided by the next entry's DATE, which is
+ *   {@link withNext}. `aggregate.maximalScoringRuns` looks like it and is Ruzzo-Tompa.
+ * - `windows` — every fixed-size walk in the tree is size 2, i.e. {@link pairwise} or
+ *   {@link withNext}.
+ * - `unfold` — the one linked-list walk reads better as a `while`; a seed/step split returning
+ *   a tuple is harder to follow, and the spread needed to keep the return type costs an array.
  * - `stableSortBy` — the tree already spreads before sorting at ~35 sites and sorts only
- *   freshly-built local arrays at the rest. Nothing mutates a caller's array, so there is no
- *   mistake left for it to prevent; renaming those sites would buy a name and no safety.
- * - `partitionWith`'s single use is real, but its two candidate sites both declined it for the
- *   same reason: it does not NARROW. `parts.matchScopes` would still need `filterMap` for the
- *   half whose key must be non-null, and `selection.resolveSelection`'s two halves have
- *   DIFFERENT types, which is `partitionResults`, not this.
+ *   freshly-built local arrays elsewhere. Nothing mutates a caller's array, so there is no
+ *   mistake left for it to prevent.
  *
- * If a future pass finds a real site for one of the four, good. If not, they should go — this
- * module's whole claim is that it is stocked from the code rather than from a catalogue.
- *
- * **On allocation.** Every function here allocates one output array and no intermediates,
- * because the rendering path was just made linear (commit `980ae7e`) and must stay that way.
- * {@link filterMap} exists precisely so that `.map(...).filter(...)` — two arrays — becomes
- * one. Where a caller needs to fuse further, it should fold.
+ * They were written, shipped unused, and removed. That is the admission criterion working, not
+ * failing: this module holds the shapes the codebase contains and nothing added for
+ * completeness. If a future pass finds a real site, write it back then.
  */
 
 /** A sequence that is known to have a first element, so `head` needs no null check. */
 export type NonEmptyArray<T> = readonly [T, ...(readonly T[])];
 
 /*
- * A NOTE ON THE `as` CASTS BELOW — there are ten, and they are the only ones in this module.
+ * A NOTE ON THE `as` CASTS BELOW — there are eight, and they are the only ones in this module.
  *
  * `noUncheckedIndexedAccess` is on, so `xs[i]` is `T | undefined`. In each case below the
  * index is in range by a proof the type system cannot state: `last` reads the final slot of a
@@ -63,14 +49,14 @@ export type NonEmptyArray<T> = readonly [T, ...(readonly T[])];
  * check would be dead code, and constraining the element type would stop these working over
  * sequences that may legitimately hold `null` or `undefined`, which several callers need.
  *
- * Three of the ten are a different proof: `chunkBy`, `scanl` and `groupBy` each BUILD a
+ * Two of the eight are a different proof: `scanl` and `groupBy` each BUILD a
  * sequence they know to be non-empty — a chunk opens as `[x]`, a scan starts from its seed, a
  * bucket is created as `[x]` — and say so in their return type. The cast is what carries that
  * from the construction to the signature, and it earns its place at every call site, which
  * would otherwise need a guard that can never fire to read a first element.
  *
  * They are concentrated here on purpose. This module implements the algorithms whose whole
- * job is to let the rest of the tree stop indexing; absorbing ten proofs in one leaf is what
+ * job is to let the rest of the tree stop indexing; absorbing eight proofs in one leaf is what
  * bought zero across fifteen directories. If you are tempted to copy the pattern outward, the
  * answer is almost certainly `filterMap`, `pairwise`, `zipWith` or `elementAt` instead.
  */
@@ -273,27 +259,6 @@ export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K,
   return out as unknown as ReadonlyMap<K, NonEmptyArray<A>>;
 }
 
-/**
- * Split into runs of consecutive elements that share a key — the *ordered* sibling of
- * {@link groupBy}, which is what a date-sorted instruction list usually wants.
- */
-export function chunkBy<A>(xs: Iterable<A>, key: (a: A) => unknown): readonly NonEmptyArray<A>[] {
-  const out: A[][] = [];
-  let current: A[] | null = null;
-  let currentKey: unknown = null;
-  for (const x of xs) {
-    const k = key(x);
-    if (current === null || k !== currentKey) {
-      current = [x];
-      currentKey = k;
-      out.push(current);
-    } else {
-      current.push(x);
-    }
-  }
-  return out as unknown as readonly NonEmptyArray<A>[];
-}
-
 /** Left fold. Named so that a loop whose only job is to accumulate stops looking like control flow. */
 export function foldl<A, B>(xs: Iterable<A>, seed: B, step: (acc: B, a: A, index: number) => B): B {
   let acc = seed;
@@ -395,37 +360,6 @@ export function withNext<A>(xs: readonly A[]): readonly (readonly [A, A | null])
   for (let i = 0; i < xs.length; ++i)
     out[i] = [xs[i] as A, i + 1 < xs.length ? (xs[i + 1] as A) : null];
   return out;
-}
-
-/** Overlapping windows of the given size; empty if the sequence is shorter than one window. */
-export function windows<A>(xs: readonly A[], size: number): readonly (readonly A[])[] {
-  if (size <= 0) return [];
-  const out: (readonly A[])[] = [];
-  for (let i = 0; i + size <= xs.length; ++i) out.push(xs.slice(i, i + size));
-  return out;
-}
-
-/** Build a sequence from a seed, until the step returns null. The dual of {@link foldl}. */
-export function unfold<S, A>(seed: S, step: (state: S) => readonly [A, S] | null): readonly A[] {
-  const out: A[] = [];
-  let state = seed;
-  for (;;) {
-    const next = step(state);
-    if (next === null) return out;
-    out.push(next[0]);
-    state = next[1];
-  }
-}
-
-/**
- * Sort without disturbing the order of equal elements, and without mutating the input.
- *
- * `Array.prototype.sort` is in-place, which makes it a mutation of whatever the caller passed;
- * it is specified as stable in modern engines, but the in-place part is the hazard here, since
- * a sorted view of someone else's array silently reorders theirs.
- */
-export function stableSortBy<A>(xs: readonly A[], compare: (a: A, b: A) => number): readonly A[] {
-  return xs.slice().sort(compare);
 }
 
 /**

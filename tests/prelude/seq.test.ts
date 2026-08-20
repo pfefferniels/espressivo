@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  chunkBy,
   filterMap,
   foldl,
   groupBy,
@@ -13,10 +12,7 @@ import {
   partitionPoint,
   partitionWith,
   scanl,
-  stableSortBy,
-  unfold,
   upperBoundBy,
-  windows,
   withNext,
   zipWith,
 } from '../../src/prelude/seq.js';
@@ -61,7 +57,7 @@ describe('filterMap', () => {
   });
 });
 
-describe('partitionWith, groupBy, chunkBy', () => {
+describe('partitionWith and groupBy', () => {
   it('partitionWith keeps both halves in order', () => {
     const { yes, no } = partitionWith([1, 2, 3, 4, 5], (n) => n % 2 === 1);
     expect(yes).toEqual([1, 3, 5]);
@@ -73,16 +69,6 @@ describe('partitionWith, groupBy, chunkBy', () => {
     expect(g.get('a')).toEqual(['apple', 'avocado']);
     expect(g.get('b')).toEqual(['beet']);
     expect(g.size).toBe(2);
-  });
-
-  it('chunkBy splits into consecutive runs, not global buckets', () => {
-    // The difference from groupBy that matters for a date-sorted instruction list.
-    expect(chunkBy([1, 1, 2, 2, 1], (n) => n)).toEqual([[1, 1], [2, 2], [1]]);
-    expect(groupBy([1, 1, 2, 2, 1], (n) => n).get(1)).toEqual([1, 1, 1]);
-  });
-
-  it('chunkBy of an empty sequence is empty', () => {
-    expect(chunkBy([], (n) => n)).toEqual([]);
   });
 });
 
@@ -111,7 +97,7 @@ describe('folds', () => {
   });
 });
 
-describe('zipWith, pairwise, windows, unfold', () => {
+describe('zipWith and pairwise', () => {
   it('zipWith stops at the shorter sequence', () => {
     expect(zipWith([1, 2, 3], ['a', 'b'], (n, s) => `${n}${s}`)).toEqual(['1a', '2b']);
     expect(zipWith([], [1], () => 0)).toEqual([]);
@@ -162,41 +148,6 @@ describe('zipWith, pairwise, windows, unfold', () => {
     expect(xs).toEqual([1, 2, 3]);
     // Each pair is its own tuple, so a caller cannot reach the source array through one.
     expect(out.map((pair) => pair[0])).toEqual(xs);
-  });
-
-  it('windows gives overlapping slices and nothing when too short', () => {
-    expect(windows([1, 2, 3, 4], 2)).toEqual([
-      [1, 2],
-      [2, 3],
-      [3, 4],
-    ]);
-    expect(windows([1, 2], 3)).toEqual([]);
-    expect(windows([1, 2], 0)).toEqual([]);
-    expect(windows([1, 2], -1)).toEqual([]);
-  });
-
-  it('unfold builds until the step returns null', () => {
-    expect(unfold(1, (n) => (n > 4 ? null : [n, n + 1]))).toEqual([1, 2, 3, 4]);
-    expect(unfold(9, (n) => (n > 4 ? null : [n, n + 1]))).toEqual([]);
-  });
-});
-
-describe('stableSortBy', () => {
-  it('does not mutate its input', () => {
-    const xs = [3, 1, 2];
-    const sorted = stableSortBy(xs, (a, b) => a - b);
-    expect(sorted).toEqual([1, 2, 3]);
-    expect(xs).toEqual([3, 1, 2]);
-  });
-
-  it('keeps equal elements in their original order', () => {
-    const xs = [
-      { k: 1, tag: 'first' },
-      { k: 0, tag: 'x' },
-      { k: 1, tag: 'second' },
-    ];
-    const sorted = stableSortBy(xs, (a, b) => a.k - b.k);
-    expect(sorted.map((e) => e.tag)).toEqual(['x', 'first', 'second']);
   });
 });
 
