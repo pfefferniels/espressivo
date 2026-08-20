@@ -195,6 +195,18 @@ function compareElements(
     );
   }
 
+  // Text content. The parser has always filled `ParsedElement.text` and nothing ever read it
+  // — parsed data that no assertion depended on. Measured: not one of the 16
+  // performance-reference documents carries any element text, because an augmented MSM is all
+  // attributes, so this cannot fire on today's corpus and is insurance rather than a fix. It
+  // is worth the three lines because the failure it guards is silent: a serializer that began
+  // emitting text where Java emits none would otherwise pass this suite unchanged.
+  // (`cross-validation` does check text, by string equality, and its MPM fixtures do carry
+  // `<author>` and `<comment>` content.)
+  if (tsEl.text.trim() !== refEl.text.trim()) {
+    diffs.push(`${fullPath}: text "${tsEl.text.trim()}" vs Java "${refEl.text.trim()}"`);
+  }
+
   // Compare children count
   if (tsEl.children.length !== refEl.children.length) {
     diffs.push(
