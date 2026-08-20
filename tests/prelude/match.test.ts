@@ -69,6 +69,28 @@ describe('pipe and flow', () => {
     expect(pipe(1, inc, double, show, (s) => s.length)).toBe(3);
   });
 
+  /**
+   * The long arities exist for the render pipeline in `Performance.renderPart`, whose seven
+   * stages each change the state's type. This pins them the way that pipeline needs them: the
+   * chain is heterogeneous at every step, so a wrong overload would be a compile error here
+   * rather than a surprise there.
+   */
+  it('pipe keeps inferring through a seven-function chain', () => {
+    expect(pipe(1, inc, double, show, (s) => s.length, inc, double)).toBe(8);
+    expect(
+      pipe(
+        1,
+        inc,
+        double,
+        show,
+        (s) => s.length,
+        inc,
+        double,
+        (n) => `n=${n}`,
+      ),
+    ).toBe('n=8');
+  });
+
   it('flow composes without a value, and keeps the first function’s arity', () => {
     expect(flow(inc)(1)).toBe(2);
     expect(flow(inc, double)(1)).toBe(4);
