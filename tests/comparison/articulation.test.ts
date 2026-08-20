@@ -39,6 +39,7 @@ import {
   type ComparisonDimension,
 } from '../../src/comparison/registry.js';
 import type { InvarianceMode } from '../../src/comparison/decomposition.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
 
@@ -53,6 +54,21 @@ const doc = (map: string) =>
   `<mpm xmlns="${NS}"><performance name="p" pulsesPerQuarter="720">` +
   `<global><header>${STYLES}</header><dated><articulationMap>${map}` +
   '</articulationMap></dated></global></performance></mpm>';
+
+/**
+ * The atom at `index` of a read, checked.
+ *
+ * Almost every assertion below is about the first atom of a one- or two-instruction map, and
+ * `read.atoms[0].def` on a reader that returned nothing failed as "cannot read properties of
+ * undefined" inside whichever expectation touched it first. This says how many atoms there
+ * were, which is the fact a reader defect would be about.
+ */
+const atomAt = (read: ArticulationAtoms, index = 0) =>
+  elementAt(read.atoms, index, 'the atoms this articulation map read');
+
+/** The step at `index` of a default-articulation curve, checked. */
+const stepAt = (curve: DefaultArticulationCurve, index: number) =>
+  elementAt(curve.steps, index, 'the default-articulation curve’s steps');
 
 const atomsOf = (map: string): ArticulationAtoms => {
   const pair: ComparisonPair = readComparisonPair({ a: doc(map) });
@@ -151,7 +167,7 @@ describe('the inline duration precedence (§5.5/AD-11i/R4)', () => {
     const read = atomsOf(
       '<articulation date="0.0" relativeDuration="0.5" absoluteDurationChange="10"/>',
     );
-    const live = effectiveAttributes(read.atoms[0]).map((a) => a.attribute);
+    const live = effectiveAttributes(atomAt(read)).map((a) => a.attribute);
     expect(live).toEqual(['absoluteDurationChange']);
     expect(read.notes.some((note) => note.kind === 'shadowed-lever')).toBe(true);
   });
@@ -163,7 +179,7 @@ describe('the velocity levers compose, unlike the duration levers', () => {
       '<articulation date="0.0" absoluteVelocity="80" relativeVelocity="0.5" absoluteVelocityChange="7"/>';
     // 64 → 80 → 40 → 47.
     expect(performed(map).velocity).toBe(47);
-    expect(effectiveAttributes(atomsOf(map).atoms[0]).map((a) => a.attribute)).toEqual([
+    expect(effectiveAttributes(atomAt(atomsOf(map))).map((a) => a.attribute)).toEqual([
       'absoluteVelocity',
       'relativeVelocity',
       'absoluteVelocityChange',
@@ -191,9 +207,9 @@ describe('def resolution', () => {
       performed(`${STYLE0}<articulation date="0.0" name.ref="stacc" relativeDuration="1.2"/>`)
         .duration,
     ).toBe(60);
-    const atom = atomsOf(
-      `${STYLE0}<articulation date="0.0" name.ref="stacc" relativeDuration="1.2"/>`,
-    ).atoms[0];
+    const atom = atomAt(
+      atomsOf(`${STYLE0}<articulation date="0.0" name.ref="stacc" relativeDuration="1.2"/>`),
+    );
     expect(atom.def).not.toBeNull();
     // Def attributes come first, because that is the order they are applied in.
     expect(atom.attributes.map((a) => `${a.site}:${a.attribute}`)).toEqual([
@@ -213,27 +229,27 @@ describe('def resolution', () => {
     ).toBe(120);
 
     const read = atomsOf('<articulation date="0.0" name.ref="stacc" relativeDuration="1.2"/>');
-    expect(read.atoms[0].def).toBeNull();
-    expect(read.atoms[0].nameRef).toBe('stacc');
+    expect(atomAt(read).def).toBeNull();
+    expect(atomAt(read).nameRef).toBe('stacc');
     expect(read.notes.some((note) => note.kind === 'unresolved-def')).toBe(true);
-    expect(effectiveAttributes(read.atoms[0])).toHaveLength(1);
+    expect(effectiveAttributes(atomAt(read))).toHaveLength(1);
   });
 });
 
 describe('noteid targeting (§5.5/AD-7)', () => {
   it('strips the first character unconditionally and reports the date as unknown', () => {
     const read = atomsOf(`${STYLE0}<articulation date="0.0" noteid="#n7" relativeDuration="0.5"/>`);
-    expect(read.atoms[0].noteid).toBe('n7');
-    expect(read.atoms[0].datePositionKnown).toBe(false);
+    expect(atomAt(read).noteid).toBe('n7');
+    expect(atomAt(read).datePositionKnown).toBe(false);
     expect(read.notes.some((note) => note.kind === 'noteid-targeted')).toBe(true);
   });
 
   it('strips it even when there is no # to strip, which is how "n0" addresses "0"', () => {
-    expect(atomsOf('<articulation date="0.0" noteid="n0"/>').atoms[0].noteid).toBe('0');
+    expect(atomAt(atomsOf('<articulation date="0.0" noteid="n0"/>')).noteid).toBe('0');
   });
 
   it('leaves a date-targeted atom’s position known', () => {
-    const atom = atomsOf('<articulation date="720.0" relativeDuration="0.5"/>').atoms[0];
+    const atom = atomAt(atomsOf('<articulation date="720.0" relativeDuration="0.5"/>'));
     expect(atom.datePositionKnown).toBe(true);
     expect(atom.dateTicks).toBe(720);
   });
@@ -251,14 +267,14 @@ describe('the neutrals are per attribute, not one constant', () => {
   it('treats an authored 1.0 ratio as neutral, and the renderer agrees', () => {
     expect(performed('<articulation date="0.0" relativeDuration="1.0"/>').duration).toBe(100);
     expect(
-      effectiveAttributes(atomsOf('<articulation date="0.0" relativeDuration="1.0"/>').atoms[0]),
+      effectiveAttributes(atomAt(atomsOf('<articulation date="0.0" relativeDuration="1.0"/>'))),
     ).toHaveLength(0);
   });
 
   it('treats relativeVelocity="0" as a SILENCED note, not as an absent attribute', () => {
     expect(performed('<articulation date="0.0" relativeVelocity="0.0"/>').velocity).toBe(0);
     const live = effectiveAttributes(
-      atomsOf('<articulation date="0.0" relativeVelocity="0.0"/>').atoms[0],
+      atomAt(atomsOf('<articulation date="0.0" relativeVelocity="0.0"/>')),
     );
     expect(live.map((a) => a.attribute)).toEqual(['relativeVelocity']);
   });
@@ -355,7 +371,7 @@ describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
 
     const curve = defaultsOf(map);
     expect(curve.firstSwitchTicks).toBe(720);
-    expect(curve.steps[0].startTicks).toBe(0);
+    expect(stepAt(curve, 0).startTicks).toBe(0);
     expect(defaultArticulationAt(curve, 0)).not.toBeNull();
     expect(curve.notes.some((note) => note.kind === 'retroactive')).toBe(true);
   });
@@ -373,8 +389,8 @@ describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
     expect(performedAt(map, DATES)).toEqual([120, 120, 50, 50]);
     const curve = defaultsOf(map);
     expect(curve.steps).toHaveLength(2);
-    expect(curve.steps[0].name).toBe('ten');
-    expect(curve.steps[1].startTicks).toBe(720);
+    expect(stepAt(curve, 0).name).toBe('ten');
+    expect(stepAt(curve, 1).startTicks).toBe(720);
   });
 
   it('CANCELS on a switch with no @defaultArticulation', () => {
@@ -437,6 +453,9 @@ describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
  */
 describe('the composed effective modifier (AD-37.3/AD-37.4)', () => {
   const anchorsFor = (map: string) => anchorsOf(atomsOf(map));
+  /** The anchor at `index`, checked — every map here composes to one or two anchors. */
+  const anchorAt = (anchors: ReturnType<typeof anchorsFor>, index = 0) =>
+    elementAt(anchors, index, 'the anchors these atoms compose to');
   const distanceOf = (a: string, b: string, endQuarters = 8) => {
     const pair = readComparisonPair({
       a: doc(a),
@@ -463,8 +482,8 @@ describe('the composed effective modifier (AD-37.3/AD-37.4)', () => {
         '<articulation date="0.0" relativeDuration="0.25"/>',
     );
     expect(anchors).toHaveLength(1);
-    expect(anchors[0].atomCount).toBe(2);
-    expect(anchors[0].modifier.duration).toEqual({
+    expect(anchorAt(anchors).atomCount).toBe(2);
+    expect(anchorAt(anchors).modifier.duration).toEqual({
       replacement: null,
       factor: 0.125,
       offset: 0,
@@ -526,7 +545,7 @@ describe('the composed effective modifier (AD-37.3/AD-37.4)', () => {
       '<articulation date="0.0" absoluteDurationChange="10"/>' +
       '<articulation date="0.0" relativeDuration="0.5"/>';
     expect(performed(map).duration).toBe(55);
-    expect(anchorsFor(map)[0].modifier.duration).toEqual({
+    expect(anchorAt(anchorsFor(map)).modifier.duration).toEqual({
       replacement: null,
       factor: 0.5,
       offset: 5,
@@ -538,15 +557,15 @@ describe('the composed effective modifier (AD-37.3/AD-37.4)', () => {
       '<articulation date="0.0" relativeDuration="0.5"/>' +
       '<articulation date="0.0" absoluteDuration="600"/>';
     expect(performed(map).duration).toBe(600);
-    expect(anchorsFor(map)[0].modifier.duration.replacement).toBe(600);
-    expect(anchorsFor(map)[0].modifier.duration.factor).toBe(1);
+    expect(anchorAt(anchorsFor(map)).modifier.duration.replacement).toBe(600);
+    expect(anchorAt(anchorsFor(map)).modifier.duration.factor).toBe(1);
   });
 
   it('composes the velocity chain into one affine map', () => {
     const map =
       '<articulation date="0.0" absoluteVelocity="80" relativeVelocity="0.5" absoluteVelocityChange="7"/>';
     expect(performed(map).velocity).toBe(47);
-    expect(anchorsFor(map)[0].modifier.velocity).toEqual({
+    expect(anchorAt(anchorsFor(map)).modifier.velocity).toEqual({
       replacement: 80,
       factor: 0.5,
       offset: 7,
@@ -697,6 +716,9 @@ describe('articulation atom placement (AD-51.2)', () => {
     };
     return articulationDistance(read('a'), read('b'), pair.window, pair.ppq.lcm);
   };
+  /** The decomposition atom at `index`, checked. */
+  const massAt = (result: ReturnType<typeof distanceOf>, index = 0) =>
+    elementAt(result.atoms, index, 'the atoms this distance decomposes into');
 
   it('decomposes the distance without losing or inventing mass', () => {
     const a =
@@ -717,17 +739,17 @@ describe('articulation atom placement (AD-51.2)', () => {
     const result = distanceOf(half, quarter);
     expect(result.matched).toBe(1);
     expect(result.atoms).toHaveLength(1);
-    expect(result.atoms[0].startTicks).toBe(0);
-    expect(result.atoms[0].endTicks).toBe(45);
+    expect(massAt(result).startTicks).toBe(0);
+    expect(massAt(result).endTicks).toBe(45);
   });
 
   it('places an unmatched atom at its own date as a point mass', () => {
     const result = distanceOf('<articulation date="1440.0" relativeDuration="0.5"/>', '');
     expect(result.atoms).toHaveLength(1);
-    expect(result.atoms[0].kind).toBe('unmatched-a');
-    expect(result.atoms[0].startTicks).toBe(1440);
-    expect(result.atoms[0].endTicks).toBe(1440);
-    expect(result.atoms[0].datePositionKnown).toBe(true);
+    expect(massAt(result).kind).toBe('unmatched-a');
+    expect(massAt(result).startTicks).toBe(1440);
+    expect(massAt(result).endTicks).toBe(1440);
+    expect(massAt(result).datePositionKnown).toBe(true);
   });
 
   it('spreads an id-anchored atom over the window and reports the position as unknown', () => {
@@ -736,11 +758,11 @@ describe('articulation atom placement (AD-51.2)', () => {
     const result = distanceOf(a, b, 8);
     expect(result.datePositionKnown).toBe(false);
     expect(result.atoms).toHaveLength(1);
-    expect(result.atoms[0].datePositionKnown).toBe(false);
+    expect(massAt(result).datePositionKnown).toBe(false);
     // Window in quarters × ppq: the atom covers the whole compared interval.
-    expect(result.atoms[0].startTicks).toBe(0);
-    expect(result.atoms[0].endTicks).toBe(8 * 720);
-    expect(result.atoms[0].mass).toBeCloseTo(result.distance, 12);
+    expect(massAt(result).startTicks).toBe(0);
+    expect(massAt(result).endTicks).toBe(8 * 720);
+    expect(massAt(result).mass).toBeCloseTo(result.distance, 12);
   });
 
   it('reports datePositionKnown true when every anchor carries a date', () => {

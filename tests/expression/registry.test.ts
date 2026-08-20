@@ -24,6 +24,7 @@ import {
   siteKindsOf,
 } from '../../src/expression/registry.js';
 import { SCALE_SPACE_FACTOR_DOMAINS } from '../../src/expression/transforms.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 describe('the dimension vocabulary (§3, A9)', () => {
   it('is exactly the fifteen of dimension set v2, with no duplicates', () => {
@@ -68,7 +69,8 @@ describe('site discipline (§7, D-C)', () => {
 describe('§7.1 — the center population is a registry property', () => {
   it('marks exactly the two prevailing levels and the two def values', () => {
     const inPopulation = REGISTRY_ROWS.filter((row) => row.inCenterPopulation).map(
-      (row) => `${row.sites[0].element}@${row.attribute}`,
+      (row) =>
+        `${elementAt(row.sites, 0, `the sites of @${row.attribute}`).element}@${row.attribute}`,
     );
     expect(inPopulation.sort()).toEqual([
       'dynamics@volume',

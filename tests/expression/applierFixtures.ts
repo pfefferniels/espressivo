@@ -25,6 +25,7 @@ import type {
 import type { Element } from '../../src/xml/XomTypes.js';
 import { attribute } from '../../src/xml/tree.js';
 import { MPM_NAMESPACE } from '../../src/mpm/names.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 /** A one-performance document from a `<header>` body and a `<dated>` body. */
 export function globalDocument(header: string, dated: string, name = 'P'): string {
@@ -38,7 +39,18 @@ export function globalDocument(header: string, dated: string, name = 'P'): strin
 export interface Run {
   readonly root: Element;
   readonly report: ExaggerationReport;
-  /** The first (usually only) performance sub-report. */
+  /**
+   * The first (usually only) performance sub-report.
+   *
+   * A GETTER, and the indirection is the point: a run whose `performance` selector matched
+   * nothing has no sub-report at all, and `applierLevels.test.ts` asserts exactly that. Read
+   * eagerly as `report.performances[0]` this field was typed `PerformanceReport` and held
+   * `undefined` on that path — a lie the type system could not see while
+   * `noUncheckedIndexedAccess` was off, and one that would have surfaced as "cannot read
+   * properties of undefined" in whichever test first dereferenced it. Deferring the checked
+   * read to the point of USE keeps the convenient type for the ~15 files that always have a
+   * performance, and fails with a sentence in the one that does not.
+   */
   readonly performance: PerformanceReport;
   readonly xml: string;
 }
@@ -51,7 +63,14 @@ export function exaggerate(
 ): Run {
   const root = parseMpmRoot(text);
   const report = applyExaggeration(root, factors, options);
-  return { root, report, performance: report.performances[0], xml: serializeMpmRoot(root) };
+  return {
+    root,
+    report,
+    get performance() {
+      return elementAt(report.performances, 0, 'the report’s performances');
+    },
+    xml: serializeMpmRoot(root),
+  };
 }
 
 /** The first element carrying `id="…"`, anywhere under `root`. */
@@ -90,6 +109,20 @@ export function notesOfKind(
   return performance.notes
     .filter((note) => note.kind === kind)
     .map((note) => ({ detail: note.detail, attribute: note.site?.attribute ?? null }));
+}
+
+/**
+ * The FIRST note of one kind — a checked {@link notesOfKind}`[0]`.
+ *
+ * Written `notesOfKind(performance, 'x')[0].attribute`, a run that emitted no such note failed
+ * as "cannot read properties of undefined" rather than as "the applier emitted no x note",
+ * which is exactly the claim those tests are making.
+ */
+export function firstNoteOfKind(
+  performance: PerformanceReport,
+  kind: ReportNoteKind,
+): { readonly detail: string; readonly attribute: string | null } {
+  return elementAt(notesOfKind(performance, kind), 0, `the run’s ${kind} notes`);
 }
 
 /** The note kinds a run emitted, minus the fourteen identity notes every partial run carries. */
