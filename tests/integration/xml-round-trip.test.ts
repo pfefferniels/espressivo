@@ -19,6 +19,28 @@ import { Builder } from '../../src/xml/XomTypes.js';
  *      form, so it is invisible against the fixtures that matter and shows up only against
  *      the hand-written MEI inputs. It is a normalisation, not a divergence from meico.
  *
+ * **Measured, and the conclusion is that it should stay.** The corpus splits perfectly: all
+ * 295 empty elements across the 16 hand-written MEI inputs are `<x/>`, and all 1435 across the
+ * 72 Java-generated reference documents are `<x />`. Nothing writes both, so the normaliser is
+ * absorbing an ambiguity rather than laundering a one-sided defect — which is the test that
+ * separates a legitimate normaliser from the three this suite has already deleted.
+ *
+ * The experiment: give `Element` a flag set by `Element.wrap`, so that an element that came out
+ * of the parser serializes `<x/>` and a constructed one keeps `<x />`. `npm run gate` stays
+ * green and every integration equivalence suite stays green — no MEI element's spacing leaks
+ * into a Java-compared output. But 12 unit tests across 5 files go red on hard-coded ` />` in
+ * expected strings, and with `normalizeSelfClosing` removed the loss simply changes sides:
+ * **32 reference documents fail where 16 MEI fixtures failed before.** The DOM records no
+ * per-element memory of how the source spelled the tag, so no flag derived from it can be
+ * right for both corpora; only re-scanning the source text against a position locator could
+ * be, and that is a lot of machinery for a space.
+ *
+ * And the direction of travel is wrong. XOM's own element model has no such memory either, so
+ * Java's `Mei.writeMei()` on these same inputs emits ` />` too — the normalisation is meico's,
+ * faithfully reproduced. (Inferred, not run: the corpus contains no Java-produced MEI to check
+ * it against, only MSM and MPM.) Closing this would make `serialize ∘ parse = id` exact and
+ * make the port *less* like the thing it is a port of. Left alone deliberately.
+ *
  * Three more used to be here and are now **fixed**.
  *
  * The trailing newline was dropped: `Document.toXML` wrote the declaration, a newline and the
