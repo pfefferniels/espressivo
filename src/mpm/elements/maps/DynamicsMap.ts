@@ -290,5 +290,3 @@ export class DynamicsMap extends GenericMap {
     return null;
   }
 }
-
-GenericMap.registerMapFactory('dynamicsMap', (xml) => DynamicsMap.createDynamicsMap(xml));

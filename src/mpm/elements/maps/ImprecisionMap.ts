@@ -278,8 +278,23 @@ export class ImprecisionMap extends GenericMap {
   private static readonly TONEDURATION = 3;
   private static readonly TUNING = 4;
 
+  /**
+   * The one place in the map cluster where a subclass adds to construction, and it now does
+   * so here rather than by overriding `parseData`.
+   *
+   * `GenericMap`'s constructor used to end in `this.parseData(xml)`, which dispatched into
+   * the override below this line; the check therefore ran from inside the base constructor,
+   * before this class had finished being constructed. Running it after `super(…)` returns is
+   * the same check on the same value in the same order — `super` still throws first for a
+   * name that is not a map at all — with no virtual call from a constructor.
+   */
   private constructor(typeOrXml: string | Element) {
     super(typeOrXml);
+    const localName = this.getXml().getLocalName();
+    if (!localName.includes('imprecisionMap'))
+      throw new Error(
+        `Cannot generate ImprecisionMap object. Local name "${localName}" must contain "imprecisionMap".`,
+      );
   }
 
   static createImprecisionMap(domain: string): ImprecisionMap | null;
@@ -295,15 +310,6 @@ export class ImprecisionMap extends GenericMap {
       console.error(e);
       return null;
     }
-  }
-
-  protected override parseData(xml: Element): void {
-    super.parseData(xml);
-    const localname = this.getXml().getLocalName();
-    if (!localname.includes('imprecisionMap'))
-      throw new Error(
-        `Cannot generate ImprecisionMap object. Local name "${xml.getLocalName()}" must contain "imprecisionMap".`,
-      );
   }
 
   /**
@@ -800,17 +806,3 @@ export class ImprecisionMap extends GenericMap {
       imprecisionMap.renderImprecisionToMap(map, shakePolyphonicPart, ctx);
   }
 }
-
-GenericMap.registerMapFactory('imprecisionMap', (xml) => ImprecisionMap.createImprecisionMap(xml));
-GenericMap.registerMapFactory('imprecisionMap.timing', (xml) =>
-  ImprecisionMap.createImprecisionMap(xml),
-);
-GenericMap.registerMapFactory('imprecisionMap.dynamics', (xml) =>
-  ImprecisionMap.createImprecisionMap(xml),
-);
-GenericMap.registerMapFactory('imprecisionMap.toneduration', (xml) =>
-  ImprecisionMap.createImprecisionMap(xml),
-);
-GenericMap.registerMapFactory('imprecisionMap.tuning', (xml) =>
-  ImprecisionMap.createImprecisionMap(xml),
-);

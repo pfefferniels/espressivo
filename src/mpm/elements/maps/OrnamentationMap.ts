@@ -737,7 +737,3 @@ export class OrnamentationMap extends GenericMap {
     }
   }
 }
-
-GenericMap.registerMapFactory('ornamentationMap', (xml) =>
-  OrnamentationMap.createOrnamentationMap(xml),
-);

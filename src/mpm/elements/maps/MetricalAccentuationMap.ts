@@ -176,7 +176,3 @@ export class MetricalAccentuationMap extends GenericMap {
       metricalAccentuationMap.renderMetricalAccentuationToMap(map, timeSignatureMap, ppq);
   }
 }
-
-GenericMap.registerMapFactory('metricalAccentuationMap', (xml) =>
-  MetricalAccentuationMap.createMetricalAccentuationMap(xml),
-);

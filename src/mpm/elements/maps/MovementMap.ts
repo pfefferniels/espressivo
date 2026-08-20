@@ -211,5 +211,3 @@ export class MovementMap extends GenericMap {
     }
   }
 }
-
-GenericMap.registerMapFactory('movementMap', (xml) => MovementMap.createMovementMap(xml));

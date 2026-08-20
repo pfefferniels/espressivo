@@ -408,5 +408,3 @@ export class TempoMap extends GenericMap {
     return resultConst * resultSum;
   }
 }
-
-GenericMap.registerMapFactory('tempoMap', (xml) => TempoMap.createTempoMap(xml));

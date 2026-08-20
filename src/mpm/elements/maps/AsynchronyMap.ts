@@ -126,5 +126,3 @@ export class AsynchronyMap extends GenericMap {
     if (asynchronyMap !== null) asynchronyMap.renderAsynchronyToMap(map);
   }
 }
-
-GenericMap.registerMapFactory('asynchronyMap', (xml) => AsynchronyMap.createAsynchronyMap(xml));

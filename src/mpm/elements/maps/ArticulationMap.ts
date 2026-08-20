@@ -346,7 +346,3 @@ export class ArticulationMap extends GenericMap {
     if (articulationMap !== null) articulationMap.renderArticulationToMap_millisecondModifiers(map);
   }
 }
-
-GenericMap.registerMapFactory('articulationMap', (xml) =>
-  ArticulationMap.createArticulationMap(xml),
-);

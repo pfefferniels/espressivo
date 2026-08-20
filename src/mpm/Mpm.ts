@@ -3,9 +3,13 @@ import { AbstractMsm } from '../msm/AbstractMsm.js';
 import * as names from './names.js';
 import { Performance } from './elements/Performance.js';
 import { Metadata } from './elements/metadata/Metadata.js';
-// Side-effect import: registers the typed-map factories for Dated.addMapFromXml. See the
-// barrel's own comment for why an import is the registration mechanism (RULE M4).
-import './elements/maps/index.js';
+// There was a tenth import here — `import './elements/maps/index.js'`, a bare side-effect
+// import of a barrel whose only job was to evaluate the nine map modules so that their
+// `GenericMap.registerMapFactory(...)` statements would run. It is gone, along with the
+// barrel and the registry: `Dated` now reaches the map classes through the ordinary value
+// imports of `elements/maps/map.ts`'s dispatch table, so the module graph carries the
+// dependency instead of module evaluation order. That is what let `package.json` drop its
+// `sideEffects` list — see `maps/map.ts` for the measurement that made the hazard concrete.
 import type { Author } from './elements/metadata/Author.js';
 import type { Comment } from './elements/metadata/Comment.js';
 import type { RelatedResource } from './elements/metadata/RelatedResource.js';

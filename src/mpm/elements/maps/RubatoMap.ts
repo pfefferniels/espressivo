@@ -242,5 +242,3 @@ export class RubatoMap extends GenericMap {
     if (rubatoMap !== null) rubatoMap.renderRubatoToMap(map);
   }
 }
-
-GenericMap.registerMapFactory('rubatoMap', (xml) => RubatoMap.createRubatoMap(xml));

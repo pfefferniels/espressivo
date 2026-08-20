@@ -30,10 +30,6 @@
     },
     "./package.json": "./package.json"
   },
-  "sideEffects": [
-    "./dist/mpm/Mpm.js",
-    "./dist/mpm/elements/maps/*.js"
-  ],
   "engines": {
     "node": ">=18.18.0"
   },
