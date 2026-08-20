@@ -792,12 +792,22 @@ export class Msm extends AbstractMsm {
    * including) the goto's date, then jumps: `dateOffset` grows by the distance skipped
    * and `currentDate` moves to the goto's target.
    *
-   * `i = -1` at the end of the outer loop is not a bug — it restarts the goto search from
-   * the beginning, because a jump can land *before* gotos that were already passed, and
-   * those must be reconsidered. The loop still terminates: a goto is only ever taken by
+   * The `continue gotoSearch` at the end of a taken jump restarts the goto search from the
+   * beginning, because a jump can land *before* gotos that were already passed, and those
+   * must be reconsidered. The loop still terminates: a goto is only ever taken by
    * consuming a `1` from its {@link Goto.activity} string, and every test of a goto
    * advances that string's cursor, so the total number of jumps is bounded by the total
-   * number of `1`s in the sequencingMap.
+   * number of `1`s in the sequencingMap. Falling out of the inner `for` instead — a full
+   * pass over `gotos` with none of them applying — is what ends the search.
+   *
+   * That restart used to be written `for (let i = 0; i < gotos.length; ++i) { … i = -1; }`,
+   * assigning to the loop variable to make `++i` land back on 0. The shape is identical;
+   * what the label buys is that the goto in hand comes from iterating `gotos` rather than
+   * from `gotos[i]`, which under `--noUncheckedIndexedAccess` is a `Goto | undefined` that
+   * no bound check can talk the compiler out of. Nothing is reordered: the inner `for`
+   * visits the gotos in list order from index 0, exactly as `i = -1; ++i` did, and the
+   * `isActive()` calls — which mutate, one pass consumed per call — fall in the same
+   * places in the same order.
    *
    * The second, near-identical loop after it copies the tail — everything from the last
    * jump to the end of the map — with no goto to stop at. It differs from the first in
@@ -846,56 +856,59 @@ export class Msm extends AbstractMsm {
 
     let currentDate = 0.0; // start at date 0.0
     let dateOffset = 0.0; // this sums up the offsets that come from inserting repetitions
-    for (let i = 0; i < gotos.length; ++i) {
+    gotoSearch: for (;;) {
       // find the next goto
-      const gt = gotos[i]; // get the next goto
-      if (gt.date < currentDate || !gt.isActive()) continue; // if the goto is before currentDate or it is not active continue with the next
+      for (const gt of gotos) {
+        // get the next goto
+        if (gt.date < currentDate || !gt.isActive()) continue; // if the goto is before currentDate or it is not active continue with the next
 
-      // copy everything between currentDate and gt.date from the original map into newMap
-      for (
-        let e = Msm.getElementAtAfter(currentDate, map);
-        e !== null;
-        e = getNextSiblingElement(e)
-      ) {
-        // go through the map elements
-        currentDate = parseFloat(e.getAttributeValue('date')!); // read its date
-        if (currentDate >= gt.date) break; // if the element's date is at or after the goto don't copy further
-        const eCopy = e.copy(); // make a deep copy of the element
-        eCopy.getAttribute('date')!.setValue(String(currentDate + dateOffset)); // draw its date
+        // copy everything between currentDate and gt.date from the original map into newMap
+        for (
+          let e = Msm.getElementAtAfter(currentDate, map);
+          e !== null;
+          e = getNextSiblingElement(e)
+        ) {
+          // go through the map elements
+          currentDate = parseFloat(e.getAttributeValue('date')!); // read its date
+          if (currentDate >= gt.date) break; // if the element's date is at or after the goto don't copy further
+          const eCopy = e.copy(); // make a deep copy of the element
+          eCopy.getAttribute('date')!.setValue(String(currentDate + dateOffset)); // draw its date
 
-        const endDate = e.getAttribute('date.end'); // get the date.end attribute
-        if (endDate !== null) {
-          // if the element has one, update it, too
-          const dur = parseFloat(endDate.getValue()) - parseFloat(e.getAttributeValue('date')!);
-          eCopy.getAttribute('date.end')!.setValue(String(currentDate + dur + dateOffset));
-        }
-
-        const repetitionCounter = e.getAttribute('repetitionCounter'); // get the counter
-        if (repetitionCounter !== null) {
-          // this is not the first time we process this element
-          const reps = 1 + parseInt(e.getAttributeValue('repetitionCounter')!); // increase repetition counter
-          e.getAttribute('repetitionCounter')!.setValue(String(reps)); // write it to the attribute
-          const id = eCopy.getAttribute('id', 'http://www.w3.org/XML/1998/namespace'); // get the id of eCopy
-          if (id !== null) {
-            // if it has an xml:id
-            let prevId = id.getValue(); // get the base ID
-            const newId = `meico_repetition_${reps}_${prevId}`; // generate a new ID
-            id.setValue(newId); // set the attribute
-
-            // the key of the map entry should be the ID of the previous iteration, not the base ID
-            for (let r = reps - 1; r > 0; --r) prevId = repetitionIDs.get(prevId)!;
-            repetitionIDs.set(prevId, newId);
+          const endDate = e.getAttribute('date.end'); // get the date.end attribute
+          if (endDate !== null) {
+            // if the element has one, update it, too
+            const dur = parseFloat(endDate.getValue()) - parseFloat(e.getAttributeValue('date')!);
+            eCopy.getAttribute('date.end')!.setValue(String(currentDate + dur + dateOffset));
           }
-        } else {
-          // this is the first time we process this element
-          e.addAttribute(new Attribute('repetitionCounter', '0')); // add an attribute to count the repetitions
-        }
-        newMap.appendChild(eCopy); // append the copy to the new map
-      }
 
-      dateOffset += gt.date - gt.targetDate; // draw the dateOffset
-      currentDate = gt.targetDate; // draw currentDate
-      i = -1; // start searching for the next goto
+          const repetitionCounter = e.getAttribute('repetitionCounter'); // get the counter
+          if (repetitionCounter !== null) {
+            // this is not the first time we process this element
+            const reps = 1 + parseInt(e.getAttributeValue('repetitionCounter')!); // increase repetition counter
+            e.getAttribute('repetitionCounter')!.setValue(String(reps)); // write it to the attribute
+            const id = eCopy.getAttribute('id', 'http://www.w3.org/XML/1998/namespace'); // get the id of eCopy
+            if (id !== null) {
+              // if it has an xml:id
+              let prevId = id.getValue(); // get the base ID
+              const newId = `meico_repetition_${reps}_${prevId}`; // generate a new ID
+              id.setValue(newId); // set the attribute
+
+              // the key of the map entry should be the ID of the previous iteration, not the base ID
+              for (let r = reps - 1; r > 0; --r) prevId = repetitionIDs.get(prevId)!;
+              repetitionIDs.set(prevId, newId);
+            }
+          } else {
+            // this is the first time we process this element
+            e.addAttribute(new Attribute('repetitionCounter', '0')); // add an attribute to count the repetitions
+          }
+          newMap.appendChild(eCopy); // append the copy to the new map
+        }
+
+        dateOffset += gt.date - gt.targetDate; // draw the dateOffset
+        currentDate = gt.targetDate; // draw currentDate
+        continue gotoSearch; // start searching for the next goto
+      }
+      break; // no goto applied on a full pass, so playback is past the last one
     }
 
     // last goto has been processed, now do the rest until the end marker

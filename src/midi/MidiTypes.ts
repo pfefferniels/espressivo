@@ -26,7 +26,7 @@
  * specification, and `EventMaker` re-declares the same numbers under its own names.
  */
 
-import { matchKind } from '../prelude/index.js';
+import { foldl, insertionIndexBy, matchKind } from '../prelude/index.js';
 
 // ============================================================
 // Variable-length quantities
@@ -50,17 +50,19 @@ import { matchKind } from '../prelude/index.js';
 export function writeVariableLength(bytes: number[], value: number): void {
   let rest = value < 0 ? 0 : value;
 
-  // Build the variable-length bytes in reverse, then emit them MSB first.
-  const vlqBytes: number[] = [];
-  vlqBytes.push(rest & 0x7f);
+  // Build the variable-length bytes in reverse, then emit them MSB first. The reversal
+  // *is* the encoding rather than a tidy-up: `rest >>= 7` peels the groups off from the
+  // least significant end, and the format wants them in the other order. `reverse` is
+  // in-place, which is safe only because `vlqBytes` never leaves this call — the appended
+  // groups are copied into the caller's `bytes`, which is the array it wanted written.
+  const vlqBytes: number[] = [rest & 0x7f];
   rest >>= 7;
   while (rest > 0) {
     vlqBytes.push((rest & 0x7f) | 0x80);
     rest >>= 7;
   }
-  for (let i = vlqBytes.length - 1; i >= 0; i--) {
-    bytes.push(vlqBytes[i]);
-  }
+  vlqBytes.reverse();
+  bytes.push(...vlqBytes);
 }
 
 /** {@link writeVariableLength} into a fresh array. */
@@ -348,12 +350,16 @@ export function messageBytes(message: MidiMessage): Uint8Array {
  * 0 for a sysex message with no bytes at all, where the JDK would throw — that is the
  * old `MidiMessage.getStatus()`'s empty-message case, and it is now unreachable for
  * the other two arms because they always have one.
+ *
+ * The empty case is spelled `.at(0) ?? 0` rather than as a `length > 0` guard because
+ * `.at` reports the absence in the type: a bounds test the compiler has to be argued
+ * into trusting is exactly the shape `noUncheckedIndexedAccess` exists to reject.
  */
 export function messageStatus(message: MidiMessage): number {
   return matchKind(message, {
     short: (m) => m.status,
     meta: () => MetaMessage.META,
-    sysex: (m) => (m.bytes.length > 0 ? m.bytes[0] & 0xff : 0),
+    sysex: (m) => (m.bytes.at(0) ?? 0) & 0xff,
   });
 }
 
@@ -498,6 +504,13 @@ export class Track {
    * a track that has ever seen one falls back to the old push-and-sort for the rest of its
    * life and reproduces whatever `sort` did with it, bug for bug.
    *
+   * The search itself is now {@link insertionIndexBy}, which `src/prelude/seq.ts`
+   * introduced *as* this computation — it is `std::upper_bound` under a name, and the six
+   * lines it replaces were the same function written out. The two differ only in how they
+   * pick the midpoint (`Math.floor((hi - lo) / 2)` against `(lo + hi) >>> 1`), and a
+   * binary search converges on the same upper bound whatever midpoint it probes, so the
+   * insertion position — and therefore the exported event order — is unchanged.
+   *
    * @return always true (the JDK returns false if the event was already present)
    */
   add(event: MidiEvent): boolean {
@@ -511,21 +524,17 @@ export class Track {
     }
 
     const events = this.events;
-    // Fast path for the overwhelmingly common append-in-order case.
-    if (events.length === 0 || events[events.length - 1].getTick() <= tick) {
+    // Fast path for the overwhelmingly common append-in-order case. `at(-1)` on an empty
+    // track is `undefined`, which is the `length === 0` half of the old test — one read
+    // rather than a length check the compiler cannot connect to the read that follows it.
+    const lastEvent = events.at(-1);
+    if (lastEvent === undefined || lastEvent.getTick() <= tick) {
       events.push(event);
       return true;
     }
 
-    // Upper bound: the first index whose tick is strictly greater than `tick`.
-    let lo = 0;
-    let hi = events.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      if (events[mid].getTick() <= tick) lo = mid + 1;
-      else hi = mid;
-    }
-    events.splice(lo, 0, event);
+    // The first index whose tick is strictly greater than `tick`.
+    events.splice(insertionIndexBy(events, tickOf, tick), 0, event);
     return true;
   }
 
@@ -539,20 +548,55 @@ export class Track {
     return false;
   }
 
-  /** Unchecked: an out-of-range index yields `undefined`, where the JDK throws. */
+  /**
+   * The event at `index`.
+   *
+   * **This used to hand back `undefined` under a `MidiEvent` type**, with a comment
+   * saying so; it now throws a `RangeError` the way `javax.sound.midi.Track.get` throws
+   * `ArrayIndexOutOfBoundsException`, so the port and the reference agree. The old
+   * spelling was the exact defect `noUncheckedIndexedAccess` exists to catch: a lie in
+   * the signature that surfaces as "cannot read properties of undefined" somewhere else
+   * entirely, in a file that no longer names the track it came from.
+   *
+   * No caller in `src/` can reach the throw — every index here is derived from
+   * {@link size} — and callers that only want the events in order should not be
+   * computing an index at all: a `Track` is iterable, so `for (const event of track)`
+   * is the spelling to prefer.
+   */
   get(index: number): MidiEvent {
-    return this.events[index];
+    return this.events[index] ?? outOfRange(index, this.events.length);
   }
 
   size(): number {
     return this.events.length;
   }
 
+  /**
+   * The events in tick order, so a caller that just wants to walk the track needs no
+   * index at all. The iteration is over the live array, which is safe for every caller
+   * in this tree because they read events and rewrite the *message* an event holds
+   * ({@link MidiEvent.setMessage}) rather than adding or removing events; a caller that
+   * needs to mutate the track while walking it must take a copy first.
+   */
+  [Symbol.iterator](): IterableIterator<MidiEvent> {
+    return this.events[Symbol.iterator]();
+  }
+
   /** The last event's tick, which is the largest one because `add` keeps this sorted. */
   ticks(): number {
-    if (this.events.length === 0) return 0;
-    return this.events[this.events.length - 1].getTick();
+    return this.events.at(-1)?.getTick() ?? 0;
   }
+}
+
+/** {@link Track.add}'s sort key, hoisted so the insertion search allocates no closure. */
+function tickOf(event: MidiEvent): number {
+  return event.getTick();
+}
+
+function outOfRange(index: number, length: number): never {
+  throw new RangeError(
+    `midi: event index ${String(index)} is outside a track of ${String(length)} events`,
+  );
 }
 
 // ============================================================
@@ -648,13 +692,18 @@ export class Sequence {
     // Collect all tempo events across all tracks
     const tempoEvents: { tick: number; mpq: number }[] = [];
     for (const track of this.tracks) {
-      for (let i = 0; i < track.size(); i++) {
-        const event = track.get(i);
+      for (const event of track) {
         const msg = event.getMessage();
         if (msg.kind === 'meta' && msg.type === 0x51) {
           const data = msg.payload;
           if (data.length >= 3) {
-            const mpq = (data[0] << 16) | (data[1] << 8) | data[2];
+            // The set-tempo payload is a 24-bit big-endian microseconds-per-quarter,
+            // i.e. `(d0 << 16) | (d1 << 8) | d2` — which is that fold, over the three
+            // bytes the guard above has just established are there. Folding the view
+            // rather than indexing it keeps the length test and the reads in one place;
+            // written out, the guard and the three subscripts are three separate claims
+            // the compiler has to be argued into.
+            const mpq = foldl(data.subarray(0, 3), 0, (acc, byte) => (acc << 8) | byte);
             tempoEvents.push({ tick: event.getTick(), mpq });
           }
         }

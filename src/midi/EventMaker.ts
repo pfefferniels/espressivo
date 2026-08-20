@@ -609,6 +609,12 @@ export function createTimeSignature(
  * its low three bytes are written, which is the format's 24-bit field —
  * `intToByteArray` produces four and bytes 1..3 are the ones taken.
  *
+ * "Bytes 1..3" is `subarray(1)` rather than `[tempo[1], tempo[2], tempo[3]]`: the
+ * slice says *drop the high byte* in one move, where three subscripts say it three
+ * times and leave the reader counting. It is also the cheaper spelling —
+ * {@link metaMessage} copies its payload, so the view never outlives this call and
+ * the intermediate four-element literal disappears.
+ *
  * @param bpm beats per minute, where a "beat" is `beatlength` long
  * @param beatlength length of one beat in floating point format (e.g. quarter=0.25, whole=1; eight=0.125)
  */
@@ -617,10 +623,7 @@ export function createTempo(date: number, bpm: number, beatlength: number): Midi
   const tempo = intToByteArray(mpq, false); // generate byte array (little endian) from mpq
 
   try {
-    return new MidiEvent(
-      metaMessage(META_Set_Tempo, new Uint8Array([tempo[1], tempo[2], tempo[3]])),
-      date,
-    ); // create the event; only the 2nd, 3rd and 4th byte of the tempo byte array are needed
+    return new MidiEvent(metaMessage(META_Set_Tempo, tempo.subarray(1)), date); // create the event; only the 2nd, 3rd and 4th byte of the tempo byte array are needed
   } catch (e) {
     console.error(e);
     return null;

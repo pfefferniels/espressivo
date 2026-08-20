@@ -364,18 +364,25 @@ export class InstrumentsDictionary {
    * canonical General MIDI spelling, which is also the fallback if the dictionary
    * cannot be built.
    *
+   * A program change number outside 0..127 has no General MIDI name, and both GM reads
+   * below answer `''` for it — the same answer the dictionary scan already gave, and the
+   * one this method's `@return` promises. They used to answer `undefined` under a `string`
+   * return type, so `getInstrumentName(200, true)` handed a caller the word "undefined"
+   * the moment it reached a template literal.
+   *
    * @param useGmDefaultNames if false the names are taken from the instruments dictionary
    * @return the instrument's name or an empty string if not found in the dictionary
    */
   static getInstrumentName(programChangeNumber: number, useGmDefaultNames = false): string {
-    if (useGmDefaultNames) return InstrumentsDictionary.DefaultNames[programChangeNumber];
+    const gmName = InstrumentsDictionary.DefaultNames[programChangeNumber] ?? '';
+    if (useGmDefaultNames) return gmName;
 
     let dict: InstrumentsDictionary;
     try {
       dict = new InstrumentsDictionary();
     } catch (e) {
       console.error(e);
-      return InstrumentsDictionary.DefaultNames[programChangeNumber];
+      return gmName;
     }
 
     for (const [key, value] of dict.dict.entries()) {
@@ -396,25 +403,31 @@ export class InstrumentsDictionary {
    * definition is unambiguous enough that the hand-written version and Java's library
    * cannot disagree, which matters because `normalizedLevenshteinDistance` — the
    * default and only pipeline-reachable metric — is built on it.
+   *
+   * The table is a {@link DistanceTable}; see that comment for why this recurrence stays a
+   * matrix traversal rather than becoming one of the `prelude` algorithms. The three-way
+   * minimum below is kept as the original's two `if`s rather than folded into a
+   * `Math.min`, because the ordering of the comparisons is what decides ties and this
+   * metric is the one every instrument name in every fixture is resolved through.
    */
   private static levenshteinDistance(str1: string, str2: string): number {
-    const matrix: number[][] = [];
+    const matrix = new DistanceTable(str1.length + 1, str2.length + 1);
     for (let i = 0; i <= str1.length; i++) {
-      matrix[i] = [i];
+      matrix.set(i, 0, i);
     }
     for (let j = 0; j <= str2.length; j++) {
-      matrix[0][j] = j;
+      matrix.set(0, j, j);
     }
     for (let a = 1; a <= str1.length; a++) {
       for (let b = 1; b <= str2.length; b++) {
         const right = str1.charAt(a - 1) !== str2.charAt(b - 1) ? 1 : 0;
-        let mini = matrix[a - 1][b] + 1;
-        if (matrix[a][b - 1] + 1 < mini) mini = matrix[a][b - 1] + 1;
-        if (matrix[a - 1][b - 1] + right < mini) mini = matrix[a - 1][b - 1] + right;
-        matrix[a][b] = mini;
+        let mini = matrix.at(a - 1, b) + 1;
+        if (matrix.at(a, b - 1) + 1 < mini) mini = matrix.at(a, b - 1) + 1;
+        if (matrix.at(a - 1, b - 1) + right < mini) mini = matrix.at(a - 1, b - 1) + right;
+        matrix.set(a, b, mini);
       }
     }
-    return matrix[str1.length][str2.length];
+    return matrix.at(str1.length, str2.length);
   }
 
   /**
@@ -436,23 +449,22 @@ export class InstrumentsDictionary {
   private static damerauLevenshteinDistance(str1: string, str2: string): number {
     const len1 = str1.length;
     const len2 = str2.length;
-    const d: number[][] = [];
-    for (let i = 0; i <= len1; i++) {
-      d[i] = [];
-      for (let j = 0; j <= len2; j++) {
-        d[i][j] = 0;
-      }
-    }
-    for (let i = 0; i <= len1; i++) d[i][0] = i;
-    for (let j = 0; j <= len2; j++) d[0][j] = j;
+    // The explicit zero-filling double loop is gone: a `DistanceTable` starts zeroed.
+    const d = new DistanceTable(len1 + 1, len2 + 1);
+    for (let i = 0; i <= len1; i++) d.set(i, 0, i);
+    for (let j = 0; j <= len2; j++) d.set(0, j, j);
 
     for (let i = 1; i <= len1; i++) {
       for (let j = 1; j <= len2; j++) {
         const cost = str1.charAt(i - 1) === str2.charAt(j - 1) ? 0 : 1;
-        d[i][j] = Math.min(
-          d[i - 1][j] + 1, // deletion
-          d[i][j - 1] + 1, // insertion
-          d[i - 1][j - 1] + cost, // substitution
+        d.set(
+          i,
+          j,
+          Math.min(
+            d.at(i - 1, j) + 1, // deletion
+            d.at(i, j - 1) + 1, // insertion
+            d.at(i - 1, j - 1) + cost, // substitution
+          ),
         );
         if (
           i > 1 &&
@@ -460,11 +472,11 @@ export class InstrumentsDictionary {
           str1.charAt(i - 1) === str2.charAt(j - 2) &&
           str1.charAt(i - 2) === str2.charAt(j - 1)
         ) {
-          d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + cost); // transposition
+          d.set(i, j, Math.min(d.at(i, j), d.at(i - 2, j - 2) + cost)); // transposition
         }
       }
     }
-    return d[len1][len2];
+    return d.at(len1, len2);
   }
 
   /**
@@ -521,26 +533,7 @@ export class InstrumentsDictionary {
    * Compute the Longest Common Subsequence distance of two strings.
    */
   private static lcsDistance(s1: string, s2: string): number {
-    const len1 = s1.length;
-    const len2 = s2.length;
-    const dp: number[][] = [];
-    for (let i = 0; i <= len1; i++) {
-      dp[i] = [];
-      for (let j = 0; j <= len2; j++) {
-        dp[i][j] = 0;
-      }
-    }
-    for (let i = 1; i <= len1; i++) {
-      for (let j = 1; j <= len2; j++) {
-        if (s1.charAt(i - 1) === s2.charAt(j - 1)) {
-          dp[i][j] = dp[i - 1][j - 1] + 1;
-        } else {
-          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-        }
-      }
-    }
-    const lcsLen = dp[len1][len2];
-    return len1 + len2 - 2 * lcsLen;
+    return s1.length + s2.length - 2 * lcsLength(s1, s2);
   }
 
   /**
@@ -550,26 +543,7 @@ export class InstrumentsDictionary {
     const maxLen = Math.max(s1.length, s2.length);
     if (maxLen === 0) return 0;
     // The Metric LCS = 1 - LCS(s1, s2) / max(|s1|, |s2|)
-    const len1 = s1.length;
-    const len2 = s2.length;
-    const dp: number[][] = [];
-    for (let i = 0; i <= len1; i++) {
-      dp[i] = [];
-      for (let j = 0; j <= len2; j++) {
-        dp[i][j] = 0;
-      }
-    }
-    for (let i = 1; i <= len1; i++) {
-      for (let j = 1; j <= len2; j++) {
-        if (s1.charAt(i - 1) === s2.charAt(j - 1)) {
-          dp[i][j] = dp[i - 1][j - 1] + 1;
-        } else {
-          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-        }
-      }
-    }
-    const lcsLen = dp[len1][len2];
-    return 1 - lcsLen / maxLen;
+    return 1 - lcsLength(s1, s2) / maxLen;
   }
 
   /**
@@ -1951,4 +1925,100 @@ Flintenschuß
 Gewehr
 Flinte
 Kanone`;
+}
+
+/**
+ * The dynamic-programming table the four matrix metrics above share.
+ *
+ * ## Why a table rather than an algorithm
+ *
+ * Most indexed loops in this tree are an algorithm wearing a `for`, and `src/prelude/seq.ts`
+ * names them. These four are not. `d(i, j)` for edit distance depends on `d(i-1, j)`,
+ * `d(i, j-1)` and `d(i-1, j-1)` — and, for Damerau, on `d(i-2, j-2)` two rows back — so the
+ * index arithmetic *is* the recurrence, and every functional spelling of it (a `foldl` over
+ * rows carrying a `scanl` over columns) ends up indexing the previous row anyway, with the
+ * recurrence spread across two lambdas. Sean Parent's admission criterion — using an
+ * algorithm must not make the call site worse — rules that out.
+ *
+ * What is left is genuine random access, which `noUncheckedIndexedAccess` types
+ * `number | undefined` at every one of the thirty-odd reads. There are three answers to
+ * that: a guard per site, which `@typescript-eslint/no-unnecessary-condition` deletes as
+ * unreachable for as long as the flag is off in `tsconfig.json`; a non-null assertion per
+ * site, which is the thing this campaign exists to remove; or one checked reader, used
+ * everywhere, that says what a miss would mean. This is the third.
+ *
+ * ## Why it throws
+ *
+ * Every index here is the caller's own loop counter, bounded by the string lengths the
+ * table was sized from. A miss is therefore a defect in this file's arithmetic and never a
+ * property of the instrument name being matched, so there is no value that would be the
+ * right answer to substitute: a silently defaulted `0` becomes a distance of zero, and a
+ * distance of zero is `getProgramChange`'s "perfect match, return immediately". A
+ * `RangeError` naming the cell and the shape is the honest alternative, and it is
+ * unreachable — no test can provoke it without a bug in one of the four recurrences.
+ *
+ * ## Why it is flat
+ *
+ * A `number[][]` is one boxed row array per character plus a length-1 array literal per
+ * row; `levenshteinDistance` alone runs 836 times per `getProgramChange` lookup, once per
+ * dictionary key. One `Int32Array` of `rows × columns` allocates once and zero-fills for
+ * free, which is also what lets `lcsLength` below drop its explicit zeroing loop. The
+ * values are edit distances between instrument names — small non-negative integers — so
+ * the narrower element type loses nothing.
+ */
+class DistanceTable {
+  private readonly cells: Int32Array;
+
+  constructor(
+    private readonly rows: number,
+    private readonly columns: number,
+  ) {
+    this.cells = new Int32Array(rows * columns);
+  }
+
+  at(row: number, column: number): number {
+    return this.cells[row * this.columns + column] ?? this.outOfRange(row, column);
+  }
+
+  set(row: number, column: number, value: number): void {
+    if (row < 0 || row >= this.rows || column < 0 || column >= this.columns)
+      this.outOfRange(row, column);
+    this.cells[row * this.columns + column] = value;
+  }
+
+  /**
+   * The bounds test `at` cannot make with `??` alone: a flat index that lands inside the
+   * buffer but outside the intended row — `at(0, columns + 1)` reads row 1's first cell —
+   * is a real arithmetic bug that the buffer read would answer happily. `set` tests it
+   * directly; `at` catches only the reads that leave the buffer, which is every read a
+   * wrong *row* index produces.
+   */
+  private outOfRange(row: number, column: number): never {
+    throw new RangeError(
+      `midi: cell (${String(row)}, ${String(column)}) is outside a ` +
+        `${String(this.rows)}×${String(this.columns)} distance table`,
+    );
+  }
+}
+
+/**
+ * The length of the longest common subsequence of two strings.
+ *
+ * Extracted because `lcsDistance` and `metricLCSDistance` carried **the same twenty lines**
+ * of DP and differed only in the two lines that turn the answer into a distance. Nothing
+ * about the recurrence changes: the table starts zeroed, which is what the two explicit
+ * zero-filling loops were for.
+ */
+function lcsLength(s1: string, s2: string): number {
+  const dp = new DistanceTable(s1.length + 1, s2.length + 1);
+  for (let i = 1; i <= s1.length; i++) {
+    for (let j = 1; j <= s2.length; j++) {
+      if (s1.charAt(i - 1) === s2.charAt(j - 1)) {
+        dp.set(i, j, dp.at(i - 1, j - 1) + 1);
+      } else {
+        dp.set(i, j, Math.max(dp.at(i - 1, j), dp.at(i, j - 1)));
+      }
+    }
+  }
+  return dp.at(s1.length, s2.length);
 }

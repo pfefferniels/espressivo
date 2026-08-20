@@ -354,6 +354,42 @@ describe('Track', () => {
     expect(track.remove(new MidiEvent(anyMessage(), 0))).toBe(false);
     expect(track.size()).toBe(1);
   });
+
+  // `Track.get` used to return `undefined` out of range while declaring `MidiEvent`, with
+  // a comment admitting it. The JDK's `Track.get` throws `ArrayIndexOutOfBoundsException`,
+  // so this is the port catching up with its reference as well as with its own signature;
+  // the message has to name the index and the size, because the whole value of the throw
+  // over a silent `undefined` is that it says which read went wrong.
+  it('should throw a RangeError rather than hand back an undefined event', () => {
+    const track = new Track();
+    track.add(new MidiEvent(anyMessage(), 0));
+    track.add(new MidiEvent(anyMessage(), 480));
+
+    expect(() => track.get(2)).toThrow(RangeError);
+    expect(() => track.get(2)).toThrow(/index 2 .* 2 events/);
+    expect(() => track.get(-1)).toThrow(RangeError);
+  });
+
+  // The iterator is what lets a caller walk a track without inventing an index, which is
+  // how every loop in `Midi.ts` now reads it. It must agree with `get`/`size` exactly —
+  // same events, same order, same identities.
+  it('should iterate its events in tick order, matching get()', () => {
+    const track = new Track();
+    const events = [
+      new MidiEvent(anyMessage(), 960),
+      new MidiEvent(anyMessage(), 0),
+      new MidiEvent(anyMessage(), 480),
+    ];
+    for (const event of events) track.add(event);
+
+    expect([...track]).toEqual([events[1], events[2], events[0]]);
+    expect([...track].length).toBe(track.size());
+    expect([...track].every((event, index) => event === track.get(index))).toBe(true);
+  });
+
+  it('should iterate nothing for an empty track', () => {
+    expect([...new Track()]).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
