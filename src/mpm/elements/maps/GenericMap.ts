@@ -527,6 +527,21 @@ export class GenericMap extends AbstractXmlSubtree {
   }
 
   /**
+   * The entry an already-resolved index names — both halves of it, the element to read
+   * attributes off and the key that is the instruction's start date.
+   *
+   * The eight `get*DataOf` accessors reach for both after {@link resolveEntryIndex} or
+   * {@link clampEntryIndex} has put the index in range, and each used to re-read
+   * `this.elements[i]` twice to get them. This is that read, written once so the bound is
+   * proved in one place rather than in sixteen. An index rather than the entry comes back out
+   * of the resolvers because the accessors need it for {@link nextDateOfType} and
+   * {@link findStyleNameAt} as well, and returning a pair would allocate per instruction.
+   */
+  protected entryAt(index: number): KeyValue<number, Element> {
+    return elementAt(this.elements, index, 'map entry');
+  }
+
+  /**
    * Where the instruction at `index` stops being in force: the date of the next entry named
    * `localName`, or `Number.MAX_VALUE` when there is none.
    *

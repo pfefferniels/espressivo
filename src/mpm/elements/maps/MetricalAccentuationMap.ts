@@ -2,6 +2,7 @@ import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
+import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
 import type { MetricalAccentuation } from './data/metricalAccentuation.js';
 
@@ -62,7 +63,8 @@ export class MetricalAccentuationMap extends GenericMap {
   getMetricalAccentuationDataOf(index: number): MetricalAccentuation | null {
     const i = this.resolveEntryIndex(index, 'accentuationPattern');
     if (i < 0) return null;
-    const e = this.elements[i].getValue();
+    const entry = this.entryAt(i);
+    const e = entry.getValue();
 
     const nameRefAtt = attribute('name.ref', e);
     if (nameRefAtt === null) return null;
@@ -76,7 +78,7 @@ export class MetricalAccentuationMap extends GenericMap {
     const stmAtt = attribute('stickToMeasures', e);
 
     return {
-      startDate: this.elements[i].getKey(),
+      startDate: entry.getKey(),
       endDate: this.nextDateOfType(i, 'accentuationPattern'),
       accentuationPatternDefName,
       accentuationPatternDef: style.getDef(accentuationPatternDefName) ?? null,
@@ -132,19 +134,21 @@ export class MetricalAccentuationMap extends GenericMap {
       const def = md.accentuationPatternDef!;
       let patternLengthTicks = (def.getLength() * ppq4) / tsDenominator;
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = map.elements[mapIndex];
+        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
         if (mapEntry.getKey() < md.startDate) continue;
         const velocityAtt = attribute('velocity', mapEntry.getValue());
         if (velocityAtt === null) continue;
         if (timeSignatureMap !== null) {
+          const timeSignatures = timeSignatureMap.getAllElements();
           let update = false;
-          for (let tsIndex = timeSignIndex + 1; tsIndex < timeSignatureMap.size(); ++tsIndex) {
-            if (timeSignatureMap.getAllElements()[tsIndex].getKey() > mapEntry.getKey()) break;
+          for (let tsIndex = timeSignIndex + 1; tsIndex < timeSignatures.length; ++tsIndex) {
+            if (elementAt(timeSignatures, tsIndex, 'time signature').getKey() > mapEntry.getKey())
+              break;
             timeSignIndex = tsIndex;
             update = true;
           }
           if (update) {
-            const timeSign = timeSignatureMap.getAllElements()[timeSignIndex];
+            const timeSign = elementAt(timeSignatures, timeSignIndex, 'time signature');
             tsDate = timeSign.getKey();
             tsNumerator = parseFloat(getAttributeValue('numerator', timeSign.getValue()));
             tsDenominator = parseInt(getAttributeValue('denominator', timeSign.getValue()));

@@ -2,6 +2,7 @@ import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
+import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
 import { TempoData } from './data/TempoData.js';
 import {
@@ -117,7 +118,8 @@ export class TempoMap extends GenericMap {
     const i = this.resolveEntryIndex(index, 'tempo');
     if (i < 0) return null;
 
-    const e = this.elements[i].getValue();
+    const entry = this.entryAt(i);
+    const e = entry.getValue();
     const bpmAtt = attribute('bpm', e);
     if (bpmAtt === null) return null;
     const beatLengthAtt = attribute('beatLength', e);
@@ -128,7 +130,7 @@ export class TempoMap extends GenericMap {
 
     return resolveTempo(
       {
-        startDate: this.elements[i].getKey(),
+        startDate: entry.getKey(),
         endDate: this.nextDateOfType(i, 'tempo'),
         beatLength: parseFloat(beatLengthAtt.getValue()),
       },
@@ -219,7 +221,7 @@ export class TempoMap extends GenericMap {
 
     if (this.elements.length === 0) {
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = map.elements[mapIndex];
+        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
         const date = parseFloat(getAttributeValue('date.perf', mapEntry.getValue()));
         const ms = TempoMap.computeMillisecondsForNoTempo(date, ppq);
         mapEntry.getValue().addAttribute(new Attribute('milliseconds.date', String(ms)));
@@ -259,7 +261,7 @@ export class TempoMap extends GenericMap {
       // compute the milliseconds dates of all map elements that fall under this tempo instruction
       let milliseconds: number;
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = map.elements[mapIndex];
+        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
         if (mapEntry.getKey() > td.endDate) break;
 
         const date = parseFloat(getAttributeValue('date.perf', mapEntry.getValue()));
@@ -282,19 +284,31 @@ export class TempoMap extends GenericMap {
         }
       }
 
-      // check pending durations to fall under this tempo instruction
-      for (let i = 0; i < pendingDurations.length; ++i) {
-        const pd = pendingDurations[i];
+      // Check pending durations to fall under this tempo instruction, resolving the ones
+      // that do and leaving the rest pending.
+      //
+      // A remove-if, written as a compaction: every entry is examined, the unresolved ones
+      // are packed back down to the front in their old order and the length is cut to what
+      // survived. The loop this replaces spliced each resolved entry out and stepped `i`
+      // back — the same removals, but each shifting the whole remainder, which is quadratic
+      // in the number of notes still waiting on a later tempo. Note that this one is NOT a
+      // prefix drain like `RubatoMap`'s: `continue` leaves an entry pending and goes on to
+      // the ones behind it, because a note ending past this span may sit in front of one
+      // ending inside it.
+      let kept = 0;
+      for (const pd of pendingDurations) {
         const endDate = pd.getKey();
-        if (endDate > td.endDate) continue;
+        if (endDate > td.endDate) {
+          pendingDurations[kept++] = pd;
+          continue;
+        }
         if (endDate <= td.startDate) milliseconds = TempoMap.computeDiffTiming(endDate, ppq, null);
         else milliseconds = TempoMap.computeDiffTiming(endDate, ppq, td) + startDateMilliseconds;
-        map.elements[pd.getValue()]
+        elementAt(map.elements, pd.getValue(), 'target entry')
           .getValue()
           .addAttribute(new Attribute('milliseconds.date.end', String(milliseconds)));
-        pendingDurations.splice(i, 1);
-        --i;
       }
+      pendingDurations.length = kept;
 
       if (mapIndex >= map.size() && pendingDurations.length === 0) break;
     }
