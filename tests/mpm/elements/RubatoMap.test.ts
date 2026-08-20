@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { RubatoMap } from '../../../src/mpm/elements/maps/RubatoMap.js';
 import { RubatoData } from '../../../src/mpm/elements/maps/data/RubatoData.js';
+import { resolveRubato } from '../../../src/mpm/elements/maps/data/rubato.js';
+import { RubatoDef } from '../../../src/mpm/elements/styles/defs/RubatoDef.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
-import { KeyValue } from '../../../src/supplementary/KeyValue.js';
 
 describe('RubatoMap', () => {
   // ---------------------------------------------------------------
@@ -188,24 +189,46 @@ describe('RubatoMap', () => {
     it('should have correct default values', () => {
       const rd = new RubatoData();
       expect(rd.startDate).toBe(0.0);
-      expect(rd.endDate).toBeNull();
       expect(rd.frameLength).toBeNull();
       expect(rd.intensity).toBe(1.0);
       expect(rd.lateStart).toBe(0.0);
       expect(rd.earlyEnd).toBe(1.0);
       expect(rd.loop).toBe(false);
-      expect(rd.xml).toBeNull();
       expect(rd.xmlId).toBeNull();
-      expect(rd.styleName).toBe('');
-      expect(rd.style).toBeNull();
       expect(rd.rubatoDefString).toBeNull();
-      expect(rd.rubatoDef).toBeNull();
     });
 
-    it('should clone correctly', () => {
+    /**
+     * The write payload's nulls are the point of it: a `<rubato>` that names a def spells
+     * out none of the four numbers, and `addRubato` must emit no attribute for each one it
+     * has nothing for. Replaces the two `clone()` tests, which exercised a method with no
+     * caller anywhere in `src/`; what is worth pinning is the serialization.
+     */
+    it('omits every attribute the payload leaves null', () => {
+      const map = RubatoMap.createRubatoMap()!;
       const rd = new RubatoData();
       rd.startDate = 100;
-      rd.endDate = 820;
+      rd.rubatoDefString = 'myRubatoDef';
+      rd.frameLength = null;
+      rd.intensity = null;
+      rd.lateStart = null;
+      rd.earlyEnd = null;
+
+      const elem = map.getElement(map.addRubato(rd))!;
+      expect(elem.getAttributeValue('date')).toBe('100');
+      expect(elem.getAttributeValue('name.ref')).toBe('myRubatoDef');
+      expect(elem.getAttribute('frameLength')).toBeNull();
+      expect(elem.getAttribute('intensity')).toBeNull();
+      expect(elem.getAttribute('lateStart')).toBeNull();
+      expect(elem.getAttribute('earlyEnd')).toBeNull();
+      // `loop` and `date` are unconditional
+      expect(elem.getAttributeValue('loop')).toBe('false');
+    });
+
+    it('writes every attribute the payload does supply', () => {
+      const map = RubatoMap.createRubatoMap()!;
+      const rd = new RubatoData();
+      rd.startDate = 100;
       rd.frameLength = 720;
       rd.intensity = 2.0;
       rd.lateStart = 0.1;
@@ -213,28 +236,121 @@ describe('RubatoMap', () => {
       rd.loop = true;
       rd.xmlId = 'rubato-clone';
 
-      const clone = rd.clone();
-      expect(clone.startDate).toBe(100);
-      expect(clone.endDate).toBe(820);
-      expect(clone.frameLength).toBe(720);
-      expect(clone.intensity).toBe(2.0);
-      expect(clone.lateStart).toBe(0.1);
-      expect(clone.earlyEnd).toBe(0.9);
-      expect(clone.loop).toBe(true);
-      expect(clone.xmlId).toBe('rubato-clone');
+      const elem = map.getElement(map.addRubato(rd))!;
+      expect(elem.getAttributeValue('frameLength')).toBe('720');
+      expect(elem.getAttributeValue('intensity')).toBe('2');
+      expect(elem.getAttributeValue('lateStart')).toBe('0.1');
+      expect(elem.getAttributeValue('earlyEnd')).toBe('0.9');
+      expect(elem.getAttributeValue('loop')).toBe('true');
+      expect(elem.getAttribute('id', 'http://www.w3.org/XML/1998/namespace')!.getValue()).toBe(
+        'rubato-clone',
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // resolveRubato — inheritance from the def, and the boundary clamps
+  // ---------------------------------------------------------------
+  /**
+   * The read half, unit-tested directly. `getRubatoDataOf` above covers the path where the
+   * element declares everything; these cover the three that used to be spelled as nullable
+   * fields on the datum — inherit, fall back to the identity warp, and reject.
+   */
+  describe('resolveRubato', () => {
+    const span = { startDate: 0, endDate: 1440 };
+    const absent = {
+      frameLength: null,
+      intensity: null,
+      lateStart: null,
+      earlyEnd: null,
+      loop: null,
+    };
+
+    const def = (frameLength: number, intensity: number, lateStart: number, earlyEnd: number) =>
+      RubatoDef.createRubatoDef('d', frameLength, intensity, lateStart, earlyEnd)!;
+
+    it('rejects an instruction with no frame from either source', () => {
+      expect(resolveRubato(span, absent, null)).toBeNull();
     });
 
-    it('clone should be independent of original', () => {
-      const rd = new RubatoData();
-      rd.intensity = 2.0;
-      rd.frameLength = 720;
+    it('inherits all four parameters from the def', () => {
+      const r = resolveRubato(span, absent, def(360, 2.0, 0.2, 0.8));
+      expect(r).toEqual({
+        ...span,
+        frameLength: 360,
+        intensity: 2.0,
+        lateStart: 0.2,
+        earlyEnd: 0.8,
+        loop: false,
+      });
+    });
 
-      const clone = rd.clone();
-      clone.intensity = 0.5;
-      clone.frameLength = 360;
+    it('lets a declared value beat the def', () => {
+      const r = resolveRubato(
+        span,
+        { ...absent, frameLength: 720, intensity: 3.0 },
+        def(360, 2.0, 0.2, 0.8),
+      )!;
+      expect(r.frameLength).toBe(720);
+      expect(r.intensity).toBe(3.0);
+      // the two it does NOT declare still come from the def
+      expect(r.lateStart).toBe(0.2);
+      expect(r.earlyEnd).toBe(0.8);
+    });
 
-      expect(rd.intensity).toBe(2.0);
-      expect(rd.frameLength).toBe(720);
+    /**
+     * Presence, not usability: a malformed attribute is `NaN`, which is not nullish, so it
+     * beats the def exactly as a usable value would — and then survives the clamps, since
+     * every comparison against `NaN` is false. Pinned here because a `?? ` written against
+     * `Number.isNaN` instead of nullishness would silently re-warp such documents.
+     */
+    it('a malformed declared value still beats the def, and is not clamped away', () => {
+      const r = resolveRubato(
+        span,
+        { ...absent, frameLength: NaN, lateStart: NaN, earlyEnd: NaN },
+        def(360, 2.0, 0.2, 0.8),
+      )!;
+      expect(r.frameLength).toBeNaN();
+      expect(r.lateStart).toBeNaN();
+      expect(r.earlyEnd).toBeNaN();
+    });
+
+    it('falls back to the identity warp where neither source says anything', () => {
+      const r = resolveRubato(span, { ...absent, frameLength: 720 }, null)!;
+      expect(r.intensity).toBe(1.0);
+      expect(r.lateStart).toBe(0.0);
+      expect(r.earlyEnd).toBe(1.0);
+      expect(r.loop).toBe(false);
+    });
+
+    it('floors lateStart at 0 and caps earlyEnd at 1', () => {
+      const r = resolveRubato(
+        span,
+        { ...absent, frameLength: 720, lateStart: -0.5, earlyEnd: 1.5 },
+        null,
+      )!;
+      expect(r.lateStart).toBe(0.0);
+      expect(r.earlyEnd).toBe(1.0);
+    });
+
+    it('widens an inverted window to the whole frame', () => {
+      const r = resolveRubato(
+        span,
+        { ...absent, frameLength: 720, lateStart: 0.8, earlyEnd: 0.2 },
+        null,
+      )!;
+      expect(r.lateStart).toBe(0.0);
+      expect(r.earlyEnd).toBe(1.0);
+    });
+
+    it('widens an empty window to the whole frame', () => {
+      const r = resolveRubato(
+        span,
+        { ...absent, frameLength: 720, lateStart: 0.5, earlyEnd: 0.5 },
+        null,
+      )!;
+      expect(r.lateStart).toBe(0.0);
+      expect(r.earlyEnd).toBe(1.0);
     });
   });
 
