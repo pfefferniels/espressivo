@@ -35,6 +35,7 @@
  *    what the marginal cannot say.
  * 3. **The `W₂` decomposition** (§1.2), which is interpretive and never enters `d_k`.
  */
+import { pairwise } from '../prelude/index.js';
 import { CompensatedSum, gaussLegendre10 } from './quadrature.js';
 import {
   comparisonRowAt,
@@ -295,9 +296,7 @@ export function imprecisionDistance(
   let rhoWeight = 0;
   let windowLength = 0;
 
-  for (let i = 0; i < grid.length - 1; ++i) {
-    const cellStart = grid[i];
-    const cellEnd = grid[i + 1];
+  for (const [cellStart, cellEnd] of pairwise(grid)) {
     const lengthQuarters = (cellEnd - cellStart) / ticksPerQuarter;
     if (!(lengthQuarters > 0)) continue;
     windowLength += lengthQuarters;
@@ -476,10 +475,10 @@ function canonicalizerFor(
   const meanSum = new CompensatedSum();
   const spreadSum = new CompensatedSum();
   let weight = 0;
-  for (let i = 0; i < grid.length - 1; ++i) {
-    const lengthQuarters = (grid[i + 1] - grid[i]) / ticksPerQuarter;
+  for (const [cellStart, cellEnd] of pairwise(grid)) {
+    const lengthQuarters = (cellEnd - cellStart) / ticksPerQuarter;
     if (!(lengthQuarters > 0)) continue;
-    const law = lawAt(reading, grid[i]);
+    const law = lawAt(reading, cellStart);
     if (isBottom(law)) continue;
     const moments = lawMoments(law.value);
     meanSum.add(moments.mean * lengthQuarters);

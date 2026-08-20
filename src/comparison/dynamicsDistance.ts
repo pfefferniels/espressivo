@@ -16,6 +16,7 @@
  * what makes GL-10 meaningful — against the renderer's staircase it would be integrating a
  * function with thousands of jump discontinuities.
  */
+import { pairwise } from '../prelude/index.js';
 import { comparisonRowFor } from './registry.js';
 import { CompensatedSum, integrateAbsolute } from './quadrature.js';
 import { dynamicsSegmentAt, volumeAt, type DynamicsCurve } from './dynamicsCurve.js';
@@ -131,10 +132,7 @@ export function dynamicsDistance(
   const cells: DynamicsCell[] = [];
   const total = new CompensatedSum();
 
-  for (let i = 0; i < grid.length - 1; ++i) {
-    const cellStart = grid[i];
-    const cellEnd = grid[i + 1];
-
+  for (const [cellStart, cellEnd] of pairwise(grid)) {
     const difference = (ticks: number) =>
       canonicalValue(canonical.a, Math.log(volumeAt(a, ticks))) -
       canonicalValue(canonical.b, Math.log(volumeAt(b, ticks)));

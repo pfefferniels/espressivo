@@ -32,6 +32,8 @@
  * is reported for ratification; the difference is not small (|ln(100/40)| = 9.6 JND sustained
  * over the whole part).
  */
+import { pairwise } from '../prelude/index.js';
+
 import { accentuationDistance, accentuationSampler } from './accentuationDistance.js';
 import {
   readAccentuationSegments,
@@ -262,7 +264,7 @@ function meanOverGrid(g: SampledCurve, grid: readonly number[]): number | null {
   const length = grid[grid.length - 1] - grid[0];
   if (!(length > 0)) return null;
   const total = new CompensatedSum();
-  for (let i = 0; i < grid.length - 1; ++i) total.add(gaussLegendre10(g, grid[i], grid[i + 1]));
+  for (const [low, high] of pairwise(grid)) total.add(gaussLegendre10(g, low, high));
   return total.total / length;
 }
 

@@ -32,7 +32,7 @@
  * inequality. The report keeps them in separate fields for that reason and the docs say it once,
  * prominently.
  */
-import { fromEntriesExact, mapValues } from '../prelude/index.js';
+import { fromEntriesExact, mapValues, pairwise } from '../prelude/index.js';
 import {
   EVENT_KAPPA_QUARTERS,
   aggregateDistance,
@@ -920,7 +920,7 @@ function integrateOverGrid(g: (x: number) => number, grid: readonly number[]): n
   const length = grid[grid.length - 1] - grid[0];
   if (!(length > 0)) return 0;
   const total = new CompensatedSum();
-  for (let i = 0; i < grid.length - 1; ++i) total.add(gaussLegendre10(g, grid[i], grid[i + 1]));
+  for (const [low, high] of pairwise(grid)) total.add(gaussLegendre10(g, low, high));
   return total.total / length;
 }
 

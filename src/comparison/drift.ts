@@ -21,6 +21,7 @@
  * comparison layer may not import (§9.7's zone). The divergence is confined to documents that
  * trip that quirk and is reported here rather than left for a reader to discover.
  */
+import { pairwise } from '../prelude/index.js';
 import { CompensatedSum, bisectSignChange, gaussLegendre10 } from './quadrature.js';
 import { quarterBpmAt, segmentAt, type TempoCurve } from './tempoCurve.js';
 import { gradedBoundariesIn } from './tempoDistance.js';
@@ -53,9 +54,7 @@ export function cumulativeDrift(
   const secondsB = new CompensatedSum();
   let maxAbsSeconds = 0;
 
-  for (let i = 0; i < grid.length - 1; ++i) {
-    const cellStart = grid[i];
-    const cellEnd = grid[i + 1];
+  for (const [cellStart, cellEnd] of pairwise(grid)) {
     const secondsPerQuarter = (curve: TempoCurve) => (ticks: number) =>
       60 / quarterBpmAt(curve, ticks);
 
@@ -104,9 +103,7 @@ function integrateClock(
   const boundaries = segment === null ? [] : gradedBoundariesIn(segment, startTicks, endTicks);
   const points = [startTicks, ...boundaries, endTicks];
   const total = new CompensatedSum();
-  for (let i = 0; i < points.length - 1; ++i)
-    total.add(
-      gaussLegendre10((ticks) => 60 / quarterBpmAt(curve, ticks), points[i], points[i + 1]),
-    );
+  for (const [low, high] of pairwise(points))
+    total.add(gaussLegendre10((ticks) => 60 / quarterBpmAt(curve, ticks), low, high));
   return total.total / ticksPerQuarter;
 }

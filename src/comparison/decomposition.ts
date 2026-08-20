@@ -29,7 +29,21 @@
  * change `d_level`'s unit from nepers to neper·√quarters, which is the kind of error that
  * survives every test that only checks a number is "about right".
  */
+import { head, isNonEmpty, last, pairwise } from '../prelude/index.js';
+
 import { CompensatedSum, gaussLegendre10 } from './quadrature.js';
+
+/**
+ * The grid's own span, or 0 for a grid too short to have one.
+ *
+ * Both callers previously wrote `grid.length < 2 ? 0 : grid[grid.length - 1] - grid[0]`, guarding
+ * the same fact twice and reading the ends by index. Named, the length-1 and empty cases give 0
+ * for the same reason — there is no interval — and the `!(length > 0)` test each caller already
+ * makes is the only guard either needs.
+ */
+function gridSpan(grid: readonly number[]): number {
+  return isNonEmpty(grid) ? last(grid) - head(grid) : 0;
+}
 
 /** §7.4's per-dimension canonicalization. Event dimensions reject the last two (AD-20). */
 export type InvarianceMode = 'none' | 'level' | 'level-gain';
@@ -75,7 +89,7 @@ export interface CurveMoments {
  */
 function integrateOverGrid(g: SampledCurve, grid: readonly number[]): number {
   const total = new CompensatedSum();
-  for (let i = 0; i < grid.length - 1; ++i) total.add(gaussLegendre10(g, grid[i], grid[i + 1]));
+  for (const [low, high] of pairwise(grid)) total.add(gaussLegendre10(g, low, high));
   return total.total;
 }
 
@@ -93,8 +107,7 @@ function integrateOverGrid(g: SampledCurve, grid: readonly number[]): number {
  * that shape, and it is the common case rather than a corner.
  */
 export function curveMoments(curve: SampledCurve, grid: readonly number[]): CurveMoments {
-  if (grid.length < 2) return { mean: 0, variance: 0, sigma: 0 };
-  const length = grid[grid.length - 1] - grid[0];
+  const length = gridSpan(grid);
   if (!(length > 0)) return { mean: 0, variance: 0, sigma: 0 };
 
   const mean = integrateOverGrid(curve, grid) / length;
@@ -153,7 +166,7 @@ export function decomposeCurves(
   const momentsA = curveMoments(a, grid);
   const momentsB = curveMoments(b, grid);
 
-  const length = grid.length < 2 ? 0 : grid[grid.length - 1] - grid[0];
+  const length = gridSpan(grid);
   const difference = (ticks: number) => {
     const value = a(ticks) - b(ticks);
     return value * value;

@@ -21,6 +21,7 @@
  * trailing instruction's span runs to `MAX_VALUE` and the curve reader has already collapsed
  * it to a constant, so no synthetic breakpoint is inserted at the window end.
  */
+import { filterMap, pairwise } from '../prelude/index.js';
 import { comparisonRowFor } from './registry.js';
 import {
   CompensatedSum,
@@ -110,13 +111,12 @@ export function gradedBoundariesIn(
 
   // Shared with `integrateGradedPower` (MINOR-3): the mesh AD-28.1 measured and the mesh
   // shipped here are now the same code, so an edit to one cannot silently diverge.
-  const unit = gradedPanelBounds(segment.exponent);
-  const boundaries: number[] = [];
-  for (let k = 1; k < unit.length - 1; ++k) {
-    const t = segment.startTicks + unit[k] * span;
-    if (t > cellStart && t < cellEnd) boundaries.push(t);
-  }
-  return boundaries;
+  // The two ENDS of the unit mesh are 0 and 1, i.e. the segment's own edges, which are already
+  // grid points — so the interior fractions are what this contributes, and `slice` says so.
+  return filterMap(gradedPanelBounds(segment.exponent).slice(1, -1), (fraction) => {
+    const t = segment.startTicks + fraction * span;
+    return t > cellStart && t < cellEnd ? t : null;
+  });
 }
 
 /**
@@ -201,10 +201,7 @@ export function tempoDistance(
   const cells: TempoCell[] = [];
   const total = new CompensatedSum();
 
-  for (let i = 0; i < grid.length - 1; ++i) {
-    const cellStart = grid[i];
-    const cellEnd = grid[i + 1];
-
+  for (const [cellStart, cellEnd] of pairwise(grid)) {
     // The segment governing the cell is the one at its left edge: the grid is built from
     // every breakpoint of both curves, so no segment boundary falls strictly inside a cell.
     const segmentA = segmentAt(a, cellStart);
