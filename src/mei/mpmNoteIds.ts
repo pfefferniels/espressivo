@@ -39,7 +39,12 @@ export function updateMpmNoteidsAfterResolvingRepetitions(
     let current: string | undefined = key; // this string will be set to the subsequent values
     for (let i = 1; i < ns.size(); ++i) {
       // iterate through the elements starting with the second
-      current = noteIdMappings.get(current!); // get the next value
+      // `current` runs out as soon as a note has no further copy: `Map.get` answers
+      // undefined, which the `!` here used to feed straight back in on the next turn.
+      // Stopping is the same outcome — the write below is guarded on `current != null`, so
+      // every later iteration was already doing nothing — and it says so.
+      if (current === undefined) break;
+      current = noteIdMappings.get(current); // get the next value
       const a = attribute('noteid', ns.get(i) as Element); // get the attribute
       if (a != null && current != null) {
         a.setValue(`#${current}`); // set the attribute value

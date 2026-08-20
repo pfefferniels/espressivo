@@ -182,6 +182,36 @@ function advancePartClock(part: Element, ticks: number): void {
   clock.setValue(String(parseFloat(clock.getValue()) + ticks));
 }
 
+/**
+ * An MPM part's `dated`, where the part-local maps live.
+ *
+ * `Part.createPart` builds a part's `header` and `dated` in one go and nothing removes
+ * either, so the fifteen `mpmDated(part)` sites were asserting a fact the constructor
+ * guarantees. The MPM counterpart of {@link Mei2MsmMpmConverter.globalDated}, which does the
+ * same for the performance's global section.
+ */
+function mpmDated(part: MpmPart): Dated {
+  const dated = part.getDated();
+  if (dated === null)
+    throw new MissingNodeError(`the MPM part '${part.getName()}' has no dated environment`);
+  return dated;
+}
+
+/**
+ * The element an MPM map holds at `index`, where the index came from the map itself.
+ *
+ * `GenericMap.getElement` answers null for an out-of-range index, which the four call sites
+ * asserted away — each of them having just been *handed* the index by `addDynamicsFromData`,
+ * `addTempo`, `addOrnamentFromData` or the map's own `size()`. Java dereferences the same
+ * lookup unguarded and would NPE; this names what was missing instead.
+ */
+function mapElement(map: GenericMap, index: number): Element {
+  const element = map.getElement(index);
+  if (element === null)
+    throw new MissingNodeError(`the MPM map holds no element at index ${index}`);
+  return element;
+}
+
 /** element without effect on the sounding result: skipped whole, not descended into */
 const IGNORE: ElementHandler = () => 'done';
 
@@ -348,12 +378,6 @@ export class Mei2MsmMpmConverter {
     return this.currentPart;
   }
 
-  /** the MEI chord the walk is inside; see the block comment above */
-  private requireChord(): Element {
-    if (this.currentChord === null) throw new MissingNodeError('the walk is not inside a chord');
-    return this.currentChord;
-  }
-
   /** the MEI being converted, set by {@link convertMei} before anything below it runs */
   private requireMei(): Mei {
     if (this.mei === null) throw new MissingNodeError('no MEI is currently being converted');
@@ -467,12 +491,10 @@ export class Mei2MsmMpmConverter {
 
     this.mei = mei;
 
-    if (
-      this.mei.isEmpty() ||
-      this.mei.getMusic() === null ||
-      this.mei.getMusic()!.getFirstChildElement('body', this.mei.getMusic()!.getNamespaceURI()) ===
-        null
-    )
+    // `getMusic()` is null exactly when the instance is empty, so one read covers both of the
+    // first two tests and gives the third something to look at without an assertion.
+    const music = this.mei.getMusic();
+    if (music === null || music.getFirstChildElement('body', music.getNamespaceURI()) === null)
       return new KeyValue<Msm[], Mpm[]>([], []);
 
     const minPPQ = this.mei.computeMinimalPPQ();
@@ -484,16 +506,27 @@ export class Mei2MsmMpmConverter {
       );
     }
 
-    let orig: Document | null = null;
-    if (this.cleanup) orig = this.mei.getDocument()!.copy();
+    // The snapshot `cleanup` promises to restore, taken before the three preprocessing passes
+    // rewrite the document in place. `getDocument()` is null only for an empty instance and
+    // the check above has ruled that out, so the `null` arm below is unreachable — it is
+    // written out rather than asserted away, which costs one test and states the invariant.
+    const orig: Document | null = this.cleanup
+      ? mapPresent(this.mei.getDocument(), (document) => document.copy())
+      : null;
 
     this.mei.resolveCopyofsAndSameas();
     this.mei.removeRendElements();
     if (!this.ignoreExpansions) this.mei.resolveExpansions();
 
-    const bodies = this.mei
-      .getMusic()!
-      .getChildElements('body', this.mei.getMusic()!.getNamespaceURI());
+    // Re-read rather than reusing `music`: `resolveExpansions` replaces the whole `music`
+    // element with a regularized copy, so the element tested at the top of this method may no
+    // longer be in the tree. Java dereferences the fresh lookup unguarded and would NPE if
+    // preprocessing had destroyed it, which is what the `!` here used to mean; a
+    // `MissingNodeError` is the same control flow with the cause named.
+    const preprocessedMusic = this.mei.getMusic();
+    if (preprocessedMusic === null)
+      throw new MissingNodeError('preprocessing left the MEI without a music element');
+    const bodies = preprocessedMusic.getChildElements('body', preprocessedMusic.getNamespaceURI());
     for (let b = 0; b < bodies.size(); ++b) this.convertElement(bodies.get(b));
 
     const msms: Msm[] = [...this.movements];
@@ -504,7 +537,7 @@ export class Mei2MsmMpmConverter {
     this.ppq = originalPPQ;
 
     if (this.cleanup) {
-      this.mei.setDocument(orig!);
+      if (orig !== null) this.mei.setDocument(orig);
       Mei2MsmMpmConverter.msmCleanup(msms);
     }
 
@@ -924,7 +957,7 @@ export class Mei2MsmMpmConverter {
    *   `work` lookup above exists.
    */
   private makeMovement(mdiv: Element): void {
-    let titleString = this.mei!.getTitle();
+    let titleString = this.requireMei().getTitle();
     const mdivN = mdiv.getAttribute('n');
     if (mdivN !== null) titleString += ` - ${mdivN.getValue()}`;
     const mdivLabel = mdiv.getAttribute('label');
@@ -948,7 +981,7 @@ export class Mei2MsmMpmConverter {
     // `Mpm.addMetadata` now says it accepts such an array (T16 closed T10's DISCOVERED
     // note by widening the consumer, which is what retired this file's `any`).
     const relatedResources: (RelatedResource | null)[] = [];
-    const meiFile = this.mei!.getFile();
+    const meiFile = this.requireMei().getFile();
     if (meiFile !== null) {
       relatedResources.push(RelatedResource.createRelatedResource(meiFile, 'mei'));
       const comment = Comment.createComment(
@@ -986,8 +1019,12 @@ export class Mei2MsmMpmConverter {
     const n = mdiv.getAttributeValue('n');
     const declsValue = mdiv.getAttributeValue('decls');
     const decls = declsValue === null ? null : declsValue.split(/\s+/);
-    let workList = firstChildElement('workList', this.mei!.getMeiHead()!);
-    if (workList === null) workList = firstChildElement('workDesc', this.mei!.getMeiHead()!);
+    // `getMeiHead()` is null for an empty MEI, which `convertMei` has already ruled out —
+    // but `firstChildElement`'s typed overload does not accept the null, and the two `!`
+    // that answered that also hid the fact that the head was being looked up twice.
+    const meiHead = this.requireMei().getMeiHead();
+    let workList = mapPresent(meiHead, (head) => firstChildElement('workList', head));
+    if (workList === null && meiHead !== null) workList = firstChildElement('workDesc', meiHead);
     if (workList !== null) {
       const works = allChildElements(workList, 'work');
       switch (works.length) {
@@ -1426,7 +1463,7 @@ export class Mei2MsmMpmConverter {
     const find1stEndingMarkerAfterThisDate =
       repetitionStartMarker === null
         ? 0.0
-        : parseFloat(repetitionStartMarker.getAttributeValue('date')!);
+        : parseFloat(requireAttributeValue('date', repetitionStartMarker));
     const ends = sequencingMap.query(
       "descendant::*[local-name()='marker' and contains(attribute::message, 'ending')]",
     );
@@ -1435,7 +1472,8 @@ export class Mei2MsmMpmConverter {
       const end = ends.get(i) as unknown as Element;
       if (
         (repetitionStartMarker !== null &&
-          end.getParent()!.indexOf(end) < end.getParent()!.indexOf(repetitionStartMarker)) ||
+          requireParentElement(end).indexOf(end) <
+            requireParentElement(end).indexOf(repetitionStartMarker)) ||
         end.getAttribute('date') === null
       ) {
         continue;
@@ -1445,7 +1483,7 @@ export class Mei2MsmMpmConverter {
         dateOfGoto = startDate;
         break;
       }
-      const firstEndingMarkerDate = parseFloat(end.getAttributeValue('date')!);
+      const firstEndingMarkerDate = parseFloat(requireAttributeValue('date', end));
       if (firstEndingMarkerDate >= find1stEndingMarkerAfterThisDate) {
         dateOfGoto = firstEndingMarkerDate;
         break;
@@ -1472,7 +1510,7 @@ export class Mei2MsmMpmConverter {
       );
       if (gotosAtSameDate.size() === 0) {
         gt.addAttribute(new Attribute('first', 'true'));
-        gt.getAttribute('target.id')!.setValue('');
+        requireAttribute('target.id', gt).setValue('');
         addToMap(gt, sequencingMap);
       } else {
         let index: number;
@@ -1482,7 +1520,7 @@ export class Mei2MsmMpmConverter {
           if (gtastN === null) continue;
           if (parseInt(gtastN) > n) break;
         }
-        if (index === 0) gt.getAttribute('activity')!.setValue(activity);
+        if (index === 0) requireAttribute('activity', gt).setValue(activity);
         const firstGoto = gotosAtSameDate.get(0) as unknown as Element;
         if (index >= gotosAtSameDate.size()) addToMap(gt, sequencingMap);
         else
@@ -1500,7 +1538,7 @@ export class Mei2MsmMpmConverter {
 
     this.convertElement(ending);
 
-    if (noPreviousEndings) gt.getAttribute('target.date')!.setValue(this.getMidiTimeAsString());
+    if (noPreviousEndings) requireAttribute('target.date', gt).setValue(this.getMidiTimeAsString());
   }
 
   private processPhrase(phrase: Element): void {
@@ -1535,7 +1573,7 @@ export class Mei2MsmMpmConverter {
     } else {
       const staffString = att.getValue();
       const staffs = staffString.split(/\s+/);
-      const parts = this.currentMsmMovement!.getChildElements('part');
+      const parts = this.requireMsmMovement().getChildElements('part');
       for (const staff of staffs) {
         for (let p = 0; p < parts.size(); ++p) {
           if (parts.get(p).getAttributeValue('number') !== staff) continue;
@@ -1612,7 +1650,7 @@ export class Mei2MsmMpmConverter {
     // parts (a one-part `tstamp2` resolves there and is never parked), and the rewrite below
     // puts the separator back.
     this.tstamp2s = this.tstamp2s.filter((e) => {
-      const att = e.getAttribute('tstamp2')!;
+      const att = requireAttribute('tstamp2', e);
       const tstamp2Parts = att.getValue().split('m+');
       const beat = elementAt(tstamp2Parts, 1, "a parked tstamp2 split on 'm+'");
       const measures = parseInt(elementAt(tstamp2Parts, 0, "a parked tstamp2 split on 'm+'")) - 1;
@@ -1642,15 +1680,15 @@ export class Mei2MsmMpmConverter {
       const tss = globalTsMap.getChildElements('timeSignature');
       globalTimeSignature = tss.get(tss.size() - 1);
       defaultGlobalMeasureDuration = this.computeMeasureLength(
-        parseFloat(globalTimeSignature.getAttributeValue('numerator')!),
-        parseFloat(globalTimeSignature.getAttributeValue('denominator')!),
+        parseFloat(requireAttributeValue('numerator', globalTimeSignature)),
+        parseFloat(requireAttributeValue('denominator', globalTimeSignature)),
       );
     }
 
     let longestDuration = 0.0;
     const partsDefaultDurations = new Map<Element, number>();
     const partsTsMapAndTs = new Map<Element, KeyValue<Element, Element>>();
-    const parts = this.currentMsmMovement!.getChildElements('part');
+    const parts = this.requireMsmMovement().getChildElements('part');
     for (let pi = 0; pi < parts.size(); ++pi) {
       const part = parts.get(pi);
       const tsMap = requireDatedMap(part, 'timeSignatureMap');
@@ -1665,8 +1703,8 @@ export class Mei2MsmMpmConverter {
         ts === null
           ? defaultGlobalMeasureDuration
           : this.computeMeasureLength(
-              parseFloat(ts.getAttributeValue('numerator')!),
-              parseFloat(ts.getAttributeValue('denominator')!),
+              parseFloat(requireAttributeValue('numerator', ts)),
+              parseFloat(requireAttributeValue('denominator', ts)),
             );
       partsDefaultDurations.set(part, defaultLocalMeasureDuration);
       const actualPartMeasureDuration = parseFloat(partClock(part).getValue()) - startDate;
@@ -1685,14 +1723,14 @@ export class Mei2MsmMpmConverter {
     if (globalTimeSignature !== null && longestDuration !== defaultGlobalMeasureDuration) {
       while (globalTsMap.getChildElements().size() > 0) {
         const last = globalTsMap.getChildElements().get(globalTsMap.getChildCount() - 1);
-        if (parseFloat(last.getAttributeValue('date')!) >= startDate) {
+        if (parseFloat(requireAttributeValue('date', last)) >= startDate) {
           globalTsMap.removeChild(last);
         } else break;
       }
       // A two-element array read back as `[0]` and `[1]` is a pair with the names left off.
       // Putting them back is the whole fix here.
-      const numerator = parseFloat(globalTimeSignature.getAttributeValue('numerator')!);
-      const denominator = parseFloat(globalTimeSignature.getAttributeValue('denominator')!);
+      const numerator = parseFloat(requireAttributeValue('numerator', globalTimeSignature));
+      const denominator = parseFloat(requireAttributeValue('denominator', globalTimeSignature));
       const num = (longestDuration * denominator) / (this.ppq * 4.0);
       const newTs = Msm.makeTimeSignature(startDate, num, denominator, null);
       globalTsMap.appendChild(newTs);
@@ -1710,12 +1748,12 @@ export class Mei2MsmMpmConverter {
 
       while (tsMap.getChildElements().size() > 0) {
         const last = tsMap.getChildElements().get(tsMap.getChildCount() - 1);
-        if (parseFloat(last.getAttributeValue('date')!) >= startDate) {
+        if (parseFloat(requireAttributeValue('date', last)) >= startDate) {
           tsMap.removeChild(last);
         } else break;
       }
-      const numerator2 = parseFloat(ts.getAttributeValue('numerator')!);
-      const denominator2 = parseFloat(ts.getAttributeValue('denominator')!);
+      const numerator2 = parseFloat(requireAttributeValue('numerator', ts));
+      const denominator2 = parseFloat(requireAttributeValue('denominator', ts));
       const num2 = (longestDuration * denominator2) / (this.ppq * 4.0);
       const newTs2 = Msm.makeTimeSignature(startDate, num2, denominator2, null);
       tsMap.appendChild(newTs2);
@@ -1798,67 +1836,60 @@ export class Mei2MsmMpmConverter {
     if (parentNote !== null && parentNote.getAttribute('accid') === null)
       parentNote.addAttribute(new Attribute('accid', accidAtt.getValue()));
 
+    // `@ploc`, else the parent note's `@pname`, else its `@pname.ges` unless that says
+    // "none"; anything else and the accidental has no pitch to attach to and is dropped.
+    // Every arm below either assigns a value read from the tree or returns, which is what
+    // the closing `pname!` claimed — writing the reads as `string | null` locals lets the
+    // compiler follow the same argument instead of being told the answer.
     const ploc = accid.getAttribute('ploc');
-    let pname: string | null = null;
+    let pname: string;
     if (ploc !== null) {
       pname = ploc.getValue();
     } else {
-      if (parentNote !== null) {
-        if (parentNote.getAttribute('pname') !== null) {
-          pname = parentNote.getAttributeValue('pname');
-        } else {
-          if (
-            parentNote.getAttribute('pname.ges') !== null &&
-            parentNote.getAttributeValue('pname.ges') !== 'none'
-          ) {
-            pname = parentNote.getAttributeValue('pname.ges');
-          } else {
-            return;
-          }
-        }
+      if (parentNote === null) return;
+      const notePname = parentNote.getAttributeValue('pname');
+      if (notePname !== null) {
+        pname = notePname;
       } else {
-        return;
+        const notePnameGes = parentNote.getAttributeValue('pname.ges');
+        if (notePnameGes === null || notePnameGes === 'none') return;
+        pname = notePnameGes;
       }
     }
-    accid.addAttribute(new Attribute('pname', pname!));
+    accid.addAttribute(new Attribute('pname', pname));
 
+    // The same cascade for the octave, one step longer: `@oloc`, the parent note's `@oct`,
+    // its `@oct.ges`, and finally the innermost `oct.default` in scope for this layer.
     const oloc = accid.getAttribute('oloc');
     let oct: string | null = null;
     if (oloc !== null) {
       oct = oloc.getValue();
     } else {
-      if (parentNote !== null) {
-        if (parentNote.getAttribute('oct') !== null) {
-          oct = parentNote.getAttributeValue('oct');
-        } else {
-          if (parentNote.getAttribute('oct.ges') !== null) {
-            oct = parentNote.getAttributeValue('oct.ges');
-          } else {
-            if (this.currentPart !== null) {
-              let octs = this.requirePartDatedMap('miscMap').getChildElements('oct.default');
-              if (octs.size() === 0) {
-                octs = this.requireGlobalDatedMap('miscMap').getChildElements('oct.default');
-              }
-              for (let i2 = octs.size() - 1; i2 >= 0; --i2) {
-                if (
-                  octs.get(i2).getAttribute('layer') === null ||
-                  octs.get(i2).getAttributeValue('layer') === Mei.getLayerId(Mei.getLayer(accid))
-                ) {
-                  oct = octs.get(i2).getAttributeValue('oct.default');
-                  break;
-                }
-              }
-              if (oct === null) return;
-            } else {
-              return;
-            }
+      if (parentNote === null) return;
+      const noteOct = firstPresent(
+        parentNote.getAttributeValue('oct'),
+        parentNote.getAttributeValue('oct.ges'),
+      );
+      if (noteOct !== null) {
+        oct = noteOct;
+      } else {
+        if (this.currentPart === null) return;
+        let octs = this.requirePartDatedMap('miscMap').getChildElements('oct.default');
+        if (octs.size() === 0) {
+          octs = this.requireGlobalDatedMap('miscMap').getChildElements('oct.default');
+        }
+        for (let i2 = octs.size() - 1; i2 >= 0; --i2) {
+          const octDefault = octs.get(i2);
+          const defaultLayer = octDefault.getAttributeValue('layer');
+          if (defaultLayer === null || defaultLayer === Mei.getLayerId(Mei.getLayer(accid))) {
+            oct = octDefault.getAttributeValue('oct.default');
+            break;
           }
         }
-      } else {
-        return;
+        if (oct === null) return;
       }
     }
-    accid.addAttribute(new Attribute('oct', oct!));
+    accid.addAttribute(new Attribute('oct', oct));
 
     this.addLayerAttribute(accid);
     this.accid.push(accid);
@@ -1998,7 +2029,7 @@ export class Mei2MsmMpmConverter {
 
     let midiChannel = 0;
     let midiPort = 0;
-    const ps = this.currentMsmMovement!.getChildElements('part');
+    const ps = this.requireMsmMovement().getChildElements('part');
     if (ps.size() > 0) {
       // The previous part's channel and port. Both are written by
       // `Msm.makePartFromString` on every part this converter creates, so a part without
@@ -2026,11 +2057,11 @@ export class Mei2MsmMpmConverter {
     part.addAttribute(
       new Attribute(
         'currentDate',
-        this.currentMeasure !== null ? this.currentMeasure.getAttributeValue('date')! : '0.0',
+        this.currentMeasure !== null ? requireAttributeValue('date', this.currentMeasure) : '0.0',
       ),
     );
 
-    this.currentMsmMovement!.appendChild(part);
+    this.requireMsmMovement().appendChild(part);
 
     // MPM part creation
     if (this.currentPerformance) {
@@ -2305,7 +2336,7 @@ export class Mei2MsmMpmConverter {
     let att = tupletSpan.getAttribute('part');
     if (att === null) att = tupletSpan.getAttribute('staff');
     if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-      const clone = cloneElement(tupletSpan)!;
+      const clone = cloneElement(tupletSpan);
       clone.addAttribute(new Attribute('date', String(date)));
       if (endDate !== null) {
         clone.addAttribute(new Attribute('date.end', String(endDate)));
@@ -2316,16 +2347,19 @@ export class Mei2MsmMpmConverter {
         this.endids.push(clone);
       }
 
-      const tsMap = this.requireGlobalDatedMap('miscMap').getFirstChildElement('tupletSpanMap')!;
+      const tsMap = requireFirstChildElement(
+        this.requireGlobalDatedMap('miscMap'),
+        'tupletSpanMap',
+      );
       addToMap(clone, tsMap);
     } else {
       const staffString = att.getValue();
       const staffs = staffString.split(/\s+/);
-      const parts = this.currentMsmMovement!.getChildElements('part');
+      const parts = this.requireMsmMovement().getChildElements('part');
       for (const staff of staffs) {
         for (let p = 0; p < parts.size(); ++p) {
           if (parts.get(p).getAttributeValue('number') !== staff) continue;
-          const clone = cloneElement(tupletSpan)!;
+          const clone = cloneElement(tupletSpan);
           clone.addAttribute(new Attribute('date', String(date)));
           const cloneId = clone.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
           if (cloneId !== null) cloneId.setValue(`meico_copyId_${staff}_${cloneId.getValue()}`);
@@ -2338,9 +2372,10 @@ export class Mei2MsmMpmConverter {
             this.endids.push(clone);
           }
 
-          const tsMap = requireDatedMap(parts.get(p), 'miscMap').getFirstChildElement(
+          const tsMap = requireFirstChildElement(
+            requireDatedMap(parts.get(p), 'miscMap'),
             'tupletSpanMap',
-          )!;
+          );
           addToMap(clone, tsMap);
           this.addLayerAttribute(clone);
         }
@@ -2467,7 +2502,7 @@ export class Mei2MsmMpmConverter {
       if (needsPostprocessing !== 0)
         this.arpeggiosToSort.push(
           new KeyValue<Attribute, boolean>(
-            attribute('note.order', ornamentationMap.getElement(index))!,
+            requireAttribute('note.order', mapElement(ornamentationMap, index)),
             needsPostprocessing > 0,
           ),
         );
@@ -2476,16 +2511,14 @@ export class Mei2MsmMpmConverter {
       const staffs = att.getValue().split(/\s+/);
 
       for (const staff of staffs) {
-        const part = this.currentPerformance!.getPart(parseInt(staff));
+        const part = this.requirePerformance().getPart(parseInt(staff));
         if (part === null) continue;
 
-        ornamentationMap = part
-          .getDated()!
-          .getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
+        ornamentationMap = mpmDated(part).getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
         if (ornamentationMap === null) {
-          ornamentationMap = part
-            .getDated()!
-            .addMap(OrnamentationMap.createOrnamentationMap()) as OrnamentationMap;
+          ornamentationMap = mpmDated(part).addMap(
+            OrnamentationMap.createOrnamentationMap(),
+          ) as OrnamentationMap;
           ornamentationMap.addStyleSwitch(0.0, 'MEI export');
         }
 
@@ -2496,7 +2529,7 @@ export class Mei2MsmMpmConverter {
         if (needsPostprocessing !== 0)
           this.arpeggiosToSort.push(
             new KeyValue<Attribute, boolean>(
-              attribute('note.order', ornamentationMap.getElement(index))!,
+              requireAttribute('note.order', mapElement(ornamentationMap, index)),
               needsPostprocessing > 0,
             ),
           );
@@ -2588,14 +2621,14 @@ export class Mei2MsmMpmConverter {
 
     let multiIDs = false;
     for (const staff of att.getValue().split(/\s+/)) {
-      const part = this.currentPerformance!.getPart(parseInt(staff));
+      const part = this.requirePerformance().getPart(parseInt(staff));
       if (part === null) continue;
 
-      ornamentationMap = part.getDated()!.getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
+      ornamentationMap = mpmDated(part).getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
       if (ornamentationMap === null) {
-        ornamentationMap = part
-          .getDated()!
-          .addMap(OrnamentationMap.createOrnamentationMap()) as OrnamentationMap;
+        ornamentationMap = mpmDated(part).addMap(
+          OrnamentationMap.createOrnamentationMap(),
+        ) as OrnamentationMap;
         ornamentationMap.addStyleSwitch(0.0, 'MEI export');
       }
 
@@ -2710,12 +2743,12 @@ export class Mei2MsmMpmConverter {
       const staffs = att.getValue().split(/\s+/);
 
       for (const staff of staffs) {
-        const part = this.currentPerformance!.getPart(parseInt(staff));
+        const part = this.requirePerformance().getPart(parseInt(staff));
         if (part === null) continue;
 
-        dynamicsMap = part.getDated()!.getMap(Mpm.DYNAMICS_MAP) as DynamicsMap | null;
+        dynamicsMap = mpmDated(part).getMap(Mpm.DYNAMICS_MAP) as DynamicsMap | null;
         if (dynamicsMap === null) {
-          dynamicsMap = part.getDated()!.addMap(DynamicsMap.createDynamicsMap()) as DynamicsMap;
+          dynamicsMap = mpmDated(part).addMap(DynamicsMap.createDynamicsMap()) as DynamicsMap;
           dynamicsMap.addStyleSwitch(0.0, 'MEI export');
         }
 
@@ -2747,7 +2780,19 @@ export class Mei2MsmMpmConverter {
     if (predecessor !== null) {
       const trans = predecessor.getValue().getAttribute('transition.to');
       if (dynamicsData.transitionToString === null) {
-        if (trans !== null) trans.setValue(dynamicsData.volumeString!);
+        if (trans !== null) {
+          // Java passes `volumeString` straight to `Attribute.setValue`, which rejects null
+          // with an NPE. The `!` here did something worse than throw: it wrote the null *into*
+          // the attribute, where it would serialise as the text `null`. Naming the case is the
+          // faithful reading — and it is not reachable from the corpus, which a probe
+          // confirmed by counting zero arrivals here with a null `volumeString` over all 6066
+          // tests, so no fixture byte can move.
+          if (dynamicsData.volumeString === null)
+            throw new MissingNodeError(
+              'a continuous dynamics instruction has no volume for its predecessor to transition to',
+            );
+          trans.setValue(dynamicsData.volumeString);
+        }
       } else if (trans !== null) {
         dynamicsData.volumeString = trans.getValue();
       } else {
@@ -2758,7 +2803,7 @@ export class Mei2MsmMpmConverter {
 
     const index = dynamicsMap.addDynamicsFromData(dynamicsData);
     if (index < 0) return index;
-    const dynamics = dynamicsMap.getElement(index)!;
+    const dynamics = mapElement(dynamicsMap, index);
     if (dynamicsData.endDate !== null) {
       dynamics.addAttribute(new Attribute('date.end', String(dynamicsData.endDate)));
     } else if (tstamp2 !== null) {
@@ -2803,12 +2848,12 @@ export class Mei2MsmMpmConverter {
       const staffs = att.getValue().split(/\s+/);
 
       for (const staff of staffs) {
-        const part = this.currentPerformance!.getPart(parseInt(staff));
+        const part = this.requirePerformance().getPart(parseInt(staff));
         if (part === null) continue;
 
-        tempoMap = part.getDated()!.getMap(Mpm.TEMPO_MAP) as TempoMap | null;
+        tempoMap = mpmDated(part).getMap(Mpm.TEMPO_MAP) as TempoMap | null;
         if (tempoMap === null) {
-          tempoMap = part.getDated()!.addMap(TempoMap.createTempoMap()) as TempoMap;
+          tempoMap = mpmDated(part).addMap(TempoMap.createTempoMap()) as TempoMap;
           tempoMap.addStyleSwitch(0.0, 'MEI export');
         }
 
@@ -2833,7 +2878,15 @@ export class Mei2MsmMpmConverter {
     if (predecessor !== null) {
       const trans = predecessor.getValue().getAttribute('transition.to');
       if (tempoData.transitionToString === null) {
-        if (trans !== null) trans.setValue(tempoData.bpmString!);
+        if (trans !== null) {
+          // the tempo twin of the `volumeString` case in {@link addDynamicsToMpm}; same
+          // reasoning, same probe result
+          if (tempoData.bpmString === null)
+            throw new MissingNodeError(
+              'a continuous tempo instruction has no bpm for its predecessor to transition to',
+            );
+          trans.setValue(tempoData.bpmString);
+        }
       } else if (trans !== null) {
         tempoData.bpmString = trans.getValue();
       } else {
@@ -2843,7 +2896,7 @@ export class Mei2MsmMpmConverter {
 
     const index = tempoMap.addTempo(tempoData);
     if (index < 0) return index;
-    const tempoElement = tempoMap.getElement(index)!;
+    const tempoElement = mapElement(tempoMap, index);
     if (tempoData.endDate !== null) {
       tempoElement.addAttribute(new Attribute('date.end', String(tempoData.endDate)));
     } else if (tstamp2 !== null) {
@@ -2888,18 +2941,22 @@ export class Mei2MsmMpmConverter {
 
     // find the local articulationMap
     const date = this.getMidiTime();
-    const part = this.currentPerformance!.getPart(
-      parseInt(this.currentPart.getAttributeValue('number')!),
-    );
-    let map = part!.getDated()!.getMap(Mpm.ARTICULATION_MAP) as ArticulationMap | null;
+    // Unlike the `staff`-list loops elsewhere in this class, which skip a part they cannot
+    // find, Java dereferences this one straight away and would NPE — the current MSM part
+    // always has an MPM twin, because `makePart` appends to both in the same call.
+    const partNumber = parseInt(requireAttributeValue('number', this.currentPart));
+    const part = this.requirePerformance().getPart(partNumber);
+    if (part === null)
+      throw new MissingNodeError(`the MPM performance has no part numbered ${partNumber}`);
+    let map = mpmDated(part).getMap(Mpm.ARTICULATION_MAP) as ArticulationMap | null;
     if (map === null) {
-      map = part!.getDated()!.addMap(ArticulationMap.createArticulationMap()) as ArticulationMap;
+      map = mpmDated(part).addMap(ArticulationMap.createArticulationMap()) as ArticulationMap;
       map.addArticulationStyleSwitch(0.0, 'MEI export', 'nonlegato');
     }
 
     for (
       let parent: Element | null = artic;
-      parent !== null && parent !== this.mei!.getRootElement();
+      parent !== null && parent !== this.requireMei().getRootElement();
       parent = parent.getParent()
     ) {
       if (parent.getLocalName() === 'note') {
@@ -3107,22 +3164,22 @@ export class Mei2MsmMpmConverter {
             let multiIds = false;
 
             for (const staff of staffs) {
-              const mpmPart = this.currentPerformance!.getPart(parseInt(staff));
+              const mpmPart = this.requirePerformance().getPart(parseInt(staff));
               if (mpmPart === null) continue;
 
-              articulationMap = mpmPart
-                .getDated()!
-                .getMap(Mpm.ARTICULATION_MAP) as ArticulationMap | null;
+              articulationMap = mpmDated(mpmPart).getMap(
+                Mpm.ARTICULATION_MAP,
+              ) as ArticulationMap | null;
               if (articulationMap === null) {
-                articulationMap = mpmPart
-                  .getDated()!
-                  .addMap(ArticulationMap.createArticulationMap()) as ArticulationMap;
+                articulationMap = mpmDated(mpmPart).addMap(
+                  ArticulationMap.createArticulationMap(),
+                ) as ArticulationMap;
                 articulationMap.addArticulationStyleSwitch(0.0, 'MEI export', 'nonlegato');
               }
 
               // find corresponding MSM part
               let msmPart: Element | null = null;
-              const parts = this.currentMsmMovement!.getChildElements('part');
+              const parts = this.requireMsmMovement().getChildElements('part');
               for (let p = 0; p < parts.size(); ++p) {
                 if (parts.get(p).getAttributeValue('number') === staff) {
                   msmPart = parts.get(p);
@@ -3186,7 +3243,7 @@ export class Mei2MsmMpmConverter {
       }
     }
 
-    note = this.allNotesAndChords.get(tie.getAttributeValue('endid')!.trim().replace(/#/g, ''));
+    note = this.allNotesAndChords.get(requireAttributeValue('endid', tie).trim().replace(/#/g, ''));
     if (note !== undefined) {
       const a = note.getAttribute('tie');
       if (a !== null) {
@@ -3345,7 +3402,7 @@ export class Mei2MsmMpmConverter {
 
     // there are staffs, hence a local slur
     const staffs = att.getValue().split(/\s+/);
-    const parts = this.currentMsmMovement!.getChildElements('part');
+    const parts = this.requireMsmMovement().getChildElements('part');
     let multiIds = false;
 
     for (const staff of staffs) {
@@ -3418,7 +3475,7 @@ export class Mei2MsmMpmConverter {
       es = this.requireGlobalDatedMap('timeSignatureMap').getChildElements('timeSignature');
     }
     let beatLength =
-      es.size() === 0 ? 4 : parseFloat(es.get(es.size() - 1).getAttributeValue('denominator')!);
+      es.size() === 0 ? 4 : parseFloat(requireAttributeValue('denominator', es.get(es.size() - 1)));
     beatLength = (4.0 * this.ppq) / beatLength;
     this.processRepeat(beatLength);
   }
@@ -3476,14 +3533,14 @@ export class Mei2MsmMpmConverter {
     const scoreChildren = this.requirePartDatedMap('score').getChildElements();
     for (let idx = scoreChildren.size() - 1; idx >= 0; --idx) {
       const e = scoreChildren.get(idx);
-      const date = parseFloat(e.getAttributeValue('date')!);
+      const date = parseFloat(requireAttributeValue('date', e));
       if (date < startDate) break;
       if (
         layer === '' ||
         (e.getAttribute('layer') !== null && e.getAttributeValue('layer') === layer)
       ) {
-        const copy = cloneElement(e)!;
-        copy.getAttribute('date')!.setValue(String(date + timeframe));
+        const copy = cloneElement(e);
+        requireAttribute('date', copy).setValue(String(date + timeframe));
         const idCopy = attribute('id', copy);
         if (idCopy !== null) idCopy.setValue(`meico_repeats_${idCopy.getValue()}_${uuidv4()}`);
         els.unshift(copy);
@@ -3516,15 +3573,15 @@ export class Mei2MsmMpmConverter {
     ) {
       const es = this.requirePartDatedMap('timeSignatureMap').getChildElements('timeSignature');
       dur =
-        (4.0 * this.ppq * parseFloat(es.get(es.size() - 1).getAttributeValue('numerator')!)) /
-        parseFloat(es.get(es.size() - 1).getAttributeValue('denominator')!);
+        (4.0 * this.ppq * parseFloat(requireAttributeValue('numerator', es.get(es.size() - 1)))) /
+        parseFloat(requireAttributeValue('denominator', es.get(es.size() - 1)));
     } else if (
       this.requireGlobalDatedMap('timeSignatureMap').getFirstChildElement('timeSignature') !== null
     ) {
       const es = this.requireGlobalDatedMap('timeSignatureMap').getChildElements('timeSignature');
       dur =
-        (4.0 * this.ppq * parseFloat(es.get(es.size() - 1).getAttributeValue('numerator')!)) /
-        parseFloat(es.get(es.size() - 1).getAttributeValue('denominator')!);
+        (4.0 * this.ppq * parseFloat(requireAttributeValue('numerator', es.get(es.size() - 1)))) /
+        parseFloat(requireAttributeValue('denominator', es.get(es.size() - 1)));
     }
     if (dur === 0.0) return null;
 
@@ -3559,8 +3616,8 @@ export class Mei2MsmMpmConverter {
     this.addLayerAttribute(s);
     advancePartClock(this.requirePart(), dur);
     addToMap(s, this.partDatedMap('score'));
-    rest.addAttribute(new Attribute('date', s.getAttributeValue('date')!));
-    rest.addAttribute(new Attribute('midi.dur', s.getAttributeValue('duration')!));
+    rest.addAttribute(new Attribute('date', requireAttributeValue('date', s)));
+    rest.addAttribute(new Attribute('midi.dur', requireAttributeValue('duration', s)));
   }
 
   private processSpace(space: Element): void {
@@ -3658,7 +3715,7 @@ export class Mei2MsmMpmConverter {
       const staffString = att.getValue();
       const staffs = staffString.split(/\s+/);
       let multiIDs = false;
-      const parts = this.currentMsmMovement!.getChildElements('part');
+      const parts = this.requireMsmMovement().getChildElements('part');
       for (const staff of staffs) {
         for (let p = 0; p < parts.size(); ++p) {
           if (parts.get(p).getAttributeValue('number') !== staff) continue;
@@ -3704,7 +3761,7 @@ export class Mei2MsmMpmConverter {
     if (att === null || att.getValue() === '' || att.getValue() === '%all') {
       const pedalMapEntry = new Element('pedal');
       pedalMapEntry.addAttribute(new Attribute('date', String(date)));
-      pedalMapEntry.addAttribute(new Attribute('state', pedal.getAttributeValue('dir')!));
+      pedalMapEntry.addAttribute(new Attribute('state', requireAttributeValue('dir', pedal)));
       copyId(pedal, pedalMapEntry);
       if (endDate !== null) {
         pedalMapEntry.addAttribute(new Attribute('date.end', String(endDate)));
@@ -3721,13 +3778,13 @@ export class Mei2MsmMpmConverter {
       const staffString = att.getValue();
       const staffs = staffString.split(/\s+/);
       let multiIDs = false;
-      const parts = this.currentMsmMovement!.getChildElements('part');
+      const parts = this.requireMsmMovement().getChildElements('part');
       for (const staff of staffs) {
         for (let p = 0; p < parts.size(); ++p) {
           if (parts.get(p).getAttributeValue('number') !== staff) continue;
           const pedalMapEntry = new Element('pedal');
           pedalMapEntry.addAttribute(new Attribute('date', String(date)));
-          pedalMapEntry.addAttribute(new Attribute('state', pedal.getAttributeValue('dir')!));
+          pedalMapEntry.addAttribute(new Attribute('state', requireAttributeValue('dir', pedal)));
           copyId(pedal, pedalMapEntry);
           const pId = pedalMapEntry.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
           if (pId !== null) pId.setValue(pId.getValue() + (multiIDs ? `_meico_${uuidv4()}` : ''));
@@ -3854,14 +3911,17 @@ export class Mei2MsmMpmConverter {
         for (const p of ps) {
           if (
             p.getAttributeValue('midi.pitch') === s.getAttributeValue('midi.pitch') &&
-            parseFloat(p.getAttributeValue('date')!) +
-              parseFloat(p.getAttributeValue('duration')!) ===
+            parseFloat(requireAttributeValue('date', p)) +
+              parseFloat(requireAttributeValue('duration', p)) ===
               date
           ) {
             p.addAttribute(
-              new Attribute('duration', String(parseFloat(p.getAttributeValue('duration')!) + dur)),
+              new Attribute(
+                'duration',
+                String(parseFloat(requireAttributeValue('duration', p)) + dur),
+              ),
             );
-            if (tie === 't') p.removeAttribute(p.getAttribute('tie')!);
+            if (tie === 't') p.removeAttribute(requireAttribute('tie', p));
             return;
           }
         }
@@ -4017,9 +4077,11 @@ export class Mei2MsmMpmConverter {
     }
 
     const denom =
-      es.size() === 0 ? 4.0 : parseFloat(es.get(es.size() - 1).getAttributeValue('denominator')!);
+      es.size() === 0
+        ? 4.0
+        : parseFloat(requireAttributeValue('denominator', es.get(es.size() - 1)));
     const num =
-      es.size() === 0 ? 4.0 : parseFloat(es.get(es.size() - 1).getAttributeValue('numerator')!);
+      es.size() === 0 ? 4.0 : parseFloat(requireAttributeValue('numerator', es.get(es.size() - 1)));
 
     return [num, denom];
   }
@@ -4030,7 +4092,7 @@ export class Mei2MsmMpmConverter {
 
   protected getPart(id: string): Element | null {
     if (id === null || id === '') return null;
-    const parts = this.currentMsmMovement!.getChildElements('part');
+    const parts = this.requireMsmMovement().getChildElements('part');
     for (let i = parts.size() - 1; i >= 0; --i) {
       if (
         parts.get(i).getAttributeValue('number') === id ||
@@ -4200,11 +4262,11 @@ export class Mei2MsmMpmConverter {
     for (let i = slurs.size() - 1; i >= 0; --i) {
       if (
         slurs.get(i).getAttributeValue('date') !== null &&
-        parseFloat(slurs.get(i).getAttributeValue('date')!) > this.getMidiTime()
+        parseFloat(requireAttributeValue('date', slurs.get(i))) > this.getMidiTime()
       )
         continue;
       if (slurs.get(i).getAttribute('date.end') !== null) {
-        const endDate = parseFloat(slurs.get(i).getAttributeValue('date.end')!);
+        const endDate = parseFloat(requireAttributeValue('date.end', slurs.get(i)));
         if (endDate < this.getMidiTime()) continue;
         if (endDate === this.getMidiTime()) {
           e.addAttribute(new Attribute('slur', 't'));
@@ -4224,11 +4286,11 @@ export class Mei2MsmMpmConverter {
         if (!Mei2MsmMpmConverter.isSameLayer(slurs.get(i), layerId)) continue;
         if (
           slurs.get(i).getAttributeValue('date') !== null &&
-          parseFloat(slurs.get(i).getAttributeValue('date')!) > this.getMidiTime()
+          parseFloat(requireAttributeValue('date', slurs.get(i))) > this.getMidiTime()
         )
           continue;
         if (slurs.get(i).getAttribute('date.end') !== null) {
-          const endDate = parseFloat(slurs.get(i).getAttributeValue('date.end')!);
+          const endDate = parseFloat(requireAttributeValue('date.end', slurs.get(i)));
           if (endDate < this.getMidiTime()) continue;
           if (endDate === this.getMidiTime()) {
             e.addAttribute(new Attribute('slur', 't'));
@@ -4261,7 +4323,7 @@ export class Mei2MsmMpmConverter {
 
     return (
       date * tstampToTicksConversionFactor +
-      parseFloat(this.currentMeasure.getAttributeValue('date')!)
+      parseFloat(requireAttributeValue('date', this.currentMeasure))
     );
   }
 
@@ -4307,7 +4369,7 @@ export class Mei2MsmMpmConverter {
           const startid = elementAt(references, 0, 'a startid/plist reference list').trim();
           const node = this.allNotesAndChords.get(startid);
           if (node !== undefined) {
-            const parent = node.getParent()!;
+            const parent = requireParentElement(node);
             event.detach();
             parent.insertChild(event, parent.indexOf(node));
             event.addAttribute(new Attribute('dontRepositionMeAgain', 'true'));
@@ -4475,12 +4537,12 @@ export class Mei2MsmMpmConverter {
     let tps: Element[];
     if (this.currentPart !== null) {
       tps = allChildElements(
-        this.requirePartDatedMap('miscMap').getFirstChildElement('tupletSpanMap')!,
+        requireFirstChildElement(this.requirePartDatedMap('miscMap'), 'tupletSpanMap'),
         'tupletSpan',
       );
     } else {
       tps = allChildElements(
-        this.requireGlobalDatedMap('miscMap').getFirstChildElement('tupletSpanMap')!,
+        requireFirstChildElement(this.requireGlobalDatedMap('miscMap'), 'tupletSpanMap'),
         'tupletSpan',
       );
     }
@@ -4707,8 +4769,8 @@ export class Mei2MsmMpmConverter {
           if (
             keySig === null ||
             (keySigGlobal !== null &&
-              parseFloat(keySigLocal!.getAttributeValue('date')!) <
-                parseFloat(keySigGlobal.getAttributeValue('date')!))
+              parseFloat(requireAttributeValue('date', keySigLocal)) <
+                parseFloat(requireAttributeValue('date', keySigGlobal)))
           ) {
             keySig = keySigGlobal;
             if (
@@ -4750,16 +4812,16 @@ export class Mei2MsmMpmConverter {
         for (let i = globalTrans.size() - 1; i >= 0; --i) {
           if (
             globalTrans.get(i).getAttributeValue('date') !== null &&
-            parseFloat(globalTrans.get(i).getAttributeValue('date')!) > this.getMidiTime()
+            parseFloat(requireAttributeValue('date', globalTrans.get(i))) > this.getMidiTime()
           )
             continue;
           if (
             globalTrans.get(i).getAttribute('date.end') !== null &&
-            parseFloat(globalTrans.get(i).getAttributeValue('date.end')!) <= this.getMidiTime()
+            parseFloat(requireAttributeValue('date.end', globalTrans.get(i))) <= this.getMidiTime()
           )
             break;
           if (!Mei2MsmMpmConverter.isSameLayer(globalTrans.get(i), layerId)) continue;
-          trans += parseFloat(globalTrans.get(i).getAttributeValue('semi')!);
+          trans += parseFloat(requireAttributeValue('semi', globalTrans.get(i)));
           break;
         }
       }
@@ -4769,16 +4831,17 @@ export class Mei2MsmMpmConverter {
         for (let i = globalAddTrans.size() - 1; i >= 0; --i) {
           if (
             globalAddTrans.get(i).getAttributeValue('date') !== null &&
-            parseFloat(globalAddTrans.get(i).getAttributeValue('date')!) > this.getMidiTime()
+            parseFloat(requireAttributeValue('date', globalAddTrans.get(i))) > this.getMidiTime()
           )
             continue;
           if (
             globalAddTrans.get(i).getAttribute('date.end') !== null &&
-            parseFloat(globalAddTrans.get(i).getAttributeValue('date.end')!) <= this.getMidiTime()
+            parseFloat(requireAttributeValue('date.end', globalAddTrans.get(i))) <=
+              this.getMidiTime()
           )
             continue;
           if (!Mei2MsmMpmConverter.isSameLayer(globalAddTrans.get(i), layerId)) continue;
-          trans += parseFloat(globalAddTrans.get(i).getAttributeValue('semi')!);
+          trans += parseFloat(requireAttributeValue('semi', globalAddTrans.get(i)));
         }
       }
       if (this.currentPart !== null) {
@@ -4787,16 +4850,16 @@ export class Mei2MsmMpmConverter {
           for (let i = localTrans.size() - 1; i >= 0; --i) {
             if (
               localTrans.get(i).getAttributeValue('date') !== null &&
-              parseFloat(localTrans.get(i).getAttributeValue('date')!) > this.getMidiTime()
+              parseFloat(requireAttributeValue('date', localTrans.get(i))) > this.getMidiTime()
             )
               continue;
             if (
               localTrans.get(i).getAttribute('date.end') !== null &&
-              parseFloat(localTrans.get(i).getAttributeValue('date.end')!) <= this.getMidiTime()
+              parseFloat(requireAttributeValue('date.end', localTrans.get(i))) <= this.getMidiTime()
             )
               break;
             if (!Mei2MsmMpmConverter.isSameLayer(localTrans.get(i), layerId)) continue;
-            trans += parseFloat(localTrans.get(i).getAttributeValue('semi')!);
+            trans += parseFloat(requireAttributeValue('semi', localTrans.get(i)));
             break;
           }
         }
@@ -4806,16 +4869,17 @@ export class Mei2MsmMpmConverter {
           for (let i = localAddTrans.size() - 1; i >= 0; --i) {
             if (
               localAddTrans.get(i).getAttributeValue('date') !== null &&
-              parseFloat(localAddTrans.get(i).getAttributeValue('date')!) > this.getMidiTime()
+              parseFloat(requireAttributeValue('date', localAddTrans.get(i))) > this.getMidiTime()
             )
               continue;
             if (
               localAddTrans.get(i).getAttribute('date.end') !== null &&
-              parseFloat(localAddTrans.get(i).getAttributeValue('date.end')!) <= this.getMidiTime()
+              parseFloat(requireAttributeValue('date.end', localAddTrans.get(i))) <=
+                this.getMidiTime()
             )
               continue;
             if (!Mei2MsmMpmConverter.isSameLayer(localAddTrans.get(i), layerId)) continue;
-            trans += parseFloat(localAddTrans.get(i).getAttributeValue('semi')!);
+            trans += parseFloat(requireAttributeValue('semi', localAddTrans.get(i)));
           }
         }
       }
@@ -4931,13 +4995,16 @@ export class Mei2MsmMpmConverter {
    * This is what the `cleanup` constructor flag switches on, and it is destructive — an
    * MSM that has been through here can no longer be resumed by the converter.
    *
-   * The `!` on `getRootElement()` carries this file's standing assumption that a movement
-   * under conversion has a root element; it is the same idiom `XmlBase` uses for this exact
-   * call. Narrowing it properly is T12's null policy, not a local idiom — a guard here
-   * would turn today's TypeError on an empty MSM into a silent no-op.
+   * The root element is required rather than asserted: this file's standing assumption is
+   * that a movement under conversion has one, and the previous note here explained that a
+   * *guard* would turn today's `TypeError` on an empty MSM into a silent no-op. It would —
+   * which is why this throws instead, keeping the control flow and naming the cause
+   * (ARCHITECTURE.md RULE N2a).
    */
   public static msmCleanupSingle(msm: Msm): void {
-    for (const node of Mei2MsmMpmConverter.msmScaffolding(msm.getRootElement()!)) {
+    const root = msm.getRootElement();
+    if (root === null) throw new MissingNodeError('this MSM movement holds no document');
+    for (const node of Mei2MsmMpmConverter.msmScaffolding(root)) {
       if (node instanceof Element) {
         const parent = node.getParent();
         if (parent) parent.removeChild(node);
@@ -5063,7 +5130,7 @@ export class Mei2MsmMpmConverter {
     // go through all the maps' elements and finalize them
     for (const map of maps) {
       for (let e = 0; e < map.size(); ++e) {
-        const d = map.getElement(e)!;
+        const d = mapElement(map, e);
 
         // handle remaining endid attributes
         const endid = d.getAttribute('endid');
@@ -5078,7 +5145,7 @@ export class Mei2MsmMpmConverter {
           const endDate = parseFloat(end.getValue());
           d.removeAttribute(end);
           const next = map.getElement(e + 1);
-          if (next === null || parseFloat(next.getAttributeValue('date')!) > endDate) {
+          if (next === null || parseFloat(requireAttributeValue('date', next)) > endDate) {
             const t = d.getAttribute('transition.to');
             if (t !== null) {
               const elementType = d.getLocalName();
@@ -5202,9 +5269,9 @@ export class Mei2MsmMpmConverter {
       );
       for (let i = ns.size() - 1; i >= 0; --i) {
         const n = ns.get(i) as unknown as Element;
-        if (parseFloat(n.getAttributeValue('date')!) < date) {
-          gt.getAttribute('target.date')!.setValue(n.getAttributeValue('date')!);
-          gt.getAttribute('target.id')!.setValue(`#${n.getAttributeValue('id')!}`);
+        if (parseFloat(requireAttributeValue('date', n)) < date) {
+          requireAttribute('target.date', gt).setValue(requireAttributeValue('date', n));
+          requireAttribute('target.id', gt).setValue(`#${requireAttributeValue('id', n)}`);
           break;
         }
       }

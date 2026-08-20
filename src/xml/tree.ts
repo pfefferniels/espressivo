@@ -477,9 +477,19 @@ export function getAllPreviousSiblingElements(name: string, ofThis: Element): El
  * clones does. (The same divergence and the same reasoning appear at `Msm.cloneElement`,
  * documented there under T9.)
  *
+ * The `null` in the return type comes **only** from the `null` in the argument type, and the
+ * two overloads say so — `cloneElement(someElement)` is an `Element`, which is what lets the
+ * three call sites that wrote `cloneElement(x)!` drop the assertion. This is RULE N2b's
+ * narrowing expressed as an overload rather than performed as a deletion: the guard stays,
+ * because the nullable form is still wanted (`addToMap(cloneElement(scoreDef), …)` lets a
+ * null flow straight through), so nothing gains the unguarded `TypeError` that rule's
+ * EQ-RISK warns about.
+ *
  * @param e
  * @return
  */
+export function cloneElement(e: Element): Element;
+export function cloneElement(e: Element | null): Element | null;
 export function cloneElement(e: Element | null): Element | null {
   if (e == null) return null;
 
