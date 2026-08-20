@@ -28,7 +28,7 @@
  * drift from the product it is assembled out of.
  */
 import { fromEntriesExact } from '../prelude/index.js';
-import { elementAt, elementAtOrNull, numberAt } from '../prelude/seq.js';
+import { elementAt, elementAtOrNull, numberAt, upperBoundBy } from '../prelude/seq.js';
 import { agglomerate, pam, silhouette, SILHOUETTE_RELIABLE_MINIMUM } from './clustering.js';
 import type { Linkage } from './clustering.js';
 import { classicalMds, seriationOrder } from './embedding.js';
@@ -714,8 +714,19 @@ function contextOf(aggregate: readonly number[], n: number): CorpusReport['conte
       if (i === j) continue;
       const value = numberAt(aggregate, i * n + j, MATRIX);
       // The fraction of pairs at or below this one — a rank, so equal distances share a rank.
-      let below = 0;
-      for (const other of sorted) if (other <= value) below += 1;
+      //
+      // `sorted` is sorted, and "how many are at or below `value`" in a sorted sequence IS its
+      // upper bound: `upperBoundBy` returns the first index whose key is GREATER than the
+      // target, which is the count of those that are not. The same integer the count produced,
+      // `O(log n)` instead of `O(n)` — and it sits inside an n² sweep, so the block goes from
+      // cubic in the corpus size to n² log n. `lowerBoundBy` would be the wrong one and is the
+      // control this was measured against: the matrix is symmetric, so every off-diagonal
+      // value is IN `sorted`, and the two therefore differ in every single cell.
+      //
+      // They could only part company on a `sorted` that is not really ordered, which means a
+      // NaN in it. §9.6's finiteness discipline forbids that, and P-C11 walks every number of
+      // every corpus result to check — these distances are published, so they are among them.
+      const below = upperBoundBy(sorted, (x) => x, value);
       percentile[i * n + j] = sorted.length === 0 ? 0 : below / sorted.length;
     }
 

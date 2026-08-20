@@ -36,7 +36,7 @@
  * 100 default even where a document places an instruction there; the divergence is measure
  * zero for an integral and is documented rather than reproduced.
  */
-import { isNonEmpty, last, zipWith } from '../prelude/index.js';
+import { filterMap, isNonEmpty, last, zipWith } from '../prelude/index.js';
 import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
@@ -256,22 +256,23 @@ export function readTempoSegments(
 
   if (view === null) return neutralTempoCurve();
 
-  const raws: RawTempo[] = [];
-  for (const [index, entry] of view.entries.entries()) {
-    if (entry.element.getLocalName() !== 'tempo') continue;
-    if (!Number.isFinite(entry.date)) continue;
+  // Read each entry, skip the ones that are not a dated `<tempo>`, keep the rest — `filterMap`,
+  // with the two `continue`s becoming the two `null` returns. The index the body still needs is
+  // the one `filterMap` passes; it addresses the view's PARALLEL arrays (`styleNames`,
+  // `entryResolutions`), not the entries, which is why it survives where the accumulator did not.
+  const raws = filterMap(view.entries, (entry, index) => {
+    if (entry.element.getLocalName() !== 'tempo') return null;
+    if (!Number.isFinite(entry.date)) return null;
     const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
-    raws.push(
-      readRawTempo(
-        entry.element,
-        entry.date,
-        resolution.scaleFactor,
-        optionAt(view.styleNames, index, 'a map view style-name list'),
-        resolution.environment,
-        resolution.globalEnvironment,
-      ),
+    return readRawTempo(
+      entry.element,
+      entry.date,
+      resolution.scaleFactor,
+      optionAt(view.styleNames, index, 'a map view style-name list'),
+      resolution.environment,
+      resolution.globalEnvironment,
     );
-  }
+  });
 
   if (raws.length === 0) return neutralTempoCurve();
 

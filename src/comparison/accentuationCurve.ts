@@ -50,7 +50,7 @@
  * add `length="4"` to the document and reorder its `<accentuation>` children by beat
  * (`AccentuationPatternDef.ts:36-40`, `:67` → `:192-199`), which R1 forbids.
  */
-import { head, isNonEmpty, last, zipWith } from '../prelude/index.js';
+import { filterMap, head, isNonEmpty, last, zipWith } from '../prelude/index.js';
 import { elementAt, optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
@@ -281,25 +281,20 @@ export function readAccentuationSegments(
   assertSpanEndRule(METRICAL_ACCENTUATION_MAP, 'same-local-name');
   if (view === null) return neutralAccentuationCurve();
 
-  const raws: {
-    dateTicks: number;
-    element: Element;
-    styleName: string | null;
-    environment: MpmEnvironment;
-    globalEnvironment: MpmEnvironment;
-  }[] = [];
-  for (const [index, entry] of view.entries.entries()) {
-    if (entry.element.getLocalName() !== 'accentuationPattern') continue;
-    if (!Number.isFinite(entry.date)) continue;
+  // Read each entry, skip what is not a dated `<accentuationPattern>`, keep the rest —
+  // `filterMap`, with the two `continue`s as the two `null` returns.
+  const raws = filterMap(view.entries, (entry, index) => {
+    if (entry.element.getLocalName() !== 'accentuationPattern') return null;
+    if (!Number.isFinite(entry.date)) return null;
     const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
-    raws.push({
+    return {
       dateTicks: entry.date * resolution.scaleFactor,
       element: entry.element,
       styleName: optionAt(view.styleNames, index, 'a map view style-name list'),
       environment: resolution.environment,
       globalEnvironment: resolution.globalEnvironment,
-    });
-  }
+    };
+  });
   if (raws.length === 0) return neutralAccentuationCurve();
 
   const segments: AccentuationSegment[] = [];

@@ -586,10 +586,16 @@ export function editScript<I extends EditableInstruction, S>(
   const replayCosts: number[] = [];
   let replayed = 0;
   for (const step of ordered) {
-    for (let offset = 0; offset < step.aItems.length; ++offset)
-      removedA[(step.indexA ?? 0) + offset] = true;
-    for (let offset = 0; offset < step.bItems.length; ++offset)
-      addedB[(step.indexB ?? 0) + offset] = true;
+    // A step consumes a contiguous run of `a` and produces a contiguous run of `b`, so
+    // marking one is a range fill, not a walk — `fill(true, start, end)` says which span in
+    // one line where the loop said it in three. The two agree on every write that matters:
+    // `stateFromFlags` only ever reads `removedA[index]` for `index < a.length`, so a write
+    // past the end (which `fill` clamps away and the loop would have made by extending the
+    // array) was dead in both spellings.
+    const fromA = step.indexA ?? 0;
+    const fromB = step.indexB ?? 0;
+    removedA.fill(true, fromA, fromA + step.aItems.length);
+    addedB.fill(true, fromB, fromB + step.bItems.length);
     const nextInstructions = stateFromFlags(a, b, removedA, addedB);
     const next = pricing.represent(nextInstructions);
     const price = pricing.norm(state, next, instructions, nextInstructions);
