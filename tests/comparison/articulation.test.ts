@@ -470,6 +470,45 @@ describe('the composed effective modifier (AD-37.3/AD-37.4)', () => {
     });
   });
 
+  it('keeps a note id apart from the tick that spells the same string', () => {
+    /**
+     * A closed oracle gap, found by a negative control.
+     *
+     * The anchor key is `date:<ticks>` or `id:<noteid>`, and the two prefixes are the only
+     * thing stopping the namespaces from colliding. Measured: dropping them — grouping on
+     * the bare `String(dateTicks)` and the bare id — left all 6081 tests green, because no
+     * case in the tree ever paired a date-anchored atom with an id-anchored one whose id
+     * spells the same number.
+     *
+     * The module note is explicit that the two kinds must NOT merge: deciding which note a
+     * date-anchored atom reaches needs an MSM, which is why an id-anchored anchor carries
+     * `datePositionKnown: false`. Merging them would compose two modifiers the renderer
+     * applies to different notes into one, and report one anchor where there are two.
+     */
+    const anchors = anchorsFor(
+      '<articulation date="0.0" relativeDuration="0.5"/>' +
+        '<articulation date="0.0" noteid="#0" relativeVelocity="2.0"/>',
+    );
+
+    // One projection rather than eight indexed reads: it says the whole shape at once, and
+    // it keeps this file off `noUncheckedIndexedAccess`'s books in `tests/`, which is a
+    // one-way ratchet.
+    expect(
+      anchors.map((anchor) => ({
+        id: anchor.id,
+        atomCount: anchor.atomCount,
+        // The id-anchored one cannot be placed without an MSM; the date-anchored one can.
+        datePositionKnown: anchor.datePositionKnown,
+        // …and neither one absorbed the other's family.
+        duration: anchor.modifier.duration.factor,
+        velocity: anchor.modifier.velocity.factor,
+      })),
+    ).toEqual([
+      { id: null, atomCount: 1, datePositionKnown: true, duration: 0.5, velocity: 1 },
+      { id: '0', atomCount: 1, datePositionKnown: false, duration: 1, velocity: 2 },
+    ]);
+  });
+
   it('is ENCODING-INVARIANT: stacked atoms against their product are distance 0', () => {
     const stacked =
       '<articulation date="0.0" relativeDuration="0.5"/>' +
