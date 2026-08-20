@@ -1,15 +1,47 @@
 /**
  * Named algorithms over sequences — the vocabulary that replaces raw loops.
  *
- * `src/` carries 862 `for` loops, 46 `while` loops, 540 `let` declarations and 407 `.push`
- * calls. Most are one of a handful of shapes wearing different variable names: map-and-filter
- * in one pass, group by a key, fold with a running total, scan a sorted array for a boundary.
- * Written out, each is a place an off-by-one can hide; named, each is a thing the reader
- * already knows.
+ * `src/` carries 809 `for` loops, 42 `while` loops, 543 `let` declarations and 383 `.push`
+ * calls (measured 2026-08-20; the figures this header opened with — 862 / 46 / 540 / 407 —
+ * were taken before the uptake pass). Most are one of a handful of shapes wearing different
+ * variable names: map-and-filter in one pass, group by a key, fold with a running total, scan
+ * a sorted array for a boundary. Written out, each is a place an off-by-one can hide; named,
+ * each is a thing the reader already knows.
  *
  * **The admission criterion is Sean Parent's own.** Using an algorithm must not make the call
  * site worse — so this module holds the shapes this codebase actually contains, and nothing
  * added for completeness. There is no `gather`, no `slide`, no lens, no transducer.
+ *
+ * **The criterion cuts both ways, and it has been measured against.** Three independent
+ * surveys of `src/` (comparison, mpm+msm, expression+xml+midi) went looking for each shape by
+ * hand. Call sites outside this module, as of 2026-08-20:
+ *
+ *     elementAt 133   pairwise 25   filterMap 20   numberAt 19   zipWith 10
+ *     withNext 9      optionAt 7    matchKind 7    groupBy 6     elementAtOrNull 6
+ *     upperBoundBy 4  foldl 4       lowerBoundBy 2 scanl 1       partitionWith 1
+ *     insertionIndexBy 1
+ *     chunkBy 0       windows 0     unfold 0       stableSortBy 0
+ *
+ * The four zeroes are not a backlog; each was looked for and is not there.
+ *
+ * - `chunkBy` — runs of CONSECUTIVE elements sharing a key. Every span builder in the tree is
+ *   "one instruction opens one span", never "consecutive instructions sharing a key form one";
+ *   MPM span ends are decided by the next entry's DATE, which is {@link withNext}, not by a
+ *   key changing. `aggregate.maximalScoringRuns` looks like it and is Ruzzo–Tompa.
+ * - `windows` — every fixed-size walk in the tree is size 2, i.e. `pairwise` or `withNext`.
+ * - `unfold` — the one linked-list walk (`tree.getAllPreviousSiblingElements`) reads better as
+ *   a `while`: a seed/step split returning a tuple is harder to follow than "walk back,
+ *   collecting", and the spread needed to keep the mutable return type costs an array.
+ * - `stableSortBy` — the tree already spreads before sorting at ~35 sites and sorts only
+ *   freshly-built local arrays at the rest. Nothing mutates a caller's array, so there is no
+ *   mistake left for it to prevent; renaming those sites would buy a name and no safety.
+ * - `partitionWith`'s single use is real, but its two candidate sites both declined it for the
+ *   same reason: it does not NARROW. `parts.matchScopes` would still need `filterMap` for the
+ *   half whose key must be non-null, and `selection.resolveSelection`'s two halves have
+ *   DIFFERENT types, which is `partitionResults`, not this.
+ *
+ * If a future pass finds a real site for one of the four, good. If not, they should go — this
+ * module's whole claim is that it is stocked from the code rather than from a catalogue.
  *
  * **On allocation.** Every function here allocates one output array and no intermediates,
  * because the rendering path was just made linear (commit `980ae7e`) and must stay that way.
@@ -273,10 +305,22 @@ export function foldl<A, B>(xs: Iterable<A>, seed: B, step: (acc: B, a: A, index
 /**
  * A fold that keeps every intermediate state, seed first.
  *
- * This is the shape of every "running quantity over musical time" loop — a running date, a
- * running tempo, an accumulated tick offset — which today is written as a `let` outside a
- * `for` and read back after it. `scanl` makes the states a value, so they can be zipped
- * against the events that produced them.
+ * **NARROWED, 2026-08-20.** This used to claim it was "the shape of every running quantity
+ * over musical time loop — a running date, a running tempo, an accumulated tick offset". A
+ * survey went through those loops and the claim is false as stated: `Midi.buildTrackChunk`'s
+ * `lastTick`, `Sequence.getMicrosecondLength`'s tempo integration and the applier's running
+ * maximum all want only the FINAL state, or write side effects per step. Those are `foldl`,
+ * or a loop, and `scanl` would make each of them worse.
+ *
+ * The distinguishing question is not "is there a running quantity" but **"does anything read
+ * the intermediate states?"** — and where the answer is yes, the payoff is usually more than
+ * vocabulary. `datedView.styleNamesOf` is the one site found: "the `<style>` in scope at view
+ * position i" is a running quantity whose every state is wanted, and its caller was getting
+ * them by re-running a backwards scan once per index, quadratically. As a `scanl` it is one
+ * forward pass.
+ *
+ * Note the seed-first indexing when zipping states back against the elements that produced
+ * them: `out[i + 1]` is the state AFTER consuming `xs[i]`, and `out[0]` is the seed.
  */
 export function scanl<A, B>(
   xs: Iterable<A>,
