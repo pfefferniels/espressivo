@@ -365,6 +365,29 @@ full; [PARITY.md](PARITY.md) for the complete ledger, with Java line citations.
   the _meico_ version whose behaviour is reproduced. It is deliberately **not** the npm package
   version: it is serialization-visible, so changing it changes fixture bytes.
 
+### Two deviations from standard meico
+
+The reference fork carries two features that upstream [cemfi/meico](https://github.com/cemfi/meico)
+does not, so output differs from stock meico in exactly these respects:
+
+- **`@modified`** — every element a render pass touches gains a space-separated list of the
+  performance instructions that moved it. Bookkeeping for a human reading the augmented MSM;
+  nothing downstream reads it.
+- **A MIDI text event before each note-on**, carrying that note's `xml:id`, so an exported `.mid`
+  can be traced back to the source encoding.
+
+Both were inert until 2026-08-21. Each read its id with `Helper.getAttributeValue("xml:id", …)`,
+and `Helper.getAttribute` matches a _local_ name — the attribute's local name is `id` — so the
+lookup missed and returned `""` every time, for every element. `@modified` recorded nothing and
+every text event was written zero-length. Fixed in the fork at **`68ccd3b8`** and here at the same
+time; the affected `_raw.mid` references were regenerated from the fixed fork.
+
+The same misspelling remains at two upstream sites, `ArticulationMap.java:293` and
+`OrnamentationMap.java:200`, where `ArticulationData.xmlId` and `OrnamentData.xmlId` are likewise
+never populated. Those are Axel Berndt's code rather than the fork's, and repairing them moves
+considerably more output — both fields are written back out as `xml:id` attributes — so they are
+left alone and belong upstream.
+
 ### Scope
 
 This port covers **MEI / MSM + MPM ⇒ expressive MIDI** and nothing else. meico's MusicXML

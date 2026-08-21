@@ -192,6 +192,59 @@ describe('AsynchronyMap', () => {
       return map;
     }
 
+    /**
+     * `@modified` records WHICH instruction moved a note, and it recorded nothing.
+     *
+     * `renderAsynchronyToMap` appends the asynchrony instruction's id to `@modified` on every
+     * entry it shifts. Both this port and the Java fork read that id with the equivalent of
+     * `getAttributeValue('xml:id', …)`, and Java's `Helper.getAttribute` matches a LOCAL name —
+     * the attribute's local name is `id` — so it missed all three of its lookups and returned
+     * `""` for every element, always. The feature was inert in both.
+     *
+     * **No fixture can show this**, which is why it survived: `GenerateAllMapsReference` builds
+     * its asynchrony instructions with `addAsynchrony(date, offset)` and no id at all, so all
+     * 105 `modified` attributes in the corpus would be empty even with the lookup fixed. This
+     * is the case the corpus does not contain.
+     *
+     * Fixed in the fork at `meico@68ccd3b8` and here at the same time.
+     */
+    it('records the instruction id in @modified, not an empty string', () => {
+      const map = createTestMap([
+        { date: 0, msDate: 0, duration: 720, msEnd: 500 },
+        { date: 720, msDate: 500, duration: 720, msEnd: 1000 },
+      ]);
+      const asyn = AsynchronyMap.createAsynchronyMap();
+      const index = asyn.addAsynchrony(0, 50);
+      asyn
+        .getElement(index)!
+        .addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', 'asyn1'));
+
+      asyn.renderAsynchronyToMap(map);
+
+      for (const i of [0, 1]) {
+        expect(map.getElement(i)!.getAttributeValue('modified')).toBe('asyn1');
+      }
+    });
+
+    it('appends nothing when the instruction genuinely has no id', () => {
+      // The corpus's own shape, and the reason the bug above stayed invisible: every
+      // asynchrony instruction in every fixture is built by `addAsynchrony(date, offset)`
+      // with no id, so `@modified` would read empty even with the lookup correct.
+      //
+      // `toBeNull` and not `toBe('')`: the `modified=""` seen on every element of every
+      // reference document is SEEDED by `Performance.addModifiedAttributes` before the render
+      // passes run. This test drives `renderAsynchronyToMap` against a hand-built map, so that
+      // seeding never happened and there is no attribute to read — which is the honest result,
+      // and worth pinning because it says the pass appends rather than creates.
+      const map = createTestMap([{ date: 0, msDate: 0, duration: 720, msEnd: 500 }]);
+      const asyn = AsynchronyMap.createAsynchronyMap();
+      asyn.addAsynchrony(0, 50);
+
+      asyn.renderAsynchronyToMap(map);
+
+      expect(map.getElement(0)!.getAttributeValue('modified')).toBeNull();
+    });
+
     function getMsDate(map: GenericMap, index: number): number {
       return parseFloat(map.getElement(index)!.getAttributeValue('milliseconds.date')!);
     }

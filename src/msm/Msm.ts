@@ -1289,7 +1289,14 @@ export class Msm extends AbstractMsm {
         track.add(EventMaker.createNoteOff(chan, dateEnd, pitch, 0));
       } else {
         const date = Math.round(parseFloat(getAttributeValue('date', n)));
-        const xmlId = getAttributeValue('xml:id', n);
+        // `'id'`, not `'xml:id'`. Both spellings reach the same attribute through
+        // `attribute`'s third lookup, but only this one is CORRECT in the reference too:
+        // Java's `Helper.getAttribute` matches a local name, so
+        // `Helper.getAttributeValue("xml:id", n)` missed all three of its lookups and always
+        // returned `""` — every text event in every reference `.mid` was `FF 01 00`, a
+        // zero-length payload. That is a defect in the fork rather than a contract to match,
+        // and it is fixed there (`meico@68ccd3b8`); the references were regenerated with it.
+        const xmlId = getAttributeValue('id', n);
         track.add(EventMaker.createTextEvent(date, xmlId));
         track.add(EventMaker.createNoteOn(chan, date, pitch, 100));
 

@@ -101,7 +101,13 @@ export class AsynchronyMap extends GenericMap {
     for (const [asynEntry, next] of withNext(this.getAllElements())) {
       const asynElement = asynEntry.getValue();
       const asynStartDate = asynEntry.getKey();
-      const xmlId = getAttributeValue('xml:id', asynElement);
+      // `'id'`, not `'xml:id'` — see `Msm.exportMidi`'s note. `@modified` exists to record
+      // which performance elements modified a note, and through the misspelled lookup it
+      // recorded an empty string for every one of them. Fixed in the fork at `meico@68ccd3b8`.
+      // No reference fixture shows the difference, because `GenerateAllMapsReference` builds
+      // its asynchrony instructions with `addAsynchrony(date, offset)` and no id at all — so
+      // the corpus has nothing for this to record. Pinned by a unit test instead.
+      const xmlId = getAttributeValue('id', asynElement);
       const asynEndDate = next?.getKey() ?? Number.MAX_VALUE;
       const offset = parseFloat(getAttributeValue('milliseconds.offset', asynElement));
       for (const mapEntry of mapEntries) {

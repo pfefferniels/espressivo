@@ -825,46 +825,49 @@ the other by accident.
   calls `getTempoDataOf(-1)`, which returns null immediately — one wasted call rather than a
   bug, kept for parity.
 
-### `attribute()` matched qualified names, and it reached the MIDI bytes — FIXED
+### `attribute()` matched qualified names — and the divergence was Java's bug, not ours
 
-`src/xml/tree.ts`. Java's `Helper.getAttribute` (`Helper.java:346-359`) tries three lookups,
-the first being XOM's `Element.getAttribute(String)` — which matches a **local** name in no
-namespace. This port's one-argument `Element.getAttribute` also matches the _qualified_ name,
-so step one hit where Java's missed, and `getAttributeValue('xml:id', n)` returned an id where
-`Helper.getAttributeValue("xml:id", n)` returns `""`.
+`src/xml/tree.ts`. Java's `Helper.getAttribute` (`Helper.java:346-359`) tries three lookups, all
+by **local** name. The attribute's local name is `id`, so `Helper.getAttributeValue("xml:id", n)`
+missed all three and returned `""` — always, for every element. This port's `attribute()`
+originally matched the _qualified_ name too, so the same call found the id.
 
-**Two call sites depended on it and both were byte-visible.** `Msm.ts` writes that value into
-the raw-MIDI text event, and `AsynchronyMap.ts:93` appends it to `@modified`.
+**The first reading of this was backwards, and is corrected here.** Java's references carry
+`modified=""` 105 times and twelve `FF 01 00` zero-length text events, so the port was aligned to
+them. But both features are fork additions, not upstream meico —
+`82dc1f0c` "Track which performance elements modified each note" and `0bfb44e0` "add text event" —
+and the empty output is a **defect in them**, not a contract. `@modified` exists to record which
+instruction moved a note and recorded nothing; the text event exists to carry a note's id into the
+MIDI and carried nothing. Matching that reproduced a bug.
 
-Java's own references settle which side is right, and they are unambiguous: **all 105
-`modified` attributes under `all-maps-reference/` are `modified=""`**, and
-`articulations_raw.mid` carries **twelve `FF 01 00`** — twelve text events of length zero,
-where this port emitted `n1`, `n2` and so on. Measured across the corpus: **524 text events in
-22 fixtures**.
+**Resolved by fixing the fork, not by matching it.** `meico@68ccd3b8` changes both sites to ask
+for `"id"`. Verified before and after with a probe building an asynchrony instruction that carries
+an `xml:id` — the case no fixture contains, because `GenerateAllMapsReference` calls
+`addAsynchrony(date, offset)` with no id:
 
-It was invisible because `midi-byte-equivalence.test.ts` compared a meta event's type byte and
-nothing else. Two people found that gap independently on the same day, from opposite ends.
+    unpatched   modified=""
+    patched     modified="asyn_ID_HERE"
 
-**Fixed in `attribute()`, deliberately not in `Element.getAttribute`.** Removing the qualified
-match from the XOM emulation also passes the byte gate, which is what makes it a tempting
-one-liner — and it reds 30 tests, `Mei2MsmMpmConverter`'s failures being _counts_ rather than
-ids, because the converter reads qualified names structurally. `attribute()` is the
-transcription of `Helper.getAttribute`, so that is where the fidelity belongs; the XOM
-emulation keeps its convenience for every other caller.
+The port asks for `'id'` at both sites, which reaches the same attribute through `attribute()`'s
+third lookup while leaving `attribute()` itself faithful to XOM. **24 `_raw.mid` references were
+regenerated** from the fixed fork; the change is confined to text-event payloads, with event
+counts identical (`simple_notes_raw.mid` 177 → 193 bytes, eight `FF 01 00` becoming `n1`…`n8`).
+No `.msm` reference moved, because no fixture's asynchrony instruction has an id to record —
+`tests/mpm/elements/AsynchronyMap.test.ts` pins that case instead.
 
-Consequences recorded where they land: `tests/msm/navigationEquivalence.test.ts` now scopes its
-agreement claim to unqualified names and pins the intended disagreement, and the 24 `@modified`
-values in `fixtures-multi-instruction/asynchrony_augmented.msm` were rewritten to `""` — only
-those, so every other byte of that snapshot is still the pre-rewrite build's.
+`imprecision_timing_augmented.msm` and `imprecision_timing_expressive.mid` were deliberately **not**
+replaced: those two are nondeterministic in Java itself, so a diff there is expected and carries no
+information.
 
-**One judgement call left open for the repository owner.** This makes the port emit _less_
-information than it did: `@modified` no longer says which asynchrony instructions touched a
-note, and the raw MIDI text events no longer carry note ids. Both are strictly more useful
-full than empty. The decision here was that an accidental, undocumented divergence hidden by
-an oracle gap should be closed rather than kept — but this is the same class of call as
-`720.0` versus `720`, where the shorter, non-Java spelling was deliberately kept. If the
-richer output is wanted, reverting is one line in `attribute()` plus this entry rewritten as a
-preserved divergence.
+**The same misspelling survives at two upstream sites** — `ArticulationMap.java:293` and
+`OrnamentationMap.java:200` — where `ArticulationData.xmlId` and `OrnamentData.xmlId` are never
+populated. Those are Axel Berndt's code, and both fields are written back out as `xml:id`
+attributes on generated elements, so repairing them moves far more output than these two did. Left
+alone; it belongs upstream and needs its own regeneration.
+
+**The lesson worth keeping.** The byte gate compares against a fork, and a fork can be wrong. Where
+a divergence sits on a feature the fork _added_, "Java does X" is not an argument — it is the thing
+to check.
 
 ### `GenericMap.sort()` is not a sort
 

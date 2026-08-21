@@ -25,19 +25,18 @@
  * quadratic in the length of the part — so what they record is the old behaviour, not the
  * new code's own output.
  *
- * **`@modified` is uniformly empty in these fixtures as of 2026-08-21, and that is a change
- * to this port's output rather than to the fixtures' provenance.** `AsynchronyMap` appends
- * `Helper.getAttributeValue("xml:id", asynElement)` to the list, and in Java that call returns
- * `""` — XOM's one-argument `getAttribute` matches a local name, so `"xml:id"` misses all
- * three of `Helper.getAttribute`'s lookups. This port's `Element.getAttribute` also matched
- * the qualified name, so it found the id. Java's own references settle it: all 105 `modified`
- * attributes under `all-maps-reference/` are `modified=""`. Fixed in `xml/tree.ts`, and only
- * the 24 `@modified` values in `asynchrony_augmented.msm` were rewritten — every other byte is
- * still the pre-rewrite build's.
+ * **`@modified` carries instruction ids here, and briefly did not.** On 2026-08-21 the 24
+ * `@modified` values in `asynchrony_augmented.msm` were rewritten to `""` to match the Java
+ * reference, on the reasoning that all 105 `modified` attributes under `all-maps-reference/`
+ * are empty. That reasoning was wrong twice over. `@modified` is a fork addition, not upstream
+ * meico, so the reference is not authoritative about it; and the reference is empty because
+ * `Helper.getAttributeValue("xml:id", …)` never matched — `Helper.getAttribute` takes a LOCAL
+ * name and the attribute's is `id`. The feature recorded nothing, in both languages.
  *
- * The asynchrony fixture loses `@modified` as a *discriminator* in the process, since it now
- * reads the same for every instruction. It does not lose its purpose: the per-instruction
- * offsets are still visible in `milliseconds.date`, which is what the pass actually computes.
+ * Fixed in the fork at `meico@68ccd3b8` and here at the same time, and this file is restored to
+ * exactly what it held before that edit. Which is the point of the restore rather than a
+ * regeneration: the header above promises these documents record the PRE-rewrite build, and
+ * they do again.
  *
  * `Math.random` is pinned for each run: not every distribution here carries an effective
  * seed, and `ImprecisionMap`'s class comment states that unseeded output is
