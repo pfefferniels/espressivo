@@ -77,11 +77,8 @@ import { elementAt, findLast, removeAt } from '../prelude/seq.js';
  *
  * `makeKeySignature` takes the first `|accidCount|` entries of one of these, so the order is
  * the whole content: F♯ C♯ G♯ D♯ A♯ E♯ B♯ going sharpwards, B♭ E♭ A♭ D♭ G♭ C♭ F♭ going
- * flatwards. Java holds them as two parallel arrays indexed by one counter, rebuilt on every
- * call; as pairs at module scope they are neither indexed nor reallocated.
- *
- * The flatward list is the sharpward one reversed, and is written out rather than derived so
- * that reading either one against a key-signature table needs no mental step.
+ * flatwards. The flatward list is the sharpward one reversed, written out rather than derived
+ * so that reading either one against a key-signature table needs no mental step.
  */
 const CIRCLE_OF_FIFTHS_SHARPWARD = [
   ['5.0', 'F'],
@@ -104,36 +101,24 @@ const CIRCLE_OF_FIFTHS_FLATWARD = [
 ] as const;
 
 /**
- * What the walker does with an element once its handler has run.
+ * What the walker does with an element once its handler has run. `'done'` means the element is
+ * finished — either it was ignored, or its handler took over the descent itself; `'descend'`
+ * means the walker recurses into its children.
  *
- * This is the traversal policy that used to be spelled `continue` / `break` inside the
- * dispatch switch, made explicit: `'done'` means the element is finished (either it was
- * ignored or its handler took over the descent itself), `'descend'` means the walker
- * recurses into its children. The set of `'descend'` elements is exactly the set whose
- * children reach the converter through the generic path, so moving an element between the
- * two silently changes what gets converted.
+ * The set of `'descend'` elements is exactly the set whose children reach the converter through
+ * the generic path, so moving an element between the two silently changes what gets converted.
  */
 type Traversal = 'done' | 'descend';
 
 /**
  * The movement being converted: the MSM and the MPM performance being filled, and the
- * `meiHead` `work` this `mdiv` claims, if any.
+ * `meiHead` `work` this `mdiv` claims, if any. Ambient context for everything below the
+ * `mdiv` — every method there reads the same three values and none may change one.
  *
- * These were `currentMsmMovement`, `currentPerformance` and `currentWork`, and unlike the
- * cursors in {@link WalkContext} they were never saved and restored — `makeMovement` set them
- * once and {@link Mei2MsmMpmConverter.reset} cleared them before the next `mdiv`. That is
- * ambient *context* rather than a position: every method below the mdiv reads the same three
- * values and none of them may change one. Which is exactly a Reader, and is why this is one
- * immutable record reached through {@link WalkContext.movement} rather than three fields.
- *
- * `work` is the one that could be missed, and the reason `reset()` clearing it was load-bearing:
- * `makeMovement` assigns it only when the `mdiv` claims a `work` by `@decls` or matches one by
- * `@n`, so as a field it would otherwise have kept the *previous* movement's work and served
- * that movement's fallback tempo and `<meter>` to this one. As a field of a record built per
- * movement, "not claimed" is simply null.
- *
- * The fourth field of the old set, `currentMdiv`, is not here: nothing but `makeMovement`
- * itself ever read it, so it is a local variable there and not context at all.
+ * `work` is set only when the `mdiv` claims one by `@decls` or matches one by `@n`, and it
+ * supplies the movement's fallback tempo and `<meter>`. It has to be per-movement for that
+ * reason: a value carried over from the previous `mdiv` would serve that movement's defaults
+ * to this one.
  */
 interface MovementContext {
   /** the root of the MSM being filled */
@@ -146,45 +131,22 @@ interface MovementContext {
 
 /**
  * Where in the MEI the walk currently is: the movement being filled, plus the part, layer,
- * measure and chord enclosing the element being converted.
+ * measure and chord enclosing the element being converted. Threaded down
+ * {@link Mei2MsmMpmConverter.convertElement}, so a method that takes `ctx` reads its enclosing
+ * context and a method that does not, does not.
  *
- * These four were `this.currentPart` / `currentLayer` / `currentMeasure` / `currentChord`,
- * and every one of them was **dynamic scoping written by hand**:
- *
- * ```ts
- * const parentPart = this.currentPart;
- * this.currentPart = this.makePart(staffDef);
- * this.convertElement(staffDef);          // ← the whole subtree runs under the new value
- * this.currentPart = parentPart;
- * ```
- *
- * The save/restore pair is the giveaway: a value that is installed for the duration of a
- * recursive call and then put back is a *parameter of that call*, spelled the long way. As a
- * field it made every one of the converter's ~196 methods unreadable alone — `processNote`'s
- * behaviour depends on which part, layer and chord are live, and nothing in its signature said
- * so. As a record threaded down {@link Mei2MsmMpmConverter.convertElement} it is stated: a
- * method that takes `ctx` reads its enclosing context, a method that does not, does not, and
- * the "restore" is simply not passing the new record any further than the subtree it belongs
- * to.
- *
- * Every field is `readonly` and the record is never mutated — a descent builds a new one
- * (`{ ...ctx, part: … }`), which is the reason no restore is needed. Four such records are
- * allocated per staff, layer, measure and chord respectively, none per note, so the hot path
- * is untouched.
- *
- * **`measure` is the one that is not quite a save/restore.** {@link
- * Mei2MsmMpmConverter.processMeasure} used to write `this.currentMeasure = null` after the
- * descent rather than restoring the saved value — correct only because measures do not nest,
- * so the saved value was always null anyway. Here the difference disappears: the record the
- * measure's subtree gets simply does not outlive it.
+ * Every field is `readonly` and the record is never mutated: a descent builds a new one
+ * (`{ ...ctx, part: … }`) and passes it no further than the subtree it belongs to, which is why
+ * nothing has to be put back on the way out. One record is allocated per staff, layer, measure
+ * and chord, none per note.
  */
 interface WalkContext {
   /**
    * the movement being filled, or null before any `mdiv` has been entered
    *
-   * The null is not decoration: {@link Mei2MsmMpmConverter.getMidiTime} and
-   * {@link Mei2MsmMpmConverter.processReh} branch on it, because a `body` is walked before
-   * any movement exists and an element outside every `mdiv` still reaches the dispatch table.
+   * {@link Mei2MsmMpmConverter.getMidiTime} and {@link Mei2MsmMpmConverter.processReh} branch
+   * on the null: a `body` is walked before any movement exists, and an element outside every
+   * `mdiv` still reaches the dispatch table.
    */
   readonly movement: MovementContext | null;
   /** the MSM `part` being filled, or null outside any staff */
@@ -199,11 +161,9 @@ interface WalkContext {
 
 /**
  * The context of an element that no movement, part, layer, measure or chord encloses.
- *
  * {@link Mei2MsmMpmConverter.convertMei} starts from it, walking a `body` whose children are
- * `mdiv`s — and {@link Mei2MsmMpmConverter.makeMovement} starts each movement from
- * `{ ...NOTHING_OPEN, movement }`, which is exactly what {@link Mei2MsmMpmConverter.reset}'s
- * eight `this.currentX = null` lines used to say.
+ * `mdiv`s; {@link Mei2MsmMpmConverter.makeMovement} starts each movement from
+ * `{ ...NOTHING_OPEN, movement }`.
  */
 const NOTHING_OPEN: WalkContext = {
   movement: null,
@@ -214,13 +174,10 @@ const NOTHING_OPEN: WalkContext = {
 };
 
 /**
- * The movement the walk is inside.
- *
- * Null here means the walk has not entered an `mdiv`, which is a broken invariant for every
- * caller that goes through this one: they are below a handler `makeMovement` dispatched. The
- * two places where an absent movement is a real *outcome* — {@link
- * Mei2MsmMpmConverter.getMidiTime} and {@link Mei2MsmMpmConverter.processReh} — branch on
- * `ctx.movement === null` themselves rather than coming here.
+ * The movement the walk is inside. Null here is a broken invariant rather than an outcome:
+ * every caller of this is below a handler `makeMovement` dispatched. The two places where an
+ * absent movement is a real outcome — {@link Mei2MsmMpmConverter.getMidiTime} and
+ * {@link Mei2MsmMpmConverter.processReh} — branch on `ctx.movement === null` themselves.
  */
 function requireMovement(ctx: WalkContext): MovementContext {
   if (ctx.movement === null)
@@ -234,14 +191,10 @@ function requirePerformance(ctx: WalkContext): Performance {
 }
 
 /**
- * The `global/dated/<name>` map of the MSM movement being filled.
- *
- * This path is read thirty-odd times, and used to be spelled out at each of them as
- * `this.currentMsmMovement!.getFirstChildElement('global')!.getFirstChildElement('dated')!
- * .getFirstChildElement(name)` — three assertions per site for a skeleton
- * {@link Msm.createMsm} builds unconditionally. `global` and `dated` are therefore
- * required; the map itself is not, because a map is created on demand and several callers
- * hand the result straight to `addToMap`, which treats a null map as "nowhere to add".
+ * The `global/dated/<name>` map of the MSM movement being filled, or null if it holds no such
+ * map. `global` and `dated` are required — {@link Msm.createMsm} builds them unconditionally —
+ * while the map itself is created on demand, and several callers hand the result straight to
+ * `addToMap`, which treats a null map as "nowhere to add".
  */
 function globalDatedMap(ctx: WalkContext, name: string): Element | null {
   return datedMap(requireFirstChildElement(requireMovement(ctx).msm, 'global'), name);
@@ -254,10 +207,8 @@ function requireGlobalDatedMap(ctx: WalkContext, name: string): Element {
 
 /**
  * The MPM performance's global `header`, where the styles this converter authors live.
- *
  * `Performance.createPerformance` builds `global`, its `header` and its `dated` together, so
- * neither can be absent once a performance exists — which is what the two assertions in
- * `globalHeader(ctx)` were claiming, once per style lookup.
+ * neither can be absent once a performance exists.
  */
 function globalHeader(ctx: WalkContext): Header {
   const global = requirePerformance(ctx).getGlobal();
@@ -277,14 +228,10 @@ function globalDated(ctx: WalkContext): Dated {
 }
 
 /**
- * The MSM part the walk is inside.
- *
- * Roughly ninety reads of `this.currentPart` stood as `this.currentPart!` before RULE N2a;
- * they became a `requirePart()` method, and are now this. The null is real — `part` is null
- * until a `staff` or `staffDef` opens one — but on every path a fixture reaches, the handler
- * was dispatched from below the element that set it, so an empty cursor here is a broken
- * invariant and not an outcome. Where it *is* an outcome the callers still branch on
- * `ctx.part === null` directly; this is for the sites that would otherwise assert.
+ * The MSM part the walk is inside. `part` is null until a `staff` or `staffDef` opens one, but
+ * every handler that comes here was dispatched from below the element that set it, so an empty
+ * cursor is a broken invariant and not an outcome. Where it is an outcome the caller branches
+ * on `ctx.part === null` directly instead.
  */
 function requirePart(ctx: WalkContext): Element {
   if (ctx.part === null) throw new MissingNodeError('the walk is not inside a part');
@@ -304,24 +251,21 @@ function requirePartDatedMap(ctx: WalkContext, name: string): Element {
 /**
  * One entry of {@link Mei2MsmMpmConverter.ELEMENT_HANDLERS}.
  *
- * Handlers are free functions rather than methods so the table can be a single static
- * value; they receive the converter explicitly because the conversion's *output* state — the
- * movement being filled, the deferred work lists — is still the converter. Where the walk
- * *is* is the third parameter: see {@link WalkContext}.
+ * Handlers are free functions rather than methods so the table can be a single static value;
+ * they receive the converter explicitly because the conversion's output state — the movement
+ * being filled, the deferred work lists — lives there. Where the walk *is* is the third
+ * parameter: see {@link WalkContext}.
  */
 type ElementHandler = (c: Mei2MsmMpmConverter, e: Element, ctx: WalkContext) => Traversal;
 
 /**
  * The `dated/<name>` map of an MSM `global` or `part` element, or null if it holds no such map.
  *
- * MSM puts every timed list under a `dated` wrapper, so essentially every map access in this
- * converter is a two-step descent. Written out, that step was
- * `container.getFirstChildElement('dated')!.getFirstChildElement(name)` — seventy-odd sites,
- * each asserting a `dated` that {@link Msm.createMsm} and {@link Mei2MsmMpmConverter.makePart}
- * build unconditionally, and which is therefore *required* here rather than asserted.
- *
- * The map itself stays nullable: maps are created on demand, and most callers pass the result
- * straight to `addToMap`, whose contract already includes "null map, nothing to do".
+ * MSM puts every timed list under a `dated` wrapper, so every map access here is a two-step
+ * descent. `dated` is required — {@link Msm.createMsm} and {@link Mei2MsmMpmConverter.makePart}
+ * build it unconditionally — while the map itself stays nullable: maps are created on demand,
+ * and most callers pass the result straight to `addToMap`, whose contract already includes
+ * "null map, nothing to do".
  */
 function datedMap(container: Element, name: string): Element | null {
   return firstChildElement(requireFirstChildElement(container, 'dated'), name);
@@ -334,20 +278,16 @@ function datedMap(container: Element, name: string): Element | null {
  * `Msm.createMsm` gives every `global/dated` a `timeSignatureMap`, `keySignatureMap`,
  * `markerMap`, `sectionMap`, `phraseMap`, `sequencingMap`, `pedalMap` and `miscMap`, and
  * `Msm.addPart` gives every part's `dated` the same set minus `sectionMap` plus `score`. Those
- * are the only names asked for here, and the empty ones are not pruned until `msmCleanup`
- * runs at the very end of the conversion — long after every read below.
+ * are the only names asked for here, and the empty ones are not pruned until `msmCleanup` runs
+ * at the very end of the conversion, after every read below.
  */
 function requireDatedMap(container: Element, name: string): Element {
   return requireFirstChildElement(requireFirstChildElement(container, 'dated'), name);
 }
 
 /**
- * MEI's `@label`, else its `@n`, else null — the readable name of a structural element.
- *
- * `phrase` (twice) and `section` carry the same optional pair with the same preference, and
- * each wrote it as `if (e.getAttribute('label') !== null) … e.getAttributeValue('label')!
- * else if (e.getAttribute('n') !== null) …` — four attribute lookups and two assertions to
- * express one choice. {@link firstPresent} is the choice.
+ * MEI's `@label`, else its `@n`, else null — the readable name of a structural element, the
+ * preference `phrase` and `section` both take.
  *
  * `ending` is deliberately not routed through here: {@link processEnding} prefers `@n` over
  * `@label`, the other way round, and that order decides which ending a `goto` names.
@@ -361,14 +301,8 @@ function labelOrN(ofThis: Element): string | null {
  * value, so a caller can read and advance it through the same handle.
  *
  * Every part carries one from the moment {@link Mei2MsmMpmConverter.makePart} creates it, and
- * {@link Mei2MsmMpmConverter.processStaff} refreshes it on re-entry, so its absence is a
- * broken MSM and not a case to branch on — which is what the twenty-odd
- * `part.getAttribute('currentDate')!` sites were saying with an assertion.
- *
- * The pairing matters more than the assertion: the write sites read the clock through
- * `getAttributeValue(…)!` and wrote it through `getAttribute(…)!`, two lookups of the same
- * attribute with the arithmetic in between. One handle makes it one lookup and makes it
- * visible that the value being incremented is the one being stored.
+ * {@link Mei2MsmMpmConverter.processStaff} refreshes it on re-entry, so its absence is a broken
+ * MSM and not a case to branch on. The value is in MIDI ticks.
  */
 function partClock(part: Element): Attribute {
   return requireAttribute('currentDate', part);
@@ -381,12 +315,9 @@ function advancePartClock(part: Element, ticks: number): void {
 }
 
 /**
- * An MPM part's `dated`, where the part-local maps live.
- *
- * `Part.createPart` builds a part's `header` and `dated` in one go and nothing removes
- * either, so the fifteen `mpmDated(part)` sites were asserting a fact the constructor
- * guarantees. The MPM counterpart of {@link Mei2MsmMpmConverter.globalDated}, which does the
- * same for the performance's global section.
+ * An MPM part's `dated`, where the part-local maps live. `Part.createPart` builds a part's
+ * `header` and `dated` in one go and nothing removes either. The counterpart of
+ * {@link globalDated}, which does the same for the performance's global section.
  */
 function mpmDated(part: MpmPart): Dated {
   const dated = part.getDated();
@@ -398,10 +329,10 @@ function mpmDated(part: MpmPart): Dated {
 /**
  * The element an MPM map holds at `index`, where the index came from the map itself.
  *
- * `GenericMap.getElement` answers null for an out-of-range index, which the four call sites
- * asserted away — each of them having just been *handed* the index by `addDynamicsFromData`,
- * `addTempo`, `addOrnamentFromData` or the map's own `size()`. Java dereferences the same
- * lookup unguarded and would NPE; this names what was missing instead.
+ * `GenericMap.getElement` answers null for an out-of-range index, which cannot happen at the
+ * call sites: each was handed the index by `addDynamicsFromData`, `addTempo`,
+ * `addOrnamentFromData` or the map's own `size()`. Java dereferences the same lookup unguarded
+ * and would NPE; this names what was missing instead.
  */
 function mapElement(map: GenericMap, index: number): Element {
   const element = map.getElement(index);
@@ -417,15 +348,12 @@ const IGNORE: ElementHandler = () => 'done';
 const DESCEND: ElementHandler = () => 'descend';
 
 /**
- * Converts MEI into MSM (the score, as written) plus MPM (the performance instructions
- * that make it expressive). This is where essentially all the musical knowledge in the
- * port lives; {@link Mei} only owns the tree and {@link Msm}/{@link Mpm} only own the
- * output formats.
+ * Converts MEI into MSM (the score, as written) plus MPM (the performance instructions that
+ * make it expressive). Essentially all the musical knowledge in the port lives here;
+ * {@link Mei} only owns the tree and {@link Msm}/{@link Mpm} only own the output formats.
  *
- * ### How to use it
- *
- * One converter, one conversion: {@link convert} is not re-entrant, because the object
- * *is* the conversion's working state. Instantiate, call `convert(mei)`, discard.
+ * One converter, one conversion: {@link convert} is not re-entrant, because the object *is*
+ * the conversion's working state. Instantiate, call `convert(mei)`, discard.
  *
  * ### The shape of the conversion
  *
@@ -449,66 +377,46 @@ const DESCEND: ElementHandler = () => 'descend';
  *
  * ### Working state: what is a parameter and what is a field
  *
- * Java keeps this conversion's state on a `Helper` instance; this port hoisted it onto the
- * converter, which is why the port's `Helper` held no state at all — and is why T14 could
- * dissolve it into plain modules. It arrived as eight `current*` fields, and the division
- * between them turned out to be the design:
+ * - Where the walk is — the part, layer, measure and chord — is {@link WalkContext}, a
+ *   parameter threaded down {@link convertElement}, so a method that depends on the enclosing
+ *   part says so in its signature.
+ * - Which movement is being filled is {@link MovementContext}, reached through
+ *   {@link WalkContext.movement}: built once per `mdiv`, read by everything below it, never
+ *   changed.
+ * - Genuinely sequential state stays a field, because it is an accumulator and not a
+ *   position: the deferred lists (`accid`, `endids`, `tstamp2s`, `lyrics`, `arpeggiosToSort`)
+ *   and {@link endingCounter}. They exist because MEI lets an element refer forward: an
+ *   `accid` applies to notes that come later in the measure, an `endid`/`tstamp2` closes a
+ *   span whose end has not been walked yet, and an arpeggio's note order is not known until
+ *   every note it names has a pitch. Each is drained at a defined point — `accid` per measure,
+ *   `endids`/`tstamp2s` as the referenced elements are met ({@link checkEndid}),
+ *   `arpeggiosToSort` at the end of the movement. {@link reset} clears exactly these.
+ * - The running clock is not a field at all: it is `part/@currentDate`, an attribute on the
+ *   MSM output document, advanced by `processNote`/`processChord`/`processRest` and erased by
+ *   `msmCleanupSingle` before delivery. See {@link partClock}.
  *
- * - **Where the walk is** — the part, layer, measure and chord — is {@link WalkContext}, a
- *   parameter threaded down {@link convertElement}. Each of the four was installed before a
- *   recursive call and put back after it, which is dynamic scoping spelled by hand; as a
- *   parameter, a method that depends on the enclosing part says so in its signature. That is
- *   what makes any one of the ~196 methods below readable on its own.
- * - **Which movement is being filled** — the old `currentMsmMovement`, `currentWork` and
- *   `currentPerformance` — is {@link MovementContext}, reached through
- *   {@link WalkContext.movement}. These were set once per `mdiv` and never restored, i.e.
- *   ambient context rather than a position, which is a Reader; as one immutable record built
- *   per movement, "cleared between movements" stops being something `reset` has to remember.
- *   `currentMdiv` is not in it: only `makeMovement` ever read it, so it is a local there.
- * - **Genuinely sequential state** stays a field, because it is an accumulator and not a
- *   position: the deferred lists (`accid`, `endids`, `tstamp2s`, `lyrics`,
- *   `arpeggiosToSort`) and {@link endingCounter}. They exist because MEI lets an element
- *   refer forward: an `accid` applies to notes that come later in the measure, an
- *   `endid`/`tstamp2` closes a span whose end has not been walked yet, and an arpeggio's
- *   note order is not known until every note it names has a pitch. Each is drained at a
- *   defined point — `accid` per measure, `endids`/`tstamp2s` as the referenced elements are
- *   met ({@link checkEndid}), `arpeggiosToSort` at the end of the movement. {@link reset} is
- *   now about exactly these.
- * - **The real running clock is not a field at all**: it is `part/@currentDate`, an attribute
- *   on the MSM output document, advanced by `processNote`/`processChord`/`processRest` and
- *   erased by `msmCleanupSingle` before delivery. See {@link partClock}.
- *
- * The handlers in {@link ELEMENT_HANDLERS} still take the converter itself, because the
- * accumulators above really are the converter's.
- *
- * ARCHITECTURE.md §8.5 ruled the first two bullets out of scope, on the grounds that
- * `reset()`'s semantics are subtle and the fixture suite cannot prove a change in a field's
- * *lifetime*. The second half of that is exactly true and was measured before the split: all
- * sixteen MEI fixtures hold one `mdiv` each, so `reset` is never asked to clear anything. The
- * control the corpus lacks is `tests/mei/Mei2MsmMpmConverter.test.ts`'s multi-movement
- * section, written first, which pins every field's lifetime — and found one real leak in
- * `arpeggiosToSort` on the way.
+ * The handlers in {@link ELEMENT_HANDLERS} take the converter itself, because the accumulators
+ * above are the converter's.
  *
  * ### Parity constraints
  *
- * All timing, duration and pitch arithmetic is compared byte-for-byte against
- * Java-generated MSM/MPM/MIDI references. Expression order, `parseFloat`/`parseInt`
- * choices and rounding are therefore frozen, as is the order in which
- * {@link addUUID} is called. The element dispatch is equally frozen: the {@link Traversal}
- * each {@link ELEMENT_HANDLERS} entry returns encodes which elements are descended into, and
- * moving an element between the traversal groups changes what gets visited.
+ * All timing, duration and pitch arithmetic is compared byte-for-byte against Java-generated
+ * MSM/MPM/MIDI references. Expression order, `parseFloat`/`parseInt` choices and rounding are
+ * therefore frozen, as is the order in which {@link addUUID} is called. The element dispatch is
+ * equally frozen: the {@link Traversal} each {@link ELEMENT_HANDLERS} entry returns encodes
+ * which elements are descended into, and moving an element between the traversal groups changes
+ * what gets visited.
  *
  * Port of `meico.mei.Mei2MsmMpmConverter`.
  * @author Axel Berndt
  */
 export class Mei2MsmMpmConverter {
   private mei: Mei | null = null;
-  /** Both are constructor options and neither is touched again — RULE I4, `prefer-readonly`. */
   private readonly ignoreExpansions: boolean = false;
   private readonly cleanup: boolean = true;
   /**
    * Whether `<trill>`, `<mordent>` and `<turn>` are expanded into MPM ornaments
-   * ({@link MeiOrnamentExpander}). **Defaults to false, and that default is load-bearing.**
+   * ({@link MeiOrnamentExpander}). Defaults to false, and the default is load-bearing.
    *
    * Expansion authors MPM the Java reference does not author, so a converter that expanded by
    * default would change the output of every fixture carrying an ornament sign and break the
@@ -518,9 +426,8 @@ export class Mei2MsmMpmConverter {
    * `Mei.exportMsmMpm` throws in favour of here (see {@link Mei.exportMsmMpm}) — never expands.
    *
    * The facade turns it on: `convertMeiToMsmMpm` passes `ConvertOptions.expandOrnaments ?? true`,
-   * mirroring PR #32's `ignoreOrnaments` CLI flag, whose default is likewise "expansion on".
-   * So the *product* expands by default and the *parity harness* does not, which is the split
-   * the two callers want.
+   * matching the `ignoreOrnaments` CLI flag. The product therefore expands by default and the
+   * parity harness does not.
    */
   private readonly expandOrnaments: boolean = false;
 
@@ -552,13 +459,7 @@ export class Mei2MsmMpmConverter {
     return this.mei;
   }
 
-  /**
-   * constructor with default settings
-   */
   constructor(ppq: number);
-  /**
-   * constructor with fully specified settings
-   */
   constructor(
     ppq: number,
     dontUseChannel10: boolean,
@@ -584,9 +485,8 @@ export class Mei2MsmMpmConverter {
    * Converts the provided MEI data into MSM and MPM format and returns a tuplet of lists.
    *
    * Java overloads this name: `convert(Mei)` is the conversion, `convert(Element)` is the
-   * recursive walker. The walker is {@link convertElement} here and is private, because no
-   * caller outside the conversion ever meaningfully drove it — which leaves this method with
-   * one signature and no `instanceof` dispatch.
+   * recursive walker. The walker is {@link convertElement} here and is private, so this method
+   * has one signature and no `instanceof` dispatch.
    */
   convert(mei: Mei): KeyValue<Msm[], Mpm[]> {
     return this.convertMei(mei);
@@ -594,19 +494,12 @@ export class Mei2MsmMpmConverter {
 
   /** the whole conversion, step by step; see the class comment for the outline */
   private convertMei(mei: Mei): KeyValue<Msm[], Mpm[]> {
-    // Java opens with `if (mei == null) { print; return empty; }`. Nothing can reach it here:
-    // the sole caller is {@link convert}, whose parameter is a non-nullable `Mei`. The case it
-    // was really guarding — a `Mei` with nothing in it — is not null at all and is caught two
-    // lines below, where `getMusic()` answers null for exactly that. The branch is deleted
-    // rather than reworded, along with the `console.error` the console sweep moved into it.
-    //
-    // The two progress banners this method opened and closed with — "Converting X to MSM and
-    // MPM." and "conversion finished. Time consumed: N milliseconds" — went in that sweep,
-    // with the `startTime` that existed only to feed the second.
+    // Java opens with `if (mei == null)` and closes with two progress banners; neither is
+    // reproduced. Nothing can reach the null branch — {@link convert}'s parameter is a
+    // non-nullable `Mei` — and the case it was really guarding, a `Mei` with nothing in it, is
+    // caught two lines below, where `getMusic()` answers null for exactly that.
     this.mei = mei;
 
-    // `getMusic()` is null exactly when the instance is empty, so one read covers both of the
-    // first two tests and gives the third something to look at without an assertion.
     const music = this.mei.getMusic();
     if (music === null || music.getFirstChildElement('body', music.getNamespaceURI()) === null)
       return new KeyValue<Msm[], Mpm[]>([], []);
@@ -621,9 +514,8 @@ export class Mei2MsmMpmConverter {
     }
 
     // The snapshot `cleanup` promises to restore, taken before the three preprocessing passes
-    // rewrite the document in place. `getDocument()` is null only for an empty instance and
-    // the check above has ruled that out, so the `null` arm below is unreachable — it is
-    // written out rather than asserted away, which costs one test and states the invariant.
+    // rewrite the document in place. `getDocument()` is null only for an empty instance and the
+    // check above has ruled that out, so the `null` arm of `mapPresent` is unreachable.
     const orig: Document | null = this.cleanup
       ? mapPresent(this.mei.getDocument(), (document) => document.copy())
       : null;
@@ -635,8 +527,7 @@ export class Mei2MsmMpmConverter {
     // Re-read rather than reusing `music`: `resolveExpansions` replaces the whole `music`
     // element with a regularized copy, so the element tested at the top of this method may no
     // longer be in the tree. Java dereferences the fresh lookup unguarded and would NPE if
-    // preprocessing had destroyed it, which is what the `!` here used to mean; a
-    // `MissingNodeError` is the same control flow with the cause named.
+    // preprocessing had destroyed it; the throw below is the same control flow, named.
     const preprocessedMusic = this.mei.getMusic();
     if (preprocessedMusic === null)
       throw new MissingNodeError('preprocessing left the MEI without a music element');
@@ -659,11 +550,8 @@ export class Mei2MsmMpmConverter {
 
     const meiFile = this.mei.getFile();
     if (meiFile !== null) {
-      // Java writes this as four loops: a lone export is named after the source file, a
-      // series after the source file plus its index, once for MSM and once for MPM. It is
-      // one rule with two suffixes, so it is stated once here and applied by iteration —
-      // which also lets `getFile()` be read a single time rather than asserted non-null on
-      // each of the four passes.
+      // A lone export is named after the source file, a series after the source file plus its
+      // 0-based index in that series.
       const stem = getFilenameWithoutExtension(meiFile);
       const exportName = (index: number, count: number, extension: string): string =>
         count === 1 ? `${stem}.${extension}` : `${stem}-${index}.${extension}`;
@@ -671,19 +559,14 @@ export class Mei2MsmMpmConverter {
       msms.forEach((msm, i) => msm.setFile(exportName(i, msms.length, 'msm')));
       mpms.forEach((mpm, i) => mpm.setFile(exportName(i, mpms.length, 'mpm')));
 
-      // A lone performance additionally carries a back-reference to the movement it
-      // renders. `makeMovement` appends to `movements` and `performances` together, so one
-      // performance means one movement, and `firstPair` is that fact stated rather than
-      // asserted: a pairing that somehow failed to hold yields no related resource instead
-      // of dereferencing an absent movement.
+      // A lone performance additionally carries a back-reference to the movement it renders.
+      // `makeMovement` appends to `movements` and `performances` together, so one performance
+      // means one movement.
       if (mpms.length === 1 && isNonEmpty(msms) && isNonEmpty(mpms)) {
         const onlyMsm = head(msms);
         const onlyMpm = head(mpms);
         const msmFile = onlyMsm.getFile();
         if (msmFile !== null) {
-          // `createRelatedResource` returns its reason now instead of printing it; there is
-          // no reason to have here, since both arguments are non-null strings, but the
-          // check is what says so rather than an `!`.
           const msmRelatedResource = RelatedResource.createRelatedResource(msmFile, 'msm');
           if (isOk(msmRelatedResource))
             onlyMpm.getMetadata()?.addRelatedResource(msmRelatedResource.value);
@@ -697,27 +580,20 @@ export class Mei2MsmMpmConverter {
   /**
    * The element dispatch: MEI element name → what {@link convertElement} does with it.
    *
-   * **The {@link Traversal} each handler returns is the real content of this table**, and it
-   * splits the 118 known elements four ways:
+   * The {@link Traversal} each handler returns splits the 118 known elements four ways:
    * - {@link IGNORE} (53) — no effect on the sounding result: `clef`, `barline`, `annot`, …;
    * - {@link DESCEND} (17) — structural wrappers with no meaning of their own, whose children
    *   are the music: `score`, `staffGrp`, `beam`, `parts`, …;
    * - handler then `'done'` (36) — the handler took over the descent itself, so nothing below
    *   the element is visited by *this* loop: `processMeasure`, `processLayer`, `processNote`, …;
    * - handler then `'descend'` (10) — the handler annotates the element but still wants its
-   *   children walked: `processKeySig`, `processScoreDef`, `processOctave`, …. (Not
-   *   `processStaffDef`, which the pre-T15 comment cited here: `staffDef` is `'done'`,
-   *   because it drives its own descent.)
+   *   children walked: `processKeySig`, `processScoreDef`, `processOctave`, …. `staffDef` is
+   *   not among them: it is `'done'`, because it drives its own descent.
    *
-   * **Absence from this table is meaningful**: an unknown element is skipped whole, not
-   * descended into. That is what the cascade's `default: continue` said.
-   *
-   * The set of `'descend'` elements is exactly the set whose children reach the converter
+   * Absence from this table is meaningful: an unknown element is skipped whole, not descended
+   * into. The set of `'descend'` elements is exactly the set whose children reach the converter
    * through the generic path, so moving an element between the groups silently changes what
-   * gets converted. This table is frozen against the Java reference in that sense; T15
-   * converted it from a `switch` whose `continue`/`break` carried the same meaning, under a
-   * mechanical census that required every entry to keep its calls, its arguments and its
-   * terminator.
+   * gets converted; in that sense the table is frozen against the Java reference.
    *
    * Two entries carry a condition rather than a fixed traversal: `chord` skips grace chords
    * entirely (`grace` attribute present), and `tuplet` descends only when
@@ -728,27 +604,23 @@ export class Mei2MsmMpmConverter {
    * `reg`, `sic`, `subst`, `supplied` and `unclear` are descended into (their content is
    * music), while `abbr`, `damage` and `gap` are skipped.
    *
-   * `trill`, `mordent` and `turn` route to {@link processOrnamentSign}, which expands them
-   * into MPM v3 ornaments — but only when {@link expandOrnaments} is on, and it is off by
-   * default. Upstream meico ignores all three (its Java carries a TODO saying so), so with the
-   * flag off this dispatch behaves exactly as `IGNORE` did and the MEI equivalence suites keep
-   * comparing against their Java references. See {@link expandOrnaments} for why the default
-   * lives here rather than at the facade. `arpeg` is untouched by any of this: it keeps its own
+   * `trill`, `mordent` and `turn` route to {@link processOrnamentSign}, which expands them into
+   * MPM v3 ornaments only when {@link expandOrnaments} is on; with the flag off — the default —
+   * the dispatch behaves exactly as `IGNORE` does, which is what upstream meico does with all
+   * three. See {@link expandOrnaments}. `arpeg` is untouched by any of this: it keeps its own
    * v2 path through {@link processArpeg} (DESIGN.md D6).
    *
-   * **The null prototype is load-bearing, not a style choice.** On a plain object literal the
-   * lookup below inherits from `Object.prototype`, so an element named `valueOf`,
-   * `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString` or
-   * `__proto__` would resolve to a *defined* member, fail the `undefined` test and be invoked
-   * — throwing, where `default: continue` skipped it. `getLocalName()` strips namespaces, so
-   * that is reachable from foreign-namespace or malformed content. `Object.create(null)` makes
-   * the lookup miss for every name that is not one of the 118 own keys, which is what the
-   * cascade's `default:` meant. The `satisfies` is load-bearing too: without it `Object.assign`
+   * The null prototype is load-bearing. On a plain object literal the lookup below inherits
+   * from `Object.prototype`, so an element named `valueOf`, `hasOwnProperty`, `isPrototypeOf`,
+   * `propertyIsEnumerable`, `toLocaleString` or `__proto__` would resolve to a defined member,
+   * fail the `undefined` test and be invoked — throwing, where an unknown element must be
+   * skipped. `getLocalName()` strips namespaces, so that is reachable from foreign-namespace or
+   * malformed content. `Object.create(null)` makes the lookup miss for every name that is not
+   * one of the 118 own keys. The `satisfies` is load-bearing too: without it `Object.assign`
    * drops the contextual typing and all 96 arrow parameters become implicit `any`.
    */
   private static readonly ELEMENT_HANDLERS: Readonly<Record<string, ElementHandler | undefined>> =
     Object.assign(Object.create(null) as Record<string, ElementHandler | undefined>, {
-      // T15-TABLE-START
       abbr: IGNORE,
       accid: (c, e, ctx) => {
         c.processAccid(e, ctx);
@@ -1023,7 +895,6 @@ export class Mei2MsmMpmConverter {
       unclear: DESCEND,
       uneume: IGNORE,
       verse: DESCEND,
-      // T15-TABLE-END
     } satisfies Record<string, ElementHandler>);
 
   /**
@@ -1051,28 +922,25 @@ export class Mei2MsmMpmConverter {
   }
 
   /**
-   * this function gets an mdiv and creates an instance of Msm
-   */
-  /**
    * Start a new movement: build the MSM and the MPM for one `mdiv`, install them as the
-   * current output, convert the mdiv's content, then finish the two things that could not
-   * be done during the walk.
+   * current output, convert the mdiv's content, then finish the two things that could not be
+   * done during the walk.
    *
-   * The title is the work title plus the mdiv's `n` and `label`, appended in that order.
-   * The movement id is the mdiv's own id, or a fresh `meico_<uuid>` which is **written back
-   * onto the mdiv** so the MSM and the MEI agree.
+   * The title is the work title plus the mdiv's `n` and `label`, appended in that order. The
+   * movement id is the mdiv's own id, or a fresh `meico_<uuid>` which is written back onto the
+   * mdiv so the MSM and the MEI agree.
    *
-   * Then it locates this mdiv's `work` element in `meiHead`, which is where a global tempo
-   * may live: by `decls` reference if the mdiv has one, else by matching `n`, and trivially
-   * if there is exactly one `work`. That lookup only matters for the last step.
+   * Then it locates this mdiv's `work` element in `meiHead`, which is where a global tempo may
+   * live: by `decls` reference if the mdiv has one, else by matching `n`, and trivially if
+   * there is exactly one `work`. That lookup only matters for the last step.
    *
    * After the walk, two postponed jobs run:
-   * - **arpeggios** parked on {@link arpeggiosToSort} are ordered by the pitches that are
-   *   only now known, ascending or descending per the stored flag, and written back as a
+   * - arpeggios parked on {@link arpeggiosToSort} are ordered by the pitches that are only now
+   *   known, ascending or descending per the stored flag, and written back as a
    *   space-separated `#id` list;
-   * - **the tempo map** gets a fallback: if no tempo was found anywhere in the movement, the
-   *   `work`'s `tempo` element is used as an initial tempo at date 0. This is why the
-   *   `work` lookup above exists.
+   * - the tempo map gets a fallback: if no tempo was found anywhere in the movement, the
+   *   `work`'s `tempo` element is used as an initial tempo at date 0. This is why the `work`
+   *   lookup above exists.
    */
   private makeMovement(mdiv: Element): void {
     let titleString = this.requireMei().getTitle();
@@ -1095,15 +963,12 @@ export class Mei2MsmMpmConverter {
 
     const mpm = Mpm.createMpm();
 
-    // The three metadata factories return their reason now rather than printing it. None of
-    // the three calls below can produce one — every argument is a non-null string — so the
-    // reasons are flattened back to null with `unwrapOr` and the array keeps its nullable
-    // element type. That is not laziness: `Mpm.addMetadata` passes the array to
-    // `Metadata.createMetadata`, which treats a null element as a caller error and refuses to
-    // build the metadata at all (T16 closed T10's DISCOVERED note by widening the consumer,
-    // which is what retired this file's `any`). Skipping a null here instead would produce a
-    // metadata block that the incumbent would not have produced, and that is a document
-    // difference, not a plumbing one.
+    // None of the three metadata factories below can fail — every argument is a non-null
+    // string — so their reasons are flattened to null with `unwrapOr` and the array keeps its
+    // nullable element type. The null must be propagated rather than skipped: `Mpm.addMetadata`
+    // passes the array to `Metadata.createMetadata`, which treats a null element as a caller
+    // error and refuses to build the metadata at all, so skipping one would emit a metadata
+    // block the Java reference does not.
     const relatedResources: (RelatedResource | null)[] = [];
     const meiFile = this.requireMei().getFile();
     const meicoAuthor = (): Author | null =>
@@ -1123,11 +988,6 @@ export class Mei2MsmMpmConverter {
       mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), null);
     }
 
-    // Still printed, and that is the point of the change rather than an omission: the
-    // converter is the code that knows a human asked for this conversion, so it is the code
-    // entitled to say something. What it can say is new — `createPerformance` used to print
-    // its exception itself and hand back a bare null, so this message could only report
-    // *that* the performance failed.
     const created = Performance.createPerformance('MEI export performance');
     if (isErr(created)) {
       console.error(
@@ -1143,22 +1003,14 @@ export class Mei2MsmMpmConverter {
     this.reset();
     this.indexNotesAndChords(mdiv);
 
-    // find the corresponding work element in meiHead
-    //
-    // `work` is a local rather than a field until the movement record is built, which is the
-    // whole difference this makes: as `this.currentWork` it was assigned *conditionally* — the
-    // three branches below all have a "no match" path — and only `reset()` standing between
-    // two movements stopped the previous movement's work from serving this one.
+    // find the corresponding work element in meiHead; all three branches below have a
+    // "no match" path, so `work` stays null unless one of them matches
     let work: Element | null = null;
-    // Both ternaries said "null when the attribute is absent", which is what
-    // `getAttributeValue` already answers — the `n` one collapses to the read itself, and
-    // `decls` only needs the value held long enough to be split.
     const n = mdiv.getAttributeValue('n');
     const declsValue = mdiv.getAttributeValue('decls');
     const decls = declsValue === null ? null : declsValue.split(/\s+/);
-    // `getMeiHead()` is null for an empty MEI, which `convertMei` has already ruled out —
-    // but `firstChildElement`'s typed overload does not accept the null, and the two `!`
-    // that answered that also hid the fact that the head was being looked up twice.
+    // `getMeiHead()` is null only for an empty MEI, which `convertMei` has already ruled out;
+    // the null arms below exist because `firstChildElement`'s typed overload does not take one.
     const meiHead = this.requireMei().getMeiHead();
     let workList = mapPresent(meiHead, (head) => firstChildElement('workList', head));
     if (workList === null && meiHead !== null) workList = firstChildElement('workDesc', meiHead);
@@ -1168,9 +1020,6 @@ export class Mei2MsmMpmConverter {
         case 0:
           break;
         case 1:
-          // The `switch` has just established the length; `elementAt` is how that is said
-          // to a compiler which does not read `switch` bounds, and it names the sequence if
-          // the two ever disagree.
           work = elementAt(works, 0, 'the work list of this MEI');
           break;
         default: {
@@ -1204,22 +1053,15 @@ export class Mei2MsmMpmConverter {
       console.error('Skipping mdiv. Failed to initialize required data objects.');
       return;
     }
-    // `isEmpty` is `data === null`, so a non-empty MSM has a document — but `getRootElement`
-    // is typed for the general case, and this names the gap rather than asserting it away.
-    // The old `this.currentMsmMovement = msm.getRootElement()` stored the null and let
-    // `requireMsmMovement()` raise this same error at the first read instead.
+    // `isEmpty` is `data === null`, so a non-empty MSM has a document; `getRootElement` is
+    // typed for the general case, hence the check.
     const msmRoot = msm.getRootElement();
     if (msmRoot === null)
       throw new MissingNodeError('no MSM movement is currently being converted');
 
-    // Everything below the mdiv reads these three and none of them may change one, which is
-    // what makes them a Reader rather than a cursor. `mdiv` is deliberately not among them:
-    // it is used twice, both times above, and is a local.
     const movement: MovementContext = { msm: msmRoot, work, performance };
 
-    // A movement begins with nothing else open. `reset()` said this with eight
-    // `this.currentX = null` lines; the record says it by being the one the mdiv's subtree
-    // is walked under, and by no other subtree ever seeing it.
+    // a movement begins with nothing else open
     const inMovement: WalkContext = { ...NOTHING_OPEN, movement };
     this.convertElement(mdiv, inMovement);
 
@@ -1266,23 +1108,22 @@ export class Mei2MsmMpmConverter {
               ?.getDated()
               ?.addMap(TempoMap.createTempoMap()) as TempoMap | null | undefined;
 
-            // **A divergence from Java, pinned rather than fixed.** Java guards this with
+            // A divergence from Java, pinned rather than fixed. Java guards this with
             // `if (…getAllStyleTypes().get(Mpm.TEMPO_STYLE) != null)` — switch to the
             // MEI-export tempo style only if one was actually defined. Transcribed literally,
-            // the `!= null` landed on a `Map.get` that answers **`undefined`** for an absent
-            // key, so the test was true whatever the header held and the switch was written
-            // unconditionally. It is written unconditionally here too, because that is what
-            // the code has always done; the condition is gone rather than corrected. The same
-            // Java line in `parseTempo` is transcribed `!== undefined` and is correct, which
-            // is what identifies this one as a slip rather than a decision.
+            // the `!= null` landed on a `Map.get` that answers `undefined` for an absent key,
+            // so the test held whatever the header contained and the switch was written
+            // unconditionally. It is written unconditionally here too. The same Java line in
+            // `parseTempo` is transcribed `!== undefined` and is correct, which identifies this
+            // one as a slip rather than a decision.
             //
-            // Reachable, and what it produces is a dangling reference: an MEI whose
+            // The reachable consequence is a dangling reference: an MEI whose
             // `workList/work/tempo` is a purely directional descriptor ("ritardando",
             // "accelerando", "calando") never reaches the arm of `parseTempo` that defines the
             // style, so the MPM gets `<style … name.ref="MEI export"/>` in a document with no
             // `<tempoStyles>` element at all. No fixture carries a work-level tempo of that
-            // shape, which is why aligning the condition with Java leaves all 6208 tests
-            // green — measured. See PARITY.md, and the test in
+            // shape, which is why aligning the condition with Java leaves all 6208 tests green
+            // — measured. See PARITY.md, and the test in
             // `tests/mei/Mei2MsmMpmConverter.test.ts` that reds if someone aligns it.
             globalTempoMap?.addStyleSwitch(0.0, 'MEI export');
           }
@@ -1294,7 +1135,9 @@ export class Mei2MsmMpmConverter {
   }
 
   /**
-   * process an mei scoreDef element
+   * Fill the movement's global maps from a `scoreDef`. Inside a part — a `scoreDef` nested
+   * under an open staff — it is a `staffDef` instead and is handed to
+   * {@link processStaffDef}.
    */
   private processScoreDef(scoreDef: Element, ctx: WalkContext): void {
     if (ctx.part !== null) {
@@ -1306,23 +1149,17 @@ export class Mei2MsmMpmConverter {
 
     let s: Element | null;
 
-    // time signature
     s = this.makeTimeSignature(scoreDef, ctx);
     if (s !== null) {
       addToMap(s, globalDatedMap(ctx, 'timeSignatureMap'));
     }
 
-    // key signature
     s = this.makeKeySignature(scoreDef, ctx);
     if (s !== null) {
       addToMap(s, globalDatedMap(ctx, 'keySignatureMap'));
     }
 
     // store default values in miscMap
-    //
-    // Each of the three blocks below tested an attribute for presence and then read it
-    // again, asserting the presence it had just established. Reading it once into a local
-    // says the same thing, halves the attribute lookups, and leaves nothing to assert.
     const durDefault = scoreDef.getAttributeValue('dur.default');
     if (durDefault !== null) {
       const d = new Element('dur.default');
@@ -1357,18 +1194,11 @@ export class Mei2MsmMpmConverter {
   }
 
   /**
-   * Open the MSM part a `staffDef` describes, fill its defaults, and walk the `staffDef`'s
-   * own children inside it.
+   * Open the MSM part a `staffDef` describes, fill its defaults, and walk the `staffDef`'s own
+   * children inside it. The part is in force for this subtree and no further.
    *
-   * The part is in force for this subtree and no longer. That used to be
-   * `const parentPart = this.currentPart; this.currentPart = …; …; this.currentPart =
-   * parentPart` — dynamic scoping by hand, and the reason no reader of `getMidiTimeAsString`
-   * or `partDatedMap` could tell which part they meant. `inPart` is the same thing said once:
-   * every line below reads from it, and the parent context is never overwritten, so there is
-   * nothing to put back.
-   *
-   * Note that `makePart` is called with the *outer* `ctx` — it does not read the part it is
-   * about to create, and passing `inPart` would be circular.
+   * `makePart` is called with the outer `ctx`: it does not read the part it is about to
+   * create, and passing `inPart` would be circular.
    */
   private processStaffDef(staffDef: Element, ctx: WalkContext): void {
     const inPart: WalkContext = { ...ctx, part: this.makePart(staffDef, ctx) };
@@ -1427,9 +1257,7 @@ export class Mei2MsmMpmConverter {
    *
    * A `staff` with no matching `staffDef` gets a part invented for it, which is the `else`
    * below; either way the part is this subtree's, exactly as in {@link processStaffDef}.
-   *
-   * {@link accid} is cleared on the way out and is *not* part of the context: accidentals are
-   * a running list the movement accumulates, not a position in the tree, so they stay a field.
+   * {@link accid} is cleared on the way out — see {@link processLayer} for its lifetime.
    */
   private processStaff(staff: Element, ctx: WalkContext): void {
     let ref = staff.getAttribute('def');
@@ -1490,15 +1318,11 @@ export class Mei2MsmMpmConverter {
    * sibling layer, which is where the next music begins. Each layer records its own end in a
    * `currentDate` attribute on the MEI element for exactly that comparison.
    *
-   * {@link accid} is cleared per layer as well as per measure: an accidental in one voice
-   * does not carry into another.
+   * {@link accid} is cleared per layer as well as per measure: an accidental in one voice does
+   * not carry into another.
    *
-   * The layer itself only reaches its own subtree — `{ ...ctx, layer }` is what the recursive
-   * call gets, and the clock bookkeeping afterwards runs under the *enclosing* context, which
-   * is what `this.currentLayer = parentLayer` placed exactly here used to arrange. That
-   * restore was the one cursor discipline the byte corpus could not see: the `layer` attribute
-   * it feeds is stripped by `msmCleanup` before any reference comparison, so deleting it left
-   * all 6071 tests green. `tests/mei/Mei2MsmMpmConverter.test.ts` closes it.
+   * The layer reaches only its own subtree: the clock bookkeeping after the descent runs under
+   * the enclosing context, so the `layer` attribute it writes is not stamped on it.
    */
   private processLayer(layer: Element, ctx: WalkContext): void {
     const oldDate = partClock(requirePart(ctx)).getValue();
@@ -1510,18 +1334,9 @@ export class Mei2MsmMpmConverter {
     if (getNextSiblingElement('layer', layer) !== null)
       partClock(requirePart(ctx)).setValue(oldDate);
     else {
-      // `query("child::*[local-name()='layer']")` serialised and re-parsed the entire staff
-      // — every note in it — to find the layer's own siblings, once per last layer of every
-      // staff of every measure. `allChildElements` is the child axis walked directly, and
-      // `tests/xml/navigationEquivalence.test.ts` already asserts the two agree over the
-      // fixture corpus. The fold is a maximum, so the backwards loop Java writes is kept
-      // only because it was there — which is to say it is a `foldl`, and now says so.
       const layers = allChildElements(requireParentElement(layer), 'layer');
-      //
       // A layer the walk has not reached yet carries no `currentDate`, and `parseFloat` of
-      // that is NaN, which loses every `<` comparison and is therefore skipped. That was
-      // already the behaviour when this read `getAttributeValue(…)!`: the assertion is
-      // erased at runtime, so `parseFloat` received the null and answered NaN just the same.
+      // that is NaN, which loses every `<` comparison and is therefore skipped.
       const latestDate = foldl(
         layers,
         parseFloat(partClock(requirePart(ctx)).getValue()),
@@ -1548,8 +1363,6 @@ export class Mei2MsmMpmConverter {
   private processChoice(choice: Element, ctx: WalkContext): void {
     const prefOrder = ['corr', 'reg', 'expan', 'subst', 'choice', 'orig', 'unclear', 'sic', 'abbr'];
 
-    // The first child in preference order, which is a search rather than an index walk: the
-    // loop stops at the first hit, so the names after it are never looked up.
     let c: Element | null = null;
     for (const preferred of prefOrder) {
       c = firstChildElement(choice, preferred);
@@ -1562,9 +1375,7 @@ export class Mei2MsmMpmConverter {
       return;
     }
 
-    // No preferred child: fall back to the first child of any name. `Elements.get` returns a
-    // non-nullable `Element` and the size test above has already established there is one, so
-    // Java's second null check had nothing left to test.
+    // no preferred child: fall back to the first child of any name
     const children = choice.getChildElements();
     if (children.size() > 0) this.convertElement(children.get(0), ctx);
   }
@@ -1586,12 +1397,12 @@ export class Mei2MsmMpmConverter {
    * Turn an MEI `ending` (a volta bracket) into MSM sequencing: a `marker` at its start and
    * a `goto` that decides, on each pass, whether this ending is the one to play.
    *
-   * The ending's *number* comes from `n`, else from `label`, and is reduced to an integer
-   * by {@link extractAllIntegersFromString} — so `"1."`, `"1, 2"` and `"1-2"` all
-   * yield 1, the first integer found. An ending whose text contains "fine" is given
-   * `MAX_SAFE_INTEGER` so it sorts last, and one with no recognisable number gets
-   * `MIN_SAFE_INTEGER` and is simply appended in encounter order. Those two sentinels are
-   * how the ordering of gotos at one date is decided further down.
+   * The ending's number comes from `@n`, else from `@label`, and is reduced to an integer by
+   * {@link extractAllIntegersFromString} — so `"1."`, `"1, 2"` and `"1-2"` all yield 1, the
+   * first integer found. An ending whose text contains "fine" is given `MAX_SAFE_INTEGER` so it
+   * sorts last, and one with no recognisable number gets `MIN_SAFE_INTEGER` and is simply
+   * appended in encounter order. Those two sentinels decide the ordering of gotos at one date
+   * further down.
    *
    * The marker id is `endingMarker_<the ending's xml:id, or a fresh uuid>` — never
    * `#`-prefixed, which is what makes {@link Goto}'s truncating parameter constructor
@@ -1604,16 +1415,13 @@ export class Mei2MsmMpmConverter {
 
     const activity = '1';
     let n = Number.MIN_SAFE_INTEGER;
-    // `@n` before `@label`, both optional — {@link firstPresent} is that preference written
-    // once, and {@link orDefault} is the `''` the two `if`s left standing when neither is set.
+    // `@n` before `@label`, both optional; `''` when neither is set
     const endingText = orDefault(
       firstPresent(ending.getAttributeValue('n'), ending.getAttributeValue('label')),
       '',
     );
     if (endingText.toLowerCase().includes('fine')) n = Number.MAX_SAFE_INTEGER;
     else {
-      // The first integer in the label, if there is one — `isNonEmpty` carries that "if"
-      // into the type, so `head` needs no index and no assertion.
       const endingNumbers = extractAllIntegersFromString(endingText);
       if (isNonEmpty(endingNumbers)) n = head(endingNumbers);
     }
@@ -1678,9 +1486,8 @@ export class Mei2MsmMpmConverter {
       }
     }
 
-    // `source` is the MEI element a Goto was read from; there is none here because this
-    // goto is synthesised, and Goto only ever stores the field, never reads it — so null is
-    // safe. Typed away rather than declared nullable because Goto's signature is T9's file.
+    // `source` is the MEI element a Goto was read from; there is none here because this goto is
+    // synthesised, and Goto only ever stores the field, never reads it, so null is safe.
     const gotoObj = new Goto(
       dateOfGoto,
       startDate,
@@ -1809,13 +1616,11 @@ export class Mei2MsmMpmConverter {
    * Convert one measure, and then reconcile the parts' clocks.
    *
    * Three things happen around the recursive descent:
-   * - **before**: parked {@link tstamp2s} are counted down one measure. `tstamp2` is
-   *   written `<measures>m+<beat>`, so each measure boundary decrements the count and only
-   *   the entry that reaches zero resolves to a `date.end` here. Java splices the resolved
-   *   entries out in place and steps its index backwards to survive the mutation; here the
-   *   two outcomes are a partition, so the list is rebuilt by a filter instead;
-   * - **before**: {@link reorderMeasureContent} hoists control events ahead of the staves;
-   * - **after**: {@link accid} is cleared, because MEI accidentals last exactly one measure.
+   * - before: parked {@link tstamp2s} are counted down one measure. `tstamp2` is written
+   *   `<measures>m+<beat>`, so each measure boundary decrements the count and only the entry
+   *   that reaches zero resolves to a `date.end` here;
+   * - before: {@link reorderMeasureContent} hoists control events ahead of the staves;
+   * - after: {@link accid} is cleared, because MEI accidentals last exactly one measure.
    *
    * The tail then decides how long the measure actually was. `metcon="false"` marks a
    * measure that deliberately does not fill its time signature (a pickup, a cadenza), and
@@ -1827,26 +1632,13 @@ export class Mei2MsmMpmConverter {
     const startDate = this.getMidiTime(ctx);
     measure.addAttribute(new Attribute('date', String(startDate)));
     // The measure is open from here to the end of the descent — including the `tstamp2`
-    // countdown below, which resolves a parked span against *this* measure's `date`.
-    //
-    // The field version wrote `this.currentMeasure = null` after the descent rather than
-    // restoring the value it found, which is only right because **measures do not nest**: the
-    // saved value was always null anyway. The record makes the distinction moot — the tail
-    // below runs under `ctx`, whatever that was — and if a malformed document ever did nest
-    // two measures, this restores the enclosing one instead of clearing it, which is the
-    // behaviour the tail's date arithmetic wants.
+    // countdown below, which resolves a parked span against this measure's `date`. The tail
+    // after the descent runs under `ctx` again.
     const inMeasure: WalkContext = { ...ctx, measure };
 
-    // Process pending tstamp2 elements. A measure boundary counts every parked entry down by
-    // one; the entries that reach zero resolve to a `date.end` here and leave the list, and
-    // the rest are rewritten with the smaller count. That is a partition, so this is a filter
-    // that rebuilds the list once rather than the index loop that used to `splice` in place
-    // and step `i` backwards to survive its own mutation.
-    //
-    // Both halves of the split are read through `elementAt` because both are in range by
-    // construction: an entry is only parked when `computeControlEventTiming` saw at least two
-    // parts (a one-part `tstamp2` resolves there and is never parked), and the rewrite below
-    // puts the separator back.
+    // Both halves of the `m+` split are in range by construction: an entry is only parked when
+    // `computeControlEventTiming` saw at least two parts (a one-part `tstamp2` resolves there
+    // and is never parked), and the rewrite below puts the separator back.
     this.tstamp2s = this.tstamp2s.filter((e) => {
       const att = requireAttribute('tstamp2', e);
       const tstamp2Parts = att.getValue().split('m+');
@@ -1924,8 +1716,6 @@ export class Mei2MsmMpmConverter {
           globalTsMap.removeChild(last);
         } else break;
       }
-      // A two-element array read back as `[0]` and `[1]` is a pair with the names left off.
-      // Putting them back is the whole fix here.
       const numerator = parseFloat(requireAttributeValue('numerator', globalTimeSignature));
       const denominator = parseFloat(requireAttributeValue('denominator', globalTimeSignature));
       const num = (longestDuration * denominator) / (this.ppq * 4.0);
@@ -1941,9 +1731,8 @@ export class Mei2MsmMpmConverter {
       if (tsData === undefined || partsDefaultDurations.get(part) === longestDuration) continue;
       const tsMap = tsData.getKey();
       // The entry exists only where a `timeSignature` was actually found (see the loop that
-      // fills `partsTsMapAndTs` above), and `Elements.get` throws rather than answering null,
-      // so the pair's value is an element whenever the `undefined` test above lets us through.
-      // Java's extra null check on it tested the same thing the map lookup already had.
+      // fills `partsTsMapAndTs` above), so the pair's value is an element whenever the
+      // `undefined` test above lets us through.
       const ts = tsData.getValue();
 
       while (tsMap.getChildElements().size() > 0) {
@@ -1961,10 +1750,8 @@ export class Mei2MsmMpmConverter {
       tsMap.appendChild(switchBackTs2);
     }
 
-    // process barlines
-    //
-    // Left before right, and neither call moved: `barline2SequencingCommand` draws UUIDs, so
-    // the order the two guards run in is part of the compared output.
+    // Barlines, left before right: `barline2SequencingCommand` draws UUIDs, so the order the
+    // two guards run in is part of the compared output.
     const leftBarline = measure.getAttributeValue('left');
     if (leftBarline !== null)
       Mei2MsmMpmConverter.barline2SequencingCommand(
@@ -2036,11 +1823,8 @@ export class Mei2MsmMpmConverter {
     if (parentNote !== null && parentNote.getAttribute('accid') === null)
       parentNote.addAttribute(new Attribute('accid', accidAtt.getValue()));
 
-    // `@ploc`, else the parent note's `@pname`, else its `@pname.ges` unless that says
-    // "none"; anything else and the accidental has no pitch to attach to and is dropped.
-    // Every arm below either assigns a value read from the tree or returns, which is what
-    // the closing `pname!` claimed — writing the reads as `string | null` locals lets the
-    // compiler follow the same argument instead of being told the answer.
+    // `@ploc`, else the parent note's `@pname`, else its `@pname.ges` unless that says "none";
+    // anything else and the accidental has no pitch to attach to and is dropped.
     const ploc = accid.getAttribute('ploc');
     let pname: string;
     if (ploc !== null) {
@@ -2186,9 +1970,9 @@ export class Mei2MsmMpmConverter {
    * `Msm.processPartName`/`InstrumentsDictionary` later matches against to pick a MIDI
    * program, so its exact spelling reaches the MIDI output.
    *
-   * A `staffDef` without `n` gets a **negative** number derived from the current part count
-   * (and it is written back onto the MEI), so synthetic numbers can never collide with real
-   * staff numbers.
+   * A `staffDef` without `n` gets a negative number derived from the current part count, and
+   * it is written back onto the MEI, so synthetic numbers can never collide with real staff
+   * numbers.
    *
    * MIDI channel and port are derived from the *last* part added, not from a counter: the
    * channel is its channel + 1 modulo 16, skipping 9 — zero-based for MIDI channel 10 — when
@@ -2231,10 +2015,9 @@ export class Mei2MsmMpmConverter {
     let midiPort = 0;
     const ps = requireMovement(ctx).msm.getChildElements('part');
     if (ps.size() > 0) {
-      // The previous part's channel and port. Both are written by
-      // `Msm.makePartFromString` on every part this converter creates, so a part without
-      // them is a broken MSM rather than an encoding this method should tolerate — hence
-      // `requireAttributeValue` and not a default.
+      // The previous part's channel and port. `Msm.makePartFromString` writes both on every
+      // part this converter creates, so a part without them is a broken MSM rather than an
+      // encoding to tolerate.
       const p = ps.get(ps.size() - 1);
       midiChannel = (parseInt(requireAttributeValue('midi.channel', p)) + 1) % 16;
       if (midiChannel === 9 && this.dontUseChannel10) ++midiChannel;
@@ -2263,12 +2046,7 @@ export class Mei2MsmMpmConverter {
 
     requireMovement(ctx).msm.appendChild(part);
 
-    // MPM part creation.
-    //
-    // This used to be guarded by `if (this.currentPerformance)`, a branch that could not be
-    // false: the line above has already gone through `requireMovement`, and a movement is only
-    // built once its performance exists (`makeMovement` returns early otherwise). The record
-    // carries the performance beside the MSM, so the pairing is now in the type.
+    // the matching MPM part; a movement always has a performance, so this is unconditional
     const performancePart = MpmPart.createPart(label, parseInt(number), midiChannel, midiPort);
     if (isOk(performancePart)) {
       requirePerformance(ctx).addPart(performancePart.value);
@@ -2282,9 +2060,9 @@ export class Mei2MsmMpmConverter {
    * Build an MSM `timeSignature` from a `scoreDef`/`staffDef`/`meterSig`, reading `count`
    * and `unit` or their `meter.`-prefixed forms.
    *
-   * The character loop over `count` is not decoration: MEI allows additive meters such as
-   * `"3+2+2"`, and this **sums** every numeric run it finds, so `3+2+2` becomes 7. Any
-   * non-numeric separator works, and a `count` with no digits at all sums to 0.
+   * MEI allows additive meters such as `"3+2+2"`, so the character loop over `count` sums
+   * every numeric run it finds: `3+2+2` becomes 7. Any non-numeric separator works, and a
+   * `count` with no digits at all sums to 0.
    */
   protected makeTimeSignature(meiSource: Element, ctx: WalkContext): Element | null {
     const s = new Element('timeSignature');
@@ -2317,11 +2095,9 @@ export class Mei2MsmMpmConverter {
     let sym = meiSource.getAttribute('sym');
     if (sym === null) sym = meiSource.getAttribute('meter.sym');
     if (sym !== null) {
-      // `str` stays nullable on purpose, and the `!`s that used to stand here were a lie
-      // rather than a shortcut: `sym` above accepts *either* spelling, so a `meterSig`
+      // `str` is nullable on purpose: the test above accepts either spelling, so a `meterSig`
       // carrying only `@meter.sym` reaches this line and `getAttributeValue('sym')` returns
-      // null. Both comparisons below then simply fail and the method returns null, which is
-      // what happened before — a `requireAttributeValue` here would throw instead.
+      // null. Both comparisons below then fail and the method returns null.
       const str =
         meiSource.getLocalName() === 'meterSig'
           ? meiSource.getAttributeValue('sym')
@@ -2352,8 +2128,7 @@ export class Mei2MsmMpmConverter {
     let mixed = '';
 
     if (meiSource.getLocalName() === 'scoreDef' || meiSource.getLocalName() === 'staffDef') {
-      // `key.sig` decides whether there is a key signature at all; the rest default to the
-      // empty string the two locals were initialised with, which is what the `if`s said.
+      // `key.sig` decides whether there is a key signature at all
       const keySig = meiSource.getAttributeValue('key.sig');
       if (keySig === null) return null;
       sig = keySig;
@@ -2364,10 +2139,6 @@ export class Mei2MsmMpmConverter {
 
       const accids = meiSource.getChildElements('keyAccid');
       for (let i = 0; i < accids.size(); ++i) {
-        // The element, its `@pname` and its `@accid` read once each. The guard below is the
-        // same "both attributes or skip this keyAccid" test as before — but it now narrows
-        // the two values for the rest of the iteration, where each was previously fetched
-        // again and asserted (five lookups per accidental became two).
         const keyAccid = accids.get(i);
         const pname = keyAccid.getAttributeValue('pname');
         const accid = keyAccid.getAttributeValue('accid');
@@ -2429,10 +2200,8 @@ export class Mei2MsmMpmConverter {
               `Unknown sig or key.sig attribute value in ${meiSource.toXML()}. Assume 0 in the further processing.`,
             );
         }
-        // Java keeps two index-aligned arrays here and walks them with one counter; they are
-        // one sequence of (pitch, name) pairs, and as pairs the loop takes elements instead
-        // of indices. The order within each is the circle of fifths in the corresponding
-        // direction, so the first `|accidCount|` of them are exactly the key's accidentals.
+        // The first `|accidCount|` entries of the circle in the matching direction are exactly
+        // the key's accidentals; see {@link CIRCLE_OF_FIFTHS_SHARPWARD}.
         const circleOfFifths =
           accidCount > 0 ? CIRCLE_OF_FIFTHS_SHARPWARD : CIRCLE_OF_FIFTHS_FLATWARD;
         for (const [midiPitch, pitchName] of circleOfFifths.slice(0, Math.abs(accidCount))) {
@@ -2501,9 +2270,7 @@ export class Mei2MsmMpmConverter {
 
     this.convertElement(chord, inChord);
     // The clock advances once, for the outermost chord only: an inner chord's notes sound
-    // within their parent's span, so they must not move it a second time. As a field this
-    // read `this.currentChord === null` *after* the restore, which said the same thing about
-    // the value that had just been put back — i.e. about `ctx`.
+    // within their parent's span, so they must not move it a second time.
     if (ctx.chord === null) {
       advancePartClock(ctx.part, dur);
     }
@@ -2513,10 +2280,10 @@ export class Mei2MsmMpmConverter {
    * Handle a `tuplet` that carries its own `dur`, i.e. one that states its total length
    * rather than leaving it to be derived from its contents.
    *
-   * @return true if it was handled here — the caller then does **not** descend again, since
-   *   this method already walked the children; false to let {@link convertElement}'s
-   *   generic descent take over, which is the normal case. The tuplet ratio itself is
-   *   applied per note inside {@link computeDuration}, not here.
+   * @return true if it was handled here, in which case the caller must not descend again —
+   *   this method already walked the children; false to let {@link convertElement}'s generic
+   *   descent take over, which is the normal case. The tuplet ratio itself is applied per note
+   *   inside {@link computeDuration}, not here.
    */
   private processTuplet(tuplet: Element, ctx: WalkContext): boolean {
     if (tuplet.getAttribute('dur') !== null) {
@@ -2604,10 +2371,10 @@ export class Mei2MsmMpmConverter {
    *
    * `order="nonarp"` means "explicitly not arpeggiated" and is rejected up front. The note
    * order is then determined one of two ways:
-   * - **no `plist`**: the order is symbolic — `'ascending pitch'`, or `'descending pitch'`
-   *   for `order="down"`. MPM resolves it at rendering time and nothing more is needed;
-   * - **with a `plist`**: the order is the listed notes, in listed order. A `plist` entry
-   *   naming a *chord* is expanded into its notes, minting ids for any that lack one.
+   * - no `plist`: the order is symbolic — `'ascending pitch'`, or `'descending pitch'` for
+   *   `order="down"`. MPM resolves it at rendering time and nothing more is needed;
+   * - with a `plist`: the order is the listed notes, in listed order. A `plist` entry naming a
+   *   chord is expanded into its notes, minting ids for any that lack one.
    *
    * The `plist` case cannot be finished here, because a note's pitch is only known after
    * {@link processNote} has run on it. So the ornament's `note.order` attribute is parked
@@ -2619,17 +2386,14 @@ export class Mei2MsmMpmConverter {
     const order = attribute('order', arpeg);
     if (order !== null && order.getValue().trim() === 'nonarp') return;
 
-    // compute the timing
     const timingData = this.computeControlEventTiming(arpeg, ctx.part, ctx);
     if (timingData === null) return;
 
-    // create ornament data
     const od = new OrnamentData();
     od.date = timingData[0];
     od.ornamentDefName = 'arpeggio';
     od.scale = 0.0;
 
-    // read the xml:id
     const id = attribute('id', arpeg);
     od.xmlId = id === null ? null : id.getValue();
 
@@ -2676,15 +2440,8 @@ export class Mei2MsmMpmConverter {
       }
     }
 
-    // Make sure that the arpeggio is defined in a global ornamentation style.
-    //
-    // The `| null` on the *second* cast was wrong, and it cost fifteen assertions across the
-    // six blocks shaped like this one: `Header.addStyleDef(type, name)` returns the style it
-    // just created, so only the `getStyleDef` lookup can come back null. With the created
-    // style typed as present, the two arms join to a non-null value and every downstream
-    // `ornamentationStyle!` / `articulationStyle!` reads plainly — and the two
-    // `!== null` guards that had grown around the same value (`dynamicsStyle`, `tempoStyle`)
-    // went with them, since the compiler now sees they can never fail.
+    // Make sure that the arpeggio is defined in a global ornamentation style. Only the
+    // `getStyleDef` lookup can come back null; `addStyleDef` returns the style it just created.
     let ornamentationStyle = globalHeader(ctx).getStyleDef(
       Mpm.ORNAMENTATION_STYLE,
       'MEI export',
@@ -2699,7 +2456,6 @@ export class Mei2MsmMpmConverter {
       if (isOk(def)) ornamentationStyle.addDef(def.value);
     }
 
-    // parse the staff attribute
     let ornamentationMap: OrnamentationMap | null;
     let att = arpeg.getAttribute('part');
     if (att === null) att = arpeg.getAttribute('staff');
@@ -2757,18 +2513,13 @@ export class Mei2MsmMpmConverter {
    *
    * A no-op unless {@link expandOrnaments} is on — see that field for why it is off by default.
    *
-   * The shape of this method is {@link processArpeg}'s, deliberately: an ornament sign and an
-   * arpeggio need the same three things — a date from {@link computeControlEventTiming}, an
+   * The shape follows {@link processArpeg}: a date from {@link computeControlEventTiming}, an
    * `ornamentDef` in a global `"MEI export"` style, and an `ornamentationMap` on each part the
-   * event applies to, created on demand with a style switch at date 0. Following the existing
-   * method keeps one idiom for authoring MPM out of MEI. What differs is *what* is authored:
-   * {@link buildOrnamentData} produces a v3 ornament with a note pool and a `note.order`, where
-   * an arpeggio produces a v2 one with neither.
-   *
-   * `processArpeg`'s multi-staff handling is reproduced, including the `_meico_<uuid>` suffix
-   * that keeps ids unique when one sign applies to several staves; its arpeggio-specific
-   * pitch-sorting postprocessing has no counterpart here, because a dictionary sequence already
-   * fixes the playing order.
+   * event applies to, created on demand with a style switch at date 0. What differs is what is
+   * authored — {@link buildOrnamentData} produces a v3 ornament with a note pool and a
+   * `note.order`, where an arpeggio produces a v2 one with neither — and that the
+   * arpeggio-specific pitch-sorting postprocessing has no counterpart here, a dictionary
+   * sequence already fixing the playing order.
    */
   private processOrnamentSign(sign: Element, ctx: WalkContext): void {
     if (!this.expandOrnaments) return;
@@ -2812,7 +2563,6 @@ export class Mei2MsmMpmConverter {
       if (isOk(def)) ornamentationStyle.addDef(def.value);
     }
 
-    // parse the staff attribute
     let ornamentationMap: OrnamentationMap | null;
     let att = sign.getAttribute('part');
     if (att === null) att = sign.getAttribute('staff');
@@ -2843,10 +2593,9 @@ export class Mei2MsmMpmConverter {
         ornamentationMap.addStyleSwitch(0.0, 'MEI export');
       }
 
-      // Built per part rather than cloned from one shared object. Cloning would carry the pool
+      // Built per part rather than cloned from one shared object: cloning would carry the pool
       // notes' `xml:id`s along with it, so a sign naming two staves would emit `<note
-      // xml:id="tr1_n0">` twice in one MPM. Deriving the whole ornament from a per-part id stem
-      // keeps every generated id unique. The stem itself follows processArpeg's `_meico_<uuid>`
+      // xml:id="tr1_n0">` twice in one MPM. The stem follows processArpeg's `_meico_<uuid>`
       // convention for the second and later staves, so the first staff keeps the readable id.
       const stem = multiIDs ? `${idBase}_meico_${uuidv4()}` : idBase;
       ornamentationMap.addOrnamentFromData(
@@ -2925,7 +2674,6 @@ export class Mei2MsmMpmConverter {
       dd.protraction = 0.0;
     }
 
-    // compute the timing
     const timingData = this.computeControlEventTiming(dynam, ctx.part, ctx);
     if (timingData === null) return;
     dd.startDate = timingData[0];
@@ -2933,11 +2681,9 @@ export class Mei2MsmMpmConverter {
     const tstamp2 = timingData[2];
     const endid = timingData[3];
 
-    // read the xml:id
     const id = attribute('id', dynam);
     dd.xmlId = id === null ? null : id.getValue();
 
-    // parse the staff attribute
     let dynamicsMap: DynamicsMap | null;
     let att = dynam.getAttribute('part');
     if (att === null) att = dynam.getAttribute('staff');
@@ -2979,10 +2725,7 @@ export class Mei2MsmMpmConverter {
     endid: Attribute | null,
     tstamp2: Attribute | null,
   ): number {
-    // The instruction this one continues from: the last entry that starts at or before it.
-    // Java counts an index down, skips the later entries and `break`s on the first hit —
-    // which is a backwards search, and as one the body reads the entry it found instead of
-    // indexing back into the array three more times.
+    // the instruction this one continues from: the last entry that starts at or before it
     const previousDynamics = dynamicsMap.getAllElements();
     const predecessor = findLast(
       previousDynamics,
@@ -2993,11 +2736,8 @@ export class Mei2MsmMpmConverter {
       if (dynamicsData.transitionToString === null) {
         if (trans !== null) {
           // Java passes `volumeString` straight to `Attribute.setValue`, which rejects null
-          // with an NPE. The `!` here did something worse than throw: it wrote the null *into*
-          // the attribute, where it would serialise as the text `null`. Naming the case is the
-          // faithful reading — and it is not reachable from the corpus, which a probe
-          // confirmed by counting zero arrivals here with a null `volumeString` over all 6066
-          // tests, so no fixture byte can move.
+          // with an NPE; throwing here is the faithful reading. Unreachable from the corpus: a
+          // probe counted zero arrivals with a null `volumeString` over all 6066 tests.
           if (dynamicsData.volumeString === null)
             throw new MissingNodeError(
               'a continuous dynamics instruction has no volume for its predecessor to transition to',
@@ -3032,7 +2772,6 @@ export class Mei2MsmMpmConverter {
     const tempoData = this.parseTempo(tempo, ctx.part, ctx);
     if (tempoData === null) return;
 
-    // compute the timing or get the necessary data to compute the end date later on
     const timingData = this.computeControlEventTiming(tempo, ctx.part, ctx);
     if (timingData === null) return;
     tempoData.startDate = timingData[0];
@@ -3040,7 +2779,6 @@ export class Mei2MsmMpmConverter {
     const tstamp2 = timingData[2];
     const endid = timingData[3];
 
-    // parse the staff attribute (space separated staff numbers)
     let tempoMap: TempoMap | null;
     let att = tempo.getAttribute('part');
     if (att === null) att = tempo.getAttribute('staff');
@@ -3131,12 +2869,10 @@ export class Mei2MsmMpmConverter {
       if (att === null && slur === null) return;
     }
 
-    // get the xmlid
     let xmlid: string | null = null;
     const articId = attribute('id', artic);
     if (articId !== null) xmlid = articId.getValue();
 
-    // make sure there is a styleDef in MPM for articulation definitions
     let articulationStyle = globalHeader(ctx).getStyleDef(
       Mpm.ARTICULATION_STYLE,
       'MEI export',
@@ -3150,7 +2886,6 @@ export class Mei2MsmMpmConverter {
       if (isOk(nonlegatoDef)) articulationStyle.addDef(nonlegatoDef.value);
     }
 
-    // find the local articulationMap
     const date = this.getMidiTime(ctx);
     // Unlike the `staff`-list loops elsewhere in this class, which skip a part they cannot
     // find, Java dereferences this one straight away and would NPE — the current MSM part
@@ -3181,8 +2916,6 @@ export class Mei2MsmMpmConverter {
         if (att !== null)
           this.addArticulationToMap(date, att.getValue(), xmlid, noteId, map, articulationStyle);
         if (slur !== null) {
-          // the ternary this replaces asked whether the attribute was there and then read it,
-          // which is what `getAttributeValue` answers in one call
           const slurid = artic.getAttributeValue('slurid');
           if (slur.getValue().includes('t'))
             this.addArticulationToMap(date, 'legatoStop', slurid, noteId, map, articulationStyle);
@@ -3291,8 +3024,6 @@ export class Mei2MsmMpmConverter {
       if (articulationStyle.getDef(artic) === undefined) {
         const def = ArticulationDef.createDefaultArticulationDef(artic);
         if (isErr(def)) {
-          // Still printed, and now with the reason in it: the def factory used to print its
-          // own exception and hand back a bare null, so this line could only say "it failed".
           console.error(
             `Failed to generate articulationDef for "${artic}". ${describeMpmParseError(def.error)}`,
           );
@@ -3307,7 +3038,6 @@ export class Mei2MsmMpmConverter {
   private processBreath(breath: Element, ctx: WalkContext): void {
     if (ctx.measure === null) return;
 
-    // get the xmlid
     let xmlid: string | null = null;
     const id = attribute('id', breath);
     if (id !== null) xmlid = id.getValue();
@@ -3337,7 +3067,6 @@ export class Mei2MsmMpmConverter {
           );
           const tstamp = att.getValue();
 
-          // make sure there is a styleDef in MPM for articulation definitions
           let articulationStyle = globalHeader(ctx).getStyleDef(
             Mpm.ARTICULATION_STYLE,
             'MEI export',
@@ -3350,7 +3079,6 @@ export class Mei2MsmMpmConverter {
             articulationStyle.getDef('defaultArticulation');
           }
 
-          // find or generate the required articulationMaps
           let articulationMap: ArticulationMap | null;
           att = breath.getAttribute('part');
           if (att === null) att = breath.getAttribute('staff');
@@ -3473,14 +3201,14 @@ export class Mei2MsmMpmConverter {
    *
    * Three routes, in Java's order:
    *
-   * 1. **`plist`** — the slur names its notes explicitly. They are marked directly, `im`
-   *    ("in the middle") on all but the last, `t` (terminal) on the last, and no miscMap
-   *    entry is produced at all. The bow's final note is deliberately excluded from the
-   *    `im` run: it ends the legato rather than continuing it.
-   * 2. **local** — the slur carries `part` or `staff`, so it belongs to specific staffs.
-   *    One entry per named staff, in that staff's part `miscMap`. A staff number matching
-   *    no MSM part contributes nothing, which is how a dangling reference is dropped.
-   * 3. **global** — no association, or `%all`: one entry in the global `miscMap`.
+   * 1. `plist` — the slur names its notes explicitly. They are marked directly, `im` ("in the
+   *    middle") on all but the last, `t` (terminal) on the last, and no miscMap entry is
+   *    produced at all. The bow's final note is deliberately excluded from the `im` run: it
+   *    ends the legato rather than continuing it.
+   * 2. local — the slur carries `part` or `staff`, so it belongs to specific staffs. One entry
+   *    per named staff, in that staff's part `miscMap`. A staff number matching no MSM part
+   *    contributes nothing, which is how a dangling reference is dropped.
+   * 3. global — no association, or `%all`: one entry in the global `miscMap`.
    *
    * Before routing, a slur with both `startid` and `endid` gets its `staff` and then its
    * `layer` filled in from those endpoints when both sit in the same one — so a slur
@@ -3498,7 +3226,6 @@ export class Mei2MsmMpmConverter {
     const id = attribute('id', slur);
     const xmlid = id !== null ? id.getValue() : null;
 
-    // if a plist attribute names all affected notes/chords, mark them directly
     const plistAtt = slur.getAttribute('plist');
     if (plistAtt !== null) {
       const startidAtt = slur.getAttribute('startid');
@@ -3518,11 +3245,10 @@ export class Mei2MsmMpmConverter {
       const plist = plistAtt.getValue().trim().replace(/#/g, '').split(/\s+/);
       let multiIds = false;
 
-      // All but the last: the end of the legato bow is not played legato. Java counts down
-      // from `length - 2`, and the direction is load-bearing — the ids drawn below are
-      // canonicalised by first occurrence, so a forwards walk would move fixture bytes.
-      // Hence the copy is reversed rather than the walk; `slice(0, -1)` of a one- or
-      // zero-element list is empty, which is the loop that did not run.
+      // All but the last: the end of the legato bow is not played legato. The backwards order
+      // is load-bearing — the ids drawn below are canonicalised by first occurrence, so a
+      // forwards walk would move fixture bytes. `slice(0, -1)` of a one- or zero-element list
+      // is empty, and the loop does not run.
       for (const ref of plist.slice(0, -1).reverse()) {
         const note = this.allNotesAndChords.get(ref);
         if (note !== undefined) {
@@ -3570,7 +3296,6 @@ export class Mei2MsmMpmConverter {
     const endid = timingData[3];
     const startid = slur.getAttribute('startid');
 
-    // check whether startid and endid are in the same staff and layer
     let layerId = '';
     if (startid !== null && endid !== null) {
       if (slur.getAttribute('staff') === null) {
@@ -3589,8 +3314,8 @@ export class Mei2MsmMpmConverter {
     let att = slur.getAttribute('part');
     if (att === null) att = slur.getAttribute('staff');
 
-    // Both branches below append attributes in Java's order. The serialized attribute
-    // sequence is the fixture bytes, so it is a contract, not a detail.
+    // Both branches below append attributes in Java's order: the serialized attribute sequence
+    // is compared byte-for-byte against the reference.
     if (att === null || att.getValue() === '' || att.getValue() === '%all') {
       // no part or staff association: a global instruction
       const slurMisc = new Element('slur');
@@ -3726,8 +3451,8 @@ export class Mei2MsmMpmConverter {
    * original sequence. Each copy's id is rewritten to `meico_repeats_<old>_<uuid>` — one
    * UUID per copied element, on the order-sensitive path.
    *
-   * Layer filtering here is *inverted* relative to {@link isSameLayer}: an empty current
-   * layer copies everything, otherwise only entries whose `layer` matches exactly.
+   * Layer filtering here is inverted relative to {@link isSameLayer}: an empty current layer
+   * copies everything, otherwise only entries whose `layer` matches exactly.
    */
   private processRepeat(timeframe: number, ctx: WalkContext): void {
     if (ctx.part === null || requirePartDatedMap(ctx, 'score').getChildElements().size() === 0) {
@@ -3874,10 +3599,8 @@ export class Mei2MsmMpmConverter {
       case '22':
         result = 36.0;
         break;
-      // `getAttributeValue` is `string | null`, and the guard above has already returned for a
-      // missing `@dis` — so null is unreachable here. Named alongside the default rather than
-      // folded into it, because the reason it cannot happen lives eight lines up and this is
-      // where a reader asks.
+      // Unreachable: the guard at the top of the method has already returned for a missing
+      // `@dis`. Named alongside the default because that is where a reader asks.
       case null:
       default:
         console.error(
@@ -4026,10 +3749,10 @@ export class Mei2MsmMpmConverter {
    * 3. {@link checkSlurs} then {@link processArtic}, in that order, so articulation can see
    *    the slur state;
    * 4. compute pitch, bail out at -1 (unpitched: the MSM note is discarded), then duration;
-   * 5. advance the part clock **only when not inside a chord** — chord members all start
-   *    together, and the chord itself moves the clock once;
-   * 6. write `pnum`, `date` and `midi.dur` back onto the *MEI* element as well, because
-   *    later references (arpeggio ordering, `startid` lookups) read them from there.
+   * 5. advance the part clock only when not inside a chord — chord members all start together,
+   *    and the chord itself moves the clock once;
+   * 6. write `pnum`, `date` and `midi.dur` back onto the *MEI* element as well, because later
+   *    references (arpeggio ordering, `startid` lookups) read them from there.
    *
    * Ties are resolved by first character of `tie` (`i`nitial / `m`edial / `t`erminal),
    * inherited from the chord when the note has none: an initial tie marks the MSM note,
@@ -4062,12 +3785,9 @@ export class Mei2MsmMpmConverter {
     const pitch = this.computePitch(note, pitchdata, ctx);
     if (pitch === -1) return;
     s.addAttribute(new Attribute('midi.pitch', String(pitch)));
-    // `computePitch` reports the pitch through its return value and the *spelling* — name,
-    // accidental, octave — by appending three strings to `pitchdata`. It appends all three or
-    // none: the only early return is the `-1` handled on the line above. The three reads are
-    // therefore in range by construction, and `elementAt` is what says so — a spelling that
-    // silently defaulted to `''` would become a note with an empty pitch name that no
-    // downstream stage could tell from a real one.
+    // `computePitch` returns the pitch and reports the spelling — name, accidental, octave —
+    // by appending three strings to `pitchdata`. It appends all three or none, the only early
+    // return being the `-1` handled on the line above, so the three reads are in range.
     const what = "computePitch's [pitchname, accidental, octave]";
     s.addAttribute(new Attribute('pitchname', elementAt(pitchdata, 0, what)));
     s.addAttribute(new Attribute('accidentals', elementAt(pitchdata, 1, what)));
@@ -4088,8 +3808,7 @@ export class Mei2MsmMpmConverter {
 
     // handle ties
     let tie = 'n';
-    // the note's own `@tie`, else the enclosing chord's — {@link firstPresent} is that
-    // preference, and `charAt(0)` of a present value is what both branches did
+    // the note's own `@tie`, else the enclosing chord's
     const tieValue = firstPresent(
       note.getAttributeValue('tie'),
       mapPresent(ctx.chord, (chord) => chord.getAttributeValue('tie')),
@@ -4103,16 +3822,10 @@ export class Mei2MsmMpmConverter {
         break;
       case 'm':
       case 't': {
-        // The note this tie continues, looked for from the end of the part's score
-        // backwards — the first one at the same pitch that ends exactly where this one
-        // starts. This was `query("descendant::*[local-name()='note' and @tie]")` over the
-        // whole accumulated score, evaluated once per tied note: a serialise, re-parse and
-        // document-order sort of everything converted so far, per tie. The synthetic
-        // benchmark scores have no ties, so it never showed in a profile, but on a
-        // tie-heavy piece it is the same quadratic the whole-document queries were.
-        // {@link reverseDescendantElements} yields the same elements in the same
-        // back-to-front order this loop already read them in, and stops when the loop does
-        // — which for a tie whose partner is the note just before it is immediately.
+        // The note this tie continues, looked for from the end of the part's score backwards:
+        // the first one at the same pitch that ends exactly where this one starts.
+        // {@link reverseDescendantElements} is lazy, so for a tie whose partner is the note
+        // just before it the search stops immediately.
         const ps = reverseDescendantElements(
           requirePartDatedMap(ctx, 'score'),
           (element) => element.getLocalName() === 'note' && element.getAttribute('tie') !== null,
@@ -4148,43 +3861,25 @@ export class Mei2MsmMpmConverter {
   }
 
   /**
-   * Clear the per-movement state. Called by {@link makeMovement} *before* it installs the
+   * Clear the per-movement accumulators. {@link makeMovement} calls it before it installs the
    * new cursor, so a movement never inherits the previous one's accidentals, open spans or
    * note index. {@link ppq}, {@link dontUseChannel10}, {@link movements} and
-   * {@link performances} deliberately survive — they belong to the conversion, not to a
-   * movement.
+   * {@link performances} survive: they belong to the conversion, not to a movement.
    *
-   * **{@link arpeggiosToSort} was missing from this list, and that was a bug.** The field is
-   * drained at the end of {@link makeMovement} but was never emptied, so the second `mdiv` of
-   * a document re-ran the first one's arpeggios: the parked `note.order` attributes still
-   * pointed at the *previous* movement's MPM ornaments, while the note ids they name were
-   * looked up in an {@link allNotesAndChords} that `reset` had just cleared and refilled from
-   * the new mdiv. Every lookup missed, the sort produced an empty list, and the empty string
-   * was written over a finished movement's note order. No fixture could see it — all sixteen
-   * hold exactly one `mdiv` — so the proof is
-   * `tests/mei/Mei2MsmMpmConverter.test.ts`'s "clears the parked arpeggios", which fails
-   * without the line below.
+   * {@link arpeggiosToSort} has to be cleared here. It is drained at the end of
+   * {@link makeMovement}, and an entry surviving into the next `mdiv` would carry a
+   * `note.order` attribute belonging to the previous movement's MPM while the note ids it
+   * names are looked up in an {@link allNotesAndChords} refilled from the new mdiv: every
+   * lookup misses, the sort produces an empty list, and the empty string is written over a
+   * finished movement's note order. No fixture can see it, each holding one `mdiv`, so the
+   * proof is `tests/mei/Mei2MsmMpmConverter.test.ts`'s "clears the parked arpeggios".
    *
-   * **Eight lines are also gone from here**, and none of them had to be replaced: the four
-   * walk cursors and the four movement fields are {@link WalkContext} and
-   * {@link MovementContext} now, both built per movement from {@link NOTHING_OPEN}. What is
-   * left is exactly the accumulators — the deferred lists, the note index and
-   * {@link endingCounter} — which is a much easier list to keep honest than "everything the
-   * previous movement might have touched".
-   *
-   * Two of the remaining lines are belt-and-braces, and it is worth saying which, because a
-   * later reader running the same controls will find them green:
-   * - `allNotesAndChords.clear()` is redundant — {@link indexNotesAndChords}, which
-   *   `makeMovement` calls immediately after this, clears the map before filling it;
-   * - `accid = []` cannot matter across movements — {@link processMeasure},
-   *   {@link processLayer}, {@link processStaff} and {@link processStaffDef} each clear it on
-   *   the way out, and all music is inside a measure, so it is always empty here.
-   *
-   * The other five are load-bearing and each has a test: `endingCounter`, `endids`,
-   * `tstamp2s`, `arpeggiosToSort` in `tests/mei/Mei2MsmMpmConverter.test.ts`, and `lyrics`
-   * — the exception, still unpinned: the queue is filled and drained inside a single
-   * {@link processNote}, so a leak needs the tie-merge path that returns before the drain,
-   * and no test constructs one.
+   * Two lines are belt-and-braces: `allNotesAndChords.clear()` is redundant, because
+   * {@link indexNotesAndChords} clears the map before filling it, and `accid = []` cannot
+   * matter across movements, because {@link processMeasure}, {@link processLayer},
+   * {@link processStaff} and {@link processStaffDef} each clear it on the way out. `lyrics` is
+   * the one line with no test: the queue is filled and drained inside a single
+   * {@link processNote}, so a leak needs the tie-merge path that returns before the drain.
    */
   protected reset(): void {
     this.endingCounter = 0;
@@ -4198,20 +3893,15 @@ export class Mei2MsmMpmConverter {
 
   /**
    * Build the id → element index that `startid`, `endid` and `plist` references resolve
-   * against. Only `note` and `chord` elements *with an `xml:id`* are indexed: an element
-   * without one cannot be referenced, so it cannot be a target.
+   * against. Only `note` and `chord` elements with an `xml:id` are indexed: an element without
+   * one cannot be referenced, so it cannot be a target.
    *
-   * Run once per movement, before the walk, because MEI references point forward as
-   * readily as backward — {@link computeControlEventTiming} depends on being able to find
-   * a note that the traversal has not reached yet.
+   * Run once per movement, before the walk, because MEI references point forward as readily as
+   * backward — {@link computeControlEventTiming} depends on being able to find a note the
+   * traversal has not reached yet.
    *
-   * The `descendant::` expression this used to hand to {@link Element.query} matches once
-   * per note, so the node set is the size of the movement, and XPath sorts a node set into
-   * document order with an AVL insert per hit under xmldom's `compareDocumentPosition`,
-   * which walks both ancestor chains every time. That sort alone was 21% of a conversion
-   * of a 2000-note score. The walk below is the same axis and the same pre-order, which
-   * has to stay that way: the index is last-one-wins, so two elements sharing an `xml:id`
-   * resolve to whichever comes later in the document, exactly as before.
+   * The descent is pre-order and must stay that way: the index is last-one-wins, so two
+   * elements sharing an `xml:id` resolve to whichever comes later in the document.
    */
   public indexNotesAndChords(mdiv: Element): void {
     this.allNotesAndChords.clear();
@@ -4237,10 +3927,10 @@ export class Mei2MsmMpmConverter {
    * is what lets global events (a `scoreDef`, a `tempo` outside any staff) get a sensible
    * date without a part context.
    *
-   * {@link getMidiTimeAsString} is the same decision returning the attribute's *string*.
-   * It is not `String(getMidiTime())`: for the first two cases it hands back the stored
-   * text verbatim, so `"0.0"` stays `"0.0"` instead of becoming `"0"`. MSM attribute text
-   * is byte-compared against the Java reference, so the two must stay separate.
+   * {@link getMidiTimeAsString} is the same decision returning the attribute's string. It is
+   * not `String(getMidiTime())`: for the first two cases it hands back the stored text
+   * verbatim, so `"0.0"` stays `"0.0"` instead of becoming `"0"`. MSM attribute text is
+   * byte-compared against the Java reference, so the two must stay separate.
    */
   protected getMidiTime(ctx: WalkContext): number {
     if (ctx.part !== null) return parseFloat(partClock(ctx.part).getValue());
@@ -4281,15 +3971,10 @@ export class Mei2MsmMpmConverter {
    * the part's own `timeSignatureMap`, else the global one, else a `meter` element on the
    * `work` in `meiHead`, else 4/4.
    *
-   * "In force" means the **last** entry of the map, not the last one at or before the
-   * current date — the maps are built in document order as the walk proceeds, so their
-   * final entry is the most recent one seen. That holds only while the conversion is
-   * running forward through the score, which is why this is not a general lookup.
-   *
-   * The return type is a **pair**, not a `number[]`. Every one of the three paths below
-   * returns exactly two numbers and every caller reads exactly `[0]` and `[1]`, so saying so
-   * in the type is what lets those callers destructure by name instead of indexing into a
-   * length the type had forgotten.
+   * "In force" means the last entry of the map, not the last one at or before the current
+   * date — the maps are built in document order as the walk proceeds, so their final entry is
+   * the most recent one seen. That holds only while the conversion is running forward through
+   * the score, which is why this is not a general lookup.
    */
   protected getCurrentTimeSignature(
     msmPartContext: Element | null,
@@ -4328,9 +4013,8 @@ export class Mei2MsmMpmConverter {
   }
 
   protected getPart(id: string, ctx: WalkContext): Element | null {
-    // The empty string is the miss this really screens for: `getAttributeValue` hands back
-    // `''` for an absent attribute, and every caller here reads the id that way. Java's
-    // `id == null` half had no counterpart once the parameter became a `string`.
+    // The empty string is the miss this screens for: `getAttributeValue` hands back `''` for an
+    // absent attribute, and every caller reads the id that way.
     if (id === '') return null;
     const parts = requireMovement(ctx).msm.getChildElements('part');
     for (let i = parts.size() - 1; i >= 0; --i) {
@@ -4371,7 +4055,6 @@ export class Mei2MsmMpmConverter {
       }
     }
 
-    // compute beatLength
     const mmUnit = tempo.getAttribute('mm.unit');
     tempoData.beatLength =
       mmUnit !== null
@@ -4441,10 +4124,9 @@ export class Mei2MsmMpmConverter {
   /**
    * The position of the first parked span whose `endid` is `id`, or `-1` — Java's contract.
    *
-   * An index walk rather than the `findIndex` this obviously is, and measured: {@link checkEndid}
-   * calls it for **every element of the score**, so the predicate closure would be one
-   * allocation per element on the hottest path the converter has. `elementAt` is what keeps
-   * the walk honest — `i` comes from the list's own length, so a miss is a defect here.
+   * An index walk rather than a `findIndex`: {@link checkEndid} calls this for every element of
+   * the score, so a predicate closure would be one allocation per element on the converter's
+   * hottest path.
    */
   private getEndid(id: string): number {
     for (let i = 0; i < this.endids.length; ++i) {
@@ -4466,10 +4148,9 @@ export class Mei2MsmMpmConverter {
    */
   protected checkEndid(e: Element, ctx: WalkContext): void {
     const id = `#${getAttributeValue('id', e)}`;
-    // `removeAt` takes the entry out of the worklist and hands it back, which is what lets
-    // this stop indexing into a list it is mutating — and it is also why the `-1` from
-    // `getEndid` is safe to pass straight in: `splice(-1, 1)` would remove the *last* entry,
-    // so the bounds test lives inside the helper and answers null instead.
+    // The `-1` from `getEndid` is safe to pass straight to `removeAt`: a bare
+    // `splice(-1, 1)` would remove the *last* entry, so the bounds test lives inside the
+    // helper, which answers null instead.
     for (
       let parked = removeAt(this.endids, this.getEndid(id));
       parked !== null;
@@ -4493,9 +4174,9 @@ export class Mei2MsmMpmConverter {
    *
    * The value written is `'im'` — "inside my slur", i.e. legato continues past this note —
    * unless the note falls exactly on the slur's `date.end`, in which case it is `'t'` for
-   * terminal and the method **returns immediately**, so a terminating slur wins over any
-   * further slur that might also cover this note. Downstream, MPM's articulation rendering
-   * reads these to decide where legato stops.
+   * terminal and the method returns immediately, so a terminating slur wins over any further
+   * slur that might also cover this note. Downstream, MPM's articulation rendering reads these
+   * to decide where legato stops.
    *
    * Global slurs are checked first and part-local ones second, and the part-local pass
    * additionally filters by layer ({@link isSameLayer}) so a slur in one voice does not
@@ -4551,8 +4232,8 @@ export class Mei2MsmMpmConverter {
   }
 
   /**
-   * Convert an MEI `tstamp` — a beat number within the current measure, **1-based**, where
-   * the beat unit is the time signature's denominator — into an absolute MSM tick.
+   * Convert an MEI `tstamp` — a 1-based beat number within the current measure, where the beat
+   * unit is the time signature's denominator — into an absolute MSM tick.
    *
    * Hence the `- 1.0`, and hence the clamp: a `tstamp` below 1 is out of range and is
    * treated as the downbeat rather than as a negative offset. With no `tstamp` or no
@@ -4577,17 +4258,17 @@ export class Mei2MsmMpmConverter {
   }
 
   /**
-   * Works out *when* a control event (dynamics, tempo, slur, arpeggio, pedal, …) starts and
-   * ends, in MSM ticks. The one routine every control-event handler funnels through, which
-   * is why they all begin with the same four-line destructuring.
+   * Works out when a control event (dynamics, tempo, slur, arpeggio, pedal, …) starts and
+   * ends, in MSM ticks. The one routine every control-event handler funnels through, which is
+   * why they all begin with the same four-line destructuring.
    *
    * The start date comes from `tstamp.ges` if present, else `tstamp`. If neither exists the
-   * event has no timing of its own and must borrow it from the note it points at: the
-   * event is **moved in the MEI tree** to sit immediately before that note (`startid`, or
-   * the first entry of `plist`), marked `dontRepositionMeAgain`, and null is returned so
-   * the caller gives up for now — the walk will reach the event again in its new position,
-   * where `getMidiTime()` yields the right date. That marker attribute is what stops the
-   * move from repeating forever, and {@link msmCleanupSingle} strips it afterwards.
+   * event has no timing of its own and must borrow it from the note it points at: the event is
+   * moved in the MEI tree to sit immediately before that note (`startid`, or the first entry of
+   * `plist`), marked `dontRepositionMeAgain`, and null is returned so the caller gives up for
+   * now — the walk will reach the event again in its new position, where `getMidiTime()` yields
+   * the right date. That marker attribute stops the move from repeating forever, and
+   * {@link msmCleanupSingle} strips it afterwards.
    *
    * The end date is whichever of these exists, in this order: `dur`, `tstamp2.ges`,
    * `tstamp2`, `endid`. A `tstamp2` of the form `<measures>m+<beat>` only resolves here
@@ -4640,10 +4321,9 @@ export class Mei2MsmMpmConverter {
       tstamp2 = event.getAttribute('tstamp2.ges');
       if (tstamp2 === null) tstamp2 = event.getAttribute('tstamp2');
       if (tstamp2 !== null) {
-        // `<measures>m+<beat>`. The length tests below are the bounds proof for the two
-        // reads: the one-part form has a part 0, and reaching the `'0'` test means there are
-        // at least two, so both indices are in range and `elementAt` names the sequence if
-        // that ever stops being true.
+        // `<measures>m+<beat>`. The length tests below are the bounds proof for the two reads:
+        // the one-part form has a part 0, and reaching the `'0'` test means there are at least
+        // two.
         const ts2 = tstamp2.getValue().split('m+');
         const what = "a tstamp2 split on 'm+'";
         if (ts2.length === 0) tstamp2 = null;
@@ -4665,25 +4345,24 @@ export class Mei2MsmMpmConverter {
    * The duration of `ofThis` in MSM ticks — the single most parity-critical computation in
    * the file. Four stages, in this order, and the order is the arithmetic:
    *
-   * 1. **Base value.** From `dur` on the element; failing that, from the enclosing `chord`'s
-   *    `dur`; failing that, from the nearest applicable `dur.default` recorded in the
-   *    part's `miscMap` (falling back to the global one), matched by layer. `breve` and
-   *    `long` are special-cased to 8 and 16 quarters because they are words, not divisors;
-   *    everything else is `4 * ppq / parseInt(dur)`. **`focus` is set alongside the base
-   *    value and the later stages read dots from `focus`, not from `ofThis`** — so a note
-   *    inheriting its `dur` from its chord inherits the chord's dots too.
-   * 2. **Dots.** Each dot adds half of what the previous step added, accumulated in a
-   *    running `d` — not recomputed as `dur * (2 - 2^-n)`. `childDots` is honoured as well;
-   *    it is how a chord records dots that live on its children.
-   * 3. **Tuplets by nesting.** Walk the MEI ancestors up to the `mdiv` and, for every
-   *    `tuplet` on the way, scale by `numbase / num`. Nested tuplets therefore multiply.
-   *    A `tuplet` missing either attribute makes the whole duration 0 rather than being
-   *    skipped — Java does the same.
-   * 4. **Tuplets by span.** `tupletSpan` elements apply to elements that are not inside a
-   *    `tuplet`, so they are kept in a `tupletSpanMap` and matched by date and layer here.
-   *    Expired spans (`date.end` already passed) are deleted from the map as a side effect
-   *    of this walk — which is why it runs backwards, and why this method is not free of
-   *    effects despite its name.
+   * 1. Base value. From `dur` on the element; failing that, from the enclosing `chord`'s
+   *    `dur`; failing that, from the nearest applicable `dur.default` recorded in the part's
+   *    `miscMap` (falling back to the global one), matched by layer. `breve` and `long` are
+   *    special-cased to 8 and 16 quarters because they are words, not divisors; everything else
+   *    is `4 * ppq / parseInt(dur)`. `focus` is set alongside the base value and the later
+   *    stages read dots from `focus`, not from `ofThis`, so a note inheriting its `dur` from
+   *    its chord inherits the chord's dots too.
+   * 2. Dots. Each dot adds half of what the previous step added, accumulated in a running `d`,
+   *    not recomputed as `dur * (2 - 2^-n)`. `childDots` is honoured as well; it is how a chord
+   *    records dots that live on its children.
+   * 3. Tuplets by nesting. Walk the MEI ancestors up to the `mdiv` and, for every `tuplet` on
+   *    the way, scale by `numbase / num`. Nested tuplets therefore multiply. A `tuplet` missing
+   *    either attribute makes the whole duration 0 rather than being skipped — Java does the
+   *    same.
+   * 4. Tuplets by span. `tupletSpan` elements apply to elements that are not inside a `tuplet`,
+   *    so they are kept in a `tupletSpanMap` and matched by date and layer here. Expired spans
+   *    (`date.end` already passed) are deleted from the map as a side effect of this walk,
+   *    which is why it runs backwards and why this method is not free of effects.
    *
    * Elements whose name is not in the regex at the top have no duration by definition and
    * return 0, as do grace notes: they sound, but they take no time from the measure.
@@ -4703,9 +4382,6 @@ export class Mei2MsmMpmConverter {
     if (ofThis.getAttribute('grace') !== null) return 0.0;
 
     let dur: number;
-    // The chord the walk is inside, read into a local: it is what `chordEnvironment` tested
-    // and then asserted back at each of its three uses. Nothing between here and the last of
-    // them moves the cursor, so one read serves all three.
     const chord = ctx.chord;
     let focus = ofThis;
 
@@ -4797,16 +4473,11 @@ export class Mei2MsmMpmConverter {
       );
     }
 
-    // Backwards, and the direction is arithmetic rather than taste: `dur` accumulates by
-    // multiplication and floating-point multiplication is not associative, so visiting the
-    // spans in the other order would change the last bits of every tuplet duration.
-    //
-    // This one stays an index walk, against the rule the rest of this file now follows,
-    // because it is the innermost thing the converter does — once per note — and `for..of`
-    // over a reversed copy measured 4% slower on a 2000-note score against
-    // `scripts/bench.mjs`'s synthetic corpus. `elementAt` is what makes the walk honest
-    // without allocating an iterator per note: `i` comes from `tps.length`, so a miss would
-    // be a defect here rather than a property of the score.
+    // Backwards, and the direction is arithmetic: `dur` accumulates by multiplication and
+    // floating-point multiplication is not associative, so visiting the spans in the other
+    // order would change the last bits of every tuplet duration. An index walk rather than
+    // `for..of` over a reversed copy, which measured 4% slower on a 2000-note score
+    // (`scripts/bench.mjs`); this runs once per note.
     for (let i = tps.length - 1; i >= 0; --i) {
       const ts = elementAt(tps, i, 'the tuplet spans in scope');
       const dateEnd = ts.getAttributeValue('date.end');
@@ -4859,31 +4530,29 @@ export class Mei2MsmMpmConverter {
    *
    * ### `.ges` beats written, everywhere
    *
-   * MEI's `pname.ges`, `oct.ges` and `accid.ges` are the *gestural* (sounding) values; the
-   * unsuffixed ones are what is written on the page. Wherever both exist the gestural one
-   * wins, and — this is the important part — **a gestural value also suppresses the work
-   * that would have derived it**: `accid.ges` clears `checkKeySign`, and having both
-   * `pname.ges` and `oct.ges` skips the entire transposition section, because a gestural
-   * pitch is already transposed by definition.
+   * MEI's `pname.ges`, `oct.ges` and `accid.ges` are the gestural (sounding) values; the
+   * unsuffixed ones are what is written on the page. Wherever both exist the gestural one wins,
+   * and a gestural value also suppresses the work that would have derived it: `accid.ges`
+   * clears `checkKeySign`, and having both `pname.ges` and `oct.ges` skips the entire
+   * transposition section, because a gestural pitch is already transposed by definition.
    *
    * ### Where each component comes from
    *
-   * - **pitch name**: `pname.ges` (unless `'none'`), else `pname`; no pname at all means
-   *   this is not a pitched note and -1 is returned;
-   * - **octave**: `oct.ges`, else `oct`, else the nearest layer-matching `oct.default` from
-   *   the part's `miscMap` (global as fallback). When it has to fall back this far it
-   *   **writes the resolved `oct` back onto the MEI element**, so later passes see it;
-   * - **accidental**, in four escalating steps: `accid.ges`; else `accid`; else the most
-   *   recent {@link accid} entry in this measure for the same pname *and* octave — MEI
-   *   accidentals are octave-specific here; else the key signature.
+   * - pitch name: `pname.ges` (unless `'none'`), else `pname`; no pname at all means this is
+   *   not a pitched note and -1 is returned;
+   * - octave: `oct.ges`, else `oct`, else the nearest layer-matching `oct.default` from the
+   *   part's `miscMap` (global as fallback). When it has to fall back this far it writes the
+   *   resolved `oct` back onto the MEI element, so later passes see it;
+   * - accidental, in four escalating steps: `accid.ges`; else `accid`; else the most recent
+   *   {@link accid} entry in this measure for the same pname *and* octave — MEI accidentals
+   *   are octave-specific here; else the key signature.
    *
    * ### Key signature resolution
    *
-   * Part-local before global, but only if the local one is not older: a global key
-   * signature dated later than the local one wins, and is then **copied into the local
-   * map** so subsequent notes in this part find it directly. An accidental in the key
-   * signature matches by pitch class (`pname2midi(pname) % 12`) against the entry's
-   * `midi.pitch` or `pitchname`.
+   * Part-local before global, but only if the local one is not older: a global key signature
+   * dated later than the local one wins, and is then copied into the local map so subsequent
+   * notes in this part find it directly. An accidental in the key signature matches by pitch
+   * class (`pname2midi(pname) % 12`) against the entry's `midi.pitch` or `pitchname`.
    *
    * ### Transposition
    *
@@ -4895,7 +4564,7 @@ export class Mei2MsmMpmConverter {
    * expiry test: an expired `transposition` `break`s the scan, an expired
    * `addTransposition` merely `continue`s. Both shapes are Java's.
    *
-   * @param pitchdata out-parameter, **appended to**: `[pitchname, accidental, octave]`
+   * @param pitchdata out-parameter, appended to: `[pitchname, accidental, octave]`
    * @return the MIDI pitch, or -1 if `ofThis` carries no pitch name
    */
   protected computePitch(ofThis: Element, pitchdata: string[], ctx: WalkContext): number {
@@ -4906,9 +4575,8 @@ export class Mei2MsmMpmConverter {
     let trans = 0;
     let checkKeySign = false;
 
-    // `.ges` ("gestural", i.e. as performed) wins over the written spelling for all three
-    // of pitch name, octave and accidental; each pair used to be four lookups and two
-    // assertions, and is now one read apiece.
+    // `.ges` ("gestural", i.e. as performed) wins over the written spelling for all three of
+    // pitch name, octave and accidental.
     const pnameGes = ofThis.getAttributeValue('pname.ges');
     if (pnameGes !== null && pnameGes !== 'none') {
       pname = pnameGes;
@@ -4958,15 +4626,9 @@ export class Mei2MsmMpmConverter {
         accid = accidWritten;
         if (accid !== '') checkKeySign = false;
       } else {
-        // The most recent accidental in this measure on the same pitch and octave. Java
-        // counts an index down and `break`s on the first hit, which is a backwards search;
-        // as one, the predicate and the thing done with the hit stop being interleaved, and
-        // reading each attribute value once instead of asking `getAttribute` and then
-        // asserting `getAttributeValue(…)!` retires three assertions with it.
-        //
-        // (`getAttribute('pname') !== null` is dropped from the predicate because it is
-        // subsumed: `pname` is a `string`, and a candidate without the attribute answers
-        // `null`, which is equal to no string.)
+        // The most recent accidental in this measure on the same pitch and octave. Java's
+        // extra `getAttribute('pname') !== null` test is subsumed: `pname` is a `string`, and a
+        // candidate without the attribute answers `null`, which equals no string.
         const anAccid = findLast(this.accid, (candidate) => {
           const candidateOct = candidate.getAttributeValue('oct');
           return (
@@ -5249,11 +4911,8 @@ export class Mei2MsmMpmConverter {
    * This is what the `cleanup` constructor flag switches on, and it is destructive — an
    * MSM that has been through here can no longer be resumed by the converter.
    *
-   * The root element is required rather than asserted: this file's standing assumption is
-   * that a movement under conversion has one, and the previous note here explained that a
-   * *guard* would turn today's `TypeError` on an empty MSM into a silent no-op. It would —
-   * which is why this throws instead, keeping the control flow and naming the cause
-   * (ARCHITECTURE.md RULE N2a).
+   * The root element is required rather than guarded: a guard would turn an empty MSM from a
+   * thrown error into a silent no-op (ARCHITECTURE.md RULE N2a).
    */
   public static msmCleanupSingle(msm: Msm): void {
     const root = msm.getRootElement();
@@ -5271,7 +4930,7 @@ export class Mei2MsmMpmConverter {
     msm.deleteEmptyMaps();
   }
 
-  /** the working attributes {@link msmScaffolding} strips, in the order the union listed them */
+  /** the working attributes {@link msmScaffolding} strips, wherever they occur */
   private static readonly MSM_SCAFFOLDING_ATTRIBUTES = [
     'currentDate',
     'tie',
@@ -5281,43 +4940,18 @@ export class Mei2MsmMpmConverter {
   ] as const;
 
   /**
-   * Every node {@link msmCleanupSingle} has to remove, in document order.
+   * Every node {@link msmCleanupSingle} has to remove, in document order: each `miscMap`
+   * element, the working attributes of {@link MSM_SCAFFOLDING_ATTRIBUTES} wherever they occur,
+   * and a `goto`'s `n`. `root` itself is excluded, and the walk descends into `miscMap` rather
+   * than stopping at it.
    *
-   * This was one {@link Element.query} over a seven-branch union:
+   * The list is a snapshot taken before any removal, and the removals are independent of one
+   * another and of order: removing an attribute affects no other node, and removing an element
+   * leaves its subtree intact, so an attribute inside a removed `miscMap` is still removed from
+   * its now-detached owner.
    *
-   * ```
-   * descendant::*[local-name()='miscMap']
-   *   | descendant::*[attribute::currentDate]/attribute::currentDate
-   *   | … tie | layer | endid | tstamp2 …
-   *   | descendant::*[local-name()='goto' and attribute::n]/attribute::n
-   * ```
-   *
-   * and it was 72% of a whole MEI-to-MSM conversion. `query` serialises the subtree to
-   * XML text, re-parses it, evaluates the expression over the throwaway copy and maps the
-   * hits back by position — but the cost here is not the round trip, it is what the union
-   * operator does afterwards. `|` puts its operands through XPath's node-set ordering,
-   * which inserts every hit into an AVL tree under a `compareDocumentPosition` comparator;
-   * xmldom implements that by materialising and comparing both ancestor chains. Every
-   * note in an MSM score carries `currentDate` and most carry `tie` and `layer`, so the
-   * node set is several times the size of the score and that sort is what makes the whole
-   * converter quadratic. Walking the tree once costs a single pass instead.
-   *
-   * Faithfulness of the replacement, branch by branch:
-   *
-   * - `descendant::` excludes the root, and {@link descendantElements} does too;
-   * - pre-order matches XPath document order for the elements. Attributes of one element
-   *   are emitted in declaration order, where the union emitted them in whatever order
-   *   `compareDocumentPosition`'s implementation-specific attribute branch produced. That
-   *   difference is invisible: the loop's two removals are independent of each other and
-   *   of order — the node set is a snapshot taken before any removal, removing an
-   *   attribute never affects another node, and removing an element leaves its subtree
-   *   intact so a nested `miscMap` or an attribute inside a removed one is still removed
-   *   from its (now detached) owner, exactly as before;
-   * - the walk descends into `miscMap` as `descendant::` did, so the set is the same set
-   *   and not merely the same effect;
-   * - `getAttribute(name)` matches on local name where `attribute::name` matches only the
-   *   no-namespace attribute. MSM carries no namespaced attribute but `xml:id`, none of
-   *   the six names is ever prefixed, and the fixture corpus is the check on that.
+   * Attributes are matched on local name. MSM carries no namespaced attribute but `xml:id`, and
+   * none of the five scaffolding names is ever prefixed.
    */
   private static msmScaffolding(root: Element): (Element | Attribute)[] {
     const doomed: (Element | Attribute)[] = [];
@@ -5370,8 +5004,6 @@ export class Mei2MsmMpmConverter {
       aMap = perf.getGlobal()?.getDated()?.getMap(Mpm.TEMPO_MAP) ?? null;
       if (aMap !== null) maps.push(aMap);
 
-      // `perf.size()` IS `perf.getAllParts().length`, so the counter never said anything the
-      // sequence did not.
       for (const part of perf.getAllParts()) {
         aMap = part.getDated()?.getMap(Mpm.DYNAMICS_MAP) ?? null;
         if (aMap !== null) maps.push(aMap);
@@ -5381,16 +5013,13 @@ export class Mei2MsmMpmConverter {
       }
     }
 
-    // go through all the maps' elements and finalize them
     for (const map of maps) {
       for (let e = 0; e < map.size(); ++e) {
         const d = mapElement(map, e);
 
-        // handle remaining endid attributes
         const endid = d.getAttribute('endid');
         if (endid !== null) d.removeAttribute(endid);
 
-        // handle remaining tstamp2 attributes
         const tstamp2 = d.getAttribute('tstamp2');
         if (tstamp2 !== null) d.removeAttribute(tstamp2);
 
@@ -5425,22 +5054,15 @@ export class Mei2MsmMpmConverter {
   }
 
   /**
-   * Move everything in a measure that is *not* staff content to the front.
+   * Move everything in a measure that is not staff content to the front.
    *
-   * Control events (`dynam`, `tempo`, `dir`, `slur`, …) are commonly encoded after the
-   * staves they apply to, but the converter is a single forward pass: a dynamic must be
-   * seen before the notes it colours, or it would be dated after them. Hoisting every
-   * subtree with no `staff`/`oStaff` inside it to position 0 gives the walk that order.
+   * Control events (`dynam`, `tempo`, `dir`, `slur`, …) are commonly encoded after the staves
+   * they apply to, but the converter is a single forward pass: a dynamic must be seen before
+   * the notes it colours, or it would be dated after them. Hoisting every subtree with no
+   * `staff`/`oStaff` inside it to position 0 gives the walk that order.
    *
-   * The backwards loop combined with `insertChild(subtree, 0)` is what preserves the
-   * relative order of the hoisted elements — walking forwards would reverse them.
-   *
-   * The test used to be `subtree.query("descendant-or-self::*[local-name()='staff' or
-   * local-name()='oStaff']").size() === 0`, run once per child of every measure — so every
-   * `<staff>` in the document was serialised to XML text and re-parsed just to establish
-   * that it is a staff. That was 19% of a 32 000-note conversion. Written out, the
-   * `-or-self` half answers for the staves before anything is walked, and the walk that
-   * remains only ever covers a control event's own small subtree.
+   * The backwards loop combined with `insertChild(subtree, 0)` preserves the relative order of
+   * the hoisted elements; walking forwards would reverse them.
    */
   protected static reorderMeasureContent(measure: Element): void {
     const isStaffLike = (element: Element): boolean => {
@@ -5548,24 +5170,15 @@ export class Mei2MsmMpmConverter {
   /**
    * Octave-displacement clefs (`clef.dis`, e.g. a tenor G clef sounding an octave down).
    *
-   * **Not implemented — always 0.** Java computes a semitone offset from the `clef.dis` and
-   * `clef.dis.place` attributes here; this port never ported it, so a displaced clef is
-   * converted as an undisplaced one. Latent for the fixtures, which contain no `clef.dis` —
-   * grep says zero hits across `tests/integration/fixtures/`, so nothing in the corpus can
-   * tell the stub from the real thing. Left as a stub rather than removed so the gap stays
-   * visible at the two `trans += processClefDis()` call sites.
+   * Not implemented — always 0. Java computes a semitone offset from the `clef.dis` and
+   * `clef.dis.place` attributes here; this port does not, so a displaced clef is converted as
+   * an undisplaced one. Latent for the fixture corpus, which contains no `clef.dis`. Left as a
+   * stub rather than removed so the gap stays visible at the two `trans += processClefDis()`
+   * call sites.
    *
-   * The `scoreStaffDef` parameter is **gone**, not renamed with an underscore. The body has
-   * never read it, so declaring it claimed a dependence this function does not have;
-   * whoever implements the method adds it back at the same time as the code that reads it,
-   * which is two lines. Java's signature is recorded here instead:
-   * `private static double processClefDis(Element scoreStaffDef)`.
-   *
-   * The repo's `^_` convention (`eslint.config.js`, and lint-debt.md:596) would also cover
-   * this, and deliberately is not used: it marks a parameter kept for its **position** in a
-   * signature an outside caller supplies — `writeMsmString(_filename)` keeps Java's public
-   * shape. This is a `protected static` helper whose only two callers are three lines away in
-   * this file, so there is no signature to keep and nobody to keep it for.
+   * Java's signature is `private static double processClefDis(Element scoreStaffDef)`; the
+   * parameter is dropped here because nothing reads it, and whoever implements the method adds
+   * it back with the code that does.
    */
   protected static processClefDis(): number {
     return 0.0;
@@ -5574,10 +5187,10 @@ export class Mei2MsmMpmConverter {
   /**
    * Does `e` apply to the layer `layerId`? The voice filter used throughout the converter.
    *
-   * `e`'s `layer` attribute may name several layers, space separated. An element with **no**
-   * `layer` attribute applies everywhere, and an empty `layerId` — what
-   * {@link Mei.getLayerId} returns for unlayered music — matches everything, so the filter
-   * is inert on scores that do not use layers at all.
+   * `e`'s `layer` attribute may name several layers, space separated. An element with no
+   * `layer` attribute applies everywhere, and an empty `layerId` — what {@link Mei.getLayerId}
+   * returns for unlayered music — matches everything, so the filter is inert on scores that do
+   * not use layers at all.
    */
   public static isSameLayer(e: Element, layerId: string): boolean {
     const layerAttribute = e.getAttributeValue('layer');
