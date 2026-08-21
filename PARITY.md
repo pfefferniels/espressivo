@@ -678,8 +678,29 @@ That measurement survives the fix as a **fixture-coverage gap**, and is the reas
 still matters: deleting `if (mapTimingChanged) map.sort()` outright left the entire suite green
 (2796 tests in `tests/mpm` + `tests/integration`), so the suite cannot protect this call. It
 belongs on the gap list next to `<pedal>` and `subNoteDynamics`. What the repair changes is the
-consequence of that gap — a future change that writes `@date` mid-render now gets a correctly
-ordered map instead of a scrambled one.
+
+### `Goto`'s attribute constructor dropped the last character of `target.id`
+
+|            |                                                                                  |
+| ---------- | -------------------------------------------------------------------------------- |
+| Item       | GH issue #1, fixed 2026-08-21                                                    |
+| Java       | `pfefferniels/meico`, `Goto.java:40` (was `substring(1, targetId.length() - 1)`) |
+| TypeScript | `src/msm/Goto.ts`, `fromValues`                                                  |
+
+`fromValues`' `#` stripping was `substring(1, length - 1)`, which drops the first character _and_
+the last, so `#marker1` became `marker`, not `marker1`. `fromElement` got it right a few lines
+away (`substring(1, length)`, equivalent to `substring(1)`), so the same class parsed the same
+value two different ways depending on which constructor was used. Java had exactly this asymmetry
+(`Goto.java:40` vs `:57`). Fixed to `substring(1)` in both, in the fork first and mirrored here per
+the procedure in this file's preamble.
+
+**Why no output moved.** Latent at the only production call site: `Mei2MsmMpmConverter.processEnding`
+(`:1098` in Java, `src/mei/Mei2MsmMpmConverter.ts:1498` here) passes an internally generated
+`endingMarker_…` id, which never starts with `#`. No fixture exercises the buggy branch, so the
+fix moves no reference byte. The round trip was lossy in principle all the same: `toElement` writes
+`target.id` with a leading `#`, so any caller feeding that value back through `fromValues` (as
+opposed to `fromElement`) lost a character — a loaded gun rather than an active one, same shape as
+the `GenericMap.sort()` entry above.
 
 ## 2. Frozen divergences
 

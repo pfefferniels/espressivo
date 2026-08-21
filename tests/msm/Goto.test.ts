@@ -240,11 +240,9 @@ describe('Goto', () => {
       expect(g.targetId).toBe('');
     });
 
-    it('should reproduce the Java off-by-one when the id starts with # (Goto.java:39-41)', () => {
-      // Java does substring(1, length()-1), which drops the last character
-      // as well as the leading '#'. The port mirrors this deliberately.
+    it('should strip only the leading # (Goto.java:39-41; GH issue #1)', () => {
       const g = Goto.fromValues(1440, 0, '#rptstart1', '1', new Element('goto'));
-      expect(g.targetId).toBe('rptstart');
+      expect(g.targetId).toBe('rptstart1');
     });
   });
 

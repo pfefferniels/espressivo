@@ -56,15 +56,6 @@ export class Goto {
 
   /**
    * Build from individual parameters; {@link fromElement} is safer and more convenient.
-   *
-   * Ported bug, do not "fix": the `#` stripping here is `substring(1, length - 1)`, which drops
-   * the last character as well as the first, where {@link fromElement} gets it right with
-   * `substring(1, length)`. Java has exactly this asymmetry (`Goto.java:40` vs `Goto.java:57`).
-   *
-   * It is latent at the only production call site — `Mei2MsmMpmConverter.processEnding` passes
-   * an `endingMarker_…` id, which never starts with `#`. The round trip is lossy in principle
-   * all the same: {@link toElement} writes `target.id` with a leading `#`, so feeding that value
-   * back through here loses a character where {@link fromElement} would not.
    */
   static fromValues(
     date: number,
@@ -81,7 +72,7 @@ export class Goto {
 
     if (targetId !== null) {
       let tid = targetId;
-      if (tid.startsWith('#')) tid = tid.substring(1, tid.length - 1);
+      if (tid.startsWith('#')) tid = tid.substring(1);
       g.targetId = tid;
     }
     return g;
