@@ -2,20 +2,11 @@
  * §6's edit path on all eleven dimensions — the DP meeting real maps.
  *
  * `editScript.test.ts` checks the search; this file checks that what it searches over is the
- * documents. Four claims, each with a test that can fail:
- *
- * 1. `S(0,0)` and `S(n,m)` really ARE `A` and `B`, so `directDistance` is the `d_k` the
- *    comparison reports. That is one assertion and it covers the whole edit-state machinery —
- *    the mixed view, the per-entry resolution, the span rules — because any of them being wrong
- *    moves the endpoints.
- * 2. §6.2's two theorems and §6.3's verification, on real documents rather than on a toy `Φ`.
- * 3. Resolution TRAVELS with the instruction: two performances whose `<tempo>` elements are
- *    byte-identical and whose `styleDef`s differ compare at a real distance, and the replay
- *    still lands on B.
- * 4. The localization is EXACT: `affectedTicks`' interval gives bit-identical totals to
- *    integrating over the whole window, over the vendored corpus and the adversarial family.
- *    This is the AD-30/AD-31 lesson applied before the fact — the argument for the interval is
- *    in `editState.ts`, and the argument is not the evidence.
+ * documents. The load-bearing claim is that `S(0,0)` and `S(n,m)` really are `A` and `B`, so
+ * `directDistance` is the `d_k` the comparison reports: one assertion covers the whole
+ * edit-state machinery — the mixed view, the per-entry resolution, the span rules — because any
+ * of them being wrong moves the endpoints. The argument for `affectedTicks`' interval is in
+ * `editState.ts`; the localization tests here are its evidence.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -119,19 +110,19 @@ const REFERENCE_PAIRS = [
  * `7.51e-5`); every other dimension's worst is below `1e-6` (dynamics `8.60e-7`, the rest
  * exactly 0). Both figures are asserted, so the band cannot quietly absorb a regression.
  *
- * The band is a TEST tolerance and not the published record. AD-60.1 gave rubato an epsilon
- * family of its own, and the assertions below are made against that record rather than against
- * this constant — a dimension whose integrator changes shape has to be re-filed, not absorbed.
+ * It is a test tolerance and not the published record: the assertions below are made against
+ * AD-60.1's epsilon families, so a dimension whose integrator changes shape has to be re-filed
+ * rather than absorbed.
  */
 const QUADRATURE_BAND = 1e-4;
 
 /**
  * The dimensions whose transitions are integrated over `affectedTicks`' interval.
  *
- * `pedal` is out because `getPreviousPosition` scans BACKWARDS over entry indices (PARITY P2);
+ * `pedal` is out because `getPreviousPosition` scans backwards over entry indices (PARITY P2);
  * `articulation` because AD-37.1's default step function is retroactive over `[0, firstSwitch)`
  * and its value after an interval is governed by the last switch at or before it, neither of
- * which the interval bounds; `ornamentation` because its map SCOPE is a whole-map property that
+ * which the interval bounds; `ornamentation` because its map scope is a whole-map property that
  * a mixed state does not have.
  */
 const LOCALIZING_DIMENSIONS = COMPARISON_DIMENSIONS.filter(
@@ -142,9 +133,8 @@ const LOCALIZING_DIMENSIONS = COMPARISON_DIMENSIONS.filter(
 
 describe('the edit path over the vendored corpus', () => {
   /**
-   * ONE walk, three claims, because they are claims about the same scripts and the walk is the
-   * expensive part: every part scope of the three documents' primary pairs, then the global
-   * scope of the remaining pairs.
+   * One walk, three claims about the same scripts: every part scope of the three documents'
+   * primary pairs, then the global scope of the remaining pairs.
    */
   const WALK: readonly (readonly [string, number, number, readonly number[]])[] = [
     ['telemann-grave', 0, 1, [0, 1]],
@@ -170,27 +160,24 @@ describe('the edit path over the vendored corpus', () => {
           const evaluated = evaluateDimension(dimension, target.a, target.b, target.settings);
           const where = { name, scopeIndex, dimension };
 
-          // CLAIM 1 — `S(0,0)` and `S(n,m)` really ARE `A` and `B`. Not `toBeCloseTo`: the edit
-          // state is A's own instructions read through A's own resolution, so it is the same
-          // object the evaluator builds and the two integrals are the same arithmetic. A
-          // near-miss would mean the edit path is describing a DIFFERENT document — which is
-          // exactly what the event dimensions did until their readers took the per-entry
-          // resolution: `d_articulation` was 926.67 against a `directDistance` of 770.67,
-          // because B's instructions were being read through A's articulationStyles.
+          // Claim 1. Not `toBeCloseTo`: the edit state is A's own instructions read through A's
+          // own resolution, so the two integrals are the same arithmetic. A near-miss means the
+          // edit path is describing a different document — reading B's instructions through A's
+          // articulationStyles puts `d_articulation` at 926.67 against a `directDistance` of
+          // 770.67.
           expect({ ...where, d: script.directDistance }).toEqual({
             ...where,
             d: evaluated.distance,
           });
 
-          // CLAIM 2 — §6.2's theorems, in a RELATIVE band sized to the quadrature rather than
-          // to a hope. Both sides are integrals; W2c's P-C3 needed the same shape for the same
-          // reason ("an absolute epsilon fails a correct implementation"), and the measured
+          // Claim 2 — §6.2's theorems, in a relative band sized to the quadrature. Both sides
+          // are integrals, and an absolute epsilon fails a correct implementation; the measured
           // worst case is asserted below rather than left inside the tolerance.
           const slack = 1 + QUADRATURE_BAND;
           expect(script.scriptCost).toBeGreaterThanOrEqual(script.directDistance / slack);
           expect(script.replayedDelta).toBeGreaterThanOrEqual(script.directDistance / slack);
 
-          // CLAIM 3 — §6.3's verification, and the closure of the delivered costs.
+          // Claim 3 — §6.3's verification, and the closure of the delivered costs.
           expect(script.replayResidual).toBe(0);
           expect(script.steps.reduce((total, step) => total + step.cost, 0)).toBeCloseTo(
             script.replayedDelta,
@@ -212,41 +199,29 @@ describe('the edit path over the vendored corpus', () => {
         }
       }
 
-    // [MEASURED] Where the band is actually needed, and by how much. `rubato` is the only
-    // dimension that comes near it, and AD-60.1 ruled that a FAMILY OF ITS OWN — not the band —
-    // is where that fact belongs: `rubatoDistance` integrates a warp displacement through
-    // AD-33.3b's rule 2c (structural `u*` split plus a K = 16 mesh), so the `step` family's
-    // "no quadrature in the time domain at all, exact 0" was false of it.
+    // `rubato` is the only dimension that comes near the band, and AD-60.1 put that fact in an
+    // epsilon family of its own: `rubatoDistance` integrates a warp displacement through
+    // AD-33.3b's rule 2c, so the `step` family's exact 0 is false of it.
     //
-    // The assertion is made against the PUBLISHED record rather than against a hand-typed
-    // figure, which is what makes it a pin on the record and not only on the engine: a consumer
-    // doing `inputs.epsilon[EPSILON_FAMILY_OF[k]]` — the lookup that mapping is exported for —
-    // must find the shortfall inside its family's stamped epsilon. Under the shipped-before-fix
-    // filing (`rubato: 'step'`, ε = 0) this measured 7.51e-5 read as a theorem violation, which
-    // is the CAPITAL-1 regression this pin exists to catch.
+    // Asserted against the published record rather than a hand-typed figure, so it pins the
+    // record and not only the engine: a consumer doing `inputs.epsilon[EPSILON_FAMILY_OF[k]]`
+    // must find the shortfall inside its family's stamped epsilon.
     const published = epsilonRecord();
     const rubatoShortfall = shortfall.get('rubato') ?? 0;
     expect(EPSILON_FAMILY_OF.rubato).toBe('rubato');
     expect(rubatoShortfall).toBeLessThan(published.rubato.relative);
-    // …and OUTSIDE the `step` figure, so a re-filing under `step` cannot pass this test.
+    // …and outside the `step` figure, so a re-filing under `step` cannot pass this test.
     expect(rubatoShortfall).toBeGreaterThan(published.step.relative);
-    // This walk's own worst, asserted on its own so the published band cannot absorb a
-    // regression. It is Telemann part 1 at 2.21e-5, NOT the corpus worst — the walk carries
-    // scopes 0 and 1 for the primary pairs, and part 2's 7.51e-5 is pinned by its own test
-    // below, which reaches every part scope for one dimension instead of every dimension for
-    // two scopes.
+    // This walk's own worst, so the published band cannot absorb a regression: Telemann part 1
+    // at 2.21e-5. The corpus worst is part 2's 7.51e-5, pinned by its own test below.
     expect(rubatoShortfall).toBeLessThan(1e-4);
     expect(rubatoShortfall).toBeGreaterThan(1e-6);
 
-    // The `step` family's exact-0 claim, asserted on its GENUINELY exact members only — which
-    // is what AD-60.1 preserved by moving rubato out rather than by widening `step`'s figure.
-    // Every other family's members are checked against their own published figure, so a
-    // dimension whose integrator changes shape has to be re-filed rather than absorbed.
-    // An ULP FLOOR on the `step` family rather than an exact 0 (W4 MINOR-R2). The published 0 is
-    // the QUADRATURE figure and it is exact in ℝ; the arithmetic is doubles, and articulation
-    // measures 9.296e-16 at the widest scope of the vendored corpus — four ulps of a `d` of
-    // 1223, not a quadrature error. Asserting an exact 0 here passed only because this walk does
-    // not reach that scope, which is the same accident that hid CAPITAL-1's part 2.
+    // The `step` family's exact-0 claim, on its genuinely exact members only; every other
+    // family's members are checked against their own published figure. An ulp floor rather than
+    // an exact 0, because the published 0 is the quadrature figure and the arithmetic is
+    // doubles: articulation measures 9.296e-16 at the widest scope of the vendored corpus, four
+    // ulps of a `d` of 1223.
     const ULP_FLOOR = 1e-14;
     for (const [dimension, worst] of shortfall) {
       const family = EPSILON_FAMILY_OF[dimension];
@@ -259,30 +234,23 @@ describe('the edit path over the vendored corpus', () => {
         });
     }
 
-    // Non-vacuity: an implementation returning 0 everywhere satisfies claim 1, and the two
-    // facts that make the triple three numbers are asserted on REAL data rather than only on a
-    // random family — some scripts do real re-working, and the DP's path order and the
-    // delivered date order do disagree.
-    // 39 of the walk's (pair, scope, dimension) triples carry a nonzero d_k.
+    // Non-vacuity: an implementation returning 0 everywhere satisfies claim 1. On real data,
+    // some scripts do real re-working and the DP's path order and the delivered date order do
+    // disagree. 39 of the walk's (pair, scope, dimension) triples carry a nonzero d_k.
     expect(nonzero).toBeGreaterThan(30);
     expect(reworked).toBeGreaterThan(0);
     expect(divergent).toBeGreaterThan(0);
   });
 
   /**
-   * AD-60.1's sixth epsilon family, pinned on the case that motivated it.
+   * AD-60.1's sixth epsilon family, on the case that motivated it: the walk above covers eleven
+   * dimensions over two scopes, this covers one dimension over every part scope, which is where
+   * the corpus's worst shortfall lives (Telemann part 2, 7.51e-5).
    *
-   * The walk above spends its budget on eleven dimensions over two scopes; this spends a much
-   * smaller one on ONE dimension over every part scope, which is where the corpus's worst
-   * shortfall lives (Telemann part 2, 7.51e-5 — cut A3's STOP-AND-REPORT figure).
-   *
-   * The point is not the number, it is which epsilon the number has to answer to. Before
-   * AD-60.1 rubato was filed under `step`, whose published figure is an exact `0` because a
-   * piecewise-constant reading needs no time-domain quadrature; but `rubatoDistance` integrates
-   * a warp DISPLACEMENT through AD-33.3b's rule 2c (structural `u*` split plus a K = 16 mesh),
-   * which AD-34.1 measured at 2.718e-4. So a consumer doing the `EPSILON_FAMILY_OF` lookup the
-   * mapping is exported for read this perfectly correct 7.51e-5 as a theorem violation, and the
-   * ulp-level noise on a clean pair as one too. The wrong thing was the published record.
+   * `step`'s published figure is an exact `0` because a piecewise-constant reading needs no
+   * time-domain quadrature. `rubatoDistance` does quadrature, which AD-34.1 measured at
+   * 2.718e-4, so filed under `step` a consumer reads this correct 7.51e-5 as a theorem
+   * violation, and the ulp-level noise on a clean pair as one too.
    */
   it('answers to its OWN epsilon: rubato’s worst real shortfall is inside AD-34.1’s figure', () => {
     const pair = readComparisonPair({
@@ -306,12 +274,12 @@ describe('the edit path over the vendored corpus', () => {
     expect(scopesWithRubato).toBe(3);
 
     const published = epsilonRecord();
-    // [MEASURED] Telemann part 2: d = 476.22531733 against scriptCost = 476.18955454.
+    // Telemann part 2: d = 476.22531733 against scriptCost = 476.18955454.
     expect(worst).toBeCloseTo(7.51e-5, 7);
     // Inside its own family's published figure…
     expect(worst).toBeLessThan(published.rubato.relative);
-    // …and OUTSIDE the `step` figure it used to be filed under, which is the whole finding: a
-    // re-filing under `step` (ε = 0) makes this measurement read as `scriptCost < d`.
+    // …and outside the `step` figure, under which (ε = 0) this measurement reads as
+    // `scriptCost < d`.
     expect(worst).toBeGreaterThan(published.step.relative);
     expect(EPSILON_FAMILY_OF.rubato).toBe('rubato');
   });
@@ -323,7 +291,7 @@ describe('the edit path over the vendored corpus', () => {
     const tempo = byDimension.get('tempo');
     expect(tempo?.directDistance).toBeCloseTo(631.161302, 6);
     expect(tempo?.scriptCost).toBeCloseTo(631.161302, 6);
-    // The date order costs MORE than the DP's path order here — the same op set, applied in the
+    // The date order costs more than the DP's path order here — the same op set, applied in the
     // order a reader walks the score. Neither dominates in general, which is why both ship.
     expect(tempo?.replayedDelta).toBeCloseTo(663.367553, 6);
     expect(tempo?.opCounts).toMatchObject({ substitute: 4, delete: 1, insert: 3 });
@@ -337,8 +305,8 @@ describe('the edit path over the vendored corpus', () => {
   });
 
   it('anchors the event and distribution dimensions, where re-working is 0 by construction', () => {
-    // Telemann part 1: `d_articulation` is the alignment optimum PLUS AD-55.1's default step
-    // function, and ONE script over the map's entries prices both — the atoms from its
+    // Telemann part 1: `d_articulation` is the alignment optimum plus AD-55.1's default step
+    // function, and one script over the map's entries prices both — the atoms from its
     // `<articulation>` elements, the steps from its `<style>` switches.
     const telemann = requireBench(fixture('telemann-grave'), 0, 1, { scopeIndex: 1 });
     const articulation = editScriptForDimension(
@@ -348,9 +316,9 @@ describe('the edit path over the vendored corpus', () => {
       telemann.settings,
     ).script;
     expect(articulation.directDistance).toBeCloseTo(926.666667, 6);
-    // scriptCost EQUALS the lower bound, and that is §6.2's "consistent by construction"
-    // arriving as a measurement: the §5.6 functional is a sum over events, so applying one op
-    // changes exactly one event's contribution and no monotone script can do better or worse.
+    // scriptCost equals the lower bound, which is §6.2's "consistent by construction" as a
+    // measurement: the §5.6 functional is a sum over events, so applying one op changes exactly
+    // one event's contribution and no monotone script can do better or worse.
     expect(articulation.scriptCost).toBeCloseTo(926.666667, 6);
     expect(articulation.replayedDelta).toBeCloseTo(926.666667, 6);
     expect(articulation.steps).toHaveLength(25);
@@ -378,22 +346,16 @@ describe('the edit path over the vendored corpus', () => {
 });
 
 /**
- * AD-60.3's obligation, discharged: the ornamentation map's SCOPE rule, on a synthetic pair
- * built for it (W4 MAJOR-4).
+ * A map's scope is a property of the map and a mixed edit state has no single one, so
+ * `dimensions.ts` picks `containsA ? scopeOf(a) : scopeOf(b)` — which makes `S(0,0)` exactly A
+ * and `S(n,m)` exactly B. Nothing else reaches the branch: no vendored document carries an
+ * `ornamentationMap`, and the adversarial family's two ornament members do not differ in where
+ * their map lives.
  *
- * The rule is that a map's scope is a property of the MAP and a mixed edit state has no single
- * one, so `dimensions.ts` picks `containsA ? scopeOf(a) : scopeOf(b)` — which makes `S(0,0)`
- * exactly A and `S(n,m)` exactly B. AD-60.3 ruled it and required a pin because "a stated rule
- * with no observable is half a rule", and it had none: no test in the repository constructed an
- * `ornamentationMap` pair, no vendored document carries one, and the adversarial family's two
- * ornament members do not differ in where their map LIVES. The branch was never taken in either
- * direction.
- *
- * What makes the scope observable is the style-carrying rule, which really does differ between
- * the two slots (`ornamentAtoms.ts`): a part-local map carries each `<style>` switch forward,
- * while a map under `<global>` IGNORES every switch after the first successful one. So a map
- * with two switches performs differently depending only on which slot holds it — and this pair
- * holds the same map bytes in the two different slots, so the scope is the only variable.
+ * What makes the scope observable is the style-carrying rule (`ornamentAtoms.ts`): a part-local
+ * map carries each `<style>` switch forward, while a map under `<global>` ignores every switch
+ * after the first successful one. So a map with two switches performs differently depending
+ * only on which slot holds it.
  */
 describe('AD-60.3: the ornamentation map’s scope, pinned on a synthetic pair', () => {
   /** Two ornament styles whose spreads differ, so which one is carried is visible in the atoms. */
@@ -408,32 +370,26 @@ describe('AD-60.3: the ornamentation map’s scope, pinned on a synthetic pair',
     '</ornamentationStyles>';
 
   /**
-   * The two maps, and the asymmetry the pin needs — which took three tries, recorded because
-   * the two fixtures that did NOT work both look perfectly reasonable.
+   * The two maps, and the asymmetry the pin needs.
    *
-   * Both maps carry TWO `<style>` switches, so each has two genuinely different readings: as a
-   * part the switch is carried forward, as a global map every switch after the first successful
-   * one is ignored. They differ in everything else — which style they open with, where the
-   * switch falls, how many ornaments follow — and that is deliberate, because the rule names
-   * FOUR possible readings and a pin worth having has to separate all four:
+   * Both carry two `<style>` switches, so each has two different readings. They differ in
+   * everything else — which style they open with, where the switch falls, how many ornaments
+   * follow — because the rule names four possible readings and the fixture has to separate all
+   * four:
    *
    *     correct   norm(A as part, B as global)   28.000000000000004
    *     inverted  norm(A as global, B as part)   13.333333333333336
    *     forced part                              29.333333333333332
    *     forced global                            22.666666666666664
    *
-   * Two rejected fixtures, both measured against the control that inverts the rule to
-   * `containsA ? scopeOf(b) : scopeOf(a)`:
+   * Two rejected fixtures, each measured against the control that inverts the rule to
+   * `containsA ? scopeOf(b) : scopeOf(a)`, and each of which the control passed:
    *
-   * 1. The same map bytes in both slots — the shape the gate report suggested. "A read as part"
-   *    and "B read as part" are then the same atoms, so inverting the rule merely swaps the two
-   *    arguments of a symmetric norm. Control PASSED.
+   * 1. The same map bytes in both slots. "A read as part" and "B read as part" are then the
+   *    same atoms, so inverting merely swaps the two arguments of a symmetric norm.
    * 2. Two switches each, differing only in ornament dates. The inverted reading pairs
    *    `720 with S` against `1440 with T` where the correct one pairs `720 with T` against
-   *    `1440 with S` — same date gap, same style difference, same cost. Control PASSED again.
-   *
-   * A fixture that separates three of the four would have shipped looking complete. That is the
-   * shape of the defect AD-60.3 was written about in the first place.
+   *    `1440 with S` — same date gap, same style difference, same cost.
    */
   const MAP_LOCAL =
     '<ornamentationMap>' +
@@ -453,11 +409,11 @@ describe('AD-60.3: the ornamentation map’s scope, pinned on a synthetic pair',
     '</ornamentationMap>';
 
   /**
-   * One document, two performances, differing in which SLOT holds the map.
+   * One document, two performances, differing in which slot holds the map.
    *
    * `local` puts it in the part; `global` puts one under `<global>` and leaves the part empty,
-   * so the part scope inherits it. Both are read at the PART scope, where `mapIsPartLocal`
-   * answers `true` for the first and `false` for the second — which is the whole variable.
+   * so the part scope inherits it. Both are read at the part scope, where `mapIsPartLocal`
+   * answers `true` for the first and `false` for the second — the whole variable.
    */
   const PAIR =
     '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0">' +
@@ -474,10 +430,9 @@ describe('AD-60.3: the ornamentation map’s scope, pinned on a synthetic pair',
     '</mpm>';
 
   /**
-   * An EXPLICIT window, for the family's own reason: the pair-derived one ends at the last
-   * instruction date, which here is the second `<style>` switch at 720 ticks = 1 quarter — so
-   * the very ornament the two slots disagree about sits on the boundary and the comparison
-   * reads 0. Four quarters contains both ornaments and their spreads.
+   * An explicit window: the pair-derived one ends at the last instruction date, here the second
+   * `<style>` switch at 720 ticks = 1 quarter, so the ornament the two slots disagree about sits
+   * on the boundary and the comparison reads 0. Four quarters contains both spreads.
    */
   const SCOPE_WINDOW = { start: 0, end: 4 } as const;
 
@@ -489,44 +444,40 @@ describe('AD-60.3: the ornamentation map’s scope, pinned on a synthetic pair',
     const { script } = editScriptForDimension('ornamentation', target.a, target.b, target.settings);
     const evaluated = evaluateDimension('ornamentation', target.a, target.b, target.settings);
 
-    // The endpoints ARE the documents: `directDistance` is the `d_k` the comparison reports,
+    // The endpoints are the documents: `directDistance` is the `d_k` the comparison reports,
     // which is only true if `S(0,0)` read A under A's scope and `S(n,m)` read B under B's. Not
     // `toBeCloseTo` — the two are the same arithmetic over the same atoms.
     expect(script.directDistance).toBe(evaluated.distance);
 
-    // §6.3: the replay landed on B. A state read under the WRONG scope cannot reach B, which is
-    // exactly what `replayResidual` is the field for (AD-60.3's own sentence).
+    // §6.3: the replay landed on B. A state read under the wrong scope cannot reach B, which is
+    // what `replayResidual` is the field for (AD-60.3).
     expect(script.replayResidual).toBe(0);
 
     // …and the theorem holds on it.
     expect(script.scriptCost).toBeGreaterThanOrEqual(script.directDistance / (1 + QUADRATURE_BAND));
 
-    // The VALUE, not just the relation (MINOR-R6). A fifth reading of the scope rule — one that
-    // leaves both endpoints correct and gives the MIXED states B's scope — passes every other
-    // assertion in this file while moving `scriptCost` from 38.667 to 30.667, because the
-    // endpoints are what the other assertions constrain and the mixed states are what the rule
-    // is about. Pinning the total is what reaches them.
+    // The value, not just the relation. A fifth reading of the scope rule — one that leaves both
+    // endpoints correct and gives the mixed states B's scope — passes every other assertion in
+    // this file while moving `scriptCost` from 38.667 to 30.667: the other assertions constrain
+    // the endpoints, and the mixed states are what the rule is about.
     expect(script.scriptCost).toBeCloseTo(38.666666666666664, 9);
   });
 
   it('is non-vacuous: the two slots really do perform the same map differently', () => {
-    // Without this the test above would pass on a pair whose scope branch changes nothing, and
-    // AD-60.3's obligation would be discharged in name only — which is the exact failure the
-    // ruling was written to prevent.
+    // Without this the test above would pass on a pair whose scope branch changes nothing.
     const target = benchOf();
     const evaluated = evaluateDimension('ornamentation', target.a, target.b, target.settings);
     expect(evaluated.distance).toBeGreaterThan(0);
 
-    // The mechanism, named rather than assumed: the part-local side carries the second `<style>`
-    // switch and the global side ignores it, so the two differ on the ornament at date 720 and
-    // agree on the one at date 0.
+    // The part-local side carries the second `<style>` switch and the global side ignores it,
+    // so the two differ on the ornament at date 720 and agree on the one at date 0.
     const { script } = editScriptForDimension('ornamentation', target.a, target.b, target.settings);
     expect(script.steps.length).toBeGreaterThan(0);
   });
 });
 
 describe('resolution travels with the instruction (AD-40.2)', () => {
-  // Two performances whose `<tempo>` elements are BYTE-IDENTICAL and whose `tempoStyles` differ.
+  // Two performances whose `<tempo>` elements are byte-identical and whose `tempoStyles` differ.
   // Nothing in the map says what the tempo is; the styleDef does.
   const NS = 'http://www.cemfi.de/mpm/ns/1.0';
   const performance = (name: string, bpm: string) =>
@@ -549,7 +500,7 @@ describe('resolution travels with the instruction (AD-40.2)', () => {
     expect(script?.directDistance).toBeCloseTo((4 * Math.LN2) / Math.log(1.025), 6);
     // The script reaches the lower bound: AD-5's tie again, since a path that removes A's tempo
     // and inserts B's telescopes through the renderer's no-tempo default at exactly the same
-    // total as one that substitutes it (`ln(100/60) + ln(120/100) = ln 2`). The step COUNT is
+    // total as one that substitutes it (`ln(100/60) + ln(120/100) = ln 2`). The step count is
     // therefore not the thing to assert — two scripts of different lengths cost the same.
     expect(script?.scriptCost).toBeCloseTo(script?.directDistance ?? -1, 9);
   });
@@ -564,7 +515,7 @@ describe('resolution travels with the instruction (AD-40.2)', () => {
 });
 
 describe('a <style> is an instruction, because the any-entry maps perform it', () => {
-  // `asynchronyMap` reads an offset off ANY next entry with no local-name test, so a `<style>`
+  // `asynchronyMap` reads an offset off any next entry with no local-name test, so a `<style>`
   // between two `<asynchrony>` elements ends the first span and NaN-poisons its own (AD-33.1) —
   // the span reads `⊥`. An edit sequence that dropped `<style>` entries would therefore have
   // `S(0,0) ≠ A`, which nothing in the vendored corpus happens to exhibit: no vendored
@@ -593,10 +544,10 @@ describe('a <style> is an instruction, because the any-entry maps perform it', (
 describe('the localized norm is exact, not an approximation', () => {
   it('keeps the span BEFORE the change, which a transition makes load-bearing', () => {
     // Deleting an instruction extends its predecessor's span, and if that predecessor is a
-    // TRANSITION its shape changes over its own span too — so the affected interval starts at
-    // the PREDECESSOR's date, not at the change's. Nothing in the vendored corpus exercises
-    // this (a negative control moving the bound one instruction to the right passed the whole
-    // corpus pin), so the case is built.
+    // transition its shape changes over its own span too — so the affected interval starts at
+    // the predecessor's date, not at the change's. Nothing in the vendored corpus exercises
+    // this: a negative control moving the bound one instruction to the right passes the whole
+    // corpus pin.
     const NS = 'http://www.cemfi.de/mpm/ns/1.0';
     const performance = (name: string, middle: boolean) =>
       `<performance name="${name}" pulsesPerQuarter="720"><global><dated><tempoMap>` +
@@ -620,9 +571,7 @@ describe('the localized norm is exact, not an approximation', () => {
 
   it('gives bit-identical totals to the whole-window form on the vendored corpus', () => {
     // One pair per document rather than all six: the whole-window reference is the expensive
-    // half (it is what the localization exists to avoid) and the three documents differ in the
-    // maps they carry, which is what the pin is about. The other three pairs run localized in
-    // every test above.
+    // half, and what the pin is about is the maps the three documents differ in carrying.
     for (const [name, performanceA, performanceB] of REFERENCE_PAIRS) {
       const target = bench(fixture(name), performanceA, performanceB);
       if (target === null) continue;
@@ -643,13 +592,10 @@ describe('the localized norm is exact, not an approximation', () => {
   });
 
   it('gives bit-identical totals over the adversarial family', () => {
-    // Every member against every other, under the family's own explicit window — the standing
-    // policy of AD-33.5, which puts `⊥`, the cap, renderer defaults, skips and unbounded spans
-    // in front of a change to the integrator's domain. Restricted to the dimensions that
-    // LOCALIZE: for `pedal`, `articulation` and `ornamentation` the two modes are the same code
-    // path by construction, so including them would add cost and assert nothing.
-    // Unordered pairs: the claim is that two INTEGRATION DOMAINS agree, which is symmetric in
-    // the pair, and P-C2's orientation properties are `properties.test.ts`'s subject.
+    // Every member against every other, under the family's own explicit window — AD-33.5's
+    // standing policy, which puts `⊥`, the cap, renderer defaults, skips and unbounded spans in
+    // front of a change to the integrator's domain. Unordered pairs, because the claim is that
+    // two integration domains agree and that is symmetric in the pair.
     for (const [i, a] of ADVERSARIAL_FAMILY.entries())
       for (const b of ADVERSARIAL_FAMILY.slice(i + 1)) {
         const target = requireBench(a.mpm, 0, 0, {

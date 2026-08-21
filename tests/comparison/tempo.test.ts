@@ -1,12 +1,12 @@
 /**
  * The tempo curve and its distance — DESIGN.md §5.1, plus the first real regression anchors.
  *
- * Two kinds of test, deliberately. Inline documents pin the four renderer behaviours that
- * decide the curve and that no fixture happens to exercise together — the degenerate table,
- * the inert trailing transition, the skip gap, the pre-first default. The vendored Telemann
- * document then pins actual numbers, because a curve that is right in every unit test can
- * still be wired up wrongly, and P-C9's shape (Baroque and Romantic close, Fast far from
- * both) is a claim about the world that a synthetic fixture cannot make.
+ * Two kinds of test. Inline documents pin the four renderer behaviours that decide the curve and
+ * that no fixture exercises together — the degenerate table, the inert trailing transition, the
+ * skip gap, the pre-first default. The vendored Telemann document pins actual numbers, because a
+ * curve that is right in every unit test can still be wired up wrongly, and P-C9's shape
+ * (Baroque and Romantic close, Fast far from both) is a claim about the world that a synthetic
+ * fixture cannot make.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -62,8 +62,8 @@ describe('tempo curve: the degenerate table (AD-9iii)', () => {
   });
 
   it('performs meanTempoAt <= 0 as a constant at TRANSITION.TO, not at bpm', () => {
-    // TempoMap.ts:144-151 reassigns bpm := transitionTo. This is the row that "collapses to
-    // a constant" gets wrong by a factor of two.
+    // TempoMap.ts:144-151 reassigns bpm := transitionTo, so reading the row as "collapses to a
+    // constant [at bpm]" is wrong by a factor of two here.
     const curve = curveFor(tempo('transition.to="120" meanTempoAt="0"'));
     expect(quarterBpmAt(curve, 0)).toBe(120);
     expect(quarterBpmAt(curve, 1440)).toBe(120);
@@ -306,11 +306,11 @@ describe('tempo distance: metric properties on the W2 subset', () => {
   });
 
   it('P-C2 symmetry on a POWER-VS-POWER cell, which is where it broke (CAPITAL-3)', () => {
-    // Every P-C2 test in the wave compared two CONSTANTS, so none reached
-    // criticalPointTicks at all. Passing the segments in document order made
-    // powerCriticalPoint compute separately-rounded reciprocals — algebraically equal, not
-    // equal in IEEE754 — and 11.7 % of argument sets differed by one ulp, which moves the
-    // split point, the GL-10 abscissae, and the reported bits. Canonical ordering fixes it.
+    // A P-C2 test on two CONSTANTS never reaches criticalPointTicks. Passing the segments in
+    // document order makes powerCriticalPoint compute separately-rounded reciprocals —
+    // algebraically equal, not equal in IEEE754 — and 11.7 % of argument sets differ by one
+    // ulp, which moves the split point, the GL-10 abscissae, and the reported bits. Hence the
+    // canonical ordering.
     const a =
       '<tempo date="0.0" bpm="40" beatLength="0.25" transition.to="90" meanTempoAt="0.9"/>' +
       '<tempo date="2880.0" bpm="90" beatLength="0.25"/>';
@@ -348,8 +348,8 @@ describe('Telemann regression anchors (P-C9)', () => {
 
   /**
    * Pinned in NEPERS·quarters as well as JND·quarters. The nepers figure is the physical
-   * quantity and survives a JND revision; the JND figure is what a report shows and moves
-   * with `TEMPO_JND_NEPERS` — which already halved once, under AD-27.6.
+   * quantity and survives a JND revision; the JND figure is what a report shows, and it moves
+   * with `TEMPO_JND_NEPERS`.
    */
   it('pins the measured values', () => {
     expect(baroqueFast.distance).toBeCloseTo(5975.4491, 3);

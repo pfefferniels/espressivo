@@ -2,17 +2,15 @@
  * P-C2 and P-C11 at the facade — the two properties that are about the REPORT rather than about
  * a number in it.
  *
- * **P-C2 (symmetry)** is asserted on `JSON.stringify` with no replacer and no indentation,
- * because that is what §9.5 pins: "bit-identical output modulo the explicit swap/negation map".
+ * P-C2 (symmetry) is asserted on `JSON.stringify` with no replacer and no indentation, because
+ * that is what §9.5 pins: "bit-identical output modulo the explicit swap/negation map".
  * Comparing distances alone would miss an asymmetric segment ranking, an asymmetric note order
- * or a field that carries a document's identity without swapping — and the swap map is written
- * out here as CODE, so a future field that needs mirroring fails this test instead of quietly
- * breaking the promise.
+ * or a field that carries a document's identity without swapping. The swap map is written out
+ * as CODE in {@link mirror}, so a field that needs mirroring and does not get it fails here.
  *
- * **P-C11 (finiteness)** walks every number of every result over the whole vendored corpus and
- * the degenerate shapes §9.6 names, through the same discipline `tests/api/plain-data.test.ts`
- * applies to the other two facades: finite or `null`, never `NaN`, never `Infinity`, never
- * `undefined`.
+ * P-C11 (finiteness) walks every number of every result over the whole vendored corpus and the
+ * degenerate shapes §9.6 names: finite or `null`, never `NaN`, `Infinity` or `undefined` — the
+ * discipline `tests/api/plain-data.test.ts` applies to the other two facades.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -30,10 +28,8 @@ import { compareNotes } from '../../src/comparison/compare.js';
 import { elementAt, pairwise } from '../../src/prelude/index.js';
 
 /**
- * `record[key]`, checked — a `Record<string, T>` lookup is `T | undefined` under the flag.
- *
- * The keys here are all `COMPARISON_DIMENSIONS` members, so a miss means the report is missing
- * a dimension the registry declares, which is the failure worth naming.
+ * `record[key]`, checked. The keys here are all `COMPARISON_DIMENSIONS` members, so a miss means
+ * the report is missing a dimension the registry declares.
  */
 const recordAt = <T>(record: Record<string, T>, key: string, what: string): T => {
   const value = record[key];
@@ -54,18 +50,13 @@ const MINIMAL = fixture('minimal');
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
 
-// ---------------------------------------------------------------------------
-// §9.5's swap / negation map, written out
-// ---------------------------------------------------------------------------
-
 type Mutable = Record<string, unknown>;
 
 /**
  * The mirror of a report: what `compare(b, a)` must serialize to, given `compare(a, b)`.
  *
- * Three kinds of field and they are NOT the same operation (§9.5): a pair of fields SWAPS, a
- * signed descriptor NEGATES, and a ratio INVERTS. Writing them out is the point — the map is
- * the contract, and a field added without a rule here fails the test rather than the promise.
+ * Three kinds of field, and they are NOT the same operation (§9.5): a pair of fields SWAPS, a
+ * signed descriptor NEGATES, and a ratio INVERTS. The map written out here is the contract.
  */
 function mirror(report: ComparisonReport): ComparisonReport {
   const copy = structuredClone(report) as unknown as Mutable;
@@ -113,8 +104,7 @@ function mirror(report: ComparisonReport): ComparisonReport {
     // §9.5 says the ratio INVERTS, which is true of the real number and NOT of the double:
     // `1/(a/b)` and `b/a` differ by ulps, measured at 2 on the Albert pair
     // (1.0439297220611783 against 1.0439297220611785). So the mirror takes the quotient of the
-    // SWAPPED seconds, which is the same permutation of the same fields and is what the engine
-    // computes — the inversion is the statement, the quotient is the arithmetic.
+    // SWAPPED seconds, which is what the engine computes.
     drift.ratio = (drift.secondsA as number) / (drift.secondsB as number);
   }
 
@@ -126,18 +116,17 @@ function mirror(report: ComparisonReport): ComparisonReport {
       profile.signed = (profile.signed as number[]).map((value) => negate(value));
     }
 
-  // The document ROLE swaps, on notes and on the sites they carry — and the note order is a
-  // function of that role (§9.5), so the array is re-sorted rather than left where the swap put
-  // it. Sorting is what a stable order MEANS here; leaving it would leak the orientation.
+  // The document ROLE swaps, on notes and on the sites they carry, and the note order is a
+  // function of that role (§9.5) — so the array is re-sorted rather than left where the swap
+  // put it, which would leak the orientation.
   const notes = (copy.notes as Mutable[]).map((note): Mutable => {
     const site = note.site as Mutable | null;
     if (site !== null) site.document = swapRole(site.document);
     return { ...note, document: swapRole(note.document) };
   });
-  // The ENGINE's comparator, not a copy of it. A copy was what let W3 MAJOR-6 hide: the two
-  // drifted, the engine's was not total, and this re-sort tidied the difference away. Using the
-  // real one makes the re-sort what it claims to be — the swap map applied — and leaves the
-  // comparator's totality to the dedicated test that can actually see it.
+  // The ENGINE's comparator, not a copy: a copy can drift, and this re-sort would tidy the
+  // difference away. The real one makes the re-sort what it claims to be — the swap map applied
+  // — and leaves the comparator's totality to the dedicated test below.
   copy.notes = notes.sort((x, y) =>
     compareNotes(x as unknown as ComparisonNote, y as unknown as ComparisonNote),
   );
@@ -215,12 +204,11 @@ const PAIRS: readonly Pair[] = [
     performanceA: 'Baroque',
     performanceB: 'Baroque',
   },
-  // W3 MAJOR-17. Every pair above is either a same-document pair or one whose event dimensions
-  // never reach an equal-cost tie, and the alignment DP's tie-break asymmetry appeared only on
-  // CROSS-document pairs with real articulation on both sides: `events` read `[0, 35, 396]` one
-  // way and `[18, 378, 17]` the other, with `segments[].peak` differing at identical mass. A
-  // corpus can contain a hazard without reaching it (AD-50.3's lesson), so the two the verifier
-  // found are here by name.
+  // The two pairs that reach the alignment DP's tie-break. Every pair above is either a
+  // same-document pair or one whose event dimensions never reach an equal-cost tie; the
+  // asymmetry shows only on CROSS-document pairs with real articulation on both sides, where
+  // `events` read `[0, 35, 396]` one way and `[18, 378, 17]` the other, with `segments[].peak`
+  // differing at identical mass.
   {
     name: 'Aller Augen against Bach — cross-document, articulation on both sides',
     a: ALLER_AUGEN,
@@ -278,15 +266,14 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
   });
 
   /**
-   * W3 MAJOR-6: the note comparator has to be TOTAL, and P-C2 above cannot tell.
+   * The note comparator has to be TOTAL, and P-C2 above cannot tell: the mirror re-sorts with
+   * the same comparator, so a partial order tidies its own ambiguity away.
    *
-   * §9.5 names `site` among the note keys and the comparator did not use it, so four Albert
-   * notes — one plausibility finding raised in the global scope and in each of three part
-   * scopes — tied on every key with four distinct serializations, and their relative order was
-   * decided by sort stability, i.e. by which document was read first. P-C2 is blind to it
-   * because the mirror re-sorts with the same comparator: a partial order tidies its own
-   * ambiguity away. So this is the direct statement instead — two notes compare equal only if
-   * they ARE equal.
+   * A comparator that ignores `site` — one of the note keys §9.5 names — leaves four Albert
+   * notes tied on every key with four distinct serializations (one plausibility finding raised
+   * in the global scope and in each of three part scopes), their relative order decided by sort
+   * stability, i.e. by which document was read first. Hence the direct statement: two notes
+   * compare equal only if they ARE equal.
    */
   it('orders the notes TOTALLY: comparing equal implies being equal', () => {
     for (const pair of PAIRS) {
@@ -311,9 +298,9 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
   });
 
   it('separates the four Albert notes that differ only in their SITE', () => {
-    // The concrete case: one `@transition.to` outside its plausible band, reported once for the
-    // global scope and once for each of three parts. Same kind, same dimension, same date, same
-    // document, same message — and four different sites.
+    // One `@transition.to` outside its plausible band, reported once for the global scope and
+    // once for each of three parts: same kind, dimension, date, document and message, and four
+    // different sites.
     const report = compareMpm({
       a: ALBERT,
       performanceA: 'Axel Berndt',
@@ -332,13 +319,12 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
   });
 
   /**
-   * W3 MAJOR-9: §9.5's "key order is pinned (A9)" had no test.
-   *
-   * The two tests that touched key sets `.sort()`ed them first — which checks membership and
-   * says nothing about order — and P-C2 compares the engine against itself, so a record built
+   * §9.5's "key order is pinned (A9)". Sorting a key set before comparing it checks membership
+   * and says nothing about order, and P-C2 compares the engine against itself, so a record built
    * by document traversal would serialize identically both ways and still break the promise.
-   * The top-level order is written out here as data; the per-dimension records are checked
-   * against `COMPARISON_DIMENSIONS` UNSORTED, which is the invariant §9.5 actually states
+   *
+   * The top-level order is written out as data; the per-dimension records are checked against
+   * `COMPARISON_DIMENSIONS` UNSORTED, which is the invariant §9.5 states
    * (`Object.fromEntries(COMPARISON_DIMENSIONS.map(…))`, never a document walk).
    */
   it('pins the key order of the report and of every per-dimension record (§9.5, A9)', () => {
@@ -367,8 +353,8 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       'equivalence',
       'cumulativeDrift',
       'profiles',
-      // W4 addition: AD-27.8's scape, beside `profiles` because it is the other opt-in
-      // retention of what the density holds. The pin caught it, which is what the pin is for.
+      // AD-27.8's scape sits beside `profiles`: the other opt-in retention of what the density
+      // holds.
       'scape',
       'notes',
     ]);
@@ -380,8 +366,8 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
     expect(Object.keys(report.profiles ?? {})).toEqual(inDimensionOrder);
     expect(Object.keys(report.inputs.settings.weights)).toEqual(inDimensionOrder);
     expect(Object.keys(report.inputs.settings.invariance)).toEqual(inDimensionOrder);
-    // Non-vacuity: the pinned order is NOT the sorted one, so sorting before comparing — which
-    // is what the two existing tests did — would have accepted any order at all.
+    // Non-vacuity: the pinned order is NOT the sorted one, so sorting before comparing would
+    // accept any order at all.
     expect(inDimensionOrder).not.toEqual([...inDimensionOrder].sort());
 
     // One nested record too, since §9.5's rule is about every object and not only the top.
@@ -404,12 +390,9 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
   });
 
   /**
-   * The same pin for the two shapes W4 added (MINOR-8).
-   *
-   * `ComparisonReport` was pinned and the two new report shapes were not — and the existing pin's
-   * own comment records what a key-order pin is worth: it is what caught W4's `scape` addition.
-   * A `DiffReport` and a `CorpusReport` are serialized, diffed and compared by consumers exactly
-   * as a `ComparisonReport` is, and §9.5's rule is about every object rather than about one.
+   * The same pin for the other two report shapes. A `DiffReport` and a `CorpusReport` are
+   * serialized, diffed and compared by consumers exactly as a `ComparisonReport` is, and §9.5's
+   * rule is about every object rather than about one.
    */
   it('pins the key order of DiffReport and CorpusReport too (§9.5, A9)', () => {
     const diff = diffMpm({
@@ -477,8 +460,7 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       scape: { bins: 4 },
     }).report;
 
-    // Every opt-in product asked for, so the pin covers the widest shape rather than the
-    // narrowest — the `scape` lesson from the pin above, applied before it can bite again.
+    // Every opt-in product asked for, so the pin covers the widest shape and not the narrowest.
     expect(Object.keys(corpus)).toEqual([
       'n',
       'labels',
@@ -516,12 +498,9 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
   });
 
   /**
-   * W3 MAJOR-14: §10's P-C6 had no test at the PAIRWISE path.
-   *
-   * The property holds — the report is byte-identical across separate processes — but nothing
-   * pinned it here, so a future `Map`-iteration regression in the report builder would ship
-   * green. Two runs over the same input text is the cheap half and the one that catches a
-   * builder keying on object identity or on insertion order.
+   * §10's P-C6 at the PAIRWISE path. Two runs over the same input text is the cheap half of
+   * determinism and the one that catches a report builder keying on object identity or on
+   * insertion order.
    */
   it('is deterministic at the pairwise path: two runs, byte-identical JSON (P-C6)', () => {
     for (const pair of PAIRS) {

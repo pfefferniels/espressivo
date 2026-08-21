@@ -1,19 +1,17 @@
 /**
- * W4's products against the standing adversarial family (AD-33.5, AD-57.2).
+ * The edit path and the corpus matrices against the standing adversarial family (AD-33.5,
+ * AD-57.2) — two failure surfaces the metric suite cannot see, because neither is a property
+ * of `d_k`:
  *
- * The policy is that every cut runs its products against the family rather than against
- * constants, and W4 opened two failure surfaces the metric suite cannot see because they are not
- * properties of `d_k`:
- *
- * - **Edit-path orientation.** §6.4's traceback precedence is deterministic but not
+ * - Edit-path orientation. §6.4's traceback precedence is deterministic but not
  *   transposition-covariant, so `diffMpm(a, b)` and `diffMpm(b, a)` are mirrors only because the
  *   script is computed once in a canonical order and inverted. A family member carrying `⊥`, a
- *   cap, a skip or an unbounded span is exactly where a tie is likely, which is where the
- *   inversion earns its keep.
- * - **Matrix determinism.** §8's products are permutation-equivariant only because every tie is
+ *   cap, a skip or an unbounded span is where a tie is likely, and so where the inversion earns
+ *   its keep.
+ * - Matrix determinism. §8's products are permutation-equivariant only because every tie is
  *   broken on a label, and the family is TIE-RICH by construction: R6's never-drop rule makes
- *   `both-neutral` dimensions produce blocks of exactly-equal distances, which is the situation
- *   AD-25.2 says is structural here rather than measure-zero.
+ *   `both-neutral` dimensions produce blocks of exactly-equal distances, which AD-25.2 calls
+ *   structural here rather than measure-zero.
  */
 import { describe, it, expect } from 'vitest';
 import { compareMpmCorpus, diffMpm } from '../../src/api/comparison.js';
@@ -128,10 +126,9 @@ function mirrored(report: DiffReport): unknown {
         },
       };
     }),
-    // Swap sides, then re-sort into §9.5's order. Both halves were latent until W4 MAJOR-5 gave
-    // `DiffReport` its notes: this mirror left `site.document` unswapped and never re-sorted,
-    // and an empty array agrees with anything. Re-derived from §9.5 rather than by calling the
-    // engine's `sortNotes`, which is what keeps the mirror independent of what it checks.
+    // Swap sides, then re-sort into §9.5's order — both halves matter, and an empty note array
+    // would agree with anything. Re-derived from §9.5 rather than by calling the engine's
+    // `sortNotes`, which is what keeps the mirror independent of what it checks.
     notes: [
       ...report.notes.map((entry) => ({
         ...entry,
@@ -156,20 +153,13 @@ function mirrored(report: DiffReport): unknown {
 }
 
 /**
- * W4 MAJOR-6: this file binds `adversarialMembers()`, never the raw `ADVERSARIAL_FAMILY`.
+ * This file binds `adversarialMembers()`, never the raw `ADVERSARIAL_FAMILY`.
  *
  * AD-57.2's drop-each-member hook answers "which member CATCHES a given defect", and it can only
- * answer it for tests that actually honour the drop. These bound the constant, so a sweep over
- * `COMPARISON_DROP_MEMBER` ran IDENTICAL assertions for every value — including
- * `COMPARISON_DROP_MEMBER=styled-level-fast`, which reported 7 passed with
- * `expect(fast).toBeDefined()` succeeding on a member that was supposed to be gone. The sweep
- * was real (it runs through `metricProperties.test.ts`) and this file was outside it, which is
- * to say the orientation mirror and the tie-rich matrix — the two surfaces AD-57.2's check was
- * EXTENDED for — were the two it did not reach.
- *
- * Where a test needs a member BY NAME, a drop is handled by `requiredMember`, which returns null
- * only when that member is the one the sweep dropped. Any other absence still fails, so routing
- * through the hook does not soften what these tests assert.
+ * answer it for tests that honour the drop: bind the constant instead and a sweep over
+ * `COMPARISON_DROP_MEMBER` runs IDENTICAL assertions for every value, so a test whose whole
+ * subject was dropped still passes. A test that needs a member BY NAME guards itself with
+ * `it.skipIf(dropped(...))`; any absence other than the sweep's own still fails.
  */
 const FAMILY = adversarialMembers();
 
@@ -180,13 +170,8 @@ const DROPPED = process.env.COMPARISON_DROP_MEMBER ?? '';
 const dropped = (...names: readonly string[]): boolean => names.includes(DROPPED);
 
 /**
- * A member a test names outright. Missing is a FAILURE here, never a shrug.
- *
- * Tests that name members guard themselves with `it.skipIf(dropped(...))`, so by the time this
- * runs the member must be present — and a SKIP is the honest report for "the sweep removed what
- * this test is about". Passing would be the vacuity the gate found (`DROP=styled-level-fast`
- * reported 7 passed, including the test whose whole subject was gone); failing would drown the
- * sweep's signal in noise it cannot act on.
+ * A member a test names outright. Missing is a FAILURE here, never a shrug: the caller's
+ * `skipIf` has already handled the one licensed absence.
  */
 function requireMember(name: string): AdversarialMember {
   const found = FAMILY.find((member) => member.name === name);
@@ -195,9 +180,9 @@ function requireMember(name: string): AdversarialMember {
 }
 
 describe('§6.4’s orientation, over the family’s hazards', () => {
-  // Every member against the ORDINARY case and against the styled-level pair W4 added — the
-  // first puts each hazard opposite a document with nothing wrong with it, the second puts it
-  // opposite a difference that lives entirely in a header.
+  // Every member against the ORDINARY case and against the styled-level pair: the first puts
+  // each hazard opposite a document with nothing wrong with it, the second opposite a difference
+  // that lives entirely in a header.
   const anchors = FAMILY.filter((member) => ['plain', 'styled-level-slow'].includes(member.name));
 
   it('mirrors every member against both anchors, field by field', () => {
@@ -214,10 +199,8 @@ describe('§6.4’s orientation, over the family’s hazards', () => {
         scripted += forward.scripts.length;
         pairs += 1;
       }
-    // Non-vacuity: the pairs really do produce scripts, so the mirror has something to mirror.
-    // Stated PER PAIR rather than as a total, so that dropping a member weakens the sweep's
-    // coverage without weakening its threshold — a fixed `> 40` would have quietly absorbed the
-    // loss of a member that carries several scripts.
+    // Non-vacuity: the pairs really do produce scripts. Stated PER PAIR rather than as a total,
+    // so a dropped member shrinks the sweep's coverage without lowering its threshold.
     expect(pairs).toBe(anchors.length * (FAMILY.length - 1));
     expect(scripted).toBeGreaterThan(pairs);
   });
@@ -250,10 +233,9 @@ describe('§6.4’s orientation, over the family’s hazards', () => {
 });
 
 describe('§8’s determinism, over a tie-RICH corpus', () => {
-  // Ten members, which is 45 pairs and a matrix with many exactly-equal cells: most of these
-  // documents carry no map at all for most dimensions, so R6's never-drop rule makes whole
-  // blocks identical. That is the situation index-keyed tie rules get wrong and label-keyed ones
-  // do not, and it is why AD-25.2 calls the ties structural rather than measure-zero.
+  // Ten members, 45 pairs, and a matrix with many exactly-equal cells: most of these documents
+  // carry no map at all for most dimensions, so R6's never-drop rule makes whole blocks
+  // identical. That is the situation index-keyed tie rules get wrong and label-keyed ones do not.
   const chosen = [
     'plain',
     'renderer-default-level',
@@ -266,8 +248,8 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
     'styled-level-slow',
     'styled-level-fast',
   ];
-  // Built from the HOOK's list, so a dropped member shrinks the corpus instead of throwing.
-  // Any absence other than the sweep's own is still a failure, asserted rather than tolerated.
+  // Built from the HOOK's list, so a dropped member shrinks the corpus instead of throwing; any
+  // absence other than the sweep's own is still a failure.
   const items = chosen
     .filter((name) => {
       const present = FAMILY.some((member) => member.name === name);
@@ -281,8 +263,8 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
 
   /**
    * A permutation DERIVED from the corpus size, so a dropped member shrinks the corpus rather
-   * than indexing off the end of a hard-coded order (W4 MAJOR-6). The stride is coprime with
-   * every length this corpus can take here, so it is a genuine derangement at 9 items and at 10.
+   * than indexing off the end of a hard-coded order. The stride is coprime with every length
+   * this corpus can take, so it is a genuine derangement at 9 items and at 10.
    */
   const order = items.map((_unused, index) => (index * 7 + 3) % items.length);
 
@@ -339,8 +321,8 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
         offDiagonal.push(cellOf(report.matrices.aggregate, n, i, j, 'the aggregate matrix'));
     const distinct = new Set(offDiagonal).size;
     // `C(n, 2)` pairs and materially fewer distinct values: exact ties, not near-ties. Stated
-    // from `n` rather than as the literal 45, so the claim survives a dropped member instead of
-    // failing for a reason that has nothing to do with tie-richness.
+    // from `n` rather than as the literal 45, so a dropped member does not fail the claim for a
+    // reason that has nothing to do with tie-richness.
     expect(offDiagonal).toHaveLength((n * (n - 1)) / 2);
     expect(distinct).toBeLessThan(offDiagonal.length);
   });
@@ -350,25 +332,23 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
   });
 
   /**
-   * The medoid under permutation, on REAL distances — where the tie key alone is not enough.
-   *
-   * W4 CAPITAL-2 repaired `exhaustiveMedoids`' tie key, and this corpus found what the key
-   * cannot reach: the tie has to SURVIVE to be broken. `partitionCost` summed each item's
-   * distance in the caller's item order, floating-point addition is not associative, and a
-   * permuted corpus therefore turned an exact tie into a 1-ulp difference that
-   * `cost < bestCost` settled before the label rule was ever consulted.
+   * The medoid under permutation, on REAL distances — where `exhaustiveMedoids`' tie key alone
+   * is not enough, because the tie has to SURVIVE to be broken. `partitionCost` sums each item's
+   * distance in the caller's item order and floating-point addition is not associative, so a
+   * permuted corpus can turn an exact tie into a 1-ulp difference that `cost < bestCost` settles
+   * before the label rule is ever consulted.
    *
    * [MEASURED] on the nine-item corpus (this list without `plain`) at `k = 3`, where FIVE
    * subsets attain the optimum `177.477686776`: summed in index order the winner
    * `{bottom-span, capped, renderer-default-level}` and the runner-up
    * `{bottom-span, renderer-default-level, skips}` are bit-equal under one item order
-   * (`177.47768677583286490` both) and differ by `2.842e-14` under another — so the corpus named
+   * (`177.47768677583286490` both) and differ by `2.842e-14` under another — so the corpus names
    * a different set of typical performances for no reason a reader could see.
    *
-   * The matrix is taken from the pipeline ONCE and permuted directly, so the sweep is over
-   * `pam` rather than over the whole corpus build: the defect is in the objective's summation
-   * order, and this is where it lives. Integer-valued fixtures cannot catch it — their sums are
-   * exact in any order, which is why `corpusMath.test.ts`'s two-block witness passes either way.
+   * The matrix is taken from the pipeline ONCE and permuted directly, so the sweep is over `pam`
+   * rather than over the whole corpus build. Integer-valued fixtures cannot catch this — their
+   * sums are exact in any order, which is why `corpusMath.test.ts`'s two-block witness passes
+   * either way.
    */
   it('names the same medoids under every permutation of REAL, inexact distances', () => {
     const nine = items.filter((item) => item.label !== 'plain');
@@ -395,8 +375,8 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
     });
 
     const answers = new Set<string>();
-    // Every cyclic rotation plus every stride — enough distinct orders to have caught the
-    // defect (it showed on the very first one tried) without enumerating 9!.
+    // Every cyclic rotation plus every stride — enough distinct orders to reach the hazard
+    // without enumerating 9!.
     for (let shift = 0; shift < matrix.n; ++shift)
       for (const stride of [1, 2, 4, 5, 7]) {
         const into = Array.from(
@@ -453,10 +433,8 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
 describe('AD-57.2’s drop-each-member hook', () => {
   it('removes exactly the member it names, and nothing otherwise', () => {
     // Asserted in BOTH modes rather than "the env is unset", because the sweep that uses the
-    // hook runs this very suite with the env SET — a guard that demanded an empty env would
-    // fail once per member and drown the signal the sweep exists to produce. (It did: the first
-    // run of the sweep reported "1 failed" for all twenty-eight members, and the one failure was
-    // this test.)
+    // hook runs this very suite with the env SET: a guard demanding an empty env would fail once
+    // per member and drown the signal the sweep exists to produce.
     const dropped = process.env.COMPARISON_DROP_MEMBER ?? '';
     const members = adversarialMembers();
     if (dropped === '') {

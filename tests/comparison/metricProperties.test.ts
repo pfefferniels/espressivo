@@ -2,23 +2,18 @@
  * P-C1 / P-C2 / P-C3 / P-C3b over the standing adversarial family — §10, promoted under
  * AD-33.5.
  *
- * The wave's original triangle tests ran on three pointwise-ordered constants, which sit at
- * the triangle's *equality* case: they could fail only on quadrature error, so they tested
- * the quadrature and not the metric. This file runs the same properties over twenty-six members
- * that between them carry `⊥` (by seven different routes), the cap, a renderer-default level,
- * a tempo skip, a dynamics skip, AD-35's unbounded resurrected span, a power-vs-power
- * transition pair — the last being the only member that reaches `criticalPointTicks`, the path
- * CAPITAL-3 broke unseen — and, since the W3 fix wave, the five dimensions the list of
- * DIMENSIONS used to omit.
+ * A triangle test on three pointwise-ordered constants sits at the triangle's equality case: it
+ * can fail only on quadrature error, so it tests the quadrature and not the metric. These
+ * properties run over the adversarial family instead, whose members carry `⊥` by seven routes,
+ * the cap, a renderer-default level, a tempo skip, a dynamics skip, AD-35's unbounded
+ * resurrected span, and the one power-vs-power pair that reaches `criticalPointTicks`.
  *
- * It runs over **all eleven dimensions** (W3 MAJOR-1). The six it covered left out the two
- * EVENT dimensions, whose distance is an argmin over monotone alignments and whose metric
- * status §5.6 argues in prose; measured, an uncapped `localDistance` fails ornamentation's
- * triangle test and nothing in the old six would have seen it.
+ * The two EVENT dimensions are included: their distance is an argmin over monotone alignments
+ * and §5.6 argues its metric status in prose — measured, an uncapped `localDistance` fails
+ * ornamentation's triangle test where no curve dimension shows anything.
  *
- * Every comparison runs under one **explicit shared window**, which §10 requires: under a
- * pair-derived window the three windows of a triple differ and R3 does not claim the triangle
- * inequality at all (M2).
+ * Every comparison runs under one EXPLICIT shared window (§10): under a pair-derived window the
+ * three windows of a triple differ and R3 does not claim the triangle inequality at all (M2).
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -37,18 +32,11 @@ import type { InvarianceMode } from '../../src/comparison/decomposition.js';
 import { elementAt } from '../../src/prelude/index.js';
 
 /**
- * ALL ELEVEN (W3 MAJOR-1). The suite covered six, and the five it skipped included the two
- * EVENT dimensions — whose distance is an argmin over monotone alignments, the only construction
- * in the module where the triangle inequality is a structural question rather than a numerical
- * one, and whose metric argument §5.6 makes in prose — plus rubato, which gained its first four
- * `⊥` routes and the capped integrator in the very wave that shipped this list.
- *
- * The distance is now taken through `evaluateDimension`, the same entry the driver calls, rather
- * than through eleven hand-wired reader/distance pairs. Two things follow and both are the
- * point: a dimension cannot be in the report and absent here (the list IS
- * `COMPARISON_DIMENSIONS`), and a dimension's metric properties are checked over everything its
- * `d_k` is made of — which for articulation now means the alignment optimum AND AD-55.1's
- * default step function, two components that reach the number by different routes.
+ * The list IS `COMPARISON_DIMENSIONS`, so a dimension cannot be in the report and absent here.
+ * The distance is taken through `evaluateDimension`, the same entry the driver calls, so a
+ * dimension's metric properties are checked over everything its `d_k` is made of — which for
+ * articulation means the alignment optimum AND AD-55.1's default step function, two components
+ * reaching the number by different routes.
  */
 const DIMENSIONS = COMPARISON_DIMENSIONS;
 type Dimension = ComparisonDimension;
@@ -90,10 +78,8 @@ function distanceFor(dimension: Dimension, pair: ComparisonPair): number {
 /**
  * Distance between two members under the shared explicit window, memoized on the ORDERED pair.
  *
- * Ordered, deliberately: memoizing on an unordered key would make P-C2 tautological — it would
- * compare a cached number with itself instead of running the two directions through the
- * integrator. What the cache buys is that the twelve-member family's 220 triples do not reparse
- * the same documents thousands of times; what it must not buy is a symmetry that is not real.
+ * Ordered, deliberately: an unordered key would make P-C2 tautological, comparing a cached
+ * number with itself instead of running the two directions through the integrator.
  */
 const CACHE = new Map<string, number>();
 
@@ -108,15 +94,8 @@ function distance(dimension: Dimension, x: AdversarialMember, y: AdversarialMemb
 
 describe('the adversarial family itself', () => {
   it('has twenty-eight members with distinct hazards', () => {
-    // Twelve after cut 1, seventeen after cut 4, twenty-six after the W3 fix wave, twenty-eight
-    // after W4 — each cut extends the family with the failure surfaces it opens (AD-33.5's
-    // standing policy), and this count is what makes that an obligation rather than an
-    // intention. The nine added at MAJOR-1 are the surfaces of the five dimensions the suite
-    // never ran on: rubato's ordinary warp and its first ⊥ route, the two event dimensions'
-    // ordinary, offset and incomparable cases, articulation's default step function, and the two
-    // imprecision domains that had no member at all. W4's two are a PAIR — the same map text
-    // resolving through different `tempoDef`s — which is the surface §6's edit path opened and
-    // which every other member misses by stating its levels as literals.
+    // AD-33.5 requires a cut that opens a failure surface to extend the family, and this count
+    // is what makes that an obligation rather than an intention.
     expect(ADVERSARIAL_FAMILY).toHaveLength(28);
     expect(new Set(ADVERSARIAL_FAMILY.map((member) => member.name)).size).toBe(28);
   });
@@ -164,14 +143,10 @@ describe.each(DIMENSIONS)('P-C2 bit-exact symmetry — %s', (dimension) => {
 
 describe.each(DIMENSIONS)('P-C3 triangle inequality — %s', (dimension) => {
   it('holds for every triple with EVERY member as the middle term', () => {
-    // All three assignments, not one. `adversarialTriples` returns an unordered triple and the
-    // first version of this test always took the third member as the middle, so it checked one
-    // inequality of the three a triple asserts. Cut 4 found that the hard way: §4's cap binds
-    // only when a ⊥ member sits BETWEEN two laws whose uncapped distance exceeds 2·δ_row, and
-    // with one fixed middle that arrangement depended on the family's array order — the
-    // property was true, unobservable, and would have stayed unobservable through any
-    // reordering. Same lesson as the eighth member's (AD-33.5): a family that merely CONTAINS
-    // the hazard is not a family that reaches it.
+    // All three assignments of the middle term: a fixed middle checks one inequality of the
+    // three a triple asserts, and §4's cap binds only when a ⊥ member sits BETWEEN two laws
+    // whose uncapped distance exceeds 2·δ_row — so with one fixed middle, whether that
+    // arrangement is reached at all depends on the family's array order.
     for (const [x, y, z] of adversarialTriples())
       for (const [left, right, middle] of [
         [x, y, z],
@@ -191,8 +166,8 @@ describe.each(DIMENSIONS)('P-C3 triangle inequality — %s', (dimension) => {
 
 describe.each(DIMENSIONS)('P-C3b zero-set transitivity — %s', (dimension) => {
   it('holds across the family: two zeros compose to a zero', () => {
-    // Runs over the real family rather than over three encodings of one constant, so it
-    // reaches the ⊥ and capped paths it is advertised as the cheapest detector for.
+    // Over the real family rather than three encodings of one constant, so it reaches the ⊥ and
+    // capped paths it is the cheapest detector for.
     for (const [x, y, z] of adversarialTriples()) {
       const xy = distance(dimension, x, y);
       const yz = distance(dimension, y, z);
@@ -211,7 +186,6 @@ describe('the family reaches the paths the wave could not see', () => {
     const plain = ADVERSARIAL_FAMILY.find((member) => member.name === 'plain');
     expect(power).toBeDefined();
     expect(plain).toBeDefined();
-    // Non-zero against a constant, and symmetric — the CAPITAL-3 repro in family form.
     const forward = distance('tempo', power!, plain!);
     expect(forward).toBeGreaterThan(0);
     expect(Object.is(forward, distance('tempo', plain!, power!))).toBe(true);
@@ -232,8 +206,8 @@ describe('the family reaches the paths the wave could not see', () => {
     const accentuation = ADVERSARIAL_FAMILY.find((member) => member.name === 'accentuation-bottom');
     const pedal = ADVERSARIAL_FAMILY.find((member) => member.name === 'pedal-bottom');
     const ordinary = ADVERSARIAL_FAMILY.find((member) => member.name === 'accentuation-and-pedal');
-    // An aborting accentuationPatternDef (R21) and a non-monotone date component are different
-    // failures in different dimensions; both are ⊥ and both are δ_row from a real curve.
+    // An aborting accentuationPatternDef (R21) and a non-monotone date component: different
+    // failures in different dimensions, both ⊥ and both δ_row from a real curve.
     expect(distance('accentuation', accentuation!, ordinary!)).toBeGreaterThan(0);
     expect(distance('pedal', pedal!, ordinary!)).toBeGreaterThan(0);
   });
@@ -250,16 +224,13 @@ describe('the family reaches the paths the wave could not see', () => {
   it('reaches the cap', () => {
     const capped = ADVERSARIAL_FAMILY.find((member) => member.name === 'capped');
     const plain = ADVERSARIAL_FAMILY.find((member) => member.name === 'plain');
-    // 100000 ms against 0 is far past 2*delta_row, so the cap binds and the distance is
-    // finite and bounded rather than proportional to the raw offset.
+    // 100000 ms against 0 is far past 2*delta_row, so the cap binds and the distance is bounded
+    // rather than proportional to the raw offset.
     const d = distance('asynchrony', capped!, plain!);
     expect(Number.isFinite(d)).toBe(true);
     expect(d).toBeLessThanOrEqual(2 * 10 * 4 * (1 + 1e-9));
   });
 
-  // W3 MAJOR-1. The five dimensions the suite never ran on, each shown to REACH its own
-  // failure surface and not merely to contain a member. AD-50.3's lesson, applied to the
-  // additions it licensed: a family that contains a hazard is not one that reaches it.
   const member = (name: string): AdversarialMember => {
     const found = ADVERSARIAL_FAMILY.find((candidate) => candidate.name === name);
     if (found === undefined) throw new Error(`no adversarial member named ${name}`);
@@ -269,8 +240,7 @@ describe('the family reaches the paths the wave could not see', () => {
 
   it('reaches rubato’s ⊥ route, and the cap binds over the whole window', () => {
     // An unusable @intensity with @loop on poisons the WHOLE span, so a ⊥ against a real warp
-    // is δ_row per quarter across the window: 10 × 4. Rubato's four ⊥ routes and its capped
-    // integrator both arrived in W3b with no family member reaching either.
+    // is δ_row per quarter across the window: 10 × 4.
     expect(distance('rubato', member('rubato-bottom'), member('rubato-plain'))).toBeCloseTo(
       10 * 4,
       9,
@@ -307,10 +277,10 @@ describe('the family reaches the paths the wave could not see', () => {
   });
 
   it('reaches ornamentation’s incomparable pair, and prices it at the cap', () => {
-    // A tick frame against a millisecond frame has no common domain without a tempo map
-    // (§5.6): two matched anchors, each at 2·δ_row. Against a document with no ornaments the
-    // same member is an ordinary deviation-from-neutral, which is what makes the pair a ⊥ and
-    // not merely a large number.
+    // A tick frame against a millisecond frame has no common domain without a tempo map (§5.6):
+    // two matched anchors, each at 2·δ_row. Against a document with no ornaments the same member
+    // is an ordinary deviation-from-neutral, which is what makes the pair ⊥ and not merely a
+    // large number.
     expect(
       distance('ornamentation', member('ornament-plain'), member('ornament-milliseconds')),
     ).toBeCloseTo(2 * 2 * 10, 9);

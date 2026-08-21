@@ -2,10 +2,10 @@
  * The numerical core, tested against closed forms and against the two measured failures
  * DESIGN.md §5.0 exists to prevent.
  *
- * The hard-coded Gauss–Legendre table is re-derived here from scratch — Newton's method on
- * the Legendre polynomial `P₁₀`, using nothing from the module under test — because a table
- * that derived itself at run time would be self-consistent with its own typo. This is the
- * auditability test that licenses hard-coding the constants at all.
+ * The hard-coded Gauss–Legendre table is re-derived here from scratch — Newton's method on the
+ * Legendre polynomial `P₁₀`, using nothing from the module under test — because a table that
+ * derived itself at run time would be self-consistent with its own typo. That re-derivation is
+ * what licenses hard-coding the constants at all.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -160,10 +160,9 @@ describe('the tempo substitution (rule 1, M6)', () => {
   });
 
   /**
-   * MEASURED DEFECT in §5.0 rule 1, pinned so it cannot be forgotten while the conductor
-   * rules on the scheme. The substitution is claimed to work "for every e"; for e > 1 the
-   * Jacobian exponent goes negative, the weight becomes singular at z = 0, and GL-10 loses
-   * most of the mass. These assertions record the failure, not an endorsement of it.
+   * MEASURED DEFECT in §5.0 rule 1. The substitution is claimed to work "for every e"; for
+   * e > 1 the Jacobian exponent goes negative, the weight becomes singular at z = 0, and GL-10
+   * loses most of the mass. These assertions record the failure, not an endorsement of it.
    */
   it('IS BROKEN for e > 1 — the substitution creates the singularity it claims to kill', () => {
     const e = Math.log(0.5) / Math.log(0.9); // ≈ 6.58, an ordinary ritardando
@@ -226,9 +225,7 @@ describe('the tempo substitution (rule 1, M6)', () => {
     });
 
     it('meets the JND-scale requirement AD-28.2 makes the real target', () => {
-      // Tempo JND is ln(1.025) per AD-27.6 — HALF the value DESIGN rev 2 carried, so every
-      // JND-unit figure is twice what the original stop-and-report quoted. The conclusion is
-      // unchanged; the arithmetic is corrected here rather than left to be rediscovered.
+      // Tempo JND is ln(1.025) per AD-27.6.
       const tempoJnd = Math.log(1.025);
       for (const meanTempoAt of [0.05, 0.5, 0.9, 0.99]) {
         const e = exponentOf(meanTempoAt);

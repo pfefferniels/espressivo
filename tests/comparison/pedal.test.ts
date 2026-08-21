@@ -1,15 +1,14 @@
 /**
  * The pedal (movement) curve and its density — DESIGN.md §5.8, as amended by AD-35.
  *
- * The load-bearing test is again the **differential** one: the renderer is run for real and its
- * emitted `<position>` events are compared against `positionAt` at their own dates. That checks
- * three things at once that no hand-written expectation could — the span structure, the ideal
- * Bézier against the renderer's own sampled points, and the 127-scaling — and it is the only
- * kind of test that would have caught the two spec-was-wrong CAPITALs of W2.
+ * The load-bearing test is the DIFFERENTIAL one: the renderer is run for real and its emitted
+ * `<position>` events are compared against `positionAt` at their own dates. That checks three
+ * things at once that no hand-written expectation could — the span structure, the ideal Bézier
+ * against the renderer's own sampled points, and the 127-scaling.
  *
- * The second load-bearing test is the **trailing-style resurrection** (AD-35), pinned as a
- * fixture with both halves the ruling names: the event count and range the renderer really
- * produces, and the window-bounded pricing the comparison puts on it.
+ * The second is the TRAILING-STYLE RESURRECTION (AD-35), pinned with both halves the ruling
+ * names: the event count and range the renderer produces, and the window-bounded pricing the
+ * comparison puts on it.
  */
 import { describe, it, expect } from 'vitest';
 import { Builder } from '../../src/xml/XomTypes.js';
@@ -111,11 +110,10 @@ describe('positionAt agrees with the renderer at its own sampled points', () => 
     const events = rendererEvents(map);
     expect(events.length).toBeGreaterThan(2);
 
-    // At a span boundary the renderer emits TWICE at the same date — the ending span's exact
-    // end point and the opening span's start point — and on a flat map those two can even be
-    // on different controllers (`sustain` closing, `soft` opening). Right-continuity (A-B1)
-    // says the opening span governs, so the event to compare against at a repeated date is the
-    // LAST one, which is what the renderer's own date-ordered insertion leaves there.
+    // At a span boundary the renderer emits TWICE at the same date — the ending span's end
+    // point and the opening span's start point, on a flat map even on different controllers
+    // (`sustain` closing, `soft` opening). Right-continuity (A-B1) says the opening span
+    // governs, so the event to compare against at a repeated date is the LAST one.
     const lastPerDate = new Map<number, number>();
     for (const [date, position] of events) lastPerDate.set(date, position);
 
@@ -123,9 +121,9 @@ describe('positionAt agrees with the renderer at its own sampled points', () => 
       const mine = positionAt(curve, date);
       expect(isBottom(mine)).toBe(false);
       if (isBottom(mine)) throw new Error('unreachable');
-      // 1e-9 is the ideal inversion's own accuracy (dynamicsCurve's idealCurveParameter doc);
-      // the renderer's sample is an exact curve point, so any larger gap is a real disagreement
-      // about the curve and not about the inversion.
+      // 1e-9 is the ideal inversion's own accuracy (dynamicsCurve's idealCurveParameter doc),
+      // and the renderer's sample is an exact curve point, so a larger gap is a disagreement
+      // about the curve rather than about the inversion.
       expect(mine.value, `at ${String(date)}`).toBeCloseTo(position, 9);
     }
   });
@@ -157,7 +155,7 @@ describe('the AD-35 resurrection: a trailing <style> renders the last movement',
     const without = rendererEvents(MOVEMENTS);
     const with_ = rendererEvents(MOVEMENTS + TRAILING_STYLE);
 
-    // Measured, and pinned so a future renderer change has to face it.
+    // Measured against the renderer.
     expect(without).toHaveLength(17);
     expect(Math.max(...without.map(([date]) => date))).toBe(720);
 
@@ -240,7 +238,7 @@ describe('the timeline is emitted events, and an event holds', () => {
   it('holds the last emitted value across a SKIPPED movement’s interval', () => {
     // The renderer emits nothing between 0 and 720 here: the movement at 360 has no @position
     // and its predecessor no @transition.to, so it is dropped — but it still ends the first
-    // span. Executed against the renderer below.
+    // span.
     const map =
       '<style date="0.0" name.ref="S"/>' +
       '<movement date="0.0" position="1.0"/>' +
@@ -374,19 +372,19 @@ describe('⊥ — where there is no date ↦ position function at all (§4, §5.
       '<movement date="720.0" position="1.0"/>';
     expect(bottomAt(map, 360)).toBe(true);
 
-    // The renderer fact behind the ruling. The emitted map is a GenericMap and inserts by
-    // date, so the backwards dates do not survive as an ordering defect — they survive as a
-    // VALUE defect: sorted by date, an authored 0 → 1 ramp no longer ascends. There is no
-    // date ↦ position function here, which is exactly what §4's domain gate is for.
+    // The emitted map is a GenericMap and inserts by date, so the backwards dates survive not
+    // as an ordering defect but as a VALUE defect: sorted by date, an authored 0 → 1 ramp no
+    // longer ascends. There is no date ↦ position function here, which is what §4's domain gate
+    // is for.
     const positions = rendererEvents(map).map(([, position]) => position);
     const ascending = pairwise(positions).every(([previous, position]) => position >= previous);
     expect(ascending).toBe(false);
   });
 
   it('lets a badly shaped span emit events OUTSIDE it — the ⊥ is a floor on the damage', () => {
-    // At curvature 4 the sampler puts events at −202 and at 922 for a span of [0, 720]: the
-    // ⊥ span models the interval the movement owns, and does not model this leakage. Reported
-    // rather than modelled, and pinned here so the claim stays true.
+    // At curvature 4 the sampler puts events at −202 and at 922 for a span of [0, 720]. The ⊥
+    // span models the interval the movement owns and does not model that leakage, which is
+    // reported rather than priced.
     const dates = rendererEvents(
       '<movement date="0.0" position="0.0" transition.to="1.0" curvature="4"/>' +
         '<movement date="720.0" position="1.0"/>',

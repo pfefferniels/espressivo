@@ -1,11 +1,10 @@
 /**
  * §7.4's invariance modes reaching the DISTANCE, not only the decomposition (AD-20, C9).
  *
- * The shipped curve `*Distance` functions integrated raw curves, so a mode could canonicalize
- * `decomposition` while `d_k` — the number a caller actually reads — stayed on the raw pair.
- * The canonicalization is therefore expressed as DATA (`CurveCanonicalization`, `shift` and
- * `scale` in T-space) and handed to the integrand, and `applyInvariance` is defined through the
- * same data so the curve form and the integrand form cannot drift apart.
+ * A mode must reach `d_k` and not only `decomposition`. The canonicalization is expressed as
+ * DATA (`CurveCanonicalization`, `shift` and `scale` in T-space) and handed to the integrand,
+ * and `applyInvariance` is defined through the same data so the curve form and the integrand
+ * form cannot drift apart.
  *
  * The tests are the two halves of §7.4's own table, which is exactly right for log spaces and
  * silently wrong elsewhere:
@@ -14,7 +13,7 @@
  *   at zero;
  * - in a LINEAR space it removes an additive offset ONLY, because `c·x − mean(c·x) =
  *   c(x − mean x)` leaves the factor standing. A test that only checked tempo would report the
- *   mode as working and let asynchrony ship with the trap in it.
+ *   mode as working and leave asynchrony's trap unseen.
  */
 import { describe, it, expect } from 'vitest';
 import { readComparisonPair, readScopeMapViews } from '../../src/comparison/document.js';
@@ -65,10 +64,10 @@ const scopeOf = (document: ComparisonDocument, mapName: string) => {
 /**
  * The canonicalization pair for one mode, over one dimension's grid.
  *
- * Both moments are taken on the SHARED refinement grid here for brevity. That is sound because
- * GL-10 is exact on cells carrying no breakpoint, so adding the other document's breakpoints
- * subdivides without changing the integral — the driver takes each document's own grid, which
- * makes the same value pair-independent by construction rather than by that argument.
+ * Both moments are taken on the SHARED refinement grid here, which is sound because GL-10 is
+ * exact on cells carrying no breakpoint: adding the other document's breakpoints subdivides
+ * without changing the integral. The driver takes each document's own grid instead, which makes
+ * the same value pair-independent by construction rather than by that argument.
  */
 function canonicalFor(
   mode: InvarianceMode,
@@ -138,10 +137,9 @@ describe('tempo, a LOG space: “level” removes a multiplicative factor (§7.4
   });
 
   /**
-   * The fixture is two STEPS rather than two ramps, and the first draft's ramps were wrong for
-   * a reason worth keeping: `T` of a power transition is not affine in the endpoints' logs, so
-   * scaling `transition.to` does not scale the log-space SHAPE — two ramps that look like a
-   * dilation of one another are a different shape once the renderer's own interpolation is
+   * Two STEPS rather than two ramps: `T` of a power transition is not affine in the endpoints'
+   * logs, so scaling `transition.to` does not scale the log-space SHAPE — two ramps that look
+   * like a dilation of one another are a different shape once the renderer's interpolation is
    * applied. A step curve has no interpolation to distort, so `ln B = 2·ln A − ln 60` really is
    * the same shape at twice the amplitude, which is what `'level-gain'` claims to see through.
    */
@@ -159,8 +157,8 @@ describe('tempo, a LOG space: “level” removes a multiplicative factor (§7.4
     const other = '<tempo date="0.0" bpm="90" beatLength="0.25"/>';
     const { distance } = setUp(constant, other);
     // Both sides are constant, so both canonicalize to the identically zero curve and the
-    // distance is EXACTLY zero — AD-20's rule is stronger than "do not divide by zero", and a
-    // scale of 1 on a constant curve would leave floating-point residue behind instead.
+    // distance is EXACTLY zero — AD-20's rule is stronger than "do not divide by zero": a
+    // scale of 1 on a constant curve would leave floating-point residue behind.
     expect(distance('level-gain')).toBe(0);
   });
 
@@ -213,9 +211,8 @@ describe('asynchrony, a LINEAR space: “level” removes an offset only (§7.4�
 
   /**
    * A roll read 10 % slower has all its inter-onset offsets stretched 10 %, and `'level'` does
-   * NOT remove that — the same physical uncertainty it removes from tempo stays here. §7.4
-   * requires the report to say so in plain words, and this is the measurement behind that
-   * sentence.
+   * NOT remove that — the same physical uncertainty it removes from tempo stays here. This is
+   * the measurement behind the plain-words warning §7.4 requires of the report.
    */
   it('does NOT remove a 10 % stretch, which the same mode removes from tempo', () => {
     const { distance } = setUp(STEPS(1, 0), STEPS(1.1, 0));

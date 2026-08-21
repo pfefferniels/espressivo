@@ -1,17 +1,15 @@
 /**
  * §6's sequential-pricing DP, tested on its OBJECTIVE rather than on an alignment.
  *
- * The discipline is `eventAlignment.test.ts`'s and `aggregate.test.ts`'s: the load-bearing test
- * enumerates every monotone alignment by brute force and checks the DP found the cheapest one.
- * Asserting "these two instructions match" would pin one optimum out of several equal ones and
- * would pass on an implementation minimizing the wrong functional — which is exactly the defect
- * §6.2 exists to correct, since revision 1 minimized a price against A and reported a sequential
- * one.
+ * The load-bearing test enumerates every monotone alignment by brute force and checks the DP
+ * found the cheapest one. Asserting "these two instructions match" would pin one optimum out of
+ * several equal ones and would pass on an implementation minimizing the wrong functional — the
+ * defect §6.2 exists to correct, where a price against A is reported as a sequential one.
  *
- * The toy `Φ` is a STEP function in a log space: an instruction sets a level from its date until
+ * The toy `Φ` is a step function in a log space: an instruction sets a level from its date until
  * the next one, `norm` is `∫|x − y| dt` over a fixed window, and the integral is exact because
- * both readings are piecewise constant. That is the shape of `tempoDistance` with every
- * transition removed, so it exercises the DP's own arithmetic without importing a dimension's.
+ * both readings are piecewise constant. That is `tempoDistance` with every transition removed,
+ * so it exercises the DP's own arithmetic without importing a dimension's.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -94,16 +92,13 @@ function monotoneAlignments(n: number, m: number): (readonly ('s' | 'd' | 'i')[]
 }
 
 /**
- * The DP-path cost of one alignment, computed the way §6.2 defines it and NOT by the DP.
- *
- * The moves are read from the END of the sequence, which is the direction the traceback runs,
- * so a move sequence describes the path from `(n, m)` back to `(0, 0)`; walking it forwards
- * from `(0, 0)` reproduces the states the recurrence visits.
+ * The DP-path cost of one alignment, computed the way §6.2 defines it rather than by the DP. The
+ * moves are read from the end of the sequence, the direction the traceback runs, so a move
+ * sequence describes the path from `(n, m)` back to `(0, 0)`.
  */
 function pathCost(a: readonly Level[], b: readonly Level[], moves: readonly ('s' | 'd' | 'i')[]) {
-  // `S(i, j)`, restated here rather than imported: the co-dated rule (a surviving A instruction
-  // before an added B one) is part of what the DP is being checked against, and a reference that
-  // called the implementation's own helper could not disagree with it.
+  // `S(i, j)`, restated rather than imported: the co-dated rule is part of what the DP is being
+  // checked against, and a reference calling the implementation's helper could not disagree.
   const state = (i: number, j: number): readonly Level[] =>
     [
       ...a.slice(i).map((instruction, index) => ({ instruction, side: 0, index: i + index })),
@@ -190,9 +185,8 @@ describe('the DP minimizes the sequential objective', () => {
     // `GenericMap.parseData`'s backwards insertion scan puts a new child after the children
     // already sitting at its date, so the added one governs and the survivor keeps a zero-width
     // span. Pinned at the state function, because through the DP the rule is observable only
-    // statistically: reversing the side preference moves scripts on the random family (a
-    // negative control fails the brute-force test) and moves nothing on any single hand-built
-    // pair, which is the RG-2 situation.
+    // statistically: reversing the side preference moves scripts on the random family and
+    // moves nothing on any single hand-built pair (RG-2).
     const survivor = level(0, 60, 'A');
     const other = level(4, 90, 'C');
     const added = level(0, 120, 'B');
@@ -203,40 +197,13 @@ describe('the DP minimizes the sequential objective', () => {
   });
 
   /**
-   * The SAME rule inside the replay's own state function, which had no pin at all (W4 MAJOR-8).
+   * `replayResidual` is checked against an independent reconstruction, not taken on trust:
+   * hard-coding `const replayResidual = 0` in `editScript` fails nothing unless something
+   * computes `Φ(final)` independently and compares it to `Φ(B)` (§6.3).
    *
-   * `editStateAt` is pinned directly above; `stateFromFlags` carries the identical comparator
-   * for the identical reason, and reversing its `x.side - y.side` failed NOTHING in the suite.
-   * The module's prose said the replay never reaches the co-dated case. Measured, it does: over
-   * 4000 random pairs of the shape this file's generator produces, **668** came out with a
-   * different `replayedDelta` under the reversed rule. Not a corner — one pair in six.
-   *
-   * The witness below is the SMALLEST of those 668, found by running the generator under both
-   * rules and sorting the disagreements by size: two A instructions at one date against a single
-   * B instruction at the same date. The DP substitutes one and deletes the other, so the replay
-   * passes through a state holding a surviving A instruction and an added B instruction at the
-   * same date — and which of them governs the interval after it is exactly what the side rule
-   * decides.
-   *
-   * Pinned as a VALUE rather than as an ordering, because the ordering inside `stateFromFlags`
-   * is not observable from outside `editScript` and a test that reached in to check it would be
-   * pinning the implementation rather than the behaviour.
-   */
-  /**
-   * `replayResidual` is CHECKED against an independent reconstruction, not taken on trust
-   * (MINOR-7).
-   *
-   * Hard-coding `const replayResidual = 0` in `editScript` failed nothing: the field asserts its
-   * own correctness. Structurally the claim is sound — the op bookkeeping does reach B — but
-   * nothing computed `Φ(final)` independently of `editScript` and compared it to `Φ(B)`, which
-   * is exactly what a residual is FOR (§6.3). A genuinely broken replay was caught (skipping the
-   * last delivered op fails tests across four files); a replay that lied about its own residual
-   * was not.
-   *
-   * Rebuilt here from the DELIVERED OPS ALONE: start from `a`, remove every instruction any step
+   * Rebuilt here from the delivered ops alone: start from `a`, remove every instruction any step
    * consumes, add every one any step produces, sort into the state order, and compare `Φ` of
-   * that against `Φ(b)` with the same `norm` the engine used. That shares no line with the
-   * replay's own accumulation.
+   * that against `Φ(b)` with the same `norm` the engine used.
    */
   it('reports a replayResidual that an independent rebuild agrees with (MINOR-7)', () => {
     const next = lcg(90210);
@@ -247,7 +214,7 @@ describe('the DP minimizes the sequential objective', () => {
       const result = editScript(a, b, pricing());
 
       // Every A instruction consumed at most once and every B instruction produced at most once
-      // — the bookkeeping the residual's exactness actually rests on.
+      // — the bookkeeping the residual's exactness rests on.
       const consumed = result.steps.flatMap((step) => step.aItems);
       const produced = result.steps.flatMap((step) => step.bItems);
       expect(new Set(consumed).size).toBe(consumed.length);
@@ -269,19 +236,29 @@ describe('the DP minimizes the sequential objective', () => {
     expect(checked).toBe(60);
   });
 
+  /**
+   * The same side rule inside the replay's own state function. `stateFromFlags` carries the
+   * identical comparator to `editStateAt` for the identical reason, and reversing its
+   * `x.side - y.side` fails nothing else in the suite — but the replay does reach the co-dated
+   * case: over 4000 random pairs of this generator's shape, 668 come out with a different
+   * `replayedDelta` under the reversed rule.
+   *
+   * The witness is the smallest of those 668: two A instructions at one date against a single B
+   * instruction at the same date. Pinned as a value rather than as an ordering, since the
+   * ordering inside `stateFromFlags` is not observable from outside `editScript`.
+   */
   it('prefers the surviving side at a co-dated date in the REPLAY too (MAJOR-8)', () => {
     const a = [level(1, 210, 'a0'), level(1, 202, 'a1')];
     const b = [level(1, 108, 'b0')];
     const result = editScript(a, b, pricing());
 
-    // [MEASURED] 5.635228232492866 shipped, against 6.3343452321856075 with `x.side - y.side`
-    // reversed — a 12 % difference on a three-instruction pair.
+    // 5.635228232492866, against 6.3343452321856075 with `x.side - y.side` reversed — a 12 %
+    // difference on a three-instruction pair.
     expect(result.replayedDelta).toBe(5.635228232492866);
     expect(result.replayResidual).toBe(0);
 
-    // Non-vacuity: the pair really does put a survivor and an addition at one date. Both A
-    // instructions share a date, so whichever the DP keeps is co-dated with B's insertion, and
-    // the replay must pass through that state on its way to B.
+    // Non-vacuity: both A instructions share a date, so whichever the DP keeps is co-dated with
+    // B's insertion and the replay must pass through that state on its way to B.
     expect(levelAt(a, 0).dateTicks).toBe(levelAt(a, 1).dateTicks);
     expect(levelAt(b, 0).dateTicks).toBe(levelAt(a, 0).dateTicks);
     expect(result.steps.length).toBeGreaterThan(1);
@@ -307,10 +284,10 @@ describe('AD-5: pricing against A is not an upper bound, and the counterexample 
 
   it('meets §6.2’s tie: BOTH readings of which instruction is substituted cost 10·ln2', () => {
     // §6.2's narrative substitutes `I` and deletes `J`. The DP delivers the other assignment —
-    // delete `I`, substitute `J` — because at the last cell the two are EXACTLY equal and
-    // §6.4's precedence keeps the substitute branch, which is reached from the delete-first
-    // predecessor. That is a structural tie of the kind survey-algo §2.H names, not a defect,
-    // and the ruling's substance is the TOTAL, which both readings agree on:
+    // delete `I`, substitute `J` — because at the last cell the two are exactly equal and
+    // §6.4's precedence keeps the substitute branch, reached from the delete-first predecessor.
+    // A structural tie (survey-algo §2.H), and the ruling's substance is the total, which both
+    // readings agree on:
     //
     //   substitute I, then delete J : 5·ln2                 + 5·ln2                 = 10·ln2
     //   delete I,     then subst. J : 5·ln(100/60)          + 5·ln(120/100) + 5·ln2 = 10·ln2
@@ -333,7 +310,7 @@ describe('AD-5: pricing against A is not an upper bound, and the counterexample 
   });
 
   it('is refuted by the against-A reading, which halves the total and makes the delete free', () => {
-    // The reading revision 1 shipped: every op priced against the ORIGINAL A.
+    // The refuted reading: every op priced against the original A.
     const norm = (x: readonly Level[], y: readonly Level[]) => stepNorm(x, y, Math.log(100));
     const substituteAgainstA = norm(a, [level(0, 120, 'I'), levelAt(a, 1)]);
     const deleteAgainstA = norm(a, [levelAt(a, 0)]);
@@ -414,10 +391,10 @@ describe('determinism and the delivered order (§6.1, §6.4, C5)', () => {
   const b = [level(0, 120, 'X'), level(6, 50, 'Y')];
 
   it('delivers in date order across the whole family, not only where the DP already was', () => {
-    // The DP walks its path in ALIGNMENT order, which is date order only sometimes: measured
-    // over 4000 random pairs of this family, the traceback order differs from the delivered
-    // order in **1146** of them (29 %). A test pinned to one hand-built pair passes on an
-    // implementation that never re-sorts at all, which is what a negative control found.
+    // The DP walks its path in alignment order, which is date order only sometimes: over 4000
+    // random pairs of this family, the traceback order differs from the delivered order in 1146
+    // of them (29 %). A test pinned to one hand-built pair passes on an implementation that
+    // never re-sorts at all.
     const next = lcg(777);
     let divergent = 0;
     for (let trial = 0; trial < 200; ++trial) {
@@ -428,8 +405,7 @@ describe('determinism and the delivered order (§6.1, §6.4, C5)', () => {
       expect([...dates].sort((p, q) => p - q)).toEqual(dates);
       if (Math.abs(result.replayedDelta - result.scriptCost) > 1e-12) divergent += 1;
     }
-    // Non-vacuity for the two totals: they are genuinely two numbers on this family, so
-    // reporting one of them twice would be visible.
+    // Non-vacuity: the two totals are genuinely two numbers on this family.
     expect(divergent).toBeGreaterThan(0);
   });
 
@@ -494,7 +470,7 @@ describe('the mirror is an inversion, not a second traceback (§6.4, AD-21)', ()
     const twice = invertSteps(invertSteps(forward.steps));
     expect(JSON.stringify(strip(twice))).toBe(JSON.stringify(strip(forward.steps)));
 
-    // The date key is `dateA ?? dateB`, so inverting can genuinely REORDER: an insert delivered
+    // The date key is `dateA ?? dateB`, so inverting can genuinely reorder: an insert delivered
     // at its B date becomes a delete read off the A slot at that same date, and it now sorts
     // against the other side's dates. A test asserting `mirrored === [...forward].reverse()`
     // would pass on an implementation that never re-sorted at all.
@@ -512,7 +488,7 @@ describe('the mirror is an inversion, not a second traceback (§6.4, AD-21)', ()
 });
 
 describe('A-Q5’s moves: fragment and consolidate', () => {
-  // One instruction becoming two, where the plain decomposition has to OVERSHOOT. `[60@2]`
+  // One instruction becoming two, where the plain decomposition has to overshoot. `[60@2]`
   // performs 60 from bar 2 onward; `[140@2, 60@3]` performs 140 for one quarter and then 60.
   // Read as one edit that costs the single quarter that differs. Read as substitute-then-insert
   // it has to pass through `[140@2]`, which performs 140 for the whole rest of the window before
@@ -548,14 +524,13 @@ describe('A-Q5’s moves: fragment and consolidate', () => {
   });
 
   it('[MEASURED] chooses fragments far more often than consolidates, for a stated reason', () => {
-    // Over 200 random pairs of this family: moves win in **114**, producing **120 fragments and
-    // 1 consolidate**. The asymmetry is not an implementation accident and it is worth knowing
-    // before reading an op count. A fragment replaces "substitute, then INSERT the rest", and
-    // the inserts overshoot: the first of a group governs a span the later ones take back. A
-    // consolidate replaces "substitute, then DELETE the rest", and the deletes do not overshoot,
-    // because after the substitution the value each deletion exposes is already B's. Both
-    // branches fire — the consolidate is reachable directly and, through `invertSteps`, from
-    // every fragment — but on a step reading the slack lives almost entirely on one side.
+    // Over 200 random pairs of this family: moves win in 114, producing 120 fragments and 1
+    // consolidate. A fragment replaces "substitute, then insert the rest", and the inserts
+    // overshoot: the first of a group governs a span the later ones take back. A consolidate
+    // replaces "substitute, then delete the rest", and the deletes do not overshoot, because
+    // after the substitution the value each deletion exposes is already B's. Both branches fire
+    // — the consolidate directly and, through `invertSteps`, from every fragment — but on a step
+    // reading the slack lives almost entirely on one side.
     const next = lcg(24680);
     let fragments = 0;
     let consolidates = 0;
@@ -584,7 +559,7 @@ describe('A-Q5’s moves: fragment and consolidate', () => {
       const withMoves = editScript(a, b, pricing(), { moves: true });
 
       // A move replaces a sequence of plain ops with one state transition, so the `L¹` triangle
-      // inequality bounds it by their sum: enabling moves moves the script TOWARD the lower
+      // inequality bounds it by their sum: enabling moves takes the script toward the lower
       // bound and can never push it away.
       expect(withMoves.scriptCost).toBeLessThanOrEqual(plain.scriptCost * (1 + 1e-12));
       expect(withMoves.scriptCost).toBeGreaterThanOrEqual(withMoves.directDistance / (1 + 1e-12));
@@ -600,7 +575,7 @@ describe('A-Q5’s moves: fragment and consolidate', () => {
   });
 
   it('keeps the plain op at a tie, so a move has to win strictly', () => {
-    // Two shapes where the plain path is ALREADY geodesic and a move can only tie.
+    // Two shapes where the plain path is already geodesic and a move can only tie.
     //
     // Co-dated instructions: only the last performs, so substituting and then deleting the
     // shadowed one costs the substitution and nothing more.
@@ -612,9 +587,9 @@ describe('A-Q5’s moves: fragment and consolidate', () => {
     );
     expect(codated.opCounts.consolidate).toBe(0);
 
-    // A staircase collapsing onto one level: each plain op changes a DISJOINT interval, so the
-    // four of them sum to the direct distance exactly and there is no slack to recover. This is
-    // the case a first draft of this file expected a consolidate on, and measured, it ties.
+    // A staircase collapsing onto one level: each plain op changes a disjoint interval, so the
+    // four of them sum to the direct distance exactly and there is no slack to recover. It
+    // looks like a consolidate case and measures as a tie.
     const staircase = [level(0, 60, 'p'), level(1, 70, 'q'), level(2, 80, 'r'), level(3, 90, 's')];
     const withMoves = editScript(staircase, [level(0, 75, 'x')], pricing(), { moves: true });
     const plain = editScript(staircase, [level(0, 75, 'x')], pricing());

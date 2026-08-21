@@ -1,11 +1,11 @@
 /**
  * Articulation atoms and their liveness — DESIGN.md §5.5, first half.
  *
- * Every liveness claim here is checked against the REAL renderer as well as against the
- * reader: `ArticulationMap.renderArticulationToMap_noMillisecondModifiers` is run over a note
- * map, and the resulting `duration.perf` / `velocity` is what decides whether an attribute was
- * live. A liveness table tested only against itself would pin my reading of the precedence,
- * which is the failure mode behind two of W2's three CAPITALs.
+ * Every liveness claim is checked against the real renderer as well as against the reader:
+ * `ArticulationMap.renderArticulationToMap_noMillisecondModifiers` is run over a note map, and
+ * the resulting `duration.perf` / `velocity` is what decides whether an attribute was live. A
+ * liveness table tested only against itself would pin a reading of the precedence rather than
+ * the precedence.
  */
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../support/result.js';
@@ -55,14 +55,7 @@ const doc = (map: string) =>
   `<global><header>${STYLES}</header><dated><articulationMap>${map}` +
   '</articulationMap></dated></global></performance></mpm>';
 
-/**
- * The atom at `index` of a read, checked.
- *
- * Almost every assertion below is about the first atom of a one- or two-instruction map, and
- * `read.atoms[0].def` on a reader that returned nothing failed as "cannot read properties of
- * undefined" inside whichever expectation touched it first. This says how many atoms there
- * were, which is the fact a reader defect would be about.
- */
+/** The atom at `index` of a read, checked — a reader that returned nothing fails here. */
 const atomAt = (read: ArticulationAtoms, index = 0) =>
   elementAt(read.atoms, index, 'the atoms this articulation map read');
 
@@ -316,11 +309,8 @@ describe('the registry rows this reader resolves liveness for', () => {
 });
 
 /**
- * The default-articulation step function — §5.5 as amended by AD-37.1/AD-37.2.
- *
- * Every claim is checked twice: once against the reader, once against what the renderer
- * actually performs on a row of notes. The retroactive window is the whole point of the
- * suite, and it is the one behaviour a careful implementer would have got wrong.
+ * Every claim is checked twice: once against the reader, once against what the renderer actually
+ * performs on a row of notes. The retroactive window is what the suite is for.
  */
 describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
   const defaultsOf = (map: string): DefaultArticulationCurve => {
@@ -366,7 +356,7 @@ describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
 
   it('reaches BACKWARDS: the first switch’s default governs before its own date', () => {
     const map = '<style date="720.0" name.ref="A" defaultArticulation="stacc"/>';
-    // The renderer first — this is the measurement the ruling rests on.
+    // The renderer first: the measurement the ruling rests on.
     expect(performedAt(map, DATES)).toEqual([50, 50, 50, 50]);
 
     const curve = defaultsOf(map);
@@ -438,18 +428,16 @@ describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
     const map =
       '<style date="0.0" name.ref="A" defaultArticulation="stacc"/>' +
       '<articulation date="360.0" name.ref="ten"/>';
-    // 120, not 60: the note at 360 gets the atom and ONLY the atom.
+    // 120, not 60: the note at 360 gets the atom and only the atom.
     expect(performedAt(map, DATES)).toEqual([50, 120, 50, 50]);
   });
 });
 
 /**
- * The composed effective modifier and `d_articulation` — §5.5 as amended by AD-37.3/AD-37.4.
- *
- * The load-bearing test is AD-37.4's own encoding-invariance obligation: two stacked
- * `relativeDuration` atoms against one atom carrying their product must be distance 0. It is
- * checked against the RENDERER first — the two documents must actually perform the same note —
- * so that the invariance is a fact about the performance and not about my algebra.
+ * The load-bearing test is AD-37.4's encoding-invariance obligation: two stacked
+ * `relativeDuration` atoms against one atom carrying their product must be distance 0, checked
+ * against the renderer first so the invariance is a fact about the performance and not the
+ * algebra.
  */
 describe('the composed effective modifier (AD-37.3/AD-37.4)', () => {
   const anchorsFor = (map: string) => anchorsOf(atomsOf(map));
@@ -492,18 +480,14 @@ describe('the composed effective modifier (AD-37.3/AD-37.4)', () => {
 
   it('keeps a note id apart from the tick that spells the same string', () => {
     /**
-     * A closed oracle gap, found by a negative control.
+     * A blind spot closed by a negative control. The anchor key is `date:<ticks>` or
+     * `id:<noteid>`, and the two prefixes are the only thing stopping the namespaces from
+     * colliding. Dropping them — grouping on the bare `String(dateTicks)` and the bare id —
+     * left the whole suite green: no case in the tree paired a date-anchored atom with an
+     * id-anchored one whose id spells the same number.
      *
-     * The anchor key is `date:<ticks>` or `id:<noteid>`, and the two prefixes are the only
-     * thing stopping the namespaces from colliding. Measured: dropping them — grouping on
-     * the bare `String(dateTicks)` and the bare id — left all 6081 tests green, because no
-     * case in the tree ever paired a date-anchored atom with an id-anchored one whose id
-     * spells the same number.
-     *
-     * The module note is explicit that the two kinds must NOT merge: deciding which note a
-     * date-anchored atom reaches needs an MSM, which is why an id-anchored anchor carries
-     * `datePositionKnown: false`. Merging them would compose two modifiers the renderer
-     * applies to different notes into one, and report one anchor where there are two.
+     * The two kinds must not merge. Deciding which note a date-anchored atom reaches needs an
+     * MSM, which is why an id-anchored anchor carries `datePositionKnown: false`.
      */
     const anchors = anchorsFor(
       '<articulation date="0.0" relativeDuration="0.5"/>' +
@@ -511,8 +495,7 @@ describe('the composed effective modifier (AD-37.3/AD-37.4)', () => {
     );
 
     // One projection rather than eight indexed reads: it says the whole shape at once, and
-    // it keeps this file off `noUncheckedIndexedAccess`'s books in `tests/`, which is a
-    // one-way ratchet.
+    // `tests/` runs with `noUncheckedIndexedAccess`.
     expect(
       anchors.map((anchor) => ({
         id: anchor.id,
@@ -610,19 +593,16 @@ describe('d_articulation', () => {
   });
 
   /**
-   * W3 CAPITAL-6: the anchor sort is CODE-UNIT order, never `localeCompare`.
+   * The anchor sort is code-unit order, never `localeCompare`. §9.5 bans it for the report, and
+   * the ban binds harder here because this order is the aligner's input: with `localeCompare`,
+   * two documents with two anchors each at one date and disjoint id sets scored
+   * `d_articulation = 0` under `en_US` and `13.469` under `sv_SE`.
    *
-   * The sibling module bans it by name for the report (§9.5) and the ban binds harder here,
-   * because this order is the aligner's input: with `localeCompare`, two documents with two
-   * anchors each at one date and disjoint id sets scored `d_articulation = 0` under `en_US` and
-   * `13.469` under `sv_SE`, with different report hashes.
-   *
-   * Pinned at the ORDER rather than by running the engine twice under two locales, which no
-   * in-process test can do — ICU's collator is fixed at startup. The two id pairs below are
-   * chosen so that code-unit order and collation disagree in every common locale ('B' before
-   * 'a' by code unit, after it by collation) or in the Nordic ones ('z' before 'ä' by code
-   * unit); the assertions on `localeCompare` itself are there so that a host whose ICU ever
-   * agreed would say so rather than let this test go quietly vacuous.
+   * Pinned at the order rather than by running the engine twice under two locales, which no
+   * in-process test can do — ICU's collator is fixed at startup. The two id pairs are chosen so
+   * that code-unit order and collation disagree in every common locale ('B' before 'a' by code
+   * unit, after it by collation) or in the Nordic ones ('z' before 'ä'); the assertions on
+   * `localeCompare` itself keep the test from going vacuous on a host whose ICU ever agreed.
    */
   it('sorts anchors by CODE UNIT, so no locale can move the distance (§9.5)', () => {
     const anchored = (id: string, factor: string) =>
@@ -631,7 +611,7 @@ describe('d_articulation', () => {
 
     expect(idsOf(anchored('a1', '0.5') + anchored('B1', '2.0'))).toEqual(['B1', 'a1']);
     expect(idsOf(anchored('ä1', '0.5') + anchored('z1', '2.0'))).toEqual(['z1', 'ä1']);
-    // Both orderings are the OPPOSITE of what this host's collator would produce, which is what
+    // Both orderings are the opposite of what this host's collator produces, which is what
     // makes the two assertions above falsifying rather than incidental.
     expect('a'.localeCompare('B')).toBeLessThan(0);
     expect('B' < 'a').toBe(true);
@@ -656,7 +636,7 @@ describe('d_articulation', () => {
     const absent = '<articulation date="0.0" relativeVelocity="1.0"/>';
     const row = comparisonRowFor('articulation/articulation@absoluteVelocity');
     expect(distanceOf(present, absent).distance).toBeCloseTo(row.delta, 9);
-    // And M1c's zero-set violation is closed: the two present values differ by a real amount.
+    // M1c's zero set: two present values that differ are priced at a real amount.
     const other = '<articulation date="0.0" absoluteVelocity="2"/>';
     expect(distanceOf(present, other).distance).toBeGreaterThan(0);
   });
@@ -689,12 +669,10 @@ describe('d_articulation', () => {
 });
 
 /**
- * AD-51.2's atom placement, at the dimension level.
- *
- * The aggregation's table cannot close on a scalar: an articulation's mass belongs in the
- * column of the segment its note falls in. These pin that the placement is a decomposition of
- * the SAME optimum — nothing lost, nothing invented — and that the id-anchored case is the
- * admission AD-39.1 requires it to be rather than a silent guess at a date.
+ * AD-51.2's atom placement. The aggregation's table cannot close on a scalar: an articulation's
+ * mass belongs in the column of the segment its note falls in. These pin that the placement
+ * decomposes the same optimum — nothing lost, nothing invented — and that the id-anchored case
+ * is the admission AD-39.1 requires rather than a silent guess at a date.
  */
 describe('articulation atom placement (AD-51.2)', () => {
   const distanceOf = (a: string, b: string, endQuarters = 8) => {
@@ -773,18 +751,12 @@ describe('articulation atom placement (AD-51.2)', () => {
 });
 
 /**
- * The default step function as the SECOND component of `d_articulation` (AD-55.1).
- *
- * `articulationDefault.ts` was read, ruled about and tested for a whole wave without reaching
- * any evaluator: `articulationDistance` consumed the atoms alone, so three documents differing
- * only in their `@defaultArticulation` compared at `D = 0` while the renderer performed one of
- * them at half duration throughout. The suite above pins the STEP FUNCTION; this one pins that
- * the step function reaches the number, which is a different claim and the one that was false.
- *
- * The renderer figures are the same ones the suite above executes — 50/50/100/100 for the
- * canceller, 50/50/50/50 for the continuer, 100 throughout for a document with no default —
- * so what is checked here is that three performances a listener could tell apart do not
- * compare at zero.
+ * With `articulationDistance` consuming the atoms alone, three documents differing only in their
+ * `@defaultArticulation` compare at `D = 0` while the renderer performs one of them at half
+ * duration throughout. The suite above pins the step function; this one pins that the step
+ * function reaches the number. The renderer figures are the ones the suite above executes —
+ * 50/50/100/100 for the canceller, 50/50/50/50 for the continuer, 100 throughout for a document
+ * with no default.
  */
 describe('the default step function reaches d_articulation (AD-55.1)', () => {
   const window = { start: 0, end: 4 } as const;
@@ -829,8 +801,8 @@ describe('the default step function reaches d_articulation (AD-55.1)', () => {
 
     // The step function is `×0.5` against `×1.0`, i.e. |ln 2| nepers sustained. CANCEL and
     // NODEFAULT differ over [0, 1) quarter; CANCEL and CONTINUE over [1, 4); CONTINUE and
-    // NODEFAULT over the whole window — and the three lengths add up, which is what makes
-    // this a step reading rather than three unrelated numbers.
+    // NODEFAULT over the whole window — and the three lengths add up, which is what makes this
+    // a step reading rather than three unrelated numbers.
     const perQuarter = Math.abs(Math.log(0.5)) / NEPERS_PER_JND;
     expect(cancelNone.dimensions.articulation.distance).toBeCloseTo(perQuarter * 1, 9);
     expect(cancelContinue.dimensions.articulation.distance).toBeCloseTo(perQuarter * 3, 9);
@@ -850,8 +822,8 @@ describe('the default step function reaches d_articulation (AD-55.1)', () => {
 
   it('prices the two units the Albert pair’s defaults are written in, separately (§5.5)', () => {
     // `nonlegato` is `absoluteDurationChangeMs="-96"` in one performance and
-    // `absoluteDurationChange="-60"` (ticks) in the other. They are different ROWS with
-    // different units, and the sum is what the pair's step component is made of.
+    // `absoluteDurationChange="-60"` (ticks) in the other: different rows with different units,
+    // and their sum is the pair's step component.
     const nonlegato = (attribute: string) =>
       '<articulationStyles><styleDef name="A">' +
       `<articulationDef name="nonlegato" ${attribute}/>` +

@@ -1,12 +1,10 @@
 /**
  * The dynamics curve and its distance — DESIGN.md §5.3.
  *
- * The load-bearing test in this file is the one that pins the **ideal** Bézier against the
- * renderer's `tForDate` approximation of it (§5.0 rule 3 / R20). The conductor's watch-item
- * is explicit: a bit-agreement assertion between the two must not sneak in and pass by
- * accident of a coarse fixture. So the agreement test below asserts the documented *bound*
- * and, separately, asserts that the two really do differ — otherwise it would be pinning
- * nothing.
+ * The load-bearing test pins the ideal Bézier against the renderer's `tForDate` approximation
+ * of it (§5.0 rule 3 / R20). A bit-agreement assertion between the two would pass by accident
+ * of a coarse fixture, so the agreement test asserts the documented bound and, separately,
+ * asserts that the two really do differ.
  */
 import { describe, it, expect } from 'vitest';
 import { readComparisonPair, readScopeMapViews } from '../../src/comparison/document.js';
@@ -81,10 +79,10 @@ describe('dynamics curve: constants, neutrals and levels', () => {
   });
 
   it('treats a <dynamics> with no @volume as a SKIP performing velocity 100 (AD-33.4)', () => {
-    // getEndDate scans for the next element NAMED dynamics regardless of whether it parses,
-    // so the volume-less element ends the previous span; the render then pins every note in
-    // the gap to velocity 100 (DynamicsMap.ts:251-253). Reading it as "the previous span
-    // continues" was wrong by |ln 60 - ln 100| = 0.511 nepers across the gap.
+    // getEndDate scans for the next element named dynamics regardless of whether it parses, so
+    // the volume-less element ends the previous span; the render then pins every note in the
+    // gap to velocity 100 (DynamicsMap.ts:251-253). Reading it instead as "the previous span
+    // continues" is wrong by |ln 60 − ln 100| = 0.511 nepers across the gap.
     const curve = curveFor(
       '<dynamics date="0.0" volume="40"/><dynamics date="720.0"/><dynamics date="1440.0" volume="90"/>',
     );
@@ -123,19 +121,17 @@ describe('dynamics curve: transitions', () => {
       '<dynamics date="0.0" volume="40" transition.to="80" curvature="0.8"/>' +
         '<dynamics date="2880.0" volume="80"/>',
     );
-    // Probed at a QUARTER of the span, not the midpoint: see the invariance test below.
+    // Probed at a quarter of the span, not the midpoint: see the invariance test below.
     expect(volumeAt(bent, 720)).not.toBeCloseTo(volumeAt(flat, 720), 6);
-    // Both still start and end at the authored endpoints.
     expect(volumeAt(bent, 0)).toBe(40);
     expect(volumeAt(bent, 2879.999)).toBeCloseTo(80, 3);
   });
 
   it('leaves the date-MIDPOINT invariant under curvature, which is a real property', () => {
-    // With protraction = 0 the inner control points are (c, 1-c), so the cubic is
-    // antisymmetric about t = 0.5 and x(0.5) = 0.5 exactly for EVERY curvature. The
-    // midpoint volume therefore cannot move, however hard the curve is bent. Recorded
-    // because it is the one probe point at which a curvature test silently passes for the
-    // wrong reason — this file's first draft used it.
+    // With protraction = 0 the inner control points are (c, 1-c), so the cubic is antisymmetric
+    // about t = 0.5 and x(0.5) = 0.5 exactly for every curvature. The midpoint volume cannot
+    // move, however hard the curve is bent: it is the one probe point at which a curvature test
+    // passes for the wrong reason.
     for (const curvature of ['0.0', '0.3', '0.8']) {
       const curve = curveFor(
         `<dynamics date="0.0" volume="40" transition.to="80" curvature="${curvature}"/>` +
@@ -147,12 +143,10 @@ describe('dynamics curve: transitions', () => {
 
   it('is ill-conditioned at curvature = 1, the admissible boundary — bounded, not exact', () => {
     // curvature = 1 gives control points (1, 0), so x(t) = 4t^3 - 6t^2 + 3t and
-    // x'(t) = 3(2t-1)^2, which VANISHES at t = 0.5. x is still matched to machine
-    // precision, but a cube-root loss means t itself is only good to ~1e-5 there, and
-    // y'(0.5) = 1.5 carries that into ~6e-4 volume units. Bisection is not at fault and
-    // more iterations do not help: the inverse is genuinely flat at that point.
-    // In JND terms this is ~2e-5 JND — far below the metric's resolution — so it is
-    // pinned as a bound rather than treated as a defect.
+    // x'(t) = 3(2t-1)^2, which vanishes at t = 0.5. x is still matched to machine precision,
+    // but a cube-root loss means t itself is only good to ~1e-5 there, and y'(0.5) = 1.5
+    // carries that into ~6e-4 volume units — ~2e-5 JND, below the metric's resolution. More
+    // bisection iterations do not help: the inverse is genuinely flat at that point.
     const curve = curveFor(
       '<dynamics date="0.0" volume="40" transition.to="80" curvature="1.0"/>' +
         '<dynamics date="2880.0" volume="80"/>',
@@ -253,7 +247,6 @@ describe('the ideal Bézier versus the renderer’s tForDate (§5.0 rule 3 / R20
   });
 
   it('DIFFERS from tForDate — otherwise the agreement test below would pin nothing', () => {
-    // The conductor's watch-item: a bit-agreement assertion must not pass by accident.
     let maxDifference = 0;
     for (let date = 1; date < SPAN_TICKS; date += 7) {
       const ideal = idealCurveParameter(x1, x2, date / SPAN_TICKS);
@@ -264,9 +257,9 @@ describe('the ideal Bézier versus the renderer’s tForDate (§5.0 rule 3 / R20
   });
 
   it('agrees with tForDate within the documented one-tick staircase bound', () => {
-    // |Δvolume| <= |v'(t)| * 1 tick / |x'(t)|. Rather than reconstruct the derivatives, the
-    // bound is asserted in the date domain where tForDate states it: the renderer's answer
-    // is within one tick of the ideal one, measured by re-evaluating x at both parameters.
+    // |Δvolume| <= |v'(t)| * 1 tick / |x'(t)|. The bound is asserted in the date domain where
+    // tForDate states it — the renderer's answer is within one tick of the ideal one, measured
+    // by re-evaluating x at both parameters — rather than by reconstructing the derivatives.
     const u = 3 * x1 - 3 * x2 + 1;
     const v = -6 * x1 + 3 * x2;
     const w = 3 * x1;
@@ -312,9 +305,9 @@ describe('dynamics distance', () => {
   });
 
   it('P-C4 encoding invariance, against the IDEAL curve', () => {
-    // A transition re-encoded as dense constant steps sampling the SAME ideal curve. The
-    // steps are placed by evaluating the ideal Bézier, not tForDate, so this measures
-    // encoding invariance and not the renderer's staircase.
+    // A transition re-encoded as dense constant steps sampling the same ideal curve. The steps
+    // are placed by evaluating the ideal Bézier, not tForDate, so this measures encoding
+    // invariance and not the renderer's staircase.
     const transition =
       '<dynamics date="0.0" volume="40" transition.to="80"/><dynamics date="2880.0" volume="80"/>';
     const ideal = curveFor(transition);
@@ -373,9 +366,9 @@ describe('dynamics distance', () => {
 
 describe('AD-30 Bezier-pair subdivision, and its measured insufficiency', () => {
   /**
-   * A pair whose log difference crosses THREE times: x = 0.598, 0.914, 0.984. Control points
-   * are inside [0,1] and x(t) is monotone for both, so nothing here is degenerate — it is an
-   * ordinary pair of strongly protracted transitions.
+   * A pair whose log difference crosses three times: x = 0.598, 0.914, 0.984. Control points
+   * are inside [0,1] and x(t) is monotone for both, so nothing here is degenerate — an ordinary
+   * pair of strongly protracted transitions.
    */
   const A =
     '<dynamics date="0.0" volume="40" transition.to="80" curvature="0.9" protraction="0.9"/>' +
@@ -410,11 +403,10 @@ describe('AD-30 Bezier-pair subdivision, and its measured insufficiency', () => 
   });
 
   it('pins the sweep that set the constant: K=4 would still be ~6% low', () => {
-    // AD-31 supersedes AD-30's K=4 because 4 was MEASURED insufficient. The evidence is
-    // pinned at the quadrature layer rather than the distance layer, so it survives the
-    // constant being correct: the same difference function integrated with 3 interior
-    // splits (K=4) against 15 (K=16). If someone lowers the constant again, this test is
-    // the record of why they should not.
+    // AD-31 supersedes AD-30's K=4 because 4 was measured insufficient. The evidence sits at
+    // the quadrature layer rather than the distance layer, so it survives the constant being
+    // correct: the same difference function integrated with 3 interior splits (K=4) against
+    // 15 (K=16).
     const pair = readComparisonPair({ a: dynamicsDoc(A), b: dynamicsDoc(B) });
     const ca = curveOf(pair, 'a');
     const cb = curveOf(pair, 'b');

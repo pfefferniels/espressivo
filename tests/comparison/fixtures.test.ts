@@ -1,18 +1,11 @@
 /**
- * The comparison campaign's third-party fixtures, pinned at the level the public API can
- * currently reach.
+ * The comparison campaign's third-party fixtures. Three of them carry a UTF-8 BOM, which the
+ * parser rejected outright before `4211f58` (PARITY.md §1, `CMP1`).
  *
- * No comparison engine exists yet, so this asserts only what is already assertable: that every
- * vendored document parses through the facade, and that the performances the corpus advertises
- * are the performances the parser finds. That is not a placeholder — it is the property the
- * rest of the campaign depends on, and it was false until `4211f58`: three of these files carry
- * a UTF-8 BOM and were rejected outright before that commit (PARITY.md §1, `CMP1`).
- *
- * Keeping the fixtures byte-faithful is what gives this file its value. A synthetic BOM in a
- * string literal tests the strip; a real corpus file tests the strip *and* everything else the
- * document happens to do — single-quoted attributes, `ppq` 480, missing `xml:id`, whatever the
- * authors actually wrote. See `fixtures/PROVENANCE.md` for the licence and the
- * do-not-reformat policy.
+ * The fixtures are byte-faithful on purpose. A synthetic BOM in a string literal tests the
+ * strip; a real corpus file tests the strip and everything else the document happens to do —
+ * single-quoted attributes, `ppq` 480, missing `xml:id`, whatever the authors actually wrote.
+ * See `fixtures/PROVENANCE.md` for the licence and the do-not-reformat policy.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -27,10 +20,9 @@ const mpm = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'utf-8
 const BOM = '﻿';
 
 /**
- * Every vendored MPM with the facts `PROVENANCE.md` records for it.
- *
- * `performances` is spelled out in full rather than counted, because the names are the thing a
- * comparison report will key on and a silent reordering would otherwise pass.
+ * Every vendored MPM with the facts `PROVENANCE.md` records for it. `performances` is spelled
+ * out rather than counted: the names are what a comparison report keys on, so a silent
+ * reordering would otherwise pass.
  */
 const FIXTURE_CORPUS = [
   {
@@ -66,8 +58,7 @@ describe('comparison fixtures', () => {
     const text = mpm(name);
 
     it(`is byte-faithful: BOM ${bom ? 'present' : 'absent'} as vendored`, () => {
-      // Guards the PROVENANCE policy itself. If someone strips or adds a BOM on disk, this
-      // fails here rather than silently weakening the regression pin below.
+      // A BOM stripped or added on disk fails here rather than weakening the pin below.
       expect(text.startsWith(BOM)).toBe(bom);
     });
 
@@ -81,8 +72,8 @@ describe('comparison fixtures', () => {
       const canonical = canonicalMpm(text);
       expect(canonical).not.toContain(BOM);
       expect(canonical.length).toBeGreaterThan(0);
-      // Idempotent after one application — the same baseline property the expression engine's
-      // identity claims are made against (`expression/mpmDocument.ts`).
+      // Idempotent after one application — the baseline the expression engine's identity
+      // claims are made against (`expression/mpmDocument.ts`).
       expect(canonicalMpm(canonical as XmlText)).toBe(canonical);
     });
 
@@ -92,8 +83,8 @@ describe('comparison fixtures', () => {
   });
 
   it('supplies at least two genuinely multi-performance documents', () => {
-    // The campaign's reason for vendoring at all: nothing under
-    // tests/integration/fixtures/** has more than one <performance>.
+    // The reason for vendoring at all: nothing under tests/integration/fixtures/** has more
+    // than one <performance>.
     const multi = FIXTURE_CORPUS.filter((fixture) => fixture.performances.length > 1);
     expect(multi.map((fixture) => fixture.name)).toEqual([
       'telemann-grave',
@@ -105,16 +96,15 @@ describe('comparison fixtures', () => {
 
   it('covers both tick grids the corpus uses', () => {
     // A comparison across these fixtures has to normalize ppq, so the corpus must actually
-    // contain the disagreement rather than only being said to.
+    // contain the disagreement.
     expect(new Set(FIXTURE_CORPUS.map((fixture) => fixture.ppq))).toEqual(new Set(['720', '480']));
   });
 
   it('still parses every fixture when the BOM is removed', () => {
-    // Tolerance, not dependence: the strip must be a no-op for documents that never had one.
     for (const { name, performances } of FIXTURE_CORPUS) {
       const text = mpm(name);
       // Sliced rather than regex-replaced: a literal U+FEFF inside a RegExp trips
-      // `no-irregular-whitespace`, and this also mirrors the implementation under test.
+      // `no-irregular-whitespace`.
       const stripped = (text.startsWith(BOM) ? text.slice(BOM.length) : text) as XmlText;
       expect(listPerformances(stripped).map((performance) => performance.name)).toEqual([
         ...performances,

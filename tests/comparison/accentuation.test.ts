@@ -1,16 +1,14 @@
 /**
  * The metrical-accentuation curve — DESIGN.md §5.4.
  *
- * The load-bearing test here is the **differential** one: `accentuationAt` is a
- * transliteration of `AccentuationPatternDef.getAccentuationAt`, so it is checked against the
- * real thing across a beat sweep rather than against hand-computed expectations. A
- * transliteration tested only against numbers I worked out myself would pin my reading of the
- * renderer, which is exactly the failure mode that produced two of W2's three CAPITALs.
+ * `accentuationAt` is a transliteration of `AccentuationPatternDef.getAccentuationAt`, so it is
+ * checked against the real thing across a beat sweep; hand-computed expectations would pin a
+ * reading of the renderer rather than the renderer.
  *
- * The renderer class is constructed on a `copy()`, because parsing an `accentuationPatternDef`
- * adds `length="4"` and reorders its children (`AccentuationPatternDef.ts:36-40`, `:192-199`)
- * — the mutation R1 forbids on a caller's document and which is precisely why the comparison
- * reader reads the element raw.
+ * The renderer class is constructed on a `copy()`: parsing an `accentuationPatternDef` adds
+ * `length="4"` and reorders its children (`AccentuationPatternDef.ts:36-40`, `:192-199`), the
+ * mutation R1 forbids on a caller's document and the reason the comparison reader reads the
+ * element raw.
  */
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../support/result.js';
@@ -103,7 +101,6 @@ describe('accentuationAt agrees with the renderer, bit for bit', () => {
   it.each(PATTERNS)('matches getAccentuationAt across a beat sweep: %s', (_label, xml) => {
     const element = parseDef(xml);
     const mine = readAccentuationPattern(element);
-    // copy(): constructing the def adds @length and reorders children.
     const renderer = okValue(AccentuationPatternDef.createAccentuationPatternDef(element.copy()));
 
     for (let beat = 0; beat <= 6.02; beat += 0.01) {
@@ -115,9 +112,9 @@ describe('accentuationAt agrees with the renderer, bit for bit', () => {
   });
 
   it('reproduces the segment-end ASYMMETRY, which is the whole reason it is transliterated', () => {
-    // For an accentuation with a successor the segment ends at the next beat; for the LAST
-    // one it runs to length + 1. Upstream cemfi/meico's guard can never hold, so every
-    // segment ran to the pattern end and all but the last interpolation was flattened.
+    // For an accentuation with a successor the segment ends at the next beat; for the last one
+    // it runs to length + 1. Upstream cemfi/meico's guard can never hold, so there every
+    // segment runs to the pattern end and all but the last interpolation is flattened.
     const pattern = readAccentuationPattern(
       parseDef(
         defXml(
@@ -126,9 +123,9 @@ describe('accentuationAt agrees with the renderer, bit for bit', () => {
         ),
       ),
     );
-    // First segment [1,2): ramps 0 -> 10 over ONE beat, so it is half way at beat 1.5.
+    // First segment [1,2): ramps 0 -> 10 over one beat, so it is half way at beat 1.5.
     expect(accentuationAt(pattern, 1.5)).toBeCloseTo(5, 12);
-    // Last segment [2, 5): ramps 0 -> 10 over THREE beats, so it is a third of the way at 3.
+    // Last segment [2, 5): ramps 0 -> 10 over three beats, so it is a third of the way at 3.
     expect(accentuationAt(pattern, 3)).toBeCloseTo(10 / 3, 12);
   });
 
@@ -184,9 +181,8 @@ describe('the beat grid anchors at the TIME SIGNATURE, not the instruction (AD-1
   });
 
   it('gives IDENTICAL velocities when the instruction moves, which is the whole point', () => {
-    // Both branches subtract tsDate, never md.startDate. An instruction at 360 performs the
-    // same contribution at every date as one at 0; a per-instruction cycle model would give
-    // them different phases and a spurious nonzero distance.
+    // Both branches subtract tsDate, never md.startDate. A per-instruction cycle model would
+    // give an instruction at 360 a different phase from one at 0, and a spurious distance.
     const header = styles(
       '<accentuationPatternDef name="p" length="4.0">' +
         '<accentuation beat="1" value="20"/><accentuation beat="3" value="-10"/>' +
@@ -276,8 +272,8 @@ describe('accentuation spans: loop, skips and ⊥', () => {
   });
 
   it('SKIPS an instruction with no style in scope, even with a valid @name.ref', () => {
-    // No <style> switch before it: getMetricalAccentuationDataOf returns null and the
-    // renderer skips it silently. A skip, not a ⊥ — nothing throws.
+    // No <style> switch before it: getMetricalAccentuationDataOf returns null and the renderer
+    // skips it silently. A skip, not a ⊥ — nothing throws.
     const curve = curveFor('<accentuationPattern date="0.0" name.ref="p" scale="1.0"/>', HEADER);
     expect(contribution(curve, 0)).toBe(0);
     expect(curve.notes.some((note) => note.kind === 'renderer-skip')).toBe(true);
@@ -318,12 +314,9 @@ describe('accentuation spans: loop, skips and ⊥', () => {
 });
 
 /**
- * `d_accentuation` — §5.4's density.
- *
- * The claim this suite exists to defend is **exactness**: the curve is piecewise affine, so
- * the integral is exact once the grid carries every breakpoint, and the way to test that is
- * not to check a plausible number but to check it against a reference computed without the
- * breakpoint machinery at all. A missing breakpoint shows up there and nowhere else.
+ * `d_accentuation` — §5.4's density. The curve is piecewise affine, so the integral is exact
+ * once the grid carries every breakpoint, and the oracle is a reference computed without the
+ * breakpoint machinery at all: a missing breakpoint shows up there and nowhere else.
  */
 describe('d_accentuation (§5.4)', () => {
   const DEFS =
@@ -364,11 +357,9 @@ describe('d_accentuation (§5.4)', () => {
   });
 
   it('matches a brute-force reference computed WITHOUT the breakpoint grid', () => {
-    // 240 000 trapezoid samples over eight quarters of a four-beat pattern against a
-    // three-beat one, cycling on the measure. If the exact grid missed a breakpoint — a
-    // cycle wrap, a pattern beat, the length + 1 switch — the two would part company in the
-    // fourth digit or worse; the trapezoid's own error on a piecewise-affine integrand is
-    // O(h²) at the corners only.
+    // 240 000 trapezoid samples over eight quarters. A breakpoint missing from the exact grid —
+    // a cycle wrap, a pattern beat, the length + 1 switch — parts the two in the fourth digit or
+    // worse; the trapezoid's own error on a piecewise-affine integrand is O(h²) at corners only.
     const pair = pairFor(patternAt('p'), patternAt('q'), 8);
     const a = curveOf(pair, 'a');
     const b = curveOf(pair, 'b');
@@ -397,7 +388,7 @@ describe('d_accentuation (§5.4)', () => {
 
   it('prices a pattern against silence as the pattern’s own mean deviation', () => {
     // Against an empty map the density is |c| / jnd, so the mass is the pattern's mean
-    // absolute contribution times the window — a number a reader can check by hand.
+    // absolute contribution times the window.
     const result = distanceOf(patternAt('p'), SILENT, 4);
     expect(result.distance).toBeGreaterThan(0);
     expect(result.mean).toBeCloseTo(result.distance / 4, 12);

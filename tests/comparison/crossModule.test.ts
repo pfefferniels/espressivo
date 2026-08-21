@@ -1,26 +1,21 @@
 /**
- * P-C5 — the cross-module property: `compareMpm` and `exaggerateMpm` are ONE mathematics.
+ * P-C5 — the cross-module property: `compareMpm` and `exaggerateMpm` are one mathematics.
  *
- * §1.3's Proposition 1, as AD-6 corrected it. Exaggeration acts multiplicatively in T-space **at
- * row values**: a factor `s` maps a value `v` to `n + s(v − n)` around its dimension's neutral
- * `n`, so the T-space distance from the original is `|1 − s|·|v − n|` — proportional to `|1 − s|`
- * and to the document's own deviation from neutral. The comparison integrates exactly that
- * quantity. If the two modules did not share their scale spaces, their neutrals and their
- * transforms, this would not hold to nine decimal places for anything.
+ * §1.3's Proposition 1, as AD-6 corrected it. Exaggeration acts multiplicatively in T-space at
+ * row values: a factor `s` maps a value `v` to `n + s(v − n)` around its dimension's neutral
+ * `n`, so the T-space distance from the original is `|1 − s|·|v − n|` — proportional to
+ * `|1 − s|` and to the document's own deviation from neutral. The comparison integrates exactly
+ * that quantity.
  *
- * The statement is made WITHOUT the centre appearing anywhere, which is what makes it a test of
+ * The statement is made without the centre appearing anywhere, which is what makes it a test of
  * the two modules rather than of a third quantity nobody exports:
  *
  *     d(A, C(A, s)) = |1 − s| · d(A, C(A, 0))
  *
  * `C(A, 0)` is the document flattened onto its own neutral, so the right-hand side is the
- * document's whole deviation from neutral as the comparison measures it. AD-6's three parts:
- *
- * 1. **exact** on constant-only fixtures, every shape knob at 1, `s > 0`, monotone in `|1 − s|`;
- * 2. **breakpoint-level** on transition-bearing fixtures, on the written row values;
- * 3. a **measured** `d_shape` bound on transitions, pinned as a regression anchor rather than
- *    asserted to be zero — because the renderer interpolates in raw space between breakpoints
- *    and the affine law does not survive that.
+ * document's whole deviation from neutral as the comparison measures it. The law is exact only
+ * on constant-only fixtures; on a transition the renderer interpolates in raw space between
+ * breakpoints and it survives at the breakpoints alone, which is what part (iii) measures.
  *
  * `s < 0` is outside the claim (§1.3: `r = −1` there) and is not tested.
  */
@@ -47,12 +42,11 @@ const exaggerate = (mpm: string, dimensions: readonly ExpressionDimension[], s: 
   }).mpm;
 
 /**
- * The note kinds that mean **the written value is not the affine image** of the original.
+ * The note kinds that mean the written value is not the affine image of the original.
  *
- * The law is a statement about `v ↦ n + s(v − n)`. Where the transform saturates a bound,
- * refuses a write or leaves a domain, it has written something else on purpose — and the
- * exaggeration report NAMES every such site, which is what makes "the law holds wherever the
- * transform is unsaturated" a testable claim rather than a hedge.
+ * Where the transform saturates a bound, refuses a write or leaves a domain, it has written
+ * something else on purpose, and the report names every such site — which is what makes "the law
+ * holds wherever the transform is unsaturated" a testable claim.
  */
 const BOUNDED_KINDS = new Set([
   'clamped',
@@ -65,14 +59,12 @@ const BOUNDED_KINDS = new Set([
 ]);
 
 /**
- * Whether EITHER module reports that it stopped being affine on this run.
+ * Whether either module reports that it stopped being affine on this run.
  *
- * Two ways out of the law, and both are reported rather than inferred. The TRANSFORM saturates a
- * bound, refuses a write or leaves a domain, and names the site. The METRIC's own cap binds
- * (§4: `min(|T(x) − T(y)|, 2·δ_row)`), which truncates a difference the transform made
- * faithfully — at `s = 4` an accentuation scale of 1.5 becomes 6, and 90 velocity units of
- * difference is past the 60 the cap allows. Neither is a defect and both are the modules doing
- * what they were built to do; what would be a defect is a test that hid them.
+ * Two ways out of the law, both reported rather than inferred: the transform saturates and names
+ * the site, or the metric's own cap binds (§4: `min(|T(x) − T(y)|, 2·δ_row)`), truncating a
+ * difference the transform made faithfully — at `s = 4` an accentuation scale of 1.5 becomes 6,
+ * and 90 velocity units of difference is past the 60 the cap allows.
  */
 function lawIsUnreachable(
   fixture: {
@@ -157,7 +149,7 @@ const CONSTANT_FIXTURES: readonly {
     ),
   },
   {
-    // An EVENT dimension: the alignment matches the same anchors on both sides, so the optimum
+    // An event dimension: the alignment matches the same anchors on both sides, so the optimum
     // is the row-wise sum and the law survives the DP untouched.
     name: 'articulation — an event dimension, through the alignment',
     comparison: 'articulation',
@@ -181,7 +173,7 @@ const CONSTANT_FIXTURES: readonly {
     ),
   },
   {
-    // A DISTRIBUTION dimension: `W₁` between two uniform laws is linear in their parameters, so
+    // A distribution dimension: `W₁` between two uniform laws is linear in their parameters, so
     // the affine law survives the Wasserstein integral as well as the pointwise metric.
     name: 'imprecisionTiming — a distribution dimension, through W₁',
     comparison: 'imprecisionTiming',
@@ -194,9 +186,8 @@ const CONSTANT_FIXTURES: readonly {
         'milliseconds.timingBasis="300"/></imprecisionMap.timing>',
     ),
   },
-  // W3 MINOR-4: the record's "seven of the eleven … the three exceptions" framing implies ten
-  // dimensions are accounted for, and these two were exercised nowhere. They are separate
-  // expression dimensions reading separate maps, so "timing works" is not evidence about either.
+  // Separate expression dimensions reading separate maps, so "timing works" is no evidence
+  // about either of these two.
   {
     name: 'imprecisionDynamics — the velocity domain, its own map and its own factor',
     comparison: 'imprecisionDynamics',
@@ -239,8 +230,7 @@ describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
         let above = 0;
         for (const s of FACTORS) {
           // A factor that saturates a bound, or a difference §4's cap truncates, is outside the
-          // law — and BOTH modules say so in their reports, so the skip is a reported fact
-          // rather than a convenience.
+          // law — and both modules say so in their reports, so the skip is a reported fact.
           if (lawIsUnreachable(fixture, s)) continue;
           const measured = distance(
             fixture.mpm,
@@ -251,13 +241,9 @@ describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
           if (s < 1) below += 1;
           else above += 1;
         }
-        // Non-vacuity, stated so that it is arithmetically possible (W3 MINOR-3). The comment
-        // used to claim "at least three factors on each side of 1", which `FACTORS` cannot
-        // deliver — it has two values below 1 — while the assertion was on the TOTAL, so a
-        // fixture unsaturated on one side only passed a claim about both. What is really
-        // asserted, and what matters, is that the law is exercised on BOTH sides of the
-        // identity: `|1 − s|` and `|ln s|` agree in sign but not in shape, and a one-sided
-        // check cannot tell AD-6's law from its rival.
+        // Non-vacuity: the law must be exercised on both sides of the identity. `|1 − s|` and
+        // `|ln s|` agree in sign but not in shape, so a one-sided check cannot tell AD-6's law
+        // from its rival.
         expect(below, 'no unsaturated factor below s = 1').toBeGreaterThanOrEqual(1);
         expect(above, 'no unsaturated factor above s = 1').toBeGreaterThanOrEqual(1);
         expect(below + above).toBeGreaterThanOrEqual(3);
@@ -287,14 +273,12 @@ describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
 });
 
 /**
- * A reporting gap this property FOUND, pinned where it was found.
- *
- * §4's cap binds inside `localDistance`, which the event dimensions call once per row — and the
- * event evaluations reported `cappedCells: 0` unconditionally, so a report could truncate a
- * difference at `2·δ_row` and say nothing about it. AD-2 requires cap events to be reported.
- * They are counted over the CHOSEN alignment rather than inside the cost function, because the
- * DP evaluates that function at every cell of its table and a counter there would report the
- * search rather than the answer.
+ * A reporting gap this property found, pinned where it was found. §4's cap binds inside
+ * `localDistance`, which the event dimensions call once per row, so an event evaluation
+ * reporting `cappedCells: 0` unconditionally truncates a difference at `2·δ_row` and says
+ * nothing about it (AD-2 requires cap events to be reported). They are counted over the chosen
+ * alignment rather than inside the cost function: the DP evaluates that function at every cell
+ * of its table, so a counter there would report the search rather than the answer.
  */
 describe('AD-2’s cap events are reported by the event dimensions too', () => {
   const articulation = doc(
@@ -330,10 +314,8 @@ describe('AD-2’s cap events are reported by the event dimensions too', () => {
 });
 
 /**
- * The three dimensions the law does NOT cover, each for a reason the design already records.
- *
- * Stating them as measurements rather than as absences is the point: an exception nobody has
- * measured is indistinguishable from a defect nobody has found.
+ * The three dimensions the law does not cover, each for a reason the design already records, and
+ * each stated as a measurement: an unmeasured exception is indistinguishable from a defect.
  */
 describe('P-C5 (i): where the law does not reach, and why', () => {
   it('rubato: expression trims the WINDOW jointly, the comparison prices the displacement', () => {
@@ -344,9 +326,8 @@ describe('P-C5 (i): where the law does not reach, and why', () => {
     const deviation = distance(rubato, exaggerate(rubato, ['rubato'], 0), 'rubato');
     const measured = distance(rubato, exaggerate(rubato, ['rubato'], 2), 'rubato');
     // §4's flag 2: expression's rubato window rows are `joint-trim` and the comparison prices
-    // the window as L1 on the ENDPOINTS (§5.2/A-Q10), a documented substitution rather than the
-    // same space. The displacement curve is also not affine in `@intensity`. The deviation is
-    // real, bounded and pinned; it is not drift.
+    // the window as L1 on the endpoints (§5.2/A-Q10), a documented substitution rather than the
+    // same space. The displacement curve is also not affine in `@intensity`.
     expect(measured / deviation).toBeCloseTo(0.799884775, 6);
   });
 
@@ -370,9 +351,9 @@ describe('P-C5 (i): where the law does not reach, and why', () => {
         '<movement date="2880.0" position="0.9"/>' +
         '<movement date="5760.0" position="0.4"/></movementMap>',
     );
-    // §3's correspondence maps `pedal ⊇ {pedalShape}` and nothing else: the fifteen expression
+    // §3's correspondence maps `pedal ⊇ {pedalShape}` and nothing else: the expression
     // dimensions have no `pedal` level, so a factor moves the curvature and not the position.
-    // The law is vacuous here rather than false, and this is the measurement that says so.
+    // The law is vacuous here rather than false.
     expect(distance(pedal, exaggerate(pedal, ['pedalShape'], 0), 'pedal')).toBe(0);
   });
 });
@@ -398,12 +379,10 @@ function tempoRowValues(mpm: string): readonly number[] {
 
 describe('P-C5 (ii): the BREAKPOINT-level law on a transition-bearing fixture', () => {
   /**
-   * Stated on DIFFERENCES of log row values, which cancels the centre.
-   *
+   * Differences of log row values cancel the centre:
    * `ln v' = ln n + s(ln v − ln n)` for every row value `v`, so for any two of them
-   * `ln v₁' − ln v₂' = s(ln v₁ − ln v₂)` and `n` disappears. §4's own flag 1 records that the
-   * collapse of `log-around-center` to the bare logarithm is a property of DIFFERENCES; this is
-   * that collapse used as the test it licenses.
+   * `ln v₁' − ln v₂' = s(ln v₁ − ln v₂)` and `n` disappears. §4's flag 1 records that the
+   * collapse of `log-around-center` to the bare logarithm is a property of differences.
    */
   it('scales every difference of log row values by exactly s', () => {
     const original = tempoRowValues(TRANSITION);
@@ -432,10 +411,9 @@ describe('P-C5 (iii): the measured d_shape bound on transitions', () => {
   const at = (s: number) => distance(TRANSITION, exaggerate(TRANSITION, ['tempo'], s), 'tempo');
 
   /**
-   * The exact law FAILS here, by a measured amount, and that is the finding rather than a defect.
-   *
+   * The exact law fails here by a measured amount, which is the finding rather than a defect.
    * Exaggeration is multiplicative at the breakpoints; the renderer interpolates between them in
-   * RAW space, so the exaggerated curve is not the affine image of the original curve anywhere
+   * raw space, so the exaggerated curve is not the affine image of the original curve anywhere
    * except at its row values. `s = 0.5` and `s = 1.5` have the same `|1 − s|` and would score
    * identically under the exact law; they do not, and the ratio is the bound.
    */
@@ -450,8 +428,7 @@ describe('P-C5 (iii): the measured d_shape bound on transitions', () => {
   it('is a SMALL deviation, so the law is a good approximation rather than a wrong one', () => {
     // Both bounds are within 10 % of the exact law's prediction, on a transition spanning the
     // whole window with a factor-of-two tempo change in it — about as hard a case as the corpus
-    // offers. A reader may use the exact law as an estimate; the report's numbers are the
-    // integral, not the estimate.
+    // offers.
     expect(Math.abs(at(1.5) / at(0.5) - 1)).toBeLessThan(0.1);
     expect(Math.abs(at(2) / at(0.5) / 2 - 1)).toBeLessThan(0.1);
   });

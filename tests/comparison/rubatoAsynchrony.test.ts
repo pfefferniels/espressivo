@@ -1,11 +1,10 @@
 /**
  * Rubato and asynchrony — DESIGN.md §5.2 and §5.7.
  *
- * These two are paired because they are the W2 dimensions that are *not* logarithmic curves:
- * rubato is a saw-toothed displacement in quarters, asynchrony a step function in
- * milliseconds priced by §4's capped metric. Between them they carry the wave's `⊥` path,
- * its `grid-truncated` path, and the `@loop` gate — the three behaviours a reader is most
- * likely to get backwards.
+ * The two dimensions that are not logarithmic curves: rubato is a saw-toothed displacement in
+ * quarters, asynchrony a step function in milliseconds priced by §4's capped metric. Between
+ * them they carry the `⊥` path, the `grid-truncated` path, and the `@loop` gate — the three
+ * behaviours a reader is most likely to get backwards.
  */
 import { describe, it, expect } from 'vitest';
 import { readComparisonPair, readScopeMapViews } from '../../src/comparison/document.js';
@@ -74,7 +73,6 @@ describe('rubato: the @loop gate (AD-10)', () => {
       `<rubato date="0.0" ${WARP}/><rubato date="2880.0" frameLength="720.0"/>`,
     );
     expect(displacementTicksAt(curve, 360)).not.toBe(0);
-    // Past the first frame the span is unwarped.
     expect(displacementTicksAt(curve, 1080)).toBe(0);
     expect(displacementTicksAt(curve, 2000)).toBe(0);
   });
@@ -147,10 +145,9 @@ describe('rubato: the neutral parametrization is EXACTLY zero (M18)', () => {
 
 describe('rubato: clamps run before evaluation (RubatoMap.ts:136-141)', () => {
   it('resets an inverted window to the full frame, performing no warp', () => {
-    // The bounds must NOT sum to 1. With ls=0.8/ee=0.2 the unclamped warp is
-    // 0.5*L*(ee + ls - 1) = 0 at the midpoint, so the original probe passed whether or not
-    // the reset existed — the one rule the module doc calls "the final rule that matters
-    // most" was untested. ls=0.9/ee=0.3 gives -72 unclamped at t=360.
+    // The bounds must NOT sum to 1: with ls=0.8/ee=0.2 the unclamped warp is
+    // 0.5*L*(ee + ls - 1) = 0 at the midpoint, so a probe there passes whether or not the reset
+    // exists. ls=0.9/ee=0.3 gives -72 unclamped at t=360.
     const curve = rubatoFor(
       '<rubato date="0.0" frameLength="720.0" lateStart="0.9" earlyEnd="0.3" loop="true"/>' +
         '<rubato date="2880.0" frameLength="720.0"/>',
@@ -197,12 +194,10 @@ describe('rubato: skipped instructions and the frame cap', () => {
 
 describe('rubato: the structural u* split (rule 2c) — RG-2', () => {
   /**
-   * Tested at the FUNCTION level, deliberately. AD-34.1 emits the structural split AND the
-   * K=16 mesh together, and RG-3 measured those two as identical over 3906 pairs (0 wrong,
-   * worst 2.718e-4) — so no distance-level assertion can distinguish "rule 2c is present"
-   * from "rule 2c was deleted". RG-2 asked for a regression test the refinement made
-   * impossible to write that way; the device therefore gets pinned directly, which is the
-   * same move the K=4 evidence made when the constant became correct.
+   * Tested at the FUNCTION level, deliberately: AD-34.1 emits the structural split AND the K=16
+   * mesh together, and those two are measured identical over 3906 pairs (0 wrong, worst
+   * 2.718e-4), so no distance-level assertion can distinguish "rule 2c is present" from "rule 2c
+   * was deleted". The device is therefore pinned directly.
    */
   const segment = (
     intensity: number,
@@ -296,20 +291,17 @@ describe('rubato: distance', () => {
   });
 
   it('varies lateStart/earlyEnd, the family that hid CAPITAL-4 (MAJOR-3)', () => {
-    // Every distance test in the first draft left lateStart=0 / earlyEnd=1, and in exactly
-    // that family delta-delta vanishes at both frame ends and is single-signed between them
-    // — the ONE parameter family in which the sign-cancellation defect cannot occur. The
-    // blind spot and the defect were the same shape.
+    // At lateStart=0 / earlyEnd=1, delta-delta vanishes at both frame ends and is single-signed
+    // between them — the ONE parameter family in which the sign-cancellation defect cannot
+    // occur, and the family every other distance case here sits in.
     const windowed = (i: string, ls: string, ee: string) =>
       `<rubato date="0.0" frameLength="720.0" intensity="${i}" lateStart="${ls}" earlyEnd="${ee}" loop="true"/>` +
       '<rubato date="2880.0" frameLength="720.0"/>';
 
     const d = distanceBetween(windowed('0.6', '0.10', '0.50'), windowed('2.5', '0.15', '0.85'));
-    // The verification report's repro is the SAME pair over a single 1-quarter frame, where
-    // the unsplit reading gave 0.000315 against a true 1.5876 JND*quarters. This fixture
-    // loops the same warp over the 4-quarter span, so the expected value is 4x that —
-    // 6.3503, which is what the repaired integrator reports. Before the repair it read
-    // 0.00126, three and a half orders low.
+    // Over a single 1-quarter frame this pair is 1.5876 JND*quarters, and an unsplit reading
+    // gives 0.000315 — three and a half orders low. The fixture loops the same warp over the
+    // 4-quarter span, so the value is 4x that: 6.3503.
     expect(d).toBeCloseTo(4 * 1.587576, 2);
   });
 
@@ -374,10 +366,10 @@ describe('asynchrony: ANY entry ends the span, and a foreign one is ⊥ (AD-33.1
     '<asynchrony date="2880.0" milliseconds.offset="-30.0"/>';
 
   it('opens a ⊥ span on a <style>, not a neutral gap', () => {
-    // AD-29's amendment said "neutral gap" and was wrong. The map reads an offset off the
-    // <style> with no local-name test, gets parseFloat('') = NaN, and every note in the span
-    // vanishes from the MIDI export — the R24 condition through a foreign element. Priced as
-    // neutral it was out by a factor of 30 on the disputed span.
+    // The map reads an offset off the <style> with no local-name test, gets
+    // parseFloat('') = NaN, and every note in the span vanishes from the MIDI export — the R24
+    // condition through a foreign element. Priced as a neutral gap instead, the disputed span
+    // is out by a factor of 30.
     const curve = asynchronyFor(STYLED);
     const at = (ticks: number) => {
       const value = offsetAt(curve, ticks);

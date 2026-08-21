@@ -1,27 +1,20 @@
 /**
  * WHERE a point atom's mass sits in the scape triangle — `binOf`, pinned by placement.
  *
- * A negative control on `binOf`'s bin arithmetic came back **green**: shifting every answer by
- * one bin (`Math.min(edge, count − 1)` in place of `Math.min(edge − 1, count − 1)`) left all
- * 1347 tests in `tests/comparison` passing.
+ * A negative control on `binOf`'s bin arithmetic came back green: shifting every answer by one
+ * bin (`Math.min(edge, count − 1)` for `Math.min(edge − 1, count − 1)`) left every test in
+ * `tests/comparison` passing. The shift really did move mass between cells — instrumenting
+ * `binOf` over `scape.test.ts` logs masses of 1.1 to 7 landing in bins 0 through 48.
  *
- * The root cause was measured rather than guessed, in two steps. First, `binOf` is genuinely
- * reached — throwing from its first line fails `scape.test.ts`, `properties.test.ts` and
- * `readmeRecipes.test.ts` — and it is reached with real, non-zero masses landing in bins other
- * than the last: instrumenting it over `scape.test.ts` logged answers in bins 0, 1, 2, 3, 4, 5,
- * 7, 14 and 48, carrying masses from 1.1 to 7. So the shift really did move mass between cells.
+ * Nothing noticed because `scape.test.ts` tests internal consistency, and every property there
+ * is invariant under a permutation of mass across bins: additivity, closure, triangle shape, and
+ * a narrowed-window agreement whose relative band absorbs a one-bin shift of a small atom inside
+ * a large cell. Its one placement case puts the atom at the window END, the one position where
+ * the shift is a no-op: no edge is greater, so both spellings fall through to the closed last
+ * bin.
  *
- * Second, why nothing noticed. `scape.test.ts`'s own header names the property it tests —
- * *"the load-bearing property is INTERNAL CONSISTENCY"* — and every case there is invariant
- * under a permutation of mass across bins: additivity ("a cell is the sum of the two below it"),
- * closure ("the top cell IS the aggregate distance"), triangle shape, and a narrowed-window
- * agreement whose relative band absorbs a one-bin shift of a small atom inside a large cell. Its
- * one placement case, "keeps a point atom that sits exactly there", puts the atom at the window
- * END, which is the one position where the shift is a no-op: no edge is greater, so both
- * spellings fall through to the closed last bin.
- *
- * A scape's entire purpose is to say WHERE the difference sits, so "the rows add up" is not
- * enough. These cases pin the placement itself, at four positions and at an interior edge.
+ * A scape's purpose is to say WHERE the difference sits, so "the rows add up" is not enough.
+ * These cases pin the placement itself, at four positions and at an interior edge.
  */
 import { describe, it, expect } from 'vitest';
 import { scapeIndex, scapeOf } from '../../src/comparison/scape.js';
@@ -59,8 +52,8 @@ describe('a point atom lands in the bin that contains it', () => {
   });
 
   it('gives an atom exactly on an interior edge to the bin it OPENS (A-B1/R27)', () => {
-    // Right-continuity, at the one kind of position where the half-open rule is decidable and
-    // the existing window-end case is not: 4 belongs to [4, 6), never to [2, 4).
+    // Right-continuity at an interior edge, where the window-end case cannot decide it:
+    // 4 belongs to [4, 6), never to [2, 4).
     expect(unitCells([{ startQuarters: 4, endQuarters: 4, mass: 9 }])).toEqual([0, 0, 9, 0]);
   });
 

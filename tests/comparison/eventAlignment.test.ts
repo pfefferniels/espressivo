@@ -1,11 +1,10 @@
 /**
  * The event alignment DP — §5.6 as a dimension-neutral module (AD-37.6).
  *
- * The tests are on the OBJECTIVE, not on a particular alignment: an optimizer is right when no
- * other alignment scores lower, so the load-bearing test enumerates every monotone alignment of
- * a small pair by brute force and checks that the DP found the minimum. A test that asserted
- * "these two match" would pin one optimum out of several equal ones and would pass on an
- * implementation that minimizes the wrong functional.
+ * The oracle is the objective, not a particular alignment: the load-bearing test enumerates
+ * every monotone alignment of a small pair by brute force and checks that the DP found the
+ * minimum. A test asserting "these two match" would pin one optimum out of several equal ones
+ * and would pass on an implementation that minimizes the wrong functional.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -35,7 +34,7 @@ const cost: AlignmentCost<Event> = {
   lambdaDate: DEFAULT_LAMBDA_DATE,
 };
 
-/** Every monotone alignment of two lists, as (pairs, cost) — the reference optimizer. */
+/** The reference optimizer: the minimum cost over every monotone alignment of two lists. */
 function bruteForce(a: readonly Event[], b: readonly Event[], c: AlignmentCost<Event>): number {
   const best = (i: number, j: number): number => {
     if (i === a.length && j === b.length) return 0;
@@ -118,12 +117,10 @@ describe('the alignment minimizes §5.6’s functional', () => {
 
 describe('the date term is INSIDE the minimand (M5’s correction)', () => {
   it('charges a displaced match, so a half-bar displacement is not free', () => {
-    // Identical values, displaced by two quarters: the match is not free, and with λ = 16 it
-    // costs 32 — which is more than dropping both (0 + 0 would be free only if the values were
-    // neutral, and here they are 10 apart from neutral).
+    // Identical values displaced by two quarters: at λ = 16 the match costs 32, and dropping
+    // both costs |10| + |10| = 20.
     const displaced = alignEvents([event(0, 10)], [event(1440, 10)], cost, PPQ);
     expect(displaced.cost).toBeGreaterThan(0);
-    // Dropping both costs |10| + |10| = 20, which beats matching at 32.
     expect(displaced.pairs).toHaveLength(0);
     expect(displaced.cost).toBe(20);
   });
@@ -144,7 +141,7 @@ describe('the date term is INSIDE the minimand (M5’s correction)', () => {
 describe('opportunistic id-pinning (AD-7)', () => {
   it('forces a match between equal ids, even when the dates argue against it', () => {
     // Without the pin these would not match: two quarters apart at λ = 16 costs 32 against 20
-    // for dropping both. The identity match overrides that.
+    // for dropping both.
     const alignment = alignEvents([event(0, 10, 'x')], [event(1440, 10, 'x')], cost, PPQ);
     expect(alignment.pairs).toEqual([{ a: 0, b: 0 }]);
     expect(alignment.pinsHonoured).toBe(true);
@@ -220,9 +217,8 @@ describe('λ_date', () => {
 /**
  * AD-51.2's extension: the optimum comes apart per event, and the parts land on the timeline.
  *
- * The decomposition is tested against the SCALAR the DP minimized rather than against
- * hand-computed charges — a per-charge expectation would pin my arithmetic, and the property
- * that matters is that nothing is lost or invented between the optimum and the table.
+ * The oracle is the scalar the DP minimized, not hand-computed charges: the property that
+ * matters is that nothing is lost or invented between the optimum and the table.
  */
 describe('the optimum decomposes into charges (AD-51.2)', () => {
   const a = [event(0, 10), event(360, 5), event(1440, 20)];
@@ -267,7 +263,7 @@ describe('AD-7’s placement rule', () => {
     );
     expect(atom.startTicks).toBe(0);
     expect(atom.endTicks).toBe(720);
-    // The whole charge here IS the date term: the values agree, so nothing else is priced.
+    // The whole charge here is the date term: the values agree, so nothing else is priced.
     expect(atom.mass).toBeCloseTo(DEFAULT_LAMBDA_DATE * 1, 12);
   });
 
@@ -310,7 +306,7 @@ describe('AD-7’s placement rule', () => {
   /**
    * The id-anchored case (AD-7, AD-39.1). Pinning the mass to the written `@date` would assert
    * a position §5.5 says is unknown; dropping it would forgive a difference the renderer
-   * performs. The uniform spread is the placement that adds no information.
+   * performs. Spreading it uniformly adds no information either way.
    */
   it('spreads an anchor of unknown position over the whole window, and says so', () => {
     const a = [event(360, 10, 'n1')];

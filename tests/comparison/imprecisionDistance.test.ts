@@ -1,11 +1,10 @@
 /**
  * `d_imprecision` — DESIGN.md §5.9's density, §1.2's decomposition, §7.4's invariance.
  *
- * The obligations §10 names for this dimension are here: one fixture per row of §5.9's
- * degenerate table (in `imprecisionLaws.test.ts`, where the laws are read) and the SPAN
- * PROPORTIONALITY pin (AD-14v) below — the same difference over one bar and over the whole
- * piece, with the ratio asserted rather than the two numbers separately, because the ratio is
- * the claim.
+ * §10's fixture obligations for this dimension: one per row of §5.9's degenerate table (in
+ * `imprecisionLaws.test.ts`, where the laws are read) and the SPAN PROPORTIONALITY pin (AD-14v)
+ * below — the same difference over one bar and over the whole piece, with the RATIO asserted
+ * rather than the two numbers separately, because the ratio is the claim.
  */
 import { describe, expect, it } from 'vitest';
 import { readComparisonPair, readScopeMapViews } from '../../src/comparison/document.js';
@@ -139,8 +138,7 @@ describe('§4’s capped metric on two laws', () => {
     const result = lawDistance(row, valued(enormous), valued(DELTA_ZERO));
     expect(result.distance).toBe(2 * DEFAULT_DELTA_JND);
     expect(result.capped).toBe(true);
-    // The triangle inequality with ⊥ in the middle, which is what forces the cap:
-    // d(x, ⊥) + d(⊥, y) = 2δ must not be less than d(x, y).
+    // What forces the cap: d(x, ⊥) + d(⊥, y) = 2δ must not be less than d(x, y).
     expect(result.distance).toBeLessThanOrEqual(2 * DEFAULT_DELTA_JND);
   });
 
@@ -227,7 +225,7 @@ describe('processParameters — the component the marginal cannot carry (§5.9, 
     const result = distanceOf(brownian(3), brownian(30), 8);
     expect(result.processDistance).toBeGreaterThan(0);
     expect(result.distance).toBe(result.processDistance);
-    // …and the marginal really is identical, which is the point of the separate component.
+    // …and the marginal really is identical, which is what the separate component is for.
     expect(result.cells.every((cell) => cell.density === 0)).toBe(true);
   });
 
@@ -298,7 +296,6 @@ describe('§1.2’s decomposition, on the normalized measure', () => {
 
 describe('§7.4’s invariance for a distribution dimension', () => {
   it('‘level’ removes a shared location offset (AD-20)', () => {
-    // Two documents that differ ONLY by a constant displacement of the law.
     const centred = distanceOf(uniform('0.0', -10, 10), uniform('0.0', 40, 60), 8, 'level');
     expect(centred.distance).toBeCloseTo(0, 9);
     // The control: without the mode it is a real difference.

@@ -1,15 +1,9 @@
 /**
  * `compareMpmCorpus` — §8 over the vendored corpus.
  *
- * Three claims carry this file, and each has a test that can fail:
- *
- * 1. **The matrix is one function.** Every cell equals the `compareMpm` number for the same pair
- *    under the same window, so a corpus cannot drift from the product it is assembled from.
- * 2. **P-C6's corpus clause.** Permuting `items` permutes the matrices and relabels the
- *    dendrogram, and changes nothing else — asserted against a PERMUTED re-run, not against a
- *    stored expectation.
- * 3. **The window is corpus-shared.** One window for every cell (R3), derived once, and the
- *    stamps say which rule produced it.
+ * Every cell equals the `compareMpm` number for the same pair under the same window, so a corpus
+ * cannot drift from the product it is assembled from. P-C6's corpus clause is asserted against a
+ * permuted re-run rather than against a stored expectation.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -43,12 +37,8 @@ const corpus = (
 ): CorpusReport => compareMpmCorpus({ items, window: SHORT, ...overrides }).report;
 
 /**
- * Checked reads into §8's flat `n × n` matrices, its label list and its per-item products.
- *
- * Every read in this file is a computed index — `i * n + j`, an index recovered from
- * `labels.indexOf`, an item picked out by a permutation — so a slip yields `undefined` and then
- * `NaN`, and the assertion that fails is several lines from the mistake. These name the array
- * and the bound instead.
+ * Checked reads into §8's flat `n × n` matrices, its label list and its per-item products. Every
+ * read here is a computed index, and an unchecked slip yields `NaN` several lines later.
  */
 const cellOf = (matrix: readonly number[], n: number, i: number, j: number, what: string) =>
   numberAt(matrix, i * n + j, what);
@@ -139,7 +129,7 @@ describe('the matrix is one function (R3)', () => {
     expect(report.window.rule).toBe('explicit');
     expect(report.settings.window).toEqual({ start: SHORT.start, end: SHORT.end });
 
-    // Without an explicit window the corpus derives ONE end for the whole matrix, which is what
+    // Without an explicit window the corpus derives one end for the whole matrix, which is what
     // makes AD-4's guarantee survive: it does not vary with the pair.
     const derived = compareMpmCorpus({
       items: [
@@ -167,12 +157,10 @@ describe('§8’s expansion and labels', () => {
       'alb:Like a robot',
     ]);
     expect(report.items.map((item) => item.itemIndex)).toEqual([0, 0, 0, 1, 1]);
-    // AD-63.1 / W4 MINOR-3: the row carries the two fields it can say something about.
-    // `synthetic` went with `corpusAverage` — the pseudo-performance was its only producer, so
-    // the flag could report nothing but `false` for every row of every corpus.
+    // AD-63.1: the row carries only the two fields it can say something about.
     expect(Object.keys(report.items[0]!)).toEqual(['itemIndex', 'performance']);
 
-    // A named performance does NOT expand and keeps the caller's own label.
+    // A named performance does not expand and keeps the caller's own label.
     const named = corpus([{ mpm: TELEMANN, performance: 'Fast', label: 'just-fast' }]);
     expect(named.labels).toEqual(['just-fast']);
   });
@@ -237,7 +225,7 @@ describe('P-C6: permuting the items permutes the matrices and relabels the dendr
           ),
         });
 
-    // The dendrogram RELABELS: leaf `i` in the shuffled run is leaf `order[i]` in the straight
+    // The dendrogram relabels: leaf `i` in the shuffled run is leaf `order[i]` in the straight
     // one, and internal ids are positional, so the merge lists must coincide exactly.
     const back = (id: number) => (id < n ? elementAt(order, id, 'the permutation') : id);
     expect(
@@ -260,22 +248,17 @@ describe('P-C6: permuting the items permutes the matrices and relabels the dendr
 });
 
 /**
- * P-C6 on a TIE-RICH corpus — the blind spot the test above has, and where W4 CAPITAL-2 lived.
- *
  * The corpus above is tie-free and passes no `k`, so `medoids` is null there and PAM's tie rule
- * is never consulted: it asserts equivariance on a corpus that has nothing to be equivariant
- * about. This one is built to tie. Each of the three vendored documents is listed TWICE at the
- * same performance under two labels, so the matrix has three exact 0 cells off the diagonal and
- * the `k = 2` optimum is reached by several different subsets.
+ * is never consulted. This one is built to tie: each of the three vendored documents is listed
+ * twice at the same performance under two labels, so the matrix has three exact 0 cells off the
+ * diagonal and the `k = 2` optimum is reached by several different subsets.
  *
- * The permutation is not random and not a sweep: it is the minimal witness — the first two
- * items swapped. Before the sort landed in `exhaustiveMedoids`' tie key that single swap changed
- * which performance the corpus called the most typical, from `B-vul-1` to `E-vul-2`, with
- * `exhaustive: true` on both. [MEASURED] over all 720 orders of this corpus, 600 said
- * `{A-tel-1, B-vul-1}` and 120 said `{A-tel-1, E-vul-2}`.
- *
- * §8 makes the medoid the one corpus product whose entire value is naming a real performer, so
- * this is the level the finding has to be pinned at, not only at `pam`'s own.
+ * The permutation is the minimal witness — the first two items swapped. Without the sort in
+ * `exhaustiveMedoids`' tie key that single swap changes which performance the corpus calls the
+ * most typical, from `B-vul-1` to `E-vul-2`, with `exhaustive: true` on both: over all 720
+ * orders, 600 say `{A-tel-1, B-vul-1}` and 120 say `{A-tel-1, E-vul-2}`. §8 makes the medoid the
+ * one corpus product whose value is naming a real performer, so it is pinned here as well as at
+ * `pam`'s own layer.
  */
 describe('P-C6 where the ties are: the medoid does not depend on the caller’s item order', () => {
   const tied = [
@@ -292,8 +275,7 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
     const straight = corpus(tied, { k: 2 });
     const shuffled = corpus(pick(tied, swapFirstTwo, 'the corpus item list'), { k: 2 });
 
-    // Read both back in LABELS. Indices mean different things in the two runs, and the labels
-    // are the frame in which "the same answer" is even a statement.
+    // Read back in labels: indices mean different things in the two runs.
     const medoidsOf = (report: CorpusReport) =>
       pick(report.labels, report.medoids ?? [], 'the corpus label list');
     const clustersOf = (report: CorpusReport) => {
@@ -308,21 +290,20 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
 
     expect(medoidsOf(shuffled)).toEqual(medoidsOf(straight));
     expect(clustersOf(shuffled)).toEqual(clustersOf(straight));
-    // Both runs claim the exhaustive global optimum — the absence of the heuristic note is how
-    // the corpus surface says so — which is what made the disagreement a contradiction rather
-    // than two heuristics differing.
+    // Both runs claim the exhaustive global optimum, so a disagreement here is a contradiction
+    // rather than two heuristics differing. The absent heuristic note is how the surface says it.
     for (const report of [straight, shuffled])
       expect(report.notes.some((entry) => entry.message.includes('BUILD + SWAP'))).toBe(false);
   });
 
   /**
-   * The same swap, through the other two published fields (W4 CAPITAL-3, AD-67.1).
+   * The same swap, through the other two published fields (AD-67.1).
    *
-   * The seriation and the embedding failed permutation-invariance for a different reason than
-   * the medoid did — not an index-keyed tie rule but an EXACT one, which a permuted Jacobi's
-   * ulp-level noise never reaches. Measured before the repair on this corpus's own matrix:
-   * 7 distinct seriations over 20 permutations, and `A-tel-1`'s first coordinate taking 16
-   * distinct values, all `≈ −45.2370019107607`.
+   * The seriation and the embedding fail permutation-invariance for a different reason than the
+   * medoid does — not an index-keyed tie rule but an exact one, which a permuted Jacobi's
+   * ulp-level noise never reaches. On this corpus's own matrix that costs 7 distinct seriations
+   * over 20 permutations, and `A-tel-1`'s first coordinate takes 16 distinct values, all
+   * `≈ −45.2370019107607`.
    */
   it('gives the same seriation and the same embedding when two items trade places', () => {
     const straight = corpus(tied, { k: 2, embeddingAxes: 2 });
@@ -336,8 +317,8 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
     );
 
     // Not bit-identical and it cannot be: the permuted matrix runs Jacobi's rotations in a
-    // different sequence. The claim is that the difference stays inside the band the tie rules
-    // were widened to absorb, rather than flipping an axis or reordering the plot.
+    // different sequence. The claim is that the difference stays inside the tie rules' band
+    // rather than flipping an axis or reordering the plot.
     const pointOf = (report: CorpusReport, label: string) => {
       const item = report.labels.indexOf(label);
       const what = `the embedding of '${label}'`;
@@ -366,24 +347,18 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
   });
 
   /**
-   * AD-72.2's sweep, landed: every published PER-ITEM number is bit-identical under permutation.
+   * AD-72.2: every published per-item number is bit-identical under permutation.
    *
-   * AD-72.1 repaired `partitionCost`, whose caller-order summation let float non-associativity
-   * break exact ties one level below the tie key, and AD-72.2 asked whether the disease had
-   * siblings. It does: `profiles[i].toMeanDistance` is the mean of the same set of distances
-   * under any permutation, but accumulated in the caller's item order it is not the same double
-   * — measured, it differed BIT-WISE in 4 of 24 permutation cases before the repair.
-   *
-   * `silhouette` has the identical shape and measured clean on this corpus, its clusters being
-   * small enough that the additions happen to reassociate exactly. It is repaired and pinned
-   * anyway: "no permutation has reordered these particular sums yet" is not a property, and the
-   * next corpus is not this one.
+   * `profiles[i].toMeanDistance` is the mean of the same set of distances under any permutation,
+   * but accumulated in the caller's item order it is not the same double — bit-wise different in
+   * 4 of 24 permutation cases. `silhouette` has the identical shape and measures clean on this
+   * corpus, its clusters being small enough that the additions reassociate exactly; it is pinned
+   * anyway, because "no permutation has reordered these particular sums yet" is not a property.
    */
   it('gives bit-identical per-item numbers under permutation (AD-72.2)', () => {
-    // An EIGHT-quarter window, and the size is measured rather than chosen: at the 16 quarters
-    // this file uses elsewhere the reassociated sums happen to agree bit for bit, so the defect
-    // is invisible there. It is the same six items either way — which is the point, and the
-    // reason a single fixed window is a poor detector for a float-association defect.
+    // The window size is measured rather than chosen: at the 16 quarters this file uses
+    // elsewhere the reassociated sums agree bit for bit on the same six items, so a single
+    // fixed window is a poor detector for a float-association defect.
     const shorter = { window: { start: 0, end: 8 }, k: 2 } as const;
     const straight = corpus(tied, shorter);
     const readback = (report: CorpusReport) => {
@@ -398,8 +373,8 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
     };
     const base = readback(straight);
 
-    // Several orders, including reversal and two derangements, because the defect showed on
-    // some permutations and not others — a single fixed order is what let it ship.
+    // Several orders, including reversal and two derangements: the defect shows on some
+    // permutations and not others, so a single fixed order does not detect it.
     for (const order of [
       [1, 0, 2, 3, 4, 5],
       [5, 4, 3, 2, 1, 0],
@@ -414,8 +389,7 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
       }
     }
 
-    // Non-vacuity: these are real numbers with real spread, not a corpus of zeros where any
-    // summation order agrees.
+    // Non-vacuity: real numbers with real spread, not zeros that sum the same in any order.
     expect(new Set([...base.values()].map((entry) => entry.toMeanDistance)).size).toBeGreaterThan(
       1,
     );
@@ -451,7 +425,7 @@ describe('the products §8 reads off the matrix', () => {
     expect(report.medoids).toHaveLength(2);
     expect(report.clusters).toHaveLength(5);
     expect(report.silhouette).toHaveLength(5);
-    // Five items is well under twenty, so the caveat is a FIELD rather than prose (A22).
+    // Five items is well under twenty, so the caveat is a field rather than prose (A22).
     expect(report.silhouetteReliable).toBe(false);
     expect(report.notes.some((entry) => entry.message.includes('silhouette is noisy'))).toBe(true);
 
@@ -467,21 +441,16 @@ describe('the products §8 reads off the matrix', () => {
         expect(profile.toMedoid[dimension]).toBeGreaterThanOrEqual(0);
     }
 
-    // AD-26.3's context is CONTEXT: the matrices are untouched by it.
+    // AD-26.3's context is context: the matrices are untouched by it.
     expect(report.context).not.toBeNull();
     expect(report.context?.percentile).toHaveLength(25);
 
-    // …and the three figures are the quantiles of the off-diagonal distances the report also
-    // ships, which is what makes them readable beside the matrix rather than beside nothing.
-    //
-    // Five items give TEN off-diagonal pairs, so every one of the three positions falls
-    // BETWEEN two order statistics — `0.5·9 = 4.5`, `0.25·9 = 2.25`, `0.75·9 = 6.75` — and the
-    // interpolation is therefore the whole of the answer. The median is stated as the textbook
-    // average of the two central samples, which shares no line with the implementation.
-    //
-    // [NEGATIVE CONTROL, MEASURED] Making the interpolation read its LOWER neighbour twice, so
-    // that a percentile degenerates to a selection, leaves the other 1311 tests green and reds
-    // exactly these four expectations.
+    // …and the three figures are the quantiles of the off-diagonal distances the report ships.
+    // Five items give ten off-diagonal pairs, so each of the three positions falls between two
+    // order statistics — `0.5·9 = 4.5`, `0.25·9 = 2.25`, `0.75·9 = 6.75` — and the interpolation
+    // is the whole of the answer. Negative control: making the interpolation read its lower
+    // neighbour twice, so that a percentile degenerates to a selection, leaves the rest of the
+    // suite green and reds exactly these four expectations.
     const offDiagonal: number[] = [];
     for (let i = 0; i < 5; ++i)
       for (let j = i + 1; j < 5; ++j)
@@ -507,18 +476,15 @@ describe('the products §8 reads off the matrix', () => {
 
   it('ranks every off-diagonal cell AT-or-below, which is what makes ties share a rank', () => {
     /**
-     * A closed oracle gap.
+     * A closed blind spot. The block above pins `percentile`'s length and nothing else, and no
+     * other test in the tree reads a value out of it. Replacing the at-or-below count with a
+     * strictly-below one (`lowerBoundBy` for `upperBoundBy`) left the whole comparison suite
+     * green, even though the matrix is symmetric and therefore every off-diagonal value is
+     * itself one of the ranked samples — so the two disagree in every single cell.
      *
-     * The block above pins `percentile`'s LENGTH and nothing else, and no other test in the
-     * tree reads a value out of it — `readmeRecipes` asks one cell to be `> 0`. Measured:
-     * replacing the at-or-below count with a strictly-below one (`lowerBoundBy` for
-     * `upperBoundBy`) left all 1313 comparison tests green, even though the matrix is
-     * SYMMETRIC and therefore every off-diagonal value is itself one of the ranked samples —
-     * so the two disagree in every single cell, by that value's own multiplicity.
-     *
-     * The rule the module states is "a rank, so equal distances share a rank": the fraction
-     * of pairs at or below this one, ties included. Derived here from the published aggregate
-     * matrix by the textbook definition, which shares no line with the implementation.
+     * The rule is "a rank, so equal distances share a rank": the fraction of pairs at or below
+     * this one, ties included. Derived here from the published aggregate matrix by the textbook
+     * definition, which shares no line with the implementation.
      */
     const report = corpus(items, { k: 2, noiseFloor: true });
     const n = report.n;
@@ -551,7 +517,7 @@ describe('the products §8 reads off the matrix', () => {
   });
 
   it('takes profiles against the CORPUS medoid, whatever k was asked for', () => {
-    // `toMedoid` is 0 exactly at the corpus medoid, which is the single most typical item.
+    // `toMedoid` is 0 exactly at the corpus medoid, the single most typical item.
     const report = corpus(items, { k: 3 });
     const zeroRows = report.profiles.filter((profile) =>
       COMPARISON_DIMENSIONS.every((dimension) => profile.toMedoid[dimension] === 0),
@@ -593,7 +559,7 @@ describe('the products §8 reads off the matrix', () => {
       expect(constant).toBeCloseTo(expected, 12);
     }
 
-    // The per-dimension matrices are UNCHANGED — normalization rescales the aggregate only.
+    // The per-dimension matrices are unchanged — normalization rescales the aggregate only.
     expect(normalized.matrices.byDimension.tempo).toEqual([...fixed.matrices.byDimension.tempo]);
     expect(normalized.matrices.aggregate).not.toEqual([...fixed.matrices.aggregate]);
     // …and the rescaled aggregate is exactly `Σ ω_k d_k` with the derived weights.
@@ -621,7 +587,7 @@ describe('the products §8 reads off the matrix', () => {
 
   it('surfaces suspectPairs so a heterogeneous folder announces itself (C7)', () => {
     // Telemann against Albert: different pieces, and Albert's deadpan reading has no instruction
-    // after date 0, so C7's length arm fires — which is the case the field exists for.
+    // after date 0, so C7's length arm fires.
     const report = corpus([
       { mpm: TELEMANN, performance: 'Baroque', label: 'tel' },
       { mpm: ALBERT, performance: 'Like a robot', label: 'alb' },
@@ -659,18 +625,14 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
   });
 
   /**
-   * W4 MAJOR-9: the corpus forwards every note kind, once per distinct FACT.
-   *
-   * It used to filter on `kind === 'length-mismatch'`, so `capped`, `plausibility`,
-   * `renderer-*`, `grid-truncated`, `invariance-space` and `estimate-degradation` findings from
-   * the `N(N−1)/2` comparisons were unobservable at the corpus facade — and `plausibleRange` was
-   * accepted, validated and inert here, since notes are its only product.
-   *
-   * Forwarding them verbatim is not the fix either. Most notes are about a DOCUMENT, and a
-   * document sits in `N−1` pairs: measured on this five-item corpus, the pairwise pass produces
-   * 664 `structural` notes over 10 pairs, of which 654 name a document. That is `O(N²)` copies
-   * of an `O(N)` fact. They are deduplicated on their content, and `itemIndex` — not `document`,
-   * which is pair-relative and meaningless once the pair is gone — carries the identity.
+   * Filtering on one kind leaves `capped`, `plausibility`, `renderer-*`, `grid-truncated`,
+   * `invariance-space` and `estimate-degradation` findings from the `N(N−1)/2` comparisons
+   * unobservable at the corpus facade, and `plausibleRange` inert here, since notes are its only
+   * product. Forwarding them verbatim is not the answer either: most notes are about a document,
+   * and a document sits in `N−1` pairs — on this five-item corpus the pairwise pass produces 664
+   * `structural` notes over 10 pairs, of which 654 name a document. They are deduplicated on
+   * their content, and `itemIndex` carries the identity rather than `document`, which is
+   * pair-relative and meaningless once the pair is gone.
    */
   it('carries every note kind, deduplicated, with itemIndex naming the document', () => {
     const items = [
@@ -682,7 +644,7 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
     ];
     const report = corpus(items);
 
-    // More than one kind, which is the whole finding.
+    // More than one kind.
     const kinds = new Set(report.notes.map((entry) => entry.kind));
     expect(kinds.size).toBeGreaterThan(1);
     for (const kind of ['structural', 'capped', 'estimate-degradation', 'length-mismatch'])
@@ -699,9 +661,8 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
     for (const entry of documentScoped)
       expect(entry.message.startsWith(`${report.labels[entry.itemIndex!]}: `)).toBe(true);
 
-    // Deduplicated: 104 notes against the 713 the ten pairwise reports carry between them, and
-    // no two say the same thing about the same item over the same span. The span belongs in the
-    // identity — one document can be capped in two different places, and those are two facts.
+    // Deduplicated: 104 notes against the 713 the ten pairwise reports carry between them. The
+    // span belongs in the identity — one document capped in two places is two facts.
     expect(report.notes.length).toBeLessThan(200);
     const fingerprints = report.notes.map((entry) =>
       JSON.stringify([
@@ -718,18 +679,17 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
   });
 
   /**
-   * MAJOR-R2: the note dedupe folds pairwise reports into corpus facts WITHOUT keeping any
-   * pair-relative data in the key or in the text.
+   * The note dedupe folds pairwise reports into corpus facts without keeping any pair-relative
+   * data in the key or in the text — including the copy of `document` inside `site`, and every
+   * pair a note fired on rather than `pairs[0]`.
    *
-   * The first version of MAJOR-9's repair applied that reasoning to the top-level `document`
-   * field and not to the copy inside `site`, and named only `pairs[0]` in the prefix. Three
-   * measured symptoms, all fixed here and each asserted separately:
+   * Three symptoms of getting that wrong, each asserted separately:
    *
-   * (a) the note COUNT depended on item order — 100 against 104 for the same three-item corpus;
-   * (b) a note firing on some-but-not-all pairs named only the first and the rest VANISHED,
-   *     which for `length-mismatch` was strictly worse than the filter this repair replaced:
-   *     `suspectPairs` naming five pairs beside a single note, one report contradicting itself;
-   * (c) the message text varied under permutation, the same note reading `"C | B: …"` under one
+   * (a) the note count depends on item order — 100 against 104 for the same three-item corpus;
+   * (b) a note firing on some-but-not-all pairs names only the first and the rest vanish, which
+   *     for `length-mismatch` is worse than filtering the kind out altogether: `suspectPairs`
+   *     names five pairs beside a single note, one report contradicting itself;
+   * (c) the message text varies under permutation, the same note reading `"C | B: …"` under one
    *     listing and `"B | C: …"` under another.
    */
   it('gives the same notes, the same count and the same text under every item order', () => {
@@ -738,8 +698,8 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
       { mpm: TELEMANN, performance: 'Fast' as const, label: 'tel-f' },
       { mpm: ALBERT, performance: 0, label: 'alb' },
     ];
-    // ALL SIX orders of three items — the defect showed on some and not others, so a single
-    // fixed permutation is exactly the instrument that missed it the first time.
+    // All six orders of three items: the defect shows on some and not others, so a single fixed
+    // permutation does not detect it.
     const orders = [
       [0, 1, 2],
       [0, 2, 1],
@@ -780,8 +740,8 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
     ];
     const report = corpus(four);
 
-    // `length-mismatch` fires on the pairs `suspectPairs` names, and the note has to account for
-    // all of them — this is symptom (b), where four of the five silently disappeared.
+    // `length-mismatch` fires on the pairs `suspectPairs` names, and the note has to account
+    // for all of them — symptom (b), where four of the five silently disappear.
     const mismatch = report.notes.filter((entry) => entry.kind === 'length-mismatch');
     expect(mismatch).toHaveLength(1);
     const only = elementAt(mismatch, 0, 'the length-mismatch notes');
@@ -821,12 +781,10 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
   });
 
   /**
-   * W4 MAJOR-10: `embeddingAxes`' declared domain is `[1, N−1]`, which at `N ≤ 1` is EMPTY.
-   *
-   * The guard read `n > 1 && axes > n - 1`, so exactly where nothing is legal, everything was
-   * accepted: a one-item corpus reported `axes === 7`, and an empty one reported five all-null
-   * variance shares. AD-25.1's first branch applies — `items.length` is in the same option bag,
-   * so the caller could have known without reading a document.
+   * `embeddingAxes`' declared domain is `[1, N−1]`, which at `N ≤ 1` is empty. A guard of the
+   * form `n > 1 && axes > n - 1` accepts everything exactly where nothing is legal: a one-item
+   * corpus reports `axes === 7`, and an empty one five all-null variance shares. AD-25.1's first
+   * branch applies — `items.length` is in the same option bag.
    */
   it('rejects an explicit embeddingAxes where the domain is empty (N ≤ 1)', () => {
     expect(() =>
@@ -842,7 +800,7 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
       }),
     ).toThrow(InvalidOptionError);
 
-    // …and the DEFAULT still degrades rather than erroring, which is the other half of §9.4's
+    // …and the default still degrades rather than erroring, which is the other half of §9.4's
     // rule: a caller who never set the option has made no mistake to be told about.
     const single = corpus([{ mpm: TELEMANN, performance: 'Baroque', label: 'only' }]);
     expect(single.n).toBe(1);

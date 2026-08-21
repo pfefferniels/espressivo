@@ -1,14 +1,15 @@
 /**
  * AD-27.8's scape, at both levels.
  *
- * The load-bearing property is INTERNAL CONSISTENCY, and it is what the prefix-sum
- * implementation exists to guarantee: a cell is the sum of any partition of itself. A scape
- * whose rows did not add up would be unreadable in exactly the way a musicologist reads one —
- * comparing a phrase-length cell against the bars beneath it — and re-integrating each
- * sub-window would break it by that sub-window's own quadrature error. So the tests assert
- * additivity, the closure of the top cell against `aggregate.distance`, and agreement with
- * `compareMpm` over an explicitly narrowed window, which is the same quantity computed by a
- * completely different route.
+ * The load-bearing property is INTERNAL CONSISTENCY, which the prefix-sum implementation exists
+ * to guarantee: a cell is the sum of any partition of itself. A scape whose rows did not add up
+ * would be unreadable in exactly the way a musicologist reads one — comparing a phrase-length
+ * cell against the bars beneath it — and re-integrating each sub-window would break it by that
+ * sub-window's own quadrature error. So: additivity, the closure of the top cell against
+ * `aggregate.distance`, and agreement with `compareMpm` over an explicitly narrowed window,
+ * which is the same quantity computed by a completely different route.
+ *
+ * Where the mass LANDS is pinned in `scapeBinning.test.ts`; nothing here can see it.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -54,8 +55,6 @@ describe('the pairwise scape', () => {
   });
 
   it('is additive — a cell is the sum of the two below it, exactly', () => {
-    // The property the prefix sums buy. Re-integrating each sub-window would give a triangle
-    // whose rows disagree with each other by their own quadrature error.
     const cells = report.scape?.cells ?? [];
     for (let size = 2; size <= 8; ++size)
       for (let start = 0; start + size <= 8; ++start) {
@@ -65,17 +64,16 @@ describe('the pairwise scape', () => {
           const right = cellAt(cells, 8, size - split, start + split);
           // Relative, because a cell is a DIFFERENCE of two running totals and two such
           // differences do not recombine bit for bit — the cancellation, not the binning, which
-          // conserves mass exactly. Measured slack on this pair is at the last few ulps.
+          // conserves mass exactly. Measured slack here is a few ulps.
           expect(left + right).toBeCloseTo(whole, 9);
         }
       }
   });
 
   it('agrees with compareMpm over the same sub-window, computed a different way', () => {
-    // A bin here is two quarters; the third bin is `[4, 6)`. Running the whole comparison over
-    // that window is a completely independent route to the same number — different grid,
-    // different segment pass, different aggregation — so agreement is evidence rather than a
-    // restatement.
+    // A bin here is two quarters, so the third bin is `[4, 6)`. Running the whole comparison
+    // over that window is an independent route to the same number — different grid, different
+    // segment pass, different aggregation.
     const cells = report.scape?.cells ?? [];
     let worst = 0;
     for (const [start, size] of [
@@ -90,10 +88,10 @@ describe('the pairwise scape', () => {
         performanceB: 1,
         window: { start: start * 2, end: (start + size) * 2 },
       }).report;
-      // A RELATIVE band, and the two routes really are different: the narrowed run re-reads the
-      // documents and rebuilds every dimension's own refinement grid for that window, while the
-      // scape apportions the full-window cells across bins. The worst divergence over these four
-      // sub-windows is asserted separately below, so the band cannot absorb a regression.
+      // A RELATIVE band: the narrowed run re-reads the documents and rebuilds every dimension's
+      // own refinement grid for that window, while the scape apportions the full-window cells
+      // across bins. The worst divergence is asserted separately below, so the band cannot
+      // absorb a regression.
       const cell = cellAt(cells, 8, size, start);
       worst = Math.max(
         worst,
@@ -148,8 +146,8 @@ describe('the last bin is pinned at the window end', () => {
   // For a density CELL that costs nothing — the shares are rescaled to the cell's own mass, so
   // a dropped sliver changes no total — and the guard's remaining job is a POINT ATOM sitting
   // exactly at the window end, which `binOf` would then read as outside the triangle. No
-  // vendored document places one there, so the evidence goes down a layer to the function
-  // itself (the RG-2 move): a negative control on the pin passes every corpus test in this file.
+  // vendored document places one there: a negative control on the pin passes every corpus test
+  // in this file, so the evidence is taken at the function instead.
   const atomAtTheEnd = {
     dimension: 'articulation' as const,
     cells: [],

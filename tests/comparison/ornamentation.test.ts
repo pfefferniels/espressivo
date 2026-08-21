@@ -1,11 +1,11 @@
 /**
  * Ornamentation — DESIGN.md §5.6 as ruled by AD-40, AD-41, AD-42 and AD-43.
  *
- * **Every renderer claim here is measured through `Performance.perform`.** AD-43.1 tightened
- * the standard after a map-level probe produced a false "global maps perform nothing" claim:
- * "the renderer determines it" means the PIPELINE, not the nearest method. So the harness below
- * performs a real MSM against a real MPM and reads the notes back, and the reader is asserted
- * against those notes rather than against numbers worked out by hand.
+ * Every renderer claim here is measured through `Performance.perform`: under AD-43.1 "the
+ * renderer determines it" means the PIPELINE, not the nearest method — a map-level probe once
+ * produced a false "global maps perform nothing" claim. The harness performs a real MSM against
+ * a real MPM and reads the notes back, and the reader is asserted against those notes rather
+ * than against numbers worked out by hand.
  */
 import { describe, it, expect } from 'vitest';
 import { performMsm } from '../../src/api/pipeline.js';
@@ -419,8 +419,7 @@ describe('the style is CARRIED, and a failed switch differs by scope', () => {
 
   it('a global map ignores EVERY switch after its first successful one', () => {
     const reswitch = `${STYLE0}${ORN()}<style date="1440.0" name.ref="O"/>${late}`;
-    // Both styleDefs are named "O" here only in the part case; the point is the second switch
-    // is never looked up at all in a global map, which the note channel reports.
+    // In a global map the second switch is never looked up at all, which the notes report.
     const read = atomsOf(defs, reswitch, 'global');
     expect(read.notes.map((note) => note.kind)).toContain('style-switch-ignored');
   });
@@ -588,7 +587,7 @@ describe('stacked ornaments at one date (AD-44.1, AD-44.2)', () => {
       '<ornamentDef name="s"><temporalSpread frame.start="-122.0" frameLength="244.0"/></ornamentDef>';
     const stacked = `${STYLE0}<ornament date="0.0" name.ref="s" scale="1.0"/><ornament date="0.0" name.ref="t" scale="1.0"/>`;
     const single = `${STYLE0}<ornament date="0.0" name.ref="s" scale="1.0"/>`;
-    // They perform identically (the test above), and now they compare identically.
+    // They perform identically (the test above), so they compare identically.
     expect(distance(atomsOf(`${s}${t}`, stacked), atomsOf(both, single))).toBe(0);
   });
 

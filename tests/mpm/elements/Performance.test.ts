@@ -417,7 +417,7 @@ describe('Performance', () => {
 
     // `Performance.renderMillisecondsModifiersToMap`.
     describe('ornament milliseconds offsets', () => {
-      /** A performance whose part carries an (empty) ornamentationMap, so the modifier pass runs. */
+      /** A performance whose part carries an empty ornamentationMap, so the modifiers run. */
       function performanceWithOrnamentationMap(): Performance {
         const p = okValue(Performance.createPerformance('P', 720));
         const part = okValue(Part.createPart('Piano', 1, 0, 0));
@@ -601,7 +601,7 @@ describe('Performance', () => {
         return msm;
       }
 
-      /** Global imprecision maps, in the domains named — none with a seed, so `options.seed` governs. */
+      /** Global imprecision maps in the domains named, none seeded, so `options.seed` governs. */
       function performanceWithImprecision(...domains: string[]): Performance {
         const p = okValue(Performance.createPerformance('P', 720));
         for (const domain of domains) {

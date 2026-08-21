@@ -1,41 +1,16 @@
 /**
- * The standing adversarial fixture family — §10's P-C3/P-C3b family, promoted from the W2
- * verification report under AD-33.5.
+ * The standing adversarial fixture family — §10's P-C3/P-C3b family.
  *
- * **Standing test policy (AD-33.5): every future integrator-touching change runs against this
- * family, not against constants.** The wave's original triangle tests used three pointwise-
- * ordered constants, which sit at the triangle's *equality* case — so they could only fail on
- * quadrature error, and they tested the quadrature rather than the metric. None of them
- * touched `⊥`, the cap, a renderer default, a skip, or an unmatched part. That gap is what
- * let CAPITAL-1 and CAPITAL-3 through the wave, and it is why this file exists.
+ * Standing test policy (AD-33.5): every integrator-touching change runs against this family,
+ * not against constants. Three pointwise-ordered constants sit at the triangle's equality case,
+ * so they can only fail on quadrature error, and they touch none of `⊥`, the cap, a renderer
+ * default, a skip, or an unmatched part.
  *
- * Twelve members, each carrying a different former-M1 hazard, including **two** transition
- * members — `criticalPointTicks` fires only when BOTH sides are transitions, so a single power
- * member would leave that path unreached by every pair in the family. Negative-controlled:
- * reverting AD-33.2's canonical ordering fails this family's P-C2, which the wave's
- * constants-only tests could not.
- *
- * W3a cut 1 added four: the two new dimensions' ordinary case, and one member each for the two
- * `⊥` routes they introduce (an aborting `accentuationPatternDef`, a non-monotone date
- * component) plus AD-35's unbounded resurrected span. Each cut extends the family with the
- * failure surfaces it opens, which is the standing policy rather than a courtesy.
- *
- * W3a cut 4 adds five more, one per surface §5.9 opens that nothing above it reaches:
- *
- * - `imprecision-plain` — an ordinary uniform law, so that every pair has a non-`⊥` law to
- *   compare against and the dimension's ordinary path is exercised at all.
- * - `imprecision-gaussian-gap` — a Gaussian span followed by a `<style>` that ends it, which
- *   is BOTH the special-function quadrature path and the δ₀ gap the any-entry rule opens.
- *   That gap is the sharp contrast with `asynchronyMap`, where the same structural situation
- *   NaN-poisons the span instead; having both in one family means a reading that confuses them
- *   fails the triangle test rather than merely a dedicated test.
- * - `imprecision-bottom` — an EMPTY `<distribution.list>`, the `⊥` route measured through the
- *   pipeline. It is the member that makes the capped density load-bearing: without a `⊥` in the
- *   family, an uncapped `W₁/jnd` would satisfy the triangle inequality on every pair here.
- * - `imprecision-process` — a `brownianNoise` whose declared MARGINAL matches
- *   `imprecision-plain`'s middle-half law while its process differs, so the pair is zero in the
- *   marginal component and non-zero only through `processParameters`. Without it the process
- *   component could be deleted and every metric property would still pass.
+ * Each member carries a different hazard, stated in its own `hazard` line. Two of them are a
+ * pair by construction: `criticalPointTicks` fires only when both sides are transitions, so a
+ * single power member would leave that path unreached by every pair in the family.
+ * Negative-controlled — reverting AD-33.2's canonical ordering fails this family's P-C2, which
+ * a constants-only test does not.
  *
  * All members share one explicit window, which §10 requires: under a pair-derived window the
  * three windows of a triple differ and R3's triangle inequality is not even claimed (M2).
@@ -50,12 +25,7 @@ const document = (dated: string, header = ''): string =>
   `<global><header>${header}</header><dated>${dated}</dated></global>` +
   '</performance></mpm>';
 
-/**
- * The style collection the accentuation members resolve against.
- *
- * Two defs of different lengths, so that a member which cycles on the measure and one which
- * cycles on the pattern are both expressible — and one member deliberately names neither.
- */
+/** The style collection the accentuation members resolve against. */
 const ACCENTUATION_STYLES =
   '<metricalAccentuationStyles><styleDef name="M">' +
   '<accentuationPatternDef name="p" length="4.0">' +
@@ -72,11 +42,10 @@ const ARTICULATION_STYLES =
   '</styleDef></articulationStyles>';
 
 /**
- * Two ornament styles that differ ONLY in the spread's time unit.
- *
- * That is §5.6's one genuinely incomparable pair: a tick frame and a millisecond frame have no
- * common domain without a tempo map, so the two are `⊥` against each other while each is an
- * ordinary law against a document with no ornaments at all.
+ * Two ornament styles that differ only in the spread's time unit — §5.6's one genuinely
+ * incomparable pair. A tick frame and a millisecond frame have no common domain without a tempo
+ * map, so the two are `⊥` against each other while each is an ordinary law against a document
+ * with no ornaments at all.
  */
 const ORNAMENT_STYLES =
   '<ornamentationStyles>' +
@@ -90,15 +59,15 @@ const ORNAMENT_STYLES =
 
 export interface AdversarialMember {
   readonly name: string;
-  /** Which hazard this member introduces — one line, for a failure message worth reading. */
+  /** Which hazard this member introduces, one line, for a readable failure message. */
   readonly hazard: string;
   readonly mpm: string;
 }
 
 /**
- * The family. Deliberately heterogeneous: members differ in which MAPS they carry as well as
- * in their values, because R6 makes an absent map neutral rather than missing and the
- * triangle inequality has to survive that too.
+ * The family. Members differ in which maps they carry as well as in their values, because R6
+ * makes an absent map neutral rather than missing and the triangle inequality has to survive
+ * that too.
  */
 export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   {
@@ -401,9 +370,9 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
       '<imprecisionMap.dynamics>' +
         '<distribution.uniform date="0.0" limit.lower="-12" limit.upper="12"/>' +
         '</imprecisionMap.dynamics>' +
-        // The clips are EXPLICIT because absent ones read as 0 and collapse a triangular to δ₀
-        // (AD-49.1's degenerate table) — measured: without them this member scored 0 against a
-        // document with no toneduration map at all, which is renderer-true and useless here.
+        // The clips are explicit because absent ones read as 0 and collapse a triangular to δ₀
+        // (AD-49.1's degenerate table): without them this member scores 0 against a document
+        // with no toneduration map at all, which is renderer-true and useless here.
         '<imprecisionMap.toneduration>' +
         '<distribution.triangular date="0.0" limit.lower="-40" limit.upper="40" mode="15" ' +
         'clip.lower="-40" clip.upper="40" milliseconds.timingBasis="300"/>' +
@@ -420,11 +389,10 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
         '<imprecisionMap.toneduration><distribution.list date="0.0"/></imprecisionMap.toneduration>',
     ),
   },
-  // W4 adds two, and they are a PAIR: the surface §6's edit path opened is a difference that
-  // lives entirely in the header, where the two maps are byte-identical and only the styleDef
-  // they resolve through differs. Nothing in the family reached it — every other member states
-  // its levels as literals — and it is metric-relevant as well as edit-relevant, because two
-  // documents that PERFORM different tempi must not compare at 0 whatever their map text says.
+  // These two are a pair: a difference living entirely in the header, where the two maps are
+  // byte-identical and only the styleDef they resolve through differs. Every other member
+  // states its levels as literals. Two documents that perform different tempi must not compare
+  // at 0 whatever their map text says.
   {
     name: 'styled-level-slow',
     hazard:
@@ -450,17 +418,15 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
 ];
 
 /**
- * AD-57.2's drop-each-member coverage check, made re-runnable rather than run once.
+ * AD-57.2's drop-each-member coverage check.
  *
  * Setting `COMPARISON_DROP_MEMBER` to a member's name removes it from the family, so
  *
  *     for m in $(node -e '…names…'); do COMPARISON_DROP_MEMBER=$m npx vitest run …; done
  *
- * answers "which members are load-bearing?" without patching a file. The W3 verifier ran the
- * equivalent by hand; a hook makes the answer reproducible by anyone who doubts it, which is the
- * difference between a measurement and an anecdote. AD-57.2 rules the family must NOT be pruned
- * on the result — a member that no test currently reaches still documents a distinct hazard, and
- * the check exists to say WHICH tests would notice, not to shorten the list.
+ * answers "which members are load-bearing?" without patching a file. AD-57.2 rules that the
+ * family must not be pruned on the result: a member no test currently reaches still documents a
+ * distinct hazard, and the check says which tests would notice, not which members to drop.
  */
 const DROPPED = process.env.COMPARISON_DROP_MEMBER ?? '';
 

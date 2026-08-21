@@ -1,11 +1,10 @@
 /**
- * The level / gain / shape decomposition (§1.2, AD-18), the invariance modes (§7.4, AD-20),
- * and P-C3b zero-set transitivity — the closing batch of W2.
+ * The level / gain / shape decomposition (§1.2, AD-18), the invariance modes (§7.4, AD-20), and
+ * P-C3b zero-set transitivity.
  *
- * The decomposition's own test is its **closing identity**: if
- * `level² + gain² + 2σ_Aσ_B(1−r)` does not equal `‖h_A − h_B‖₂²` then one of the four fields
- * is wrong, and which one is wrong is not something a plausible-looking number would reveal.
- * Every case below checks the identity as well as the fields.
+ * The oracle is the closing identity: if `level² + gain² + 2σ_Aσ_B(1−r)` does not equal
+ * `‖h_A − h_B‖₂²` then one of the four fields is wrong, and a plausible-looking number would
+ * not reveal which. Every case below checks the identity as well as the fields.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -61,7 +60,6 @@ describe('curveMoments', () => {
   it('is computed against the NORMALIZED measure, so it is span-independent (AD-18)', () => {
     const short = curveMoments((t) => t / 720, uniformGrid(720, 8));
     const long = curveMoments((t) => t / 7200, uniformGrid(7200, 8));
-    // The same shape over a ten-times-longer window has the same mean and variance.
     expect(short.mean).toBeCloseTo(long.mean, 10);
     expect(short.variance).toBeCloseTo(long.variance, 10);
   });
@@ -162,8 +160,7 @@ describe('the shapeless convention (§1.2 / C14)', () => {
   });
 
   it('flags shapeless on the CONSTANT side whichever side it is', () => {
-    // The field's type already guarantees it is a boolean; what needs pinning is that the
-    // flag tracks the data rather than the argument position.
+    // What needs pinning is that the flag tracks the data, not the argument position.
     const constant: SampledCurve = () => 1;
     const varying: SampledCurve = (t) => t / SPAN;
     expect(decomposeCurves(constant, varying, GRID).shapeless).toBe(true);
@@ -196,8 +193,8 @@ describe('invariance modes (§7.4 / AD-20)', () => {
   });
 
   it("'level' removes only an OFFSET in a linear space, leaving the factor (§7.4's table)", () => {
-    // c*x - mean(c*x) = c(x - mean x): the factor survives. This is the trap the table
-    // exists to prevent, so it is pinned rather than described.
+    // c*x - mean(c*x) = c(x - mean x): the factor survives. The trap the table exists to
+    // prevent.
     const linear: SampledCurve = (t) => t / SPAN;
     const scaled: SampledCurve = (t) => (1.5 * t) / SPAN;
     const a = applyInvariance(linear, 'level', curveMoments(linear, GRID));
@@ -213,7 +210,6 @@ describe('invariance modes (§7.4 / AD-20)', () => {
   });
 
   it("'level-gain' on a CONSTANT curve gives the zero curve, not a division by zero", () => {
-    // A constant curve is the most common input in this corpus, so this path is ordinary.
     const constant: SampledCurve = () => Math.log(60);
     const constantMoments = curveMoments(constant, GRID);
     const canonical = applyInvariance(constant, 'level-gain', constantMoments);
@@ -232,9 +228,9 @@ describe('invariance modes (§7.4 / AD-20)', () => {
 
 describe('P-C3b zero-set transitivity (AD-21)', () => {
   /**
-   * `d(A,B) = 0 ∧ d(B,C) = 0 ⟹ d(A,C) = 0` — "the cheapest possible detector for every
-   * M1-class defect; it would have caught all four". Run on the tempo dimension, where the
-   * zero set is populated by genuinely different ENCODINGS of one performed curve.
+   * `d(A,B) = 0 ∧ d(B,C) = 0 ⟹ d(A,C) = 0` — the cheapest detector for an M1-class defect. Run
+   * on the tempo dimension, where the zero set is populated by genuinely different encodings of
+   * one performed curve.
    */
   const tempoDoc = (map: string, header = '') =>
     '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p" pulsesPerQuarter="720">' +
@@ -259,7 +255,7 @@ describe('P-C3b zero-set transitivity (AD-21)', () => {
       .distance;
   };
 
-  // Three encodings of ONE performed curve: 60 qbpm throughout.
+  // Three encodings of one performed curve: 60 qbpm throughout.
   // A: a bare constant.
   // B: the same value reached through a styleDef, with a <style> switch.
   // C: the same value written twice, the second instruction redundant.
@@ -332,8 +328,8 @@ describe('decomposition on the W3a cut 1 dimensions', () => {
     );
 
   it('closes the identity on a pedal pair, in fractions of full travel', () => {
-    // T is the identity for a gain space, so the moments are pedal positions and a reader can
-    // check `level` against the two curves by eye.
+    // T is the identity for a gain space, so the moments are pedal positions and `level` can be
+    // checked against the two curves by eye.
     const pair = readComparisonPair({
       a: pedalDoc(
         '<movement date="0.0" position="1.0" transition.to="0.0"/>' +
@@ -361,7 +357,7 @@ describe('decomposition on the W3a cut 1 dimensions', () => {
   });
 
   it('refuses to decompose a window carrying a ⊥ span, rather than substituting a number', () => {
-    // §1.2 takes MOMENTS: a mean and a variance. ⊥ has nothing to contribute to either, and a
+    // §1.2 takes moments: a mean and a variance. ⊥ has nothing to contribute to either, and a
     // stand-in would be read back as a pedal position.
     const pair = readComparisonPair({
       a: pedalDoc(
@@ -410,7 +406,7 @@ describe('decomposition on the W3a cut 1 dimensions', () => {
     const result = decomposeCurves(a, b, grid);
     expect(result.identity).toBeCloseTo(result.l2Squared, 8);
     // One is exactly twice the other, so they are perfectly correlated: pure level and gain,
-    // no shape difference at all. This is the case §1.2 exists to separate.
+    // no shape difference — the case §1.2 exists to separate.
     expect(result.shapeless).toBe(false);
     expect(result.r).toBeCloseTo(1, 8);
     expect(result.shape).toBeCloseTo(0, 6);

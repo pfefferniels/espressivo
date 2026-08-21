@@ -1,31 +1,23 @@
 /**
  * AD-51.1's evaluator extension, stated once for every dimension that has cells.
  *
- * The aggregation refines segment boundaries to the roots of `p_D − τ_D` (AD-19/M9b), and it
- * takes the SHAPE of a partly covered cell from the sampler while keeping `mass` as the scale.
- * So the one property that matters is that the sampler and the mass are the same object seen
- * two ways: **the sampler's integral over the cell reproduces the cell's mass**. A sampler that
- * merely looked plausible would move a boundary without moving any mass, which is exactly the
- * inconsistency `aggregate.ts` warns about and which its own first draft committed.
+ * The aggregation refines segment boundaries to the roots of `p_D − τ_D` (AD-19/M9b) and takes
+ * the shape of a partly covered cell from the sampler while keeping `mass` as the scale, so the
+ * property that matters is that the sampler's integral over the cell reproduces the cell's mass.
  *
- * It is checked two ways, and the POINTWISE one is the load-bearing half. Each dimension's
- * sampler is compared against its definition — `|T_a(t) − T_b(t)|` over the row's JND, capped
- * where §4's cap applies — evaluated independently here from the curve readers. That is exact
- * and it is what an integral check cannot be: **a mean-density stand-in integrates to exactly
- * the cell's mass by construction**, so an integral alone could never have caught the very
- * fallback this extension exists to remove.
+ * The pointwise check is the load-bearing half — each dimension's sampler against its
+ * definition, restated here from the curve readers. An integral alone is blind to it: a
+ * mean-density stand-in integrates to exactly the cell's mass by construction, so it would pass
+ * on the very fallback this extension exists to remove. The integral is checked too, loosely,
+ * for the one error the pointwise check cannot see: a sampler stated per tick where the
+ * aggregation reads per quarter is off by a factor of `ppq` and correct at no point at all.
  *
- * The integral is checked as well, loosely, because it catches the one error the pointwise
- * check cannot: a sampler stated per TICK where the aggregation reads per QUARTER is off by a
- * factor of `ppq` in the integral and correct at no point at all. The tolerance is 1e-3
- * relative, which is honest about two things measured while writing this — a composite rule
- * smears the `|·|` corner the modules split at exactly (accentuation, 5.9e-4), and rubato's own
- * quadrature carries AD-34.1's documented residual at an `intensity = 0.5` boundary layer
- * (5.2e-4, inside the ruling's own band).
+ * The 1e-3 relative tolerance comes from two measurements — a composite rule smears the `|·|`
+ * corner the modules split at exactly (accentuation, 5.9e-4), and rubato's quadrature carries
+ * AD-34.1's residual at an `intensity = 0.5` boundary layer (5.2e-4, inside the ruling's band).
  *
- * Each dimension also gets a shape assertion. Six vary inside a cell; the two that do not —
- * asynchrony and imprecision — are piecewise constant BY CONSTRUCTION (§5.7, §5.9), and that is
- * asserted instead, since a varying sampler there would be the defect.
+ * Six dimensions vary inside a cell; asynchrony and imprecision are piecewise constant by
+ * construction (§5.7, §5.9), so constancy is what is asserted there.
  */
 import { describe, it, expect } from 'vitest';
 import { readComparisonPair, readScopeMapViews } from '../../src/comparison/document.js';
@@ -105,9 +97,8 @@ function probesOf(cell: Cell): readonly number[] {
 /**
  * The property: the sampler is the integrand, pointwise, and its integral is the mass.
  *
- * @param definition the dimension's own density at a position in quarters, computed here from
- *   the curve readers rather than from the distance module — an independent statement of the
- *   same definition, which is the only kind of agreement worth asserting.
+ * @param definition the dimension's own density in quarters, computed from the curve readers
+ *   rather than from the distance module.
  */
 function checkCells(
   cells: readonly Cell[],
@@ -299,7 +290,7 @@ describe('every cell-bearing dimension exposes the integrand it integrated (AD-5
     };
     const result = imprecisionDistance(read('a'), read('b'), pair.window, pair.ppq.lcm);
     // The two components §5.9 sums, read off the cell they were computed for: this dimension's
-    // reading is piecewise constant, so its "definition at a point" IS the covering cell's.
+    // reading is piecewise constant, so its definition at a point is the covering cell's.
     const cellAt = (quarters: number) => {
       const covering = result.cells.find(
         (cell) => quarters >= cell.startQuarters && quarters < cell.endQuarters,

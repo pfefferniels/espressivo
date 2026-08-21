@@ -1,12 +1,11 @@
 /**
  * `src/comparison/distributions.ts` — DESIGN.md §5.9's law mathematics.
  *
- * The discipline here is the campaign's: every accuracy claim is MEASURED against machinery
- * that shares no arithmetic with the thing measured. `Φ` is checked against a high-order
- * quadrature of its own density (the definition, not a second table); `W₁` and `W₂` against
- * closed forms derived by hand in the comments; the two ρ constants §5.9 names are re-derived
- * from their integrals rather than quoted. A test that compared the implementation against
- * numbers the implementation produced would pin the bug along with the behaviour.
+ * Every accuracy claim is measured against machinery that shares no arithmetic with the thing
+ * measured. `Φ` is checked against a high-order quadrature of its own density (the definition,
+ * not a second table); `W₁` and `W₂` against closed forms derived by hand in the comments; the
+ * two ρ constants §5.9 names are re-derived from their integrals rather than quoted. A test
+ * against numbers the implementation produced would pin the bug along with the behaviour.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -36,17 +35,14 @@ import { epsilonRecord } from '../../src/comparison/compare.js';
 import { numberAt } from '../../src/prelude/index.js';
 
 /**
- * An INDEPENDENT `Φ`: composite GL-10 over the standard normal density, 64 panels per unit.
+ * An independent `Φ`: composite GL-10 over the standard normal density, 64 panels per unit. It
+ * shares no coefficient with the implementation — only `gaussLegendre10`, whose own table is
+ * re-derived by Newton's method in `quadrature.test.ts`.
  *
- * It shares no coefficient with the implementation — only `gaussLegendre10`, whose own table
- * is re-derived by Newton's method in `quadrature.test.ts`. This is the reference that
- * licenses the series.
- *
- * The LEFT tail is integrated directly from `x − 12` rather than computed as `1 − Φ(−x)`,
+ * The left tail is integrated directly from `x − 12` rather than computed as `1 − Φ(−x)`,
  * because the reference has to be better than the thing it judges: the subtraction form loses
- * every significant digit of `Φ(−6.9) = 2.6·10⁻¹²`, and the first version of this test
- * blamed the implementation for its own reference's cancellation. Mass below `x − 12` is
- * under `e^{−(|x|+12)²/2}`, far below the claim being checked.
+ * every significant digit of `Φ(−6.9) = 2.6·10⁻¹²`. Mass below `x − 12` is under
+ * `e^{−(|x|+12)²/2}`, far below the claim being checked.
  */
 function referenceNormalCdf(x: number): number {
   const density = (t: number): number => Math.exp((-t * t) / 2) / Math.sqrt(2 * Math.PI);
@@ -84,12 +80,10 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
     let worstAt = 0;
     let worstRelative = 0;
     let worstRelativeAt = 0;
-    // W3 MINOR-2: the scan used to start at −8 and step 0.01, and the peak sits just under the
-    // `erfc` handover at `x = −2√2`, where `1 − erfSeries` still cancels about two digits. A
-    // 0.01 grid can miss it and the published 4.9e-14 was measured with one; the true worst on
-    // `[−8, 0]` is 8.3e-14 at x ≈ −2.772, and to −37σ it is 2.3e-13 (both against `mpmath` at
-    // 60 dps, and both reproduced by the composite reference below). So the scan is refined
-    // through the handover and extended to the subnormal floor.
+    // The step is 0.002 because the relative peak sits just under the `erfc` handover at
+    // `x = −2√2`, where `1 − erfSeries` still cancels about two digits, and a 0.01 grid can
+    // miss it. The worst on `[−8, 0]` is 8.3e-14 at x ≈ −2.772; out to −37σ it is 2.3e-13.
+    // Both against `mpmath` at 60 dps, both reproduced by the composite reference below.
     for (let x = -8; x <= 8; x += 0.002) {
       const reference = referenceNormalCdf(x);
       const error = Math.abs(standardNormalCdf(x) - reference);
@@ -97,9 +91,9 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
         worstAbsolute = error;
         worstAt = x;
       }
-      // Relative error in the LEFT tail, which is what the truncated Gaussian's normalizer
-      // and Φ⁻¹'s Halley step consume. Only x ≤ 0 — for x > 0 the reference itself would
-      // have to compute `1 − Φ(x)` and would lose the very digits being judged.
+      // Relative error in the left tail, which is what the truncated Gaussian's normalizer and
+      // Φ⁻¹'s Halley step consume. Only x ≤ 0 — for x > 0 the reference itself would have to
+      // compute `1 − Φ(x)` and would lose the very digits being judged.
       if (x <= 0 && reference > 1e-300) {
         const relative = error / reference;
         if (relative > worstRelative) {
@@ -108,17 +102,12 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
         }
       }
     }
-    // Reported rather than merely asserted: these are the numbers §9.3's `imprecision` family
-    // carries. The A–S 7.1.26 rational the draft proposed measures 7.5e-8 absolute here.
-    //
-    // The relative tolerance is 3e-13 rather than the 1e-10 that shipped, which was 2000× the
-    // figure it was supposed to defend and would have accepted a three-order regression in
-    // silence (W3 MINOR-2). 3e-13 is just above the measured 2.3e-13 at −37σ.
-    //
-    // The ABSOLUTE bound is 2e-15 and it is the REFERENCE's limit rather than the
-    // implementation's: above x ≈ 6 the composite quadrature is summing to within 1e-12 of 1
-    // and carries about 5 ulp of its own. Against `mpmath` at 60 dps the implementation's worst
-    // absolute error over the same range is 1.3e-16, which the next test pins.
+    // These are the numbers §9.3's `imprecision` family carries; an A–S 7.1.26 rational measures
+    // 7.5e-8 absolute here. The relative tolerance of 3e-13 sits just above the measured 2.3e-13
+    // at −37σ. The absolute bound of 2e-15 is the reference's limit rather than the
+    // implementation's: above x ≈ 6 the composite quadrature sums to within 1e-12 of 1 and
+    // carries about 5 ulp of its own, while against `mpmath` at 60 dps the implementation's
+    // worst over the same range is 1.3e-16, which the next test pins.
     expect(worstAbsolute, `worst absolute at x=${String(worstAt)}`).toBeLessThan(2e-15);
     expect(worstRelative, `worst relative at x=${String(worstRelativeAt)}`).toBeLessThan(3e-13);
     expect(
@@ -131,14 +120,11 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
   });
 
   /**
-   * The published absolute figure, against an arbitrary-precision reference rather than against
-   * another quadrature (W3 MINOR-2).
-   *
-   * The composite reference above is a real independent check and it is what catches a wrong
-   * ALGORITHM; what it cannot do is bound the implementation below its own quadrature error,
-   * which above `x ≈ 6` is 5 ulp. These nineteen points are `½·erfc(−x/√2)` at `mp.dps = 60`,
-   * chosen at the places a table would be wrong: both sides of the `erfc` handover, the peak of
-   * the relative error just under it, the far tail, and the subnormal floor.
+   * The published absolute figure, against an arbitrary-precision reference. The composite
+   * reference above catches a wrong algorithm but cannot bound the implementation below its own
+   * quadrature error, which above `x ≈ 6` is 5 ulp. These points are `½·erfc(−x/√2)` at
+   * `mp.dps = 60`, chosen where a table would be wrong: both sides of the `erfc` handover, the
+   * peak of the relative error just under it, the far tail, and the subnormal floor.
    */
   it('matches an arbitrary-precision reference to 3e-16 absolute', () => {
     const REFERENCE: readonly (readonly [number, number])[] = [
@@ -172,13 +158,11 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
       if (x >= -8) worstNear = Math.max(worstNear, error / reference);
     }
     expect(worstAbsolute).toBeLessThan(3e-16);
-    // TWO relative figures, because one number cannot describe both regimes. Within `[−8, 0]`
-    // the worst is 8.3e-14, not the 4.9e-14 published, and it sits just under
-    // `ERFC_CONTINUED_FRACTION_LIMIT` where `1 − erfSeries` still cancels about two digits —
-    // the old scan stepped 0.01 and could miss it. Below −8 the continued fraction loses a
-    // little more per decade, reaching 2.3e-13 at −37σ. The peak is sharp enough that a fixed
-    // point list understates it (1.9e-14 at exactly −2.772), so the SCAN above is what pins its
-    // existence and this list pins the two ceilings.
+    // Two relative figures, because one number cannot describe both regimes. Within `[−8, 0]`
+    // the worst is 8.3e-14, just under `ERFC_CONTINUED_FRACTION_LIMIT`; below −8 the continued
+    // fraction loses a little more per decade, reaching 2.3e-13 at −37σ. A fixed point list
+    // understates the peak (1.9e-14 at exactly −2.772), so the scan above pins its existence
+    // and this list pins the two ceilings.
     expect(worstNear).toBeLessThan(1e-13);
     expect(worstFar).toBeLessThan(3e-13);
   });
@@ -202,12 +186,11 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
   });
 
   it('the series and the continued fraction agree across their handover', () => {
-    // The handover is at erf-argument 2, i.e. x = -2√2 for Φ. A step here would be invisible
-    // in every other test and would put a discontinuity into every truncated normalizer.
+    // The handover is at erf-argument 2, i.e. x = -2√2 for Φ. A step here would be invisible in
+    // every other test and would put a discontinuity into every truncated normalizer.
     //
-    // The slope has to be subtracted off, which the first version of this test forgot: Φ
-    // genuinely changes by φ(2.83)·2·10⁻⁹ across the probe gap, and reading that as a jump
-    // accused the implementation of a 6·10⁻¹⁰ discontinuity it does not have.
+    // The slope has to be subtracted off: Φ genuinely changes by φ(2.83)·2·10⁻⁹ across the
+    // probe gap, and reading that as a jump reports a 6·10⁻¹⁰ discontinuity that is not there.
     const at = -2 * Math.SQRT2;
     const gap = 1e-9;
     const continuedFractionSide = standardNormalCdf(at - gap);
@@ -227,19 +210,17 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
   });
 
   /**
-   * W3 MAJOR-3: the right tail, and a pin that can see it.
-   *
-   * The round trip above measures `|Φ(Q(p)) − p| / p`, which in the RIGHT tail is exactly 0 at
-   * every probe by construction — `Φ` there is 1 to sixteen digits whatever `Q` returned — and
-   * its `p`-list stopped at 0.999999. So the metric was blind exactly where the Halley step was:
-   * `Φ(x) − p` cancels completely as `p → 1`, the correction was noise, and Acklam's raw
-   * 1.15e-9 survived. Measured at 1.124e-9 relative at `p = 1 − 1e-13` against 1.41e-17 at
-   * `p = 1e-13` — an asymmetry of 4.5·10⁵ in an algorithm that is symmetric on paper.
+   * The right tail, and a pin that can see it. The round trip above measures `|Φ(Q(p)) − p| / p`,
+   * which in the right tail is exactly 0 at every probe by construction — `Φ` there is 1 to
+   * sixteen digits whatever `Q` returned — so it is blind exactly where the Halley step is.
+   * `Φ(x) − p` cancels completely as `p → 1`, which makes the correction noise and leaves
+   * Acklam's raw accuracy standing: 1.124e-9 relative at `p = 1 − 1e-13` against 1.41e-17 at
+   * `p = 1e-13`, an asymmetry of 4.5·10⁵ in an algorithm that is symmetric on paper.
    *
    * The check is against `mpmath` at 60 dps, on `1 − p` rather than on `p`, and the references
-   * are computed for the DOUBLE the caller actually passes: `fl(1 − 10^-k)` is not the exact
-   * complement of `fl(10^-k)`, so comparing the two tails against one list of magnitudes would
-   * charge the right tail up to 1 % of a reference it never claimed.
+   * are computed for the double the caller actually passes: `fl(1 − 10^-k)` is not the exact
+   * complement of `fl(10^-k)`, so one list of magnitudes for both tails would charge the right
+   * one up to 1 % of a reference it never claimed.
    */
   it('Φ⁻¹ keeps its relative accuracy in the RIGHT tail, where the round trip is blind', () => {
     // Φ⁻¹ at p = fl(1 − 10^-k) and at p = fl(10^-k), k = 1..15, mpmath dps=60.
@@ -268,14 +249,13 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
     // Both tails at the CDF's own accuracy, which is what the doc claims for the Halley step.
     expect(worstRight).toBeLessThan(1e-14);
     expect(worstLeft).toBeLessThan(1e-14);
-    // And no asymmetry left worth naming: before the repair this ratio was 4.5e5.
+    // No asymmetry left worth naming: the unrepaired Halley step scores 4.5e5 here.
     expect(worstRight / Math.max(worstLeft, Number.MIN_VALUE)).toBeLessThan(100);
   });
 
   it('the round trip, stated on 1 − p, is exact in the right tail too', () => {
-    // The complementary form of the pin above: `Φ(−Q(p))` against `1 − p`, which is the
-    // quantity that carries information there. The original `|Φ(Q(p)) − p| / p` is left in
-    // place for the left tail, where it is the operative one.
+    // The complementary form of the pin above: `Φ(−Q(p))` against `1 − p`, the quantity that
+    // carries information there. `|Φ(Q(p)) − p| / p` stays the operative form for the left tail.
     let worst = 0;
     for (let k = 1; k <= 13; ++k) {
       const p = 1 - 10 ** -k;
@@ -309,8 +289,8 @@ describe('the law vocabulary canonicalizes what the renderer performs identicall
   });
 
   it('an inverted-limit triangular has no CDF at all, so the caller reads ⊥', () => {
-    // Measured: the two branches run in opposite directions and the "quantile" jumps DOWN
-    // by 132 at u = 0.5. Same disposition as §5.8's non-monotone pedal date component.
+    // The two branches run in opposite directions and the "quantile" jumps down by 132 at
+    // u = 0.5. Same disposition as §5.8's non-monotone pedal date component.
     expect(triangularLaw(30, -30, 0)).toBeNull();
     expect(triangularLaw(-30, 30, 0)).not.toBeNull();
   });
@@ -352,8 +332,8 @@ describe('CDFs and quantiles are mutually inverse', () => {
     });
 
   it('the triangular’s CDF is the inverse of the renderer’s own two-branch formula', () => {
-    // Including a mode OUTSIDE the limits, where the textbook triangular has no answer and
-    // the renderer plainly does (measured: values up to ~58 before clipping).
+    // Including a mode outside the limits, where the textbook triangular has no answer and the
+    // renderer plainly does — values up to ~58 before clipping.
     for (const mode of [-40, -30, -10, 0, 15, 30, 99]) {
       const law = triangularLaw(-30, 30, mode);
       expect(law).not.toBeNull();
@@ -373,14 +353,12 @@ describe('CDFs and quantiles are mutually inverse', () => {
   });
 
   /**
-   * W3 CAPITAL-3. The support is where the SAMPLER reaches, and for a mode outside the limits
-   * the rising branch runs to `u = 1`: the supremum is `lower + √(scale·belowMode)` and not the
-   * mode. Unclamped, the hull was the mode itself — so the true endpoint, where the integrand
-   * kinks, never entered `cdfBreakpoints` and GL-10 straddled it.
-   *
-   * The reference is the renderer's own two-branch formula (`RandomNumberProvider:335-353`)
-   * evaluated at the extreme `u`, not a textbook triangular's support: a textbook triangular
-   * has no answer here, which is the whole reason §5.9 rewrote the CDF.
+   * The support is where the sampler reaches, and for a mode outside the limits the rising
+   * branch runs to `u = 1`: the supremum is `lower + √(scale·belowMode)` and not the mode. A
+   * hull taken as the mode itself keeps the true endpoint, where the integrand kinks, out of
+   * `cdfBreakpoints`, and GL-10 straddles it. The reference is the renderer's own two-branch
+   * formula (`RandomNumberProvider:335-353`) evaluated at the extreme `u`; a textbook triangular
+   * has no answer here, which is why §5.9 rewrote the CDF.
    */
   it('the support is where the renderer’s sampler reaches, mode outside the limits included', () => {
     // `lo + √(u·s·a)` below the branch fraction, `hi − √((1−u)·s·b)` above it.
@@ -405,7 +383,7 @@ describe('CDFs and quantiles are mutually inverse', () => {
       expect(hi).toBeCloseTo(Math.max(upper, ...reach), 6);
       expect(lo).toBeCloseTo(Math.min(lower, ...reach), 6);
     }
-    // The two the report measured against the sampler, to the digit.
+    // The two measured against the sampler, to the digit.
     expect(supportOf(triangularLaw(-30, 30, 99) as ImprecisionLaw)[1]).toBeCloseTo(57.97727, 5);
     expect(supportOf(triangularLaw(0, 1, 1000) as ImprecisionLaw)[1]).toBeCloseTo(31.622777, 6);
   });
@@ -442,19 +420,19 @@ describe('CDFs and quantiles are mutually inverse', () => {
       const measured = w1AgainstDelta(lower, upper, mode);
       expect(Math.abs(measured - byQuantile(lower, upper, mode))).toBeLessThan(1e-5 * measured);
     }
-    // The overstated hull put GL-10 across the kink and cost 1.07e-2 relative on this one.
+    // An overstated hull puts GL-10 across the kink and costs 1.07e-2 relative on this one.
     expect(w1AgainstDelta(0, 1, 1000)).toBeCloseTo(21.081851067789195, 9);
     expect(w1AgainstDelta(-30, 30, 99)).toBeCloseTo(30.977094589809564, 9);
   });
 
   /**
-   * W3 MAJOR-2 / AD-55.3: what the `imprecision` epsilon figure is relative TO.
+   * AD-55.3: what the `imprecision` epsilon figure is relative to.
    *
    * `W₁ = ∫|F_A − F_B| dx` over the union support, so a small answer is a small difference of
-   * large integrals: the ABSOLUTE error is what the quadrature bounds, and the naive relative
-   * error is unbounded as the two laws approach each other. The record used to publish
-   * 3.6e-16 as a relative figure; two uniforms 6e-12 apart falsify that by eleven orders while
-   * the absolute error stays at one ulp of the support.
+   * large integrals: the absolute error is what the quadrature bounds, and the naive relative
+   * error is unbounded as the two laws approach each other. Read as a relative figure, two
+   * uniforms 6e-12 apart falsify it by eleven orders while the absolute error stays at one ulp
+   * of the support.
    */
   it('is machine-precise against the SUPPORT SCALE, and not against the answer', () => {
     // Closed forms derived from `W₁ = ∫₀¹|Q_A − Q_B| du`, not copied from this module.
@@ -489,18 +467,18 @@ describe('CDFs and quantiles are mutually inverse', () => {
       if (scale > 0) worstAgainstSupport = Math.max(worstAgainstSupport, error / scale);
     }
 
-    // The published figure, and the quantity it is a figure FOR.
+    // The published figure, and the quantity it is a figure for.
     expect(worstAgainstSupport).toBeLessThan(3e-16);
     expect(epsilonRecord().imprecision.relative).toBe(3e-16);
-    // The falsification, kept as an assertion so the caveat cannot quietly stop being true:
-    // the naive reading is five orders worse on this same family.
+    // The falsification, asserted so the caveat cannot quietly stop being true: the naive
+    // reading is five orders worse on this same family.
     expect(worstNaive).toBeGreaterThan(1e-6);
   });
 
   it('collapses a clip that is vacuous in TRUTH, which the overstated hull kept', () => {
     // T(0, 1, 1000) really reaches 31.62, so a clip at ±40 swallows nothing and the law is its
-    // own base — the AD-40.2 principle. With the hull claiming 1000 the wrapper survived and
-    // `lawsEqual(base, clipped)` was false for two laws that are equal.
+    // own base — the AD-40.2 principle. A hull claiming 1000 keeps the wrapper, and
+    // `lawsEqual(base, clipped)` then says false for two laws that are equal.
     const base = triangularLaw(0, 1, 1000) as never;
     expect(clippedLaw(base, -40, 40)).toBe(base);
     // A clip that really does bite is still a clip.
@@ -512,7 +490,6 @@ describe('the Gaussian is the AD-14iv mixture, not a truncated normal', () => {
   it('limit.lower === limit.upper gives weight 1 — the untruncated law', () => {
     expect(gaussianEscapeWeight(gaussianLaw(10, 0, 0) as never)).toBe(1);
     expect(gaussianEscapeWeight(gaussianLaw(10, 5, 5) as never)).toBe(1);
-    // Revision 1's defect: full Gaussian noise against none, reported as distance 0.
     expect(wasserstein1(gaussianLaw(10, 0, 0), DELTA_ZERO)).toBeGreaterThan(1);
   });
 
@@ -526,8 +503,8 @@ describe('the Gaussian is the AD-14iv mixture, not a truncated normal', () => {
   });
 
   it('the escape weight is q^10000, and the window where it is neither 0 nor 1 is real', () => {
-    // Measured against the renderer in the probe: with σ = 10 and limits ±0.001 the escape
-    // fires on 46.4 % of draws. q = 1 − (Φ(h/σ) − Φ(−h/σ)).
+    // Measured against the renderer: with σ = 10 and limits ±0.001 the escape fires on 46.4 %
+    // of draws. q = 1 − (Φ(h/σ) − Φ(−h/σ)).
     const law = gaussianLaw(10, -0.001, 0.001) as never;
     const inside = standardNormalCdf(0.0001) - standardNormalCdf(-0.0001);
     expect(gaussianEscapeWeight(law)).toBeCloseTo(Math.pow(1 - inside, 10000), 12);
@@ -618,8 +595,8 @@ describe('W₁ against closed forms', () => {
 
   it('resolves a DOUBLE crossing inside one piece — the M7 hazard, in this family', () => {
     // Two CDFs whose difference crosses zero twice between structural breakpoints: a wide
-    // uniform against a narrow triangular sharing a mean. Without the quadratic vertex the
-    // lobes cancel and the cell integrates low.
+    // uniform against a narrow triangular sharing a mean. Without the quadratic vertex the lobes
+    // cancel and the cell integrates low.
     const a = uniformLaw(-30, 30);
     const b = triangularLaw(-30, 30, 0) as ImprecisionLaw;
     const measured = wasserstein1(a, b);

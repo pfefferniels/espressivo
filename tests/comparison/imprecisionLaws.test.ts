@@ -1,14 +1,12 @@
 /**
  * The imprecision reader — DESIGN.md §5.9, AD-14, AD-46, AD-47.
  *
- * **Every renderer claim here is measured through `performMsm`**, per AD-43.1's tightened
- * standard: the harness performs a real MSM against a real MPM and reads the millisecond
- * dates back. Nothing rests on a map-level probe or on arithmetic done by hand.
+ * Every renderer claim here is measured through `performMsm` (AD-43.1): the harness performs a
+ * real MSM against a real MPM and reads the millisecond dates back. Nothing rests on a map-level
+ * probe or on arithmetic done by hand.
  *
- * The decisive form of most of these tests is BIT-IDENTITY against an explicit control — a
- * document with the attribute absent against one that writes the value the reader claims it
- * coerces to. That is stronger than asserting a shape, because it fails on any difference at
- * all rather than on a difference big enough to notice.
+ * Most cases take the form of BIT-IDENTITY against an explicit control — a document with the
+ * attribute absent against one that writes the value the reader claims it coerces to.
  *
  * `@seed` is carried on every i.i.d. distribution so the render is reproducible (measured: a
  * per-distribution `@seed` gives identical output across runs), and every note sits at its own
@@ -133,7 +131,6 @@ describe('§5.9’s degenerate table is one rule: an absent parameter reads as 0
   });
 
   it('uniform with ONE limit absent is U(limit, 0) — the row §5.9 does not state', () => {
-    // Decisive: BIT-identical to the document that writes the coerced value explicitly.
     const absent = performedDates(UNIFORM('limit.lower="-30" milliseconds.timingBasis="300"'));
     const explicit = performedDates(
       UNIFORM('limit.lower="-30" limit.upper="0" milliseconds.timingBasis="300"'),
@@ -309,8 +306,7 @@ describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () 
   });
 
   it('@seed destroys a distribution.list too — setSeed clears the list itself', () => {
-    // Found by the registry's inventory partition rather than by looking: `series` is not a
-    // cache for a list provider, it IS the list, and setSeed empties it.
+    // `series` is not a cache for a list provider, it IS the list, and setSeed empties it.
     const values = '<measurement value="-40"/><measurement value="0"/><measurement value="40"/>';
     const seeded = `<distribution.list date="0.0" seed="99" milliseconds.timingBasis="300">${values}</distribution.list>`;
     const plain = `<distribution.list date="0.0" milliseconds.timingBasis="300">${values}</distribution.list>`;
@@ -322,19 +318,12 @@ describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () 
 
   it('reads the list’s @value attributes themselves, dropping only what will not parse', () => {
     /**
-     * A closed oracle gap.
+     * The only place a VALUE is read back out of a `<distribution.list>`. Measured: making the
+     * reader return `value * 7 + 3` for every measurement left the whole repository green.
      *
-     * Nothing in the tree read a VALUE back out of a `<distribution.list>`. The two tests
-     * around this one ask whether the law is ⊥ and whether the performed dates are finite;
-     * `an EMPTY distribution.list` asks about the empty case. Measured: making the reader
-     * return `value * 7 + 3` for every measurement left all 6064 tests in the repository
-     * green — the list is the one law whose whole content is the numbers written in the
-     * document, and the numbers were not checked anywhere.
-     *
-     * So: the parseable `@value`s, ascending (`listLaw` sorts), and the three ways a
-     * measurement contributes nothing — no attribute at all, text that is not a number, and
-     * a non-finite literal. `parseFloat`'s prefix rule is pinned too, because it is what the
-     * reader uses and it is the half of the behaviour a reader would not guess.
+     * Asserted: the parseable `@value`s ascending (`listLaw` sorts), and the three ways a
+     * measurement contributes nothing — no attribute, text that is not a number, a non-finite
+     * literal. `parseFloat`'s prefix rule is pinned too, because it is what the reader uses.
      */
     const law = lawOf(
       '<distribution.list date="0.0" milliseconds.timingBasis="300">' +
@@ -401,7 +390,6 @@ describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
   it('a <style> WITHOUT @name.ref is not an entry at all — AD-35.4, one level lower', () => {
     const body = UNIFORM('limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"');
     expect(performedDates(`${body}<style date="720.0"/>`)).toEqual(performedDates(body));
-    // The reader agrees: one span, no gap.
     expect(readFor(`${body}<style date="720.0"/>`).spans).toHaveLength(1);
     expect(readFor(`${body}<style date="720.0" name.ref="none"/>`).spans).toHaveLength(1);
     expect(spanAt(readFor(`${body}<style date="720.0" name.ref="none"/>`)).endTicks).toBe(720);
@@ -436,7 +424,6 @@ describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
       'limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"',
     );
     expect(performedDates(both)).toEqual(performedDates(secondAlone));
-    // The reader drops the empty span and says why.
     const reading = readFor(both);
     expect(reading.spans).toHaveLength(1);
     expect(reading.notes.some((note) => note.detail.includes('performs nothing'))).toBe(true);
@@ -614,8 +601,8 @@ describe('the dynamics and toneduration domains read the same laws', () => {
     const neutral = performedVelocities('');
     expect(perturbed.map(Number)).not.toEqual(neutral.map(Number));
     // NUMERICALLY equal, not byte-equal: a δ₀ map still touches the attribute and the
-    // write-back re-serializes it ("100.0" -> "100"), which AD-47 recorded as a byte-level
-    // fingerprint with no numeric content.
+    // write-back re-serializes it ("100.0" -> "100") — a byte-level fingerprint with no
+    // numeric content (AD-47).
     expect(performedVelocities(UNIFORM('milliseconds.timingBasis="300"')).map(Number)).toEqual(
       neutral.map(Number),
     );

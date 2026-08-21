@@ -1,13 +1,10 @@
 /**
  * §7's aggregation and AD-19's closing table.
  *
- * Two disciplines carried over from the waves below. Ruzzo–Tompa is tested against a BRUTE
- * FORCE enumeration of every subsequence rather than against expected segment lists, for the
- * reason `eventAlignment.test.ts` gives about the DP: asserting "these are the segments" pins
- * one answer out of possibly several and passes on an implementation that optimizes the wrong
- * thing. And the table's closure is asserted on synthetic densities whose exact totals are
- * known by construction, so the residual is checked against arithmetic rather than against
- * itself.
+ * Ruzzo–Tompa is tested against a brute-force enumeration of every subsequence rather than
+ * against expected segment lists: asserting "these are the segments" pins one answer out of
+ * possibly several and passes on an implementation that optimizes the wrong thing. The table's
+ * closure is asserted on synthetic densities whose exact totals are known by construction.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -73,7 +70,7 @@ function bruteForceMaximalRuns(
     for (let i = start; i <= end; ++i) total += numberAt(scores, i, 'the score sequence');
     return total;
   };
-  /** (1) every PROPER subsequence scores strictly lower. */
+  /** (1) every proper subsequence scores strictly lower. */
   const satisfiesLowerSubsequences = (start: number, end: number): boolean => {
     const score = sum(start, end);
     for (let i = start; i <= end; ++i)
@@ -90,12 +87,11 @@ function bruteForceMaximalRuns(
       const score = sum(start, end);
       if (!(score > 0)) continue;
       if (!satisfiesLowerSubsequences(start, end)) continue;
-      // (2) no proper SUPERSEQUENCE that itself satisfies (1) scores at least as much.
+      // (2) no proper supersequence that itself satisfies (1) scores at least as much.
       //
-      // The qualifier "that itself satisfies (1)" is load-bearing and the first version of
-      // this reference omitted it, which made it disagree with the algorithm on [1,-2,3]:
-      // there [0,2] scores 2 against [0,0]'s 1, but [0,2] contains [2,2] scoring 3, so it is
-      // not a competitor and [0,0] survives. Ruzzo & Tompa's definition, not a paraphrase.
+      // The qualifier "that itself satisfies (1)" is load-bearing. On [1,-2,3], [0,2] scores 2
+      // against [0,0]'s 1, but [0,2] contains [2,2] scoring 3, so it is not a competitor and
+      // [0,0] survives. Ruzzo & Tompa's definition, not a paraphrase.
       let dominated = false;
       for (let i = 0; i <= start && !dominated; ++i)
         for (let j = end; j < scores.length; ++j) {
@@ -176,8 +172,8 @@ describe('§7.2: D = Σ ω_k d_k', () => {
     const densities = [flat('tempo', 0, 4, 3), flat('dynamics', 0, 4, 5)];
     const weights: DimensionWeights = { ...defaultWeights(), dynamics: 0 };
     expect(aggregateDistance(densities, weights)).toBeCloseTo(12, 12);
-    // The dimension is still computed — AD-19's whole point, and what makes §7.4's
-    // dimension-selective recipe a recipe rather than a deletion.
+    // The dimension is still computed (AD-19), which is what makes §7.4's dimension-selective
+    // recipe a recipe rather than a deletion.
     expect(elementAt(densities, 1, 'the dimension densities').distance).toBeCloseTo(20, 12);
   });
 
@@ -267,9 +263,9 @@ describe('§7.3: the segment pass', () => {
   });
 
   it('ranks by mass descending, then earliest start, then shortest', () => {
-    // The troughs are deliberately LONGER than the peaks: Ruzzo–Tompa merges two runs across a
-    // trough whenever the trough costs less than the second run gains, so a shallow trough
-    // would have produced one segment and tested nothing about ranking.
+    // The troughs are longer than the peaks on purpose: Ruzzo–Tompa merges two runs across a
+    // trough that costs less than the second run gains, so a shallow one would produce a single
+    // segment and test nothing about ranking.
     const density = stepped('tempo', [
       [0, 1, 6],
       [1, 7, 0],
@@ -290,10 +286,10 @@ describe('§7.3: the segment pass', () => {
   });
 
   it('refines a boundary to the ROOT of p_D − τ_D, not to the cell edge (AD-19/M9b)', () => {
-    // ONE long cell whose density ramps through the threshold at t = 4. A density is
-    // non-negative by construction (it is |Δ|/jnd), so the ramp is `t/4` rather than
-    // something that changes sign. Without root refinement the only available boundaries are
-    // the cell edges and the segment would start four quarters early, at 0.
+    // One long cell whose density ramps through the threshold at t = 4. A density is
+    // non-negative by construction (|Δ|/jnd), so the ramp is `t/4` rather than something that
+    // changes sign. Without root refinement the only boundaries available are the cell edges,
+    // and the segment starts four quarters early at 0.
     const ramp = (quarters: number): number => quarters / 4;
     const density: DimensionDensity = {
       dimension: 'tempo',
@@ -513,15 +509,11 @@ describe('C11: the equivalence block', () => {
   });
 
   /**
-   * W3 MAJOR-4: it is a FRACTION, and a dimension evaluated over several part scopes carries
-   * one overlapping cell list per scope.
-   *
-   * Summing each cell's own length counted the same quarter once per part, so three parts
-   * deviating everywhere reported 3.0 — a caller-visible value outside `[0, 1]`, and §7.3's
-   * mandated sentence would have printed "300 % of the window". The only test that touched the
-   * field used ONE synthetic scope and pinned 0.5, which is right for one scope and blind to
-   * the case the real corpus is made of: telemann's tempo row measured 3.0000 on the vendored
-   * documents and albert's dynamics likewise.
+   * The field is a fraction, and a dimension evaluated over several part scopes carries one
+   * overlapping cell list per scope. Summing each cell's own length counts the same quarter once
+   * per part, so three parts deviating everywhere report 3.0 — outside `[0, 1]`, and §7.3's
+   * mandated sentence would print "300 % of the window". A single synthetic scope pinning 0.5 is
+   * blind to it: on the vendored documents telemann's tempo row measures 3.0000.
    */
   it('stays a fraction when a dimension is evaluated over several part scopes', () => {
     const threeParts: DimensionDensity = {
@@ -548,8 +540,8 @@ describe('C11: the equivalence block', () => {
     );
     expect(block.byDimension.tempo.aboveThresholdLengthFraction).toBe(1);
 
-    // And it is not clamped into range: a dimension above threshold on HALF the window still
-    // reports 0.5 with three scopes, so the repair is a measure and not a `Math.min`.
+    // Not clamped into range: a dimension above threshold on half the window still reports 0.5
+    // with three scopes, so this is a measure and not a `Math.min`.
     const halfAbove: DimensionDensity = {
       dimension: 'pedal',
       cells: [0, 1, 2].flatMap(() => [

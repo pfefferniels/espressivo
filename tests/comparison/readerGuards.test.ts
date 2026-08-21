@@ -1,54 +1,36 @@
 /**
- * Two reader guards the suite did not pin, and the negative controls that found them.
+ * Two reader guards, and the negative controls that found the suite blind to them.
  *
- * Both were found the same way, during the loop-shape rewrite of `src/comparison`: each
- * `filterMap` rewrite was checked by replacing its rejection test with `if (false) return null`,
- * so that every malformed child survived into the reader's output, and running
- * `tests/comparison`. Two of those controls came back **green** — 1321 and 1336 tests passing
- * with the guard gone — which under this campaign's evidence standard is a finding about the
- * oracle, not a formality passed.
- *
- * The root cause is the same in both cases and is not subtle: **every document the suite builds
- * writes well-formed numerals**, and so does the vendored corpus, so no test ever handed either
- * reader a child its guard could reject. The nearest existing tests are about the arithmetic of
- * well-formed input — `measureGrid.test.ts` builds its grid from two integers, and
- * `accentuation.test.ts` sweeps `accentuationAt` against the renderer over patterns whose every
- * `@beat` is a numeral.
+ * Deleting each guard — replacing its rejection test with `if (false) return null`, so every
+ * malformed child survives into the reader's output — left `tests/comparison` green. Every
+ * document the suite builds writes well-formed numerals, and so does the vendored corpus, so no
+ * test ever handed either reader a child its guard could reject.
  *
  * ## 1. `readTimeSignatures` — `msm.ts`
  *
- * `readComparisonMsm`'s docstring states the rule: *"A `<timeSignature>` with an unusable
- * `@numerator`/`@denominator` is DROPPED rather than repaired: the measure grid is a reporting
- * product, and a measure length derived from `NaN` would put `NaN` into every position it
- * labels."*
- *
- * What makes the gap worth closing rather than noting is where an unguarded entry LANDS.
- * `measureGrid` skips a span whose length is not positive, so a `NaN` entry quietly contributes
- * no measures — but it is still in `timeSignatures`, and two published things read that array
- * directly:
+ * A `<timeSignature>` with an unusable `@numerator`/`@denominator` is DROPPED rather than
+ * repaired. `measureGrid` skips a span whose length is not positive, so a `NaN` entry
+ * contributes no measures — but it is still in `timeSignatures`, and two published things read
+ * that array directly:
  *
  * - {@link beatGridOf} takes the FIRST entry as the accentuation phase anchor (AD-12). A `NaN`
- *   numerator there is not a dropped bar; it is a phase anchor that makes every accentuation
- *   position `NaN`, in a dimension that reports a distance.
- * - `compare`'s `estimate-degradation` note counts `timeSignatures.length`, so a malformed
- *   entry would make a single-signature score report itself as a multi-signature one and claim
- *   a degradation it does not have.
+ *   numerator there is a phase anchor that makes every accentuation position `NaN`, in a
+ *   dimension that reports a distance.
+ * - `compare`'s `estimate-degradation` note counts `timeSignatures.length`, so a malformed entry
+ *   makes a single-signature score report itself as a multi-signature one.
  *
  * ## 2. `readAccentuationPattern` — `accentuationCurve.ts`
  *
- * Its docstring states that rule too: *"an `<accentuation>` with no `@beat` is skipped exactly
- * as the parser skips it."*
+ * An `<accentuation>` with no `@beat` is skipped exactly as the parser skips it. A surviving
+ * `NaN`-beat point poisons the dimension through {@link accentuationAt}'s backwards scan: both
+ * of that scan's tests fail against `NaN` — `beatPosition === point.beat` and
+ * `beatPosition > point.beat` are false — so the scan neither returns nor breaks, it records
+ * `found = point` and walks on. Reach index 0 that way and `found` is the `NaN` point, whose
+ * `(beatPosition − found.beat)` makes the contribution `NaN`. The early
+ * `beatPosition < head(points).beat` return does not save it either, for the same reason.
  *
- * A surviving `NaN`-beat point poisons the dimension rather than perturbing it, and it does so
- * through {@link accentuationAt}'s backwards scan. Both of that scan's tests fail against
- * `NaN` — `beatPosition === point.beat` and `beatPosition > point.beat` are false — so the
- * scan neither returns nor breaks, it just records `found = point` and walks on. Reach index 0
- * that way and `found` is the `NaN` point, whose `(beatPosition − found.beat)` makes the
- * returned contribution `NaN`. The early `beatPosition < head(points).beat` return does not
- * save it either, for the same reason: a comparison against `NaN` is false.
- *
- * Each case below is therefore asserted at the reader's own output AND at the consumer that
- * would carry the poison into a report field.
+ * Each case is therefore asserted at the reader's own output AND at the consumer that would
+ * carry the poison into a report field.
  */
 import { describe, it, expect } from 'vitest';
 import { Builder } from '../../src/xml/XomTypes.js';
@@ -114,8 +96,8 @@ describe('readTimeSignatures drops what it cannot use', () => {
   });
 
   it('anchors the phase to the first USABLE entry, not the first entry', () => {
-    // The malformed entry is earlier in document order and at an earlier date, so a reader that
-    // kept it would hand `beatGridOf` a NaN numerator.
+    // The malformed entry is earlier in document order and at an earlier date, so a reader
+    // that kept it would hand `beatGridOf` a NaN numerator.
     const msm = readOf(
       '<timeSignature date="0.0" numerator="?" denominator="4"/>',
       '<timeSignature date="1440.0" numerator="7" denominator="8"/>',
@@ -130,8 +112,6 @@ describe('readTimeSignatures drops what it cannot use', () => {
   });
 
   it('does not let a malformed entry inflate the signature COUNT', () => {
-    // `compare` reports an `estimate-degradation` note when `timeSignatures.length > 1`, so an
-    // entry that survives here turns a single-signature score into a degraded one.
     const msm = readOf(GOOD, '<timeSignature date="2880.0" numerator="four" denominator="4"/>');
     expect(msm.timeSignatures).toHaveLength(1);
   });
@@ -187,9 +167,9 @@ describe('readAccentuationPattern drops an <accentuation> with no usable @beat',
   });
 
   it('leaves the contribution finite where an unguarded NaN point would poison it', () => {
-    // The sweep is the point: with the beat-less child kept, `accentuationAt` walks past it
-    // (neither of its two tests holds against NaN), reaches index 0 with `found` set to the NaN
-    // point, and returns NaN from `beatPosition − found.beat`.
+    // With the beat-less child kept, `accentuationAt` walks past it (neither of its two tests
+    // holds against NaN), reaches index 0 with `found` set to the NaN point, and returns NaN
+    // from `beatPosition − found.beat`.
     const pattern = defOf('<accentuation value="99"/><accentuation beat="1" value="20"/>');
     const sampled = [0.5, 1, 1.5, 2, 3.25, 4, 4.99].map((beat) => accentuationAt(pattern, beat));
     expect(sampled.every((value) => Number.isFinite(value))).toBe(true);
@@ -198,9 +178,7 @@ describe('readAccentuationPattern drops an <accentuation> with no usable @beat',
   });
 
   it('reports the neutral 0 when the ONLY child is unusable', () => {
-    // An empty point list contributes nothing, which is the same answer an absent map gives —
-    // where a surviving NaN point would have made `head(points).beat` NaN and defeated the
-    // `beatPosition < head(points).beat` early return.
+    // An empty point list contributes nothing, which is the answer an absent map gives too.
     const pattern = defOf('<accentuation value="99"/>');
     expect(pattern.points).toEqual([]);
     expect(accentuationAt(pattern, 2.5)).toBe(0);

@@ -1,29 +1,22 @@
 /**
  * `coveringSegmentAt` — the half-open rule at the one tick where it is decidable.
  *
- * The three `*SegmentAt` readers that share `segments.ts` used to be linear scans and are now a
- * binary search. Two negative controls on that change were run and one of them came back
- * **green**: relaxing the containment test from `ticks < endTicks` to `ticks <= endTicks` left
- * all 1343 tests in `tests/comparison` passing.
+ * A negative control on the three `*SegmentAt` readers of `segments.ts` came back green:
+ * relaxing the containment test from `ticks < endTicks` to `ticks <= endTicks` left every test
+ * in `tests/comparison` passing.
  *
- * The root cause, measured rather than guessed. On a CONTIGUOUS timeline the relaxation is
- * invisible: at `ticks === segment.endTicks` the next segment starts at exactly that tick, so
- * `upperBoundBy − 1` lands on the NEXT segment and the expired one is never the candidate. The
- * two spellings can only disagree where a segment is followed by a **gap** — and gaps exist in
- * exactly two of these curves, opened by an instruction the renderer SKIPS. Nothing in the suite
- * evaluated a curve at the first tick of such a gap.
+ * On a CONTIGUOUS timeline the relaxation is invisible: at `ticks === segment.endTicks` the next
+ * segment starts at exactly that tick, so `upperBoundBy − 1` lands on the NEXT segment and the
+ * expired one is never the candidate. The two spellings can only disagree where a segment is
+ * followed by a gap — and gaps exist in exactly two of these curves, opened by an instruction
+ * the renderer SKIPS. Nothing else in the suite evaluates a curve at the first tick of one.
  *
  * That tick is not hypothetical. `accentuationDistance` and `rubatoDistance` call their
- * `*SegmentAt` at `cellStart`, and a cell starts at a grid breakpoint — and every skipped
- * instruction contributes its own date as a breakpoint precisely so the gap it opens gets a cell
- * boundary. So the first tick of a gap IS a probe point, on every comparison of a document with
- * a skipped instruction in it. Under `<=` the expired segment answers there, which for
- * accentuation means the cell inherits the previous span's `⊥`-ness (`accentuationDistance`
- * reads `?.pattern.kind === 'bottom'` off exactly that call) and reports a `⊥` length no
- * renderer performs.
- *
- * The cases below therefore probe each curve at a segment's own `endTicks` with a gap after it,
- * and at the two non-finite ticks the module header reasons about.
+ * `*SegmentAt` at `cellStart`, a cell starts at a grid breakpoint, and every skipped instruction
+ * contributes its own date as a breakpoint precisely so the gap it opens gets a cell boundary.
+ * Under `<=` the expired segment answers there, which for accentuation means the cell inherits
+ * the previous span's `⊥`-ness (`accentuationDistance` reads `?.pattern.kind === 'bottom'` off
+ * exactly that call) and reports a `⊥` length no renderer performs.
  */
 import { describe, it, expect } from 'vitest';
 import { readComparisonPair, readScopeMapViews } from '../../src/comparison/document.js';
@@ -104,8 +97,8 @@ const pedalCurve = () => {
     readComparisonPair({
       a: doc(
         'movementMap',
-        // The leading <style> is what makes the movement at 0 entry ONE, so that
-        // `getPreviousPosition`'s `j > 0` bound can reach it — see below.
+        // The leading <style> makes the movement at 0 entry ONE, so that
+        // `getPreviousPosition`'s `j > 0` bound can reach it.
         '<style date="0.0" name.ref="x"/>' +
           '<movement date="0.0" position="1.0"/>' +
           // A SKIPPED movement: no @position, and its predecessor carries no @transition.to to
@@ -129,8 +122,8 @@ const pedalCurve = () => {
 describe('the segment lookup is half-open: [start, end)', () => {
   it('accentuation: the span ends AT its endTicks, and the gap after it has no segment', () => {
     const curve = accentuationCurve();
-    // The shape the rest of this case rests on: a span [0, 720) and a span [1440, ∞), with the
-    // skipped instruction's date opening a gap between them.
+    // A span [0, 720) and a span [1440, ∞), with the skipped instruction's date opening a gap
+    // between them — the shape the rest of this case rests on.
     expect(curve.segments.map((segment) => [segment.startTicks, segment.endTicks])).toEqual([
       [0, 720],
       [1440, Number.POSITIVE_INFINITY],

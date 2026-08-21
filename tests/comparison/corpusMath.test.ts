@@ -1,19 +1,9 @@
 /**
  * §8's corpus mathematics: Lance–Williams, PAM, silhouette, Jacobi, classical MDS, seriation.
  *
- * Every algorithm here is checked against something that is NOT it:
- *
- * - `single` and `complete` against a brute-force min/max over member pairs, on random matrices;
- * - `ward.D2` against Ward's own closed form on Euclidean data,
- *   `height = √(2·n_I·n_J/(n_I+n_J))·|c_I − c_J|`, which shares no line with the recurrence;
- * - `pam` against an exhaustive search over every `k`-subset;
- * - `silhouette` against the formula, evaluated independently;
- * - `jacobiEigen` against `A = V Λ Vᵀ` and against `VᵀV = I`;
- * - `classicalMds` against the distances it is supposed to reproduce, on a Euclidean point set.
- *
- * Asserting the outputs a first run happened to produce would pin this implementation rather
- * than the mathematics, which is the discipline `quadrature.ts`'s Newton re-derivation and
- * `eventAlignment.ts`'s brute-force enumeration established.
+ * Every algorithm here is checked against an oracle that shares no line with it: a definition, a
+ * closed form, a brute-force enumeration. Asserting the outputs a first run happened to produce
+ * would pin this implementation rather than the mathematics.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -36,12 +26,8 @@ import { elementAt, numberAt } from '../../src/prelude/index.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Checked random access into the three flat arrays this file spends its time in.
- *
- * §8's matrices are `n × n` stored as one row-major `number[]`, so every read here is a
- * computed index rather than an iteration, and a slip in the arithmetic produces `NaN` several
- * assertions downstream rather than a failure at the line that made it. These name the array
- * and the bound instead; the `what` strings are what a `RangeError` will read.
+ * Checked random access into the flat `n × n` row-major arrays §8 uses. Every read here is a
+ * computed index, and an unchecked slip produces `NaN` several assertions downstream.
  */
 const cell = (matrix: DistanceMatrix, row: number, column: number): number =>
   numberAt(matrix.values, row * matrix.n + column, `a ${String(matrix.n)}-item distance matrix`);
@@ -61,12 +47,7 @@ function lcg(seed: number): () => number {
   };
 }
 
-/**
- * `matrix` with its items reordered by `order` — entry `(i, j)` becomes `(order[i], order[j])`.
- *
- * Hoisted from the three byte-identical copies that stood in `AD-25.2`, in the silhouette
- * permutation test and in `AD-67.1`; each of them indexed `order` and `values` by hand.
- */
+/** `matrix` with its items reordered by `order` — entry `(i, j)` becomes `(order[i], order[j])`. */
 const permute = (matrix: DistanceMatrix, order: readonly number[]): DistanceMatrix => ({
   n: matrix.n,
   values: Array.from({ length: matrix.n * matrix.n }, (_unused, index) =>
@@ -78,12 +59,7 @@ const permute = (matrix: DistanceMatrix, order: readonly number[]): DistanceMatr
   ),
 });
 
-/**
- * A Fisher–Yates permutation of `0 … n − 1`, drawn from `next`.
- *
- * Three tests built this inline with a destructuring swap; the draws and the swap order are
- * unchanged, so the permutations each of them sees are the ones it saw before.
- */
+/** A Fisher–Yates permutation of `0 … n − 1`, drawn from `next`. */
 const shuffleOf = (n: number, next: () => number): readonly number[] => {
   const order = Array.from({ length: n }, (_unused, index) => index);
   const what = 'the permutation under construction';
@@ -99,17 +75,13 @@ const shuffleOf = (n: number, next: () => number): readonly number[] => {
 /**
  * Whether an order really rearranges anything.
  *
- * [NEGATIVE CONTROL, MEASURED] Every permutation test below counts `cases` and asserts an
- * invariance over them — "0 disagreements", "one answer" — and an order that is the IDENTITY
- * satisfies all of them by comparing a run against itself. Stopping the shuffle loop before its
- * first iteration, so `shuffleOf` returns `0 … n − 1` unchanged, left all 35 tests in this file
- * GREEN: the `cases > 500` guards count comparisons, not rearrangements, and nothing here
- * distinguished the two. The inline shuffles this helper replaced had the same gap.
+ * Every permutation test below asserts an invariance over `cases`, and an identity order
+ * satisfies all of them by comparing a run against itself. Negative control: returning
+ * `0 … n − 1` unchanged from `shuffleOf` leaves every test in this file green, because the
+ * `cases > 500` guards count comparisons rather than rearrangements.
  *
- * The counts are pinned exactly rather than as a fraction: the seeds are fixed, so each is a
- * constant, and an exact figure reds on a single identity draw where a fraction test would
- * absorb it. At `n ≥ 12` every draw rearranges; at `n = 4..7` four of 600 do not, which is why
- * that one pins 596 rather than demanding all of them.
+ * The counts are pinned exactly rather than as a fraction, so a single identity draw reds. At
+ * `n ≥ 12` every draw rearranges; at `n = 4..7` four of 600 do not.
  */
 const rearranges = (order: readonly number[]): boolean =>
   order.some((index, position) => index !== position);
@@ -181,7 +153,7 @@ describe('Lance–Williams agglomeration', () => {
         const { merges } = agglomerate(matrix, linkage, labels);
 
         // Each merge's height must be the min (or max) distance between the two clusters'
-        // MEMBERS, which is the definition the recurrence is a shortcut for.
+        // members, the definition the recurrence is a shortcut for.
         for (const [index, merge] of merges.entries()) {
           const left = leavesOf(merges, n, merge.left);
           const right = leavesOf(merges, n, merge.right);
@@ -263,7 +235,7 @@ describe('Lance–Williams agglomeration', () => {
 });
 
 describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-equivariant', () => {
-  // A tie-RICH matrix: every distance equal, which is what a corpus of `both-neutral`
+  // A tie-rich matrix: every distance equal, which is what a corpus of `both-neutral`
   // dimensions or a duplicated document produces. Under index-keyed rules this is exactly where
   // a permutation changes the merge structure rather than relabeling it.
   const n = 5;
@@ -306,19 +278,13 @@ describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-
   });
 
   /**
-   * W4 CAPITAL-2, at the layer that had it: PAM's own tie rule, over EVERY permutation.
-   *
-   * The dendrogram test above is the equivariance claim for `agglomerate`; `pam` had no such
-   * test, and the corpus-level P-C6 test uses a tie-free corpus with one fixed permutation and
-   * no `k`, so `medoids` was null there. That is the exact blind spot the shipped defect sat in.
+   * The corpus-level P-C6 test uses a tie-free corpus with one fixed permutation and no `k`, so
+   * `medoids` is null there and PAM's tie rule is never reached.
    *
    * The matrix is two clean blocks with an interior distance of 0, so `{one from each block}`
-   * ties with every other such pair and there are genuinely several cost-equal optima. Labels
-   * are deliberately NOT in index order — the whole failure was a key that was label-VALUED but
-   * index-ORDERED, which reads as a label rule and is not one, and a label list already sorted
-   * by index would hide it. All 24 permutations, and the claim is about `clusters` as much as
-   * `medoids`: a caller who gets a stable medoid set and unstable cluster assignments is no
-   * better off.
+   * ties with every other such pair. The labels are not in index order: the failure mode is a
+   * key that is label-valued but index-ordered, which reads as a label rule and is not one, and
+   * an index-sorted label list hides it.
    */
   it('names the same medoids and the same clusters under every permutation of a tie-rich corpus', () => {
     const size = 4;
@@ -348,8 +314,8 @@ describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-
       const shuffled = pam(permute(blocks, order), 2, relabel(labels, order));
       if (shuffled === null) throw new Error('pam refused a 4-item corpus at k = 2');
       expect(shuffled.exhaustive).toBe(true);
-      // Both products are read back in the caller's OWN labels, which is the only frame in
-      // which two differently-ordered corpora can be compared at all.
+      // Read back in the caller's own labels, the only frame two differently-ordered corpora
+      // can be compared in.
       const own = (item: number) =>
         elementAt(labels, elementAt(order, item, 'the permutation'), 'the label list');
       const medoids = shuffled.medoids.map(own);
@@ -362,9 +328,9 @@ describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-
       answers.add(JSON.stringify({ medoids, clusters }));
     }
 
-    // [MEASURED] One answer, not two. Before the sort landed in `exhaustiveMedoids`' key this
-    // set held TWO: `{L00,L01}` under 20 permutations and `{L00,L03}` under the other 4, each
-    // reported with `exhaustive: true` — two different global optima for the same corpus.
+    // One answer, not two. Without the sort in `exhaustiveMedoids`' key this set holds two:
+    // `{L00,L01}` under 20 permutations and `{L00,L03}` under the other 4, each reported with
+    // `exhaustive: true` — two different global optima for the same corpus.
     expect([...answers]).toHaveLength(1);
     const only = elementAt([...answers], 0, 'the set of distinct answers');
     expect((JSON.parse(only) as { readonly medoids: readonly string[] }).medoids).toEqual([
@@ -374,8 +340,7 @@ describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-
   });
 
   it('is non-vacuous: the tie-rich matrix really does have cost-equal optima', () => {
-    // Without this the test above would pass on a corpus with a unique optimum, where no tie
-    // rule is ever consulted and permutation-invariance is free.
+    // On a corpus with a unique optimum no tie rule is consulted and invariance is free.
     const size = 4;
     const blocks: DistanceMatrix = {
       n: size,
@@ -439,9 +404,8 @@ describe('PAM', () => {
 
   it('[MEASURED] BUILD + SWAP alone misses, which is why the exhaustive pass exists', () => {
     // The heuristic's own answer, before the exhaustive pass replaces it: over 200 random
-    // corpora of 4–7 items it landed above the optimum 12 times, worst excess 41 %. A medoid is
-    // the one product whose value is naming a real performer, so that is not a rounding matter.
-    // Reproduced here on the single worst case the sweep found, so the figure has a witness.
+    // corpora of 4–7 items it lands above the optimum 12 times, worst excess 41 %. A medoid is
+    // the one product whose value is naming a real performer. This is the sweep's worst case.
     const matrix: DistanceMatrix = {
       n: 4,
       values: [0, 6.7, 8.2, 4.8, 6.7, 0, 2.7, 6.7, 8.2, 2.7, 0, 7.7, 4.8, 6.7, 7.7, 0],
@@ -458,7 +422,7 @@ describe('PAM', () => {
     const result = pam(matrix, 4, labelsOf(60));
     expect(result?.exhaustive).toBe(false);
     expect(result?.medoids).toHaveLength(4);
-    // Still SWAP-locally optimal: no single exchange improves it, which is PAM's own promise.
+    // Still SWAP-locally optimal: no single exchange improves it, PAM's own promise.
     const medoids = result?.medoids ?? [];
     const cost = result?.cost ?? 0;
     for (const position of medoids.keys())
@@ -481,7 +445,6 @@ describe('PAM', () => {
     const result = pam(matrix, 2, labelsOf(6));
     expect(result).not.toBeNull();
     const clusters = result?.clusters ?? [];
-    // The two obvious groups, whichever medoids were chosen.
     expect(clusters[0]).toBe(clusters[1]);
     expect(clusters[1]).toBe(clusters[2]);
     expect(clusters[3]).toBe(clusters[4]);
@@ -497,18 +460,16 @@ describe('PAM', () => {
   });
 
   /**
-   * W4 MAJOR-3: `C(n, k) = C(n, n − k)`, and the pruning guard that has to land with it.
+   * `C(n, k) = C(n, n − k)`, and the pruning guard that has to land with it.
    *
-   * `chooseCount` multiplied along the row up to `k`. `C(n, j)` is UNIMODAL, so for a `k` near
-   * `n` an intermediate product blows the limit while the answer is tiny — 841 legal `(n, k)`
-   * pairs got `exhaustive: false` and a published note claiming the count was past the limit,
-   * when `C(26, 24)` is 325 and `C(21, 21)` is 1.
+   * Multiplying along the row up to `k` overstates the count: `C(n, j)` is unimodal, so for a
+   * `k` near `n` an intermediate product blows the limit while the answer is tiny — 841 legal
+   * `(n, k)` pairs then get `exhaustive: false`, when `C(26, 24)` is 325 and `C(21, 21)` is 1.
    *
    * The guard is the other half and not an optimization: without it `walk` visits
-   * `Σ_{j≤k} C(n, j)` nodes, so correcting the count alone turns a false flag into a hang —
-   * `pam(30, 28)` was measured at **51054 ms** in that state, against 1 ms before and 8 ms now.
-   * Every case below therefore also serves as the guard's detector: unguarded, this test does
-   * not fail, it stops.
+   * `Σ_{j≤k} C(n, j)` nodes, so a correct count alone turns a false flag into a hang —
+   * `pam(30, 28)` measures 51054 ms in that state against 8 ms with the guard. Unguarded, this
+   * test does not fail, it stops.
    */
   it('is exhaustive for a k near n, where C(n, k) is small but the row’s middle is not', () => {
     /** A deterministic non-degenerate matrix; the values are irrelevant, the sizes are not. */
@@ -533,9 +494,9 @@ describe('PAM', () => {
       expect(result?.medoids).toHaveLength(k);
     }
 
-    // …and the answer really is the global optimum, checked by enumerating the items to
-    // EXCLUDE rather than the ones to keep — `C(26, 2) = 325` subsets, and a different
-    // enumeration from the one the implementation runs.
+    // …and the answer really is the global optimum, checked by enumerating the items to exclude
+    // rather than the ones to keep — `C(26, 2) = 325` subsets, a different enumeration from the
+    // one the implementation runs.
     const n = 26;
     const k = 24;
     const matrix = spread(n);
@@ -575,19 +536,13 @@ describe('silhouette', () => {
   });
 
   /**
-   * The silhouette under permutation — AD-72.2's sweep, on a corpus big enough to show it.
+   * The silhouette under permutation (AD-72.2), on a corpus big enough to show it.
    *
-   * `a` and `b` sum a cluster's members, and members were collected in the caller's item order.
-   * Floating-point addition is not associative, so a permuted corpus adds the same numbers in a
-   * different sequence and the published per-item score is not the same double. The six-item
-   * vendored corpus does NOT show this — its clusters are small enough that the additions
-   * reassociate exactly — which is why the repair looked defensive until it was measured on
-   * something larger.
-   *
-   * [MEASURED] `n = 12..19`, `k = 3`, 30 corpora × 6 permutations = 2844 per-item comparisons:
-   * **1242 differ** bit-wise without the label ordering, **0** with it. Not a corner case — it
-   * is nearly half of them, and the only reason it was invisible is that nothing had permuted a
-   * corpus this size.
+   * `a` and `b` sum a cluster's members, collected in the caller's item order, and
+   * floating-point addition is not associative. The six-item vendored corpus does not show it —
+   * its clusters are small enough that the additions reassociate exactly. At `n = 12..19`,
+   * `k = 3`, over 2844 per-item comparisons: 1242 differ bit-wise without the label ordering,
+   * 0 with it.
    */
   it('gives bit-identical scores under permutation, on a corpus large enough to show it', () => {
     const next = lcg(31337);
@@ -634,29 +589,20 @@ describe('silhouette', () => {
     }
 
     expect(cases).toBeGreaterThan(1000);
-    // …and every one of those cases really was a rearrangement. See {@link rearranges}: without
-    // this the whole test passes with the shuffle disabled.
+    // …and every one really was a rearrangement — see {@link rearranges}.
     expect(rearranged).toBe(attempts);
     expect(disagreements).toBe(0);
   });
 
   /**
-   * MINOR-R5's boundary, stated as a test because the repair alone does not reach it.
+   * Total-order label comparators do not deliver permutation-invariance under duplicate labels:
+   * `pam`'s cost still takes 2 distinct values over 40 permutations at `n = 12` with three
+   * labels shared twelve ways, and the index fallback cannot help because the index is what
+   * permutes. The cause is one level up, in `exhaustiveMedoids`' tie key: two subsets with
+   * different costs can share a label multiset, and no label-keyed rule can choose between them.
    *
-   * The six label comparators are total orders now (`lower(a,b) ? -1 : 1` answers `1` in BOTH
-   * directions for equal labels, which is not a comparator and leaves `Array.prototype.sort`
-   * in unspecified territory). That repair is right on its own terms and it does NOT deliver
-   * permutation-invariance under duplicate labels — measured, `pam`'s cost still takes 2
-   * distinct values over 40 permutations at `n = 12` with three labels shared twelve ways,
-   * exactly as the verifier reported, and the index fallback cannot help because the index is
-   * what permutes.
-   *
-   * The cause is one level up, in `exhaustiveMedoids`' tie KEY: two subsets with different
-   * costs can share a label multiset, and then no label-keyed rule can choose between them —
-   * they are indistinguishable in the only frame the corpus has. This is not a defect to repair
-   * but the reason §8 requires labels unique after expansion, and what that requirement buys is
-   * asserted here: the products are invariant on the supported domain, and the unsupported one
-   * is refused at the door rather than silently answered.
+   * That is why §8 requires labels unique after expansion. What the requirement buys is
+   * asserted here: invariance on the supported domain.
    */
   it('rests its invariance on §8’s unique labels, and refuses the domain where it fails', () => {
     const n = 12;
@@ -690,8 +636,7 @@ describe('silhouette', () => {
         ].join(' | '),
       );
     }
-    // ONE answer: cost, medoid set and the whole silhouette multiset, over 40 permutations —
-    // all 40 of which really rearrange the corpus (see {@link rearranges}).
+    // One answer over 40 permutations, all of which really rearrange (see {@link rearranges}).
     expect(rearranged).toBe(40);
     expect(answers.size).toBe(1);
   });
@@ -765,7 +710,6 @@ describe('classical MDS', () => {
         const recovered = Math.hypot(plotted(i, 0) - plotted(j, 0), plotted(i, 1) - plotted(j, 1));
         expect(recovered).toBeCloseTo(cell(matrix, i, j), 9);
       }
-    // A planar corpus has no negative mass to report.
     expect(embedding.negativeEigenvalueMass).toBeCloseTo(0, 12);
     expect(embedding.degenerate).toBe(false);
   });
@@ -789,9 +733,9 @@ describe('classical MDS', () => {
     const embedding = classicalMds({ n, values }, 2, labelsOf(n));
     expect(embedding.negativeEigenvalueMass).toBeGreaterThan(0);
 
-    // Explained variance is over `Σ|λ|`, so the retained axes never claim the negative mass —
-    // and it is SIGNED, `λ_j / Σ|λ|` (W4 MAJOR-2). Both axes retained here are positive, so
-    // this assertion cannot tell the two readings apart; the test below is the one that can.
+    // Explained variance is over `Σ|λ|`, so the retained axes never claim the negative mass, and
+    // it is signed: `λ_j / Σ|λ|`. Both axes retained here are positive, so this assertion cannot
+    // tell the two readings apart; the test below is the one that can.
     const total = embedding.eigenvalues.reduce((sum, value) => sum + Math.abs(value), 0);
     for (const [axis, share] of embedding.explainedVariance.entries())
       expect(share).toBeCloseTo(flatAt(embedding.eigenvalues, axis, 'the spectrum') / total, 12);
@@ -809,18 +753,11 @@ describe('classical MDS', () => {
   });
 
   /**
-   * W4 MAJOR-2: a NEGATIVE axis reports negative variance, because the sign is the signal.
-   *
-   * `Math.abs(eigenvalue) / total` credited an imaginary direction with positive variance. Both
+   * `Math.abs(eigenvalue) / total` credits an imaginary direction with positive variance. Both
    * facts about such an axis point the other way: only `eigenvalue > 0` is embedded, so its
    * `coordinates` are all zero, and its eigenvalue is negative because the corpus is not
-   * Euclidean. Reported at `+1.8 %` it reads as a real axis carrying real spread and is neither.
-   *
-   * Measured through the public API on the vendored corpus at `embeddingAxes: 9 = n−1` (legal):
-   * axes 7 and 8 had eigenvalues `−145738.84` and `−567987.33`, all-zero coordinates, and
-   * shares of `+0.004664811652368655` and `+0.018180149719632315` — 2.28 % of the variance
-   * credited to two axes that are not there. Reproduced here on the smallest corpus that has
-   * the shape, so the claim is about the arithmetic rather than about one fixture.
+   * Euclidean. On the vendored corpus at `embeddingAxes: 9 = n−1` the absolute reading credits
+   * 2.28 % of the variance to two axes that are not there.
    */
   it('gives a negative axis a NEGATIVE share, and no coordinates', () => {
     const n = 4;
@@ -844,10 +781,10 @@ describe('classical MDS', () => {
     expect(embedding.explainedVariance[3]).toBeCloseTo(-0.25 / total, 12);
     expect(embedding.explainedVariance[3]).toBeLessThan(0);
 
-    // The axis carries no coordinates at all — which is the fact the positive share denied.
+    // The axis carries no coordinates at all — the fact a positive share denies.
     for (let item = 0; item < n; ++item) expect(embedding.coordinates[item * n + 3]).toBe(0);
 
-    // The shares now sum to `Σλ / Σ|λ|`, i.e. BELOW 1 by exactly twice the negative mass.
+    // The shares sum to `Σλ / Σ|λ|`, i.e. below 1 by exactly twice the negative mass.
     const summed = embedding.explainedVariance.reduce<number>(
       (sum, share) => sum + (share ?? 0),
       0,
@@ -865,20 +802,16 @@ describe('classical MDS', () => {
   });
 
   /**
-   * The sign rule, as AD-67.1 leaves it — and this fixture is the reason it had to move.
+   * AD-67.1's sign rule: among the components tied at the peak relatively, the lowest-label one
+   * is positive. On a corpus with a unique peak that is the naive rule verbatim.
    *
-   * The rule used to read "the largest-magnitude component is positive", with ties on EXACTLY
-   * equal magnitude going to the lowest label. On this square the four corners are at ±2 and
-   * tied in exact arithmetic, but the computed magnitudes differ in the last ulp:
-   * `1.99999999999999911`, `1.99999999999999978`, `2.00000000000000000`, `1.99999999999999933`.
-   * So the exact tie test never fired, the anchor was whichever corner won by an ulp, and a
-   * permuted corpus — which runs Jacobi's rotations in a different sequence — could hand that
-   * ulp to a corner of the opposite sign and mirror the whole plot. Measured on the vendored
-   * corpus: `A-tel` at `+634.1636783061936` under four item orders, `−634.1636783061933` under
-   * two others (W4 CAPITAL-3).
-   *
-   * The rule now reads: among the components tied at the peak RELATIVELY, the lowest-label one
-   * is positive. On a corpus with a unique peak that is the old rule verbatim.
+   * The naive rule — largest magnitude positive, ties on exactly equal magnitude to the lowest
+   * label — does not survive floats. On this square the four corners are at ±2 and tied in exact
+   * arithmetic, but the computed magnitudes differ in the last ulp: `1.99999999999999911`,
+   * `1.99999999999999978`, `2.00000000000000000`, `1.99999999999999933`. The exact tie test
+   * never fires, the anchor is whichever corner wins by an ulp, and a permuted corpus can hand
+   * that ulp to a corner of the opposite sign and mirror the whole plot — `A-tel` at
+   * `+634.1636783061936` under four item orders and `−634.1636783061933` under two.
    */
   it('anchors each axis on the lowest-label component at its peak, so two runs are not mirrors', () => {
     const matrix = fromPlane(square);
@@ -901,9 +834,9 @@ describe('classical MDS', () => {
   });
 
   it('is non-vacuous: on this square the anchor is NOT the strict maximum', () => {
-    // Without this the test above would pass under the old exact rule too. The strict maximum
-    // of axis 0 is a corner of the opposite sign, one ulp above the anchor — which is exactly
-    // the ulp the old rule was deciding the plot's orientation on.
+    // Without this the test above would pass under the exact-tie rule too. The strict maximum of
+    // axis 0 is a corner of the opposite sign, one ulp above the anchor — the ulp that rule
+    // decides the plot's orientation on.
     const once = classicalMds(fromPlane(square), 2, labelsOf(square.length));
     const column = Array.from({ length: square.length }, (_unused, item) =>
       flatAt(once.coordinates, item * once.axes, 'axis 0 of the embedding'),
@@ -916,7 +849,6 @@ describe('classical MDS', () => {
     const anchoredValue = elementAt(column, anchor, 'axis 0 of the embedding');
     expect(strictestValue).toBeLessThan(0);
     expect(anchoredValue).toBeGreaterThan(0);
-    // …and the two really are the same number to every digit anyone would print.
     expect(Math.abs(strictestValue)).toBeCloseTo(Math.abs(anchoredValue), 12);
   });
 
@@ -926,11 +858,11 @@ describe('classical MDS', () => {
     expect(embedding.coordinates).toHaveLength(15);
     expect(embedding.coordinates.every((value) => Number.isFinite(value))).toBe(true);
 
-    // What "padded" MEANS, which finiteness alone does not say: a 3-item corpus has 3
-    // eigenvalues, so axes 3 and 4 have no column to take and must read as absent rather than
-    // as a recycled one. Zero coordinates and a zero variance share are that reading.
-    // [NEGATIVE CONTROL, MEASURED] Turning `classicalMds`'s out-of-range sentinel from `-1` into
-    // any real column index leaves the rest of the suite green and reds these four expectations.
+    // What "padded" means, which finiteness alone does not say: a 3-item corpus has 3
+    // eigenvalues, so axes 3 and 4 have no column to take and must read as absent rather than as
+    // a recycled one. Zero coordinates and a zero variance share are that reading. Negative
+    // control: turning `classicalMds`'s out-of-range sentinel from `-1` into any real column
+    // index leaves the rest of the suite green and reds these four expectations.
     for (const axis of [3, 4]) {
       expect({
         axis,
@@ -977,23 +909,18 @@ describe('seriation', () => {
     );
     expect([...first].sort((x, y) => x - y)).toEqual(first);
     expect([...order].sort((x, y) => x - y)).toEqual([0, 1, 2, 3, 4]);
-    // On a one-dimensional corpus the order IS the line, up to the sign the rule fixes.
+    // On a one-dimensional corpus the order is the line, up to the sign the rule fixes.
     // Points 0, 10, 3, 7, 1: ascending along the line is 0, 1, 3, 7, 10 — indices 0, 4, 2, 3, 1.
     expect(order).toEqual([0, 4, 2, 3, 1]);
   });
 });
 
 /**
- * W4 CAPITAL-3: P-C6 through the embedding, and the exact place the guarantee stops.
- *
- * Two claims, and the second is as much the point as the first. Permuting a corpus reruns
- * Jacobi's rotations in a different sequence, so every quantity here arrives with ulp-level
- * noise on it, and every tie rule that tested `===` before falling back to the label was
- * therefore deciding on the noise. That is the near-tie, and it is repaired.
- *
- * The exact tie is not repairable at this layer and the module says so in data rather than in
- * prose: where two retained eigenvalues coincide, the eigenspace has no canonical basis and
- * `degenerate` is true. AD-67.1 ruled that narrow-with-data over canonicalising the block.
+ * Permuting a corpus reruns Jacobi's rotations in a different sequence, so every quantity here
+ * arrives with ulp-level noise on it, and a tie rule that tests `===` before falling back to the
+ * label decides on that noise. The exact tie is not repairable at this layer, and the module
+ * says so in data: where two retained eigenvalues coincide, the eigenspace has no canonical
+ * basis and `degenerate` is true (AD-67.1).
  */
 describe('AD-67.1: the embedding is permutation-equivariant, and says where it is not', () => {
   /** Both products read back in the caller's own labels, which is the only comparable frame. */
@@ -1018,11 +945,11 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
   };
 
   /**
-   * Whether one run's axis is the other's MIRROR — the failure the sign anchor exists to stop.
+   * Whether one run's axis is the other's mirror — the failure the sign anchor exists to stop.
    *
    * Per-coordinate `Math.sign` would be the wrong test: an item at the corpus centroid sits at
-   * `1e-17` on an axis and its sign carries no information at all. Comparing the whole vector
-   * against its own negation does, and it is robust to exactly those near-zero entries.
+   * `1e-17` on an axis and its sign carries no information. The whole vector against its own
+   * negation is robust to those near-zero entries.
    */
   const isMirrored = (
     left: ReadonlyMap<string, readonly [number, number]>,
@@ -1040,22 +967,16 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
   };
 
   /**
-   * What equivariance can and cannot mean for a float computation, stated exactly.
+   * The sign and the order are discrete choices and are exactly reproducible. The coordinate
+   * values are not bit-reproducible and never could be — a permuted matrix runs Jacobi's
+   * rotations in a different sequence — so they are asserted to a relative `1e-9`,
+   * {@link TIE_EPSILON}'s own band.
    *
-   * The SIGN and the ORDER are exactly reproducible and are asserted as such — they are
-   * discrete choices, and CAPITAL-3 was that both of them were being made on float noise. The
-   * coordinate VALUES are not bit-reproducible and never could be: a permuted matrix runs
-   * Jacobi's rotations in a different sequence, so the arithmetic differs in the last ulps.
-   * They are asserted to a relative `1e-9`, which is {@link TIE_EPSILON}'s own band — the
-   * claim being that the noise stays inside the band the tie rules were widened to absorb.
-   *
-   * [MEASURED] this exact test against the shipped code, by reverting `embedding.ts` alone:
-   * **211** of 600 permutations disagreed on the seriation, **15** axes came back mirrored, and
-   * the worst relative coordinate displacement was **2.0** — which is what a mirror is. All
-   * three are 0 now. The seriation figure is the largest because
-   * `coordinates[x*axes] - coordinates[y*axes] || label` reached its label branch only on an
-   * EXACT float equality, which two permuted runs essentially never produce, so the published
-   * order followed the last ulp on every near-tie.
+   * Without the sign and order rules: 211 of 600 permutations disagree on the seriation, 15 axes
+   * come back mirrored, and the worst relative coordinate displacement is 2.0, which is what a
+   * mirror is. The seriation figure is the largest because
+   * `coordinates[x*axes] - coordinates[y*axes] || label` reaches its label branch only on an
+   * exact float equality, which two permuted runs essentially never produce.
    */
   it('gives the same seriation, the same orientation and the same coordinates under permutation', () => {
     const next = lcg(777);
@@ -1067,7 +988,7 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
 
     for (let trial = 0; trial < 20; ++trial) {
       const n = 4 + Math.floor(next() * 4);
-      // Planar points, half of them DUPLICATED, so exact zero distances and near-tied
+      // Planar points, half of them duplicated, so exact zero distances and near-tied
       // coordinates are common rather than a lucky accident.
       const distinct = Array.from(
         { length: trial % 2 === 1 ? Math.ceil(n / 2) : n },
@@ -1092,7 +1013,7 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
         if (rearranges(order)) rearranged += 1;
         if (shuffled.seriation !== straight.seriation) seriationDisagreements += 1;
         for (const axis of [0, 1] as const) {
-          // Only an axis that EXISTS can be mirrored. A collinear corpus has
+          // Only an axis that exists can be mirrored. A collinear corpus has
           // `λ = [70.3, 2.08e-15, -1.11e-15]`: its second axis is rounding error, its
           // coordinates peak at `2.6e-8`, and asking which way round it points is not a
           // question. Skipping it is the same materiality rule `classicalMds` uses to decide
@@ -1102,7 +1023,7 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
         }
         for (const axis of [0, 1] as const) {
           if (!material(axis)) continue;
-          // Relative to the AXIS's own extent, not to each coordinate: an item sitting at the
+          // Relative to the axis's own extent, not to each coordinate: an item sitting at the
           // corpus centroid is at `~0` on that axis, and a per-coordinate ratio there reports
           // an enormous relative error for a difference no plot could render. The axis extent
           // is the scale a reader actually sees.
@@ -1119,9 +1040,8 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
     }
 
     expect(cases).toBeGreaterThan(500);
-    // …and 596 of them really rearranged the corpus. `n` is 4–7 here, so an identity draw is
-    // not vanishingly rare the way it is at `n = 12` — four of 600 are — and the measured figure
-    // is pinned rather than every case demanded. See {@link rearranges} for why it is asserted.
+    // …and 596 of them really rearranged the corpus. `n` is 4–7 here, so an identity draw is not
+    // vanishingly rare the way it is at `n = 12`: four of 600 are. See {@link rearranges}.
     expect({ rearranged, cases }).toEqual({ rearranged: 596, cases: 600 });
     expect({ seriationDisagreements, mirroredAxes }).toEqual({
       seriationDisagreements: 0,
@@ -1133,10 +1053,10 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
   /**
    * The carve-out, as an observable rather than as a sentence.
    *
-   * Three documents each listed twice, every cross-document distance equal: the gate's own
-   * example, and its spectrum is `[9, 9, ~0, ~0, ~0, 0]`. The top eigenvalue is DOUBLE, so the
-   * plane it spans has no distinguished pair of axes and every rotation within it is as valid
-   * as every other. No sign rule reaches that, which is why the honest answer is the flag.
+   * Three documents each listed twice, every cross-document distance equal; the spectrum is
+   * `[9, 9, ~0, ~0, ~0, 0]`. The top eigenvalue is double, so the plane it spans has no
+   * distinguished pair of axes and every rotation within it is as valid as every other. No sign
+   * rule reaches that, which is why the honest answer is the flag.
    */
   it('flags a repeated retained eigenvalue, where no sign rule can canonicalise the basis', () => {
     const n = 6;
@@ -1153,12 +1073,12 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
     expect(embedding.eigenvalues[0]).toBeCloseTo(9, 9);
     expect(embedding.eigenvalues[1]).toBeCloseTo(9, 9);
     expect(embedding.degenerate).toBe(true);
-    // The narrower A3b condition is NOT what is true here — `Σ|λ| > 0` and the variance shares
-    // are real numbers. The flag widened; `explainedVariance`'s contract did not.
+    // The narrower A3b condition is not what is true here — `Σ|λ| > 0` and the variance shares
+    // are real numbers. The flag is the wider one; `explainedVariance`'s contract is not.
     expect(embedding.explainedVariance.every((share) => share !== null)).toBe(true);
 
-    // Non-vacuity, and the reason the flag is not decoration: the coordinates really do move.
-    // [MEASURED] 78 distinct coordinate sets and 6 distinct seriations over all 720 orders.
+    // Non-vacuity, and the reason the flag is not decoration: the coordinates really do move —
+    // 78 distinct coordinate sets and 6 distinct seriations over all 720 orders.
     const seen = new Set<string>();
     for (const order of [
       [0, 1, 2, 3, 4, 5],
@@ -1171,19 +1091,18 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
   });
 
   /**
-   * The same carve-out at the CUT, which is the half of `hasRepeatedAxis`'s contract the test
-   * above cannot reach.
+   * The same carve-out at the cut — the half of `hasRepeatedAxis`'s contract the test above
+   * cannot reach.
    *
-   * Its doc says the pair range is "positions `0 … width`, INCLUSIVE of the first dropped one,
-   * because a degeneracy straddling the cut makes the last retained eigenvector just as
-   * arbitrary as one wholly inside". At `axes = 2` the double eigenvalue sits WHOLLY inside the
-   * retained block, so the inclusive end is never the deciding one; at `axes = 1` the same pair
-   * `(λ₀, λ₁) = (9, 9)` straddles it, and the single retained axis is an arbitrary direction in
-   * the plane the two of them span. Only this case distinguishes the inclusive bound from the
-   * exclusive one.
+   * Its pair range is positions `0 … width`, inclusive of the first dropped one, because a
+   * degeneracy straddling the cut makes the last retained eigenvector just as arbitrary as one
+   * wholly inside. At `axes = 2` the double eigenvalue sits wholly inside the retained block, so
+   * the inclusive end never decides; at `axes = 1` the same pair `(λ₀, λ₁) = (9, 9)` straddles
+   * it, and the single retained axis is an arbitrary direction in the plane the two span. Only
+   * this case distinguishes the inclusive bound from the exclusive one.
    *
-   * [NEGATIVE CONTROL, MEASURED] Dropping the `+ 1` from `hasRepeatedAxis`'s pair range leaves
-   * the whole suite green without this test, and reds exactly this one with it.
+   * Negative control: dropping the `+ 1` from `hasRepeatedAxis`'s pair range leaves the whole
+   * suite green without this test, and reds exactly this one with it.
    */
   it('flags a repeated eigenvalue that straddles the retained cut, not only one inside it', () => {
     const n = 6;
@@ -1206,45 +1125,43 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
   });
 
   /**
-   * The two numeric honesties W4's gate raised, pinned so the prose cannot drift from them.
+   * Two numeric honesties, pinned so the prose cannot drift from them.
    *
-   * MINOR-11: `negativeEigenvalueMass` is a MEASURED quantity, and a perfectly Euclidean corpus
-   * can report a value at the noise floor because Jacobi leaves a zero eigenvalue at `±1e-16`
-   * with an arbitrary sign. Not clamped — a threshold would hide the small-but-real
+   * `negativeEigenvalueMass` is a measured quantity, and a perfectly Euclidean corpus can report
+   * a value at the noise floor because Jacobi leaves a zero eigenvalue at `±1e-16` with an
+   * arbitrary sign. It is not clamped — a threshold would hide the small-but-real
    * non-Euclideanness the field exists to report — so what is pinned is that it stays at the
    * floor rather than that it is zero.
    *
-   * MINOR-13: `jacobiEigen` used `Math.hypot(...a)`, which spreads `n²` arguments against V8's
-   * measured 105741-argument limit, so it THREW at `n ≥ 326` — verified by restoring the old
-   * line, which fails here as `RangeError` or as `Maximum call stack size exceeded` depending on
-   * how the engine reports the limit that run. That variability is itself the argument:
-   * `DEFAULT_MAX_ITEMS = 256` left 1.61× headroom, and a ceiling that depends on an engine's
-   * argument handling is not one anyone can reason about. Accumulated instead.
+   * `Math.hypot(...a)` in `jacobiEigen` spreads `n²` arguments against V8's measured
+   * 105741-argument limit, so it throws at `n ≥ 326`, as `RangeError` or as `Maximum call stack
+   * size exceeded` depending on how the engine reports the limit that run. That variability is
+   * itself the argument: `DEFAULT_MAX_ITEMS = 256` leaves 1.61× headroom, and a ceiling that
+   * depends on an engine's argument handling is not one anyone can reason about. Accumulated
+   * instead.
    */
   it('reports noise-floor negative mass on a Euclidean simplex, and survives past N = 326', () => {
     for (const k of [3, 4, 5, 7, 12]) {
       const values = new Array<number>(k * k).fill(0);
       for (let i = 0; i < k; ++i) for (let j = 0; j < k; ++j) values[i * k + j] = i === j ? 0 : 1;
       const embedding = classicalMds({ n: k, values }, 2, labelsOf(k));
-      // A regular simplex is exactly Euclidean, so the TRUE value is 0 and anything above the
-      // floor would be a real defect rather than a rounding residue.
+      // A regular simplex is exactly Euclidean, so the true value is 0 and anything above the
+      // floor is a real defect rather than a rounding residue.
       expect({ k, atFloor: embedding.negativeEigenvalueMass < 1e-14 }).toEqual({
         k,
         atFloor: true,
       });
     }
 
-    // Past the old `Math.hypot` ceiling. `n = 330` is 108900 arguments, comfortably over V8's
-    // measured 105741, and the previous line threw on exactly this input.
+    // Past the `Math.hypot` ceiling. `n = 330` is 108900 arguments, comfortably over V8's
+    // measured 105741.
     //
-    // The matrix is DIAGONAL, which is what keeps this cheap: the ceiling lives in the very
+    // The matrix is diagonal, which is what keeps this cheap: the ceiling lives in the very
     // first statement, where the off-diagonal threshold is computed by spreading all `n²`
     // entries, and a matrix that is already diagonal exits the sweep loop on its first check.
     // So this exercises the argument count — the whole of the claim — in `O(n²)` work rather
-    // than the `O(n³)`-per-sweep of a full eigendecomposition. A dense 330×330 matrix here cost
-    // 33 s under a loaded runner and timed out, which is a test-suite defect of the kind this
-    // file's own history records (`editDimensions` went from 37.8 s to 12.4 s for the same
-    // reason): the number of arguments is the subject, not the number of rotations.
+    // than the `O(n³)`-per-sweep of a full eigendecomposition. A dense 330×330 matrix here costs
+    // 33 s under a loaded runner and times out.
     const n = 330;
     const values = new Array<number>(n * n).fill(0);
     for (let i = 0; i < n; ++i) values[i * n + i] = 1 + (i % 7);
@@ -1257,7 +1174,7 @@ describe('AD-67.1: the embedding is permutation-equivariant, and says where it i
   });
 
   it('does not flag the ordinary corpus, so the carve-out stays narrow', () => {
-    // A near-zero TAIL is not a degeneracy a reader can see: `√λ·v` at the noise floor is below
+    // A near-zero tail is not a degeneracy a reader can see: `√λ·v` at the noise floor is below
     // the resolution of any plot, and flagging it would make every `axes = N−1` corpus
     // degenerate and the field useless. Asked for every axis it has, this corpus is still clean.
     const matrix = fromPlane([

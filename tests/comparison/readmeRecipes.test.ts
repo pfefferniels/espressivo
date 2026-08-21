@@ -1,19 +1,14 @@
 /**
  * The published comparison recipes, executed.
  *
- * A cookbook entry that does not run is a defect of the same kind as a wrong number, and it is
- * the kind this campaign is least able to catch by review: the recipes reach for fields by name
- * (`table.columnSums`, `segment.measure.start.number`, `opCounts.substitute`) and a rename
- * anywhere in §9.3 would leave them plausible and broken. So every one of them is here, in the
- * form the documentation prints, and the numbers it quotes are asserted against the engine.
+ * A cookbook entry that does not run is a defect of the same kind as a wrong number, and review
+ * does not catch it: the recipes reach for fields by name (`table.columnSums`,
+ * `segment.measure.start.number`, `opCounts.substitute`), and a rename anywhere in §9.3 leaves
+ * them plausible and broken. So every one is here in the form the documentation prints, over the
+ * vendored fixtures rather than the prose's `roll1905`/`roll1927` placeholders.
  *
- * The fixtures are the vendored ones rather than the prose's `roll1905`/`roll1927` placeholders,
- * and each test says which line it is standing behind.
- *
- * The prose these recipes come from moved out of `README.md` and into `docs/comparison.md` when
- * the README was cut down to summaries; the file name is kept because the campaign record cites
- * it. Both documents are read, because both still print figures: the guide carries the worked
- * examples, and the README echoes the headline `mean`.
+ * Both documents are read, because both print figures: `docs/comparison.md` carries the worked
+ * examples, and `README.md` echoes the headline `mean`.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -33,15 +28,12 @@ const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const mpm = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'utf-8') as XmlText;
 
 /**
- * The published prose itself, read — because re-typing its numbers here tests nothing about it
- * (MINOR-5).
+ * The published prose itself, read — because re-typing its numbers here tests nothing about it.
  *
- * The gate rewrote five of the headline figures (`8397.60→9999.99`, `1755.47→1111.11`,
- * `24941.06→12345.67`, `475 ms→999 ms`, `33 %→99 %`) and all 124 tests stayed green: this file
- * held its own copies, so the docstring's claim that "the numbers the documentation quotes are
- * asserted against the engine" was true only of the copies. Every headline figure below is now
- * EXTRACTED from the prose, so a drift in either direction fails — edit the document and the
- * engine's number no longer matches it; change the engine and it no longer matches the document.
+ * Measured with re-typed copies in place: rewriting five headline figures in the prose
+ * (`8397.60→9999.99`, `1755.47→1111.11`, `24941.06→12345.67`, `475 ms→999 ms`, `33 %→99 %`) left
+ * the suite green. Every headline figure below is EXTRACTED from the prose instead, so a drift
+ * in either direction fails.
  */
 const DOCS_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const GUIDE = readFileSync(join(DOCS_ROOT, 'docs/comparison.md'), 'utf-8');
@@ -50,9 +42,8 @@ const README = readFileSync(join(DOCS_ROOT, 'README.md'), 'utf-8');
 /**
  * The number `source` prints at `anchor`, whose first capture group is the figure.
  *
- * A missing anchor THROWS rather than defaulting: if the prose is rewritten so the anchor no
- * longer matches, the right outcome is a failure that says so, not a test that silently stops
- * checking the documentation it exists to check.
+ * A missing anchor THROWS rather than defaulting: a prose rewrite that stops matching must fail
+ * here, not silently stop checking the documentation.
  */
 function quoted(anchor: RegExp, source: string = GUIDE): number {
   const match = anchor.exec(source);
@@ -100,14 +91,14 @@ describe('the numbers the guide quotes', () => {
   });
 
   it('is non-vacuous: the extraction really reads the document and really can miss', () => {
-    // A test that silently found nothing would make every assertion above pass on `NaN`.
+    // An extraction that silently found nothing would make every assertion above pass on `NaN`.
     expect(quoted(/report\.aggregate\.distance; \/\/ ([\d.]+)/)).toBeCloseTo(8397.6, 1);
     expect(() => quoted(/this text is not in the guide ([\d.]+)/)).toThrow(/no longer contains/);
   });
 
   it('holds the README to the one figure it still echoes', () => {
-    // The README keeps a cut-down version of the worked example, and a summary that drifts from
-    // the guide it summarises is the same defect as a guide that drifts from the engine.
+    // A summary that drifts from the guide it summarises is the same defect as a guide that
+    // drifts from the engine.
     expect(telemann('Baroque', 'Romantic').aggregate.mean).toBeCloseTo(
       quoted(/report\.aggregate\.mean; \/\/ ([\d.]+) JND/, README),
       2,
@@ -158,9 +149,8 @@ describe('the cookbook, run as printed', () => {
     // A zero weight excludes a dimension from `D` and still reports its `d_k` (AD-19).
     expect(report.aggregate.weights.dynamics).toBe(0);
     expect(Number.isFinite(report.dimensions.dynamics.distance)).toBe(true);
-    // …and it fires NO linear-space warning, because tempo is a log space. The guide's first
-    // draft claimed the note fires whenever a mode is requested; it fires where the mode means
-    // something a reader would not expect, which is the claim worth making.
+    // …and it fires NO linear-space warning, because tempo is a log space: the note fires where
+    // the mode means something a reader would not expect, not whenever a mode is requested.
     expect(report.notes.some((entry) => entry.kind === 'invariance-space')).toBe(false);
   });
 
@@ -243,9 +233,9 @@ describe('the cookbook, run as printed', () => {
     });
 
     const lead = report.dimensions.asynchrony.meanSigned ?? 0;
-    // The guide's 475 ms, READ from the prose rather than re-typed (MINOR-5). An expressive
-    // reading against a deliberately deadpan one, and 475 is sixteen times Goebl's 30 ms
-    // threshold — the recipe's own criterion, not a chosen number.
+    // The guide's 475 ms, read from the prose. An expressive reading against a deliberately
+    // deadpan one: 475 is sixteen times Goebl's 30 ms threshold, which is the recipe's own
+    // criterion rather than a chosen number.
     expect(Math.abs(lead)).toBeCloseTo(quoted(/prints a \*\*([\d.]+) ms\*\* lead/), 0);
     expect(Math.abs(lead)).toBeGreaterThanOrEqual(30);
 

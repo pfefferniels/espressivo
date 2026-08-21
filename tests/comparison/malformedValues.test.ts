@@ -1,27 +1,24 @@
 /**
  * MINOR-4 — the malformed-value table, ruled by the renderer.
  *
- * The W2 verification report catalogued three legal-but-malformed inputs where the comparison
- * REPAIRED what the renderer does not, and left them for W3 to "decide together rather than one
- * at a time". Deciding them together is what this file is: every claim is measured through
- * `performMsm` (AD-43.1), and the measurements do not all agree with the report that raised
- * them.
+ * Three legal-but-malformed inputs where the comparison could repair what the renderer does not.
+ * Every claim is measured through `performMsm` (AD-43.1), and the measurements do not all agree
+ * with the verification report that raised them.
  *
- * | input | the report predicted | the renderer does | the comparison now reads |
+ * | input | the report predicted | the renderer does | the comparison reads |
  * | --- | --- | --- | --- |
  * | `curvature="abc"` on a `<dynamics>` transition | `velocity="NaN"` | performs the MIDPOINT of the two endpoints as a constant | a constant at the midpoint |
  * | `intensity="abc"` on a `<rubato>` with a def | keeps NaN, does not consult the def | keeps NaN, `date.perf="NaN"` over the warped frame | `⊥` over the warped frame |
  * | `frameLength="0"` with `@loop` | NaN warped dates | `date.perf="NaN"` over the whole span | `⊥` over the whole span |
  *
- * The first row is the interesting one: the report predicted a `⊥`, and the renderer performs a
- * perfectly definite, audible constant. `tForDate` starts at `t = 0.5` and loops
+ * The first row is the interesting one: the prediction was `⊥`, and the renderer performs a
+ * definite, audible constant. `tForDate` starts at `t = 0.5` and loops
  * `while (Math.abs(diffX) >= 1.0)`, which `NaN` fails, so `t` never moves — and the value
- * fraction at `t = 0.5` is `(3 − 2t)t² = 0.5` for EVERY shape. A `⊥` there would have priced a
+ * fraction at `t = 0.5` is `(3 − 2t)t² = 0.5` for EVERY shape. A `⊥` there would price a
  * performance the renderer gives perfectly well at `δ_row`.
  *
- * The two rubato rows DO reach `⊥`, so this is the wave that gives that dimension its first `⊥`
- * route — and AD-36.2's capped integrator therefore becomes FORCED for it, as it already is for
- * accentuation and pedal.
+ * The two rubato rows DO reach `⊥`, which is what makes AD-36.2's capped integrator forced for
+ * that dimension, as it already is for accentuation and pedal.
  */
 import { describe, it, expect } from 'vitest';
 import { performMsm } from '../../src/api/pipeline.js';
@@ -124,8 +121,8 @@ describe('MINOR-4 row 1: an unusable @curvature performs the MIDPOINT, not NaN',
 
   it('is a real difference from the repaired reading a curvature of 0 would give', () => {
     const window = { start: 0, end: 4 };
-    // The repaired reading is a smoothstep ramp; the renderer's is a constant. Comparing the
-    // two documents is how far the old reading was out — 0 would have been the answer.
+    // A repaired reading is a smoothstep ramp; the renderer's is a constant. Comparing the two
+    // documents measures the gap between them — under the repair the answer would be 0.
     const report = compareMpm({
       a: doc(ramp('curvature="abc"')),
       b: doc(ramp('curvature="0"')),
@@ -250,8 +247,8 @@ describe('AD-36.2: rubato’s first ⊥ route forces its capped integrator', () 
     const window = { start: 0, end: 4 };
     // A frame of FOUR quarters, not one: the displacement is bounded by the frame length, and
     // over a one-quarter frame it cannot reach the 20 JND the cap sits at (1/16-quarter JND ×
-    // at most one quarter is 16). Over four it reaches ~50, which is where the cap earns its
-    // keep — and where an uncapped integral breaks the inequality with a ⊥ in the middle.
+    // at most one quarter is 16). Over four it reaches ~50, where an uncapped integral breaks
+    // the inequality with a ⊥ in the middle.
     const warp = (intensity: string) =>
       doc(
         rubatoMap(`<rubato date="0.0" frameLength="2880.0" intensity="${intensity}" loop="true"/>`),

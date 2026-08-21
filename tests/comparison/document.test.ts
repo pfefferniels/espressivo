@@ -1,13 +1,12 @@
 /**
- * W2b — the comparison document layer, against the vendored corpus and against inline XML
- * for the rules no real document happens to exercise.
+ * The comparison document layer, against the vendored corpus and against inline XML for the
+ * rules no real document happens to exercise.
  *
- * The split is deliberate. Real fixtures pin the things a corpus actually does — a 720/480
- * ppq disagreement, three named performances in one file, a BOM in front of the
- * declaration — and inline documents pin the renderer rules that matter most and appear
- * least: an empty part-local map shadowing a populated global one, a level name nothing
- * defines, a `<part>` the renderer discards whole. Neither kind can replace the other, and
- * `tests/integration/fixtures/**` is not touched by either (charter invariant 2).
+ * Real fixtures pin what a corpus actually does — a 720/480 ppq disagreement, three named
+ * performances in one file, a BOM in front of the declaration. Inline documents pin the
+ * renderer rules that matter most and appear least: an empty part-local map shadowing a
+ * populated global one, a level name nothing defines, a `<part>` the renderer discards whole.
+ * `tests/integration/fixtures/**` is touched by neither (charter invariant 2).
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -293,28 +292,24 @@ describe('scopes, matching and map resolution', () => {
     const pairings = matchScopes(scopes, scopes);
     expect(pairings.filter((pairing) => pairing.scope === 'part')).toHaveLength(0);
 
-    // and its instructions are not counted as performed material
     const pair = readComparisonPair({ a: broken, b: broken });
     expect(pair.comparability.instructionCountA).toBe(0);
   });
 
   it('compares a RENDERABLE part with an unusable @number against neutral, never against its twin', () => {
     /**
-     * A closed oracle gap, found by a negative control on `matchScopes`.
+     * A blind spot closed by a negative control on `matchScopes`, which splits renderable parts
+     * into numbered and unnumbered, pairs the numbered ones by number, and pushes each
+     * unnumbered one against neutral — A-side block first, then B-side, which is what makes the
+     * result symmetric under a swap. Keying the unnumbered ones at `-1` instead, which pairs
+     * the two documents' unnumbered parts with each other, left the whole suite green: no test
+     * in the tree reached that code with an unnumbered part.
      *
-     * `matchScopes` splits renderable parts into numbered and unnumbered, pairs the numbered
-     * ones by number, and pushes each unnumbered one against neutral — A-side block first,
-     * then B-side, which is what makes the result symmetric under a swap. Measured: keying
-     * the unnumbered ones at `-1` instead of dropping them, which would PAIR the two
-     * documents' unnumbered parts with each other, left all 6082 tests green. A probe then
-     * showed why: no test in the tree ever reached that code with an unnumbered part.
-     *
-     * The case is reachable, and only just. `renderable` is decided the way the renderer
-     * decides it — `Part.parseData` throws only when `@number` / `@midi.channel` /
-     * `@midi.port` are absent or empty, never on their VALUE — while the scope's `number` is
-     * `parseInt`, which answers NaN here and is reported as null. So `number="abc"` is a part
-     * the renderer really does construct (with `this.number = NaN`, matching no MSM part) and
-     * that this module really does have to place against neutral.
+     * The case is reachable, and only just. `Part.parseData` throws only when `@number` /
+     * `@midi.channel` / `@midi.port` are absent or empty, never on their value, while the
+     * scope's `number` is `parseInt`, which answers NaN here and is reported as null. So
+     * `number="abc"` is a part the renderer really does construct (with `this.number = NaN`,
+     * matching no MSM part) and that this module has to place against neutral.
      */
     const unnumbered =
       '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p" pulsesPerQuarter="720">' +
@@ -323,8 +318,8 @@ describe('scopes, matching and map resolution', () => {
       '<tempoMap><tempo date="0.0" bpm="200" beatLength="0.25"/></tempoMap>' +
       '</dated></part></performance></mpm>';
 
-    // Destructured and checked rather than indexed: `tests/` is on a one-way
-    // `noUncheckedIndexedAccess` ratchet, and `[0]` costs it an error.
+    // Destructured and checked rather than indexed: `tests/` runs with
+    // `noUncheckedIndexedAccess`, under which `[0]` is an error.
     const [performance] = readPerformances(parseMpmRoot(unnumbered));
     if (performance === undefined) throw new Error('no performance');
 
@@ -337,7 +332,7 @@ describe('scopes, matching and map resolution', () => {
     });
 
     const parts = matchScopes(scopes, scopes).filter((pairing) => pairing.scope === 'part');
-    // TWO pairings, each against neutral — not one pairing of the part with itself.
+    // Two pairings, each against neutral — not one pairing of the part with itself.
     expect(
       parts.map((pairing) => ({
         matched: pairing.matched,
@@ -415,8 +410,8 @@ describe('ordered instruction views', () => {
   });
 
   it('resolves the style in scope positionally, not by date', () => {
-    // An instruction PRECEDING a <style> at the same date has no style in scope — which is
-    // what the renderer's findStyleSwitchAt does, and where getStyleAt(date) disagrees.
+    // An instruction preceding a <style> at the same date has no style in scope — what the
+    // renderer's findStyleSwitchAt does, and where getStyleAt(date) disagrees.
     const text = globalDoc(
       '<dynamicsMap>' +
         '<dynamics date="0.0" volume="f"/>' +
@@ -446,10 +441,9 @@ describe('span-end rules (AD-14ii / R12)', () => {
 
   it('gives asynchronyMap the ANY-ENTRY rule, against §5.0 and with §5.7', () => {
     // DESIGN contradicts itself; the renderer settles it. AsynchronyMap takes
-    // `this.elements[asynIndex + 1].getKey()` with no name test, and GenericMap indexes
-    // every dated child including <style>. TempoMap.getEndDate, by contrast, really does
-    // test getLocalName() === 'tempo'. Observable: a <style> between two <asynchrony>
-    // elements ends the first span instead of being transparent to it.
+    // `this.elements[asynIndex + 1].getKey()` with no name test, and GenericMap indexes every
+    // dated child including <style>, while TempoMap.getEndDate does test
+    // getLocalName() === 'tempo'.
     expect(spanEndRuleOf('asynchronyMap')).toBe('any-entry');
   });
 
@@ -504,8 +498,8 @@ describe('window rules and stamps (AD-4)', () => {
   });
 
   it('lets an EXPLICIT window outrank the MSM score end (AD-27.1)', () => {
-    // W2b implemented §5.0's list literally, MSM first; AD-27.1 reversed it on report,
-    // because an explicit caller choice winning is what every other option here does.
+    // AD-27.1 reverses §5.0's list, which put MSM first: an explicit caller choice outranks
+    // the MSM end, as it does every other option here.
     const window = computeWindow({
       ...base,
       msmEndQuarters: 32,
@@ -589,8 +583,8 @@ describe('renderer-default level resolution (R8 / AD-1)', () => {
   });
 
   it('performs an UNRESOLVABLE tempo level at the renderer default of 100, not as a gap', () => {
-    // This is the reversal AD-1 made: styleScope refuses to invent a level, which is right
-    // for a write transform and wrong for a read of what is performed.
+    // AD-1: styleScope refuses to invent a level, which is right for a write transform and
+    // wrong for a read of what is performed.
     const resolved = resolveIn(
       '<tempoMap><tempo date="0.0" bpm="Allegrissimo" beatLength="0.25"/></tempoMap>',
       '',
@@ -630,9 +624,8 @@ describe('renderer-default level resolution (R8 / AD-1)', () => {
   });
 
   it('honours per-name styleDef shadowing through styleScope, not a header scan', () => {
-    // A part styleDef "T" hides the global "T" entirely — defs and all — while leaving the
-    // global "B" visible. Resolving "Andante" under the part's "T" therefore finds no def
-    // and falls through to the renderer default rather than picking up the global value.
+    // A part styleDef "T" hides the global "T" entirely, defs and all, so resolving "Andante"
+    // under it finds no def and falls through to the renderer default.
     const text =
       '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p" pulsesPerQuarter="720">' +
       '<global><header><tempoStyles><styleDef name="T">' +
