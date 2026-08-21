@@ -11,6 +11,7 @@ import {
   firstChildElement,
   getAttributeValue,
   getNextSiblingElement,
+  immediateNextSiblingElement,
   requireAttribute,
   requireFirstChildElement,
   requireParentElement,
@@ -808,7 +809,7 @@ export class Msm extends AbstractMsm {
         for (
           let e = Msm.getElementAtAfter(currentDate, map);
           e !== null;
-          e = getNextSiblingElement(e)
+          e = immediateNextSiblingElement(e)
         ) {
           // go through the map elements
           // `getElementAtAfter` yields only dated elements, but `getNextSiblingElement`
@@ -856,7 +857,7 @@ export class Msm extends AbstractMsm {
     for (
       let e = Msm.getElementAtAfter(currentDate, map);
       e !== null;
-      e = getNextSiblingElement(e)
+      e = immediateNextSiblingElement(e)
     ) {
       const dateAttribute = requireAttribute('date', e); // see the note in the loop above
       currentDate = parseFloat(dateAttribute.getValue()); // read its date

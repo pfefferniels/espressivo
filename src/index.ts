@@ -268,6 +268,15 @@ function helperGetAllChildElements(
  * `getFirstChildElement`, `getAttribute` and `getParentElement` were renamed
  * (`firstChildElement`, `attribute`, `parentElement`), and `getAllChildElements` was narrowed
  * by RULE N2b — see {@link helperGetAllChildElements}.
+ *
+ * Three members lost a second argument order when the lean pass split `firstChildElement`,
+ * `getNextSiblingElement` and `getPreviousSiblingElement` into separately-named functions.
+ * The shim keeps the `(name, ofThis)` form of each, which is the order Java's own `Helper`
+ * declares, so what it publishes is if anything closer to the original than the overload pair
+ * was. Callers wanting the port's added subject-first forms want `firstChildElementOf`,
+ * `immediateNextSiblingElement` and `immediatePreviousSiblingElement`, all exported directly
+ * — and should note that the two sibling forms are NOT the named ones with the filter
+ * removed; see `xml/tree.ts` and `tests/xml/overloadArmDifferences.test.ts`.
  */
 export const Helper = {
   // xml/tree.js

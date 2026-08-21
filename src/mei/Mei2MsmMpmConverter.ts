@@ -10,6 +10,7 @@ import {
   cloneElement,
   descendantElements,
   firstChildElement,
+  firstChildElementOf,
   requireAttribute,
   requireAttributeValue,
   requireFirstChildElement,
@@ -324,7 +325,7 @@ type ElementHandler = (c: Mei2MsmMpmConverter, e: Element, ctx: WalkContext) => 
  * straight to `addToMap`, whose contract already includes "null map, nothing to do".
  */
 function datedMap(container: Element, name: string): Element | null {
-  return firstChildElement(requireFirstChildElement(container, 'dated'), name);
+  return firstChildElementOf(requireFirstChildElement(container, 'dated'), name);
 }
 
 /**
@@ -556,7 +557,7 @@ export class Mei2MsmMpmConverter {
    * The settings other than `ppq` all have a default, and the defaults are the field
    * initialisers above spelled a second time — which is what lets this be one signature.
    *
-   * Java overloads the name (`(ppq)` for defaults, `(ppq, ...)` for the full set) and the port
+   * Java overloads the name (`(ppq)` for defaults, `(ppq, …)` for the full set) and the port
    * followed, but the "default settings" arm was declared and never called: every caller in
    * `src/` and `tests/` passes at least four arguments. Default parameters express the same
    * thing without a second declaration or a `??` chain, and additionally make the partial
@@ -1531,9 +1532,9 @@ export class Mei2MsmMpmConverter {
   }
 
   private processApp(app: Element, ctx: WalkContext): void {
-    let takeThisReading = firstChildElement(app, 'lem');
+    let takeThisReading = firstChildElementOf(app, 'lem');
     if (takeThisReading === null) {
-      takeThisReading = firstChildElement(app, 'rdg');
+      takeThisReading = firstChildElementOf(app, 'rdg');
       if (takeThisReading === null) {
         return;
       }
@@ -1548,7 +1549,7 @@ export class Mei2MsmMpmConverter {
     // loop stops at the first hit, so the names after it are never looked up.
     let c: Element | null = null;
     for (const preferred of prefOrder) {
-      c = firstChildElement(choice, preferred);
+      c = firstChildElementOf(choice, preferred);
       if (c !== null) break;
     }
 

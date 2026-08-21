@@ -7,6 +7,7 @@ import {
   attribute,
   descendantElements,
   firstChildElement,
+  firstChildElementOf,
   getAttributeValue,
 } from '../xml/tree.js';
 import { foldl } from '../prelude/index.js';
@@ -683,14 +684,14 @@ export class Mei extends XmlBase {
     if (plist !== null) {
       const childHash = new Map<string, Element>();
 
-      let child = firstChildElement(regularizedRoot);
+      let child = firstChildElementOf(regularizedRoot);
       while (child !== null) {
         child.detach();
         // `getAttributeValue` answers `''` rather than null for an absent `@xml:id`, so
         // Java's `id != null` here was true for every child and the guard it opened never
         // skipped one. An unidentified child is keyed under `''`, as it always has been.
         childHash.set(getAttributeValue('id', child), child);
-        child = firstChildElement(regularizedRoot);
+        child = firstChildElementOf(regularizedRoot);
       }
 
       for (const plistEntry of plist) {
