@@ -162,7 +162,7 @@ describe('AccentuationPatternDef', () => {
         accentuation({ beat: '2.0', value: '0.2' }),
       ]);
       const apd = okValue(AccentuationPatternDef.fromXml(xml));
-      expect(apd.getAllAccentuations().map((kv) => kv.getKey()[0])).toEqual([1.0, 2.0, 3.0]);
+      expect(apd.getAllAccentuations().map((kv) => kv.key[0])).toEqual([1.0, 2.0, 3.0]);
       expect(xmlBeats(apd)).toEqual(['1.0', '2.0', '3.0']);
     });
 
@@ -212,9 +212,7 @@ describe('AccentuationPatternDef', () => {
       ]);
       const apd = okValue(AccentuationPatternDef.fromXml(xml));
 
-      expect(apd.getAllAccentuations().map((kv) => kv.getKey()[1])).toEqual([
-        0.11, 0.21, 0.22, 0.23,
-      ]);
+      expect(apd.getAllAccentuations().map((kv) => kv.key[1])).toEqual([0.11, 0.21, 0.22, 0.23]);
       const kids = xml.getChildElements();
       const values: string[] = [];
       for (let i = 0; i < kids.size(); ++i) values.push(kids.get(i).getAttributeValue('value')!);
@@ -286,7 +284,7 @@ describe('AccentuationPatternDef', () => {
       apd.addAccentuation(1.0, 1.0, 1.0, 1.0);
       const index = apd.addAccentuation(2.0, 0.2, 0.2, 0.2);
       expect(index).toBe(1);
-      expect(apd.getAllAccentuations().map((kv) => kv.getKey()[0])).toEqual([1.0, 2.0, 3.0]);
+      expect(apd.getAllAccentuations().map((kv) => kv.key[0])).toEqual([1.0, 2.0, 3.0]);
       expect(xmlBeats(apd)).toEqual(['1', '2', '3']);
     });
 
@@ -377,7 +375,7 @@ describe('AccentuationPatternDef', () => {
       const index = apd.addAccentuation(1.0, 1.0, 1.0, 1.0);
       const all = apd.getAllAccentuations();
       expect(all.length).toBe(1);
-      expect(all[0].getValue()).toBe(apd.getAccentuationXml(index));
+      expect(all[0].value).toBe(apd.getAccentuationXml(index));
     });
 
     it('setLength updates the field and the xml attribute', () => {

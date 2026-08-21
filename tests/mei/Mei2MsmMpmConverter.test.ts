@@ -54,7 +54,7 @@ function score(sections: string): string {
 /** convert `xml`, returning the single MSM's root element */
 function convertToMsm(xml: string, cleanup = true): Element {
   const result = new Mei2MsmMpmConverter(720, true, false, cleanup).convert(Mei.fromXml(xml));
-  const msms = result.getKey();
+  const msms = result.key;
   expect(msms.length).toBe(1);
   const root = msms[0]?.getRootElement();
   expect(root).not.toBeNull();
@@ -64,7 +64,7 @@ function convertToMsm(xml: string, cleanup = true): Element {
 /** convert `xml`, returning the single MPM's root element */
 function convertToMpm(xml: string): Element {
   const result = new Mei2MsmMpmConverter(720, true, false, true).convert(Mei.fromXml(xml));
-  const mpms = result.getValue();
+  const mpms = result.value;
   expect(mpms.length).toBe(1);
   const root = mpms[0]?.getRootElement();
   expect(root).not.toBeNull();
@@ -293,8 +293,8 @@ function convertMovements(
 ): { msm: Element[]; mpm: Element[] } {
   const result = new Mei2MsmMpmConverter(ppq, true, false, cleanup).convert(Mei.fromXml(xml));
   return {
-    msm: result.getKey().map(rootOf),
-    mpm: result.getValue().map(rootOf),
+    msm: result.key.map(rootOf),
+    mpm: result.value.map(rootOf),
   };
 }
 
@@ -553,7 +553,7 @@ describe('Mei2MsmMpmConverter – the meiHead work a movement claims', () => {
   </score></mdiv></body></music>
 </mei>`),
       );
-      const mpm = rootOf(elementAt(result.getValue(), 0, 'the converted performances'));
+      const mpm = rootOf(elementAt(result.value, 0, 'the converted performances'));
       const dynamics = descendants(mpm, 'dynamics');
       expect(dynamics.length).toBe(1);
       return elementAt(dynamics, 0, 'the dynamics entries').getAttributeValue('date');

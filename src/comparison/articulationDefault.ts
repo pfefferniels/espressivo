@@ -14,7 +14,7 @@
  * for (...) {
  *   ...
  *   while (defaultArticulationIndex + 1 < defaultArticulations.length &&
- *          defaultArticulations[defaultArticulationIndex + 1].getKey() <= mapEntry.getKey())
+ *          defaultArticulations[defaultArticulationIndex + 1].key <= mapEntry.key)
  *     defaultArticulationIndex++;
  * ```
  *

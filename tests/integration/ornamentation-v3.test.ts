@@ -166,7 +166,7 @@ function scoreNotes(msm: Msm): NoteRecord[] {
 function ornaments(performance: Performance): Element[] {
   const map = performance.getGlobal()?.getDated()?.getMap(ORNAMENTATION_MAP) ?? null;
   expect(map).not.toBeNull();
-  return map!.getAllElementsOfType('ornament').map((entry) => entry.getValue());
+  return map!.getAllElementsOfType('ornament').map((entry) => entry.value);
 }
 
 /**

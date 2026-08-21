@@ -104,8 +104,8 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
       // across the serialization boundary, so both sides state it. `true` is also what carries
       // composite_advanced's trill through the round trip.
       const converted = new Mei2MsmMpmConverter(720, true, false, true, true).convert(mei);
-      const classicMsm = elementAt(converted.getKey(), 0, 'the classic converter’s MSMs');
-      const classicMpm = elementAt(converted.getValue(), 0, 'the classic converter’s MPMs');
+      const classicMsm = elementAt(converted.key, 0, 'the classic converter’s MSMs');
+      const classicMpm = elementAt(converted.value, 0, 'the classic converter’s MPMs');
       const classicPerformance = elementAt(
         classicMpm.getAllPerformances(),
         0,
@@ -115,11 +115,11 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
       // --- facade: XML text at every boundary
       const movements = convertMeiToMsmMpm(meiText, { sourceName: `${fixture}.mei` });
 
-      expect(movements).toHaveLength(converted.getKey().length);
+      expect(movements).toHaveLength(converted.key.length);
       const first = movementAt(movements);
       expect(canonicalise(first.msm)).toBe(canonicalise(classicMsm.getRootElement()!.toXML()));
       expect(canonicalise(first.mpm)).toBe(canonicalise(classicMpm.getRootElement()!.toXML()));
-      expect(movements.map((m) => m.title)).toEqual(converted.getKey().map((m) => m.getTitle()));
+      expect(movements.map((m) => m.title)).toEqual(converted.key.map((m) => m.getTitle()));
 
       expect(canonicalise(performMsm(first))).toBe(
         canonicalise(classicPerformance.perform(classicMsm).getRootElement()!.toXML()),
@@ -167,7 +167,7 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
 
     expect(canonicalise(movementAt(convertMeiToMsmMpm(meiText)).mpm)).toBe(
       canonicalise(
-        elementAt(classic.getValue(), 0, 'the classic converter’s MPMs').getRootElement()!.toXML(),
+        elementAt(classic.value, 0, 'the classic converter’s MPMs').getRootElement()!.toXML(),
       ),
     );
   });
@@ -201,7 +201,7 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
         `option ${JSON.stringify(options)}`,
       ).toBe(
         canonicalise(
-          elementAt(classic.getKey(), 0, 'the classic converter’s MSMs').getRootElement()!.toXML(),
+          elementAt(classic.key, 0, 'the classic converter’s MSMs').getRootElement()!.toXML(),
         ),
       );
     }

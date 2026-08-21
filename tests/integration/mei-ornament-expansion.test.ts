@@ -403,8 +403,7 @@ describe('expansion is asymmetric between the converter and the facade, on purpo
     mei.setFile(`${FIXTURE}.mei`);
     return new Mei2MsmMpmConverter(720, true, false, true)
       .convert(mei)
-      .getValue()[0]
-      .getRootElement()!
+      .value[0].getRootElement()!
       .toXML();
   };
 

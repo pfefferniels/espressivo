@@ -441,7 +441,7 @@ describe('span-end rules (AD-14ii / R12)', () => {
 
   it('gives asynchronyMap the ANY-ENTRY rule, against §5.0 and with §5.7', () => {
     // DESIGN contradicts itself; the renderer settles it. AsynchronyMap takes
-    // `this.elements[asynIndex + 1].getKey()` with no name test, and GenericMap indexes every
+    // `this.elements[asynIndex + 1].key` with no name test, and GenericMap indexes every
     // dated child including <style>, while TempoMap.getEndDate does test
     // getLocalName() === 'tempo'.
     expect(spanEndRuleOf('asynchronyMap')).toBe('any-entry');

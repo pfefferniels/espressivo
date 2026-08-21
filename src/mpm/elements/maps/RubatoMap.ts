@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
-import { KeyValue } from '../../../supplementary/KeyValue.js';
+import type { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
@@ -78,7 +78,7 @@ export class RubatoMap extends GenericMap {
     e.addAttribute(new Attribute('loop', String(rubato.loop ?? false)));
     if (rubato.id !== undefined)
       e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', rubato.id));
-    return this.insertElement(new KeyValue(rubato.date, e), false);
+    return this.insertElement({ key: rubato.date, value: e }, false);
   }
 
   /**
@@ -100,7 +100,7 @@ export class RubatoMap extends GenericMap {
     const i = this.resolveEntryIndex(index, 'rubato');
     if (i < 0) return null;
     const entry = this.entryAt(i);
-    const e = entry.getValue();
+    const e = entry.value;
 
     const style = this.getStyle('rubato', this.findStyleNameAt(i));
     const nameRef = attribute('name.ref', e);
@@ -120,7 +120,7 @@ export class RubatoMap extends GenericMap {
 
     return resolveRubato(
       {
-        startDate: entry.getKey(),
+        startDate: entry.key,
         endDate: this.nextDateOfType(i, 'rubato'),
       },
       declared,
@@ -174,31 +174,31 @@ export class RubatoMap extends GenericMap {
       if (rd === null) continue;
       for (; mapIndex < map.size(); ++mapIndex) {
         const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
-        if (mapEntry.getKey() < rd.startDate) continue;
+        if (mapEntry.key < rd.startDate) continue;
         if (
-          mapEntry.getKey() >= rd.endDate ||
-          (!rd.loop && mapEntry.getKey() >= rd.startDate + rd.frameLength)
+          mapEntry.key >= rd.endDate ||
+          (!rd.loop && mapEntry.key >= rd.startDate + rd.frameLength)
         )
           break;
 
-        const dateAtt = attribute('date.perf', mapEntry.getValue());
+        const dateAtt = attribute('date.perf', mapEntry.value);
         if (dateAtt !== null)
           dateAtt.setValue(
             String(RubatoMap.computeRubatoTransformation(parseFloat(dateAtt.getValue()), rd)),
           );
 
-        let dateEndAtt = attribute('date.end.perf', mapEntry.getValue());
+        let dateEndAtt = attribute('date.end.perf', mapEntry.value);
         if (dateEndAtt !== null) {
           const endDate = parseFloat(dateEndAtt.getValue());
-          pendingDurations.push(new KeyValue(endDate, dateEndAtt));
+          pendingDurations.push({ key: endDate, value: dateEndAtt });
           continue;
         }
-        const durAtt = attribute('duration.perf', mapEntry.getValue());
+        const durAtt = attribute('duration.perf', mapEntry.value);
         if (durAtt !== null) {
-          const endDate = mapEntry.getKey() + parseFloat(durAtt.getValue());
+          const endDate = mapEntry.key + parseFloat(durAtt.getValue());
           dateEndAtt = new Attribute('date.end.perf', String(endDate));
-          mapEntry.getValue().addAttribute(dateEndAtt);
-          pendingDurations.push(new KeyValue(endDate, dateEndAtt));
+          mapEntry.value.addAttribute(dateEndAtt);
+          pendingDurations.push({ key: endDate, value: dateEndAtt });
         }
       }
 
@@ -206,10 +206,10 @@ export class RubatoMap extends GenericMap {
       // at the first one it does not, and the whole run is spliced off in one step.
       let drained = 0;
       for (const pd of pendingDurations) {
-        const dateEnd = pd.getKey();
+        const dateEnd = pd.key;
         if (dateEnd >= rd.endDate || (!rd.loop && dateEnd >= rd.startDate + rd.frameLength)) break;
         if (dateEnd >= rd.startDate)
-          pd.getValue().setValue(String(RubatoMap.computeRubatoTransformation(dateEnd, rd)));
+          pd.value.setValue(String(RubatoMap.computeRubatoTransformation(dateEnd, rd)));
         ++drained;
       }
       if (drained > 0) pendingDurations.splice(0, drained);

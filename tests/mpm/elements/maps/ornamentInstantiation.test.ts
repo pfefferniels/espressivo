@@ -117,7 +117,7 @@ function chromatic(value: number): OrnamentPitchSpec {
 /** The score's notes, in document order, as plain records — the shape assertions read from. */
 function notesOf(score: GenericMap) {
   return score.getAllElementsOfType('note').map((entry) => {
-    const note = entry.getValue();
+    const note = entry.value;
     const number = (name: string) => {
       const value = note.getAttributeValue(name);
       return value === null ? null : parseFloat(value);
@@ -562,7 +562,7 @@ describe('MPM v3 ornament instantiation', () => {
       });
       map.renderOrnamentationToMap(score);
       for (const entry of score.getAllElementsOfType('note'))
-        expect(entry.getValue().getAttributeValue('ornament.date.offset')).toBeNull();
+        expect(entry.value.getAttributeValue('ornament.date.offset')).toBeNull();
     });
   });
 
@@ -1494,7 +1494,7 @@ describe('MPM v3 ornament instantiation', () => {
       const map = makeMap([makeDef('arpeggio', { v2FrameStart: -22, v2FrameLength: 44 })]);
       map.addOrnamentV2(0, 'arpeggio', 1.0, ['a', 'b', 'c'], 'orn1');
       map.renderOrnamentationToMap(score);
-      const notes = score.getAllElementsOfType('note').map((entry) => entry.getValue());
+      const notes = score.getAllElementsOfType('note').map((entry) => entry.value);
       expect(notes).toHaveLength(3);
       expect(notes.map((note) => note.getAttributeValue('ornament.date.offset'))).toEqual([
         '-22',

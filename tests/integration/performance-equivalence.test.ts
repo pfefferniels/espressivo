@@ -128,8 +128,8 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
         mei.setFile(`${fixture}.mei`);
         const converter = new Mei2MsmMpmConverter(720, true, false, true);
         const result = converter.convert(mei);
-        msm = result.getKey()[0];
-        mpm = result.getValue()[0];
+        msm = result.key[0];
+        mpm = result.value[0];
         performance = mpm.getAllPerformances()[0];
       });
 
@@ -265,8 +265,8 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
       mei.setFile('simple_notes.mei');
       const converter = new Mei2MsmMpmConverter(720, true, false, true);
       const result = converter.convert(mei);
-      const msm = result.getKey()[0];
-      const mpm = result.getValue()[0];
+      const msm = result.key[0];
+      const mpm = result.value[0];
       const perf = mpm.getAllPerformances()[0];
 
       const augmented = perf.perform(msm);
@@ -281,8 +281,8 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
       mei.setFile('simple_notes.mei');
       const converter = new Mei2MsmMpmConverter(720, true, false, true);
       const result = converter.convert(mei);
-      const msm = result.getKey()[0];
-      const mpm = result.getValue()[0];
+      const msm = result.key[0];
+      const mpm = result.value[0];
       const perf = mpm.getAllPerformances()[0];
 
       const augmented1 = perf.perform(msm);
@@ -305,8 +305,8 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
       mei.setFile('simple_notes.mei');
       const converter = new Mei2MsmMpmConverter(720, true, false, true);
       const result = converter.convert(mei);
-      const msm = result.getKey()[0];
-      const mpm = result.getValue()[0];
+      const msm = result.key[0];
+      const mpm = result.value[0];
       const perf = mpm.getAllPerformances()[0];
 
       const originalXml = msm.getRootElement()!.toXML();
@@ -325,8 +325,8 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
         mei.setFile(`${fixture}.mei`);
         const converter = new Mei2MsmMpmConverter(720, true, false, true);
         const result = converter.convert(mei);
-        const msm = result.getKey()[0];
-        const mpm = result.getValue()[0];
+        const msm = result.key[0];
+        const mpm = result.value[0];
         const perf = mpm.getAllPerformances()[0];
 
         const augmented = perf.perform(msm);

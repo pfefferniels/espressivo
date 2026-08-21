@@ -464,22 +464,20 @@ export class Performance extends AbstractXmlSubtree {
   private static addPerformanceTimingAttributes(map: GenericMap | null): void {
     if (map === null || map.isEmpty()) return;
     for (const e of map.getAllElements()) {
-      e.getValue().addAttribute(
-        new Attribute('date.perf', getAttributeValue('date', e.getValue())),
-      );
-      const duration = attribute('duration', e.getValue());
+      e.value.addAttribute(new Attribute('date.perf', getAttributeValue('date', e.value)));
+      const duration = attribute('duration', e.value);
       if (duration !== null)
-        e.getValue().addAttribute(new Attribute('duration.perf', duration.getValue()));
-      const dateEnd = attribute('date.end', e.getValue());
+        e.value.addAttribute(new Attribute('duration.perf', duration.getValue()));
+      const dateEnd = attribute('date.end', e.value);
       if (dateEnd !== null)
-        e.getValue().addAttribute(new Attribute('date.end.perf', dateEnd.getValue()));
+        e.value.addAttribute(new Attribute('date.end.perf', dateEnd.getValue()));
     }
   }
 
   /** Mark every element of the map as touched by performance rendering (empty `modified`). */
   private static addModifiedAttributes(map: GenericMap | null): void {
     if (map === null || map.isEmpty()) return;
-    for (const e of map.getAllElements()) e.getValue().addAttribute(new Attribute('modified', ''));
+    for (const e of map.getAllElements()) e.value.addAttribute(new Attribute('modified', ''));
   }
 
   /**
@@ -872,7 +870,7 @@ export class Performance extends AbstractXmlSubtree {
         // `getAllElements()` returns the live entry index by reference; the body only adds an
         // attribute and does not touch the index it is walking.
         for (const entry of score.getAllElements()) {
-          const e = entry.getValue();
+          const e = entry.value;
           if (e.getLocalName() === 'note') e.addAttribute(new Attribute('velocity', '100.0'));
         }
       }
@@ -900,7 +898,7 @@ export class Performance extends AbstractXmlSubtree {
    * one thing this stage needs from {@link GlobalRender}.
    *
    * Generic in the phase, because this stage and rubato commute:
-   * `renderMetricalAccentuationToMap` measures the beat from `mapEntry.getKey()`, and a
+   * `renderMetricalAccentuationToMap` measures the beat from `mapEntry.key`, and a
    * `GenericMap`'s key is `@date` — the symbolic date, which rubato does not touch (rubato
    * rewrites `date.perf` and `date.end.perf`). It reads and writes `velocity`; rubato reads and
    * writes neither. A negative control that ran this stage *after* rubato left the suite green
@@ -1080,7 +1078,7 @@ export class Performance extends AbstractXmlSubtree {
     }
     if (map === null) return;
     for (const entry of map.getAllElements()) {
-      const e = entry.getValue();
+      const e = entry.value;
       const dateAtt = attribute('date.perf', e);
       if (dateAtt !== null) e.addAttribute(new Attribute('milliseconds.date', dateAtt.getValue()));
       const endAtt = attribute('date.end.perf', e);
@@ -1137,7 +1135,7 @@ export class Performance extends AbstractXmlSubtree {
   ): void {
     if (ornamentationMap === null || map === null) return;
     for (const e of map.getAllElementsOfType('note')) {
-      const note = e.getValue();
+      const note = e.value;
       const millisecondsDateAtt = attribute('milliseconds.date', note);
       if (millisecondsDateAtt === null) continue;
       const millisecondsDate = parseFloat(millisecondsDateAtt.getValue());

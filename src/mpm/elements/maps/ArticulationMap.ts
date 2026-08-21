@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
-import { KeyValue } from '../../../supplementary/KeyValue.js';
+import type { KeyValue } from '../../../supplementary/KeyValue.js';
 import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
@@ -109,7 +109,7 @@ export class ArticulationMap extends GenericMap {
       e.addAttribute(
         new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', articulation.id),
       );
-    return this.insertElement(new KeyValue(articulation.date, e), false);
+    return this.insertElement({ key: articulation.date, value: e }, false);
   }
 
   addArticulationStyleSwitch(
@@ -125,7 +125,7 @@ export class ArticulationMap extends GenericMap {
       e.addAttribute(new Attribute('defaultArticulation', defaultArticulation));
     if (id !== null && id !== undefined)
       e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
-    return this.insertElement(new KeyValue(date, e), true);
+    return this.insertElement({ key: date, value: e }, true);
   }
 
   /**
@@ -148,7 +148,7 @@ export class ArticulationMap extends GenericMap {
     const i = this.resolveEntryIndex(index, 'articulation');
     if (i < 0) return null;
     const entry = this.entryAt(i);
-    const e = entry.getValue();
+    const e = entry.value;
 
     const style = this.findStyle(i);
     const nameRef = attribute('name.ref', e);
@@ -173,7 +173,7 @@ export class ArticulationMap extends GenericMap {
 
     return {
       xmlId: xmlId === null ? null : xmlId.getValue(),
-      date: entry.getKey(),
+      date: entry.key,
       noteid: noteid === null ? null : noteid.getValue().substring(1),
       articulationDefName,
       articulationDef,
@@ -237,19 +237,19 @@ export class ArticulationMap extends GenericMap {
         const index = map.getElementIndexByID(ad.noteid);
         if (index < 0) continue;
         const referee = elementAt(map.getAllElements(), index, 'articulation referee');
-        if (referee.getKey() !== ad.date)
+        if (referee.key !== ad.date)
           console.error(
-            `Warning: articulation date and referee date do not match!\n    ${this.entryAt(articIndex).getValue().toXML()}\n    ${referee.getValue().toXML()}`,
+            `Warning: articulation date and referee date do not match!\n    ${this.entryAt(articIndex).value.toXML()}\n    ${referee.value.toXML()}`,
           );
-        fileUnder(referee.getValue(), ad);
+        fileUnder(referee.value, ad);
         continue;
       }
 
       // With no noteid the articulation applies to every note at its own date.
       const elements = map.getAllElementsAt(ad.date);
       for (const element of elements) {
-        if (element.getValue().getLocalName() !== 'note') continue;
-        fileUnder(element.getValue(), ad);
+        if (element.value.getLocalName() !== 'note') continue;
+        fileUnder(element.value, ad);
       }
     }
 
@@ -257,17 +257,12 @@ export class ArticulationMap extends GenericMap {
     const defaultArticulations: KeyValue<number, ArticulationDef | null>[] = [];
     const styleSwitchList = this.getAllElementsOfType('style');
     for (const styleEntry of styleSwitchList) {
-      const aStyle = this.getStyle(
-        'articulation',
-        getAttributeValue('name.ref', styleEntry.getValue()),
-      );
+      const aStyle = this.getStyle('articulation', getAttributeValue('name.ref', styleEntry.value));
       if (aStyle === null) continue;
 
-      const defaultArticulationAtt = attribute('defaultArticulation', styleEntry.getValue());
+      const defaultArticulationAtt = attribute('defaultArticulation', styleEntry.value);
       if (defaultArticulationAtt === null) {
-        defaultArticulations.push(
-          new KeyValue<number, ArticulationDef | null>(styleEntry.getKey(), null),
-        );
+        defaultArticulations.push({ key: styleEntry.key, value: null });
         continue;
       }
 
@@ -276,19 +271,17 @@ export class ArticulationMap extends GenericMap {
         console.error(
           `Warning: attribute ${defaultArticulationAtt.toXML()} in style element refers to an unknown articulationDef.`,
         );
-      defaultArticulations.push(
-        new KeyValue<number, ArticulationDef | null>(styleEntry.getKey(), aDef),
-      );
+      defaultArticulations.push({ key: styleEntry.key, value: aDef });
     }
 
     let defaultArticulationIndex = 0;
     for (const mapEntry of map.getAllElements()) {
-      if (mapEntry.getValue().getLocalName() !== 'note') continue;
+      if (mapEntry.value.getLocalName() !== 'note') continue;
 
-      const artics = noteArtics.get(mapEntry.getValue());
+      const artics = noteArtics.get(mapEntry.value);
       if (artics !== undefined) {
         for (const artic of artics) {
-          mapTimingChanged = articulateNote(artic, mapEntry.getValue()) || mapTimingChanged;
+          mapTimingChanged = articulateNote(artic, mapEntry.value) || mapTimingChanged;
         }
         continue;
       }
@@ -297,8 +290,7 @@ export class ArticulationMap extends GenericMap {
       // note. `at(…) ?? Infinity`: no successor means no later switch to advance to.
       if (defaultArticulations.length === 0) continue;
       while (
-        (defaultArticulations.at(defaultArticulationIndex + 1)?.getKey() ?? Infinity) <=
-        mapEntry.getKey()
+        (defaultArticulations.at(defaultArticulationIndex + 1)?.key ?? Infinity) <= mapEntry.key
       )
         defaultArticulationIndex++;
 
@@ -306,11 +298,10 @@ export class ArticulationMap extends GenericMap {
         defaultArticulations,
         defaultArticulationIndex,
         'default articulation',
-      ).getValue();
+      ).value;
       if (defaultArticulationDef === null) continue;
 
-      mapTimingChanged =
-        defaultArticulationDef.articulateNote(mapEntry.getValue()) || mapTimingChanged;
+      mapTimingChanged = defaultArticulationDef.articulateNote(mapEntry.value) || mapTimingChanged;
     }
 
     if (mapTimingChanged) map.sort();
@@ -337,29 +328,29 @@ export class ArticulationMap extends GenericMap {
   renderArticulationToMap_millisecondModifiers(map: GenericMap | null): void {
     if (map === null) return;
     for (const entry of map.elements) {
-      const dateAtt = attribute('milliseconds.date', entry.getValue());
+      const dateAtt = attribute('milliseconds.date', entry.value);
       if (dateAtt === null) continue;
       const date = parseFloat(dateAtt.getValue());
       let dateNew = date;
-      const endAtt = attribute('milliseconds.date.end', entry.getValue());
+      const endAtt = attribute('milliseconds.date.end', entry.value);
       let endNew = endAtt !== null ? parseFloat(endAtt.getValue()) : null;
-      const absoluteDelayMs = attribute('articulation.absoluteDelayMs', entry.getValue());
+      const absoluteDelayMs = attribute('articulation.absoluteDelayMs', entry.value);
       if (absoluteDelayMs !== null) {
         dateNew += parseFloat(absoluteDelayMs.getValue());
-        entry.getValue().removeAttribute(absoluteDelayMs);
+        entry.value.removeAttribute(absoluteDelayMs);
       }
-      const absoluteDurationMs = attribute('articulation.absoluteDurationMs', entry.getValue());
+      const absoluteDurationMs = attribute('articulation.absoluteDurationMs', entry.value);
       if (absoluteDurationMs !== null) {
         if (endNew !== null) endNew = dateNew + parseFloat(absoluteDurationMs.getValue());
-        entry.getValue().removeAttribute(absoluteDurationMs);
+        entry.value.removeAttribute(absoluteDurationMs);
       }
       const absoluteDurationChangeMs = attribute(
         'articulation.absoluteDurationChangeMs',
-        entry.getValue(),
+        entry.value,
       );
       if (absoluteDurationChangeMs !== null) {
         if (endNew !== null) endNew += parseFloat(absoluteDurationChangeMs.getValue());
-        entry.getValue().removeAttribute(absoluteDurationChangeMs);
+        entry.value.removeAttribute(absoluteDurationChangeMs);
       }
       if (endNew === null || dateNew < endNew) {
         dateAtt.setValue(String(dateNew));

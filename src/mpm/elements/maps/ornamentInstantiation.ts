@@ -1160,7 +1160,7 @@ function markCarved(principal: Element, planned: readonly PlannedOrnament[]): vo
 export function noteOwners(maps: readonly GenericMap[]): ReadonlyMap<Element, GenericMap> {
   const owners = new Map<Element, GenericMap>();
   for (const map of maps)
-    for (const note of map.getAllElementsOfType('note')) owners.set(note.getValue(), map);
+    for (const note of map.getAllElementsOfType('note')) owners.set(note.value, map);
   return owners;
 }
 

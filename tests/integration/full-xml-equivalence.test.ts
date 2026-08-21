@@ -215,8 +215,8 @@ function runFullComparison(fixture: string): { diffs: string[]; tsXml: string; r
   mei.setFile(`${fixture}.mei`);
   const converter = new Mei2MsmMpmConverter(720, true, false, true);
   const result = converter.convert(mei);
-  const msm = result.getKey()[0];
-  const mpm = result.getValue()[0];
+  const msm = result.key[0];
+  const mpm = result.value[0];
   const performance = mpm.getAllPerformances()[0];
 
   const augmented = performance.perform(msm);
@@ -282,8 +282,8 @@ describe('Attribute-level coverage audit', () => {
       mei.setFile(`${fixture}.mei`);
       const converter = new Mei2MsmMpmConverter(720, true, false, true);
       const result = converter.convert(mei);
-      const msm = result.getKey()[0];
-      const mpm = result.getValue()[0];
+      const msm = result.key[0];
+      const mpm = result.value[0];
       const perf = mpm.getAllPerformances()[0];
 
       const augmented = perf.perform(msm);
@@ -324,8 +324,8 @@ describe('Attribute-level coverage audit', () => {
       mei.setFile(`${fixture}.mei`);
       const converter = new Mei2MsmMpmConverter(720, true, false, true);
       const result = converter.convert(mei);
-      const msm = result.getKey()[0];
-      const mpm = result.getValue()[0];
+      const msm = result.key[0];
+      const mpm = result.value[0];
       const perf = mpm.getAllPerformances()[0];
 
       const augmented = perf.perform(msm);
@@ -344,8 +344,8 @@ describe('Attribute-level coverage audit', () => {
       mei.setFile(`${fixture}.mei`);
       const converter = new Mei2MsmMpmConverter(720, true, false, true);
       const result = converter.convert(mei);
-      const msm = result.getKey()[0];
-      const mpm = result.getValue()[0];
+      const msm = result.key[0];
+      const mpm = result.value[0];
       const perf = mpm.getAllPerformances()[0];
 
       const augmented = perf.perform(msm);

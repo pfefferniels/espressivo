@@ -8,7 +8,7 @@
  * ## Two renderer behaviours
  *
  * 1. Spans end on any entry, and a foreign entry opens a `⊥` span (AD-29 as corrected by
- *    AD-33.1). `renderAsynchronyToMap` takes `this.elements[asynIndex + 1].getKey()` with no
+ *    AD-33.1). `renderAsynchronyToMap` takes `this.elements[asynIndex + 1].key` with no
  *    local-name test, and `GenericMap` indexes every dated child including `<style>`. Contrast
  *    `TempoMap.getEndDate`, which does test the local name.
  *

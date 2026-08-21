@@ -902,7 +902,7 @@ describe('TempoMap', () => {
       const map = noteMap();
       TempoMap.renderTempoToMap(map, 720, null);
       expect(
-        map.getAllElements().map((e) => e.getValue().getAttributeValue('milliseconds.date')),
+        map.getAllElements().map((e) => e.value.getAttributeValue('milliseconds.date')),
       ).toEqual(['0', '100']);
     });
 
@@ -912,8 +912,8 @@ describe('TempoMap', () => {
       const values = map
         .getAllElements()
         .map((e) => [
-          e.getValue().getAttributeValue('date.end.perf'),
-          e.getValue().getAttributeValue('milliseconds.date.end'),
+          e.value.getAttributeValue('date.end.perf'),
+          e.value.getAttributeValue('milliseconds.date.end'),
         ]);
       expect(values).toEqual([
         ['100', '100'],

@@ -3,7 +3,7 @@ import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { addToListAttribute } from '../../../xml/ids.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
-import { KeyValue } from '../../../supplementary/KeyValue.js';
+import type { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
@@ -42,14 +42,14 @@ export class AsynchronyMap extends GenericMap {
     const e = new Element('asynchrony', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('milliseconds.offset', String(millisecondsOffset)));
-    return this.insertElement(new KeyValue(date, e), false);
+    return this.insertElement({ key: date, value: e }, false);
   }
 
   getAsynchronyAt(date: number): number {
     // The nearest entry at or before `date` whose name says `asynchrony`, skipping back over
     // the `<style>` switches in between. No asynchrony in scope means an offset of 0.
     for (let i = this.getElementIndexBeforeAt(date); i >= 0; --i) {
-      const e = this.entryAt(i).getValue();
+      const e = this.entryAt(i).value;
       if (e.getLocalName().includes('asynchrony'))
         return parseFloat(getAttributeValue('milliseconds.offset', e));
     }
@@ -83,40 +83,40 @@ export class AsynchronyMap extends GenericMap {
     // runs to the end of time. `getAllElements()` hands back the live index by reference, and
     // the body writes to `map` rather than to `this`, so walking it is safe here.
     for (const [asynEntry, next] of withNext(this.getAllElements())) {
-      const asynElement = asynEntry.getValue();
-      const asynStartDate = asynEntry.getKey();
+      const asynElement = asynEntry.value;
+      const asynStartDate = asynEntry.key;
       // `'id'`, not `'xml:id'` — see `Msm.exportMidi`'s note. `@modified` records which
       // performance elements modified a note; the misspelled lookup recorded an empty string
       // for every one of them, fixed in the fork at `meico@68ccd3b8`. No reference fixture
       // shows the difference — `GenerateAllMapsReference` builds its asynchrony instructions
       // with no id at all — so a unit test pins it instead.
       const xmlId = getAttributeValue('id', asynElement);
-      const asynEndDate = next?.getKey() ?? Number.MAX_VALUE;
+      const asynEndDate = next?.key ?? Number.MAX_VALUE;
       const offset = parseFloat(getAttributeValue('milliseconds.offset', asynElement));
       for (const mapEntry of mapEntries) {
-        if (mapEntry.getKey() >= asynEndDate) break;
+        if (mapEntry.key >= asynEndDate) break;
         let startDateMs = 0.0;
-        if (mapEntry.getKey() >= asynStartDate) {
-          const att = attribute('milliseconds.date', mapEntry.getValue());
+        if (mapEntry.key >= asynStartDate) {
+          const att = attribute('milliseconds.date', mapEntry.value);
           if (att !== null) {
             startDateMs = Math.max(0.0, parseFloat(att.getValue()) + offset);
             att.setValue(String(startDateMs));
-            addToListAttribute(mapEntry.getValue(), 'modified', xmlId);
+            addToListAttribute(mapEntry.value, 'modified', xmlId);
           }
         }
-        const dur = attribute('duration', mapEntry.getValue());
+        const dur = attribute('duration', mapEntry.value);
         if (dur === null) {
           done.push(mapEntry);
           continue;
         }
-        const end = parseFloat(dur.getValue()) + mapEntry.getKey();
+        const end = parseFloat(dur.getValue()) + mapEntry.key;
         if (end >= asynEndDate) continue;
         if (end >= asynStartDate) {
-          const att = attribute('milliseconds.date.end', mapEntry.getValue());
+          const att = attribute('milliseconds.date.end', mapEntry.value);
           if (att !== null) {
             const ms = parseFloat(att.getValue()) + offset;
             att.setValue(String(Math.max(ms, startDateMs + 1)));
-            addToListAttribute(mapEntry.getValue(), 'modified', xmlId);
+            addToListAttribute(mapEntry.value, 'modified', xmlId);
           }
         }
         done.push(mapEntry);

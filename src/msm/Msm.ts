@@ -1,7 +1,7 @@
 import { Element, Attribute, Nodes, Elements, Document } from '../xml/XomTypes.js';
 import { AbstractMsm } from './AbstractMsm.js';
 import { Goto } from './Goto.js';
-import { KeyValue } from '../supplementary/KeyValue.js';
+import type { KeyValue } from '../supplementary/KeyValue.js';
 import { v4 as uuidv4 } from 'uuid';
 import { filterMap } from '../prelude/index.js';
 import {
@@ -1306,7 +1306,7 @@ export class Msm extends AbstractMsm {
         const value = parseFloat(velAtt.getValue());
         if (value < lowest) lowest = value;
         else if (value > highest) highest = value;
-        velocities.push(new KeyValue<number, Attribute>(value, velAtt));
+        velocities.push({ key: value, value: velAtt });
       }
     }
 
@@ -1392,7 +1392,7 @@ export class Msm extends AbstractMsm {
     }
 
     for (const attribute of attributes) {
-      const x = attribute.getKey();
+      const x = attribute.key;
       let result = x;
 
       if (x < lowerCompMax) {
@@ -1406,7 +1406,7 @@ export class Msm extends AbstractMsm {
       } else {
         continue;
       }
-      attribute.getValue().setValue(String(result));
+      attribute.value.setValue(String(result));
     }
   }
 

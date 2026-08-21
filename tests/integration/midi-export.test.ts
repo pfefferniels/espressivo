@@ -18,7 +18,7 @@ function loadMeiAndConvert(meiFile: string): { msm: Msm; mpm: Mpm } {
   mei.setFile(meiFile);
   const converter = new Mei2MsmMpmConverter(720, true, false, true);
   const result = converter.convert(mei);
-  return { msm: result.getKey()[0], mpm: result.getValue()[0] };
+  return { msm: result.key[0], mpm: result.value[0] };
 }
 
 describe('MIDI export pipeline', () => {

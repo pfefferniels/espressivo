@@ -75,8 +75,8 @@ describe('Cross-validation: TypeScript port vs Java reference', () => {
         mei.setFile(meiFile);
         const converter = new Mei2MsmMpmConverter(720, true, false, true);
         const result = converter.convert(mei);
-        actualMsms = result.getKey();
-        actualMpms = result.getValue();
+        actualMsms = result.key;
+        actualMpms = result.value;
       });
 
       it('should produce 1 MSM and 1 MPM', () => {

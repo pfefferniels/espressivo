@@ -1595,7 +1595,7 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
 
     map.renderOrnamentationToMap(score);
 
-    const notes = score.getAllElementsOfType('note').map((e) => e.getValue());
+    const notes = score.getAllElementsOfType('note').map((e) => e.value);
     // n2 is untouched, n1 is replaced by the two generated notes
     expect(notes.map((note) => note.getAttributeValue('midi.pitch'))).toEqual(['64', '61', '60']);
     expect(notes.map((note) => note.getAttributeValue('date'))).toEqual(['0', '0', '22']);
@@ -1659,7 +1659,7 @@ describe('OrnamentationMap — expandOrnaments (D15)', () => {
 
     // The two score notes and nothing else, with the principal still carrying its own id and
     // pitch: the ornament did not run at all rather than running and being undone.
-    const notes = score.getAllElementsOfType('note').map((e) => e.getValue());
+    const notes = score.getAllElementsOfType('note').map((e) => e.value);
     expect(notes.map((note) => note.getAttributeValue('xml:id'))).toEqual(['n1', 'n2']);
     expect(notes.map((note) => note.getAttributeValue('midi.pitch'))).toEqual(['60', '64']);
     // Not one marker of either generation, and no complaint logged: skipping is the
@@ -1678,16 +1678,13 @@ describe('OrnamentationMap — expandOrnaments (D15)', () => {
     // exactly as it went in.
     const { score, map } = v3Case();
     map.renderOrnamentationToMap(score, ctx(false));
-    const ornament = map.getAllElementsOfType('ornament')[0].getValue();
+    const ornament = map.getAllElementsOfType('ornament')[0].value;
     expect(ornament.getAttributeValue('note.order.perf')).toBeNull();
 
     const expanded = v3Case();
     expanded.map.renderOrnamentationToMap(expanded.score, ctx(true));
     expect(
-      expanded.map
-        .getAllElementsOfType('ornament')[0]
-        .getValue()
-        .getAttributeValue('note.order.perf'),
+      expanded.map.getAllElementsOfType('ornament')[0].value.getAttributeValue('note.order.perf'),
     ).not.toBeNull();
   });
 
@@ -1952,9 +1949,9 @@ describe('OrnamentationMap — the duplicated millisecond pass', () => {
           .getAllElementsOfType('note')
           .map(
             (e) =>
-              `${e.getValue().getAttributeValue('xml:id')}:` +
-              `${e.getValue().getAttributeValue('milliseconds.date')}/` +
-              `${e.getValue().getAttributeValue('milliseconds.date.end')}`,
+              `${e.value.getAttributeValue('xml:id')}:` +
+              `${e.value.getAttributeValue('milliseconds.date')}/` +
+              `${e.value.getAttributeValue('milliseconds.date.end')}`,
           );
 
       const viaOrnamentationMap = build();

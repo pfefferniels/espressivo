@@ -71,8 +71,8 @@ describe('layersToStaffs: TypeScript port vs Java reference', () => {
         mei.setFile(meiFile);
         mei.layersToStaffs();
         const result = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
-        msms = result.getKey();
-        mpms = result.getValue();
+        msms = result.key;
+        mpms = result.value;
       });
 
       it('has a Java reference', () => {
