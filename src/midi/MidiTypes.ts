@@ -3,23 +3,21 @@
  * These types provide the core MIDI data structures needed for
  * reading, writing, and manipulating Standard MIDI File (SMF) data.
  *
- * There is no meico counterpart to this file: Java uses `javax.sound.midi`
- * directly, so the reference for everything here is the JDK's behaviour, not a
- * `.java` file in `/Users/nielspfeffer/Projects/meico`. Three consequences that the
- * rest of the port depends on and that are easy to break by accident:
+ * There is no meico counterpart to this file: Java uses `javax.sound.midi` directly, so the
+ * reference for everything here is the JDK's behaviour rather than a `.java` file. Three
+ * properties the rest of the port depends on:
  *
- * - **`Track.add` keeps a track sorted by tick at all times** (JDK contract), and
- *   the sort is stable, so events added at the same tick stay in insertion order.
- *   That insertion order *is* the event order of the exported MIDI file, which
- *   `tests/integration/midi-byte-equivalence.test.ts` compares event by event
- *   against Java-generated `.mid` references. Changing when or how `add` sorts
- *   reorders the file.
- * - **A `MidiMessage` is an immutable value; a `MidiEvent` is a mutable holder.**
- *   `MidiEvent.getMessage()` hands out the message it holds, and that is safe to
- *   share because nothing can write through it. Rewriting an event's message —
- *   which `Midi.noteOns2NoteOffs` does — replaces the *reference* on the event
- *   through `MidiEvent.setMessage`, so no event is removed, re-added or re-sorted.
- * - **{@link messageBytes} derives the wire form; nothing stores it.** See the
+ * - `Track.add` keeps a track sorted by tick at all times (JDK contract), and the sort is
+ *   stable, so events added at the same tick stay in insertion order. That insertion order
+ *   *is* the event order of the exported MIDI file, which
+ *   `tests/integration/midi-byte-equivalence.test.ts` compares event by event against
+ *   Java-generated `.mid` references. Changing when or how `add` sorts reorders the file.
+ * - A `MidiMessage` is an immutable value; a `MidiEvent` is a mutable holder.
+ *   `MidiEvent.getMessage()` hands out the message it holds, and that is safe to share
+ *   because nothing can write through it. Rewriting an event's message — which
+ *   `Midi.noteOns2NoteOffs` does — replaces the *reference* on the event through
+ *   `MidiEvent.setMessage`, so no event is removed, re-added or re-sorted.
+ * - {@link messageBytes} derives the wire form; nothing stores it. See the
  *   {@link MidiMessage} comment for why that matters.
  *
  * The numeric constants below are frozen: they are the wire values of the MIDI
@@ -37,24 +35,18 @@ import { foldl, insertionIndexBy, matchKind } from '../prelude/index.js';
  * most significant group first, high bit set on every byte but the last. Negative
  * values encode as a single `00`.
  *
- * This is *the* VLQ encoder. It used to have a twin — `Midi.writeVariableLength`
- * appended, `MetaMessage.encodeVariableLength` allocated, and a comment on each said
- * the two had to agree. They no longer can disagree: {@link encodeVariableLength} is
- * this function plus an allocation, and every variable-length field the port writes
- * (delta times, meta payload lengths, sysex payload lengths, and the meta framing
- * {@link messageBytes} derives) comes out of here.
+ * The only VLQ encoder: {@link encodeVariableLength} is this function plus an allocation,
+ * and every variable-length field the port writes — delta times, meta and sysex payload
+ * lengths, the meta framing {@link messageBytes} derives — comes through here.
  *
- * @param bytes the output byte array, appended to in place
- * @param value the value to encode
+ * @param bytes appended to in place
  */
 export function writeVariableLength(bytes: number[], value: number): void {
   let rest = value < 0 ? 0 : value;
 
-  // Build the variable-length bytes in reverse, then emit them MSB first. The reversal
-  // *is* the encoding rather than a tidy-up: `rest >>= 7` peels the groups off from the
-  // least significant end, and the format wants them in the other order. `reverse` is
-  // in-place, which is safe only because `vlqBytes` never leaves this call — the appended
-  // groups are copied into the caller's `bytes`, which is the array it wanted written.
+  // `rest >>= 7` peels the groups off from the least significant end and the format wants
+  // them in the other order, so they are built in reverse and emitted MSB first. `reverse`
+  // is in-place, which is safe because `vlqBytes` never leaves this call.
   const vlqBytes: number[] = [rest & 0x7f];
   rest >>= 7;
   while (rest > 0) {
@@ -94,44 +86,17 @@ function variableLengthSize(value: number): number {
 // ============================================================
 
 /**
- * A MIDI message: one of exactly three shapes.
+ * A MIDI message: one of exactly three shapes, discriminated by `kind` and matched
+ * exhaustively with `matchKind`.
  *
- * ## Why this is a union and not a class hierarchy
+ * The arms are `readonly` values, so copies share their messages with the original —
+ * `Midi.cloneSequence` and `Midi.convertPPQ` do — and `Midi.noteOns2NoteOffs` swaps in a
+ * new message through {@link MidiEvent.setMessage} rather than writing through the old one.
  *
- * It was `abstract class MidiMessage` with `ShortMessage`, `MetaMessage` and
- * `SysexMessage` extending it, mirroring `javax.sound.midi`. The mirror was
- * misleading in two measurable ways.
- *
- * The hierarchy had **one** virtual method, `clone()`, and every other use of the
- * type discriminated by hand. `Midi.buildTrackChunk` was a four-way `instanceof`
- * chain (meta / sysex / short / "unknown message type — write raw bytes"); five more
- * `instanceof` tests sat in `Midi.getTempoData`, `Midi.print`, the two
- * noteOn/noteOff converters and `Sequence.getMicrosecondLength`, and six more across
- * the tests. So the sum type was already there; inheritance only hid it, and hid it
- * badly enough that the writer carried a fourth branch for a subclass that cannot
- * exist. That branch is gone: `matchKind` over three arms is exhaustive by
- * construction, and a fourth family could not be added without the compiler naming
- * every site that must handle it.
- *
- * `clone()` is gone too, and with it the last reason for the base class. It existed
- * so that `Midi.append`, `Midi.convertPPQ` and `Midi.cloneSequence` could copy a
- * sequence without the copy's messages aliasing the original's — necessary when
- * `ShortMessage.setMessage` could rewrite a message's bytes under everyone holding
- * it. The arms below are `readonly` values, so there is nothing to defend against:
- * the copies share their messages, and `Midi.noteOns2NoteOffs` swaps in a new one
- * through {@link MidiEvent.setMessage} instead of writing through the old.
- *
- * ## Why the wire bytes are derived
- *
- * `MetaMessage` used to store its payload **twice** — the inherited `data` held the
- * complete `FF <type> <vlq length> <payload>`, and a private `_data` held the payload
- * alone — with nothing enforcing that the two agreed. That is a representable invalid
- * state in the most literal sense: a meta message whose framing described a different
- * payload than the one `Midi.buildTrackChunk` wrote. Each arm now carries only what
- * its family cannot be reconstructed without, and {@link messageBytes} builds the wire
- * form on demand. The one place that actually needed the wire form in bulk —
- * `buildTrackChunk` — reads the arms directly and never materialises it at all, which
- * also removes one `Uint8Array` allocation per exported event.
+ * Each arm carries only what its family cannot be reconstructed without, and
+ * {@link messageBytes} builds the wire form on demand, so a meta message cannot hold a
+ * framing that describes a different payload than the one `Midi.buildTrackChunk` writes.
+ * That writer reads the arms directly and never materialises the wire form at all.
  */
 export type MidiMessage = ShortMessage | MetaMessage | SysexMessage;
 
@@ -139,12 +104,9 @@ export type MidiMessage = ShortMessage | MetaMessage | SysexMessage;
 export type MidiMessageKind = MidiMessage['kind'];
 
 /**
- * The 0, 1 or 2 data bytes following a short message's status byte, each already
- * masked to seven bits.
- *
- * A tuple union rather than `readonly number[]` so that the arity the MIDI
- * specification allows is the arity the type allows: `getLength()` used to be a read
- * of a `Uint8Array` that nothing stopped from holding four bytes.
+ * The 0, 1 or 2 data bytes following a short message's status byte, each already masked to
+ * seven bits. A tuple union rather than `readonly number[]`, so the arity the MIDI
+ * specification allows is the arity the type allows.
  */
 export type ShortMessageData = readonly [] | readonly [number] | readonly [number, number];
 
@@ -166,15 +128,13 @@ export interface ShortMessage {
 }
 
 /**
- * The status-byte constants of `javax.sound.midi.ShortMessage`, which were its
- * `static final` fields.
+ * The status-byte constants of `javax.sound.midi.ShortMessage`, declared as a value beside
+ * the {@link ShortMessage} type of the same name.
  *
- * This is a value declared beside the `ShortMessage` *type* of the same name, so
- * `ShortMessage.NOTE_ON` still reads as it did and as it does in Java. `EventMaker`
- * declares the same numbers again in decimal under meico's names; the two tables are
- * deliberately independent (see that file's header), so `ShortMessage.NOTE_OFF` and
- * `EventMaker.NOTE_OFF` can both appear in one statement — `Midi.noteOns2NoteOffs`
- * does exactly that.
+ * `EventMaker` declares the same numbers again in decimal under meico's names; the two
+ * tables are deliberately independent (see that file's header), so `ShortMessage.NOTE_OFF`
+ * and `EventMaker.NOTE_OFF` can both appear in one statement — `Midi.noteOns2NoteOffs` does
+ * exactly that.
  */
 export const ShortMessage = {
   NOTE_OFF: 0x80, // 128
@@ -202,7 +162,7 @@ export const ShortMessage = {
  * A MIDI meta message — the `javax.sound.midi.MetaMessage` family. Meta messages
  * exist only in files, never on the wire in real time.
  *
- * `payload` is the payload **alone**, without the `FF <type> <length>` framing;
+ * `payload` is the payload alone, without the `FF <type> <length>` framing;
  * {@link messageBytes} adds the framing back. The message owns the array: it is
  * copied in by {@link metaMessage} and copied out by {@link metaPayload}, so a
  * message never aliases a buffer somebody else can write to (`Midi.readMidiData`
@@ -241,17 +201,13 @@ export interface SysexMessage {
 /**
  * A channel voice message: `command`'s high nibble OR-ed with `channel`'s low nibble.
  *
- * Program change and channel pressure carry **one** data byte, so `data2` is dropped
- * rather than written as a zero — writing it would add a stray byte to every program
- * change in the exported file.
+ * Program change and channel pressure carry one data byte, so `data2` is dropped rather
+ * than written as a zero — writing it would add a stray byte to every program change in the
+ * exported file.
  *
- * This is one of the JDK's four `ShortMessage` constructors, split out under its own
- * name instead of living in an overload set. The overloads were two
- * `unified-signatures` lint findings and a genuine hazard: `(status, data1, data2)`
- * and `(command, channel, data1, data2)` disagree about what the *first* argument
- * means, and a merged signature would additionally have let a two-argument call
- * typecheck into the single-status-byte branch, silently dropping the second
- * argument. Named constructors cannot be confused for one another.
+ * One of the JDK's four `ShortMessage` constructors, under its own name rather than in an
+ * overload set: this one and {@link shortMessage} disagree about what the first argument
+ * means.
  */
 export function channelMessage(
   command: number,
@@ -292,11 +248,9 @@ export function oneByteMessage(status: number): ShortMessage {
 /**
  * A meta message.
  *
- * The JDK's constructor is `MetaMessage(int type, byte[] data, int length)`, and the
- * `length` parameter is gone: every one of the eleven call sites in this port passed
- * exactly `data.length`, so it was a third thing that had to agree with two others. A
- * caller that wants a prefix of a buffer passes `buffer.subarray(0, n)`, which says
- * the same thing without the chance of saying it wrongly.
+ * The JDK's constructor is `MetaMessage(int type, byte[] data, int length)`; the `length`
+ * parameter has no counterpart here — a caller that wants a prefix of a buffer passes
+ * `buffer.subarray(0, n)`.
  *
  * @param type meta event type, masked to 0..255
  * @param payload the payload bytes, copied — the message owns its copy
@@ -319,14 +273,10 @@ export function sysexMessage(bytes: Readonly<Uint8Array>): SysexMessage {
 // ------------------------------------------------------------
 
 /**
- * The complete message as it appears on the wire, status byte first — freshly built
- * on every call.
- *
- * This is what `MidiMessage.getMessage()` returned, and it returned a copy for the
- * same reason this allocates: a caller must not be able to write into a message. The
- * difference is that there is no longer a stored buffer to copy *from*, so a meta
- * message's framing cannot drift from its payload. `Midi.buildTrackChunk` does not
- * call this — it appends the same bytes straight into the track buffer.
+ * The complete message as it appears on the wire, status byte first — freshly built on
+ * every call, so a caller cannot write into a message through the array it gets back.
+ * `Midi.buildTrackChunk` does not call this; it appends the same bytes straight into the
+ * track buffer.
  */
 export function messageBytes(message: MidiMessage): Uint8Array {
   return matchKind(message, {
@@ -345,15 +295,8 @@ export function messageBytes(message: MidiMessage): Uint8Array {
 }
 
 /**
- * The status byte.
- *
- * 0 for a sysex message with no bytes at all, where the JDK would throw — that is the
- * old `MidiMessage.getStatus()`'s empty-message case, and it is now unreachable for
- * the other two arms because they always have one.
- *
- * The empty case is spelled `.at(0) ?? 0` rather than as a `length > 0` guard because
- * `.at` reports the absence in the type: a bounds test the compiler has to be argued
- * into trusting is exactly the shape `noUncheckedIndexedAccess` exists to reject.
+ * The status byte. 0 for a sysex message with no bytes at all, where the JDK would throw;
+ * the other two arms always have one.
  */
 export function messageStatus(message: MidiMessage): number {
   return matchKind(message, {
@@ -382,13 +325,7 @@ export function shortChannel(message: ShortMessage): number {
   return message.status & 0x0f;
 }
 
-/**
- * The first data byte, 0 when the message has none — where the JDK would throw.
- *
- * The `length` test is written against a literal so that it narrows
- * {@link ShortMessageData}: with the arity in the type, the fallback is reachable only
- * for the arity that actually lacks the byte, and `data[0]` needs no assertion.
- */
+/** The first data byte, 0 when the message has none — where the JDK would throw. */
 export function shortData1(message: ShortMessage): number {
   const { data } = message;
   return data.length === 0 ? 0 : data[0];
@@ -410,25 +347,22 @@ export function metaPayload(message: MetaMessage): Uint8Array {
 // ============================================================
 
 /**
- * A MIDI event: a {@link MidiMessage} with an **absolute** tick timestamp.
+ * A MIDI event: a {@link MidiMessage} with an absolute tick timestamp.
  * Mirrors javax.sound.midi.MidiEvent.
  *
  * Delta times exist only in the file format; everything in memory is absolute, and
  * `Midi.buildTrackChunk` differences consecutive ticks when it writes.
  *
- * This is the mutable half of the pair — the message it holds is a value, the event
- * is the cell that holds it — and both of its fields are mutable for the same reason:
- * they are written **in place**, so no event is removed and re-added and no track is
- * re-sorted. Two callers depend on that, in two different ways:
+ * This is the mutable half of the pair — the message it holds is a value, the event is the
+ * cell that holds it — and both of its fields are written in place, so no event is removed
+ * and re-added and no track is re-sorted. Two callers depend on that:
  *
- * - `Midi.addOffset` shifts a whole sequence by writing every `tick`. Doing so does
- *   not re-sort the containing track; only `Track.add` sorts, so an offset that
- *   changed the relative order of two events would leave the track in an order the
- *   file format cannot express. One constant offset preserves order by construction.
+ * - `Midi.addOffset` shifts a whole sequence by writing every `tick`. Doing so does not
+ *   re-sort the containing track; only `Track.add` sorts, so an offset that changed the
+ *   relative order of two events would leave the track in an order the file format cannot
+ *   express. One constant offset preserves order by construction.
  * - `Midi.noteOns2NoteOffs` and `noteOffs2NoteOns` convert a sequence by writing every
- *   affected `message`. This is where `ShortMessage.setMessage` used to write, back
- *   when a message's bytes were mutable; the swap moved up one level when the messages
- *   became values, and the ordering guarantee is the same one.
+ *   affected `message`.
  */
 export class MidiEvent {
   private message: MidiMessage;
@@ -480,36 +414,26 @@ export class Track {
   private hasNonFiniteTick = false;
 
   /**
-   * Appends an event, keeping the track sorted. **This ordering is the exported file's
-   * event order** and is compared event by event against the Java references, so both
-   * halves of the rule matter:
+   * Appends an event, keeping the track sorted. This ordering is the exported file's event
+   * order and is compared event by event against the Java references, so both halves of the
+   * rule matter:
    *
    * - sorted by tick, ascending;
    * - events sharing a tick keep the order they were added in. `Msm.exportMidi` depends
    *   on that — it emits a text event, then the noteOn, then later the noteOff, all
    *   possibly at the same date, and the file must come out in that order.
    *
-   * This used to be `push` followed by a full `Array.prototype.sort`, which is
-   * O(n² log n) over a track built one event at a time — the dominant cost of exporting
-   * a score of any length. It is now an insertion at the position that stable sort would
-   * have put the event in, which is the *upper bound* of its tick: a stable sort of
-   * `[…sorted, newEvent]` leaves everything with a smaller tick before it, everything
-   * with a larger tick after it, and every equal tick before it, because the new event
-   * starts out last. Binary-searching for that index is exact, not approximate — the
-   * emitted byte sequence is unchanged.
+   * The event goes in where a stable sort would have put it, which is the *upper bound* of
+   * its tick: a stable sort of `[…sorted, newEvent]` leaves everything with a smaller tick
+   * before it, everything with a larger tick after it, and every equal tick before it,
+   * because the new event starts out last. {@link insertionIndexBy} finds that index
+   * exactly.
    *
    * The equivalence rests on the array already being sorted, which holds because `add`
    * and `remove` are its only mutators and `Midi.addOffset` shifts every tick by the same
    * constant. One case escapes it: a non-finite tick makes the comparison meaningless, so
-   * a track that has ever seen one falls back to the old push-and-sort for the rest of its
-   * life and reproduces whatever `sort` did with it, bug for bug.
-   *
-   * The search itself is now {@link insertionIndexBy}, which `src/prelude/seq.ts`
-   * introduced *as* this computation — it is `std::upper_bound` under a name, and the six
-   * lines it replaces were the same function written out. The two differ only in how they
-   * pick the midpoint (`Math.floor((hi - lo) / 2)` against `(lo + hi) >>> 1`), and a
-   * binary search converges on the same upper bound whatever midpoint it probes, so the
-   * insertion position — and therefore the exported event order — is unchanged.
+   * a track that has ever seen one falls back to push-and-sort for the rest of its life and
+   * reproduces whatever `sort` does with it, bug for bug.
    *
    * @return always true (the JDK returns false if the event was already present)
    */
@@ -524,9 +448,8 @@ export class Track {
     }
 
     const events = this.events;
-    // Fast path for the overwhelmingly common append-in-order case. `at(-1)` on an empty
-    // track is `undefined`, which is the `length === 0` half of the old test — one read
-    // rather than a length check the compiler cannot connect to the read that follows it.
+    // Fast path for the overwhelmingly common append-in-order case; `at(-1)` on an empty
+    // track is `undefined`, which takes the same branch.
     const lastEvent = events.at(-1);
     if (lastEvent === undefined || lastEvent.getTick() <= tick) {
       events.push(event);
@@ -549,19 +472,12 @@ export class Track {
   }
 
   /**
-   * The event at `index`.
-   *
-   * **This used to hand back `undefined` under a `MidiEvent` type**, with a comment
-   * saying so; it now throws a `RangeError` the way `javax.sound.midi.Track.get` throws
-   * `ArrayIndexOutOfBoundsException`, so the port and the reference agree. The old
-   * spelling was the exact defect `noUncheckedIndexedAccess` exists to catch: a lie in
-   * the signature that surfaces as "cannot read properties of undefined" somewhere else
-   * entirely, in a file that no longer names the track it came from.
+   * The event at `index`. Out of range throws a `RangeError`, the way
+   * `javax.sound.midi.Track.get` throws `ArrayIndexOutOfBoundsException`.
    *
    * No caller in `src/` can reach the throw — every index here is derived from
-   * {@link size} — and callers that only want the events in order should not be
-   * computing an index at all: a `Track` is iterable, so `for (const event of track)`
-   * is the spelling to prefer.
+   * {@link size} — and a caller that only wants the events in order should iterate the
+   * track rather than compute an index.
    */
   get(index: number): MidiEvent {
     return this.events[index] ?? outOfRange(index, this.events.length);
@@ -572,9 +488,8 @@ export class Track {
   }
 
   /**
-   * The events in tick order, so a caller that just wants to walk the track needs no
-   * index at all. The iteration is over the live array, which is safe for every caller
-   * in this tree because they read events and rewrite the *message* an event holds
+   * The events in tick order. The iteration is over the live array, which is safe for every
+   * caller in this tree because they rewrite the *message* an event holds
    * ({@link MidiEvent.setMessage}) rather than adding or removing events; a caller that
    * needs to mutate the track while walking it must take a copy first.
    */
@@ -676,15 +591,12 @@ export class Sequence {
   /**
    * Sequence duration in microseconds, integrating the tempo map.
    *
-   * Approximate on purpose, and in two ways worth knowing before trusting the
-   * number: tempo events from *all* tracks are merged and sorted by tick with no
-   * tie-break, and only the last tempo at a given tick is not specially handled —
-   * whichever sorts last wins. Nothing in the export path reads this; it is
-   * informational output.
+   * Approximate on purpose: tempo events from *all* tracks are merged and sorted by tick
+   * with no tie-break, so among several tempi at one tick whichever sorts last wins.
+   * Nothing in the export path reads this; it is informational output.
    */
   getMicrosecondLength(): number {
-    // This is an approximation: scan for tempo meta events and compute total duration.
-    // Default tempo is 120 BPM (500000 microseconds per quarter note).
+    // Until the first tempo event, 120 BPM.
     let microsecondsPerQuarter = 500000;
     let totalMicroseconds = 0;
     let lastTick = 0;
@@ -698,11 +610,8 @@ export class Sequence {
           const data = msg.payload;
           if (data.length >= 3) {
             // The set-tempo payload is a 24-bit big-endian microseconds-per-quarter,
-            // i.e. `(d0 << 16) | (d1 << 8) | d2` — which is that fold, over the three
-            // bytes the guard above has just established are there. Folding the view
-            // rather than indexing it keeps the length test and the reads in one place;
-            // written out, the guard and the three subscripts are three separate claims
-            // the compiler has to be argued into.
+            // i.e. `(d0 << 16) | (d1 << 8) | d2`, over the three bytes the guard above has
+            // just established are there.
             const mpq = foldl(data.subarray(0, 3), 0, (acc, byte) => (acc << 8) | byte);
             tempoEvents.push({ tick: event.getTick(), mpq });
           }

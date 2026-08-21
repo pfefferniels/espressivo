@@ -10,20 +10,20 @@
  *
  * ## Lookup order is load-bearing
  *
- * `getProgramChange` is a **linear scan over the whole dictionary in insertion
- * order**, and two of its rules make that order observable:
+ * `getProgramChange` is a linear scan over the whole dictionary in insertion order, and two
+ * of its rules make that order observable:
  *
  * - a distance of exactly 0 returns immediately, so an exact name never depends on
  *   what follows it;
  * - otherwise the best match is kept with a strict `<`, so among several keys at the
- *   same minimal distance **the earliest one wins**.
+ *   same minimal distance the earliest one wins.
  *
  * The insertion order is the line order of `DICT_DATA` below, because a JS `Map`
  * iterates in insertion order. Reordering the data, or rebuilding the map from a
  * differently-ordered source, silently re-resolves every fuzzy name that has a tie —
  * and fuzzy names are the normal case (`"Klarinette in B"`, `"Horn in F"`).
  *
- * **Java-parity note, pre-existing, do not "fix".** Java's `dict` is a
+ * Java-parity note, pre-existing, do not "fix": Java's `dict` is a
  * `HashMap<String, Short>` (`InstrumentsDictionary.java:57`) and `entrySet()`
  * iterates in hash order, not insertion order. Exact matches agree in both languages
  * — distance 0 returns the same value whatever the order — but a *tie* between two
@@ -31,18 +31,16 @@
  * asymmetry makes `getInstrumentName(pc)` deterministic here (it returns the first
  * name listed under that program number) and effectively arbitrary in Java.
  *
- * ## The data format, and why it stays a string
+ * ## The data format
  *
  * `DICT_DATA` is parsed at construction: `%` starts a comment line, `#N` sets the
  * program number for everything that follows (clamped into 0..127), blank lines are
  * skipped, and every other line is an instrument name stored lower-cased. It holds
- * 838 name lines that collapse to **836 keys** — `lead 5 charang` is listed twice
- * under one program number, and `tenore` is listed under both 52 and 53, so the
- * later value (53) wins while the key keeps its *earlier* position in the scan.
- * Turning the table into a `readonly` array of tuples is possible in principle, but
- * it would have to reproduce that last-value/first-position rule exactly, and the
- * only gain is parse time on a table that is rebuilt per lookup anyway. Left as
- * data, deliberately.
+ * 838 name lines that collapse to 836 keys — `lead 5 charang` is listed twice under one
+ * program number, and `tenore` is listed under both 52 and 53, so the later value (53)
+ * wins while the key keeps its *earlier* position in the scan. It stays a string rather
+ * than a table of tuples because any replacement would have to reproduce that
+ * last-value/first-position rule exactly.
  *
  * ## Only one distance method is reachable from the pipeline
  *
@@ -58,10 +56,7 @@
  */
 
 export class InstrumentsDictionary {
-  // Distance method constants. The `: number` annotations they used to carry widened
-  // them away from their own values for no gain (RULE I4); without them each constant
-  // types as its literal, and `getProgramChange`'s `distanceMethod: number` parameter
-  // still accepts every one of them.
+  // Distance method constants, each typed as its own literal.
   static readonly Levenshtein = 0x00;
   static readonly NormalizedLevenshtein = 0x01;
   static readonly Damerau = 0x02;
@@ -78,11 +73,8 @@ export class InstrumentsDictionary {
    * the default instrument names of General MIDI, indexed by program change number
    * (used by `getInstrumentName`, e.g. for MIDI-to-MSM conversion)
    *
-   * `as const` per RULE I4: a fixed 128-entry table indexed by program change number,
-   * so the tuple length and the literal names are worth having in the type. The other
-   * table in this file, `DICT_DATA`, deliberately stays a plain `string` — see the
-   * class comment on why it stays data, and note that `as const` on a 20 KB template
-   * literal buys a 20 KB literal type and nothing else.
+   * Exactly 128 entries, and `as const` so that both the length and the names are in the
+   * type.
    */
   static readonly DefaultNames = [
     'Acoustic Grand Piano',
@@ -231,8 +223,7 @@ export class InstrumentsDictionary {
   }
 
   /**
-   * Build the instruments dictionary from embedded data.
-   * This replaces the Java file-reading constructor.
+   * Build the instruments dictionary from embedded data — Java's file-reading constructor.
    *
    * A later duplicate of a name overwrites the earlier value but keeps the earlier
    * scan position — the behaviour Java's `HashMap.put` has, and the reason `tenore`
@@ -262,35 +253,17 @@ export class InstrumentsDictionary {
         continue;
       }
 
-      // put the string into the map, associate it with pc
       this.dict.set(line.toLowerCase(), pc);
     }
   }
 
   /**
-   * This method parses the input string name and outputs its corresponding midi program change number.
-   * This is based on the Normalized Levenshtein distance between the input string and the strings
-   * in the instrument names dictionary.
-   *
-   * Never fails: an unmatched name still returns the nearest entry, and an empty name
-   * returns 0 without scanning. The scan order is significant — see the class comment.
-   * Every lookup reports the key it settled on to stdout, matching Java
-   * (`InstrumentsDictionary.java:157,168`); the port keeps that because the tests and
-   * the CLI both read it.
-   *
-   * @param name an instrument's name string
-   * @param distanceMethod one of the eleven constants above; anything unrecognised,
-   *   including a missing argument, falls back to Normalized Levenshtein
-   * @return the suggested midi program change number; if instrument unknown, output is 0 (Acoustic Grand Piano)
-   */
-  /**
-   * The metric one `distanceMethod` constant names — the arms of the `switch` that used to sit
-   * inside {@link getProgramChange}'s scan.
+   * The metric one `distanceMethod` constant names.
    *
    * Private, because the eleven implementations are: this is the one place inside the class
-   * that can name them all, which is why the dispatch lives here rather than in a module-level
-   * table. The `2` that `ngram` and `qgram` take is the n-gram size the scan always passed,
-   * bound here so every arm has the same two-argument shape.
+   * that can name them all. The `2` that `ngram` and `qgram` take is the n-gram size
+   * {@link getProgramChange}'s scan passes, bound here so every arm has the same
+   * two-argument shape.
    */
   private static metricFor(distanceMethod: number): (key: string, name: string) => number {
     switch (distanceMethod) {
@@ -321,32 +294,34 @@ export class InstrumentsDictionary {
     }
   }
 
+  /**
+   * This method parses the input string name and outputs its corresponding midi program
+   * change number, from the distance between it and the strings in the instrument names
+   * dictionary.
+   *
+   * Never fails: an unmatched name still returns the nearest entry, and an empty name
+   * returns 0 without scanning. The scan order is significant — see the class comment.
+   *
+   * @param distanceMethod one of the eleven constants above; anything unrecognised,
+   *   including a missing argument, falls back to Normalized Levenshtein
+   * @return the suggested midi program change number; if instrument unknown, output is 0
+   *   (Acoustic Grand Piano)
+   */
   getProgramChange(name: string, distanceMethod?: number): number {
     if (distanceMethod === undefined) {
       return this.getProgramChange(name, InstrumentsDictionary.NormalizedLevenshtein);
     }
 
     if (name.length === 0)
-      // if the name string is empty
-      return 0; // default instrument is Acoustic Grand Piano (program Change = 0)
+      // the default instrument is Acoustic Grand Piano
+      return 0;
 
     const n = name.toLowerCase(); // to ignore the case
-    let pc = 0; // here comes the result
-    let distance = Number.MAX_VALUE; // indicates the distance to the name string
+    let pc = 0;
+    let distance = Number.MAX_VALUE;
 
-    // The metric is chosen ONCE, not once per dictionary key.
-    //
-    // This was an eleven-arm `switch (distanceMethod)` inside the loop below, and
-    // `distanceMethod` is a parameter — loop-invariant by construction. The dictionary holds
-    // every General MIDI name plus its aliases, so the dispatch ran a few hundred times per
-    // lookup to reach the same arm every time. Selecting the function first is the same
-    // decision made once; the arms, the argument order and the `2` that `ngram`/`qgram` take
-    // are unchanged, so every distance is the same number it was.
-    //
-    // Still a `switch`, moved rather than replaced: the eleven metrics are private statics,
-    // and a module-level table would have to make them public to name them. The `default` arm
-    // keeps carrying the documented fallback — "anything unrecognised, including a missing
-    // argument, falls back to Normalized Levenshtein".
+    // `distanceMethod` is loop-invariant, so the metric is chosen once rather than once per
+    // dictionary key — a few hundred times per lookup.
     const metric = InstrumentsDictionary.metricFor(distanceMethod);
 
     for (const [key, value] of this.dict.entries()) {
@@ -354,7 +329,7 @@ export class InstrumentsDictionary {
 
       if (curDistance === 0) {
         // found perfect match
-        return value; // return the value
+        return value;
       }
 
       // strictly less than, so the earliest key at the minimal distance wins
@@ -363,29 +338,21 @@ export class InstrumentsDictionary {
         pc = value;
       }
     }
-    // `InstrumentsDictionary.java:157` prints `<name> is mapped to <key> with <distance>`
-    // here and on the perfect-match branch above. Both are gone: they fire once or twice per
-    // lookup, on a method whose whole job is to be called in a loop over a score's parts, and
-    // a library that prints its intermediate reasoning to the host's stdout is the thing this
-    // campaign is removing. The value returned says the same thing to a caller who wants it.
+    // `InstrumentsDictionary.java:157,168` prints `<name> is mapped to <key> with
+    // <distance>` here and on the perfect-match branch above; the port prints nothing.
     return pc;
   }
 
   /**
    * given a program change number, return the instrument's name
    *
-   * Reading the dictionary (the default) returns the **first** name listed under that
-   * program number, lower-cased, because the scan follows `DICT_DATA` order — so
-   * program 0 gives `"acoustic grand piano"`, not `"Klavier"`. Java's hash-ordered
-   * map gives an arbitrary synonym instead. Pass `useGmDefaultNames` for the
-   * canonical General MIDI spelling, which is also the fallback if the dictionary
-   * cannot be built.
+   * Reading the dictionary (the default) returns the first name listed under that program
+   * number, lower-cased, because the scan follows `DICT_DATA` order — so program 0 gives
+   * `"acoustic grand piano"`, not `"Klavier"`. Java's hash-ordered map gives an arbitrary
+   * synonym instead. Pass `useGmDefaultNames` for the canonical General MIDI spelling.
    *
-   * A program change number outside 0..127 has no General MIDI name, and both GM reads
-   * below answer `''` for it — the same answer the dictionary scan already gave, and the
-   * one this method's `@return` promises. They used to answer `undefined` under a `string`
-   * return type, so `getInstrumentName(200, true)` handed a caller the word "undefined"
-   * the moment it reached a template literal.
+   * A program change number outside 0..127 has no General MIDI name; every path here
+   * answers `''` for it.
    *
    * @param useGmDefaultNames if false the names are taken from the instruments dictionary
    * @return the instrument's name or an empty string if not found in the dictionary
@@ -395,9 +362,7 @@ export class InstrumentsDictionary {
     if (useGmDefaultNames) return gmName;
 
     // Java catches around this and falls back to `gmName`, because its dictionary is read
-    // from a resource file. This port embeds the data as a string literal, so `buildDictionary`
-    // parses a constant and the constructor is total — the same unreachable-handler shape as
-    // `EventMaker`'s fourteen, and the same reason.
+    // from a resource file; this port embeds the data, so the constructor is total.
     const dict = new InstrumentsDictionary();
 
     for (const [key, value] of dict.dict.entries()) {
@@ -414,16 +379,12 @@ export class InstrumentsDictionary {
    * Compute the Levenshtein distance of two strings.
    *
    * Textbook full-matrix edit distance: the number of single-character insertions,
-   * deletions and substitutions between the two strings. This is the one metric whose
-   * definition is unambiguous enough that the hand-written version and Java's library
-   * cannot disagree, which matters because `normalizedLevenshteinDistance` — the
-   * default and only pipeline-reachable metric — is built on it.
+   * deletions and substitutions between the two strings. `normalizedLevenshteinDistance` —
+   * the default and only pipeline-reachable metric — is built on it.
    *
-   * The table is a {@link DistanceTable}; see that comment for why this recurrence stays a
-   * matrix traversal rather than becoming one of the `prelude` algorithms. The three-way
-   * minimum below is kept as the original's two `if`s rather than folded into a
-   * `Math.min`, because the ordering of the comparisons is what decides ties and this
-   * metric is the one every instrument name in every fixture is resolved through.
+   * The three-way minimum below is kept as the original's two `if`s rather than folded into
+   * a `Math.min`, because the order of the comparisons is what decides ties and every
+   * instrument name in every fixture is resolved through this metric.
    */
   private static levenshteinDistance(str1: string, str2: string): number {
     const matrix = new DistanceTable(str1.length + 1, str2.length + 1);
@@ -449,8 +410,8 @@ export class InstrumentsDictionary {
    * Compute the Normalized Levenshtein distance (0..1) of two strings.
    *
    * Edit distance divided by the longer length, so an exact match is 0 and a total
-   * mismatch approaches 1. **This is the metric the whole conversion pipeline uses**:
-   * every instrument name in every MEI fixture is resolved through it.
+   * mismatch approaches 1. This is the metric the whole conversion pipeline uses: every
+   * instrument name in every MEI fixture is resolved through it.
    */
   private static normalizedLevenshteinDistance(str1: string, str2: string): number {
     const maxLen = Math.max(str1.length, str2.length);
@@ -464,7 +425,7 @@ export class InstrumentsDictionary {
   private static damerauLevenshteinDistance(str1: string, str2: string): number {
     const len1 = str1.length;
     const len2 = str2.length;
-    // The explicit zero-filling double loop is gone: a `DistanceTable` starts zeroed.
+    // A `DistanceTable` starts zeroed, so there is no zero-filling loop.
     const d = new DistanceTable(len1 + 1, len2 + 1);
     for (let i = 0; i <= len1; i++) d.set(i, 0, i);
     for (let j = 0; j <= len2; j++) d.set(0, j, j);
@@ -620,11 +581,10 @@ export class InstrumentsDictionary {
   /**
    * Compute the QGram distance of two strings.
    *
-   * The odd one out: **not normalised to 0..1**, it is the summed absolute difference
-   * of the two bigram profiles, so it grows with string length. That is the library's
-   * definition too, but it means a `distance` from this metric is not comparable with
-   * one from any other — only within a single scan, which is all `getProgramChange`
-   * needs.
+   * The odd one out: not normalised to 0..1, it is the summed absolute difference of the
+   * two bigram profiles, so it grows with string length. That is the library's definition
+   * too, but it means a `distance` from this metric is comparable only within a single
+   * scan, which is all `getProgramChange` needs.
    */
   private static qgramDistance(s1: string, s2: string, q: number): number {
     const profile1 = InstrumentsDictionary.getProfile(s1, q);
@@ -1943,43 +1903,19 @@ Kanone`;
 }
 
 /**
- * The dynamic-programming table the four matrix metrics above share.
+ * The dynamic-programming table the four matrix metrics above share. It starts zeroed, so
+ * no caller needs a zero-filling loop.
  *
- * ## Why a table rather than an algorithm
+ * It throws on a miss rather than defaulting. Every index is the caller's own loop counter,
+ * bounded by the string lengths the table was sized from, so a miss is a defect in one of
+ * the recurrences and never a property of the name being matched — and there is no safe
+ * value to substitute: a defaulted `0` is a distance of zero, which is `getProgramChange`'s
+ * "perfect match, return immediately".
  *
- * Most indexed loops in this tree are an algorithm wearing a `for`, and `src/prelude/seq.ts`
- * names them. These four are not. `d(i, j)` for edit distance depends on `d(i-1, j)`,
- * `d(i, j-1)` and `d(i-1, j-1)` — and, for Damerau, on `d(i-2, j-2)` two rows back — so the
- * index arithmetic *is* the recurrence, and every functional spelling of it (a `foldl` over
- * rows carrying a `scanl` over columns) ends up indexing the previous row anyway, with the
- * recurrence spread across two lambdas. Sean Parent's admission criterion — using an
- * algorithm must not make the call site worse — rules that out.
- *
- * What is left is genuine random access, which `noUncheckedIndexedAccess` types
- * `number | undefined` at every one of the thirty-odd reads. There are three answers to
- * that: a guard per site, which `@typescript-eslint/no-unnecessary-condition` deletes as
- * unreachable for as long as the flag is off in `tsconfig.json`; a non-null assertion per
- * site, which is the thing this campaign exists to remove; or one checked reader, used
- * everywhere, that says what a miss would mean. This is the third.
- *
- * ## Why it throws
- *
- * Every index here is the caller's own loop counter, bounded by the string lengths the
- * table was sized from. A miss is therefore a defect in this file's arithmetic and never a
- * property of the instrument name being matched, so there is no value that would be the
- * right answer to substitute: a silently defaulted `0` becomes a distance of zero, and a
- * distance of zero is `getProgramChange`'s "perfect match, return immediately". A
- * `RangeError` naming the cell and the shape is the honest alternative, and it is
- * unreachable — no test can provoke it without a bug in one of the four recurrences.
- *
- * ## Why it is flat
- *
- * A `number[][]` is one boxed row array per character plus a length-1 array literal per
- * row; `levenshteinDistance` alone runs 836 times per `getProgramChange` lookup, once per
- * dictionary key. One `Int32Array` of `rows × columns` allocates once and zero-fills for
- * free, which is also what lets `lcsLength` below drop its explicit zeroing loop. The
- * values are edit distances between instrument names — small non-negative integers — so
- * the narrower element type loses nothing.
+ * The cells are one flat `Int32Array` of `rows × columns` rather than a `number[][]`:
+ * `levenshteinDistance` alone runs 836 times per `getProgramChange` lookup, once per
+ * dictionary key, and the values are edit distances between instrument names — small
+ * non-negative integers.
  */
 class DistanceTable {
   private readonly cells: Int32Array;
@@ -2004,9 +1940,9 @@ class DistanceTable {
   /**
    * The bounds test `at` cannot make with `??` alone: a flat index that lands inside the
    * buffer but outside the intended row — `at(0, columns + 1)` reads row 1's first cell —
-   * is a real arithmetic bug that the buffer read would answer happily. `set` tests it
-   * directly; `at` catches only the reads that leave the buffer, which is every read a
-   * wrong *row* index produces.
+   * is an arithmetic bug the buffer read would answer happily. `set` tests for it directly;
+   * `at` catches only the reads that leave the buffer, which is every read a wrong *row*
+   * index produces.
    */
   private outOfRange(row: number, column: number): never {
     throw new RangeError(
@@ -2017,12 +1953,8 @@ class DistanceTable {
 }
 
 /**
- * The length of the longest common subsequence of two strings.
- *
- * Extracted because `lcsDistance` and `metricLCSDistance` carried **the same twenty lines**
- * of DP and differed only in the two lines that turn the answer into a distance. Nothing
- * about the recurrence changes: the table starts zeroed, which is what the two explicit
- * zero-filling loops were for.
+ * The length of the longest common subsequence of two strings, shared by the two LCS
+ * metrics, which differ only in how they turn it into a distance.
  */
 function lcsLength(s1: string, s2: string): number {
   const dp = new DistanceTable(s1.length + 1, s2.length + 1);

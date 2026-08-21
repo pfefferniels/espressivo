@@ -2,21 +2,12 @@
  * This module provides some useful midi-related functions.
  * Port of meico.midi.EventMaker
  *
- * Every `create*` function is a factory for one `MidiEvent`, and every one of them
- * follows the same two conventions, inherited from Java:
- *
- * - **A failure returns `null`, it does not throw.** Java's constructors declare
- *   `InvalidMidiDataException`; this port's cannot fail the same way, so the
- *   `try`/`catch` wrappers are vestigial — but the `| null` return type is not.
- *   Every call site in `Msm.ts` is written as `if (event !== null) track.add(event)`,
- *   and dropping the nullability would silently change 30 call sites from
- *   "skip on failure" to "always add".
- * - **Clamping happens here, not at the call site.** Velocities and controller
- *   values are clamped into 0..127 before the message is built, so out-of-range
- *   values from the MPM rendering stage become the boundary value rather than
- *   wrapping when `channelMessage` masks them to 7 bits. Note the asymmetry:
- *   pitch and program numbers are *not* clamped here — `channelMessage` masks them —
- *   so a program number of 200 becomes 72, not 127.
+ * Every `create*` function is a factory for one `MidiEvent`, and clamping happens here
+ * rather than at the call site: velocities and controller values are clamped into 0..127
+ * before the message is built, so out-of-range values from the MPM rendering stage become
+ * the boundary value rather than wrapping when `channelMessage` masks them to 7 bits. Note
+ * the asymmetry — pitch and program numbers are *not* clamped here, `channelMessage` just
+ * masks them, so a program number of 200 becomes 72 rather than 127.
  *
  * The constant tables below are the MIDI specification's numbers under meico's
  * names. `MidiTypes.ShortMessage` declares the same status bytes independently, in
@@ -24,18 +15,12 @@
  * 0x90). They are deliberately not cross-referenced: this module mirrors Java's
  * `EventMaker`, which has no dependency on `javax.sound.midi`'s constants either.
  *
- * ## Why there is both a module surface and an `EventMaker` object
- *
- * T20 dissolved the static-only `EventMaker` class into the exported constants and
- * functions below (RULE C2). The `EventMaker` object at the bottom of this file is a
- * **pure re-export table** — every property holds the very binding declared above it,
- * so `EventMaker.createNoteOn === createNoteOn`. It exists because the published API
- * (`src/index.ts`) and the frozen facade (`src/api/pipeline.ts`) name `EventMaker`,
- * and because `EventMaker.NOTE_OFF` reads better than a bare `NOTE_OFF` at call sites
- * that also use `ShortMessage.NOTE_OFF` — `Midi.noteOns2NoteOffs` uses both in one
- * statement. Interior callers therefore import the module namespace
- * (`import * as EventMaker from './EventMaker.js'`) and reach the functions directly;
- * the object is for consumers who cannot.
+ * The `EventMaker` object at the bottom of the file is a re-export table — every property
+ * holds the binding declared above it, so `EventMaker.createNoteOn === createNoteOn`. It is
+ * there for the published API (`src/index.ts`) and the frozen facade
+ * (`src/api/pipeline.ts`), which name `EventMaker`, and for call sites that also use
+ * `ShortMessage.NOTE_OFF` and want the two spellings to look alike. Interior callers import
+ * the module namespace instead.
  *
  * @author Axel Berndt
  */
@@ -357,30 +342,27 @@ const THIRTY_SECOND_NOTES_PER_QUARTER = 8; // 1/4 consists of 8 1/32
 /**
  * a little helper to convert int numbers into 4-byte arrays
  *
- * **The two flag names are swapped relative to what they do**, faithfully to Java.
- * `isBigEndian === true` puts the *least* significant byte first (little endian),
- * and `false` puts the most significant byte first (big endian, i.e. network
- * order). `createTempo` — the only caller in the port — passes `false` and then
- * takes bytes 1..3, which is the correct big-endian 24-bit tempo value, so the
- * misnaming is invisible in the output. Renaming the parameter would be a public
- * signature change; the tests pin both directions.
+ * The flag name is swapped relative to what it does, faithfully to Java:
+ * `isBigEndian === true` puts the *least* significant byte first (little endian), and
+ * `false` puts the most significant byte first (big endian, i.e. network order).
+ * `createTempo` — the only caller in the port — passes `false` and then takes bytes 1..3,
+ * which is the correct big-endian 24-bit tempo value, so the misnaming is invisible in the
+ * output. Renaming the parameter would be a public signature change; the tests pin both
+ * directions.
  *
  * @param value truncated to a 32-bit integer first
  * @param isBigEndian false = most significant byte first, true = least significant first
  */
 export function intToByteArray(value: number, isBigEndian: boolean): Uint8Array {
-  // Ensure value is treated as a 32-bit integer
   const int32 = value | 0;
   const byteArray = new Uint8Array(4);
 
   if (isBigEndian) {
-    // big endian byte array
     byteArray[0] = int32 & 0xff;
     byteArray[1] = (int32 >>> 8) & 0xff;
     byteArray[2] = (int32 >>> 16) & 0xff;
     byteArray[3] = (int32 >>> 24) & 0xff;
   } else {
-    // little endian byte array (network / big-endian order)
     byteArray[0] = (int32 >>> 24) & 0xff;
     byteArray[1] = (int32 >>> 16) & 0xff;
     byteArray[2] = (int32 >>> 8) & 0xff;
@@ -397,8 +379,8 @@ export function intToByteArray(value: number, isBigEndian: boolean): Uint8Array 
  * overflow silently. Its one caller is `Midi.getTempoData`, on a 3-byte
  * set-tempo payload.
  *
- * **Parity note, latent, do not "fix".** Java is `new BigInteger(bytes).intValue()`
- * (`EventMaker.java:354`), which reads the array as a **signed** two's-complement
+ * Parity note, latent, do not "fix": Java is `new BigInteger(bytes).intValue()`
+ * (`EventMaker.java:354`), which reads the array as a signed two's-complement
  * big-endian integer; this reads it as unsigned. The two disagree exactly when the
  * leading byte has its top bit set — for a tempo payload that means
  * mpq ≥ 0x800000, i.e. slower than about 7.15 BPM, where Java yields a negative
@@ -429,7 +411,7 @@ export function shortToByteArray(value: number): Uint8Array {
  *
  * @param chan MIDI channel; masked to 0..15 by `channelMessage`
  * @param date absolute tick
- * @param pitch MIDI key number; masked to 0..127, **not** clamped
+ * @param pitch MIDI key number; masked to 0..127, not clamped
  * @param vel release velocity, clamped into 0..127
  */
 export function createNoteOff(chan: number, date: number, pitch: number, vel: number): MidiEvent {
@@ -446,7 +428,7 @@ export function createNoteOff(chan: number, date: number, pitch: number, vel: nu
  *
  * @param chan MIDI channel; masked to 0..15 by `channelMessage`
  * @param date absolute tick
- * @param pitch MIDI key number; masked to 0..127, **not** clamped
+ * @param pitch MIDI key number; masked to 0..127, not clamped
  * @param vel attack velocity, clamped into 0..127
  */
 export function createNoteOn(chan: number, date: number, pitch: number, vel: number): MidiEvent {
@@ -460,24 +442,19 @@ export function createNoteOn(chan: number, date: number, pitch: number, vel: num
  *
  * The name is resolved by fuzzy match against the embedded instruments dictionary —
  * see `InstrumentsDictionary.getProgramChange`, which never fails and falls back to
- * Acoustic Grand Piano. A **fresh dictionary is built on every call** (Java does the
- * same), which is why this is the expensive factory; `Msm.makeInstrumentName` calls
- * it once per part.
+ * Acoustic Grand Piano. A fresh dictionary is built on every call (Java does the same),
+ * which is why this is the expensive factory; `Msm.makeInstrumentName` calls it once per
+ * part.
  *
- * @param chan MIDI channel
- * @param date absolute tick
  * @param name an instrument name in any language the dictionary covers
  */
 export function createProgramChangeByName(chan: number, date: number, name: string): MidiEvent {
   // Java wraps the line below in `catch (Exception)` and falls back to Acoustic Grand
-  // Piano, because its dictionary is read from a resource file and the read can fail.
-  // This port embeds the data in the source, so `buildDictionary` parses a string literal
-  // and the constructor is total — the fallback could not fire. `getProgramChange` on the
-  // next line is where a name that matches nothing lands, and it has its own answer for
-  // that (0, Acoustic Grand Piano), reached by returning rather than by throwing.
-  const dict = new InstrumentsDictionary(); // initialize instruments dictionary
+  // Piano, because its dictionary is read from a resource file and the read can fail; this
+  // port embeds the data in the source, so the constructor is total.
+  const dict = new InstrumentsDictionary();
 
-  return createProgramChange(chan, date, dict.getProgramChange(name)); // search the instrument's name in the dictionary and use the program change number it returns
+  return createProgramChange(chan, date, dict.getProgramChange(name));
 }
 
 /**
@@ -508,9 +485,9 @@ export function createControlChange(
 /**
  * create a key signature event
  *
- * The payload is `<accids> <mode>`, and **mode is hard-coded to 0 (major)** —
- * Java does the same, so a minor key is written as its relative major's
- * signature. The second payload byte is therefore always 0.
+ * The payload is `<accids> <mode>`, and mode is hard-coded to 0 (major) — Java does the
+ * same, so a minor key is written as its relative major's signature. The second payload
+ * byte is therefore always 0.
  *
  * @param accids number of accidentals, negative for flats; the sign survives the
  *   `& 0xff` as a two's-complement byte, which is what the format wants
@@ -523,7 +500,7 @@ export function createKeySignature(date: number, accids: number): MidiEvent {
  * create a time signature event
  *
  * The format stores the denominator as a power of two, so `denom` is the exponent:
- * 4 → 2, 8 → 3. A denominator that is not a power of two rounds **up** to the next
+ * 4 → 2, 8 → 3. A denominator that is not a power of two rounds up to the next
  * one (3 → 2, i.e. 4), because the loop stops at the first exponent whose power
  * reaches it. The trailing two payload bytes are constants, not parameters.
  *
@@ -559,33 +536,27 @@ export function createTimeSignature(
  * folded in: `mpq = 60000000 / (bpm * beatlength * 4)`, where `beatlength * 4`
  * converts the beat into quarters. The result is rounded to an integer and only
  * its low three bytes are written, which is the format's 24-bit field —
- * `intToByteArray` produces four and bytes 1..3 are the ones taken.
- *
- * "Bytes 1..3" is `subarray(1)` rather than `[tempo[1], tempo[2], tempo[3]]`: the
- * slice says *drop the high byte* in one move, where three subscripts say it three
- * times and leave the reader counting. It is also the cheaper spelling —
- * {@link metaMessage} copies its payload, so the view never outlives this call and
- * the intermediate four-element literal disappears.
+ * `intToByteArray` produces four and `subarray(1)` drops the high one.
  *
  * @param bpm beats per minute, where a "beat" is `beatlength` long
- * @param beatlength length of one beat in floating point format (e.g. quarter=0.25, whole=1; eight=0.125)
+ * @param beatlength length of one beat in floating point format (e.g. quarter=0.25,
+ *   whole=1; eight=0.125)
  */
 export function createTempo(date: number, bpm: number, beatlength: number): MidiEvent {
-  const mpq = Math.round(60000000 / (bpm * beatlength * 4)); // compute microseconds per quarter note from bpm
-  const tempo = intToByteArray(mpq, false); // generate byte array (little endian) from mpq
+  const mpq = Math.round(60000000 / (bpm * beatlength * 4));
+  const tempo = intToByteArray(mpq, false);
 
-  return new MidiEvent(metaMessage(META_Set_Tempo, tempo.subarray(1)), date); // create the event; only the 2nd, 3rd and 4th byte of the tempo byte array are needed
+  return new MidiEvent(metaMessage(META_Set_Tempo, tempo.subarray(1)), date);
 }
 
 /**
  * create a track name event
  *
  * The four text-carrying factories below (`createTrackName`, `createInstrumentName`,
- * `createTextEvent`, `createMarker`) all encode as **UTF-8**, so the payload is as
- * long as the encoded bytes, not as the string — a name with non-ASCII characters
- * produces a longer payload than it has characters. Java uses `String.getBytes()`, i.e. the
- * platform default charset, which is UTF-8 on the reference machine; on a machine
- * with a different default the two would disagree on non-ASCII names.
+ * `createTextEvent`, `createMarker`) all encode as UTF-8, so the payload is as long as the
+ * encoded bytes, not as the string. Java uses `String.getBytes()`, i.e. the platform default
+ * charset, which is UTF-8 on the reference machine; on a machine with a different default
+ * the two would disagree on non-ASCII names.
  */
 export function createTrackName(date: number, name: string): MidiEvent {
   const text = new TextEncoder().encode(name);
@@ -624,7 +595,8 @@ export function createMarker(date: number, markerText: string): MidiEvent {
 }
 
 /**
- * this creates a channel prefix event, it indicates that all subsequent meta messages go to this channel
+ * this creates a channel prefix event; it indicates that all subsequent meta messages go
+ * to this channel
  * @param channel truncated to one byte by `shortToByteArray`, not masked to 0..15
  */
 export function createChannelPrefix(date: number, channel: number): MidiEvent {
@@ -642,17 +614,12 @@ export function createMidiPortEvent(date: number, port: number): MidiEvent {
 }
 
 /**
- * The former `EventMaker` class's public surface, as a re-export table.
+ * The former `EventMaker` class's public surface, as a re-export table; see the file header.
  *
- * Every property is the binding declared above — `EventMaker.createNoteOn === createNoteOn`
- * — so this adds no behaviour and cannot drift from the module. It is deliberately a plain
- * object literal, not a frozen or null-prototype one: the class it replaces inherited
- * `Object.prototype` (through `Function.prototype`) and allowed writes to its statics, and a
- * plain object is the form that keeps both of those true. Nothing in `src/` or `tests/`
- * indexes it with a computed key, so there is no unknown-key lookup path to harden.
- *
- * The two `private static` constants of the old class (`TICKS_PER_METER_CLICK`,
- * `THIRTY_SECOND_NOTES_PER_QUARTER`) are module-private and deliberately absent here.
+ * Deliberately a plain object literal, not a frozen or null-prototype one: the class it
+ * replaces inherited `Object.prototype` (through `Function.prototype`) and allowed writes to
+ * its statics, and a plain object keeps both of those true. `TICKS_PER_METER_CLICK` and
+ * `THIRTY_SECOND_NOTES_PER_QUARTER` were `private static` and stay module-private.
  */
 export const EventMaker = {
   NOTE_OFF,
