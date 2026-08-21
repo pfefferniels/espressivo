@@ -14,6 +14,18 @@
     // verify` fails if any `tests/` directory gets worse, so the count is monotonic here as it
     // was there. Delete this line, and the ratchet, when it reaches zero.
     "noUncheckedIndexedAccess": false,
+
+    // `tsconfig.json` sets `"types": []` because `src/` uses no ambient global. The tests do —
+    // `process.env`, `Buffer`, `__dirname` in the fixture loaders — so they name what they use.
+    "types": ["node"],
+
+    // Test files are allowed an unused parameter in a stub callback; `src/` is not.
+    "noUnusedParameters": false,
+
+    // Zero cost in `src/`, ~90 findings here. A test that walks a parsed JSON-ish record and
+    // asserts `result.meanSigned` is reading a looked-up key on purpose, and bracketing every
+    // one of them would obscure the assertion rather than sharpen it.
+    "noPropertyAccessFromIndexSignature": false,
     "noEmit": true,
     "declaration": false,
     "declarationMap": false,
