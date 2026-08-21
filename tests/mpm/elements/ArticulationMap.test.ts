@@ -225,17 +225,12 @@ describe('ArticulationMap', () => {
       const ad = map.getArticulationDataOf(0)!;
       expect(ad.date).toBe(240);
       expect(ad.articulationDefName).toBe('legato');
-      // The half of the round-trip that used to be missing: `addArticulation` wrote the
-      // `xml:id` and the read did not find it again. See the xml:id block below.
       expect(ad.xmlId).toBe('art-5');
     });
   });
 
-  // GH espressivo#14 / PARITY.md §1. Java asks `Helper.getAttribute("xml:id", e)` at
-  // `ArticulationMap.java:293`, and all three of that helper's lookups match a LOCAL name —
-  // the attribute's local name is `id`, so it missed every time and `ArticulationData.xmlId`
-  // was never populated, for any input. Fixed in the fork at `meico@c1f3fffd` and mirrored
-  // here. Reverting the read to `'xml:id'` reds every test in this block.
+  // GH espressivo#14 / PARITY.md §1: Java read this attribute under a name that never
+  // matched, so `xmlId` was always null and `@modified` recorded nothing.
   describe('getArticulationDataOf reads the xml:id', () => {
     const parseMap = (articulations: string): ArticulationMap =>
       okValue(
@@ -265,10 +260,6 @@ describe('ArticulationMap', () => {
     });
 
     it('records the id in @modified, which is what the field is for', () => {
-      // The observable consequence, and the one the Java probes measured: an articulation
-      // that moves a note names itself in the note's `@modified` list. With the id lost at
-      // the read, `addToListAttribute` was handed null and dropped it, so an instruction
-      // that demonstrably changed the note recorded nothing.
       const ad = parseMap(
         '<articulation xmlns:xml="http://www.w3.org/XML/1998/namespace" date="0.0"' +
           ' relativeDuration="0.9" xml:id="n1" />',
@@ -286,8 +277,6 @@ describe('ArticulationMap', () => {
     });
 
     it('an articulation with no id still leaves @modified empty', () => {
-      // The complement, so "records the id" cannot decay into "records something": with no
-      // id there is nothing to record, and an empty entry would be worse than none.
       const ad = parseMap(
         '<articulation date="0.0" relativeDuration="0.9" />',
       ).getArticulationDataOf(0)!;

@@ -158,10 +158,7 @@ export class ArticulationMap extends GenericMap {
         ? null
         : (style.getDef(articulationDefName) ?? null);
 
-    // `'id'`, not `'xml:id'`: the attribute's LOCAL name is `id`, and `attribute()` — like
-    // Java's `Helper.getAttribute` it mirrors — matches on local names only. Java asked for
-    // `'xml:id'` here and so never populated this field at all; fixed in the fork at
-    // `meico@c1f3fffd`, the last of the three sites `68ccd3b8` opened. PARITY.md §1.
+    // `'id'`, not `'xml:id'`: `attribute()` matches local names only. PARITY.md §1.
     const xmlId = attribute('id', e);
     const noteid = attribute('noteid', e);
 
