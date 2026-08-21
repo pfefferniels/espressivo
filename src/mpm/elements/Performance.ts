@@ -1151,9 +1151,8 @@ export class Performance extends AbstractXmlSubtree {
       // MPM v3 (DESIGN.md D5 amendment): a millisecond frame aligned "at end" is anchored at
       // this note's millisecond END, which the symbolic phase cannot know, so it writes an
       // end-anchored marker instead of an onset offset. Resolving it into
-      // ornamentMillisecondsDateOffset is what keeps the rest of this method v2 — the absolute
-      // duration and the note-off shift below go on reading one offset. The end is read BEFORE
-      // anything writes to it, and a note without one cannot be placed from its end at all.
+      // ornamentMillisecondsDateOffset keeps the rest of this method v2. The end is read
+      // BEFORE anything writes to it; a note without one cannot be placed from its end at all.
       const ornamentMillisecondsFromEndAtt = attribute(
         'ornament.milliseconds.fromend.offset',
         note,
@@ -1180,6 +1179,8 @@ export class Performance extends AbstractXmlSubtree {
         if (millisecondsDateEndAtt !== null) millisecondsDateEndAtt.setValue(millisecondsDateEnd);
         else note.addAttribute(new Attribute('milliseconds.date.end', millisecondsDateEnd));
       } else {
+        // The attribute exists only when it is "true": present shifts the end and preserves
+        // the duration, absent leaves the end unaltered so the duration absorbs the shift.
         const ornamentNoteoffShiftAtt = attribute('ornament.noteoff.shift', note);
         if (ornamentNoteoffShiftAtt !== null) {
           if (millisecondsDateEndAtt !== null)
