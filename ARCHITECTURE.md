@@ -26,6 +26,10 @@
 > | **I6** — no allocation-heavy immutability in hot loops | **still binding, and now measurable.** `npm run bench` exists; `scripts/bench-baseline.json` pins it. Do not trade a measured win for elegance. |
 > | **N6 / the lint scope** | **extended.** More compiler flags and lint rules are on; see `tsconfig.json`, which documents each one's measured cost and why the two expensive ones are still off. |
 >
+> **Comment style is not governed here.** `RULE D1`–`D4` in [CLAUDE.md](CLAUDE.md) cover when to
+> write a comment, when to delete one, and what register to write it in. Nothing in this document
+> overrides them.
+>
 > Two instruments this document names **do not exist** and should not be looked for: the
 > `scratchpad/` pipeline byte-probes and token-stream tools belonged to agent scratchpads and
 > were never in the tree. The byte gate *is* the suite — `npm run gate` runs its four suites,
