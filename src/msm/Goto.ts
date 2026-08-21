@@ -50,75 +50,64 @@ export class Goto {
   public counter = 0;
 
   /**
-   * constructor from individual parameters, better use Goto.fromElement(gt) as constructor, it is safer and more convenient
-   * @param date
-   * @param targetDate
-   * @param targetId
-   * @param activity
-   * @param source
+   * The two construction paths were two constructor overloads under one `new Goto(...)`, and
+   * this class's own docstring already said which one to prefer — "better use
+   * Goto.fromElement(gt) as constructor, it is safer and more convenient". They are now two
+   * named statics, so that advice is something the API expresses rather than something a
+   * comment asks for.
+   *
+   * Both arms produced a `Goto`, so the overload discriminated nothing; what it did do was
+   * make `new Goto(x)` mean two unrelated things, and force the body to ask `args.length`
+   * which it had been handed.
+   */
+  private constructor() {
+    // Every field is initialised at its declaration above; the two factories fill in the
+    // rest. Private so that `new Goto(...)` cannot mean two things again.
+  }
+
+  /**
+   * Build a Goto from an XML `<goto>` element. The safe and convenient path.
+   * @throws when the element cannot describe a jump — see {@link initFromElement}.
+   */
+  static fromElement(gt: Element): Goto {
+    const g = new Goto();
+    g.initFromElement(gt);
+    return g;
+  }
+
+  /**
+   * Build a Goto from individual parameters. Prefer {@link fromElement}.
    *
    * **Ported bug — do not "fix".** The `#` stripping here is `substring(1, length - 1)`,
-   * which drops the *last* character as well as the first, where the element constructor
-   * gets it right with `substring(1, length)`. Java has exactly this asymmetry
-   * (`Goto.java:40` vs `Goto.java:57`), so correcting it would diverge from the reference.
+   * which drops the *last* character as well as the first, where {@link fromElement} gets it
+   * right with `substring(1, length)`. Java has exactly this asymmetry (`Goto.java:40` vs
+   * `Goto.java:57`), so correcting it would diverge from the reference.
    *
    * It is latent at the only production call site:
    * `Mei2MsmMpmConverter.processEnding` passes an `endingMarker_…` id, which never starts
    * with `#`. Note the round trip is still lossy in principle — {@link toElement} *writes*
-   * `target.id` with a leading `#`, so feeding that value back through this constructor
-   * would lose a character while feeding it back through the element constructor would
-   * not.
+   * `target.id` with a leading `#`, so feeding that value back through here would lose a
+   * character while feeding it back through {@link fromElement} would not.
    */
-  constructor(
+  static fromValues(
     date: number,
     targetDate: number,
     targetId: string | null,
     activity: string,
     source: Element,
-  );
-  /**
-   * constructor from XML element
-   * @param gt
-   */
-  constructor(gt: Element);
-  /**
-   * The implementation signature is a **union of the two argument tuples**, not the five
-   * optional parameters it used to be. Those optionals were the reason the parameter branch
-   * opened `this.source = source!; this.activity = activity!; this.targetDate = targetDate!`
-   * — three assertions restating what the five-argument overload had already promised, and
-   * which the compiler had no way to carry into the body. `args.length` discriminates the
-   * tuples, so the promise now arrives narrowed and the assertions are gone. Neither public
-   * signature changed, so neither did any of the 31 call sites.
-   */
-  constructor(
-    ...args:
-      | [gt: Element]
-      | [
-          date: number,
-          targetDate: number,
-          targetId: string | null,
-          activity: string,
-          source: Element,
-        ]
-  ) {
-    if (args.length === 1) {
-      // Element constructor
-      this.initFromElement(args[0]);
-      return;
-    }
-
-    // 5-arg constructor: date, targetDate, targetId, activity, source
-    const [date, targetDate, targetId, activity, source] = args;
-    this.date = date;
-    this.source = source;
-    this.activity = activity;
-    this.targetDate = targetDate;
+  ): Goto {
+    const g = new Goto();
+    g.date = date;
+    g.source = source;
+    g.activity = activity;
+    g.targetDate = targetDate;
 
     if (targetId !== null) {
       let tid = targetId;
       if (tid.startsWith('#')) tid = tid.substring(1, tid.length - 1);
-      this.targetId = tid;
+      g.targetId = tid;
     }
+    return g;
   }
 
   /**

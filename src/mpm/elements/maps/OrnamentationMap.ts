@@ -136,39 +136,24 @@ export class OrnamentationMap extends GenericMap {
   }
 
   /**
-   * Add an ornament entry, in v2 or in v3 form.
+   * Add an ornament entry in v2 form. BYTE-FROZEN against the Java fixtures — `date`,
+   * `name.ref`, `scale` (only when it differs from `1.0`), `note.order`, `xml:id` (only when
+   * non-empty), in that order.
    *
-   * The positional form is v2 and is BYTE-FROZEN — `date`, `name.ref`, `scale` (only when it
-   * differs from `1.0`), `note.order`, `xml:id` (only when non-empty), in that order. The
-   * options form is v3 (DESIGN.md D12) and is the only one that can write a note pool,
-   * `repetitions` or `noteid`; see {@link AddOrnamentOptions}.
+   * This and {@link addOrnamentV3} were one overloaded `addOrnament`, dispatched on whether
+   * the first argument was a number or an options object. Both arms returned `number`, so the
+   * overload carried nothing at the type level — but it hid something worse than the usual
+   * ceremony: WHICH SERIALISATION VERSION a call writes was decided by the SHAPE of its
+   * arguments. The two writers disagree on bytes by design (see {@link addOrnamentV3} for the
+   * two deliberate differences), so the choice is exactly the kind that should be spelled at
+   * the call site. These were already the private names; they are simply public now.
    */
-  addOrnament(
+  addOrnamentV2(
     date: number,
     nameRef: string,
-    scale?: number,
-    noteOrder?: string[] | null,
-    id?: string | null,
-  ): number;
-  addOrnament(options: AddOrnamentOptions): number;
-  addOrnament(
-    dateOrOptions: number | AddOrnamentOptions,
-    nameRef = '',
     scale = 1.0,
     noteOrder: string[] | null = null,
     id: string | null = null,
-  ): number {
-    if (typeof dateOrOptions !== 'number') return this.addOrnamentV3(dateOrOptions);
-    return this.addOrnamentV2(dateOrOptions, nameRef, scale, noteOrder, id);
-  }
-
-  /** The v2 writer, unchanged. Frozen against the Java fixtures. */
-  private addOrnamentV2(
-    date: number,
-    nameRef: string,
-    scale: number,
-    noteOrder: string[] | null,
-    id: string | null,
   ): number {
     const ornament = new Element('ornament', MPM_NAMESPACE);
     ornament.addAttribute(new Attribute('date', String(date)));
@@ -203,7 +188,7 @@ export class OrnamentationMap extends GenericMap {
    * group. Order is byte-visible (CHARTER §79-80); no Java reference writes these attributes,
    * so nothing external binds the choice.
    */
-  private addOrnamentV3(options: AddOrnamentOptions): number {
+  addOrnamentV3(options: AddOrnamentOptions): number {
     const ornament = new Element('ornament', MPM_NAMESPACE);
     ornament.addAttribute(new Attribute('date', String(options.date)));
     ornament.addAttribute(new Attribute('name.ref', options.nameRef));
@@ -246,7 +231,7 @@ export class OrnamentationMap extends GenericMap {
     }
     const nameRef = data.ornamentDefName;
     if (data.notes.length > 0 || data.repetitions !== 0 || data.noteid !== null)
-      return this.addOrnament({
+      return this.addOrnamentV3({
         date: data.date,
         nameRef,
         scale: data.scale,
@@ -258,7 +243,7 @@ export class OrnamentationMap extends GenericMap {
         notes: data.notes,
         id: data.xmlId ?? undefined,
       });
-    return this.addOrnament(data.date, nameRef, data.scale, data.noteOrder, data.xmlId);
+    return this.addOrnamentV2(data.date, nameRef, data.scale, data.noteOrder, data.xmlId);
   }
 
   /**

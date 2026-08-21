@@ -11,6 +11,7 @@ import {
   firstChildElement,
   getAttributeValue,
   getNextSiblingElement,
+  immediateNextSiblingElement,
   requireAttribute,
   requireFirstChildElement,
   requireParentElement,
@@ -786,7 +787,7 @@ export class Msm extends AbstractMsm {
     // the `null` return, so the loop no longer has to say `continue` in a `catch`.
     const gotos = filterMap(gs, (g) => {
       try {
-        return new Goto(g); // from the goto element create a Goto instance
+        return Goto.fromElement(g); // from the goto element create a Goto instance
       } catch (e) {
         console.error(e); // print the exception and continue with the next
         return null;
@@ -808,7 +809,7 @@ export class Msm extends AbstractMsm {
         for (
           let e = Msm.getElementAtAfter(currentDate, map);
           e !== null;
-          e = getNextSiblingElement(e)
+          e = immediateNextSiblingElement(e)
         ) {
           // go through the map elements
           // `getElementAtAfter` yields only dated elements, but `getNextSiblingElement`
@@ -856,7 +857,7 @@ export class Msm extends AbstractMsm {
     for (
       let e = Msm.getElementAtAfter(currentDate, map);
       e !== null;
-      e = getNextSiblingElement(e)
+      e = immediateNextSiblingElement(e)
     ) {
       const dateAttribute = requireAttribute('date', e); // see the note in the loop above
       currentDate = parseFloat(dateAttribute.getValue()); // read its date
@@ -938,28 +939,22 @@ export class Msm extends AbstractMsm {
    *   but it will not un-set a channel your synth already has on another instrument
    * @returns the Midi object, or null if this MSM is empty
    */
-  exportMidi(generateProgramChanges: boolean): Midi | null;
   /**
    * Render this MSM as plain, non-expressive MIDI.
+   *
    * @param bpm the tempo of the midi track; 120 by default
-   * @param generateProgramChanges see the boolean overload; true by default
+   * @param generateProgramChanges whether to emit program-change events; true by default
    * @returns the Midi object, or null if this MSM is empty
    *
-   * `bpm` and `generateProgramChanges` are one signature because they are the same mode
-   * with more detail supplied. The boolean-first overload above stays separate because it
-   * is a *different* mode — its single argument means something else.
+   * Java overloads this with a boolean-first arm — `exportMidi(true)` meaning "default
+   * tempo, generate program changes" — and the port carried it. Both arms returned
+   * `Midi | null`, so the overload discriminated nothing, and the cost was a body that had
+   * to ask `typeof` which of two unrelated meanings its first argument carried. One test
+   * call site used it, and `exportMidi(undefined, true)` says the same thing without
+   * requiring the reader to know there were ever two modes.
    */
-  exportMidi(bpm?: number, generateProgramChanges?: boolean): Midi | null;
-  exportMidi(bpmOrGenPC?: number | boolean, generateProgramChanges?: boolean): Midi | null {
-    let bpm = 120.0;
-    let genPC = true;
-    if (typeof bpmOrGenPC === 'number') {
-      bpm = bpmOrGenPC;
-      if (generateProgramChanges !== undefined) genPC = generateProgramChanges;
-    } else if (typeof bpmOrGenPC === 'boolean') {
-      genPC = bpmOrGenPC;
-    }
-    return this.renderMidi(bpm, genPC, false);
+  exportMidi(bpm = 120.0, generateProgramChanges = true): Midi | null {
+    return this.renderMidi(bpm, generateProgramChanges, false);
   }
 
   /**

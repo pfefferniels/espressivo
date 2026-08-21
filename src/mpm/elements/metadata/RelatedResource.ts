@@ -32,47 +32,44 @@ export class RelatedResource extends AbstractXmlSubtree {
   }
 
   /**
-   * As {@link Author.createAuthor}: the reason is returned rather than printed.
+   * As {@link Author.fromXml}: the reason is returned rather than printed.
    *
    * The missing `type` was the one failure this factory already reported *without* logging —
    * a bare `return null` an untyped caller could reach — so it gains a name here rather than
    * staying the odd one out.
    */
-  static createRelatedResource(xml: Element | null): Result<RelatedResource, MpmParseError>;
-  static createRelatedResource(
-    uri: string,
-    type: string | null,
-  ): Result<RelatedResource, MpmParseError>;
-  static createRelatedResource(
-    xmlOrUri: Element | string | null,
-    type?: string | null,
-  ): Result<RelatedResource, MpmParseError> {
-    if (xmlOrUri === null) return err({ kind: 'noElement', what: 'RelatedResource' });
-    if (typeof xmlOrUri !== 'string')
-      return attemptParse('RelatedResource', () => {
-        const r = new RelatedResource();
-        r.parseData(xmlOrUri);
-        return r;
-      });
-
-    // Bound to a `const` so the narrowing survives into the closure — a parameter's is
-    // discarded there, and re-asserting it with `!` is the move this campaign is removing.
-    // `null` and `undefined` are one answer here: Java refuses BOTH a null uri and a null
-    // type in this form (`RelatedResource.java:47-49`), and the overload now says so rather
-    // than leaving a caller to reach the branch by casting past the compiler.
-    const resourceType = type ?? null;
-    if (resourceType === null)
-      return err({ kind: 'missingArgument', what: 'RelatedResource', argument: 'type' });
+  static fromXml(xml: Element | null): Result<RelatedResource, MpmParseError> {
+    if (xml === null) return err({ kind: 'noElement', what: 'RelatedResource' });
     return attemptParse('RelatedResource', () => {
       const r = new RelatedResource();
-      r.parseData(new Element('resource', MPM_NAMESPACE));
-      r.setUri(xmlOrUri);
-      r.setType(resourceType);
+      r.parseData(xml);
       return r;
     });
   }
 
-  /** The `xml === null` guard now lives in {@link createRelatedResource}, its only caller. */
+  /**
+   * Build a `<resource>` from a uri and a type.
+   *
+   * Java refuses BOTH a null uri and a null type in this form
+   * (`RelatedResource.java:47-49`), and the missing `type` was the one failure this factory
+   * already reported without logging — a bare `return null` an untyped caller could reach —
+   * so it keeps its name here. What the split removes is the `type ?? null` normalisation:
+   * `undefined` was only reachable because the implementation signature had to make the
+   * parameter optional for the parse arm, and there is no parse arm here.
+   */
+  static fromUri(uri: string, type: string | null): Result<RelatedResource, MpmParseError> {
+    if (type === null)
+      return err({ kind: 'missingArgument', what: 'RelatedResource', argument: 'type' });
+    return attemptParse('RelatedResource', () => {
+      const r = new RelatedResource();
+      r.parseData(new Element('resource', MPM_NAMESPACE));
+      r.setUri(uri);
+      r.setType(type);
+      return r;
+    });
+  }
+
+  /** The `xml === null` guard now lives in {@link fromXml}, its only caller. */
   protected parseData(xml: Element): void {
     this.setXml(xml);
     const declaredUri = attribute('uri', xml);

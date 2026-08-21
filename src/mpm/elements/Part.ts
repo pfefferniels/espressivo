@@ -44,35 +44,28 @@ export class Part extends AbstractXmlSubtree {
   }
 
   /**
-   * Create a part from its identifying values (optionally with an `xml:id`), or by parsing
-   * an existing `<part>` element.
+   * Create a part from its identifying values, optionally with an `xml:id`.
    *
-   * Reports the reason rather than printing it — see `elements/parseError.ts`. Which of the
-   * three required attributes was missing is now something the caller can read, where before
-   * the three `throw`s were flattened onto one `null` and one line on somebody's stderr; the
-   * from-scratch form still cannot fail, since it writes all three itself.
+   * Split from {@link fromXml}, whose arm returned the same type, so the overload said
+   * nothing that this name does not. The split also lets the three required values stop
+   * being optional: they were `number?`, `midiChannel?`, `midiPort?` only so the
+   * one-argument parse arm could share the implementation signature, and every one of them
+   * was then read unconditionally.
+   *
+   * This form cannot fail on a missing attribute, since it writes all three itself — but it
+   * still returns a Result, because {@link readFrom} is the one thing that validates them
+   * and there is no reason for two spellings of the same answer.
    */
-  static createPart(
+  static fromValues(
     name: string,
     number: number,
     midiChannel: number,
     midiPort: number,
     id?: string,
-  ): Result<Part, MpmParseError>;
-  static createPart(xml: Element | null): Result<Part, MpmParseError>;
-  static createPart(
-    nameOrXml: string | Element | null,
-    number?: number,
-    midiChannel?: number,
-    midiPort?: number,
-    id?: string,
   ): Result<Part, MpmParseError> {
-    if (nameOrXml === null) return err({ kind: 'noElement', what: 'Part' });
     const p = new Part();
-    if (typeof nameOrXml !== 'string') return p.readFrom(nameOrXml);
-
     const part = new Element('part', MPM_NAMESPACE);
-    part.addAttribute(new Attribute('name', nameOrXml));
+    part.addAttribute(new Attribute('name', name));
     part.addAttribute(new Attribute('number', String(number)));
     part.addAttribute(new Attribute('midi.channel', String(midiChannel)));
     part.addAttribute(new Attribute('midi.port', String(midiPort)));
@@ -80,6 +73,18 @@ export class Part extends AbstractXmlSubtree {
     if (isErr(parsed)) return parsed;
     if (id !== undefined) p.setId(id);
     return parsed;
+  }
+
+  /**
+   * Create a part by parsing an existing `<part>` element.
+   *
+   * Reports the reason rather than printing it — see `elements/parseError.ts`. Which of the
+   * three required attributes was missing is now something the caller can read, where before
+   * the three `throw`s were flattened onto one `null` and one line on somebody's stderr.
+   */
+  static fromXml(xml: Element | null): Result<Part, MpmParseError> {
+    if (xml === null) return err({ kind: 'noElement', what: 'Part' });
+    return new Part().readFrom(xml);
   }
 
   /**

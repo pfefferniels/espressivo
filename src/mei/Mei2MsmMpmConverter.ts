@@ -10,6 +10,7 @@ import {
   cloneElement,
   descendantElements,
   firstChildElement,
+  firstChildElementOf,
   requireAttribute,
   requireAttributeValue,
   requireFirstChildElement,
@@ -324,7 +325,7 @@ type ElementHandler = (c: Mei2MsmMpmConverter, e: Element, ctx: WalkContext) => 
  * straight to `addToMap`, whose contract already includes "null map, nothing to do".
  */
 function datedMap(container: Element, name: string): Element | null {
-  return firstChildElement(requireFirstChildElement(container, 'dated'), name);
+  return firstChildElementOf(requireFirstChildElement(container, 'dated'), name);
 }
 
 /**
@@ -553,31 +554,27 @@ export class Mei2MsmMpmConverter {
   }
 
   /**
-   * constructor with default settings
-   */
-  constructor(ppq: number);
-  /**
-   * constructor with fully specified settings
+   * The settings other than `ppq` all have a default, and the defaults are the field
+   * initialisers above spelled a second time — which is what lets this be one signature.
+   *
+   * Java overloads the name (`(ppq)` for defaults, `(ppq, …)` for the full set) and the port
+   * followed, but the "default settings" arm was declared and never called: every caller in
+   * `src/` and `tests/` passes at least four arguments. Default parameters express the same
+   * thing without a second declaration or a `??` chain, and additionally make the partial
+   * forms — `(ppq, dontUseChannel10)` — legal, which the two overloads refused for no reason.
    */
   constructor(
     ppq: number,
-    dontUseChannel10: boolean,
-    ignoreExpansions: boolean,
-    cleanup: boolean,
-    expandOrnaments?: boolean,
-  );
-  constructor(
-    ppq: number,
-    dontUseChannel10?: boolean,
-    ignoreExpansions?: boolean,
-    cleanup?: boolean,
-    expandOrnaments?: boolean,
+    dontUseChannel10 = true,
+    ignoreExpansions = false,
+    cleanup = true,
+    expandOrnaments = false,
   ) {
     this.ppq = ppq;
-    this.dontUseChannel10 = dontUseChannel10 ?? true;
-    this.ignoreExpansions = ignoreExpansions ?? false;
-    this.cleanup = cleanup ?? true;
-    this.expandOrnaments = expandOrnaments ?? false;
+    this.dontUseChannel10 = dontUseChannel10;
+    this.ignoreExpansions = ignoreExpansions;
+    this.cleanup = cleanup;
+    this.expandOrnaments = expandOrnaments;
   }
 
   /**
@@ -681,10 +678,10 @@ export class Mei2MsmMpmConverter {
         const onlyMpm = head(mpms);
         const msmFile = onlyMsm.getFile();
         if (msmFile !== null) {
-          // `createRelatedResource` returns its reason now instead of printing it; there is
+          // `RelatedResource.fromUri` returns its reason now instead of printing it; there is
           // no reason to have here, since both arguments are non-null strings, but the
           // check is what says so rather than an `!`.
-          const msmRelatedResource = RelatedResource.createRelatedResource(msmFile, 'msm');
+          const msmRelatedResource = RelatedResource.fromUri(msmFile, 'msm');
           if (isOk(msmRelatedResource))
             onlyMpm.getMetadata()?.addRelatedResource(msmRelatedResource.value);
         }
@@ -1099,24 +1096,23 @@ export class Mei2MsmMpmConverter {
     // the three calls below can produce one — every argument is a non-null string — so the
     // reasons are flattened back to null with `unwrapOr` and the array keeps its nullable
     // element type. That is not laziness: `Mpm.addMetadata` passes the array to
-    // `Metadata.createMetadata`, which treats a null element as a caller error and refuses to
+    // `Metadata.fromParts`, which treats a null element as a caller error and refuses to
     // build the metadata at all (T16 closed T10's DISCOVERED note by widening the consumer,
     // which is what retired this file's `any`). Skipping a null here instead would produce a
     // metadata block that the incumbent would not have produced, and that is a document
     // difference, not a plumbing one.
     const relatedResources: (RelatedResource | null)[] = [];
     const meiFile = this.requireMei().getFile();
-    const meicoAuthor = (): Author | null =>
-      unwrapOr(Author.createAuthor('meico', null, null), null);
+    const meicoAuthor = (): Author | null => unwrapOr(Author.fromName('meico', null, null), null);
     if (meiFile !== null) {
-      relatedResources.push(unwrapOr(RelatedResource.createRelatedResource(meiFile, 'mei'), null));
-      const comment = Comment.createComment(
+      relatedResources.push(unwrapOr(RelatedResource.fromUri(meiFile, 'mei'), null));
+      const comment = Comment.fromText(
         `This MPM has been generated from '${meiFile}' using the meico MEI converter v${VERSION}.`,
         null,
       );
       mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), relatedResources);
     } else {
-      const comment = Comment.createComment(
+      const comment = Comment.fromText(
         `This MPM has been generated from MEI code using the meico MEI converter v${VERSION}.`,
         null,
       );
@@ -1128,7 +1124,7 @@ export class Mei2MsmMpmConverter {
     // entitled to say something. What it can say is new — `createPerformance` used to print
     // its exception itself and hand back a bare null, so this message could only report
     // *that* the performance failed.
-    const created = Performance.createPerformance('MEI export performance');
+    const created = Performance.fromName('MEI export performance');
     if (isErr(created)) {
       console.error(
         `Failed to generate an instance of Performance. Skipping mdiv ${titleString}. ${describeMpmParseError(created.error)}`,
@@ -1287,7 +1283,7 @@ export class Mei2MsmMpmConverter {
             globalTempoMap?.addStyleSwitch(0.0, 'MEI export');
           }
           tempoData.startDate = 0.0;
-          globalTempoMap?.addTempo(tempoData);
+          globalTempoMap?.addTempoData(tempoData);
         }
       }
     }
@@ -1535,9 +1531,9 @@ export class Mei2MsmMpmConverter {
   }
 
   private processApp(app: Element, ctx: WalkContext): void {
-    let takeThisReading = firstChildElement(app, 'lem');
+    let takeThisReading = firstChildElementOf(app, 'lem');
     if (takeThisReading === null) {
-      takeThisReading = firstChildElement(app, 'rdg');
+      takeThisReading = firstChildElementOf(app, 'rdg');
       if (takeThisReading === null) {
         return;
       }
@@ -1552,7 +1548,7 @@ export class Mei2MsmMpmConverter {
     // loop stops at the first hit, so the names after it are never looked up.
     let c: Element | null = null;
     for (const preferred of prefOrder) {
-      c = firstChildElement(choice, preferred);
+      c = firstChildElementOf(choice, preferred);
       if (c !== null) break;
     }
 
@@ -1681,7 +1677,7 @@ export class Mei2MsmMpmConverter {
     // `source` is the MEI element a Goto was read from; there is none here because this
     // goto is synthesised, and Goto only ever stores the field, never reads it — so null is
     // safe. Typed away rather than declared nullable because Goto's signature is T9's file.
-    const gotoObj = new Goto(
+    const gotoObj = Goto.fromValues(
       dateOfGoto,
       startDate,
       markerId,
@@ -2269,7 +2265,7 @@ export class Mei2MsmMpmConverter {
     // false: the line above has already gone through `requireMovement`, and a movement is only
     // built once its performance exists (`makeMovement` returns early otherwise). The record
     // carries the performance beside the MSM, so the pairing is now in the type.
-    const performancePart = MpmPart.createPart(label, parseInt(number), midiChannel, midiPort);
+    const performancePart = MpmPart.fromValues(label, parseInt(number), midiChannel, midiPort);
     if (isOk(performancePart)) {
       requirePerformance(ctx).addPart(performancePart.value);
       if (xmlId !== null) performancePart.value.setId(xmlId.getValue());
@@ -3105,7 +3101,7 @@ export class Mei2MsmMpmConverter {
       }
     }
 
-    const index = tempoMap.addTempo(tempoData);
+    const index = tempoMap.addTempoData(tempoData);
     if (index < 0) return index;
     const tempoElement = mapElement(tempoMap, index);
     if (tempoData.endDate !== null) {
@@ -4423,7 +4419,7 @@ export class Mei2MsmMpmConverter {
           const tempoDef =
             tempoData.bpmString === null
               ? TempoDef.createDefaultTempoDef(descriptor)
-              : TempoDef.createTempoDef(descriptor, parseFloat(tempoData.bpmString));
+              : TempoDef.fromNameValue(descriptor, parseFloat(tempoData.bpmString));
           if (isOk(tempoDef)) tempoStyle.addDef(tempoDef.value);
         }
         tempoData.bpmString = descriptor;

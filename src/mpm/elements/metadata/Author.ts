@@ -41,28 +41,35 @@ export class Author extends AbstractXmlSubtree {
    * with one fewer thing thrown away. The null element is the one failure a document can
    * cause here, and it is checked rather than caught.
    */
-  static createAuthor(xml: Element | null): Result<Author, MpmParseError>;
-  static createAuthor(
+  static fromXml(xml: Element | null): Result<Author, MpmParseError> {
+    if (xml === null) return err({ kind: 'noElement', what: 'Author' });
+    return attemptParse('Author', () => {
+      const a = new Author();
+      a.parseData(xml);
+      return a;
+    });
+  }
+
+  /**
+   * Build an `<author>` from a name, with optional number and `xml:id`.
+   *
+   * Both arms of the `createAuthor` overload returned the same type, so it discriminated
+   * nothing; splitting drops the `typeof` branch and the two `?? null` defaults, which were
+   * there only because the implementation signature had to make the parameters optional for
+   * the parse arm's sake. Here they are required and nullable, which is what the build arm
+   * always declared.
+   */
+  static fromName(
     name: string,
     number: number | null,
     id: string | null,
-  ): Result<Author, MpmParseError>;
-  static createAuthor(
-    xmlOrName: Element | string | null,
-    number?: number | null,
-    id?: string | null,
   ): Result<Author, MpmParseError> {
-    if (xmlOrName === null) return err({ kind: 'noElement', what: 'Author' });
     return attemptParse('Author', () => {
       const a = new Author();
-      if (typeof xmlOrName === 'string') {
-        a.parseData(new Element('author', MPM_NAMESPACE));
-        a.setName(xmlOrName);
-        a.setNumber(number ?? null);
-        a.setId(id ?? null);
-      } else {
-        a.parseData(xmlOrName);
-      }
+      a.parseData(new Element('author', MPM_NAMESPACE));
+      a.setName(name);
+      a.setNumber(number);
+      a.setId(id);
       return a;
     });
   }
@@ -76,7 +83,7 @@ export class Author extends AbstractXmlSubtree {
    * author element that leads with a comment or an element is treated as having no name and
    * gains a second, empty text node.
    *
-   * The `xml === null` guard this used to open with now lives in {@link createAuthor}, which
+   * The `xml === null` guard this used to open with now lives in {@link fromXml}, which
    * is its only caller and which can say what a null means without throwing.
    */
   protected parseData(xml: Element): void {

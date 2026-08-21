@@ -40,7 +40,7 @@ describe('XmlBase – construction', () => {
   });
 
   it('should create from an XML string', () => {
-    const xb = new XmlBase(SIMPLE_XML, true);
+    const xb = new XmlBase(SIMPLE_XML);
     expect(xb.isEmpty()).toBe(false);
     expect(xb.getRootElement()!.getLocalName()).toBe('root');
   });
@@ -68,7 +68,7 @@ describe('XmlBase – malformed XML throws, and only a <parsererror> yields an e
     // `DOMParser.parseFromString`, before `Builder` can look for a `parsererror` node, so
     // `parseXmlString`'s `else { throw e }` is the arm that runs. Java answers all seven of
     // these with `isEmpty() === true`.
-    expect(() => new XmlBase(xml, true)).toThrow();
+    expect(() => new XmlBase(xml)).toThrow();
   });
 
   it('reports a well-formed document containing <parsererror> as a failed parse', () => {
@@ -79,9 +79,9 @@ describe('XmlBase – malformed XML throws, and only a <parsererror> yields an e
     // a document type in this port can be constructed with `isEmpty()` true.
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
-      expect(new XmlBase('<parsererror/>', true).isEmpty()).toBe(true);
+      expect(new XmlBase('<parsererror/>').isEmpty()).toBe(true);
       // …and it does not have to be the root, nor the whole document
-      expect(new XmlBase('<root><parsererror/></root>', true).isEmpty()).toBe(true);
+      expect(new XmlBase('<root><parsererror/></root>').isEmpty()).toBe(true);
       expect(errSpy).toHaveBeenCalled();
     } finally {
       errSpy.mockRestore();
@@ -94,14 +94,14 @@ describe('XmlBase – malformed XML throws, and only a <parsererror> yields an e
 // ---------------------------------------------------------------------------
 describe('XmlBase – getters', () => {
   it('getRootElement() should return the root', () => {
-    const xb = new XmlBase(SIMPLE_XML, true);
+    const xb = new XmlBase(SIMPLE_XML);
     const root = xb.getRootElement();
     expect(root).not.toBeNull();
     expect(root!.getLocalName()).toBe('root');
   });
 
   it('toXML() should return the serialized XML', () => {
-    const xb = new XmlBase(SIMPLE_XML, true);
+    const xb = new XmlBase(SIMPLE_XML);
     const xml = xb.toXML();
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
     expect(xml).toContain('<root');
@@ -118,7 +118,7 @@ describe('XmlBase – getters', () => {
   });
 
   it('isEmpty() should return false after parsing XML', () => {
-    const xb = new XmlBase(SIMPLE_XML, true);
+    const xb = new XmlBase(SIMPLE_XML);
     expect(xb.isEmpty()).toBe(false);
   });
 });
@@ -158,14 +158,14 @@ describe('XmlBase – setDocument', () => {
 // ---------------------------------------------------------------------------
 describe('XmlBase – removeAllElements', () => {
   it('should find matching elements and report the count', () => {
-    const xb = new XmlBase(SIMPLE_XML, true);
+    const xb = new XmlBase(SIMPLE_XML);
     const count = xb.removeAllElements('child');
     // The method finds 3 child elements
     expect(count).toBe(3);
   });
 
   it('should return 0 when no elements match', () => {
-    const xb = new XmlBase(SIMPLE_XML, true);
+    const xb = new XmlBase(SIMPLE_XML);
     const count = xb.removeAllElements('nonexistent');
     expect(count).toBe(0);
   });
@@ -176,7 +176,7 @@ describe('XmlBase – removeAllElements', () => {
 // ---------------------------------------------------------------------------
 describe('XmlBase – removeAllAttributes', () => {
   it('should remove the named attribute from all elements that have it', () => {
-    const xb = new XmlBase(XML_WITH_ATTRS, true);
+    const xb = new XmlBase(XML_WITH_ATTRS);
     const count = xb.removeAllAttributes('color');
     expect(count).toBe(3);
     // The elements themselves should still exist
@@ -186,7 +186,7 @@ describe('XmlBase – removeAllAttributes', () => {
   });
 
   it('should return 0 when no elements have that attribute', () => {
-    const xb = new XmlBase(SIMPLE_XML, true);
+    const xb = new XmlBase(SIMPLE_XML);
     const count = xb.removeAllAttributes('nonexistent');
     expect(count).toBe(0);
   });
@@ -214,7 +214,7 @@ describe('XmlBase – tree operations on an empty document', () => {
 // ---------------------------------------------------------------------------
 describe('XmlBase – exportXml', () => {
   it('should return XML string when data is present', () => {
-    const xb = new XmlBase(SIMPLE_XML, true);
+    const xb = new XmlBase(SIMPLE_XML);
     const result = xb.exportXml();
     expect(result).not.toBeNull();
     expect(result).toContain('<root');
@@ -236,7 +236,7 @@ describe('XmlBase – validate', () => {
   });
 
   it('should report not-implemented when data present', () => {
-    const xb = new XmlBase(SIMPLE_XML, true);
+    const xb = new XmlBase(SIMPLE_XML);
     expect(xb.validate()).toEqual({ validated: false, reason: 'not-implemented' });
   });
 });
@@ -251,7 +251,7 @@ describe('XmlBase – isValid', () => {
   });
 
   it('should be false after parsing (no schema validation)', () => {
-    const xb = new XmlBase(SIMPLE_XML, true);
+    const xb = new XmlBase(SIMPLE_XML);
     expect(xb.isValid()).toBe(false);
   });
 });
@@ -272,7 +272,6 @@ describe('XmlBase.fixDuplicateIds', () => {
     const base = new XmlBase(
       `<?xml version="1.0" encoding="UTF-8"?>
 <root xml:id="r"><a xml:id="x"/><b xml:id="y"/></root>`,
-      true,
     );
     expect(base.fixDuplicateIds()).toBe(0);
     expect(ids(base)).toEqual(['r', 'x', 'y']);
@@ -282,7 +281,6 @@ describe('XmlBase.fixDuplicateIds', () => {
     const base = new XmlBase(
       `<?xml version="1.0" encoding="UTF-8"?>
 <root><a xml:id="dup"/><b xml:id="dup"/><c xml:id="dup"/></root>`,
-      true,
     );
     expect(base.fixDuplicateIds()).toBe(2);
 
@@ -297,7 +295,6 @@ describe('XmlBase.fixDuplicateIds', () => {
     const base = new XmlBase(
       `<?xml version="1.0" encoding="UTF-8"?>
 <root><a xml:id="p"/><b xml:id="q"/><c xml:id="p"/><d xml:id="q"/></root>`,
-      true,
     );
     expect(base.fixDuplicateIds()).toBe(2);
     expect(new Set(ids(base)).size).toBe(4);
@@ -307,7 +304,6 @@ describe('XmlBase.fixDuplicateIds', () => {
     const base = new XmlBase(
       `<?xml version="1.0" encoding="UTF-8"?>
 <root><a id="same" xml:id="one"/><b id="same" xml:id="two"/></root>`,
-      true,
     );
     expect(base.fixDuplicateIds()).toBe(0);
     const root = base.getRootElement()!;
@@ -319,7 +315,6 @@ describe('XmlBase.fixDuplicateIds', () => {
     const base = new XmlBase(
       `<?xml version="1.0" encoding="UTF-8"?>
 <root><a xml:id="dup"/><b xml:id="dup"/></root>`,
-      true,
     );
     expect(base.fixDuplicateIds()).toBe(1);
     expect(base.fixDuplicateIds()).toBe(0);
@@ -329,7 +324,6 @@ describe('XmlBase.fixDuplicateIds', () => {
     const base = new XmlBase(
       `<?xml version="1.0" encoding="UTF-8"?>
 <root xml:id="dup"><a xml:id="dup"/></root>`,
-      true,
     );
     expect(base.fixDuplicateIds()).toBe(1);
     expect(base.getRootElement()!.getAttribute('id', XML_NS)!.getValue()).toBe('dup');

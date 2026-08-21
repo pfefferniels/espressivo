@@ -7,6 +7,7 @@ import {
   attribute,
   descendantElements,
   firstChildElement,
+  firstChildElementOf,
   getAttributeValue,
 } from '../xml/tree.js';
 import { foldl } from '../prelude/index.js';
@@ -104,39 +105,37 @@ export class Mei extends XmlBase {
    * An already parsed document (taken over, not copied), or — with no argument at all — an
    * empty MEI built from the {@link MINIMAL_MEI} template.
    */
-  constructor(mei?: Document);
-  /** parse MEI from an XML string */
-  constructor(xml: string, isXmlString: true);
   /**
    * Three genuinely different things to start from — nothing, a parsed tree, or XML source.
    *
-   * The first two were separate overloads, and `unified-signatures` was right that they are
-   * one signature with an optional parameter: `mei?: Document` accepts exactly the two call
-   * forms `()` and `(document)` accepted, and dispatches on the same `arg === undefined`
-   * the body already tested. The objection recorded here — that collapsing would make
-   * `new Mei(someString)` silently mean "empty" — applies to the *string* overload, which
-   * stays separate because its second argument is what distinguishes it; a lone string is
-   * still a type error. `XmlBase` had already made the identical split for the identical
-   * reason (T17), and `AbstractMsm` after it.
+   * The objection recorded here for a long time was that collapsing the arms would make
+   * `new Mei(someString)` silently mean "empty", so the string form kept a second
+   * `isXmlString: true` argument to distinguish it. It no longer needs one: `Document` and
+   * `string` are disjoint types, `instanceof` and `typeof` tell them apart without a flag,
+   * and {@link XmlBase} — which dropped the same flag for the same reason — now parses a
+   * lone string instead of ignoring it. So the case the objection feared cannot arise; a
+   * lone string is the parse form, not the empty one.
+   *
+   * The final `else` is the untyped-caller arm and is deliberate: a plain-JS caller passing
+   * something that is neither a Document nor a string gets an empty instance, exactly as the
+   * overload set gave it. `Mpm` keeps the identical arm for the identical reason.
    *
    * Java has eight constructors here; the five that take `File`, `InputStream` or a
    * validation schema have no counterpart in this port.
    */
-  constructor(arg?: Document | string, isXmlString?: true) {
-    if (arg === undefined) {
-      super(MINIMAL_MEI, true);
-    } else if (arg instanceof Document) {
-      super(arg);
-    } else if (typeof arg === 'string' && isXmlString) {
-      super(arg, true);
+  constructor(source?: Document | string) {
+    if (source === undefined) {
+      super(MINIMAL_MEI);
+    } else if (source instanceof Document || typeof source === 'string') {
+      super(source);
     } else {
       super();
     }
   }
 
-  /** the readable spelling of `new Mei(xml, true)` */
+  /** the readable spelling of `new Mei(xml)` */
   static fromXml(xml: string): Mei {
-    return new Mei(xml, true);
+    return new Mei(xml);
   }
 
   /**
@@ -683,14 +682,14 @@ export class Mei extends XmlBase {
     if (plist !== null) {
       const childHash = new Map<string, Element>();
 
-      let child = firstChildElement(regularizedRoot);
+      let child = firstChildElementOf(regularizedRoot);
       while (child !== null) {
         child.detach();
         // `getAttributeValue` answers `''` rather than null for an absent `@xml:id`, so
         // Java's `id != null` here was true for every child and the guard it opened never
         // skipped one. An unidentified child is keyed under `''`, as it always has been.
         childHash.set(getAttributeValue('id', child), child);
-        child = firstChildElement(regularizedRoot);
+        child = firstChildElementOf(regularizedRoot);
       }
 
       for (const plistEntry of plist) {

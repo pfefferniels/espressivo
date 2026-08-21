@@ -116,7 +116,7 @@ describe('MovementMap', () => {
       md.position = norm(0.0);
       md.transitionTo = norm(1.0);
 
-      const index = map.addMovement(md);
+      const index = map.addMovementData(md);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
@@ -221,7 +221,7 @@ describe('MovementMap', () => {
       md.curvature = null;
       md.protraction = null;
 
-      const elem = map.getElement(map.addMovement(md))!;
+      const elem = map.getElement(map.addMovementData(md))!;
       expect(elem.getAttributeValue('date')).toBe('100');
       expect(elem.getAttribute('position')).toBeNull();
       expect(elem.getAttribute('transition.to')).toBeNull();
@@ -242,7 +242,7 @@ describe('MovementMap', () => {
       md.protraction = 0.2;
       md.xmlId = 'mov-clone';
 
-      const elem = map.getElement(map.addMovement(md))!;
+      const elem = map.getElement(map.addMovementData(md))!;
       expect(elem.getAttributeValue('position')).toBe('0.3');
       expect(elem.getAttributeValue('transition.to')).toBe('0.8');
       expect(elem.getAttributeValue('curvature')).toBe('0.6');
@@ -790,7 +790,7 @@ describe('MovementMap', () => {
       md.controller = 'soft';
       md.xmlId = 'mov-1';
 
-      const xml = map.getElement(map.addMovement(md))!.toXML();
+      const xml = map.getElement(map.addMovementData(md))!.toXML();
       expect(xml).toContain('controller="soft"');
       // Attribute order is byte-visible in the serialized MPM.
       expect(xml.indexOf('protraction=')).toBeLessThan(xml.indexOf('controller='));
@@ -806,7 +806,7 @@ describe('MovementMap', () => {
       md.curvature = 0.8;
       md.protraction = 0.5;
       md.controller = 'soft';
-      map.addMovement(md);
+      map.addMovementData(md);
 
       const parsed = map.getMovementDataOf(0)!;
       expect(parsed.curvature).toBe(0.8);
@@ -860,11 +860,11 @@ describe('MovementMap', () => {
       controller: string,
     ): Mpm {
       const mpm = Mpm.createMpm();
-      const perf = okValue(Performance.createPerformance('perf', 720));
+      const perf = okValue(Performance.fromName('perf', 720));
       mpm.addPerformance(perf);
 
       const tempoMap = TempoMap.createTempoMap()!;
-      tempoMap.addTempo(0, '120', 0.25);
+      tempoMap.addConstantTempo(0, '120', 0.25);
       perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
       const movMap = MovementMap.createMovementMap()!;
@@ -875,7 +875,7 @@ describe('MovementMap', () => {
       md.controller = controller;
       md.curvature = curvature;
       md.protraction = protraction;
-      movMap.addMovement(md);
+      movMap.addMovementData(md);
       // Two terminating instructions: the last entry of a movementMap is never rendered,
       // it only marks where the preceding transition aims.
       for (const startDate of [2880, 5760]) {
@@ -884,10 +884,10 @@ describe('MovementMap', () => {
         term.position = norm(0.9);
         term.transitionTo = norm(0.9);
         term.controller = controller;
-        movMap.addMovement(term);
+        movMap.addMovementData(term);
       }
       perf.getGlobal()!.getDated()!.addMap(movMap);
-      perf.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
+      perf.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
       return mpm;
     }
 

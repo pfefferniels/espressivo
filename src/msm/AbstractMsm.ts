@@ -1,4 +1,4 @@
-import { Element, Attribute, Elements, Document } from '../xml/XomTypes.js';
+import { Element, Attribute, Elements } from '../xml/XomTypes.js';
 import { XmlBase } from '../xml/XmlBase.js';
 import { descendantElements, requireParentElement } from '../xml/tree.js';
 
@@ -17,35 +17,20 @@ import { descendantElements, requireParentElement } from '../xml/tree.js';
  * it; nothing in this port sorts a map on read.
  */
 export abstract class AbstractMsm extends XmlBase {
-  /**
-   * Nothing, an already-parsed {@link Document}, or XML source text.
-   *
-   * This used to be three overloads, on the argument that "they are distinct construction
-   * modes, not one optional parameter". The three signatures had the same arity and the
-   * same single parameter, so the only thing they said that `Document | string | undefined`
-   * does not is that the modes are named — and they were not named, they were numbered by
-   * position. What the union loses is nothing; what the overload set cost is a `typeof`
-   * dispatch in the body whose arms the compiler could not tie back to the signatures.
-   * `XmlBase` had already collapsed the same pair for the same reason (T17), keeping its
-   * string form apart only because a *second* argument distinguishes it. There is no second
-   * argument here.
+  /*
+   * There is no constructor here any more, and the reason is the record this docstring used
+   * to carry. The three original overloads had the same arity and the same single parameter,
+   * so the only thing they said that `Document | string | undefined` does not is that the
+   * modes are named — and they were not named, they were numbered by position. Collapsing
+   * them to a union left a body whose whole job was to re-derive `XmlBase`'s `isXmlString`
+   * flag and call `super`. The lean pass removed that flag from `XmlBase`, at which point
+   * this became `super(source)` and then nothing at all: the inherited constructor takes
+   * exactly `source?: Document | string` and does exactly this.
    *
    * Named factories (`fromXml`, `fromDocument`, `empty`) would say more still, but the
-   * constructor has 36 call sites, 32 of them in test files outside this charter's scope,
-   * so that is a change to schedule rather than to smuggle in.
-   *
-   * @param source the data as a XOM {@link Document}, or xml code as a UTF8 string, or
-   *   nothing for an empty instance
+   * constructor has 36 call sites, 32 of them in test files, so that stays a change to
+   * schedule rather than to smuggle in.
    */
-  constructor(source?: Document | string) {
-    if (source === undefined) {
-      super();
-    } else if (source instanceof Document) {
-      super(source);
-    } else {
-      super(source, true);
-    }
-  }
 
   /*
    * `requireRootElement` was declared here and is now inherited from {@link XmlBase},

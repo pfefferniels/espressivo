@@ -240,36 +240,39 @@ export class Performance extends AbstractXmlSubtree {
   }
 
   /**
-   * Create a performance from scratch (`name`, optionally `pulsesPerQuarter` and `id`) or
-   * by parsing an existing `<performance>` element.
+   * Create a performance from scratch: `name`, optionally `pulsesPerQuarter` and `id`.
+   *
+   * Split from {@link fromXml} — same return type on both arms, so the overload carried no
+   * information. Note what the split makes plain: `pulsesPerQuarter` and `id` were only ever
+   * meaningful for THIS form, but the shared implementation signature offered them to the
+   * parse arm too, where they were silently ignored.
+   */
+  static fromName(
+    name: string,
+    pulsesPerQuarter?: number,
+    id?: string,
+  ): Result<Performance, MpmParseError> {
+    const p = new Performance();
+    const performance = new Element('performance', MPM_NAMESPACE);
+    performance.addAttribute(new Attribute('name', name));
+    const parsed = p.readFrom(performance);
+    if (isErr(parsed)) return parsed;
+    if (pulsesPerQuarter !== undefined) p.setPulsesPerQuarter(pulsesPerQuarter);
+    if (id !== undefined) p.setId(id);
+    return parsed;
+  }
+
+  /**
+   * Create a performance by parsing an existing `<performance>` element.
    *
    * Reports the reason rather than printing it — see `elements/parseError.ts`. A
    * `<performance>` with no `@name` is the one thing a document can get wrong here, and it
    * is the difference between "this MPM has no performances" and "this MPM has one that
    * could not be read", which a bare null could not say.
    */
-  static createPerformance(
-    name: string,
-    pulsesPerQuarter?: number,
-    id?: string,
-  ): Result<Performance, MpmParseError>;
-  static createPerformance(xml: Element | null): Result<Performance, MpmParseError>;
-  static createPerformance(
-    nameOrXml: string | Element | null,
-    pulsesPerQuarter?: number,
-    id?: string,
-  ): Result<Performance, MpmParseError> {
-    if (nameOrXml === null) return err({ kind: 'noElement', what: 'Performance' });
-    const p = new Performance();
-    if (typeof nameOrXml !== 'string') return p.readFrom(nameOrXml);
-
-    const performance = new Element('performance', MPM_NAMESPACE);
-    performance.addAttribute(new Attribute('name', nameOrXml));
-    const parsed = p.readFrom(performance);
-    if (isErr(parsed)) return parsed;
-    if (pulsesPerQuarter !== undefined) p.setPulsesPerQuarter(pulsesPerQuarter);
-    if (id !== undefined) p.setId(id);
-    return parsed;
+  static fromXml(xml: Element | null): Result<Performance, MpmParseError> {
+    if (xml === null) return err({ kind: 'noElement', what: 'Performance' });
+    return new Performance().readFrom(xml);
   }
 
   /**
@@ -282,7 +285,7 @@ export class Performance extends AbstractXmlSubtree {
    * (defaulting to 720) and one without a `<global>` child gets an empty one appended, so
    * that every performance is renderable afterwards. `<part>` children that fail to parse
    * are skipped — the same ones as before, and now with the reason available at the skip
-   * rather than on somebody's stderr from inside `Part.createPart`.
+   * rather than on somebody's stderr from inside `Part.fromXml`.
    */
   private readFrom(xml: Element): Result<Performance, MpmParseError> {
     const name = attribute('name', xml);
@@ -316,7 +319,7 @@ export class Performance extends AbstractXmlSubtree {
 
     const parts = allChildElements(this.getXml(), 'part');
     for (const element of parts) {
-      const part = Part.createPart(element);
+      const part = Part.fromXml(element);
       if (isErr(part)) continue;
       part.value.setGlobal(this.global);
       this.parts.push(part.value);

@@ -59,14 +59,14 @@ export class TempoDef extends AbstractXmlSubtree {
     this.nameAttr.setValue(name);
   }
 
-  private static fromNameValue(name: string, value: number): TempoDef {
+  private static buildFromNameValue(name: string, value: number): TempoDef {
     const e = new Element('tempoDef', MPM_NAMESPACE);
     e.addAttribute(new Attribute('name', name));
     e.addAttribute(new Attribute('value', String(value)));
-    return TempoDef.fromXml(e);
+    return TempoDef.buildFromXml(e);
   }
 
-  private static fromXml(xml: Element): TempoDef {
+  private static buildFromXml(xml: Element): TempoDef {
     const nameAttr = requireDefName(xml, 'TempoDef');
     const valueAttr = attribute('value', xml);
     if (valueAttr === null)
@@ -91,26 +91,30 @@ export class TempoDef extends AbstractXmlSubtree {
   }
 
   /**
-   * Create a def either from a name and a bpm value, or by parsing an existing element.
+   * Create a def from a name and a bpm value.
+   *
+   * This and {@link fromXml} were one overloaded `createTempoDef` whose two arms returned the
+   * SAME type, so the overload carried no information a caller could use — it existed only to
+   * put two independent constructors behind one Java-inherited name, and paid for it with a
+   * `typeof` branch and a `value as number` cast that the implementation signature's optional
+   * parameter made necessary. Two names need neither.
    *
    * Reports the reason rather than printing it. The failure is always a `MeicoError` the
    * library raised deliberately — an absent `@name` or `@value`, or a `@value` that is not a
    * Java double — and `defs/defName.ts` explains why the catch keeps its narrowing to those.
    */
-  static createTempoDef(name: string, value: number): Result<TempoDef, MpmParseError>;
-  static createTempoDef(xml: Element): Result<TempoDef, MpmParseError>;
-  static createTempoDef(
-    nameOrXml: string | Element,
-    value?: number,
-  ): Result<TempoDef, MpmParseError> {
+  static fromNameValue(name: string, value: number): Result<TempoDef, MpmParseError> {
     try {
-      if (typeof nameOrXml === 'string') {
-        // `value` is required by the (name, value) overload, so the implementation signature's
-        // `value?` is the only reason it reads as optional here; `?? 0` would invent a tempo.
-        return ok(TempoDef.fromNameValue(nameOrXml, value as number));
-      } else {
-        return ok(TempoDef.fromXml(nameOrXml));
-      }
+      return ok(TempoDef.buildFromNameValue(name, value));
+    } catch (e) {
+      return skipMalformedDef(e, 'TempoDef');
+    }
+  }
+
+  /** Create a def by parsing an existing `tempoDef` element. See {@link fromNameValue}. */
+  static fromXml(xml: Element): Result<TempoDef, MpmParseError> {
+    try {
+      return ok(TempoDef.buildFromXml(xml));
     } catch (e) {
       return skipMalformedDef(e, 'TempoDef');
     }
@@ -126,7 +130,7 @@ export class TempoDef extends AbstractXmlSubtree {
   }
 
   static createDefaultTempoDef(name: string): Result<TempoDef, MpmParseError> {
-    return TempoDef.createTempoDef(name, TempoDef.getDefaultTempo(name));
+    return TempoDef.fromNameValue(name, TempoDef.getDefaultTempo(name));
   }
 
   /**

@@ -34,23 +34,32 @@ export class XmlBase {
   /**
    * Empty, around an already-parsed {@link Document}, or around XML source.
    *
-   * The first two were separate overloads until T17; `document?: Document` accepts the
-   * same two call forms, and the string form stays separate because its second argument
-   * is what distinguishes it.
+   * T17 collapsed the first two arms and kept the string one separate, on the grounds that
+   * its `isXmlString: true` second argument was what distinguished it. That flag is Java's
+   * (`XmlBase(String, boolean)`), and in a language with a usable union type it distinguishes
+   * nothing: `Document` and `string` are already disjoint, and `instanceof` decides between
+   * them without being told. What it did instead was cost every subclass a translation layer
+   * — {@link AbstractMsm} and `Mpm` both carried a constructor whose whole body re-derived
+   * the flag to call this one — and open a fourth, silent arm, since a string passed WITHOUT
+   * the flag matched no branch at all and left the object empty rather than parsed.
+   *
+   * One signature, three arms, no flag, and the fourth arm is gone: a lone string now parses,
+   * which is the only thing it could have meant.
+   *
+   * @param source the data as a XOM {@link Document}, or xml code as a UTF8 string, or
+   *   nothing for an empty instance
    */
-  constructor(document?: Document);
-  constructor(xml: string, isXmlString: true);
-  constructor(arg?: Document | string, isXmlString?: true) {
-    if (arg === undefined) {
+  constructor(source?: Document | string) {
+    if (source === undefined) {
       this.file = null;
       this.data = null;
       this.isValidFlag = false;
-    } else if (arg instanceof Document) {
+    } else if (source instanceof Document) {
       this.file = null;
-      this.data = arg;
+      this.data = source;
       this.isValidFlag = false;
-    } else if (typeof arg === 'string' && isXmlString) {
-      this.parseXmlString(arg);
+    } else {
+      this.parseXmlString(source);
     }
   }
 

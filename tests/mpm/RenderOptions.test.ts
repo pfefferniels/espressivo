@@ -52,24 +52,24 @@ function makeMsm(ppq = 720): Msm {
  * `seed` attribute into the MPM itself, which RULE F7 says must beat `options.seed`.
  */
 function makePerformance(mpmSeed?: number): Performance {
-  const perf = okValue(Performance.createPerformance('perf', 720));
+  const perf = okValue(Performance.fromName('perf', 720));
   const tempoMap = TempoMap.createTempoMap();
-  tempoMap.addTempo(0, '120', 0.25);
+  tempoMap.addConstantTempo(0, '120', 0.25);
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
   const imp = ImprecisionMap.createImprecisionMap('timing');
   imp.addDistributionUniform(0, -30, 30, mpmSeed);
   perf.getGlobal()!.getDated()!.addMap(imp);
 
-  perf.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
+  perf.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
   return perf;
 }
 
 /** A performance that renders a `positionMap`, for the sampling-step half of the item. */
 function makeMovementPerformance(): Performance {
-  const perf = okValue(Performance.createPerformance('perf', 720));
+  const perf = okValue(Performance.fromName('perf', 720));
   const tempoMap = TempoMap.createTempoMap();
-  tempoMap.addTempo(0, '120', 0.25);
+  tempoMap.addConstantTempo(0, '120', 0.25);
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
   const movMap = MovementMap.createMovementMap();
@@ -77,16 +77,16 @@ function makeMovementPerformance(): Performance {
   md.startDate = 0;
   md.position = 0.0 as Normalized;
   md.transitionTo = 1.0 as Normalized;
-  movMap.addMovement(md);
+  movMap.addMovementData(md);
   // The last entry of a movementMap is never rendered; it marks where the transition aims.
   const term = new MovementData();
   term.startDate = 5760;
   term.position = 1.0 as Normalized;
   term.transitionTo = 1.0 as Normalized;
-  movMap.addMovement(term);
+  movMap.addMovementData(term);
   perf.getGlobal()!.getDated()!.addMap(movMap);
 
-  perf.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
+  perf.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
   return perf;
 }
 

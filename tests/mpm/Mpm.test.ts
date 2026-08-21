@@ -15,7 +15,7 @@ import { Performance } from '../../src/mpm/elements/Performance.js';
  * `<global>` child a real one carries, and needs no cast.
  */
 function performance(name: string): Performance {
-  return okValue(Performance.createPerformance(name));
+  return okValue(Performance.fromName(name));
 }
 
 describe('Mpm', () => {

@@ -227,6 +227,16 @@ export const Meico = { version: VERSION } as const;
  * name-first overload, `Element[] | null` return, both guards. The narrowing is real and
  * deliberate — this wrapper exists so it is not also an API break for callers of the
  * {@link Helper} shim.
+ *
+ * **This is the one overload set the lean pass deliberately left standing, and it is the
+ * exception that states the rule.** Every other overload in `src/` whose arms shared a return
+ * type was split into separately-named functions, on the grounds that such a set discriminates
+ * nothing and only hides which of two behaviours a call selects. That argument does not reach
+ * here, because reproducing a signature IS this function's entire job: it exists to keep a
+ * deprecated shim's published shape after the module function beneath it changed. Splitting it
+ * would break exactly the callers it was written to protect, which is why it is a private
+ * wrapper reachable only through {@link Helper} rather than an exported function. It goes when
+ * the shim goes (T22).
  */
 function helperGetAllChildElements(name: string, ofThis: Element): Element[] | null;
 function helperGetAllChildElements(ofThis: Element): Element[] | null;
@@ -268,6 +278,15 @@ function helperGetAllChildElements(
  * `getFirstChildElement`, `getAttribute` and `getParentElement` were renamed
  * (`firstChildElement`, `attribute`, `parentElement`), and `getAllChildElements` was narrowed
  * by RULE N2b — see {@link helperGetAllChildElements}.
+ *
+ * Three members lost a second argument order when the lean pass split `firstChildElement`,
+ * `getNextSiblingElement` and `getPreviousSiblingElement` into separately-named functions.
+ * The shim keeps the `(name, ofThis)` form of each, which is the order Java's own `Helper`
+ * declares, so what it publishes is if anything closer to the original than the overload pair
+ * was. Callers wanting the port's added subject-first forms want `firstChildElementOf`,
+ * `immediateNextSiblingElement` and `immediatePreviousSiblingElement`, all exported directly
+ * — and should note that the two sibling forms are NOT the named ones with the filter
+ * removed; see `xml/tree.ts` and `tests/xml/overloadArmDifferences.test.ts`.
  */
 export const Helper = {
   // xml/tree.js

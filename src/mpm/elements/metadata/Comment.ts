@@ -22,23 +22,23 @@ export class Comment extends AbstractXmlSubtree {
     this.text = new Text('');
   }
 
-  /** As {@link Author.createAuthor}: the reason is returned rather than printed. */
-  static createComment(xml: Element | null): Result<Comment, MpmParseError>;
-  static createComment(text: string, id: string | null): Result<Comment, MpmParseError>;
-  static createComment(
-    xmlOrText: Element | string | null,
-    id?: string | null,
-  ): Result<Comment, MpmParseError> {
-    if (xmlOrText === null) return err({ kind: 'noElement', what: 'Comment' });
+  /** As {@link Author.fromXml}: the reason is returned rather than printed. */
+  static fromXml(xml: Element | null): Result<Comment, MpmParseError> {
+    if (xml === null) return err({ kind: 'noElement', what: 'Comment' });
     return attemptParse('Comment', () => {
       const c = new Comment();
-      if (typeof xmlOrText === 'string') {
-        c.parseData(new Element('comment', MPM_NAMESPACE));
-        c.setText(xmlOrText);
-        c.setId(id ?? null);
-      } else {
-        c.parseData(xmlOrText);
-      }
+      c.parseData(xml);
+      return c;
+    });
+  }
+
+  /** Build a `<comment>` from its text. As {@link Author.fromName}. */
+  static fromText(text: string, id: string | null): Result<Comment, MpmParseError> {
+    return attemptParse('Comment', () => {
+      const c = new Comment();
+      c.parseData(new Element('comment', MPM_NAMESPACE));
+      c.setText(text);
+      c.setId(id);
       return c;
     });
   }

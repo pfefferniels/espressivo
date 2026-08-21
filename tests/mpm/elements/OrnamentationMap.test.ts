@@ -132,14 +132,14 @@ describe('OrnamentationMap', () => {
   describe('addOrnament', () => {
     it('should add an ornament with required parameters only', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const index = map.addOrnament(0, 'trill');
+      const index = map.addOrnamentV2(0, 'trill');
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store date and name.ref', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const index = map.addOrnament(240, 'mordent');
+      const index = map.addOrnamentV2(240, 'mordent');
       const elem = map.getElement(index)!;
 
       expect(elem.getLocalName()).toBe('ornament');
@@ -149,7 +149,7 @@ describe('OrnamentationMap', () => {
 
     it('should not store scale if it is 1.0 (default)', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const index = map.addOrnament(0, 'trill', 1.0);
+      const index = map.addOrnamentV2(0, 'trill', 1.0);
       const elem = map.getElement(index)!;
 
       expect(elem.getAttribute('scale')).toBeNull();
@@ -157,7 +157,7 @@ describe('OrnamentationMap', () => {
 
     it('should store scale if not 1.0', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const index = map.addOrnament(0, 'trill', 2.0);
+      const index = map.addOrnamentV2(0, 'trill', 2.0);
       const elem = map.getElement(index)!;
 
       expect(elem.getAttributeValue('scale')).toBe('2');
@@ -165,7 +165,7 @@ describe('OrnamentationMap', () => {
 
     it('should store note.order with individual note IDs', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const index = map.addOrnament(0, 'trill', 1.0, ['note1', 'note2', 'note3']);
+      const index = map.addOrnamentV2(0, 'trill', 1.0, ['note1', 'note2', 'note3']);
       const elem = map.getElement(index)!;
 
       const noteOrder = elem.getAttributeValue('note.order');
@@ -177,7 +177,7 @@ describe('OrnamentationMap', () => {
 
     it('should store note.order with ascending pitch', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const index = map.addOrnament(0, 'trill', 1.0, ['ascending pitch']);
+      const index = map.addOrnamentV2(0, 'trill', 1.0, ['ascending pitch']);
       const elem = map.getElement(index)!;
 
       expect(elem.getAttributeValue('note.order')).toBe('ascending pitch');
@@ -185,7 +185,7 @@ describe('OrnamentationMap', () => {
 
     it('should store note.order with descending pitch', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const index = map.addOrnament(0, 'trill', 1.0, ['descending pitch']);
+      const index = map.addOrnamentV2(0, 'trill', 1.0, ['descending pitch']);
       const elem = map.getElement(index)!;
 
       expect(elem.getAttributeValue('note.order')).toBe('descending pitch');
@@ -193,7 +193,7 @@ describe('OrnamentationMap', () => {
 
     it('should not store note.order if null', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const index = map.addOrnament(0, 'trill', 1.0, null);
+      const index = map.addOrnamentV2(0, 'trill', 1.0, null);
       const elem = map.getElement(index)!;
 
       expect(elem.getAttribute('note.order')).toBeNull();
@@ -201,7 +201,7 @@ describe('OrnamentationMap', () => {
 
     it('should store xml:id if provided', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const index = map.addOrnament(0, 'trill', 1.0, null, 'orn-1');
+      const index = map.addOrnamentV2(0, 'trill', 1.0, null, 'orn-1');
       const elem = map.getElement(index)!;
 
       const idAttr = elem.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
@@ -211,7 +211,7 @@ describe('OrnamentationMap', () => {
 
     it('should not store xml:id if null', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const index = map.addOrnament(0, 'trill', 1.0, null, null);
+      const index = map.addOrnamentV2(0, 'trill', 1.0, null, null);
       const elem = map.getElement(index)!;
 
       expect(elem.getAttribute('id', 'http://www.w3.org/XML/1998/namespace')).toBeNull();
@@ -219,7 +219,7 @@ describe('OrnamentationMap', () => {
 
     it('should not store xml:id if empty string', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const index = map.addOrnament(0, 'trill', 1.0, null, '');
+      const index = map.addOrnamentV2(0, 'trill', 1.0, null, '');
       const elem = map.getElement(index)!;
 
       expect(elem.getAttribute('id', 'http://www.w3.org/XML/1998/namespace')).toBeNull();
@@ -227,9 +227,9 @@ describe('OrnamentationMap', () => {
 
     it('should maintain sorted order when adding out of order', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      map.addOrnament(960, 'mordent');
-      map.addOrnament(0, 'trill');
-      map.addOrnament(480, 'turn');
+      map.addOrnamentV2(960, 'mordent');
+      map.addOrnamentV2(0, 'trill');
+      map.addOrnamentV2(480, 'turn');
 
       expect(map.size()).toBe(3);
       expect(map.getElement(0)!.getAttributeValue('date')).toBe('0');
@@ -278,14 +278,14 @@ describe('OrnamentationMap', () => {
 
     it('should return null for negative index', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      map.addOrnament(0, 'trill');
+      map.addOrnamentV2(0, 'trill');
       expect(map.getOrnamentDataOf(-1)).toBeNull();
     });
 
     it('should return null when no style is configured', () => {
       // Without a proper header/style configured, getOrnamentDataOf returns null
       const map = OrnamentationMap.createOrnamentationMap();
-      map.addOrnament(0, 'trill');
+      map.addOrnamentV2(0, 'trill');
 
       const result = map.getOrnamentDataOf(0);
       expect(result).toBeNull();
@@ -447,7 +447,7 @@ describe('OrnamentationMap', () => {
   describe('render methods', () => {
     it('renderOrnamentationToMap with null map does not throw', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      map.addOrnament(0, 'trill');
+      map.addOrnamentV2(0, 'trill');
       // Should not throw
       map.renderOrnamentationToMap(null);
     });
@@ -469,8 +469,8 @@ describe('OrnamentationMap', () => {
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      map.addOrnament(0, 'trill');
-      map.addOrnament(960, 'mordent');
+      map.addOrnamentV2(0, 'trill');
+      map.addOrnamentV2(960, 'mordent');
 
       map.removeElementAt(0);
       expect(map.size()).toBe(1);
@@ -498,9 +498,9 @@ describe('OrnamentationMap', () => {
 
     it('should support getElementBeforeAt', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      map.addOrnament(0, 'trill');
-      map.addOrnament(480, 'mordent');
-      map.addOrnament(960, 'turn');
+      map.addOrnamentV2(0, 'trill');
+      map.addOrnamentV2(480, 'mordent');
+      map.addOrnamentV2(960, 'turn');
 
       const elem = map.getElementBeforeAt(500);
       expect(elem).not.toBeNull();
@@ -521,7 +521,7 @@ describe('OrnamentationMap', () => {
 
     it('should collect the full ornament data', () => {
       const map = mapWithStyle();
-      map.addOrnament(1440, 'arpeggio', 2.0, ['descending pitch'], 'orn2');
+      map.addOrnamentV2(1440, 'arpeggio', 2.0, ['descending pitch'], 'orn2');
 
       const od = map.getOrnamentDataOf(map.size() - 1)!;
       expect(od).not.toBeNull();
@@ -537,28 +537,28 @@ describe('OrnamentationMap', () => {
 
     it('should read the note.order pitch keyword', () => {
       const map = mapWithStyle();
-      map.addOrnament(0, 'arpeggio', 2.0, ['descending pitch']);
+      map.addOrnamentV2(0, 'arpeggio', 2.0, ['descending pitch']);
 
       expect(map.getOrnamentDataOf(map.size() - 1)!.noteOrder).toEqual(['descending pitch']);
     });
 
     it('should read a note.order ID list and strip the # markers', () => {
       const map = mapWithStyle();
-      map.addOrnament(0, 'arpeggio', 2.0, ['n1', 'n2', 'n3']);
+      map.addOrnamentV2(0, 'arpeggio', 2.0, ['n1', 'n2', 'n3']);
 
       expect(map.getOrnamentDataOf(map.size() - 1)!.noteOrder).toEqual(['n1', 'n2', 'n3']);
     });
 
     it('should leave noteOrder null when the attribute is absent', () => {
       const map = mapWithStyle();
-      map.addOrnament(0, 'arpeggio');
+      map.addOrnamentV2(0, 'arpeggio');
 
       expect(map.getOrnamentDataOf(map.size() - 1)!.noteOrder).toBeNull();
     });
 
     it('should read the xml:id', () => {
       const map = mapWithStyle();
-      map.addOrnament(0, 'arpeggio', 1.0, null, 'orn1');
+      map.addOrnamentV2(0, 'arpeggio', 1.0, null, 'orn1');
 
       expect(map.getOrnamentDataOf(map.size() - 1)!.xmlId).toBe('orn1');
     });
@@ -567,7 +567,7 @@ describe('OrnamentationMap', () => {
       // addOrnament omits scale="1.0", and OrnamentData.scale defaults to 0.0 -
       // this is why the reference fixture renders orn1 with ornament.dynamics="0.0"
       const map = mapWithStyle();
-      map.addOrnament(0, 'arpeggio');
+      map.addOrnamentV2(0, 'arpeggio');
 
       expect(map.getOrnamentDataOf(map.size() - 1)!.scale).toBe(0.0);
     });
@@ -583,7 +583,7 @@ describe('OrnamentationMap', () => {
       // insertElement puts a style switch in front of everything when no element
       // sits at or after its date (GenericMap.java:559), so the ornament goes in first
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(1440, 'arpeggio');
+      map.addOrnamentV2(1440, 'arpeggio');
       map.addStyleSwitch(960, 'late style');
       expect(map.getElement(1)!.getAttributeValue('name.ref')).toBe('late style');
 
@@ -594,14 +594,14 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'no such style');
-      map.addOrnament(0, 'arpeggio');
+      map.addOrnamentV2(0, 'arpeggio');
 
       expect(map.getOrnamentDataOf(map.size() - 1)).toBeNull();
     });
 
     it('should return null for an unknown ornamentDef reference', () => {
       const map = mapWithStyle();
-      map.addOrnament(0, 'nosuchdef');
+      map.addOrnamentV2(0, 'nosuchdef');
 
       expect(map.getOrnamentDataOf(map.size() - 1)).toBeNull();
     });
@@ -613,8 +613,8 @@ describe('OrnamentationMap', () => {
 
     it('should clamp an index beyond the map size to the last element', () => {
       const map = mapWithStyle();
-      map.addOrnament(0, 'arpeggio');
-      map.addOrnament(1440, 'spreadMs');
+      map.addOrnamentV2(0, 'arpeggio');
+      map.addOrnamentV2(1440, 'spreadMs');
 
       expect(map.getOrnamentDataOf(99)!.ornamentDefName).toBe('spreadMs');
     });
@@ -636,7 +636,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'arpeggio');
+      map.addOrnamentV2(0, 'arpeggio');
 
       map.renderOrnamentationToMap(score);
 
@@ -674,7 +674,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(1440, 'arpeggio', 2.0, ['descending pitch']);
+      map.addOrnamentV2(1440, 'arpeggio', 2.0, ['descending pitch']);
 
       map.renderOrnamentationToMap(score);
 
@@ -712,7 +712,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([spreadMsDef()]));
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(2880, 'spreadMs');
+      map.addOrnamentV2(2880, 'spreadMs');
 
       map.renderOrnamentationToMap(score);
 
@@ -742,7 +742,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([spreadMsDef()]));
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(2880, 'spreadMs');
+      map.addOrnamentV2(2880, 'spreadMs');
       map.renderOrnamentationToMap(score);
 
       for (const n of [n7, n8, n9]) {
@@ -782,9 +782,9 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef(), spreadMsDef()]));
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'arpeggio', 1.0, null, 'orn1');
-      map.addOrnament(1440, 'arpeggio', 2.0, ['descending pitch'], 'orn2');
-      map.addOrnament(2880, 'spreadMs', 1.0, null, 'orn3');
+      map.addOrnamentV2(0, 'arpeggio', 1.0, null, 'orn1');
+      map.addOrnamentV2(1440, 'arpeggio', 2.0, ['descending pitch'], 'orn2');
+      map.addOrnamentV2(2880, 'spreadMs', 1.0, null, 'orn3');
 
       map.renderOrnamentationToMap(score);
 
@@ -812,7 +812,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'arpeggio', 2.0, ['c', 'a', 'b']);
+      map.addOrnamentV2(0, 'arpeggio', 2.0, ['c', 'a', 'b']);
 
       map.renderOrnamentationToMap(score);
 
@@ -833,7 +833,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'arpeggio', 2.0, ['a', 'ghost', 'b']);
+      map.addOrnamentV2(0, 'arpeggio', 2.0, ['a', 'ghost', 'b']);
 
       map.renderOrnamentationToMap(score);
 
@@ -852,7 +852,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'arpeggio', 2.0, ['ascending pitch']);
+      map.addOrnamentV2(0, 'arpeggio', 2.0, ['ascending pitch']);
 
       map.renderOrnamentationToMap(score);
 
@@ -876,7 +876,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(makeHeader([arpeggioDef()]), null);
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'arpeggio', 2.0);
+      map.addOrnamentV2(0, 'arpeggio', 2.0);
 
       map.renderOrnamentationToMap(score);
 
@@ -1089,7 +1089,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(makeHeader([arpeggioDef()]), null); // a global map has a global header
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'arpeggio', 2.0);
+      map.addOrnamentV2(0, 'arpeggio', 2.0);
 
       OrnamentationMap.renderGlobalOrnamentationToParts([partA, partB], map);
 
@@ -1128,7 +1128,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(makeHeader([arpeggioDef()]), null);
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'arpeggio', 2.0);
+      map.addOrnamentV2(0, 'arpeggio', 2.0);
 
       expect(() =>
         OrnamentationMap.renderGlobalOrnamentationToParts([bare, datedOnly], map),
@@ -1138,7 +1138,7 @@ describe('OrnamentationMap', () => {
     it('should do nothing for an empty map list', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(makeHeader([arpeggioDef()]), null);
-      map.addOrnament(0, 'arpeggio');
+      map.addOrnamentV2(0, 'arpeggio');
 
       expect(() => map.renderGlobalOrnamentationMap([])).not.toThrow();
     });
@@ -1154,7 +1154,7 @@ describe('OrnamentationMap', () => {
 
       const map = OrnamentationMap.createOrnamentationMap();
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'arpeggio', 2.0);
+      map.addOrnamentV2(0, 'arpeggio', 2.0);
       map.renderGlobalOrnamentationMap([score]);
 
       expect(n.getAttribute('ornament.date.offset')).toBeNull();
@@ -1168,8 +1168,8 @@ describe('OrnamentationMap', () => {
 
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
-      map.addOrnament(0, 'arpeggio', 2.0); // before the style switch
-      map.addOrnament(960, 'arpeggio', 2.0); // after the style switch
+      map.addOrnamentV2(0, 'arpeggio', 2.0); // before the style switch
+      map.addOrnamentV2(960, 'arpeggio', 2.0); // after the style switch
       map.addStyleSwitch(480, 'orn style');
       expect(map.getElement(1)!.getLocalName()).toBe('style');
 
@@ -1186,7 +1186,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'no such style');
-      map.addOrnament(0, 'arpeggio', 2.0);
+      map.addOrnamentV2(0, 'arpeggio', 2.0);
 
       map.renderOrnamentationToMap(score);
       expect(n.getAttribute('ornament.date.offset')).toBeNull();
@@ -1199,7 +1199,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'nosuchdef', 2.0);
+      map.addOrnamentV2(0, 'nosuchdef', 2.0);
 
       map.renderOrnamentationToMap(score);
       expect(n.getAttribute('ornament.date.offset')).toBeNull();
@@ -1212,7 +1212,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(9600, 'arpeggio', 2.0); // no note at or after this date
+      map.addOrnamentV2(9600, 'arpeggio', 2.0); // no note at or after this date
 
       map.renderOrnamentationToMap(score);
       expect(n.getAttribute('ornament.date.offset')).toBeNull();
@@ -1226,7 +1226,7 @@ describe('OrnamentationMap', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(makeHeader([arpeggioDef()]), okValue(Header.createHeader())); // empty local header
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'arpeggio', 2.0);
+      map.addOrnamentV2(0, 'arpeggio', 2.0);
 
       map.renderOrnamentationToMap(score);
 
@@ -1410,7 +1410,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
       'required parameters only',
       () => {
         const m = OrnamentationMap.createOrnamentationMap();
-        m.addOrnament(0.0, 'arpeggio');
+        m.addOrnamentV2(0.0, 'arpeggio');
         return m.getElement(0)!;
       },
       `<ornament xmlns="${MPM_NS}" date="0" name.ref="arpeggio" />`,
@@ -1419,7 +1419,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
       'scale, an ID list and an xml:id',
       () => {
         const m = OrnamentationMap.createOrnamentationMap();
-        m.addOrnament(720.0, 'arpeggio', 20.0, ['n96', 'n97', 'n98'], 'orn1');
+        m.addOrnamentV2(720.0, 'arpeggio', 20.0, ['n96', 'n97', 'n98'], 'orn1');
         return m.getElement(0)!;
       },
       `<ornament xmlns="${MPM_NS}" date="720" name.ref="arpeggio" scale="20" note.order="#n96 #n97 #n98" xml:id="orn1" />`,
@@ -1428,7 +1428,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
       'scale 1.0 omitted, empty id omitted, pitch keyword',
       () => {
         const m = OrnamentationMap.createOrnamentationMap();
-        m.addOrnament(1440.0, 'trill', 1.0, ['ascending pitch'], '');
+        m.addOrnamentV2(1440.0, 'trill', 1.0, ['ascending pitch'], '');
         return m.getElement(0)!;
       },
       `<ornament xmlns="${MPM_NS}" date="1440" name.ref="trill" note.order="ascending pitch" />`,
@@ -1437,7 +1437,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
       'scale 0.0 written',
       () => {
         const m = OrnamentationMap.createOrnamentationMap();
-        m.addOrnament(2160.0, 'trill', 0.0, ['descending pitch'], null);
+        m.addOrnamentV2(2160.0, 'trill', 0.0, ['descending pitch'], null);
         return m.getElement(0)!;
       },
       `<ornament xmlns="${MPM_NS}" date="2160" name.ref="trill" scale="0" note.order="descending pitch" />`,
@@ -1446,7 +1446,7 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
       'ids normalised on write',
       () => {
         const m = OrnamentationMap.createOrnamentationMap();
-        m.addOrnament(2880.0, 'trill', 1.0, ['#n1', ' n2 '], 'orn5');
+        m.addOrnamentV2(2880.0, 'trill', 1.0, ['#n1', ' n2 '], 'orn5');
         return m.getElement(0)!;
       },
       `<ornament xmlns="${MPM_NS}" date="2880" name.ref="trill" note.order="#n1 #n2" xml:id="orn5" />`,
@@ -1630,7 +1630,7 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
 
   it('should surface the v3 fields through getOrnamentDataOf', () => {
     const map = v3Map();
-    map.addOrnament({
+    map.addOrnamentV3({
       date: 720,
       nameRef: 'arpeggio',
       noteid: '#princNote',
@@ -1650,7 +1650,7 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
 
   it('should leave the v3 fields at their defaults for a v2 ornament', () => {
     const map = v3Map();
-    map.addOrnament(0, 'arpeggio', 2.0, ['n1', 'n2']);
+    map.addOrnamentV2(0, 'arpeggio', 2.0, ['n1', 'n2']);
 
     const od = map.getOrnamentDataOf(map.size() - 1)!;
     expect(od.notes).toEqual([]);
@@ -1680,7 +1680,7 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
     const map = OrnamentationMap.createOrnamentationMap();
     map.setHeaders(null, makeHeader([arpeggioDef()]));
     map.addStyleSwitch(0, 'orn style');
-    map.addOrnament({
+    map.addOrnamentV3({
       date: 0,
       nameRef: 'arpeggio',
       scale: 2.0,
@@ -1717,7 +1717,7 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
     const map = OrnamentationMap.createOrnamentationMap();
     map.setHeaders(null, makeHeader([arpeggioDef()]));
     map.addStyleSwitch(0, 'orn style');
-    map.addOrnament({
+    map.addOrnamentV3({
       date: 0,
       nameRef: 'arpeggio',
       scale: 2.0,
@@ -1752,7 +1752,7 @@ describe('OrnamentationMap — expandOrnaments (D15)', () => {
     const map = OrnamentationMap.createOrnamentationMap();
     map.setHeaders(null, makeHeader([arpeggioDef()]));
     map.addStyleSwitch(0, 'orn style');
-    map.addOrnament({
+    map.addOrnamentV3({
       date: 0,
       nameRef: 'arpeggio',
       scale: 2.0,
@@ -1837,7 +1837,7 @@ describe('OrnamentationMap — expandOrnaments (D15)', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(null, makeHeader([arpeggioDef()]));
       map.addStyleSwitch(0, 'orn style');
-      map.addOrnament(0, 'arpeggio', 2.0, null, null);
+      map.addOrnamentV2(0, 'arpeggio', 2.0, null, null);
       map.renderOrnamentationToMap(score, ctx(expandOrnaments));
       return notes.map((note) => [num(note, 'date.perf'), num(note, 'velocity')]);
     };
@@ -1859,7 +1859,7 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
     // ornament.xml:70-72, the trill exemplum — attribute order is the v2 order with
     // noteid after name.ref and repetitions after note.order
     const e = firstElement((m) =>
-      m.addOrnament({
+      m.addOrnamentV3({
         date: 720.0,
         nameRef: 'trill',
         noteid: '#princNote',
@@ -1878,47 +1878,47 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
   it('should always write scale, defaulting to the spec value 0.0', () => {
     // ≠ the v2 writer, which omits scale="1.0" while every reader defaults a missing
     // scale to 0.0 — writing 1.0 and reading it back would silently mute the gradient
-    expect(firstElement((m) => m.addOrnament({ date: 0, nameRef: 'trill' })).toXML()).toBe(
+    expect(firstElement((m) => m.addOrnamentV3({ date: 0, nameRef: 'trill' })).toXML()).toBe(
       `<ornament xmlns="${MPM_NS}" date="0" name.ref="trill" scale="0" />`,
     );
     expect(
-      firstElement((m) => m.addOrnament({ date: 0, nameRef: 'trill', scale: 1.0 })).toXML(),
+      firstElement((m) => m.addOrnamentV3({ date: 0, nameRef: 'trill', scale: 1.0 })).toXML(),
     ).toBe(`<ornament xmlns="${MPM_NS}" date="0" name.ref="trill" scale="1" />`);
   });
 
   it('should omit repetitions when it is 0', () => {
     // ≠ the reference implementation, which stamps repetitions="0" onto every ornament
-    const e = firstElement((m) => m.addOrnament({ date: 0, nameRef: 'trill', repetitions: 0 }));
+    const e = firstElement((m) => m.addOrnamentV3({ date: 0, nameRef: 'trill', repetitions: 0 }));
     expect(e.getAttribute('repetitions')).toBeNull();
   });
 
   it('should write repetitions="-1" for the fill-the-frame extension', () => {
-    const e = firstElement((m) => m.addOrnament({ date: 0, nameRef: 'trill', repetitions: -1 }));
+    const e = firstElement((m) => m.addOrnamentV3({ date: 0, nameRef: 'trill', repetitions: -1 }));
     expect(e.getAttributeValue('repetitions')).toBe('-1');
   });
 
   it('should accept the v2 array shape for note.order', () => {
     const e = firstElement((m) =>
-      m.addOrnament({ date: 0, nameRef: 'arpeggio', noteOrder: ['n1', '#n2'] }),
+      m.addOrnamentV3({ date: 0, nameRef: 'arpeggio', noteOrder: ['n1', '#n2'] }),
     );
     expect(e.getAttributeValue('note.order')).toBe('#n1 #n2');
   });
 
   it('should accept a pitch keyword through the array shape', () => {
     const e = firstElement((m) =>
-      m.addOrnament({ date: 0, nameRef: 'arpeggio', noteOrder: ['ascending pitch'] }),
+      m.addOrnamentV3({ date: 0, nameRef: 'arpeggio', noteOrder: ['ascending pitch'] }),
     );
     expect(e.getAttributeValue('note.order')).toBe('ascending pitch');
   });
 
   it('should omit note.order for an empty list', () => {
-    const e = firstElement((m) => m.addOrnament({ date: 0, nameRef: 'arpeggio', noteOrder: [] }));
+    const e = firstElement((m) => m.addOrnamentV3({ date: 0, nameRef: 'arpeggio', noteOrder: [] }));
     expect(e.getAttribute('note.order')).toBeNull();
   });
 
   it('should write the pool in the given order', () => {
     const e = firstElement((m) =>
-      m.addOrnament({
+      m.addOrnamentV3({
         date: 0,
         nameRef: 'turn',
         notes: [
@@ -1935,9 +1935,9 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
 
   it('should keep the map sorted by date like the v2 form', () => {
     const m = OrnamentationMap.createOrnamentationMap();
-    m.addOrnament({ date: 1440, nameRef: 'trill' });
-    m.addOrnament({ date: 0, nameRef: 'trill' });
-    m.addOrnament(720, 'trill');
+    m.addOrnamentV3({ date: 1440, nameRef: 'trill' });
+    m.addOrnamentV3({ date: 0, nameRef: 'trill' });
+    m.addOrnamentV2(720, 'trill');
     expect([0, 1, 2].map((i) => m.getElement(i)!.getAttributeValue('date'))).toEqual([
       '0',
       '720',
@@ -1947,7 +1947,7 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
 
   it('should round-trip a v3 ornament through OrnamentData', () => {
     const m = OrnamentationMap.createOrnamentationMap();
-    m.addOrnament({
+    m.addOrnamentV3({
       date: 720,
       nameRef: 'trill',
       noteid: '#princNote',

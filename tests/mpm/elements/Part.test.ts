@@ -28,9 +28,9 @@ function partElement(attributes: Record<string, string>): Element {
 const COMPLETE = { name: 'Piano', number: '1', 'midi.channel': '0', 'midi.port': '0' };
 
 describe('Part', () => {
-  describe('createPart from an element', () => {
+  describe('fromXml', () => {
     it('reads the four identifying values', () => {
-      const p = okValue(Part.createPart(partElement(COMPLETE)));
+      const p = okValue(Part.fromXml(partElement(COMPLETE)));
       expect(p.getName()).toBe('Piano');
       expect(p.getNumber()).toBe(1);
       expect(p.getMidiChannel()).toBe(0);
@@ -39,13 +39,13 @@ describe('Part', () => {
 
     it('fills a missing name in as empty rather than rejecting it', () => {
       const xml = partElement({ number: '1', 'midi.channel': '0', 'midi.port': '0' });
-      const p = okValue(Part.createPart(xml));
+      const p = okValue(Part.fromXml(xml));
       expect(p.getName()).toBe('');
       expect(xml.getAttributeValue('name')).toBe('');
     });
 
     it('creates the header and dated children a bare part lacks', () => {
-      const p = okValue(Part.createPart(partElement(COMPLETE)));
+      const p = okValue(Part.fromXml(partElement(COMPLETE)));
       expect(p.getHeader()).not.toBeNull();
       expect(p.getDated()).not.toBeNull();
       expect(p.getXml()!.getFirstChildElement('header')).not.toBeNull();
@@ -60,7 +60,7 @@ describe('Part', () => {
       ['midi.channel', { name: 'Piano', number: '1', 'midi.port': '0' }],
       ['midi.port', { name: 'Piano', number: '1', 'midi.channel': '0' }],
     ])('names %s when it is absent', (attribute, attributes) => {
-      expect(errOf(Part.createPart(partElement(attributes)))).toEqual({
+      expect(errOf(Part.fromXml(partElement(attributes)))).toEqual({
         kind: 'missingAttribute',
         what: 'Part',
         attribute,
@@ -70,7 +70,7 @@ describe('Part', () => {
     it.each(['number', 'midi.channel', 'midi.port'])(
       'names %s when it is present but empty',
       (attribute) => {
-        expect(errOf(Part.createPart(partElement({ ...COMPLETE, [attribute]: '' })))).toEqual({
+        expect(errOf(Part.fromXml(partElement({ ...COMPLETE, [attribute]: '' })))).toEqual({
           kind: 'missingAttribute',
           what: 'Part',
           attribute,
@@ -79,7 +79,7 @@ describe('Part', () => {
     );
 
     it('reports a null element rather than printing it', () => {
-      expect(errOf(Part.createPart(null))).toEqual({
+      expect(errOf(Part.fromXml(null))).toEqual({
         kind: 'noElement',
         what: 'Part',
       });
@@ -95,7 +95,7 @@ describe('Part', () => {
      */
     it('has already written the empty name onto the element it then rejects', () => {
       const xml = partElement({});
-      expect(errOf(Part.createPart(xml))).toEqual({
+      expect(errOf(Part.fromXml(xml))).toEqual({
         kind: 'missingAttribute',
         what: 'Part',
         attribute: 'number',
@@ -111,14 +111,14 @@ describe('Part', () => {
      * and which nothing else in the suite covers.
      */
     it('does not leave a part without an XML element when it rejects one', () => {
-      const rejected = Part.createPart(partElement({ name: 'Piano' }));
+      const rejected = Part.fromXml(partElement({ name: 'Piano' }));
       expect(rejected.ok).toBe(false);
     });
   });
 
-  describe('createPart from values', () => {
+  describe('fromValues', () => {
     it('writes all four attributes itself, so it cannot fail', () => {
-      const p = okValue(Part.createPart('Violin', 2, 1, 3));
+      const p = okValue(Part.fromValues('Violin', 2, 1, 3));
       expect(p.getXml()!.getAttributeValue('name')).toBe('Violin');
       expect(p.getXml()!.getAttributeValue('number')).toBe('2');
       expect(p.getXml()!.getAttributeValue('midi.channel')).toBe('1');
@@ -126,8 +126,8 @@ describe('Part', () => {
     });
 
     it('accepts an optional id', () => {
-      expect(okValue(Part.createPart('Violin', 2, 1, 3, 'part-2')).getId()).toBe('part-2');
-      expect(okValue(Part.createPart('Violin', 2, 1, 3)).getId()).toBeNull();
+      expect(okValue(Part.fromValues('Violin', 2, 1, 3, 'part-2')).getId()).toBe('part-2');
+      expect(okValue(Part.fromValues('Violin', 2, 1, 3)).getId()).toBeNull();
     });
   });
 
@@ -147,7 +147,7 @@ describe('Part', () => {
   describe('setters write through to the element', () => {
     it('setName retargets the name attribute the part was parsed with', () => {
       const xml = partElement(COMPLETE);
-      const p = okValue(Part.createPart(xml));
+      const p = okValue(Part.fromXml(xml));
       p.setName('Cembalo');
       expect(p.getName()).toBe('Cembalo');
       expect(xml.getAttributeValue('name')).toBe('Cembalo');
@@ -156,7 +156,7 @@ describe('Part', () => {
 
     it('setName also writes through the empty placeholder a nameless part was given', () => {
       const xml = partElement({ number: '1', 'midi.channel': '0', 'midi.port': '0' });
-      const p = okValue(Part.createPart(xml));
+      const p = okValue(Part.fromXml(xml));
       p.setName('Cembalo');
       expect(xml.getAttributeValue('name')).toBe('Cembalo');
     });
@@ -167,7 +167,7 @@ describe('Part', () => {
       ['setMidiPort', 'midi.port', 2],
     ] as const)('%s writes %s and nothing else', (setter, attribute, value) => {
       const xml = partElement(COMPLETE);
-      const p = okValue(Part.createPart(xml));
+      const p = okValue(Part.fromXml(xml));
       p[setter](value);
       expect(xml.getAttributeValue(attribute)).toBe(String(value));
       for (const [other, was] of Object.entries(COMPLETE))
