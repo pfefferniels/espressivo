@@ -2,48 +2,41 @@
  * The two level dimensions, `tempo` and `dynamics` — DESIGN.md §7.1's center algorithm,
  * §7.2/§7.4's rows, and §1.3's two scopes.
  *
- * They are one module because they are one algorithm with two vocabularies. What separates
- * them from every other dimension is that a level is not a number in the document: it is a
- * *string* that may be a number, a `<tempoDef>`/`<dynamicsDef>` name, or an MEI placeholder,
- * and which of those it is decides **where the transform writes** (D-C: never rewrite a name
- * as a number — that severs the style linkage the def-side transform depends on).
+ * One module because they are one algorithm with two vocabularies. What separates them from
+ * every other dimension is that a level is not a number in the document: it is a *string* that
+ * may be a number, a `<tempoDef>`/`<dynamicsDef>` name, or an MEI placeholder, and which of
+ * those it is decides WHERE the transform writes (D-C: never rewrite a name as a number — that
+ * severs the style linkage the def-side transform depends on).
  *
  * ## The order is the specification (A4/A5)
  *
- * 1. **Classify every site and build the skip set.** String levels that resolve to nothing,
- *    def values that are not finite, defs reached from instructions with different
- *    `@beatLength`, values failing their row's domain predicate.
- * 2. **Compute the center over exactly what survived.** Population = every numeric level
+ * 1. Classify every site and build the skip set: string levels that resolve to nothing, def
+ *    values that are not finite, defs reached from instructions with different `@beatLength`,
+ *    values failing their row's domain predicate.
+ * 2. Compute the center over exactly what survived. Population = every numeric level
  *    attribute on its own element, counted once, plus every def `@value` that a surviving
  *    *prevailing-level* string references, counted once per def element. `@transition.to` is
  *    excluded — it is a target, not a prevailing level.
- * 3. **Transform, validate, write.**
+ * 3. Transform, validate, write.
  *
  * Doing 2 before 1 breaks P2 by 26% on a heterogeneous-`@beatLength` document, because the
- * population then contains values at sites the run skips and the center is no longer
- * invariant under the transform. Doing 2 without the dedupe makes the "unweighted" mean
- * silently reference-count-weighted, so a name↔literal refactoring of the same performance
- * changes every number written.
+ * population then contains values at sites the run skips and the center is no longer invariant
+ * under the transform. Doing 2 without the dedupe makes the "unweighted" mean silently
+ * reference-count-weighted, so a name↔literal refactoring of the same performance changes every
+ * number written.
  *
- * ## What `@transition.to` costs and does not cost
- *
- * Excluding it from the population stops a later ritardando target from pulling the center
- * down and thereby speeding up the opening constant tempo. It costs nothing expressively: the
- * log-difference of a pair scales by exactly `s` whatever the center is, so the gesture
- * steepens either way. The exclusion extends to a def that only a `@transition.to` names —
- * §7.1 says "at least one in-scope level string references", and reading that as "including
- * targets" would reintroduce through the def side precisely what the literal side excludes.
- * Such a def is still transformed; it is simply not part of the average.
- *
- * ## Why a def is not always a def
+ * Excluding `@transition.to` stops a later ritardando target from pulling the center down and
+ * thereby speeding up the opening constant tempo, and costs nothing expressively: the
+ * log-difference of a pair scales by exactly `s` whatever the center is. The exclusion extends
+ * to a def that only a `@transition.to` names — §7.1 says "at least one in-scope level string
+ * references" — which is still transformed, just not averaged.
  *
  * `styleScope.findStyleDef` resolves a part's header first and the global one second, as a
  * WHOLE `styleDef` (never a per-def merge). So a part that redeclares `<styleDef name="MEI
  * export">` with a single `<dynamicsDef name="p"/>` shadows the global collection wholesale,
- * and the global `f` is not referenced on that part's account — it must not enter the
- * population on that part's account either. Nothing in this module implements that rule; it
- * falls out of asking `resolveLevel` instead of scanning headers, which is the reason to ask
- * `resolveLevel`.
+ * and the global `f` — not referenced on that part's account — must not enter the population on
+ * it either. That rule is not implemented here; it falls out of asking `resolveLevel` instead
+ * of scanning headers.
  */
 import { filterMap, groupBy } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -70,11 +63,11 @@ import { resolveLevel, type LevelDomain, type LevelReading } from './styleScope.
 import { geometricMean } from './transforms.js';
 
 /**
- * The quarter-note normalization of a `<tempo>`: raw `bpm` values with different
- * `@beatLength` are not comparable, so the center is computed on `bpm · beatLength · 4` and
- * each value mapped back through its own factor (§7.2). Four because `@beatLength` is a
- * fraction of a whole note, so a quarter note is 0.25 and the normalizer of a quarter-note
- * bpm is 1 — which is what makes `options.center.tempo` readable as quarter-note bpm.
+ * The quarter-note normalization of a `<tempo>`: raw `bpm` values with different `@beatLength`
+ * are not comparable, so the center is computed on `bpm · beatLength · 4` and each value mapped
+ * back through its own factor (§7.2). Four because `@beatLength` is a fraction of a whole note,
+ * so a quarter note is 0.25 and a quarter-note bpm normalizes to 1 — which is what makes
+ * `options.center.tempo` readable as quarter-note bpm.
  */
 const QUARTER_NOTES_PER_WHOLE = 4;
 
@@ -126,12 +119,8 @@ interface DefRecord {
   referencedByLevel: boolean;
   skipped: boolean;
   /**
-   * The transformed value, computed but NOT yet written (F1).
-   *
-   * Def writes are deferred until every pair has been checked, because the pair-collapse guard
-   * cannot un-write a def: a def is one site shared by every instruction that names it, so
-   * flushing it before the guard runs makes the refusal unenforceable on exactly the pairs
-   * that need it most.
+   * The transformed value, computed but NOT yet written (F1) — see `transformAndWrite` for why
+   * def writes wait until every pair has been checked.
    */
   pending: number | null;
   /** Set when a refused pair resolves through this def, so the pending write is dropped. */
@@ -144,8 +133,8 @@ interface DefRecord {
  * Apply one level dimension to one performance.
  *
  * The returned center is echoed in the report so a caller can pass it back through
- * `options.center` and recover exact composition under clamping (A3) — the one remedy for
- * P2's failure there, and an output rather than a proof.
+ * `options.center` and recover exact composition under clamping (A3), which is P2's only
+ * remedy there.
  */
 export function applyLevelDimension(
   domain: LevelDomain,
@@ -162,8 +151,7 @@ export function applyLevelDimension(
  *
  * A class rather than a chain of functions because the three phases share eight pieces of
  * state — the rows, the def records keyed by element identity, the accumulator, the
- * normalization rule — and threading those through the phase boundaries as parameters made
- * every signature longer than the body it introduced.
+ * normalization rule.
  */
 class LevelPass {
   private readonly dimension: ExpressionDimension;
@@ -224,8 +212,8 @@ class LevelPass {
     if (center === null) {
       // R-W2-5/#10: an empty population is a REFUSAL from `geometricMean`, and the dimension's
       // verdict for this performance is `inert` — the levels resolved to nothing a center could
-      // be built from, so no `s` could have moved them. It is not a per-site failure, even
-      // though the unresolvable levels that emptied the population were counted as skips.
+      // be built from, so no `s` could have moved them. Not a per-site failure, even though the
+      // unresolvable levels that emptied the population were counted as skips.
       this.accumulator.declareNoCenter();
       this.inertEveryEndpoint();
       return { center: null, deviationRatio: null };
@@ -312,8 +300,7 @@ class LevelPass {
     });
   }
 
-  /** Seven parameters, all of them one site's own coordinates: the row it belongs to, where it
-   *  sits, and whether it is the prevailing level (§7.1's population) or the target. */
+  /** `isPrevailingLevel` separates §7.1's population member from the transition target. */
   private classifyEndpoint(
     row: RegistryRow,
     attribute: string,
@@ -416,12 +403,11 @@ class LevelPass {
    * The def half of the skip set: a value the gate rejects, and a def with no single
    * normalization factor.
    *
-   * The second is §7.2's heterogeneous-`@beatLength` rule and it is not defensive: a
-   * `tempoDef` borrows the referencing instruction's `@beatLength`, so a def named from a
-   * half-note tempo and from a quarter-note one has two different quarter-note values and no
-   * single one to transform. The first is what LOG W2 finding 4 warned about —
-   * `parseJavaDouble` accepts Java's `NaN` and `Infinity` literals, so a `LevelReading` of
-   * kind `def` does NOT imply a finite value and the gate has to say so.
+   * The second is §7.2's heterogeneous-`@beatLength` rule: a `tempoDef` borrows the
+   * referencing instruction's `@beatLength`, so a def named from a half-note tempo and from a
+   * quarter-note one has two different quarter-note values and no single one to transform. The
+   * first is needed because `parseJavaDouble` accepts Java's `NaN` and `Infinity` literals, so
+   * a `LevelReading` of kind `def` does NOT imply a finite value.
    */
   private gateDefs(): void {
     for (const record of this.defs.values()) {
@@ -492,9 +478,8 @@ class LevelPass {
    * center to transform them around.
    *
    * `inert` rather than `skipped`: nothing is wrong with a `@transition.to` of 90 whose map's
-   * prevailing levels are all placeholders. It is simply unreachable — the same distinction
-   * §7.5 draws between "the document does not use curvature" and "the document uses curvature
-   * where it does nothing".
+   * prevailing levels are all placeholders — it is unreachable, which is §7.5's distinction
+   * between "does not use curvature" and "uses curvature where it does nothing".
    */
   private inertEveryEndpoint(): void {
     for (const instruction of this.instructions) {
@@ -511,13 +496,12 @@ class LevelPass {
   /**
    * Plan every write, settle the refusals, and only then touch the document (F1).
    *
-   * The order is the fix for the blocker. A def `@value` is ONE site shared by every
-   * instruction that names it, so a def write flushed before the pair-collapse guard has run
-   * cannot be taken back — and the guard would then suppress only the instruction-attribute
-   * half of a collapsing pair, writing exactly the half-applied gesture it exists to prevent.
-   * On the §8 reference fixture that is not hypothetical: at `s = 1.766`, just above §8's own
-   * dynamics sampling ceiling, an authored `f → 115` crescendo became a `127 → 115`
-   * diminuendo while the report claimed the pair was refused.
+   * A def `@value` is ONE site shared by every instruction that names it, so a def write
+   * flushed before the pair-collapse guard has run cannot be taken back — and the guard would
+   * then suppress only the instruction-attribute half of a collapsing pair, writing exactly
+   * the half-applied gesture it exists to prevent. Measured on the §8 reference fixture: at
+   * `s = 1.766`, just above §8's own dynamics sampling ceiling, an authored `f → 115`
+   * crescendo became a `127 → 115` diminuendo while the report claimed the pair was refused.
    */
   private transformAndWrite(center: number): void {
     this.planDefs(center);
@@ -750,21 +734,15 @@ class LevelPass {
    * the report names the collapsed pair and a caller can reject the sample.
    */
   private reportMergedLevels(): void {
-    // Drop the skipped records, then bucket what is left by the `<styleDef>` they live in —
-    // `filterMap` and `groupBy`, where the loop this replaces did both at once and re-`set`
-    // the bucket on every element where `groupBy` sets it once. Encounter order inside each
-    // bucket is what makes the pair walk below "every unordered pair, once, in encounter
-    // order", and `groupBy` guarantees it.
+    // `groupBy` preserves encounter order inside each bucket, which is what makes the pair
+    // walk below "every unordered pair, once, in encounter order".
     const byStyleDef = groupBy(
       filterMap(this.defs.values(), (record) => (record.skipped ? null : record)),
       (record) => record.styleDef,
     );
     for (const siblings of byStyleDef.values()) {
-      // Every unordered pair, once, in encounter order. Written as `entries()` over the outer
-      // element and a `slice` for the tail rather than two index counters, because indices are
-      // the only thing the old spelling needed them for and an indexed read is a bound the
-      // reader has to re-prove. A sibling group is one style def's worth of level names, so
-      // the slice per outer step is bounded by a handful of elements.
+      // A sibling group is one style def's worth of level names, so the slice per outer step
+      // is bounded by a handful of elements.
       for (const [i, first] of siblings.entries()) {
         for (const second of siblings.slice(i + 1)) {
           if (first.value === second.value || first.after !== second.after) continue;
@@ -790,10 +768,9 @@ class LevelPass {
    * `gesture` scope: each transition pair is scaled around its OWN geometric mean, constants
    * and def values are untouched.
    *
-   * This is the scope `spotlight` needs, and the reason it exists is arithmetic rather than
-   * taste: under `global` an attenuation pulls every level toward the performance-wide
-   * center, so unselected *quiet* material is re-levelled LOUDER — a `p` at 48 in a
-   * {48,48,97} map renders at 59.3 under attenuation 0.1, the inverse of "damp the
+   * The scope `spotlight` needs: under `global` an attenuation pulls every level toward the
+   * performance-wide center, so unselected *quiet* material is re-levelled LOUDER — a `p` at
+   * 48 in a {48,48,97} map renders at 59.3 under attenuation 0.1, the inverse of "damp the
    * background".
    *
    * A pair with a def-valued endpoint has no writable site here (defs are untouched and D-C
@@ -895,46 +872,38 @@ class LevelPass {
    * §7.2/A7/D-I — the MEI end-marker duplicate.
    *
    * MEI exports a `<dynamics>` transition and then repeats its `@transition.to` as the *level*
-   * of the next instruction, so one musical value is written at two sites: once as the
-   * gesture's endpoint and once as the following section's prevailing level. They are not
+   * of the next instruction, so one musical value is written at two sites. They are not
    * independent levers, so moving the second with the first does not violate D-C's one-site
-   * rule — and leaving it behind would put a discontinuity where the document had none.
+   * rule, and leaving it behind would put a discontinuity where the document had none.
    *
    * Detection is the conjunction §7.2 states: the *next* instruction, in the same environment,
    * at a strictly later date, constant, and resolving to exactly the transition's target value
    * in the same normalized space.
    *
-   * **MEASURED DIVERGENCE — "the next instruction" is the next CLASSIFIED one, which for
-   * `dynamics` is looser than the next one in the view. Do not read this as "nothing looser"
-   * until it is ruled on.**
+   * KNOWN DIVERGENCE, measured and unfixed: "the next instruction" is the next CLASSIFIED one,
+   * which for `dynamics` is looser than the next one in the view. `this.instructions` is not
+   * the date-stable view — {@link classifyInstruction} returns early for an element with
+   * neither a level nor a target, so `.at(index + 1)` steps over such an element. For tempo
+   * that is correct: a `<tempo>` without `@beatLength` is skipped by the renderer too (§7.2,
+   * `TempoMap.getTempoDataOf` returns null for it), so it opens no span. For dynamics it is
+   * not: a `<dynamics>` carrying neither `@volume` nor `@transition.to` classifies away here,
+   * but the renderer ENDS the previous span with it (AD-33.4). Measured through `performMsm` on
+   * five notes, with a transition `volume="60" transition.to="90"` at 0 and a constant
+   * `volume="90"` at 2880:
    *
-   * `this.instructions` is not the date-stable view: {@link classifyInstruction} returns early
-   * for an element with neither a level nor a target, so `.at(index + 1)` steps over such an
-   * element rather than stopping at it. Whether that is right depends on whether the RENDERER
-   * steps over it too, and the two dimensions answer differently:
+   *     without a bare <dynamics/> at 1440:  60, 67.49…, 75, 82.51…, 90   (one ramp)
+   *     with one:                            60, 75, 100.0, 100.0, 90
    *
-   * - **tempo — stepping over is correct.** A `<tempo>` without `@beatLength` is skipped by the
-   *   renderer as well (§7.2, and `TempoMap.getTempoDataOf` returns null for it), so it opens
-   *   no span and agreeing with the renderer means ignoring it.
-   * - **dynamics — stepping over is NOT correct.** A `<dynamics>` carrying neither `@volume`
-   *   nor `@transition.to` classifies away here, but the renderer ENDS the previous span with
-   *   it (AD-33.4). Measured through `performMsm` on five notes, with a transition
-   *   `volume="60" transition.to="90"` at 0 and a constant `volume="90"` at 2880:
+   * The ramp stops at the bare instruction and the two notes after it fall to the renderer's
+   * hard-coded 100.0, so the `volume="90"` at 2880 is separated from the transition endpoint by
+   * a discontinuity the document already contains — not the endpoint repeated, and the "not
+   * independent levers" justification does not reach it. It is nevertheless marked and moved;
+   * `tests/expression/applierLevels.test.ts` pins that under `CHARACTERIZES`.
    *
-   *       without a bare <dynamics/> at 1440:  60, 67.49…, 75, 82.51…, 90   (one ramp)
-   *       with one:                            60, 75, 100.0, 100.0, 90
-   *
-   *   The ramp stops at the bare instruction and the two notes after it fall to the renderer's
-   *   hard-coded 100.0. So the `volume="90"` at 2880 is separated from the transition endpoint
-   *   by a discontinuity the document already contains — it is not the endpoint repeated, and
-   *   the "they are not independent levers" justification above does not reach it. It is
-   *   nevertheless marked and moved today; `tests/expression/applierLevels.test.ts` pins that
-   *   under `CHARACTERIZES`, so the divergence is visible rather than latent.
-   *
-   * The fix is not simply "compare view positions": that would also stop tempo stepping over
-   * the `<tempo>` it is right to step over. It needs a per-dimension notion of "an element the
+   * The fix is not "compare view positions": that would also stop tempo stepping over the
+   * `<tempo>` it is right to step over. It needs a per-dimension notion of "an element the
    * renderer ignores entirely" versus "an element the renderer treats as a boundary", which is
-   * a §7.2 ruling and not a refactoring. Flagged, measured, and left alone.
+   * a §7.2 ruling. Do not read the current rule as settled until that ruling lands.
    */
   private markEndMarkerDuplicates(): void {
     for (const [index, instruction] of this.instructions.entries()) {
@@ -997,8 +966,6 @@ class LevelPass {
 
 /** The `<tempoDef>`/`<dynamicsDef>` elements an instruction's endpoints resolve through. */
 function defsNamedBy(instruction: Instruction): readonly Element[] {
-  // The `kind === 'def'` test is the narrowing as well as the filter, which is exactly what
-  // `filterMap` is for: `endpoint.reading.def` is only a field on that arm.
   return filterMap(endpointsOf(instruction), (endpoint) =>
     endpoint.reading.kind === 'def' ? endpoint.reading.def : null,
   );

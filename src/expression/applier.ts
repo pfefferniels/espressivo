@@ -2,39 +2,28 @@
  * The engine: DESIGN.md §7's fifteen dimensions applied to a raw MPM tree, in place, with a
  * report of everything that happened.
  *
- * `applyExaggeration` is a **document** transform (A11): with no `options.performance` it
- * visits every `<performance>` in the document, which is where it diverges from
- * `performMsm`'s pick-one behaviour — that function renders, and a render needs one
- * performance; this one edits, and editing one performance while silently leaving its
- * siblings behind would produce a document that means something different from either input.
+ * `applyExaggeration` is a DOCUMENT transform (A11): with no `options.performance` it visits
+ * every `<performance>`, unlike `performMsm`, which renders and so needs exactly one. Editing
+ * one performance and leaving its siblings behind would mean something different from either
+ * input.
  *
- * ## The order of operations, and why it is not an implementation detail
+ * Per dimension the order is: classify every site and build the skip set, then compute anything
+ * that averages over sites, then transform, validate and write (A4/A5). Only the two level
+ * dimensions average, and `levels.ts` carries that; the ordering is what makes two rules true
+ * for all fifteen — nothing written is derived from a value the run also skipped, and no site
+ * is skipped for a reason the report does not name.
  *
- * Per dimension: **classify every site and build the skip set first, then compute anything
- * that averages over sites, then transform, validate and write** (A4/A5). Only the two level
- * dimensions actually average, and `levels.ts` carries that; the ordering is stated here
- * because it is what makes the two-line rule below true for all fifteen:
+ * A dimension whose factor is 1 is not walked at all (A2). Not because the transforms would be
+ * wrong — they return the input bit for bit at `s = 1` — but because the *write* would be: an
+ * attribute reading `"1.0"` transforms to the number 1 and spells back as `"1"`, a byte change
+ * with no numeric change. So P1's identity guarantee lives at the dimension level, and such a
+ * dimension is reported `skipped` with an `identity-factor` note rather than `absent`.
  *
- * - nothing this engine writes is derived from a value it also skipped, and
- * - no site is skipped for a reason the report does not name.
- *
- * ## `s === 1` is a short-circuit, not an arithmetic identity (A2)
- *
- * A dimension whose factor is 1 is **not walked at all**. That is what makes P1 true, and the
- * reason is not that the transforms would be wrong — they return the input bit for bit at
- * `s = 1` — but that the *write* would not: an attribute reading `"1.0"` transforms to the
- * number 1 and spells back as `"1"`. There is no numeric change and there is a byte change.
- * So the identity guarantee lives at the dimension level, and every such dimension is
- * reported `skipped` with an `identity-factor` note rather than silently reported `absent`.
- *
- * ## What this module refuses to do
- *
- * It never creates an attribute, never deletes one, never reorders children, never writes a
- * non-finite value, and never repairs an out-of-domain input. Each of those is a §7 rule with
- * a document behind it: materializing `@transition.to` invents a gesture, deleting
- * `@scale` deletes the whole accentuation instruction, reordering is what `GenericMap.sortXml`
- * does and D-A exists to avoid it, and "repairing" `curvature="1.5"` edits a value the caller
- * never asked to change.
+ * The engine never creates an attribute, never deletes one, never reorders children, never
+ * writes a non-finite value, and never repairs an out-of-domain input. `gate.ts` states the
+ * write rules and the §7 documents behind them; reordering is what `GenericMap.sortXml` does
+ * and D-A exists to avoid it, and "repairing" `curvature="1.5"` edits a value the caller never
+ * asked to change.
  */
 import {
   andThen,
@@ -147,9 +136,8 @@ const DYNAMICS_MAP = LEVEL_MAPS.dynamics;
  * and `getNumericValue` both fall through to it after a `console.error`.
  *
  * Used for ONE purpose: deciding whether the renderer sees an instruction as constant (F3).
- * It is deliberately not reproduced anywhere else — §7.2 keeps it out of the center population,
- * because a rendering default is not a reading of the document and averaging it in would move
- * every level the author did write.
+ * §7.2 keeps it out of the center population — a rendering default is not a reading of the
+ * document, and averaging it in would move every level the author did write.
  */
 const RENDERER_UNRESOLVED_LEVEL = 100;
 
@@ -188,12 +176,9 @@ export function applyExaggeration(
 /**
  * {@link applyExaggeration} on options the caller has ALREADY resolved.
  *
- * This is the entry point the facade uses, and it exists so that the option bag is validated
- * once. The facade has to resolve it anyway — §4 makes it validate before a byte is parsed, and
- * `options.ts` owns the one definition of what a legal factor record is — and before this split
- * it threw both resolved objects away and let this function build them again from the same
- * input. Both resolutions were pure, so nothing was ever *wrong*; it was simply the second
- * answer to a question already asked.
+ * The entry point the facade uses, so that the option bag is resolved once: §4 makes the
+ * facade validate before a byte is parsed, and `options.ts` owns the one definition of what a
+ * legal factor record is.
  *
  * @param run everything DESIGN §4 defines, filled in — see {@link resolveRun}
  */
@@ -213,9 +198,9 @@ export function applyResolvedExaggeration(root: Element, run: ResolvedRun): Exag
 /**
  * A11: omitted means ALL performances; a string selects by `@name` and a number by index.
  *
- * A selector matching nothing yields an empty run rather than an error. The facade owns the
- * decision to make that loud — this layer reports `performances: []` and `totalWrites: 0`,
- * which is already R4's exact "no-op" contract.
+ * A selector matching nothing yields an empty run rather than an error: `performances: []` and
+ * `totalWrites: 0`, which is already R4's exact "no-op" contract. Making it loud is the
+ * facade's decision.
  */
 function selectPerformances(
   performances: readonly PerformanceView[],
@@ -408,15 +393,13 @@ class PerformancePass {
   /**
    * `@meanTempoAt` — where in the span the mean tempo falls, on a logit over (0,1).
    *
-   * THREE inertness rules, all from the renderer rather than from the attribute: without
-   * `@beatLength` the renderer skips the whole `<tempo>` (§7.2), so nothing on it is read;
-   * without `@transition.to` there is no transition for the mean position to describe; and a
-   * pair whose endpoints RESOLVE equal is deleted at parse (`TempoMap` nulls `transitionTo`
-   * and reads `@meanTempoAt` only in the surviving `else`), so the attribute is dead there too.
-   *
-   * The third is F4, and it is why this dimension shares `isConstantLevel` with its twin: the
-   * mere PRESENCE of `@transition.to` proves nothing, and `bpm="A" transition.to="A"` through a
-   * `<tempoDef>` is as constant as `120`/`120`.
+   * Three inertness rules, all from the renderer rather than from the attribute: without
+   * `@beatLength` the renderer skips the whole `<tempo>` (§7.2); without `@transition.to` there
+   * is no transition for the mean position to describe; and a pair whose endpoints RESOLVE
+   * equal is deleted at parse (`TempoMap` nulls `transitionTo` and reads `@meanTempoAt` only in
+   * the surviving `else`). The third is F4, and is why this dimension shares `isConstantLevel`
+   * with its twin: `bpm="A" transition.to="A"` through a `<tempoDef>` is as constant as
+   * `120`/`120`.
    */
   private applyTempoShape(): void {
     const row = requireRow('tempo', 'meanTempoAt');
@@ -463,9 +446,9 @@ class PerformancePass {
 
   /**
    * `@curvature` and `@protraction` — a pure time reparameterization of the swell, whose
-   * output can never leave `[volume, transition.to]`. That is why they are their own
-   * dimension: they are the only range-safe dynamics attributes, and fusing them with
-   * `dynamics` meant a caller asking for wider contrast unavoidably got a late-blooming swell.
+   * output can never leave `[volume, transition.to]`. Their own dimension because they are the
+   * only range-safe dynamics attributes: fused with `dynamics`, a caller asking for wider
+   * contrast would unavoidably get a late-blooming swell too.
    *
    * Both are force-zeroed by the renderer on a constant instruction, which is `inert` and not
    * `absent`: a consumer diffing reports must be able to tell "this document does not use
@@ -506,18 +489,18 @@ class PerformancePass {
    * Whether the renderer reads this instruction as a CONSTANT — no `@transition.to`, or a
    * target that resolves to the same number as the prevailing level.
    *
-   * Shared by both shape dimensions, because both twins answer the same musical question:
-   * `DynamicsData.isConstantDynamics` and `TempoData.isConstantTempo` are the same predicate
-   * over different attribute names, and each renderer path reads its curve parameter — or
-   * `@meanTempoAt` — only in the surviving transition branch.
+   * Shared by both shape dimensions: `DynamicsData.isConstantDynamics` and
+   * `TempoData.isConstantTempo` are one predicate over two attribute names, and each renderer
+   * path reads its curve parameter — or `@meanTempoAt` — only in the surviving transition
+   * branch.
    *
-   * **The comparison uses the renderer's 100.0 fallback, and only here** (F3). `resolveLevel`
-   * reports an unresolvable level as `NaN`, and `NaN === NaN` is false, so a pair of MEI
+   * The comparison uses the renderer's 100.0 fallback, and ONLY here (F3). `resolveLevel`
+   * reports an unresolvable level as `NaN` and `NaN === NaN` is false, so a pair of MEI
    * placeholders would read as a gesture and the engine would write curve parameters the
-   * renderer provably never consults. The renderer resolves both strings through
-   * `getNumericValueStatic`, whose third step is a hardcoded 100.0, and then compares those.
-   * The fallback must NOT leak into `levels.ts`: §7.2 forbids it in the center population,
-   * where inventing a level the author never wrote would move every other level.
+   * renderer never consults; the renderer instead resolves both strings through
+   * `getNumericValueStatic`, whose third step is that hardcoded 100.0. The fallback must NOT
+   * leak into `levels.ts`: §7.2 forbids it in the center population, where inventing a level
+   * the author never wrote would move every other level.
    */
   private isConstantLevel(
     domain: LevelDomain,
@@ -542,8 +525,8 @@ class PerformancePass {
    *
    * With the flag true the level values become CC 7 curve points, which `fitVelocities` never
    * scans, which the MIDI writer hard-clips at 0..127 and which are unclamped on the data path.
-   * R6(a)'s `velocityRange` clamp is therefore the wrong model for such an instruction, and a
-   * caller reading `dimensions.dynamics.clamps` as a guarantee would be misled.
+   * R6(a)'s `velocityRange` clamp is the wrong model for such an instruction, so
+   * `dimensions.dynamics.clamps` is not a guarantee there.
    */
   private reportSubNoteDynamics(): void {
     this.eachInstruction(DYNAMICS_MAP, 'dynamics', ({ environment, mapName, entry, element }) => {
@@ -563,18 +546,17 @@ class PerformancePass {
   /**
    * `@intensity` independently, and `(@lateStart, @earlyEnd)` as ONE joint trim.
    *
-   * The pair is not two boundary-power values. Given independent maps they cross at the `s`
+   * The pair is not two boundary-power values. Mapped independently they cross at the `s`
    * solving `ee^s + (1−ls)^s = 1` — `s ≈ 1.36` for a window trimmed to (.4,.6) — and both
    * renderer paths answer a crossed pair by silently resetting it to (0,1): not saturation but
-   * a discontinuous jump to no window effect at all. So the pair is reparameterized through
-   * its total trim `t = lateStart + (1 − earlyEnd)`, transformed there, and split back on the
+   * a discontinuous jump to no window effect at all. So the pair is reparameterized through its
+   * total trim `t = lateStart + (1 − earlyEnd)`, transformed there, and split back on the
    * preserved ratio.
    *
-   * The cross-site rule is the subtle half (A6). Inheritance resolves per attribute, so a def
-   * (0.1, 0.9) with an element supplying `lateStart="0.85"` has effective window (0.85, 0.9) —
-   * and transforming the def alone to (0.18, 0.82) crosses it. Skipping the element does not
-   * help, because the def is what moves. Both sites are therefore excluded, and the report
-   * names the ELEMENT, which is the one a reader has to look at to understand why.
+   * A6's cross-site rule: inheritance resolves per attribute, so a def (0.1, 0.9) with an
+   * element supplying `lateStart="0.85"` has effective window (0.85, 0.9), and transforming the
+   * def alone to (0.18, 0.82) crosses it. Skipping the element does not help — the def is what
+   * moves — so both sites are excluded, and the report names the ELEMENT.
    */
   private applyRubato(): void {
     const accumulator = this.sink.dimensions.rubato;
@@ -660,9 +642,8 @@ class PerformancePass {
    * §7.16's "read it" for `rubato@loop`, discharged as a report note (F5).
    *
    * `@frameLength` is excluded because it has no neutral, but WHAT it means depends on this
-   * flag: with `loop="false"` it doubles as the span cutoff, so the window this dimension
-   * trims applies once rather than repeating. The flag is never inherited from the def, which
-   * is why it is read on the element and reported there.
+   * flag. It is never inherited from the def, which is why it is read on the element and
+   * reported there.
    */
   private reportRubatoSpan(element: Element, site: SiteRef): void {
     const loop = readAttributeValue(element, LOOP_ATTRIBUTE);
@@ -800,14 +781,14 @@ class PerformancePass {
   /**
    * The seven live modifiers, on `<articulationDef>` and on inline `<articulation>` alike.
    *
-   * Two element-keyed rules, both of which change what is written rather than only what is
-   * reported. On a def the three tick-duration attributes COMPOSE; on an inline element the
-   * original duration is read once up front so they do not, and the precedence
-   * `absoluteDurationChange > relativeDuration > absoluteDuration` makes the loser inert.
-   * And D-B's exclusions make this dimension lopsided: meico's own `stacc` carries
-   * `absoluteDurationMs` (excluded — its neutral lives in the MSM) beside
-   * `absoluteVelocityChange` (included), so exaggerating it renders "more staccato" as
-   * "softer", never "shorter". Such a site is `partial`, never `transformed`.
+   * Two element-keyed rules, both changing what is written and not only what is reported. On a
+   * def the three tick-duration attributes COMPOSE; on an inline element the original duration
+   * is read once up front so they do not, and the precedence `absoluteDurationChange >
+   * relativeDuration > absoluteDuration` makes the loser inert. D-B's exclusions make the
+   * dimension lopsided: meico's own `stacc` carries `absoluteDurationMs` (excluded — its
+   * neutral lives in the MSM) beside `absoluteVelocityChange` (included), so exaggerating it
+   * renders "more staccato" as "softer", never "shorter". Such a site is `partial`, never
+   * `transformed`.
    */
   private applyArticulation(): void {
     const rows = rowsOf('articulation');
@@ -945,8 +926,8 @@ class PerformancePass {
    * part.
    *
    * The attribute is MANDATORY — absent, the renderer drops the whole instruction — so `s = 0`
-   * is written as `"0"` and never expressed by deleting it. An absent `@scale` is likewise
-   * never materialized: the engine does not create attributes.
+   * is written as `"0"` and never expressed by deleting it, and an absent `@scale` is never
+   * materialized.
    */
   private applyAccentuation(): void {
     const row = requireRow('accentuationPattern', 'scale');
@@ -994,10 +975,8 @@ class PerformancePass {
   /**
    * §7.16's "read it" for `accentuationPattern@loop` and `@stickToMeasures` (F5).
    *
-   * §7.8 files both under "documented no-ops the report must catch": they decide the span the
-   * pattern covers and which beat number it is evaluated at, so they decide WHERE an
-   * exaggerated accent actually lands. Their absent-defaults differ — `@loop` is false,
-   * `@stickToMeasures` is **true** — which is exactly the asymmetry a caller cannot guess.
+   * §7.8 files both under "documented no-ops the report must catch": together they decide WHERE
+   * an exaggerated accent actually lands, and their absent-defaults differ.
    */
   private reportAccentuationSpan(element: Element, site: SiteRef): void {
     const loop = readAttributeValue(element, LOOP_ATTRIBUTE);
@@ -1062,27 +1041,25 @@ class PerformancePass {
    * `<temporalSpread>`'s frame, as ONE geometric pair under ONE factor — in either MPM
    * generation.
    *
-   * `[offset, offset + length]` is a frame, not two numbers: scaling the length alone drags
-   * the centroid late. Both are gains with neutral 0, and the pair is atomic on failure — if
-   * one bound fails the gate the other is not written either, because half a scaled frame is a
-   * frame the caller did not ask for.
+   * `[offset, offset + length]` is a frame, not two numbers: scaling the length alone drags the
+   * centroid late. Both are gains with neutral 0, and the pair is atomic on failure — one bound
+   * failing the gate means neither is written.
    *
-   * **The generation is detected per element** ({@link detectFrameFormat}), because that is how
-   * the renderer detects it and because one performance may hold both. A v2 spread is read and
-   * written exactly as before — bare doubles through `parseFloat`, byte for byte — and a v3 one
-   * through {@link parseTemporalText}, which keeps each value's unit suffix as bytes so that
+   * The generation is detected PER ELEMENT ({@link detectFrameFormat}), because that is how the
+   * renderer detects it and because one performance may hold both. A v2 spread reads and writes
+   * as bare doubles through `parseFloat`, byte for byte; a v3 one through
+   * {@link parseTemporalText}, which keeps each value's unit suffix as bytes, so
    * `frameLength="80%"` at `s = 1.5` comes back `"120%"` and a suffix-less `"44"` comes back
    * `"88"`.
    *
-   * **One v3 asymmetry costs an otherwise-transformable site**, and it is the reason this is
-   * not simply a decoding change. §7.9 rests on "an absent bound is already at its neutral and
-   * needs no materialization — `s · 0 = 0`", which v2's two defaults (`frame.start` 0.0,
-   * `frameLength` 0.0) make true. v3 kept the offset default at 0 but changed the LENGTH
-   * default to `100%` — the whole principal note, which is the widest frame there is rather
-   * than the narrowest. So on a v3 spread that carries an offset and no `@frameLength`, the
-   * absent bound is not neutral, D-A forbids creating it, and scaling the offset alone would
-   * move the figure without resizing it. Reported suppression beats half-application (the W2
-   * F1 ruling): the whole site is skipped with the pair's own note.
+   * One v3 asymmetry costs an otherwise-transformable site. §7.9 rests on "an absent bound is
+   * already at its neutral — `s · 0 = 0`", which v2's two defaults (`frame.start` 0.0,
+   * `frameLength` 0.0) make true. v3 kept the offset default at 0 but changed the LENGTH default
+   * to `100%`, the widest frame there is rather than the narrowest. So on a v3 spread carrying
+   * an offset and no `@frameLength` the absent bound is not neutral, D-A forbids creating it,
+   * and scaling the offset alone would move the figure without resizing it: the whole site is
+   * skipped with the pair's own note (the W2 F1 ruling — reported suppression over
+   * half-application).
    */
   private applyOrnamentSpread(): void {
     const accumulator = this.sink.dimensions.ornamentSpread;
@@ -1094,10 +1071,8 @@ class PerformancePass {
       accumulator.markPresent();
 
       // Read and gate are one chain because they refuse the same way: whichever step turns the
-      // pair down, the frame is atomic and neither bound is written. `traverse` is the
-      // short-circuit the hand-written loop was — it stops at the first refused bound and
-      // discards the ones already planned, which is what "the frame is one geometric pair"
-      // means operationally.
+      // pair down, neither bound is written. `traverse` stops at the first refused bound and
+      // discards the ones already planned.
       const planned = andThen(reading, (bounds) =>
         traverse(bounds, (bound) =>
           mapOk(
@@ -1136,12 +1111,11 @@ class PerformancePass {
    * §7.16's two "read it" obligations for the ornament frame, discharged as report notes (F5),
    * plus §7.15's third: the alias a v3 spread can carry and never read.
    *
-   * None of these attributes is ever written — they are enums and a dead spelling, none with a
-   * neutral — but each changes what a given `s` MEANS, which is a fact only the document holds
-   * and only the report can carry. `@noteoff.shift` decides which attribute absorbs the scaled
-   * offset, and `"monophonic"` flips the sign of the effect on note length: a wider frame
-   * LENGTHENS notes there. It is unchanged in v3 (`temporalSpread.xml:39-41` only restates the
-   * `false` default), so it is read the same way for both generations.
+   * None of these attributes is ever written — enums and a dead spelling, none with a neutral —
+   * but each changes what a given `s` MEANS. `@noteoff.shift` decides which attribute absorbs
+   * the scaled offset, and `"monophonic"` flips the sign of the effect on note length: a wider
+   * frame LENGTHENS notes there. It is unchanged in v3 (`temporalSpread.xml:39-41` only
+   * restates the `false` default), so both generations read it the same way.
    */
   private reportFrameRegime(
     spread: Element,
@@ -1192,11 +1166,10 @@ class PerformancePass {
    * The v3 frame units: one per value, named at the bound that carries it, and sited at the
    * first frame attribute rather than at `@time.unit` — which a v3 spread usually does not have.
    *
-   * The note still answers §8's question ("is this s absolute or tempo-relative here?"), but it
-   * now has to answer it twice, because `frame.offset="22ms" frameLength="90%"` is legal and
-   * puts the two bounds of one frame on two clocks. A suffix-less value is reported with where
-   * its domain came from, since that is the case §7.15 expected to have disappeared and which
-   * the real corpus keeps writing.
+   * The note answers §8's question ("is this s absolute or tempo-relative here?") twice, because
+   * `frame.offset="22ms" frameLength="90%"` is legal and puts the two bounds of one frame on two
+   * clocks. A suffix-less value is reported with where its domain came from — the case §7.15
+   * expected to have disappeared and which the real corpus keeps writing.
    */
   private reportV3FrameUnits(
     spread: Element,
@@ -1250,9 +1223,9 @@ class PerformancePass {
    * The rendered contribution is `constFac·n + from·scale` with
    * `constFac = scale·(to−from)/(n−1)`: EVERY term carries `@scale`, which is absent≙0 and
    * hardcoded 0.0 by the MEI converter for every arpeggio. So scaling the endpoints is exactly
-   * as dead as scaling `@scale` would be, and §7.11 makes that a first-class report state
-   * rather than a silently generated identity document. Making it live requires seeding a
-   * non-zero `@scale`, which is an editorial edit and deliberately not smuggled into `s`.
+   * as dead as scaling `@scale` would be, and §7.11 makes that a report state rather than a
+   * silently generated identity document. Making it live requires seeding a non-zero `@scale`,
+   * an editorial edit that is deliberately not smuggled into `s`.
    *
    * `@transition.to` is scaled only where physically present: absent it defaults to
    * `@transition.from`, so materializing it would turn a flat offset into a ramp.
@@ -1280,8 +1253,7 @@ class PerformancePass {
 
           // F9: fire only when `@transition.to` is the endpoint that is actually missing. A
           // gradient carrying only `@transition.to` is well-formed — `DynamicsGradient` parses
-          // the two endpoints independently — and telling the caller that the one attribute
-          // present is absent was simply wrong.
+          // the two endpoints independently.
           if (readAttributeValue(gradient, TRANSITION_TO_ATTRIBUTE) === null) {
             this.sink.note(
               'transition-to-absent',
@@ -1416,11 +1388,11 @@ class PerformancePass {
   /**
    * One imprecision domain: every width-like attribute of every distribution, in ATOMIC groups.
    *
-   * D-F's grouping is measured rather than stylistic. Scaling a gaussian's
-   * `@deviation.standard` without its `@limit.*` changes the truncation ratio and
-   * desynchronizes the whole sequence; dropping a triangular `@clip.*` that scaled to 0
-   * renders the entire distribution a silent no-op. So a group is all-or-nothing: one
-   * attribute failing the gate skips the distribution, and the report says which.
+   * D-F groups them for a measured reason: scaling a gaussian's `@deviation.standard` without
+   * its `@limit.*` changes the truncation ratio and desynchronizes the whole sequence, and
+   * dropping a triangular `@clip.*` that scaled to 0 renders the distribution a silent no-op.
+   * So a group is all-or-nothing — one attribute failing the gate skips the distribution, and
+   * the report says which.
    *
    * The timing domain carries RESOLVED-7's caveat. An absent `@milliseconds.timingBasis` is
    * derived from exactly the attributes being scaled, so scaling them rescales the sampling
@@ -1514,7 +1486,7 @@ class PerformancePass {
     }
   }
 
-  /** §7.16/A9 — the tuning domain is write-only in this codebase, so it is reported, not offered. */
+  /** §7.16/A9 — nothing here reads tuning.offset, so the domain is reported, never offered. */
   private reportInertTuningDomain(): void {
     for (const environment of environmentsOf(this.performance)) {
       const map = environment.maps.get(INERT_IMPRECISION_MAP);
@@ -1536,13 +1508,11 @@ class PerformancePass {
    *
    * They move the instant at which the pedal level crosses the receiver's on/off point —
    * half-pedalling and pedal-lift speed — without touching any date. The validation gate is
-   * load-bearing here because this family has NO clamps of its own: an out-of-range control
-   * point makes the date component non-monotone and the sampler emits `<position>` events
-   * whose dates go backwards, which `GenericMap` then silently reorders.
+   * load-bearing because this family has NO clamps of its own: an out-of-range control point
+   * makes the date component non-monotone, and the sampler then emits `<position>` events whose
+   * dates go backwards, which `GenericMap` silently reorders.
    *
-   * Three inert cases, all from the renderer: the LAST map entry is never rendered (a movement
-   * is a transition *towards* the next one), a movement with no `@transition.to` renders as a
-   * degenerate three-event stack, and a flat segment makes both parameters unobservable.
+   * {@link movementInertReason} carries §7.14's three inert cases.
    */
   private applyPedalShape(): void {
     const accumulator = this.sink.dimensions.pedalShape;
@@ -1696,10 +1666,10 @@ function findNamedDef(styleDef: Element, defElement: string, name: string): Elem
  * carries it, its number, and the unit bytes that number has to be put back under.
  *
  * The attribute is carried separately from `row.attribute` for one case: a v3 spread may spell
- * its offset `frame.start`, the legacy alias the v3 reader still accepts (§7.15), and the row
- * that governs it is then the `frame.start` row — the same signed gain over the same domain,
- * which is why the alias needs no row of its own. Keeping the physical name is what makes the
- * report, and every gate message, name the attribute the caller can actually find.
+ * its offset `frame.start`, the legacy alias the v3 reader still accepts (§7.15), governed by
+ * the `frame.start` row — the same signed gain over the same domain, so the alias needs no row
+ * of its own. Keeping the physical name is what makes every gate message name an attribute the
+ * caller can find.
  */
 interface FrameBound {
   readonly row: RegistryRow;
@@ -1711,9 +1681,9 @@ interface FrameBound {
 /**
  * Why a frame cannot be scaled at all.
  *
- * A refusal here is a property of the PAIR rather than of one value — an unreadable v3 value, a
- * v3 length whose absence is not neutral, or a bound the gate turned down — so it carries the
- * attribute that caused it and the whole explanation, and the caller turns it into one
+ * A refusal is a property of the PAIR rather than of one value — an unreadable v3 value, a v3
+ * length whose absence is not neutral, or a bound the gate turned down — so it carries the
+ * attribute that caused it plus the whole explanation, and the caller turns it into one
  * `atomic-group-skipped` note.
  */
 interface FrameRefusal {
@@ -1724,24 +1694,19 @@ interface FrameRefusal {
 /**
  * A frame read off one `<temporalSpread>`, or the reason it cannot be scaled at all.
  *
- * This is also the type of the frame after the gate has run over it, which is the point of
- * spelling it as a `Result` rather than as the anonymous module-private union it used to be:
- * reading and transforming produce the same shape, so `andThen` chains them and the two
- * refusal paths that used to be two near-identical blocks at the call site are one.
+ * Also the type of the frame after the gate has run over it: reading and transforming produce
+ * the same shape, so `andThen` chains them and the two refusal paths are one.
  */
 type FrameReading = Result<readonly FrameBound[], FrameRefusal>;
 
 /**
- * The v2 frame: bare doubles under `parseFloat`, exactly as before.
+ * The v2 frame: bare doubles under `parseFloat`, byte-frozen in both directions.
  *
- * BYTE-FROZEN in both directions. `parseFloat` is the renderer's own reading here
- * (`TemporalSpread`'s v2 branch), lenience included, and an absent bound is genuinely at its
- * neutral — both v2 defaults are 0.0 — so it is simply not a site.
+ * `parseFloat` is the renderer's own reading here (`TemporalSpread`'s v2 branch), lenience
+ * included, and an absent bound is genuinely at its neutral — both v2 defaults are 0.0 — so it
+ * is simply not a site. This reader cannot fail; the `Result` is always `ok`.
  */
 function readV2Frame(spread: Element): FrameReading {
-  // `filterMap`, not a fold: this reader cannot fail, so nothing short-circuits and the
-  // `Result` is always `ok`. Its v3 sibling below is deliberately NOT written this way — it
-  // returns `err` from inside the walk, which `filterMap` has no way to express.
   return ok(
     filterMap([FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE], (attribute) =>
       readAttributeValue(spread, attribute) === null
@@ -1761,15 +1726,14 @@ function readV2Frame(spread: Element): FrameReading {
  *
  * Two refusals live here rather than in the gate, because neither is a property of a number.
  *
- * - **An unreadable value.** The v3 grammar is far narrower than `parseFloat` — no exponent,
- *   no leading dot, no `+` — and the renderer answers a violation by ignoring the attribute
- *   and applying its default. Sliding such a value onto the v2 numeric path instead would
- *   read `frameLength="80abc"` as 80 and write back `"160"`, inventing a well-formed frame out
- *   of a malformed one.
- * - **An absent `@frameLength`.** In v2 that is the neutral 0; in v3 it is `100%` of the
- *   principal note (`temporalSpread.xml:38`), the widest frame there is. D-A forbids
- *   materializing it, and scaling the offset against a length that stays put would move the
- *   figure without resizing it — so the pair is refused whole.
+ * - An unreadable value. The v3 grammar is far narrower than `parseFloat` — no exponent, no
+ *   leading dot, no `+` — and the renderer answers a violation by ignoring the attribute and
+ *   applying its default. Sliding such a value onto the v2 numeric path instead would read
+ *   `frameLength="80abc"` as 80 and write back `"160"`, inventing a well-formed frame out of a
+ *   malformed one.
+ * - An absent `@frameLength`, which in v3 is `100%` of the principal note
+ *   (`temporalSpread.xml:38`) rather than v2's neutral 0 — see `applyOrnamentSpread`. The pair
+ *   is refused whole.
  */
 function readV3Frame(spread: Element): FrameReading {
   const offsetAttribute = v3FrameOffsetAttribute(spread);
@@ -1833,8 +1797,6 @@ function requireRow(elementLocalName: string, attribute: string): RegistryRow {
  * A row's scale space with no run-time parameter to bind — every row except the two kinds that
  * have one.
  *
- * Named for what it does rather than for what `transforms.ts` calls its own private
- * `scalarSpaceOf`, which takes a different argument and returns a different (unexported) type.
  * The throw is unreachable by construction: `level` rows are handled by `levels.ts`, which
  * supplies the center, and `joint-trim` rows by `applyRubatoWindow`, which calls the pair
  * transform directly. Neither ever reaches this function.

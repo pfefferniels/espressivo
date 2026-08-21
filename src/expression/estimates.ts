@@ -1,42 +1,37 @@
 /**
  * The MSM-dependent half of the report (A10's R1 carve-out), computed from the score and the
- * **transformed** document.
+ * TRANSFORMED document.
  *
- * `report.ts` declares the four fields and ships them null; this is what fills them in when a
- * caller supplies `options.msm`. Nothing here decides a transform — the applier has already
- * run and the tree these walks read is the one it wrote. That is deliberate rather than
- * incidental: reading the OUTPUT means the estimates are about the values a caller is going to
- * render, and it means this module holds no copy of the transform arithmetic that could drift
- * from the engine's.
+ * `report.ts` declares the four fields and ships them null; this fills them in when a caller
+ * supplies `options.msm`. Nothing here decides a transform — the applier has already run and
+ * these walks read the tree it wrote. Reading the OUTPUT means the estimates are about the
+ * values a caller will render, and that this module holds no copy of the transform arithmetic
+ * that could drift from the engine's.
  *
- * ## `null` is a third answer, and it is the honest one
+ * ## `null` is a third answer
  *
- * Each count is `number | null`, and the null does more work than "no MSM was given":
- *
- * - **`0`** — the document has sites of this family and none of them is at risk.
- * - **`n`** — that many sites are at risk.
- * - **`null`** — the document has at least one site of this family whose risk this MSM does
- *   not determine.
+ * Each count is `number | null`, and the null does more work than "no MSM was given": `0` means
+ * the document has sites of this family and none is at risk, `n` that many are, and `null` that
+ * at least one site's risk this MSM does not determine.
  *
  * The third case is not hypothetical. Three of the four cliffs are millisecond quantities
  * (§7.7's pass-two commit guard, §7.13's toneduration offsets, and the milliseconds half of
- * §7.9's frame), and a note's length in milliseconds exists only in an MSM that has already
- * been performed — deriving it from a score needs the tempo map, i.e. a render, which R1 puts
- * out of reach. Answering `0` there would report "no risk found" for a question that was never
- * asked, which is the failure mode C2 forbids in its numeric form. So a caller who wants the
- * millisecond cliffs passes a performed MSM (`performMsm({msm, mpm})` on the pre-exaggeration
- * pair, which is the baseline the renderer's guards are measured against) and a caller who
- * passes a raw score gets the symbolic estimates and an explicit null for the rest.
+ * §7.9's frame), and a note's millisecond length exists only in an MSM that has already been
+ * performed — see `msmFacts.ts` for why a score cannot supply it under R1. Answering `0` there
+ * would report "no risk found" for a question that was never asked, which is C2's failure mode
+ * in numeric form. A caller who wants the millisecond cliffs passes `performMsm({msm, mpm})` on
+ * the pre-exaggeration pair, the baseline the renderer's guards are measured against; a caller
+ * who passes a raw score gets the symbolic estimates and an explicit null for the rest.
  *
  * ## What "at risk" means
  *
  * Each cliff is a renderer guard that fires when an offset reaches a note's length, and the
  * note it fires on is not knowable from the MPM — an ornament names its notes by id, an
  * imprecision distribution covers a span, an articulation applies to whatever the map reaches.
- * So the comparison is against the **shortest note in the score**: a site counts as at risk
- * when its transformed magnitude reaches that length, i.e. when there exists a note the guard
- * could fire on. It is a screening estimate and it is stated as one — §7.9's own words are
- * "the report carries the frame magnitude and flags cliff risk rather than a bound".
+ * So the comparison is against the SHORTEST note in the score: a site counts as at risk when
+ * its transformed magnitude reaches that length, i.e. when there exists a note the guard could
+ * fire on. A screening estimate, in §7.9's own words: "the report carries the frame magnitude
+ * and flags cliff risk rather than a bound".
  */
 import { filterMap, head, isNonEmpty, last } from '../prelude/index.js';
 import { readAttributeValue } from './attributes.js';
@@ -92,12 +87,9 @@ const DEFAULT_PERFORMANCE_PPQ = 720;
 
 /**
  * A count that knows whether it is complete: `at` sites are at risk, and `undecided` records
- * that some site's risk could not be read off this MSM at all.
- *
- * Kept as a pair rather than as a nullable running total because the two facts are
- * independent — a document can hold one site that is provably at risk and another whose
- * domain this MSM cannot answer, and the report must say `null` for that family rather than
- * `1`, which would read as "one, and that is all of them".
+ * that some site's risk could not be read off this MSM at all. A document can hold one site
+ * that is provably at risk and another whose domain this MSM cannot answer, and the report must
+ * say `null` for that family rather than `1`, which would read as "one, and that is all".
  */
 class RiskTally {
   private at = 0;
@@ -131,7 +123,6 @@ class RiskTally {
  * §4/A10's estimates for one performance, given the score.
  *
  * @param performance the transformed performance, as the applier left it.
- * @param facts the MSM the caller supplied, read by `msmFacts.ts`.
  * @param accentuationRan whether the `accentuation` dimension was walked, which is what
  *   {@link MsmDependentEstimates.beatsUnverifiable} reports on.
  */
@@ -150,7 +141,7 @@ export function estimatesFromMsm(
     // computed, and that number is the applier's — computed over the def's own `@beat`
     // anchors, without an MSM to name the beats the score reaches. Flipping the flag here
     // while leaving the coefficient alone would make the report describe a computation that
-    // never happened. See this wave's report for the reconciliation item.
+    // never happened.
     beatsUnverifiable: accentuationRan,
   };
 }
@@ -164,19 +155,18 @@ export function estimatesFromMsm(
  *
  * Two shapes, both from `DynamicsMap.renderDynamicsToMap`:
  *
- * - **Before the first instruction.** The render loop writes a flat `velocity="100.0"` onto
- *   every note earlier than the first instruction's date (DynamicsMap.ts:251-253), so those
- *   notes carry a constant the document never wrote and no exaggeration of it can move.
- * - **Under an unterminated transition.** `getEndDate` answers `Number.MAX_VALUE` for the
- *   last instruction in a map (DynamicsMap.ts:190-196), so a final `<dynamics>` carrying
- *   `@transition.to` ramps across an unbounded span and never arrives: its target is scaled
+ * - Before the first instruction: the render loop writes a flat `velocity="100.0"` onto every
+ *   note earlier than the first instruction's date (DynamicsMap.ts:251-253), so those notes
+ *   carry a constant the document never wrote and no exaggeration of it can move.
+ * - Under an unterminated transition: `getEndDate` answers `Number.MAX_VALUE` for the last
+ *   instruction in a map (DynamicsMap.ts:190-196), so a final `<dynamics>` carrying
+ *   `@transition.to` ramps across an unbounded span and never arrives — its target is scaled
  *   by the transform and still never rendered.
  *
  * A part with no dynamics map at all — neither its own nor a global one — is the first case
  * taken to the whole part: `DynamicsMap.renderDynamicsToMap`'s static form writes 100.0 onto
- * every note (DynamicsMap.ts:286-289).
- *
- * Always a number, never null: both facts are symbolic, and every MSM has them.
+ * every note (DynamicsMap.ts:286-289). Always a number, never null: both facts are symbolic,
+ * and every MSM has them.
  */
 function unreachableLevels(performance: PerformanceView, facts: MsmFacts): number {
   let count = 0;
@@ -192,8 +182,8 @@ function unreachableLevels(performance: PerformanceView, facts: MsmFacts): numbe
               readAttributeValue(entry.element, 'volume') !== null,
           );
 
-    // `isNonEmpty` rather than `length === 0`: the two say the same thing to the reader, but
-    // only the type guard says it to the compiler, so `head`/`last` below need no bound check.
+    // `isNonEmpty` rather than `length === 0`: the type guard is what lets `head`/`last` below
+    // read without a bound check.
     if (!isNonEmpty(instructions)) {
       count += dated.length;
       continue;
@@ -253,13 +243,10 @@ function correspondingEnvironment(
  * Articulation sites whose millisecond modifiers can invert a note.
  *
  * Pass two commits its three millisecond modifiers only if `dateNew < endNew` and otherwise
- * discards **all** of them, reverting the note to its unexaggerated date *and* end (§7.7,
+ * discards ALL of them, reverting the note to its unexaggerated date *and* end (§7.7,
  * SURVEY.md:2003-2009). `@absoluteDelayMs` moves the onset alone and
  * `@absoluteDurationChangeMs` moves the end alone, so the guard fires exactly when
  * `delay − change` reaches the note's rendered length.
- *
- * Both site kinds carry the same twelve modifiers, so both are walked: a named
- * `<articulationDef>` and an inline `<articulation>`.
  */
 function articulationCommitCliffs(
   performance: PerformanceView,
@@ -299,7 +286,7 @@ function articulationSites(performance: PerformanceView): readonly Element[] {
  * the safe mode; `"monophonic"` makes a wider frame *lengthen* notes, the opposite sign. Only
  * the absent case is a shortening cliff, so only it is counted.
  *
- * Each bound of the frame is compared **in its own domain**, which in MPM v3 may differ
+ * Each bound of the frame is compared in its OWN domain, which in MPM v3 may differ
  * between the two (`frame.offset="-22.0ms" frameLength="80%"` is legal, §7.15). A note's
  * offset is drawn from within `[offset, offset + length]`, so either bound's own magnitude
  * reaching a note's length is enough for the guard to have a note to fire on.
@@ -353,9 +340,6 @@ interface FrameBound {
  * at all (§7.15 correction 4), so there is no transformed value here to judge either.
  */
 function frameBounds(spread: Element): readonly FrameBound[] {
-  // Both branches read a fixed list of attribute names, keep the ones that parse and drop the
-  // rest — `filterMap` twice, where the accumulator made the two look like one shared walk
-  // that they never were: the v2 branch returns before the v3 one starts.
   if (detectFrameFormat(spread) === 'v2') {
     const domain = resolveTemporalDomain('', spread);
     return filterMap([FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE], (name) => {

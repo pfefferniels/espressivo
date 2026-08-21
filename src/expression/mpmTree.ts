@@ -5,38 +5,32 @@
  * An *environment* is what the renderer calls a style scope: the `<global>` element, or one
  * `<part>`. Each carries a `<header>` holding style collections and a `<dated>` holding
  * maps, and a level name in a part's map resolves against the part's header first and the
- * global one second (`GenericMap.getStyle`, GenericMap.ts:506-513). Modelling that pair
- * explicitly is the whole point of this module — every downstream lookup takes the
- * environment it is reading from plus the performance's global environment, and never has
- * to ask the tree where it is.
+ * global one second (`GenericMap.getStyle`, GenericMap.ts:506-513). Every downstream lookup
+ * takes the environment it is reading from plus the performance's global environment, and so
+ * never has to ask the tree where it is.
  *
  * ## Faithfulness notes
  *
- * - **Discovery is by name shape, over descendants, last-one-wins** — not by an allow-list
- *   over children. `Header.parseData` (Header.ts:75) collects
+ * - Discovery is by name shape, over descendants, last-one-wins — not by an allow-list over
+ *   children. `Header.parseData` (Header.ts:75) collects
  *   `descendant::*[contains(local-name(),'Styles')]` and `Dated.parseData` (Dated.ts:63)
  *   collects `descendant::*[contains(local-name(),'Map') or local-name()='score']`, both
- *   feeding a map keyed by local name where a later entry replaces an earlier one. This
- *   module reproduces that with a pre-order child walk, which visits the same elements in
- *   the same order — `Element.query` is banned by D-A because it serializes the subtree
- *   with `toXML()`, re-parses it and maps hits back by child-index path, i.e. it costs
- *   O(document) per call. `xml/tree.js`'s `allChildElements` and its two-argument
- *   `firstChildElement` are banned for the same reason: both are `query` in a wrapper
- *   (tree.ts:94, tree.ts:150).
- * - **The tree is never repaired.** `Performance.parseData` appends an empty `<global>`
- *   when there is none and `Global.parseData` appends empty `<header>`/`<dated>`; `addMap`
- *   and `addStyleType` DELETE a duplicate of the same type after re-parenting the winner.
- *   Here a missing `<dated>` simply yields an environment with no maps, and both duplicates
- *   stay in the document — only the last one is visible to the index, exactly as the
- *   renderer would see it.
- * - **`imprecisionMap.timing` and friends are ordinary local names.** The imprecision
- *   domain is encoded in the element's own local name (ImprecisionMap.ts:241-243), so keying
- *   maps by local name needs no special case and loses nothing.
+ *   feeding a map keyed by local name where a later entry replaces an earlier one. The
+ *   pre-order child walk here visits the same elements in the same order. `Element.query` is
+ *   banned by D-A because it serializes the subtree with `toXML()`, re-parses it and maps
+ *   hits back by child-index path — O(document) per call; `xml/tree.js`'s `allChildElements`
+ *   and its two-argument `firstChildElement` are `query` in a wrapper (tree.ts:94,
+ *   tree.ts:150) and banned for the same reason.
+ * - The tree is never repaired — `mpmDocument.ts` lists what the MPM classes fix up at parse.
+ *   Here a missing `<dated>` yields an environment with no maps, and both duplicates of a map
+ *   or a style collection stay in the document, only the last one visible to the index.
+ * - `imprecisionMap.timing` and friends are ordinary local names. The imprecision domain is
+ *   encoded in the element's own local name (ImprecisionMap.ts:241-243), so keying maps by
+ *   local name needs no special case and loses nothing.
  */
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 
-/** Which of the two style scopes an environment is. */
 export type EnvironmentScope = 'global' | 'part';
 
 /** One `<global>` or `<part>` element, with its maps and style collections indexed. */
@@ -44,11 +38,8 @@ export interface MpmEnvironment {
   readonly scope: EnvironmentScope;
   /** Position among the performance's `<part>` children; null for the global environment. */
   readonly partIndex: number | null;
-  /** The `<global>` or `<part>` element itself. */
   readonly element: Element;
-  /** The environment's `<header>`, or null when it has none. */
   readonly header: Element | null;
-  /** The environment's `<dated>`, or null when it has none. */
   readonly dated: Element | null;
   /** Maps by element local name: `'tempoMap'`, `'imprecisionMap.timing'`, `'score'`, … */
   readonly maps: ReadonlyMap<string, Element>;
@@ -71,9 +62,9 @@ export interface PerformanceView {
  * Collect every descendant element whose local name satisfies `matches`, keyed by that
  * local name, in document order with the last occurrence winning.
  *
- * Pre-order — an element is recorded before its own descendants are searched — because
- * that is the order an XPath `descendant::` axis yields, and "last wins" is only
- * well-defined relative to an order.
+ * Pre-order — an element is recorded before its own descendants are searched — because that
+ * is the order an XPath `descendant::` axis yields, and "last wins" is only well-defined
+ * relative to an order.
  */
 function indexDescendantsByLocalName(
   root: Element,
@@ -124,8 +115,8 @@ function readEnvironment(
  *
  * A `<performance>` without a `<global>` child yields a global environment over an empty
  * synthetic element rather than a null: every downstream lookup takes a global environment
- * as its fallback, and a null there would put an `if` at each of those call sites to
- * express something the document already says by having no style collections.
+ * as its fallback, and a null there would put an `if` at each of those call sites to say
+ * what the document already says by having no style collections.
  */
 export function readPerformances(root: Element): readonly PerformanceView[] {
   return root
@@ -154,9 +145,9 @@ export function readPerformances(root: Element): readonly PerformanceView[] {
  * no dated and no maps.
  *
  * It carries the performance element rather than a fresh one so that a `SiteRef` derived
- * through it still points at a node of the real document — there is no site to derive here
- * (the environment is empty by construction), but nothing in the engine should be able to
- * hand out a reference into a tree the caller cannot see.
+ * through it still points at a node of the real document. Nothing can be derived here — the
+ * environment is empty by construction — but no part of the engine should be able to hand
+ * out a reference into a tree the caller cannot see.
  */
 function emptyGlobalEnvironment(performance: Element): MpmEnvironment {
   return {

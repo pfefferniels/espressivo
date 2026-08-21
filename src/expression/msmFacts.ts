@@ -7,14 +7,12 @@
  * note durations, the part identities the renderer matches on, and — when the MSM has already
  * been through a render — each note's millisecond extent.
  *
- * ## Why it re-reads the MSM rather than importing `src/msm/`
- *
- * The same reason `temporalValue.ts` and `datedView.ts` replicate rather than import: the
- * layer zone (eslint.config.js, `expression`) admits `src/xml/**` and the MPM name constants
- * and nothing else, because `new Mpm(text)` rewrites the document in its own constructor
- * (D-A/A1). `new Msm(text)` is not implicated in that finding, but the zone is drawn around
- * the engine rather than around one class, and a reader this small is not worth an exception
- * to it. What is read here is four attributes and one element path.
+ * It re-reads the MSM rather than importing `src/msm/` for the reason `temporalValue.ts` and
+ * `datedView.ts` replicate: the layer zone (eslint.config.js, `expression`) admits
+ * `src/xml/**` and the MPM name constants and nothing else, because `new Mpm(text)` rewrites
+ * the document in its own constructor (D-A/A1). `new Msm(text)` is not implicated in that
+ * finding, but the zone is drawn around the engine rather than around one class, and what is
+ * read here is four attributes and one element path.
  *
  * ## Ticks and milliseconds are different questions, and only one is always answerable
  *
@@ -25,9 +23,9 @@
  * the millisecond pair as `null` for a raw score, and every estimate that would compare a
  * millisecond offset against it answers `null` rather than guessing (see `estimates.ts`).
  *
- * The practical consequence for a caller: pass the score for the symbolic estimates, and pass
- * `performMsm({msm, mpm})`'s output — the performance of the document *before* exaggeration,
- * which is the baseline the renderer's cliffs are measured against — for the millisecond ones.
+ * For a caller: pass the score for the symbolic estimates, and pass `performMsm({msm, mpm})`'s
+ * output — the performance of the document *before* exaggeration, which is the baseline the
+ * renderer's cliffs are measured against — for the millisecond ones.
  */
 import { Builder, type Element } from '../xml/XomTypes.js';
 import { readAttributeValue, readNumericAttributeValue } from './attributes.js';
@@ -56,7 +54,6 @@ export interface MsmPart {
   readonly index: number;
   /** `@number` as an integer, or null when absent or unparseable. */
   readonly number: number | null;
-  /** `@name`, or null when absent. */
   readonly name: string | null;
   readonly notes: readonly MsmNote[];
 }
@@ -71,8 +68,8 @@ export interface MsmFacts {
  * Parse MSM text into a raw XOM tree, with no MSM class constructed.
  *
  * Validation is well-formedness only, exactly as `mpmDocument.parseMpmRoot` does it: the root
- * element's name is the facade's check to make and its error is the facade's to type, which
- * is also why the parse and the read below are two functions rather than one.
+ * element's name is the facade's check to make and its error is the facade's to type — which
+ * is why the parse and the read below are two functions rather than one.
  *
  * @throws {ParsingException} from `Builder`, for malformed XML — the facade wraps it.
  */
