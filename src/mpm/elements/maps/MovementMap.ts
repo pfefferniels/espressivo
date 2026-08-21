@@ -1,7 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
-import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
@@ -97,7 +96,7 @@ export class MovementMap extends GenericMap {
     e.addAttribute(new Attribute('controller', movement.controller ?? DEFAULT_CONTROLLER));
     if (movement.id !== undefined)
       e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', movement.id));
-    return this.insertElement(new KeyValue(movement.date, e), false);
+    return this.insertElement({ key: movement.date, value: e }, false);
   }
 
   /**
@@ -118,7 +117,7 @@ export class MovementMap extends GenericMap {
     const i = this.resolveEntryIndex(index, 'movement');
     if (i < 0) return null;
     const entry = this.entryAt(i);
-    const e = entry.getValue();
+    const e = entry.value;
 
     const posAtt = attribute('position', e);
     let position: number;
@@ -138,7 +137,7 @@ export class MovementMap extends GenericMap {
     // every rendered movement used the defaults (curvature 0.4, protraction 0, controller
     // "sustain") regardless of the XML.
     return resolveMovement({
-      startDate: entry.getKey(),
+      startDate: entry.key,
       endDate: this.nextDateOfType(i, 'movement'),
       position: position as Normalized,
       transitionTo: mapPresent(
@@ -169,7 +168,7 @@ export class MovementMap extends GenericMap {
    */
   private getPreviousPosition(index: number): number | null {
     for (let j = index - 1; j > 0; --j) {
-      const previous = this.entryAt(j).getValue();
+      const previous = this.entryAt(j).value;
       if (previous.getLocalName() === 'movement') {
         const ttAtt = previous.getAttribute('transition.to');
         return ttAtt === null ? null : parseFloat(ttAtt.getValue());

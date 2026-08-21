@@ -44,8 +44,8 @@ describe('<pedal> against the Java reference', () => {
     const mei = Mei.fromXml(read('pedal.mei'));
     mei.setFile('pedal.mei');
     const result = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
-    const msms = result.getKey();
-    const mpms = result.getValue();
+    const msms = result.key;
+    const mpms = result.value;
     expect(msms.length).toBe(1);
     expect(mpms.length).toBe(1);
     msmXml = msms[0]!.toXML();

@@ -5,7 +5,7 @@
  * five maps scan forward for the next element of their own local name, and a `<style>` switch
  * never terminates their spans. Two end on ANY next entry — `ImprecisionMap`, whose gaps are
  * real and carry no law at all (§5.9), and `AsynchronyMap`, whose span end is
- * `this.elements[asynIndex + 1].getKey()` with no local-name test. Rev 2 of DESIGN listed
+ * `this.elements[asynIndex + 1].key` with no local-name test. Rev 2 of DESIGN listed
  * `AsynchronyMap` on the same-name side; the renderer settles it the other way and the
  * contradiction is journaled as AD-29.
  *
@@ -69,7 +69,7 @@ const RULES: ReadonlyMap<string, SpanEndRule> = new Map<string, SpanEndRule>([
    * ```ts
    * // AsynchronyMap.renderAsynchronyToMap
    * const asynEndDate = asynIndex < this.elements.length - 1
-   *   ? this.elements[asynIndex + 1].getKey()   // the next ENTRY, whatever it is
+   *   ? this.elements[asynIndex + 1].key   // the next ENTRY, whatever it is
    *   : Number.MAX_VALUE;
    * ```
    *

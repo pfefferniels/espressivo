@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
-import { KeyValue } from '../../../supplementary/KeyValue.js';
+import type { KeyValue } from '../../../supplementary/KeyValue.js';
 import { RandomNumberProvider } from '../../../supplementary/RandomNumberProvider.js';
 import {
   andThen,
@@ -353,7 +353,7 @@ export class ImprecisionMap extends GenericMap {
     e.addAttribute(new Attribute('limit.lower', String(lowerLimit)));
     e.addAttribute(new Attribute('limit.upper', String(upperLimit)));
     if (seed !== undefined && seed !== null) e.addAttribute(new Attribute('seed', String(seed)));
-    return this.insertElement(new KeyValue(date, e), false);
+    return this.insertElement({ key: date, value: e }, false);
   }
 
   addDistributionGaussian(
@@ -369,7 +369,7 @@ export class ImprecisionMap extends GenericMap {
     e.addAttribute(new Attribute('limit.lower', String(lowerLimit)));
     e.addAttribute(new Attribute('limit.upper', String(upperLimit)));
     if (seed !== undefined && seed !== null) e.addAttribute(new Attribute('seed', String(seed)));
-    return this.insertElement(new KeyValue(date, e), false);
+    return this.insertElement({ key: date, value: e }, false);
   }
 
   addDistributionTriangular(
@@ -389,7 +389,7 @@ export class ImprecisionMap extends GenericMap {
     e.addAttribute(new Attribute('clip.lower', String(lowerClip)));
     e.addAttribute(new Attribute('clip.upper', String(upperClip)));
     if (seed !== undefined && seed !== null) e.addAttribute(new Attribute('seed', String(seed)));
-    return this.insertElement(new KeyValue(date, e), false);
+    return this.insertElement({ key: date, value: e }, false);
   }
 
   addDistributionBrownianNoise(
@@ -407,7 +407,7 @@ export class ImprecisionMap extends GenericMap {
     e.addAttribute(new Attribute('limit.upper', String(upperLimit)));
     e.addAttribute(new Attribute('milliseconds.timingBasis', String(millisecondsTimingBasis)));
     if (seed !== undefined && seed !== null) e.addAttribute(new Attribute('seed', String(seed)));
-    return this.insertElement(new KeyValue(date, e), false);
+    return this.insertElement({ key: date, value: e }, false);
   }
 
   addDistributionCompensatingTriangle(
@@ -431,13 +431,13 @@ export class ImprecisionMap extends GenericMap {
     e.addAttribute(new Attribute('clip.upper', String(upperClip)));
     e.addAttribute(new Attribute('milliseconds.timingBasis', String(millisecondsTimingBasis)));
     if (seed !== undefined && seed !== null) e.addAttribute(new Attribute('seed', String(seed)));
-    return this.insertElement(new KeyValue(date, e), false);
+    return this.insertElement({ key: date, value: e }, false);
   }
 
   addDistributionList(date: number, list: Element, millisecondsTimingBasis: number): number {
     list.addAttribute(new Attribute('date', String(date)));
     list.addAttribute(new Attribute('milliseconds.timingBasis', String(millisecondsTimingBasis)));
-    return this.insertElement(new KeyValue(date, list), false);
+    return this.insertElement({ key: date, value: list }, false);
   }
 
   /**
@@ -469,7 +469,7 @@ export class ImprecisionMap extends GenericMap {
       distribution,
       // The span ends at the next entry of ANY name, or at the end of time when there is
       // none — which is what `at(i + 1)` returning undefined says.
-      endDate: this.elements.at(i + 1)?.getKey() ?? Number.MAX_VALUE,
+      endDate: this.elements.at(i + 1)?.key ?? Number.MAX_VALUE,
     }));
   }
 
@@ -570,11 +570,11 @@ export class ImprecisionMap extends GenericMap {
         // `break` below leaves the entry that ended this span for the next distribution.
         const mapEntry = elementAt(map.elements, mapIndex, 'imprecision target');
 
-        if (mapEntry.getKey() < distribution.startDate) continue;
+        if (mapEntry.key < distribution.startDate) continue;
 
-        if (mapEntry.getKey() >= endDate) break;
+        if (mapEntry.key >= endDate) break;
 
-        const msDateAtt = attribute('milliseconds.date', mapEntry.getValue());
+        const msDateAtt = attribute('milliseconds.date', mapEntry.value);
         if (msDateAtt === null) continue;
 
         let msDate: number;
@@ -585,15 +585,13 @@ export class ImprecisionMap extends GenericMap {
           case ImprecisionMap.TIMING: {
             msDate = parseFloat(msDateAtt.getValue());
             index = msDate / timingBasisMs;
-            offset = new KeyValue(random.getValue(index), msDateAtt);
+            offset = { key: random.getValue(index), value: msDateAtt };
 
-            const msEndAtt = attribute('milliseconds.date.end', mapEntry.getValue());
+            const msEndAtt = attribute('milliseconds.date.end', mapEntry.value);
             if (msEndAtt !== null) {
               const msDateEnd = parseFloat(msEndAtt.getValue());
               pendingDurations.push({
-                endDate: parseFloat(
-                  getAttributeValue('milliseconds.date.end', mapEntry.getValue()),
-                ),
+                endDate: parseFloat(getAttributeValue('milliseconds.date.end', mapEntry.value)),
                 msDateEnd: msDateEnd,
                 attribute: msEndAtt,
               });
@@ -601,33 +599,33 @@ export class ImprecisionMap extends GenericMap {
             break;
           }
           case ImprecisionMap.TONEDURATION: {
-            const msEndAtt = attribute('milliseconds.date.end', mapEntry.getValue());
+            const msEndAtt = attribute('milliseconds.date.end', mapEntry.value);
             if (msEndAtt !== null) {
               msDate = parseFloat(msEndAtt.getValue());
               index = msDate / timingBasisMs;
-              offset = new KeyValue(random.getValue(index), msEndAtt);
+              offset = { key: random.getValue(index), value: msEndAtt };
             } else {
               continue;
             }
             break;
           }
           case ImprecisionMap.DYNAMICS: {
-            const velAtt = attribute('velocity', mapEntry.getValue());
+            const velAtt = attribute('velocity', mapEntry.value);
             if (velAtt === null) continue;
             msDate = parseFloat(msDateAtt.getValue());
             index = msDate / timingBasisMs;
-            offset = new KeyValue(random.getValue(index), velAtt);
+            offset = { key: random.getValue(index), value: velAtt };
             break;
           }
           case ImprecisionMap.TUNING: {
             msDate = parseFloat(msDateAtt.getValue());
             index = msDate / timingBasisMs;
-            let tuneAtt = attribute('tuning.offset', mapEntry.getValue());
+            let tuneAtt = attribute('tuning.offset', mapEntry.value);
             if (tuneAtt === null) {
               tuneAtt = new Attribute('tuning.offset', '0.0');
-              mapEntry.getValue().addAttribute(tuneAtt);
+              mapEntry.value.addAttribute(tuneAtt);
             }
-            offset = new KeyValue(random.getValue(index), tuneAtt);
+            offset = { key: random.getValue(index), value: tuneAtt };
             break;
           }
           default:
@@ -647,7 +645,7 @@ export class ImprecisionMap extends GenericMap {
 
         const msDate = pd.msDateEnd;
         const endIndex = msDate / timingBasisMs;
-        const offset = new KeyValue(random.getValue(endIndex), pd.attribute);
+        const offset = { key: random.getValue(endIndex), value: pd.attribute };
         ImprecisionMap.addToOffsetsMap(offsets, msDate, offset);
 
         ++drained;
@@ -687,7 +685,7 @@ export class ImprecisionMap extends GenericMap {
       for (const [i, entry] of entries.entries()) {
         if (i === keepOffset) continue;
 
-        entry.setKey(ImprecisionMap.shake(entry.getKey()));
+        entry.key = ImprecisionMap.shake(entry.key);
       }
     }
   }
@@ -702,19 +700,19 @@ export class ImprecisionMap extends GenericMap {
       // The kept entry defines the offset for its pitch, so it is filed before the others are
       // looked up against it.
       const keeper = elementAt(entries, keepOffset, 'shake keeper');
-      const keeperParent = keeper.getValue().getParent();
+      const keeperParent = keeper.value.getParent();
       if (keeperParent !== null) {
         const pitchAtt = attribute('midi.pitch', keeperParent);
         if (pitchAtt !== null) {
           const pitch = parseFloat(pitchAtt.getValue());
-          pitchOffsetTuplet.set(pitch, keeper.getKey());
+          pitchOffsetTuplet.set(pitch, keeper.key);
         }
       }
 
       for (const [i, entry] of entries.entries()) {
         if (i === keepOffset) continue;
 
-        const entryParent = entry.getValue().getParent();
+        const entryParent = entry.value.getParent();
         let pitchAtt: Attribute | null = null;
         if (entryParent !== null) {
           pitchAtt = attribute('midi.pitch', entryParent);
@@ -722,17 +720,17 @@ export class ImprecisionMap extends GenericMap {
             const pitch = parseFloat(pitchAtt.getValue());
             const existingOffset = pitchOffsetTuplet.get(pitch);
             if (existingOffset !== undefined) {
-              entry.setKey(existingOffset);
+              entry.key = existingOffset;
               continue;
             }
           }
         }
 
-        entry.setKey(ImprecisionMap.shake(entry.getKey()));
+        entry.key = ImprecisionMap.shake(entry.key);
 
         if (pitchAtt !== null) {
           const pitch = parseFloat(pitchAtt.getValue());
-          pitchOffsetTuplet.set(pitch, entry.getKey());
+          pitchOffsetTuplet.set(pitch, entry.key);
         }
       }
     }
@@ -780,10 +778,10 @@ export class ImprecisionMap extends GenericMap {
   ): void {
     for (const [, entries] of offsets) {
       for (const entry of entries) {
-        const attValue = parseFloat(entry.getValue().getValue());
+        const attValue = parseFloat(entry.value.getValue());
         if (domain === ImprecisionMap.TIMING)
-          entry.getValue().setValue(String(Math.max(0.0, attValue + entry.getKey())));
-        else entry.getValue().setValue(String(attValue + entry.getKey()));
+          entry.value.setValue(String(Math.max(0.0, attValue + entry.key)));
+        else entry.value.setValue(String(attValue + entry.key));
       }
     }
   }

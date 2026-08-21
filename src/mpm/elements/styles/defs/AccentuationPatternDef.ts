@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { allChildElements, attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
-import { KeyValue } from '../../../../supplementary/KeyValue.js';
+import type { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
 import { requireDefName, skipMalformedDef } from './defName.js';
@@ -234,8 +234,8 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
   private addAccentuationToArrayList(accentuation: AccentuationTuple, xml: Element): number {
     // `findLastIndex` is that backwards scan; its `-1` for "nothing qualifies" becomes the
     // front insertion under the `+ 1`.
-    const index = this.accentuations.findLastIndex((kv) => accentuation[0] >= kv.getKey()[0]) + 1;
-    this.accentuations.splice(index, 0, new KeyValue(accentuation, xml));
+    const index = this.accentuations.findLastIndex((kv) => accentuation[0] >= kv.key[0]) + 1;
+    this.accentuations.splice(index, 0, { key: accentuation, value: xml });
     return index;
   }
 
@@ -247,7 +247,7 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
   private sortXml(): void {
     const xml = this.getXml();
     for (const [i, entry] of this.accentuations.entries()) {
-      const accentuation = entry.getValue();
+      const accentuation = entry.value;
       xml.removeChild(accentuation);
       xml.insertChild(accentuation, i);
     }
@@ -262,7 +262,7 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
   removeAccentuation(index: number): void {
     const entry = this.entryAt(index);
     if (entry === null) return;
-    this.getXml().removeChild(entry.getValue());
+    this.getXml().removeChild(entry.value);
     this.accentuations.splice(index, 1);
   }
 
@@ -282,11 +282,11 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
   }
 
   getAccentuationAttributes(index: number): AccentuationTuple | null {
-    return this.entryAt(index)?.getKey() ?? null;
+    return this.entryAt(index)?.key ?? null;
   }
 
   getAccentuationXml(index: number): Element | null {
-    return this.entryAt(index)?.getValue() ?? null;
+    return this.entryAt(index)?.value ?? null;
   }
 
   /**
@@ -323,20 +323,20 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
     const all = this.accentuations;
     if (!isNonEmpty(all))
       throw new RangeError('accentuationPatternDef has no accentuation to read a beat position at');
-    if (beatPosition < head(all).getKey()[0]) return 0.0;
-    if (beatPosition >= this.length + 1.0) return last(all).getKey()[3];
+    if (beatPosition < head(all).key[0]) return 0.0;
+    if (beatPosition >= this.length + 1.0) return last(all).key[3];
 
     // Seeded with the FIRST accentuation, which is not a fallback: the loop's last possible
     // iteration is `i === 0` and it assigns exactly this. The guard above has established
     // `beatPosition >= all[0].beat`, so that iteration either returns (equal) or breaks
     // (greater); it cannot fall out of the bottom leaving the seed in place.
-    let accentuation: AccentuationTuple = head(all).getKey();
+    let accentuation: AccentuationTuple = head(all).key;
     let segmentEnd = this.length + 1.0;
     for (let i = all.length - 1; i >= 0; --i) {
-      accentuation = elementAt(all, i, 'accentuation').getKey();
+      accentuation = elementAt(all, i, 'accentuation').key;
       if (beatPosition === accentuation[0]) return accentuation[1];
       if (beatPosition > accentuation[0]) {
-        if (i < all.length - 1) segmentEnd = elementAt(all, i + 1, 'accentuation').getKey()[0];
+        if (i < all.length - 1) segmentEnd = elementAt(all, i + 1, 'accentuation').key[0];
         break;
       }
     }

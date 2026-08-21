@@ -211,7 +211,7 @@ export { EventMaker } from './midi/EventMaker.js';
 export { InstrumentsDictionary } from './midi/InstrumentsDictionary.js';
 
 // Supplementary
-export { KeyValue } from './supplementary/KeyValue.js';
+export type { KeyValue } from './supplementary/KeyValue.js';
 export { RandomNumberProvider } from './supplementary/RandomNumberProvider.js';
 
 // Version. RULE M6 makes `VERSION` the API; the `Meico` object keeps `Meico.version`

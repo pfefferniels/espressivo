@@ -25,7 +25,7 @@ import { describeMpmParseError } from '../mpm/elements/parseError.js';
 import { Mei } from './Mei.js';
 import { buildOrnament, createMeiOrnamentDef, resolveOrnamentSign } from './MeiOrnamentExpander.js';
 import { VERSION } from '../version.js';
-import { KeyValue } from '../supplementary/KeyValue.js';
+import type { KeyValue } from '../supplementary/KeyValue.js';
 import { Goto } from '../msm/Goto.js';
 import { Msm } from '../msm/Msm.js';
 import { Mpm } from '../mpm/Mpm.js';
@@ -507,7 +507,7 @@ export class Mei2MsmMpmConverter {
 
     const music = this.mei.getMusic();
     if (music === null || music.getFirstChildElement('body', music.getNamespaceURI()) === null)
-      return new KeyValue<Msm[], Mpm[]>([], []);
+      return { key: [], value: [] };
 
     const minPPQ = this.mei.computeMinimalPPQ();
     const originalPPQ = this.ppq;
@@ -581,7 +581,7 @@ export class Mei2MsmMpmConverter {
       }
     }
 
-    return new KeyValue<Msm[], Mpm[]>(msms, mpms);
+    return { key: msms, value: mpms };
   }
 
   /**
@@ -1076,25 +1076,25 @@ export class Mei2MsmMpmConverter {
     // postprocess arpeggios
     for (const arpeggioNoteOrder of this.arpeggiosToSort) {
       const notePitchList: KeyValue<string, number>[] = [];
-      for (const noteId of arpeggioNoteOrder.getKey().getValue().replace(/#/g, '').split(/\s+/)) {
+      for (const noteId of arpeggioNoteOrder.key.getValue().replace(/#/g, '').split(/\s+/)) {
         const note = this.allNotesAndChords.get(noteId);
         if (note === undefined) continue;
         const pitchAtt = attribute('pnum', note);
         if (pitchAtt === null) continue;
         const pitch = parseFloat(pitchAtt.getValue());
-        notePitchList.push(new KeyValue<string, number>(noteId, pitch));
+        notePitchList.push({ key: noteId, value: pitch });
       }
 
       notePitchList.sort((n1, n2) => {
-        return arpeggioNoteOrder.getValue()
-          ? Math.sign(n1.getValue() - n2.getValue())
-          : Math.sign(n2.getValue() - n1.getValue());
+        return arpeggioNoteOrder.value
+          ? Math.sign(n1.value - n2.value)
+          : Math.sign(n2.value - n1.value);
       });
 
       let noteIdsString = '';
       for (const noteId of notePitchList)
-        noteIdsString += ` #${noteId.getKey().trim().replace(/#/g, '')}`;
-      arpeggioNoteOrder.getKey().setValue(noteIdsString.trim());
+        noteIdsString += ` #${noteId.key.trim().replace(/#/g, '')}`;
+      arpeggioNoteOrder.key.setValue(noteIdsString.trim());
     }
 
     // finalize the tempoMap
@@ -1692,7 +1692,7 @@ export class Mei2MsmMpmConverter {
       if (tsMap.getChildCount() > 0) {
         const tss = tsMap.getChildElements('timeSignature');
         ts = tss.get(tss.size() - 1);
-        partsTsMapAndTs.set(part, new KeyValue(tsMap, ts));
+        partsTsMapAndTs.set(part, { key: tsMap, value: ts });
       }
 
       const defaultLocalMeasureDuration =
@@ -1736,11 +1736,11 @@ export class Mei2MsmMpmConverter {
       const part = parts.get(pi);
       const tsData = partsTsMapAndTs.get(part);
       if (tsData === undefined || partsDefaultDurations.get(part) === longestDuration) continue;
-      const tsMap = tsData.getKey();
+      const tsMap = tsData.key;
       // The entry exists only where a `timeSignature` was actually found (see the loop that
       // fills `partsTsMapAndTs` above), so the pair's value is an element whenever the
       // `undefined` test above lets us through.
-      const ts = tsData.getValue();
+      const ts = tsData.value;
 
       while (tsMap.getChildElements().size() > 0) {
         const last = tsMap.getChildElements().get(tsMap.getChildCount() - 1);
@@ -2481,12 +2481,10 @@ export class Mei2MsmMpmConverter {
       }
       const index = ornamentationMap.addOrnament(od);
       if (needsPostprocessing !== 0)
-        this.arpeggiosToSort.push(
-          new KeyValue<Attribute, boolean>(
-            requireAttribute('note.order', mapElement(ornamentationMap, index)),
-            needsPostprocessing > 0,
-          ),
-        );
+        this.arpeggiosToSort.push({
+          key: requireAttribute('note.order', mapElement(ornamentationMap, index)),
+          value: needsPostprocessing > 0,
+        });
     } else {
       let multiIDs = false;
       const staffs = att.getValue().split(/\s+/);
@@ -2508,12 +2506,10 @@ export class Mei2MsmMpmConverter {
 
         const index = ornamentationMap.addOrnament(odd);
         if (needsPostprocessing !== 0)
-          this.arpeggiosToSort.push(
-            new KeyValue<Attribute, boolean>(
-              requireAttribute('note.order', mapElement(ornamentationMap, index)),
-              needsPostprocessing > 0,
-            ),
-          );
+          this.arpeggiosToSort.push({
+            key: requireAttribute('note.order', mapElement(ornamentationMap, index)),
+            value: needsPostprocessing > 0,
+          });
 
         multiIDs = true;
       }
@@ -2745,10 +2741,10 @@ export class Mei2MsmMpmConverter {
   ): number {
     // the instruction this one continues from: the last entry that starts at or before it
     const previousDynamics = dynamicsMap.getAllElements();
-    const predecessor = findLast(previousDynamics, (entry) => entry.getKey() <= dynamicsData.date);
+    const predecessor = findLast(previousDynamics, (entry) => entry.key <= dynamicsData.date);
     let volume = dynamicsData.volume;
     if (predecessor !== null) {
-      const trans = predecessor.getValue().getAttribute('transition.to');
+      const trans = predecessor.value.getAttribute('transition.to');
       if (dynamicsData.transitionTo === undefined) {
         // this instruction is where the predecessor's open transition lands
         if (trans !== null) trans.setValue(String(volume));
@@ -2757,7 +2753,7 @@ export class Mei2MsmMpmConverter {
       } else {
         // `?` is the placeholder a later pass rewrites; Java reaches the same value by leaving
         // `volumeString` null here and defaulting it on the next line.
-        volume = predecessor.getValue().getAttributeValue('volume') ?? '?';
+        volume = predecessor.value.getAttributeValue('volume') ?? '?';
       }
     }
 
@@ -2838,10 +2834,10 @@ export class Mei2MsmMpmConverter {
   ): number {
     // The same backwards search as {@link addDynamicsToMpm}, over `bpm` instead of `volume`.
     const previousTempo = tempoMap.getAllElements();
-    const predecessor = findLast(previousTempo, (entry) => entry.getKey() <= tempoData.date);
+    const predecessor = findLast(previousTempo, (entry) => entry.key <= tempoData.date);
     let bpm = tempoData.bpm;
     if (predecessor !== null) {
-      const trans = predecessor.getValue().getAttribute('transition.to');
+      const trans = predecessor.value.getAttribute('transition.to');
       if (tempoData.transitionTo === undefined) {
         // this instruction is where the predecessor's open transition lands
         if (trans !== null) trans.setValue(String(bpm));
@@ -2852,7 +2848,7 @@ export class Mei2MsmMpmConverter {
         // `<tempo>` this converter writes carries one, so the branch is unreachable from an
         // MEI import; reporting it is the same refusal `addTempoData` used to make one call
         // later, moved to where the missing value actually arises.
-        const inherited = predecessor.getValue().getAttributeValue('bpm');
+        const inherited = predecessor.value.getAttributeValue('bpm');
         if (inherited === null) {
           console.error('Cannot add tempo, bpm not specified.');
           return -1;

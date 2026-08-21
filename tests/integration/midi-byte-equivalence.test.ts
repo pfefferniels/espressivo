@@ -204,8 +204,8 @@ describe('Expressive MIDI event-level equivalence (MEI fixtures)', () => {
       mei.setFile(`${fixture}.mei`);
       const converter = new Mei2MsmMpmConverter(720, true, false, true);
       const result = converter.convert(mei);
-      const msm = result.getKey()[0];
-      const mpm = result.getValue()[0];
+      const msm = result.key[0];
+      const mpm = result.value[0];
       const perf = mpm.getAllPerformances()[0];
 
       const tsMidi = msm.exportExpressiveMidi(perf, true)!;
@@ -233,7 +233,7 @@ describe('Expressive MIDI event-level equivalence (MEI fixtures)', () => {
       mei.setFile(`${fixture}.mei`);
       const converter = new Mei2MsmMpmConverter(720, true, false, true);
       const result = converter.convert(mei);
-      const msm = result.getKey()[0];
+      const msm = result.key[0];
 
       const tsMidi = msm.exportMidi(120, true)!;
       expect(tsMidi).not.toBeNull();

@@ -26,7 +26,7 @@ function viewIds(text: string): string[] {
  */
 function genericMapIds(text: string): string[] {
   const parsed = okValue(GenericMap.createGenericMap(parseMpmRoot(text)));
-  return parsed.getAllElements().map((kv) => kv.getValue().getAttributeValue('id') ?? '?');
+  return parsed.getAllElements().map((kv) => kv.value.getAttributeValue('id') ?? '?');
 }
 
 describe('datedView', () => {

@@ -448,8 +448,8 @@ export function convertMeiToMsmMpm(
     options?.expandOrnaments ?? true,
   );
   const converted = converter.convert(document);
-  const msms = converted.getKey();
-  const mpms = converted.getValue();
+  const msms = converted.key;
+  const mpms = converted.value;
 
   if (msms.length === 0)
     throw new EmptyDocumentError('MEI: no convertible movement (mdiv) in this document');

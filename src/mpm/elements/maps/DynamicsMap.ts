@@ -1,7 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
-import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
@@ -100,7 +99,7 @@ export class DynamicsMap extends GenericMap {
     if (dynamics.subNoteDynamics === true) e.addAttribute(new Attribute('subNoteDynamics', 'true'));
     if (dynamics.id !== undefined)
       e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', dynamics.id));
-    return this.insertElement(new KeyValue(dynamics.date, e), false);
+    return this.insertElement({ key: dynamics.date, value: e }, false);
   }
 
   /**
@@ -164,7 +163,7 @@ export class DynamicsMap extends GenericMap {
     const i = this.resolveEntryIndex(index, 'dynamics');
     if (i < 0) return null;
     const entry = this.entryAt(i);
-    const e = entry.getValue();
+    const e = entry.value;
 
     const volAtt = attribute('volume', e);
     if (volAtt === null) return null;
@@ -176,7 +175,7 @@ export class DynamicsMap extends GenericMap {
     const sndAtt = attribute('subNoteDynamics', e);
 
     return resolveDynamics({
-      startDate: entry.getKey(),
+      startDate: entry.key,
       endDate: this.nextDateOfType(i, 'dynamics'),
       volumeString,
       volume: numericDynamicsValue(volumeString, style),
@@ -232,10 +231,9 @@ export class DynamicsMap extends GenericMap {
           DynamicsMap.generateSubNoteDynamics(dd, chanVolMap);
           for (; mapIndex < map.size(); ++mapIndex) {
             const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
-            if (mapEntry.getKey() < dd.startDate || mapEntry.getValue().getLocalName() !== 'note')
-              continue;
-            if (mapEntry.getKey() >= dd.endDate) break;
-            mapEntry.getValue().addAttribute(new Attribute('velocity', '100.0'));
+            if (mapEntry.key < dd.startDate || mapEntry.value.getLocalName() !== 'note') continue;
+            if (mapEntry.key >= dd.endDate) break;
+            mapEntry.value.addAttribute(new Attribute('velocity', '100.0'));
           }
           continue;
         }
@@ -253,15 +251,15 @@ export class DynamicsMap extends GenericMap {
 
       for (; mapIndex < map.size(); ++mapIndex) {
         const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
-        if (mapEntry.getValue().getLocalName() !== 'note') continue;
-        if (mapEntry.getKey() < dd.startDate) {
-          mapEntry.getValue().addAttribute(new Attribute('velocity', '100.0'));
+        if (mapEntry.value.getLocalName() !== 'note') continue;
+        if (mapEntry.key < dd.startDate) {
+          mapEntry.value.addAttribute(new Attribute('velocity', '100.0'));
           continue;
         }
-        if (mapEntry.getKey() >= dd.endDate) break;
-        mapEntry
-          .getValue()
-          .addAttribute(new Attribute('velocity', String(dynamicsAt(dd, mapEntry.getKey()))));
+        if (mapEntry.key >= dd.endDate) break;
+        mapEntry.value.addAttribute(
+          new Attribute('velocity', String(dynamicsAt(dd, mapEntry.key))),
+        );
       }
     }
     return chanVolMap;
@@ -291,7 +289,7 @@ export class DynamicsMap extends GenericMap {
     if (dynamicsMap !== null) return dynamicsMap.renderDynamicsToMap(map);
     if (map === null) return null;
     for (const entry of map.getAllElements()) {
-      const e = entry.getValue();
+      const e = entry.value;
       if (e.getLocalName() === 'note') e.addAttribute(new Attribute('velocity', '100.0'));
     }
     return null;

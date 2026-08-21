@@ -163,7 +163,7 @@ describe('GenericMap', () => {
     it('should maintain sorted order (ascending dates)', () => {
       const map = makeMap([300, 100, 500, 200, 400]);
       const elements = map.getAllElements();
-      const dates = elements.map((kv) => kv.getKey());
+      const dates = elements.map((kv) => kv.key);
       expect(dates).toEqual([100, 200, 300, 400, 500]);
     });
 
@@ -190,7 +190,7 @@ describe('GenericMap', () => {
       e.addAttribute(new Attribute('date', '50'));
       const idx = map.addElement(e);
       expect(idx).toBe(0);
-      expect(map.getAllElements()[0].getKey()).toBe(50);
+      expect(map.getAllElements()[0].key).toBe(50);
     });
 
     it('should add an element at the end if its date is largest', () => {
@@ -199,7 +199,7 @@ describe('GenericMap', () => {
       e.addAttribute(new Attribute('date', '999'));
       const idx = map.addElement(e);
       expect(idx).toBe(2);
-      expect(map.getAllElements()[2].getKey()).toBe(999);
+      expect(map.getAllElements()[2].key).toBe(999);
     });
   });
 
@@ -208,7 +208,7 @@ describe('GenericMap', () => {
       const map = makeMap([100, 200, 300]);
       map.removeElementAt(1);
       expect(map.size()).toBe(2);
-      const dates = map.getAllElements().map((kv) => kv.getKey());
+      const dates = map.getAllElements().map((kv) => kv.key);
       expect(dates).toEqual([100, 300]);
     });
 
@@ -222,14 +222,14 @@ describe('GenericMap', () => {
       const map = makeMap([100, 200, 300]);
       map.removeElementAt(0);
       expect(map.size()).toBe(2);
-      expect(map.getAllElements()[0].getKey()).toBe(200);
+      expect(map.getAllElements()[0].key).toBe(200);
     });
 
     it('should remove the last element by its index', () => {
       const map = makeMap([100, 200, 300]);
       map.removeElementAt(2);
       expect(map.size()).toBe(2);
-      expect(map.getAllElements()[1].getKey()).toBe(200);
+      expect(map.getAllElements()[1].key).toBe(200);
     });
 
     it('should remove an element by reference', () => {
@@ -543,7 +543,7 @@ describe('GenericMap', () => {
       const map = makeMap([300, 100, 200]);
       const all = map.getAllElements();
       expect(all.length).toBe(3);
-      expect(all.map((kv) => kv.getKey())).toEqual([100, 200, 300]);
+      expect(all.map((kv) => kv.key)).toEqual([100, 200, 300]);
     });
 
     it('getAllElementsOfType returns only matching types', () => {
@@ -575,7 +575,7 @@ describe('GenericMap', () => {
       const atDate100 = map.getAllElementsAt(100);
       expect(atDate100.length).toBe(3);
       for (const kv of atDate100) {
-        expect(kv.getKey()).toBe(100);
+        expect(kv.key).toBe(100);
       }
     });
 
@@ -585,7 +585,7 @@ describe('GenericMap', () => {
       const map = makeMap([100, 300]);
       const result = map.getAllElementsAt(200);
       expect(result.length).toBe(1);
-      expect(result[0].getKey()).toBe(300);
+      expect(result[0].key).toBe(300);
     });
 
     it('getAllElementsAt returns empty array when date is after all elements', () => {
@@ -607,18 +607,18 @@ describe('GenericMap', () => {
       first.addAttribute(new Attribute('date', '500'));
 
       // The keys stay stale until `sort()` re-reads `@date`.
-      expect(map.getAllElements()[0].getKey()).toBe(100);
+      expect(map.getAllElements()[0].key).toBe(100);
 
       map.sort();
 
-      const dates = map.getAllElements().map((kv) => kv.getKey());
+      const dates = map.getAllElements().map((kv) => kv.key);
       expect(dates).toEqual([200, 300, 500]);
     });
 
     it('sort on an already sorted map is a no-op', () => {
       const map = makeMap([100, 200, 300]);
       map.sort();
-      const dates = map.getAllElements().map((kv) => kv.getKey());
+      const dates = map.getAllElements().map((kv) => kv.key);
       expect(dates).toEqual([100, 200, 300]);
     });
 
@@ -634,7 +634,7 @@ describe('GenericMap', () => {
         const map = makeMap(keys.map((_, i) => (i + 1) * 100));
         keys.forEach((k, i) => map.getElement(i)!.addAttribute(new Attribute('date', `${k}`)));
         map.sort();
-        return map.getAllElements().map((kv) => kv.getKey());
+        return map.getAllElements().map((kv) => kv.key);
       }
 
       expect(sorted([2, 3, 1])).toEqual([1, 2, 3]); // the swap gave [1, 3, 2]
@@ -654,7 +654,7 @@ describe('GenericMap', () => {
       map.sort();
 
       // every key is equal, so nothing may move
-      expect(map.getAllElements().map((kv) => kv.getValue().getAttributeValue('tag'))).toEqual(ids);
+      expect(map.getAllElements().map((kv) => kv.value.getAttributeValue('tag'))).toEqual(ids);
     });
 
     it('sort on an empty map does not throw', () => {

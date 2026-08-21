@@ -1,6 +1,6 @@
 import { XmlBase } from '../xml/XmlBase.js';
 import { Document, Element, Attribute, Nodes } from '../xml/XomTypes.js';
-import { KeyValue } from '../supplementary/KeyValue.js';
+import type { KeyValue } from '../supplementary/KeyValue.js';
 import { duration2decimal } from '../music/duration.js';
 import { getFilenameWithoutExtension } from '../music/text.js';
 import {
@@ -273,7 +273,7 @@ export class Mei extends XmlBase {
     ignoreExpansions?: boolean,
     cleanup?: boolean,
   ): Msm[] {
-    return this.exportMsmMpm(ppq, dontUseChannel10, ignoreExpansions, cleanup).getKey();
+    return this.exportMsmMpm(ppq, dontUseChannel10, ignoreExpansions, cleanup).key;
   }
 
   /**
@@ -817,7 +817,7 @@ export class Mei extends XmlBase {
         newStaffDef.addAttribute(new Attribute('n', newStaffN));
 
         // cannot append here — the sequence has to follow @n, not visiting order
-        const kv = new KeyValue(newStaffDef, container);
+        const kv = { key: newStaffDef, value: container };
         const sortKey = parseInt(newStaffN, 10);
         // A non-numeric @n is out of schema (MEI types staff/@n as data.INT) and makes
         // Java throw NumberFormatException here. Ordering the entry last is strictly more
@@ -830,7 +830,7 @@ export class Mei extends XmlBase {
         .sort((a, b) => a[0] - b[0])
         .map(([, kv]) => kv);
       ordered.push(...unnumberedStaffDefs);
-      for (const kv of ordered) kv.getValue().appendChild(kv.getKey());
+      for (const kv of ordered) kv.value.appendChild(kv.key);
 
       for (const origStaffDef of origStaffDefs.values()) origStaffDef.detach();
 

@@ -1111,7 +1111,7 @@ describe('DynamicsMap', () => {
       expect(
         map
           .getAllElements()
-          .map((e) => [e.getValue().getLocalName(), e.getValue().getAttributeValue('velocity')]),
+          .map((e) => [e.value.getLocalName(), e.value.getAttributeValue('velocity')]),
       ).toEqual([
         ['note', '100.0'],
         ['rest', null],

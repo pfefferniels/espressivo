@@ -1,7 +1,6 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
-import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
@@ -58,7 +57,7 @@ export class MetricalAccentuationMap extends GenericMap {
     if (loop !== undefined) e.addAttribute(new Attribute('loop', String(loop)));
     if (stickToMeasures !== undefined)
       e.addAttribute(new Attribute('stickToMeasures', String(stickToMeasures)));
-    return this.insertElement(new KeyValue(date, e), false);
+    return this.insertElement({ key: date, value: e }, false);
   }
 
   /**
@@ -75,7 +74,7 @@ export class MetricalAccentuationMap extends GenericMap {
     const i = this.resolveEntryIndex(index, 'accentuationPattern');
     if (i < 0) return null;
     const entry = this.entryAt(i);
-    const e = entry.getValue();
+    const e = entry.value;
 
     const nameRefAtt = attribute('name.ref', e);
     if (nameRefAtt === null) return null;
@@ -89,7 +88,7 @@ export class MetricalAccentuationMap extends GenericMap {
     const stmAtt = attribute('stickToMeasures', e);
 
     return {
-      startDate: entry.getKey(),
+      startDate: entry.key,
       endDate: this.nextDateOfType(i, 'accentuationPattern'),
       accentuationPatternDefName,
       accentuationPatternDef: style.getDef(accentuationPatternDefName) ?? null,
@@ -144,37 +143,36 @@ export class MetricalAccentuationMap extends GenericMap {
       let patternLengthTicks = (def.getLength() * ppq4) / tsDenominator;
       for (; mapIndex < map.size(); ++mapIndex) {
         const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
-        if (mapEntry.getKey() < md.startDate) continue;
-        const velocityAtt = attribute('velocity', mapEntry.getValue());
+        if (mapEntry.key < md.startDate) continue;
+        const velocityAtt = attribute('velocity', mapEntry.value);
         if (velocityAtt === null) continue;
         if (timeSignatureMap !== null) {
           const timeSignatures = timeSignatureMap.getAllElements();
           let update = false;
           for (let tsIndex = timeSignIndex + 1; tsIndex < timeSignatures.length; ++tsIndex) {
-            if (elementAt(timeSignatures, tsIndex, 'time signature').getKey() > mapEntry.getKey())
-              break;
+            if (elementAt(timeSignatures, tsIndex, 'time signature').key > mapEntry.key) break;
             timeSignIndex = tsIndex;
             update = true;
           }
           if (update) {
             const timeSign = elementAt(timeSignatures, timeSignIndex, 'time signature');
-            tsDate = timeSign.getKey();
-            tsNumerator = parseFloat(getAttributeValue('numerator', timeSign.getValue()));
-            tsDenominator = parseInt(getAttributeValue('denominator', timeSign.getValue()));
+            tsDate = timeSign.key;
+            tsNumerator = parseFloat(getAttributeValue('numerator', timeSign.value));
+            tsDenominator = parseInt(getAttributeValue('denominator', timeSign.value));
             ticksPerBeat = ppq4 / tsDenominator;
             tickLengthOfOneMeasure = ticksPerBeat * tsNumerator;
             patternLengthTicks = (def.getLength() * ppq4) / tsDenominator;
           }
         }
         if (
-          mapEntry.getKey() >= md.endDate ||
-          (!md.loop && mapEntry.getKey() >= md.startDate + patternLengthTicks)
+          mapEntry.key >= md.endDate ||
+          (!md.loop && mapEntry.key >= md.startDate + patternLengthTicks)
         )
           break;
         let beat: number;
         if (md.stickToMeasures)
-          beat = 1.0 + ((mapEntry.getKey() - tsDate) % tickLengthOfOneMeasure) / ticksPerBeat;
-        else beat = 1.0 + ((mapEntry.getKey() - tsDate) % patternLengthTicks) / ticksPerBeat;
+          beat = 1.0 + ((mapEntry.key - tsDate) % tickLengthOfOneMeasure) / ticksPerBeat;
+        else beat = 1.0 + ((mapEntry.key - tsDate) % patternLengthTicks) / ticksPerBeat;
         const velocity = parseFloat(velocityAtt.getValue());
         const accentuation = def.getAccentuationAt(beat);
         velocityAtt.setValue(String(velocity + accentuation * md.scale));

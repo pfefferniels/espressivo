@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
-import { KeyValue } from '../../../../supplementary/KeyValue.js';
+import type { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
 import { MissingNodeError } from '../../../../xml/errors.js';
@@ -100,13 +100,13 @@ export class RubatoDef extends AbstractXmlSubtree {
       parseJavaDouble(this.lateStartAttr.getValue(), 'rubatoDef/@lateStart'),
       parseJavaDouble(this.earlyEndAttr.getValue(), 'rubatoDef/@earlyEnd'),
     );
-    this.lateStartAttr.setValue(String(le.getKey()));
-    this.earlyEndAttr.setValue(String(le.getValue()));
+    this.lateStartAttr.setValue(String(le.key));
+    this.earlyEndAttr.setValue(String(le.value));
 
     this.frameLength = parseJavaDouble(this.frameLengthAttr.getValue(), 'rubatoDef/@frameLength');
     this.intensity = parseJavaDouble(this.intensityAttr.getValue(), 'rubatoDef/@intensity');
-    this.lateStart = le.getKey();
-    this.earlyEnd = le.getValue();
+    this.lateStart = le.key;
+    this.earlyEnd = le.value;
   }
 
   /**
@@ -209,9 +209,9 @@ export class RubatoDef extends AbstractXmlSubtree {
    */
   setLateStartAndEarlyEnd(lateStart: number, earlyEnd: number): void {
     const le = RubatoDef.ensureLateStartEarlyEndBoundaries(lateStart, earlyEnd);
-    this.earlyEnd = le.getValue();
+    this.earlyEnd = le.value;
     this.earlyEndAttr.setValue(String(this.earlyEnd));
-    this.lateStart = le.getKey();
+    this.lateStart = le.key;
     this.lateStartAttr.setValue(String(this.lateStart));
   }
 
@@ -237,19 +237,19 @@ export class RubatoDef extends AbstractXmlSubtree {
     lateStart: number,
     earlyEnd: number,
   ): KeyValue<number, number> {
-    const le = new KeyValue(lateStart, earlyEnd);
+    const le = { key: lateStart, value: earlyEnd };
     if (lateStart < 0.0) {
       console.error('Invalid rubato lateStart < 0.0 is set to 0.0.');
-      le.setKey(0.0);
+      le.key = 0.0;
     }
     if (earlyEnd > 1.0) {
       console.error('Invalid rubato earlyEnd > 1.0 is set to 1.0.');
-      le.setValue(1.0);
+      le.value = 1.0;
     }
     if (lateStart >= earlyEnd) {
       console.error('Invalid rubato lateStart >= earlyEnd, setting them to 0.0 and 1.0.');
-      le.setKey(0.0);
-      le.setValue(1.0);
+      le.key = 0.0;
+      le.value = 1.0;
     }
     return le;
   }

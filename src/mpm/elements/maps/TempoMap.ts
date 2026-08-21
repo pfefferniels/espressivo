@@ -1,7 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
-import { KeyValue } from '../../../supplementary/KeyValue.js';
+import type { KeyValue } from '../../../supplementary/KeyValue.js';
 import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
@@ -95,7 +95,7 @@ export class TempoMap extends GenericMap {
     e.addAttribute(new Attribute('beatLength', String(tempo.beatLength)));
     if (tempo.id !== undefined)
       e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', tempo.id));
-    return this.insertElement(new KeyValue(tempo.date, e), false);
+    return this.insertElement({ key: tempo.date, value: e }, false);
   }
 
   /**
@@ -114,7 +114,7 @@ export class TempoMap extends GenericMap {
     if (i < 0) return null;
 
     const entry = this.entryAt(i);
-    const e = entry.getValue();
+    const e = entry.value;
     const bpmAtt = attribute('bpm', e);
     if (bpmAtt === null) return null;
     const beatLengthAtt = attribute('beatLength', e);
@@ -125,7 +125,7 @@ export class TempoMap extends GenericMap {
 
     return resolveTempo(
       {
-        startDate: entry.getKey(),
+        startDate: entry.key,
         endDate: this.nextDateOfType(i, 'tempo'),
         beatLength: parseFloat(beatLengthAtt.getValue()),
       },
@@ -206,20 +206,18 @@ export class TempoMap extends GenericMap {
     if (this.elements.length === 0) {
       for (; mapIndex < map.size(); ++mapIndex) {
         const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
-        const date = parseFloat(getAttributeValue('date.perf', mapEntry.getValue()));
+        const date = parseFloat(getAttributeValue('date.perf', mapEntry.value));
         const ms = TempoMap.computeMillisecondsForNoTempo(date, ppq);
-        mapEntry.getValue().addAttribute(new Attribute('milliseconds.date', String(ms)));
-        const durAtt = attribute('duration.perf', mapEntry.getValue());
+        mapEntry.value.addAttribute(new Attribute('milliseconds.date', String(ms)));
+        const durAtt = attribute('duration.perf', mapEntry.value);
         if (durAtt === null) continue;
         const endDate = date + parseFloat(durAtt.getValue());
-        mapEntry
-          .getValue()
-          .addAttribute(
-            new Attribute(
-              'milliseconds.date.end',
-              String(TempoMap.computeMillisecondsForNoTempo(endDate, ppq)),
-            ),
-          );
+        mapEntry.value.addAttribute(
+          new Attribute(
+            'milliseconds.date.end',
+            String(TempoMap.computeMillisecondsForNoTempo(endDate, ppq)),
+          ),
+        );
       }
       return;
     }
@@ -243,25 +241,25 @@ export class TempoMap extends GenericMap {
       let milliseconds: number;
       for (; mapIndex < map.size(); ++mapIndex) {
         const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
-        if (mapEntry.getKey() > td.endDate) break;
+        if (mapEntry.key > td.endDate) break;
 
-        const date = parseFloat(getAttributeValue('date.perf', mapEntry.getValue()));
-        if (mapEntry.getKey() <= td.startDate)
+        const date = parseFloat(getAttributeValue('date.perf', mapEntry.value));
+        if (mapEntry.key <= td.startDate)
           milliseconds = TempoMap.computeDiffTiming(date, ppq, null);
         else milliseconds = TempoMap.computeDiffTiming(date, ppq, td) + startDateMilliseconds;
-        mapEntry.getValue().addAttribute(new Attribute('milliseconds.date', String(milliseconds)));
+        mapEntry.value.addAttribute(new Attribute('milliseconds.date', String(milliseconds)));
 
-        const dateEndAtt = attribute('date.end.perf', mapEntry.getValue());
+        const dateEndAtt = attribute('date.end.perf', mapEntry.value);
         if (dateEndAtt !== null) {
           const endDate = parseFloat(dateEndAtt.getValue());
-          pendingDurations.push(new KeyValue(endDate, mapIndex));
+          pendingDurations.push({ key: endDate, value: mapIndex });
           continue;
         }
-        const durAtt = attribute('duration.perf', mapEntry.getValue());
+        const durAtt = attribute('duration.perf', mapEntry.value);
         if (durAtt !== null) {
           const endDate = date + parseFloat(durAtt.getValue());
-          mapEntry.getValue().addAttribute(new Attribute('date.end.perf', String(endDate)));
-          pendingDurations.push(new KeyValue(endDate, mapIndex));
+          mapEntry.value.addAttribute(new Attribute('date.end.perf', String(endDate)));
+          pendingDurations.push({ key: endDate, value: mapIndex });
         }
       }
 
@@ -272,16 +270,16 @@ export class TempoMap extends GenericMap {
       // past this span may sit in front of one ending inside it.
       let kept = 0;
       for (const pd of pendingDurations) {
-        const endDate = pd.getKey();
+        const endDate = pd.key;
         if (endDate > td.endDate) {
           pendingDurations[kept++] = pd;
           continue;
         }
         if (endDate <= td.startDate) milliseconds = TempoMap.computeDiffTiming(endDate, ppq, null);
         else milliseconds = TempoMap.computeDiffTiming(endDate, ppq, td) + startDateMilliseconds;
-        elementAt(map.elements, pd.getValue(), 'target entry')
-          .getValue()
-          .addAttribute(new Attribute('milliseconds.date.end', String(milliseconds)));
+        elementAt(map.elements, pd.value, 'target entry').value.addAttribute(
+          new Attribute('milliseconds.date.end', String(milliseconds)),
+        );
       }
       pendingDurations.length = kept;
 
@@ -296,7 +294,7 @@ export class TempoMap extends GenericMap {
     }
     if (map === null) return;
     for (const entry of map.getAllElements()) {
-      const e = entry.getValue();
+      const e = entry.value;
       const dateAtt = attribute('date.perf', e);
       if (dateAtt !== null) e.addAttribute(new Attribute('milliseconds.date', dateAtt.getValue()));
       const endAtt = attribute('date.end.perf', e);

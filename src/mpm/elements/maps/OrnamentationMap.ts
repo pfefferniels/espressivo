@@ -4,7 +4,6 @@ import { MPM_NAMESPACE, ORNAMENTATION_STYLE } from '../../names.js';
 import { DEFAULT_EXPAND_ORNAMENTS } from '../../RenderOptions.js';
 import type { RenderContext } from '../../RenderOptions.js';
 import { elementAt, isOk } from '../../../prelude/index.js';
-import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
@@ -158,7 +157,7 @@ export class OrnamentationMap extends GenericMap {
       ornament.addAttribute(new Attribute('note.order', noteOrderAttributeValue(noteOrder)));
     if (id !== null && id !== '')
       ornament.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
-    return this.insertElement(new KeyValue(date, ornament), false);
+    return this.insertElement({ key: date, value: ornament }, false);
   }
 
   /**
@@ -205,7 +204,7 @@ export class OrnamentationMap extends GenericMap {
 
     for (const note of options.notes ?? []) ornament.appendChild(note.generateXML());
 
-    return this.insertElement(new KeyValue(options.date, ornament), false);
+    return this.insertElement({ key: options.date, value: ornament }, false);
   }
 
   /**
@@ -260,7 +259,7 @@ export class OrnamentationMap extends GenericMap {
     const i = this.resolveEntryIndex(index, 'ornament');
     if (i < 0) return null;
     const entry = this.entryAt(i);
-    const xml = entry.getValue();
+    const xml = entry.value;
 
     const nameRefAtt = attribute('name.ref', xml);
     if (nameRefAtt === null) return null;
@@ -274,7 +273,7 @@ export class OrnamentationMap extends GenericMap {
     const idAtt = attribute('id', xml);
     return {
       xmlId: idAtt === null ? null : idAtt.getValue(),
-      date: entry.getKey(),
+      date: entry.key,
       scale: scaleAtt === null ? 0.0 : parseFloat(scaleAtt.getValue()),
       ornamentDefName,
       ornamentDef,
@@ -421,8 +420,8 @@ export class OrnamentationMap extends GenericMap {
     const notes = new Map<string, Element>();
     for (const map of maps) {
       for (const note of map.getAllElementsOfType('note')) {
-        const id = attribute('id', note.getValue());
-        if (id !== null) notes.set(id.getValue(), note.getValue());
+        const id = attribute('id', note.value);
+        if (id !== null) notes.set(id.getValue(), note.value);
       }
     }
 
@@ -435,7 +434,7 @@ export class OrnamentationMap extends GenericMap {
     // or removes from *this* map — it writes into `maps`, which are the score's — so walking
     // the live array is safe here.
     for (const entry of this.getAllElements()) {
-      const ornamentXml = entry.getValue();
+      const ornamentXml = entry.value;
 
       // The style for subsequent ornaments, and deliberately NOT `GenericMap.getStyle`, which
       // does the same two-header lookup: this one carries `style` over from the previous
@@ -473,7 +472,7 @@ export class OrnamentationMap extends GenericMap {
       const noteOrder = OrnamentationMap.readNoteOrder(ornamentXml);
       const od: Ornament = {
         xmlId: idAtt === null ? null : idAtt.getValue(),
-        date: entry.getKey(),
+        date: entry.key,
         scale: scaleAtt === null ? 0.0 : parseFloat(scaleAtt.getValue()),
         ornamentDefName,
         ornamentDef,
@@ -527,8 +526,8 @@ export class OrnamentationMap extends GenericMap {
         for (const map of maps) {
           const notesAtDate = map.getAllElementsAt(od.date);
           for (const note of notesAtDate) {
-            if (note.getValue().getLocalName() === 'note') {
-              chordSequence.push([note.getValue()]);
+            if (note.value.getLocalName() === 'note') {
+              chordSequence.push([note.value]);
             }
           }
         }
@@ -580,7 +579,7 @@ export class OrnamentationMap extends GenericMap {
    */
   private renderAllNonmillisecondsModifiersToMap(map: GenericMap): void {
     for (const e of map.getAllElementsOfType('note')) {
-      const note = e.getValue();
+      const note = e.value;
       const ornamentDynamics = attribute('ornament.dynamics', note);
       if (ornamentDynamics !== null) {
         const velocity = attribute('velocity', note);
@@ -675,7 +674,7 @@ export class OrnamentationMap extends GenericMap {
   ): void {
     if (ornamentationMap === null || map === null) return;
     for (const e of map.getAllElementsOfType('note')) {
-      const note = e.getValue();
+      const note = e.value;
       const millisecondsDateAtt = attribute('milliseconds.date', note);
       if (millisecondsDateAtt === null) continue;
       const millisecondsDate = parseFloat(millisecondsDateAtt.getValue());

@@ -2,7 +2,7 @@ import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { Header } from '../Header.js';
-import { KeyValue } from '../../../supplementary/KeyValue.js';
+import type { KeyValue } from '../../../supplementary/KeyValue.js';
 import {
   collectionNameOfKind,
   styleOfKind,
@@ -17,7 +17,7 @@ const MPM_NAMESPACE = 'http://www.cemfi.de/mpm/ns/1.0';
 
 /** The date an entry of {@link GenericMap.elements} is sorted by. */
 function entryDate(entry: KeyValue<number, Element>): number {
-  return entry.getKey();
+  return entry.key;
 }
 
 /** Map/element names that belong to the MPM namespace */
@@ -203,7 +203,7 @@ export class GenericMap extends AbstractXmlSubtree {
       if (d === null) continue;
       if (e.getLocalName() === 'style' && attribute('name.ref', e) === null) continue;
       const date = parseFloat(d.getValue());
-      this.elements.splice(this.insertionIndexFor(date), 0, new KeyValue(date, e));
+      this.elements.splice(this.insertionIndexFor(date), 0, { key: date, value: e });
     }
     this.sortXml();
     this.id = attribute('id', this.getXml());
@@ -216,7 +216,7 @@ export class GenericMap extends AbstractXmlSubtree {
    */
   private sortXml(): void {
     const order: Element[] = [];
-    for (const e of this.elements) order.push(e.getValue());
+    for (const e of this.elements) order.push(e.value);
     this.getXml().reorderChildren(order);
   }
 
@@ -243,13 +243,13 @@ export class GenericMap extends AbstractXmlSubtree {
    */
   sort(): void {
     for (const e of this.elements) {
-      const date = parseFloat(getAttributeValue('date', e.getValue()));
-      if (e.getKey() !== date) e.setKey(date);
+      const date = parseFloat(getAttributeValue('date', e.value));
+      if (e.key !== date) e.key = date;
     }
     for (let i = 1; i < this.size(); ++i) {
       const e = elementAt(this.elements, i, 'GenericMap.sort');
       let moveToIndex = i;
-      for (let j = i - 1; j >= 0 && e.getKey() < elementAt(this.elements, j, 'sort').getKey(); --j)
+      for (let j = i - 1; j >= 0 && e.key < elementAt(this.elements, j, 'sort').key; --j)
         moveToIndex = j;
       // Shift, do not swap. `moveToIndex < i`, so removing at `i` leaves every earlier
       // index alone and the re-insert lands where the scan said it belongs.
@@ -293,7 +293,7 @@ export class GenericMap extends AbstractXmlSubtree {
     return this.elements;
   }
   getAllElementsOfType(type: string): readonly KeyValue<number, Element>[] {
-    return this.elements.filter((e) => e.getValue().getLocalName() === type);
+    return this.elements.filter((e) => e.value.getLocalName() === type);
   }
   /**
    * The entries dated exactly `date` — plus, when there is none, the first entry after it.
@@ -312,10 +312,10 @@ export class GenericMap extends AbstractXmlSubtree {
   }
 
   getFirstElement(): Element | null {
-    return this.elements.at(0)?.getValue() ?? null;
+    return this.elements.at(0)?.value ?? null;
   }
   getLastElement(): Element | null {
-    return this.elements.at(-1)?.getValue() ?? null;
+    return this.elements.at(-1)?.value ?? null;
   }
   /**
    * The entry at `index`, or null when there is none — including for a negative index, which
@@ -323,14 +323,14 @@ export class GenericMap extends AbstractXmlSubtree {
    * so `getElement(-1)` would start answering with the last entry rather than with null.
    */
   getElement(index: number): Element | null {
-    return index < 0 ? null : (this.elements.at(index)?.getValue() ?? null);
+    return index < 0 ? null : (this.elements.at(index)?.value ?? null);
   }
 
   getElementByID(id: string): Element | null {
     return this.getElement(this.getElementIndexByID(id));
   }
   getElementIndexByID(id: string): number {
-    return this.elements.findIndex((e) => attribute('id', e.getValue())?.getValue() === id);
+    return this.elements.findIndex((e) => attribute('id', e.value)?.getValue() === id);
   }
 
   getElementBeforeAt(date: number): Element | null {
@@ -384,7 +384,7 @@ export class GenericMap extends AbstractXmlSubtree {
 
   getElementIndexOf(element: Element | null): number {
     if (element === null) return -1;
-    return this.elements.findIndex((e) => e.getValue() === element);
+    return this.elements.findIndex((e) => e.value === element);
   }
 
   /** Null is accepted and refused with a reason on stderr, as `GenericMap.java` does. */
@@ -403,7 +403,7 @@ export class GenericMap extends AbstractXmlSubtree {
       return -1;
     }
     const date = parseFloat(dateAtt.getValue());
-    return this.insertElement(new KeyValue(date, xml), false);
+    return this.insertElement({ key: date, value: xml }, false);
   }
 
   /**
@@ -417,8 +417,8 @@ export class GenericMap extends AbstractXmlSubtree {
    */
   protected insertElement(element: KeyValue<number, Element>, firstAtDate = false): number {
     const index = firstAtDate
-      ? this.elements.findIndex((e) => e.getKey() >= element.getKey())
-      : this.insertionIndexFor(element.getKey());
+      ? this.elements.findIndex((e) => e.key >= element.key)
+      : this.insertionIndexFor(element.key);
     // `findIndex` says -1 for "every existing entry is earlier", which the insert-at-0 below
     // turns into a quirk kept from Java: a `firstAtDate` insert whose date is past every entry
     // lands at the FRONT of the map, not at the back. That is why a style switch added after
@@ -426,7 +426,7 @@ export class GenericMap extends AbstractXmlSubtree {
     // the map.
     const at = index < 0 ? 0 : index;
     this.elements.splice(at, 0, element);
-    this.getXml().insertChild(element.getValue(), at);
+    this.getXml().insertChild(element.value, at);
     return at;
   }
 
@@ -445,7 +445,7 @@ export class GenericMap extends AbstractXmlSubtree {
   private insertionIndexFor(date: number): number {
     // `findLastIndex` is that backwards scan. Its `-1` for "no entry qualifies" becomes 0
     // under the `+ 1`: insert at the front.
-    return this.elements.findLastIndex((entry) => entry.getKey() <= date) + 1;
+    return this.elements.findLastIndex((entry) => entry.key <= date) + 1;
   }
 
   /**
@@ -457,7 +457,7 @@ export class GenericMap extends AbstractXmlSubtree {
    */
   removeElementAt(index: number): void {
     if (index >= this.elements.length) return;
-    this.getXml().removeChild(elementAt(this.elements, index, 'removeElement').getValue());
+    this.getXml().removeChild(elementAt(this.elements, index, 'removeElement').value);
     this.elements.splice(index, 1);
   }
 
@@ -475,7 +475,7 @@ export class GenericMap extends AbstractXmlSubtree {
     e.addAttribute(new Attribute('name.ref', styleName));
     if (id !== undefined && id !== null)
       e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
-    return this.insertElement(new KeyValue(date, e), true);
+    return this.insertElement({ key: date, value: e }, true);
   }
 
   /**
@@ -534,7 +534,7 @@ export class GenericMap extends AbstractXmlSubtree {
   protected nextDateOfType(index: number, localName: string): number {
     for (let j = index + 1; j < this.elements.length; ++j) {
       const entry = elementAt(this.elements, j, 'nextDateOfType');
-      if (entry.getValue().getLocalName() === localName) return entry.getKey();
+      if (entry.value.getLocalName() === localName) return entry.key;
     }
     return Number.MAX_VALUE;
   }
@@ -546,7 +546,7 @@ export class GenericMap extends AbstractXmlSubtree {
    */
   protected findStyleSwitchAt(index: number): Element | null {
     for (let j = index; j >= 0; --j) {
-      const s = elementAt(this.elements, j, 'findStyleSwitchAt').getValue();
+      const s = elementAt(this.elements, j, 'findStyleSwitchAt').value;
       if (s.getLocalName() === 'style') return s;
     }
     return null;
@@ -571,9 +571,9 @@ export class GenericMap extends AbstractXmlSubtree {
   getStyleNameAt(date: number): string | null {
     let inForce: KeyValue<number, Element> | null = null;
     for (const entry of this.getAllElementsOfType('style')) {
-      if (entry.getKey() <= date) inForce = entry;
+      if (entry.key <= date) inForce = entry;
     }
-    return inForce === null ? null : getAttributeValue('name.ref', inForce.getValue());
+    return inForce === null ? null : getAttributeValue('name.ref', inForce.value);
   }
 
   /**
@@ -617,7 +617,7 @@ export class GenericMap extends AbstractXmlSubtree {
 
   updateAttributeValues(attributeName: string, valueMappings: Map<string, string>): void {
     for (const e of this.elements) {
-      const a = attribute(attributeName, e.getValue());
+      const a = attribute(attributeName, e.value);
       if (a === null) continue;
       const newValue = valueMappings.get(a.getValue());
       if (newValue !== undefined) a.setValue(newValue);
