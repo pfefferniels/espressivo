@@ -2,18 +2,15 @@
  * `weightedFactors` and `PROTOTYPE_WEIGHTS` — DESIGN.md D-H's lerp, and the prototype's tuned
  * vector kept as data.
  *
- * Two kinds of claim, and they are different in kind. The **algebra** is verifiable — `s = 1`
- * is the identity for any weights, `w = 0` pins a dimension, `w = 1` passes the scalar through
- * — and is tested as such. The **preset** is a heuristic that nothing derives, so the only
- * honest test of it is that the numbers are the ones the prototype had and that the
- * correspondence onto the fifteen dimensions is the one §3 documents. That is a pin against
- * drift, not a validation, and it is written to read that way.
+ * Two kinds of claim. The algebra is verifiable — `s = 1` is the identity for any weights,
+ * `w = 0` pins a dimension, `w = 1` passes the scalar through — and is tested as such. The
+ * preset is a heuristic that nothing derives, so the only honest test of it is that the
+ * numbers are the ones the prototype had and that the correspondence onto the fifteen
+ * dimensions is the one §3 documents: a pin against drift, not a validation.
  *
- * The last block tests the **public** `weightedFactors` rather than this module's, and it is
- * there because the two are different functions: the interior throws a plain `Error` and the
- * facade's entire reason to exist is to turn that into an `InvalidOptionError` (RULE E2).
- * Testing only the interior leaves that wrapper dead — verified: deleting the try/catch left
- * the whole suite green before this block existed.
+ * The last block tests the public `weightedFactors` rather than this module's, because the two
+ * are different functions — the interior throws a plain `Error` and the facade exists to turn
+ * that into an `InvalidOptionError` (RULE E2).
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -87,9 +84,8 @@ describe('weightedFactors: the algebra D-H specifies', () => {
 
   it('lets a weight above 1 drive a factor negative, and leaves the domain rule to the engine', () => {
     // Documented rather than clamped: `ornamentSpread`'s scale space runs over a half-line, so
-    // −0.05 is outside its admissible domain and `exaggerateMpm` rejects it by name. Repairing
-    // it here would answer a question the caller did not ask, and would do it in a function
-    // that cannot know which dimensions have a half-line.
+    // −0.05 is outside its admissible domain and `exaggerateMpm` rejects it by name. This
+    // function cannot know which dimensions have a half-line.
     expect(weightedFactors(0.3, { ornamentSpread: 1.5 }).ornamentSpread).toBeCloseTo(-0.05, 12);
   });
 
@@ -129,9 +125,8 @@ describe('PROTOTYPE_WEIGHTS: the correspondence §3 documents, pinned against dr
 
   it("collapses the prototype's two articulation fields onto the LOWER of the two", () => {
     // 0.2 (relativeDuration) and 0.3 (relativeVelocity) became one dimension here, and §3 takes
-    // the smaller: articulation is the most violent lever in the set — s = 2 on a
-    // relativeDuration of 0.7 leaves 0.49, half the note gone — so the number that is wrong in
-    // the safe direction is the one to be wrong with.
+    // the smaller: articulation is the most violent lever in the set, since s = 2 on a
+    // relativeDuration of 0.7 leaves 0.49 — half the note gone.
     expect(PROTOTYPE_WEIGHTS.articulation).toBe(0.2);
   });
 
@@ -142,13 +137,10 @@ describe('PROTOTYPE_WEIGHTS: the correspondence §3 documents, pinned against dr
     'imprecisionDuration',
     'pedalShape',
   ])('%s is unweighted, because the prototype had no such field', (dimension) => {
-    // Not a tuning judgement: the prototype could not express these dimensions at all, so the
-    // honest value is the neutral one rather than a number invented to fill the row.
-    //
-    // Pinned against the LITERAL 1, like the nine tuned rows above, and not against
-    // IDENTITY_WEIGHT — asserting `PROTOTYPE_WEIGHTS[d] === IDENTITY_WEIGHT` where the constant
-    // is *defined* as IDENTITY_WEIGHT is a tautology that survives redefining it (verified:
-    // setting IDENTITY_WEIGHT = 2 left this block green).
+    // Pinned against the literal 1, like the nine tuned rows above, rather than against
+    // IDENTITY_WEIGHT: asserting `PROTOTYPE_WEIGHTS[d] === IDENTITY_WEIGHT` where the constant
+    // is defined as IDENTITY_WEIGHT is a tautology that survives redefining it — setting
+    // IDENTITY_WEIGHT = 2 leaves such a block green.
     expect(PROTOTYPE_WEIGHTS[dimension]).toBe(1);
   });
 
@@ -161,17 +153,14 @@ describe('PROTOTYPE_WEIGHTS: the correspondence §3 documents, pinned against dr
     ['ornamentSpacing', 1.5, 'the prototype scaled @frameLength only, never @intensity'],
     ['ornamentDynamics', 0.3, "the prototype's field of that name scaled ornament@scale"],
   ])('%s takes %s by decision rather than by inheritance', (dimension, weight) => {
-    // These three are weighted although the prototype had no corresponding lever — verified
-    // against ModifyService.java, and the reason each is non-neutral anyway is in the constant's
-    // documentation. The pin exists so that the numbers and the rationale move together: a
-    // future wave that decides a hole is better than an over-application has to edit both.
+    // These three are weighted although the prototype had no corresponding lever (verified
+    // against ModifyService.java); why each is non-neutral anyway is in the constant's own
+    // documentation. Pinned so that the numbers and that rationale have to move together.
     expect(PROTOTYPE_WEIGHTS[dimension]).toBe(weight);
     expect(PROTOTYPE_WEIGHTS[dimension]).not.toBe(1);
   });
 
   it('damps a weighted dimension relative to an unweighted one at the same scalar', () => {
-    // The property the preset exists for, stated as an ordering rather than as numbers: at one
-    // slider position, rubato moves less than tempo and accentuation moves more.
     const factors = weightedFactors(2, PROTOTYPE_WEIGHTS);
     expect(factors.rubato).toBeLessThan(factors.tempo ?? 0);
     expect(factors.accentuation).toBeGreaterThan(factors.tempo ?? 0);
@@ -194,9 +183,8 @@ describe('weightedFactors composes with the engine', () => {
   });
 
   it('a preset moves a damped dimension less than an undamped one at the same scalar', () => {
-    // rubato's authored intensity is 0.5 and its space is log-around-1, so a factor of 1.2
-    // (the preset's) moves it less than the factor of 2 the raw scalar would have applied,
-    // while asynchrony — which the preset does not weight — takes the full 2.
+    // rubato's authored intensity is 0.5 in a log-around-1 space, so the preset's factor of 1.2
+    // moves it less than the raw scalar's 2, while unweighted asynchrony takes the full 2.
     const weighted = run(PROTOTYPE_WEIGHTS, 2);
     const raw = run({}, 2);
     const intensity = (xml: string) => Number(/intensity="([^"]*)"/.exec(xml)?.[1]);
@@ -225,10 +213,9 @@ describe('weightedFactors composes with the engine', () => {
 /**
  * The facade export, whose only added behaviour is the typed-error boundary (RULE E2).
  *
- * Everything above imports `src/expression/weights.js`, which throws a plain `Error`. That
- * leaves the wrapper at `src/api/expression.ts` untested, and untested it is also unnecessary:
- * deleting its try/catch outright left all 3958 tests green. These are the assertions that make
- * the wrapper load-bearing.
+ * Everything above imports `src/expression/weights.js`, which throws a plain `Error`, and so
+ * leaves the wrapper at `src/api/expression.ts` untested: deleting its try/catch outright
+ * leaves the rest of the suite green. These are the assertions that make it load-bearing.
  */
 describe('the public weightedFactors types the interior errors (RULE E2)', () => {
   it.each<[string, number, ExaggerationWeights]>([
@@ -299,11 +286,9 @@ describe('the public weightedFactors types the interior errors (RULE E2)', () =>
   });
 
   it('hands both shared constants out frozen, so a consumer cannot widen the vocabulary', () => {
-    // The re-export test above proves these are the SAME objects the engine reads, which is
-    // exactly why this matters: unfrozen, `EXPRESSION_DIMENSIONS.push('bogus')` would make
-    // `{bogus: 2}` a legal factor record for the whole process, and a written
-    // `PROTOTYPE_WEIGHTS` would re-tune every later run. `readonly` and `as const` are
-    // compile-time only and stop neither.
+    // These are the same objects the engine reads, and `readonly`/`as const` are compile-time
+    // only: unfrozen, `EXPRESSION_DIMENSIONS.push('bogus')` would make `{bogus: 2}` a legal
+    // factor record process-wide, and a written `PROTOTYPE_WEIGHTS` would re-tune every run.
     expect(Object.isFrozen(EXPRESSION_DIMENSIONS)).toBe(true);
     expect(Object.isFrozen(PUBLIC_PROTOTYPE_WEIGHTS)).toBe(true);
 

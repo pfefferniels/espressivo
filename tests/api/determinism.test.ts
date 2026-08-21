@@ -1,10 +1,11 @@
 /**
- * The render knobs, exercised through the facade: the imprecision seed (RULE F7, the
- * downstream consumer's request (b) in docs/history/refactor/state.json) and the movement sampling step (RULE I5).
+ * The render knobs, exercised through the facade: the imprecision seed (RULE F7, the downstream
+ * consumer's request (b) in docs/history/refactor/state.json) and the movement sampling step
+ * (RULE I5).
  *
- * T19a proved the plumbing through the four hops of §2.4 at the class level; what is proved
- * here is that `PerformOptions` actually reaches it — the facade is the layer the consumer
- * calls, and a knob that is validated and then dropped would pass every test T19a wrote.
+ * The class-level tests prove the plumbing through the four hops of §2.4. What is proved here
+ * is that `PerformOptions` reaches it: the facade is the layer the consumer calls, and a knob
+ * that is validated and then dropped passes every one of those tests.
  */
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../support/result.js';
@@ -27,8 +28,8 @@ const PPQ = 720;
 /**
  * Eight notes, as MSM text.
  *
- * **The half-length durations are load-bearing — do not "tidy" them to `ppq`.** A seeded
- * render is reproducible only while no two imprecision offsets share a `milliseconds.date`:
+ * The half-length durations are load-bearing; do not tidy them to `ppq`. A seeded render is
+ * reproducible only while no two imprecision offsets share a `milliseconds.date`:
  * where two do, the interior picks the survivor with a bare `Math.random()` and re-rolls the
  * rest unseeded, faithfully from `ImprecisionMap.java:845,894`. At `duration = ppq` every
  * note's end lands on the next note's start and the seed stops deciding the output.

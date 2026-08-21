@@ -1,13 +1,13 @@
 /**
  * The scale spaces of `src/expression/transforms.ts`, against DESIGN §1's properties.
  *
- * P1–P5 hold automatically for *any* monotone bijection with `T(neutral) = 0` (DESIGN
- * §1.1), so this suite cannot validate a single registry choice — that is §7's job and
- * A14's render tests'. What it does prove is that the closed forms are the ones DESIGN
- * specifies, that they behave in IEEE-754 the way §1.1 says they do rather than the way
- * they would over ℝ, and that every departure is a refusal rather than a written NaN.
+ * P1–P5 hold automatically for any monotone bijection with `T(neutral) = 0` (DESIGN §1.1),
+ * so this suite cannot validate a single registry choice — that is §7's job and A14's render
+ * tests'. It pins that the closed forms are the ones DESIGN specifies, that they behave in
+ * IEEE-754 the way §1.1 says they do rather than the way they would over ℝ, and that every
+ * departure is a refusal rather than a written NaN.
  *
- * **No RNG** (R2). Every sweep is a loop over a fixed grid.
+ * No RNG (R2). Every sweep is a loop over a fixed grid.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -43,16 +43,13 @@ import { numberAt, pairwise } from '../../src/prelude/index.js';
 
 /**
  * A3 contracts P2 as exact "only on the clamp-free subdomain and only to ~1 ULP". Measured
- * over the grids below, the worst *conditioned* deviation is 1.07 ULP — so A3's figure is
- * met, and 8 is the budget, enough headroom for a `Math.pow` slightly less accurate than
- * this machine's. "Conditioned" is the load-bearing word — see {@link amplificationAt}.
- *
- * **What this budget cannot do is police the closed form**, and the negative control says
- * so: an `exp`/`log` round trip composes to 2.2e-2 of the budget where the closed form
- * reaches 2.7e-2, and even a different *metric* — §7.3's rejected log-1-over-`exponent`
- * reading of `meanTempoAt` — passes at 2.0e-2. That is DESIGN §1.1's own point ("P1–P5
- * constrain the neutral, not the metric ... the property suite cannot validate a single
- * registry choice"), and it is why the metric anchors below exist as a separate block.
+ * over the grids below, the worst conditioned deviation is 1.07 ULP; 8 is the budget, enough
+ * headroom for a `Math.pow` slightly less accurate than this machine's. Conditioned is the
+ * load-bearing word — see {@link amplificationAt}. The budget is far too loose to discriminate
+ * between closed forms: an `exp`/`log` round trip passes it at 2.2e-2 where the closed form
+ * reaches 2.7e-2, and even a different METRIC passes — §7.3's rejected log-1-over-`exponent`
+ * reading of `meanTempoAt` comes in at 2.0e-2. Per DESIGN §1.1, P1-P5 constrain the neutral and
+ * not the metric, which is why the metric anchors below are a separate block.
  */
 const COMPOSITION_ULPS = 8;
 
@@ -65,16 +62,13 @@ const JOINT_TRIM_ULPS = 24;
 /**
  * How far a value's distance from the nearest bound amplifies one ULP of error.
  *
- * This is the whole reason the raw deviations exceed A3's "~1 ULP" and it is conditioning,
- * not a defect: composing two exaggerations stores the intermediate as a double, and a
- * `curvature` of 0.99999999 has only 8 significant digits of *distance from 1* left, which
- * the second transform's `1 − x` recovers with relative error `eps/(1−x)`. The worst raw
- * case in these grids is exactly that — `x = 0.99, s₂ = 4` puts the intermediate within
- * 1e-8 of the bound and costs 1.3e-11 absolute, while every interior triple stays at 1 ULP.
+ * Conditioning, not a defect, is why raw deviations exceed A3's "~1 ULP": a `curvature` of
+ * 0.99999999 stored as a double has 8 significant digits of distance from 1 left, which the
+ * second transform's `1 − x` recovers with relative error `eps/(1−x)`. At `x = 0.99, s₂ = 4`
+ * that costs 1.3e-11 absolute; every interior triple stays at 1 ULP.
  *
- * `scale / distance` is a genuine upper bound on the transform's own amplification, not a
- * fudge factor: the local derivative of `1 − (1−x)^s` is `s·d^(s−1)`, and `s·d^s ≤ 1` for
- * every `d < 1/e` and `s ≥ 0`, so `s·d^(s−1) ≤ 1/d`.
+ * `scale / distance` is an upper bound on the transform's own amplification: the derivative of
+ * `1 − (1−x)^s` is `s·d^(s−1)`, and `s·d^s ≤ 1` for `d < 1/e` and `s ≥ 0`, so `s·d^(s−1) ≤ 1/d`.
  */
 function amplificationAt(
   value: number,
@@ -85,14 +79,13 @@ function amplificationAt(
 }
 
 /**
- * Deviation of `actual` from `expected`, relative to the larger of the two magnitudes and
- * the space's own scale.
+ * Deviation of `actual` from `expected`, relative to the larger of the two magnitudes and the
+ * space's own scale.
  *
- * `scale` is what keeps the measure honest near a space's neutral: a `protraction` result
- * of 1e-17 against an expected 0 is an absolute error of 1e-17 on an interval of width 2,
- * i.e. nothing, but a pure relative measure calls it infinite. Log spaces pass `0` and are
- * therefore measured purely relatively, which is the right notion there — their values are
- * ratios, and their closed forms never subtract, so they carry no cancellation at all.
+ * `scale` keeps the measure honest near a space's neutral: a `protraction` result of 1e-17
+ * against an expected 0 is nothing on an interval of width 2, but a pure relative measure calls
+ * it infinite. Log spaces pass `0` and are measured purely relatively — their values are ratios
+ * and their closed forms never subtract, so they carry no cancellation.
  */
 function deviation(actual: number, expected: number, scale: number): number {
   if (Object.is(actual, expected)) return 0;
@@ -412,7 +405,6 @@ describe('P3 — domain closure comes from the transform, not a clamp (DESIGN §
   );
 
   it('boundary-power leaves [0,1] for s < 0, which is why its s-domain is s >= 0', () => {
-    // The mathematics the s-domain encodes: unguarded, `1 − (1−x)^s` is negative here.
     expect(1 - Math.pow(1 - 0.5, -1)).toBeLessThan(0);
     expect(boundaryPowerLow(0.5, -1).ok).toBe(false);
   });
@@ -451,8 +443,7 @@ describe('P4 — the neutral is a fixed point for every admissible s (DESIGN §1
   });
 
   it('fixes the boundary values §7.5/§7.14 declare admissible, for s > 0', () => {
-    // `curvature = 1` and `protraction = ±1` are authored values, reached by the closed
-    // form rather than by `0·∞`. They are fixed points, not saturation cliffs.
+    // `curvature = 1` and `protraction = ±1` are authored values, not saturation cliffs.
     for (const s of [0.25, 0.5, 2, 4, 1e6]) {
       expect(Object.is(expectOk(boundaryPowerLow(1, s)), 1)).toBe(true);
       expect(Object.is(expectOk(boundaryPowerLow(0, s)), 0)).toBe(true);
@@ -494,7 +485,6 @@ describe('s = 0 writes the neutral through a closed form (DESIGN §1, A3)', () =
   });
 
   it('does not compute 0 * T(x) at the values where T is infinite', () => {
-    // `curvature = 1` and `protraction = ±1` are exactly where `0·∞ = NaN` would bite.
     expect(0 * Math.log(1 - 1)).toBeNaN();
     expect(expectOk(boundaryPowerLow(1, 0))).toBe(0);
     expect(expectOk(logit(1, 0, -1, 1))).toBe(0);
@@ -530,13 +520,11 @@ describe('saturation is refused, not written (DESIGN §1, A3)', () => {
     expect(at9.ok).toBe(false);
     if (!at9.ok) expect(at9.error).toBe('saturation-to-boundary');
 
-    // At the lower bound the cliff is real but arrives far later, and only where the bound
-    // is not 0. `a + (b−a)/(1+w^s)` reaches `a` as soon as the quotient falls below half an
-    // ULP *of a* — immediate for protraction's −1, but for meanTempoAt `a = 0` contributes
-    // no cancellation and the quotient has to underflow the whole double range (s ≈ 155 for
-    // 0.01). So a meanTempoAt driven toward 0 keeps resolving where one driven toward 1 has
-    // long since saturated. The asymmetry is in the format, not the transform: §7.3 cites
-    // only the upper cliff because that is the one an authored value reaches.
+    // At the lower bound the cliff arrives far later, and only where the bound is not 0.
+    // `a + (b−a)/(1+w^s)` reaches `a` once the quotient falls below half an ULP of `a` —
+    // immediate for protraction's −1, but meanTempoAt's `a = 0` contributes no cancellation and
+    // the quotient has to underflow the whole double range (s ≈ 155 for 0.01). §7.3 cites only
+    // the upper cliff because that is the one an authored value reaches.
     const towardZero = logit(0.01, 8, 0, 1);
     expect(expectOk(towardZero)).toBeGreaterThan(0);
     const underflowed = logit(0.01, 160, 0, 1);
@@ -678,24 +666,22 @@ describe('the joint trim guard (DESIGN §7.6, A6)', () => {
 
   it('holds the window open at the (0.45, 0.55, s) triples DESIGN cites', () => {
     const window: RubatoWindow = { lateStart: 0.45, earlyEnd: 0.55 };
-    // Unguarded, the total trim t = 0.9 rounds to exactly 1.0 at s = 17 and the split
-    // returns a' + b' = 1 — the pair the renderer resets to (0, 1).
+    // Unguarded, the total trim t = 0.9 rounds to 1.0 at s = 17 and the split returns
+    // a' + b' = 1 — the pair the renderer resets to (0, 1).
     expect(1 - Math.pow(1 - 0.9, 17)).toBe(1);
 
     for (const s of [16, 17, 64, 1e6]) {
       const result = expectOk2(jointTrimWindow(window, s, MIN_RUBATO_WINDOW));
       expect(result.lateStart).toBeLessThan(result.earlyEnd);
-      // The guard, not the arithmetic, is what keeps them apart at these factors: the two
-      // endpoints are rounded independently, so the width lands within an ULP of the option
-      // rather than exactly on it.
+      // The two endpoints are rounded independently off the clamped total, so the width lands
+      // within an ULP of the option rather than exactly on it.
       expect(result.earlyEnd - result.lateStart).toBeCloseTo(MIN_RUBATO_WINDOW, 15);
     }
   });
 
   it('absorbs a saturating total trim into the clamp instead of refusing it (§8)', () => {
-    // The one place a boundary saturation is *not* a refusal. Called on the scalar space
-    // directly, the same total trim is refused — which is what §8's "saturates smoothly"
-    // would otherwise contradict.
+    // The one place a boundary saturation is not a refusal: called on the scalar space
+    // directly, the same total trim is refused.
     expect(boundaryPowerLow(0.9, 17).ok).toBe(false);
     const window = expectOk2(
       jointTrimWindow({ lateStart: 0.45, earlyEnd: 0.55 }, 17, MIN_RUBATO_WINDOW),
@@ -768,13 +754,10 @@ describe('geometricMean — the center population (DESIGN §7.1, A5)', () => {
   });
 
   it('cannot underflow out of R>0 — the two refusal branches are unreachable', () => {
-    // Stated as the reachability proof it is, rather than as an assertion behind an untaken
-    // `if` — which executed nothing and implied the underflow branch was covered.
-    // `logSum / n` is bounded below by `Math.log(5e-324) = -744.44` and above by
-    // `Math.log(1.79e308) = 709.78` for any population of positive finite doubles, and
-    // `Math.exp` neither underflows to 0 nor overflows anywhere in that range. So a geometric
-    // mean of positive doubles cannot leave ℝ>0, and both refusal branches below the loop in
-    // `geometricMean` are unreachable by construction.
+    // For any population of positive finite doubles, `logSum / n` lies between
+    // `Math.log(5e-324) = -744.44` and `Math.log(1.79e308) = 709.78`, and `Math.exp` neither
+    // underflows nor overflows in that range. Both refusal branches below the loop in
+    // `geometricMean` are therefore unreachable by construction.
     const result = geometricMean([1e-320, 1e-320, 5e-324]);
     expect(result.ok).toBe(true);
     expect(Math.exp(Math.log(5e-324))).toBeGreaterThan(0);
@@ -782,14 +765,13 @@ describe('geometricMean — the center population (DESIGN §7.1, A5)', () => {
 });
 
 describe('metric anchors — the numbers DESIGN chose, not merely a valid T', () => {
-  // P1–P5 hold for *any* monotone bijection with `T(neutral) = 0`, so nothing above pins a
-  // single registry choice (DESIGN §1.1). These do: each is a value DESIGN states, and each
-  // separates the chosen metric from the alternative it was chosen over.
+  // Each is a value DESIGN states, and each separates the chosen metric from the alternative
+  // it was chosen over — which nothing above can do (DESIGN §1.1).
 
   it('logit over the position, not log-1 over the renderer exponent (§7.3)', () => {
     // §7.3's own discriminator: "x=0.25 at s=2 gives 0.1 vs 0.0625". The rejected reading
-    // scales `exponent = ln0.5/ln x` in log-1; the chosen one scales *where in the span* the
-    // mean tempo falls, which is the perceptually even parameter and what the format exposes.
+    // scales `exponent = ln0.5/ln x` in log-1; the chosen one scales where in the span the mean
+    // tempo falls, which is what the format exposes.
     expect(expectOk(logit(0.25, 2, 0, 1))).toBeCloseTo(0.1, 15);
     const rejectedExponentMetric = Math.exp(
       Math.log(0.5) / Math.pow(Math.log(0.5) / Math.log(0.25), 2),
@@ -809,9 +791,8 @@ describe('metric anchors — the numbers DESIGN chose, not merely a valid T', ()
   });
 
   it('levels scale their log-ratio to the center by exactly s (§7.1, §7.2)', () => {
-    // The property that makes `global` scope work on piecewise-constant maps: the ratio of
-    // any value to the center is raised to s, so section contrast grows without the center
-    // moving. A linear reading of the same attribute would not do this.
+    // What makes `global` scope work on piecewise-constant maps: the ratio of any value to the
+    // center is raised to s, so section contrast grows without the center moving.
     const center = 72;
     expect(expectOk(logAroundCenter(144, 2, center))).toBeCloseTo(center * 4, 12);
     expect(expectOk(logAroundCenter(36, 2, center))).toBeCloseTo(center / 4, 12);
@@ -877,18 +858,14 @@ describe('dispatch', () => {
 });
 
 /**
- * `T` values are logarithms, so the honest error measure is relative in the large and
- * absolute in the small: near a space's neutral `T → 0` and a pure relative measure calls an
- * absolute 1e-17 infinite. Passing `1` as {@link deviation}'s scale does exactly that — one
- * neper is the unit these quantities are read in (comparison/DESIGN.md §4, AD-26.1).
+ * {@link deviation}'s scale for `T` values: one neper is the unit these quantities are read in
+ * (comparison/DESIGN.md §4, AD-26.1).
  */
 const NEPER_SCALE = 1;
 
 /**
  * `T(C(x,s))` is `T` reading back a value the closed form just wrote, so it inherits the
- * same conditioning P2 measures — see {@link amplificationAt}, which supplies the rest of
- * the budget. At `x = 0.99, s = 4` the logit intermediate sits 1e-8 from its bound and the
- * `upper − x` recovery has spent eight digits before `ln` sees it.
+ * conditioning P2 measures — see {@link amplificationAt}, which supplies the rest of the budget.
  */
 const FORWARD_ULPS = 8;
 
@@ -943,10 +920,8 @@ describe('forward maps — `T` itself (comparison/DESIGN.md §4)', () => {
   });
 
   it('returns the signed infinities comparison §4 enumerates, leaving the cap to the caller', () => {
-    // The enumeration verbatim: boundary-power-low at x = 1 (curvature = 1);
-    // boundary-power-high at x = 0; logit at both bounds (protraction = ±1); the logarithms
-    // at x = 0. All are legal authored values, and §4's capped metric is what makes them
-    // finite — this module must NOT clamp them, or the cap would be applied twice.
+    // All of these are legal authored values. §4's capped metric is what makes them finite,
+    // so this module must not clamp them or the cap would apply twice.
     expect(forwardInSpace({ kind: 'boundary-power-low' }, 1)).toBe(-Infinity);
     expect(forwardInSpace({ kind: 'boundary-power-high' }, 0)).toBe(-Infinity);
     expect(forwardInSpace({ kind: 'logit', lower: -1, upper: 1 }, -1)).toBe(-Infinity);

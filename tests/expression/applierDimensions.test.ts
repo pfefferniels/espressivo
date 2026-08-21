@@ -193,10 +193,9 @@ describe('rubato — intensity and the joint trim (§7.6, RESOLVED-2, A6)', () =
     const { root } = exaggerate(TIGHT, { rubato: 16 });
     const lateStart = numberAt(root, 'r1', 'lateStart');
     const earlyEnd = numberAt(root, 'r1', 'earlyEnd');
-    // The guard clamps the TOTAL trim to `1 − minRubatoWindow`; the two bounds are then
-    // rounded independently off that total, so the surviving window is `minRubatoWindow` to
-    // within a few ULP rather than exactly. What is exact is the ordering — the property the
-    // renderer's inclusive `lateStart >= earlyEnd` reset turns on.
+    // The guard clamps the total trim to `1 − minRubatoWindow` and the two bounds are rounded
+    // independently off it, so the surviving window is `minRubatoWindow` to within a few ULP.
+    // What is exact is the ordering, which is what the renderer's reset turns on.
     expect(lateStart).toBeLessThan(earlyEnd);
     expect(earlyEnd - lateStart).toBeCloseTo(1e-6, 12);
   });
@@ -240,9 +239,8 @@ describe('articulation — the seven live modifiers (§7.7, D-B)', () => {
     expect(firstNoteOfKind(performance, 'articulation-component-excluded').attribute).toBe(
       'absoluteDurationMs',
     );
-    // F8: this document ALSO holds fully-reachable sites, and §4-as-amended orders
-    // `transformed > partial`, so the dimension as a whole reads `transformed`. The
-    // partial-only case is pinned separately.
+    // F8: this document also holds fully-reachable sites, and §4-as-amended orders
+    // `transformed > partial`, so the dimension as a whole reads `transformed`.
     expect(performance.dimensions.articulation.state).toBe('transformed');
   });
 
@@ -261,9 +259,8 @@ describe('articulation — the seven live modifiers (§7.7, D-B)', () => {
   });
 
   it('scales @absoluteDelay and @absoluteDurationChangeMs on the INLINE element too', () => {
-    // §7.7 keys composition on the element, so def and inline are separate sites for every
-    // row. These two are the pair the rest of the suite writes only on a `<articulationDef>`;
-    // neither is in the inline duration-precedence chain, so both simply scale as gains.
+    // §7.7 keys composition on the element, so def and inline are separate sites for every row.
+    // Neither of these two is in the inline duration-precedence chain, so both scale as gains.
     const INLINE = globalDocument(
       '',
       '<articulationMap>' +
@@ -429,8 +426,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
         ornamentSpread: 1.5,
       });
       expect(textAt(root, 'spread', 'frameLength')).toBe('120%');
-      // 0 is the gain neutral, so the offset is numerically unchanged — and therefore not
-      // rewritten at all, spelling included.
+      // 0 is the gain neutral, so the offset is unchanged and therefore not rewritten at all.
       expect(textAt(root, 'spread', 'frame.offset')).toBe('0%');
     });
 
@@ -610,7 +606,6 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
       const zero = exaggerate(gradient('scale="0"'), { ornamentDynamics: 2 });
       expect(zero.performance.dimensions.ornamentDynamics.sitesInert).toBe(1);
       expect(textAt(zero.root, 'grad', 'transition.from')).toBe('0.5');
-      // And the case that makes the dimension live at all in a v3 corpus.
       const live = exaggerate(gradient('scale="1"'), { ornamentDynamics: 2 });
       expect(live.performance.dimensions.ornamentDynamics.sitesInert).toBe(0);
       expect(numberAt(live.root, 'grad', 'transition.from')).toBe(1);
@@ -631,15 +626,12 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
         '</ornamentationMap>',
     );
     const { root, performance } = exaggerate(MIXED, { ornamentSpread: 2, ornamentSpacing: 2 });
-    // The v2 spread keeps its bare doubles; the v3 one keeps both of its units.
     expect(textAt(root, 'v2', 'frame.start')).toBe('-44');
     expect(textAt(root, 'v2', 'frameLength')).toBe('88');
     expect(textAt(root, 'v3', 'frame.offset')).toBe('-44ms');
     expect(textAt(root, 'v3', 'frameLength')).toBe('160%');
-    // One shared dimension, two sites, both transformed.
     expect(performance.dimensions.ornamentSpread.sitesTransformed).toBe(2);
     expect(performance.dimensions.ornamentSpread.sitesSkipped).toBe(0);
-    // And one unit note per generation, each in its own wording.
     const units = notesOfKind(performance, 'frame-time-unit').map((note) => note.detail);
     expect(units[0]).toContain('@time.unit = "milliseconds"');
     expect(units[1]).toContain('v3 per-value units');
@@ -749,9 +741,9 @@ describe('imprecision — atomic per-distribution groups (§7.13, D-F, RESOLVED-
 
 describe('imprecision — the two correlated families (§7.13, D-F)', () => {
   // The other four distributions appear in the corpus or in the block above; these two appear
-  // in neither, so their 21 registry rows (3 + 4 attributes × 3 domains) had no behavioural
-  // pin at all until this block. Both families are declared in all three maps, so every row
-  // is written here.
+  // in neither, so this block is the only behavioural pin on their 21 registry rows (3 + 4
+  // attributes × 3 domains). Both families are declared in all three maps, so every row is
+  // written here.
   const CORRELATED_GROUP =
     '<distribution.correlated.brownianNoise id="%bn%" date="0.0" stepWidth.max="3.0" ' +
     'limit.lower="-10.0" limit.upper="10.0"/>' +
@@ -783,8 +775,7 @@ describe('imprecision — the two correlated families (§7.13, D-F)', () => {
     expect(numberAt(root, 'ct-d', 'limit.upper')).toBe(16);
     expect(numberAt(root, 'ct-d', 'clip.lower')).toBe(-12);
     expect(numberAt(root, 'ct-d', 'clip.upper')).toBe(12);
-    // A shape parameter whose neutral is 1.0, excluded from the group: scaling it would
-    // change how strongly consecutive values compensate, which is not a width.
+    // A shape parameter whose neutral is 1.0, excluded from the group: it is not a width.
     expect(textAt(root, 'ct-d', 'degreeOfCorrelation')).toBe('0.7');
   });
 

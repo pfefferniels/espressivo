@@ -2,24 +2,16 @@
  * `spotlightMpm` as a caller meets it: what a selection spares, what it damps, and the error
  * surface that keeps a stale selection from becoming a silently flattened performance.
  *
- * Almost everything here runs against the **reference corpus** rather than hand-built documents,
- * because what spotlight adds to the engine is selection, and selection is the one part of this
- * campaign the real fixtures can exercise end to end: `all_maps.mpm` carries an instruction of
- * every selectable type except `<ornament>`, `ornamentation.mpm` carries four `<ornament>`s that
- * already have ids, `movement.mpm` carries the only pedal curve in the corpus that is not the
- * last of its map, and `comprehensive.mpm` is the piecewise-constant named-level shape A7's
- * inertness rule exists for. The single exception is `imprecisionMap.toneduration`, which no
- * fixture in the corpus has at all, so `imprecisionDuration` gets a hand-built document.
+ * Almost everything here runs against the reference corpus rather than hand-built documents,
+ * because what spotlight adds to the engine is selection, and selection is the part of it the
+ * real fixtures can exercise end to end. Each constant below says what its fixture supplies; the
+ * one shape the corpus lacks entirely is `imprecisionMap.toneduration`.
  *
  * The fixtures on disk are never edited (charter invariant 2). Where one lacks an `xml:id` —
- * `all_maps.mpm` has none at all — the id is grafted into the **text** at read time, the same
+ * `all_maps.mpm` has none at all — the id is grafted into the text at read time, the same
  * technique `tests/integration/expression-transform.test.ts` uses to de-vacuize its R5 pins.
  * The graft adds an attribute to an element that already exists; it never adds an element, so
  * what is spotlit is the fixture's own instruction.
- *
- * The table in the first block is closed against `EXPRESSION_DIMENSIONS`: every dimension must
- * be spared by some row, so a sixteenth dimension — or a row that stops sparing what it used to
- * — fails the suite rather than quietly shrinking the coverage.
  *
  * The rendered direction claim — background gesture shrinks, foreground does not move — needs a
  * performance and lives in `tests/integration/expression-spotlight.test.ts`.
@@ -111,8 +103,6 @@ const ORNAMENTATION = allMaps('ornamentation');
 const ORNAMENTATION_TEMPO = withId(ORNAMENTATION, '<tempo date="0.0"', 'pickTempo');
 
 /**
- * The one shape the corpus does not have: an `imprecisionMap.toneduration`.
- *
  * `grep -rl 'imprecisionMap.toneduration' tests/integration/fixtures/` is empty, so
  * `imprecisionDuration` would otherwise never reach `spotlightMpm` at all. The sibling timing
  * map is what gives the case a background to damp.
@@ -133,8 +123,7 @@ const spotlight = (mpm: XmlText, ids: readonly string[], attenuation = 0.5) =>
 /** The whole serialized start tag of the element carrying `id`, attributes and spelling intact. */
 function startTagAt(mpm: XmlText, id: string): string {
   const tag = new RegExp(`<[^<>]*xml:id="${id}"[^<>]*>`).exec(mpm)?.[0];
-  // Throws rather than returning null, for `withId`'s reason: a silent miss would turn every
-  // assertion built on it into a comparison of two empty strings.
+  // Throws for `withId`'s reason: a silent miss would compare two empty strings.
   if (tag === undefined) throw new Error(`no element carrying xml:id="${id}" in the output`);
   return tag;
 }
@@ -166,9 +155,9 @@ const TABLE: readonly [XmlText, string, readonly ExpressionDimension[]][] = [
   [ALL_MAPS, 'pickImprecisionDynamics', ['imprecisionDynamics']],
   [MOVEMENT, 'pickMovement', ['pedalShape']],
   [TONEDURATION, 'pickImprecisionDuration', ['imprecisionDuration']],
-  // The one row where D-I's selection vocabulary and the registry's write vocabulary
-  // deliberately disagree: an `<ornament>` carries none of these attributes itself — they live
-  // on the `<temporalSpread>`/`<dynamicsGradient>` children of the def it names.
+  // The one row where D-I's selection vocabulary and the registry's write vocabulary disagree:
+  // an `<ornament>` carries none of these attributes itself — they live on the
+  // `<temporalSpread>`/`<dynamicsGradient>` children of the def it names, an element away.
   [ORNAMENTATION, 'orn1', ['ornamentSpread', 'ornamentSpacing', 'ornamentDynamics']],
 ];
 
@@ -183,8 +172,6 @@ describe('spotlightMpm: a selection spares its dimensions and damps the rest', (
   });
 
   it('covers every dimension — the table cannot silently shrink or fall behind the set', () => {
-    // Without this, adding a sixteenth dimension, or a row quietly ceasing to spare what it
-    // used to, leaves the facade's coverage smaller and the suite green.
     const covered = new Set(TABLE.flatMap(([, , spared]) => spared));
     expect([...EXPRESSION_DIMENSIONS].filter((dimension) => !covered.has(dimension))).toEqual([]);
   });
@@ -225,13 +212,11 @@ describe('spotlightMpm: the spotlit instruction does not move while the backgrou
   /*
    * `all_maps.mpm` is the fixture that makes this symmetric: its tempo pair
    * (`bpm="120" transition.to="90" meanTempoAt="0.5"`) and its dynamics pair
-   * (`volume="80" transition.to="110"`) are both NUMERIC, so both are writable under `gesture`
+   * (`volume="80" transition.to="110"`) are both numeric, so both are writable under `gesture`
    * scope and each can play foreground to the other's background.
    */
   it('a spotlit tempo keeps every one of its attributes byte for byte', () => {
-    // The whole start tag, not a chosen few of its attributes: the element carries five
-    // (`date`, `bpm`, `transition.to`, `beatLength`, `meanTempoAt`) and "every one" has to mean
-    // every one, including the two no registry row writes. Compared against the same tag in the
+    // The whole start tag, not a chosen few of its five attributes, and compared against the
     // canonical baseline, which is what A2 makes the reference for any byte claim.
     const { mpm } = spotlight(ALL_MAPS, ['pickTempo']);
     expect(startTagAt(mpm, 'pickTempo')).toBe(startTagAt(canonicalMpm(ALL_MAPS), 'pickTempo'));
@@ -261,9 +246,9 @@ describe('spotlightMpm: the spotlit instruction does not move while the backgrou
   });
 
   it('a spotlit <movement> spares pedalShape, which is a live dimension since W2 (A9)', () => {
-    // D-G excluded the whole `<movement>` element until the panel's twin-of-dynamics argument
-    // carried the curve parameters back in. Without that, this selection would derive an empty
-    // spare set and be the prototype's flatten-everything.
+    // D-G excludes the whole `<movement>` element bar the curve parameters, which A9's
+    // twin-of-dynamics ruling carried back in. Without them this selection would derive an
+    // empty spare set and be the prototype's flatten-everything.
     const spotlit = spotlight(MOVEMENT, ['pickMovement']);
     expect(spotlit.spared).toEqual(['pedalShape']);
     expect(startTagAt(spotlit.mpm, 'pickMovement')).toBe(
@@ -276,8 +261,6 @@ describe('spotlightMpm: the spotlit instruction does not move while the backgrou
   });
 
   it('a spotlit <ornament> spares the three dimensions that live on the def it names', () => {
-    // The asymmetric row: the attributes held at 1 are on `<temporalSpread>` and
-    // `<dynamicsGradient>` inside `<ornamentDef>`, an element away from the one selected.
     const { mpm, resolvedIds } = spotlight(ORNAMENTATION, ['orn1']);
     expect(resolvedIds).toEqual([
       {
@@ -291,9 +274,8 @@ describe('spotlightMpm: the spotlit instruction does not move while the backgrou
   });
 
   it('…and spotlighting its <tempo> instead damps all three, an element away', () => {
-    // The de-vacuizing half. Without it the row above would be satisfied by an engine that
-    // never reached an ornament def at all, since `ornamentation.mpm`'s only other map is a
-    // lone constant tempo and the spared run writes nothing.
+    // The de-vacuizing half: without it the row above is satisfied by an engine that never
+    // reaches an ornament def at all, since the spared run writes nothing.
     const { mpm, report } = spotlight(ORNAMENTATION_TEMPO, ['pickTempo']);
     const dimensions = soleReport(report).dimensions;
     for (const dimension of ['ornamentSpread', 'ornamentSpacing', 'ornamentDynamics'] as const)
@@ -321,10 +303,9 @@ describe('spotlightMpm: the spotlit instruction does not move while the backgrou
 describe('spotlightMpm: gesture scope has nothing to shrink on a constant map (A7)', () => {
   it('reports the level dimensions inert rather than claiming them transformed', () => {
     // `comprehensive.mpm` is the dominant corpus shape: every level is a named def, so under
-    // `gesture` there is no writable numeric pair, and D-C forbids rewriting a name as a
-    // number. Spotlighting an articulation leaves the level dimensions attenuated on paper and
-    // idle in fact — which the report has to say, or a caller sampling spotlights would count
-    // this as a tempo transform that happened to change nothing.
+    // `gesture` there is no writable numeric pair and D-C forbids rewriting a name as a number.
+    // The level dimensions are attenuated on paper and idle in fact, which the report has to
+    // say or a caller sampling spotlights counts this as a transform that changed nothing.
     const { report } = spotlight(COMPREHENSIVE, ['n4']);
     const dimensions = soleReport(report).dimensions;
     expect(dimensions.tempo.state).toBe('inert');
@@ -401,10 +382,10 @@ describe('spotlightMpm: SelectionNotFoundError, and never a partial run', () => 
   });
 
   it('refuses a run that had real writes to make, rather than half-applying it', () => {
-    // The earlier form of this test compared a module-level `const` string against itself, which
-    // is `Object.is(s, s)` and would have passed even if spotlightMpm had rewritten the whole
-    // document before throwing. What gives the claim content is the same selection minus the
-    // bad id: it writes, so the refused run is demonstrably one that would have written too.
+    // Comparing the input string against itself is `Object.is(s, s)`, and would pass even had
+    // spotlightMpm rewritten the whole document before throwing. What gives the claim content
+    // is the same selection minus the bad id: it writes, so the refused run is demonstrably one
+    // that would have written too.
     expect(() => spotlight(ALL_MAPS, ['pickTempo', 'ghost'])).toThrow(SelectionNotFoundError);
 
     const wouldHaveRun = spotlight(ALL_MAPS, ['pickTempo']);
@@ -429,10 +410,9 @@ describe('spotlightMpm: SelectionNotFoundError, and never a partial run', () => 
 });
 
 describe('spotlightMpm: the option surface', () => {
-  // Each row pins the message as well as the class. A rejection that says only "InvalidOption"
-  // sends the caller back to the docs; the two branches here have different remedies — one is
-  // "pick a number in the interval", the other "you passed the wrong kind of thing" — and the
-  // wording is what distinguishes them.
+  // Each row pins the message as well as the class: the two branches have different remedies —
+  // "pick a number in the interval" and "you passed the wrong kind of thing" — and only the
+  // wording distinguishes them.
   it.each<[string, unknown, RegExp]>([
     ['zero', 0, /\(0,1\]/],
     ['negative', -0.5, /\(0,1\]/],
@@ -506,9 +486,9 @@ describe('spotlightMpm: the option surface', () => {
   });
 
   it("copies resolvedIds out of the resolver, so a caller cannot edit D-I's own table", () => {
-    // CHARTER's public-API rule, and unpinned until now: replacing the facade's copy with
-    // `resolvedIds: selection.resolved` left the whole suite green. It matters more than the
-    // usual defensive copy, because `dimensions` comes straight out of the module-level
+    // CHARTER's public-API rule: replacing the facade's copy with `resolvedIds:
+    // selection.resolved` leaves the rest of the suite green. It matters more than the usual
+    // defensive copy, because `dimensions` comes straight out of the module-level
     // TYPE_DIMENSIONS map — a caller holding the result as `unknown[]` can push into what the
     // type calls readonly, and would be editing the mapping table for the rest of the process.
     const first = spotlight(ALL_MAPS, ['pickTempo']);

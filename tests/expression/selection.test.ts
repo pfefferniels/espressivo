@@ -6,9 +6,9 @@
  * in the corpus carries an `xml:id` on a `<distribution.*>` or a `<movement>` at all. The
  * end-to-end runs against real fixtures live in `tests/api/spotlight.test.ts`.
  *
- * The last block is the one that would catch a silent drift: it cross-checks the table against
- * `REGISTRY_ROWS`, so a dimension that gained or lost a site element cannot leave the selection
- * vocabulary claiming something the write vocabulary no longer supports.
+ * The last block cross-checks the table against `REGISTRY_ROWS`, so a dimension that gained or
+ * lost a site element cannot leave the selection vocabulary claiming what the write vocabulary
+ * no longer supports.
  */
 import { describe, it, expect } from 'vitest';
 import { parseMpmRoot } from '../../src/expression/mpmDocument.js';
@@ -148,8 +148,7 @@ describe('resolveSelection: the two failure kinds (A8)', () => {
 
   it('reports a tuning distribution as unmappable and names the map that decided it (A9)', () => {
     // §7.16: nothing in this codebase reads `tuning.offset`, so the domain is inert by
-    // construction and has no dimension to spare — a caller pointing at one has to be told
-    // rather than handed a spotlight that quietly damped everything they meant to keep.
+    // construction and has no dimension to spare. A caller pointing at one has to be told.
     const offender = elementAt(
       resolve(EVERY_TYPE, ['dtun']).offenders,
       0,
@@ -167,8 +166,8 @@ describe('resolveSelection: the two failure kinds (A8)', () => {
       ['sty', 'unmappable'],
       ['phantom', 'unresolved'],
     ]);
-    // The ids that DID resolve are still reported: the caller needs to see what it asked for
-    // beside what went wrong, and the facade is what turns any offender into a refused run.
+    // The ids that did resolve are still reported; the facade is what turns any offender into
+    // a refused run.
     expect(resolved.map((entry) => entry.id)).toEqual(['tem']);
   });
 });
@@ -187,10 +186,10 @@ describe('D-I agrees with the registry about what each element type governs', ()
     element === 'accentuationPattern' ? 'metricalAccentuationMap' : `${element}Map`;
 
   it("the selectable vocabulary is exactly D-I's nine rows — no more, no fewer", () => {
-    // The half that was missing, and the dangerous half. A test that only checks each row
-    // against the registry can say nothing about a row that should not exist: a mutation adding
-    // `['styleDef', ['tempo','rubato']]` to the table passed all 3958 tests, and under it a
-    // `<styleDef>` id spotlit successfully instead of raising SelectionNotFoundError.
+    // A test that only checks each row against the registry can say nothing about a row that
+    // should not exist: adding `['styleDef', ['tempo','rubato']]` to the table leaves the rest
+    // of the suite green, and under it a `<styleDef>` id spotlights successfully instead of
+    // raising SelectionNotFoundError.
     expect([...SELECTABLE_TYPES].sort()).toEqual(
       [
         'accentuationPattern',
@@ -230,8 +229,8 @@ describe('D-I agrees with the registry about what each element type governs', ()
   it('<ornament> is the one entry the registry cannot confirm, and says why', () => {
     // An `<ornament>` carries no exaggerable attribute of its own: the three ornament
     // dimensions write into the `<temporalSpread>` and `<dynamicsGradient>` children of the
-    // `<ornamentDef>` it references. The table maps what a caller can select; the registry
-    // holds what the engine can write. This pins both halves of that sentence.
+    // `<ornamentDef>` it names. The table maps what a caller can select; the registry holds
+    // what the engine can write.
     expect(dimensionsWrittenAt('ornament')).toEqual([]);
     expect(resolve(EVERY_TYPE, ['orn']).spared).toEqual(
       EXPRESSION_DIMENSIONS.filter((dimension) =>
@@ -247,8 +246,8 @@ describe('D-I agrees with the registry about what each element type governs', ()
   });
 
   it('every dimension is spared by at least one selectable type', () => {
-    // Otherwise a dimension could only ever be attenuated, never brought out, and the table
-    // would have a hole no test of an individual row could show.
+    // A dimension no row spares can only ever be attenuated, never brought out — a hole no
+    // test of an individual row could show.
     const reachable = new Set(
       ['tem', 'dyn', 'rub', 'art', 'acc', 'orn', 'asy', 'mov', 'dtim', 'ddyn', 'ddur'].flatMap(
         (id) => [...resolve(EVERY_TYPE, [id]).spared],

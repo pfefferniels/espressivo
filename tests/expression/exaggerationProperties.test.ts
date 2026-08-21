@@ -1,16 +1,15 @@
 /**
- * DESIGN.md §1.1's properties, asserted the way §1.1 says they may honestly be asserted.
+ * DESIGN.md §1.1's properties, in the forms §1.1 says they can honestly take.
  *
- * - **P1 identity (A2)** is a BYTE claim, and it is made against the canonical baseline —
- *   `serialize(parse(t))` — never against the input. `Element.wrap` drops `xmlns` at parse and
- *   `Element.toXML` re-emits it on every namespaced element, so strict `input == output` is
- *   unreachable for every MPM whatever the applier does.
- * - **P2 composition** is a NUMERIC claim with an epsilon, made only where nothing clamped.
- *   Under clamping it genuinely breaks — the computed center stops being the image of the
- *   input population — and the remedy is an output rather than a proof: the reported center,
- *   passed back through `options.center`, restores composition by construction.
- * - **A4's global invariant** — the engine never writes a non-finite value — is asserted by
- *   sweeping deliberately hostile XML, because that is the only place it can fail.
+ * - P1 identity (A2) is a byte claim, made against the canonical baseline
+ *   `serialize(parse(t))`, never against the input: `Element.wrap` drops `xmlns` at parse, so
+ *   strict `input == output` is unreachable for every MPM whatever the applier does.
+ * - P2 composition is a numeric claim with an epsilon, made only where nothing clamped. Under
+ *   clamping it genuinely breaks — the computed center stops being the image of the input
+ *   population — and the remedy is an output rather than a proof: the reported center, passed
+ *   back through `options.center`, restores composition by construction.
+ * - A4's invariant, that the engine never writes a non-finite value, is asserted by sweeping
+ *   deliberately hostile XML, because that is the only place it can fail.
  */
 import { describe, expect, it } from 'vitest';
 import { applyExaggeration } from '../../src/expression/applier.js';
@@ -34,16 +33,14 @@ import { elementAt } from '../../src/prelude/index.js';
  * A document that reaches every one of the fifteen dimensions.
  *
  * Deliberately clamp-free and refusal-free: the levels sit far below the velocity ceiling and
- * every ratio is positive, which is what lets the composition suite run over the whole surface
- * rather than over one map. One value — `curvature="0.990"` — sits deliberately CLOSE to its
- * bound, so the conditioned tolerance's amplification term is load-bearing here and not only in
- * `transforms.test.ts`.
+ * every ratio is positive, which lets the composition suite run over the whole surface rather
+ * than over one map. One value, `curvature="0.990"`, sits close to its bound, so the conditioned
+ * tolerance's amplification term is load-bearing here too.
  *
- * **Many values are spelled non-canonically on purpose** (`"0.30"`, `"1.40"`, `"-22.0"`). A
- * value whose text differs from `String(Number(v))` is rewritten by any transform that touches
- * it, even one that returns the number unchanged — which is exactly what makes the two byte
- * assertions below able to detect a missing `s === 1` short-circuit. With canonically spelled
- * values they would pass with the short-circuit deleted.
+ * Many values are spelled non-canonically on purpose (`"0.30"`, `"1.40"`, `"-22.0"`). A value
+ * whose text differs from `String(Number(v))` is rewritten by any transform that touches it,
+ * even one returning the number unchanged; canonically spelled values would let the two byte
+ * assertions below pass with the `s === 1` short-circuit deleted.
  */
 const EVERY_DIMENSION = globalDocument(
   '<dynamicsStyles><styleDef name="D"><dynamicsDef id="dp" name="p" value="40"/>' +
@@ -64,8 +61,7 @@ const EVERY_DIMENSION = globalDocument(
     '<dynamicsGradient id="grad" transition.from="-1" transition.to="1"/>' +
     '</ornamentDef>' +
     // The v3 reading of the same dimensions (§7.15), in the same performance as its v2 twin:
-    // unit-suffixed values on both bounds, spelled non-canonically for the same reason as
-    // everything else here.
+    // unit-suffixed values on both bounds, spelled non-canonically for the same reason.
     '<ornamentDef name="trill">' +
     '<temporalSpread id="v3spread" frame.offset="-22.0ms" frameLength="80%" intensity="1.30"/>' +
     '</ornamentDef>' +
@@ -110,11 +106,10 @@ function uniformFactors(factor: number): ExaggerationFactors {
 /**
  * Every attribute of a serialized document, keyed by `elementIndex:localName@attribute`.
  *
- * Read off the text rather than the tree because `Element` exposes `getAttributeCount` but no
- * indexed accessor, and because the text is what the engine's contract is about. The key is
- * stable across a transform for the same reason the engine is auditable at all: it never
- * creates, deletes or reorders an element or an attribute, so the nth element of the output is
- * the nth element of the input.
+ * Read off the text rather than the tree because `Element` exposes no indexed attribute
+ * accessor, and because the text is what the engine's contract is about. The key is stable
+ * across a transform because the engine never creates, deletes or reorders an element or an
+ * attribute.
  */
 function collectAttributes(xml: string): Map<string, string> {
   const found = new Map<string, string>();
@@ -136,12 +131,10 @@ function collectAttributes(xml: string): Map<string, string> {
  * An attribute value read as a finite number plus the unit it was wearing, or null when it is
  * not a number at all.
  *
- * Both sweeps below classify every attribute of a document into "a quantity the engine may have
- * computed" and "text it must have left alone", and MPM v3 put a third shape between them: a
- * number with a unit suffix (§7.15), which `Number` reads as `NaN` and which would therefore be
- * misfiled as text. `parseTemporalText` is the engine's own reader for that shape, so the
- * classification splits values exactly where the transform did — and `Number` still handles the
- * spellings the v3 grammar excludes but `parseFloat` accepts (`1e3`, `.5`).
+ * Both sweeps below classify every attribute into "a quantity the engine may have computed" and
+ * "text it must have left alone". A v3 unit suffix (§7.15) reads as `NaN` under `Number` and
+ * would misfile as text, so the split goes through `parseTemporalText`, the engine's own reader;
+ * `Number` still handles the spellings the v3 grammar excludes but `parseFloat` accepts.
  */
 function numericPart(text: string): { readonly value: number; readonly suffix: string } | null {
   const temporal = parseTemporalText(text);
@@ -166,7 +159,7 @@ describe('P1 identity (§1.1, A2)', () => {
   it('holds over a v3 frame, which a real factor demonstrably does rewrite', () => {
     // Anti-vacuity for the two byte assertions above: the fixture's v3 spread is not inert, so
     // its bytes surviving `s = 1` is the short-circuit working rather than the engine never
-    // reaching it. Both units are preserved across the scaling; only the numbers move.
+    // reaching it.
     const { root } = exaggerate(EVERY_DIMENSION, { ornamentSpread: 2 });
     expect(textAt(root, 'v3spread', 'frame.offset')).toBe('-44ms');
     expect(textAt(root, 'v3spread', 'frameLength')).toBe('160%');
@@ -225,8 +218,8 @@ describe('P2 composition on the clamp-free subdomain (§1.1, A3)', () => {
     // The precondition §1.1 attaches to the claim: nothing clamped in either arrangement.
     expect(once.clamps).toBe(0);
     expect(first.clamps + twice.clamps).toBe(0);
-    // …and the guard against a vacuous pass: a regression that made the engine write NOTHING
-    // would leave every comparison below trivially satisfied.
+    // …and the guard against a vacuous pass: an engine that wrote nothing would satisfy every
+    // comparison below.
     expect(once.writes).toBeGreaterThan(0);
     expect(first.writes).toBeGreaterThan(0);
     expect(twice.writes).toBeGreaterThan(0);
@@ -248,9 +241,9 @@ describe('P2 composition on the clamp-free subdomain (§1.1, A3)', () => {
       const composedValue = numericPart(composedText);
       const directValue = numericPart(directText);
       if (row === null || composedValue === null || directValue === null) {
-        // Either not a live attribute at all — `@date`, `@beatLength`, every §7.16 exclusion —
-        // or a level attribute holding a def NAME, which D-C forbids rewriting as a number.
-        // In both cases the two arrangements must agree on the SPELLING, not just the value.
+        // Either not a live attribute — `@date`, `@beatLength`, every §7.16 exclusion — or a
+        // level attribute holding a def name, which D-C forbids rewriting as a number. Either
+        // way the two arrangements must agree on the spelling, not just the value.
         expect(composedText).toBe(directText);
         continue;
       }
@@ -268,15 +261,14 @@ describe('P2 composition on the clamp-free subdomain (§1.1, A3)', () => {
 });
 
 /**
- * The tolerance one attribute's composition may drift by, CONDITIONED on how close the value
+ * The tolerance one attribute's composition may drift by, conditioned on how close the value
  * sits to a bound of its scale space (R-W2-5/#6).
  *
- * A flat epsilon would be wrong in both directions. In a bounded space the two arrangements
- * differ in where the cancellation happens: composing goes through an intermediate `y`, and
- * recovering `1 − y` from it loses precision as `eps/(1 − y)`, which the next exponentiation
- * then multiplies. So the admissible drift is amplified by the reciprocal of the distance to
- * the bound — strict for an interior curvature of 0.5, necessarily loose for one at 0.9999.
- * In an unbounded space no such cancellation exists and the drift is plainly relative.
+ * In a bounded space the two arrangements differ in where the cancellation happens: composing
+ * goes through an intermediate `y`, and recovering `1 − y` loses precision as `eps/(1 − y)`,
+ * which the next exponentiation multiplies. So the admissible drift is amplified by the
+ * reciprocal of the distance to the bound. In an unbounded space there is no such cancellation
+ * and the drift is plainly relative.
  */
 function toleranceFor(space: RowSpace, value: number): number {
   const base = 1e-12;
@@ -292,8 +284,8 @@ function toleranceFor(space: RowSpace, value: number): number {
 }
 
 describe('P2 under clamping — the center is an output, not a proof (§1.1, A3)', () => {
-  // Three named levels whose top one reaches the ceiling partway through, which is exactly the
-  // configuration where the recomputed center stops being the image of the input population.
+  // Three named levels whose top one reaches the ceiling partway through — the configuration
+  // where the recomputed center stops being the image of the input population.
   const LADDER = globalDocument(
     '<dynamicsStyles><styleDef name="D">' +
       '<dynamicsDef id="dp" name="p" value="48"/>' +
@@ -337,7 +329,7 @@ describe('P2 under clamping — the center is an output, not a proof (§1.1, A3)
   });
 
   it('cannot restore a level the ceiling already swallowed', () => {
-    // Honesty check on the remedy: re-injecting the center fixes the *center*, not the clamp.
+    // Re-injecting the center fixes the center, not the clamp.
     const twice = parseMpmRoot(applyTo(applyTo(LADDER, STEP, CENTER), STEP, CENTER));
     expect(numberAt(twice, 'dff', 'value')).toBe(127);
   });
@@ -346,9 +338,9 @@ describe('P2 under clamping — the center is an output, not a proof (§1.1, A3)
 describe('A4 — the engine never writes a non-finite value', () => {
   /**
    * Every hostile shape a real document can carry: Java's own `NaN`/`Infinity` literals, which
-   * `parseJavaDouble` ACCEPTS so that a def lookup can hand back a non-finite value; overflow
+   * `parseJavaDouble` accepts so that a def lookup can hand back a non-finite value; overflow
    * literals; `parseFloat`'s lenient prefixes; empty strings; values outside a bounded domain;
-   * and the degeneracies each row's gate is supposed to reject.
+   * the degeneracies each row's gate rejects.
    */
   const ADVERSARIAL = globalDocument(
     '<tempoStyles><styleDef name="T"><tempoDef name="Nan" value="NaN"/>' +
@@ -367,10 +359,10 @@ describe('A4 — the engine never writes a non-finite value', () => {
       '<ornamentDef name="live"><temporalSpread frame.start="-22" frameLength="44" ' +
       'intensity="1.5" time.unit="ticks"/><dynamicsGradient transition.from="-1" ' +
       'transition.to="1"/></ornamentDef>' +
-      // The v3 frame's own hostile shapes (§7.15). A 309-digit value is schema-VALID and
-      // overflows to Infinity, so the parse succeeds and only the gate stands between it and
-      // the document; a v3 spread with no @frameLength has a non-neutral absent bound; and a
-      // live v3 spread keeps the sweep from proving the invariant by writing nothing.
+      // The v3 frame's own hostile shapes (§7.15). A 309-digit value is schema-valid and
+      // overflows to Infinity, so only the gate stands between it and the document; a v3 spread
+      // with no @frameLength has a non-neutral absent bound; the live v3 spread keeps the sweep
+      // from proving the invariant by writing nothing.
       `<ornamentDef name="v3huge"><temporalSpread frame.offset="${'9'.repeat(309)}ticks" ` +
       'frameLength="44ticks"/></ornamentDef>' +
       '<ornamentDef name="v3half"><temporalSpread frame.offset="-22.0ticks"/></ornamentDef>' +
@@ -385,10 +377,9 @@ describe('A4 — the engine never writes a non-finite value', () => {
       '<tempo date="4.0" bpm="120bpm" beatLength="0"/>' +
       '<tempo date="later" bpm="90" beatLength="0.25" meanTempoAt="0"/>' +
       '<tempo date="6.0" bpm="90" beatLength="0.25" transition.to="" meanTempoAt="1"/>' +
-      // Valid siblings (F7). Without them every hostile site is refused upstream, almost
-      // nothing is written, and the sweep proves "nothing was written" rather than
-      // "everything written was finite" — the opposite of what A4 needs. These two reach the
-      // DENORMALIZED-tempo write path in particular, which no other fixture here exercises.
+      // Valid siblings (F7). Without them every hostile site is refused upstream and the sweep
+      // proves "nothing was written" rather than "everything written was finite". These two
+      // reach the denormalized-tempo write path, which no other fixture here exercises.
       '<tempo date="7.0" bpm="90" beatLength="0.5" meanTempoAt="0.4" transition.to="70"/>' +
       '<tempo date="8.0" bpm="120" beatLength="0.25"/>' +
       '</tempoMap>' +
@@ -398,7 +389,7 @@ describe('A4 — the engine never writes a non-finite value', () => {
       '<dynamics date="2.0" volume="?" transition.to="0"/>' +
       // A live gesture, plus the end-marker duplicate that repeats its target as the next
       // prevailing level — gate.ts names that as one of the three paths computing a value the
-      // transforms never see, and it was unreached by this fixture.
+      // transforms never see.
       '<dynamics date="3.0" volume="60" transition.to="80" curvature="0.3" protraction="0.2"/>' +
       '<dynamics date="4.0" volume="80"/></dynamicsMap>' +
       '<rubatoMap><style date="0.0" name.ref="R"/>' +
@@ -454,8 +445,7 @@ describe('A4 — the engine never writes a non-finite value', () => {
       expect(['NaN', 'Infinity', '-Infinity']).not.toContain(value);
     }
     // F7's anti-vacuity guard: the invariant is "everything written was finite", which a
-    // document that refuses everything satisfies by writing nothing. Measured on the
-    // pre-fix fixture this loop body ran TWICE at four of the five factors.
+    // document that refuses everything satisfies by writing nothing.
     expect(report.totalWrites).toBeGreaterThan(0);
     expect(changed).toBeGreaterThan(5);
   });
@@ -480,11 +470,10 @@ describe('A4 — the engine never writes a non-finite value', () => {
   }
 
   it.each(FACTOR_SWEEP)('returns a report whose every number is finite at s = %s', (factor) => {
-    // RULE F1's own words: "every numeric field is finite or null". The XML sweep above cannot
-    // see this — the report carries derived estimates that never reach the document, and
-    // `velocityCoefficients.additive` is a PRODUCT of two separately gated finite quantities.
-    // `JSON.stringify(Infinity)` is `null`, so a violation silently corrupts the round trip
-    // RULE F1 exists to guarantee.
+    // The XML sweep above cannot see this: the report carries derived estimates that never
+    // reach the document, and `velocityCoefficients.additive` is a product of two separately
+    // gated finite quantities. `JSON.stringify(Infinity)` is `null`, so a violation silently
+    // corrupts the round trip RULE F1 exists to guarantee.
     const { report } = exaggerate(ADVERSARIAL, uniformFactors(factor));
     const numbers = numbersIn(report);
     expect(numbers.length).toBeGreaterThan(50);
@@ -510,10 +499,10 @@ describe('A4 — the engine never writes a non-finite value', () => {
 
   it('names a reason for every site it declined, per dimension', () => {
     // The engine's stated contract (applier.ts) is a per-site correspondence, so assert one.
-    // Counting ALL non-identity notes against the skip total leaves the informational kinds —
-    // `constant-instruction`, `movement-inert`, `derived-timing-basis`, the span and frame
-    // notes — as slack, and measured that slack was thirteen notes wide: thirteen skips could
-    // have lost their reason entirely and the assertion would still have held.
+    // Counting every non-identity note against the skip total would leave the informational
+    // kinds — `constant-instruction`, `movement-inert`, `derived-timing-basis`, the span and
+    // frame notes — as slack, measured at thirteen notes wide: thirteen skips could lose their
+    // reason entirely and the assertion would still hold. Hence the explicit refusal set.
     const refusalKinds = new Set<ReportNoteKind>([
       'out-of-domain-input',
       'saturation-refused',

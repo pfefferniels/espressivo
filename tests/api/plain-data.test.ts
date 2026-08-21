@@ -1,10 +1,7 @@
 /**
- * The facade's plain-data guarantee — the charter's acceptance criterion for T13, spelled out
- * as ARCHITECTURE.md RULE F1 and RULE I3.
- *
- * Three mechanical tests over representative results, plus the two the charter names by hand:
- * a return value survives `postMessage` to another thread, and equal inputs produce values
- * that share no references, so React-style `===` memoization behaves.
+ * The facade's plain-data guarantee, ARCHITECTURE.md RULE F1 and RULE I3: a return value
+ * survives `postMessage` to another thread, and equal inputs produce values that share no
+ * references, so React-style `===` memoization behaves.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -37,10 +34,9 @@ const meiMovement = () =>
   );
 
 /**
- * An MPM v3 document whose ornament generates notes, so that the walks below actually visit
- * the six ornamentation fields (D15) carrying values rather than the six nulls every
- * unornamented note reports. `turn-atstart` puts four generated notes and two untouched ones
- * in the same part, which covers both shapes in one value.
+ * An MPM v3 document whose ornament generates notes, so the walks below visit the six
+ * ornamentation fields (D15) carrying values rather than the six nulls an unornamented note
+ * reports. `turn-atstart` puts four generated notes and two untouched ones in one part.
  */
 const V3_FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -54,14 +50,11 @@ const ornamentedInput = {
 };
 
 /**
- * Every facade return type, each produced by a fresh call so the "two calls" tests can ask
- * for the same value twice. `json` is false for the `Uint8Array` payloads, which RULE F3
- * exempts from the JSON leg.
- *
- * `freshIds` marks a sample whose *values* legitimately differ between two calls: a generated
- * ornament note draws a `meico_<uuid>` id per render. That is a property of the renderer, not
- * of the plain-data contract — every leg here still applies, and only the value-equality
- * comparison of two separate calls has to canonicalise those ids first.
+ * Every facade return type, each produced by a fresh call so the "two calls" tests can ask for
+ * the same value twice. `json` is false for the `Uint8Array` payloads, which RULE F3 exempts
+ * from the JSON leg. `freshIds` marks a sample whose values legitimately differ between two
+ * calls — a generated ornament note draws a `meico_<uuid>` id per render — so only the
+ * value-equality comparison of two separate calls has to canonicalise those ids first.
  */
 const samples: { name: string; call: () => unknown; json: boolean; freshIds?: true }[] = [
   { name: 'convertMeiToMsmMpm', call: () => convertMeiToMsmMpm(mei('simple_notes')), json: true },
@@ -85,11 +78,9 @@ const samples: { name: string; call: () => unknown; json: boolean; freshIds?: tr
 
 /**
  * The same value with every `meico_<uuid>` id replaced by `generated-N` in first-occurrence
- * order — the convention `ornamentation-v3.test.ts` established.
- *
- * It goes through JSON rather than walking the tree because the value is plain data by the
- * time it is called (every caller runs `checkPlainData` first), and a string round trip
- * cannot accidentally preserve a reference the comparison is meant to distinguish.
+ * order. It goes through JSON rather than walking the tree because the value is plain data by
+ * the time it is called, and a string round trip cannot accidentally preserve a reference the
+ * comparison is meant to distinguish.
  */
 function canonicaliseGeneratedIds(value: unknown): unknown {
   const seen = new Map<string, string>();
@@ -107,8 +98,8 @@ function canonicaliseGeneratedIds(value: unknown): unknown {
  * The `seen` guard is not decoration. Plain data is a tree, so a repeated reference cannot
  * occur — but the thing this file exists to catch is a live XomTypes node, whose parent and
  * child pointers form a cycle, and a `yield*` walk over a cycle never overflows the stack: it
- * allocates generator frames until the process dies. A gate that hangs is worse than none
- * (measured — it cost this item one 10-minute negative-control run).
+ * allocates generator frames until the process dies. A gate that hangs is worse than none —
+ * measured at ten minutes on a negative control before the run was killed.
  */
 function* nodes(
   value: unknown,
@@ -196,11 +187,9 @@ describe('facade outputs are plain data (RULE F1)', () => {
         checkPlainData(call());
       });
 
-      // `checkPlainData` opens the three round-trip legs as a fail-fast precondition, not as
-      // a duplicate assertion: cloning and deep-comparing a value that accidentally contains
-      // a live XML node walks the whole document twice and takes minutes, so without it a
-      // regression would hang the suite instead of reporting it (measured, see the note on
-      // `nodes`). The round-trip assertion itself is unchanged.
+      // `checkPlainData` opens the three round-trip legs as a fail-fast precondition: cloning a
+      // value that accidentally contains a live XML node takes minutes, so without it a
+      // regression hangs the suite instead of reporting it (see the note on `nodes`).
       it('survives structuredClone unchanged', () => {
         const value = call();
         checkPlainData(value);
@@ -234,10 +223,9 @@ describe('facade outputs are plain data (RULE F1)', () => {
   });
 
   it('walks the ornamentation fields with values in them, not six nulls (D15)', () => {
-    // A control for the v3 sample above. Every leg of this suite would pass for a note whose
-    // six ornamentation fields were all null or all absent, so this pins that the value being
-    // walked actually contains a populated string, a populated number and a boolean `true` —
-    // and that the flag/`null` shape of an *un*ornamented note is present in the same value.
+    // A control for the v3 sample above: every leg of this suite would pass for a note whose
+    // six ornamentation fields were all null or all absent, so this pins that the walked value
+    // holds a populated string, a populated number, a boolean `true` — and the null shape too.
     const notes = performMsmToData(ornamentedInput).parts.flatMap((p) => p.notes);
     const generated = notes.filter((n) => n.ornamented);
     const untouched = notes.filter((n) => !n.ornamented);
@@ -282,8 +270,8 @@ describe('facade outputs support referential-equality memoization (RULE I3)', ()
       if (freshIds === true)
         expect(canonicaliseGeneratedIds(second)).toEqual(canonicaliseGeneratedIds(first));
       else expect(second).toEqual(first);
-      // Unconditional, and the point of the case: the reference check reads the raw values,
-      // so a canonicalised comparison never stands in for it.
+      // Unconditional: the reference check reads the raw values, so a canonicalised comparison
+      // never stands in for it.
       checkNoSharedReferences(first, second);
     });
   }

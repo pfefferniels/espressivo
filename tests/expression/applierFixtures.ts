@@ -9,9 +9,8 @@
  *
  * Every fixture in these tests is hand-built. DESIGN §7.7 records why: the integration corpus
  * is a blind spot for exactly these paths — every `<articulation>` in it carries only
- * `name.ref` and `noteid`, so all twelve numeric modifiers went unread through the whole
- * certification programme, and no fixture puts a `<style>` switch at the same date as the
- * instruction it would govern.
+ * `name.ref` and `noteid`, leaving all twelve numeric modifiers unread, and no fixture puts a
+ * `<style>` switch at the same date as the instruction it would govern.
  */
 import { applyExaggeration } from '../../src/expression/applier.js';
 import { parseMpmRoot, serializeMpmRoot } from '../../src/expression/mpmDocument.js';
@@ -42,14 +41,11 @@ export interface Run {
   /**
    * The first (usually only) performance sub-report.
    *
-   * A GETTER, and the indirection is the point: a run whose `performance` selector matched
-   * nothing has no sub-report at all, and `applierLevels.test.ts` asserts exactly that. Read
-   * eagerly as `report.performances[0]` this field was typed `PerformanceReport` and held
-   * `undefined` on that path — a lie the type system could not see while
-   * `noUncheckedIndexedAccess` was off, and one that would have surfaced as "cannot read
-   * properties of undefined" in whichever test first dereferenced it. Deferring the checked
-   * read to the point of USE keeps the convenient type for the ~15 files that always have a
-   * performance, and fails with a sentence in the one that does not.
+   * A getter, so that the checked read happens at the point of use: a run whose `performance`
+   * selector matched nothing has no sub-report at all, and `applierLevels.test.ts` asserts
+   * exactly that. Read eagerly, the field would be typed `PerformanceReport` and hold
+   * `undefined` on that path. Deferring keeps the convenient type for the files that always
+   * have a performance, and fails with a sentence in the one that does not.
    */
   readonly performance: PerformanceReport;
   readonly xml: string;
@@ -114,9 +110,9 @@ export function notesOfKind(
 /**
  * The FIRST note of one kind — a checked {@link notesOfKind}`[0]`.
  *
- * Written `notesOfKind(performance, 'x')[0].attribute`, a run that emitted no such note failed
+ * Written `notesOfKind(performance, 'x')[0].attribute`, a run that emitted no such note fails
  * as "cannot read properties of undefined" rather than as "the applier emitted no x note",
- * which is exactly the claim those tests are making.
+ * which is the claim those tests are making.
  */
 export function firstNoteOfKind(
   performance: PerformanceReport,

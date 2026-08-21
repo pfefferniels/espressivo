@@ -1,13 +1,13 @@
 /**
  * The options layer: DESIGN.md §4's defaults and A11's rejections.
  *
- * Everything rejected here is a **programmer error**, never a document condition, and each
- * message names the offender — because the facade that wraps these into `InvalidOptionError`
- * (W3) cannot reconstruct which key was wrong from a bare failure.
+ * Everything rejected here is a programmer error, never a document condition, and each message
+ * names the offender — because the facade that wraps these into `InvalidOptionError` (W3)
+ * cannot reconstruct which key was wrong from a bare failure.
  *
- * The distinction the last block draws is the one that is mathematics rather than hygiene: a
- * dimension whose scale space's `T` ranges over a half-line has no meaning at `s < 0`, and
- * quietly substituting 0 would answer a question the caller did not pose.
+ * The last block's distinction is mathematics rather than hygiene: a dimension whose scale
+ * space's `T` ranges over a half-line has no meaning at `s < 0`, and quietly substituting 0
+ * would answer a question the caller did not pose.
  */
 import { describe, expect, it } from 'vitest';
 import { applyExaggeration } from '../../src/expression/applier.js';
@@ -38,9 +38,9 @@ function run(factors: ExaggerationFactors, options?: ExaggerateOptions): void {
 /**
  * The refusal a resolver answered with, having asserted that it refused at all.
  *
- * Stricter than the `expect(() => …).toThrow(/…/)` these assertions used to be: `toThrow`
- * accepts ANY throw, so a `TypeError` from a bug inside the resolver would have satisfied it.
- * Here the value has to be a refusal, and the message has to match.
+ * Stricter than `expect(() => …).toThrow(/…/)`, which accepts any throw and would be satisfied
+ * by a `TypeError` from a bug inside the resolver. Here the value has to be a refusal, and the
+ * message has to match.
  */
 function refusal(result: Result<unknown, string>): string {
   expect(result.ok).toBe(false);

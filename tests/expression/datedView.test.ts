@@ -165,16 +165,13 @@ describe('datedView', () => {
 
   describe('styleNamesOf', () => {
     /**
-     * `styleNamesOf` is `styleNameAt` for every position in one forward pass — a `scanl`
-     * where the caller (`readScopeMapViews`) used to run the per-index backwards scan once
-     * per index, quadratically. Its whole contract is that it answers what the per-index
-     * function answers, so that is what is asserted: element-for-element agreement, over
-     * every case the block above establishes separately.
+     * `styleNamesOf` is `styleNameAt` for every position in one forward pass — a `scanl`, so
+     * that `readScopeMapViews` need not run the per-index backwards scan once per index,
+     * quadratically.
      *
-     * The `+ 1` inside is where an off-by-one would live — `scanl` is seed-first, so the
-     * state for position `i` is `states[i + 1]`. These cases are chosen to catch a slip in
-     * either direction: `before` must NOT see the switch that shares its date, `s` and
-     * `after` must.
+     * The `+ 1` inside is where an off-by-one would live: `scanl` is seed-first, so the state
+     * for position `i` is `states[i + 1]`. These cases catch a slip in either direction —
+     * `before` must not see the switch that shares its date, `s` and `after` must.
      */
     const cases: readonly (readonly [string, string])[] = [
       ['no styles at all', '<tempo id="a" date="0" bpm="120"/><tempo id="b" date="1" bpm="130"/>'],

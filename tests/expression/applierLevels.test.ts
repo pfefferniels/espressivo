@@ -1,10 +1,9 @@
 /**
  * The two level dimensions: DESIGN §7.1's center population, §7.2/§7.4's rows, §1.3's scopes.
  *
- * Every expectation here is computed from the hand-derived center with the same closed form
- * the engine uses, so the assertions are exact rather than approximate. That is deliberate:
- * an ULP-level disagreement between the engine's `μ·(x/μ)^s` and a test's `x^s·μ^(1−s)` would
- * pass an epsilon comparison while proving that P2 (composition to ~1 ULP) had been given up.
+ * Every expectation is computed from the hand-derived center with the same closed form the
+ * engine uses, so the assertions are exact: an ULP-level disagreement between `μ·(x/μ)^s` and
+ * `x^s·μ^(1−s)` passes an epsilon comparison while giving up P2 (composition to ~1 ULP).
  */
 import { describe, expect, it } from 'vitest';
 import { canonicalBaseline } from '../../src/expression/mpmDocument.js';
@@ -26,10 +25,9 @@ function geomean(...values: readonly number[]): number {
 }
 
 describe('applyExaggeration — tempo (§7.2)', () => {
-  // Three surviving level sites in three different shapes: a def named from a quarter-note
-  // instruction, a literal on a HALF-note instruction, and a def named from a quarter-note
-  // instruction that also carries a transition target. The target is transformed and excluded
-  // from the population, which is the whole point of §7.1's third rule.
+  // Three level sites in three shapes: a def named from a quarter-note instruction, a literal
+  // on a half-note instruction, and a def named from an instruction that also carries a
+  // transition target. That target is transformed but excluded from the population (§7.1).
   const MIXED = globalDocument(
     '<tempoStyles><styleDef name="T">' +
       '<tempoDef id="allegro" name="Allegro" value="120"/>' +
@@ -131,9 +129,9 @@ describe('applyExaggeration — the skip set precedes the center (§7.1, A5)', (
   });
 
   it('reports the dimension INERT, not skipped, when the population comes out empty', () => {
-    // R-W2-5/#10: an empty population is a refusal from `geometricMean`, and the honest verdict
-    // for the dimension is that this document gives it nothing to work on — even though the
-    // placeholder that emptied the population was itself counted as a per-site skip.
+    // R-W2-5/#10: an empty population is a refusal from `geometricMean`, so the dimension's
+    // verdict is that the document gives it nothing to work on, even though the placeholder
+    // that emptied the population is itself a per-site skip.
     const NOTHING_SURVIVES = globalDocument(
       '',
       '<tempoMap><tempo id="t1" date="0.0" bpm="+" beatLength="0.25"/></tempoMap>',
@@ -156,10 +154,9 @@ describe('applyExaggeration — the skip set precedes the center (§7.1, A5)', (
   });
 
   it('keeps a non-finite def value out of the population, not merely out of the writes', () => {
-    // LOG W2 finding 4: `parseJavaDouble` accepts Java's `NaN` literal, so a resolved def can
-    // carry a non-finite value. The gate rejects it into the skip set BEFORE the center is
-    // computed — if it reached the population the center would be `NaN` and every level would
-    // then fail, which is the difference between one reported skip and a dead dimension.
+    // `parseJavaDouble` accepts Java's `NaN` literal, so a resolved def can carry a non-finite
+    // value. The gate rejects it into the skip set before the center is computed: reaching the
+    // population it would make the center `NaN` and every level fail with it.
     const NAN_DEF = globalDocument(
       '<tempoStyles><styleDef name="T"><tempoDef id="bad" name="Broken" value="NaN"/>' +
         '</styleDef></tempoStyles>',
@@ -178,11 +175,10 @@ describe('applyExaggeration — the skip set precedes the center (§7.1, A5)', (
 });
 
 describe('applyExaggeration — the exact-center branches (§7.1, R-W2-5/#9)', () => {
-  // `geometricMean` returns a single-element population and an all-equal one EXACTLY, without
-  // a log round trip. That is what protects the piecewise-constant corpus: the center is one of
-  // the values, so `μ·(x/μ)^s` is `μ·1^s = μ` bit for bit, the written spelling is the one
-  // already in the file, and the write is skipped. Were the center off by an ULP instead, every
-  // constant instruction in every mpmify-generated performance would be rewritten at every s.
+  // `geometricMean` returns a single-element population and an all-equal one exactly, without a
+  // log round trip, so `μ·(x/μ)^s` is `μ·1^s = μ` bit for bit and the write is skipped. A center
+  // off by an ULP would rewrite every constant instruction of every mpmify-generated
+  // performance at every s.
 
   it('writes nothing for a piecewise-constant map at s ≠ 1', () => {
     const ALL_EQUAL = globalDocument(
@@ -245,8 +241,6 @@ describe('applyExaggeration — dynamics (§7.4)', () => {
     const { root, performance } = exaggerate(LADDER, { dynamics: 4 });
     expect(performance.dimensions.dynamics.clamps).toBe(2);
     // The counter and the note are two statements; assert both, or deleting the note passes.
-    // Which LEVEL hit the ceiling is the detail that distinguishes `dynamics` from the four
-    // coefficient dimensions, so the report has to keep naming it.
     const clamps = notesOfKind(performance, 'clamped');
     expect(clamps).toHaveLength(2);
     expect(clamps.every((note) => note.attribute === 'value')).toBe(true);
@@ -320,21 +314,18 @@ describe('applyExaggeration — gesture scope (§1.3, A7, D-I)', () => {
     /**
      * A pinned divergence, not a ratified rule — see `markEndMarkerDuplicates`' docstring.
      *
-     * "The next instruction" is the next CLASSIFIED one, and an element carrying neither
-     * `@volume` nor `@transition.to` classifies away. The renderer does not ignore it: it
-     * ENDS the previous span with it (AD-33.4). Measured through `performMsm` on five notes,
-     * the same map with and without a bare `<dynamics/>` in the middle performs
+     * "The next instruction" is the next classified one, and an element carrying neither
+     * `@volume` nor `@transition.to` classifies away. The renderer instead ends the previous
+     * span with it (AD-33.4). Measured through `performMsm` on five notes, the same map with
+     * and without a bare `<dynamics/>` in the middle performs
      *
      *     without:  60, 67.49…, 75, 82.51…, 90     (one ramp)
      *     with:     60, 75, 100.0, 100.0, 90
      *
      * so the later constant is separated from the transition endpoint by a discontinuity the
      * document already contains. It is nevertheless still detected and moved, which this pins.
-     *
-     * The test is written to FAIL if that is ever changed, deliberately: the change is a §7.2
-     * ruling (tempo must keep stepping over a `<tempo>` without `@beatLength`, which the
-     * renderer really does ignore), and it should be made with this test going red rather than
-     * discovered afterwards.
+     * Changing that is a §7.2 ruling — tempo must keep stepping over a `<tempo>` without
+     * `@beatLength`, which the renderer really does ignore — so this test goes red first.
      */
     const bareBetween = globalDocument(
       '',
@@ -464,8 +455,8 @@ describe('applyExaggeration — performance selection (A11)', () => {
 
 describe('applyExaggeration — refusals at level sites (§1.2, A3, A4)', () => {
   // `s = 400` around a center of 100 drives a level of 10 to `100·(0.1)^400`, which underflows
-  // to exactly 0 in doubles. Zero is not an extreme velocity — it is off the domain of the log
-  // space entirely, and writing it would be the "repair" §1.2 forbids.
+  // to exactly 0. Zero is not an extreme velocity but off the log space's domain entirely, and
+  // writing it would be the "repair" §1.2 forbids.
   const UNDERFLOW = globalDocument(
     '<dynamicsStyles><styleDef name="D"><dynamicsDef id="dp" name="p" value="10"/>' +
       '</styleDef></dynamicsStyles>',
@@ -501,10 +492,9 @@ describe('applyExaggeration — refusals at level sites (§1.2, A3, A4)', () => 
   });
 
   it('leaves a surviving transition target INERT when the population left no center', () => {
-    // The prevailing level is a placeholder, so nothing feeds the center — but the target is a
-    // perfectly good number. Nothing is wrong with it; it is simply unreachable, which is what
-    // `inert` means and `skipped` does not. The placeholder that emptied the population keeps
-    // its own skip, so the counters still say what happened.
+    // The prevailing level is a placeholder, so nothing feeds the center, but the target is a
+    // perfectly good number: unreachable rather than wrong, which is what `inert` means and
+    // `skipped` does not. The placeholder that emptied the population keeps its own skip.
     const NO_CENTER = globalDocument(
       '',
       '<dynamicsMap><dynamics id="m1" date="0.0" volume="?" transition.to="90"/></dynamicsMap>',

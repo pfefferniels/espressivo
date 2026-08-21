@@ -1,13 +1,12 @@
 /**
  * One pin per W2-VERIFICATION finding, built from the finding's own reproduction.
  *
- * Every test here fails on the pre-fix engine — that is the entry criterion for being in this
- * file. The documents and the expected numbers are the verifiers', re-derived by hand rather
- * than copied from a run, so a regression fails with the same arithmetic the adversary used.
+ * Failing on the pre-fix engine is the entry criterion for being in this file. The documents
+ * and the expected numbers are the verifiers', re-derived by hand rather than copied from a
+ * run, so a regression fails with the same arithmetic the adversary used.
  *
- * They live apart from the per-dimension suites deliberately: a finding is a claim about a
- * defect, and a reader tracing "was F1 actually fixed, and how would we know" should not have
- * to reconstruct which of forty assertions was the one that mattered.
+ * They live apart from the per-dimension suites so that one finding maps to one describe:
+ * "was F1 fixed, and how would we know" is answerable without reading forty assertions.
  */
 import { describe, expect, it } from 'vitest';
 import { ReportSink } from '../../src/expression/report.js';
@@ -25,9 +24,8 @@ import {
 describe('F1 (BLOCKER) — the pair-collapse refusal reaches def-side writes', () => {
   // §8's own reference fixture. μ = √(48·97) = 68.2348…; at s = 1.8 both the def `f` (97) and
   // the literal target (115) transform past the ceiling and clamp to 127, so the pair collapses
-  // and the guard must refuse it. Before the fix the def write had already been flushed, and
-  // the authored 97 → 115 crescendo shipped as a 127 → 115 DIMINUENDO while the report claimed
-  // the pair was refused.
+  // and the guard must refuse it. Flush the def write before the guard runs and the authored
+  // 97 → 115 crescendo ships as a 127 → 115 diminuendo, with the report claiming a refusal.
   const NAMED_LEVEL_PAIR = globalDocument(
     '<dynamicsStyles><styleDef name="D">' +
       '<dynamicsDef id="dp" name="p" value="48"/>' +
@@ -71,9 +69,8 @@ describe('F1 (BLOCKER) — the pair-collapse refusal reaches def-side writes', (
   });
 
   it('propagates the refusal to every other pair resolving through the dropped def', () => {
-    // `f` is named by two pairs. One collapses, so `f` is not written — and the OTHER pair must
-    // not move its literal target either, or that gesture is half applied against a level that
-    // stands still.
+    // `f` is named by two pairs. One collapses, so `f` is not written, and the other pair must
+    // not move its literal target either or that gesture is half applied.
     const SHARED_DEF = globalDocument(
       '<dynamicsStyles><styleDef name="D">' +
         '<dynamicsDef id="dp" name="p" value="48"/>' +
@@ -113,9 +110,8 @@ describe('F1 (BLOCKER) — the pair-collapse refusal reaches def-side writes', (
 
 describe('F2 — the end-marker duplicate is written in its OWN beat unit', () => {
   // Both sites denote 60 quarter-note bpm (60·1 and 30·2), which is why the duplicate is
-  // detected at all. Before the fix the transition's denormalized value was written straight
-  // into a half-note `@bpm`, so the two sites that shared one musical value ended up a factor
-  // of 2 apart — moving in opposite directions.
+  // detected at all. Writing the transition's denormalized value straight into a half-note
+  // `@bpm` puts two sites that share one musical value a factor of 2 apart.
   const HETEROGENEOUS_DUPLICATE = globalDocument(
     '',
     '<tempoMap>' +
@@ -166,8 +162,8 @@ describe('F2 — the end-marker duplicate is written in its OWN beat unit', () =
 describe('F3 — dynamicsShape uses the renderer’s 100.0 fallback for constancy', () => {
   it('treats two unresolvable endpoints as the constant the renderer sees', () => {
     // Before the map's first `<style>` switch neither name resolves, so `resolveLevel` gives
-    // NaN for both — and `NaN === NaN` is false, so the engine used to call this a gesture and
-    // write curve parameters the renderer provably never reads.
+    // NaN for both — and `NaN === NaN` is false, so a bare equality test would call this a
+    // gesture and write curve parameters the renderer provably never reads.
     const BOTH_UNRESOLVABLE = globalDocument(
       '',
       '<dynamicsMap><dynamics id="k1" date="0.0" volume="pp" transition.to="pp" ' +
@@ -182,8 +178,8 @@ describe('F3 — dynamicsShape uses the renderer’s 100.0 fallback for constanc
   });
 
   it('compares a resolvable endpoint against the fallback, not against NaN', () => {
-    // The renderer reads `volume="100"` as 100 and the unresolvable target as 100 too, so this
-    // is a constant instruction — even though only one side is a placeholder.
+    // The renderer reads both `volume="100"` and the unresolvable target as 100, so this is a
+    // constant instruction even though only one side is a placeholder.
     const ONE_UNRESOLVABLE = globalDocument(
       '',
       '<dynamicsMap><dynamics id="k1" date="0.0" volume="100" transition.to="?" ' +
@@ -195,8 +191,8 @@ describe('F3 — dynamicsShape uses the renderer’s 100.0 fallback for constanc
   });
 
   it('keeps the fallback OUT of the center population (§7.2)', () => {
-    // The same placeholder must NOT become a 100.0 level: inventing one would move every level
-    // the author did write. This is the half of the rule the fix must not break.
+    // The same placeholder must not become a 100.0 level: inventing one would move every level
+    // the author did write.
     const MIXED = globalDocument(
       '',
       '<dynamicsMap>' +
@@ -363,8 +359,7 @@ describe('F8 — state precedence is transformed > partial (§4 as amended)', ()
   it('reads transformed when one site was fully reachable', () => {
     const { performance } = exaggerate(LOPSIDED_AND_WHOLE, { articulation: 2 });
     expect(performance.dimensions.articulation.state).toBe('transformed');
-    // Both sites were written, partial included: the counter reports writes, the state reports
-    // reachability.
+    // The counter reports writes, the state reports reachability.
     expect(performance.dimensions.articulation.sitesTransformed).toBe(2);
   });
 
@@ -425,9 +420,9 @@ describe('F10 — a pitch lever makes an articulation site partial too', () => {
 });
 
 describe('F11 — the population is built from gate-surviving values (A5)', () => {
-  // bpm and beatLength are each finite and positive; their PRODUCT underflows to 0. Gating the
-  // raw value let the site into the population, where `geometricMean` refused it and the whole
-  // dimension went inert with a note that never named the offender.
+  // bpm and beatLength are each finite and positive; their product underflows to 0. Gating the
+  // raw value lets the site into the population, where `geometricMean` refuses it and the whole
+  // dimension goes inert behind a note that names no offender.
   const UNDERFLOWING_PRODUCT = globalDocument(
     '',
     '<tempoMap>' +
@@ -474,9 +469,8 @@ describe('F11 — the population is built from gate-surviving values (A5)', () =
 describe('MINOR — the report hands out copies, never the sink’s interior', () => {
   it('cannot be grown through the array it returned', () => {
     // CHARTER: "outputs freshly created, no internal mutable state leaked". `readonly
-    // ReportNote[]` is a compile-time claim only — the runtime one is that the accumulating
-    // array never escapes, so a caller holding the result as `unknown[]` cannot push into the
-    // sink and have the next reader see it.
+    // ReportNote[]` is a compile-time claim only; the runtime one is that the accumulating
+    // array never escapes.
     const sink = new ReportSink();
     sink.note('identity-factor', 'tempo', null, 'first');
     sink.mergeLevels('f', 'ff');

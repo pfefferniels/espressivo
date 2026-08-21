@@ -1,29 +1,18 @@
 /**
  * A UTF-8 byte-order mark must not change what any facade entry point produces.
  *
- * ## Why this is parity, not leniency
+ * This is parity, not leniency. Java hands XOM bytes at every entry point (`XmlBase.java:99,162`,
+ * `mei/Helper.java:1042,1061`) and XOM parses those through a SAX/Xerces `XMLReader`, for which
+ * a leading `EF BB BF` is the UTF-8 encoding signature of XML 1.0 §4.3.3 / Appendix F: consumed
+ * before the document entity begins, never content. This port parses a decoded string, so the
+ * same bytes arrive as a U+FEFF character in front of the XML declaration and `@xmldom/xmldom`
+ * rejects the document outright. The fix lives in `Builder.build` (`src/xml/XomTypes.ts`), the
+ * one choke point `XmlBase` and the expression layer's raw parses pass through. Three of the six
+ * encodings in the MPM format's own sample corpus carry a BOM.
  *
- * Java hands XOM *bytes* at every entry point —
- * `builder.build(new ByteArrayInputStream(xml.getBytes(UTF_8)))` (`meico/xml/XmlBase.java:99`,
- * `meico/mei/Helper.java:1042,1061`) and `builder.build(file)` (`XmlBase.java:162`) — and XOM
- * parses those through a SAX/Xerces `XMLReader`, for which a leading `EF BB BF` is the UTF-8
- * encoding signature of XML 1.0 §4.3.3 / Appendix F: consumed before the document entity
- * begins, never content. Java therefore reads a BOM'd file silently.
- *
- * This port parses a decoded *string*, so the same bytes arrive as a U+FEFF character in
- * front of the XML declaration, and `@xmldom/xmldom` rejects the document outright. The fix
- * lives in `Builder.build` (`src/xml/XomTypes.ts`) — the one choke point `XmlBase` and the
- * expression layer's two raw parses all pass through — and this file pins it at the surface
- * every consumer actually uses.
- *
- * ## Why it matters in practice
- *
- * Three of the six encodings in the MPM format's own sample corpus carry a BOM, including
- * both of its multi-performance documents. Without this, those files are unreadable.
- *
- * The assertion shape throughout is equality of a **downstream product** against the same
- * input without the mark — not merely "it parsed" — because a BOM that survived into the tree
- * would parse fine and corrupt the output.
+ * The assertion shape throughout is equality of a downstream product against the same input
+ * without the mark — not merely "it parsed" — because a BOM that survived into the tree would
+ * parse fine and corrupt the output.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -52,11 +41,9 @@ const SIMPLE_MEI = read('mei', 'simple_notes.mei');
 const withBom = (text: XmlText): XmlText => (BOM + text) as XmlText;
 
 /**
- * Rewrite the `meico_<uuid>` ids the MEI converter draws to `generated-N` by first
- * occurrence, so two conversions of one document can be compared.
- *
- * Those ids are the only thing that differs between two runs, and canonicalising them is the
- * convention `tests/api/pipeline.test.ts` already established for exactly this comparison.
+ * Rewrite the `meico_<uuid>` ids the MEI converter draws to `generated-N` by first occurrence,
+ * so two conversions of one document can be compared. They are the only thing that differs
+ * between two runs.
  */
 function canonicaliseGeneratedIds(xml: string): string {
   const seen = new Map<string, string>();
@@ -92,8 +79,7 @@ describe('UTF-8 BOM tolerance at the facade', () => {
 
       expect(performMsm({ msm: withBom(SPANS_MSM), mpm: SPANS_MPM })).toBe(baseline);
       expect(performMsm({ msm: SPANS_MSM, mpm: withBom(SPANS_MPM) })).toBe(baseline);
-      // Both at once — the realistic case, since a BOM is a property of how a whole
-      // corpus was written out rather than of one file in it.
+      // Both at once: a BOM is a property of how a corpus was written out, not of one file.
       expect(performMsm({ msm: withBom(SPANS_MSM), mpm: withBom(SPANS_MPM) })).toBe(baseline);
     });
   });

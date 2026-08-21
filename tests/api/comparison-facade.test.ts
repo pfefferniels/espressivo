@@ -1,7 +1,7 @@
 /**
  * The comparison facade — DESIGN.md §9's surface, at the boundary a consumer sees.
  *
- * Three things are tested here and nowhere else: the VALIDATION table (§9.4), which is the whole
+ * Three things are tested here and nowhere else: the validation table (§9.4), which is the whole
  * of what a caller can get wrong; the typed errors and their document identity, because "MPM a"
  * versus "MPM b" is the difference between a fixable message and a bisection; and the plain-data
  * contract (RULE F1, §9.6), which the interior cannot check because it is a statement about what
@@ -65,18 +65,16 @@ describe('compareMpm end to end', () => {
   });
 
   /**
-   * MINOR-2's normalization, pinned on a value that REALLY carries `-0`.
+   * MINOR-2's normalization, pinned on a value that really carries `-0`.
    *
-   * No shipped computation produces `-0` today — every distance passes through `Math.abs` or a
+   * No shipped computation produces `-0`: every distance passes through `Math.abs` or a
    * non-negative accumulator, and a signed descriptor of an identical pair is `x − x`, which is
-   * `+0` in IEEE754. Measured, and negative-controlled: deleting the normalizer fails nothing on
-   * an identity comparison. So the normalizer is a GUARD rather than a repair, and pinning it on
-   * an identity pair would have been a vacuous test.
+   * `+0` in IEEE754. Measured — deleting the normalizer fails nothing on an identity
+   * comparison, so a pin there would be vacuous. It is a guard rather than a repair.
    *
    * The reachable path is the caller's: `-0` is a finite number `>= 0`, so it passes the weight
    * validator and lands in the echoed weight vector, where `Object.is`-based assertions and the
-   * JSON round trip would then disagree about a value the caller can see. That is the shape of
-   * every future signed quantity's hazard, one input earlier.
+   * JSON round trip would then disagree about a value the caller can see.
    */
   it('normalizes −0 to +0 at the boundary, so JSON and Object.is agree (MINOR-2, A20)', () => {
     const { report } = compareMpm({

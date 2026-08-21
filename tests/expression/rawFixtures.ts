@@ -49,9 +49,8 @@ export function idsOf(
  *
  * `readPerformances(parseMpmRoot(text))[0]` is `PerformanceView | undefined` under
  * `noUncheckedIndexedAccess`, and every test in this directory hangs its whole body off that
- * one read. A parse that found no performance used to surface as "cannot read properties of
- * undefined" on whichever property the test happened to touch first, in a test whose name is
- * about something else; these fail at the read and say what was missing.
+ * one read. These fail at the read, naming what was missing, rather than as "cannot read
+ * properties of undefined" on whichever property the test happens to touch first.
  */
 export function soleOf(text: string): PerformanceView {
   return soleIn(parseMpmRoot(text));

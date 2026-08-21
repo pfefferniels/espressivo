@@ -4,10 +4,10 @@
  * render. The two claims that do (R5 symbolic invariance and A14's expected directions) are in
  * `tests/integration/expression-transform.test.ts`.
  *
- * The engine underneath is covered by `tests/expression/**`; nothing here re-tests it. What is
- * tested here is the boundary: that the engine's plain `Error`s arrive as the documented
- * classes with the offender still named, that `options.msm` reaches the report and nothing
- * else, and that the result survives the round trips RULE F1 promises.
+ * The engine underneath is covered by `tests/expression/**`; what is tested here is the
+ * boundary — that its plain `Error`s arrive as the documented classes with the offender still
+ * named, that `options.msm` reaches the report and nothing else, and that the result survives
+ * the round trips RULE F1 promises.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -33,12 +33,9 @@ import {
 import { elementAt } from '../../src/prelude/index.js';
 
 /**
- * The sole performance sub-report of a run, checked.
- *
- * Every test below exaggerates a one-performance document — or narrows a two-performance one
- * to a single sub-report and asserts the length first — and then reads `performances[0]`.
- * A run that produced none used to fail as "cannot read properties of undefined" on whichever
- * field the test happened to read; this says there were none.
+ * The sole performance sub-report of a run, checked. A run that produced none fails here,
+ * saying so, rather than as "cannot read properties of undefined" on whichever field the test
+ * happens to read first.
  */
 const soleReport = (report: ExaggerationReport) =>
   elementAt(report.performances, 0, 'the report’s performances');
@@ -96,10 +93,9 @@ describe('P1: the identity transform returns the canonical baseline byte for byt
   });
 
   it.each(documents)('%s: every dimension at 1 writes nothing', (_name, mpm) => {
-    // The predicate that actually exercises the engine (A2): a missing key never reaches a
-    // transform, while an explicit 1 has to be short-circuited at the dimension level. It
-    // cannot be "the value is unchanged so the write is skipped" — at s = 1 the round trip
-    // through a scale space is not the identity in doubles, and `"1.0"` would come back `"1"`.
+    // A missing key never reaches a transform, while an explicit 1 has to be short-circuited at
+    // the dimension level (A2): at s = 1 the round trip through a scale space is not the
+    // identity in doubles, and `"1.0"` would come back `"1"`.
     const { mpm: out, report } = exaggerateMpm(mpm, { factors: uniformFactors(1) });
     expect(out).toBe(canonicalMpm(mpm));
     expect(report.totalWrites).toBe(0);
@@ -223,11 +219,10 @@ describe('RULE E2: every failure is a typed error naming the offender', () => {
 
   describe('ParseError', () => {
     /**
-     * Class AND message, always, in one call — because either alone leaves a refactor free to
-     * break the other. The `options.msm` cases are the ones this matters most for: `parseRoot`
-     * is shared between the two document kinds, and routing MSM failures through
-     * `InvalidOptionError` (defensible-looking, since a bad `options.msm` IS an option) would
-     * keep a message-only assertion green while breaking the documented `@throws`.
+     * Class and message together, always: either alone leaves a refactor free to break the
+     * other. It matters most for `options.msm` — routing MSM failures through
+     * `InvalidOptionError` (defensible, since a bad `options.msm` is an option) would keep a
+     * message-only assertion green while breaking the documented `@throws`.
      */
     const rejects = (thunk: () => unknown, pattern: RegExp) => {
       expect(thunk).toThrow(ParseError);
@@ -238,9 +233,8 @@ describe('RULE E2: every failure is a typed error naming the offender', () => {
       ['not well-formed', '<mpm><performance></mpm>'],
       ['not XML at all', 'certainly not xml'],
     ])('rejects an MPM that is %s', (_why, text) => {
-      // The foreign class trap: `@xmldom/xmldom` throws its OWN `ParseError`, which shares a
-      // name with this package's and is not the same class. A consumer catching by identity
-      // would miss it entirely if the facade did not translate.
+      // The foreign class trap: `@xmldom/xmldom` throws its own `ParseError`, which shares a
+      // name with this package's and is not the same class.
       rejects(() => exaggerateMpm(text as XmlText, { factors }), /^MPM: /);
     });
 
@@ -251,9 +245,8 @@ describe('RULE E2: every failure is a typed error naming the offender', () => {
       );
     });
 
-    // The message names WHAT arrived (a W3 comparison MINOR, fixed in the shared guard): an
-    // empty string and an absent argument are different mistakes and "got nothing" was said of
-    // both, which is misleading for the untyped caller who is this message's actual reader.
+    // The message names what arrived: an empty string and an absent argument are different
+    // mistakes, and the untyped caller is this message's actual reader.
     it.each([
       ['empty', ''],
       ['blank', '   '],
@@ -284,11 +277,11 @@ describe('RULE E2: every failure is a typed error naming the offender', () => {
     });
 
     /**
-     * `canonicalMpm` is called on the SAME text as `exaggerateMpm` — it is the oracle every
+     * `canonicalMpm` is called on the same text as `exaggerateMpm` — it is the oracle every
      * identity claim in this file compares against — so the two have to agree on the failure
-     * path as exactly as they agree on the success path. They did not: the export used to be
-     * the interior `canonicalBaseline` verbatim, which parses with a bare `Builder` and hands
-     * back `@xmldom/xmldom`'s own `ParseError`, a class that is not a `MeicoError` at all.
+     * path as exactly as they agree on the success path. Exporting the interior
+     * `canonicalBaseline` verbatim would not: it parses with a bare `Builder` and hands back
+     * `@xmldom/xmldom`'s own `ParseError`, a class that is not a `MeicoError` at all.
      */
     describe('canonicalMpm agrees with exaggerateMpm on every rejection', () => {
       const inputs: readonly (readonly [string, unknown])[] = [
@@ -413,10 +406,9 @@ describe('RULE E2: every failure is a typed error naming the offender', () => {
 
     it('reads a null selector as absent, the way every other option in the bag reads it', () => {
       // The engine normalises all five of its options with `??`, so `null` is "absent" for
-      // `scope`, `center`, `velocityRange`, `minRubatoWindow` and `performance` alike. A
-      // facade guard spelling absence `=== undefined` would make one option bag carry two
-      // meanings for one value — and would report a performance named 'null' that no caller
-      // ever wrote, on a document the engine had already transformed in full.
+      // `scope`, `center`, `velocityRange`, `minRubatoWindow` and `performance` alike. A facade
+      // guard spelling absence `=== undefined` would report a performance named 'null' that no
+      // caller ever wrote.
       const nulled = exaggerateMpm(SPANS, {
         factors,
         performance: null as unknown as undefined,
@@ -431,11 +423,10 @@ describe('RULE E2: every failure is a typed error naming the offender', () => {
      * A6's `lateStart < earlyEnd` assertion, reached the only way it can be.
      *
      * The guard clamps the joint trim to `1 − minRubatoWindow`, so the split is ordered by
-     * construction *for a `minRubatoWindow` big enough to survive the subtraction*. Below
-     * about 2⁻⁵³ it does not: `1 − 1e-17` rounds to exactly 1.0, the clamp stops clamping, and
-     * a saturating trim collapses the window onto a point. Which is precisely what the option's
-     * documented default exists to prevent — the failure is the engine reporting on itself,
-     * not a condition of the document.
+     * construction for a `minRubatoWindow` big enough to survive the subtraction. Below about
+     * 2⁻⁵³ it is not: `1 − 1e-17` rounds to exactly 1.0, the clamp stops clamping, and a
+     * saturating trim collapses the window onto a point. The failure is the engine reporting on
+     * itself, not a condition of the document.
      */
     const crossing: ExaggerateOptions = {
       factors: { rubato: 2000 },
@@ -513,7 +504,6 @@ describe('options', () => {
     }).mpm;
     const both = exaggerateMpm(twoPerformances, { factors: { tempo: 2 } }).mpm;
     expect(narrowed).not.toBe(both);
-    // The second performance still carries the values it started with.
     const tail = (xml: string) =>
       elementAt(xml.split('name="Second"'), 1, 'the text after the second performance’s name');
     expect(tail(narrowed)).toBe(tail(canonicalMpm(twoPerformances)));
@@ -552,8 +542,7 @@ describe('options', () => {
     expect(Object.keys(report.appliedFactors).sort()).toEqual([...EXPRESSION_DIMENSIONS].sort());
     expect(report.appliedFactors.tempo).toBe(1.5);
     expect(report.appliedFactors.rubato).toBe(1);
-    // `requestedFactor` keeps the two apart: what the caller asked for is null where the
-    // default filled in, which is what lets a consumer diff two samples' intent.
+    // `requestedFactor` keeps the two apart: it is null where the default filled in.
     expect(soleReport(report).dimensions.tempo.requestedFactor).toBe(1.5);
     expect(soleReport(report).dimensions.rubato.requestedFactor).toBeNull();
   });
@@ -565,10 +554,9 @@ describe('options', () => {
 
 describe('report states', () => {
   it("pins 'inert' with sitesSkipped > 0, which is legal and reachable (§4 #9)", () => {
-    // Every level in this map is a placeholder that resolves to no def and is not a number, so
-    // every site fails the gate AND the center population comes out empty. The site tally says
-    // `skipped`; the dimension-level verdict says `inert`, and it wins — reporting a failure
-    // where the truthful answer is "this document gives this dimension nothing to work on".
+    // Every level here is a placeholder that resolves to no def and is not a number, so every
+    // site fails the gate and the center population comes out empty. The site tally says
+    // `skipped`; the dimension-level verdict says `inert`, and it wins.
     const placeholders = document(
       performance(
         'P',
@@ -646,13 +634,13 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
 
   it('counts the notes before the FIRST instruction, and only those (§7.4)', () => {
     // The other half of `unreachableLevels`, and the half the corpus does not pin: the render
-    // loop writes a flat 100.0 onto every note EARLIER than the first `<dynamics>`, so the
-    // window that counts opens at that instruction's date and not at the map's last one.
-    // Nothing in the suite distinguished the two — a build with `last` in place of `first`
-    // passed every test in the tree — because the fixtures with a dynamics map either start
-    // it at date 0 or carry an unterminated final transition that swamps the count.
+    // loop writes a flat 100.0 onto every note earlier than the first `<dynamics>`, so the
+    // window that counts opens at that instruction's date and not at the map's last one. No
+    // corpus fixture distinguishes the two — `last` in place of `first` passes every test in
+    // the tree — because the ones with a dynamics map either start it at date 0 or carry an
+    // unterminated final transition that swamps the count.
     //
-    // Two instructions, the second WITHOUT `@transition.to`, so the unterminated-ramp arm
+    // Two instructions, the second without `@transition.to`, so the unterminated-ramp arm
     // contributes nothing and the number below is the before-the-first count alone.
     const mpm = document(
       performance(
@@ -736,10 +724,9 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
   });
 
   it('falls back to 720 on each side when that side declares no grid', () => {
-    // Both fallbacks are 720, and every fixture declares 720 on both sides, so neither
-    // constant is observable from the corpus — each is pinned here against a counterpart
-    // that declares something else. The frames are chosen so that a fallback of 480 would
-    // give the opposite answer in both directions.
+    // Both fallbacks are 720 and every fixture declares 720 on both sides, so neither constant
+    // is observable from the corpus. Each is pinned here against a counterpart that declares
+    // something else, with frames chosen so that a fallback of 480 would invert the answer.
     const ornament = (frameLength: string) =>
       '<ornamentationStyles><styleDef name="S"><ornamentDef name="roll">' +
       `<temporalSpread frame.start="0.0" frameLength="${frameLength}"/>` +
@@ -777,10 +764,9 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
   });
 
   it('answers null — not zero — where the risk is a millisecond one and the MSM is a score', () => {
-    // The distinction the field exists to keep: `0` means "sites of this family, none at
-    // risk", `null` means "sites of this family whose risk this MSM does not determine". A
-    // note's length in milliseconds exists only after a render, and R1 puts a render out of
-    // reach, so a raw score cannot answer.
+    // The distinction the field exists to keep: `0` means "sites of this family, none at risk",
+    // `null` means "sites whose risk this MSM does not determine". A note's length in
+    // milliseconds exists only after a render, which R1 puts out of reach for a raw score.
     const millisecondSites = document(
       performance(
         'P',

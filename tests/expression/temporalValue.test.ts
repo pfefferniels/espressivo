@@ -3,11 +3,9 @@
  * real one.
  *
  * The layer zone forbids `src/expression/**` from importing anything under `src/mpm/**` except
- * `names.ts`, so the grammar is transliterated rather than shared, and a transliteration is
- * only worth as much as its parity pin. These tests are that pin, and they follow the pattern
- * `datedView.test.ts` established for `GenericMap`: the SAME text is handed to both readers, on
- * SEPARATE parses, and the two answers are compared — never one reader's output fed to the
- * other.
+ * `names.ts`, so the grammar is transliterated rather than shared and these tests are its parity
+ * pin: the same text goes to both readers, on separate parses, and the two answers are compared
+ * — never one reader's output fed to the other.
  *
  * The one place the two deliberately disagree is serialization, and it has its own describe:
  * the renderer rebuilds a value's text from its resolved domain (canonicalizing `"44"` into
@@ -39,9 +37,9 @@ function spread(attributes: string): Element {
 /**
  * The same attributes read through the real `TemporalSpread`, on its own parse.
  *
- * Its constructor mutates nothing here, but a separate parse is the discipline anyway: several
- * of this port's parsers rewrite the tree they are handed, and a parity test that shared one
- * would be comparing a reader against a tree the other reader had already edited.
+ * Its constructor mutates nothing here, but several of this port's parsers rewrite the tree
+ * they are handed, and a parity test sharing one compares a reader against a tree the other
+ * reader has already edited.
  */
 function realSpread(attributes: string): TemporalSpread {
   return new TemporalSpread(spread(attributes));
@@ -150,7 +148,6 @@ describe('temporalValue — the legacy @time.unit fallback (D3)', () => {
   ] as const)('resolves a suffix-less value under @time.unit=%j to %s', (unit, expected) => {
     const attributes = `frame.offset="44" time.unit="${unit}"`;
     expect(resolveTemporalDomain('', spread(attributes))).toBe(expected);
-    // The real reader, which resolves the same fallback inside its v3 frame parse.
     expect(realSpread(attributes).getFrameOffset()!.domain).toBe(expected);
   });
 
@@ -244,12 +241,11 @@ describe('temporalValue — serialization keeps the author’s spelling', () => 
   });
 
   it('diverges from the renderer’s formatter exactly where the design says it does', () => {
-    // Same number, same domain, two different jobs: the renderer writes canonical v3, this
-    // engine writes back what it found. A suffix-less value is the whole case.
+    // Same number, same domain, two jobs: the renderer writes canonical v3, this engine writes
+    // back what it found. A suffix-less value is the whole case.
     expect(formatTemporalText({ value: 88, suffix: '' })).toBe('88');
     expect(formatTemporalValue({ value: 88, domain: 'ticks' })).toBe('88ticks');
-    // Where the author DID write a suffix the two agree, which is why this is a divergence
-    // about spelling rather than about meaning.
+    // Where the author did write a suffix the two agree: spelling, not meaning.
     expect(formatTemporalText({ value: 120, suffix: '%' })).toBe('120%');
     expect(formatTemporalValue({ value: 120, domain: 'relative' })).toBe('120%');
   });

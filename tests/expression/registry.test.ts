@@ -2,10 +2,9 @@
  * The registry as data: DESIGN.md §7's rows, §7.16's exclusions, and the two derivations the
  * applier depends on (a dimension's admissible s-domain, a distribution's atomic group).
  *
- * The exclusion suite is the one worth reading twice. §7.16 is documentation and not data, so
- * "excluded" cannot be asserted by looking something up — it can only be asserted by looking
- * something up and getting nothing. Every entry below is an attribute a plausible
- * implementation would have written, and each has a specific reason it must not.
+ * §7.16 is documentation and not data, so "excluded" cannot be asserted by looking something
+ * up — only by looking something up and getting nothing. Every entry of the exclusion suite is
+ * an attribute a plausible implementation would have written, with the reason it must not.
  */
 import { describe, expect, it } from 'vitest';
 import {
