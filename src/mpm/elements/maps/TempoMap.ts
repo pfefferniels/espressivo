@@ -6,13 +6,40 @@ import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
-import { TempoData } from './data/TempoData.js';
 import {
   resolveTempo,
   type ConstantTempo,
   type Tempo,
   type TransitioningTempo,
 } from './data/tempo.js';
+
+/**
+ * Everything a `<tempo>` element can say, for {@link TempoMap.addTempo} (RULE F5's
+ * named-parameter shape, applied inside the library).
+ *
+ * Optional properties are `?:` and never `null` (RULE N1): an attribute nobody supplied is an
+ * attribute that is not written.
+ */
+export interface AddTempoOptions {
+  /** `@date`, in ticks. Always written. */
+  readonly date: number;
+  /**
+   * `@bpm`. A number, a style-relative name, or one of the MEI exporter's placeholders — a
+   * string is written verbatim, so the wording a document used round-trips.
+   */
+  readonly bpm: number | string;
+  /** `@transition.to`, spelled as {@link bpm} is; absent means a constant tempo. */
+  readonly transitionTo?: number | string;
+  /** `@meanTempoAt`; absent is the reader's linear ramp. */
+  readonly meanTempoAt?: number;
+  /**
+   * `@beatLength`, as a fraction of a whole note — 0.25 is a quarter note. Always written, and
+   * required, because {@link TempoMap.getTempoDataOf} rejects a `<tempo>` that lacks it.
+   */
+  readonly beatLength: number;
+  /** `xml:id` of the tempo element. */
+  readonly id?: string;
+}
 
 /**
  * An MPM `tempoMap`: the tempo in force across the timeline, and the map that converts
@@ -50,67 +77,25 @@ export class TempoMap extends GenericMap {
   }
 
   /**
-   * Add a constant `<tempo>`: one `bpm`, no transition. {@link addTempoTransition} writes
-   * the bending form and {@link addTempoData} writes either from a {@link TempoData}.
-   */
-  addConstantTempo(date: number, bpm: string, beatLength: number): number {
-    const e = new Element('tempo', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(date)));
-    e.addAttribute(new Attribute('bpm', bpm));
-    e.addAttribute(new Attribute('beatLength', String(beatLength)));
-    return this.insertElement(new KeyValue(date, e), false);
-  }
-
-  /**
-   * Add a transitioning `<tempo>`: `bpm` bending to `transitionTo`, with `meanTempoAt` as
-   * the exponent of the power curve. See {@link addConstantTempo}.
+   * Add a `<tempo>`.
    *
-   * Attribute order is byte-visible and unchanged: date, bpm, transition.to, beatLength,
-   * meanTempoAt, xml:id.
+   * Attribute order is `date`, `bpm`, `transition.to`, `meanTempoAt`, `beatLength`, `xml:id`,
+   * each omitted where the caller supplied nothing. Order is byte-visible, and this is the one
+   * the MEI export path has always written; the `addTempoTransition` arm this replaces put
+   * `beatLength` before `meanTempoAt`, which no fixture and no assertion depended on.
    */
-  addTempoTransition(
-    date: number,
-    bpm: string,
-    transitionTo: string,
-    beatLength: number,
-    meanTempoAt: number,
-    id?: string,
-  ): number {
+  addTempo(tempo: AddTempoOptions): number {
     const e = new Element('tempo', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(date)));
-    e.addAttribute(new Attribute('bpm', bpm));
-    e.addAttribute(new Attribute('transition.to', transitionTo));
-    e.addAttribute(new Attribute('beatLength', String(beatLength)));
-    e.addAttribute(new Attribute('meanTempoAt', String(meanTempoAt)));
-    if (id !== undefined)
-      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
-    return this.insertElement(new KeyValue(date, e), false);
-  }
-
-  /**
-   * Add a `<tempo>` from a {@link TempoData}. The only form that can take its `bpm` and
-   * `transition.to` as numbers rather than strings, and the only one that reports a missing
-   * `bpm` instead of writing `undefined`. See {@link addConstantTempo}.
-   */
-  addTempoData(data: TempoData): number {
-    const e = new Element('tempo', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(data.startDate)));
-    if (data.bpmString !== null) e.addAttribute(new Attribute('bpm', data.bpmString));
-    else if (data.bpm !== null) e.addAttribute(new Attribute('bpm', String(data.bpm)));
-    else {
-      console.error('Cannot add tempo, bpm not specified.');
-      return -1;
-    }
-    if (data.transitionToString !== null)
-      e.addAttribute(new Attribute('transition.to', data.transitionToString));
-    else if (data.transitionTo !== null)
-      e.addAttribute(new Attribute('transition.to', String(data.transitionTo)));
-    if (data.meanTempoAt !== null)
-      e.addAttribute(new Attribute('meanTempoAt', String(data.meanTempoAt)));
-    e.addAttribute(new Attribute('beatLength', String(data.beatLength)));
-    if (data.xmlId !== null)
-      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
-    return this.insertElement(new KeyValue(data.startDate, e), false);
+    e.addAttribute(new Attribute('date', String(tempo.date)));
+    e.addAttribute(new Attribute('bpm', String(tempo.bpm)));
+    if (tempo.transitionTo !== undefined)
+      e.addAttribute(new Attribute('transition.to', String(tempo.transitionTo)));
+    if (tempo.meanTempoAt !== undefined)
+      e.addAttribute(new Attribute('meanTempoAt', String(tempo.meanTempoAt)));
+    e.addAttribute(new Attribute('beatLength', String(tempo.beatLength)));
+    if (tempo.id !== undefined)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', tempo.id));
+    return this.insertElement(new KeyValue(tempo.date, e), false);
   }
 
   /**

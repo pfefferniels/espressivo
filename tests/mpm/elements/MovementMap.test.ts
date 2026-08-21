@@ -886,7 +886,7 @@ describe('MovementMap', () => {
       mpm.addPerformance(perf);
 
       const tempoMap = TempoMap.createTempoMap()!;
-      tempoMap.addConstantTempo(0, '120', 0.25);
+      tempoMap.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
       perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
       const movMap = MovementMap.createMovementMap()!;

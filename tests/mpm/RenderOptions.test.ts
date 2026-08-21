@@ -52,7 +52,7 @@ function makeMsm(ppq = 720): Msm {
 function makePerformance(mpmSeed?: number): Performance {
   const perf = okValue(Performance.fromName('perf', 720));
   const tempoMap = TempoMap.createTempoMap();
-  tempoMap.addConstantTempo(0, '120', 0.25);
+  tempoMap.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
   const imp = ImprecisionMap.createImprecisionMap('timing');
@@ -67,7 +67,7 @@ function makePerformance(mpmSeed?: number): Performance {
 function makeMovementPerformance(): Performance {
   const perf = okValue(Performance.fromName('perf', 720));
   const tempoMap = TempoMap.createTempoMap();
-  tempoMap.addConstantTempo(0, '120', 0.25);
+  tempoMap.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
   const movMap = MovementMap.createMovementMap();

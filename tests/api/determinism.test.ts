@@ -53,7 +53,7 @@ function msmText(): string {
 function mpmTextOf(...maps: GenericMap[]): string {
   const performance = okValue(Performance.fromName('facade test', PPQ));
   const tempoMap = TempoMap.createTempoMap()!;
-  tempoMap.addConstantTempo(0, '120', 0.25);
+  tempoMap.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
   performance.getGlobal()!.getDated()!.addMap(tempoMap);
   for (const map of maps) performance.getGlobal()!.getDated()!.addMap(map);
   performance.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
