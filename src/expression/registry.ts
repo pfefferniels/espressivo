@@ -1,33 +1,21 @@
 /**
- * DESIGN.md §7's registry, as data.
- *
- * §7 is fifteen prose tables. This module is the same content in a shape the applier can
- * walk: one {@link RegistryRow} per **live** attribute, carrying the four things that decide
- * what happens to it — the scale space it lives in, the input predicate DESIGN §1.2's
+ * DESIGN.md §7's fifteen prose tables in a shape the applier can walk: one {@link RegistryRow}
+ * per live attribute, carrying the scale space it lives in, the input predicate DESIGN §1.2's
  * validation gate applies, whether it feeds §7.1's center population, and its P5r verdict.
  *
- * Three things this module deliberately is not.
+ * What is not here. §7.16's excluded attributes have no row, because a row is a licence to
+ * write; the handful the applier must nonetheless READ are named as constants at the bottom of
+ * this file. What a space does is `transforms.ts` — a row names a space and the parameters
+ * known statically, and the two level rows' center is a run-time quantity (§7.1) the applier
+ * binds. Finding elements, resolving styles and deciding atomic groups is the applier's walk;
+ * where §7 mandates a handler that is more than "one attribute, one space" — the level pairs,
+ * the rubato joint trim, the ornament frame pair, the imprecision groups — the rows still
+ * carry the gate and the handler reads them.
  *
- * - **It is not the excluded list.** §7.16 enumerates every numeric attribute that carries no
- *   `T` with `T(neutral) = 0`, and none of them is a row here: a row is a licence to write,
- *   and an excluded attribute has none. The handful that the applier must nonetheless *read*
- *   are named as constants at the bottom of this file, because "read it" is an obligation and
- *   an obligation needs a symbol.
- * - **It is not the transform.** Which space an attribute lives in is data; what a space does
- *   is `transforms.ts`. A row names a space and the parameters that are known statically;
- *   the two level rows' center is a run-time quantity (§7.1) and is bound by the applier.
- * - **It is not the site walk.** A row says which element local name in which container
- *   carries the attribute; finding those elements, resolving styles and deciding atomic
- *   groups is the applier's job. Where §7 mandates a handler that is more than
- *   "one attribute, one space" — the level pairs, the rubato joint trim, the ornament frame
- *   pair, the imprecision groups — the rows still exist and still carry the gate, and the
- *   handler reads them.
- *
- * **Why the rows are addressed by (element, attribute) rather than by dimension.** An
- * attribute name is not unique: `@transition.to` appears on `<tempo>`, `<dynamics>`,
- * `<movement>`, `<dynamicsGradient>` and `<accentuation>`, in four different scale spaces and
- * with two different fates. `@intensity` appears on `<rubato>` and on `<temporalSpread>`, in
- * two different dimensions. Nothing but the pair identifies a row.
+ * Rows are addressed by (element, attribute), never by dimension: `@transition.to` appears on
+ * `<tempo>`, `<dynamics>`, `<movement>`, `<dynamicsGradient>` and `<accentuation>`, in four
+ * scale spaces and with two different fates, and `@intensity` appears on `<rubato>` and on
+ * `<temporalSpread>` in two different dimensions. Nothing but the pair identifies a row.
  */
 import {
   ARTICULATION_MAP,
@@ -58,11 +46,8 @@ import {
 import type { LevelDomain } from './styleScope.js';
 
 /**
- * DESIGN.md §4/§3: the fifteen user-facing dimensions (A9's v2 set).
- *
- * The tuple is the exported vocabulary, not a convenience: A11 makes an unknown key in the
- * factors record an error rather than a silent identity, and this is what "unknown" is
- * measured against.
+ * DESIGN.md §4/§3: the fifteen user-facing dimensions (A9's v2 set), and the vocabulary A11
+ * measures an unknown key in the factors record against.
  *
  * Frozen because the ESM re-export hands a consumer the same object the option validator
  * reads: unfrozen, a `push` from outside would widen this package's notion of a legal
@@ -94,11 +79,11 @@ export type ExaggerationFactors = Partial<Readonly<Record<ExpressionDimension, n
 /**
  * DESIGN.md §1.1's P5r column: whether the *rendered* effect is monotone in `s`.
  *
- * P5a — `|T(x')| = s·|T(x)|` — is definitional and holds for every row by construction (A12).
- * This is the substantive verdict, and it is carried per row rather than per dimension
- * because it differs within one: `articulation@absoluteDelay` holds while its sibling
- * `@absoluteDelayMs` is a cliff. The applier never branches on it; it is reported so that a
- * caller sampling `s` knows which rows are a reliable dial.
+ * P5a — `|T(x')| = s·|T(x)|` — is definitional and holds for every row by construction (A12);
+ * this is the substantive verdict. Carried per row rather than per dimension because it differs
+ * within one: `articulation@absoluteDelay` holds while its sibling `@absoluteDelayMs` is a
+ * cliff. The applier never branches on it; it is reported so that a caller sampling `s` knows
+ * which rows are a reliable dial.
  */
 export type P5rVerdict = 'holds' | 'saturates' | 'non-monotone' | 'cliff';
 
@@ -108,7 +93,6 @@ export interface RegistrySite {
   readonly kind: 'instruction' | 'def';
   /** The map's local name, or the style collection's — whichever contains the element. */
   readonly container: string;
-  /** The local name of the element carrying the attribute. */
   readonly element: string;
 }
 
@@ -120,12 +104,12 @@ export type SiteKinds = 'instruction' | 'def' | 'both';
  *
  * `level` is the one space whose parameter is not: §7.1's center is a property of the
  * performance, computed after the skip set. The tag stands for `log-around-center` in every
- * respect that matters before the walk — its s-domain, its P3 guarantee — and the applier
- * turns it into a real {@link ScaleSpace} with {@link bindRowSpace}.
+ * respect that matters before the walk — its s-domain, its P3 guarantee — and the applier turns
+ * it into a real {@link ScaleSpace} with {@link bindRowSpace}.
  *
  * `joint-trim` is not a scalar space at all (§7.6): it transforms the `(lateStart, earlyEnd)`
- * pair through their total trim. It appears here so that the rubato window rows carry the
- * same gate and s-domain as every other row.
+ * pair through their total trim, and appears here so the rubato window rows carry the same
+ * gate and s-domain as every other row.
  */
 export type RowSpace =
   | { readonly kind: 'level'; readonly levelDomain: LevelDomain }
@@ -145,7 +129,6 @@ export interface RegistryRow {
   readonly space: RowSpace;
   /**
    * §7.1: whether a value read at this row's site joins its dimension's center population.
-   *
    * True for exactly the two prevailing-level attributes and the two def `@value`s.
    * `@transition.to` is false — it is a target, not a prevailing level, and letting a later
    * ritardando target pull the center down would speed the opening tempo up. Every non-level
@@ -153,10 +136,9 @@ export interface RegistryRow {
    */
   readonly inCenterPopulation: boolean;
   /**
-   * DESIGN §1.2's input predicate: the mathematical domain of the attribute, as §7's
-   * "domain + citation" column gives it, intersected with what the space can accept.
-   *
-   * A value failing it is skipped and reported — never transformed, never repaired.
+   * DESIGN §1.2's input predicate: the attribute's mathematical domain, as §7's "domain +
+   * citation" column gives it, intersected with what the space can accept. A value failing it
+   * is skipped and reported — never transformed, never repaired.
    */
   readonly valueDomain: (value: number) => boolean;
   readonly p5r: P5rVerdict;
@@ -326,10 +308,10 @@ const DYNAMICS_ROWS: readonly RegistryRow[] = [
 
 // --- §7.6 rubato -------------------------------------------------------------------------
 //
-// One row per attribute, two sites each: DESIGN §7.6 gives element and def rows separately
+// One row per attribute, two sites each. DESIGN §7.6 gives element and def rows separately
 // because their parse leniency differs (the def path throws and drops the whole def, the
-// element path uses a bare parseFloat), but the transform, the domain and the s-domain are
-// the same at both — and the gate catches both parse behaviours identically.
+// element path uses a bare parseFloat), but the transform, the domain and the s-domain are the
+// same at both, and the gate catches both parse behaviours identically.
 
 const RUBATO_ROWS: readonly RegistryRow[] = [
   {
@@ -375,9 +357,9 @@ const RUBATO_ROWS: readonly RegistryRow[] = [
 // --- §7.7 articulation -------------------------------------------------------------------
 //
 // Seven live attributes, each on both sites. The other five of the twelve an articulation
-// element can carry are excluded by D-B (three replacements whose neutral lives in the MSM)
-// and by R5 (two pitch attributes) — see EXCLUDED_ARTICULATION_LEVERS below, which the
-// applier reads to classify a site `partial`.
+// element can carry are excluded by D-B (three replacements whose neutral lives in the MSM) and
+// by R5 (two pitch attributes) — see EXCLUDED_ARTICULATION_LEVERS below, which the applier
+// reads to classify a site `partial`.
 
 function articulationRow(
   attribute: string,
@@ -604,15 +586,14 @@ const ASYNCHRONY_ROWS: readonly RegistryRow[] = [
 //
 // Three dimensions, one table: the rows differ only in which imprecisionMap they live in and
 // therefore in their units (ms / velocity units / ms of note length). Per D-F the width-like
-// attributes of ONE distribution scale as a single atomic group — the grouping is the
-// applier's, and {@link imprecisionGroupAttributes} derives it from these rows.
+// attributes of ONE distribution scale as a single atomic group, which
+// `imprecisionGroupAttributes` derives from these rows for the applier to enforce.
 
 /**
- * The one distribution whose group does not live on the distribution element.
- *
- * `<distribution.list>` holds a `<measurement>` per drawn value, and the whole list is the
- * atomic group — so the registry's site for it is the child, and the applier's walk has to
- * know that before it can ask {@link imprecisionGroupAttributes} anything useful.
+ * The one distribution whose group does not live on the distribution element:
+ * `<distribution.list>` holds a `<measurement>` per drawn value and the whole list is the
+ * atomic group, so the registry's site for it is the child. The applier's walk has to know that
+ * before it can ask {@link imprecisionGroupAttributes} anything useful.
  */
 export const DISTRIBUTION_LIST_ELEMENT = 'distribution.list';
 export const MEASUREMENT_ELEMENT = 'measurement';
@@ -758,12 +739,11 @@ function siteKey(elementLocalName: string, attribute: string): string {
 }
 
 /**
- * The separator between a dimension and a site key in the dimension-scoped index.
- *
- * A space, and deliberately a printable one: no dimension name and no element or attribute
- * local name contains a space, so it separates unambiguously, and the file stays plain text.
- * (An earlier revision used a raw NUL here, which made `file` classify this module as binary
- * and made every `grep` over it silently match nothing.)
+ * The separator between a dimension and a site key in the dimension-scoped index. A space, and
+ * deliberately a printable one: no dimension name and no element or attribute local name
+ * contains a space, so it separates unambiguously and the file stays plain text. A raw NUL
+ * separates just as well but makes `file` classify this module as binary, after which every
+ * `grep` over it silently matches nothing.
  */
 const DIMENSION_KEY_SEPARATOR = ' ';
 
@@ -779,17 +759,14 @@ for (const row of REGISTRY_ROWS) {
 }
 
 /**
- * The row governing one (element local name, attribute name) pair, or null when the
- * attribute is not a live one.
- *
- * Null is the answer for every §7.16 exclusion, which is the point: the applier asks this
+ * The row governing one (element local name, attribute name) pair, or null when the attribute
+ * is not a live one — which is the answer for every §7.16 exclusion, so the applier asks this
  * question rather than carrying its own list of what it may write.
  *
- * **The pair is unique for every row except the imprecision ones.** `<distribution.uniform>`
+ * The pair is unique for every row except the imprecision ones: `<distribution.uniform>`
  * appears identically in three maps and therefore in three dimensions, differing only in the
- * `dimension` field and in the units its notes describe — the space, the domain and the
- * verdict are the same, so a caller that only needs those may use this lookup. A caller that
- * needs the right `dimension` must use {@link rowForIn}.
+ * `dimension` field and in the units its notes describe. A caller that needs the right
+ * `dimension` must use {@link rowForIn}.
  */
 export function rowFor(elementLocalName: string, attribute: string): RegistryRow | null {
   return ROWS_BY_SITE.get(siteKey(elementLocalName, attribute)) ?? null;
@@ -847,13 +824,11 @@ export function bindRowSpace(space: RowSpace, center: number | null): ScaleSpace
 }
 
 /**
- * DESIGN §1/A3: a dimension's admissible-s domain is the **intersection** over its rows'
- * scale spaces, so one `s ≥ 0` row constrains the whole dimension.
- *
- * `ornamentSpread` is the case that makes this worth deriving rather than tabulating:
- * `@frame.start` is a signed gain admitting every real s, `@frameLength` is an ordered gain
- * admitting only `s ≥ 0`, and the dimension scales both by ONE factor — so the dimension is
- * `s ≥ 0`, which is also what §8's `0 … 4` range assumes.
+ * DESIGN §1/A3: a dimension's admissible-s domain is the intersection over its rows' scale
+ * spaces, so one `s ≥ 0` row constrains the whole dimension. `ornamentSpread` is the case that
+ * makes this worth deriving rather than tabulating: `@frame.start` is a signed gain admitting
+ * every real s, `@frameLength` is an ordered gain admitting only `s ≥ 0`, and the dimension
+ * scales both by ONE factor — so the dimension is `s ≥ 0`, which is what §8's `0 … 4` assumes.
  */
 export function factorDomainOf(dimension: ExpressionDimension): FactorDomain {
   const anyNonNegative = rowsOf(dimension).some(
@@ -863,11 +838,10 @@ export function factorDomainOf(dimension: ExpressionDimension): FactorDomain {
 }
 
 /**
- * The attribute names of one imprecision distribution's atomic group (D-F), in registry
- * order, or an empty list for an element that is not a distribution of that dimension.
- *
- * All-or-nothing is the contract: scaling a subset changes a truncation ratio or a sampling
- * grid rather than a magnitude, which is not exaggeration but a different distribution.
+ * The attribute names of one imprecision distribution's atomic group (D-F), in registry order,
+ * or an empty list for an element that is not a distribution of that dimension. All-or-nothing
+ * is the contract: scaling a subset changes a truncation ratio or a sampling grid rather than a
+ * magnitude, which is a different distribution, not an exaggerated one.
  */
 export function imprecisionGroupAttributes(
   dimension: ExpressionDimension,
@@ -883,16 +857,14 @@ export const DISTRIBUTION_ELEMENTS: readonly string[] = IMPRECISION_GROUPS.map(
   ([element]) => element,
 );
 
-/** The imprecision map local name each imprecision dimension reads. */
 export const IMPRECISION_DIMENSION_MAPS: Readonly<Partial<Record<ExpressionDimension, string>>> =
   Object.fromEntries(IMPRECISION_DOMAINS.map(([dimension, map]) => [dimension, map]));
 
 // --- Excluded attributes the applier must READ (§7.16) -----------------------------------
 //
-// §7.16 is documentation, not data — an excluded attribute has no row, because a row is a
-// licence to write. These constants exist because §7.16 additionally says "read it" for a
-// handful of them, and an obligation the applier discharges deserves a symbol rather than a
-// string literal buried in a walker.
+// An excluded attribute has no row, because a row is a licence to write. These constants exist
+// because §7.16 additionally says "read it" for a handful of them, and an obligation the
+// applier discharges deserves a symbol rather than a string literal buried in a walker.
 
 /**
  * §7.16 — a unit declaration, not a quantity, and the reason `tempo` needs two passes: the
@@ -903,9 +875,9 @@ export const TEMPO_BEAT_LENGTH_ATTRIBUTE = 'beatLength';
 
 /**
  * §7.11/§7.16 — the degree-1 partner of the gradient endpoints, excluded so that one factor
- * cannot apply s². It is read because every term of the rendered contribution carries it, so
- * `@scale` absent or 0 makes the whole gradient inert — which §7.11 promotes to a first-class
- * report state rather than a silently generated identity document.
+ * cannot apply s². Read because every term of the rendered contribution carries it, so `@scale`
+ * absent or 0 makes the whole gradient inert — which §7.11 reports rather than answering with a
+ * silently generated identity document.
  */
 export const ORNAMENT_SCALE_ATTRIBUTE = 'scale';
 
@@ -925,23 +897,22 @@ export const INERT_IMPRECISION_MAP = IMPRECISION_MAP_TUNING;
  *
  * Excluded as an enum, but load-bearing for the FACTOR: §8's `ornamentSpread` row makes the
  * caller's admissible `s` depend on it ("in the milliseconds frame domain the same s is
- * absolute rather than tempo-relative — halve it, or sample against the value"). A caller
- * cannot make that judgement from a document it has not parsed, so every transformed spread
- * reports which regime it was in.
+ * absolute rather than tempo-relative — halve it, or sample against the value"), and a caller
+ * cannot judge that from a document it has not parsed, so every transformed spread reports
+ * which regime it was in.
  *
- * §7.15 expected v3 to retire this attribute, and v3's spec did delete it from every element.
- * The READER did not: a suffix-less v3 value still falls back to a sibling `@time.unit` before
- * defaulting to ticks (`temporalValue.ts`'s `resolveTemporalDomain`), and suffix-less is what
- * the format's own sample corpus writes. So the read-it obligation survives into v3 — the
- * report just names the value's own domain there instead of the enum.
+ * v3's spec deletes the attribute; its reader does not. A suffix-less v3 value still falls back
+ * to a sibling `@time.unit` before defaulting to ticks (`temporalValue.ts`'s
+ * `resolveTemporalDomain`), and suffix-less is what the format's own sample corpus writes, so
+ * the read-it obligation survives into v3 — the report just names the value's own domain there
+ * instead of the enum.
  */
 export const FRAME_TIME_UNIT_ATTRIBUTE = 'time.unit';
 
 /**
- * The two spellings of the ornament frame's offset and the one spelling of its length.
- *
- * Named because the applier's generation detection is keyed on them structurally rather than
- * on a row lookup: `@frame.offset`'s mere PRESENCE is what makes a `<temporalSpread>` v3, and
+ * The two spellings of the ornament frame's offset and the one spelling of its length. Named
+ * because the applier's generation detection is keyed on them structurally rather than on a row
+ * lookup: `@frame.offset`'s mere PRESENCE is what makes a `<temporalSpread>` v3, and
  * `@frame.start` is both the v2 name and the alias v3 still reads it under.
  */
 export const FRAME_OFFSET_ATTRIBUTE = 'frame.offset';
@@ -949,21 +920,19 @@ export const FRAME_START_ATTRIBUTE = 'frame.start';
 export const FRAME_LENGTH_ATTRIBUTE = 'frameLength';
 
 /**
- * §7.9/§7.16 — the enum that decides which attribute absorbs the scaled offset, and which
- * can flip the SIGN of the rendered effect.
- *
- * Absent, `duration.perf` absorbs the offset with no floor; `"true"` moves the note end with
- * the onset (the safe mode); `"monophonic"` makes a WIDER frame LENGTHEN notes — the opposite
- * sign. Reported for the same reason as the unit: it changes what a given `s` means.
+ * §7.9/§7.16 — the enum that decides which attribute absorbs the scaled offset, and which can
+ * flip the SIGN of the rendered effect. Absent, `duration.perf` absorbs the offset with no
+ * floor; `"true"` moves the note end with the onset (the safe mode); `"monophonic"` makes a
+ * WIDER frame LENGTHEN notes. Reported for the same reason as the unit: it changes what a given
+ * `s` means.
  */
 export const NOTEOFF_SHIFT_ATTRIBUTE = 'noteoff.shift';
 
 /**
- * §7.4/§7.16 — the boolean that switches a `<dynamics>` into sub-note CC 7 curve points.
- *
- * Read because `velocityRange` is the wrong model there: those values are never scanned by
- * `fitVelocities`, are hard-clipped at 0..127 by the MIDI writer, and are unclamped on the
- * data path. A caller must not read R6(a)'s clamp as a guarantee for such an instruction.
+ * §7.4/§7.16 — the boolean that switches a `<dynamics>` into sub-note CC 7 curve points. Read
+ * because `velocityRange` is the wrong model there: those values are never scanned by
+ * `fitVelocities`, are hard-clipped at 0..127 by the MIDI writer, and are unclamped on the data
+ * path, so R6(a)'s clamp is no guarantee for such an instruction.
  */
 export const SUB_NOTE_DYNAMICS_ATTRIBUTE = 'subNoteDynamics';
 
@@ -971,33 +940,30 @@ export const SUB_NOTE_DYNAMICS_ATTRIBUTE = 'subNoteDynamics';
  * §7.16 — the booleans that decide the SPAN over which an instruction applies.
  *
  * `rubato@loop` decides whether `@frameLength` is a pure period or also a span cutoff, and it
- * is never inherited from the def. `accentuationPattern@loop` and `@stickToMeasures` decide
- * the span and which beat number the pattern is evaluated at — and their absent-defaults
- * differ (false vs **true**), which is why an engine that ignores them cannot tell a caller
- * where an exaggerated accent actually lands (§7.8's "documented no-ops the report must
- * catch").
+ * is never inherited from the def. `accentuationPattern@loop` and `@stickToMeasures` decide the
+ * span and which beat number the pattern is evaluated at; their absent-defaults differ (false
+ * vs true), so an engine that ignores them cannot tell a caller where an exaggerated accent
+ * lands (§7.8's "documented no-ops the report must catch").
  */
 export const LOOP_ATTRIBUTE = 'loop';
 export const STICK_TO_MEASURES_ATTRIBUTE = 'stickToMeasures';
 
 /**
- * §7.7/D-B — the three articulation levers whose neutral is the attribute's own ABSENCE and
- * whose effective neutral lives in the MSM, out of reach under R1.
+ * §7.7/D-B — the articulation levers whose neutral is the attribute's own ABSENCE and whose
+ * effective neutral lives in the MSM, out of reach under R1.
  *
- * They are read, never written: a site carrying one of them has a component the transform
- * cannot reach, and §7.7 requires that site to be reported `partial` rather than
- * `transformed`. meico's own `stacc` is the case that makes it matter — scaling its velocity
- * while its duration is frozen renders "more staccato" as "softer", never "shorter".
+ * Read, never written: a site carrying one has a component the transform cannot reach, and §7.7
+ * requires that site to be reported `partial` rather than `transformed`. meico's own `stacc` is
+ * the case that makes it matter — scaling its velocity while its duration is frozen renders
+ * "more staccato" as "softer", never "shorter".
  */
 export const EXCLUDED_ARTICULATION_LEVERS: readonly string[] = [
   'absoluteDuration',
   'absoluteDurationMs',
   'absoluteVelocity',
-  // The two pitch levers of §7.16 belong here too. The ratified `partial` rule is "an excluded
-  // component beside a transformed one", and these are excluded components of the same element:
-  // `@detuneCents` is written onto the MSM note and read by nothing, and Hz is not a
-  // perceptually linear pitch unit. A site carrying one is lopsided in exactly the way §7.7
-  // describes, so reporting it `transformed` would overstate what the run reached.
+  // §7.16's two pitch levers are excluded components of the same element, so `partial`'s rule
+  // — "an excluded component beside a transformed one" — covers them: `@detuneCents` is written
+  // onto the MSM note and read by nothing, and Hz is not a perceptually linear pitch unit.
   'detuneCents',
   'detuneHz',
 ];
@@ -1020,13 +986,11 @@ export const LEVEL_STYLE_COLLECTIONS: Readonly<Record<LevelDomain, string>> = {
   dynamics: DYNAMICS_STYLE,
 };
 
-/** The map each level domain's instructions live in. */
 export const LEVEL_MAPS: Readonly<Record<LevelDomain, string>> = {
   tempo: TEMPO_MAP,
   dynamics: DYNAMICS_MAP,
 };
 
-/** The instruction element local name of each level domain. */
 export const LEVEL_ELEMENTS: Readonly<Record<LevelDomain, string>> = {
   tempo: 'tempo',
   dynamics: 'dynamics',
@@ -1041,7 +1005,6 @@ export const LEVEL_ATTRIBUTES: Readonly<Record<LevelDomain, string>> = {
 /** The transition target of a level pair. Transformed everywhere, in the population nowhere. */
 export const TRANSITION_TO_ATTRIBUTE = 'transition.to';
 
-/** The dimension each level domain's level attributes belong to. */
 export const LEVEL_DIMENSIONS: Readonly<Record<LevelDomain, ExpressionDimension>> = {
   tempo: 'tempo',
   dynamics: 'dynamics',
@@ -1059,6 +1022,5 @@ export const ORNAMENT_DEF_ELEMENT = 'ornamentDef';
 export const TEMPORAL_SPREAD_ELEMENT = 'temporalSpread';
 export const DYNAMICS_GRADIENT_ELEMENT = 'dynamicsGradient';
 
-/** Where the rubato dimension's defs live. */
 export const RUBATO_STYLE_COLLECTION = RUBATO_STYLE;
 export const RUBATO_DEF_ELEMENT = 'rubatoDef';

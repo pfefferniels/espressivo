@@ -1,34 +1,29 @@
 /**
  * DESIGN.md D-I's selection layer: MPM `xml:id`s in, the dimensions those elements govern out.
  *
- * This is the half of `spotlight` that reads the document. The other half is not a transform
- * at all — once the spared set is known, spotlight is `exaggerate` with a factor vector and
- * `gesture` scope, and nothing in `applier.ts` needs to know a selection happened. Keeping the
- * two apart is what makes that true: this module never writes, and the applier never resolves.
+ * This is the half of `spotlight` that reads the document; once the spared set is known,
+ * spotlight is `exaggerate` with a factor vector and `gesture` scope, and nothing in
+ * `applier.ts` needs to know a selection happened. This module never writes, and the applier
+ * never resolves.
  *
- * ## Why the table is transcribed rather than derived
- *
- * D-I's type → dimension table is a **selection** vocabulary, and the registry is a **write**
- * vocabulary. They agree on eight of the nine entries and cannot agree on the ninth:
- * `<ornament>` carries no exaggerable attribute of its own — the three ornament dimensions
- * write into the `<temporalSpread>` and `<dynamicsGradient>` children of the `<ornamentDef>`
- * it references by name. A caller selects the ornament they can see in their score, not the
- * def behind it, so the table maps the instruction and the registry keeps the sites.
- * `tests/expression/selection.test.ts` cross-checks the other eight against `REGISTRY_ROWS`,
- * so the two can only diverge deliberately.
- *
- * ## The three ways a distribution differs from every other row
+ * The table is transcribed rather than derived because D-I's type → dimension table is a
+ * selection vocabulary and the registry is a write vocabulary. They agree on eight of the nine
+ * entries and cannot agree on the ninth: `<ornament>` carries no exaggerable attribute of its
+ * own — the three ornament dimensions write into the `<temporalSpread>` and
+ * `<dynamicsGradient>` children of the `<ornamentDef>` it references by name — and a caller
+ * selects the ornament they can see in their score, not the def behind it.
+ * `tests/expression/selection.test.ts` cross-checks the other eight against `REGISTRY_ROWS`.
  *
  * A `<distribution.*>` element's dimension is not decided by its own name — all five
- * distribution shapes appear under all four imprecision maps — but by **which map encloses
- * it** (§7.13's three per-domain dimensions). Hence the walk carries the nearest enclosing
- * `imprecisionMap.*` down with it. Two consequences worth stating rather than discovering:
+ * distribution shapes appear under all four imprecision maps — but by which map encloses it
+ * (§7.13's three per-domain dimensions), so the walk carries the nearest enclosing
+ * `imprecisionMap.*` down with it. Two consequences:
  *
- * - a distribution under `imprecisionMap.tuning` maps to **no** dimension, because A9 excludes
- *   the tuning domain as inert (nothing in this codebase reads `tuning.offset`), so selecting
- *   one is an `unmappable` offender and not a silent identity;
- * - `<measurement>`, the child of a `<distribution.list>` that the registry actually writes,
- *   is not itself a `distribution.*` type and is `unmappable`. Selecting the enclosing
+ * - a distribution under `imprecisionMap.tuning` maps to no dimension, because A9 excludes the
+ *   tuning domain as inert (nothing in this codebase reads `tuning.offset`), so selecting one
+ *   is an `unmappable` offender and not a silent identity;
+ * - `<measurement>`, the child of a `<distribution.list>` that the registry actually writes, is
+ *   not itself a `distribution.*` type and is `unmappable`. Selecting the enclosing
  *   `<distribution.list>` is what spares the domain — the whole list is one atomic group.
  */
 import { IMPRECISION_MAP } from '../mpm/names.js';
@@ -42,10 +37,9 @@ import {
 } from './registry.js';
 
 /**
- * DESIGN.md D-I's mapping table, minus the distribution family.
- *
- * Element **local** names, because that is what the document carries once `Element.wrap` has
- * dropped the namespace prefix — the same reading `mpmTree.ts` indexes maps by.
+ * DESIGN.md D-I's mapping table, minus the distribution family. Element LOCAL names, because
+ * that is what the document carries once `Element.wrap` has dropped the namespace prefix — the
+ * same reading `mpmTree.ts` indexes maps by.
  */
 const TYPE_DIMENSIONS: ReadonlyMap<string, readonly ExpressionDimension[]> = new Map<
   string,
@@ -74,12 +68,11 @@ const DISTRIBUTION_TYPES = new Set<string>(DISTRIBUTION_ELEMENTS);
 /**
  * The element local names D-I's table names, apart from the distribution family.
  *
- * Exported so the suite can guard the table in **both** directions. A test can already check
- * that a given row spares exactly what the registry writes at that element; without the
- * vocabulary itself being enumerable, nothing could check that no *extra* row exists — and the
- * extra row is the dangerous direction, because it makes an unselectable element spotlight-able
- * and spares dimensions it does not govern. A mutation adding `'styleDef'` to the table passed
- * the entire suite before this export existed.
+ * Exported so the suite can guard the table in both directions. Checking that a row spares what
+ * the registry writes at that element needs no export; checking that no extra row exists does,
+ * and that is the dangerous direction — an extra row makes an unselectable element
+ * spotlight-able and spares dimensions it does not govern. A mutation adding `'styleDef'` to
+ * the table passed the entire suite before this export existed.
  */
 export const SELECTABLE_TYPES: readonly string[] = [...TYPE_DIMENSIONS.keys()];
 
@@ -135,10 +128,10 @@ interface Located {
 /**
  * Resolve every id against the raw tree and map what it found onto dimensions.
  *
- * The walk is **document-wide**, not per performance, and that is deliberate: the spared set
- * parameterizes a factor *vector*, which is a property of the run rather than of a site, so an
- * id naming a `<tempo>` in one performance spares `tempo` in all of them. Narrowing the run to
- * one performance is `options.performance`'s job and stays orthogonal.
+ * The walk is document-wide, not per performance: the spared set parameterizes a factor
+ * *vector*, a property of the run rather than of a site, so an id naming a `<tempo>` in one
+ * performance spares `tempo` in all of them. Narrowing the run to one performance is
+ * `options.performance`'s job and stays orthogonal.
  *
  * Duplicate ids in the input collapse to one entry, in first-mention order. A duplicate id in
  * the *document* — which MPM forbids and no schema here enforces — resolves to the first
@@ -209,10 +202,10 @@ function unionOfDimensions(resolved: readonly ResolvedSelection[]): readonly Exp
 /**
  * One pre-order walk for all the ids at once, carrying the enclosing imprecision map down.
  *
- * One walk rather than one per id, and `getChildElements` rather than `Element.query`, for the
- * reason D-A bans the latter outright: `query` serializes the subtree with `toXML()`, re-parses
- * it with DOMParser and maps hits back by child-index path, so the prototype's per-id
- * `//*[@xml:id='…']` is O(document) *per selected instruction*.
+ * `getChildElements` rather than `Element.query`, for the reason D-A bans the latter outright:
+ * `query` serializes the subtree with `toXML()`, re-parses it with DOMParser and maps hits back
+ * by child-index path, so the prototype's per-id `//*[@xml:id='…']` is O(document) *per
+ * selected instruction*.
  *
  * First-in-document-order wins, so the recursion never overwrites an entry.
  */

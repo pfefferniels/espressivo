@@ -2,32 +2,29 @@
  * Style resolution and level reading — how a string in `@bpm`, `@volume` or
  * `@transition.to` becomes the number the renderer uses.
  *
- * Two rules from DESIGN.md D-A live here, both of which decide *which numbers the engine
- * writes*, not merely how it finds them.
+ * Two rules from DESIGN.md D-A live here, both deciding which numbers the engine writes, not
+ * merely how it finds them.
  *
- * **Whole-styleDef shadowing, never a per-def merge.** `GenericMap.getStyle`
- * (GenericMap.ts:506-513) asks the part's header for a `styleDef` of the wanted name and
- * falls back to the global header only when the part has no `styleDef` OF THAT NAME. It
- * never merges the two. So a part that redeclares `<styleDef name="MEI export">` with a
- * single `<dynamicsDef name="p">` shadows the global `"MEI export"` WHOLESALE: a level of
- * `"f"` under it resolves to no def at all and falls through to `parseFloat("f")`, rather
- * than picking up the global `"MEI export"`'s `f`. Getting this wrong changes a rendered
- * velocity, not just a lookup path.
+ * Whole-styleDef shadowing, never a per-def merge. `GenericMap.getStyle`
+ * (GenericMap.ts:506-513) asks the part's header for a `styleDef` of the wanted name and falls
+ * back to the global header only when the part has no `styleDef` OF THAT NAME; it never merges
+ * the two. So a part that redeclares `<styleDef name="MEI export">` with a single
+ * `<dynamicsDef name="p">` shadows the global `"MEI export"` WHOLESALE: a level of `"f"` under
+ * it resolves to no def at all and falls through to `parseFloat("f")` rather than picking up
+ * the global `"MEI export"`'s `f`.
  *
- * **Def lookup first, then `parseFloat`.** `TempoStyle.getNumericBpmValueStatic`
- * (TempoStyle.ts:49-56) and `DynamicsStyle.getNumericValueStatic` (DynamicsStyle.ts:49-56)
- * both try the def index before reading the string as a number. A strict
- * `Number()`-or-regex classifier is wrong in both directions: `bpm="120bpm"` renders as
- * 120 because `parseFloat` stops at the first non-numeric character, and
- * `<tempoDef name="120" value="60"/>` makes `bpm="120"` render as 60 because the def wins
- * over the numeral it looks like.
+ * Def lookup first, then `parseFloat`. `TempoStyle.getNumericBpmValueStatic`
+ * (TempoStyle.ts:49-56) and `DynamicsStyle.getNumericValueStatic` (DynamicsStyle.ts:49-56) both
+ * try the def index before reading the string as a number. A strict `Number()`-or-regex
+ * classifier is wrong in both directions: `bpm="120bpm"` renders as 120 because `parseFloat`
+ * stops at the first non-numeric character, and `<tempoDef name="120" value="60"/>` makes
+ * `bpm="120"` render as 60 because the def wins over the numeral it looks like.
  *
- * The renderer's third step — the 100.0 fallback with a `console.error` — is deliberately
- * NOT reproduced. 100.0 is a rendering default, not a reading of the document; feeding it
- * into a geometric mean would invent a level the author never wrote, and transforming
- * around it would move every other level. Unresolvable levels are reported as such
- * ({@link LevelReading}'s `unresolvable`) and skipped, per §1.2 and the "String levels"
- * note in §7.2 — MEI's `'+'`, `'-'` and `'?'` placeholders all land here.
+ * The renderer's third step — the 100.0 fallback with a `console.error` — is deliberately NOT
+ * reproduced: 100.0 is a rendering default, not a reading of the document, and feeding it into
+ * a geometric mean would invent a level the author never wrote and move every other level.
+ * Unresolvable levels are reported as such ({@link LevelReading}'s `unresolvable`) and skipped,
+ * per §1.2 and §7.2's "String levels" note — MEI's `'+'`, `'-'` and `'?'` all land here.
  */
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
@@ -53,19 +50,14 @@ export interface ResolvedStyleDef {
 }
 
 /**
- * What a level string resolved to.
- *
- * The three cases are the engine's three site dispositions: `def` means the writable site
- * is the def's `@value` and the instruction attribute must be left alone (D-C forbids
- * rewriting a name as a number — it severs the style linkage); `literal` means the
+ * What a level string resolved to — the engine's three site dispositions. `def` means the
+ * writable site is the def's `@value` and the instruction attribute must be left alone (D-C
+ * forbids rewriting a name as a number: it severs the style linkage); `literal` means the
  * instruction attribute is itself the site; `unresolvable` means skip and report.
  *
- * **Deliberately not a `Result`.** Reading `unresolvable` as the failure arm would fuse `def`
- * and `literal` into one success, and those two are not one thing: they name *different
- * writable sites*, which is the only question this type is asked. Every caller would have to
- * re-discriminate inside the `ok` arm, so the two-arm shape would buy a combinator nobody can
- * use and cost a switch everybody still has to write. It is a three-way sum because the
- * dispositions are three.
+ * Not a `Result`: reading `unresolvable` as the failure arm would fuse `def` and `literal` into
+ * one success, and those two name different writable sites, which is the only question this
+ * type is asked. A three-way sum because the dispositions are three.
  */
 export type LevelReading =
   | {
@@ -84,10 +76,9 @@ export type LevelReading =
  * The last `<styleDef name="name">` child of `collection`, or null.
  *
  * LAST, not first, because `Header.addStyleType` builds its index by assigning into a `Map`
- * keyed by name in document order (Header.ts:128), so a duplicate name silently keeps the
- * later element. A `styleDef` without `@name` is skipped: `GenericStyle.parseData` throws
- * on it (GenericStyle.ts:40-42) and the factory turns that into a `null` the index never
- * receives.
+ * keyed by name in document order (Header.ts:128), so a duplicate name silently keeps the later
+ * element. A `styleDef` without `@name` is skipped: `GenericStyle.parseData` throws on it
+ * (GenericStyle.ts:40-42) and the factory turns that into a `null` the index never receives.
  */
 function findStyleDefIn(collection: Element, name: string): Element | null {
   let found: Element | null = null;
@@ -98,14 +89,13 @@ function findStyleDefIn(collection: Element, name: string): Element | null {
 }
 
 /**
- * The `<styleDef name="styleName">` in scope for `environment` — the part's own header
- * first, the performance's global header second.
+ * The `<styleDef name="styleName">` in scope for `environment` — the part's own header first,
+ * the performance's global header second.
  *
- * Returns the whole `styleDef` element and the environment it came from; the caller looks
- * up its own def inside it and does NOT fall back a second time. An empty or null
- * `styleName` resolves to nothing, matching `GenericMap.getStyle`'s first line
- * (GenericMap.ts:507) — that is the state of every instruction before the map's first
- * `<style>` switch.
+ * Returns the whole `styleDef` element and the environment it came from; the caller looks up
+ * its own def inside it and does NOT fall back a second time. An empty or null `styleName`
+ * resolves to nothing, matching `GenericMap.getStyle`'s first line (GenericMap.ts:507) — the
+ * state of every instruction before the map's first `<style>` switch.
  */
 export function findStyleDef(
   styleKind: string,
@@ -127,20 +117,19 @@ export function findStyleDef(
 }
 
 /**
- * A def's `@value` read the way its class reads it, or null when the class would have
- * dropped the def.
+ * A def's `@value` read the way its class reads it, or null when the class would have dropped
+ * the def.
  *
- * `TempoDef`/`DynamicsDef` parse `@value` with {@link parseJavaDouble}, which THROWS on
- * anything Java's `Double.parseDouble` rejects; the surrounding factory catches that and
- * returns null, and `parseDefs` then skips the def entirely (GenericStyle.ts:62-63). So a
+ * `TempoDef`/`DynamicsDef` parse `@value` with {@link parseJavaDouble}, which THROWS on anything
+ * Java's `Double.parseDouble` rejects; the surrounding factory catches that and returns null,
+ * and `parseDefs` then skips the def entirely (GenericStyle.ts:62-63). So a
  * `<dynamicsDef name="f" value="loud"/>` does not exist for lookup purposes, and a level of
- * `"f"` under it falls through to `parseFloat("f")` — not to some NaN-valued def. The
- * `try`/`catch` here IS that factory's behaviour, expressed at the one place that needs it.
+ * `"f"` under it falls through to `parseFloat("f")` rather than to a NaN-valued def. The
+ * `try`/`catch` here IS that factory's behaviour.
  *
- * Note the surviving non-finite case: Java's grammar accepts the literals `NaN` and
- * `Infinity`, so `value="NaN"` yields a def the index holds with a NaN value. The §1.2
- * validation gate is what keeps it out of the transform; this function's job is only to
- * report what the renderer would read.
+ * One non-finite case survives: Java's grammar accepts the literals `NaN` and `Infinity`, so
+ * `value="NaN"` yields a def the index holds with a NaN value. Keeping it out of the transform
+ * is the §1.2 gate's job; this function only reports what the renderer would read.
  */
 export function readDefValue(def: Element): number | null {
   const raw = attribute('value', def);
@@ -153,12 +142,12 @@ export function readDefValue(def: Element): number | null {
 }
 
 /**
- * Read a level string against an already-resolved `styleDef`: def first, then `parseFloat`,
- * then unresolvable.
+ * Read a level string against an already-resolved `styleDef`: def first, then `parseFloat`, then
+ * unresolvable.
  *
- * Pass `style: null` for an instruction with no style in scope — the common case before a
- * map's first `<style>` switch, and the case the positional style lookup produces at equal
- * dates where the date-based one would not.
+ * Pass `style: null` for an instruction with no style in scope — the common case before a map's
+ * first `<style>` switch, and the case the positional style lookup produces at equal dates
+ * where the date-based one would not.
  *
  * The def scan keeps the last VALID def of the name rather than the last def of the name:
  * `parseDefs` `continue`s past a def its factory rejected without assigning it

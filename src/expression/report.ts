@@ -1,41 +1,25 @@
 /**
  * DESIGN.md §4's report, as types and as the builder the applier accumulates into.
  *
- * The report is the engine's second output and, for two of its obligations, the *only* one.
- * R4 makes `totalWrites === 0` the exact contract for "this sample is a no-op"; R6(b) makes
- * the velocity coefficients the answer to a question the transform provably cannot answer on
- * the data path, because velocity is a shared bus whose final value depends on MSM note data
- * that R1 keeps out. A caller who ignores the report gets a document; a caller who reads it
- * gets to know what happened to it.
+ * The report is the engine's second output and, for two of its obligations, the only one. R4
+ * makes `totalWrites === 0` the exact contract for "this sample is a no-op"; R6(b) makes the
+ * velocity coefficients the answer to a question the transform provably cannot answer on the
+ * data path, because velocity is a shared bus whose final value depends on MSM note data that
+ * R1 keeps out.
  *
- * ## Two invariants, both from RULE F1/N4
+ * Two invariants, both from RULE F1/N4. Plain data: no XOM node reaches this file, and a
+ * {@link SiteRef} is `structuredClone`-safe by construction. And every number is finite or null
+ * — never `NaN`, never `Infinity`, never `undefined`. A center that could not be computed is
+ * `null`, not `NaN`; a dimension that touches no velocity has `null` coefficients, not `{0,0}`,
+ * and a caller summing R6(b) contributions must be able to tell the two apart.
  *
- * - **Plain data.** No XOM node reaches this file. A {@link SiteRef} is the locator, and it
- *   is `structuredClone`-safe by construction.
- * - **Every number is finite or null.** Never `NaN`, never `Infinity`, never `undefined`. A
- *   center that could not be computed is `null`, not `NaN`; a dimension that touches no
- *   velocity has `null` coefficients, not `{0,0}` — the two are different answers and a
- *   caller summing R6(b) contributions must be able to tell them apart.
+ * There is no `sitesPartial` counter, and it is a field a reader will look for: §4 gives three
+ * site counters and a `partial` STATE. A partial site *was written*, so it is counted under
+ * `sitesTransformed`; the dimension's state records that something beside it was excluded, and
+ * which components were unreachable is in the notes.
  *
- * ## Where this differs from §4, and why
- *
- * §4 was written before the applier existed, and four of its shapes did not survive contact.
- * Three were resolved by amending §4 to match this file — `ReportNote.site` is nullable
- * there (W2 amendment #8), `bounds.tempoMaxS` is `bounds.tempoDeviationRatio` (W2 amendment
- * #7), and `estimates` is declared and documented (W3 batch). Read §4 as current; this note
- * exists because a consumer reads this file and should not have to diff the two.
- *
- * One thing is still worth stating outright, because it is a place a reader will look for a
- * field that is deliberately absent:
- *
- * - **There is no `sitesPartial` counter.** §4 and this file both give exactly three site
- *   counters and a `partial` STATE. A partial site *was written*, so it is counted under
- *   `sitesTransformed`; the dimension's state records that something beside it was excluded,
- *   and which components were unreachable is in the notes, where the detail belongs.
- *
- * A second asymmetry is deliberate rather than a divergence: `options.msm` is a facade-level
- * option feeding `estimates` only, so `applyExaggeration` does not take it (A10's R1
- * carve-out).
+ * `options.msm` is a facade-level option feeding `estimates` only, so `applyExaggeration` does
+ * not take it (A10's R1 carve-out).
  */
 import { fromEntriesExact } from '../prelude/index.js';
 import type { ExpressionDimension } from './registry.js';
@@ -44,15 +28,14 @@ import type { SiteRef } from './siteRef.js';
 
 /**
  * DESIGN.md §4's glossary (A10). The distinction that matters most is `absent` vs `inert`: a
- * consumer diffing two reports must be able to tell "the document does not use curvature"
- * from "the document uses curvature where the renderer gives it no effect".
+ * consumer diffing two reports must be able to tell "the document does not use curvature" from
+ * "the document uses curvature where the renderer gives it no effect".
  */
 export type SiteState =
   /** No such attribute or element exists in this performance. */
   | 'absent'
   /** Present, but the renderer gives it no effect — reported, never written. */
   | 'inert'
-  /** Written. */
   | 'transformed'
   /** Some components reachable, others excluded by D-B (articulation only). */
   | 'partial'
@@ -64,11 +47,11 @@ export type SiteState =
  * than as a scalar maximum.
  *
  * A scalar is undefinable for `articulation`, whose contribution is affine in the note's
- * incoming velocity (`v' = v·r + c`), and a maximum over an unknown `v` does not exist. The
- * pair lets a caller evaluate the bound against its own velocities without the engine
- * inventing one. Reported for exactly four dimensions — `accentuation`, `articulation`,
- * `ornamentDynamics`, `imprecisionDynamics` — and `null` for the other eleven, `dynamics`
- * included: that one is clamped into `velocityRange` on the data path instead (R6(a)).
+ * incoming velocity (`v' = v·r + c`), and a maximum over an unknown `v` does not exist; the
+ * pair lets a caller evaluate the bound against its own velocities. Reported for exactly four
+ * dimensions — `accentuation`, `articulation`, `ornamentDynamics`, `imprecisionDynamics` — and
+ * `null` for the other eleven, `dynamics` included, that one being clamped into
+ * `velocityRange` on the data path instead (R6(a)).
  */
 export interface VelocityCoefficients {
   readonly multiplicative: number;
@@ -123,19 +106,15 @@ export type ReportNoteKind =
   | 'gradient-outside-nominal-range'
   /**
    * §7.9/§8 — which unit a transformed ornament frame is in; the caller's `s` depends on it.
-   *
-   * Two readings behind one kind, because the question the caller asks is one question. On a
-   * v2 spread the answer is the `@time.unit` enum, one unit for the whole frame; on a v3
-   * spread it is each value's OWN domain (§7.15), which may differ between the two bounds and
+   * One kind, two readings: on a v2 spread the `@time.unit` enum, one unit for the whole frame;
+   * on a v3 spread each value's OWN domain (§7.15), which may differ between the two bounds and
    * which a suffix-less value still takes from a legacy `@time.unit`.
    */
   | 'frame-time-unit'
   /**
-   * §7.15 — a v3 spread carrying both `@frame.offset` and its legacy alias `@frame.start`.
-   *
-   * The reader takes `@frame.offset` and never looks at the alias, and the v3 writer never
-   * emits it, so the alias is a dead attribute: it is left exactly as found, and this note is
-   * what keeps that from being a silent skip.
+   * §7.15 — a v3 spread carrying both `@frame.offset` and its legacy alias `@frame.start`. The
+   * reader takes `@frame.offset` and the v3 writer never emits the alias, so it is left exactly
+   * as found; this note is what keeps that from being a silent skip.
    */
   | 'frame-alias-shadowed'
   /** §7.9 — `@noteoff.shift`, which decides what absorbs the offset and can flip its sign. */
@@ -159,7 +138,7 @@ export type ReportNoteKind =
 export interface ReportNote {
   readonly kind: ReportNoteKind;
   readonly dimension: ExpressionDimension | null;
-  /** Null for dimension-level notes — see this module's divergence 1. */
+  /** Null for dimension-level notes (§4 amendment #8). */
   readonly site: SiteRef | null;
   readonly detail: string;
 }
@@ -180,8 +159,7 @@ export interface DimensionReport {
 
 /**
  * §8's two per-document bounds, computed from the document rather than baked in as constants.
- *
- * See this module's divergence 2 for why the tempo half is a ratio rather than a maximum `s`.
+ * The tempo half is a deviation ratio, not §4's original maximum `s` (W2 amendment #7).
  */
 export interface PerformanceBounds {
   /**
@@ -192,19 +170,17 @@ export interface PerformanceBounds {
   readonly tempoDeviationRatio: number | null;
   /**
    * §8/A6: the smallest `s` at which any rubato site's total trim would reach
-   * `1 − minRubatoWindow`, i.e. the point past which the guard, not the arithmetic, decides
-   * the window. `ln(minRubatoWindow) / ln(1 − t)` minimised over the trimmed sites; null when
-   * no site carries a trim.
+   * `1 − minRubatoWindow` — past which the guard, not the arithmetic, decides the window.
+   * `ln(minRubatoWindow) / ln(1 − t)` minimised over the trimmed sites; null when no site
+   * carries a trim.
    */
   readonly rubatoMaxS: number | null;
 }
 
 /**
- * The report fields whose values need the MSM (A10's R1 carve-out).
- *
- * They are structured now and valued `null` now. `options.msm` is the facade's concern, and
- * a field that exists and says `null` is what lets a consumer write the code that will read
- * it later; a field that does not exist yet makes every consumer guess.
+ * The report fields whose values need the MSM (A10's R1 carve-out): structured, and valued
+ * `null` until `options.msm` — the facade's concern — supplies one. A field that exists and
+ * says `null` is what lets a consumer write the code that will read it later.
  */
 export interface MsmDependentEstimates {
   /** §7.4 — notes before the first instruction, and unterminated transitions. */
@@ -248,13 +224,11 @@ export interface ExaggerationReport {
 }
 
 /**
- * The mutable accumulator the applier writes into, one per (performance, dimension).
- *
- * Separate from {@link DimensionReport} on purpose: the report is `readonly` plain data and
- * the accumulation is not, and the two extra counters here — `partial` and `present` — are
- * how {@link finishDimension} derives a state that §4's three counters cannot express on
- * their own. A dimension with one inert site and no others is `inert`; a dimension with no
- * sites at all is `absent`; the counters alone cannot tell those apart from `skipped`.
+ * The mutable accumulator the applier writes into, one per (performance, dimension). The two
+ * extra counters here — `partial` and `present` — are how {@link finishDimension} derives a
+ * state §4's three counters cannot express on their own: a dimension with one inert site and no
+ * others is `inert`, one with no sites at all is `absent`, and the counters alone cannot tell
+ * either from `skipped`.
  */
 export class DimensionAccumulator {
   /** Sites written with every component reachable — §4's `transformed`. */
@@ -272,14 +246,12 @@ export class DimensionAccumulator {
   /**
    * A DIMENSION-level verdict, which overrides the per-site tally whenever one is set.
    *
-   * Exactly two producers, both of them findings about the dimension rather than about any one
-   * site, and both reachable only through the two named methods below. The `s === 1`
+   * Two producers, both reachable only through the named methods below. The `s === 1`
    * short-circuit declares `skipped`: the dimension was never walked, so the site counters
-   * describe nothing. An empty center population declares `inert` (R-W2-5/#10): the levels
-   * resolved to nothing a center could be built from, so no `s` could have moved them. Without
-   * the override the second would surface as `skipped`, because the very unresolvable levels
-   * that emptied the population were themselves counted as skips — reporting a failure where
-   * the truthful answer is "this document gives this dimension nothing to work on".
+   * describe nothing. An empty center population declares `inert` (R-W2-5/#10); without the
+   * override it would surface as `skipped`, because the unresolvable levels that emptied the
+   * population were themselves counted as skips — a failure where the truthful answer is "this
+   * document gives this dimension nothing to work on".
    */
   private dimensionVerdict: SiteState | null = null;
 
@@ -287,7 +259,6 @@ export class DimensionAccumulator {
     this.present = true;
   }
 
-  /** One site written with every component reachable. */
   countTransformed(writes: number): void {
     this.present = true;
     this.full += 1;
@@ -297,10 +268,9 @@ export class DimensionAccumulator {
   /**
    * One site written, but with a component D-B puts out of reach (§7.7).
    *
-   * Deliberately NOT a delegation to {@link countTransformed}: §4-as-amended orders
-   * `transformed > partial`, so the two must be tallied apart or a document holding one full
-   * site and one partial site could never read `transformed`. Both still count as writes, and
-   * both still appear in `sitesTransformed`, which reports sites the run WROTE.
+   * Not a delegation to {@link countTransformed}: §4 orders `transformed > partial`, so the two
+   * must be tallied apart or a document holding one full site and one partial site could never
+   * read `transformed`. Both count as writes and both appear in `sitesTransformed`.
    */
   countPartial(writes: number): void {
     this.present = true;
@@ -332,7 +302,7 @@ export class DimensionAccumulator {
     this.dimensionVerdict = 'skipped';
   }
 
-  /** R-W2-5/#10 — the level population came out empty, so there is no center to transform around. */
+  /** R-W2-5/#10 — the level population came out empty, so there is no center to transform on. */
   declareNoCenter(): void {
     this.dimensionVerdict = 'inert';
   }
@@ -340,12 +310,11 @@ export class DimensionAccumulator {
   /**
    * R6(b): the coefficients are a per-dimension maximum over the sites that contribute.
    *
-   * **This is where RULE F1 is enforced, not at the call sites.** Both producers compute a
+   * RULE F1 is enforced here rather than at the call sites, which is what makes the module
+   * header's "every number is finite or null" true by construction: both producers compute a
    * PRODUCT of two independently gated finite quantities — a gradient endpoint times an
-   * `@ornament/@scale`, an accentuation amplitude times a `@scale` — and a product of two
-   * finite doubles can overflow. Rejecting here rather than at each caller is what makes the
-   * module header's "every number is finite or null" true by construction: an estimate that
-   * cannot be represented is left at its previous value and the caller reports the site.
+   * `@ornament/@scale`, an accentuation amplitude times a `@scale` — and a product of two finite
+   * doubles can overflow. An estimate that cannot be represented leaves the previous value.
    *
    * @returns false when the contribution was rejected, so the caller can name the site.
    */
@@ -396,27 +365,19 @@ export class DimensionAccumulator {
 /**
  * Freeze one accumulator into §4's shape, deriving the state.
  *
- * A dimension-level verdict wins outright where one is set — the identity short-circuit and
- * the empty center population are statements about the dimension that no site tally can
- * contradict.
- *
- * Otherwise the order is §4-as-amended's: **`transformed > partial > skipped > inert >
- * absent`**. A dimension holding one fully-reachable site beside a lopsided one reads
- * `transformed`, because the run did apply the dimension somewhere; `partial` is reserved for
- * the case where EVERY written site had a component out of reach — meico's `stacc`, whose only
- * duration lever is excluded, so "more staccato" renders as "softer" and never as "shorter".
- * `skipped` then outranks `inert`: a skip is a site the run declined to transform and is
- * therefore actionable, while inertness is a property of the document that no `s` would change.
- *
- * ## What the three counters count
+ * A dimension-level verdict wins outright where one is set. Otherwise the order is §4's:
+ * `transformed > partial > skipped > inert > absent`. A dimension holding one fully-reachable
+ * site beside a lopsided one reads `transformed`; `partial` is reserved for the case where EVERY
+ * written site had a component out of reach — meico's `stacc`, whose only duration lever is
+ * excluded, so "more staccato" renders as "softer" and never as "shorter". `skipped` outranks
+ * `inert` because a skip is actionable while inertness is a property of the document.
  *
  * A "site" is one element for the dimensions whose §7 row group is per element — `dynamics`,
  * `articulation`, the ornament pair — and one attribute where the row is the whole story.
- * `sitesTransformed` counts every site the run WROTE, partial ones included; the state, not the
- * counter, is what distinguishes them. The one asymmetry worth naming: `articulation` counts
- * `transformed`/`partial` per ELEMENT, because D-B's partiality is a property of the element,
- * but counts `inert` per COMPONENT, because inline duration precedence disables one attribute
- * of an element whose others are still written. So one element can reach both counters.
+ * `sitesTransformed` counts every site the run WROTE, partial ones included. `articulation` is
+ * the one asymmetry: `transformed`/`partial` are counted per ELEMENT, since D-B's partiality is
+ * a property of the element, while `inert` is counted per COMPONENT, since inline duration
+ * precedence disables one attribute of an element whose others are still written.
  */
 export function finishDimension(
   accumulator: DimensionAccumulator,
@@ -445,9 +406,8 @@ export function newAccumulators(): Record<ExpressionDimension, DimensionAccumula
  * Everything one performance's handlers report into: the fifteen accumulators, the note log,
  * and the two whole-performance findings that no single dimension owns.
  *
- * It exists so that a handler takes ONE parameter instead of four, and so that the note log
- * stays append-only and in walk order — which is the order a caller reads the document in,
- * and therefore the order in which a list of skips is intelligible.
+ * The note log stays append-only and in walk order, which is the order a caller reads the
+ * document in and therefore the order in which a list of skips is intelligible.
  */
 export class ReportSink {
   readonly dimensions = newAccumulators();
@@ -469,12 +429,9 @@ export class ReportSink {
   }
 
   /**
-   * A COPY, not the live array.
-   *
-   * CHARTER's public-API rule is that outputs are freshly created and no internal mutable
-   * state leaks. `readonly ReportNote[]` is only a compile-time claim: handing out
-   * `this.collected` would put the sink's own array into the returned report, where a caller
-   * holding it as `unknown[]` can push into a value the type says is frozen.
+   * A COPY, not the live array. CHARTER's public-API rule is that outputs are freshly created
+   * and no internal mutable state leaks; `readonly ReportNote[]` is only a compile-time claim,
+   * so a caller holding `this.collected` as `unknown[]` could push into the returned report.
    */
   get notes(): readonly ReportNote[] {
     return [...this.collected];
