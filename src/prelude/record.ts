@@ -1,35 +1,18 @@
 /**
- * Total records, built so that their totality is a theorem rather than an assertion.
+ * Total records over a closed key vocabulary, built so that their totality is a theorem rather
+ * than an assertion.
  *
- * The tree has seventeen places that build a `Record<K, V>` over a closed key vocabulary and
- * then tell the compiler about it with a cast. They come in two shapes, and only one of them
- * is honest:
+ * The shape these replace is `const out = {} as Record<Dimension, V>` followed by a loop that
+ * fills it: between the cast and the end of the loop the type is false, and nothing stops an
+ * early `return`, or an `if (…) continue` that skips a key and hands a consumer an `undefined`
+ * its type says cannot happen. {@link fromEntriesExact} takes the key list and a function of
+ * one key instead, so there is no window in which the record is incomplete and no way to skip
+ * a key. Its single cast is discharged by the loop three lines above it, and `K` is inferred
+ * from the key list — with vocabularies declared as `type Dimension = (typeof DIMENSIONS)[number]`,
+ * "the list covers the type" holds by construction.
  *
- * ```ts
- * // (a) safe but unprovable — the keys really are all of K, and the compiler cannot see it
- * Object.fromEntries(DIMENSIONS.map((d) => [d, f(d)])) as Record<Dimension, V>
- *
- * // (b) a lie for the duration of the next few lines — the object IS empty when the cast runs
- * const out = {} as Record<Dimension, V>;
- * for (const d of DIMENSIONS) out[d] = f(d);
- * ```
- *
- * Shape (b) is the one that costs something. Between the cast and the end of the loop the type
- * is simply false, and nothing stops a `return` from landing in the middle of it — nor an
- * `if (…) continue` from skipping a key, which is a `undefined` handed to a consumer whose type
- * says it cannot be. That has to be caught by review, every time, forever.
- *
- * {@link fromEntriesExact} is both shapes' replacement. It takes the key list and a function of
- * one key, so the record cannot be missing a key: there is no window in which it is incomplete,
- * and no way to skip one. The single cast is here, once, where the loop that discharges it is
- * three lines above it — and where it is a genuine theorem, because `K` is inferred FROM the
- * key list. The vocabularies this is used with are declared the way that makes it airtight,
- * `type Dimension = (typeof DIMENSIONS)[number]`, so "the list covers the type" is true by
- * construction rather than by maintenance.
- *
- * Neither helper is `Object.fromEntries`-based. Assigning into an accumulator is what the call
- * sites already did, it allocates no intermediate entry array, and several of these run inside
- * an `N²/2` corpus loop where that array would be the only cost the refactor added.
+ * Neither helper goes through `Object.fromEntries`: assigning into an accumulator allocates no
+ * intermediate entry array, and several call sites sit inside an `N²/2` corpus loop.
  */
 
 /**
@@ -55,9 +38,8 @@ export function fromEntriesExact<K extends string, V>(
 /**
  * A record with the same keys as `record` and `f` applied to each value.
  *
- * The sibling for the case where the vocabulary arrives as an existing total record rather than
- * as a key list — `epsilonRecord`'s defensive copy of `EPSILON_FIGURES`, say. Totality is the
- * argument's: `Object.keys` of a `Record<K, V>` enumerates exactly `K`.
+ * For the case where the vocabulary arrives as an existing total record rather than as a key
+ * list. Totality is the argument's: `Object.keys` of a `Record<K, V>` enumerates exactly `K`.
  */
 export function mapValues<K extends string, A, B>(
   record: Readonly<Record<K, A>>,
@@ -65,7 +47,7 @@ export function mapValues<K extends string, A, B>(
 ): Record<K, B> {
   const out: Partial<Record<K, B>> = {};
   // `Object.keys` is typed `string[]` whatever it is given, so the narrowing goes through
-  // `unknown`. What it asserts is the argument type's own claim, nothing more.
+  // `unknown`. It asserts the argument type's own claim, nothing more.
   for (const key of Object.keys(record) as unknown as readonly K[]) out[key] = f(record[key], key);
   return out as Record<K, B>;
 }

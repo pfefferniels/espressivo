@@ -1,64 +1,43 @@
 /**
  * Named algorithms over sequences — the vocabulary that replaces raw loops.
  *
- * `src/` carries 809 `for` loops, 42 `while` loops, 543 `let` declarations and 383 `.push`
- * calls (measured 2026-08-20; the figures this header opened with — 862 / 46 / 540 / 407 —
- * were taken before the uptake pass). Most are one of a handful of shapes wearing different
- * variable names: map-and-filter in one pass, group by a key, fold with a running total, scan
- * a sorted array for a boundary. Written out, each is a place an off-by-one can hide; named,
- * each is a thing the reader already knows.
+ * Most loops in the tree are one of a handful of shapes wearing different variable names:
+ * map-and-filter in one pass, group by a key, fold with a running total, scan a sorted array
+ * for a boundary. Written out, each is a place an off-by-one can hide.
  *
- * **The admission criterion is Sean Parent's own.** Using an algorithm must not make the call
- * site worse — so this module holds the shapes this codebase actually contains, and nothing
- * added for completeness. There is no `gather`, no `slide`, no lens, no transducer.
+ * Admission is by call site: this module holds the shapes the codebase actually contains, and
+ * nothing added for completeness. There is no `gather`, no `slide`, no lens, no transducer.
+ * Four more were searched for across the tree and not found, and are absent on purpose:
  *
- * **The criterion cuts both ways, and it has been measured against.** Three independent
- * surveys of `src/` (comparison, mpm+msm, expression+xml+midi) went looking for each shape by
- * hand. Call sites outside this module, as of 2026-08-20:
- *
- * **Four shapes were considered and are deliberately absent**, having been looked for across
- * the tree and not found. Recorded so the next person does not add them on spec:
- *
- * - `chunkBy` — runs of CONSECUTIVE elements sharing a key. Every span builder here is "one
- *   instruction opens one span"; MPM span ends are decided by the next entry's DATE, which is
- *   {@link withNext}. `aggregate.maximalScoringRuns` looks like it and is Ruzzo-Tompa.
- * - `windows` — every fixed-size walk in the tree is size 2, i.e. {@link pairwise} or
+ * - `chunkBy` — runs of consecutive elements sharing a key. Every span builder here is "one
+ *   instruction opens one span", and MPM span ends are decided by the next entry's date, which
+ *   is {@link withNext}. `aggregate.maximalScoringRuns` resembles it and is Ruzzo–Tompa.
+ * - `windows` — every fixed-size walk in the tree is size 2: {@link pairwise} or
  *   {@link withNext}.
- * - `unfold` — the one linked-list walk reads better as a `while`; a seed/step split returning
- *   a tuple is harder to follow, and the spread needed to keep the return type costs an array.
- * - `stableSortBy` — the tree already spreads before sorting at ~35 sites and sorts only
- *   freshly-built local arrays elsewhere. Nothing mutates a caller's array, so there is no
- *   mistake left for it to prevent.
- *
- * They were written, shipped unused, and removed. That is the admission criterion working, not
- * failing: this module holds the shapes the codebase contains and nothing added for
- * completeness. If a future pass finds a real site, write it back then.
+ * - `unfold` — the one linked-list walk reads better as a `while`, and the spread needed to
+ *   keep the return type costs an array.
+ * - `stableSortBy` — nothing here sorts a caller's array in place, so it would prevent no
+ *   mistake.
  */
 
 /** A sequence that is known to have a first element, so `head` needs no null check. */
 export type NonEmptyArray<T> = readonly [T, ...(readonly T[])];
 
 /*
- * A NOTE ON THE `as` CASTS BELOW — there are eight, and they are the only ones in this module.
+ * The `as` casts below — eight, and the only ones in this module — discharge two proofs.
  *
- * `noUncheckedIndexedAccess` is on, so `xs[i]` is `T | undefined`. In each case below the
- * index is in range by a proof the type system cannot state: `last` reads the final slot of a
- * type that guarantees a first one; `zipWith` bounds `i` by the shorter length; `pairwise`
- * starts at 1; the two bound searches probe an index `partitionPoint` derived from
- * `xs.length`. For an unconstrained `T` there is no narrowing that expresses this — a runtime
- * check would be dead code, and constraining the element type would stop these working over
- * sequences that may legitimately hold `null` or `undefined`, which several callers need.
+ * Six are in-range proofs the type system cannot state under `noUncheckedIndexedAccess`, which
+ * makes `xs[i]` a `T | undefined`: `last` reads the final slot of a type that guarantees a
+ * first one, `zipWith` bounds `i` by the shorter length, `pairwise` starts at 1, and the bound
+ * searches probe an index derived from `xs.length`. A runtime check would be dead code, and
+ * constraining `T` would stop these working over sequences that legitimately hold `null` or
+ * `undefined`.
  *
- * Two of the eight are a different proof: `scanl` and `groupBy` each BUILD a
- * sequence they know to be non-empty — a chunk opens as `[x]`, a scan starts from its seed, a
- * bucket is created as `[x]` — and say so in their return type. The cast is what carries that
- * from the construction to the signature, and it earns its place at every call site, which
- * would otherwise need a guard that can never fire to read a first element.
+ * The other two are construction proofs: `scanl` starts from its seed and `groupBy` creates
+ * each bucket as `[x]`, so both return non-empty sequences and say so in their return type.
  *
- * They are concentrated here on purpose. This module implements the algorithms whose whole
- * job is to let the rest of the tree stop indexing; absorbing eight proofs in one leaf is what
- * bought zero across fifteen directories. If you are tempted to copy the pattern outward, the
- * answer is almost certainly `filterMap`, `pairwise`, `zipWith` or `elementAt` instead.
+ * The proofs are concentrated here so that the rest of the tree can stop indexing. Outside
+ * this module the answer is `filterMap`, `pairwise`, `zipWith` or `elementAt`.
  */
 export function isNonEmpty<T>(xs: readonly T[]): xs is NonEmptyArray<T> {
   return xs.length > 0;
@@ -73,37 +52,17 @@ export function last<T>(xs: NonEmptyArray<T>): T {
 }
 
 /**
- * Checked random access.
+ * Checked random access, for the reads that survive the algorithms — where the index came from
+ * a computation rather than from iterating.
  *
- * For the reads that survive the algorithms — where the index came from a computation rather
- * than from iterating. Under `noUncheckedIndexedAccess` those are the sites that cannot be
- * typed away, and the two dishonest answers are `!` and `as T`: both assert the bound instead
- * of checking it, and both fail somewhere else entirely when the assertion is wrong, usually
- * as "cannot read property of undefined" several frames from the mistake. The message is the
- * whole value here — "index 42 outside a 12-entry eigenvector column" locates a bug that
- * "cannot read property of undefined" does not.
+ * The alternatives, `!` and `as T`, assert the bound instead of checking it and fail several
+ * frames from the mistake as "cannot read property of undefined". The message is the value
+ * here: "index 42 outside a 12-entry eigenvector column" locates the bug.
  *
- * These lived in three places before this — `src/comparison/indexing.ts`, `src/mei/indexing.ts`
- * and here — each written independently because `no-unnecessary-condition` deletes any guard
- * written against an indexed read while the flag is still off, so a generic helper is the only
- * thing that survives both states. Two of the three authors believed a layer boundary stopped
- * them importing this one. It does not: the prelude is a leaf and no zone forbids it.
- *
- * **Prefer not needing them.** A loop that reads `xs[i]` and pushes is {@link filterMap}; one
- * that reads `xs[i]` and `xs[i + 1]` is {@link pairwise}; one walking two sequences together
- * is {@link zipWith}. Reach for these only once those do not fit.
+ * Prefer not needing them. A loop that reads `xs[i]` and pushes is {@link filterMap}; one that
+ * reads `xs[i]` and `xs[i + 1]` is {@link pairwise}; one walking two sequences together is
+ * {@link zipWith}.
  */
-// These test `xs[index] === undefined` and NOT `xs[index] ?? outOfRange(...)`. The two agree
-// for every type the signature admits and differ for one that lies about itself, which this
-// tree contains: `RandomNumberProvider.series` is declared `number[]` and holds `null` on a
-// documented degenerate path, where the null coerces to 0 and yields the delta-0 that
-// `tests/comparison/imprecisionLaws.test.ts` pins. `??` reads that legitimate null as a miss
-// and throws; three tests caught it when this file briefly used it.
-//
-// This block carried an `eslint-disable` for `no-unnecessary-condition` until
-// `noUncheckedIndexedAccess` was turned on, because the rule resolves against the project
-// config and read the comparison as impossible while the flag was off. The flag is on; the
-// comparisons are necessary; the disable is gone.
 function outOfRange(index: number, length: number, what: string): never {
   throw new RangeError(
     `index ${String(index)} is outside ${what}, which has ${String(length)} entries`,
@@ -122,15 +81,12 @@ export function elementAt<T extends NonNullable<unknown>>(
   index: number,
   what: string,
 ): T {
-  // `=== undefined`, deliberately, and NOT `?? outOfRange(...)`. The two agree for every type
-  // the signature admits, and differ for one that lies about itself — which this codebase
-  // contains. `RandomNumberProvider.series` is declared `number[]` and genuinely holds `null`
-  // on a documented degenerate path: a triangular distribution whose limits are both absent
-  // hits `upperLimit === lowerLimit` and returns `upperLimit`, i.e. `null`. That null then
-  // coerces to 0 in the arithmetic downstream, which IS the delta-0 that
-  // `tests/comparison/imprecisionLaws.test.ts` pins — and `NaN` would not be equivalent,
-  // because `null + 5` is 5 where `NaN + 5` is NaN. A `??` test reads that legitimate null as
-  // a miss and throws. Three tests caught it.
+  // `=== undefined` and not `?? outOfRange(…)`: the two differ for a sequence that lies about
+  // its element type, and this tree has one. `RandomNumberProvider.series` is declared
+  // `number[]` and holds `null` on a documented degenerate path — a triangular distribution
+  // with both limits absent returns `upperLimit`, i.e. `null` — which coerces to 0 downstream
+  // and produces the delta-0 that `tests/comparison/imprecisionLaws.test.ts` pins. `??` would
+  // read that legitimate null as a miss and throw.
   const value = xs[index];
   if (value === undefined) outOfRange(index, xs.length, what);
   return value;
@@ -234,19 +190,13 @@ export function partitionWith<A>(
 /**
  * Bucket by a derived key, preserving encounter order within each bucket.
  *
- * **Both orders are guaranteed, and callers depend on both.** Within a bucket, the order is
- * the order the elements were met. Across buckets, it is the order the keys were FIRST met —
- * `Map` iteration order is insertion order by specification (ECMA-262, `%Map.prototype%`
- * `[@@iterator]`), not an implementation detail. That is worth stating because a call site in
- * `src/comparison` was written as an array-plus-linear-search specifically to avoid "relying
- * on a second structure to remember" the order, which cost it a quadratic scan for a
- * guarantee it already had.
+ * Both orders are guaranteed and callers depend on both. Within a bucket, elements keep the
+ * order they were met in. Across buckets, keys keep the order they were first met in — `Map`
+ * iteration order is insertion order by specification (ECMA-262, `%Map.prototype%`
+ * `[@@iterator]`), not an implementation detail.
  *
- * A bucket is created as `[x]` and only ever grown, so it cannot be empty — and unlike
- * {@link chunkBy}, whose chunks carry the same invariant, this signature used to hide it.
- * Saying `NonEmptyArray` means a caller reading the group's first element does not need a
- * guard that can never fire or a checked read that can never miss. The cast is the same one
- * `chunkBy` makes, for the same reason, and it is covered by the note at the top of this file.
+ * A bucket is created as `[x]` and only grown, so the `NonEmptyArray` in the return type holds
+ * and a caller reading a group's first element needs no guard.
  */
 export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K, NonEmptyArray<A>> {
   const out = new Map<K, A[]>();
@@ -259,7 +209,7 @@ export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K,
   return out as unknown as ReadonlyMap<K, NonEmptyArray<A>>;
 }
 
-/** Left fold. Named so that a loop whose only job is to accumulate stops looking like control flow. */
+/** Left fold, so that a loop whose only job is to accumulate stops looking like control flow. */
 export function foldl<A, B>(xs: Iterable<A>, seed: B, step: (acc: B, a: A, index: number) => B): B {
   let acc = seed;
   let index = 0;
@@ -270,22 +220,13 @@ export function foldl<A, B>(xs: Iterable<A>, seed: B, step: (acc: B, a: A, index
 /**
  * A fold that keeps every intermediate state, seed first.
  *
- * **NARROWED, 2026-08-20.** This used to claim it was "the shape of every running quantity
- * over musical time loop — a running date, a running tempo, an accumulated tick offset". A
- * survey went through those loops and the claim is false as stated: `Midi.buildTrackChunk`'s
- * `lastTick`, `Sequence.getMicrosecondLength`'s tempo integration and the applier's running
- * maximum all want only the FINAL state, or write side effects per step. Those are `foldl`,
- * or a loop, and `scanl` would make each of them worse.
+ * Only for a running quantity whose intermediate states are actually read; where just the
+ * final state is wanted, that is {@link foldl}. `datedView.styleNamesOf` is the shape this
+ * fits — "the `<style>` in scope at view position i" — and it replaces a backwards scan
+ * re-run once per index.
  *
- * The distinguishing question is not "is there a running quantity" but **"does anything read
- * the intermediate states?"** — and where the answer is yes, the payoff is usually more than
- * vocabulary. `datedView.styleNamesOf` is the one site found: "the `<style>` in scope at view
- * position i" is a running quantity whose every state is wanted, and its caller was getting
- * them by re-running a backwards scan once per index, quadratically. As a `scanl` it is one
- * forward pass.
- *
- * Note the seed-first indexing when zipping states back against the elements that produced
- * them: `out[i + 1]` is the state AFTER consuming `xs[i]`, and `out[0]` is the seed.
+ * Seed-first indexing: `out[0]` is the seed, and `out[i + 1]` is the state after consuming
+ * `xs[i]`.
  */
 export function scanl<A, B>(
   xs: Iterable<A>,
@@ -317,9 +258,9 @@ export function zipWith<A, B, C>(
 /**
  * Each element paired with its successor.
  *
- * "How long until the next onset", "does this instruction reach the next one" and every other
- * gap computation in the renderer is a `pairwise`, written today as a loop that indexes `i`
- * and `i + 1` and has to special-case the end.
+ * "How long until the next onset" and every other gap computation in the renderer is a
+ * `pairwise`, and the alternative is a loop that indexes `i` and `i + 1` and special-cases the
+ * end.
  */
 export function pairwise<A>(xs: readonly A[]): readonly (readonly [A, A])[] {
   const out: (readonly [A, A])[] = [];
@@ -330,30 +271,14 @@ export function pairwise<A>(xs: readonly A[]): readonly (readonly [A, A])[] {
 /**
  * Each element paired with its successor, and the last one paired with `null`.
  *
- * **This is the shape this codebase contains, and {@link pairwise} is not it.** `pairwise`
- * yields `n − 1` pairs and drops the last element; a span reader needs `n`, because the last
- * instruction is a span too — it just runs to the end of time instead of to a successor. That
- * difference is exactly what every one of those readers had to special-case, and nine of them
- * special-cased it by hand, in two spellings:
+ * Not {@link pairwise}, which yields `n − 1` pairs and drops the last element. A span reader
+ * needs `n`: the last instruction is a span too, running to the end of time rather than to a
+ * successor. Writing the end sentinel at the point of use — `next?.dateTicks ?? Infinity` —
+ * says what it means, where an `Infinity` appended to an array does not.
  *
- * ```ts
- * const nexts: readonly (T | null)[] = [...xs.slice(1), null];        // ×4
- * const endsAt = [...xs.slice(1).map((n) => n.dateTicks), Infinity];  // ×5
- * for (const [at, after] of zipWith(xs, nexts, (a, b) => [a, b] as const)) …
- * ```
- *
- * The second is the first composed with a projection and a default, so one primitive serves
- * both: `next?.dateTicks ?? Infinity` says at the point of USE what the sentinel means, where
- * an `Infinity` buried in an array-building expression did not. Both spellings also built a
- * whole intermediate array only to zip it away; this builds one.
- *
- * A `null` second element means "there is no successor", never "the successor is null" — the
+ * A `null` second element means "there is no successor", never "the successor is null": the
  * sequence's own elements are untouched, so a sequence that legitimately holds nulls still
- * reports its real last entry correctly.
- *
- * It earns its place by this module's own criterion — nine call sites, none of them reachable
- * with anything already here — which is more evidence than `chunkBy`, `windows`, `unfold` and
- * `partitionWith` have between them.
+ * reports its real last entry.
  */
 export function withNext<A>(xs: readonly A[]): readonly (readonly [A, A | null])[] {
   const out: (readonly [A, A | null])[] = new Array<readonly [A, A | null]>(xs.length);
@@ -366,11 +291,9 @@ export function withNext<A>(xs: readonly A[]): readonly (readonly [A, A | null])
  * The first index at which the predicate stops holding, for a sequence already partitioned so
  * that every element satisfying it precedes every element that does not. `O(log n)`.
  *
- * This is C++'s `std::partition_point`, and it is the primitive underneath every binary search
- * in this codebase. Expressing the four hand-written searches in
- * `src/mpm/elements/maps/GenericMap.ts` in terms of it is the point: each of those is a
- * separately-debugged variant of the same six lines, carrying a comment that says every
- * comparison is load-bearing and must not be touched.
+ * C++'s `std::partition_point`, and the primitive underneath every binary search here —
+ * including the four searches in `src/mpm/elements/maps/GenericMap.ts`, which are otherwise
+ * separately-debugged variants of the same six lines.
  */
 export function partitionPoint(length: number, holds: (index: number) => boolean): number {
   let low = 0;
@@ -403,8 +326,8 @@ export function upperBoundBy<A>(xs: readonly A[], key: (a: A) => number, target:
  * The index at which `x` must be inserted to keep `xs` sorted, placing it **after** any equal
  * element — the position a stable sort would have chosen.
  *
- * `Track.add` used to re-sort the whole track on every insert; commit `980ae7e` replaced that
- * with exactly this computation, written out by hand. This is that computation, named.
+ * `Track.add` inserts here rather than re-sorting, which is what keeps same-tick events in
+ * insertion order.
  */
 export function insertionIndexBy<A>(
   xs: readonly A[],

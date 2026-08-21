@@ -4,11 +4,11 @@
  * A leaf in the layering (`eslint.config.js`'s `LAYER_ZONES`) — it imports nothing from the
  * library, and everything may import it.
  *
- * Every name is exported flat and every name is self-describing, so a call site reads without
- * a namespace prefix and a symbol can be grepped for across the tree. That is why the result
- * combinators are `mapOk` / `recover` / `matchResult` / `partitionResults` rather than the
- * bare `map` / `orElse` / `match` / `partition` a namespaced module would have used: those
- * four words mean something else in almost every file that would import them.
+ * Every name is exported flat and is self-describing, so a call site reads without a namespace
+ * prefix and a symbol can be grepped for across the tree. Hence `mapOk` / `recover` /
+ * `matchResult` / `partitionResults` rather than the bare `map` / `orElse` / `match` /
+ * `partition` a namespaced module would have used: those four words mean something else in
+ * almost every file that would import them.
  *
  * ```ts
  * import { filterMap, presentOrError, traverse, matchKind } from '../prelude/index.js';
