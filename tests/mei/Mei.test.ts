@@ -84,7 +84,7 @@ describe('Mei – construction', () => {
   });
 
   it('should create from XML string', () => {
-    const mei = new Mei(SAMPLE_MEI, true);
+    const mei = new Mei(SAMPLE_MEI);
     expect(mei.isEmpty()).toBe(false);
     expect(mei.getRootElement()!.getLocalName()).toBe('mei');
   });
@@ -108,7 +108,7 @@ describe('Mei – construction', () => {
 // ---------------------------------------------------------------------------
 describe('Mei – getMeiHead', () => {
   it('should return the meiHead element', () => {
-    const mei = new Mei(SAMPLE_MEI, true);
+    const mei = new Mei(SAMPLE_MEI);
     const head = mei.getMeiHead();
     expect(head).not.toBeNull();
     expect(head!.getLocalName()).toBe('meiHead');
@@ -127,7 +127,7 @@ describe('Mei – getMeiHead', () => {
 // ---------------------------------------------------------------------------
 describe('Mei – getMusic', () => {
   it('should return the music element', () => {
-    const mei = new Mei(SAMPLE_MEI, true);
+    const mei = new Mei(SAMPLE_MEI);
     const music = mei.getMusic();
     expect(music).not.toBeNull();
     expect(music!.getLocalName()).toBe('music');
@@ -143,7 +143,7 @@ describe('Mei – getMusic', () => {
 // ---------------------------------------------------------------------------
 describe('Mei – getTitle', () => {
   it('should extract the title from titleStmt', () => {
-    const mei = new Mei(SAMPLE_MEI, true);
+    const mei = new Mei(SAMPLE_MEI);
     const title = mei.getTitle();
     expect(title).toBe('Test Piece');
   });
@@ -162,7 +162,7 @@ describe('Mei – getTitle', () => {
   <meiHead/>
   <music/>
 </mei>`;
-    const mei = new Mei(xml, true);
+    const mei = new Mei(xml);
     mei.setFile('/path/to/piece.mei');
     // Java falls back to File.getName(), i.e. the bare file name (Mei.java:161/164)
     const title = mei.getTitle();
@@ -172,7 +172,7 @@ describe('Mei – getTitle', () => {
   it('should keep a plain filename as fallback', () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei"><meiHead/><music/></mei>`;
-    const mei = new Mei(xml, true);
+    const mei = new Mei(xml);
     mei.setFile('piece.mei');
     expect(mei.getTitle()).toBe('piece');
   });
@@ -180,7 +180,7 @@ describe('Mei – getTitle', () => {
   it('should return an empty string when there is neither a title nor a file', () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei"><meiHead/><music/></mei>`;
-    expect(new Mei(xml, true).getTitle()).toBe('');
+    expect(new Mei(xml).getTitle()).toBe('');
   });
 
   it('should not reach the workList fallback, because the lookup never throws', () => {
@@ -193,7 +193,7 @@ describe('Mei – getTitle', () => {
   <meiHead><workList><work><title>Sonata</title></work></workList></meiHead>
   <music/>
 </mei>`;
-    const mei = new Mei(xml, true);
+    const mei = new Mei(xml);
     expect(mei.getTitle()).toBe('');
 
     mei.setFile('sonata.mei');
@@ -206,7 +206,7 @@ describe('Mei – getTitle', () => {
 // ---------------------------------------------------------------------------
 describe('Mei – getAllMdivs', () => {
   it('should find the mdiv element', () => {
-    const mei = new Mei(SAMPLE_MEI, true);
+    const mei = new Mei(SAMPLE_MEI);
     const mdivs = mei.getAllMdivs();
     expect(mdivs.length).toBe(1);
     const idAttr = mdivs[0].getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
@@ -219,7 +219,7 @@ describe('Mei – getAllMdivs', () => {
 <mei xmlns="http://www.music-encoding.org/ns/mei">
   <meiHead/>
 </mei>`;
-    const mei = new Mei(xml, true);
+    const mei = new Mei(xml);
     expect(mei.getAllMdivs().length).toBe(0);
   });
 
@@ -234,7 +234,7 @@ describe('Mei – getAllMdivs', () => {
     </body>
   </music>
 </mei>`;
-    const mei = new Mei(xml, true);
+    const mei = new Mei(xml);
     const mdivs = mei.getAllMdivs();
     expect(mdivs.length).toBe(2);
   });
@@ -245,7 +245,7 @@ describe('Mei – getAllMdivs', () => {
 // ---------------------------------------------------------------------------
 describe('Mei – computeMinimalPPQ', () => {
   it('should compute minimal PPQ from quarter notes', () => {
-    const mei = new Mei(SAMPLE_MEI, true);
+    const mei = new Mei(SAMPLE_MEI);
     const ppq = mei.computeMinimalPPQ();
     // All notes are quarter (dur="4"), decimal = 0.25
     // result = 0.25 / 0.25 = 1
@@ -273,7 +273,7 @@ describe('Mei – computeMinimalPPQ', () => {
     </body>
   </music>
 </mei>`;
-    const mei = new Mei(xml, true);
+    const mei = new Mei(xml);
     const ppq = mei.computeMinimalPPQ();
     // dur="16" -> decimal = 0.0625
     // result = 0.25 / 0.0625 = 4
@@ -283,7 +283,7 @@ describe('Mei – computeMinimalPPQ', () => {
   it('should return 0 when no music element', () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei"><meiHead/></mei>`;
-    const mei = new Mei(xml, true);
+    const mei = new Mei(xml);
     expect(mei.computeMinimalPPQ()).toBe(0);
   });
 });
@@ -293,7 +293,7 @@ describe('Mei – computeMinimalPPQ', () => {
 // ---------------------------------------------------------------------------
 describe('Mei – serialization', () => {
   it('writeMei should return XML string', () => {
-    const mei = new Mei(SAMPLE_MEI, true);
+    const mei = new Mei(SAMPLE_MEI);
     const xml = mei.writeMei();
     expect(xml).not.toBeNull();
     expect(xml).toContain('mei');
@@ -301,7 +301,7 @@ describe('Mei – serialization', () => {
   });
 
   it('toXML should produce valid XML', () => {
-    const mei = new Mei(SAMPLE_MEI, true);
+    const mei = new Mei(SAMPLE_MEI);
     const xml = mei.toXML();
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
     expect(xml).toContain('<mei');
@@ -393,19 +393,19 @@ describe('Mei – getAllVariantEncodings', () => {
     </body>
   </music>
 </mei>`;
-    const mei = new Mei(xml, true);
+    const mei = new Mei(xml);
     const variants = mei.getAllVariantEncodings();
     expect(variants.size()).toBeGreaterThanOrEqual(1);
   });
 
   it('should find app elements as well', () => {
     const inner = `<app><lem><note dur="4"/></lem><rdg><note dur="8"/></rdg></app>`;
-    const mei = new Mei(wrap(inner), true);
+    const mei = new Mei(wrap(inner));
     expect(mei.getAllVariantEncodings().size()).toBe(1);
   });
 
   it('should return an empty result when there is no variant encoding', () => {
-    const mei = new Mei(wrap('<note dur="4"/>'), true);
+    const mei = new Mei(wrap('<note dur="4"/>'));
     expect(mei.getAllVariantEncodings().size()).toBe(0);
   });
 });
@@ -415,7 +415,7 @@ describe('Mei – getAllVariantEncodings', () => {
 // ---------------------------------------------------------------------------
 describe('Mei – addIds', () => {
   it('should give every id-worthy element an xml:id and report how many', () => {
-    const mei = new Mei(wrap('<note dur="4"/><rest dur="4"/><chord><note dur="8"/></chord>'), true);
+    const mei = new Mei(wrap('<note dur="4"/><rest dur="4"/><chord><note dur="8"/></chord>'));
 
     const added = mei.addIds();
 
@@ -427,7 +427,7 @@ describe('Mei – addIds', () => {
   });
 
   it('should generate ids with the meico prefix', () => {
-    const mei = new Mei(wrap('<note dur="4"/>'), true);
+    const mei = new Mei(wrap('<note dur="4"/>'));
     mei.addIds();
 
     const note = mei
@@ -440,7 +440,7 @@ describe('Mei – addIds', () => {
   });
 
   it('should leave existing ids alone', () => {
-    const mei = new Mei(wrap('<note xml:id="keepme" dur="4"/><note dur="4"/>'), true);
+    const mei = new Mei(wrap('<note xml:id="keepme" dur="4"/><note dur="4"/>'));
 
     const added = mei.addIds();
     const notes = mei.getRootElement()!.query("descendant::*[local-name()='note']");
@@ -454,7 +454,7 @@ describe('Mei – addIds', () => {
   });
 
   it('should not touch elements outside the id-worthy set', () => {
-    const mei = new Mei(wrap('<note dur="4"/>'), true);
+    const mei = new Mei(wrap('<note dur="4"/>'));
     mei.addIds();
 
     const layer = mei
@@ -483,7 +483,7 @@ describe('Mei – addIds', () => {
 // ---------------------------------------------------------------------------
 describe('Mei – removeRendElements', () => {
   it('should replace a rend element by its text content', () => {
-    const mei = new Mei(wrap('<dir><rend fontweight="bold">forte</rend></dir>'), true);
+    const mei = new Mei(wrap('<dir><rend fontweight="bold">forte</rend></dir>'));
 
     (mei as unknown as { removeRendElements(): void }).removeRendElements();
 
@@ -494,7 +494,7 @@ describe('Mei – removeRendElements', () => {
   });
 
   it('should handle several rends and nested content', () => {
-    const mei = new Mei(wrap('<dir><rend>a</rend><rend>b</rend></dir>'), true);
+    const mei = new Mei(wrap('<dir><rend>a</rend><rend>b</rend></dir>'));
 
     (mei as unknown as { removeRendElements(): void }).removeRendElements();
 
@@ -509,7 +509,7 @@ describe('Mei – removeRendElements', () => {
   it('should do nothing when there is no music element', () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei"><meiHead/></mei>`;
-    const mei = new Mei(xml, true);
+    const mei = new Mei(xml);
 
     expect(() =>
       (mei as unknown as { removeRendElements(): void }).removeRendElements(),
@@ -524,7 +524,6 @@ describe('Mei – resolveCopyofs', () => {
   it('should replace a copyof placeholder by a copy of its target', () => {
     const mei = new Mei(
       wrap('<note xml:id="n1" dur="4" pname="c" oct="4"/><note xml:id="n2" copyof="#n1"/>'),
-      true,
     );
 
     const notResolved = mei.resolveCopyofs();
@@ -540,7 +539,6 @@ describe('Mei – resolveCopyofs', () => {
   it('should keep the placeholder id on the inserted copy', () => {
     const mei = new Mei(
       wrap('<note xml:id="n1" dur="4" pname="c"/><note xml:id="n2" copyof="#n1"/>'),
-      true,
     );
 
     mei.resolveCopyofs();
@@ -557,7 +555,6 @@ describe('Mei – resolveCopyofs', () => {
   it('should resolve sameas just like copyof', () => {
     const mei = new Mei(
       wrap('<note xml:id="n1" dur="8" pname="d"/><note xml:id="n2" sameas="#n1"/>'),
-      true,
     );
 
     mei.resolveCopyofs();
@@ -570,10 +567,7 @@ describe('Mei – resolveCopyofs', () => {
   });
 
   it('should report and drop a placeholder whose target does not exist', () => {
-    const mei = new Mei(
-      wrap('<note xml:id="n1" dur="4"/><note xml:id="n2" copyof="#missing"/>'),
-      true,
-    );
+    const mei = new Mei(wrap('<note xml:id="n1" dur="4"/><note xml:id="n2" copyof="#missing"/>'));
 
     const notResolved = mei.resolveCopyofs()!;
 
@@ -584,10 +578,7 @@ describe('Mei – resolveCopyofs', () => {
 
   it('should detect a circular reference and give up', () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const mei = new Mei(
-      wrap('<note xml:id="n1" copyof="#n2"/><note xml:id="n2" copyof="#n1"/>'),
-      true,
-    );
+    const mei = new Mei(wrap('<note xml:id="n1" copyof="#n2"/><note xml:id="n2" copyof="#n1"/>'));
 
     const notResolved = mei.resolveCopyofs()!;
 
@@ -601,7 +592,6 @@ describe('Mei – resolveCopyofs', () => {
       wrap(
         '<chord xml:id="c1"><note xml:id="n1" dur="4"/></chord><chord xml:id="c2" copyof="#c1"/>',
       ),
-      true,
     );
 
     mei.resolveCopyofs();
@@ -621,7 +611,6 @@ describe('Mei – resolveCopyofs', () => {
   it('resolveCopyofsAndSameas should be the same operation', () => {
     const mei = new Mei(
       wrap('<note xml:id="n1" dur="4" pname="e"/><note xml:id="n2" copyof="#n1"/>'),
-      true,
     );
 
     expect(mei.resolveCopyofsAndSameas()).toEqual([]);
@@ -655,7 +644,7 @@ describe('Mei – resolveExpansions', () => {
 </mei>`;
 
   it('should drop the expansion element itself', () => {
-    const mei = new Mei(withExpansion, true);
+    const mei = new Mei(withExpansion);
 
     mei.resolveExpansions();
 
@@ -676,7 +665,7 @@ describe('Mei – resolveExpansions', () => {
   };
 
   it('should lay the sections out in the order the plist prescribes', () => {
-    const mei = new Mei(withExpansion.replace('plist="#a #b #a"', 'plist="#b #a"'), true);
+    const mei = new Mei(withExpansion.replace('plist="#a #b #a"', 'plist="#b #a"'));
 
     mei.resolveExpansions();
 
@@ -688,7 +677,7 @@ describe('Mei – resolveExpansions', () => {
     // has a parent is appended, and only then makes the copy with fresh ids
     // (Mei.java, resolveExpansions). XomTypes.appendChild re-parents silently
     // instead, so the repeat moves the section rather than duplicating it.
-    const mei = new Mei(withExpansion, true);
+    const mei = new Mei(withExpansion);
 
     mei.resolveExpansions();
 
@@ -696,7 +685,7 @@ describe('Mei – resolveExpansions', () => {
   });
 
   it('should leave a score without expansions untouched', () => {
-    const mei = new Mei(SAMPLE_MEI, true);
+    const mei = new Mei(SAMPLE_MEI);
 
     mei.resolveExpansions();
 
@@ -705,7 +694,7 @@ describe('Mei – resolveExpansions', () => {
 
   it('should drop siblings that the plist does not mention', () => {
     const xml = withExpansion.replace('plist="#a #b #a"', 'plist="#b"');
-    const mei = new Mei(xml, true);
+    const mei = new Mei(xml);
 
     mei.resolveExpansions();
 
@@ -767,11 +756,11 @@ describe('Mei – the export entry points', () => {
   // therefore has to build the converter itself, as tests/integration does.
   // These tests pin that limitation; they should be replaced once the import is fixed.
   it('exportMsmMpm cannot load the converter in this ESM build', () => {
-    expect(() => new Mei(SAMPLE_MEI, true).exportMsmMpm()).toThrow(/Mei2MsmMpmConverter/);
+    expect(() => new Mei(SAMPLE_MEI).exportMsmMpm()).toThrow(/Mei2MsmMpmConverter/);
   });
 
   it('exportMsm fails for the same reason, it delegates to exportMsmMpm', () => {
-    expect(() => new Mei(SAMPLE_MEI, true).exportMsm()).toThrow(/Mei2MsmMpmConverter/);
+    expect(() => new Mei(SAMPLE_MEI).exportMsm()).toThrow(/Mei2MsmMpmConverter/);
   });
 });
 
@@ -813,13 +802,13 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
   );
 
   it('replaces one two-layer staff by two staffs numbered staff@n + layer@n', () => {
-    const mei = new Mei(TWO_LAYERS, true);
+    const mei = new Mei(TWO_LAYERS);
     mei.layersToStaffs();
     expect(staffNs(mei)).toEqual(['11', '12']);
   });
 
   it('renumbers each moved layer to @n="1", since its new staff holds only it', () => {
-    const mei = new Mei(TWO_LAYERS, true);
+    const mei = new Mei(TWO_LAYERS);
     mei.layersToStaffs();
     const layers = mei.getRootElement()!.query("descendant::*[local-name()='layer']");
     expect(layers.toArray().map((l) => (l as unknown as Element).getAttributeValue('n'))).toEqual([
@@ -839,7 +828,7 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
   });
 
   it('regenerates one staffDef per new staff, carrying the original attributes over', () => {
-    const mei = new Mei(TWO_LAYERS, true);
+    const mei = new Mei(TWO_LAYERS);
     mei.layersToStaffs();
     expect(staffDefNs(mei)).toEqual(['11', '12']);
 
@@ -853,7 +842,7 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
   });
 
   it('keeps the new staffDefs inside the original staffGrp', () => {
-    const mei = new Mei(TWO_LAYERS, true);
+    const mei = new Mei(TWO_LAYERS);
     mei.layersToStaffs();
     const grp = mei.getRootElement()!.query("descendant::*[local-name()='staffGrp']").get(0);
     expect((grp as unknown as Element).getChildElements().size()).toBe(2);
@@ -868,7 +857,6 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
            <dir tstamp="1">after</dir>
          </measure>`,
       ),
-      true,
     );
     mei.layersToStaffs();
     const measure = mei.getRootElement()!.query("descendant::*[local-name()='measure']").get(0);
@@ -886,7 +874,6 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
            <layer n="9"><note pname="e" oct="4" dur="4"/></layer>
          </staff></measure>`,
       ),
-      true,
     );
     mei.layersToStaffs();
     expect(staffNs(mei)).toEqual(['110', '19']); // document order follows the layers
@@ -902,7 +889,6 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
            <layer><note pname="e" oct="4" dur="4"/></layer>
          </staff></measure>`,
       ),
-      true,
     );
     mei.layersToStaffs();
     // staff "1000000" + layer "0" / "1000000"
@@ -915,7 +901,6 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
         '<scoreDef><staffGrp/></scoreDef>',
         '<measure n="1"><staff n="3"><layer n="1"><note pname="c" oct="4" dur="4"/></layer></staff></measure>',
       ),
-      true,
     );
     mei.layersToStaffs();
     expect(staffDefNs(mei)).toEqual(['31']);
@@ -927,7 +912,6 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
         '',
         '<measure n="1"><staff n="1"><layer n="1"><note pname="c" oct="4" dur="4"/></layer></staff></measure>',
       ),
-      true,
     );
     mei.layersToStaffs();
     const scoreEl = mei.getRootElement()!.query("descendant::*[local-name()='score']").get(0);
@@ -957,7 +941,6 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
     </score></mdiv>
   </body></music>
 </mei>`,
-      true,
     );
     mei.layersToStaffs();
     expect(staffNs(mei)).toEqual(['11', '12', '21']);
@@ -973,7 +956,6 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
            <staff n="2"><layer n="1"><note pname="e" oct="3" dur="4"/></layer></staff>
          </measure>`,
       ),
-      true,
     );
     mei.layersToStaffs();
     expect(staffNs(mei)).toEqual(['11', '21']);
@@ -989,7 +971,6 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
            <layer n="2"><note pname="e" oct="4" dur="4"/></layer>
          </staff></measure>`,
       ),
-      true,
     );
     mei.layersToStaffs();
     const ids = mei
@@ -1003,7 +984,7 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
   });
 
   it('returns, per mdiv, where each generated staff came from', () => {
-    const mei = new Mei(TWO_LAYERS, true);
+    const mei = new Mei(TWO_LAYERS);
     const provenance = mei.layersToStaffs();
 
     expect(provenance).toHaveLength(1);
@@ -1021,7 +1002,6 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
            <layer><note pname="e" oct="4" dur="4"/></layer>
          </staff></measure>`,
       ),
-      true,
     );
     const [map] = mei.layersToStaffs();
     for (const [newStaffN, origin] of map) {
@@ -1050,7 +1030,6 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
     </score></mdiv>
   </body></music>
 </mei>`,
-      true,
     );
     const provenance = mei.layersToStaffs();
     // both movements produce a staff "11"; merged, one would have hidden the other
@@ -1070,7 +1049,6 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
            <oStaff n="1"><oLayer n="1"><note pname="d" oct="4" dur="4"/></oLayer></oStaff>
          </measure>`,
       ),
-      true,
     );
     mei.layersToStaffs();
     expect(mei.getRootElement()!.query("descendant::*[local-name()='oStaff']").size()).toBe(0);

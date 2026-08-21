@@ -1677,7 +1677,7 @@ export class Mei2MsmMpmConverter {
     // `source` is the MEI element a Goto was read from; there is none here because this
     // goto is synthesised, and Goto only ever stores the field, never reads it — so null is
     // safe. Typed away rather than declared nullable because Goto's signature is T9's file.
-    const gotoObj = new Goto(
+    const gotoObj = Goto.fromValues(
       dateOfGoto,
       startDate,
       markerId,
