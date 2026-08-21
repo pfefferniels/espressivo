@@ -489,8 +489,8 @@ class PerformancePass {
    * Whether the renderer reads this instruction as a CONSTANT — no `@transition.to`, or a
    * target that resolves to the same number as the prevailing level.
    *
-   * Shared by both shape dimensions: `DynamicsData.isConstantDynamics` and
-   * `TempoData.isConstantTempo` are one predicate over two attribute names, and each renderer
+   * Shared by both shape dimensions: `isConstantDynamics` and `isConstantTempo` are one
+   * predicate over two attribute names, and each renderer
    * path reads its curve parameter — or `@meanTempoAt` — only in the surviving transition
    * branch.
    *
@@ -677,7 +677,7 @@ class PerformancePass {
   /**
    * Transform one site's window and write back only the attributes that are physically there.
    *
-   * Where a site supplies neither bound, `RubatoData`'s defaults 1.0/0.0/1.0 ARE the neutral,
+   * Where a site supplies neither bound, `resolveRubato`'s fallbacks 1.0/0.0/1.0 ARE the neutral,
    * so the transform is the identity by construction and there is nothing to do. Where it
    * supplies one, the other is that neutral and the trim is still entirely this site's.
    *
@@ -1582,7 +1582,7 @@ interface RubatoSite {
  *
  * An element that overrides BOTH bounds is self-contained and leaves the def free; an element
  * that overrides NEITHER inherits the def's window whole; an element that overrides one where
- * the def supplies neither falls back to `RubatoData`'s own neutral, which is not a second
+ * the def supplies neither falls back to `resolveRubato`'s own neutral, which is not a second
  * site. Only the mixed case couples them.
  */
 function crossesSites(element: RubatoSite, def: RubatoSite): boolean {

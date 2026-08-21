@@ -44,8 +44,9 @@
  * the fix (push in a loop, or `concat`) belongs with the same shape in
  * `ornamentInstantiation`'s `Math.min(...dates)`, and the two should change together.
  *
- * PARITY NOTE. v2 has no grammar here beyond a whitespace-split list of IDs: `OrnamentData`
- * stores `note.order` as either one magic string or `value.replace(/#/g, '').split(/\s+/)`,
+ * PARITY NOTE. v2 has no grammar here beyond a whitespace-split list of IDs:
+ * `Ornament.noteOrder` holds either one magic string or
+ * `value.replace(/#/g, '').split(/\s+/)`,
  * and everything downstream reads that flat array. Nothing in v2 knows what a bracket or a
  * repeat sign means. This module is v3-only and must never be reached from the v2 path — an
  * ornament that shows no v3 feature keeps the untouched v2 code path (DESIGN.md D6). Running

@@ -111,7 +111,7 @@ export function neutralDynamicsCurve(): DynamicsCurve {
  * The clamps are two comparisons, `value < 0` and `value > 1`, and `NaN` fails both — so an
  * unusable `@curvature` reaches the curve as `NaN` rather than as the 0.0 an absent one gets.
  * Repairing it to 0 would give a smoothstep ramp where the renderer performs something else
- * entirely (see {@link readDynamicsSegments}). ABSENT is still 0.0, `DynamicsData`'s own
+ * entirely (see {@link readDynamicsSegments}). ABSENT is still 0.0, `resolveDynamics`'s own
  * initializer.
  */
 function shapeParameter(element: Element, name: string, low: number, high: number): number {
@@ -158,7 +158,7 @@ export function idealCurveParameter(x1: number, x2: number, xTarget: number): nu
   return (low + high) / 2;
 }
 
-/** The Bézier's value fraction at curve parameter `t` — `DynamicsData.getDynamicsAt`'s form. */
+/** The Bézier's value fraction at curve parameter `t` — `dynamicsAt`'s form. */
 function valueFraction(t: number): number {
   return (3 - 2 * t) * t * t;
 }

@@ -23,11 +23,7 @@ import {
 import { MissingNodeError } from '../xml/errors.js';
 import { describeMpmParseError } from '../mpm/elements/parseError.js';
 import { Mei } from './Mei.js';
-import {
-  buildOrnamentData,
-  createMeiOrnamentDef,
-  resolveOrnamentSign,
-} from './MeiOrnamentExpander.js';
+import { buildOrnament, createMeiOrnamentDef, resolveOrnamentSign } from './MeiOrnamentExpander.js';
 import { VERSION } from '../version.js';
 import { KeyValue } from '../supplementary/KeyValue.js';
 import { Goto } from '../msm/Goto.js';
@@ -53,7 +49,7 @@ import { TempoDef } from '../mpm/elements/styles/defs/TempoDef.js';
 import { DynamicsDef } from '../mpm/elements/styles/defs/DynamicsDef.js';
 import { ArticulationDef } from '../mpm/elements/styles/defs/ArticulationDef.js';
 import { OrnamentDef } from '../mpm/elements/styles/defs/OrnamentDef.js';
-import { OrnamentData } from '../mpm/elements/maps/data/OrnamentData.js';
+import { NO_V3_ORNAMENT_FIELDS, type Ornament } from '../mpm/elements/maps/data/ornament.js';
 import { Author } from '../mpm/elements/metadata/Author.js';
 import { Comment } from '../mpm/elements/metadata/Comment.js';
 import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
@@ -418,6 +414,9 @@ const DESCEND: ElementHandler = () => 'descend';
  * cannot reach a writer.
  */
 type UndatedTempo = Omit<AddTempoOptions, 'date'>;
+
+/** The `ornamentDef` an MEI `<arpeg>` is exported as, and defined under in the MEI-export style. */
+const ARPEGGIO_DEF_NAME = 'arpeggio';
 
 export class Mei2MsmMpmConverter {
   private mei: Mei | null = null;
@@ -2398,30 +2397,23 @@ export class Mei2MsmMpmConverter {
     const timingData = this.computeControlEventTiming(arpeg, ctx.part, ctx);
     if (timingData === null) return;
 
-    const od = new OrnamentData();
-    od.date = timingData[0];
-    od.ornamentDefName = 'arpeggio';
-    od.scale = 0.0;
-
-    const id = attribute('id', arpeg);
-    od.xmlId = id === null ? null : id.getValue();
-
     // determine the note order
+    let noteOrder: string[] | null = null;
     let needsPostprocessing = 0;
     const plist = attribute('plist', arpeg);
     if (plist === null) {
       if (order !== null) {
-        od.noteOrder = [];
-        if (order.getValue().trim() === 'down') od.noteOrder.push('descending pitch');
-        else od.noteOrder.push('ascending pitch');
+        noteOrder = [];
+        if (order.getValue().trim() === 'down') noteOrder.push('descending pitch');
+        else noteOrder.push('ascending pitch');
       }
     } else {
-      od.noteOrder = [];
+      noteOrder = [];
       for (const ref of plist.getValue().trim().split(/\s+/)) {
         const e = this.allNotesAndChords.get(ref.replace(/#/g, ''));
         if (e === undefined) continue;
         if (e.getLocalName() === 'note') {
-          od.noteOrder.push(ref);
+          noteOrder.push(ref);
           continue;
         }
         if (e.getLocalName() === 'chord') {
@@ -2438,7 +2430,7 @@ export class Mei2MsmMpmConverter {
               this.allNotesAndChords.set(noteId.getValue(), note);
               note.addAttribute(noteId);
             }
-            od.noteOrder.push(`#${noteId.getValue()}`);
+            noteOrder.push(`#${noteId.getValue()}`);
           }
         }
       }
@@ -2448,6 +2440,17 @@ export class Mei2MsmMpmConverter {
         else if (order.getValue().trim() === 'up') needsPostprocessing = 1;
       }
     }
+
+    const id = attribute('id', arpeg);
+    const od: Ornament = {
+      date: timingData[0],
+      ornamentDefName: ARPEGGIO_DEF_NAME,
+      ornamentDef: null,
+      scale: 0.0,
+      xmlId: id === null ? null : id.getValue(),
+      noteOrder,
+      ...NO_V3_ORNAMENT_FIELDS,
+    };
 
     // Make sure that the arpeggio is defined in a global ornamentation style. Only the
     // `getStyleDef` lookup can come back null; `addStyleDef` returns the style it just created.
@@ -2460,8 +2463,8 @@ export class Mei2MsmMpmConverter {
         Mpm.ORNAMENTATION_STYLE,
         'MEI export',
       ) as OrnamentationStyle;
-    if (ornamentationStyle.getDef(od.ornamentDefName) === undefined) {
-      const def = OrnamentDef.createDefaultOrnamentDef(od.ornamentDefName);
+    if (ornamentationStyle.getDef(ARPEGGIO_DEF_NAME) === undefined) {
+      const def = OrnamentDef.createDefaultOrnamentDef(ARPEGGIO_DEF_NAME);
       if (isOk(def)) ornamentationStyle.addDef(def.value);
     }
 
@@ -2476,7 +2479,7 @@ export class Mei2MsmMpmConverter {
         ) as OrnamentationMap;
         ornamentationMap.addStyleSwitch(0.0, 'MEI export');
       }
-      const index = ornamentationMap.addOrnamentFromData(od);
+      const index = ornamentationMap.addOrnament(od);
       if (needsPostprocessing !== 0)
         this.arpeggiosToSort.push(
           new KeyValue<Attribute, boolean>(
@@ -2500,10 +2503,10 @@ export class Mei2MsmMpmConverter {
           ornamentationMap.addStyleSwitch(0.0, 'MEI export');
         }
 
-        const odd = od.clone();
-        if (od.xmlId !== null && multiIDs) odd.xmlId = `${od.xmlId}_meico_${uuidv4()}`;
+        const odd: Ornament =
+          od.xmlId !== null && multiIDs ? { ...od, xmlId: `${od.xmlId}_meico_${uuidv4()}` } : od;
 
-        const index = ornamentationMap.addOrnamentFromData(odd);
+        const index = ornamentationMap.addOrnament(odd);
         if (needsPostprocessing !== 0)
           this.arpeggiosToSort.push(
             new KeyValue<Attribute, boolean>(
@@ -2525,7 +2528,7 @@ export class Mei2MsmMpmConverter {
    * The shape follows {@link processArpeg}: a date from {@link computeControlEventTiming}, an
    * `ornamentDef` in a global `"MEI export"` style, and an `ornamentationMap` on each part the
    * event applies to, created on demand with a style switch at date 0. What differs is what is
-   * authored — {@link buildOrnamentData} produces a v3 ornament with a note pool and a
+   * authored — {@link buildOrnament} produces a v3 ornament with a note pool and a
    * `note.order`, where an arpeggio produces a v2 one with neither — and that the
    * arpeggio-specific pitch-sorting postprocessing has no counterpart here, a dictionary
    * sequence already fixing the playing order.
@@ -2583,8 +2586,8 @@ export class Mei2MsmMpmConverter {
         ) as OrnamentationMap;
         ornamentationMap.addStyleSwitch(0.0, 'MEI export');
       }
-      ornamentationMap.addOrnamentFromData(
-        buildOrnamentData(resolved.shape, resolved.defName, resolved.principalId, date, idBase),
+      ornamentationMap.addOrnament(
+        buildOrnament(resolved.shape, resolved.defName, resolved.principalId, date, idBase),
       );
       return;
     }
@@ -2607,8 +2610,8 @@ export class Mei2MsmMpmConverter {
       // xml:id="tr1_n0">` twice in one MPM. The stem follows processArpeg's `_meico_<uuid>`
       // convention for the second and later staves, so the first staff keeps the readable id.
       const stem = multiIDs ? `${idBase}_meico_${uuidv4()}` : idBase;
-      ornamentationMap.addOrnamentFromData(
-        buildOrnamentData(resolved.shape, resolved.defName, resolved.principalId, date, stem),
+      ornamentationMap.addOrnament(
+        buildOrnament(resolved.shape, resolved.defName, resolved.principalId, date, stem),
       );
 
       multiIDs = true;

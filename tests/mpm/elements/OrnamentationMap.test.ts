@@ -5,7 +5,12 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { OrnamentationMap } from '../../../src/mpm/elements/maps/OrnamentationMap.js';
 import { Performance } from '../../../src/mpm/elements/Performance.js';
-import { OrnamentData } from '../../../src/mpm/elements/maps/data/OrnamentData.js';
+import {
+  applyOrnament,
+  NO_V3_ORNAMENT_FIELDS,
+  principalNoteId,
+  type Ornament,
+} from '../../../src/mpm/elements/maps/data/ornament.js';
 import { OrnamentNote } from '../../../src/mpm/elements/maps/data/OrnamentNote.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute, Builder } from '../../../src/xml/XomTypes.js';
@@ -100,6 +105,20 @@ function makeHeader(defs: OrnamentDef[], styleName = 'orn style'): Header {
   for (const d of defs) style.addDef(d);
   header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
   return header;
+}
+
+/** An ornament with every field at the value a bare `<ornament>` reads as. */
+function orn(fields: Partial<Ornament> = {}): Ornament {
+  return {
+    xmlId: null,
+    date: 0.0,
+    scale: 0.0,
+    ornamentDefName: null,
+    ornamentDef: null,
+    noteOrder: null,
+    ...NO_V3_ORNAMENT_FIELDS,
+    ...fields,
+  };
 }
 
 describe('OrnamentationMap', () => {
@@ -232,29 +251,36 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  describe('addOrnamentFromData', () => {
-    it('should return -1 if no ornamentDef and no ornamentDefName', () => {
+  describe('addOrnament', () => {
+    it('should refuse an ornament that names nothing', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const od = new OrnamentData();
-      od.date = 0;
-      od.ornamentDef = null;
-      od.ornamentDefName = null;
-
-      const index = map.addOrnamentFromData(od);
+      const index = map.addOrnament(orn({ ornamentDefName: null }));
       expect(index).toBe(-1);
       expect(map.size()).toBe(0);
     });
 
-    it('should add ornament with ornamentDefName', () => {
+    it('should add an ornament that names a def by name alone', () => {
       const map = OrnamentationMap.createOrnamentationMap();
-      const od = new OrnamentData();
-      od.date = 100;
-      od.ornamentDefName = 'trill';
-      od.scale = 1.5;
-
-      const index = map.addOrnamentFromData(od);
+      const index = map.addOrnament(orn({ date: 100, ornamentDefName: 'trill', scale: 1.5 }));
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
+    });
+
+    /** A v2 ornament takes the v2 writer, which omits a scale of 1.0 and writes no noteid. */
+    it('routes to v2 when the ornament carries nothing v3', () => {
+      const map = OrnamentationMap.createOrnamentationMap();
+      const elem = map.getElement(map.addOrnament(orn({ ornamentDefName: 'trill', scale: 1.0 })))!;
+      expect(elem.getAttribute('scale')).toBeNull();
+    });
+
+    /** A noteid is a v3 marker, so the v3 writer takes over and always writes the scale. */
+    it('routes to v3 as soon as the ornament carries a noteid', () => {
+      const map = OrnamentationMap.createOrnamentationMap();
+      const elem = map.getElement(
+        map.addOrnament(orn({ ornamentDefName: 'trill', scale: 1.0, noteid: '#n1' })),
+      )!;
+      expect(elem.getAttributeValue('noteid')).toBe('#n1');
+      expect(elem.getAttributeValue('scale')).toBe('1');
     });
   });
 
@@ -280,70 +306,7 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  describe('OrnamentData', () => {
-    it('should have correct default values', () => {
-      const od = new OrnamentData();
-      expect(od.date).toBe(0.0);
-      expect(od.scale).toBe(0.0);
-      expect(od.noteOrder).toBeNull();
-      expect(od.xml).toBeNull();
-      expect(od.xmlId).toBeNull();
-      expect(od.styleName).toBe('');
-      expect(od.style).toBeNull();
-      expect(od.ornamentDefName).toBeNull();
-      expect(od.ornamentDef).toBeNull();
-    });
-
-    it('should clone correctly', () => {
-      const od = new OrnamentData();
-      od.date = 240;
-      od.scale = 2.0;
-      od.noteOrder = ['note1', 'note2'];
-      od.xmlId = 'orn-clone';
-      od.styleName = 'testStyle';
-      od.ornamentDefName = 'trill';
-
-      const clone = od.clone();
-      expect(clone.date).toBe(240);
-      expect(clone.scale).toBe(2.0);
-      expect(clone.noteOrder).toEqual(['note1', 'note2']);
-      expect(clone.xmlId).toBe('orn-clone');
-      expect(clone.styleName).toBe('testStyle');
-      expect(clone.ornamentDefName).toBe('trill');
-    });
-
-    it('clone should have independent noteOrder array', () => {
-      const od = new OrnamentData();
-      od.noteOrder = ['note1', 'note2'];
-
-      const clone = od.clone();
-      clone.noteOrder!.push('note3');
-
-      expect(od.noteOrder).toEqual(['note1', 'note2']);
-      expect(clone.noteOrder).toEqual(['note1', 'note2', 'note3']);
-    });
-
-    it('clone with null noteOrder remains null', () => {
-      const od = new OrnamentData();
-      od.noteOrder = null;
-
-      const clone = od.clone();
-      expect(clone.noteOrder).toBeNull();
-    });
-
-    it('clone should be independent of original for scalars', () => {
-      const od = new OrnamentData();
-      od.date = 100;
-      od.scale = 3.0;
-
-      const clone = od.clone();
-      clone.date = 200;
-      clone.scale = 1.0;
-
-      expect(od.date).toBe(100);
-      expect(od.scale).toBe(3.0);
-    });
-
+  describe('getOrnamentDataOf: the fields it reads', () => {
     it('should read date, name.ref and scale off an element', () => {
       const xml = new Element('ornament', Mpm.MPM_NAMESPACE);
       xml.addAttribute(new Attribute('date', '480'));
@@ -499,11 +462,8 @@ describe('OrnamentationMap', () => {
       expect(od.date).toBe(1440);
       expect(od.ornamentDefName).toBe('arpeggio');
       expect(od.scale).toBe(2.0);
-      expect(od.styleName).toBe('orn style');
-      expect(od.style).not.toBeNull();
       expect(od.ornamentDef).not.toBeNull();
       expect(od.ornamentDef!.getName()).toBe('arpeggio');
-      expect(od.xml).not.toBeNull();
     });
 
     it('should read the note.order pitch keyword', () => {
@@ -558,7 +518,9 @@ describe('OrnamentationMap', () => {
       map.addStyleSwitch(960, 'late style');
       expect(map.getElement(1)!.getAttributeValue('name.ref')).toBe('late style');
 
-      expect(map.getOrnamentDataOf(map.size() - 1)!.styleName).toBe('late style');
+      // Both styles carry an `arpeggio`, so which def object comes back is what says which
+      // style was in scope.
+      expect(map.getOrnamentDataOf(map.size() - 1)!.ornamentDef).toBe(second.getDef('arpeggio'));
     });
 
     it('should return null for an unknown style name', () => {
@@ -1192,25 +1154,23 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  describe('OrnamentData.apply', () => {
+  describe('applyOrnament', () => {
     it('should return an empty list and change nothing without an ornamentDef', () => {
-      const od = new OrnamentData();
+      const od = orn();
       const n = makeNote('n1', 0, 60);
 
-      expect(od.apply([[n]])).toEqual([]);
+      expect(applyOrnament(od, [[n]])).toEqual([]);
       expect(n.getAttribute('ornament.dynamics')).toBeNull();
       expect(n.getAttribute('ornament.date.offset')).toBeNull();
     });
 
     it('should apply both transformers of the def', () => {
-      const od = new OrnamentData();
-      od.ornamentDef = arpeggioDef();
-      od.scale = 2.0;
+      const od = orn({ ornamentDef: arpeggioDef(), scale: 2.0 });
 
       const n1 = makeNote('n1', 0, 60),
         n2 = makeNote('n2', 0, 64),
         n3 = makeNote('n3', 0, 67);
-      expect(od.apply([[n1], [n2], [n3]])).toEqual([]);
+      expect(applyOrnament(od, [[n1], [n2], [n3]])).toEqual([]);
 
       expect(num(n1, 'ornament.dynamics')).toBeCloseTo(-2.0);
       expect(num(n1, 'ornament.date.offset')).toBeCloseTo(-22.0);
@@ -1222,13 +1182,11 @@ describe('OrnamentationMap', () => {
       const def = okValue(OrnamentDef.createOrnamentDef('dynOnly'));
       def.setDynamicsGradientValues(-3.0, 3.0);
 
-      const od = new OrnamentData();
-      od.ornamentDef = def;
-      od.scale = 1.0;
+      const od = orn({ ornamentDef: def, scale: 1.0 });
 
       const n1 = makeNote('n1', 0, 60),
         n2 = makeNote('n2', 0, 64);
-      od.apply([[n1], [n2]]);
+      applyOrnament(od, [[n1], [n2]]);
 
       expect(num(n1, 'ornament.dynamics')).toBeCloseTo(-3.0);
       expect(n1.getAttribute('ornament.date.offset')).toBeNull();
@@ -1238,13 +1196,11 @@ describe('OrnamentationMap', () => {
       const def = okValue(OrnamentDef.createOrnamentDef('spreadOnly'));
       def.setTemporalSpreadValues(-10.0, 20.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
 
-      const od = new OrnamentData();
-      od.ornamentDef = def;
-      od.scale = 1.0;
+      const od = orn({ ornamentDef: def, scale: 1.0 });
 
       const n1 = makeNote('n1', 0, 60),
         n2 = makeNote('n2', 0, 64);
-      od.apply([[n1], [n2]]);
+      applyOrnament(od, [[n1], [n2]]);
 
       expect(num(n1, 'ornament.date.offset')).toBeCloseTo(-10.0);
       expect(num(n2, 'ornament.date.offset')).toBeCloseTo(10.0);
@@ -1252,35 +1208,11 @@ describe('OrnamentationMap', () => {
     });
 
     it('should add nothing for a def without transformers', () => {
-      const od = new OrnamentData();
-      od.ornamentDef = okValue(OrnamentDef.createOrnamentDef('plain'));
+      const od = orn({ ornamentDef: okValue(OrnamentDef.createOrnamentDef('plain')) });
 
       const n = makeNote('n1', 0, 60);
-      expect(od.apply([[n]])).toEqual([]);
+      expect(applyOrnament(od, [[n]])).toEqual([]);
       expect(n.getAttributeCount()).toBe(3); // xml:id, date, midi.pitch
-    });
-
-    it('should copy the xml element on clone', () => {
-      const xml = new Element('ornament', Mpm.MPM_NAMESPACE);
-      xml.addAttribute(new Attribute('date', '480'));
-      xml.addAttribute(new Attribute('name.ref', 'turn'));
-
-      const od = readOrnament(xml);
-      const clone = od.clone();
-
-      expect(clone.xml).not.toBeNull();
-      expect(clone.xml).not.toBe(od.xml);
-      expect(clone.xml!.getAttributeValue('name.ref')).toBe('turn');
-    });
-
-    it('should carry style and ornamentDef references over to the clone', () => {
-      const od = new OrnamentData();
-      od.style = createStyle('ornamentation', 'orn style');
-      od.ornamentDef = arpeggioDef();
-
-      const clone = od.clone();
-      expect(clone.style).toBe(od.style);
-      expect(clone.ornamentDef).toBe(od.ornamentDef);
     });
   });
 });
@@ -1309,7 +1241,7 @@ function ornamentElement(body: string): Element {
  * The five defs are every `name.ref` this file uses. They carry no transformers, because these
  * cases assert what was read off the element and not what it renders to.
  */
-function readOrnament(element: Element): OrnamentData {
+function readOrnament(element: Element): Ornament {
   const map = OrnamentationMap.createOrnamentationMap();
   map.setHeaders(
     null,
@@ -1331,7 +1263,7 @@ function readOrnament(element: Element): OrnamentData {
 }
 
 /** {@link readOrnament} over an `<ornament>` given as source text. */
-function ornamentDataOf(body: string): OrnamentData {
+function ornamentDataOf(body: string): Ornament {
   return readOrnament(ornamentElement(body));
 }
 
@@ -1405,15 +1337,16 @@ describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
 
   it('should keep addOrnamentFromData on the v2 path for v2 data', () => {
     // an OrnamentData with no v3 field must produce exactly what the positional call does
-    const data = new OrnamentData();
-    data.date = 720.0;
-    data.ornamentDefName = 'arpeggio';
-    data.scale = 20.0;
-    data.noteOrder = ['n96', 'n97', 'n98'];
-    data.xmlId = 'orn1';
+    const data = orn({
+      date: 720.0,
+      ornamentDefName: 'arpeggio',
+      scale: 20.0,
+      noteOrder: ['n96', 'n97', 'n98'],
+      xmlId: 'orn1',
+    });
 
     const m = OrnamentationMap.createOrnamentationMap();
-    m.addOrnamentFromData(data);
+    m.addOrnament(data);
     expect(m.getElement(0)!.toXML()).toBe(
       `<ornament xmlns="${MPM_NS}" date="720" name.ref="arpeggio" scale="20" note.order="#n96 #n97 #n98" xml:id="orn1" />`,
     );
@@ -1426,7 +1359,7 @@ describe('OrnamentData — v3 fields', () => {
     expect(od.notes).toEqual([]);
     expect(od.repetitions).toBe(0);
     expect(od.noteid).toBeNull();
-    expect(od.getPrincipalNoteId()).toBeNull();
+    expect(principalNoteId(od)).toBeNull();
   });
 
   it('should read a note pool in document order', () => {
@@ -1447,11 +1380,11 @@ describe('OrnamentData — v3 fields', () => {
     // rejects, and would change bytes the author wrote
     const withHash = ornamentDataOf('date="0.0" name.ref="trill" noteid="#princNote"/>');
     expect(withHash.noteid).toBe('#princNote');
-    expect(withHash.getPrincipalNoteId()).toBe('princNote');
+    expect(principalNoteId(withHash)).toBe('princNote');
 
     const withoutHash = ornamentDataOf('date="0.0" name.ref="trill" noteid="princNote"/>');
     expect(withoutHash.noteid).toBe('princNote');
-    expect(withoutHash.getPrincipalNoteId()).toBe('princNote');
+    expect(principalNoteId(withoutHash)).toBe('princNote');
   });
 
   it('should read repetitions', () => {
@@ -1471,7 +1404,7 @@ describe('OrnamentData — v3 fields', () => {
     // attribute logs and takes the default rather than parsing as 0 through `Number`. Every
     // row here therefore logs.
     for (const value of ['many', '', '-2', 'NaN', '0x10']) {
-      let od: OrnamentData | null = null;
+      let od: Ornament | null = null;
       const messages = captureErrors(() => {
         od = ornamentDataOf(`date="0.0" name.ref="trill" repetitions="${value}"/>`);
       });
@@ -1488,7 +1421,7 @@ describe('OrnamentData — v3 fields', () => {
   });
 
   it('should skip a pool note without an xml:id and log it', () => {
-    let od: OrnamentData | null = null;
+    let od: Ornament | null = null;
     const messages = captureErrors(() => {
       od = ornamentDataOf(
         'date="0.0" name.ref="turn" note.order="#n2">' +
@@ -1535,7 +1468,6 @@ describe('OrnamentData — v3 fields', () => {
     const od = ornamentDataOf('date="0.0" name.ref="trill" note.order="|: #n1 #princNote :|"/>');
     expect(od.noteOrderText).toBe('|: #n1 #princNote :|');
     expect(od.noteOrder).toEqual(['|:', 'n1', 'princNote', ':|']);
-    expect(od.clone().noteOrderText).toBe('|: #n1 #princNote :|');
   });
 
   it('should leave noteOrderText null when the attribute is absent', () => {
@@ -1549,17 +1481,13 @@ describe('OrnamentData — v3 fields', () => {
     expect(od.noteOrder).toEqual(['n1', 'n2']); // the v2 view trims, as it always has
   });
 
-  it('should carry the v3 fields through clone', () => {
+  it('should read all three v3 fields off one element', () => {
     const od = ornamentDataOf(
       'date="0.0" name.ref="turn" noteid="#p" repetitions="2"><note xml:id="n2"/>',
     );
-    const c = od.clone();
-    expect(c.noteid).toBe('#p');
-    expect(c.repetitions).toBe(2);
-    expect(c.notes.map((n) => n.id)).toEqual(['n2']);
-    // the array is copied, the notes are shared — the same depth as style/ornamentDef
-    expect(c.notes).not.toBe(od.notes);
-    expect(c.notes[0]).toBe(od.notes[0]);
+    expect(od.noteid).toBe('#p');
+    expect(od.repetitions).toBe(2);
+    expect(od.notes.map((note) => note.id)).toEqual(['n2']);
   });
 });
 
@@ -1585,7 +1513,7 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
 
     const od = map.getOrnamentDataOf(map.size() - 1)!;
     expect(od.noteid).toBe('#princNote');
-    expect(od.getPrincipalNoteId()).toBe('princNote');
+    expect(principalNoteId(od)).toBe('princNote');
     expect(od.repetitions).toBe(3);
     expect(od.notes.map((n) => n.id)).toEqual(['n1']);
     expect(od.noteOrder).toEqual(['|:', 'n1', 'princNote', ':|']);
@@ -1900,29 +1828,23 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
 
     const od = readOrnament(m.getElement(0)!);
     const m2 = OrnamentationMap.createOrnamentationMap();
-    m2.addOrnamentFromData(od);
+    m2.addOrnament(od);
 
     expect(m2.getElement(0)!.toXML()).toBe(source);
   });
 
-  it('should route addOrnamentFromData to the v3 form for each v3 marker on its own', () => {
-    const base = (): OrnamentData => {
-      const d = new OrnamentData();
-      d.date = 0;
-      d.ornamentDefName = 'trill';
-      return d;
-    };
+  it('should route addOrnament to the v3 form for each v3 marker on its own', () => {
+    const base = { date: 0, ornamentDefName: 'trill' } as const;
 
-    const withNoteid = base();
-    withNoteid.noteid = '#p';
-    const withRepetitions = base();
-    withRepetitions.repetitions = 2;
-    const withPool = base();
-    withPool.notes = [new OrnamentNote('n1', { kind: 'midi', value: 60 })];
+    const markers = [
+      orn({ ...base, noteid: '#p' }),
+      orn({ ...base, repetitions: 2 }),
+      orn({ ...base, notes: [new OrnamentNote('n1', { kind: 'midi', value: 60 })] }),
+    ];
 
-    for (const data of [withNoteid, withRepetitions, withPool]) {
+    for (const data of markers) {
       const m = OrnamentationMap.createOrnamentationMap();
-      m.addOrnamentFromData(data);
+      m.addOrnament(data);
       // The v2 form omits scale only at 1.0, so what discriminates the two writers here is the
       // v3 attribute itself plus scale being present for a default-constructed (0.0) datum.
       expect(m.getElement(0)!.getAttributeValue('scale')).toBe('0');

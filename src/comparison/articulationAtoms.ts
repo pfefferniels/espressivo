@@ -12,7 +12,8 @@
  *
  * ## Exactly one duration lever fires inline; on a def they compose (AD-11i, R4)
  *
- * `ArticulationData.articulateNote` reads `duration` once, up front, and every branch computes
+ * `articulateNote` (`maps/data/articulation.ts`) reads `duration` once, up front, and every
+ * branch computes
  * from that original value — so the three tick-domain levers overwrite one another instead of
  * composing, and the last to fire wins. In source order that makes the precedence
  * `absoluteDurationChange > relativeDuration > absoluteDuration`, and `absoluteDurationMs`
@@ -60,7 +61,7 @@ import { resolutionAt, type OrderedMapView } from './document.js';
 
 /**
  * The attribute whose presence takes the whole tick-domain duration branch out of play
- * (`ArticulationData.articulateNote`'s `if (this.absoluteDurationMs !== null)`).
+ * (`articulateNote`'s `if (articulation.absoluteDurationMs !== null)`).
  */
 export const DURATION_SHORT_CIRCUIT = 'absoluteDurationMs';
 
@@ -75,7 +76,7 @@ export type ArticulationSite = 'instruction' | 'def';
  */
 export const DURATION_PRECEDENCE: readonly string[] = INLINE_DURATION_PRECEDENCE;
 
-/** Every attribute `ArticulationData` reads, in the order `articulateNote` applies them. */
+/** Every attribute an {@link Articulation} carries, in the order `articulateNote` applies them. */
 export const ARTICULATION_ATTRIBUTES: readonly string[] = [
   'absoluteDelay',
   'absoluteDelayMs',

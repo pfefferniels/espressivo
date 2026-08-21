@@ -10,10 +10,12 @@ import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
 import { styleOfKind, type OrnamentationStyle } from '../styles/style.js';
 import {
-  OrnamentData,
+  applyOrnament,
   parseOrnamentNotePool,
   parseOrnamentRepetitions,
-} from './data/OrnamentData.js';
+  NO_V3_ORNAMENT_FIELDS,
+  type Ornament,
+} from './data/ornament.js';
 import {
   instantiateOrnaments,
   isV3Ornament,
@@ -145,7 +147,7 @@ export class OrnamentationMap extends GenericMap {
     date: number,
     nameRef: string,
     scale = 1.0,
-    noteOrder: string[] | null = null,
+    noteOrder: readonly string[] | null = null,
     id: string | null = null,
   ): number {
     const ornament = new Element('ornament', MPM_NAMESPACE);
@@ -207,96 +209,119 @@ export class OrnamentationMap extends GenericMap {
   }
 
   /**
-   * Write an ornament from a data object.
+   * Write an ornament in whichever serialisation version can carry it — {@link addOrnamentV2}
+   * and {@link addOrnamentV3} are the two that say which outright.
    *
-   * Routes to the v3 form as soon as the data carries anything v3 can express and v2 cannot —
-   * otherwise `getOrnamentDataOf` → `addOrnamentFromData` would silently drop the note pool,
-   * the repeat count and the principal reference. Data with none of them takes the v2 call
-   * unchanged, so nothing a v2 document round-trips through here moves.
+   * The v3 form is taken as soon as the ornament carries anything v3 can express and v2 cannot;
+   * otherwise `getOrnamentDataOf` → this would silently drop the note pool, the repeat count
+   * and the principal reference. An ornament with none of them takes the v2 call unchanged, so
+   * nothing a v2 document round-trips through here moves.
+   *
+   * The resolved def wins over the declared name where both are present, which is what makes a
+   * def substituted after the read reach the document.
    */
-  addOrnamentFromData(data: OrnamentData): number {
-    if (data.ornamentDef !== null) data.ornamentDefName = data.ornamentDef.getName();
-    else if (data.ornamentDefName === null) {
+  addOrnament(ornament: Ornament): number {
+    const nameRef = ornament.ornamentDef?.getName() ?? ornament.ornamentDefName;
+    if (nameRef === null) {
       console.error('Cannot add ornament.');
       return -1;
     }
-    const nameRef = data.ornamentDefName;
-    if (data.notes.length > 0 || data.repetitions !== 0 || data.noteid !== null)
+    if (ornament.notes.length > 0 || ornament.repetitions !== 0 || ornament.noteid !== null)
       return this.addOrnamentV3({
-        date: data.date,
+        date: ornament.date,
         nameRef,
-        scale: data.scale,
-        // the raw text when the data came from a document (it is the only lossless form of a
-        // v3 note.order), the flat array when the object was built in code
-        noteOrder: data.noteOrderText ?? data.noteOrder ?? undefined,
-        noteid: data.noteid ?? undefined,
-        repetitions: data.repetitions,
-        notes: data.notes,
-        id: data.xmlId ?? undefined,
+        scale: ornament.scale,
+        // the raw text when the ornament came from a document (it is the only lossless form of
+        // a v3 note.order), the flat list when the record was built in code
+        noteOrder: ornament.noteOrderText ?? ornament.noteOrder ?? undefined,
+        noteid: ornament.noteid ?? undefined,
+        repetitions: ornament.repetitions,
+        notes: ornament.notes,
+        id: ornament.xmlId ?? undefined,
       });
-    return this.addOrnamentV2(data.date, nameRef, data.scale, data.noteOrder, data.xmlId);
+    return this.addOrnamentV2(
+      ornament.date,
+      nameRef,
+      ornament.scale,
+      ornament.noteOrder,
+      ornament.xmlId,
+    );
   }
 
   /**
-   * Read the ornament at `index` into an {@link OrnamentData}, or null if the entry is not a
+   * Read the ornament at `index` into an {@link Ornament}, or null if the entry is not a
    * resolvable `<ornament>` — it needs a `name.ref`, a style in scope, and a def that the
    * style knows.
    *
    * Not what {@link apply} uses: apply reads the same data inline so that it can carry the
    * style forward across entries. This accessor is for callers outside the rendering path.
    */
-  getOrnamentDataOf(index: number): OrnamentData | null {
+  getOrnamentDataOf(index: number): Ornament | null {
     const i = this.resolveEntryIndex(index, 'ornament');
     if (i < 0) return null;
     const entry = this.entryAt(i);
     const xml = entry.getValue();
-    const od = new OrnamentData();
+
     const nameRefAtt = attribute('name.ref', xml);
     if (nameRefAtt === null) return null;
-    od.ornamentDefName = nameRefAtt.getValue();
-    od.styleName = this.findStyleNameAt(i) ?? '';
-    od.style = this.getStyle('ornamentation', od.styleName);
-    if (od.style === null) return null;
-    od.ornamentDef = od.style.getDef(od.ornamentDefName) ?? null;
-    if (od.ornamentDef === null) return null;
-    od.date = entry.getKey();
-    od.xml = xml;
-    const noteOrderAtt = xml.getAttribute('note.order');
-    if (noteOrderAtt !== null) {
-      const no = noteOrderAtt.getValue().trim();
-      if (no === 'ascending pitch' || no === 'descending pitch') od.noteOrder = [no];
-      else od.noteOrder = no.replace(/#/g, '').split(/\s+/);
-    }
+    const ornamentDefName = nameRefAtt.getValue();
+    const style = this.getStyle('ornamentation', this.findStyleNameAt(i) ?? '');
+    if (style === null) return null;
+    const ornamentDef = style.getDef(ornamentDefName) ?? null;
+    if (ornamentDef === null) return null;
+
     const scaleAtt = attribute('scale', xml);
-    if (scaleAtt !== null) od.scale = parseFloat(scaleAtt.getValue());
     const idAtt = attribute('id', xml);
-    if (idAtt !== null) od.xmlId = idAtt.getValue();
-    this.readV3OrnamentFields(xml, od);
-    return od;
+    return {
+      xmlId: idAtt === null ? null : idAtt.getValue(),
+      date: entry.getKey(),
+      scale: scaleAtt === null ? 0.0 : parseFloat(scaleAtt.getValue()),
+      ornamentDefName,
+      ornamentDef,
+      noteOrder: OrnamentationMap.readNoteOrder(xml),
+      ...OrnamentationMap.readV3OrnamentFields(xml),
+    };
   }
 
   /**
-   * Read the three MPM v3 additions of an `<ornament>` into a data object: the principal
-   * reference `noteid`, the repeat count, and the note pool (DESIGN.md D7, D9, D1).
+   * `@note.order` as v2 reads it: the two magic strings kept whole in a one-element list,
+   * anything else stripped of its `#` prefixes and split on whitespace.
+   */
+  private static readNoteOrder(xml: Element): readonly string[] | null {
+    const noteOrderAtt = xml.getAttribute('note.order');
+    if (noteOrderAtt === null) return null;
+    const no = noteOrderAtt.getValue().trim();
+    if (no === 'ascending pitch' || no === 'descending pitch') return [no];
+    return no.replace(/#/g, '').split(/\s+/);
+  }
+
+  /**
+   * Read the three MPM v3 additions of an `<ornament>`: the principal reference `noteid`, the
+   * repeat count, and the note pool (DESIGN.md D7, D9, D1), plus `note.order` as written.
    *
    * Shared by {@link getOrnamentDataOf} and by the inline reader inside {@link apply}, which
-   * exists so that pass one can carry the style forward across entries — the two must agree
-   * on what an ornament says. For a v2 document every one of these is absent, so the method
-   * leaves the data object at its defaults and no v2 byte can move.
+   * exists so that pass one can carry the style forward across entries — the two must agree on
+   * what an ornament says. For a v2 document every one of these is absent, so the result is
+   * {@link NO_V3_ORNAMENT_FIELDS} and no v2 byte can move.
    */
-  private readV3OrnamentFields(xml: Element, od: OrnamentData): void {
-    // `note.order` as written. The flat `od.noteOrder` above cannot carry the v3 grammar —
-    // stripping every `#` makes an id and a repeat mark indistinguishable — so a writer that
-    // has to reproduce this ornament reads the text instead (OrnamentData.noteOrderText).
+  private static readV3OrnamentFields(
+    xml: Element,
+  ): Pick<Ornament, 'noteOrderText' | 'notes' | 'repetitions' | 'noteid'> {
+    // `note.order` as written. The flat `noteOrder` cannot carry the v3 grammar — stripping
+    // every `#` makes an id and a repeat mark indistinguishable — so a writer that has to
+    // reproduce this ornament reads the text instead.
     const noteOrderAtt = xml.getAttribute('note.order');
-    if (noteOrderAtt !== null) od.noteOrderText = noteOrderAtt.getValue();
-
     const noteidAtt = attribute('noteid', xml);
-    if (noteidAtt !== null) od.noteid = noteidAtt.getValue();
     const repetitionsAtt = attribute('repetitions', xml);
-    if (repetitionsAtt !== null)
-      od.repetitions = parseOrnamentRepetitions(repetitionsAtt.getValue());
-    od.notes = parseOrnamentNotePool(xml);
+    return {
+      noteOrderText: noteOrderAtt === null ? null : noteOrderAtt.getValue(),
+      noteid: noteidAtt === null ? null : noteidAtt.getValue(),
+      repetitions:
+        repetitionsAtt === null
+          ? NO_V3_ORNAMENT_FIELDS.repetitions
+          : parseOrnamentRepetitions(repetitionsAtt.getValue()),
+      notes: parseOrnamentNotePool(xml),
+    };
   }
 
   /**
@@ -364,8 +389,8 @@ export class OrnamentationMap extends GenericMap {
    * them and fixes their order, or every note at the ornament's date is collected and sorted
    * by pitch, ascending or descending per `note.order`.
    *
-   * The `for (const chord of od.apply(...))` loop below is dead on this path — for a v2
-   * ornament `apply` always returns an empty list. See {@link OrnamentData.apply}; it is a
+   * The `for (const chord of applyOrnament(...))` loop below is dead on this path — for a v2
+   * ornament it always returns an empty list. See {@link applyOrnament}; it is a
    * contract for note-generating ornaments, and MPM v3 is what fills it.
    *
    * The v3 branch: an ornament that uses anything v2 cannot express (`isV3Ornament`, the
@@ -437,21 +462,24 @@ export class OrnamentationMap extends GenericMap {
 
       if (style === null || ornamentXml.getLocalName() !== 'ornament') continue;
 
-      const od = new OrnamentData();
-      od.style = style;
-
       const ornamentDefAtt = attribute('name.ref', ornamentXml);
       if (ornamentDefAtt === null) continue;
-      od.ornamentDefName = ornamentDefAtt.getValue();
-      od.ornamentDef = od.style.getDef(od.ornamentDefName) ?? null;
-      if (od.ornamentDef === null) continue;
-
-      od.date = entry.getKey();
+      const ornamentDefName = ornamentDefAtt.getValue();
+      const ornamentDef = style.getDef(ornamentDefName) ?? null;
+      if (ornamentDef === null) continue;
 
       const scaleAtt = attribute('scale', ornamentXml);
-      if (scaleAtt !== null) od.scale = parseFloat(scaleAtt.getValue());
-
-      this.readV3OrnamentFields(ornamentXml, od);
+      const idAtt = attribute('id', ornamentXml);
+      const noteOrder = OrnamentationMap.readNoteOrder(ornamentXml);
+      const od: Ornament = {
+        xmlId: idAtt === null ? null : idAtt.getValue(),
+        date: entry.getKey(),
+        scale: scaleAtt === null ? 0.0 : parseFloat(scaleAtt.getValue()),
+        ornamentDefName,
+        ornamentDef,
+        noteOrder,
+        ...OrnamentationMap.readV3OrnamentFields(ornamentXml),
+      };
 
       // MPM v3 (DESIGN.md D6): an ornament that generates notes leaves the v2 path here. It is
       // only read now — its notes are created after the walk, see this method's comment.
@@ -465,7 +493,7 @@ export class OrnamentationMap extends GenericMap {
         if (one !== null) prepared.push(one);
         continue;
       }
-      if (od.ornamentDef.getSourceFormat() === 'v3')
+      if (ornamentDef.getSourceFormat() === 'v3')
         console.error(
           `Warning: the ornament at date ${od.date} names an MPM v3 ornamentDef but uses no v3 feature itself, so it is rendered as a v2 ornament — and a v3 temporalSpread carries no v2 frame, so it will spread nothing. Give the ornament a note pool, a noteid or a v3 note.order.`,
         );
@@ -474,19 +502,17 @@ export class OrnamentationMap extends GenericMap {
       let chordSequence: Element[][] | null = null;
       const noteOrderAtt = ornamentXml.getAttribute('note.order');
       if (noteOrderAtt !== null) {
-        const no = noteOrderAtt.getValue().trim();
-        switch (no) {
+        switch (noteOrderAtt.getValue().trim()) {
           case 'ascending pitch':
             break;
           case 'descending pitch':
             noteOrderAscending = -1;
             break;
           default: {
-            od.noteOrder = no.replace(/#/g, '').split(/\s+/);
-            if (od.noteOrder.length === 0) continue;
+            if (noteOrder === null || noteOrder.length === 0) continue;
             chordSequence = [];
             noteOrderAscending = 0;
-            for (const ref of od.noteOrder) {
+            for (const ref of noteOrder) {
               const note = notes.get(ref);
               if (note !== undefined) {
                 chordSequence.push([note]);
@@ -520,7 +546,7 @@ export class OrnamentationMap extends GenericMap {
       // the reference's choice, kept. Reaching here at all means `chordSequence` was not
       // empty, and every way of filling it reads from `maps`, so there is one.
       const primary = elementAt(maps, 0, 'ornamentation target');
-      for (const chord of od.apply(chordSequence)) {
+      for (const chord of applyOrnament(od, chordSequence)) {
         for (const note of chord) {
           primary.addElement(note);
         }

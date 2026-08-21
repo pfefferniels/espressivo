@@ -97,7 +97,8 @@ function readPitchValue(kind: OrnamentPitchSpec['kind'], att: Attribute): Orname
  * `parseJavaDouble` as a log-free `number | null`, since RULE E1 leaves the reporting to the
  * caller — each of them says something different about what it could not read.
  *
- * Exported for the one sibling with the same problem, `OrnamentData.parseOrnamentRepetitions`:
+ * Exported for the one sibling with the same problem, `ornament.ts`'s
+ * `parseOrnamentRepetitions`:
  * both read a v3 attribute that has no grammar to lean on, both must not throw, and one
  * adapter keeps the two from drifting into different ideas of what a number is.
  *

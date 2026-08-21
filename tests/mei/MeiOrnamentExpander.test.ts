@@ -12,7 +12,7 @@ import { okValue } from '../support/result.js';
 import { Builder } from '../../src/xml/XomTypes.js';
 import type { Element } from '../../src/xml/XomTypes.js';
 import {
-  buildOrnamentData,
+  buildOrnament,
   createMeiOrnamentDef,
   ornamentDefName,
   ornamentShapeName,
@@ -103,9 +103,9 @@ describe('resolveOrnamentSign', () => {
   });
 });
 
-describe('buildOrnamentData', () => {
+describe('buildOrnament', () => {
   const build = (shapeName: string, defName = shapeName) =>
-    buildOrnamentData(lookupOrnamentShape(shapeName)!, defName, 'n20', 8640, 'tr1');
+    buildOrnament(lookupOrnamentShape(shapeName)!, defName, 'n20', 8640, 'tr1');
 
   it('builds a trill', () => {
     // dict: trill = |: 0 1 :|   →
@@ -187,7 +187,7 @@ describe('buildOrnamentData', () => {
   it('names every pool note after the id stem it is given', () => {
     // Derived, not random: note.order has to reference these, and a stable name keeps the link
     // readable and the conversion reproducible.
-    const od = buildOrnamentData(lookupOrnamentShape('trill')!, 'trill', 'n1', 0, 'meico_abc');
+    const od = buildOrnament(lookupOrnamentShape('trill')!, 'trill', 'n1', 0, 'meico_abc');
     expect(od.notes.map((n) => n.id)).toEqual(['meico_abc_n0', 'meico_abc_n1']);
     expect(od.noteOrderText).toBe('|: #meico_abc_n0 #meico_abc_n1 :|');
     expect(od.xmlId).toBe('meico_abc');
