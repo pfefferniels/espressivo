@@ -678,6 +678,8 @@ That measurement survives the fix as a **fixture-coverage gap**, and is the reas
 still matters: deleting `if (mapTimingChanged) map.sort()` outright left the entire suite green
 (2796 tests in `tests/mpm` + `tests/integration`), so the suite cannot protect this call. It
 belongs on the gap list next to `<pedal>` and `subNoteDynamics`. What the repair changes is the
+consequence of that gap — a future change that writes `@date` mid-render now gets a correctly
+ordered map instead of a scrambled one.
 
 ### `Goto`'s attribute constructor dropped the last character of `target.id`
 
