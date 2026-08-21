@@ -970,9 +970,9 @@ wrote — so `absoluteDuration`, `relativeDuration` and `absoluteDurationChange`
 the last one to fire simply overwrites.
 
 This one is preserved on **design-intent grounds rather than fixture grounds**, which is what
-separates it from §1's entries: composing the modifiers is a defensible reading of the MPM
-specification and so is overwriting them, and nothing in the Java source says which was meant.
-A "fix" would be an interpretation, not a repair. It survived the `TD1` divergence intact (the
+separates it from §1's entries: nothing in the Java source says which reading was meant, so it
+went to Niels rather than being decided here — ruling: overwrite is correct (issue #9, closed).
+It survived the `TD1` divergence intact (the
 guard tests the hoisted local, and the attribute is deliberately not re-read) and a unit test
 pins it: `relativeDuration=0.5` plus `absoluteDurationChange=-70` on `duration.perf=200` yields
 **130**, computed from the original 200, not from the 100 that `relativeDuration` just wrote.
