@@ -128,8 +128,7 @@ export class Mpm extends AbstractMsm {
     // reason arrives here as a value instead of going to the host's stderr from inside the
     // factory. Nothing in this class has anywhere to put it yet, so it is dropped here, and
     // that is the one place a caller could later be given it.
-    if (metadataElement !== null)
-      this.metadata = unwrapOr(Metadata.createMetadata(metadataElement), null);
+    if (metadataElement !== null) this.metadata = unwrapOr(Metadata.fromXml(metadataElement), null);
 
     // parse the performances
     const perfs: Element[] = allChildElements(root, 'performance');
@@ -269,7 +268,7 @@ export class Mpm extends AbstractMsm {
       return true;
     }
 
-    this.metadata = unwrapOr(Metadata.createMetadata(author, comment, relatedResources), null);
+    this.metadata = unwrapOr(Metadata.fromParts(author, comment, relatedResources), null);
     if (this.metadata === null) return false;
 
     this.requireRootElement().appendChild(this.metadata.getXml());

@@ -678,10 +678,10 @@ export class Mei2MsmMpmConverter {
         const onlyMpm = head(mpms);
         const msmFile = onlyMsm.getFile();
         if (msmFile !== null) {
-          // `createRelatedResource` returns its reason now instead of printing it; there is
+          // `RelatedResource.fromUri` returns its reason now instead of printing it; there is
           // no reason to have here, since both arguments are non-null strings, but the
           // check is what says so rather than an `!`.
-          const msmRelatedResource = RelatedResource.createRelatedResource(msmFile, 'msm');
+          const msmRelatedResource = RelatedResource.fromUri(msmFile, 'msm');
           if (isOk(msmRelatedResource))
             onlyMpm.getMetadata()?.addRelatedResource(msmRelatedResource.value);
         }
@@ -1096,24 +1096,23 @@ export class Mei2MsmMpmConverter {
     // the three calls below can produce one — every argument is a non-null string — so the
     // reasons are flattened back to null with `unwrapOr` and the array keeps its nullable
     // element type. That is not laziness: `Mpm.addMetadata` passes the array to
-    // `Metadata.createMetadata`, which treats a null element as a caller error and refuses to
+    // `Metadata.fromParts`, which treats a null element as a caller error and refuses to
     // build the metadata at all (T16 closed T10's DISCOVERED note by widening the consumer,
     // which is what retired this file's `any`). Skipping a null here instead would produce a
     // metadata block that the incumbent would not have produced, and that is a document
     // difference, not a plumbing one.
     const relatedResources: (RelatedResource | null)[] = [];
     const meiFile = this.requireMei().getFile();
-    const meicoAuthor = (): Author | null =>
-      unwrapOr(Author.createAuthor('meico', null, null), null);
+    const meicoAuthor = (): Author | null => unwrapOr(Author.fromName('meico', null, null), null);
     if (meiFile !== null) {
-      relatedResources.push(unwrapOr(RelatedResource.createRelatedResource(meiFile, 'mei'), null));
-      const comment = Comment.createComment(
+      relatedResources.push(unwrapOr(RelatedResource.fromUri(meiFile, 'mei'), null));
+      const comment = Comment.fromText(
         `This MPM has been generated from '${meiFile}' using the meico MEI converter v${VERSION}.`,
         null,
       );
       mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), relatedResources);
     } else {
-      const comment = Comment.createComment(
+      const comment = Comment.fromText(
         `This MPM has been generated from MEI code using the meico MEI converter v${VERSION}.`,
         null,
       );

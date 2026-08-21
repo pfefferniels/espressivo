@@ -52,37 +52,36 @@ export class Metadata extends AbstractXmlSubtree {
    * Returns the reason instead of printing it, as every factory in this cluster now does;
    * note that "no usable content" is one of the failures, and it is the `empty` arm.
    */
-  static createMetadata(
-    source: Element | Author | Comment | RelatedResource[],
-  ): Result<Metadata, MpmParseError>;
+  static fromXml(xml: Element): Result<Metadata, MpmParseError> {
+    return new Metadata().readFrom(xml);
+  }
+
   /**
-   * The resources may individually be null, because the callers build the array out of
-   * `RelatedResource.createRelatedResource` results and that factory used to report failure
-   * with null. A null in the array is a caller error, and it stays one — see {@link build}.
+   * Build a `<metadata>` from its three possible contents, any of which may be absent.
+   *
+   * This is Java's private `Metadata(Author, Comment, Collection<RelatedResource>)`, promoted
+   * to the public API because it is what all five of Java's factories delegate to anyway —
+   * see {@link build}. The overload set that used to stand here was the worst shape in the
+   * cluster, and worth recording as the argument for splitting the rest:
+   *
+   * its first arm took `Element | Author | Comment | RelatedResource[]`, so the ARGUMENT'S
+   * TYPE selected the behaviour, and `undefined` in both trailing positions was the only
+   * thing separating that arm from this one — which meant an `Author` in position 1 meant
+   * two different things depending on how many arguments followed it. The single-value forms
+   * were one-line delegations here (`build(author, null, null)` and friends), so they are
+   * gone rather than renamed: `fromParts(author, null, null)` is the same call, spelled so
+   * that reading it does not require knowing the dispatch rule.
+   *
+   * The resources may individually be null, because callers build the array out of
+   * `RelatedResource` results. A null in the array is a caller error, and it stays one —
+   * see {@link build}.
    */
-  static createMetadata(
+  static fromParts(
     author: Author | null,
     comment: Comment | null,
     relatedResources: readonly (RelatedResource | null)[] | null,
-  ): Result<Metadata, MpmParseError>;
-  static createMetadata(
-    arg1: Element | Author | Comment | RelatedResource[] | null,
-    arg2?: Comment | null,
-    arg3?: readonly (RelatedResource | null)[] | null,
   ): Result<Metadata, MpmParseError> {
-    // `undefined` in both trailing positions is still the only signal that separates the
-    // one-argument forms from the three-argument one, exactly as before — an `Author` in
-    // position 1 means different things in the two.
-    if (arg2 === undefined && arg3 === undefined) {
-      if (arg1 instanceof Element) return new Metadata().readFrom(arg1);
-      if (arg1 instanceof Author) return Metadata.build(arg1, null, null);
-      if (arg1 instanceof Comment) return Metadata.build(null, arg1, null);
-      if (Array.isArray(arg1)) return Metadata.build(null, null, arg1);
-      // `createMetadata(null)`: no content, which `readFrom` reports as `empty`. The
-      // incumbent reached the same answer by falling out of its duck-typing chain.
-      return Metadata.build(null, null, null);
-    }
-    return Metadata.build(arg1 instanceof Author ? arg1 : null, arg2 ?? null, arg3 ?? null);
+    return Metadata.build(author, comment, relatedResources);
   }
 
   /**
@@ -152,19 +151,19 @@ export class Metadata extends AbstractXmlSubtree {
     for (const child of this.getXml().getChildElements()) {
       switch (child.getLocalName()) {
         case 'author': {
-          const a = Author.createAuthor(child);
+          const a = Author.fromXml(child);
           if (isOk(a)) this.authors.push(a.value);
           break;
         }
         case 'comment': {
-          const c = Comment.createComment(child);
+          const c = Comment.fromXml(child);
           if (isOk(c)) this.comments.push(c.value);
           break;
         }
         case 'relatedResources': {
           const resources = allChildElements(child, 'resource');
           for (const resource of resources) {
-            const r = RelatedResource.createRelatedResource(resource);
+            const r = RelatedResource.fromXml(resource);
             if (isOk(r)) this.relatedResources.push(r.value);
           }
           break;
