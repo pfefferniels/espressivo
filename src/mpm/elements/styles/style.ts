@@ -120,12 +120,12 @@ const STYLE_SHAPE: { readonly [K in StyleKind]: StyleShape<K> } = {
   tempo: {
     collectionName: TEMPO_STYLE,
     defChildName: 'tempoDef',
-    parseDef: (xml) => TempoDef.createTempoDef(xml),
+    parseDef: (xml) => TempoDef.fromXml(xml),
   },
   dynamics: {
     collectionName: DYNAMICS_STYLE,
     defChildName: 'dynamicsDef',
-    parseDef: (xml) => DynamicsDef.createDynamicsDef(xml),
+    parseDef: (xml) => DynamicsDef.fromXml(xml),
   },
   articulation: {
     collectionName: ARTICULATION_STYLE,
@@ -135,12 +135,12 @@ const STYLE_SHAPE: { readonly [K in StyleKind]: StyleShape<K> } = {
   metricalAccentuation: {
     collectionName: METRICAL_ACCENTUATION_STYLE,
     defChildName: 'accentuationPatternDef',
-    parseDef: (xml) => AccentuationPatternDef.createAccentuationPatternDef(xml),
+    parseDef: (xml) => AccentuationPatternDef.fromXml(xml),
   },
   rubato: {
     collectionName: RUBATO_STYLE,
     defChildName: 'rubatoDef',
-    parseDef: (xml) => RubatoDef.createRubatoDef(xml),
+    parseDef: (xml) => RubatoDef.fromXml(xml),
   },
   ornamentation: {
     collectionName: ORNAMENTATION_STYLE,

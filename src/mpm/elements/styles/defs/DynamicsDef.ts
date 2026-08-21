@@ -38,14 +38,14 @@ export class DynamicsDef extends AbstractXmlSubtree {
     this.nameAttr.setValue(name);
   }
 
-  private static fromNameValue(name: string, value: number): DynamicsDef {
+  private static buildFromNameValue(name: string, value: number): DynamicsDef {
     const e = new Element('dynamicsDef', MPM_NAMESPACE);
     e.addAttribute(new Attribute('name', name));
     e.addAttribute(new Attribute('value', String(value)));
-    return DynamicsDef.fromXml(e);
+    return DynamicsDef.buildFromXml(e);
   }
 
-  private static fromXml(xml: Element): DynamicsDef {
+  private static buildFromXml(xml: Element): DynamicsDef {
     const nameAttr = requireDefName(xml, 'DynamicsDef');
     const valueAttr = attribute('value', xml);
     if (valueAttr === null)
@@ -63,24 +63,26 @@ export class DynamicsDef extends AbstractXmlSubtree {
   }
 
   /**
-   * Create a def either from a name and a velocity value, or by parsing an existing
-   * element. Returns null — after logging — instead of throwing, e.g. when `value` is
-   * missing.
+   * Create a def from a name and a velocity value. Reports the reason rather than throwing,
+   * e.g. when `value` is missing.
+   *
+   * Split from {@link fromXml} for the reason given on `TempoDef.fromNameValue`: the two arms
+   * of the `createDynamicsDef` overload returned the same type, so the overload said nothing,
+   * and the `value as number` cast existed only to satisfy an implementation signature that
+   * had to make the parameter optional for the other arm's sake.
    */
-  static createDynamicsDef(name: string, value: number): Result<DynamicsDef, MpmParseError>;
-  static createDynamicsDef(xml: Element): Result<DynamicsDef, MpmParseError>;
-  static createDynamicsDef(
-    nameOrXml: string | Element,
-    value?: number,
-  ): Result<DynamicsDef, MpmParseError> {
+  static fromNameValue(name: string, value: number): Result<DynamicsDef, MpmParseError> {
     try {
-      if (typeof nameOrXml === 'string') {
-        // Required by the (name, value) overload; optional only in the implementation
-        // signature. See the same note on `TempoDef.createTempoDef`.
-        return ok(DynamicsDef.fromNameValue(nameOrXml, value as number));
-      } else {
-        return ok(DynamicsDef.fromXml(nameOrXml));
-      }
+      return ok(DynamicsDef.buildFromNameValue(name, value));
+    } catch (e) {
+      return skipMalformedDef(e, 'DynamicsDef');
+    }
+  }
+
+  /** Create a def by parsing an existing `dynamicsDef` element. See {@link fromNameValue}. */
+  static fromXml(xml: Element): Result<DynamicsDef, MpmParseError> {
+    try {
+      return ok(DynamicsDef.buildFromXml(xml));
     } catch (e) {
       return skipMalformedDef(e, 'DynamicsDef');
     }
@@ -96,7 +98,7 @@ export class DynamicsDef extends AbstractXmlSubtree {
   }
 
   static createDefaultDynamicsDef(name: string): Result<DynamicsDef, MpmParseError> {
-    return DynamicsDef.createDynamicsDef(name, DynamicsDef.getDefaultVolumeLevel(name));
+    return DynamicsDef.fromNameValue(name, DynamicsDef.getDefaultVolumeLevel(name));
   }
 
   /**

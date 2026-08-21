@@ -4420,7 +4420,7 @@ export class Mei2MsmMpmConverter {
           const tempoDef =
             tempoData.bpmString === null
               ? TempoDef.createDefaultTempoDef(descriptor)
-              : TempoDef.createTempoDef(descriptor, parseFloat(tempoData.bpmString));
+              : TempoDef.fromNameValue(descriptor, parseFloat(tempoData.bpmString));
           if (isOk(tempoDef)) tempoStyle.addDef(tempoDef.value);
         }
         tempoData.bpmString = descriptor;

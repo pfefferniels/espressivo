@@ -5,7 +5,7 @@ import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
 import { requireDefName, skipMalformedDef } from './defName.js';
-import { ok, type Result } from '../../../../prelude/index.js';
+import { isOk, ok, type Result } from '../../../../prelude/index.js';
 import { type MpmParseError } from '../../parseError.js';
 import { elementAt, head, isNonEmpty, last } from '../../../../prelude/index.js';
 
@@ -132,32 +132,36 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
   }
 
   /**
-   * Create a pattern from a name and length (optionally with an id), or by parsing an
-   * existing element. Returns null — after logging — instead of throwing.
+   * Create a pattern from a name and length, optionally with an id.
+   *
+   * Split from {@link fromXml}, which the `createAccentuationPatternDef` overload set used to
+   * share a name with although both arms returned the same type. Note what the split makes
+   * visible: `id` only ever applied to THIS arm — the implementation had to write
+   * `typeof nameOrXml === 'string' && id !== undefined` to say so, because the parameter was
+   * reachable from a call shape it had no meaning for. Here it is simply this function's
+   * third parameter.
    */
-  static createAccentuationPatternDef(
+  static fromNameLength(
     name: string,
     length: number,
     id?: string,
-  ): Result<AccentuationPatternDef, MpmParseError>;
-  static createAccentuationPatternDef(xml: Element): Result<AccentuationPatternDef, MpmParseError>;
-  static createAccentuationPatternDef(
-    nameOrXml: string | Element,
-    length?: number,
-    id?: string,
   ): Result<AccentuationPatternDef, MpmParseError> {
+    const xml = new Element('accentuationPatternDef', MPM_NAMESPACE);
+    xml.addAttribute(new Attribute('name', name));
+    xml.addAttribute(new Attribute('length', String(length)));
+    const built = AccentuationPatternDef.fromXml(xml);
+    if (isOk(built) && id !== undefined) built.value.setId(id);
+    return built;
+  }
+
+  /**
+   * Create a pattern by parsing an existing `accentuationPatternDef` element. Reports the
+   * reason rather than throwing. See {@link fromNameLength}.
+   */
+  static fromXml(xml: Element): Result<AccentuationPatternDef, MpmParseError> {
     try {
-      let xml: Element;
-      if (typeof nameOrXml === 'string') {
-        xml = new Element('accentuationPatternDef', MPM_NAMESPACE);
-        xml.addAttribute(new Attribute('name', nameOrXml));
-        xml.addAttribute(new Attribute('length', String(length)));
-      } else {
-        xml = nameOrXml;
-      }
       const apd = new AccentuationPatternDef(requireDefName(xml, 'AccentuationPatternDef'));
       apd.parseData(xml);
-      if (typeof nameOrXml === 'string' && id !== undefined) apd.setId(id);
       return ok(apd);
     } catch (e) {
       return skipMalformedDef(e, 'AccentuationPatternDef');
