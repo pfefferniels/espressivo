@@ -35,11 +35,8 @@ export class Dated extends AbstractXmlSubtree {
   }
 
   /**
-   * Create an empty `dated`, or one parsed from an existing `<dated>` element.
-   *
-   * Reports the reason rather than printing it — see `elements/parseError.ts`. The null
-   * element is the one failure a caller can cause, and it is now checked here instead of
-   * thrown from {@link parseData} and swallowed.
+   * Create an empty `dated`, or one parsed from an existing `<dated>` element. Reports the
+   * reason rather than printing it — see `elements/parseError.ts`.
    */
   static createDated(xml?: Element | null): Result<Dated, MpmParseError> {
     const source = xml === undefined ? new Element('dated', MPM_NAMESPACE) : xml;
@@ -73,17 +70,12 @@ export class Dated extends AbstractXmlSubtree {
   }
 
   /**
-   * The two adders are mutators, and they answer a mutator's question — "is it in?" — so
-   * they keep `GenericMap | null` while `parseTypedMap` below them gained a `Result`.
-   *
-   * That is the boundary, not an oversight. A caller of `addMapByType` is asking this
-   * `dated` to hold a map; whether the element it was handed was readable is `parseTypedMap`'s
-   * business, and it is the one that now says why. Where the reason would go from here is an
-   * open question with no caller behind it: `parseData` below ignores these return values
-   * entirely, and inventing a diagnostics channel on `Dated` for nobody would be the wrong
-   * shape to guess at.
+   * The two adders answer a mutator's question — "is it in?" — so they keep
+   * `GenericMap | null` where `parseTypedMap` below them returns a `Result`. The reason an
+   * element was unreadable is dropped here: `parseData` ignores these return values entirely,
+   * and `Dated` has no diagnostics channel to put it on.
    */
-  /** Null is accepted and refused, as `Dated.java:97-98` does; the type now says so. */
+  /** Null is accepted and refused, as `Dated.java:97-98` does. */
   addMapFromXml(xml: Element | null): GenericMap | null {
     if (xml === null) return null;
     return this.addMap(unwrapOr(parseTypedMap(xml), null));
@@ -91,9 +83,9 @@ export class Dated extends AbstractXmlSubtree {
 
   addMapByType(type: string): GenericMap | null {
     if (!type) return null;
-    const generic = GenericMap.createGenericMap(type); // build the correctly named and namespaced map element
+    // Build the correctly named and namespaced map element, then re-read it as its own class.
+    const generic = GenericMap.createGenericMap(type);
     if (isErr(generic)) return null;
-    // and re-read it as its own class, where it has one
     return this.addMap(unwrapOr(parseTypedMap(generic.value.getXml()), null));
   }
 
@@ -142,12 +134,10 @@ export class Dated extends AbstractXmlSubtree {
    * The map of one known kind, typed as that kind — {@link getMap} for the thirteen names
    * `maps/map.ts` has a class for.
    *
-   * This is what removed the twenty-four `dated.getMap(TEMPO_MAP) as TempoMap | null` casts
-   * in `Performance`. The two are not the same operation: the cast asserts that whatever is
-   * filed under the key is of that class, and {@link addMap} cannot promise it — it accepts
-   * any `GenericMap` and files it under `map.getType()`, so a plain `GenericMap` built from
-   * a `<tempoMap>` element lands under `tempoMap` and satisfies the cast while answering
-   * none of `TempoMap`'s methods. {@link mapOfKind} checks instead, and returns null for it.
+   * Not the same operation as casting the `getMap` result: {@link addMap} accepts any
+   * `GenericMap` and files it under `map.getType()`, so a plain `GenericMap` built from a
+   * `<tempoMap>` element lands under `tempoMap` and would satisfy a cast while answering none
+   * of `TempoMap`'s methods. {@link mapOfKind} checks, and returns null for it.
    *
    * `getMap` stays for the callers that legitimately take any map — the MSM maps
    * `Performance` collects have no `MapKind` at all.

@@ -51,38 +51,28 @@ import type { ArticulationMap } from './maps/ArticulationMap.js';
 import type { MovementMap } from './maps/MovementMap.js';
 
 /**
- * The coordinate system a scope's dates are currently expressed in — the render pipeline's
- * ordering constraints, expressed as a type.
+ * The coordinate system a scope's dates are currently expressed in. Each phase names what the
+ * performance date attributes hold at that point:
  *
- * This generalises the `Timed<T>` marker T19 introduced (`At<S, 'milliseconds'>` is that type
- * under a new name) from one boundary to the three the pipeline actually has. Each phase names
- * what the performance date attributes hold at that point:
- *
- * | phase | `date.perf` … | `milliseconds.date` … | produced by |
+ * | phase | `date.perf` | `milliseconds.date` | produced by |
  * |---|---|---|---|
- * | `symbolic` | is the MSM's symbolic date, rescaled to this performance's PPQ | does not exist | the collection stages |
- * | `displaced` | has been moved by the rubato pass | does not exist | the rubato stages |
- * | `milliseconds` | unchanged from `displaced` | exists | the tempo stages |
+ * | `symbolic` | the MSM's date, rescaled to this PPQ | absent | the collection stages |
+ * | `displaced` | moved by the rubato pass | absent | the rubato stages |
+ * | `milliseconds` | unchanged from `displaced` | present | the tempo stages |
  *
- * A stage declares the phase it consumes and the phase it produces, so hoisting a stage across
- * a boundary is a compile error rather than a silent change of output — which is the whole
- * point, because T19's verifier measured that **the fixture byte probe misses reorderings**
- * (`docs/history/refactor/log.md`, NC1 and NC3). Two of the pipeline's edges are enforced this
- * way that were comments before: articulation's symbolic half cannot sink below rubato, and
- * the tempo pass cannot rise above it.
+ * A stage declares the phase it consumes and the phase it produces, so hoisting a stage across a
+ * boundary is a compile error rather than a silent change of output — which the fixture byte
+ * probe does not catch (`docs/history/refactor/log.md`, NC1 and NC3). Two edges are enforced
+ * this way: articulation's symbolic half cannot sink below rubato, and the tempo pass cannot
+ * rise above it.
  *
- * A pass that touches none of these attributes is written `<P extends Phase>`, and that is a
- * claim, not a shrug: the metrical accentuation and dynamics passes read the map's *symbolic
- * key* and write `velocity`, so they commute with rubato. The comment that used to justify
- * their position ("rubato shifts the symbolic dates the accentuation pattern is measured
- * against") was wrong, and a negative control confirms it — see
- * {@link Performance.renderPartAccentuation}.
+ * A pass that touches none of these attributes is written `<P extends Phase>`: the metrical
+ * accentuation and dynamics passes read the map's *symbolic key* and write `velocity`, so they
+ * commute with rubato — see {@link Performance.renderPartAccentuation}.
  *
- * The marker is a phantom property in the sense of `src/units.ts`: `phase` is `declare`d, so it
- * has no runtime existence and no value can carry it. The mechanism therefore emits nothing at
- * all, and the phase changes are the deliberately conspicuous `as … as` assertions on the
- * return lines of the three timing stages — the first half of each drops the phase the state is
- * leaving, the second half states the one it enters.
+ * `phase` is a phantom property in the sense of `src/units.ts`: it is `declare`d, so it has no
+ * runtime existence and the mechanism emits nothing. The phase changes are the `as … as`
+ * assertions on the return lines of the three timing stages.
  */
 type Phase = 'symbolic' | 'displaced' | 'milliseconds';
 declare const phase: unique symbol;
@@ -133,27 +123,25 @@ interface PartRender extends PartMaps {
 /**
  * The state {@link Performance.perform}'s fold carries, one interface per stage boundary.
  *
- * Reading the four together is reading the pipeline: a stage's parameter type is everything it
- * may read, and the difference between its parameter and its return type is everything it
- * writes into the fold. What a stage additionally needs that is *not* state — the resolved MPM
- * maps for one scope, the part's `<dated>`, the render context — it takes as further arguments,
- * so those are in the signature too.
+ * A stage's parameter type is everything it may read; the difference between its parameter and
+ * its return type is everything it writes into the fold. What a stage needs that is *not* state
+ * — the resolved MPM maps for one scope, the part's `<dated>`, the render context — it takes as
+ * further arguments.
  *
- * Three of the pipeline's ordering edges are enforced by these shapes alone, with no marker
- * involved, because a stage cannot be handed a field that no earlier stage has produced yet:
+ * Three ordering edges follow from these shapes alone, since a stage cannot be handed a field no
+ * earlier stage has produced:
  *
- * - `convertPPQ` runs first, because {@link Performance.cloneForRender} is the only producer of
- *   a `clone` and every later stage requires one.
- * - {@link Performance.renderGlobal} runs before the parts, because it is the only producer of
- *   a {@link GlobalRender} and {@link Performance.renderParts} requires one.
- * - the dynamics pass runs before metrical accentuation, because it is what widens
- *   {@link PartMaps} into {@link PartRender} and the accentuation stage requires the wide shape.
- *   (That is the real dependency: accentuation *adds* to a note's `velocity` and skips notes
- *   that have none, so with no dynamics pass before it there is nothing for it to accentuate.)
+ * - `convertPPQ` runs first: {@link Performance.cloneForRender} is the only producer of a
+ *   `clone`, and every later stage requires one.
+ * - {@link Performance.renderGlobal} runs before the parts: it is the only producer of a
+ *   {@link GlobalRender}, which {@link Performance.renderParts} requires.
+ * - the dynamics pass runs before metrical accentuation: it is what widens {@link PartMaps} into
+ *   {@link PartRender}, which the accentuation stage requires. Accentuation *adds* to a note's
+ *   `velocity` and skips notes that have none, so with no dynamics pass before it there is
+ *   nothing to accentuate.
  *
- * And one is enforced by an absence: `msm` is in {@link RenderInput} and in nothing after it, so
- * no stage past the clone can reach the caller's document. "The input is never modified" stops
- * being a promise in a doc comment.
+ * A fourth is enforced by an absence: `msm` is in {@link RenderInput} and in nothing after it, so
+ * no stage past the clone can reach the caller's document.
  */
 interface RenderInput {
   readonly ctx: RenderContext;
@@ -199,35 +187,23 @@ interface GlobalRender {
  * carrying millisecond timing, velocities and articulation — see that method's comment for
  * the stage order, which is the load-bearing part of this class.
  *
- * NOTE ON THE `import type` BLOCK ABOVE: every map class is imported *for its type only*,
- * originally because a value import would have closed an import cycle through `Mpm`. T18
- * removed that cycle (RULE M3), so the constraint is gone — but the *consequence* is still
- * here: this file cannot call the maps' **static** methods, which is why
- * {@link renderTempoToMap} and {@link renderMillisecondsModifiersToMap} exist as private
+ * Every map class is imported *for its type only*, so this file cannot call the maps' **static**
+ * methods; {@link renderTempoToMap} and {@link renderMillisecondsModifiersToMap} are private
  * re-implementations of `TempoMap.renderTempoToMap` and
- * `OrnamentationMap.renderMillisecondsModifiersToMap`.
- *
- * T19 RULING ON COLLAPSING THE TWO COPIES — declined, deliberately, and not to be reopened
- * without the evidence named here. Both copies' **bodies** are currently character-identical
- * to their originals — 907 and 2140 characters, brace to brace, against `TempoMap.ts:335-357`
- * and `OrnamentationMap.ts:406-448`; only the `private` keyword and the line wrapping it
- * forces differ. So the "keep them in sync" hazard is discharged as a measured fact as of
- * T19, and is re-checkable in one diff. Removing them
- * would require a **value** import of `TempoMap` and `OrnamentationMap` here, which changes
- * this module's ESM evaluation order on the byte-compared rendering path — a module-graph
- * risk, for no behavioural gain, inside the item whose own charter freezes that path.
- * §8.8 does not ask for it. It belongs with T21's audits, where the load-order tooling
- * (`import/no-cycle`, the deep-import battery) is already being run for other reasons.
+ * `OrnamentationMap.renderMillisecondsModifiersToMap` for that reason. Collapsing either copy
+ * would need a *value* import here, which changes this module's ESM evaluation order on the
+ * byte-compared rendering path. Both bodies are character-identical to their originals
+ * (`TempoMap.ts:335-357`, `OrnamentationMap.ts:406-448`) apart from the `private` keyword and
+ * the wrapping it forces, so one diff re-checks that they are still in sync.
  */
 export class Performance extends AbstractXmlSubtree {
   /**
    * The `name` attribute node, held so {@link setName} writes where {@link readFrom} read.
    *
    * Unlike `Part`'s namesake there is no defaulting path here — {@link readFrom} REFUSES a
-   * `<performance>` with no `name` — so the placeholder this is initialised to is never the
-   * one in the document: `readFrom` always replaces it with the declared node before the
-   * object can escape the factory. It exists so the field can be non-nullable, which is what
-   * the two `!`s in the accessors were asserting.
+   * `<performance>` with no `name` — so the placeholder this is initialised to is never the one
+   * in the document: `readFrom` always replaces it with the declared node before the object can
+   * escape the factory.
    */
   private nameAttr: Attribute;
   private pulsesPerQuarter = 720;
@@ -243,10 +219,9 @@ export class Performance extends AbstractXmlSubtree {
    * Create a performance from scratch (`name`, optionally `pulsesPerQuarter` and `id`) or
    * by parsing an existing `<performance>` element.
    *
-   * Reports the reason rather than printing it — see `elements/parseError.ts`. A
-   * `<performance>` with no `@name` is the one thing a document can get wrong here, and it
-   * is the difference between "this MPM has no performances" and "this MPM has one that
-   * could not be read", which a bare null could not say.
+   * A `<performance>` with no `@name` is the one thing a document can get wrong here, and the
+   * `Result` (see `elements/parseError.ts`) is what distinguishes "this MPM has no performances"
+   * from "it has one that could not be read".
    */
   static createPerformance(
     name: string,
@@ -281,8 +256,7 @@ export class Performance extends AbstractXmlSubtree {
    * Parsing is not read-only: a `<performance>` without `pulsesPerQuarter` gets one added
    * (defaulting to 720) and one without a `<global>` child gets an empty one appended, so
    * that every performance is renderable afterwards. `<part>` children that fail to parse
-   * are skipped — the same ones as before, and now with the reason available at the skip
-   * rather than on somebody's stderr from inside `Part.createPart`.
+   * are skipped.
    */
   private readFrom(xml: Element): Result<Performance, MpmParseError> {
     const name = attribute('name', xml);
@@ -309,8 +283,8 @@ export class Performance extends AbstractXmlSubtree {
       this.global = fresh.value;
       this.getXml().appendChild(this.global.getXml());
     } else {
-      // A `<global>` that will not parse leaves this null and the performance usable — the
-      // incumbent's behaviour, where only the from-scratch branch's `!` was fatal.
+      // A `<global>` that will not parse leaves this null and the performance usable; see
+      // {@link requireGlobalDated}.
       this.global = unwrapOr(Global.createGlobal(globalElt), null);
     }
 
@@ -337,16 +311,8 @@ export class Performance extends AbstractXmlSubtree {
   }
 
   /**
-   * Three genuinely different lookups — by part number, by part name, or by the MIDI
-   * channel/port pair — and now three methods, because that is how TypeScript spells "these
-   * are different operations". The overload set that said the same thing could not: nothing
-   * in the signature distinguished `getPart(1)` from `getPart(1, 0)` except an arity the
-   * compiler was free to unify away, which is exactly what `unified-signatures` reported.
-   *
-   * `getPart` KEEPS the by-number form and only that one. All seven call sites in `src/`
-   * outside this class are `src/mei/Mei2MsmMpmConverter.ts` passing a number, so `src/`
-   * needed no edit at all — the same reason `Midi`'s surviving constructor was chosen
-   * earlier in this campaign. Each returns the *first* match.
+   * The first part with this number. {@link getPartByName} and {@link getPartByMidi} are the
+   * other two lookups; each likewise returns the first match.
    */
   getPart(number: number): Part | null {
     for (const p of this.parts) if (p.getNumber() === number) return p;
@@ -364,7 +330,7 @@ export class Performance extends AbstractXmlSubtree {
     return null;
   }
 
-  /** Null is accepted and refused (`Performance.java`'s `part == null`); the type says so. */
+  /** Null is accepted and refused, as `Performance.java`'s `part == null` does. */
   addPart(part: Part | null): boolean {
     if (part === null || this.parts.includes(part)) return false;
     const parent = part.getXml().getParent();
@@ -385,11 +351,8 @@ export class Performance extends AbstractXmlSubtree {
   }
 
   /**
-   * Remove every part the predicate accepts, from the list and from the XML.
-   *
-   * The two public removers were the same six lines with one getter swapped, each reading its
-   * entry twice. The walk stays backwards and the splice stays per match, so the removals
-   * happen in the same order they always did.
+   * Remove every part the predicate accepts, from the list and from the XML. Walked backwards
+   * and spliced per match, so a removal cannot make the walk skip the next one.
    */
   private removePartsWhere(matches: (part: Part) => boolean): void {
     for (let i = this.parts.length - 1; i >= 0; i--) {
@@ -415,14 +378,11 @@ export class Performance extends AbstractXmlSubtree {
   /**
    * The global environment's `dated`, which every render stage reads.
    *
-   * This was `this.getGlobal()!.getDated()!`, and only ONE of the two assertions was an
-   * invariant. {@link readFrom} builds a `<global>` when the document has none, but a
-   * `<global>` that will not PARSE leaves {@link global} null and the performance usable —
-   * that asymmetry is the incumbent's, it is documented at the assignment, and it means a
-   * caller really can hold a `Performance` whose `global` is null and call `perform` on it.
-   * Java would NPE on the same input (`Performance.java`'s `this.global.getDated()`), so the
-   * throw stays; what changes is that it names which half was missing instead of arriving as
-   * "cannot read property getDated of null".
+   * {@link readFrom} builds a `<global>` when the document has none, but a `<global>` that will
+   * not PARSE leaves {@link global} null and the performance usable — so a caller really can
+   * hold a `Performance` whose `global` is null and call `perform` on it. Java NPEs on the same
+   * input (`Performance.java`'s `this.global.getDated()`), so this throws too, naming which half
+   * was missing.
    */
   private requireGlobalDated(): Dated {
     const global = this.global;
@@ -446,9 +406,9 @@ export class Performance extends AbstractXmlSubtree {
   }
   setPulsesPerQuarter(ppq: number): void {
     this.pulsesPerQuarter = ppq;
-    // Re-read from the element on every call, as Java does, and checked rather than
-    // asserted: `readFrom` ADDS a `pulsesPerQuarter` where the document omits one, so a
-    // constructed performance always carries the attribute this writes to.
+    // Re-read from the element on every call, as Java does. `readFrom` ADDS a
+    // `pulsesPerQuarter` where the document omits one, so a constructed performance always
+    // carries the attribute this writes to.
     requireAttribute('pulsesPerQuarter', this.getXml()).setValue(String(ppq));
   }
   setPPQ(ppq: number): void {
@@ -524,16 +484,13 @@ export class Performance extends AbstractXmlSubtree {
    * timing, velocities, articulation and ornamentation. The input is never modified — the
    * first thing this does is clone it.
    *
-   * ## The stage order is the algorithm, and this fold is where it is stated
+   * ## The stage order is the algorithm
    *
    * Every pass mutates the `.perf` / `milliseconds.*` attributes that the *previous* pass
    * produced, so reordering any two of them silently changes the output. Java runs exactly this
-   * order (Performance.java:385-548) and so must this. What this method used to be was that
-   * order written as four statements sharing a mutable clone and a `ctx` passed by reference:
-   * the sequence was load-bearing and nothing but the sequence said so. It is now a fold over
-   * four named stages, each `(state) => state'`, and the state it folds is declared —
-   * {@link RenderInput} → {@link ClonedMsm} → {@link WithGlobalMaps} → {@link WithGlobalRender},
-   * one interface per boundary:
+   * order (Performance.java:385-548) and so must this. The four stages are folded over a state
+   * that is declared one interface per boundary — {@link RenderInput} → {@link ClonedMsm} →
+   * {@link WithGlobalMaps} → {@link WithGlobalRender}:
    *
    * 1. {@link cloneForRender} — clone, rename, and rescale to this performance's PPQ.
    * 2. {@link resolveGlobalMaps} — the global MPM maps, read once here and reused as the
@@ -543,10 +500,8 @@ export class Performance extends AbstractXmlSubtree {
    *
    * Stages 3 and 4 are themselves folds of the same shape, over {@link CollectedMaps} and
    * {@link PartMaps}: collect the MSM maps, run the symbolic passes, cross into the millisecond
-   * domain with the tempo pass, then run the millisecond passes. The state is **not** immutable
-   * — the maps are views onto the clone's XML and the passes write through them — so what the
-   * fold buys is not purity but declaration: a stage can read only what its parameter type
-   * offers and can hand on only what its return type promises.
+   * domain with the tempo pass, then run the millisecond passes. The state is **not** immutable:
+   * the maps are views onto the clone's XML and the passes write through them.
    *
    * ## Which edges are mechanised, and which are only written down
    *
@@ -555,9 +510,7 @@ export class Performance extends AbstractXmlSubtree {
    * symbolic half before rubato, rubato before tempo, every millisecond pass after tempo,
    * articulation's and ornamentation's millisecond halves after their symbolic ones).
    *
-   * Written down only — each of these has been broken on purpose and the suite watched, and
-   * `Performance.test.ts`'s "stage order" block now holds the four of them that nothing held
-   * before:
+   * Written down only, and pinned by `Performance.test.ts`'s "stage order" block:
    *
    * - *asynchrony before timing imprecision*, in both millisecond stages. Not a commuting pair,
    *   although two additive millisecond shifts look like one: an imprecision draw is indexed on
@@ -571,11 +524,11 @@ export class Performance extends AbstractXmlSubtree {
    *   the dynamics and position curves.
    * - *parts are rendered in document order* — they are independent of each other except
    *   through `ctx` (below), and that is enough to make the order byte-visible.
-   * - *articulation's millisecond half before ornamentation's*, on the score. This one is a
-   *   control that came back green: with both halves present the two are additive shifts of the
-   *   same two attributes and commute. It would stop commuting for an ornament that sets an
-   *   absolute `ornament.milliseconds.duration`, which measures from a `milliseconds.date` that
-   *   articulation would already have moved — and no fixture has one.
+   * - *articulation's millisecond half before ornamentation's*, on the score. The two are
+   *   additive shifts of the same two attributes and commute as things stand. They would stop
+   *   commuting for an ornament that sets an absolute `ornament.milliseconds.duration`, which
+   *   measures from a `milliseconds.date` that articulation would already have moved — and no
+   *   fixture has one.
    * - *rubato and tempo interleave per map* in {@link renderGlobalTiming}, which is a shape
    *   preserved rather than an edge enforced; the reason is with that method.
    *
@@ -587,23 +540,14 @@ export class Performance extends AbstractXmlSubtree {
    * `deriveSeed(seed, ordinal, impIndex)`. Seeded imprecision output therefore depends on the
    * global order of imprecision calls across all parts, which is why the part loop's order is
    * an ordering edge like any other. It is passed as an explicit argument to every stage that
-   * can advance it and is otherwise inert; making it part of the folded state instead would
-   * mean threading a number back out of `renderImprecisionToMap`, which is a change to a map
-   * class's signature on the byte-compared path and belongs to a later milestone.
+   * can advance it and is otherwise inert.
    *
    * @param msm the score to perform; left unmodified
-   * @param options render knobs (§2.4). Omitting them, or passing `{}`, renders exactly
-   *   as this method did before they existed — every default is the historic value.
+   * @param options render knobs (§2.4). Every default is the historic value, so omitting them
+   *   or passing `{}` renders as this method did before they existed.
    * @returns a new Msm with performance data added
    */
   perform(msm: Msm, options?: RenderOptions): Msm {
-    // The four progress lines this fold used to print — the banner here, "Processing global
-    // data.", "Performing part N: …" per part, and "Performance rendering finished." — are
-    // gone. They were scaffolding: nothing read them, no test asserted on one, and they made
-    // the suite's own output unreadable. A library rendering somebody's score inside an editor
-    // has no business narrating it to stdout. The diagnostics on this path (an MSM part with
-    // no MPM counterpart) stay, on stderr, where they were.
-
     // One context per call, local to it, passed by reference down the render chain. It is
     // never stored anywhere that outlives this method (RULE I1, boundary 6).
     const ctx: RenderContext = { options: options ?? {}, streamOrdinal: 0 };
@@ -624,8 +568,8 @@ export class Performance extends AbstractXmlSubtree {
    * `convertPPQ` rewrites every symbolic `date`, `date.end` and `duration` to this
    * performance's resolution, and everything downstream assumes that has already happened.
    *
-   * The returned state is built field by field rather than spread from the input, which is
-   * what drops `msm`: past this line the caller's document is not reachable from the fold.
+   * The returned state is built field by field rather than spread from the input, which is what
+   * drops `msm`: past this line the caller's document is unreachable from the fold.
    */
   private cloneForRender(state: RenderInput): ClonedMsm {
     const clone = state.msm.clone();
@@ -645,8 +589,8 @@ export class Performance extends AbstractXmlSubtree {
    * that does not bring its own map of a given type falls back to the one collected here
    * ({@link resolvePartMaps}), so this runs before any rendering.
    *
-   * The one stage that reads nothing from the state: its whole input is `this`. It is in the
-   * fold anyway because what it *writes* — the global map set — is what stages 3 and 4 read.
+   * The one stage that reads nothing from the state — its whole input is `this` — and it is in
+   * the fold because what it *writes* is what stages 3 and 4 read.
    */
   private resolveGlobalMaps(state: ClonedMsm): WithGlobalMaps {
     const dated = this.requireGlobalDated();
@@ -679,10 +623,8 @@ export class Performance extends AbstractXmlSubtree {
    */
   private renderGlobal(state: WithGlobalMaps): WithGlobalRender {
     const { clone, globalMaps: mpm, ctx } = state;
-    // `Msm.getGlobal()` answers null for an MSM with no `<global>`, and the `!` that used to
-    // stand here did NOT make that a throw: `firstChildElement` returns null for a null
-    // parent, so the null flowed on into `collectGlobalMaps`, whose parameter says
-    // `Element | null` and always has. Same value, now by a route the compiler can read.
+    // `Msm.getGlobal()` answers null for an MSM with no `<global>`, and that null flows on
+    // into `collectGlobalMaps`, which takes `Element | null`.
     const globalElt = clone.getGlobal();
     const globalDated = globalElt === null ? null : firstChildElement('dated', globalElt);
 
@@ -721,21 +663,19 @@ export class Performance extends AbstractXmlSubtree {
    * modifier attributes to the affected parts' notes; those become performance attributes
    * in the per-part processing further down.
    *
-   * A stage of the global fold that reads nothing from the folded state and returns it
-   * untouched — which is what the signature says, and why it is generic in the state rather
-   * than tied to a phase. Its effect is on the *parts*' scores, and the thing that keeps the
-   * part stages downstream of it is {@link GlobalRender}, not this return value.
+   * It reads nothing from the folded state and returns it untouched, hence generic in the state
+   * rather than tied to a phase. Its effect is on the *parts*' scores, and what keeps the part
+   * stages downstream of it is {@link GlobalRender}, not this return value.
    *
-   * PARITY NOTE (divergence, benign, do not "fix" without a decision): the reference
-   * guard is `(ornamentationMap == null) || ornamentationMap.isEmpty()`
-   * (OrnamentationMap.java:215); this tests only for null. An *empty* global
-   * ornamentationMap therefore reaches `renderGlobalOrnamentationMap` here where Java
-   * returns early. The reachable behaviour is identical — with no ornament entries the
-   * apply loop runs zero times — and the one observable difference, an error logged when
-   * neither header is set, cannot occur for a global map, since a `Global` always has a
-   * `Header`. Java also evaluates `getAllMsmPartsAffectedByGlobalMap` unconditionally
-   * where this skips it when the map is null; that method only reads, so nothing depends
-   * on it running.
+   * PARITY NOTE (divergence, benign, do not "fix" without a decision): the reference guard is
+   * `(ornamentationMap == null) || ornamentationMap.isEmpty()` (OrnamentationMap.java:215);
+   * this tests only for null, so an *empty* global ornamentationMap reaches
+   * `renderGlobalOrnamentationMap` where Java returns early. The reachable behaviour is
+   * identical — with no ornament entries the apply loop runs zero times — and the one
+   * observable difference, an error logged when neither header is set, cannot occur for a
+   * global map, since a `Global` always has a `Header`. Java also evaluates
+   * `getAllMsmPartsAffectedByGlobalMap` unconditionally where this skips it for a null map;
+   * that method only reads.
    */
   private distributeGlobalOrnamentation<S>(
     collected: S,
@@ -766,22 +706,18 @@ export class Performance extends AbstractXmlSubtree {
    * over the collected maps, exactly as the reference has them: rubato shifts a map's symbolic
    * dates and tempo immediately converts that map.
    *
-   * The comment here used to add "so splitting the loop in two would change which dates tempo
-   * sees", and that is **not true** — it was measured. Each pass reads and writes only the map
-   * it is handed and keeps no state between calls (`RubatoMap.renderRubatoToMap` and
+   * The interleave is a shape preserved, not a dependency. Each pass reads and writes only the
+   * map it is handed and keeps no state between calls (`RubatoMap.renderRubatoToMap` and
    * `TempoMap.renderTempoToMap` are local-variable-only over `this.elements`), and the maps
-   * collected here are disjoint. So `for m: {rubato(m); tempo(m)}` and `for m: rubato(m); for m:
-   * tempo(m)` agree by construction, and a negative control that split the loop produced
-   * byte-identical output on all 20 traced scenarios. **The interleave stays anyway**: this is
-   * a parity-frozen path, the reference's shape is the shape, and "provably equivalent" is not
-   * a reason to move a line on it. What is gone is the false justification, which would have
-   * sent the next reader looking for a dependency that is not there.
+   * collected here are disjoint, so splitting the loop in two is equivalent by construction — a
+   * negative control that split it produced byte-identical output on all 20 traced scenarios.
+   * It stays interleaved because this is a parity-frozen path and the reference's shape is the
+   * shape.
    *
-   * The interleaving is why this stage's signature skips a phase. The global scope never
-   * *rests* in `displaced`: each map passes through it alone, inside the loop body, and the
-   * state as a whole goes from `symbolic` straight to `milliseconds`. The part scope, where
-   * the two passes run over different map sets and cannot be interleaved, does have a
-   * `displaced` state — {@link renderPartRubato} to {@link renderPartTiming}.
+   * The interleaving is why this stage's signature skips a phase: each map passes through
+   * `displaced` alone inside the loop body, so the state as a whole goes from `symbolic`
+   * straight to `milliseconds`. The part scope, where the two passes run over different map
+   * sets, does rest in `displaced` — {@link renderPartRubato} to {@link renderPartTiming}.
    */
   private renderGlobalTiming(
     collected: At<CollectedMaps, 'symbolic'>,
@@ -827,12 +763,11 @@ export class Performance extends AbstractXmlSubtree {
   }
 
   /**
-   * One part, as a fold of seven stages over {@link PartMaps}. Read the chain and the phase in
-   * each stage's signature together and the pipeline's shape is on the page: three passes that
-   * commute with rubato, then the one that does not, then rubato, then the millisecond side.
+   * One part, as a fold of seven stages over {@link PartMaps}: three passes that commute with
+   * rubato, then the one that does not, then rubato, then the millisecond side.
    *
    * The chain returns nothing. Everything it produced is in the clone's XML, which the maps in
-   * the folded state are views onto — the milestone that makes that untrue is a later one.
+   * the folded state are views onto.
    */
   private renderPart(dated: Element, mpmPart: Part | null, state: WithGlobalRender): void {
     const mpm = Performance.resolvePartMaps(mpmPart, state.globalMaps);
@@ -854,9 +789,9 @@ export class Performance extends AbstractXmlSubtree {
    * of that type otherwise. A part with no MPM counterpart at all inherits the global set
    * wholesale, which is what the per-field fallback degenerates to.
    *
-   * The lookups keep the reference's per-part order (which differs from
-   * {@link resolveGlobalMaps}'s — the imprecision maps come last here); `Dated.getMap` is a
-   * map read with no side effects, so the order is a readability matter only.
+   * The lookups keep the reference's per-part order, which differs from
+   * {@link resolveGlobalMaps}'s in putting the imprecision maps last. `Dated.getMap` is a map
+   * read with no side effects, so that order is a readability matter only.
    */
   private static resolvePartMaps(mpmPart: Part | null, globalMaps: MpmMaps): MpmMaps {
     if (mpmPart === null) return globalMaps;
@@ -910,14 +845,13 @@ export class Performance extends AbstractXmlSubtree {
    * carries an ordering edge on its own: see {@link RenderInput}.
    *
    * Neither new map is added to `state.maps`, deliberately, so that neither the rubato loop of
-   * {@link renderPartRubato} nor the tempo loop of {@link renderPartTiming} reaches them —
-   * {@link renderPartMilliseconds} gives them their own treatment, which is what keeps rubato's
-   * wobble out of the dynamics and position curves.
+   * {@link renderPartRubato} nor the tempo loop of {@link renderPartTiming} reaches them;
+   * {@link renderPartMilliseconds} gives them their own treatment.
    *
    * Generic in the phase because it is indifferent to it: both passes read the maps' *symbolic
    * keys* — `GenericMap` keys its entries on `@date`, which no render pass ever writes — and
-   * neither reads a performance date. It is placed first because Java places it first, not
-   * because rubato could disturb it.
+   * neither reads a performance date. What places it first is that Java places it first, not
+   * anything rubato could disturb.
    */
   private renderPartVoices<P extends Phase>(
     state: At<PartMaps, P>,
@@ -927,17 +861,13 @@ export class Performance extends AbstractXmlSubtree {
   ): At<PartRender, P> {
     const { score } = state;
 
-    // performance rendering of the part
     let channelVolumeMap: GenericMap | null;
     if (mpm.dynamics !== null) {
       channelVolumeMap = mpm.dynamics.renderDynamicsToMap(score);
     } else {
-      // fallback: add default velocity to all notes
       if (score !== null) {
-        // Over the live entry index rather than an index into it — `getAllElements()` returns
-        // it by reference, so this is the same walk without the bound to re-prove and without
-        // the `!` that the `Element | null` from `getElement(i)` demanded. The body only adds
-        // an attribute; it does not touch the index it is walking.
+        // `getAllElements()` returns the live entry index by reference; the body only adds an
+        // attribute and does not touch the index it is walking.
         for (const entry of score.getAllElements()) {
           const e = entry.getValue();
           if (e.getLocalName() === 'note') e.addAttribute(new Attribute('velocity', '100.0'));
@@ -966,16 +896,13 @@ export class Performance extends AbstractXmlSubtree {
    * part's own `timeSignatureMap` if it brought one, the global one otherwise — which is the
    * one thing this stage needs from {@link GlobalRender}.
    *
-   * Generic in the phase, and this is the correction of a comment that was wrong for as long as
-   * it existed. It used to read "metrical accentuation, **before rubato**, because rubato
-   * shifts the symbolic dates the accentuation pattern is measured against". It does not:
+   * Generic in the phase, because this stage and rubato commute:
    * `renderMetricalAccentuationToMap` measures the beat from `mapEntry.getKey()`, and a
    * `GenericMap`'s key is `@date` — the symbolic date, which rubato does not touch (rubato
-   * rewrites `date.perf` and `date.end.perf`). It reads `velocity` and writes `velocity`;
-   * rubato reads and writes neither. The two commute, the signature says so, and a negative
-   * control that ran this stage *after* rubato left the whole suite green and every byte of
-   * all twenty traced render scenarios unchanged. The edge that is real is the one above it — dynamics must have run —
-   * and that one is enforced by {@link PartRender}.
+   * rewrites `date.perf` and `date.end.perf`). It reads and writes `velocity`; rubato reads and
+   * writes neither. A negative control that ran this stage *after* rubato left the suite green
+   * and every byte of all twenty traced render scenarios unchanged. The real edge is the one
+   * above it — dynamics must have run — and {@link PartRender} enforces that one.
    */
   private renderPartAccentuation<P extends Phase>(
     state: At<PartRender, P>,
@@ -998,11 +925,11 @@ export class Performance extends AbstractXmlSubtree {
    * {@link renderPartMilliseconds} to consume once milliseconds exist. That split is the reason
    * `ArticulationMap` has two entry points.
    *
-   * Unlike the two stages above it, this one is pinned to the `symbolic` phase, and the pin is
-   * load-bearing in both directions. It must not sink below rubato: rubato's transformation of
-   * `date.perf` is non-linear in the date, so articulating before and after it give different
-   * numbers. And its millisecond half must not rise above the tempo pass, which is the same
-   * constraint one phase later. Both are now compile errors.
+   * Unlike the two stages above it, this one is pinned to the `symbolic` phase, in both
+   * directions. It must not sink below rubato: rubato's transformation of `date.perf` is
+   * non-linear in the date, so articulating before and after it give different numbers. And its
+   * millisecond half must not rise above the tempo pass — the same constraint one phase later.
+   * Both are compile errors.
    */
   private static renderPartArticulation(
     state: At<PartRender, 'symbolic'>,
@@ -1059,9 +986,9 @@ export class Performance extends AbstractXmlSubtree {
    * The part's millisecond-domain passes. Every one of them reads `milliseconds.date`, so
    * none may run before {@link renderPartTiming} — hence the phase in the parameter type.
    *
-   * - *pedal, channelVolume and position maps* get their own tempo/asynchrony treatment —
-   *   note `channelVolumeMap` and `positionMap` deliberately skip rubato, which would put
-   *   rubato's high-frequency wobble into the dynamics and position curves.
+   * - *pedal, channelVolume and position maps* get their own tempo/asynchrony treatment. The
+   *   last two deliberately skip rubato, which would put its high-frequency wobble into the
+   *   dynamics and position curves.
    * - *score*: asynchrony, then articulation's millisecond modifiers, then ornamentation's
    *   ({@link renderMillisecondsModifiersToMap}) — the deferred halves, in that order — and
    *   finally the four imprecision maps.
@@ -1074,20 +1001,16 @@ export class Performance extends AbstractXmlSubtree {
     mpm: MpmMaps,
     ctx: RenderContext,
   ): void {
-    // pedalMap
     if (mpm.asynchrony !== null) mpm.asynchrony.renderAsynchronyToMap(rendered.pedalMap);
     if (mpm.imprecisionTiming !== null)
       mpm.imprecisionTiming.renderImprecisionToMap(rendered.pedalMap, true, ctx);
 
-    // channelVolumeMap
     Performance.renderTempoToMap(rendered.channelVolumeMap, this.getPPQ(), mpm.tempo);
     if (mpm.asynchrony !== null) mpm.asynchrony.renderAsynchronyToMap(rendered.channelVolumeMap);
 
-    // positionMap
     Performance.renderTempoToMap(rendered.positionMap, this.getPPQ(), mpm.tempo);
     if (mpm.asynchrony !== null) mpm.asynchrony.renderAsynchronyToMap(rendered.positionMap);
 
-    // score
     const { score } = rendered;
     if (score === null) return;
     if (mpm.asynchrony !== null) mpm.asynchrony.renderAsynchronyToMap(score);
@@ -1111,8 +1034,7 @@ export class Performance extends AbstractXmlSubtree {
    * Read-only — it builds a new list and touches neither the MSM nor this performance.
    */
   private getAllMsmPartsAffectedByGlobalMap(msm: Msm, mapType: string): Element[] {
-    // A copy of the part list, which the splices below then whittle down. `toArray()` is
-    // that copy — the loop it replaces built the same array one `get` at a time.
+    // A copy of the part list, which the splices below whittle down.
     const msmPartsWithoutLocalMap: Element[] = msm.getParts().toArray();
 
     for (const part of this.getAllParts()) {
@@ -1154,9 +1076,6 @@ export class Performance extends AbstractXmlSubtree {
       return;
     }
     if (map === null) return;
-    // The live entry index, walked directly: the `!` this loop used to need was proving a
-    // bound that `for..of` never opens. No arithmetic moved — the sum below is the same
-    // expression in the same order.
     for (const entry of map.getAllElements()) {
       const e = entry.getValue();
       const dateAtt = attribute('date.perf', e);
@@ -1176,13 +1095,13 @@ export class Performance extends AbstractXmlSubtree {
   }
 
   /**
-   * OrnamentationMap milliseconds modifiers — mirrors OrnamentationMap.renderMillisecondsModifiersToMap
-   * (OrnamentationMap.java:477-509), inlined because this file only type-imports the map classes.
+   * OrnamentationMap milliseconds modifiers — mirrors
+   * `OrnamentationMap.renderMillisecondsModifiersToMap` (OrnamentationMap.java:477-509),
+   * inlined because this file only type-imports the map classes.
    *
-   * ⚠ PARITY-CRITICAL, AND A DIVERGENCE THAT WAS ALREADY FOUND AND FIXED ONCE. Do not
-   * restructure, rename or reorder anything inside this method; the arithmetic below is
-   * required to be bit-identical to the reference. Documented here so the next reader does
-   * not have to reconstruct it from the Java a second time.
+   * ⚠ PARITY-CRITICAL. Do not restructure, rename or reorder anything inside this method; the
+   * arithmetic below is required to be bit-identical to the reference, and a divergence here
+   * has been found and fixed once already.
    *
    * It turns the three `ornament.*` modifier attributes that the ornamentation pass left on
    * a note into the real `milliseconds.*` performance attributes. Notes without
@@ -1193,12 +1112,11 @@ export class Performance extends AbstractXmlSubtree {
    *    `millisecondsDate` keeps the value read *before* that write, and every case below
    *    uses that pre-shift value plus the offset — never the re-read attribute.
    * 1b. `ornament.milliseconds.fromend.offset` — the one addition MPM v3 makes to this pass
-   *    (DESIGN.md's D5 amendment, journaled in docs/history/ornamentation/LOG.md). It states the onset
-   *    relative to the note's millisecond END, which is the only way to express a frame
-   *    aligned `at end` in a domain that does not exist yet when the ornament is rendered.
-   *    It resolves to an ordinary onset shift, so cases 2–4 are untouched by it. The branch
-   *    is character-identical to `OrnamentationMap`'s copy and a test pins that (see the
-   *    copy note below).
+   *    (DESIGN.md's D5 amendment, journaled in docs/history/ornamentation/LOG.md). It states
+   *    the onset relative to the note's millisecond END, which is the only way to express a
+   *    frame aligned `at end` in a domain that does not exist yet when the ornament is
+   *    rendered. It resolves to an ordinary onset shift, so cases 2–4 are untouched by it. The
+   *    branch is character-identical to `OrnamentationMap`'s copy, and a test pins that.
    * 2. `ornament.milliseconds.duration` sets an **absolute** end:
    *    `date + offset + duration`, written to `milliseconds.date.end` if it exists and
    *    *added* to the note if it does not. This is the add-attribute-if-absent case; the
@@ -1230,10 +1148,9 @@ export class Performance extends AbstractXmlSubtree {
       // MPM v3 (DESIGN.md D5 amendment): a millisecond frame aligned "at end" is anchored at
       // this note's millisecond END, which the symbolic phase cannot know, so it writes an
       // end-anchored marker instead of an onset offset. Resolving it into
-      // ornamentMillisecondsDateOffset is what keeps the rest of this method v2: the absolute
-      // duration and the note-off shift below go on reading one offset and mean by it exactly
-      // what they meant before. The end is read BEFORE anything writes to it, like every other
-      // value in this loop, and a note without one cannot be placed from its end at all.
+      // ornamentMillisecondsDateOffset is what keeps the rest of this method v2 — the absolute
+      // duration and the note-off shift below go on reading one offset. The end is read BEFORE
+      // anything writes to it, and a note without one cannot be placed from its end at all.
       const ornamentMillisecondsFromEndAtt = attribute(
         'ornament.milliseconds.fromend.offset',
         note,
@@ -1250,9 +1167,8 @@ export class Performance extends AbstractXmlSubtree {
       }
 
       const millisecondsDateEndAtt = attribute('milliseconds.date.end', note);
-      const ornamentMillisecondsDurationAtt = attribute('ornament.milliseconds.duration', note); // does the ornament set an absolute duration?
+      const ornamentMillisecondsDurationAtt = attribute('ornament.milliseconds.duration', note);
       if (ornamentMillisecondsDurationAtt !== null) {
-        // apply it to milliseconds.date.end
         const millisecondsDateEnd = String(
           millisecondsDate +
             ornamentMillisecondsDateOffset +
@@ -1261,17 +1177,15 @@ export class Performance extends AbstractXmlSubtree {
         if (millisecondsDateEndAtt !== null) millisecondsDateEndAtt.setValue(millisecondsDateEnd);
         else note.addAttribute(new Attribute('milliseconds.date.end', millisecondsDateEnd));
       } else {
-        // act according to noteoff.shift
         const ornamentNoteoffShiftAtt = attribute('ornament.noteoff.shift', note);
         if (ornamentNoteoffShiftAtt !== null) {
-          // this attribute is only created when its value is "true", so we need to update milliseconds.date.end; thus, the duration stays the same
           if (millisecondsDateEndAtt !== null)
             millisecondsDateEndAtt.setValue(
               String(
                 parseFloat(millisecondsDateEndAtt.getValue()) + ornamentMillisecondsDateOffset,
               ),
             );
-        } // else, ornament.noteoff.shift="false", so milliseconds.date.end remains unaltered
+        }
       }
     }
   }

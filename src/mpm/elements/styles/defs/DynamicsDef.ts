@@ -14,7 +14,7 @@ import { type MpmParseError } from '../../parseError.js';
  * Port of meico.mpm.elements.styles.defs.DynamicsDef
  */
 export class DynamicsDef extends AbstractXmlSubtree {
-  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  /** This def's arm of {@link Def}. */
   readonly kind = 'dynamics';
   private value: number;
 
@@ -24,7 +24,7 @@ export class DynamicsDef extends AbstractXmlSubtree {
     private readonly valueAttr: Attribute,
   ) {
     super();
-    // Malformed value => throw => createDynamicsDef returns null => the style skips the def,
+    // A malformed value throws, so createDynamicsDef reports it and the style skips the def,
     // as in Java (DynamicsDef.java:88). PARITY.md, "Fixed bugs", P1.
     this.value = parseJavaDouble(valueAttr.getValue(), 'dynamicsDef/@value');
   }
@@ -33,7 +33,7 @@ export class DynamicsDef extends AbstractXmlSubtree {
     return this.nameAttr.getValue();
   }
 
-  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  /** Rename the def, in the object and in the element. */
   setName(name: string): void {
     this.nameAttr.setValue(name);
   }
@@ -63,9 +63,8 @@ export class DynamicsDef extends AbstractXmlSubtree {
   }
 
   /**
-   * Create a def either from a name and a velocity value, or by parsing an existing
-   * element. Returns null — after logging — instead of throwing, e.g. when `value` is
-   * missing.
+   * Create a def either from a name and a velocity value, or by parsing an existing element.
+   * Reports the reason — a missing `@value`, say — instead of throwing.
    */
   static createDynamicsDef(name: string, value: number): Result<DynamicsDef, MpmParseError>;
   static createDynamicsDef(xml: Element): Result<DynamicsDef, MpmParseError>;
@@ -76,7 +75,7 @@ export class DynamicsDef extends AbstractXmlSubtree {
     try {
       if (typeof nameOrXml === 'string') {
         // Required by the (name, value) overload; optional only in the implementation
-        // signature. See the same note on `TempoDef.createTempoDef`.
+        // signature. See `TempoDef.createTempoDef`.
         return ok(DynamicsDef.fromNameValue(nameOrXml, value as number));
       } else {
         return ok(DynamicsDef.fromXml(nameOrXml));

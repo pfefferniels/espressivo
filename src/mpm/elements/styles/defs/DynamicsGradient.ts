@@ -34,11 +34,9 @@ export class DynamicsGradient {
    * `transitionTo * scale`, adding to whatever `ornament.dynamics` a note already carries.
    * A single chord gets `transitionTo * scale` — the end of the ramp, not the start.
    *
-   * Floating-point operation order feeds rendered velocity; item T19 owns this math.
+   * Floating-point operation order feeds rendered velocity: do not reassociate it.
    */
   apply(chordSequence: Element[][], scale: number): void {
-    // The `length > 0` arm of the chain this replaces, hoisted: with nothing to write to,
-    // neither branch did anything.
     if (!isNonEmpty(chordSequence)) return;
     if (chordSequence.length > 1) {
       const constFac =
@@ -68,11 +66,7 @@ export class DynamicsGradient {
   setXml(xml: Element): void {
     this.xml = xml;
   }
-  /**
-   * NOT a pure read: for a transformer built programmatically this GENERATES the element and
-   * caches it, so the first call has a side effect. {@link toXml} deliberately does not —
-   * it returns '' while there is no element.
-   */
+  /** As `TemporalSpread.getXml`: NOT a pure read; the first call may generate. */
   getXml(): Element {
     if (this.xml === null) return this.generateXML();
     return this.xml;
@@ -92,8 +86,6 @@ export class DynamicsGradient {
     if (this.id !== null && this.id !== '')
       dg.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', this.id));
     this.setXml(dg);
-    // The very element `setXml` just stored. The `this.xml!` this replaces asserted that
-    // the assignment two characters earlier had happened.
     return dg;
   }
 
@@ -102,11 +94,7 @@ export class DynamicsGradient {
     return this.xml.toXML();
   }
 
-  /**
-   * Set, replace or (with null) remove the `xml:id`. Note it reaches the element through
-   * {@link getXml}, so calling it on a programmatically built transformer materialises that
-   * element as a side effect.
-   */
+  /** As `TemporalSpread.setId`: reaches the element through {@link getXml}. */
   setId(id: string | null): void {
     let idAtt = attribute('id', this.getXml());
     if (id === null) {

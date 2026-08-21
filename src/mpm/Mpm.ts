@@ -5,13 +5,6 @@ import { AbstractMsm } from '../msm/AbstractMsm.js';
 import * as names from './names.js';
 import { Performance } from './elements/Performance.js';
 import { Metadata } from './elements/metadata/Metadata.js';
-// There was a tenth import here — `import './elements/maps/index.js'`, a bare side-effect
-// import of a barrel whose only job was to evaluate the nine map modules so that their
-// `GenericMap.registerMapFactory(...)` statements would run. It is gone, along with the
-// barrel and the registry: `Dated` now reaches the map classes through the ordinary value
-// imports of `elements/maps/map.ts`'s dispatch table, so the module graph carries the
-// dependency instead of module evaluation order. That is what let `package.json` drop its
-// `sideEffects` list — see `maps/map.ts` for the measurement that made the hazard concrete.
 import type { Author } from './elements/metadata/Author.js';
 import type { Comment } from './elements/metadata/Comment.js';
 import type { RelatedResource } from './elements/metadata/RelatedResource.js';
@@ -66,18 +59,9 @@ export class Mpm extends AbstractMsm {
    * Nothing, an already-parsed {@link Document}, or MPM source text. Be aware that an empty
    * Mpm is not a valid MPM document until a first Performance has been added.
    *
-   * Three overloads until now, all of the same arity and all with one parameter, so the only
-   * thing they said that `Document | string | undefined` does not is that the modes are
-   * named — and they were not named, they were numbered by position. `AbstractMsm` collapsed
-   * the identical set for the identical reason, and its docstring makes the argument at
-   * length. 22 `new Mpm(...)` call sites, none of which moves.
-   *
-   * The `instanceof`/`typeof` pair is not a leftover of the overload dispatch: it is the ONE
-   * discrimination the body still needs, because a `Document` and a string are parsed while
-   * `undefined` gets an empty document built for it. It also keeps the fourth arm the
-   * overload set carried — an untyped (plain-JS) caller passing anything else lands here,
-   * gets `init()`, and sees exactly what it saw before. Testing `source === undefined`
-   * instead would send that caller down the parse path and leave it with no document at all.
+   * The `instanceof`/`typeof` pair rather than `source === undefined`: an untyped (plain-JS)
+   * caller passing anything else lands in the else arm and gets an empty document, where the
+   * `undefined` test would send it down the parse path and leave it with no document at all.
    *
    * @param source the data as a XOM {@link Document}, or xml code as a UTF8 string, or
    *   nothing for an empty instance
@@ -92,87 +76,61 @@ export class Mpm extends AbstractMsm {
     }
   }
 
-  /**
-   * An Mpm factory. Be aware that this is not a valid MPM document until a first Performance has been added!
-   * @returns
-   */
+  /** An Mpm factory. Not a valid MPM document until a first Performance has been added. */
   static createMpm(): Mpm {
     return new Mpm();
   }
 
   /**
-   * this parses the xml data and generates Performance objects from it that go into the performances array
+   * Parse the xml data into the {@link Performance} objects that go into the performances array.
    *
-   * The root is read once and CHECKED, where both reads used to be `this.getRootElement()!`.
-   * That claim turns out to be true, and the reason is three modules away rather than here,
-   * so it is worth writing down: a `Document` always has a root, and unparsable source never
-   * gets this far because `@xmldom/xmldom` THROWS its own `ParseError` out of
-   * `Builder.build` — measured over seven malformed inputs (empty, whitespace, prose, a bare
-   * declaration, JSON, an unclosed tag, a comment with no element), every one of which
-   * raises `ParseError: missing root element` from inside `new Mpm(text)`. That is Java's
-   * behaviour too; `Mpm(String)` declares `throws ParsingException`.
+   * The root read is checked rather than asserted, and the claim it checks holds three modules
+   * away: a `Document` always has a root, and unparsable source never gets this far because
+   * `@xmldom/xmldom` THROWS its own `ParseError` out of `Builder.build` — measured over seven
+   * malformed inputs (empty, whitespace, prose, a bare declaration, JSON, an unclosed tag, a
+   * comment with no element), every one of which raises `ParseError: missing root element` from
+   * inside `new Mpm(text)`. Java behaves the same way; `Mpm(String)` declares
+   * `throws ParsingException`.
    *
-   * The two module-local XOM helpers this file carried opened with `if (ofThis === null)`
-   * guards which looked like they were holding that case up. They were not — nothing reaches
-   * them with a null — and they are gone with the helpers, which
-   * `tests/msm/navigationEquivalence.test.ts` established over the whole fixture corpus to be
-   * `tree.firstChildElement` and `tree.allChildElements`; this file's copies were
-   * byte-identical to the ones it probed.
+   * An unreadable `<metadata>`, and any `<performance>` that fails to parse, are skipped. The
+   * reasons are dropped here because this class has nowhere to put them yet.
    */
   private parseData(): void {
     const root = this.requireRootElement();
 
-    // parse the metadata
     const metadataElement = firstChildElement('metadata', root);
-    // An unreadable `<metadata>` is skipped exactly as it was — what changes is that the
-    // reason arrives here as a value instead of going to the host's stderr from inside the
-    // factory. Nothing in this class has anywhere to put it yet, so it is dropped here, and
-    // that is the one place a caller could later be given it.
     if (metadataElement !== null)
       this.metadata = unwrapOr(Metadata.createMetadata(metadataElement), null);
 
-    // parse the performances
     const perfs: Element[] = allChildElements(root, 'performance');
 
     for (const perf of perfs) {
-      // go through all performance elements
-      const p = Performance.createPerformance(perf); // generate an instance of class Performance from it
+      const p = Performance.createPerformance(perf);
       if (isErr(p)) continue;
       this.performances.push(p.value);
     }
   }
 
-  /**
-   * a helper method for the constructor Mpm(), it creates an initial mpm document with a root element
-   * @returns the root element
-   */
+  /** Build the initial mpm document with a root element, for the no-argument constructor. */
   private init(): Element {
-    const root = new Element('mpm', Mpm.MPM_NAMESPACE); // the second string defines the namespace
+    const root = new Element('mpm', Mpm.MPM_NAMESPACE);
     this.data = new Document(root);
     return root;
   }
 
   /**
-   * check whether the given name is in the Mpm namespace
-   * @param elementName
-   * @returns
+   * Whether the given name is in the Mpm namespace. Every case is empty and falls through to
+   * the single `return true`: the switch is a membership table, not a dispatch.
    *
-   * Every case is empty and falls through to the single `return true` — the switch is a
-   * membership table, not a dispatch, and the blank-line groups below (document /
-   * metadata / header / dated environment) are the only structure it has. This mirrors
-   * `Mpm.java:193-255` case for case and in the same order, with **three additions**: the
-   * reference misspells `'accentuation '` with a trailing space (Mpm.java:214) and
-   * `'dynamcisGradient'` for `dynamicsGradient` (Mpm.java:218), and both correct
-   * spellings are accepted here alongside the misspelled ones. Neither typo is removed —
-   * a document written by Java meico may legitimately carry them — so the table is a
-   * superset of the reference's and no name the reference accepts is rejected here.
-   * See PARITY.md, "Fixed bugs".
+   * Mirrors `Mpm.java:193-255` case for case and in the same order, with three additions, so
+   * the table is a superset of the reference's and rejects nothing the reference accepts:
    *
-   * The third addition is `note`, the pool child an MPM v3 `<ornament>` may carry
-   * (DESIGN.md D1). It belongs to the MPM namespace by the spec and the table would
-   * otherwise report a valid v3 document's own elements as foreign. No v2 document
-   * contains an `<ornament>` with children at all, so nothing that used to be answered
-   * changes its answer.
+   * - `'accentuation'` and `'dynamicsGradient'`, the correct spellings of two names the
+   *   reference misspells (Mpm.java:214, :218). The misspellings stay alongside them, since a
+   *   document written by Java meico may legitimately carry them. See PARITY.md, "Fixed bugs".
+   * - `note`, the pool child an MPM v3 `<ornament>` may carry (DESIGN.md D1), which the spec
+   *   puts in the MPM namespace. No v2 document has an `<ornament>` with children at all, so
+   *   no previous answer changes.
    */
   isInNamespace(elementName: string): boolean {
     switch (elementName) {
@@ -245,15 +203,9 @@ export class Mpm extends AbstractMsm {
   }
 
   /**
-   * add metadata to the MPM
-   * @param author an Author object or null
-   * @param comment a Comment object or null
-   * @param relatedResources a collection of RelatedResource objects or null
-   * @returns success
-   *
-   * Two distinct paths: if a `<metadata>` element already exists the arguments are
-   * *appended* to it and the result is always `true`; otherwise a fresh `Metadata` is
-   * built and hung off the root, and the result reports whether that succeeded.
+   * Add metadata to the MPM. Two paths: if a `<metadata>` element already exists the arguments
+   * are *appended* to it and the result is always `true`; otherwise a fresh `Metadata` is built
+   * and hung off the root, and the result reports whether that succeeded.
    */
   addMetadata(
     author: Author | null,
@@ -276,9 +228,7 @@ export class Mpm extends AbstractMsm {
     return true;
   }
 
-  /**
-   * remove the complete metadata part from this MPM
-   */
+  /** Remove the complete metadata part from this MPM. */
   removeMetadata(): void {
     if (this.metadata !== null) {
       this.requireRootElement().removeChild(this.metadata.getXml());
@@ -286,28 +236,17 @@ export class Mpm extends AbstractMsm {
     this.metadata = null;
   }
 
-  /**
-   * a getter to access the metadata of this MPM
-   * @returns
-   */
   getMetadata(): Metadata | null {
     return this.metadata;
   }
 
-  /**
-   * get the number of performances in this mpm
-   * @returns
-   */
   size(): number {
     return this.performances.length;
   }
 
   /**
-   * Get a performance by name.
-   * If the mpm holds more than one performance with this name, this method will return only the first.
-   * Use getAllPerformances() to access all performances and find the right one.
-   * @param name
-   * @returns the performance or null if there is no performance with this name
+   * The first performance with this name, or null. Use {@link getAllPerformances} where several
+   * may share a name.
    */
   getPerformanceByName(name: string): Performance | null {
     for (const p of this.performances) {
@@ -317,71 +256,38 @@ export class Mpm extends AbstractMsm {
   }
 
   /**
-   * Access a performance by index.
-   *
-   * The by-name arm of this overload set is gone, and nothing was lost with it: it was one
-   * line, `return this.getPerformanceByName(name)`, and {@link getPerformanceByName} is a
-   * published method of this class in its own right (as it is in Java). So the overload pair
-   * was an alias whose only effect was to make `getPerformance` mean two things. Two src
-   * call sites: `src/mei` passes a number and does not move, `src/api/pipeline.ts` used both
-   * forms and now names which it wants.
-   *
-   * Only the upper bound is null, as in Java, where a negative index is an
-   * IndexOutOfBoundsException out of `ArrayList.get` rather than an answer. The read used
-   * to hand back `undefined` for one, typed as a `Performance`; it now throws, naming the
-   * index and the bound.
-   * @param i
-   * @returns
+   * Access a performance by index. Only the upper bound answers null; a NEGATIVE index throws,
+   * as in Java, where `ArrayList.get` raises IndexOutOfBoundsException rather than answering.
    */
   getPerformance(i: number): Performance | null {
     if (i >= this.performances.length) return null;
     return elementAt(this.performances, i, 'performance');
   }
 
-  /**
-   * this returns all performances in this mpm as an array
-   * @returns
-   */
   getAllPerformances(): readonly Performance[] {
     return this.performances;
   }
 
-  /**
-   * add a performance to this mpm, but caution: if another performance with the same name exists already
-   * in this mpm, accessing it via getPerformance(name) will return only the first in the list
-   * @param performance
-   * @returns success
-   */
+  /** @returns success. Duplicate names are allowed; {@link getPerformanceByName} takes the
+   * first. */
   addPerformance(performance: Performance | null): boolean;
-  /**
-   * generate a performance and add it to this mpm
-   * @param name
-   * @returns the created Performance or null
-   */
+  /** Generate a performance and add it. @returns the created Performance, or null */
   addPerformance(name: string): Performance | null;
   addPerformance(performanceOrName: Performance | string | null): boolean | Performance | null {
     if (typeof performanceOrName === 'string') {
-      // addPerformance(name: string)
       const performance = Performance.createPerformance(performanceOrName);
       if (isErr(performance)) return null;
       this.addPerformanceObject(performance.value);
       return performance.value;
     } else {
-      // addPerformance(performance: Performance)
       return this.addPerformanceObject(performanceOrName);
     }
   }
 
   /**
-   * Internal method to add a Performance object
-   *
-   * Java guards `performance.getXml() != null` before appending. Here it cannot be: a
-   * `Performance` only escapes its factory after `readFrom` has called `setXml`, and
-   * `getXml()`'s return type says so. The guard is dropped rather than kept as an
-   * unreachable branch; `addPerformance`'s own null check, which Java also has and which an
-   * untyped caller CAN reach, stays and is now in the parameter type.
-   * @param performance
-   * @returns success
+   * Java guards `performance.getXml() != null` before appending. Here it cannot be null: a
+   * `Performance` only escapes its factory after `readFrom` has called `setXml`. The guard an
+   * untyped caller CAN reach is {@link addPerformance}'s own null check, which Java also has.
    */
   private addPerformanceObject(performance: Performance | null): boolean {
     if (performance === null) return false;
@@ -390,30 +296,17 @@ export class Mpm extends AbstractMsm {
     return true;
   }
 
-  /**
-   * remove all performances with the specified name from this mpm
-   * @param name
-   */
+  /** Remove all performances with the specified name from this mpm. */
   removePerformanceByName(name: string): void {
     for (let i = this.performances.length - 1; i >= 0; --i) {
       const p = elementAt(this.performances, i, 'performance');
       if (p.getName() === name) {
         this.performances.splice(i, 1);
-        // As {@link addPerformanceObject}: Java's `getXml() != null` guard is unreachable
-        // here, because a `Performance` a caller can hold has been through `setXml`.
         this.requireRootElement().removeChild(p.getXml());
       }
     }
   }
 
-  /**
-   * remove the specified performance from this mpm
-   *
-   * As {@link getPerformance}: the by-name arm was `return this.removePerformanceByName(name)`
-   * and that method is published in its own right, so the overload pair was an alias. No
-   * `src/` call site uses either form.
-   * @param performance
-   */
   removePerformance(performance: Performance): void {
     const idx = this.performances.indexOf(performance);
     if (idx !== -1) {
@@ -422,18 +315,14 @@ export class Mpm extends AbstractMsm {
     }
   }
 
-  /**
-   * writes the mpm document as XML string
-   * @returns the XML string or null
-   */
+  /** The mpm document as an XML string, or null. */
   writeMpm(): string | null {
     return this.exportXml();
   }
 
   /**
-   * writes the mpm document to a string (filename parameter kept for API compatibility)
-   * @param _filename the filename string (not used in TS port; kept for API compatibility)
-   * @returns the XML string or null
+   * The mpm document as an XML string, or null. Nothing is written to disk — the filename is
+   * ignored, and the parameter is kept only so the Java signature still type-checks.
    */
   writeMpmString(_filename?: string): string | null {
     return this.exportXml();

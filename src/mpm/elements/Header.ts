@@ -24,11 +24,9 @@ import {
  * up under its own type, first in the part's local header and then in the global one.
  *
  * The index is kind-erased — a header holds styles of every kind at once — but it erases to
- * the *union* {@link AnyStyle}, not to a base class. That is what lets a reader recover the
- * kind with `styleOfKind` instead of the unchecked `as TempoStyle | null` the previous
- * `GenericStyle`-typed index forced on it. Which kind a collection holds is decided in one
- * place, {@link styleKindOfCollection}, where this class used to carry two copies of the
- * same seven-armed `switch`.
+ * the *union* {@link AnyStyle}, not to a base class, so a reader can recover the kind with
+ * `styleOfKind` rather than an unchecked cast. Which kind a collection holds is decided in one
+ * place, {@link styleKindOfCollection}.
  *
  * Both a `Global` and a `Part` own a header, which is what makes that two-stage lookup
  * possible — see `GenericMap.setHeaders`.
@@ -69,11 +67,6 @@ export class Header extends AbstractXmlSubtree {
    * `Mpm.*_STYLE` types and any future or vendor-specific one are picked up alike, and it
    * is why {@link styleKindOfCollection} answers `'generic'` for unknown types rather than
    * rejecting them.
-   *
-   * The null that really does arrive here — `Header.test.ts` pins `createHeader(null as
-   * unknown as Element)` — is now rejected by {@link createHeader}, whose parameter says
-   * `Element | null` for the reason this one used to: so that the check is one the type
-   * system agrees is reachable rather than a `no-unnecessary-condition` finding.
    */
   protected parseData(xml: Element): void {
     this.setXml(xml);
@@ -89,16 +82,8 @@ export class Header extends AbstractXmlSubtree {
   /**
    * Create an empty style-type collection of the given type and hang it off this header.
    *
-   * The two-overload set this replaces said "either create an empty one of the given type,
-   * or adopt an existing `…Styles` element", and its own comment said the two were "genuinely
-   * different operations, which is why the overloads are not collapsed onto a `string |
-   * Element` union". They are — so they are two methods, which is how TypeScript spells that,
-   * and the union never has to exist. `unified-signatures` was reading the same fact off the
-   * signature pair.
-   *
-   * Splitting them also lets each say what it actually returns. Only this one can answer
-   * null, and only for the empty type name (`Header.java:79`'s `type.isEmpty()`);
-   * {@link adoptStyleType} always produces a collection.
+   * Only this one can answer null, and only for the empty type name (`Header.java:79`'s
+   * `type.isEmpty()`); {@link adoptStyleType} always produces a collection.
    */
   addStyleType(type: string): Map<string, AnyStyle> | null {
     if (!type) return null;
@@ -122,10 +107,8 @@ export class Header extends AbstractXmlSubtree {
 
     for (const styleDef of allChildElements(xml, 'styleDef')) {
       // A `styleDef` that will not parse is skipped, not fatal — one malformed collection
-      // member must not lose the rest. Where the incumbent's factory logged the exception it
-      // had caught and returned a bare null, the reason now arrives here as a value and this
-      // — the caller, which knows it is converting somebody's document — is what decides to
-      // print it.
+      // member must not lose the rest. This is the layer that prints, because it is the one
+      // that knows it is converting somebody's document.
       const parsed = parseStyle(kind, styleDef);
       if (isErr(parsed)) {
         console.error(describeStyleError(parsed.error));
@@ -168,10 +151,8 @@ export class Header extends AbstractXmlSubtree {
    * fresh empty one created from a name. The type's collection is created on demand, and an
    * existing def of the same name is removed first, so a name never appears twice.
    *
-   * The name form no longer returns `AnyStyle | null`: {@link createStyle} builds its own
-   * element, so the `@name` it then needs is one it just wrote and cannot be missing. The
-   * seven-armed `switch` that used to pick a subclass here is now the one-line kind lookup
-   * it always was.
+   * The name form is total: {@link createStyle} builds its own element, so the `@name` it then
+   * needs is one it just wrote and cannot be missing.
    */
   addStyleDef(type: string, styleDef: AnyStyle): void;
   addStyleDef(type: string, name: string): AnyStyle;
@@ -196,23 +177,18 @@ export class Header extends AbstractXmlSubtree {
   }
 
   /**
-   * The `<…Styles>` child element for `type` — and it is a **reachable** failure, not an
-   * invariant, which is what the two `!`s here were hiding.
+   * The `<…Styles>` child element for `type`. Missing it is a reachable failure, not an
+   * invariant, so this throws rather than asserting.
    *
-   * The lookup is namespace-EXACT, and left that way: `tree.ts`'s
-   * `requireFirstChildElement(name, …)` matches on local name alone, which would start
-   * finding the `…Styles` collections that {@link parseData} discovers outside the MPM
-   * namespace. But {@link parseData} indexes those very collections — it discovers them by
-   * local name — so a `<header>` carrying, say, a foreign-namespace `<tempoStyles>` gets
-   * `tempoStyles` into {@link styleDefs} while this lookup answers null for it, and both
-   * {@link addStyleDef} and {@link removeStyleDef} then failed with "Cannot read properties
-   * of null (reading 'appendChild')". Measured, not deduced: `Header.test.ts` builds that
+   * The lookup is namespace-EXACT, and left that way, even though {@link parseData} discovers
+   * collections by local name alone: a `<header>` carrying a foreign-namespace `<tempoStyles>`
+   * gets `tempoStyles` into {@link styleDefs} while this lookup answers null for it, and
+   * {@link addStyleDef} and {@link removeStyleDef} then throw. `Header.test.ts` builds that
    * header and pins both throws.
    *
-   * **Java does exactly the same thing** — `Header.java:141,163` dereference
-   * `getFirstChildElement(type, Mpm.MPM_NAMESPACE)` unguarded — so this is not a divergence
-   * to repair here, and repairing it would change which element a def is written into. It is
-   * the same throw, on the same input, saying which collection was missing.
+   * Java dereferences `getFirstChildElement(type, Mpm.MPM_NAMESPACE)` unguarded in the same two
+   * places (`Header.java:141,163`), so this is not a divergence to repair here — and matching
+   * on local name instead would change which element a def is written into.
    */
   private requireStyleTypeElement(type: string): Element {
     const elt = this.getXml().getFirstChildElement(type, MPM_NAMESPACE);
@@ -242,18 +218,13 @@ export class Header extends AbstractXmlSubtree {
    */
   renameStyleDef(type: string, currentName: string, newName: string): AnyStyle | null {
     if (currentName === newName) return this.getStyleDef(type, currentName);
-    // The two null returns used to print which of them it was — "no styleDef elements for
-    // type X", "no styleDef named Y to be renamed". Both mean the same thing to a caller of a
-    // rename ("nothing was renamed"), and a caller that supplied the type and the name can
-    // already tell them apart from what it supplied. They were narration on somebody else's
-    // stdout, and the two tests that covered these branches only ever spied to silence them.
+    // Both null returns mean the same thing to a caller of a rename — nothing was renamed — so
+    // neither reports which of the two it was.
     const allStyleDefs = this.getAllStyleDefs(type);
     if (!allStyleDefs || allStyleDefs.size === 0) return null;
     const styleDef = allStyleDefs.get(currentName);
     if (styleDef === undefined) return null;
     allStyleDefs.delete(newName);
-    // Was `attribute('name', styleDef.getXml())!.setValue(newName)` — the same attribute node
-    // `Style` already holds, reached around the object rather than through it.
     styleDef.setName(newName);
     allStyleDefs.delete(currentName);
     allStyleDefs.set(newName, styleDef);

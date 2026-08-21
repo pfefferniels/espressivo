@@ -25,7 +25,7 @@ import type { MpmSourceFormat, OrnamentAlignment } from './TemporalSpread.js';
  * v3 changed about ornament definitions lives inside {@link TemporalSpread}.
  */
 export class OrnamentDef extends AbstractXmlSubtree {
-  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  /** This def's arm of {@link Def}. */
   readonly kind = 'ornament';
   private temporalSpread: TemporalSpread | null = null;
   private dynamicsGradient: DynamicsGradient | null = null;
@@ -40,7 +40,7 @@ export class OrnamentDef extends AbstractXmlSubtree {
     return this.nameAttr.getValue();
   }
 
-  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  /** Rename the def, in the object and in the element. */
   setName(name: string): void {
     this.nameAttr.setValue(name);
   }
@@ -95,10 +95,6 @@ export class OrnamentDef extends AbstractXmlSubtree {
   /**
    * Create a def either from a name — with no transformers yet — or by parsing an existing
    * element. Returns the reason instead of throwing.
-   *
-   * One signature where there were two overloads; see
-   * {@link ArticulationDef.createArticulationDef} for why the pair said nothing the union
-   * does not.
    */
   static createOrnamentDef(nameOrXml: string | Element): Result<OrnamentDef, MpmParseError> {
     try {

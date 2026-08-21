@@ -26,7 +26,7 @@ import { type MpmParseError } from '../../parseError.js';
  * `rubatoDef` children, so the pipeline never reaches that difference.
  */
 export class RubatoDef extends AbstractXmlSubtree {
-  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  /** This def's arm of {@link Def}. */
   readonly kind = 'rubato';
   private frameLength = 0.0;
   private intensity = 1.0;
@@ -35,13 +35,9 @@ export class RubatoDef extends AbstractXmlSubtree {
 
   /**
    * The three attributes MPM lets a `rubatoDef` omit, held so the setters write where
-   * {@link parseData} read.
-   *
-   * Initialised to the very nodes the defaulting path installs, which is why they need no
-   * `!`: this class ADDS a missing `intensity`, `lateStart` or `earlyEnd` to the caller's
-   * element (see the header comment), so "the default node" and "the node in the document"
-   * are the same object as soon as parsing has run. Where the document declares one,
-   * `parseData` replaces the placeholder with the declared node instead.
+   * {@link parseData} read, and initialised to the very nodes the defaulting path installs:
+   * this class ADDS a missing `intensity`, `lateStart` or `earlyEnd` to the caller's element, so
+   * the placeholder and the node in the document are the same object as soon as parsing has run.
    */
   private intensityAttr: Attribute;
   private lateStartAttr: Attribute;
@@ -61,19 +57,16 @@ export class RubatoDef extends AbstractXmlSubtree {
     return this.nameAttr.getValue();
   }
 
-  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  /** Rename the def, in the object and in the element. */
   setName(name: string): void {
     this.nameAttr.setValue(name);
   }
 
   /**
-   * NOT read-only, and that is the point of the class's header comment: three attributes are
-   * ADDED to the caller's element where they are absent, and out-of-range values are clamped
-   * in place.
-   *
-   * The name check that used to open this (via `AbstractDef.parseData`) now happens in
-   * {@link createRubatoDef} before the object exists, which keeps the rejection order
-   * unchanged — a `rubatoDef` with no `@name` is refused before anything is written to it.
+   * NOT read-only, as the class comment says: three attributes are ADDED to the caller's element
+   * where they are absent, and out-of-range values are clamped in place. The `@name` check
+   * happens in {@link createRubatoDef} before the object exists, so a `rubatoDef` with no
+   * `@name` is refused before anything is written to it.
    */
   protected parseData(xml: Element): void {
     this.setXml(xml);
@@ -84,9 +77,8 @@ export class RubatoDef extends AbstractXmlSubtree {
       xml.addAttribute(this.intensityAttr);
     } else {
       this.intensityAttr = declaredIntensity;
-      // Each of these four reads throws on a malformed value, which createRubatoDef turns
-      // into null so the style skips the def — Java's behaviour at RubatoDef.java:135,148,
-      // 153-154. PARITY.md, "Fixed bugs", P1.
+      // Each of these four reads throws on a malformed value, so the style skips the def —
+      // Java's behaviour at RubatoDef.java:135,148,153-154. PARITY.md, "Fixed bugs", P1.
       declaredIntensity.setValue(
         String(
           RubatoDef.ensureIntensityBoundaries(
@@ -118,10 +110,10 @@ export class RubatoDef extends AbstractXmlSubtree {
   }
 
   /**
-   * Create a def from a name plus frame length (optionally with the full shape), or by
-   * parsing an existing element. Returns null — after logging — instead of throwing, e.g.
-   * when `frameLength` is missing. Passing `intensity` also requires `lateStart` and
-   * `earlyEnd`; that is why they travel as one 5-argument overload.
+   * Create a def from a name plus frame length (optionally with the full shape), or by parsing
+   * an existing element. Reports the reason — a missing `frameLength`, say — instead of
+   * throwing. Passing `intensity` also requires `lateStart` and `earlyEnd`, which is why they
+   * travel as one 5-argument overload.
    */
   static createRubatoDef(name: string, frameLength: number): Result<RubatoDef, MpmParseError>;
   static createRubatoDef(
@@ -154,9 +146,8 @@ export class RubatoDef extends AbstractXmlSubtree {
         xml = nameOrXml;
       }
       const nameAttr = requireDefName(xml, 'RubatoDef');
-      // Moved ahead of construction because it is required and written through by
-      // `setFrameLength`. Nothing is written to the element before this point in either
-      // spelling, so the order in which a malformed def is rejected is unchanged.
+      // Read ahead of construction, like the name: it is required and written through by
+      // `setFrameLength`, and nothing is written to the element before this point.
       const frameLengthAttr = attribute('frameLength', xml);
       if (frameLengthAttr === null)
         throw new MissingNodeError(

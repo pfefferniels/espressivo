@@ -35,30 +35,20 @@ export class Metadata extends AbstractXmlSubtree {
    * Build a metadata element from an existing `<metadata>`, from any one of the three
    * content kinds, or from all three at once.
    *
-   * The four single-argument forms were four overloads, and the body picked between them by
-   * **duck typing**: `getName`+`getNumber` identified an {@link Author}, `getText` a
-   * {@link Comment}. The comment above them explained that this was why they could not be
-   * collapsed onto a union — the argument's *shape* selected the behaviour — and then named
-   * the hazard that follows from it: adding a `getText` to `Author`, or a `getName` to
-   * `Comment`, would silently re-route callers.
+   * Mirrors Java's five `createMetadata` factories, which are five one-line delegations to one
+   * private constructor `Metadata(Author, Comment, Collection<RelatedResource>)`
+   * (Metadata.java:37-131) — {@link build} below.
    *
-   * Both of those are gone together. `Author`, `Comment` and `Element` are classes, so
-   * `instanceof` decides this, and one union signature says exactly what the four said. It
-   * is also closer to the reference than the overload set was: Java's five `createMetadata`
-   * factories are five one-line delegations to ONE private constructor
-   * `Metadata(Author, Comment, Collection<RelatedResource>)` (Metadata.java:37-131), which
-   * is {@link build} below. The duck typing was a port artefact, not a ported behaviour.
-   *
-   * Returns the reason instead of printing it, as every factory in this cluster now does;
-   * note that "no usable content" is one of the failures, and it is the `empty` arm.
+   * Returns the reason instead of printing it; note that "no usable content" is one of the
+   * failures, and it is the `empty` arm.
    */
   static createMetadata(
     source: Element | Author | Comment | RelatedResource[],
   ): Result<Metadata, MpmParseError>;
   /**
-   * The resources may individually be null, because the callers build the array out of
-   * `RelatedResource.createRelatedResource` results and that factory used to report failure
-   * with null. A null in the array is a caller error, and it stays one — see {@link build}.
+   * The resources may individually be null, because callers build the array out of
+   * `RelatedResource.createRelatedResource` results. A null in the array is a caller error and
+   * is refused — see {@link build}.
    */
   static createMetadata(
     author: Author | null,
@@ -70,16 +60,15 @@ export class Metadata extends AbstractXmlSubtree {
     arg2?: Comment | null,
     arg3?: readonly (RelatedResource | null)[] | null,
   ): Result<Metadata, MpmParseError> {
-    // `undefined` in both trailing positions is still the only signal that separates the
-    // one-argument forms from the three-argument one, exactly as before — an `Author` in
-    // position 1 means different things in the two.
+    // `undefined` in both trailing positions is the only signal that separates the
+    // one-argument forms from the three-argument one: an `Author` in position 1 means
+    // different things in the two.
     if (arg2 === undefined && arg3 === undefined) {
       if (arg1 instanceof Element) return new Metadata().readFrom(arg1);
       if (arg1 instanceof Author) return Metadata.build(arg1, null, null);
       if (arg1 instanceof Comment) return Metadata.build(null, arg1, null);
       if (Array.isArray(arg1)) return Metadata.build(null, null, arg1);
-      // `createMetadata(null)`: no content, which `readFrom` reports as `empty`. The
-      // incumbent reached the same answer by falling out of its duck-typing chain.
+      // `createMetadata(null)`: no content, which `readFrom` reports as `empty`.
       return Metadata.build(null, null, null);
     }
     return Metadata.build(arg1 instanceof Author ? arg1 : null, arg2 ?? null, arg3 ?? null);
@@ -89,13 +78,10 @@ export class Metadata extends AbstractXmlSubtree {
    * Java's private `Metadata(Author, Comment, Collection<RelatedResource>)`, which every one
    * of its five factories delegates to.
    *
-   * A null in `relatedResources` used to be an `r!` that threw, which the enclosing `try`
-   * logged before returning null. The failure is the same failure — a caller who passed a
-   * `createRelatedResource` result without checking it — and it is still not repaired,
-   * because a guard that skipped the null would silently accept the bad array. What changes
-   * is that it now has a name. The check sits inside the loop rather than ahead of it so
-   * that the resources before the null are re-parented exactly as the throwing version left
-   * them.
+   * A null in `relatedResources` means a caller passed a `createRelatedResource` result without
+   * checking it. It is refused rather than skipped, since skipping would silently accept the
+   * bad array. The check sits inside the loop rather than ahead of it, so the resources before
+   * the null are re-parented and the ones after it are not.
    */
   private static build(
     author: Author | null,
@@ -122,13 +108,9 @@ export class Metadata extends AbstractXmlSubtree {
   }
 
   /**
-   * {@link parseData}, plus the one rule that makes a `Metadata` worth having.
-   *
-   * A metadata element that yielded no author, no comment and no related resource is not a
-   * `Metadata` — the class has no empty state, which is why the check cannot live in a
-   * validator the caller might skip. It used to be a `throw` at the foot of `parseData`
-   * that the factory's `catch` turned into a logged null; it is now the `empty` arm, and
-   * the difference is that a caller can tell it apart from a malformed one.
+   * {@link parseData}, plus the one rule that makes a `Metadata` worth having: an element that
+   * yielded no author, no comment and no related resource is refused as `empty`. The class has
+   * no empty state, which is why the check cannot live in a validator the caller might skip.
    */
   private readFrom(xml: Element): Result<Metadata, MpmParseError> {
     this.parseData(xml);
@@ -142,10 +124,8 @@ export class Metadata extends AbstractXmlSubtree {
    * it verbatim rather than copying.
    *
    * Unknown children are ignored, and children that fail to parse are skipped rather than
-   * aborting — the same three skips as before, now reading the reason off a `Result` instead
-   * of inferring it from a null. Nothing here reports those reasons on: a `<metadata>` with
-   * one unreadable `<author>` is still a perfectly good `Metadata`, and collecting the
-   * skipped children's reasons would be a second, larger change.
+   * aborting: a `<metadata>` with one unreadable `<author>` is still a perfectly good
+   * `Metadata`. Nothing here reports those reasons on.
    */
   protected parseData(xml: Element): void {
     this.setXml(xml);
@@ -173,7 +153,7 @@ export class Metadata extends AbstractXmlSubtree {
     }
   }
 
-  /** Null is accepted and ignored (Metadata.java:187) — the guard says so; now the type does. */
+  /** Null is accepted and ignored (Metadata.java:187). */
   addAuthor(author: Author | null): number {
     if (author === null) return -1;
     this.getXml().appendChild(author.getXml());
@@ -186,7 +166,7 @@ export class Metadata extends AbstractXmlSubtree {
   /**
    * The author at `index`, or null past the end — and a THROW for a negative index, which is
    * what Java answers there (`ArrayList.get` raises IndexOutOfBoundsException; only the upper
-   * bound is tested). The read used to hand back `undefined` typed as an `Author`.
+   * bound is tested).
    */
   getAuthorByIndex(index: number): Author | null {
     return index < this.authors.length ? elementAt(this.authors, index, 'author') : null;
@@ -210,7 +190,7 @@ export class Metadata extends AbstractXmlSubtree {
     }
   }
 
-  /** As {@link addAuthor}: null is accepted and ignored, and the type now says so. */
+  /** As {@link addAuthor}: null is accepted and ignored. */
   addComment(comment: Comment | null): number {
     if (comment === null) return -1;
     this.getXml().appendChild(comment.getXml());
@@ -238,11 +218,10 @@ export class Metadata extends AbstractXmlSubtree {
   }
 
   /**
-   * Related resources live inside a single `<relatedResources>` container element, which
-   * this creates on demand — and {@link removeRelatedResource} deletes again once it is
-   * empty, so the container never lingers without children.
+   * Null is accepted and ignored. Related resources live inside a single `<relatedResources>`
+   * container element, which this creates on demand and {@link removeRelatedResource} deletes
+   * again once it is empty, so the container never lingers without children.
    */
-  /** Null is accepted and ignored — the guard below has always said so; now the type does. */
   addRelatedResource(relatedResource: RelatedResource | null): number {
     if (relatedResource === null) return -1;
     let rrElt = firstChildElement('relatedResources', this.getXml());
@@ -264,10 +243,8 @@ export class Metadata extends AbstractXmlSubtree {
       : null;
   }
   removeRelatedResourceByIndex(index: number): void {
-    // Through the bound-checked accessor, so an index past the end is the no-op that
-    // `removeRelatedResource(null)` already spells out. The raw read handed it `undefined`,
-    // which is not `null` and so walked straight past that guard into a property access on
-    // nothing.
+    // Through the bound-checked accessor, so an index past the end is the no-op
+    // `removeRelatedResource(null)` spells out rather than a property access on `undefined`.
     this.removeRelatedResource(this.getRelatedResource(index));
   }
   removeRelatedResource(relatedResource: RelatedResource | null): void {

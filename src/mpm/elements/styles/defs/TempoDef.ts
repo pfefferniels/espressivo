@@ -18,21 +18,16 @@ import { type MpmParseError } from '../../parseError.js';
  * that path — a tempo style only ever feeds this factory real `tempoDef` children.
  */
 export class TempoDef extends AbstractXmlSubtree {
-  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  /** This def's arm of {@link Def}. */
   readonly kind = 'tempo';
   private value: number;
 
   /**
-   * Both attributes are handed in rather than looked up, because both are *required* and
-   * both are written through later. Holding the nodes is what makes "a `TempoDef` has a name
-   * and a value" structural instead of the pair of promises the incumbent made — a
-   * `name!: Attribute` on the base class, and a `getAttribute('value')!` in every setter.
-   *
-   * It is also the same node in both directions: `setValue` now writes exactly where
-   * {@link parseData} read, where the old `getXml().getAttribute('value')!` did an
-   * unnamespaced lookup that could miss what the namespace-tolerant `attribute()` had found.
-   * Byte-identical for every document that spells the attribute unprefixed, which is every
-   * document MPM produces.
+   * Both attributes are handed in rather than looked up, because both are *required* and both
+   * are written through later. Holding the nodes makes "a `TempoDef` has a name and a value"
+   * structural, and makes `setValue` write exactly where {@link parseData} read — through the
+   * namespace-tolerant `attribute()`, where an unprefixed `getAttribute` could miss a prefixed
+   * spelling.
    */
   private constructor(
     private readonly nameAttr: Attribute,
@@ -40,8 +35,8 @@ export class TempoDef extends AbstractXmlSubtree {
   ) {
     super();
     // Java throws here on a malformed value (TempoDef.java:88, Double.parseDouble) and
-    // createTempoDef turns that into null, so the style skips the def. See PARITY.md,
-    // "Fixed bugs", P1 — `parseFloat` used to keep a NaN-valued def instead.
+    // createTempoDef turns that into null, so the style skips the def. `parseJavaDouble`
+    // reproduces that; `parseFloat` would keep a NaN-valued def. PARITY.md, "Fixed bugs", P1.
     this.value = parseJavaDouble(valueAttr.getValue(), 'tempoDef/@value');
   }
 
@@ -49,12 +44,7 @@ export class TempoDef extends AbstractXmlSubtree {
     return this.nameAttr.getValue();
   }
 
-  /**
-   * Rename the def, in the object and in the element.
-   *
-   * Public where `AbstractDef.setName` was `protected` — there are no subclasses left for
-   * `protected` to address, and the one test that exercises it had to cast its way in.
-   */
+  /** Rename the def, in the object and in the element. */
   setName(name: string): void {
     this.nameAttr.setValue(name);
   }
@@ -79,11 +69,8 @@ export class TempoDef extends AbstractXmlSubtree {
 
   /**
    * What is left to read once the constructor has the two required attributes: the element
-   * itself and the optional `xml:id`.
-   *
-   * The name and value checks moved *ahead* of construction (see the constructor), so this
-   * no longer throws and the order in which a malformed def is rejected is unchanged —
-   * name first, then value, then nothing else can fail.
+   * itself and the optional `xml:id`. Nothing here can fail — the name and value checks happen
+   * ahead of construction, in that order (see the constructor).
    */
   protected parseData(xml: Element): void {
     this.setXml(xml);
@@ -91,11 +78,9 @@ export class TempoDef extends AbstractXmlSubtree {
   }
 
   /**
-   * Create a def either from a name and a bpm value, or by parsing an existing element.
-   *
-   * Reports the reason rather than printing it. The failure is always a `MeicoError` the
-   * library raised deliberately — an absent `@name` or `@value`, or a `@value` that is not a
-   * Java double — and `defs/defName.ts` explains why the catch keeps its narrowing to those.
+   * Create a def either from a name and a bpm value, or by parsing an existing element. The
+   * failure is always a `MeicoError` the library raised deliberately — an absent `@name` or
+   * `@value`, or a `@value` that is not a Java double; `defs/defName.ts` explains the narrowing.
    */
   static createTempoDef(name: string, value: number): Result<TempoDef, MpmParseError>;
   static createTempoDef(xml: Element): Result<TempoDef, MpmParseError>;
@@ -105,8 +90,8 @@ export class TempoDef extends AbstractXmlSubtree {
   ): Result<TempoDef, MpmParseError> {
     try {
       if (typeof nameOrXml === 'string') {
-        // `value` is required by the (name, value) overload, so the implementation signature's
-        // `value?` is the only reason it reads as optional here; `?? 0` would invent a tempo.
+        // `value` is required by the (name, value) overload; only the implementation
+        // signature makes it optional. `?? 0` would invent a tempo.
         return ok(TempoDef.fromNameValue(nameOrXml, value as number));
       } else {
         return ok(TempoDef.fromXml(nameOrXml));

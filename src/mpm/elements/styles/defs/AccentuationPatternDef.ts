@@ -14,11 +14,9 @@ import { elementAt, head, isNonEmpty, last } from '../../../../prelude/index.js'
  * transition.to]`.
  *
  * A tuple and not a `number[]`, because the length is the whole contract — every read in this
- * file is one of exactly four slots, and `double[4]` is what Java stores. Written as
- * `number[]` the compiler cannot tell `[1]` from `[97]`, which under
- * `noUncheckedIndexedAccess` made every one of those reads `number | undefined` and every
- * write to `[2]` a type error. Naming the shape answers all of them at once, and it is the
- * reason `getAccentuationAt` no longer needs the four non-null assertions it carried.
+ * file is one of exactly four slots, and `double[4]` is what Java stores. Under
+ * `noUncheckedIndexedAccess` a `number[]` would make every one of those reads
+ * `number | undefined`.
  */
 export type AccentuationTuple = [beat: number, value: number, from: number, to: number];
 
@@ -40,7 +38,7 @@ export type AccentuationTuple = [beat: number, value: number, from: number, to: 
  * default 4.0.
  */
 export class AccentuationPatternDef extends AbstractXmlSubtree {
-  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  /** This def's arm of {@link Def}. */
   readonly kind = 'accentuationPattern';
   private length = 4.0;
   private readonly accentuations: KeyValue<AccentuationTuple, Element>[] = [];
@@ -48,9 +46,8 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
    * The `@length` node, held so {@link setLength} writes where {@link parseData} read.
    *
    * Assigned in `parseData` rather than the constructor because — unlike a `tempoDef`'s
-   * `@value` — this attribute may be *created* there: a pattern that declares no length gets
-   * the default 4.0 written onto its element. The `!` that this would otherwise need is
-   * avoided by initialising it to the same attribute node the default path builds.
+   * `@value` — this attribute may be *created* there: a pattern that declares no length gets the
+   * default 4.0 written onto its element. It is initialised to that same node.
    */
   private lengthAttr: Attribute;
 
@@ -63,7 +60,7 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
     return this.nameAttr.getValue();
   }
 
-  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  /** Rename the def, in the object and in the element. */
   setName(name: string): void {
     this.nameAttr.setValue(name);
   }
@@ -81,10 +78,9 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
       this.lengthAttr = declaredLength;
     }
     const lengthAttr = this.lengthAttr;
-    // Every read below throws on a malformed value, so createAccentuationPatternDef returns
-    // null and the style skips the pattern — Java's behaviour at AccentuationPatternDef.java:
-    // 113,122-136, where each is a bare Double.parseDouble in the throwing constructor.
-    // See PARITY.md, "Fixed bugs", P1.
+    // Every read below throws on a malformed value, so the style skips the pattern — Java's
+    // behaviour at AccentuationPatternDef.java:113,122-136, where each is a bare
+    // Double.parseDouble in the throwing constructor. See PARITY.md, "Fixed bugs", P1.
     this.length = parseJavaDouble(lengthAttr.getValue(), 'accentuationPatternDef/@length');
 
     for (const ac of allChildElements(xml, 'accentuation')) {
@@ -113,27 +109,19 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
 
       this.addAccentuationToArrayList(accentuation, ac);
     }
-    // ONCE, after the loop — it used to run after every parsed accentuation.
-    //
-    // `sortXml` is a full re-layout: it walks the whole list and puts element j at child
-    // index j, so its result depends only on the list and not on the arrangement it starts
-    // from. Running it n times therefore ends where running it once ends, and the first n-1
-    // runs were pure work. That is a whole factor of n: with `removeChild` and `insertChild`
-    // each linear in the child count, the incumbent was CUBIC in the number of accentuations
-    // — measured at ×7-8 per doubling (n=100 1.1 ms, 200 6.9 ms, 400 56 ms, 800 380 ms).
-    //
-    // The non-accentuation children a hand-written pattern may carry are unaffected by the
-    // change: nothing here moves them relative to each other, and each removal-and-reinsert
-    // shifts them the same way whenever it runs. `tests/…/AccentuationPatternDef.test.ts`
-    // pins document order for interleaved foreign children, duplicate beats and a
-    // `beat`-less child, which are the three shapes where "sorted repeatedly" and "sorted
-    // once" could conceivably have parted company.
+    // ONCE, after the loop, not per accentuation. `sortXml` is a full re-layout — it puts
+    // element j at child index j — so its result depends only on the list, and running it n
+    // times ends where running it once ends. Per-accentuation it was CUBIC in the number of
+    // accentuations: ×7-8 per doubling, n=100 1.1 ms, 200 6.9 ms, 400 56 ms, 800 380 ms.
+    // `tests/…/AccentuationPatternDef.test.ts` pins document order for interleaved foreign
+    // children, duplicate beats and a `beat`-less child, the three shapes where "sorted
+    // repeatedly" and "sorted once" could have parted company.
     this.sortXml();
   }
 
   /**
-   * Create a pattern from a name and length (optionally with an id), or by parsing an
-   * existing element. Returns null — after logging — instead of throwing.
+   * Create a pattern from a name and length (optionally with an id), or by parsing an existing
+   * element. Reports the reason instead of throwing.
    */
   static createAccentuationPatternDef(
     name: string,
@@ -235,16 +223,14 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
    * Insertion-sort the tuple into {@link accentuations} by beat, scanning from the back so
    * that equal beats keep insertion order (the new one lands after its equals).
    *
-   * That sentence is {@link insertionIndexBy}'s contract word for word, and the scan is
-   * still written out anyway — for the reason `GenericMap.insertionIndexFor` records at
-   * length. `@beat` reaches here through {@link parseJavaDouble}, which accepts the literal
-   * `NaN` exactly as `Double.parseDouble` does. One NaN in the array leaves it unordered,
-   * and on an unordered array a linear backwards scan and a binary upper bound do not agree:
-   * the scan walks past the NaN (`x >= NaN` is false) and keeps going left, where
-   * `partitionPoint` reads it as a boundary and splits on an answer that is false on both
-   * sides. The two agree on every ordered input. The resulting order is serialized —
-   * {@link addAccentuation} uses the returned index as the XML child index — so the
-   * disagreement would be byte-visible, and parity beats the shorter spelling.
+   * The scan is written out rather than delegated to {@link insertionIndexBy}, whose contract
+   * it otherwise matches word for word — the reason is the one `GenericMap.insertionIndexFor`
+   * records. `@beat` reaches here through {@link parseJavaDouble}, which accepts the literal
+   * `NaN` exactly as `Double.parseDouble` does. One NaN leaves the array unordered, and there a
+   * linear backwards scan and a binary upper bound disagree: the scan walks past the NaN
+   * (`x >= NaN` is false) and keeps going left, where `partitionPoint` reads it as a boundary.
+   * The resulting order is serialized — {@link addAccentuation} uses the returned index as the
+   * XML child index — so the disagreement would be byte-visible.
    * @returns the index it was inserted at, which is also the XML child index to use
    */
   private addAccentuationToArrayList(accentuation: AccentuationTuple, xml: Element): number {
@@ -260,9 +246,8 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
 
   /**
    * Reorder the `accentuation` children to match {@link accentuations} by detaching and
-   * re-inserting each one in turn. Called after every parsed accentuation, so parsing is
-   * quadratic in the number of accentuations — patterns are a handful of beats long, and
-   * the repeated remove/insert is what keeps serialization order identical to Java's.
+   * re-inserting each one in turn. Linear in the child count per entry, hence quadratic
+   * overall; it is called once per parse (see {@link parseData}).
    */
   private sortXml(): void {
     const xml = this.getXml();
@@ -289,8 +274,7 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
   /**
    * The entry at `index` under Java's asymmetric bound rule, stated once for the three
    * accessors that share it: past the end is "no such accentuation", and a NEGATIVE index
-   * throws rather than answering — as it did when the read produced `undefined` and failed on
-   * the property access, only now naming the index and the bound.
+   * throws rather than answering.
    */
   private entryAt(index: number): KeyValue<AccentuationTuple, Element> | null {
     if (index >= this.accentuations.length) return null;
@@ -329,15 +313,12 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
    *
    * Upstream cemfi/meico spells that guard `i > this.accentuations.length - 1`, which can never
    * hold — the loop starts at `length - 1` and only counts down — so every segment ran to the
-   * pattern end and all but the last accentuation's interpolation was flattened. Fixing it
-   * moved Java-generated ground truth, so item TD3 patched the fork, regenerated the affected
-   * fixtures and changed this line together; PARITY.md §1 carries the measurement.
+   * pattern end and all but the last accentuation's interpolation was flattened. Fixing it moved
+   * Java-generated ground truth, so the fork was patched, the affected fixtures regenerated and
+   * this line changed together; PARITY.md §1 carries the measurement.
    *
-   * Consequences worth knowing before touching anything here: the comparison chain and the
-   * loop direction are load-bearing, `accentuation` is deliberately read after the loop via
-   * non-null assertions (it is always assigned, because the first guard proves at least the
-   * first accentuation is at or before `beatPosition`), and unit tests in
-   * `tests/mpm/elements/styles/defs/AccentuationPatternDef.test.ts` pin both halves of the
+   * The comparison chain and the loop direction are load-bearing, and
+   * `tests/mpm/elements/styles/defs/AccentuationPatternDef.test.ts` pins both halves of the
    * asymmetry — reverting the guard fails them.
    *
    * Throws if the pattern has no accentuations at all — callers such as
@@ -350,12 +331,10 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
     if (beatPosition < head(all).getKey()[0]) return 0.0;
     if (beatPosition >= this.length + 1.0) return last(all).getKey()[3];
 
-    // Seeded with the FIRST accentuation instead of null, which is where the four non-null
-    // assertions went. It is not a fallback: the loop's last possible iteration is `i === 0`,
-    // and it assigns exactly this. The guard above has already established
+    // Seeded with the FIRST accentuation, which is not a fallback: the loop's last possible
+    // iteration is `i === 0` and it assigns exactly this. The guard above has established
     // `beatPosition >= all[0].beat`, so that iteration either returns (equal) or breaks
-    // (greater) — it cannot fall out of the bottom leaving the seed in place, and if it
-    // somehow did, the seed is still the value the loop would have left.
+    // (greater); it cannot fall out of the bottom leaving the seed in place.
     let accentuation: AccentuationTuple = head(all).getKey();
     let segmentEnd = this.length + 1.0;
     for (let i = all.length - 1; i >= 0; --i) {

@@ -17,10 +17,10 @@ import { attemptParse, type MpmParseError } from '../parseError.js';
  */
 export class RelatedResource extends AbstractXmlSubtree {
   /**
-   * Both attributes, held so the setters write where {@link parseData} read — and both
-   * initialised to the empty node the defaulting path installs, which is why neither needs
-   * a `!`: a `<resource>` missing one gets THIS object added to it, and one that declares
-   * it hands `parseData` the declared node to hold instead. See {@link Author.nameText}.
+   * Both attributes, held so the setters write where {@link parseData} read, and both
+   * initialised to the empty node the defaulting path installs: a `<resource>` missing one gets
+   * THIS object added to it, and one that declares it hands `parseData` the declared node to
+   * hold instead. See {@link Author.nameText}.
    */
   private uri: Attribute;
   private type: Attribute;
@@ -31,13 +31,7 @@ export class RelatedResource extends AbstractXmlSubtree {
     this.type = new Attribute('type', '');
   }
 
-  /**
-   * As {@link Author.createAuthor}: the reason is returned rather than printed.
-   *
-   * The missing `type` was the one failure this factory already reported *without* logging —
-   * a bare `return null` an untyped caller could reach — so it gains a name here rather than
-   * staying the odd one out.
-   */
+  /** As {@link Author.createAuthor}: the reason is returned rather than printed. */
   static createRelatedResource(xml: Element | null): Result<RelatedResource, MpmParseError>;
   static createRelatedResource(
     uri: string,
@@ -55,11 +49,9 @@ export class RelatedResource extends AbstractXmlSubtree {
         return r;
       });
 
-    // Bound to a `const` so the narrowing survives into the closure — a parameter's is
-    // discarded there, and re-asserting it with `!` is the move this campaign is removing.
-    // `null` and `undefined` are one answer here: Java refuses BOTH a null uri and a null
-    // type in this form (`RelatedResource.java:47-49`), and the overload now says so rather
-    // than leaving a caller to reach the branch by casting past the compiler.
+    // Bound to a `const` so the narrowing survives into the closure below. `null` and
+    // `undefined` are one answer here: Java refuses BOTH a null uri and a null type in this
+    // form (`RelatedResource.java:47-49`).
     const resourceType = type ?? null;
     if (resourceType === null)
       return err({ kind: 'missingArgument', what: 'RelatedResource', argument: 'type' });

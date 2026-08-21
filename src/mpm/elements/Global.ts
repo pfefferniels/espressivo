@@ -46,11 +46,9 @@ export class Global extends AbstractXmlSubtree {
    * is what gives this global's maps access to its header for style lookup; `null` for the
    * part, because a global environment has no local header.
    *
-   * **The two children are not equally required, and that asymmetry is the incumbent's.**
-   * A `<header>` that will not parse leaves {@link getHeader} null and the global usable; a
-   * `<dated>` that will not parse is fatal. Both used to be spelled with a `!` and a `throw`
-   * that the factory's `catch` printed; they are the same two outcomes here, with the
-   * failing child's own reason carried under `childFailed` instead of discarded.
+   * The two children are not equally required, and the asymmetry is the reference's: a
+   * `<header>` that will not parse leaves {@link getHeader} null and the global usable, while a
+   * `<dated>` that will not parse is fatal.
    */
   private readFrom(xml: Element): Result<Global, MpmParseError> {
     this.setXml(xml);

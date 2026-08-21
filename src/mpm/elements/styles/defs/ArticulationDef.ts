@@ -19,7 +19,7 @@ import { type MpmParseError } from '../../parseError.js';
  * millisecond-domain pass to pick up later.
  */
 export class ArticulationDef extends AbstractXmlSubtree {
-  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  /** This def's arm of {@link Def}. */
   readonly kind = 'articulation';
   private absoluteDuration: number | null = null;
   private absoluteDurationChange = 0.0;
@@ -42,7 +42,7 @@ export class ArticulationDef extends AbstractXmlSubtree {
     return this.nameAttr.getValue();
   }
 
-  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  /** Rename the def, in the object and in the element. */
   setName(name: string): void {
     this.nameAttr.setValue(name);
   }
@@ -62,11 +62,10 @@ export class ArticulationDef extends AbstractXmlSubtree {
     this.setXml(xml);
     this.id = attribute('id', xml);
 
-    // null = attribute absent, so the field keeps its default. Present but unparsable is not
-    // a third outcome: it throws, createArticulationDef returns null and the style skips the
-    // whole def, which is what Java does for all twelve (ArticulationDef.java:100-133 —
-    // every one is a bare Double.parseDouble inside the throwing constructor). This is the
-    // single choke point for the twelve; see PARITY.md, "Fixed bugs", P1.
+    // null = attribute absent, so the field keeps its default. Present but unparsable is not a
+    // third outcome: it throws, and the style skips the whole def, which is what Java does for
+    // all twelve (ArticulationDef.java:100-133 — every one a bare Double.parseDouble inside the
+    // throwing constructor). See PARITY.md, "Fixed bugs", P1.
     const numeric = (name: string): number | null => {
       const a = attribute(name, xml);
       return a === null ? null : parseJavaDouble(a.getValue(), `articulationDef/@${name}`);
@@ -88,14 +87,8 @@ export class ArticulationDef extends AbstractXmlSubtree {
   }
 
   /**
-   * Create a def either from a name — with every effect at its neutral default — or by
-   * parsing an existing element. Returns the reason instead of throwing.
-   *
-   * One signature where there were two overloads, for the same reason as
-   * `GenericMap.createGenericMap`: both arms produce one `xml` and then run one code path
-   * over it, and `string` and `Element` are disjoint, so the pair said nothing the union
-   * does not. Contrast `Header.addStyleType`, which really is two operations with two
-   * bodies and two return types, and is now two methods.
+   * Create a def either from a name — with every effect at its neutral default — or by parsing
+   * an existing element. Returns the reason instead of throwing.
    */
   static createArticulationDef(
     nameOrXml: string | Element,

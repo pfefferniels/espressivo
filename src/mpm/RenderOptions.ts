@@ -4,15 +4,12 @@ import type { Normalized } from '../units.js';
 /**
  * Caller-supplied knobs for one performance render (ARCHITECTURE.md §2.4).
  *
- * Every field is optional and every default reproduces today's behaviour exactly, so
- * `perform(msm)` and `perform(msm, {})` are bit-identical to the pre-options code. That is
- * the point: this type exists to make two things reachable from outside — a reproducible
- * random seed and the movement sampling step — without any default-path render moving.
+ * Every field is optional and every default reproduces the historic behaviour exactly, so
+ * `perform(msm)` and `perform(msm, {})` are bit-identical to a render with no options at all.
  *
- * Fields are plain `number`, deliberately (RULE U3a). Brands are free for *readers* of
- * output data and costly for *writers* of input: since RULE U2 forbids converter
- * functions, a branded input would force every caller to write `0.05 as Normalized`. The
- * brand is applied internally instead, with one `as` where the value is used.
+ * Fields are plain `number`, deliberately (RULE U3a). A brand costs the *writer* of input:
+ * since RULE U2 forbids converter functions, a branded field would force every caller to write
+ * `0.05 as Normalized`. The brand is applied internally instead, with one `as` at the use site.
  */
 export interface RenderOptions {
   /**
@@ -36,16 +33,14 @@ export interface RenderOptions {
    * {@link DEFAULT_EXPAND_ORNAMENTS}.
    *
    * Set to `false` and every ornament that uses a v3 feature (`isV3Ornament`'s gate: a note
-   * pool, a `noteid`, `repetitions`, or the grouping syntax in `note.order`) is skipped
-   * whole: no note is created, no `ornament.*` provenance attribute is written, and not even
-   * the `note.order.perf` echo lands on the `<ornament>` element.
+   * pool, a `noteid`, `repetitions`, or the grouping syntax in `note.order`) is skipped whole:
+   * no note is created, no `ornament.*` provenance attribute is written, and not even the
+   * `note.order.perf` echo lands on the `<ornament>` element.
    *
-   * **It does not reach MPM v2 ornaments.** Those generate nothing to begin with — they
-   * write modifier markers onto notes that already exist — so there is nothing for this knob
-   * to switch off, and switching them off would be a different feature (rendering the score
-   * without its ornamentation) that no option here offers. A v3 ornament suppressed by this
-   * flag is *not* re-routed through the v2 path either: v2 would spread notes the v3
-   * ornament never claimed, which is neither the ornament as written nor its absence.
+   * It does not reach MPM v2 ornaments, which generate nothing to begin with — they write
+   * modifier markers onto notes that already exist. A v3 ornament suppressed by this flag is
+   * not re-routed through the v2 path either: v2 would spread notes the v3 ornament never
+   * claimed.
    */
   readonly expandOrnaments?: boolean;
 }
@@ -62,12 +57,10 @@ export const DEFAULT_MOVEMENT_SAMPLE_MAX_STEP = 0.1 as Normalized;
 
 /**
  * Ornament expansion is on unless a caller turns it off, so that omitting
- * {@link RenderOptions.expandOrnaments} renders the MPM as written — the same contract every
- * other option here keeps.
+ * {@link RenderOptions.expandOrnaments} renders the MPM as written.
  *
- * The opt-out mirrors meico's own (`Mei.exportMsmMpm`'s `ignoreOrnaments`, CLI `-eo`), whose
- * default is likewise "expand"; the polarity is flipped because an option named for what it
- * enables reads better at the facade than one named for what it suppresses.
+ * Mirrors meico's own opt-out (`Mei.exportMsmMpm`'s `ignoreOrnaments`, CLI `-eo`), whose
+ * default is likewise "expand"; only the polarity of the name is flipped.
  */
 export const DEFAULT_EXPAND_ORNAMENTS = true;
 
@@ -94,11 +87,8 @@ export interface RenderContext {
  * the same parts in the same order.
  */
 export function deriveSeed(base: number, ...parts: readonly number[]): number {
-  // "Fold left-to-right, in argument order" was the comment on the loop this replaces, and it
-  // is the whole normative content of the function — so it is the code now. The seed is `base`
-  // unsigned, the step is the mix, and neither the operations nor their order moved: `foldl`
-  // walks front to back and threads the accumulator exactly as the `let` did. Integer
-  // arithmetic throughout (`Math.imul`, `^`, `>>>`), so there is no float to reassociate.
+  // Integer arithmetic throughout (`Math.imul`, `^`, `>>>`), so there is no float to
+  // reassociate; `foldl` walks front to back, which is the argument order the seeds depend on.
   const h = foldl(parts, base >>> 0, (acc, p) => Math.imul(acc ^ (p >>> 0), 0x27d4eb2d) >>> 0);
   return h || 1; // 0 -> 1, matching RandomNumberProvider's own guard
 }

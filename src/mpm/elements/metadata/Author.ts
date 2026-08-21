@@ -19,11 +19,10 @@ export class Author extends AbstractXmlSubtree {
   /**
    * The text node the name lives in, held so the setters write where {@link parseData} read.
    *
-   * It needs no `!` because it is initialised to the very node the defaulting path installs:
-   * an `<author>` whose first child is not a text node has one APPENDED to it (see the
-   * header comment), so "the empty placeholder" and "the node in the document" are the same
-   * object as soon as parsing has run. Where the element leads with a text node,
-   * `parseData` adopts that one instead. Same shape as `RubatoDef`'s three attributes.
+   * Initialised to the very node the defaulting path installs: an `<author>` whose first child
+   * is not a text node has this one APPENDED to it, so the placeholder and the node in the
+   * document are the same object as soon as parsing has run. Where the element leads with a
+   * text node, `parseData` adopts that one instead.
    */
   private nameText: Text;
   private number: Attribute | null = null;
@@ -35,11 +34,7 @@ export class Author extends AbstractXmlSubtree {
 
   /**
    * Read an `<author>` element, or build one from a name (with optional number and `xml:id`).
-   *
-   * Where this returned `Author | null` after printing the exception it had caught, it now
-   * returns the reason — see `elements/parseError.ts` for why that is the same control flow
-   * with one fewer thing thrown away. The null element is the one failure a document can
-   * cause here, and it is checked rather than caught.
+   * Reports the reason rather than printing it — see `elements/parseError.ts`.
    */
   static createAuthor(xml: Element | null): Result<Author, MpmParseError>;
   static createAuthor(
@@ -75,15 +70,10 @@ export class Author extends AbstractXmlSubtree {
    * {@link getName} always has something to read. Note that only child 0 is considered: an
    * author element that leads with a comment or an element is treated as having no name and
    * gains a second, empty text node.
-   *
-   * The `xml === null` guard this used to open with now lives in {@link createAuthor}, which
-   * is its only caller and which can say what a null means without throwing.
    */
   protected parseData(xml: Element): void {
     this.setXml(xml);
     const first = xml.getChildCount() === 0 ? null : xml.getChild(0);
-    // `instanceof` where the incumbent asserted `as Text` after testing the same thing —
-    // one branch, and now the compiler is reading it rather than being told.
     if (first instanceof Text) this.nameText = first;
     else xml.appendChild(this.nameText);
     this.number = attribute('number', xml);

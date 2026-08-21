@@ -28,10 +28,9 @@ export class Part extends AbstractXmlSubtree {
   /**
    * The `name` attribute node, held so {@link setName} writes where {@link readFrom} read.
    *
-   * Initialised to the empty node the defaulting path installs, which is why it needs no
-   * `!`: a `<part>` with no `name` gets THIS object added to it, and one that declares a
-   * name hands `readFrom` the declared node to hold instead. Same shape as `RubatoDef`'s
-   * three attributes and `RelatedResource`'s two.
+   * Initialised to the empty node the defaulting path installs: a `<part>` with no `name` gets
+   * THIS object added to it, and one that declares a name hands `readFrom` the declared node to
+   * hold instead. Same shape as `RubatoDef`'s three attributes and `RelatedResource`'s two.
    */
   private nameAttr: Attribute;
   private number = 0;
@@ -47,10 +46,8 @@ export class Part extends AbstractXmlSubtree {
    * Create a part from its identifying values (optionally with an `xml:id`), or by parsing
    * an existing `<part>` element.
    *
-   * Reports the reason rather than printing it — see `elements/parseError.ts`. Which of the
-   * three required attributes was missing is now something the caller can read, where before
-   * the three `throw`s were flattened onto one `null` and one line on somebody's stderr; the
-   * from-scratch form still cannot fail, since it writes all three itself.
+   * The `Result` (see `elements/parseError.ts`) names which of the three required attributes
+   * was missing. The from-scratch form cannot fail, since it writes all three itself.
    */
   static createPart(
     name: string,
@@ -91,8 +88,8 @@ export class Part extends AbstractXmlSubtree {
    * `setXml`, so a `<part>` that fails validation leaves this object without an XML element
    * rather than half-initialised — and the `name` attribute is **written to the caller's
    * element first**, so a `<part>` with neither name nor number comes back with an empty
-   * `name=""` on it and still fails. That is the incumbent's order and it is observable, so
-   * it is kept verbatim rather than hoisted into a tidier validate-then-mutate pass.
+   * `name=""` on it and still fails. That order is observable, so it is kept verbatim rather
+   * than hoisted into a tidier validate-then-mutate pass.
    *
    * Missing `<header>`/`<dated>` children are created and appended, and the two are not
    * equally required — see {@link Global.readFrom} for that asymmetry.
@@ -154,15 +151,9 @@ export class Part extends AbstractXmlSubtree {
     return this.dated;
   }
   /**
-   * The dated environment, non-null.
-   *
-   * {@link getDated} keeps its `Dated | null` because it is what the rest of the port reads
-   * — narrowing it would turn eight `?.` in `src/mei/Mei2MsmMpmConverter.ts` into
-   * `no-unnecessary-condition` findings in a directory this charter may not edit. But the
-   * three places that dereferenced it unguarded are not making a guess: {@link readFrom}
-   * returns `err` rather than a `Part` without a `dated`, so no part a caller can hold has
-   * one. This is that claim, checked — the same throw as the `!`, with the invariant named
-   * instead of "cannot read property of null" from inside XOM.
+   * The dated environment, non-null: {@link readFrom} returns `err` rather than a `Part`
+   * without a `dated`, so no part a caller can hold has one. {@link getDated} keeps its
+   * `Dated | null` because that is what the rest of the port reads.
    */
   requireDated(): Dated {
     const dated = this.dated;
@@ -179,12 +170,11 @@ export class Part extends AbstractXmlSubtree {
   getNumber(): number {
     return this.number;
   }
-  // The three setters below re-read their attribute from the element on every call rather
-  // than holding it as `nameAttr` is held — Java does too (`Part.java`'s
-  // `this.getXml().getAttribute(...)`), and the difference is observable if a caller swaps
-  // the node out. `requireAttribute` keeps the read and names the element's own invariant:
-  // `readFrom` refuses a `<part>` missing any of these three, so a constructed part has all
-  // three. It throws where the `!` threw, on the same input.
+  // The three setters below re-read their attribute from the element on every call rather than
+  // holding it as `nameAttr` is held — Java does too (`Part.java`'s
+  // `this.getXml().getAttribute(...)`), and the difference is observable if a caller swaps the
+  // node out. `requireAttribute` throws rather than asserting, on an invariant `readFrom`
+  // establishes: it refuses a `<part>` missing any of these three.
   setNumber(number: number): void {
     this.number = number;
     requireAttribute('number', this.getXml()).setValue(String(this.number));

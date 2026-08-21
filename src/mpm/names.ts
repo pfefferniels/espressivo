@@ -2,12 +2,11 @@
  * The MPM vocabulary: the namespace URI, the six `styleDef` collection names that live in
  * a `<header>`, and the thirteen map names that live in a `<dated>`.
  *
- * This module imports nothing, and that is its entire reason to exist. The names are what
- * every element module under `elements/` needs from `Mpm`; while they lived on the `Mpm`
- * class, reading one meant importing `Mpm`, and `Mpm` imports the element modules back —
- * the `Mpm` ⇄ `GenericStyle`/maps cycle that made deep-importing an element module throw
- * (ARCHITECTURE.md RULE M3, item T18). Keep this file a leaf: adding any import here
- * re-opens the cycle for all 31 element modules at once.
+ * This module imports nothing, and that is its entire reason to exist. Every element module
+ * under `elements/` needs these names; while they lived on the `Mpm` class, reading one meant
+ * importing `Mpm`, and `Mpm` imports the element modules back — the cycle that made
+ * deep-importing an element module throw (ARCHITECTURE.md RULE M3). Keep this file a leaf:
+ * adding any import here re-opens the cycle for all 31 element modules at once.
  *
  * `Mpm` re-exports every name below as a static member of the same name and value, so
  * `Mpm.TEMPO_MAP` and friends stay valid for callers outside `src/mpm/`.

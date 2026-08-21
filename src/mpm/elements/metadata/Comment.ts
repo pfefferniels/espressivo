@@ -47,8 +47,7 @@ export class Comment extends AbstractXmlSubtree {
    * After this has run, {@link getXml} returns the very element passed in — `setXml` stores
    * it verbatim rather than copying. A `<comment/>` whose first child is not a text node
    * gets an empty one appended, so {@link getText} always has something to read; see
-   * {@link Author.parseData} for the same rule, its one sharp edge, and where the null
-   * guard went.
+   * {@link Author.parseData} for the same rule and its one sharp edge.
    */
   protected parseData(xml: Element): void {
     this.setXml(xml);
