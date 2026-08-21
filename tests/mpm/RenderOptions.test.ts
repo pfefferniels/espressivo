@@ -188,6 +188,80 @@ describe('RenderOptions', () => {
       expect(withMpmSeed({ seed: 1 })).toBe(withMpmSeed({}));
     });
 
+    /**
+     * `options.seed` must not destroy the document it is pinning.
+     *
+     * `setSeed` clears the provider's series, and for the two correlated families that series
+     * is the walk's current value, while for a list it is the list. Applied after
+     * construction — which is where `options.seed` used to be applied — it left nothing to
+     * draw from and every note rendered `milliseconds.date="NaN"`.
+     *
+     * `@seed` in the MPM still does exactly that, deliberately: PARITY.md IMP1 freezes it
+     * against the reference, and `tests/comparison/imprecisionLaws.test.ts` pins it as a ⊥
+     * route. `options.seed` has no reference behaviour to be faithful to.
+     */
+    describe('reaches every distribution family without poisoning it', () => {
+      const families = {
+        uniform: (imp: ImprecisionMap) => imp.addDistributionUniform(0, -30, 30),
+        gaussian: (imp: ImprecisionMap) => imp.addDistributionGaussian(0, 10, -30, 30),
+        triangular: (imp: ImprecisionMap) => imp.addDistributionTriangular(0, -30, 30, 0, -30, 30),
+        brownianNoise: (imp: ImprecisionMap) =>
+          imp.addDistributionBrownianNoise(0, 5, -30, 30, 100),
+        compensatingTriangle: (imp: ImprecisionMap) =>
+          imp.addDistributionCompensatingTriangle(0, 3, -30, 30, -30, 30, 100),
+        list: (imp: ImprecisionMap) => {
+          const list = new Element('distribution.list');
+          for (const v of [-10, 0, 10, 20]) {
+            const measurement = new Element('measurement');
+            measurement.addAttribute(new Attribute('value', String(v)));
+            list.appendChild(measurement);
+          }
+          imp.addDistributionList(0, list, 100);
+        },
+      };
+
+      const performanceOf = (add: (imp: ImprecisionMap) => void): Performance => {
+        const perf = okValue(Performance.fromName('perf', 720));
+        const tempoMap = TempoMap.createTempoMap();
+        tempoMap.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
+        perf.getGlobal()!.getDated()!.addMap(tempoMap);
+        const imp = ImprecisionMap.createImprecisionMap('timing');
+        add(imp);
+        perf.getGlobal()!.getDated()!.addMap(imp);
+        perf.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
+        return perf;
+      };
+
+      // The augmented MSM rather than the MIDI: a NaN date is rounded away into a tick by the
+      // MIDI export, so the bytes cannot show what went wrong.
+      const performed = (add: (imp: ImprecisionMap) => void, options?: RenderOptions) =>
+        performanceOf(add).perform(makeMsm(), options).getRootElement()!.toXML();
+
+      for (const [name, add] of Object.entries(families)) {
+        it(`renders ${name} to finite numbers, reproducibly`, () => {
+          const seeded = performed(add, { seed: 1234 });
+          expect(seeded).not.toContain('NaN');
+          expect(seeded).toBe(performed(add, { seed: 1234 }));
+        });
+      }
+
+      it('lets the seed decide the output of every family that draws one', () => {
+        // A list is not one of them: it indexes its measurements and draws nothing, so a seed
+        // is inert rather than destructive.
+        for (const [name, add] of Object.entries(families)) {
+          const differs = performed(add, { seed: 1234 }) !== performed(add, { seed: 5678 });
+          expect([name, differs]).toEqual([name, name !== 'list']);
+        }
+      });
+
+      it('leaves the unseeded path nondeterministic, correlated families included', () => {
+        for (const [name, add] of Object.entries(families)) {
+          if (name === 'list') continue;
+          expect(performed(add)).not.toBe(performed(add));
+        }
+      });
+    });
+
     it('advances the stream ordinal per call, so two maps in one render differ', () => {
       const ctx: RenderContext = { options: { seed: 7 }, streamOrdinal: 0 };
       const render = (c: RenderContext) => {

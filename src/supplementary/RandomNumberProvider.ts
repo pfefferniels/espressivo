@@ -220,6 +220,18 @@ export class RandomNumberProvider {
     return this.degreeOfCorrelation;
   }
 
+  /**
+   * One raw draw in `[0, 1)` from the same stream every other value comes off.
+   *
+   * For a caller that needs a number from the *seeded* stream before the series exists —
+   * a correlated distribution's starting value, which cannot come from {@link getValue}
+   * because that reads the series it is about to create. Advances the stream, so it counts
+   * as a draw.
+   */
+  nextUnitRandom(): number {
+    return this.nextRandom();
+  }
+
   /** Restarts a correlated distribution's series from `value`. No-op for the others. */
   setInitialValue(value: number): void {
     let initialValue: number;

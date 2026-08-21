@@ -95,6 +95,12 @@ function asProviderParameter(value: number | null): number {
  * own provider exists — the position of that draw is part of the output sequence (see the
  * class's randomness contract).
  *
+ * `seed` is the derived `options.seed` (RULE F7), null when the caller supplied none. It is
+ * applied **here**, before the series holds anything, because `setSeed` clears the series and
+ * for the two correlated families and a list the series is the values themselves — see
+ * {@link ImprecisionMap.renderImprecisionToMap}. A list is left unseeded: it indexes its
+ * measurements and draws no random number at all.
+ *
  * Exported for the tests rather than for callers: six transcriptions of six positional factory
  * signatures can be wrong in a way no end-to-end assertion notices — swapping a triangular's
  * `mode` and `clip.lower` still renders plausible numbers — so the suite reads the parameters
@@ -104,48 +110,63 @@ export function providerFor(
   distribution: Distribution,
   randomPrev: RandomNumberProvider | null,
   predecessor: Predecessor | null,
+  seed: number | null = null,
 ): RandomNumberProvider {
+  const pin = (random: RandomNumberProvider): RandomNumberProvider => {
+    if (seed !== null) random.setSeed(seed);
+    return random;
+  };
+
   return matchKind(distribution, {
     uniform: (d) =>
-      RandomNumberProvider.createRandomNumberProvider_uniformDistribution(
-        asProviderParameter(d.lowerLimit),
-        asProviderParameter(d.upperLimit),
+      pin(
+        RandomNumberProvider.createRandomNumberProvider_uniformDistribution(
+          asProviderParameter(d.lowerLimit),
+          asProviderParameter(d.upperLimit),
+        ),
       ),
     gaussian: (d) =>
-      RandomNumberProvider.createRandomNumberProvider_gaussianDistribution(
-        asProviderParameter(d.standardDeviation),
-        asProviderParameter(d.lowerLimit),
-        asProviderParameter(d.upperLimit),
+      pin(
+        RandomNumberProvider.createRandomNumberProvider_gaussianDistribution(
+          asProviderParameter(d.standardDeviation),
+          asProviderParameter(d.lowerLimit),
+          asProviderParameter(d.upperLimit),
+        ),
       ),
     triangular: (d) =>
-      RandomNumberProvider.createRandomNumberProvider_triangularDistribution(
-        asProviderParameter(d.lowerLimit),
-        asProviderParameter(d.upperLimit),
-        asProviderParameter(d.mode),
-        asProviderParameter(d.lowerClip),
-        asProviderParameter(d.upperClip),
+      pin(
+        RandomNumberProvider.createRandomNumberProvider_triangularDistribution(
+          asProviderParameter(d.lowerLimit),
+          asProviderParameter(d.upperLimit),
+          asProviderParameter(d.mode),
+          asProviderParameter(d.lowerClip),
+          asProviderParameter(d.upperClip),
+        ),
       ),
     brownian: (d) => {
       const handover = handoverValue(randomPrev, predecessor, d);
-      const random = RandomNumberProvider.createRandomNumberProvider_brownianNoiseDistribution(
-        asProviderParameter(d.maxStepWidth),
-        asProviderParameter(d.lowerLimit),
-        asProviderParameter(d.upperLimit),
+      const random = pin(
+        RandomNumberProvider.createRandomNumberProvider_brownianNoiseDistribution(
+          asProviderParameter(d.maxStepWidth),
+          asProviderParameter(d.lowerLimit),
+          asProviderParameter(d.upperLimit),
+        ),
       );
-      applyHandover(handover, random);
+      applyHandover(handover, random, seed !== null);
       return random;
     },
     compensatingTriangle: (d) => {
       const handover = handoverValue(randomPrev, predecessor, d);
-      const random =
+      const random = pin(
         RandomNumberProvider.createRandomNumberProvider_compensatingTriangleDistribution(
           asProviderParameter(d.degreeOfCorrelation),
           asProviderParameter(d.lowerLimit),
           asProviderParameter(d.upperLimit),
           asProviderParameter(d.lowerClip),
           asProviderParameter(d.upperClip),
-        );
-      applyHandover(handover, random);
+        ),
+      );
+      applyHandover(handover, random, seed !== null);
       return random;
     },
     list: (d) =>
@@ -188,15 +209,18 @@ function handoverValue(
  * the provider's range (the `* 0.5` scale factor plus the `+ scaleFactor * 0.5`
  * offset), so a fresh sequence does not begin pinned to a limit.
  *
- * The fallback uses `Math.random()`, not the provider — this is one of the places the
- * class doc's "nondeterministic by design" caveat comes from.
+ * Unseeded, the fallback uses `Math.random()`, not the provider — this is one of the places
+ * the class doc's "nondeterministic by design" caveat comes from. Under `options.seed` it
+ * draws from the provider instead: every later value of a correlated walk derives from this
+ * one, so leaving it on `Math.random()` would make a seeded render irreproducible.
  */
-function applyHandover(value: number | null, random: RandomNumberProvider): void {
+function applyHandover(value: number | null, random: RandomNumberProvider, seeded: boolean): void {
   if (value !== null) {
     random.setInitialValue(value);
   } else {
     const scaleFactor = (random.getUpperLimit() - random.getLowerLimit()) * 0.5;
-    const firstValue = Math.random() * scaleFactor + random.getLowerLimit() + scaleFactor * 0.5;
+    const unit = seeded ? random.nextUnitRandom() : Math.random();
+    const firstValue = unit * scaleFactor + random.getLowerLimit() + scaleFactor * 0.5;
     random.setInitialValue(firstValue);
   }
 }
@@ -550,14 +574,20 @@ export class ImprecisionMap extends GenericMap {
       }
       const { distribution, endDate } = entry.value;
 
-      random = providerFor(distribution, random, predecessor);
-
       // A `seed` in the MPM always wins (RULE F7); `options.seed` supplies one only where
       // the MPM supplies none. With neither, the provider keeps its constructor's
       // Math.random() seed.
+      const optionSeed =
+        distribution.seed === null && ctx?.options.seed !== undefined
+          ? deriveSeed(ctx.options.seed, ordinal, impIndex)
+          : null;
+
+      random = providerFor(distribution, random, predecessor, optionSeed);
+
+      // Don't move `optionSeed` down here. `setSeed` CLEARS the series, and for a correlated
+      // family or a list that is the values themselves, so a seed applied this late renders
+      // NaN. `@seed` keeps that behaviour deliberately — PARITY.md IMP1.
       if (distribution.seed !== null) random.setSeed(distribution.seed);
-      else if (ctx?.options.seed !== undefined)
-        random.setSeed(deriveSeed(ctx.options.seed, ordinal, impIndex));
 
       const timingBasisMs = resolveTimingBasis(distribution, domain === ImprecisionMap.TIMING);
 

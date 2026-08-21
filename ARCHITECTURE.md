@@ -651,7 +651,10 @@ from 0 exactly as `RandomNumberProvider`'s field initializer does (`… || 1`).
 
 **RULE F7 (seed semantics).** A `seed` in the MPM always wins. `options.seed` supplies a seed
 only where the MPM supplies none. Omitting `options.seed` must be **bit-identical** to
-today.
+today. Supplying it must leave the document renderable in **every** distribution family, and
+must actually pin the output — which is why it is applied at construction rather than through
+`RandomNumberProvider.setSeed`, whose series-clearing is a `@seed`-only behaviour
+(PARITY.md IMP1).
 
 > **EQ-RISK (F7).** The new parameter changes the arity of `renderImprecisionToMap` and
 > `renderMovementToMap`, so the emitted-JS diff will not be empty and cannot be the gate.

@@ -911,6 +911,19 @@ the same defective input without making either document renderable. The comparis
 neither: it prices such a span `⊥` (§5.9, AD-1/R24 — the renderer has no performed value), which
 is correct against both codebases.
 
+**`options.seed` takes the other route** (fixed 2026-08-22). RULE F7's caller-supplied seed used
+to reach the provider through the same post-construction `setSeed`, so `{ seed: 1234 }` turned a
+perfectly ordinary `brownianNoise`, `compensatingTriangle` or `distribution.list` document into
+`milliseconds.date="NaN"` on every note — a defect of this port's own option, with nothing in the
+reference to be faithful to. It is now applied inside `providerFor`, before the series exists;
+a list is left unseeded, since it indexes its measurements and draws no random number. The
+correlated fresh-start value, `Math.random()` in the reference, comes off the seeded stream when
+`options.seed` is in force, because every later value of the walk derives from it. Nothing here
+touches the `@seed` path above, and nothing touches the unseeded path: measured, the three
+uncorrelated families render byte-identical numbers at the same seed as before the change, and
+`tests/mpm/RenderOptions.test.ts` reds on four of its assertions against the old code while the
+uncorrelated three and the unseeded control stay green.
+
 ---
 
 ### Numbers are written `720`, not `720.0` — accepted, not a defect
