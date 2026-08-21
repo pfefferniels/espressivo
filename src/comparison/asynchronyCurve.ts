@@ -1,40 +1,37 @@
 /**
- * The asynchrony curve — DESIGN.md §5.7. A per-part **step** function of
- * `@milliseconds.offset`, in milliseconds. Neutral is 0 ms.
+ * The asynchrony curve — DESIGN.md §5.7. A per-part step function of `@milliseconds.offset`,
+ * in milliseconds. Neutral is 0 ms.
  *
- * Exact integration: the curve is piecewise constant, and GL-10 is exact on a constant, so
- * this dimension carries no quadrature error at all.
+ * The curve is piecewise constant and GL-10 is exact on a constant, so this dimension carries
+ * no quadrature error at all.
  *
  * ## Two renderer behaviours
  *
- * 1. **Spans end on ANY entry, and a foreign entry opens a `⊥` span** (AD-29 as corrected by
- *    AD-33.1). `renderAsynchronyToMap` takes `this.elements[asynIndex + 1].getKey()` with
- *    **no local-name test**, and `GenericMap` indexes every dated child including `<style>`.
- *    Contrast `TempoMap.getEndDate`, which really does test the local name.
+ * 1. Spans end on any entry, and a foreign entry opens a `⊥` span (AD-29 as corrected by
+ *    AD-33.1). `renderAsynchronyToMap` takes `this.elements[asynIndex + 1].getKey()` with no
+ *    local-name test, and `GenericMap` indexes every dated child including `<style>`. Contrast
+ *    `TempoMap.getEndDate`, which does test the local name.
  *
- *    The missing test does more than end the span. `asynIndex` iterates over **every** entry,
+ *    The missing test does more than end the span. `asynIndex` iterates over every entry,
  *    including the `<style>`, and reads
- *    `parseFloat(getAttributeValue('milliseconds.offset', asynElement))` off it — which for a
- *    `<style>` is `parseFloat('')` = `NaN`, so `Math.max(0, ms + NaN)` is `NaN`. Every note in
- *    that span gets `milliseconds.date="NaN"` and **vanishes from the MIDI export**: bit for
- *    bit the R24 condition below, reached through a different element. The span is therefore
- *    `⊥`, not the neutral 0 ms. AD-29's own amendment text said "neutral gap" and was wrong;
- *    priced as neutral it was out by a factor of 30 on the disputed span and emitted no note
- *    at all.
- * 2. **A missing `@milliseconds.offset` poisons the span** (AD-1, R24). The renderer reads
- *    it with `parseFloat(getAttributeValue(…))`, and `getAttributeValue` returns `''` for a
- *    missing attribute, so the offset is `NaN`; executed, every note in the span gets
- *    `milliseconds.date="NaN"` and **vanishes from the MIDI export**. R6's absence-is-neutral
+ *    `parseFloat(getAttributeValue('milliseconds.offset', asynElement))` off it — for a
+ *    `<style>` that is `parseFloat('')` = `NaN`, so `Math.max(0, ms + NaN)` is `NaN`. Every
+ *    note in that span gets `milliseconds.date="NaN"` and vanishes from the MIDI export: the
+ *    R24 condition below, reached through a different element, so the span is `⊥` and not the
+ *    neutral 0 ms. AD-29's amendment text said "neutral gap"; priced as neutral it was out by
+ *    a factor of 30 on the disputed span and emitted no note at all.
+ * 2. A missing `@milliseconds.offset` poisons the span (AD-1, R24). The renderer reads it with
+ *    `parseFloat(getAttributeValue(…))`, and `getAttributeValue` returns `''` for a missing
+ *    attribute, so the offset is `NaN`; executed, every note in the span gets
+ *    `milliseconds.date="NaN"` and vanishes from the MIDI export. R6's absence-is-neutral
  *    covers an absent *map*, not a present instruction with an absent offset, and reading it
- *    as 0 would compute a performance the renderer does not produce. The span therefore
- *    reads **`⊥`** and is reported `renderer-error`, priced by §4's capped metric at
- *    `δ_row` from everything.
+ *    as 0 would compute a performance the renderer does not produce. The span reads `⊥` and is
+ *    reported `renderer-error`, priced by §4's capped metric at `δ_row` from everything.
  *
- * Two further mechanics are **out of scope for the curve** and belong to a rendered
- * comparison (R24): the shifted start is floored at 0 and the shifted end at
- * `startDateMs + 1`, so the offset is not a pure translation near the start of the piece or
- * on very short notes. Both need note data, which this dimension does not have — §5.7's
- * enumerated non-goals say so explicitly.
+ * Two further mechanics are out of scope for the curve and belong to a rendered comparison
+ * (R24): the shifted start is floored at 0 and the shifted end at `startDateMs + 1`, so the
+ * offset is not a pure translation near the start of the piece or on very short notes. Both
+ * need note data, which this dimension does not have — §5.7's enumerated non-goals.
  */
 import { withNext } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -99,15 +96,8 @@ export function readAsynchronySegments(
   const notes: AsynchronyCurveNote[] = [];
   const breakpoints = new Set<number>([0]);
 
-  // ANY next entry ends the span — the whole point of behaviour 1.
-  // The end is PAIRED with its entry rather than read at `index + 1`. "There is no next
-  // entry" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
-  // system had to be told about with `as (typeof xs)[number] | undefined`.
-  // Each entry with its successor, or `null` for the last — `withNext`. The span it opens
-  // then runs to `next?.ticks ?? Infinity`, which says at the point of use that the last
-  // entry runs to the end of time. The `[...xs.slice(1).map(…), Infinity]` array this
-  // replaces built that sentinel where it could not be read as one, and built a whole array
-  // to be zipped away.
+  // Any next entry ends the span — the whole point of behaviour 1 — and the last entry's span
+  // runs to the end of time.
   for (const [entry, next] of withNext(entries)) {
     const endTicks = next?.ticks ?? Number.POSITIVE_INFINITY;
     const element: Element = entry.element;
@@ -115,9 +105,9 @@ export function readAsynchronySegments(
 
     breakpoints.add(startTicks);
 
-    // A non-<asynchrony> entry (a <style>, say) is read for an offset it does not have, so
-    // the renderer NaN-poisons its whole span — the same condition as a missing
-    // @milliseconds.offset, reached through a different element (AD-33.1).
+    // A non-<asynchrony> entry (a <style>, say) is read for an offset it does not have, so the
+    // renderer NaN-poisons its whole span — the missing-@milliseconds.offset condition reached
+    // through a different element (AD-33.1).
     const isAsynchrony = element.getLocalName() === 'asynchrony';
     const raw = isAsynchrony ? readAttributeValue(element, 'milliseconds.offset') : null;
     const parsed = raw === null ? NaN : parseFloat(raw);

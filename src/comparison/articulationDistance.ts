@@ -1,11 +1,10 @@
 /**
  * The articulation distance — DESIGN.md §5.5, as amended by AD-37.3 / AD-37.4.
  *
- * The compared object is **not the atom**: it is the per-anchor **composed effective
- * modifier**. Atoms compose across atoms per note in map order (executed: two `<articulation>`
- * elements at one date with `relativeDuration` 0.5 and 0.25 perform 12.5, not 25 and not 50),
- * so what the renderer performs at an anchor is one transformation built from all of them, and
- * that is what the alignment aligns and what the metric prices.
+ * The compared object is not the atom but the per-anchor composed effective modifier: atoms
+ * compose per note in map order (`articulationAtoms`, §5.5), so what the renderer performs at an
+ * anchor is one transformation built from all of them, and that is what the alignment aligns and
+ * what the metric prices.
  *
  * ## Every effect is an affine map with an optional replacement anchor
  *
@@ -17,50 +16,44 @@
  *
  * `@absoluteDuration` / `@absoluteVelocity` set the replacement, `@relativeDuration` /
  * `@relativeVelocity` the factor, `@absoluteDurationChange` / `@absoluteVelocityChange` the
- * offset — and the composition of two such maps is another one, which is why this form is the
- * canonical one rather than a convenience. AD-37.4's encoding-invariance obligation falls out
- * of it by construction rather than by a special case: two stacked `relativeDuration` atoms and
- * one atom carrying their product both reduce to `{replacement: null, factor: 0.125, offset: 0}`
- * and are therefore distance 0.
+ * offset, and the composition of two such maps is another one. AD-37.4's encoding-invariance
+ * obligation then falls out by construction: two stacked `relativeDuration` atoms and one atom
+ * carrying their product both reduce to `{replacement: null, factor: 0.125, offset: 0}` and are
+ * therefore distance 0.
  *
- * The two families differ in how the levers on ONE element combine, and only there. Velocity
- * composes on both elements (AD-37.3); duration composes on an `<articulationDef>` and takes
- * exactly one live lever on an inline `<articulation>` (AD-11i), which `articulationAtoms`
- * resolves before this module sees it.
+ * The two families differ only in how the levers on one element combine (AD-37.3, AD-11i), which
+ * `articulationAtoms` resolves before this module sees it.
  *
- * ## `@absoluteDurationChange` is priced RAW, and that is a stated approximation
+ * ## `@absoluteDurationChange` is priced raw, a stated approximation
  *
  * The renderer halves the change until the result is positive and applies it only when
  * `duration > 0`, so the performed offset is note-dependent: `−200` on a 100-tick note performs
- * `−50`. AD-11iii/R15 prices the raw value as a **document-level** quantity for exactly that
- * reason — the halving cannot be resolved without an MSM, and the negative branch cannot be
- * resolved at all. The composition here therefore treats the offset as authored, which is
- * faithful to the row's definition and not to the note's.
+ * `−50`. AD-11iii/R15 prices the raw value as a document-level quantity for that reason — the
+ * halving cannot be resolved without an MSM, and the negative branch cannot be resolved at all.
+ * The composition here treats the offset as authored: faithful to the row's definition, not to
+ * the note's.
  *
- * ## Anchors are dates OR ids, and without an MSM they do not merge
+ * ## Anchors are dates or ids, and without an MSM they do not merge
  *
  * A date-targeted atom applies to every note at its date; a `noteid` atom applies to one note
  * wherever it is. Both can reach the same note — executed, they compose there — but deciding
- * *which* note needs the MSM. So the two kinds of anchor are kept apart and the id-anchored
- * ones carry `datePositionKnown: false`, which is §5.5's own instruction rather than a
- * simplification.
+ * *which* note needs the MSM. So §5.5 keeps the two kinds of anchor apart and the id-anchored
+ * ones carry `datePositionKnown: false`.
  *
- * ## `d_articulation` has TWO components (AD-55.1)
+ * ## `d_articulation` has two components (AD-55.1)
  *
- * The atoms are one of them. The other is `<style>@defaultArticulation`, which governs every
- * note in its span that carries no atom — a piecewise-constant curve over score time, built by
- * `articulationDefault`. It was read, ruled about and tested for a whole wave without reaching
- * any evaluator, and three documents differing only in their default compared at `D = 0` while
- * the renderer performed one of them at half duration throughout.
+ * The atoms are one. The other is `<style>@defaultArticulation`, which governs every note in its
+ * span that carries no atom — a piecewise-constant curve over score time, built by
+ * `articulationDefault`. Leaving it out of the evaluator made three documents differing only in
+ * their default compare at `D = 0` while the renderer performed one of them at half duration
+ * throughout.
  *
- * So {@link defaultArticulationDistance} prices the step function as the step reading it is:
- * per cell of the two curves' joint refinement, `localDistance` on the resolved def's effective
- * modifier, sustained over the cell. It is the SAME `modifierDistance` the alignment charges,
- * because a default and an atom modify a note by the same affine map and pricing them on two
- * scales would make a document that moves an instruction between the two look like a document
- * that changed it. The two components sum, and they reach the aggregation by different routes —
- * the alignment's optimum as atoms, the step function as cells — which is what §5.0's
- * "absolutely continuous part **plus** atoms" already provides for.
+ * {@link defaultArticulationDistance} therefore prices the step function per cell of the two
+ * curves' joint refinement, with the same `modifierDistance` the alignment charges: a default
+ * and an atom modify a note by the same affine map, and two scales would make a document that
+ * moves an instruction between the two look like one that changed it. The components sum,
+ * reaching the aggregation by different routes — the alignment's optimum as atoms, the step
+ * function as cells — which is §5.0's "absolutely continuous part plus atoms".
  */
 import { groupBy, head, pairwise } from '../prelude/index.js';
 import {
@@ -198,7 +191,6 @@ export function modifierOf(atom: ArticulationAtom): EffectiveModifier {
   };
 }
 
-/** Compose two anchors' modifiers, `first` then `second`. */
 export function composeModifiers(
   first: EffectiveModifier,
   second: EffectiveModifier,
@@ -221,22 +213,11 @@ export function composeModifiers(
  * order is the map's, which is the order the renderer applies them in.
  */
 export function anchorsOf(read: ArticulationAtoms): readonly ArticulationAnchor[] {
-  // `groupBy`, and the comment that used to stand here was an argument against it built on a
-  // false premise: "a plain array with a key lookup rather than a Map of records: the insertion
-  // order IS the map order the composition depends on, and an array keeps that visible instead
-  // of relying on a second structure to remember it". A `Map` does not have to be relied on to
-  // remember insertion order — it preserves it by SPECIFICATION, across buckets by
-  // first-encounter and, in `groupBy`, within a bucket by encounter. So the array bought
-  // nothing, and it cost a linear `find` per atom: quadratic in the atom count of a scope.
-  //
-  // The fold is `reduce` with NO seed, which is the same left-association the loop had —
-  // `compose(compose(a, b), c)` — so no arithmetic moves. `composeModifiers` is not commutative
-  // (a later replacement wipes what precedes it), which is exactly why that matters.
-  //
-  // `head` needs no guard: `groupBy` hands back a `NonEmptyArray`, because a bucket is created
-  // as `[x]` and only ever grown. The first atom is where `dateTicks`, `id` and
-  // `datePositionKnown` came from before, too — the loop read them off whichever atom created
-  // the entry, which is the first one met.
+  // A `Map` preserves insertion order by specification — across buckets by first encounter and,
+  // in `groupBy`, within a bucket by encounter — so the groups arrive in map order, which is
+  // the order the renderer applies them in. The seedless `reduce` left-associates,
+  // `compose(compose(a, b), c)`, and `composeModifiers` is not commutative: a later replacement
+  // wipes what precedes it.
   const anchors = [...groupBy(read.atoms, anchorKeyOf).values()].map(
     (group): ArticulationAnchor => {
       const first = head(group);
@@ -253,12 +234,12 @@ export function anchorsOf(read: ArticulationAtoms): readonly ArticulationAnchor[
   // Date order, then id, so the aligner sees two monotone lists and the ordering is a function
   // of the documents rather than of which atom happened to arrive first.
   //
-  // CODE-UNIT order, never `localeCompare` — `compare.ts` bans it by name for the report (§9.5)
-  // and the ban binds harder here, because this order is the ALIGNER's input and therefore
-  // decides a distance rather than a presentation. Measured under `LC_ALL=sv_SE`/`da_DK`, where
-  // 'ä' collates after 'z': two documents with two anchors each at one date and disjoint id sets
-  // scored `d_articulation = 13.469` instead of 0, with different report hashes. ASCII moves too
-  // ('a' vs 'B', 'x_1' vs 'x-1'), and so do small-icu builds and ICU/CLDR upgrades. The vendored
+  // Code-unit order, never `localeCompare` — `compare.ts` bans it by name for the report (§9.5),
+  // and here the order is the aligner's input and decides a distance rather than a
+  // presentation. Measured under `LC_ALL=sv_SE`/`da_DK`, where 'ä' collates after 'z': two
+  // documents with two anchors each at one date and disjoint id sets scored
+  // `d_articulation = 13.469` instead of 0, with different report hashes. ASCII moves too ('a'
+  // vs 'B', 'x_1' vs 'x-1'), and so do small-icu builds and ICU/CLDR upgrades. The vendored
   // corpus never caught it because every `@noteid` in it is a lowercase `meico_<uuid>`, where
   // collation and code-unit order coincide.
   return anchors.sort((x, y) => {
@@ -269,11 +250,10 @@ export function anchorsOf(read: ArticulationAtoms): readonly ArticulationAnchor[
 }
 
 /**
- * The anchor an atom belongs to: its DATE when it names no note, its `@noteid` when it does.
+ * The anchor an atom belongs to: its date when it names no note, its `@noteid` when it does.
  *
- * Prefixed so the two namespaces cannot collide — a note whose id is literally `0` must not
- * be grouped with the atoms anchored at tick 0. The module note explains why the two kinds
- * are kept apart at all.
+ * Prefixed so the two namespaces cannot collide — a note whose id is literally `0` must not be
+ * grouped with the atoms anchored at tick 0.
  */
 function anchorKeyOf(atom: ArticulationAtom): string {
   return atom.noteid === null ? `date:${String(atom.dateTicks)}` : `id:${atom.noteid}`;
@@ -317,8 +297,7 @@ export function modifierDistance(
 ): number {
   const total = new CompensatedSum();
   const quarters = (ticks: number) => ticks / ticksPerQuarter;
-  // Closed over `jnd` rather than threaded through eleven call sites: the override belongs to
-  // the RUN, not to each row, and passing it eleven times would be eleven chances to forget.
+  // Closed over `jnd`: the override belongs to the run, not to each row.
   const priceRow = (key: ComparisonJndKey, x: Valued<number>, y: Valued<number>): number =>
     priceRowWith(key, x, y, jnd, capped);
 
@@ -395,9 +374,9 @@ export function modifierDistance(
     priceRow('articulation/articulation@absoluteDelayMs', valued(a.delayMs), valued(b.delayMs)),
   );
 
-  // detuneCents / detuneHz are INERT (R14): read, written onto the note, and consumed by
-  // nothing. R9b's rule — zero density, reported where the documents differ — so they are
-  // deliberately absent from this sum rather than forgotten.
+  // detuneCents / detuneHz are inert (R14): read, written onto the note, consumed by nothing.
+  // R9b's rule is zero density, reported where the documents differ, so they are deliberately
+  // absent from this sum.
   return total.total;
 }
 
@@ -422,8 +401,8 @@ export interface ArticulationDistance {
    *
    * They sum to {@link distance} up to summation order: the DP accumulates along its path and
    * this list is summed by the caller, so the two agree to within floating-point associativity
-   * rather than bit for bit. AD-19's table closes on THIS decomposition, which is why it is
-   * the shape the aggregation takes rather than the scalar.
+   * rather than bit for bit. AD-19's table closes on this decomposition, which is why the
+   * aggregation takes it rather than the scalar.
    */
   readonly atoms: readonly EventAtomMass[];
   /**
@@ -432,9 +411,9 @@ export interface ArticulationDistance {
    */
   readonly datePositionKnown: boolean;
   /**
-   * How many ANCHORS of the chosen alignment had §4's cap bind on at least one row (AD-2).
+   * How many anchors of the chosen alignment had §4's cap bind on at least one row (AD-2).
    *
-   * Counted over the OPTIMUM rather than inside the cost function, which the DP evaluates at
+   * Counted over the optimum rather than inside the cost function, which the DP evaluates at
    * every cell of its table: a counter incremented there would report the search rather than
    * the answer.
    */
@@ -444,10 +423,10 @@ export interface ArticulationDistance {
 /**
  * `d_articulation` over the window — the alignment's own optimum (§5.6/AD-7).
  *
- * The alignment IS the distance: §5.6 makes the minimized functional the semantic definition,
- * so this function's job is to supply the two costs and hand the argmin's value back. An anchor
- * outside the window is dropped before aligning, because §5.0's window is what every other
- * dimension integrates over and an atom beyond it is not performed in the compared interval.
+ * The alignment is the distance: §5.6 makes the minimized functional the semantic definition,
+ * so this function supplies the two costs and hands the argmin's value back. An anchor outside
+ * the window is dropped before aligning, because §5.0's window is what every other dimension
+ * integrates over and an atom beyond it is not performed in the compared interval.
  */
 export function articulationDistance(
   a: ArticulationAtoms,
@@ -542,10 +521,10 @@ export interface DefaultArticulationDistance {
  * §5.7's `step` epsilon family, exactly, and it is why this component adds no numerical error
  * to the one the alignment already carries.
  *
- * A step with no def in force — the two CANCELLING dispositions of AD-37.2, and the whole
- * pre-first-switch region of a document that has no default at all — prices as the NEUTRAL
- * modifier and never as `⊥`: the renderer performs such a note at its written duration, which
- * is a known value rather than an unreadable one.
+ * A step with no def in force — the two cancelling dispositions of AD-37.2, and the whole
+ * pre-first-switch region of a document that has no default at all — prices as the neutral
+ * modifier and never as `⊥`: the renderer performs such a note at its written duration, a known
+ * value rather than an unreadable one.
  */
 export function defaultArticulationDistance(
   a: DefaultArticulationCurve,
@@ -563,8 +542,8 @@ export function defaultArticulationDistance(
       if (step.startTicks > startTicks && step.startTicks < endTicks) edges.add(step.startTicks);
   const grid = [...edges].sort((x, y) => x - y);
 
-  // One modifier per DEF, not per cell: a default in force across twenty steps resolves the
-  // same element twenty times otherwise, and the resolution is the expensive half.
+  // One modifier per def, not per cell: a default in force across twenty steps would otherwise
+  // resolve the same element twenty times, and the resolution is the expensive half.
   const modifiers = new Map<Element | null, EffectiveModifier>();
   const modifierAt = (curve: DefaultArticulationCurve, ticks: number): EffectiveModifier => {
     const def = defaultArticulationAt(curve, ticks);
@@ -609,11 +588,11 @@ export function defaultArticulationDistance(
   return { distance: total.total, cells, cappedCells };
 }
 
-/** AD-2's cap events, counted over the chosen alignment (see {@link ArticulationDistance}). */
 /** What an out-of-range read into an anchor list is called (`indexing.ts`). */
 const A_ANCHORS = 'the a-side articulation anchors';
 const B_ANCHORS = 'the b-side articulation anchors';
 
+/** AD-2's cap events, counted over the chosen alignment (see {@link ArticulationDistance}). */
 function cappedAnchorsOf(
   alignment: EventAlignment,
   a: readonly ArticulationAnchor[],

@@ -5,40 +5,33 @@
  * above-threshold segments by Ruzzo–Tompa, and the rows × (segments + remainder) table that
  * closes on `D`.
  *
- * ## What this module takes, and why it is a measure rather than a function
+ * ## Densities are measures, not functions
  *
- * §5.0: *"Densities are measures. `p_k` = an absolutely continuous part (curves, step
- * functions, distribution spans) plus **atoms** at event dates."* {@link DimensionDensity}
- * carries both, because the table has to sum both and a representation that flattened atoms
- * into an average density would put an articulation event's mass in the wrong column — atoms
- * are exactly where the mass is concentrated, so smearing them is not a rounding choice.
+ * §5.0: `p_k` = an absolutely continuous part (curves, step functions, distribution spans) plus
+ * atoms at event dates. {@link DimensionDensity} carries both, because the table has to sum
+ * both and flattening atoms into an average density would put an articulation event's mass in
+ * the wrong column — atoms are exactly where the mass is concentrated.
  *
- * A matched pair of events at DIFFERENT dates is not an atom: AD-7 spreads its mass uniformly
+ * A matched pair of events at differing dates is not an atom: AD-7 spreads its mass uniformly
  * over `[min(dA, dB), max(dA, dB)]`, so `λ_date` is visible in the timeline instead of
- * teleporting the difference to one end. {@link DensityAtom} therefore carries an interval,
- * and a point mass is the case where the two ends coincide.
+ * teleporting the difference to one end. {@link DensityAtom} therefore carries an interval, and
+ * a point mass is the case where the two ends coincide.
  *
- * ## The one honest gap: root refinement needs a pointwise density
+ * ## Root refinement needs a pointwise density
  *
- * AD-19/M9b requires the segment boundaries to be refined to the ROOTS of `p_D − τ_D`, because
+ * AD-19/M9b requires the segment boundaries to be refined to the roots of `p_D − τ_D`, because
  * `p_D` is continuous inside a cell for the curve dimensions and a cell-quantized edge can sit
- * many bars from the true crossing. That needs `p_k` evaluated at a point — and the shipped
- * distance modules return cells carrying `mass` only. {@link DensityCell.densityAt} is
- * therefore optional: where a dimension supplies it the roots are found and the boundaries are
- * exact, and where it does not the cell's mean density stands in and
- * {@link SegmentPass.cellQuantizedDimensions} NAMES the dimensions that fell back, so a report
- * can say which boundaries are approximate rather than implying all of them are exact.
+ * many bars from the true crossing. That needs `p_k` evaluated at a point, which not every
+ * dimension can do. {@link DensityCell.densityAt} is therefore optional: where a dimension
+ * supplies it the roots are found and the boundaries are exact; where it does not the cell's
+ * mean density stands in and {@link SegmentPass.cellQuantizedDimensions} names the dimensions
+ * that fell back, so a report can say which boundaries are approximate.
  *
- * This is a real limitation and it is reported rather than hidden. The remedy is to have each
- * `*Distance` module hand back the integrand it already evaluates; that is a cross-module
- * change and it belongs to whoever wires the dimensions in, not here.
- *
- * ## The table closes for ANY partition, which is the point of stating it
+ * ## The table closes for any partition
  *
  * For any partition `{S_s}` of the window, `Σ_s ∫_{S_s} p_k = d_k` by countable additivity and
  * `Σ_k ω_k Σ_s c_{k,s} = D` because `D` is a weighted sum (AD-19, R4). Ruzzo–Tompa decides only
- * WHICH partition is reported. Saying so keeps the headline capability from being entangled
- * with the thresholding — a reader who distrusts the segmentation can still trust `D`.
+ * which partition is reported; `D` itself does not depend on the segmentation.
  */
 import { filterMap, fromEntriesExact, pairwise, zipWith } from '../prelude/index.js';
 import { elementAt, numberAt } from '../prelude/seq.js';
@@ -51,13 +44,12 @@ const RUNS = "Ruzzo-Tompa's run list";
 const TABLE = "the segment table's cells";
 
 /**
- * §7.1's event constant, in QUARTERS.
+ * §7.1's event constant, in quarters.
  *
- * `κ` makes one 1-JND event commensurable with `κ` quarters of 1-JND sustained deviation,
- * which is what lets an atom and a cell share a column of the same table. The unit is the
- * whole content of the constant: an alignment's optimum is in JND, the table is in
- * JND·quarters, and `κ` is the bridge. Default 1 [convention], non-overridable in v1
- * (AD-25.7) — it is documented registry data, not a knob.
+ * `κ` makes one 1-JND event commensurable with `κ` quarters of 1-JND sustained deviation, which
+ * is what lets an atom and a cell share a column of the same table: an alignment's optimum is
+ * in JND, the table is in JND·quarters, and `κ` is the bridge. Default 1 [convention],
+ * non-overridable in v1 (AD-25.7).
  */
 export const EVENT_KAPPA_QUARTERS = 1;
 
@@ -67,10 +59,10 @@ export const DEFAULT_THRESHOLD_JND = 1;
 /**
  * The absolutely continuous part of one dimension's density over one cell of its own grid.
  *
- * `mass` is the authority — it is what the dimension integrated and what the row sum must
- * reproduce. `densityAt` is an optional refinement used only to locate threshold crossings
- * inside the cell; a caller that supplies one whose integral disagrees with `mass` would move
- * a segment boundary without moving any reported mass, which is why the two are kept apart.
+ * `mass` is the authority — what the dimension integrated, and what the row sum must reproduce.
+ * `densityAt` is an optional refinement used only to locate threshold crossings inside the
+ * cell; a sampler whose integral disagrees with `mass` can move a segment boundary but no
+ * reported mass.
  */
 export interface DensityCell {
   readonly startQuarters: number;
@@ -102,7 +94,7 @@ export interface DimensionDensity {
   readonly distance: number;
 }
 
-/** A cell of the SEGMENT grid, scored against the threshold. */
+/** A cell of the segment grid, scored against the threshold. */
 export interface ScoredCell {
   readonly startQuarters: number;
   readonly endQuarters: number;
@@ -133,23 +125,19 @@ export interface SegmentPass {
   readonly cells: readonly ScoredCell[];
   readonly segments: readonly AggregateSegment[];
   /**
-   * Mass of `p_D` outside every segment — the table's last column. **Clamped at 0** (W3
-   * MINOR-1); see {@link remainderUnderflow} for the magnitude that was clamped away.
+   * Mass of `p_D` outside every segment — the table's last column. Clamped at 0 (W3 MINOR-1);
+   * see {@link remainderUnderflow} for the magnitude that was clamped away.
    */
   readonly remainderMass: number;
   /**
    * How far below zero the subtraction went, `≥ 0`, before the clamp.
    *
-   * A mass is non-negative, and this one is computed by SUBTRACTION from the row total — which
-   * is the right choice, because it is what makes the table close exactly — so it inherits the
-   * root refinement's quadrature error with the opposite sign. Measured on four of the seven
-   * vendored pairs (worst `−1.83` against a `D` of 22357, i.e. 8e-5 of it), which put an
-   * impossible value into a caller-visible field while every headline number stayed right.
-   * P-C11's walker cannot see it, because a negative mass is finite.
-   *
-   * So the field is clamped and the magnitude is reported rather than discarded: a reader who
-   * wants to know whether the segmentation is well conditioned has the number, and one who
-   * wants a mass gets a mass.
+   * A mass is non-negative, and this one is computed by subtraction from the row total — which
+   * is what makes the table close exactly — so it inherits the root refinement's quadrature
+   * error with the opposite sign. Measured on four of the seven vendored pairs, worst `−1.83`
+   * against a `D` of 22357 (8e-5 of it); P-C11's walker cannot see it, because a negative mass
+   * is finite. The magnitude is reported rather than discarded so that a reader can tell
+   * whether the segmentation is well conditioned.
    */
   readonly remainderUnderflow: number;
   readonly thresholdPerQuarter: number;
@@ -164,7 +152,7 @@ export interface SegmentPass {
 export interface AttributionTable {
   readonly dimensions: readonly ComparisonDimension[];
   readonly columnCount: number;
-  /** UNWEIGHTED `c_{k,s}`, row-major: `dimensions.length × columnCount`. */
+  /** Unweighted `c_{k,s}`, row-major: `dimensions.length × columnCount`. */
   readonly cells: readonly number[];
   /** `= d_k`, unweighted. */
   readonly rowSums: readonly number[];
@@ -179,7 +167,7 @@ export interface AttributionTable {
 /** The weight vector, defaulted and validated by the caller (§7.2's `ω_k = 1`). */
 export type DimensionWeights = Readonly<Record<ComparisonDimension, number>>;
 
-/** `ω_k = 1` for every dimension — §7.2's default, kept because it is defensible, not neutral. */
+/** `ω_k = 1` for every dimension — §7.2's default. */
 export function defaultWeights(): DimensionWeights {
   return fromEntriesExact(COMPARISON_DIMENSIONS, () => 1);
 }
@@ -213,10 +201,10 @@ export function aggregateDistance(
 /**
  * The mass `p_k` places in `[start, end)`, cells and atoms together.
  *
- * A cell is assumed to distribute its mass UNIFORMLY when it is only partly covered, which is
- * exact whenever the segment grid carries every cell edge — and it does, by construction of
- * {@link segmentPass}. The clause exists so that a caller passing a coarser interval still
- * gets a defined answer rather than a silently wrong one.
+ * A partly covered cell is assumed to distribute its mass uniformly, which is exact whenever
+ * the segment grid carries every cell edge — and it does, by construction of
+ * {@link segmentPass}. The clause is there so a caller passing a coarser interval still gets a
+ * defined answer.
  */
 export function massIn(
   density: DimensionDensity,
@@ -232,8 +220,8 @@ export function massIn(
   }
   for (const atom of density.atoms) {
     if (atom.endQuarters === atom.startQuarters) {
-      // A point mass belongs to the cell it OPENS — right-continuity (A-B1, R27), the same
-      // convention every curve reader uses, so an atom on a boundary is charged once.
+      // A point mass belongs to the cell it opens — right continuity (A-B1, R27), so an atom
+      // on a boundary is charged once.
       if (atom.startQuarters >= startQuarters && atom.startQuarters < endQuarters)
         total.add(atom.mass);
       continue;
@@ -248,16 +236,14 @@ export function massIn(
 /**
  * The part of a cell's mass lying in `[low, high]`.
  *
- * Where the cell carries a sampler, the SHAPE comes from the sampler and the SCALE from
- * `mass`: the sub-interval's share is `∫_low^high p / ∫_cell p`, rescaled to `mass`. Pro-rating
- * by length instead would let the root refinement move a boundary without moving any mass —
- * the exact inconsistency this module's own doc warns about — and the first version of this
- * function did precisely that, which its test caught by finding no segment at all where the
- * density plainly crosses the threshold.
+ * Where the cell carries a sampler, the shape comes from the sampler and the scale from `mass`:
+ * the sub-interval's share is `∫_low^high p / ∫_cell p`, rescaled to `mass`. Pro-rating by
+ * length instead lets the root refinement move a boundary without moving any mass, so no
+ * segment is found where the density plainly crosses the threshold.
  *
  * Rescaling rather than trusting the sampler's own integral keeps `mass` the authority, so the
- * row sums still reproduce `d_k` exactly whatever the sampler's quadrature error. A shape
- * integrating to zero falls back to the uniform split, which is the only defined answer.
+ * row sums reproduce `d_k` exactly whatever the sampler's quadrature error. A shape integrating
+ * to zero falls back to the uniform split, the only defined answer.
  */
 function cellMassBetween(cell: DensityCell, low: number, high: number): number {
   const length = cell.endQuarters - cell.startQuarters;
@@ -297,12 +283,10 @@ function aggregateDensityAt(
 /**
  * One dimension's `p_k(t)`: its sampler where it has one, else the covering cell's mean.
  *
- * SUMMED over every covering cell, not taken from the first. A dimension evaluated per part
- * carries one cell list per part and they overlap in time — which is not a defect but the
- * meaning of `p_k(t) = Σ_parts p_{k,part}(t)`, and it is exactly what {@link massIn} already
- * does. A first-match lookup would make the root refinement see a fraction of the density the
- * mass reports, which is the shape-versus-scale inconsistency this module's own doc warns
- * about, one level down.
+ * Summed over every covering cell, not taken from the first: a dimension evaluated per part
+ * carries one cell list per part and they overlap in time, which is the meaning of
+ * `p_k(t) = Σ_parts p_{k,part}(t)` and what {@link massIn} does. A first-match lookup would
+ * make the root refinement see a fraction of the density the mass reports.
  */
 function pointwiseDensityAt(density: DimensionDensity, quarters: number): number {
   const total = new CompensatedSum();
@@ -322,13 +306,13 @@ function pointwiseDensityAt(density: DimensionDensity, quarters: number): number
  * §7.3's segment pass: score the grid, run Ruzzo–Tompa, rank the survivors.
  *
  * The grid is the union of every dimension's cell edges and atom endpoints, clipped to the
- * window, PLUS the roots of `p_D − τ_D` inside cells where a pointwise density is available
- * (AD-19/M9b). Cell edges are in the grid because a dimension's density can jump there, and
- * atom endpoints because that is where mass is concentrated.
+ * window, plus the roots of `p_D − τ_D` inside cells where a pointwise density is available
+ * (AD-19/M9b). Cell edges are in the grid because a dimension's density can jump there, atom
+ * endpoints because that is where mass is concentrated.
  *
- * A ZERO-WIDTH cell is legal and is why the score is a mass rather than a sample (AD-19/M9c):
- * co-dated instructions really occur, an atom's cell has `τ · 0 = 0`, and the score is then the
- * atom mass itself.
+ * A zero-width cell is legal — co-dated instructions occur — and is why the score is a mass
+ * rather than a sample (AD-19/M9c): such a cell has `τ · 0 = 0`, so its score is the atom mass
+ * itself.
  */
 export function segmentPass(
   densities: readonly DimensionDensity[],
@@ -375,8 +359,6 @@ export function segmentPass(
     remainderMass: Math.max(0, remainder),
     remainderUnderflow: remainder < 0 ? -remainder : 0,
     thresholdPerQuarter,
-    // Test and project in one pass: the two-pass form built an intermediate array of whole
-    // `DimensionEvaluation`s only to read one field off each.
     cellQuantizedDimensions: filterMap(densities, (density) =>
       weights[density.dimension] !== 0 &&
       density.cells.some((cell) => cell.densityAt === null && cell.endQuarters > cell.startQuarters)
@@ -411,9 +393,9 @@ function weightedMassIn(
     const density = densities.find((candidate) => candidate.dimension === dimension);
     if (density === undefined) continue;
     const weight = weights[dimension];
-    // A ZERO-WEIGHT dimension is excluded from `p_D` and therefore from the segment pass, but
-    // its `d_k` is still computed and reported (AD-19) — which is what makes §7.4's
-    // dimension-selective recipe work rather than merely hiding a dimension.
+    // A zero-weight dimension is excluded from `p_D` and so from the segment pass, but its
+    // `d_k` is still computed and reported (AD-19) — what §7.4's dimension-selective recipe
+    // rests on.
     if (weight === 0) continue;
     total.add(weight * massIn(density, startQuarters, endQuarters));
   }
@@ -474,9 +456,9 @@ function summarize(
     mass.add(cell.mass);
     score.add(cell.score);
     const length = cell.endQuarters - cell.startQuarters;
-    // A zero-width cell is an atom: its "density" is unbounded, so `peak` reports the
-    // continuous part only and the atom's contribution is visible in `mass`. Reporting
-    // Infinity here would poison §9.6's finiteness discipline for a real document.
+    // A zero-width cell is an atom: its density is unbounded, so `peak` reports the continuous
+    // part only and the atom's contribution stays visible in `mass`. Reporting Infinity would
+    // poison §9.6's finiteness discipline for a real document.
     if (length <= 0) continue;
     const density = cell.mass / length;
     if (density > peak) {
@@ -510,11 +492,10 @@ function compareSegments(
 /**
  * Ruzzo–Tompa: every maximal scoring subsequence of `scores`, in left-to-right order.
  *
- * A subsequence is maximal when it scores positively, contains no proper subsequence of
- * greater score, and is contained in no longer subsequence of greater-or-equal score. The set
- * is CANONICAL — a run extended by a zero-score cell contains a proper subsequence of equal
- * score and therefore fails maximality, so boundary zeros are never absorbed (§7.3, and the
- * math lens attacked exactly this).
+ * A subsequence is maximal when it scores positively, contains no proper subsequence of greater
+ * score, and is contained in no longer subsequence of greater-or-equal score. The set is
+ * canonical: a run extended by a zero-score cell contains a proper subsequence of equal score
+ * and therefore fails maximality, so boundary zeros are never absorbed (§7.3).
  *
  * The algorithm is Ruzzo & Tompa's (1999) verbatim, with `leftTotal` the cumulative score
  * immediately before a run and `rightTotal` the cumulative score at its end. Its list carries
@@ -547,27 +528,16 @@ export function maximalScoringRuns(
     cumulative = candidate.rightTotal;
 
     for (;;) {
-      // The BACKWARD scan is load-bearing: the list's invariant is that `leftTotal` increases
-      // strictly, so the last qualifying run is usually the last one and the loop exits on its
-      // first comparison. A `filter`/`reduce` would be a full pass every time.
+      // The backward scan is load-bearing: `leftTotal` increases strictly, so the last
+      // qualifying run is usually the last one and the loop exits on its first comparison.
       //
-      // **`partitionPoint` is the considered-and-rejected alternative, and it is named here
-      // because a future reader will re-propose it.** "The last `k` with `leftTotal_k <
-      // candidate.leftTotal`" over a strictly increasing list is a textbook binary search —
-      // `partitionPoint(runs.length, k => runs[k].leftTotal < candidate.leftTotal) - 1`, and it
-      // is EXACTLY equivalent on well-behaved input. Two reasons it is still worse:
-      //
-      // 1. **It is slower here, not faster.** The invariant makes the answer almost always the
-      //    LAST element, so this scan costs one comparison; a binary search costs log n every
-      //    time, and the constant is a closure call per probe. That is the same measurement the
-      //    section-D look-ahead in `tempoCurve` produced, in the opposite direction.
-      // 2. **A NaN score destroys the sortedness a binary search assumes.** `cumulative` is a
-      //    running sum over `scores`, and one NaN cell poisons every `leftTotal` after it, so
-      //    `leftTotal_k < candidate.leftTotal` stops being monotone in `k` and
-      //    `partitionPoint`'s contract is voided. The scan has no such contract: it just looks
-      //    at every element and takes the last that qualifies. Ruzzo-Tompa is where cell scores
-      //    arrive from an integral, and this module's own `remainderUnderflow` field exists
-      //    because those integrals are not assumed to be well-behaved.
+      // Not `partitionPoint(runs.length, k => runs[k].leftTotal < candidate.leftTotal) - 1`,
+      // which is equivalent on well-behaved input but costs log n probes where this costs one,
+      // and assumes a sortedness `NaN` destroys: `cumulative` is a running sum over `scores`,
+      // so one `NaN` cell poisons every later `leftTotal` and `leftTotal_k < candidate.leftTotal`
+      // stops being monotone in `k`. The scan just takes the last element that qualifies. Cell
+      // scores arrive here from an integral, and `remainderUnderflow` exists because those
+      // integrals are not assumed to be well behaved.
       let j = -1;
       for (let k = runs.length - 1; k >= 0; --k)
         if (elementAt(runs, k, RUNS).leftTotal < candidate.leftTotal) {
@@ -594,9 +564,9 @@ export function maximalScoringRuns(
 /**
  * AD-19's table: unweighted `c_{k,s}` per dimension per column, with the closure check.
  *
- * Columns are the ranked segments followed by ONE remainder column, and the cells are
- * unweighted so that a reader can apply their own weights to the same table — which is also
- * why `rowSums` reproduces `d_k` exactly rather than `ω_k d_k`.
+ * Columns are the ranked segments followed by one remainder column. The cells are unweighted so
+ * a reader can apply their own weights to the same table, which is also why `rowSums`
+ * reproduces `d_k` rather than `ω_k d_k`.
  */
 export function attributionTable(
   densities: readonly DimensionDensity[],
@@ -656,8 +626,7 @@ function aggregateDistanceFromRows(
   weights: DimensionWeights,
 ): number {
   const total = new CompensatedSum();
-  // Zipped rather than indexed: the two sequences are the table's rows, read in the same order
-  // the summation has to keep.
+  // Row order is the summation order `aggregateDistance` fixes (R2).
   for (const term of zipWith(dimensions, rowSums, (dimension, sum) => weights[dimension] * sum))
     total.add(term);
   return total.total;
@@ -679,30 +648,15 @@ export interface EquivalenceBlock {
 }
 
 /**
- * "93 % of the weighted deviation mass is below the perceptual threshold" — the sentence a
- * scholar wants, as data (AD-23, C11).
+ * The length of `{ t ∈ window : p_k(t) > τ_k }`, at cell resolution.
  *
- * This is the module's methodological answer to Hall's prohibition on attacking a music roll
- * with a ruler: the JND threshold is what makes "these two are the same performance" a claim
- * with a number behind it, and leaving the division to the caller left the claim unmade. It
- * also answers mlign's question directly — "is the augmented sample distinguishable?" is
- * `aboveThresholdLengthFraction > 0`.
- *
- * Fractions of ZERO are `0`, not `NaN`: a pair with no deviation at all has none of it above
- * threshold, which is the true answer and the one §9.6's finiteness discipline requires.
- */
-/**
- * The LENGTH of `{ t ∈ window : p_k(t) > τ_k }`, at cell resolution.
- *
- * Summing each cell's own length was wrong wherever a dimension is evaluated over several part
- * scopes: the cell lists then OVERLAP in time — which is not a defect but the meaning of
- * `p_k(t) = Σ_parts p_{k,part}(t)` — so three parts deviating everywhere reported a "fraction"
- * of 3.0, and §7.3's mandated sentence would have printed "300 % of the window" (W3 MAJOR-4).
- *
- * So the measure is taken over the union of the cell edges, and each elementary interval carries
- * the density of every cell covering it, which is the same summation {@link massIn} and
- * {@link pointwiseDensityAt} already perform. The result is a length inside the window by
- * construction, so the fraction cannot leave `[0, 1]`.
+ * Not the sum of each cell's own length: where a dimension is evaluated over several part
+ * scopes the cell lists overlap in time — the meaning of `p_k(t) = Σ_parts p_{k,part}(t)` — so
+ * three parts deviating everywhere reported a fraction of 3.0 and §7.3's mandated sentence
+ * printed "300 % of the window" (W3 MAJOR-4). The measure is taken over the union of the cell
+ * edges instead, each elementary interval carrying the density of every cell covering it — the
+ * summation {@link massIn} and {@link pointwiseDensityAt} already perform. The result is a
+ * length inside the window by construction, so the fraction cannot leave `[0, 1]`.
  */
 function aboveThresholdLength(
   density: DimensionDensity,
@@ -723,7 +677,7 @@ function aboveThresholdLength(
   for (const [low, high] of pairwise(grid)) {
     const length = high - low;
     if (!(length > 0)) continue;
-    // Cells only: an ATOM is a point mass, and a set of measure zero is never "above threshold
+    // Cells only: an atom is a point mass, and a set of measure zero is never "above threshold
     // for a length". Its mass is where the event dimensions are visible, in the mass fraction.
     const mass = new CompensatedSum();
     for (const cell of density.cells) {
@@ -737,6 +691,17 @@ function aboveThresholdLength(
   return total.total;
 }
 
+/**
+ * "93 % of the weighted deviation mass is below the perceptual threshold" — the sentence a
+ * scholar wants, as data (AD-23, C11).
+ *
+ * The JND threshold is what puts a number behind "these two are the same performance", and
+ * leaving the division to the caller left the claim unmade. It answers mlign's question
+ * directly: "is the augmented sample distinguishable?" is `aboveThresholdLengthFraction > 0`.
+ *
+ * Fractions of zero are `0`, not `NaN`: a pair with no deviation at all has none of it above
+ * threshold, which is the true answer and the one §9.6's finiteness discipline requires.
+ */
 export function equivalenceBlock(
   densities: readonly DimensionDensity[],
   thresholds: DimensionWeights,
@@ -759,11 +724,10 @@ export function equivalenceBlock(
       const inSegments = new CompensatedSum();
       for (const segment of segments)
         inSegments.add(massIn(density, segment.startQuarters, segment.endQuarters));
-      // The per-dimension LENGTH fraction is this dimension's OWN above-threshold length, not
-      // the aggregate segments' — the aggregate figure is identical for every dimension and
-      // would make the field vacuous. §7.3 licenses exactly this as the secondary,
-      // explicitly non-closing per-dimension product; it is measured at cell resolution,
-      // without the aggregate pass's root refinement, which is why it is a descriptor.
+      // This dimension's own above-threshold length, not the aggregate segments' — the
+      // aggregate figure is identical for every dimension and would make the field vacuous.
+      // §7.3's secondary, explicitly non-closing per-dimension product: measured at cell
+      // resolution, without the aggregate pass's root refinement, so it is a descriptor.
       const above = aboveThresholdLength(
         density,
         thresholds[dimension],

@@ -2,11 +2,11 @@
  * The default-articulation step function — DESIGN.md §5.5, as amended by AD-37.
  *
  * A `<style>` switch in an `articulationMap` can carry `@defaultArticulation`, which the
- * renderer applies to **every note that has no explicit articulation of its own** (atoms shadow
- * the default rather than adding to it — AD-11ii/R5). That makes the default a step function of
+ * renderer applies to every note that has no explicit articulation of its own (atoms shadow the
+ * default rather than adding to it — AD-11ii/R5). That makes the default a step function of
  * score time, and this module builds it.
  *
- * ## The step function is RETROACTIVE (AD-37.1)
+ * ## The step function is retroactive (AD-37.1)
  *
  * ```ts
  * // ArticulationMap.renderArticulationToMap_noMillisecondModifiers:255-283
@@ -18,34 +18,33 @@
  *     defaultArticulationIndex++;
  * ```
  *
- * The index starts at **0** and is never tested against its own date: the `while` only advances
- * when the NEXT switch's date has been passed, so `defaultArticulations[0]` governs every note
- * *before* the first switch as well. Executed on notes at 0/360/720/1080, each 100 ticks, with a
- * single switch at **720** carrying `defaultArticulation="stacc"` (×0.5): durations
- * **[50, 50, 50, 50]**. Moving the switch to 1440 and the notes to 0/720/1440 gives
- * **[50, 50, 50]** — the reach is the whole map, not a window.
+ * The index starts at 0 and is never tested against its own date: the `while` only advances
+ * when the next switch's date has been passed, so `defaultArticulations[0]` governs every note
+ * before the first switch as well. Executed on notes at 0/360/720/1080, each 100 ticks, with a
+ * single switch at 720 carrying `defaultArticulation="stacc"` (×0.5): durations
+ * `[50, 50, 50, 50]`. Moving the switch to 1440 and the notes to 0/720/1440 gives
+ * `[50, 50, 50]` — the reach is the whole map, not a window.
  *
- * A step function that simply had no value before its first step is the natural reading of
- * §5.5's "built from the resolved style-switch list", and it is what this module would have
- * done unruled. It is wrong by `|ln 0.5| = 0.693` nepers held across the entire pre-switch
- * region, which on a document whose only switch is late is most of the piece.
+ * The natural reading of §5.5's "built from the resolved style-switch list" — a step function
+ * with no value before its first step — is wrong by `|ln 0.5| = 0.693` nepers held across the
+ * entire pre-switch region, most of the piece where the only switch is late.
  *
- * This is AD-35.4's hazard class in its third instance and a new shape — not "entries or
- * musical objects" but **"index 0 is used before its date has arrived"**. The two earlier
- * instances are `renderMovementToMap`'s `size() - 1` guard and `getPreviousPosition`'s `j > 0`.
+ * A third instance of AD-35.4's hazard class, in a new shape: "index 0 is used before its date
+ * has arrived", after `renderMovementToMap`'s `size() - 1` guard and `getPreviousPosition`'s
+ * `j > 0`.
  *
  * ## Three dispositions, two of which cancel (AD-37.2)
  *
- * | the switch                                     | the renderer                          | the default        |
- * | ---------------------------------------------- | ------------------------------------- | ------------------ |
- * | `@name.ref` names no `articulationStyle`       | `continue` before the list is touched | previous CONTINUES |
- * | resolvable style, no `@defaultArticulation`    | pushes `null`                         | CANCELLED          |
- * | resolvable style, `@defaultArticulation` unknown | pushes `null`, logs a warning       | CANCELLED          |
+ * | the switch                                | the renderer                         | default   |
+ * | ----------------------------------------- | ------------------------------------ | --------- |
+ * | `@name.ref` names no articulationStyle    | `continue`s before touching the list | continues |
+ * | style resolves, no `@defaultArticulation` | pushes `null`                        | cancelled |
+ * | style resolves, unknown def name          | pushes `null`, logs a warning        | cancelled |
  *
  * All three executed, on notes at 0/360/720/1080 with `stacc` in force from 0 and a second
  * switch at 720: `[50,50,50,50]` for the unresolvable style, `[50,50,100,100]` for both
  * cancelling cases. §5.5 named one canceller and one continuer; the third row is the one a
- * reader would guess wrong, because an unknown *def* name looks like an unknown *style* name.
+ * reader guesses wrong, because an unknown *def* name looks like an unknown *style* name.
  */
 import { head, isNonEmpty, withNext } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -64,7 +63,7 @@ export interface DefaultArticulationStep {
   readonly startTicks: number;
   /** Until the next switch that survived the style test; `+∞` for the last one. */
   readonly endTicks: number;
-  /** The `<articulationDef>` in force, or null where this switch CANCELLED the default. */
+  /** The `<articulationDef>` in force, or null where this switch cancelled the default. */
   readonly def: Element | null;
   /** `@defaultArticulation` as written, whether or not it resolved. */
   readonly name: string | null;
@@ -79,9 +78,9 @@ export interface DefaultArticulationNote {
 
 export interface DefaultArticulationCurve {
   /**
-   * The steps, in switch order. The FIRST step's `startTicks` is **0**, not its switch's date,
+   * The steps, in switch order. The first step's `startTicks` is 0, not its switch's date,
    * because the renderer's index starts at 0 unchecked (AD-37.1); its switch date is kept in
-   * {@link firstSwitchTicks} so the retroactive window is legible rather than merely applied.
+   * {@link firstSwitchTicks} so the retroactive window stays legible.
    */
   readonly steps: readonly DefaultArticulationStep[];
   /** The date of the first surviving switch, or null where there is none. */
@@ -132,7 +131,7 @@ export function readDefaultArticulation(
       resolution.globalEnvironment,
     );
 
-    // Disposition 1: the switch never reaches the list, so the PREVIOUS default continues.
+    // Disposition 1: the switch never reaches the list, so the previous default continues.
     if (style === null) {
       notes.push({
         kind: 'unresolved-style',
@@ -164,7 +163,7 @@ export function readDefaultArticulation(
     for (const candidate of style.styleDef.getChildElements('articulationDef'))
       if (attribute('name', candidate)?.getValue() === name) def = candidate;
 
-    // Disposition 3: the def name does not resolve — ALSO a null, with a warning.
+    // Disposition 3: the def name does not resolve — also a null, with a warning.
     if (def === null) {
       raw.push({ dateTicks, def: null, name, cause: 'unknown-def' });
       notes.push({
@@ -185,10 +184,7 @@ export function readDefaultArticulation(
   if (!isNonEmpty(raw)) return { ...neutralDefaultArticulation(), notes };
 
   const firstSwitchTicks = head(raw).dateTicks;
-  // Each step runs to the NEXT switch, and the last runs to the end of time — which is exactly
-  // `withNext`: every entry with its successor, and `null` for the one that has none. The
-  // sentinel is read where it is used (`next?.dateTicks ?? Infinity`) rather than baked into a
-  // `[...raw.slice(1).map(…), Infinity]` array that then had to be zipped away.
+  // Each step runs to the next switch, and the last to the end of time.
   const steps: readonly DefaultArticulationStep[] = withNext(raw).map(([step, next], index) => ({
     // AD-37.1: the first step reaches back to 0.
     startTicks: index === 0 ? 0 : step.dateTicks,
@@ -218,28 +214,23 @@ export function readDefaultArticulation(
 }
 
 /*
- * The two scans below are the shape `segments.ts`'s `coveringSegmentAt` replaces in
- * `accentuationCurve`, `rubatoCurve` and `pedalCurve` — and they are LEFT AS SCANS, for a reason
- * that is about this reader and not about the shape.
+ * The two scans below stay scans, where the sibling curve readers use `segments.ts`'s
+ * `coveringSegmentAt`.
  *
- * `coveringSegmentAt` is a binary search, so it needs `startTicks` non-decreasing. Every sibling
- * earns that by dropping non-finite dates before it builds its raws — `datedView` sorts a
- * `NaN`-dated entry to the FRONT (`datedView.ts:19-27`), and a `NaN` start would make the
- * predicate non-monotone. **This reader has no such guard.** The loop above takes every `<style>`
- * entry whose style resolves, `dateTicks = entry.date * scaleFactor` and all, so a `<style>` with
- * an unparseable `@date` reaches `raw` with a `NaN` date.
+ * That is a binary search, so it needs `startTicks` non-decreasing. Every sibling earns it by
+ * dropping non-finite dates before building its raws; this reader has no such guard — the loop
+ * above takes every `<style>` entry whose style resolves, `dateTicks = entry.date * scaleFactor`
+ * and all, so a `<style>` with an unparseable `@date` reaches `raw` with a `NaN` date.
  *
- * One such entry is harmless — it lands at `raw[0]`, and AD-37.1 forces the first step's start to
- * 0 regardless. TWO are not: `datedView` puts both at the front, so `steps[1].startTicks` is
- * `NaN` and the non-monotonicity is in the MIDDLE of the array, where the leading-`NaN` argument
- * ("the bound can only examine index 0 when no later index satisfies the predicate") does not
- * reach.
+ * One such entry is harmless: `datedView` sorts it to the front (`datedView.ts:19-27`) and
+ * AD-37.1 forces the first step's start to 0 regardless. Two are not — both sort to the front,
+ * so `steps[1].startTicks` is `NaN` and the non-monotonicity sits in the middle of the array,
+ * out of reach of the leading-`NaN` argument that the bound can only examine index 0 when no
+ * later index satisfies the predicate.
  *
- * That is worth a second line, because `editState.ts:82-84` states the opposite as settled:
- * *"`datedView` sorts such entries to the front and every reader skips them"*. Every reader but
- * this one. Adding the guard would make these two convertible and would align the family — but
- * it changes what a malformed document READS AS, not how a loop is spelled, so it belongs to
- * whoever rules on the reading rather than to a loop-shape pass. Reported, not taken.
+ * `editState.ts:82-84` states the opposite as settled — "`datedView` sorts such entries to the
+ * front and every reader skips them". Every reader but this one. Adding the guard changes what
+ * a malformed document reads as, so it needs a ruling.
  */
 
 /** The default in force at `ticks` — the `<articulationDef>`, or null where none is. */

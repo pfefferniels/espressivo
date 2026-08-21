@@ -1,20 +1,19 @@
 /**
  * The asynchrony deviation density and its integral — DESIGN.md §5.7.
  *
- * `p_asynchrony(t) = d_row(offset_A(t), offset_B(t))` where `d_row` is §4's **capped local
- * metric**, not a bare difference. This is the one W2 dimension that uses `localDistance`
- * rather than integrating a curve, and the reason is `⊥`: a span the renderer poisons with
- * NaN has no value to subtract, and §4 prices it at `δ_row` from everything and 0 from
- * itself. Feeding it through the same function that prices ordinary offsets is what keeps
- * the density total over the window (§5.0) and the metric axioms intact.
+ * `p_asynchrony(t) = d_row(offset_A(t), offset_B(t))` where `d_row` is §4's capped local metric,
+ * not a bare difference. This is the one dimension whose density IS `localDistance` rather
+ * than an integral over a curve, and the reason is `⊥`: a span the renderer poisons with NaN has no value
+ * to subtract, and §4 prices it at `δ_row` from everything and 0 from itself. Feeding it
+ * through the same function that prices ordinary offsets keeps the density total over the
+ * window (§5.0) and the metric axioms intact.
  *
  * Both curves are step functions, so every cell of the refinement grid is constant and the
- * integral over a cell is `d_row × cell length` — **exact**, no quadrature error. This
- * dimension's entry in §9.3's per-family epsilon record is therefore 0 in both units.
+ * integral over a cell is `d_row × cell length` — exact, no quadrature error. This dimension's
+ * entry in §9.3's per-family epsilon record is therefore 0 in both units.
  *
- * The `step` role is what `localDistance` was built for (§4's own wording, and w2a's note):
- * curve dimensions integrate and consume only the row's `jnd`; step and event rows use the
- * capped attribute metric.
+ * The `step` role is what `localDistance` was built for (§4): curve dimensions integrate and
+ * consume only the row's `jnd`; step and event rows use the capped attribute metric.
  */
 import { pairwise } from '../prelude/index.js';
 import { comparisonRowFor } from './registry.js';
@@ -33,13 +32,10 @@ export interface AsynchronyCell {
   /** True where §4's cap bound this cell — reported through the `capped` note kind. */
   readonly capped: boolean;
   /**
-   * `p_asynchrony(t)` in JND per quarter, at a position in QUARTERS (AD-51.1).
+   * `p_asynchrony(t)` in JND per quarter, at a position in quarters (AD-51.1).
    *
-   * The integrand this cell's mass was computed from, exposed rather than recomputed: AD-19
-   * refines segment boundaries to the ROOTS of `p_D − τ_D`, and a cell-quantized edge can sit
-   * many bars from the crossing. `mass` remains the authority — the aggregation rescales the
-   * sampler's shape onto it — so a sampler that disagreed with its own integral could move a
-   * boundary but never a reported number.
+   * The integrand this cell's mass was computed from, exposed so AD-19 can refine segment
+   * boundaries to the roots of `p_D − τ_D`. `mass` stays the authority — see `DensityCell`.
    */
   readonly densityAt: (quarters: number) => number;
 }
@@ -74,10 +70,9 @@ export function asynchronyGridTicks(
 /**
  * `d_asynchrony` over the window — exact, cell by cell.
  *
- * The offset is read at the cell's **left edge**, which is sound precisely because the grid
- * carries every breakpoint of both curves: no step falls strictly inside a cell, so the left
- * edge's value is the cell's value throughout. Right-continuity (A-B1) is what makes the
- * left edge the correct probe.
+ * The offset is read at the cell's left edge, which is sound because the grid carries every
+ * breakpoint of both curves: no step falls strictly inside a cell, so the left edge's value is
+ * the cell's value throughout. Right continuity (A-B1) makes the left edge the correct probe.
  */
 export function asynchronyDistance(
   a: AsynchronyCurve,
@@ -114,8 +109,7 @@ export function asynchronyDistance(
       endQuarters: cellEnd / ticksPerQuarter,
       mass,
       capped: local.capped,
-      // Constant across the cell: the grid carries every breakpoint of both step curves, so
-      // the left-edge reading IS the cell's reading throughout (A-B1).
+      // Constant across the cell — see this function's note on the left-edge probe.
       densityAt: () => local.distance,
     });
   }

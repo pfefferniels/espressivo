@@ -7,14 +7,14 @@
  *
  * ## Scopes, and how the parts are summed
  *
- * §5.0 evaluates per part, and AD-3's document-level rule is a SUM over the union of both
+ * §5.0 evaluates per part, and AD-3's document-level rule is a sum over the union of both
  * documents' parts. Two things follow, and they aggregate differently on purpose:
  *
- * - **Mass is additive.** Two parts deviating at bar 5 put twice the mass at bar 5, so cells and
- *   atoms are concatenated and the aggregate density is their sum. Overlapping cells are not a
- *   defect here; they are what `p_k(t) = Σ_parts p_{k,part}(t)` means.
- * - **A mean is not.** §1.2's decomposition takes moments, and P parts are P curves, not one. So
- *   the merged decomposition is taken over the DISJOINT UNION of the parts' curves — part `p`
+ * - Mass is additive. Two parts deviating at bar 5 put twice the mass at bar 5, so cells and
+ *   atoms are concatenated and the aggregate density is their sum. Overlapping cells are what
+ *   `p_k(t) = Σ_parts p_{k,part}(t)` means.
+ * - A mean is not. §1.2's decomposition takes moments, and P parts are P curves, not one. So the
+ *   merged decomposition is taken over the disjoint union of the parts' curves — part `p`
  *   occupies `[p·L, (p+1)·L)` of a virtual abscissa — which is exact, degenerates correctly when
  *   every part inherits one global map (P identical copies have the copy's moments), and needs
  *   no arbitrary choice of a representative part.
@@ -27,10 +27,9 @@
  * ## What is a distance and what is a descriptor
  *
  * `distance`, `mean`, the table and the matrices are distances. `meanSigned`, `levelSigned`,
- * `direction`, `cumulativeDrift` and the profile's `signed` series are DESCRIPTORS (§7.5, C2):
+ * `direction`, `cumulativeDrift` and the profile's `signed` series are descriptors (§7.5, C2):
  * they enter no `d_k`, no `D` and no table cell, and they do not satisfy the triangle
- * inequality. The report keeps them in separate fields for that reason and the docs say it once,
- * prominently.
+ * inequality. The report keeps them in separate fields for that reason.
  */
 import { fromEntriesExact, head, isNonEmpty, last, mapValues, pairwise } from '../prelude/index.js';
 
@@ -106,18 +105,27 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
- * §5.0's per-family accuracy record, in BOTH units (AD-28.2).
+ * §5.0's per-family accuracy record, in both units (AD-28.2).
  *
  * Every figure is measured and its measurement is on the campaign record; none is a target.
  * `relative` is the classical quadrature figure and `jnd` is the same error on the dimension's
- * own perceptual scale — which is the one that says whether the number is fit for purpose,
- * because the metric requirement is JND-scale exactness and the relative figures are numerical
- * hygiene above it.
+ * own perceptual scale — the one that says whether the number is fit for purpose, since the
+ * metric requirement is JND-scale exactness.
  *
- * ## What the `imprecision` relative figure is relative TO (AD-55.3)
+ * These are quadrature figures: the error an integrator makes against the integral it
+ * approximates, in ℝ. They do not bound floating-point rounding, and cannot — every quantity
+ * here is a sum of doubles and carries ulp-scale noise no quadrature analysis speaks to. That is
+ * invisible while a figure is large (tempo's 3.3e-6 dwarfs any rounding) and becomes the whole
+ * story at `step`, whose figure is an exact `0`: a consumer checking `scriptCost ≥ d − ε`
+ * against `0` is checking `scriptCost ≥ d` in exact arithmetic, which a float computation can
+ * miss by an ulp and does — measured, articulation at 9.296e-16. So compare against the stamped
+ * ε plus an ulp allowance on the magnitudes involved; a nonzero floor for `step` would state a
+ * quadrature error that does not exist (W4 MINOR-R2).
  *
- * The **support scale**, not the answer. `W₁` is computed as `∫|F_A − F_B| dx` over the union
- * support, so a small answer is a small difference of large integrals: the ABSOLUTE error is
+ * ## What the `imprecision` relative figure is relative to (AD-55.3)
+ *
+ * The support scale, not the answer. `W₁` is computed as `∫|F_A − F_B| dx` over the union
+ * support, so a small answer is a small difference of large integrals: the absolute error is
  * bounded by the quadrature and the naive relative error is not bounded at all as the two laws
  * approach each other. Measured over 14 pairs with closed forms derived from
  * `∫₀¹|Q_A − Q_B| du`:
@@ -128,43 +136,25 @@ import type {
  * | shifted `6e-6`                    | 6.0e-6   | 7.08e-16 | **1.18e-10**   | 1.18e-17            |
  * | shifted `6e-12`                   | 6.0e-12  | 3.24e-16 | **5.39e-05**   | 5.39e-18            |
  *
- * The published 3.6e-16 was the naive figure on WELL-SEPARATED pairs, where it happens to
+ * The published 3.6e-16 was the naive figure on well-separated pairs, where it happens to
  * coincide; two near-identical laws falsify it by eleven orders. So the field carries the
  * quantity that really is at machine precision (worst 3.0e-16, at the point-mass pairs where the
  * support scale degenerates to the separation itself and the two readings coincide), the `jnd`
  * figure is the operative one, and a caller reading `relative` as `|Δ|/W₁` should read it as
  * applying to well-separated pairs only.
  */
-/**
- * What these figures bound, and what they do not (W4 MINOR-R2).
- *
- * They are QUADRATURE figures: the error an integrator makes against the integral it
- * approximates, in ℝ. They do NOT bound floating-point rounding, and cannot — every quantity
- * here is a sum of doubles and carries ulp-scale noise no quadrature analysis speaks to.
- *
- * That distinction is invisible while a figure is large (tempo's 3.3e-6 dwarfs any rounding) and
- * becomes the whole story at `step`, whose figure is an exact `0`: a consumer checking
- * `scriptCost ≥ d − ε` against `0` is checking `scriptCost ≥ d` in exact arithmetic, which a
- * float computation can miss by an ulp and does — measured, articulation at 9.296e-16.
- *
- * So the contract is: compare against the stamped ε PLUS an ulp allowance on the magnitudes
- * involved. The alternative — inventing a nonzero floor for `step` — would state a quadrature
- * error that does not exist and would make the record say something false to spare the reader an
- * allowance they need for every other family too.
- */
 const EPSILON_FIGURES: Readonly<
   Record<EpsilonFamily, { readonly relative: number; readonly jnd: number }>
 > = Object.freeze({
-  // Piecewise-constant readings: the cell integral is `density × length`, with no quadrature
-  // in the time domain at all (§5.7, §5.9). The exact `0` is a claim about this family's
-  // GENUINELY exact members — asynchrony, articulation and ornamentation — and it stopped
-  // covering rubato at AD-60.1, which is why that dimension now has a family of its own.
+  // Piecewise-constant readings: the cell integral is `density × length`, with no quadrature in
+  // the time domain at all (§5.7, §5.9). The exact `0` covers this family's genuinely exact
+  // members — asynchrony, articulation and ornamentation — but not rubato, which AD-60.1 gave a
+  // family of its own.
   //
-  // `0` is the QUADRATURE figure and it is exact in ℝ. It is not a claim that the arithmetic is
-  // exact in doubles, and no family's figure is (W4 MINOR-R2): measured across every scope of
-  // the vendored corpus, articulation's worst shortfall is 9.296e-16 — about four ulps of a
-  // `d` of 1223, float rounding rather than quadrature error, eleven orders below CAPITAL-1's
-  // 7.51e-5. See the record's own contract note above for what a consumer must allow.
+  // `0` is the quadrature figure, exact in ℝ, and not a claim that the arithmetic is exact in
+  // doubles (W4 MINOR-R2): measured across every scope of the vendored corpus, articulation's
+  // worst shortfall is 9.296e-16 — about four ulps of a `d` of 1223, float rounding rather than
+  // quadrature error, eleven orders below CAPITAL-1's 7.51e-5.
   step: { relative: 0, jnd: 0 },
   // AD-28.1's graded mesh, worst case over the legal `meanTempoAt` range; the JND figure is
   // AD-28.2's, corrected for AD-27.6's halved constant.
@@ -182,22 +172,21 @@ const EPSILON_FIGURES: Readonly<
   // so this band cannot quietly absorb a regression.
   rubato: { relative: 2.718e-4, jnd: 7e-4 },
   // `W₁` against 14 closed forms derived from `∫₀¹|Q_A − Q_B| du`, measured relative to the
-  // laws' SUPPORT SCALE (AD-55.3) — see the note above on what that figure is relative to. The
-  // JND figure is the same absolute error on the row's own 30 ms / 3 velocity scale.
+  // laws' support scale (AD-55.3) — see the note above. The JND figure is the same absolute
+  // error on the row's own 30 ms / 3 velocity scale.
   imprecision: { relative: 3e-16, jnd: 1.2e-16 },
-  // The drift is a SECONDS quantity and has no JND scale; the 0 is not a claim of exactness
-  // but the true statement that this family contributes no JND-scale error to any distance,
-  // because the drift enters no `d_k`.
+  // The drift is a seconds quantity and has no JND scale; the 0 is not a claim of exactness but
+  // the statement that this family contributes no JND-scale error to any distance, since the
+  // drift enters no `d_k`.
   drift: { relative: 1e-9, jnd: 0 },
 });
 
 /**
- * A FRESH copy per report, never the frozen table itself.
+ * A fresh copy per report, never the frozen table itself.
  *
- * RULE I3(b): every level of a facade result is freshly allocated, so that a consumer's `===`
+ * Rule I3(b): every level of a facade result is freshly allocated, so a consumer's `===`
  * memoization sees a change when one occurred. Handing out the module-level constant would make
- * two comparisons share an object, which `tests/api/plain-data.test.ts` checks for and which is
- * a real hazard for a React-shaped consumer rather than a formality.
+ * two comparisons share an object.
  */
 export function epsilonRecord(): Record<
   EpsilonFamily,
@@ -213,21 +202,17 @@ const MIXED_DIRECTION_FRACTION = 0.5;
  * C7's same-piece heuristic: below this length ratio the pair is flagged [convention].
  *
  * `0.8` is §5.0's own documented band read as a ratio — `[0.8, 1.25]` on `long/short` is
- * `short/long < 0.8`. What shipped was `0.5`, so a 1.67× length mismatch passed without a word
- * and neither number was pinned by a test (W3 MAJOR-7). The band is a convention; what was wrong
- * is that the constant and the sentence describing it disagreed by a factor of 1.6.
+ * `short/long < 0.8` (W3 MAJOR-7).
  */
 export const SUSPECT_LENGTH_RATIO = 0.8;
 
 /**
  * C1's step cap: a profile is a report field, not a sample buffer.
  *
- * 4096 points [convention] — a few hundred kilobytes of JSON per dimension at the outside, which
- * is the scale a report field can carry, and about two points per quarter over a 30-minute
- * movement. An explicit `grid.step` finer than the cap allows is honoured as far as the cap and
- * then COARSENED, with a `grid-truncated` note saying so and naming both steps (§9.1): the
- * alternative — silently returning fewer points than the caller's step implies, or refusing the
- * option — is worse than a stated approximation.
+ * 4096 points [convention] — a few hundred kilobytes of JSON per dimension at the outside, and
+ * about two points per quarter over a 30-minute movement. An explicit `grid.step` finer than the
+ * cap allows is honoured as far as the cap and then coarsened, with a `grid-truncated` note
+ * saying so and naming both steps (§9.1).
  */
 export const PROFILE_MAX_POINTS = 4096;
 
@@ -382,10 +367,9 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
     );
   const signedDensity = aggregateSignedDensity(evaluations, options.weights);
 
-  // Every dimension's report row, plus the notes its evaluation produced. The callback appends
-  // to `notes` as well as returning the row — the loop this replaces did both, and
-  // `fromEntriesExact` walks the vocabulary in its declared order, so the note log comes out in
-  // the same order it always did.
+  // Every dimension's report row, plus the notes its evaluation produced: the callback appends
+  // to `notes` as well as returning the row. `fromEntriesExact` walks the vocabulary in its
+  // declared order, which is the order the note log comes out in.
   const dimensions = fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) => {
     const rows = evaluations.get(dimension) ?? [];
     const bothNeutral = sides.every(
@@ -440,12 +424,11 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
           `[${String(finding.range[0])}, ${String(finding.range[1])}]; the distance is unchanged`,
       });
 
-  // C7 has TWO arms, and the second one had no code (W3 CAPITAL-5). §5.0 asks for the length
-  // check between the two MPMs "and the same check against the score end when an MSM is
-  // supplied" — which is the arm that matters most, because that is exactly where the window
-  // comes from: a Telemann MPM reaching 198 quarters against a Vulpius MSM ending at 54 was
-  // compared over 54 quarters, silently discarding 73 % of the piece, and the report said
-  // nothing. The score is checked against BOTH documents, since either can be the mismatched one.
+  // C7 has two arms (W3 CAPITAL-5): §5.0 asks for the length check between the two MPMs "and
+  // the same check against the score end when an MSM is supplied". The second is where the
+  // window comes from — a Telemann MPM reaching 198 quarters against a Vulpius MSM ending at 54
+  // compares over 54 quarters, discarding 73 % of the piece. The score is checked against both
+  // documents, since either can be the mismatched one.
   const msmRatios =
     msm === null
       ? []
@@ -590,21 +573,21 @@ export type ScopeRule = 'msm' | 'mpm' | 'global';
 /**
  * The scope pairs to evaluate, and what drove the count (AD-55.2).
  *
- * The count is a MULTIPLIER on `D`, so getting it from the wrong document is not a detail.
- * `Performance.renderParts` iterates the **MSM's** parts and calls
+ * The count is a multiplier on `D`, so taking it from the wrong document is not a detail.
+ * `Performance.renderParts` iterates the MSM's parts and calls
  * `resolvePartMaps(getCorrespondingPart(msmPart), globalMaps)`, so what performs is one scope
- * per rendered MSM part — and an MPM `<part>` the score never names performs nothing at all.
- * AD-53.2's Telemann 3× pin measured the other thing: adding three EMPTY `<part>` elements to
+ * per rendered MSM part, and an MPM `<part>` the score never names performs nothing.
+ * AD-53.2's Telemann 3× pin measured the other reading: adding three empty `<part>` elements to
  * both documents tripled `D` while the performed MSMs stayed byte-identical.
  *
  * So with an MSM the scopes are the score's, matched into each document the way
  * `getCorrespondingPart` matches — `@number` first, then `@name` — and a side with no
- * counterpart takes its own GLOBAL scope, which is exactly `resolvePartMaps(null, globalMaps)`
+ * counterpart takes its own global scope, which is `resolvePartMaps(null, globalMaps)`
  * (AD-52.2, measured: velocity 40 from the global map, not the neutral 100).
  *
  * Without an MSM there is no score to count and the MPM-driven reading is the only one
- * available. It stands, with the `estimate-degradation` note the caller stamps: it is an
- * estimate of a quantity the documents alone cannot answer, not the answer.
+ * available. It stands, with the `estimate-degradation` note the caller stamps: an estimate of a
+ * quantity the documents alone cannot answer.
  */
 export function scopeSides(
   pair: ComparisonPair,
@@ -707,8 +690,8 @@ function densityOf(
       atoms.push({
         startQuarters: atom.startTicks / ticksPerQuarter,
         endQuarters: atom.endTicks / ticksPerQuarter,
-        // §7.1's `κ`, applied exactly where an event's JND becomes commensurable with a
-        // QUARTER of sustained deviation — which is the whole content of the constant.
+        // §7.1's `κ`, applied where an event's JND becomes commensurable with a quarter of
+        // sustained deviation.
         mass: atom.mass * EVENT_KAPPA_QUARTERS,
       });
   }
@@ -716,7 +699,7 @@ function densityOf(
   return { dimension, cells, atoms, distance: total.total };
 }
 
-/** `Σ_k ω_k p̃_k(t)` — the SIGNED aggregate density, in JND per quarter (C2, §7.5). */
+/** `Σ_k ω_k p̃_k(t)` — the signed aggregate density, in JND per quarter (C2, §7.5). */
 function aggregateSignedDensity(
   evaluations: ReadonlyMap<ComparisonDimension, readonly DimensionEvaluation[]>,
   weights: DimensionWeights,
@@ -746,17 +729,15 @@ function dimensionComparison(
   const distance = new CompensatedSum();
   for (const row of rows) distance.add(row.distance);
 
-  // `distance` SUMS over the scopes and `meanSigned` AVERAGES over them, and the two are right
-  // for opposite reasons (W3 MAJOR-11, which found the difference unstated and unratified).
-  // Mass is additive — two parts deviating at bar 5 put twice the mass at bar 5, which is what
-  // `p_k(t) = Σ_parts p_{k,part}(t)` means — while `meanSigned` is a DESCRIPTOR in the row's
-  // T-space unit: summing three parts' "A is 4 BPM faster" would report 12 BPM, a number no
-  // part carries and no listener could hear. It is the same argument §1.2's decomposition makes
-  // for taking moments over the disjoint union rather than over a concatenation of masses, and
-  // the field is reported per scope-average for the same reason `bottomLengthQuarters` takes a
-  // maximum rather than a sum. On telemann Baroque|Romantic the two read `mean = 8.605` against
-  // `meanSigned = −0.0708`, which is not a contradiction: one is a distance per quarter summed
-  // over three parts, the other a signed level in BPM-nepers held by each of them.
+  // `distance` sums over the scopes and `meanSigned` averages over them (W3 MAJOR-11). Mass is
+  // additive — two parts deviating at bar 5 put twice the mass at bar 5, which is what
+  // `p_k(t) = Σ_parts p_{k,part}(t)` means — while `meanSigned` is a descriptor in the row's
+  // T-space unit: summing three parts' "A is 4 BPM faster" would report 12 BPM, a number no part
+  // carries and no listener could hear. The same argument §1.2's decomposition makes for taking
+  // moments over the disjoint union, and the reason `bottomLengthQuarters` takes a maximum. On
+  // telemann Baroque|Romantic the two read `mean = 8.605` against `meanSigned = −0.0708`: one a
+  // distance per quarter summed over three parts, the other a signed level in BPM-nepers held by
+  // each of them.
   const withCurves = rows.filter((row) => row.meanSigned !== null);
   const meanSigned =
     withCurves.length === 0
@@ -768,9 +749,8 @@ function dimensionComparison(
     for (const entry of row.rowDistances)
       rowDistances.set(entry.key, (rowDistances.get(entry.key) ?? 0) + entry.distance);
 
-  // A dimension evaluated over NO scope has no unit and no space to report, which is what the
-  // `?? …` defaults below already say. `elementAtOrNull` says the same thing about the read
-  // itself, in place of an `as … | undefined` that was hand-rolling the flag.
+  // A dimension evaluated over no scope has no unit and no space to report — the `?? …`
+  // defaults below.
   const first = elementAtOrNull(rows, 0);
 
   return {
@@ -799,9 +779,8 @@ function dimensionComparison(
       unmatchedB: rows.reduce((sum, row) => sum + row.events.unmatchedB, 0),
       mass: rows.reduce((sum, row) => sum + row.events.mass, 0),
     },
-    // The `⊥` length is a fraction of the WINDOW, so parts take the maximum rather than the
-    // sum: two parts both blind for the first bar leave one bar of the window unreadable, not
-    // two.
+    // The `⊥` length is a fraction of the window, so parts take the maximum rather than the sum:
+    // two parts both blind for the first bar leave one bar of the window unreadable, not two.
     bottomLengthQuarters: Math.max(0, ...rows.map((row) => row.bottomLengthQuarters)),
     cappedCells: rows.reduce((sum, row) => sum + row.cappedCells, 0),
     decomposition: mergedDecomposition(rows),
@@ -812,7 +791,7 @@ function dimensionComparison(
 }
 
 /**
- * §1.2's decomposition over the DISJOINT UNION of the scope rows' curves.
+ * §1.2's decomposition over the disjoint union of the scope rows' curves.
  *
  * With one scope this is the row's own decomposition. With several it is the decomposition of
  * the concatenation — part `p` on `[p·L, (p+1)·L)` — which is the only reading that needs no
@@ -862,10 +841,8 @@ function averagedDecomposition(unit: string, rows: readonly DimensionEvaluation[
 function unionDecomposition(unit: string, rows: readonly DimensionEvaluation[]): Decomposition {
   const spans = rows.map((row) => {
     const grid = row.pairGridQuarters;
-    // An EMPTY pair grid has no span, and `0` is the reading the `1e-12` note below already
-    // describes: the union degenerates to the first row's curve. The old spelling read
-    // `undefined` at both ends, which made `length` NaN, `index` NaN, and `spans[NaN]`
-    // `undefined` — a crash rather than a degenerate answer.
+    // An empty pair grid has no span, and `0` is the reading the `1e-12` note below describes:
+    // the union degenerates to the first row's curve rather than propagating a `NaN` index.
     return isNonEmpty(grid)
       ? { row, start: head(grid), end: last(grid) }
       : { row, start: 0, end: 0 };
@@ -875,12 +852,12 @@ function unionDecomposition(unit: string, rows: readonly DimensionEvaluation[]):
 
   // The virtual abscissa: row `p` occupies `[p·length, (p+1)·length)`.
   //
-  // The `1e-12` floor is a DIVISION guard and nothing else (a W3 MINOR named it undeclared): on
-  // a zero-length window every row occupies the same degenerate span, `x / 0` is `NaN` or
-  // `±Infinity`, and the clamp below would then carry that into the index. With the floor the
-  // index is 0 and the union degenerates to the first row's curve, which is the right answer for
-  // a window with no interior — §9.6 already reports every length-normalized mean as null there.
-  // It substitutes for no VALUE: `length` itself is never replaced, only the divisor.
+  // The `1e-12` floor is a division guard and nothing else: on a zero-length window every row
+  // occupies the same degenerate span, `x / 0` is `NaN` or `±Infinity`, and the clamp below
+  // would carry that into the index. With the floor the index is 0 and the union degenerates to
+  // the first row's curve, the right answer for a window with no interior — §9.6 already reports
+  // every length-normalized mean as null there. `length` itself is never replaced, only the
+  // divisor.
   const locate = (x: number): { row: DimensionEvaluation; quarters: number } => {
     const index = Math.min(rows.length - 1, Math.max(0, Math.floor(x / Math.max(length, 1e-12))));
     const span = elementAt(spans, index, SPANS);
@@ -933,8 +910,8 @@ const SCOPE_SIDES = "the pair's scope sides";
 
 /** `∫ g dx / L` over a grid that partitions it. */
 function integrateOverGrid(g: (x: number) => number, grid: readonly number[]): number {
-  // The grid's own span, or 0 where it is too short to have one — `decomposition.ts` states the
-  // same fact the same way, and the `!(length > 0)` test is the only guard either needs.
+  // The grid's own span, or 0 where it is too short to have one — `decomposition.ts`'s
+  // `gridSpan`, with the same `!(length > 0)` guard.
   const length = isNonEmpty(grid) ? last(grid) - head(grid) : 0;
   if (!(length > 0)) return 0;
   const total = new CompensatedSum();
@@ -1104,11 +1081,10 @@ function noteKindOf(kind: string): ComparisonNoteKind {
     case 'capped':
     case 'structural':
       return kind;
-    // R9b's kind, which §10 names as a fixture obligation and which exactly one site was
-    // emitting (W3 MAJOR-12). AD-8's trailing `@transition.to`, AD-35's trailing `<movement>`
+    // R9b's kind (W3 MAJOR-12). AD-8's trailing `@transition.to`, AD-35's trailing `<movement>`
     // and AD-11i's shadowed duration lever are all "an attribute the renderer reads and never
-    // applies" — the same finding in three maps — and all three were arriving as `structural`,
-    // which is the channel for a difference that IS performed but is not a magnitude.
+    // applies" — the same finding in three maps. `structural` is the channel for a difference
+    // that IS performed but is not a magnitude, so it is the wrong one for these.
     case 'inert-transition':
     case 'trailing-movement':
     case 'shadowed-lever':
@@ -1122,23 +1098,19 @@ function noteKindOf(kind: string): ComparisonNoteKind {
 }
 
 /**
- * §5.0's and §10/P-C8's structural note: **the encoding differs and the performance does not.**
+ * §5.0's and §10/P-C8's structural note: the encoding differs and the performance does not.
  *
- * DESIGN states the rule twice and neither statement had any code (W3 MAJOR-13, MAJOR-15):
- * "a global-vs-part-local encoding difference with identical resolved curves is distance 0 plus
- * a structural note — which is correct: it is not performed" (§5.0), and P-C8's "an explicit
- * neutral instruction ≡ absent map: dimension distance exactly 0 — plus the structural note".
- * They are one fact in two spellings, so one note answers both: the distance is 0 and the two
- * documents nonetheless say it differently.
- *
- * That the note exists is what makes `d_k = 0` legible. A caller who sees a zero cannot tell
- * "these encode the same performance the same way" from "these encode the same performance
- * differently", and the second is exactly what a diff product (§6) is for.
+ * DESIGN states the rule twice (W3 MAJOR-13, MAJOR-15): "a global-vs-part-local encoding
+ * difference with identical resolved curves is distance 0 plus a structural note — which is
+ * correct: it is not performed" (§5.0), and P-C8's "an explicit neutral instruction ≡ absent
+ * map: dimension distance exactly 0 — plus the structural note". One note answers both. It is
+ * what makes `d_k = 0` legible: without it a caller cannot tell "these encode the same
+ * performance the same way" from "these encode the same performance differently" — and the
+ * second is what a diff product (§6) is for.
  *
  * The signature is per scope: whether the resolved map exists at all, and whether it came from
- * the PART's own environment or was inherited from the global one — which is
- * `resolvePartMaps`' own distinction (AD-16/R22) and the only thing that can differ while the
- * resolved curve does not.
+ * the part's own environment or was inherited from the global one — `resolvePartMaps`' own
+ * distinction (AD-16/R22), and the only thing that can differ while the resolved curve does not.
  */
 function encodingNotes(
   dimension: ComparisonDimension,
@@ -1203,10 +1175,9 @@ function invarianceNotes(
       ),
     );
 
-  // C9's trap, in plain words. In a LINEAR space 'level' removes an additive offset only — the
-  // multiplicative factor survives, because `c·x − mean(c·x) = c(x − mean x)` — while the same
-  // mode removes a factor from a log space. A roll read 10 % slow has its inter-onset offsets
-  // stretched 10 %, and this is the sentence §7.4 requires so that a report stamping
+  // C9's trap. In a linear space 'level' removes an additive offset only — the multiplicative
+  // factor survives, because `c·x − mean(c·x) = c(x − mean x)` — while the same mode removes a
+  // factor from a log space. §7.4 requires the sentence so that a report stamping
   // `invariance: 'level'` on tempo and on asynchrony is not read as saying the same thing twice.
   const space = rows[0]?.space ?? '';
   if (space === 'gain' || space === 'gain-ordered')
@@ -1228,16 +1199,14 @@ function invarianceNotes(
 /**
  * §9.5's order on the notes: `(kind, dimension, startQuarters, document, message, site)`.
  *
- * §9.5 names `site` and the comparator did not use it, so four Albert notes — one plausibility
+ * §9.5 names `site`, and a comparator that omits it leaves four Albert notes — one plausibility
  * finding raised in the global scope and in each of three part scopes — tied on every key with
- * four distinct serializations, and their order was decided by sort stability, i.e. by which
- * document was read first (W3 MAJOR-6).
+ * four distinct serializations, their order decided by sort stability, i.e. by which document
+ * was read first (W3 MAJOR-6).
  *
- * The final tiebreak is the note's own SERIALIZATION, which makes the order TOTAL by
- * construction rather than by an argument that the earlier keys separate everything: two notes
- * that compare equal here are equal as data, so no orientation can survive in the array. Stating
- * it that way is also the cheapest thing to keep true, since a future field is covered the day
- * it is added.
+ * The final tiebreak is the note's own serialization, which makes the order total by
+ * construction: two notes that compare equal here are equal as data, so no orientation can
+ * survive in the array, and a future field is covered the day it is added.
  */
 export function compareNotes(x: ComparisonNote, y: ComparisonNote): number {
   return (
@@ -1319,9 +1288,8 @@ function profilesOf(
 }
 
 function emptyProfile(rows: readonly DimensionEvaluation[]): ComparisonProfile {
-  // A dimension evaluated over NO scope has no unit and no space to report, which is what the
-  // `?? …` defaults below already say. `elementAtOrNull` says the same thing about the read
-  // itself, in place of an `as … | undefined` that was hand-rolling the flag.
+  // A dimension evaluated over no scope has no unit and no space to report — the `?? …`
+  // defaults below.
   const first = elementAtOrNull(rows, 0);
   return {
     dates: [],
@@ -1345,9 +1313,8 @@ function profileOf(
   const density = dates.map((quarters) => densityAtOf(rows, quarters));
   const signed = dates.map((quarters) => signedAtOf(rows, quarters));
   const shared = sharedCurves(rows, dates);
-  // A dimension evaluated over NO scope has no unit and no space to report, which is what the
-  // `?? …` defaults below already say. `elementAtOrNull` says the same thing about the read
-  // itself, in place of an `as … | undefined` that was hand-rolling the flag.
+  // A dimension evaluated over no scope has no unit and no space to report — the `?? …`
+  // defaults below.
   const first = elementAtOrNull(rows, 0);
 
   return {
@@ -1396,9 +1363,8 @@ function profileDates(
   const step = grid.step;
   const count = Math.floor((end - start) / step);
   if (count + 1 > PROFILE_MAX_POINTS) {
-    // BOTH steps, requested and actual (W3 MAJOR-8). A note that says only "the step was
-    // coarsened" leaves the caller to work out by how much, and the factor is not small: an
-    // explicit 0.001 over a 198-quarter window is coarsened 48×.
+    // Both steps, requested and actual (W3 MAJOR-8): the factor is not small — an explicit 0.001
+    // over a 198-quarter window is coarsened 48×.
     const coarse = (end - start) / (PROFILE_MAX_POINTS - 1);
     notes.push(
       note(
@@ -1420,9 +1386,9 @@ function profileDates(
 /**
  * `p_k(t)`, summed over the scope rows and over the cells covering the point.
  *
- * A cell with no pointwise density contributes its MEAN, which is `aggregate.ts`'s own fallback
- * one level up and the reason `cellQuantizedDimensions` exists: the profile then reports a
- * staircase where the true density has a shape, and the report says which dimension it is.
+ * A cell with no pointwise density contributes its mean — `aggregate.ts`'s own fallback one level
+ * up, and the reason `cellQuantizedDimensions` exists: the profile then reports a staircase where
+ * the true density has a shape, and the report says which dimension it is.
  */
 function densityAtOf(rows: readonly DimensionEvaluation[], quarters: number): number {
   const total = new CompensatedSum();
@@ -1445,10 +1411,10 @@ function signedAtOf(rows: readonly DimensionEvaluation[], quarters: number): num
 /**
  * The two T-space curves, but only where every scope row agrees on them.
  *
- * With one scope this is that scope's pair. With several it is the pair they SHARE — which is
- * the ordinary case, since a part with no map of its own inherits the global one — and null
- * where the parts genuinely carry different curves, because there is no single curve to export
- * and picking the first part's would be a claim about the piece that the document does not make.
+ * With one scope this is that scope's pair. With several it is the pair they share — the
+ * ordinary case, since a part with no map of its own inherits the global one — and null where
+ * the parts genuinely carry different curves, because there is no single curve to export and
+ * picking the first part's would be a claim the document does not make.
  */
 function sharedCurves(
   rows: readonly DimensionEvaluation[],
@@ -1461,9 +1427,8 @@ function sharedCurves(
   const a: number[] = [];
   const b: number[] = [];
   for (const quarters of dates) {
-    // "Every scope agrees at this date" is a statement ABOUT the first scope's value, so that
-    // value is taken once and the rest are compared against it — which is what the old
-    // `valuesA.some((value) => value !== valuesA[0])` meant, with the representative named.
+    // "Every scope agrees at this date" is a statement about the first scope's value, so that
+    // value is taken once and the rest are compared against it.
     const valueA = first.valueA?.(quarters) ?? 0;
     const valueB = first.valueB?.(quarters) ?? 0;
     if (withCurves.some((row) => (row.valueA?.(quarters) ?? 0) !== valueA)) return null;

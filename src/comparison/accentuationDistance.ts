@@ -7,25 +7,25 @@
  * constant — this is the one dimension whose curve is already in MIDI velocity units, so `T` is
  * the identity and no logarithm is involved.
  *
- * ## The integral is EXACT, and the grid is what makes it so
+ * ## The integral is exact, and the grid is what makes it so
  *
- * `c` is **piecewise affine in score time**: `beat(t)` is affine in `t` inside one cycle, and
+ * `c` is piecewise affine in score time: `beat(t)` is affine in `t` inside one cycle, and
  * `getAccentuationAt` is affine in `beat` between two consecutive accentuations. So on a cell
  * carrying no breakpoint of either curve, the difference is affine, GL-10 integrates it
  * exactly, and the only error left is the one `integrateCappedAbsolute` removes by splitting at
  * the root and at the cap crossing. This dimension's entry in §9.3's per-family epsilon record
  * is therefore 0 in both units, as asynchrony's is.
  *
- * That rests entirely on {@link accentuationBreakpointsTicks} being complete. The curve breaks
- * at four kinds of place, and all four are enumerated there: the instruction dates, the cycle
- * wraps (`beat` jumps from its maximum back to 1), the beats of the pattern's own
- * accentuations, and — where `@loop` is off — the single tick at which the renderer breaks out
- * of the span and the contribution drops to 0.
+ * That rests on {@link accentuationBreakpointsTicks} being complete. The curve breaks at four
+ * kinds of place, all four enumerated there: the instruction dates, the cycle wraps (`beat`
+ * jumps from its maximum back to 1), the beats of the pattern's own accentuations, and — where
+ * `@loop` is off — the single tick at which the renderer breaks out of the span and the
+ * contribution drops to 0.
  *
- * One discontinuity is deliberately **not** a breakpoint: `getAccentuationAt` returns
- * `@value` exactly on an accentuation's beat while approaching `@transition.from` from the
- * right, so the curve has a removable jump at a single point. A single point has measure zero
- * and cannot change an integral; GL-10's nodes are strictly interior and never land on it.
+ * One discontinuity is deliberately not a breakpoint: `getAccentuationAt` returns `@value`
+ * exactly on an accentuation's beat while approaching `@transition.from` from the right, so
+ * the curve has a removable jump at a single point. A single point has measure zero and cannot
+ * change an integral; GL-10's nodes are strictly interior and never land on it.
  *
  * ## Capped, for the same reason §5.8's is
  *
@@ -49,11 +49,11 @@ import type { ComparisonWindow } from './window.js';
 import { IDENTITY_CANONICAL_PAIR, canonicalValue, type CanonicalPair } from './decomposition.js';
 
 /**
- * The accentuation curve as a `SampledCurve` for §1.2's decomposition, or **null** where the
+ * The accentuation curve as a `SampledCurve` for §1.2's decomposition, or null where the
  * window carries a `⊥` span — see `pedalSampler`, whose note applies verbatim.
  *
- * `T` is the identity here too (the space is a gain-ordered one), so the decomposition's
- * `level` and `gain` come out in MIDI velocity units.
+ * `T` is the identity here too (the space is gain-ordered), so the decomposition's `level` and
+ * `gain` come out in MIDI velocity units.
  */
 export function accentuationSampler(
   curve: AccentuationCurve,
@@ -85,13 +85,11 @@ export interface AccentuationCell {
   readonly mass: number;
   readonly capped: boolean;
   /**
-   * `p_accentuation(t)` in JND per quarter, at a position in QUARTERS (AD-51.1).
+   * `p_accentuation(t)` in JND per quarter, at a position in quarters (AD-51.1).
    *
-   * The integrand this cell's mass was computed from, exposed rather than recomputed: AD-19
-   * refines segment boundaries to the ROOTS of `p_D − τ_D`, and a cell-quantized edge can sit
-   * many bars from the crossing. `mass` remains the authority — the aggregation rescales the
-   * sampler's shape onto it — so a sampler that disagreed with its own integral could move a
-   * boundary but never a reported number.
+   * The integrand this cell's mass was computed from, exposed so AD-19 can refine segment
+   * boundaries to the roots of `p_D − τ_D` rather than to a cell-quantized edge that can sit
+   * many bars from the crossing. `mass` stays the authority — see `DensityCell`.
    */
   readonly densityAt: (quarters: number) => number;
 }
@@ -109,9 +107,9 @@ export interface AccentuationDistance {
 /**
  * Every tick at which one curve can break, inside `[startTicks, endTicks)`.
  *
- * The cycle walk is bounded by the window rather than by the span, and it is a plain counted
- * loop over cycle indices — `k` from the first cycle overlapping the window to the last — so
- * the cost is proportional to the number of measures in the window and not to the piece.
+ * The cycle walk is bounded by the window rather than by the span — `k` runs from the first
+ * cycle overlapping the window to the last — so the cost is proportional to the number of
+ * measures in the window, not to the piece.
  *
  * A cycle of zero or negative length (a pattern of length 0, a denominator the document made
  * absurd) yields no breakpoints rather than looping forever; `beatAt` returns a constant 1 for
@@ -225,9 +223,9 @@ export function accentuationDistance(
   for (const [cellStart, cellEnd] of pairwise(gridTicks)) {
     const lengthQuarters = (cellEnd - cellStart) / ticksPerQuarter;
 
-    // The cell's ⊥-ness is decided at its left edge, which is where every other dimension
-    // decides a piecewise-constant property, and is sound for the same reason: right
-    // continuity (A-B1) plus a grid that carries every segment boundary.
+    // The cell's ⊥-ness is decided at its left edge, as every dimension decides a
+    // piecewise-constant property: right continuity (A-B1) plus a grid that carries every
+    // segment boundary.
     const bottomA = accentuationSegmentAt(a, cellStart)?.pattern.kind === 'bottom';
     const bottomB = accentuationSegmentAt(b, cellStart)?.pattern.kind === 'bottom';
 

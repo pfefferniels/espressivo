@@ -1,53 +1,50 @@
 /**
- * Articulation atoms and their LIVENESS — DESIGN.md §5.5, first half.
+ * Articulation atoms and their liveness — DESIGN.md §5.5, first half.
  *
- * This module answers one question per `<articulation>`: **which of its attributes does the
- * renderer actually apply?** §5.5's "the atom's effective modifier is resolved before pricing,
- * not summed over rows" is exactly that, and it is a prerequisite for pricing rather than part
- * of it — revision 1 charged 0.59 nepers for a `@relativeDuration` the renderer never applied.
+ * One question per `<articulation>`: which of its attributes does the renderer actually apply?
+ * §5.5's "the atom's effective modifier is resolved before pricing, not summed over rows" is
+ * exactly that, and it is a prerequisite for pricing rather than part of it — pricing a
+ * `@relativeDuration` the renderer never applies charges 0.59 nepers for nothing.
  *
- * What is deliberately NOT here: the default-articulation step function, and the matching of
- * atoms between two documents. Both are blocked on rulings — the step function because the
- * renderer's default reaches BACKWARDS in a way §5.5 does not describe (see below), the
- * matching because §5.5 delegates it to §5.6's alignment DP, which is a later cut's module.
+ * Not here: the default-articulation step function, which is `articulationDefault.ts`, and the
+ * matching of atoms between two documents, which §5.5 delegates to §5.6's alignment DP in
+ * `eventAlignment.ts`.
  *
- * ## Exactly one duration lever fires INLINE; on a def they compose (AD-11i, R4)
+ * ## Exactly one duration lever fires inline; on a def they compose (AD-11i, R4)
  *
- * `ArticulationData.articulateNote` reads `duration` **once**, up front, and every branch
- * computes from that original value — so the three tick-domain levers overwrite one another
- * instead of composing, and the last to fire wins. In source order that makes the precedence
+ * `ArticulationData.articulateNote` reads `duration` once, up front, and every branch computes
+ * from that original value — so the three tick-domain levers overwrite one another instead of
+ * composing, and the last to fire wins. In source order that makes the precedence
  * `absoluteDurationChange > relativeDuration > absoluteDuration`, and `absoluteDurationMs`
  * short-circuits the entire tick branch before any of them. Executed on a 100-tick note:
- * `relativeDuration="0.5" absoluteDurationChange="10"` performs **110** — the factor entirely
- * inert. The same pair on an `<articulationDef>` performs **60** (0.5 then +10), because
- * `ArticulationDef.articulateNote` composes. The rule is therefore keyed on the ELEMENT and
+ * `relativeDuration="0.5" absoluteDurationChange="10"` performs 110 — the factor entirely
+ * inert. The same pair on an `<articulationDef>` performs 60 (0.5 then +10), because
+ * `ArticulationDef.articulateNote` composes. The rule is therefore keyed on the element and
  * never on the attribute name, which is why {@link resolveDurationLever} takes a `site`.
  *
- * ## The VELOCITY levers compose, on both elements
+ * ## The velocity levers compose, on both elements
  *
- * A trap worth stating because the duration rule is so nearly its opposite: `articulateNote`
- * **re-reads** `@velocity` after each write, so `@absoluteVelocity`, `@relativeVelocity` and
- * `@absoluteVelocityChange` chain. Executed: velocity 64 with `absoluteVelocity="80"`,
- * `relativeVelocity="0.5"`, `absoluteVelocityChange="7"` performs **47**. AD-11i's one-lever
- * rule is a duration rule and does not generalise.
+ * `articulateNote` re-reads `@velocity` after each write, so `@absoluteVelocity`,
+ * `@relativeVelocity` and `@absoluteVelocityChange` chain. Executed: velocity 64 with
+ * `absoluteVelocity="80"`, `relativeVelocity="0.5"`, `absoluteVelocityChange="7"` performs 47.
+ * AD-11i's one-lever rule is a duration rule and does not generalise.
  *
- * ## Atoms compose ACROSS atoms, in map order
+ * ## Atoms compose across atoms, in map order
  *
  * One note can collect several atoms — `noteArtics` is a list per note — and each
  * `articulateNote` call re-reads the note it is mutating. Two `<articulation>` elements at one
- * date with `relativeDuration` 0.5 and 0.25 perform **12.5**, not 25 and not 50; a `noteid`
- * atom and a date-targeted atom on the same note likewise both apply. So the per-note effective
- * modifier is a composition of per-atom modifiers, each of which is internally last-write-wins
- * on duration and chained on velocity.
+ * date with `relativeDuration` 0.5 and 0.25 perform 12.5, not 25 and not 50; a `noteid` atom
+ * and a date-targeted atom on the same note likewise both apply. So the per-note effective
+ * modifier composes per-atom modifiers, each internally last-write-wins on duration and chained
+ * on velocity.
  *
- * ## An unresolvable `@name.ref` does NOT drop the atom (contrast §5.4)
+ * ## An unresolvable `@name.ref` does not drop the atom (contrast §5.4)
  *
  * If no `<style>` is in scope, or the style in scope has no def of that name, the def is
- * silently ignored and **the atom's own inline modifiers still apply**. Executed both ways:
+ * silently ignored and the atom's own inline modifiers still apply. Executed both ways:
  * `name.ref="stacc" relativeDuration="1.2"` performs 120 on a 100-tick note with the def
  * missing, and 60 with it present (0.5 then 1.2). §5.4's accentuation skips the whole
- * instruction in the same situation, so the two sections genuinely differ and this module says
- * which is which rather than leaving it to be inferred.
+ * instruction in the same situation.
  */
 import { head, isNonEmpty } from '../prelude/index.js';
 import { optionAt } from '../prelude/seq.js';
@@ -73,9 +70,8 @@ export type ArticulationSite = 'instruction' | 'def';
 /**
  * The tick-domain duration levers in the order the renderer lets them win, highest first.
  *
- * Imported from the expression registry rather than restated: §5.5 names that constant as the
- * precedence, and two copies of an ordering that must agree is exactly the drift AD-33.6's
- * "wire it or remove it" is about.
+ * Imported from the expression registry rather than restated — §5.5 names that constant as the
+ * precedence, and two copies of an ordering that must agree is the drift AD-33.6 forbids.
  */
 export const DURATION_PRECEDENCE: readonly string[] = INLINE_DURATION_PRECEDENCE;
 
@@ -168,7 +164,7 @@ export interface ArticulationAtoms {
 }
 
 /**
- * Which duration lever fires, given the attributes present on ONE element.
+ * Which duration lever fires, given the attributes present on one element.
  *
  * @param site `'instruction'` applies the precedence; `'def'` returns every present lever,
  *   because `ArticulationDef.articulateNote` composes them.
@@ -181,8 +177,8 @@ export function resolveDurationLever(
 ): readonly string[] {
   const levers = DURATION_PRECEDENCE.filter((lever) => present(lever));
   if (site === 'def') return levers;
-  // The short-circuit is tested BEFORE the precedence, because it removes the branch the
-  // precedence lives in rather than winning inside it.
+  // Tested before the precedence: the short-circuit removes the branch the precedence lives in
+  // rather than winning inside it.
   if (present(DURATION_SHORT_CIRCUIT)) return [];
   return isNonEmpty(levers) ? [head(levers)] : [];
 }
@@ -196,10 +192,10 @@ function numberOf(element: Element, name: string): number | null {
 /**
  * Whether a value is the renderer's own no-op for its attribute.
  *
- * A `null` neutral is not "no neutral found": it is §5.5's REPLACEMENT case, where the
+ * A `null` neutral is not "no neutral found": it is §5.5's replacement case, where the
  * attribute has no neutral at all and present-vs-absent reads `⊥` (AD-2). The lookup is total
- * over {@link ARTICULATION_ATTRIBUTES}, which the test pins, so a missing key would be a
- * programmer error rather than data.
+ * over {@link ARTICULATION_ATTRIBUTES}, which the test pins, so a missing key is a programmer
+ * error rather than data.
  */
 function isNeutral(name: string, value: number): boolean {
   const neutral = ARTICULATION_NEUTRALS[name];
@@ -247,9 +243,9 @@ function readAttributes(
 /**
  * Read one scope's articulation atoms, liveness resolved.
  *
- * The def's attributes come FIRST in the returned list, because that is the order
- * `articulateNote` applies them — the def runs, then the inline modifiers land on its result.
- * A consumer that folds the list into an effective modifier must preserve that order.
+ * The def's attributes come first in the returned list, because that is the order
+ * `articulateNote` applies them: the def runs, then the inline modifiers land on its result. A
+ * consumer that folds the list into an effective modifier must preserve that order.
  */
 export function readArticulationAtoms(
   view: OrderedMapView | null,
@@ -338,15 +334,13 @@ export function readArticulationAtoms(
  * One `<articulationDef>` on its own, as the atom a `@defaultArticulation` step performs.
  *
  * The default names a def and the renderer applies it to every note in the step's span that
- * carries no atom of its own, with no inline instruction on top (AD-37.2b: an atom SHADOWS the
+ * carries no atom of its own, with no inline instruction on top (AD-37.2b: an atom shadows the
  * default rather than composing with it). So the atom is the def's attributes and nothing else,
- * read at site `'def'` — where every duration lever composes rather than shadowing, which is
- * exactly the affine form §5.5's pricing wants and the reason this is a call into this module
- * rather than a second reader in `articulationDefault`.
+ * read at site `'def'`, where every duration lever composes rather than shadowing — the affine
+ * form §5.5's pricing wants.
  *
- * `readAttributes`' note channel is discarded here and that is not a loss: `resolveDurationLever`
- * returns every present lever at site `'def'`, so the only note it can raise — `shadowed-lever` —
- * cannot fire.
+ * `readAttributes`' note channel is discarded: at site `'def'` `resolveDurationLever` returns
+ * every present lever, so the only note it can raise — `shadowed-lever` — cannot fire.
  */
 export function articulationDefAtom(def: Element, dateTicks: number): ArticulationAtom {
   return {

@@ -1,13 +1,13 @@
 /**
  * The metrical-accentuation curve — DESIGN.md §5.4.
  *
- * The compared object is the **per-beat velocity contribution**
+ * The compared object is the per-beat velocity contribution
  * `scale · patternDef.getAccentuationAt(beat)`, in velocity units. Neutral is 0: an absent
  * map, an unlooped span past its first pattern, and a pattern of all-zero accentuations all
- * add nothing to a note's velocity, so the dimension is total over the window without
- * special cases at its edges.
+ * add nothing to a note's velocity, so the dimension is total over the window without special
+ * cases at its edges.
  *
- * ## Phase anchors at the TIME SIGNATURE, never at the instruction (AD-12, R8)
+ * ## Phase anchors at the time signature, never at the instruction (AD-12, R8)
  *
  * ```
  * stickToMeasures (default TRUE):  beat = 1 + ((t − tsDate) mod measureTicks)   / ticksPerBeat
@@ -15,39 +15,37 @@
  * ```
  *
  * Both branches of `MetricalAccentuationMap.ts:162-165` subtract `tsDate`, the date of the
- * time-signature entry in force — **never** `md.startDate`. Executed with no
- * `timeSignatureMap`, moving the instruction from date 0 to date 360 changes nothing: the
- * velocities are identical. Two documents whose patterns agree but whose instructions sit at
- * different dates therefore perform identically, and a per-instruction cycle model would
- * invent a phase difference between them.
+ * time-signature entry in force, never `md.startDate`. Executed with no `timeSignatureMap`,
+ * moving the instruction from date 0 to date 360 leaves the velocities identical — two
+ * documents whose patterns agree but whose instructions sit at different dates perform
+ * identically, and a per-instruction cycle model would invent a phase difference between them.
  *
  * ## Without an MSM the renderer still answers exactly (AD-12)
  *
- * There is no approximation to make. With no time-signature information the initialisers give
- * `tsDate = 0`, 4/4, `ticksPerBeat = ppq`, `measureTicks = 4·ppq` and
+ * With no time-signature information the initialisers give `tsDate = 0`, 4/4,
+ * `ticksPerBeat = ppq`, `measureTicks = 4·ppq` and
  * `patternLengthTicks = length·4·ppq/denominator` (`MetricalAccentuationMap.ts:124-134`), so
- * the contribution is an exact piecewise-linear function of score time. That is evaluated and
- * reported as `timeSignatureSource: 'renderer-default'`; with an MSM the real map is walked
- * with the same forward-only rule and reported as `'msm'`.
+ * the contribution is an exact piecewise-linear function of score time, reported as
+ * `timeSignatureSource: 'renderer-default'`. With an MSM the real map is walked with the same
+ * forward-only rule and reported as `'msm'`.
  *
- * ## Unresolvable patterns are `⊥`, and this is the one place exclusion was right (R21)
+ * ## Unresolvable patterns are `⊥` (R21)
  *
- * `getMetricalAccentuationDataOf` returns a **non-null** datum with
+ * `getMetricalAccentuationDataOf` returns a non-null datum with
  * `accentuationPatternDef = null` when the style resolves but the def name does not, and the
  * render then dereferences it unguarded: `TypeError: Cannot read properties of null (reading
  * 'getLength')` — the whole performance render throws. There is no performed function to
- * compare, so the span reads `⊥`. Contrast tempo and dynamics, whose unresolvable levels DO
- * have a performed value (R8's fabricated 100.0); §5.4 exists partly to say which
- * unresolvables are which.
+ * compare, so the span reads `⊥`. Contrast tempo and dynamics, whose unresolvable levels do
+ * have a performed value (R8's fabricated 100.0).
  *
- * Separately, an `<accentuationPattern>` before the map's first `<style>` switch is silently
- * skipped even with a perfectly good `@name.ref` (`:88-90` returns null when no style is in
- * scope) — a renderer skip, reported as one, not a `⊥`.
+ * An `<accentuationPattern>` before the map's first `<style>` switch is silently skipped even
+ * with a valid `@name.ref` (`:88-90` returns null when no style is in scope) — a renderer
+ * skip, reported as one, not a `⊥`.
  *
  * ## Reading discipline
  *
- * The `accentuationPatternDef` is read **raw**. Constructing `AccentuationPatternDef` would
- * add `length="4"` to the document and reorder its `<accentuation>` children by beat
+ * The `accentuationPatternDef` is read raw. Constructing `AccentuationPatternDef` would add
+ * `length="4"` to the document and reorder its `<accentuation>` children by beat
  * (`AccentuationPatternDef.ts:36-40`, `:67` → `:192-199`), which R1 forbids.
  */
 import { filterMap, head, isNonEmpty, last, withNext } from '../prelude/index.js';
@@ -141,20 +139,13 @@ export function neutralAccentuationCurve(): AccentuationCurve {
  * Read an `accentuationPatternDef` element without constructing one.
  *
  * `@length` defaults to {@link DEFAULT_PATTERN_LENGTH}; an `<accentuation>` with no `@beat`
- * is skipped exactly as the parser skips it. Points are sorted ascending by beat with ties
- * keeping document order, which is what the parser's backwards insertion scan produces.
+ * is skipped exactly as the parser skips it. Points sort ascending by beat, ties keeping
+ * document order — what the parser's backwards insertion scan produces, and the order the
+ * renderer applies tied accentuations in (W3 MINOR-7).
  */
 export function readAccentuationPattern(def: Element): AccentuationPattern {
   const rawLength = readNumericAttributeValue(def, 'length');
 
-  // Read each `<accentuation>`, skip the ones with no usable `@beat`, keep the rest —
-  // `filterMap`, with the `continue` as the `null` return. Every NaN repair below stays inside
-  // the branch that already ran it, so the surviving set and its order are unchanged and the
-  // sort sees the same array it always did.
-  //
-  // On `@beat` alone: two `<accentuation>` children of one def sharing a beat keep their
-  // document order, which is the order the renderer applies them in. Stable, single-document,
-  // and therefore invisible to the a/b swap — stated because it was implicit (W3 MINOR-7).
   const points: readonly PatternPoint[] = [
     ...filterMap(def.getChildElements('accentuation'), (child) => {
       const beat = readNumericAttributeValue(child, 'beat');
@@ -180,20 +171,19 @@ export function readAccentuationPattern(def: Element): AccentuationPattern {
 }
 
 /**
- * `AccentuationPatternDef.getAccentuationAt`, transliterated — including its **deliberate
- * asymmetry**, which is the whole reason this is not a two-line interpolation.
+ * `AccentuationPatternDef.getAccentuationAt`, transliterated, including its asymmetry.
  *
- * - Before the first accentuation's beat: **0**.
+ * - Before the first accentuation's beat: 0.
  * - At or after `length + 1`: the last accentuation's `@transition.to`.
  * - Exactly on an accentuation's beat: that accentuation's `@value` — not its
  *   `@transition.from`, which is a different number whenever the two were both authored.
  * - Otherwise ramp from the preceding accentuation's `@transition.from` towards its
- *   `@transition.to` over `[beat, segmentEnd)`, where `segmentEnd` is the **next**
- *   accentuation's beat for every accentuation that has a successor, and `length + 1` for
- *   the **last** one. That `i < points.length - 1` guard is the asymmetry: upstream
- *   cemfi/meico spells it `i > length - 1`, which can never hold, so every segment ran to the
- *   pattern end and all but the last interpolation was flattened. The fork fixed it (TD3) and
- *   regenerated the affected ground truth; this follows the fixed form.
+ *   `@transition.to` over `[beat, segmentEnd)`, where `segmentEnd` is the next accentuation's
+ *   beat for every accentuation that has a successor, and `length + 1` for the last one. That
+ *   `i < points.length - 1` guard is the asymmetry: upstream cemfi/meico spells it
+ *   `i > length - 1`, which can never hold, so every segment ran to the pattern end and all
+ *   but the last interpolation was flattened. The fork fixed it (TD3) and regenerated the
+ *   affected ground truth; this follows the fixed form.
  *
  * A pattern with no accentuations throws in the renderer; here it contributes 0, because the
  * caller has already decided whether the span exists at all.
@@ -204,24 +194,13 @@ export function accentuationAt(pattern: AccentuationPattern, beatPosition: numbe
   if (beatPosition < head(points).beat) return 0;
   if (beatPosition >= pattern.length + 1) return last(points).transitionTo;
 
-  // **`upperBoundBy` is the considered-and-rejected alternative**, named here because the shape
-  // invites it: this is "the last point whose `@beat` is at or before `beatPosition`", which is
-  // `upperBoundBy(points, p => p.beat, beatPosition) - 1`, and it agrees with this scan on every
-  // finite input — ties included, since both land on the LAST point of a tied run.
-  //
-  // Two reasons it stays a scan, and the second is the one that decides it.
-  //
-  // 1. **There is no speed to win.** `points` is the `<accentuation>` children of ONE
-  //    `accentuationPatternDef` — four for a 4/4 pattern, rarely more than a handful. A binary
-  //    search over that costs more closure calls than the scan costs comparisons.
-  // 2. **`NaN` behaviour would change, in the direction the campaign guards against.** A `NaN`
-  //    `beatPosition` fails every test in this scan, so the loop runs to index 0 with `found`
-  //    already assigned and the interpolation returns `NaN`. Under the bound the answer is −1 —
-  //    no point — and the function returns **0**. `beatPosition` comes from `beatAt(...)`, which
-  //    is tick arithmetic on a caller-supplied grid, so `NaN` is reachable in principle rather
-  //    than only in theory; and a 0 in a reported velocity contribution looks like an answer
-  //    where a `NaN` announces itself. Trading a loud wrong number for a quiet one is not a
-  //    loop-shape change, and it is not worth a search over four elements.
+  // A scan, not `upperBoundBy(points, p => p.beat, beatPosition) - 1`, which agrees with it on
+  // every finite input, ties included. `points` is the `<accentuation>` children of one def —
+  // four for a 4/4 pattern — so there is no speed to win, and the bound would change `NaN`
+  // behaviour: `NaN` fails every test in this scan, so the loop runs to index 0 with `found`
+  // assigned and the interpolation returns `NaN`, where the bound answers −1 and the function
+  // returns 0. `beatPosition` comes from `beatAt`, tick arithmetic on a caller-supplied grid,
+  // so `NaN` is reachable; a `NaN` announces itself where a 0 velocity contribution does not.
   let found: PatternPoint | null = null;
   let segmentEnd = pattern.length + 1;
   for (let i = points.length - 1; i >= 0; --i) {
@@ -243,17 +222,15 @@ export function accentuationAt(pattern: AccentuationPattern, beatPosition: numbe
   );
 }
 
-/** `ppq4 / denominator` — the renderer's beat length in ticks. */
+/** The renderer's beat length, in ticks. */
 function ticksPerBeatOf(grid: BeatGrid, ticksPerQuarter: number): number {
   return (4 * ticksPerQuarter) / grid.denominator;
 }
 
-/** `ticksPerBeat · numerator`. */
 function measureTicksOf(grid: BeatGrid, ticksPerQuarter: number): number {
   return ticksPerBeatOf(grid, ticksPerQuarter) * grid.numerator;
 }
 
-/** `length · 4 · ppq / denominator`. */
 function patternLengthTicksOf(
   pattern: AccentuationPattern,
   grid: BeatGrid,
@@ -305,8 +282,6 @@ export function readAccentuationSegments(
   assertSpanEndRule(METRICAL_ACCENTUATION_MAP, 'same-local-name');
   if (view === null) return neutralAccentuationCurve();
 
-  // Read each entry, skip what is not a dated `<accentuationPattern>`, keep the rest —
-  // `filterMap`, with the two `continue`s as the two `null` returns.
   const raws = filterMap(view.entries, (entry, index) => {
     if (entry.element.getLocalName() !== 'accentuationPattern') return null;
     if (!Number.isFinite(entry.date)) return null;
@@ -325,14 +300,7 @@ export function readAccentuationSegments(
   const notes: AccentuationCurveNote[] = [];
   const breakpoints = new Set<number>([0]);
 
-  // The end is PAIRED with its instruction rather than read at `index + 1`. "There is no next
-  // instruction" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
-  // system had to be told about with `as (typeof raws)[number] | undefined`.
-  // Each entry with its successor, or `null` for the last — `withNext`. The span it opens
-  // then runs to `next?.dateTicks ?? Infinity`, which says at the point of use that the last
-  // entry runs to the end of time. The `[...xs.slice(1).map(…), Infinity]` array this
-  // replaces built that sentinel where it could not be read as one, and built a whole array
-  // to be zipped away.
+  // The last instruction's span runs to the end of time.
   for (const [raw, next] of withNext(raws)) {
     const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
     breakpoints.add(raw.dateTicks);
@@ -340,8 +308,6 @@ export function readAccentuationSegments(
     const nameRef = readAttributeValue(raw.element, 'name.ref');
     const scale = readNumericAttributeValue(raw.element, 'scale');
 
-    // `@name.ref` and `@scale` are both mandatory: without either, getMetricalAccentuationDataOf
-    // returns null and the instruction is skipped outright.
     if (nameRef === null || Number.isNaN(scale)) {
       notes.push({
         kind: 'renderer-skip',
@@ -360,8 +326,7 @@ export function readAccentuationSegments(
       raw.globalEnvironment,
     );
 
-    // No style in scope — an instruction before the map's first <style> switch — is skipped
-    // even with a perfectly good @name.ref (§5.4). A renderer SKIP, not a ⊥: nothing throws.
+    // A renderer skip, not a ⊥: nothing throws (§5.4).
     if (style === null) {
       notes.push({
         kind: 'renderer-skip',
@@ -378,8 +343,6 @@ export function readAccentuationSegments(
       if (attribute('name', candidate)?.getValue() === nameRef) def = candidate;
 
     if (def === null) {
-      // The style resolved but the def name did not: the datum is non-null with a null def,
-      // and the render dereferences it — TypeError, the whole render throws (R21).
       segments.push({
         startTicks: raw.dateTicks,
         endTicks,
@@ -403,7 +366,7 @@ export function readAccentuationSegments(
       startTicks: raw.dateTicks,
       endTicks,
       scale,
-      // Default TRUE — the one boolean in this module whose absent-default is not false.
+      // Default TRUE — the one boolean here whose absent-default is not false.
       stickToMeasures: readAttributeValue(raw.element, 'stickToMeasures') !== 'false',
       loop: readAttributeValue(raw.element, 'loop') === 'true',
       pattern: valued(readAccentuationPattern(def)),
@@ -421,9 +384,9 @@ export function readAccentuationSegments(
 /**
  * The segment governing `ticks`, right-continuous (A-B1), or null where none does.
  *
- * Called once per Gauss-Legendre node, so the linear scan this replaces made one dimension's
- * integral quadratic in the size of the map it integrates. {@link coveringSegmentAt} carries the
- * proof that the bound answers identically here — including at `NaN` and `Infinity`.
+ * Called once per Gauss-Legendre node, where a linear scan would make one dimension's integral
+ * quadratic in the size of the map it integrates. {@link coveringSegmentAt} carries the proof
+ * that the bound answers identically here, including at `NaN` and `Infinity`.
  */
 export function accentuationSegmentAt(
   curve: AccentuationCurve,
