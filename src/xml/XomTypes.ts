@@ -71,6 +71,38 @@ function placeholderDom(): DomDocument {
 }
 
 /**
+ * The one DOM node every {@link Attribute} carries, for the same reason and under the same
+ * rules as {@link placeholderDom} above.
+ *
+ * `XomNode` requires a node, but an attribute's is inert: nothing calls `getDomNode()` on one,
+ * {@link XomNode.adoptDomNode} is only ever used on `Element` and `Text`, and the two places
+ * that do read `_domNode` — {@link XomNode.getParent} and {@link XomNode.detach} — reach it
+ * through `parentNode`, which a DOM `Attr` never has. One shared node is therefore
+ * indistinguishable from one per instance, and one per instance is not cheap:
+ * `createAttribute` runs xmldom's XML-name validation RegExp, which at one call per
+ * constructed attribute was ~5% of a render's self time and a matching share of its garbage.
+ *
+ * Two invariants hold this up, and both are checkable by grep: nothing mutates the node, and
+ * nothing compares two attributes by DOM-node identity. An `adoptDomNode` call on an
+ * `Attribute` is what would break them.
+ */
+let sharedAttributeNode: Node | null = null;
+
+function attributePlaceholder(): Node {
+  return (sharedAttributeNode ??= placeholderDom().createAttribute(
+    'placeholder',
+  ) as unknown as Node);
+}
+
+/**
+ * The namespace an `xml:`-prefixed attribute is in, by XML's own rule — the third and last
+ * step of `tree.ts`'s {@link attribute} lookup, and the one that makes `attribute('id', e)`
+ * find an `xml:id`. Spelled out inline elsewhere in the port; named here because
+ * {@link Element.findAttributeByNamespacePriority} compares against it per attribute.
+ */
+const XML_NAMESPACE_URI = 'http://www.w3.org/XML/1998/namespace';
+
+/**
  * A fixed collection of nodes, as returned by {@link Element.query} — XOM's `Nodes`.
  *
  * The backing array is taken by reference and never mutated here; `toArray()` hands
@@ -187,9 +219,9 @@ export class Attribute extends XomNode {
    * at runtime by whether the third argument is present.
    */
   constructor(name: string, valueOrNs: string, value?: string) {
-    // Create a placeholder node - attributes are attached to elements later
-    const attr = placeholderDom().createAttribute(name);
-    super(attr as unknown as Node);
+    // The placeholder is shared and inert; see {@link attributePlaceholder}. Attributes are
+    // attached to elements later, through this layer's own `_attributes` array.
+    super(attributePlaceholder());
 
     const split = splitQualifiedName(name);
     this._namespacePrefix = split.prefix;
@@ -499,6 +531,42 @@ export class Element extends XomNode {
     for (const attr of attributes)
       if (attr.getLocalName() === name || attr.getQualifiedName() === name) return attr;
     return null;
+  }
+
+  /**
+   * @internal The single-scan form of `tree.ts`'s {@link attribute}, which is its only caller.
+   *
+   * That function's three `getAttribute(name, ns)` calls are three full passes over this same
+   * array, alike in matching `getLocalName() === name` and differing only in the namespace
+   * they accept. One pass that keeps the best-priority hit answers identically: priority runs
+   * no-namespace → this element's own → XML, and within one priority the first in insertion
+   * order wins, which is exactly what three ordered scans produce. A miss, the case that paid
+   * for all three passes, now costs one.
+   *
+   * The priority order is `attribute`'s to define and is documented there; this method must be
+   * read together with it, and reordering the returns below is the same byte-visible change as
+   * reordering the lookups there.
+   */
+  findAttributeByNamespacePriority(name: string): Attribute | null {
+    let unnamespaced: Attribute | null = null;
+    let ownNamespace: Attribute | null = null;
+    let xmlNamespace: Attribute | null = null;
+    // Read lazily: an element with no namespaced attribute of this name never needs it.
+    let ownNamespaceURI: string | null = null;
+
+    for (const attr of this._attributes) {
+      if (attr.getLocalName() !== name) continue;
+      const ns = attr.getNamespaceURI();
+      if (ns === '') {
+        unnamespaced ??= attr;
+        continue;
+      }
+      ownNamespaceURI ??= this.getNamespaceURI();
+      if (ns === ownNamespaceURI) ownNamespace ??= attr;
+      else if (ns === XML_NAMESPACE_URI) xmlNamespace ??= attr;
+    }
+
+    return unnamespaced ?? ownNamespace ?? xmlNamespace;
   }
 
   getAttributeValue(name: string, namespaceURI?: string): string | null {

@@ -78,6 +78,31 @@ describe('attribute', () => {
     expect(attribute('id', note)!.getValue()).toBe('bare');
   });
 
+  // The rung between the two the test above pins. Step two beating step three was covered by
+  // no fixture either — the corpus has no element carrying the same local name in both its own
+  // and the XML namespace — and it is the pair `findAttributeByNamespacePriority` decides with
+  // a bare `??` chain, where a swap is one character and silent.
+  it("should prefer the element's own namespace over the XML namespace", () => {
+    const mei = 'http://www.music-encoding.org/ns/mei';
+    const note = new Element('mei:note', mei);
+    note.addAttribute(new Attribute('mei:id', mei, 'own'));
+    note.addAttribute(
+      new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', 'namespaced'),
+    );
+    expect(attribute('id', note)!.getValue()).toBe('own');
+  });
+
+  // The documented consequence of the three steps: an attribute in a namespace that is neither
+  // empty, nor the element's own, nor XML is not reachable through this function at all. No
+  // document in the corpus has one, which is exactly why the behaviour needs a test.
+  it('should not find an attribute in a fourth, unrelated namespace', () => {
+    const note = new Element('note');
+    note.addAttribute(new Attribute('other:id', 'http://example.invalid/other', 'unreachable'));
+    expect(attribute('id', note)).toBeNull();
+    // ...though it is still there, and a caller naming the namespace still gets it.
+    expect(note.getAttribute('id', 'http://example.invalid/other')!.getValue()).toBe('unreachable');
+  });
+
   it('should return null when attribute does not exist', () => {
     const el = new Element('note');
     expect(attribute('nonexistent', el)).toBeNull();

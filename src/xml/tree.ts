@@ -482,16 +482,14 @@ export function attribute(name: string, ofThis: Element | null): Attribute | nul
   // whole fixture corpus, all of them covered by step three, and an attribute without a prefix
   // is in no namespace by XML's own rule, unlike an element, which is why every `@date`,
   // `@number` and `@name` in MSM and MPM still resolves at step one.
-  let a = ofThis.getAttribute(name, '');
-  if (a != null) return a;
-
-  a = ofThis.getAttribute(name, ofThis.getNamespaceURI());
-  if (a != null) return a;
-
-  a = ofThis.getAttribute(name, 'http://www.w3.org/XML/1998/namespace');
-  if (a != null) return a;
-
-  return null;
+  //
+  // The three steps were three `getAttribute` calls until they were measured: three full scans
+  // of one array, alike but for the namespace each accepts, on the most-called read path in the
+  // port. `findAttributeByNamespacePriority` is the same three steps folded into one scan, and
+  // holds the same priority order — which stays this function's to define, together with every
+  // word above. Changing the order there without changing it here, or the reverse, is a
+  // byte-visible change made in half.
+  return ofThis.findAttributeByNamespacePriority(name);
 }
 
 /**
