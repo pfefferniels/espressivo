@@ -27,6 +27,7 @@ import { COMPARISON_DIMENSIONS, type ComparisonDimension } from '../../src/compa
 import { DEFAULT_LAMBDA_DATE } from '../../src/comparison/eventAlignment.js';
 import { parseMsmRoot } from '../../src/comparison/msm.js';
 import type { InvarianceMode } from '../../src/comparison/decomposition.js';
+import { elementAt, numberAt, pairwise } from '../../src/prelude/index.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const TELEMANN = readFileSync(join(FIXTURES, 'telemann-grave.mpm'), 'utf-8');
@@ -75,7 +76,7 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
     expect(baroqueFast.window.endQuarters).toBeCloseTo(204, 9);
     expect(baroqueFast.inputs.msmUsed).toBe(true);
     expect(baroqueFast.measures).not.toBeNull();
-    expect(baroqueFast.measures?.[0].timeSignature).toEqual({ numerator: 3, denominator: 2 });
+    expect(baroqueFast.measures?.[0]?.timeSignature).toEqual({ numerator: 3, denominator: 2 });
   });
 
   it('has the shape the corpus advertises: Baroque and Romantic are the near pair', () => {
@@ -219,6 +220,43 @@ describe('P-C9: Vulpius — the amateur reading is the romantic one, made imprec
     expect(baroqueRomantic.dimensions.tempo.distance).toBeGreaterThan(2000);
   });
 
+  /**
+   * The measure grid across a TIME-SIGNATURE CHANGE, which is the half of `measureGrid`'s
+   * contract a single-signature score cannot reach — and Telemann, where the only other
+   * measure assertion lives, declares one signature for the whole piece.
+   *
+   * Vulpius declares 3/2 at tick 0 and 6/4 at tick 5760, i.e. quarter 12 at this score's
+   * `pulsesPerQuarter="480"`. A 3/2 measure is six quarters, so the first block is measures 1
+   * and 2 at quarters 0 and 6, and the 6/4 block opens exactly AT the change — never past it,
+   * and never with the two blocks' measures interleaved.
+   *
+   * [NEGATIVE CONTROL, MEASURED] Pairing each time signature with the wrong successor, so that
+   * the first block runs to the end of the window instead of to the change, leaves the whole
+   * suite green without this test: the only measure any test had looked at was `measures[0]`.
+   */
+  it('changes time signature mid-piece, and numbers the measures straight through', () => {
+    const grid = baroqueRomantic.measures ?? [];
+    expect(grid.length).toBeGreaterThan(4);
+    expect(
+      grid.slice(0, 4).map((measure) => ({
+        number: measure.number,
+        startQuarters: measure.startQuarters,
+        timeSignature: measure.timeSignature,
+      })),
+    ).toEqual([
+      { number: 1, startQuarters: 0, timeSignature: { numerator: 3, denominator: 2 } },
+      { number: 2, startQuarters: 6, timeSignature: { numerator: 3, denominator: 2 } },
+      { number: 3, startQuarters: 12, timeSignature: { numerator: 6, denominator: 4 } },
+      { number: 4, startQuarters: 18, timeSignature: { numerator: 6, denominator: 4 } },
+    ]);
+
+    // …and the WHOLE grid is one straight numbering over strictly increasing starts, which is
+    // exactly what two overlapping blocks would break.
+    expect(grid.map((measure) => measure.number)).toEqual(grid.map((_measure, index) => index + 1));
+    for (const [previous, measure] of pairwise(grid))
+      expect(measure.startQuarters).toBeGreaterThan(previous.startQuarters);
+  });
+
   it('pins the measured values', () => {
     expect(baroqueRomantic.aggregate.distance).toBeCloseTo(8849.390525, 4);
     expect(baroqueAmateur.aggregate.distance).toBeCloseTo(10294.4973822, 4);
@@ -351,8 +389,9 @@ describe('scopes: what a part with no counterpart is compared against', () => {
             msm: parseMsmRoot(score),
           }).dimensions.tempo.distance,
       );
-      for (const distance of distances) expect(distance).toBeCloseTo(distances[0], 12);
-      expect(distances[0]).toBeCloseTo(
+      const reference = numberAt(distances, 0, 'the per-encoding tempo distances');
+      for (const distance of distances) expect(distance).toBeCloseTo(reference, 12);
+      expect(reference).toBeCloseTo(
         compare({ a: globalOnly(60), b: globalOnly(90), window, msm: parseMsmRoot(score) })
           .dimensions.tempo.distance,
         12,
@@ -541,7 +580,7 @@ describe('the report’s own rules', () => {
     expect(mismatched.comparability.suspectPair).toBe(true);
     const fired = mismatched.notes.filter((candidate) => candidate.kind === 'length-mismatch');
     expect(fired).toHaveLength(1);
-    expect(fired[0].message).toContain('score end');
+    expect(elementAt(fired, 0, 'the length-mismatch notes').message).toContain('score end');
 
     // The pair's OWN length ratio is exactly 1 here — the two performances are the same
     // document — so nothing but the score arm can be firing.
@@ -680,8 +719,9 @@ describe('the report’s own rules', () => {
       // differently and the difference is an encoding one.
       const fired = encodingNotesOf(doc(tempoMap(60)), doc('', part(1, tempoMap(60))));
       expect(fired).toHaveLength(1);
-      expect(fired[0].dimension).toBe('tempo');
-      expect(fired[0].message).toContain('part-local');
+      const only = elementAt(fired, 0, 'the encoding notes');
+      expect(only.dimension).toBe('tempo');
+      expect(only.message).toContain('part-local');
     });
 
     it('says nothing when the encodings agree, or when the distance is not 0', () => {
@@ -709,9 +749,10 @@ describe('the report’s own rules', () => {
     const report = compare({ a: hofmann, b: ordinary, window });
     const plausibility = report.notes.filter((candidate) => candidate.kind === 'plausibility');
     expect(plausibility).toHaveLength(1);
-    expect(plausibility[0].site?.attribute).toBe('bpm');
-    expect(plausibility[0].site?.container).toBe('tempoMap');
-    expect(plausibility[0].document).toBe('a');
+    const note = elementAt(plausibility, 0, 'the plausibility notes');
+    expect(note.site?.attribute).toBe('bpm');
+    expect(note.site?.container).toBe('tempoMap');
+    expect(note.document).toBe('a');
     // The distance is what it was: the band is a finding, never a repair.
     expect(report.dimensions.tempo.distance).toBeGreaterThan(0);
   });

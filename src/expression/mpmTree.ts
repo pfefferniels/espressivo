@@ -30,7 +30,7 @@
  *   stay in the document — only the last one is visible to the index, exactly as the
  *   renderer would see it.
  * - **`imprecisionMap.timing` and friends are ordinary local names.** The imprecision
- *   domain is encoded in the element's own local name (ImprecisionMap.ts:15-17), so keying
+ *   domain is encoded in the element's own local name (ImprecisionMap.ts:241-243), so keying
  *   maps by local name needs no special case and loses nothing.
  */
 import type { Element } from '../xml/XomTypes.js';
@@ -81,7 +81,7 @@ function indexDescendantsByLocalName(
 ): Map<string, Element> {
   const found = new Map<string, Element>();
   const visit = (parent: Element): void => {
-    for (const child of parent.getChildElements().toArray()) {
+    for (const child of parent.getChildElements()) {
       if (matches(child.getLocalName())) found.set(child.getLocalName(), child);
       visit(child);
     }

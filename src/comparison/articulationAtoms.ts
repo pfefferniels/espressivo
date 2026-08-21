@@ -49,6 +49,8 @@
  * instruction in the same situation, so the two sections genuinely differ and this module says
  * which is which rather than leaving it to be inferred.
  */
+import { head, isNonEmpty } from '../prelude/index.js';
+import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { ARTICULATION_MAP, ARTICULATION_STYLE } from '../mpm/names.js';
@@ -182,7 +184,7 @@ export function resolveDurationLever(
   // The short-circuit is tested BEFORE the precedence, because it removes the branch the
   // precedence lives in rather than winning inside it.
   if (present(DURATION_SHORT_CIRCUIT)) return [];
-  return levers.length === 0 ? [] : [levers[0]];
+  return isNonEmpty(levers) ? [head(levers)] : [];
 }
 
 /** The renderer's parse of one attribute: a number, or NaN where it cannot read one. */
@@ -282,12 +284,12 @@ export function readArticulationAtoms(
     if (nameRef !== null) {
       const style = findStyleDef(
         ARTICULATION_STYLE,
-        view.styleNames[index],
+        optionAt(view.styleNames, index, 'a map view style-name list'),
         resolution.environment,
         resolution.globalEnvironment,
       );
       if (style !== null)
-        for (const candidate of style.styleDef.getChildElements('articulationDef').toArray())
+        for (const candidate of style.styleDef.getChildElements('articulationDef'))
           if (attribute('name', candidate)?.getValue() === nameRef) def = candidate;
 
       if (def === null)

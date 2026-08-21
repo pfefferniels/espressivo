@@ -28,9 +28,12 @@ import {
   firstChildElement,
   getNextSiblingElement,
   getPreviousSiblingElement,
+  reverseDescendantElements,
 } from '../../src/xml/tree.js';
+import { addToMap } from '../../src/msm/dateMap.js';
 import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
+import { bestGrowthRatio } from '../support/growthGuard.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const COMPARISON = join(HERE, '..', 'comparison', 'fixtures');
@@ -147,6 +150,110 @@ describe('descendantElements agrees with the XPath descendant axis', () => {
 });
 
 // ---------------------------------------------------------------------------
+// reverseDescendantElements — replaced `descendantElements(…)` read back to front
+// ---------------------------------------------------------------------------
+describe('reverseDescendantElements is descendantElements read backwards, lazily', () => {
+  /**
+   * The claim is exactly this: same elements, reversed. Both call sites — `addToMap` and
+   * the converter's tie handling — used to build the array and index down from its end,
+   * so anything else here is a behaviour change.
+   */
+  const predicates: { readonly what: string; readonly predicate: (e: Element) => boolean }[] = [
+    { what: 'every element', predicate: () => true },
+    { what: 'dated elements', predicate: (e) => e.getAttribute('date') !== null },
+    { what: 'notes with a tie', predicate: (e) => e.getLocalName() === 'note' },
+    { what: 'nothing at all', predicate: () => false },
+  ];
+
+  for (const { what, predicate } of predicates) {
+    it(`${what} — same identities, exactly reversed`, () => {
+      for (const { name, root } of documents) {
+        const forwards = descendantElements(root, predicate);
+        const backwards = [...reverseDescendantElements(root, predicate)];
+        expect(backwards.length, `${name}: count`).toBe(forwards.length);
+        for (let i = 0; i < forwards.length; ++i)
+          expect(backwards[i] === forwards[forwards.length - 1 - i], `${name}: node ${i}`).toBe(
+            true,
+          );
+      }
+    });
+  }
+
+  it('excludes the context node itself, as `descendant::` does', () => {
+    const root = new Element('scoreMap');
+    const child = new Element('scoreMap');
+    root.appendChild(child);
+    expect([...reverseDescendantElements(root, () => true)]).toEqual([child]);
+  });
+
+  it('is reverse pre-order: a later subtree comes out before an earlier one, child before parent', () => {
+    const root = new Element('root');
+    const a = new Element('a');
+    const aChild = new Element('a-child');
+    const b = new Element('b');
+    a.appendChild(aChild);
+    root.appendChild(a);
+    root.appendChild(b);
+    expect([...reverseDescendantElements(root, () => true)].map((e) => e.getLocalName())).toEqual([
+      'b',
+      'a-child',
+      'a',
+    ]);
+  });
+
+  it('searches below a match too, so nested maps are all reported', () => {
+    const outer = new Element('outerMap');
+    const inner = new Element('innerMap');
+    const deepest = new Element('deepestMap');
+    inner.appendChild(deepest);
+    outer.appendChild(inner);
+    expect([...reverseDescendantElements(outer, (e) => e.getLocalName().includes('Map'))]).toEqual([
+      deepest,
+      inner,
+    ]);
+  });
+
+  it('survives a document deep enough to overflow a recursive walk', () => {
+    const root = new Element('root');
+    let tip = root;
+    for (let i = 0; i < 50_000; ++i) {
+      const next = new Element('level');
+      tip.appendChild(next);
+      tip = next;
+    }
+    expect([...reverseDescendantElements(root, () => true)].length).toBe(50_000);
+  });
+
+  it('skips text children, and yields nothing for a childless element', () => {
+    const root = new Element('root');
+    root.appendChild('some text');
+    expect([...reverseDescendantElements(root, () => true)]).toEqual([]);
+  });
+
+  /**
+   * The whole point of the rewrite, stated exactly rather than as a timing: a caller that
+   * wants only the last element must not pay for the other 9999. This is the property
+   * `addToMap` depends on for its linearity, and a counted predicate proves it without a
+   * clock.
+   */
+  it('touches only the last element when the caller asks for only the last element', () => {
+    const score = new Element('score');
+    for (let i = 0; i < 10_000; ++i) score.appendChild(new Element('note'));
+
+    let tested = 0;
+    const walk = reverseDescendantElements(score, () => {
+      tested++;
+      return true;
+    });
+    const first = walk.next();
+
+    expect(first.done).toBe(false);
+    expect(first.value === score.getChild(9_999)).toBe(true);
+    expect(tested).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // allChildElements / firstChildElement — replaced `query("child::*[…]")`
 // ---------------------------------------------------------------------------
 describe('the child-axis helpers agree with the XPath they replaced', () => {
@@ -173,6 +280,39 @@ describe('the child-axis helpers agree with the XPath they replaced', () => {
         for (let i = 0; i < viaXpath.length; ++i) expect(viaWalk[i] === viaXpath[i]).toBe(true);
       }
     }
+  });
+
+  /**
+   * The corpus above is MSM and MPM, which have no `layer` elements — an MSM note carries
+   * `layer` as an *attribute*. So the one MEI shape that reaches `allChildElements`
+   * through this rewrite, `processLayer`'s scan for a layer's siblings, is stated here on
+   * a tree of its own. Without it, breaking that call site leaves the whole suite green:
+   * no fixture has a measure in which an earlier layer ends later than the last one, so
+   * the maximum it folds is never observably a maximum.
+   */
+  it("a staff's layers: allChildElements(staff, 'layer') matches child::*[local-name()='layer']", () => {
+    const staff = new Element('staff');
+    for (const [name, currentDate] of [
+      ['layer', '720.0'],
+      ['clef', ''],
+      ['layer', '1440.0'],
+      ['layer', '360.0'],
+    ] as const) {
+      const child = new Element(name);
+      if (currentDate !== '') child.addAttribute(new Attribute('currentDate', currentDate));
+      staff.appendChild(child);
+    }
+
+    const viaXpath = staff.query("child::*[local-name()='layer']").toArray();
+    const viaWalk = allChildElements(staff, 'layer');
+    expect(viaWalk.length).toBe(3);
+    expect(viaXpath.length).toBe(3);
+    for (let i = 0; i < viaXpath.length; ++i) expect(viaWalk[i] === viaXpath[i]).toBe(true);
+    expect(viaWalk.map((e) => e.getAttributeValue('currentDate'))).toEqual([
+      '720.0',
+      '1440.0',
+      '360.0',
+    ]);
   });
 
   it('firstChildElement(ofThis, localname) matches the first XPath hit', () => {
@@ -473,29 +613,69 @@ describe('the rewritten primitives are linear in the size of the document', () =
   }
 
   it('walking a score note by note with getNextSiblingElement', () => {
-    const ratio = growth((score) => {
-      let note = firstChildElement(score, 'note');
-      let seen = 0;
-      while (note !== null) {
-        seen++;
-        note = getNextSiblingElement('note', note);
-      }
-      expect(seen).toBe(score.getChildCount());
-    }, 400);
+    const ratio = bestGrowthRatio(
+      () =>
+        growth((score) => {
+          let note = firstChildElement(score, 'note');
+          let seen = 0;
+          while (note !== null) {
+            seen++;
+            note = getNextSiblingElement('note', note);
+          }
+          expect(seen).toBe(score.getChildCount());
+        }, 400),
+      THRESHOLD,
+    );
     expect(ratio).toBeLessThan(THRESHOLD);
   });
 
   it('collecting every dated descendant', () => {
-    const ratio = growth((score) => {
-      descendantElements(score, (e) => e.getAttribute('date') !== null);
-    }, 400);
+    const ratio = bestGrowthRatio(
+      () =>
+        growth((score) => {
+          descendantElements(score, (e) => e.getAttribute('date') !== null);
+        }, 400),
+      THRESHOLD,
+    );
     expect(ratio).toBeLessThan(THRESHOLD);
   });
 
   it('reordering a whole score', () => {
-    const ratio = growth((score) => {
-      score.reorderChildren([...allChildElements(score)].reverse());
-    }, 400);
+    const ratio = bestGrowthRatio(
+      () =>
+        growth((score) => {
+          score.reorderChildren([...allChildElements(score)].reverse());
+        }, 400),
+      THRESHOLD,
+    );
+    expect(ratio).toBeLessThan(THRESHOLD);
+  });
+
+  /**
+   * Filling a map with `addToMap`, which is how the converter builds every `<score>`.
+   *
+   * This one cannot use {@link growth}: `addToMap` mutates, so each measured call has to
+   * start from an empty map and build its own notes rather than reuse a prebuilt score.
+   * The normalisation is the same — one "call" processes the whole score, so linear work
+   * lands at {@link STEP} and the array-building formulation this replaced, which scanned
+   * the whole map per insertion, lands near `STEP²`.
+   */
+  it('filling a score note by note with addToMap', () => {
+    const fill = (n: number) => {
+      const map = new Element('score');
+      for (let i = 0; i < n; ++i) {
+        const note = new Element('note');
+        note.addAttribute(new Attribute('date', `${i * 360}.0`));
+        addToMap(note, map);
+      }
+      expect(map.getChildCount()).toBe(n);
+    };
+    fill(400); // warm the shapes before either measurement
+    fill(400 * STEP);
+    const ratio = bestGrowthRatio(
+      () => perOperation(() => fill(400 * STEP)) / perOperation(() => fill(400)),
+      THRESHOLD,
+    );
     expect(ratio).toBeLessThan(THRESHOLD);
   });
 });

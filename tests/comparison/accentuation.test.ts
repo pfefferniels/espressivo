@@ -13,6 +13,7 @@
  * reader reads the element raw.
  */
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../support/result.js';
 import { Builder } from '../../src/xml/XomTypes.js';
 import '../../src/mpm/Mpm.js';
 import { AccentuationPatternDef } from '../../src/mpm/elements/styles/defs/AccentuationPatternDef.js';
@@ -35,6 +36,7 @@ import {
 } from '../../src/comparison/accentuationDistance.js';
 import { comparisonRowFor } from '../../src/comparison/registry.js';
 import { isBottom } from '../../src/comparison/values.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
 
@@ -102,13 +104,12 @@ describe('accentuationAt agrees with the renderer, bit for bit', () => {
     const element = parseDef(xml);
     const mine = readAccentuationPattern(element);
     // copy(): constructing the def adds @length and reorders children.
-    const renderer = AccentuationPatternDef.createAccentuationPatternDef(element.copy());
-    expect(renderer).not.toBeNull();
+    const renderer = okValue(AccentuationPatternDef.createAccentuationPatternDef(element.copy()));
 
     for (let beat = 0; beat <= 6.02; beat += 0.01) {
       const position = Math.round(beat * 100) / 100;
       expect(accentuationAt(mine, position), `beat ${String(position)}`).toBe(
-        renderer!.getAccentuationAt(position),
+        renderer.getAccentuationAt(position),
       );
     }
   });
@@ -305,12 +306,14 @@ describe('accentuation spans: loop, skips and ⊥', () => {
       '<style date="0.0" name.ref="M"/><accentuationPattern date="0.0" name.ref="p" scale="1.0"/>',
       HEADER,
     );
-    expect(curve.segments[0].stickToMeasures).toBe(true);
+    expect(elementAt(curve.segments, 0, 'the accentuation segments').stickToMeasures).toBe(true);
     const explicit = curveFor(
       '<style date="0.0" name.ref="M"/><accentuationPattern date="0.0" name.ref="p" scale="1.0" stickToMeasures="false"/>',
       HEADER,
     );
-    expect(explicit.segments[0].stickToMeasures).toBe(false);
+    expect(elementAt(explicit.segments, 0, 'the accentuation segments').stickToMeasures).toBe(
+      false,
+    );
   });
 });
 

@@ -1,7 +1,9 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute } from '../../../xml/tree.js';
+import { err, type Result } from '../../../prelude/index.js';
 import { MPM_NAMESPACE } from '../../names.js';
+import { attemptParse, type MpmParseError } from '../parseError.js';
 
 /**
  * An MPM `<resource>` element: a pointer to a file this performance description relates to
@@ -14,57 +16,78 @@ import { MPM_NAMESPACE } from '../../names.js';
  * to. Resources are held inside {@link Metadata}'s `<relatedResources>` container.
  */
 export class RelatedResource extends AbstractXmlSubtree {
-  private uri: Attribute | null = null;
-  private type: Attribute | null = null;
+  /**
+   * Both attributes, held so the setters write where {@link parseData} read — and both
+   * initialised to the empty node the defaulting path installs, which is why neither needs
+   * a `!`: a `<resource>` missing one gets THIS object added to it, and one that declares
+   * it hands `parseData` the declared node to hold instead. See {@link Author.nameText}.
+   */
+  private uri: Attribute;
+  private type: Attribute;
 
   private constructor() {
     super();
+    this.uri = new Attribute('uri', '');
+    this.type = new Attribute('type', '');
   }
 
-  static createRelatedResource(xml: Element): RelatedResource | null;
-  static createRelatedResource(uri: string, type: string): RelatedResource | null;
-  static createRelatedResource(xmlOrUri: Element | string, type?: string): RelatedResource | null {
-    try {
-      if (typeof xmlOrUri === 'string') {
-        if (type === undefined) return null;
-        const resourceElt = new Element('resource', MPM_NAMESPACE);
-        const r = new RelatedResource();
-        r.parseData(resourceElt);
-        r.setUri(xmlOrUri);
-        r.setType(type);
-        return r;
-      } else {
+  /**
+   * As {@link Author.createAuthor}: the reason is returned rather than printed.
+   *
+   * The missing `type` was the one failure this factory already reported *without* logging —
+   * a bare `return null` an untyped caller could reach — so it gains a name here rather than
+   * staying the odd one out.
+   */
+  static createRelatedResource(xml: Element | null): Result<RelatedResource, MpmParseError>;
+  static createRelatedResource(
+    uri: string,
+    type: string | null,
+  ): Result<RelatedResource, MpmParseError>;
+  static createRelatedResource(
+    xmlOrUri: Element | string | null,
+    type?: string | null,
+  ): Result<RelatedResource, MpmParseError> {
+    if (xmlOrUri === null) return err({ kind: 'noElement', what: 'RelatedResource' });
+    if (typeof xmlOrUri !== 'string')
+      return attemptParse('RelatedResource', () => {
         const r = new RelatedResource();
         r.parseData(xmlOrUri);
         return r;
-      }
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+      });
+
+    // Bound to a `const` so the narrowing survives into the closure — a parameter's is
+    // discarded there, and re-asserting it with `!` is the move this campaign is removing.
+    // `null` and `undefined` are one answer here: Java refuses BOTH a null uri and a null
+    // type in this form (`RelatedResource.java:47-49`), and the overload now says so rather
+    // than leaving a caller to reach the branch by casting past the compiler.
+    const resourceType = type ?? null;
+    if (resourceType === null)
+      return err({ kind: 'missingArgument', what: 'RelatedResource', argument: 'type' });
+    return attemptParse('RelatedResource', () => {
+      const r = new RelatedResource();
+      r.parseData(new Element('resource', MPM_NAMESPACE));
+      r.setUri(xmlOrUri);
+      r.setType(resourceType);
+      return r;
+    });
   }
 
+  /** The `xml === null` guard now lives in {@link createRelatedResource}, its only caller. */
   protected parseData(xml: Element): void {
-    if (xml === null)
-      throw new Error('Cannot generate RelatedResource object. XML Element is null.');
     this.setXml(xml);
-    this.uri = attribute('uri', xml);
-    if (this.uri === null) {
-      this.uri = new Attribute('uri', '');
-      this.getXml().addAttribute(this.uri);
-    }
-    this.type = attribute('type', xml);
-    if (this.type === null) {
-      this.type = new Attribute('type', '');
-      this.getXml().addAttribute(this.type);
-    }
+    const declaredUri = attribute('uri', xml);
+    if (declaredUri === null) this.getXml().addAttribute(this.uri);
+    else this.uri = declaredUri;
+    const declaredType = attribute('type', xml);
+    if (declaredType === null) this.getXml().addAttribute(this.type);
+    else this.type = declaredType;
   }
 
   setUri(uri: string): void {
-    this.uri!.setValue(uri);
+    this.uri.setValue(uri);
   }
   getUri(): string {
-    return this.uri!.getValue();
+    return this.uri.getValue();
   }
   /**
    * All whitespace is stripped, not just trimmed: `type` names a resource kind (`mei`,
@@ -77,9 +100,9 @@ export class RelatedResource extends AbstractXmlSubtree {
    * the `parseFloat` vs `Double.parseDouble` divergences logged under [T6].
    */
   setType(type: string): void {
-    this.type!.setValue(type.replace(/\s+/g, ''));
+    this.type.setValue(type.replace(/\s+/g, ''));
   }
   getType(): string {
-    return this.type!.getValue();
+    return this.type.getValue();
   }
 }

@@ -40,6 +40,7 @@ import {
 import type { RegistryRow, RowSpace } from '../../src/expression/registry.js';
 import { compareMpm, performMsm, type XmlText } from '../../src/api/index.js';
 import { forwardInSpace } from '../../src/expression/transforms.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 /** The §3 dimensions with rows: W2's four, plus the two W3a cut 1 brought. */
 const COVERED_DIMENSIONS: readonly ComparisonDimension[] = [
@@ -700,13 +701,11 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
           elements.includes(comparison.element) &&
           dimensions.includes(comparison.dimension),
       );
-      expect(`${row.dimension}/${elements[0]}@${row.attribute}: ${candidates.length}`).toBe(
-        `${row.dimension}/${elements[0]}@${row.attribute}: 1`,
-      );
+      const label = `${row.dimension}/${elementAt(elements, 0, 'the row’s elements')}@${row.attribute}`;
+      expect(`${label}: ${candidates.length}`).toBe(`${label}: 1`);
       const expected = comparisonSpaceOfExpressionRow(row.space);
-      expect(`${candidates[0].key}: ${candidates[0].space.kind}`).toBe(
-        `${candidates[0].key}: ${expected}`,
-      );
+      const only = elementAt(candidates, 0, 'the matching comparison rows');
+      expect(`${only.key}: ${only.space.kind}`).toBe(`${only.key}: ${expected}`);
     }
   });
 
@@ -796,12 +795,16 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
     // The imprecision maps' own attribute, and per distribution the attributes its own
     // provider CONSUMES.
     //
-    // Not everything `DistributionData` parses: it reads all thirteen unconditionally
-    // regardless of type (§1.2 says so), so `<distribution.uniform>` carries a parsed
-    // `clip.lower` that no uniform provider is ever handed. Listing the parsed set would
-    // demand rows for attributes that cannot affect a performance, which is the opposite of
-    // what this partition is for. The consumed set is read off the factory calls at
-    // `ImprecisionMap.ts:295-347`.
+    // Not everything the renderer can parse: §1.2 admits thirteen attributes on a
+    // distribution, and the retired `DistributionData` read all thirteen for every family,
+    // so a `<distribution.uniform>` carried a parsed `clip.lower` that no uniform provider
+    // was ever handed. The six-armed `Distribution` sum type no longer parses what its arm
+    // cannot use, which brings the parsed set and this consumed set into agreement — but
+    // the reason for listing the CONSUMED set stands unchanged, and it is the one that
+    // survives a future family growing a parameter it does not read: rows for attributes
+    // that cannot affect a performance are the opposite of what this partition is for. The
+    // consumed set is read off the factory calls in `ImprecisionMap.ts`'s `providerFor`
+    // (`:98-149`).
     [null, 'imprecisionMap', 'detuneUnit'],
     ...(['imprecisionTiming', 'imprecisionDynamics', 'imprecisionDuration'] as const).flatMap(
       (dimension) =>

@@ -1840,7 +1840,7 @@ const movementShapeLiveness: ComparisonLiveness = {
   element: 'movement',
   rule:
     'read only where @transition.to is present — a constant movement returns [startDate, ' +
-    'position] for every t and never touches the control points (MovementData.ts:122-134). ' +
+    'position] for every t and never touches the control points (data/movement.ts). ' +
     'Defaults to 0.4 / 0.0, NOT dynamics’ 0.0 / 0.0 (AD-13), and unlike §5.3 the values are ' +
     'never clamped: out of range the date component stops being monotone and the span reads ⊥.',
 };
@@ -1912,7 +1912,7 @@ const PEDAL_ROWS: readonly ComparisonRegistryRow[] = [
     ppqSensitive: false,
     notes:
       '§5.8/AD-13 — the same Bézier control-point curvature as §5.3 with a DIFFERENT default: ' +
-      '0.4 (MovementData.ts:28), not 0.0. The shared machinery must not share a default, and ' +
+      '0.4 (data/movement.ts), not 0.0. The shared machinery must not share a default, and ' +
       'reading a <movement> with dynamics’ default silently reshapes every unshaped pedal ' +
       'gesture in the corpus. NOT clamped here: outside [0,1] the inner control points leave ' +
       'the unit square, x(t) stops being monotone and the sampler emits events whose dates go ' +

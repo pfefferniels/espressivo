@@ -1,48 +1,20 @@
-import { Element, Attribute, Nodes, Elements, Document } from '../xml/XomTypes.js';
+import { Element, Document } from '../xml/XomTypes.js';
+import { allChildElements, firstChildElement } from '../xml/tree.js';
+import { elementAt, isErr, unwrapOr } from '../prelude/index.js';
 import { AbstractMsm } from '../msm/AbstractMsm.js';
 import * as names from './names.js';
 import { Performance } from './elements/Performance.js';
 import { Metadata } from './elements/metadata/Metadata.js';
-// Side-effect import: registers the typed-map factories for Dated.addMapFromXml. See the
-// barrel's own comment for why an import is the registration mechanism (RULE M4).
-import './elements/maps/index.js';
+// There was a tenth import here — `import './elements/maps/index.js'`, a bare side-effect
+// import of a barrel whose only job was to evaluate the nine map modules so that their
+// `GenericMap.registerMapFactory(...)` statements would run. It is gone, along with the
+// barrel and the registry: `Dated` now reaches the map classes through the ordinary value
+// imports of `elements/maps/map.ts`'s dispatch table, so the module graph carries the
+// dependency instead of module evaluation order. That is what let `package.json` drop its
+// `sideEffects` list — see `maps/map.ts` for the measurement that made the hazard concrete.
 import type { Author } from './elements/metadata/Author.js';
 import type { Comment } from './elements/metadata/Comment.js';
 import type { RelatedResource } from './elements/metadata/RelatedResource.js';
-
-/**
- * Java's `Helper` in miniature, private to this module.
- *
- * These two are byte-identical to their namesakes in `Msm.ts`, and behave like the shared
- * `src/xml/tree.ts` versions T14 moved `mei/Helper`'s statics into. Do not "deduplicate"
- * them against `tree.ts` on sight: that set has behaviourally drifted from these
- * module-local copies, and reconciling them needs a per-method behavioural comparison
- * (RULE M2a; T16b owns it).
- *
- * Java's `Mpm.java` calls exactly these two Helper methods and no others
- * (Mpm.java:160,165).
- */
-function getFirstChildElement(name: string, ofThis: Element): Element | null {
-  if (ofThis === null || name.length === 0) return null;
-
-  const es = ofThis.getChildElements();
-  for (let i = 0; i < es.size(); ++i) {
-    if (es.get(i).getLocalName() === name) {
-      return es.get(i);
-    }
-  }
-  return null;
-}
-
-function getAllChildElements(name: string, ofThis: Element): Element[] {
-  if (ofThis === null || name.length === 0) return [];
-  const es = ofThis.getChildElements(name);
-  const result: Element[] = [];
-  for (let i = 0; i < es.size(); ++i) {
-    result.push(es.get(i));
-  }
-  return result;
-}
 
 /**
  * This class holds data in mpm format (Music Performance Markup).
@@ -91,35 +63,32 @@ export class Mpm extends AbstractMsm {
   private readonly performances: Performance[] = [];
 
   /**
-   * Constructor. Be aware that this is not a valid MPM document until a first Performance has been added!
+   * Nothing, an already-parsed {@link Document}, or MPM source text. Be aware that an empty
+   * Mpm is not a valid MPM document until a first Performance has been added.
+   *
+   * Three overloads until now, all of the same arity and all with one parameter, so the only
+   * thing they said that `Document | string | undefined` does not is that the modes are
+   * named — and they were not named, they were numbered by position. `AbstractMsm` collapsed
+   * the identical set for the identical reason, and its docstring makes the argument at
+   * length. 22 `new Mpm(...)` call sites, none of which moves.
+   *
+   * The `instanceof`/`typeof` pair is not a leftover of the overload dispatch: it is the ONE
+   * discrimination the body still needs, because a `Document` and a string are parsed while
+   * `undefined` gets an empty document built for it. It also keeps the fourth arm the
+   * overload set carried — an untyped (plain-JS) caller passing anything else lands here,
+   * gets `init()`, and sees exactly what it saw before. Testing `source === undefined`
+   * instead would send that caller down the parse path and leave it with no document at all.
+   *
+   * @param source the data as a XOM {@link Document}, or xml code as a UTF8 string, or
+   *   nothing for an empty instance
    */
-  constructor();
-  /**
-   * constructor
-   * @param mpm the mpm document of which to instantiate the Mpm object
-   */
-  constructor(mpm: Document);
-  /**
-   * constructor
-   * @param xml xml code as UTF8 String
-   */
-  constructor(xml: string);
-  constructor(arg?: Document | string) {
-    if (arg === undefined) {
-      super();
-      this.init(); // create a plain empty xml structure
-    } else if (arg instanceof Document) {
-      super(arg);
-      this.parseData();
-    } else if (typeof arg === 'string') {
-      super(arg);
+  constructor(source?: Document | string) {
+    if (source instanceof Document || typeof source === 'string') {
+      super(source);
       this.parseData();
     } else {
-      // Unreachable from TypeScript — `arg` is exhausted above. Kept as the defensive
-      // fallback for untyped (plain-JS) callers, who would otherwise reach `super()`
-      // uninitialised. Deleting it would change behaviour for `new Mpm(<anything else>)`.
       super();
-      this.init();
+      this.init(); // create a plain empty xml structure
     }
   }
 
@@ -133,20 +102,43 @@ export class Mpm extends AbstractMsm {
 
   /**
    * this parses the xml data and generates Performance objects from it that go into the performances array
+   *
+   * The root is read once and CHECKED, where both reads used to be `this.getRootElement()!`.
+   * That claim turns out to be true, and the reason is three modules away rather than here,
+   * so it is worth writing down: a `Document` always has a root, and unparsable source never
+   * gets this far because `@xmldom/xmldom` THROWS its own `ParseError` out of
+   * `Builder.build` — measured over seven malformed inputs (empty, whitespace, prose, a bare
+   * declaration, JSON, an unclosed tag, a comment with no element), every one of which
+   * raises `ParseError: missing root element` from inside `new Mpm(text)`. That is Java's
+   * behaviour too; `Mpm(String)` declares `throws ParsingException`.
+   *
+   * The two module-local XOM helpers this file carried opened with `if (ofThis === null)`
+   * guards which looked like they were holding that case up. They were not — nothing reaches
+   * them with a null — and they are gone with the helpers, which
+   * `tests/msm/navigationEquivalence.test.ts` established over the whole fixture corpus to be
+   * `tree.firstChildElement` and `tree.allChildElements`; this file's copies were
+   * byte-identical to the ones it probed.
    */
   private parseData(): void {
+    const root = this.requireRootElement();
+
     // parse the metadata
-    const metadataElement = getFirstChildElement('metadata', this.getRootElement()!);
-    if (metadataElement !== null) this.metadata = Metadata.createMetadata(metadataElement);
+    const metadataElement = firstChildElement('metadata', root);
+    // An unreadable `<metadata>` is skipped exactly as it was — what changes is that the
+    // reason arrives here as a value instead of going to the host's stderr from inside the
+    // factory. Nothing in this class has anywhere to put it yet, so it is dropped here, and
+    // that is the one place a caller could later be given it.
+    if (metadataElement !== null)
+      this.metadata = unwrapOr(Metadata.createMetadata(metadataElement), null);
 
     // parse the performances
-    const perfs: Element[] = getAllChildElements('performance', this.getRootElement()!);
+    const perfs: Element[] = allChildElements(root, 'performance');
 
     for (const perf of perfs) {
       // go through all performance elements
       const p = Performance.createPerformance(perf); // generate an instance of class Performance from it
-      if (p === null) continue;
-      this.performances.push(p);
+      if (isErr(p)) continue;
+      this.performances.push(p.value);
     }
   }
 
@@ -277,10 +269,10 @@ export class Mpm extends AbstractMsm {
       return true;
     }
 
-    this.metadata = Metadata.createMetadata(author, comment, relatedResources);
+    this.metadata = unwrapOr(Metadata.createMetadata(author, comment, relatedResources), null);
     if (this.metadata === null) return false;
 
-    this.getRootElement()!.appendChild(this.metadata.getXml());
+    this.requireRootElement().appendChild(this.metadata.getXml());
     return true;
   }
 
@@ -289,7 +281,7 @@ export class Mpm extends AbstractMsm {
    */
   removeMetadata(): void {
     if (this.metadata !== null) {
-      this.getRootElement()!.removeChild(this.metadata.getXml());
+      this.requireRootElement().removeChild(this.metadata.getXml());
     }
     this.metadata = null;
   }
@@ -325,24 +317,25 @@ export class Mpm extends AbstractMsm {
   }
 
   /**
-   * access a performance by index
+   * Access a performance by index.
+   *
+   * The by-name arm of this overload set is gone, and nothing was lost with it: it was one
+   * line, `return this.getPerformanceByName(name)`, and {@link getPerformanceByName} is a
+   * published method of this class in its own right (as it is in Java). So the overload pair
+   * was an alias whose only effect was to make `getPerformance` mean two things. Two src
+   * call sites: `src/mei` passes a number and does not move, `src/api/pipeline.ts` used both
+   * forms and now names which it wants.
+   *
+   * Only the upper bound is null, as in Java, where a negative index is an
+   * IndexOutOfBoundsException out of `ArrayList.get` rather than an answer. The read used
+   * to hand back `undefined` for one, typed as a `Performance`; it now throws, naming the
+   * index and the bound.
    * @param i
    * @returns
    */
-  getPerformance(i: number): Performance | null;
-  /**
-   * Get a performance by name.
-   * @param name
-   * @returns
-   */
-  getPerformance(name: string): Performance | null;
-  getPerformance(nameOrIndex: string | number): Performance | null {
-    if (typeof nameOrIndex === 'number') {
-      if (nameOrIndex >= this.performances.length) return null;
-      return this.performances[nameOrIndex];
-    } else {
-      return this.getPerformanceByName(nameOrIndex);
-    }
+  getPerformance(i: number): Performance | null {
+    if (i >= this.performances.length) return null;
+    return elementAt(this.performances, i, 'performance');
   }
 
   /**
@@ -359,20 +352,20 @@ export class Mpm extends AbstractMsm {
    * @param performance
    * @returns success
    */
-  addPerformance(performance: Performance): boolean;
+  addPerformance(performance: Performance | null): boolean;
   /**
    * generate a performance and add it to this mpm
    * @param name
    * @returns the created Performance or null
    */
   addPerformance(name: string): Performance | null;
-  addPerformance(performanceOrName: Performance | string): boolean | Performance | null {
+  addPerformance(performanceOrName: Performance | string | null): boolean | Performance | null {
     if (typeof performanceOrName === 'string') {
       // addPerformance(name: string)
       const performance = Performance.createPerformance(performanceOrName);
-      if (performance === null) return null;
-      this.addPerformanceObject(performance);
-      return performance;
+      if (isErr(performance)) return null;
+      this.addPerformanceObject(performance.value);
+      return performance.value;
     } else {
       // addPerformance(performance: Performance)
       return this.addPerformanceObject(performanceOrName);
@@ -381,12 +374,18 @@ export class Mpm extends AbstractMsm {
 
   /**
    * Internal method to add a Performance object
+   *
+   * Java guards `performance.getXml() != null` before appending. Here it cannot be: a
+   * `Performance` only escapes its factory after `readFrom` has called `setXml`, and
+   * `getXml()`'s return type says so. The guard is dropped rather than kept as an
+   * unreachable branch; `addPerformance`'s own null check, which Java also has and which an
+   * untyped caller CAN reach, stays and is now in the parameter type.
    * @param performance
    * @returns success
    */
-  private addPerformanceObject(performance: Performance): boolean {
+  private addPerformanceObject(performance: Performance | null): boolean {
     if (performance === null) return false;
-    if (performance.getXml() !== null) this.getRootElement()!.appendChild(performance.getXml());
+    this.requireRootElement().appendChild(performance.getXml());
     this.performances.push(performance);
     return true;
   }
@@ -397,34 +396,29 @@ export class Mpm extends AbstractMsm {
    */
   removePerformanceByName(name: string): void {
     for (let i = this.performances.length - 1; i >= 0; --i) {
-      const p = this.performances[i];
+      const p = elementAt(this.performances, i, 'performance');
       if (p.getName() === name) {
         this.performances.splice(i, 1);
-        if (p.getXml() !== null) this.getRootElement()!.removeChild(p.getXml());
+        // As {@link addPerformanceObject}: Java's `getXml() != null` guard is unreachable
+        // here, because a `Performance` a caller can hold has been through `setXml`.
+        this.requireRootElement().removeChild(p.getXml());
       }
     }
   }
 
   /**
    * remove the specified performance from this mpm
+   *
+   * As {@link getPerformance}: the by-name arm was `return this.removePerformanceByName(name)`
+   * and that method is published in its own right, so the overload pair was an alias. No
+   * `src/` call site uses either form.
    * @param performance
    */
-  removePerformance(performance: Performance): void;
-  /**
-   * remove all performances with the specified name from this mpm
-   * @param name
-   */
-  removePerformance(name: string): void;
-  removePerformance(performanceOrName: Performance | string): void {
-    if (typeof performanceOrName === 'string') {
-      this.removePerformanceByName(performanceOrName);
-    } else {
-      const performance = performanceOrName;
-      const idx = this.performances.indexOf(performance);
-      if (idx !== -1) {
-        this.performances.splice(idx, 1);
-        this.getRootElement()!.removeChild(performance.getXml());
-      }
+  removePerformance(performance: Performance): void {
+    const idx = this.performances.indexOf(performance);
+    if (idx !== -1) {
+      this.performances.splice(idx, 1);
+      this.requireRootElement().removeChild(performance.getXml());
     }
   }
 

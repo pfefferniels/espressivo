@@ -34,6 +34,15 @@
  *   are distance 0 on the date axis while driving two different MIDI mechanisms. It is
  *   inert on a map's last instruction, by the same `size()-1` guard as the trailing rule.
  */
+import {
+  elementAtOrNull,
+  filterMap,
+  isNonEmpty,
+  last,
+  upperBoundBy,
+  withNext,
+} from '../prelude/index.js';
+import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { innerControlPointsXPositions } from '../mpm/elements/maps/data/bezier.js';
 import { readAttributeValue, readNumericAttributeValue } from '../expression/attributes.js';
@@ -198,19 +207,22 @@ export function readDynamicsSegments(
 
   if (view === null) return neutralDynamicsCurve();
 
-  const raws: RawDynamics[] = [];
-  for (const [index, entry] of view.entries.entries()) {
+  // Read each entry, skip what is not a dated `<dynamics>`, keep the rest — `filterMap`, with
+  // the two skipping `continue`s as `null` returns. The THIRD `continue` was not a skip at
+  // all: it pushed a volume-less entry and then jumped to the next one, which is the ordinary
+  // early `return` of a function that has produced its answer.
+  const raws: readonly RawDynamics[] = filterMap(view.entries, (entry, index) => {
     const element: Element = entry.element;
-    if (element.getLocalName() !== 'dynamics') continue;
-    if (!Number.isFinite(entry.date)) continue;
+    if (element.getLocalName() !== 'dynamics') return null;
+    if (!Number.isFinite(entry.date)) return null;
 
-    const styleName = view.styleNames[index];
+    const styleName = optionAt(view.styleNames, index, 'a map view style-name list');
     const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
     const volumeText = readAttributeValue(element, 'volume');
 
     if (volumeText === null) {
       // The renderer skips it but still ends the previous span with it (AD-33.4).
-      raws.push({
+      return {
         dateTicks: entry.date * resolution.scaleFactor,
         volume: null,
         transitionTo: null,
@@ -218,8 +230,7 @@ export function readDynamicsSegments(
         protraction: 0,
         subNoteDynamics: false,
         rendererDefault: false,
-      });
-      continue;
+      };
     }
 
     const volume = resolveComparisonLevel(
@@ -241,7 +252,7 @@ export function readDynamicsSegments(
             resolution.globalEnvironment,
           );
 
-    raws.push({
+    return {
       dateTicks: entry.date * resolution.scaleFactor,
       volume: volume.value,
       transitionTo: transitionTo === null ? null : transitionTo.value,
@@ -253,18 +264,25 @@ export function readDynamicsSegments(
       rendererDefault:
         volume.source === 'renderer-default' ||
         (transitionTo !== null && transitionTo.source === 'renderer-default'),
-    });
-  }
+    };
+  });
 
   if (raws.length === 0) return neutralDynamicsCurve();
 
   const segments: DynamicsSegment[] = [];
   const notes: DynamicsCurveNote[] = [];
 
+  // Every VALID instruction with its position in `raws`, ascending — the tempo reader's
+  // structure, for the same reason. The tail-slice look-ahead it replaces was quadratic in time
+  // and in allocation; see `tempoCurve.readTempoSegments` for the measurement, including why the
+  // obvious `raws.find((c, at) => at > index && …)` repair is three times SLOWER than the slice.
+  const valid = filterMap(raws, (raw, at) =>
+    raw.volume === null ? null : { at, dateTicks: raw.dateTicks },
+  );
+
   // The neutral runs to the first VALID instruction, not the first element: a leading skip
   // extends it, exactly as in the tempo reader.
-  const firstValid = raws.find((raw) => raw.volume !== null);
-  const firstValidDate = firstValid?.dateTicks ?? Number.POSITIVE_INFINITY;
+  const firstValidDate = valid[0]?.dateTicks ?? Number.POSITIVE_INFINITY;
   if (firstValidDate > 0)
     segments.push({
       kind: 'constant',
@@ -273,9 +291,17 @@ export function readDynamicsSegments(
       volume: NEUTRAL_VELOCITY,
     });
 
-  for (const [index, raw] of raws.entries()) {
-    const next = raws[index + 1] as RawDynamics | undefined;
-    const isTrailing = next === undefined;
+  // The neighbour is PAIRED with its own instruction rather than read at `index + 1`. "There is
+  // no next one" is then a value — `null` — instead of an out-of-range read that the type system
+  // had to be told about with `as … | undefined`.
+  // `withNext` IS this pair of lines: every entry with its successor, and `null` for the
+  // last. The `[...xs.slice(1), null]` array and the zip that consumed it were one shape
+  // spelled out, and it is the shape `pairwise` cannot serve — `pairwise` drops the last
+  // entry, and the last instruction is a span too.
+  const paired = withNext(raws);
+  // The index survives only as a BOUND in the look-ahead predicate below, never as a read.
+  for (const [index, [raw, next]] of paired.entries()) {
+    const isTrailing = next === null;
     const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
 
     if (raw.volume === null) {
@@ -287,7 +313,10 @@ export function readDynamicsSegments(
           'with it, and pins every note up to the next valid <dynamics> to velocity 100 ' +
           '(DynamicsMap.ts:251-253, AD-33.4)',
       });
-      const nextValid = raws.slice(index + 1).find((candidate) => candidate.volume !== null);
+      const nextValid = elementAtOrNull(
+        valid,
+        upperBoundBy(valid, (entry) => entry.at, index),
+      );
       segments.push({
         kind: 'constant',
         startTicks: raw.dateTicks,
@@ -386,14 +415,22 @@ export function readDynamicsSegments(
   };
 }
 
-/** The segment governing `ticks`, right-continuous (A-B1). */
+/**
+ * The segment governing `ticks`, right-continuous (A-B1).
+ *
+ * **A SCAN, deliberately** — the same three reasons `tempoCurve.segmentAt` gives, in the same
+ * shape: the `!Number.isFinite(endTicks)` arm, the `?? last(curve.segments)` fallback, and skip
+ * gaps that nest. The accentuation, rubato and pedal siblings share `segments.ts`'s
+ * `coveringSegmentAt`; these two do not, and the reason is recorded rather than left as an
+ * omission for someone to "finish".
+ */
 export function dynamicsSegmentAt(curve: DynamicsCurve, ticks: number): DynamicsSegment | null {
   let found: DynamicsSegment | null = null;
   for (const segment of curve.segments) {
     if (segment.startTicks > ticks) break;
     if (ticks < segment.endTicks || !Number.isFinite(segment.endTicks)) found = segment;
   }
-  return found ?? (curve.segments.length > 0 ? curve.segments[curve.segments.length - 1] : null);
+  return found ?? (isNonEmpty(curve.segments) ? last(curve.segments) : null);
 }
 
 /** `volume(t)` on the ideal curve, at a position in common ticks. */

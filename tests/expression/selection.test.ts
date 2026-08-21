@@ -19,6 +19,7 @@ import {
   resolveSelection,
 } from '../../src/expression/selection.js';
 import { MPM_NAMESPACE } from '../../src/mpm/names.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 /** A one-performance document from a `<header>` body and a `<dated>` body. */
 function document(dated: string, header = ''): string {
@@ -149,7 +150,11 @@ describe('resolveSelection: the two failure kinds (A8)', () => {
     // §7.16: nothing in this codebase reads `tuning.offset`, so the domain is inert by
     // construction and has no dimension to spare — a caller pointing at one has to be told
     // rather than handed a spotlight that quietly damped everything they meant to keep.
-    const [offender] = resolve(EVERY_TYPE, ['dtun']).offenders;
+    const offender = elementAt(
+      resolve(EVERY_TYPE, ['dtun']).offenders,
+      0,
+      'the offenders this selection reported',
+    );
     expect(offender.kind).toBe('unmappable');
     expect(offender.element).toBe('distribution.uniform');
     expect(offender.detail).toContain('imprecisionMap.tuning');
@@ -213,7 +218,11 @@ describe('D-I agrees with the registry about what each element type governs', ()
       const selectable = document(
         `<${mapFor(element)}><${element} xml:id="${id}" date="0.0"/></${mapFor(element)}>`,
       );
-      const [entry] = resolve(selectable, [id]).resolved;
+      const entry = elementAt(
+        resolve(selectable, [id]).resolved,
+        0,
+        'the entries this selection resolved',
+      );
       expect(entry.dimensions).toEqual(dimensionsWrittenAt(element));
     },
   );

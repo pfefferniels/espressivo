@@ -33,6 +33,7 @@ import {
 } from '../../src/comparison/distributions.js';
 import { gaussLegendre10 } from '../../src/comparison/quadrature.js';
 import { epsilonRecord } from '../../src/comparison/compare.js';
+import { numberAt } from '../../src/prelude/index.js';
 
 /**
  * An INDEPENDENT `Φ`: composite GL-10 over the standard normal density, 64 panels per unit.
@@ -259,8 +260,10 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
     for (let k = 1; k <= 15; ++k) {
       const right = standardNormalQuantile(1 - 10 ** -k);
       const left = standardNormalQuantile(10 ** -k);
-      worstRight = Math.max(worstRight, Math.abs(right - RIGHT[k - 1]) / Math.abs(RIGHT[k - 1]));
-      worstLeft = Math.max(worstLeft, Math.abs(left - LEFT[k - 1]) / Math.abs(LEFT[k - 1]));
+      const expectedRight = numberAt(RIGHT, k - 1, 'the right-tail reference quantiles');
+      const expectedLeft = numberAt(LEFT, k - 1, 'the left-tail reference quantiles');
+      worstRight = Math.max(worstRight, Math.abs(right - expectedRight) / Math.abs(expectedRight));
+      worstLeft = Math.max(worstLeft, Math.abs(left - expectedLeft) / Math.abs(expectedLeft));
     }
     // Both tails at the CDF's own accuracy, which is what the doc claims for the Halley step.
     expect(worstRight).toBeLessThan(1e-14);
@@ -662,9 +665,9 @@ describe('W₁ against closed forms', () => {
       gaussianLaw(8, 0, 0),
       listLaw([-9, -2, 3, 4, 20]) as ImprecisionLaw,
     ];
-    for (let i = 0; i < laws.length; ++i)
-      for (let j = i + 1; j < laws.length; ++j)
-        expect(wasserstein1(laws[i], laws[j])).toBeGreaterThan(1e-6);
+    for (const [i, left] of laws.entries())
+      for (const right of laws.slice(i + 1))
+        expect(wasserstein1(left, right)).toBeGreaterThan(1e-6);
   });
 });
 

@@ -3,14 +3,17 @@ import { attribute, firstChildElement, getAttributeValue } from '../../../xml/tr
 import { MPM_NAMESPACE, ORNAMENTATION_STYLE } from '../../names.js';
 import { DEFAULT_EXPAND_ORNAMENTS } from '../../RenderOptions.js';
 import type { RenderContext } from '../../RenderOptions.js';
+import { elementAt, isOk } from '../../../prelude/index.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
+import { styleOfKind, type OrnamentationStyle } from '../styles/style.js';
 import {
   OrnamentData,
   parseOrnamentNotePool,
   parseOrnamentRepetitions,
 } from './data/OrnamentData.js';
-import { OrnamentationStyle } from '../styles/OrnamentationStyle.js';
 import {
   instantiateOrnaments,
   isV3Ornament,
@@ -110,19 +113,26 @@ function noteOrderAttributeValue(noteOrder: readonly string[]): string {
  * Port of meico.mpm.elements.maps.OrnamentationMap
  */
 export class OrnamentationMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createOrnamentationMap(xml?: Element): OrnamentationMap | null {
-    try {
-      return xml !== undefined
-        ? new OrnamentationMap(xml)
-        : new OrnamentationMap('ornamentationMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<ornamentationMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createOrnamentationMap(): OrnamentationMap;
+  static createOrnamentationMap(xml: Element): Result<OrnamentationMap, MpmParseError>;
+  static createOrnamentationMap(
+    xml?: Element | null,
+  ): OrnamentationMap | Result<OrnamentationMap, MpmParseError> {
+    return xml === undefined
+      ? new OrnamentationMap(GenericMap.emptyMapElement('ornamentationMap'))
+      : GenericMap.makeMap(xml, 'OrnamentationMap', (elt) => new OrnamentationMap(elt));
   }
 
   /**
@@ -263,17 +273,18 @@ export class OrnamentationMap extends GenericMap {
   getOrnamentDataOf(index: number): OrnamentData | null {
     const i = this.resolveEntryIndex(index, 'ornament');
     if (i < 0) return null;
-    const xml = this.elements[i].getValue();
+    const entry = this.entryAt(i);
+    const xml = entry.getValue();
     const od = new OrnamentData();
     const nameRefAtt = attribute('name.ref', xml);
     if (nameRefAtt === null) return null;
     od.ornamentDefName = nameRefAtt.getValue();
     od.styleName = this.findStyleNameAt(i) ?? '';
-    od.style = this.getStyle(ORNAMENTATION_STYLE, od.styleName) as OrnamentationStyle | null;
+    od.style = this.getStyle('ornamentation', od.styleName);
     if (od.style === null) return null;
     od.ornamentDef = od.style.getDef(od.ornamentDefName) ?? null;
     if (od.ornamentDef === null) return null;
-    od.date = this.elements[i].getKey();
+    od.date = entry.getKey();
     od.xml = xml;
     const noteOrderAtt = xml.getAttribute('note.order');
     if (noteOrderAtt !== null) {
@@ -336,7 +347,7 @@ export class OrnamentationMap extends GenericMap {
         const score = firstChildElement('score', s);
         if (score !== null) {
           const m = GenericMap.createGenericMap(score);
-          if (m !== null) mapsToOrnament.push(m);
+          if (isOk(m)) mapsToOrnament.push(m.value);
         }
       }
     }
@@ -426,23 +437,39 @@ export class OrnamentationMap extends GenericMap {
     // Built on first use, so that a document with no v3 ornament never walks the notes twice.
     let owners: ReadonlyMap<Element, GenericMap> | null = null;
 
-    // process each ornament entry in this ornamentationMap
-    for (let i = 0; i < this.size(); ++i) {
-      const ornamentXml = this.getElement(i);
-      if (ornamentXml === null) continue;
+    // Process each ornament entry in this ornamentationMap.
+    //
+    // Over the entries rather than over an index into them: the body wanted *both* halves
+    // of the entry — `getElement(i)` for the element and `entryAt(i).getKey()` for its date,
+    // a hundred lines apart — and looked each up separately. `getAllElements()` hands back
+    // the live index by reference, so this costs no copy, and the null test the indexed read
+    // needed goes with it: an entry's value is an `Element`, never null. Nothing in the body
+    // adds to or removes from *this* map (it writes into `maps`, which are the score's), so
+    // iterating the live array is safe here in a way it would not be in `addElement`.
+    for (const entry of this.getAllElements()) {
+      const ornamentXml = entry.getValue();
 
       // get the lookup style for subsequent ornaments
+      //
+      // Deliberately NOT `GenericMap.getStyle`, which does the same two-header lookup: this
+      // one carries `style` over from the previous `<style>` element, so when there is no
+      // local header at all the first branch does not run, `style` keeps its old value, and
+      // the `style === null` guard then skips the global lookup too. `getStyle` would reset
+      // it. That asymmetry is the reference's and it is observable, so it stays put.
       if (ornamentXml.getLocalName() === 'style') {
-        if (this.getLocalHeader() !== null)
-          style = this.getLocalHeader()!.getStyleDef(
-            ORNAMENTATION_STYLE,
-            getAttributeValue('name.ref', ornamentXml),
-          ) as OrnamentationStyle | null;
-        if (style === null && this.getGlobalHeader() !== null)
-          style = this.getGlobalHeader()!.getStyleDef(
-            ORNAMENTATION_STYLE,
-            getAttributeValue('name.ref', ornamentXml),
-          ) as OrnamentationStyle | null;
+        const nameRef = getAttributeValue('name.ref', ornamentXml);
+        const localHeader = this.getLocalHeader();
+        const globalHeader = this.getGlobalHeader();
+        if (localHeader !== null)
+          style = styleOfKind(
+            localHeader.getStyleDef(ORNAMENTATION_STYLE, nameRef),
+            'ornamentation',
+          );
+        if (style === null && globalHeader !== null)
+          style = styleOfKind(
+            globalHeader.getStyleDef(ORNAMENTATION_STYLE, nameRef),
+            'ornamentation',
+          );
         continue;
       }
 
@@ -458,7 +485,7 @@ export class OrnamentationMap extends GenericMap {
       od.ornamentDef = od.style.getDef(od.ornamentDefName) ?? null;
       if (od.ornamentDef === null) continue;
 
-      od.date = this.elements[i].getKey();
+      od.date = entry.getKey();
 
       const scaleAtt = attribute('scale', ornamentXml);
       if (scaleAtt !== null) od.scale = parseFloat(scaleAtt.getValue());
@@ -526,16 +553,20 @@ export class OrnamentationMap extends GenericMap {
         // sort the chords in the indicated order on the basis of the chord's first note's pitch
         const finalNoteOrderAscending = noteOrderAscending;
         chordSequence.sort((n1, n2) => {
-          const pitch1 = parseFloat(getAttributeValue('midi.pitch', n1[0]));
-          const pitch2 = parseFloat(getAttributeValue('midi.pitch', n2[0]));
+          const pitch1 = parseFloat(getAttributeValue('midi.pitch', elementAt(n1, 0, 'chord')));
+          const pitch2 = parseFloat(getAttributeValue('midi.pitch', elementAt(n2, 0, 'chord')));
           return Math.sign(pitch1 - pitch2) * finalNoteOrderAscending;
         });
       }
 
       // apply the ornament to the notes
+      // Generated notes go into the FIRST map, whatever part the principals came from —
+      // the reference's choice, kept. Reaching here at all means `chordSequence` was not
+      // empty, and every way of filling it reads from `maps`, so there is one.
+      const primary = elementAt(maps, 0, 'ornamentation target');
       for (const chord of od.apply(chordSequence)) {
         for (const note of chord) {
-          maps[0].addElement(note);
+          primary.addElement(note);
         }
       }
     }
@@ -728,7 +759,3 @@ export class OrnamentationMap extends GenericMap {
     }
   }
 }
-
-GenericMap.registerMapFactory('ornamentationMap', (xml) =>
-  OrnamentationMap.createOrnamentationMap(xml),
-);

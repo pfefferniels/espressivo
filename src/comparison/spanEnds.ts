@@ -94,7 +94,7 @@ const RULES: ReadonlyMap<string, SpanEndRule> = new Map<string, SpanEndRule>([
 
   // The exception, in all five spellings the model admits. The bare `imprecisionMap` is
   // included because `Dated` parses and indexes it (`GenericMap` registers a factory for it,
-  // `ImprecisionMap.ts:659`) even though it renders nothing — its `getDomain()` is `''` and
+  // `ImprecisionMap.ts:794`) even though it renders nothing — its `getDomain()` is `''` and
   // the domain switch falls through. It therefore has entries, and anything that walks its
   // entries needs the same rule its four siblings use.
   [IMPRECISION_MAP, 'any-entry'],

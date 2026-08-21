@@ -1,9 +1,12 @@
+import { withNext } from '../../../prelude/index.js';
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { addToListAttribute } from '../../../xml/ids.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 
 /**
  * An MPM `asynchronyMap`: how far ahead of or behind the beat a part plays, in
@@ -17,17 +20,26 @@ import { GenericMap } from './GenericMap.js';
  * Port of meico.mpm.elements.maps.AsynchronyMap
  */
 export class AsynchronyMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createAsynchronyMap(xml?: Element): AsynchronyMap | null {
-    try {
-      return xml !== undefined ? new AsynchronyMap(xml) : new AsynchronyMap('asynchronyMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<asynchronyMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createAsynchronyMap(): AsynchronyMap;
+  static createAsynchronyMap(xml: Element): Result<AsynchronyMap, MpmParseError>;
+  static createAsynchronyMap(
+    xml?: Element | null,
+  ): AsynchronyMap | Result<AsynchronyMap, MpmParseError> {
+    return xml === undefined
+      ? new AsynchronyMap(GenericMap.emptyMapElement('asynchronyMap'))
+      : GenericMap.makeMap(xml, 'AsynchronyMap', (elt) => new AsynchronyMap(elt));
   }
 
   addAsynchrony(date: number, millisecondsOffset: number): number {
@@ -38,11 +50,15 @@ export class AsynchronyMap extends GenericMap {
   }
 
   getAsynchronyAt(date: number): number {
-    let i = this.getElementIndexBeforeAt(date);
-    if (i < 0) return 0.0;
-    while (!this.elements[i].getValue().getLocalName().includes('asynchrony'))
-      if (--i < 0) return 0.0;
-    return parseFloat(getAttributeValue('milliseconds.offset', this.elements[i].getValue()));
+    // The nearest entry at or before `date` whose name says `asynchrony`, skipping back over
+    // the `<style>` switches in between. The `while` this replaces read the entry twice and
+    // spelled the lower bound in two places; the `for` says the same thing once.
+    for (let i = this.getElementIndexBeforeAt(date); i >= 0; --i) {
+      const e = this.entryAt(i).getValue();
+      if (e.getLocalName().includes('asynchrony'))
+        return parseFloat(getAttributeValue('milliseconds.offset', e));
+    }
+    return 0.0;
   }
 
   /**
@@ -74,18 +90,24 @@ export class AsynchronyMap extends GenericMap {
     if (map === null || this.elements.length === 0) return;
     let mapEntries = [...map.getAllElements()];
     const done: KeyValue<number, Element>[] = [];
-    for (let asynIndex = 0; asynIndex < this.size(); ++asynIndex) {
-      const asynElement = this.getElement(asynIndex)!;
+    // `withNext`: every asynchrony with the one that ends its span, and `null` for the last,
+    // whose span runs to the end of time. That is the whole of what `asynIndex` was for — the
+    // body read `entryAt(asynIndex)` and `elements.at(asynIndex + 1)` and nothing else — so
+    // the index goes with it. Unlike the five two-cursor render merges next door, this loop
+    // has no cursor to preserve: `mapEntries` is rebuilt by filtering, not advanced.
+    //
+    // `getAllElements()` hands back the live index by reference, and the body writes to `map`
+    // rather than to `this`, so walking it is safe here.
+    for (const [asynEntry, next] of withNext(this.getAllElements())) {
+      const asynElement = asynEntry.getValue();
+      const asynStartDate = asynEntry.getKey();
       const xmlId = getAttributeValue('xml:id', asynElement);
-      const asynEndDate =
-        asynIndex < this.elements.length - 1
-          ? this.elements[asynIndex + 1].getKey()
-          : Number.MAX_VALUE;
+      const asynEndDate = next?.getKey() ?? Number.MAX_VALUE;
       const offset = parseFloat(getAttributeValue('milliseconds.offset', asynElement));
       for (const mapEntry of mapEntries) {
         if (mapEntry.getKey() >= asynEndDate) break;
         let startDateMs = 0.0;
-        if (mapEntry.getKey() >= this.elements[asynIndex].getKey()) {
+        if (mapEntry.getKey() >= asynStartDate) {
           const att = attribute('milliseconds.date', mapEntry.getValue());
           if (att !== null) {
             startDateMs = Math.max(0.0, parseFloat(att.getValue()) + offset);
@@ -100,7 +122,7 @@ export class AsynchronyMap extends GenericMap {
         }
         const end = parseFloat(dur.getValue()) + mapEntry.getKey();
         if (end >= asynEndDate) continue;
-        if (end >= this.elements[asynIndex].getKey()) {
+        if (end >= asynStartDate) {
           const att = attribute('milliseconds.date.end', mapEntry.getValue());
           if (att !== null) {
             const ms = parseFloat(att.getValue()) + offset;
@@ -126,5 +148,3 @@ export class AsynchronyMap extends GenericMap {
     if (asynchronyMap !== null) asynchronyMap.renderAsynchronyToMap(map);
   }
 }
-
-GenericMap.registerMapFactory('asynchronyMap', (xml) => AsynchronyMap.createAsynchronyMap(xml));

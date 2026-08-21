@@ -1,90 +1,54 @@
-import { Attribute, Element } from '../../../../xml/XomTypes.js';
-import type { RubatoStyle } from '../../styles/RubatoStyle.js';
-import type { RubatoDef } from '../../styles/defs/RubatoDef.js';
-
 /**
- * All data needed to compute rubato over one span of the timeline — a single MPM
- * `<rubato>` element plus the `endDate` only {@link RubatoMap} knows.
+ * A rubato instruction on its way *into* a `rubatoMap` — the argument
+ * {@link RubatoMap.addRubato} serializes, and nothing else.
  *
- * Rubato is defined over a repeating *frame* of `frameLength` ticks. Within each frame
- * the timing is warped by a power curve of exponent `intensity`, and the warp is
- * confined to the window between `lateStart` and `earlyEnd` (both fractions of the
- * frame). `loop` decides whether the frame repeats until `endDate` or applies once.
+ * ## Why this is not {@link ../data/rubato.ts Rubato}
  *
- * Every numeric field is nullable because a `<rubato>` may name a `rubatoDef` instead
- * of spelling the values out; {@link RubatoMap.getRubatoDataOf} fills the gaps from
- * the def and then clamps the window into a valid range.
+ * Writing a `<rubato>` and reading one back are different jobs with different type
+ * requirements, and the Java class that does both pays for it with nullable fields that no
+ * single caller fills in. On the way *out*, null is meaningful and load-bearing: a
+ * `<rubato name.ref="myDef" loop="true"/>` is a complete, legal instruction that spells out
+ * none of the four numbers, because they come from the def. `addRubato` therefore branches
+ * on each field and omits the attribute it has nothing for.
  *
- * Port of meico.mpm.elements.maps.data.RubatoData
+ * On the way *in*, none of them can be null — `frameLength` is resolved from the element or
+ * the def or the instruction is rejected outright, and the other three fall back to the
+ * identity warp. That half is `rubato.ts`, and it has one null in the whole type: the
+ * `Rubato | null` that `resolveRubato` returns.
+ *
+ * ## What was dropped
+ *
+ * `xml`, `style`, `styleName`, `rubatoDef` and `endDate` were read-side apparatus that no
+ * writer touched — `addRubato` never serializes an end date, since a rubato's span is
+ * defined by the *next* instruction rather than by an attribute. `clone()` went with them:
+ * it had no caller anywhere in `src/`, and with the read half now a `readonly` record there
+ * is nothing left for a defensive copy to defend against.
+ *
+ * Port of the write half of meico.mpm.elements.maps.data.RubatoData.
  */
 export class RubatoData {
-  xml: Element | null = null;
+  /** `xml:id` to stamp on the emitted element, or null to emit none. */
   xmlId: string | null = null;
 
-  styleName = '';
-  style: RubatoStyle | null = null;
-  rubatoDefString: string | null = null;
-  rubatoDef: RubatoDef | null = null;
-
+  /** `@date`, in ticks. */
   startDate = 0.0;
-  endDate: number | null = null;
 
+  /** `@name.ref` — the `rubatoDef` to inherit from; null emits no reference. */
+  rubatoDefString: string | null = null;
+
+  /** `@frameLength`; null emits no attribute, leaving the def to supply the frame. */
   frameLength: number | null = null;
+  /**
+   * `@intensity`, `@lateStart`, `@earlyEnd`; null emits no attribute.
+   *
+   * Initialised to the identity warp rather than to null, because that is what the reader
+   * will fall back to for a missing one — writing these defaults out explicitly and
+   * leaving them off produce the same rendered result.
+   */
   intensity: number | null = 1.0;
   lateStart: number | null = 0.0;
   earlyEnd: number | null = 1.0;
 
+  /** `@loop`. Always written. */
   loop = false;
-
-  constructor(xml?: Element) {
-    if (xml === undefined) return;
-
-    this.xml = xml;
-    this.startDate = parseFloat(xml.getAttributeValue('date')!);
-
-    const nameRef = xml.getAttribute('name.ref');
-    if (nameRef !== null) this.rubatoDefString = nameRef.getValue();
-
-    // Note the asymmetry with the field initializers above: those give intensity/
-    // lateStart/earlyEnd the MPM defaults (1.0/0.0/1.0), but parsing an element
-    // *overwrites them with null* when the attribute is absent rather than leaving the
-    // default in place. That is intentional — a missing attribute here means "inherit
-    // from the rubatoDef", and RubatoMap.getRubatoDataOf distinguishes the two cases by
-    // the null. Changing these to `?? default` would silently defeat def inheritance.
-    const frameLengthAtt = xml.getAttribute('frameLength');
-    this.frameLength = frameLengthAtt !== null ? parseFloat(frameLengthAtt.getValue()) : null;
-
-    const intensityAtt = xml.getAttribute('intensity');
-    this.intensity = intensityAtt !== null ? parseFloat(intensityAtt.getValue()) : null;
-
-    const lateStartAtt = xml.getAttribute('lateStart');
-    this.lateStart = lateStartAtt !== null ? parseFloat(lateStartAtt.getValue()) : null;
-
-    const earlyEndAtt = xml.getAttribute('earlyEnd');
-    this.earlyEnd = earlyEndAtt !== null ? parseFloat(earlyEndAtt.getValue()) : null;
-
-    const loopAtt = xml.getAttribute('loop');
-    if (loopAtt !== null) this.loop = loopAtt.getValue() === 'true';
-
-    const id = xml.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
-    if (id !== null) this.xmlId = id.getValue();
-  }
-
-  clone(): RubatoData {
-    const c = new RubatoData();
-    c.xml = this.xml === null ? null : this.xml.copy();
-    c.xmlId = this.xmlId;
-    c.styleName = this.styleName;
-    c.style = this.style;
-    c.startDate = this.startDate;
-    c.endDate = this.endDate;
-    c.rubatoDefString = this.rubatoDefString;
-    c.rubatoDef = this.rubatoDef;
-    c.frameLength = this.frameLength;
-    c.intensity = this.intensity;
-    c.lateStart = this.lateStart;
-    c.earlyEnd = this.earlyEnd;
-    c.loop = this.loop;
-    return c;
-  }
 }

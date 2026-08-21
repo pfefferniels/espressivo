@@ -34,6 +34,7 @@ import { evaluateDimension, type ScopeSide } from '../../src/comparison/dimensio
 import { DEFAULT_LAMBDA_DATE } from '../../src/comparison/eventAlignment.js';
 import { COMPARISON_DIMENSIONS, type ComparisonDimension } from '../../src/comparison/registry.js';
 import type { InvarianceMode } from '../../src/comparison/decomposition.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 /**
  * ALL ELEVEN (W3 MAJOR-1). The suite covered six, and the five it skipped included the two
@@ -130,8 +131,8 @@ describe('the adversarial family itself', () => {
 
   it('runs under a piece-derived window, so R3 is unconditional', () => {
     const pair = readComparisonPair({
-      a: ADVERSARIAL_FAMILY[0].mpm,
-      b: ADVERSARIAL_FAMILY[1].mpm,
+      a: elementAt(ADVERSARIAL_FAMILY, 0, 'the adversarial family').mpm,
+      b: elementAt(ADVERSARIAL_FAMILY, 1, 'the adversarial family').mpm,
       window: ADVERSARIAL_WINDOW,
     });
     expect(pair.window.rule).toBe('explicit');

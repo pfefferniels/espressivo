@@ -30,10 +30,6 @@
     },
     "./package.json": "./package.json"
   },
-  "sideEffects": [
-    "./dist/mpm/Mpm.js",
-    "./dist/mpm/elements/maps/*.js"
-  ],
   "engines": {
     "node": ">=18.18.0"
   },
@@ -56,7 +52,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "verify": "npm run build && npm run typecheck:tests && vitest run"
+    "gate": "vitest run tests/integration/cross-validation.test.ts tests/integration/full-xml-equivalence.test.ts tests/integration/midi-byte-equivalence.test.ts tests/integration/all-maps-equivalence.test.ts",
+    "bench": "npm run build && node scripts/bench.mjs",
+    "bench:check": "npm run build && node scripts/bench.mjs --check",
+    "bench:save": "npm run build && node scripts/bench.mjs --save && prettier --write scripts/bench-baseline.json",
+    "strict:check": "node scripts/strict-ratchet.mjs --check",
+    "strict:save": "node scripts/strict-ratchet.mjs --save && prettier --write scripts/strict-baseline.json",
+    "verify": "npm run build && npm run typecheck:tests && npm run strict:check && npm run lint:check && vitest run",
+    "lint:check": "node scripts/lint-ratchet.mjs --check"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.8",

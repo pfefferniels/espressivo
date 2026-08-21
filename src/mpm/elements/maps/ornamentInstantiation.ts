@@ -1,6 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, firstChildElement, getAttributeValue } from '../../../xml/tree.js';
 import { addUUID } from '../../../xml/ids.js';
+import { groupBy, head, isNonEmpty, partitionWith, zipWith } from '../../../prelude/index.js';
 import { formatNoteOrderPerf, parseNoteOrder } from './data/noteOrder.js';
 import { expandOrnament } from './data/ornamentExpansion.js';
 import { FrameDomain, NoteOffShift, TemporalSpread } from '../styles/defs/TemporalSpread.js';
@@ -338,20 +339,20 @@ export function instantiateOrnaments(
 ): void {
   if (prepared.length === 0) return;
 
-  const groups = new Map<Element, PreparedOrnament[]>();
-  const orphans: PreparedOrnament[] = [];
+  // Two questions, and the loop this replaces asked them both at once: which ornaments have
+  // a principal at all, and which of those share one. They are `partitionWith` and `groupBy`,
+  // and the get-or-create dance in the middle was `groupBy`'s body written out.
+  //
+  // The two phases stay two phases — every group is laid out before any orphan is — because
+  // layout appends generated notes to the target maps and a single interleaved pass would
+  // append them in a different order. `groupBy` preserves encounter order inside each bucket
+  // and Map preserves first-encounter order across them, so both sequences are the ones the
+  // hand-written version produced. `renderGroup` already takes `Element | null`, so the key
+  // needs no narrowing on the way in.
+  const { yes: orphans, no: parented } = partitionWith(prepared, (o) => o.principal === null);
 
-  for (const ornament of prepared) {
-    if (ornament.principal === null) {
-      orphans.push(ornament);
-      continue;
-    }
-    const group = groups.get(ornament.principal);
-    if (group === undefined) groups.set(ornament.principal, [ornament]);
-    else group.push(ornament);
-  }
-
-  for (const [principal, group] of groups) renderGroup(group, principal, owners, maps);
+  for (const [principal, group] of groupBy(parented, (o) => o.principal))
+    renderGroup(group, principal, owners, maps);
   for (const orphan of orphans) renderGroup([orphan], null, owners, maps);
 }
 
@@ -630,15 +631,24 @@ function renderGroup(
   owners: ReadonlyMap<Element, GenericMap>,
   maps: readonly GenericMap[],
 ): void {
+  // A group is built by pushing onto `[ornament]` and an orphan arrives as `[orphan]`, so
+  // it is never empty. The guard is what lets the three reads below be reads rather than
+  // assertions; it costs one comparison and answers "nothing to lay out" if it ever fires.
+  if (!isNonEmpty(group)) return;
+  const first = head(group);
+
   const ticks = group.filter((ornament) => ornament.frame.domain === 'ticks');
   const milliseconds = group.filter((ornament) => ornament.frame.domain === 'milliseconds');
   if (ticks.length > 0 && milliseconds.length > 0)
     console.error(
-      `Warning: the note decorated by ${describeOrnament(group[0].ornamentId, group[0].od.date)} carries both tick-domain and millisecond-domain ornaments; they are laid out independently and may overlap.`,
+      `Warning: the note decorated by ${describeOrnament(first.ornamentId, first.od.date)} carries both tick-domain and millisecond-domain ornaments; they are laid out independently and may overlap.`,
     );
 
   const planned = [...planDomain(ticks), ...planDomain(milliseconds)];
-  const geometry = group[0].geometry;
+  // Nothing planned means nothing built, and `every` over the empty `built` would have
+  // returned two lines down anyway.
+  if (!isNonEmpty(planned)) return;
+  const geometry = first.geometry;
   const built = planned.map((plan) => createChords(plan, geometry, principal));
   if (built.every((one) => one.chords.length === 0)) return;
 
@@ -648,14 +658,17 @@ function renderGroup(
     // when the principal is consumed whole does the id move to a generated note. Never both —
     // two elements sharing an xml:id is not a valid document.
     if (!carve(principal, planned, built, geometry, owners))
-      assignPrincipalId(principal, planned[0].ornament.principalPitch, built);
+      assignPrincipalId(principal, head(planned).ornament.principalPitch, built);
   }
 
   const owner = ownerOf(principal, owners, maps);
   if (owner === null) return;
-  for (const [index, plan] of planned.entries()) {
-    plan.ornament.od.generation = { chords: built[index].chords, spacing: plan.spacing };
-    for (const chord of plan.ornament.od.apply(built[index].chords))
+  // `built` is `planned.map(…)`, so this is a walk over two sequences that are the same
+  // length by construction — `zipWith`, rather than an index into one of them that has to
+  // prove the bound it was given.
+  for (const [plan, one] of zipWith(planned, built, (p, b) => [p, b] as const)) {
+    plan.ornament.od.generation = { chords: one.chords, spacing: plan.spacing };
+    for (const chord of plan.ornament.od.apply(one.chords))
       for (const note of chord) owner.addElement(note);
   }
 }
@@ -671,14 +684,15 @@ function renderGroup(
  * tempo pass, which is the same reason millisecond frames go through markers at all.
  */
 function planDomain(group: readonly PreparedOrnament[]): PlannedOrnament[] {
-  if (group.length === 0) return [];
+  if (!isNonEmpty(group)) return [];
 
-  const geometry = group[0].geometry;
+  const first = head(group);
+  const geometry = first.geometry;
   const front = group.filter((ornament) => ornament.frame.alignment === 'at start');
   const end = group.filter((ornament) => ornament.frame.alignment === 'at end');
   const totalRaw = group.reduce((sum, ornament) => sum + ornament.frame.length, 0.0);
   const scale =
-    group[0].frame.domain === 'milliseconds' || totalRaw <= 0.0
+    first.frame.domain === 'milliseconds' || totalRaw <= 0.0
       ? 1.0
       : Math.min(1.0, geometry.duration / totalRaw);
   const endTotal = end.reduce((sum, ornament) => sum + ornament.frame.length * scale, 0.0);
@@ -692,7 +706,7 @@ function planDomain(group: readonly PreparedOrnament[]): PlannedOrnament[] {
   // The end group is packed so that its last member finishes exactly at the principal's end.
   // A millisecond frame has no tick geometry to measure back from, so its cursor runs from the
   // end itself (negative values, which is what the end-anchored marker of D5 expresses).
-  cursor = group[0].frame.domain === 'milliseconds' ? -endTotal : geometry.duration - endTotal;
+  cursor = first.frame.domain === 'milliseconds' ? -endTotal : geometry.duration - endTotal;
   for (const ornament of end) {
     planned.push(planOrnament(ornament, cursor + ornament.frame.offset, scale, geometry));
     cursor += ornament.frame.length * scale;
@@ -749,11 +763,19 @@ function planOrnament(
   const principalEnd = geometry.date + geometry.duration;
   return {
     ornament,
-    slots: slots.map((slot, index) =>
+    // `dates` is `spacingOffsets(slots.length, …)` mapped, so the two are the same length and
+    // the slot and its date are one zip rather than a map plus a parallel index.
+    slots: zipWith(slots, dates, (slot, date, index) =>
       slot.notes.map((resolved) => ({
         resolved,
-        date: dates[index],
-        duration: noteDuration(frame.noteOffShift, dates, index, geometry.duration, principalEnd),
+        date,
+        duration: noteDuration(
+          frame.noteOffShift,
+          date,
+          dates.at(index + 1) ?? null,
+          geometry.duration,
+          principalEnd,
+        ),
         slotIndex: index,
         repetitionPass: slot.repetitionPass ?? null,
       })),
@@ -813,8 +835,8 @@ function earliestSpacingOffset(
  */
 function noteDuration(
   shift: NoteOffShift,
-  dates: readonly number[],
-  index: number,
+  date: number,
+  nextDate: number | null,
   principalDuration: number,
   principalEnd: number,
 ): number {
@@ -822,11 +844,11 @@ function noteDuration(
     case NoteOffShift.True:
       return principalDuration;
     case NoteOffShift.Monophonic:
-      return index < dates.length - 1
-        ? dates[index + 1] - dates[index]
-        : principalEnd - dates[index];
-    default:
-      return principalEnd - dates[index];
+      return nextDate === null ? principalEnd - date : nextDate - date;
+    // `false` is the third and last member of the enum; named so that adding a fourth is a
+    // compile error rather than a silent alias for it.
+    case NoteOffShift.False:
+      return principalEnd - date;
   }
 }
 
@@ -873,8 +895,11 @@ function applyMillisecondSpacing(
   const durAttName = 'ornament.milliseconds.duration';
   const offsets = spacingOffsets(chords.length, start, length, frame.intensity);
   let previous: Element[] | null = null;
-  for (const [index, chord] of chords.entries()) {
-    const dateOffset = offsets[index];
+  // Two sequences walked together — `spacingOffsets` produces one offset per chord, and the
+  // `elementAt` this replaces was re-proving that on every step. `zipWith` states it once and
+  // stops at the shorter, which for the one length these two can disagree on (`chords` empty,
+  // where the spacing still pins its last slot) is the empty walk the index loop also made.
+  for (const [chord, dateOffset] of zipWith(chords, offsets, (c, o) => [c, o] as const)) {
     for (const note of chord) {
       const ornamentDateAtt = attribute(dateAttName, note);
       if (ornamentDateAtt !== null)
@@ -1080,12 +1105,12 @@ function assignPrincipalId(
   if (id === null) return;
 
   const notes = built.flatMap((one) => one.notes);
-  if (notes.length === 0) return;
+  if (!isNonEmpty(notes)) return;
 
   const heir =
     notes.find((note) => note.resolved.source === 'principal') ??
     notes.find((note) => principalPitch !== null && note.resolved.midiPitch === principalPitch) ??
-    notes[0];
+    head(notes);
   const heirId = attribute('id', heir.element);
   if (heirId !== null) heirId.setValue(id.getValue());
 }
@@ -1150,11 +1175,13 @@ function carve(
     return true;
   }
 
-  for (const [index, plan] of planned.entries()) {
+  // Same pairing as `instantiateOrnaments`: `built` is `planned.map(…)`, so the plan and the
+  // chords it produced travel together rather than being re-associated through an index.
+  for (const [plan, one] of zipWith(planned, built, (p, b) => [p, b] as const)) {
     const { frame, ornamentId, od } = plan.ornament;
     if (frame.domain !== 'milliseconds' || frame.alignment !== 'at end') continue;
     const earliest = earliestSpacingOffset(
-      built[index].chords.length,
+      one.chords.length,
       plan.start,
       plan.length,
       frame.intensity,
@@ -1240,7 +1267,7 @@ function ownerOf(
     const owner = owners.get(principal);
     if (owner !== undefined) return owner;
   }
-  return maps.length > 0 ? maps[0] : null;
+  return maps.at(0) ?? null;
 }
 
 /**
@@ -1299,14 +1326,14 @@ export function readKeyFifths(map: GenericMap | null, date: number): number {
 function fifthsFromMap(keySignatureMap: Element | null, date: number): number | null {
   if (keySignatureMap === null) return null;
   let found: Element | null = null;
-  for (const candidate of keySignatureMap.getChildElements('keySignature').toArray()) {
+  for (const candidate of keySignatureMap.getChildElements('keySignature')) {
     const at = readNumber(candidate, 'date');
     if (at !== null && at <= date) found = candidate;
   }
   if (found === null) return null;
 
   let fifths = 0;
-  for (const accidental of found.getChildElements('accidental').toArray()) {
+  for (const accidental of found.getChildElements('accidental')) {
     const value = readNumber(accidental, 'value');
     if (value === null) continue;
     if (value > 0.0) ++fifths;

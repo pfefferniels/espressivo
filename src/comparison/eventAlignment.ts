@@ -59,6 +59,8 @@
  * way and `[18, 378, 17]` the other. §9.5's P-C2 promise is about the whole report.
  */
 
+import { elementAt } from '../prelude/seq.js';
+
 /** The minimum an event must expose to be alignable. */
 export interface AlignableEvent {
   /** In common ticks. */
@@ -217,31 +219,48 @@ function chargesOf<T extends AlignableEvent>(
   cost: AlignmentCost<T>,
   ticksPerQuarter: number,
 ): readonly EventCharge[] {
-  const charges: EventCharge[] = [];
-  for (const pair of alignment.pairs) {
-    const displacement = Math.abs(a[pair.a].dateTicks - b[pair.b].dateTicks) / ticksPerQuarter;
-    charges.push({
+  const matched = alignment.pairs.map((pair): EventCharge => {
+    const eventA = elementAt(a, pair.a, A_SIDE);
+    const eventB = elementAt(b, pair.b, B_SIDE);
+    const displacement = Math.abs(eventA.dateTicks - eventB.dateTicks) / ticksPerQuarter;
+    return {
       kind: 'matched',
       a: pair.a,
       b: pair.b,
-      cost: cost.matched(a[pair.a], b[pair.b]) + cost.lambdaDate * displacement,
-    });
-  }
-  for (const index of alignment.unmatchedA)
-    charges.push({ kind: 'unmatched-a', a: index, b: null, cost: cost.unmatched(a[index]) });
-  for (const index of alignment.unmatchedB)
-    charges.push({ kind: 'unmatched-b', a: null, b: index, cost: cost.unmatched(b[index]) });
+      cost: cost.matched(eventA, eventB) + cost.lambdaDate * displacement,
+    };
+  });
+  const droppedA = alignment.unmatchedA.map((index): EventCharge => ({
+    kind: 'unmatched-a',
+    a: index,
+    b: null,
+    cost: cost.unmatched(elementAt(a, index, A_SIDE)),
+  }));
+  const droppedB = alignment.unmatchedB.map((index): EventCharge => ({
+    kind: 'unmatched-b',
+    a: null,
+    b: index,
+    cost: cost.unmatched(elementAt(b, index, B_SIDE)),
+  }));
 
-  return charges.sort((x, y) => dateOf(x, a, b) - dateOf(y, a, b) || indexOf(x) - indexOf(y));
+  // The three groups are concatenated in the order the three loops used to push them, and
+  // `sort` is stable, so the comparator sees the same sequence it always did.
+  return [...matched, ...droppedA, ...droppedB].sort(
+    (x, y) => dateOf(x, a, b) - dateOf(y, a, b) || indexOf(x) - indexOf(y),
+  );
 }
+
+/** What an out-of-range read into one of the two event lists is called, for {@link elementAt}. */
+const A_SIDE = 'the a-side event list';
+const B_SIDE = 'the b-side event list';
 
 function dateOf<T extends AlignableEvent>(
   charge: EventCharge,
   a: readonly T[],
   b: readonly T[],
 ): number {
-  const dateA = charge.a === null ? null : a[charge.a].dateTicks;
-  const dateB = charge.b === null ? null : b[charge.b].dateTicks;
+  const dateA = charge.a === null ? null : elementAt(a, charge.a, A_SIDE).dateTicks;
+  const dateB = charge.b === null ? null : elementAt(b, charge.b, B_SIDE).dateTicks;
   if (dateA === null) return dateB ?? 0;
   if (dateB === null) return dateA;
   return Math.min(dateA, dateB);
@@ -294,8 +313,8 @@ export function chargeAtoms<T extends AlignableEvent>(
   window: { readonly startTicks: number; readonly endTicks: number },
 ): readonly EventAtomMass[] {
   return alignment.charges.map((charge): EventAtomMass => {
-    const eventA = charge.a === null ? null : a[charge.a];
-    const eventB = charge.b === null ? null : b[charge.b];
+    const eventA = charge.a === null ? null : elementAt(a, charge.a, A_SIDE);
+    const eventB = charge.b === null ? null : elementAt(b, charge.b, B_SIDE);
     const known =
       (eventA === null || positionKnown(eventA)) && (eventB === null || positionKnown(eventB));
     if (!known)
@@ -356,57 +375,67 @@ function solve<T extends AlignableEvent>(
 ): Omit<EventAlignment, 'pinsHonoured' | 'charges'> {
   const n = a.length;
   const m = b.length;
-  const dp: number[][] = Array.from({ length: n + 1 }, () =>
-    new Array<number>(m + 1).fill(Number.POSITIVE_INFINITY),
-  );
-  const from: Move[][] = Array.from({ length: n + 1 }, () => new Array<Move>(m + 1).fill('none'));
 
-  dp[0][0] = 0;
+  // The two tables are FLAT, `(n+1) × (m+1)` in row-major order, which is `embedding.ts`'s
+  // layout and for the same reason: a jagged `number[][]` costs two indexed reads per cell and
+  // gives the reader two chances to be out of range instead of one. `costAt` and `moveAt` are
+  // the only readers, so the stride arithmetic is written once.
+  const stride = m + 1;
+  const dp = new Array<number>((n + 1) * stride).fill(Number.POSITIVE_INFINITY);
+  const from = new Array<Move>((n + 1) * stride).fill('none');
+  const costAt = (row: number, column: number): number =>
+    elementAt(dp, row * stride + column, "the alignment's cost table");
+  const moveAt = (row: number, column: number): Move =>
+    elementAt(from, row * stride + column, "the alignment's traceback table");
+
+  dp[0] = 0;
   for (let i = 1; i <= n; ++i) {
     // A pinned event may not be dropped: its partner exists, so an alignment that drops it is
     // not the identity match the pin asserts.
     if (pins.aToB.has(i - 1)) break;
-    dp[i][0] = dp[i - 1][0] + cost.unmatched(a[i - 1]);
-    from[i][0] = 'dropA';
+    dp[i * stride] = costAt(i - 1, 0) + cost.unmatched(elementAt(a, i - 1, A_SIDE));
+    from[i * stride] = 'dropA';
   }
   for (let j = 1; j <= m; ++j) {
     if (pins.bToA.has(j - 1)) break;
-    dp[0][j] = dp[0][j - 1] + cost.unmatched(b[j - 1]);
-    from[0][j] = 'dropB';
+    dp[j] = costAt(0, j - 1) + cost.unmatched(elementAt(b, j - 1, B_SIDE));
+    from[j] = 'dropB';
   }
 
   for (let i = 1; i <= n; ++i) {
+    const eventA = elementAt(a, i - 1, A_SIDE);
     for (let j = 1; j <= m; ++j) {
+      const eventB = elementAt(b, j - 1, B_SIDE);
       const pinA = pins.aToB.get(i - 1);
       const pinB = pins.bToA.get(j - 1);
       const matchAllowed =
         (pinA === undefined || pinA === j - 1) && (pinB === undefined || pinB === i - 1);
 
       let matchCost = Number.POSITIVE_INFINITY;
-      if (matchAllowed && Number.isFinite(dp[i - 1][j - 1])) {
-        const displacement = Math.abs(a[i - 1].dateTicks - b[j - 1].dateTicks) / ticksPerQuarter;
+      if (matchAllowed && Number.isFinite(costAt(i - 1, j - 1))) {
+        const displacement = Math.abs(eventA.dateTicks - eventB.dateTicks) / ticksPerQuarter;
         matchCost =
-          dp[i - 1][j - 1] + cost.matched(a[i - 1], b[j - 1]) + cost.lambdaDate * displacement;
+          costAt(i - 1, j - 1) + cost.matched(eventA, eventB) + cost.lambdaDate * displacement;
       }
       const dropACost =
-        pinA === undefined && Number.isFinite(dp[i - 1][j])
-          ? dp[i - 1][j] + cost.unmatched(a[i - 1])
+        pinA === undefined && Number.isFinite(costAt(i - 1, j))
+          ? costAt(i - 1, j) + cost.unmatched(eventA)
           : Number.POSITIVE_INFINITY;
       const dropBCost =
-        pinB === undefined && Number.isFinite(dp[i][j - 1])
-          ? dp[i][j - 1] + cost.unmatched(b[j - 1])
+        pinB === undefined && Number.isFinite(costAt(i, j - 1))
+          ? costAt(i, j - 1) + cost.unmatched(eventB)
           : Number.POSITIVE_INFINITY;
 
       const best = Math.min(matchCost, dropACost, dropBCost);
       let move: Move = 'none';
       if (Number.isFinite(best)) {
         if (best === matchCost) move = 'match';
-        else if (best === dropACost && best === dropBCost) move = preferredDrop(a[i - 1], b[j - 1]);
+        else if (best === dropACost && best === dropBCost) move = preferredDrop(eventA, eventB);
         else move = best === dropACost ? 'dropA' : 'dropB';
       }
 
-      dp[i][j] = best;
-      from[i][j] = move;
+      dp[i * stride + j] = best;
+      from[i * stride + j] = move;
     }
   }
 
@@ -416,7 +445,7 @@ function solve<T extends AlignableEvent>(
   let i = n;
   let j = m;
   while (i > 0 || j > 0) {
-    const move = from[i][j];
+    const move = moveAt(i, j);
     if (move === 'match') {
       pairs.push({ a: i - 1, b: j - 1 });
       i -= 1;
@@ -437,6 +466,6 @@ function solve<T extends AlignableEvent>(
     pairs: pairs.reverse(),
     unmatchedA: unmatchedA.reverse(),
     unmatchedB: unmatchedB.reverse(),
-    cost: dp[n][m],
+    cost: costAt(n, m),
   };
 }

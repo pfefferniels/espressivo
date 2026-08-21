@@ -50,6 +50,9 @@
  * add `length="4"` to the document and reorder its `<accentuation>` children by beat
  * (`AccentuationPatternDef.ts:36-40`, `:67` → `:192-199`), which R1 forbids.
  */
+import { filterMap, head, isNonEmpty, last, withNext } from '../prelude/index.js';
+import { elementAt, optionAt } from '../prelude/seq.js';
+import { coveringSegmentAt } from './segments.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { METRICAL_ACCENTUATION_MAP, METRICAL_ACCENTUATION_STYLE } from '../mpm/names.js';
@@ -143,28 +146,33 @@ export function neutralAccentuationCurve(): AccentuationCurve {
  */
 export function readAccentuationPattern(def: Element): AccentuationPattern {
   const rawLength = readNumericAttributeValue(def, 'length');
-  const points: PatternPoint[] = [];
 
-  for (const child of def.getChildElements('accentuation').toArray()) {
-    const beat = readNumericAttributeValue(child, 'beat');
-    if (Number.isNaN(beat)) continue;
-    const value = readNumericAttributeValue(child, 'value');
-    const resolvedValue = Number.isNaN(value) ? 0 : value;
-    const from = readNumericAttributeValue(child, 'transition.from');
-    const resolvedFrom = Number.isNaN(from) ? resolvedValue : from;
-    const to = readNumericAttributeValue(child, 'transition.to');
-    points.push({
-      beat,
-      value: resolvedValue,
-      transitionFrom: resolvedFrom,
-      transitionTo: Number.isNaN(to) ? resolvedFrom : to,
-    });
-  }
-
+  // Read each `<accentuation>`, skip the ones with no usable `@beat`, keep the rest —
+  // `filterMap`, with the `continue` as the `null` return. Every NaN repair below stays inside
+  // the branch that already ran it, so the surviving set and its order are unchanged and the
+  // sort sees the same array it always did.
+  //
   // On `@beat` alone: two `<accentuation>` children of one def sharing a beat keep their
   // document order, which is the order the renderer applies them in. Stable, single-document,
   // and therefore invisible to the a/b swap — stated because it was implicit (W3 MINOR-7).
-  points.sort((a, b) => a.beat - b.beat);
+  const points: readonly PatternPoint[] = [
+    ...filterMap(def.getChildElements('accentuation'), (child) => {
+      const beat = readNumericAttributeValue(child, 'beat');
+      if (Number.isNaN(beat)) return null;
+      const value = readNumericAttributeValue(child, 'value');
+      const resolvedValue = Number.isNaN(value) ? 0 : value;
+      const from = readNumericAttributeValue(child, 'transition.from');
+      const resolvedFrom = Number.isNaN(from) ? resolvedValue : from;
+      const to = readNumericAttributeValue(child, 'transition.to');
+      return {
+        beat,
+        value: resolvedValue,
+        transitionFrom: resolvedFrom,
+        transitionTo: Number.isNaN(to) ? resolvedFrom : to,
+      };
+    }),
+  ].sort((a, b) => a.beat - b.beat);
+
   return {
     length: Number.isFinite(rawLength) ? rawLength : DEFAULT_PATTERN_LENGTH,
     points,
@@ -192,17 +200,37 @@ export function readAccentuationPattern(def: Element): AccentuationPattern {
  */
 export function accentuationAt(pattern: AccentuationPattern, beatPosition: number): number {
   const points = pattern.points;
-  if (points.length === 0) return 0;
-  if (beatPosition < points[0].beat) return 0;
-  if (beatPosition >= pattern.length + 1) return points[points.length - 1].transitionTo;
+  if (!isNonEmpty(points)) return 0;
+  if (beatPosition < head(points).beat) return 0;
+  if (beatPosition >= pattern.length + 1) return last(points).transitionTo;
 
+  // **`upperBoundBy` is the considered-and-rejected alternative**, named here because the shape
+  // invites it: this is "the last point whose `@beat` is at or before `beatPosition`", which is
+  // `upperBoundBy(points, p => p.beat, beatPosition) - 1`, and it agrees with this scan on every
+  // finite input — ties included, since both land on the LAST point of a tied run.
+  //
+  // Two reasons it stays a scan, and the second is the one that decides it.
+  //
+  // 1. **There is no speed to win.** `points` is the `<accentuation>` children of ONE
+  //    `accentuationPatternDef` — four for a 4/4 pattern, rarely more than a handful. A binary
+  //    search over that costs more closure calls than the scan costs comparisons.
+  // 2. **`NaN` behaviour would change, in the direction the campaign guards against.** A `NaN`
+  //    `beatPosition` fails every test in this scan, so the loop runs to index 0 with `found`
+  //    already assigned and the interpolation returns `NaN`. Under the bound the answer is −1 —
+  //    no point — and the function returns **0**. `beatPosition` comes from `beatAt(...)`, which
+  //    is tick arithmetic on a caller-supplied grid, so `NaN` is reachable in principle rather
+  //    than only in theory; and a 0 in a reported velocity contribution looks like an answer
+  //    where a `NaN` announces itself. Trading a loud wrong number for a quiet one is not a
+  //    loop-shape change, and it is not worth a search over four elements.
   let found: PatternPoint | null = null;
   let segmentEnd = pattern.length + 1;
   for (let i = points.length - 1; i >= 0; --i) {
-    found = points[i];
-    if (beatPosition === found.beat) return found.value;
-    if (beatPosition > found.beat) {
-      if (i < points.length - 1) segmentEnd = points[i + 1].beat;
+    const point = elementAt(points, i, 'an accentuation pattern point list');
+    found = point;
+    if (beatPosition === point.beat) return point.value;
+    if (beatPosition > point.beat) {
+      if (i < points.length - 1)
+        segmentEnd = elementAt(points, i + 1, 'an accentuation pattern point list').beat;
       break;
     }
   }
@@ -277,33 +305,35 @@ export function readAccentuationSegments(
   assertSpanEndRule(METRICAL_ACCENTUATION_MAP, 'same-local-name');
   if (view === null) return neutralAccentuationCurve();
 
-  const raws: {
-    dateTicks: number;
-    element: Element;
-    styleName: string | null;
-    environment: MpmEnvironment;
-    globalEnvironment: MpmEnvironment;
-  }[] = [];
-  for (const [index, entry] of view.entries.entries()) {
-    if (entry.element.getLocalName() !== 'accentuationPattern') continue;
-    if (!Number.isFinite(entry.date)) continue;
+  // Read each entry, skip what is not a dated `<accentuationPattern>`, keep the rest —
+  // `filterMap`, with the two `continue`s as the two `null` returns.
+  const raws = filterMap(view.entries, (entry, index) => {
+    if (entry.element.getLocalName() !== 'accentuationPattern') return null;
+    if (!Number.isFinite(entry.date)) return null;
     const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
-    raws.push({
+    return {
       dateTicks: entry.date * resolution.scaleFactor,
       element: entry.element,
-      styleName: view.styleNames[index],
+      styleName: optionAt(view.styleNames, index, 'a map view style-name list'),
       environment: resolution.environment,
       globalEnvironment: resolution.globalEnvironment,
-    });
-  }
+    };
+  });
   if (raws.length === 0) return neutralAccentuationCurve();
 
   const segments: AccentuationSegment[] = [];
   const notes: AccentuationCurveNote[] = [];
   const breakpoints = new Set<number>([0]);
 
-  for (const [index, raw] of raws.entries()) {
-    const next = raws[index + 1] as (typeof raws)[number] | undefined;
+  // The end is PAIRED with its instruction rather than read at `index + 1`. "There is no next
+  // instruction" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
+  // system had to be told about with `as (typeof raws)[number] | undefined`.
+  // Each entry with its successor, or `null` for the last — `withNext`. The span it opens
+  // then runs to `next?.dateTicks ?? Infinity`, which says at the point of use that the last
+  // entry runs to the end of time. The `[...xs.slice(1).map(…), Infinity]` array this
+  // replaces built that sentinel where it could not be read as one, and built a whole array
+  // to be zipped away.
+  for (const [raw, next] of withNext(raws)) {
     const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
     breakpoints.add(raw.dateTicks);
 
@@ -344,7 +374,7 @@ export function readAccentuationSegments(
     }
 
     let def: Element | null = null;
-    for (const candidate of style.styleDef.getChildElements('accentuationPatternDef').toArray())
+    for (const candidate of style.styleDef.getChildElements('accentuationPatternDef'))
       if (attribute('name', candidate)?.getValue() === nameRef) def = candidate;
 
     if (def === null) {
@@ -388,16 +418,18 @@ export function readAccentuationSegments(
   };
 }
 
-/** The segment governing `ticks`, right-continuous (A-B1), or null where none does. */
+/**
+ * The segment governing `ticks`, right-continuous (A-B1), or null where none does.
+ *
+ * Called once per Gauss-Legendre node, so the linear scan this replaces made one dimension's
+ * integral quadratic in the size of the map it integrates. {@link coveringSegmentAt} carries the
+ * proof that the bound answers identically here — including at `NaN` and `Infinity`.
+ */
 export function accentuationSegmentAt(
   curve: AccentuationCurve,
   ticks: number,
 ): AccentuationSegment | null {
-  for (const segment of curve.segments) {
-    if (ticks < segment.startTicks) break;
-    if (ticks < segment.endTicks) return segment;
-  }
-  return null;
+  return coveringSegmentAt(curve.segments, ticks);
 }
 
 /**

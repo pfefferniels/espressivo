@@ -36,6 +36,11 @@ import {
   resolveComparisonLevel,
   valued,
 } from '../../src/comparison/values.js';
+import { elementAt } from '../../src/prelude/index.js';
+
+/** The sole performance of a hand-built document, checked. */
+const solePerformance = (text: string) =>
+  elementAt(readPerformances(parseMpmRoot(text)), 0, 'the document’s performances');
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const fixture = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'utf-8');
@@ -52,7 +57,7 @@ const globalDoc = (dated: string, ppq = '720') =>
 
 describe('ppq normalization', () => {
   it('reads a declared grid and reports it as declared', () => {
-    const performance = readPerformances(parseMpmRoot(globalDoc('')))[0];
+    const performance = solePerformance(globalDoc(''));
     expect(readPpq(performance.element)).toEqual({
       value: 720,
       declared: true,
@@ -63,7 +68,7 @@ describe('ppq normalization', () => {
   it('falls back to 720 and flags it when no grid is declared', () => {
     const text =
       '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p"><global/></performance></mpm>';
-    const performance = readPerformances(parseMpmRoot(text))[0];
+    const performance = solePerformance(text);
     expect(readPpq(performance.element)).toEqual({
       value: DEFAULT_PPQ,
       declared: false,
@@ -74,7 +79,7 @@ describe('ppq normalization', () => {
   it('keeps "declared but unusable" distinct from "not declared"', () => {
     // §5.0/A21: fallbackUsed means exactly "declared none". A document that wrote something
     // unusable did declare one, so it must not be reported as silent.
-    const performance = readPerformances(parseMpmRoot(globalDoc('', 'lots')))[0];
+    const performance = solePerformance(globalDoc('', 'lots'));
     expect(readPpq(performance.element)).toEqual({
       value: DEFAULT_PPQ,
       declared: true,
@@ -243,10 +248,11 @@ describe('scopes, matching and map resolution', () => {
     const pair = readComparisonPair({ a: one, b: two });
     const parts = pair.scopes.filter((scope) => scope.scope === 'part');
     expect(parts).toHaveLength(2);
-    expect(parts[0].matched).toBe(true);
-    expect(parts[1].matched).toBe(false);
-    expect(parts[1].numberA).toBeNull();
-    expect(parts[1].numberB).toBe(2);
+    const partAt = (index: number) => elementAt(parts, index, 'the pair’s part scopes');
+    expect(partAt(0).matched).toBe(true);
+    expect(partAt(1).matched).toBe(false);
+    expect(partAt(1).numberA).toBeNull();
+    expect(partAt(1).numberB).toBe(2);
     expect(pair.comparability.partNumbersMatched).toBe(false);
   });
 
@@ -280,7 +286,7 @@ describe('scopes, matching and map resolution', () => {
       '<tempoMap><tempo date="0.0" bpm="200" beatLength="0.25"/></tempoMap>' +
       '</dated></part></performance></mpm>';
 
-    const scopes = readScopes(readPerformances(parseMpmRoot(broken))[0]);
+    const scopes = readScopes(solePerformance(broken));
     const part = scopes.find((scope) => scope.scope === 'part');
     expect(part?.renderable).toBe(false);
 
@@ -290,6 +296,60 @@ describe('scopes, matching and map resolution', () => {
     // and its instructions are not counted as performed material
     const pair = readComparisonPair({ a: broken, b: broken });
     expect(pair.comparability.instructionCountA).toBe(0);
+  });
+
+  it('compares a RENDERABLE part with an unusable @number against neutral, never against its twin', () => {
+    /**
+     * A closed oracle gap, found by a negative control on `matchScopes`.
+     *
+     * `matchScopes` splits renderable parts into numbered and unnumbered, pairs the numbered
+     * ones by number, and pushes each unnumbered one against neutral — A-side block first,
+     * then B-side, which is what makes the result symmetric under a swap. Measured: keying
+     * the unnumbered ones at `-1` instead of dropping them, which would PAIR the two
+     * documents' unnumbered parts with each other, left all 6082 tests green. A probe then
+     * showed why: no test in the tree ever reached that code with an unnumbered part.
+     *
+     * The case is reachable, and only just. `renderable` is decided the way the renderer
+     * decides it — `Part.parseData` throws only when `@number` / `@midi.channel` /
+     * `@midi.port` are absent or empty, never on their VALUE — while the scope's `number` is
+     * `parseInt`, which answers NaN here and is reported as null. So `number="abc"` is a part
+     * the renderer really does construct (with `this.number = NaN`, matching no MSM part) and
+     * that this module really does have to place against neutral.
+     */
+    const unnumbered =
+      '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p" pulsesPerQuarter="720">' +
+      '<global><header/><dated/></global>' +
+      '<part name="V" number="abc" midi.channel="0" midi.port="0"><header/><dated>' +
+      '<tempoMap><tempo date="0.0" bpm="200" beatLength="0.25"/></tempoMap>' +
+      '</dated></part></performance></mpm>';
+
+    // Destructured and checked rather than indexed: `tests/` is on a one-way
+    // `noUncheckedIndexedAccess` ratchet, and `[0]` costs it an error.
+    const [performance] = readPerformances(parseMpmRoot(unnumbered));
+    if (performance === undefined) throw new Error('no performance');
+
+    const scopes = readScopes(performance);
+    const part = scopes.find((scope) => scope.scope === 'part');
+    // Renderable — the renderer builds this part — but with no usable number.
+    expect({ renderable: part?.renderable, number: part?.number }).toEqual({
+      renderable: true,
+      number: null,
+    });
+
+    const parts = matchScopes(scopes, scopes).filter((pairing) => pairing.scope === 'part');
+    // TWO pairings, each against neutral — not one pairing of the part with itself.
+    expect(
+      parts.map((pairing) => ({
+        matched: pairing.matched,
+        numberA: pairing.numberA,
+        numberB: pairing.numberB,
+        hasA: pairing.a !== null,
+        hasB: pairing.b !== null,
+      })),
+    ).toEqual([
+      { matched: false, numberA: null, numberB: null, hasA: true, hasB: false },
+      { matched: false, numberA: null, numberB: null, hasA: false, hasB: true },
+    ]);
   });
 
   it('lets an EMPTY part-local map shadow a populated global one (AD-16)', () => {
@@ -302,7 +362,7 @@ describe('scopes, matching and map resolution', () => {
       '<dynamicsMap/>' +
       '</dated></part></performance></mpm>';
 
-    const scopes = readScopes(readPerformances(parseMpmRoot(text))[0]);
+    const scopes = readScopes(solePerformance(text));
     const part = scopes.find((scope) => scope.scope === 'part');
     const resolved = part?.maps.get('dynamicsMap');
     expect(resolved).toBeDefined();
@@ -320,7 +380,7 @@ describe('scopes, matching and map resolution', () => {
       '<part name="V" number="1" midi.channel="0" midi.port="0"><header/><dated/></part>' +
       '</performance></mpm>';
 
-    const scopes = readScopes(readPerformances(parseMpmRoot(text))[0]);
+    const scopes = readScopes(solePerformance(text));
     const part = scopes.find((scope) => scope.scope === 'part');
     expect(readScopeMapViews(part!).get('tempoMap')?.entries).toHaveLength(1);
   });
@@ -347,8 +407,8 @@ describe('ordered instruction views', () => {
         '<tempo date="0.0" bpm="60" beatLength="0.25"/>' +
         '</tempoMap>',
     );
-    const scopes = readScopes(readPerformances(parseMpmRoot(text))[0]);
-    const view = readScopeMapViews(scopes[0]).get('tempoMap');
+    const scopes = readScopes(solePerformance(text));
+    const view = readScopeMapViews(elementAt(scopes, 0, 'the document’s scopes')).get('tempoMap');
     expect(view?.entries.map((entry) => entry.date)).toEqual([0, 960]);
     // documentIndex survives, so the site locator still points into the untouched tree
     expect(view?.entries.map((entry) => entry.documentIndex)).toEqual([1, 0]);
@@ -364,8 +424,10 @@ describe('ordered instruction views', () => {
         '<dynamics date="720.0" volume="p"/>' +
         '</dynamicsMap>',
     );
-    const scopes = readScopes(readPerformances(parseMpmRoot(text))[0]);
-    const view = readScopeMapViews(scopes[0]).get('dynamicsMap');
+    const scopes = readScopes(solePerformance(text));
+    const view = readScopeMapViews(elementAt(scopes, 0, 'the document’s scopes')).get(
+      'dynamicsMap',
+    );
     expect(view?.styleNames).toEqual([null, 'MEI export', 'MEI export']);
   });
 });
@@ -490,16 +552,16 @@ describe('renderer-default level resolution (R8 / AD-1)', () => {
     const text =
       `<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p" pulsesPerQuarter="720">` +
       `<global><header>${header}</header><dated>${dated}</dated></global></performance></mpm>`;
-    const performance = readPerformances(parseMpmRoot(text))[0];
+    const performance = solePerformance(text);
     const scopes = readScopes(performance);
-    const styleName = readScopeMapViews(scopes[0]).get(
+    const styleName = readScopeMapViews(elementAt(scopes, 0, 'the document’s scopes')).get(
       domain === 'tempo' ? 'tempoMap' : 'dynamicsMap',
     )?.styleNames[0];
     return resolveComparisonLevel(
       level,
       domain,
       styleName ?? null,
-      scopes[0].environment,
+      elementAt(scopes, 0, 'the document’s scopes').environment,
       performance.global,
     );
   };
@@ -579,7 +641,7 @@ describe('renderer-default level resolution (R8 / AD-1)', () => {
       '<tempoStyles><styleDef name="T"><tempoDef name="Largo" value="50.0"/></styleDef></tempoStyles>' +
       '</header><dated/></part></performance></mpm>';
 
-    const performance = readPerformances(parseMpmRoot(text))[0];
+    const performance = solePerformance(text);
     const scopes = readScopes(performance);
     const part = scopes.find((scope) => scope.scope === 'part')!;
 

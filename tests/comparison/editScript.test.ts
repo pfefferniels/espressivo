@@ -22,6 +22,11 @@ import {
   type EditPricing,
   type EditStep,
 } from '../../src/comparison/editScript.js';
+import { elementAt, pairwise } from '../../src/prelude/index.js';
+
+/** Level `index` of a hand-built sequence, checked. */
+const levelAt = (levels: readonly Level[], index: number) =>
+  elementAt(levels, index, 'the hand-built level sequence');
 
 // ---------------------------------------------------------------------------
 // The toy Φ
@@ -54,10 +59,8 @@ function stepNorm(x: readonly Level[], y: readonly Level[], neutral: number): nu
   const grid = [...edges].sort((a, b) => a - b);
 
   let total = 0;
-  for (let i = 0; i < grid.length - 1; ++i) {
-    const at = grid[i];
-    total += Math.abs(valueAt(x, at, neutral) - valueAt(y, at, neutral)) * (grid[i + 1] - at);
-  }
+  for (const [at, next] of pairwise(grid))
+    total += Math.abs(valueAt(x, at, neutral) - valueAt(y, at, neutral)) * (next - at);
   return total;
 }
 
@@ -117,10 +120,15 @@ function pathCost(a: readonly Level[], b: readonly Level[], moves: readonly ('s'
   let j = b.length;
   let total = 0;
   for (const move of moves) {
-    const from = move === 's' ? [i - 1, j - 1] : move === 'd' ? [i - 1, j] : [i, j - 1];
-    total += norm(state(from[0], from[1]), state(i, j));
-    i = from[0];
-    j = from[1];
+    const [fromI, fromJ] =
+      move === 's'
+        ? ([i - 1, j - 1] as const)
+        : move === 'd'
+          ? ([i - 1, j] as const)
+          : ([i, j - 1] as const);
+    total += norm(state(fromI, fromJ), state(i, j));
+    i = fromI;
+    j = fromJ;
   }
   return total;
 }
@@ -274,8 +282,8 @@ describe('the DP minimizes the sequential objective', () => {
     // Non-vacuity: the pair really does put a survivor and an addition at one date. Both A
     // instructions share a date, so whichever the DP keeps is co-dated with B's insertion, and
     // the replay must pass through that state on its way to B.
-    expect(a[0].dateTicks).toBe(a[1].dateTicks);
-    expect(b[0].dateTicks).toBe(a[0].dateTicks);
+    expect(levelAt(a, 0).dateTicks).toBe(levelAt(a, 1).dateTicks);
+    expect(levelAt(b, 0).dateTicks).toBe(levelAt(a, 0).dateTicks);
     expect(result.steps.length).toBeGreaterThan(1);
   });
 });
@@ -311,8 +319,8 @@ describe('AD-5: pricing against A is not an upper bound, and the counterexample 
     // land on the same number rather than merely near it.
     const norm = (x: readonly Level[], y: readonly Level[]) => stepNorm(x, y, Math.log(100));
     const substituteFirst =
-      norm(a, [level(0, 120, 'I'), a[1]]) + norm([level(0, 120, 'I'), a[1]], b);
-    const deleteFirst = norm(a, [a[1]]) + norm([a[1]], b);
+      norm(a, [level(0, 120, 'I'), levelAt(a, 1)]) + norm([level(0, 120, 'I'), levelAt(a, 1)], b);
+    const deleteFirst = norm(a, [levelAt(a, 1)]) + norm([levelAt(a, 1)], b);
     expect(substituteFirst).toBeCloseTo(10 * Math.LN2, 12);
     expect(deleteFirst).toBeCloseTo(10 * Math.LN2, 12);
 
@@ -327,8 +335,8 @@ describe('AD-5: pricing against A is not an upper bound, and the counterexample 
   it('is refuted by the against-A reading, which halves the total and makes the delete free', () => {
     // The reading revision 1 shipped: every op priced against the ORIGINAL A.
     const norm = (x: readonly Level[], y: readonly Level[]) => stepNorm(x, y, Math.log(100));
-    const substituteAgainstA = norm(a, [level(0, 120, 'I'), a[1]]);
-    const deleteAgainstA = norm(a, [a[0]]);
+    const substituteAgainstA = norm(a, [level(0, 120, 'I'), levelAt(a, 1)]);
+    const deleteAgainstA = norm(a, [levelAt(a, 0)]);
     expect(substituteAgainstA).toBeCloseTo(5 * Math.LN2, 12);
     // Zero — J restates what precedes it, so removing it changes nothing in A's own context.
     expect(deleteAgainstA).toBe(0);
@@ -431,11 +439,12 @@ describe('determinism and the delivered order (§6.1, §6.4, C5)', () => {
       result.steps.map((_step, index) => index),
     );
     // `topByCost` indexes the delivered array in cost-descending order.
-    const ranked = result.topByCost.map((index) => result.steps[index].cost);
+    const stepAt = (index: number) => elementAt(result.steps, index, 'the edit script’s steps');
+    const ranked = result.topByCost.map((index) => stepAt(index).cost);
     expect([...ranked].sort((x, y) => y - x)).toEqual(ranked);
     expect(new Set(result.topByCost).size).toBe(result.steps.length);
     for (const [rank, index] of result.topByCost.entries())
-      expect(result.steps[index].costRank).toBe(rank);
+      expect(stepAt(index).costRank).toBe(rank);
   });
 
   it('repeats bit for bit', () => {
@@ -450,8 +459,9 @@ describe('determinism and the delivered order (§6.1, §6.4, C5)', () => {
     const one = [level(0, 60, 'I')];
     const result = editScript(one, [level(0, 60, 'I')], pricing());
     expect(result.steps).toHaveLength(1);
-    expect(result.steps[0].move).toBe('substitute');
-    expect(result.steps[0].cost).toBe(0);
+    const only = elementAt(result.steps, 0, 'the edit script’s steps');
+    expect(only.move).toBe('substitute');
+    expect(only.cost).toBe(0);
   });
 });
 

@@ -27,13 +27,25 @@ import { pam, type DistanceMatrix } from '../../src/comparison/clustering.js';
 import type { XmlText } from '../../src/api/types.js';
 import type { DiffReport, EditOp } from '../../src/comparison/report.js';
 
+import { elementAt, numberAt } from '../../src/prelude/index.js';
+
+/** `matrix[i * n + j]`, checked — §8's matrices are flat `n × n` arrays. */
+const cellOf = (matrix: readonly number[], n: number, i: number, j: number, what: string) =>
+  numberAt(matrix, i * n + j, what);
+
+/** `xs` reordered by `order` — a permuted corpus, or a label list read back through one. */
+const pick = <T extends NonNullable<unknown>>(
+  xs: readonly T[],
+  order: readonly number[],
+): readonly T[] => order.map((index) => elementAt(xs, index, 'the corpus item list'));
+
 const WINDOW = { start: ADVERSARIAL_WINDOW.start, end: ADVERSARIAL_WINDOW.end };
 
 const diff = (a: string, b: string): DiffReport =>
   diffMpm({ a: a as XmlText, b: b as XmlText, window: WINDOW }).report;
 
 /** A-Q5's pair inverts with the plain one: one-became-several read backwards is the reverse. */
-const INVERSE: Readonly<Record<string, EditOp['op']>> = {
+const INVERSE: Readonly<Record<EditOp['op'], EditOp['op']>> = {
   insert: 'delete',
   delete: 'insert',
   substitute: 'substitute',
@@ -43,7 +55,7 @@ const INVERSE: Readonly<Record<string, EditOp['op']>> = {
 
 /** The mirror §6.4 promises, written out field by field — `diff.test.ts`'s own map. */
 function mirrored(report: DiffReport): unknown {
-  const rank: Readonly<Record<string, number>> = {
+  const rank: Readonly<Record<EditOp['op'], number>> = {
     substitute: 0,
     delete: 1,
     insert: 2,
@@ -93,8 +105,10 @@ function mirrored(report: DiffReport): unknown {
             rank[x.op] - rank[y.op] ||
             x.applicationIndex - y.applicationIndex,
         );
+      const costOfOrdered = (index: number) =>
+        elementAt(ordered, index, 'the date-ordered ops').cost;
       const ranking = ordered.map((_op, index) => index);
-      ranking.sort((x, y) => ordered[y].cost - ordered[x].cost || x - y);
+      ranking.sort((x, y) => costOfOrdered(y) - costOfOrdered(x) || x - y);
       const costRankOf = new Array<number>(ordered.length);
       for (const [position, index] of ranking.entries()) costRankOf[index] = position;
       return {
@@ -262,7 +276,7 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
     })
     .map((name) => ({ mpm: requireMember(name).mpm as XmlText, label: name }));
 
-  const corpusOf = (list: typeof items) =>
+  const corpusOf = (list: readonly (typeof items)[number][]) =>
     compareMpmCorpus({ items: list, window: WINDOW, k: 3, noiseFloor: true }).report;
 
   /**
@@ -279,19 +293,29 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
     expect(order).not.toEqual(items.map((_unused, index) => index));
 
     const straight = corpusOf(items);
-    const shuffled = corpusOf(order.map((index) => items[index]));
+    const shuffled = corpusOf(pick(items, order));
     const n = straight.n;
     expect(n).toBe(items.length);
 
     for (let i = 0; i < n; ++i)
       for (let j = 0; j < n; ++j)
-        expect({ i, j, d: shuffled.matrices.aggregate[i * n + j] }).toEqual({
+        expect({
           i,
           j,
-          d: straight.matrices.aggregate[order[i] * n + order[j]],
+          d: cellOf(shuffled.matrices.aggregate, n, i, j, 'the permuted aggregate matrix'),
+        }).toEqual({
+          i,
+          j,
+          d: cellOf(
+            straight.matrices.aggregate,
+            n,
+            elementAt(order, i, 'the permutation'),
+            elementAt(order, j, 'the permutation'),
+            'the aggregate matrix',
+          ),
         });
 
-    const back = (id: number) => (id < n ? order[id] : id);
+    const back = (id: number) => (id < n ? elementAt(order, id, 'the permutation') : id);
     expect(
       shuffled.dendrogram.merges.map((merge) => ({
         ...merge,
@@ -311,7 +335,8 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
     const n = report.n;
     const offDiagonal: number[] = [];
     for (let i = 0; i < n; ++i)
-      for (let j = i + 1; j < n; ++j) offDiagonal.push(report.matrices.aggregate[i * n + j]);
+      for (let j = i + 1; j < n; ++j)
+        offDiagonal.push(cellOf(report.matrices.aggregate, n, i, j, 'the aggregate matrix'));
     const distinct = new Set(offDiagonal).size;
     // `C(n, 2)` pairs and materially fewer distinct values: exact ties, not near-ties. Stated
     // from `n` rather than as the literal 45, so the claim survives a dropped member instead of
@@ -358,11 +383,15 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
 
     const permute = (source: DistanceMatrix, into: readonly number[]): DistanceMatrix => ({
       n: source.n,
-      values: Array.from({ length: source.n * source.n }, (_unused, index) => {
-        const i = Math.floor(index / source.n);
-        const j = index % source.n;
-        return source.values[into[i] * source.n + into[j]];
-      }),
+      values: Array.from({ length: source.n * source.n }, (_unused, index) =>
+        cellOf(
+          source.values,
+          source.n,
+          elementAt(into, Math.floor(index / source.n), 'the permutation'),
+          elementAt(into, index % source.n, 'the permutation'),
+          'the corpus distance matrix',
+        ),
+      ),
     });
 
     const answers = new Set<string>();
@@ -375,7 +404,7 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
           (_unused, index) => (index * stride + shift) % matrix.n,
         );
         if (new Set(into).size !== matrix.n) continue;
-        const permutedLabels = into.map((index) => labels[index]);
+        const permutedLabels = pick(labels, into);
         const result = pam(permute(matrix, into), 3, permutedLabels);
         expect(result?.exhaustive).toBe(true);
         answers.add(
@@ -398,7 +427,11 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
     const costOf = (subset: readonly number[]) => {
       let total = 0;
       for (let i = 0; i < n; ++i)
-        total += Math.min(...subset.map((medoid) => report.matrices.aggregate[i * n + medoid]));
+        total += Math.min(
+          ...subset.map((medoid) =>
+            cellOf(report.matrices.aggregate, n, i, medoid, 'the aggregate matrix'),
+          ),
+        );
       return total;
     };
     let best = Number.POSITIVE_INFINITY;

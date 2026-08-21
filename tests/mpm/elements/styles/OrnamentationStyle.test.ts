@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { OrnamentationStyle } from '../../../../src/mpm/elements/styles/OrnamentationStyle.js';
+import { okValue } from '../../../support/result.js';
+import {
+  createStyle,
+  describeStyleError,
+  parseStyle,
+} from '../../../../src/mpm/elements/styles/style.js';
+import type { OrnamentationStyle } from '../../../../src/mpm/elements/styles/style.js';
 import { OrnamentDef } from '../../../../src/mpm/elements/styles/defs/OrnamentDef.js';
 import {
   FrameDomain,
@@ -58,32 +64,44 @@ function referenceStyleXml(): Element {
   return styleDef;
 }
 
+/**
+ * The style, or a failure that names the reason.
+ *
+ * `parseStyle` returns a `Result` where the six `create…Style(xml)` factories returned
+ * `… | null` after logging, so the "this must have parsed" step is explicit here instead of
+ * being a `!`. It is a throw and not an `expect` so the return type narrows for the caller.
+ */
+function parsedStyle(xml: Element): OrnamentationStyle {
+  const result = parseStyle('ornamentation', xml);
+  if (!result.ok) throw new Error(`expected a style: ${describeStyleError(result.error)}`);
+  return result.value;
+}
+
 describe('OrnamentationStyle', () => {
   // ---------------------------------------------------------------
   //  Construction from a name
   // ---------------------------------------------------------------
-  describe('createOrnamentationStyle(name)', () => {
+  describe('createStyle(ornamentation, name)', () => {
     it('should create an empty style', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
+      const style = createStyle('ornamentation', 'orn style');
 
-      expect(style).not.toBeNull();
       expect(style.getName()).toBe('orn style');
       expect(style.isEmpty()).toBe(true);
       expect(style.size()).toBe(0);
     });
 
     it('should build a styleDef XML element', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
+      const style = createStyle('ornamentation', 'orn style');
       expect(style.getXml()!.getLocalName()).toBe('styleDef');
       expect(style.getXml()!.getAttributeValue('name')).toBe('orn style');
     });
 
     it('should have no id unless one is given', () => {
-      expect(OrnamentationStyle.createOrnamentationStyle('orn style')!.getId()).toBeNull();
+      expect(createStyle('ornamentation', 'orn style').getId()).toBeNull();
     });
 
     it('should accept an id', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle('orn style', 'style-1')!;
+      const style = createStyle('ornamentation', 'orn style', 'style-1');
 
       expect(style.getId()).toBe('style-1');
       expect(style.getXml()!.getAttribute('id', XML_NS)!.getValue()).toBe('style-1');
@@ -93,9 +111,9 @@ describe('OrnamentationStyle', () => {
   // ---------------------------------------------------------------
   //  Construction from XML
   // ---------------------------------------------------------------
-  describe('createOrnamentationStyle(xml)', () => {
+  describe('parseStyle(ornamentation, xml)', () => {
     it('should parse all ornamentDef children of the reference styleDef', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle(referenceStyleXml())!;
+      const style = parsedStyle(referenceStyleXml());
 
       expect(style.getName()).toBe('orn style');
       expect(style.size()).toBe(2);
@@ -105,7 +123,7 @@ describe('OrnamentationStyle', () => {
     });
 
     it('should hand through the parsed transformer data of each def', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle(referenceStyleXml())!;
+      const style = parsedStyle(referenceStyleXml());
 
       const arpeggio = style.getDef('arpeggio')!;
       expect(arpeggio.getDynamicsGradient()!.transitionFrom).toBe(-1.0);
@@ -123,7 +141,7 @@ describe('OrnamentationStyle', () => {
     });
 
     it('should key the lookup table by the ornamentDef name', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle(referenceStyleXml())!;
+      const style = parsedStyle(referenceStyleXml());
 
       expect(style.getAllDefs().size).toBe(2);
       expect([...style.getAllDefs().keys()].sort()).toEqual(['arpeggio', 'spreadMs']);
@@ -134,7 +152,7 @@ describe('OrnamentationStyle', () => {
       const xml = referenceStyleXml();
       xml.addAttribute(new Attribute('xml:id', XML_NS, 'style-42'));
 
-      expect(OrnamentationStyle.createOrnamentationStyle(xml)!.getId()).toBe('style-42');
+      expect(parsedStyle(xml).getId()).toBe('style-42');
     });
 
     it('should ignore non-ornamentDef children', () => {
@@ -143,7 +161,7 @@ describe('OrnamentationStyle', () => {
       xml.appendChild(ornamentDefXml('arpeggio'));
       xml.appendChild(new Element('articulationDef', Mpm.MPM_NAMESPACE));
 
-      const style = OrnamentationStyle.createOrnamentationStyle(xml)!;
+      const style = parsedStyle(xml);
       expect(style.size()).toBe(1);
       expect(style.getDef('arpeggio')).toBeDefined();
     });
@@ -152,16 +170,28 @@ describe('OrnamentationStyle', () => {
       const xml = new Element('styleDef', Mpm.MPM_NAMESPACE);
       xml.addAttribute(new Attribute('name', 'empty'));
 
-      const style = OrnamentationStyle.createOrnamentationStyle(xml)!;
+      const style = parsedStyle(xml);
       expect(style.getName()).toBe('empty');
       expect(style.isEmpty()).toBe(true);
     });
 
-    it('should return null when the name attribute is missing', () => {
+    it('should report the missing name attribute rather than returning a bare absence', () => {
       const xml = new Element('styleDef', Mpm.MPM_NAMESPACE);
       xml.appendChild(ornamentDefXml('arpeggio'));
 
-      expect(OrnamentationStyle.createOrnamentationStyle(xml)).toBeNull();
+      // Was `expect(…createOrnamentationStyle(xml)).toBeNull()`, which could not tell "no
+      // name" from "null element" and left the reason in a console the test had to silence.
+      expect(parseStyle('ornamentation', xml)).toEqual({
+        ok: false,
+        error: { kind: 'missingName', element: xml },
+      });
+    });
+
+    it('should report a null element as its own kind of failure', () => {
+      expect(parseStyle('ornamentation', null)).toEqual({
+        ok: false,
+        error: { kind: 'noElement' },
+      });
     });
   });
 
@@ -170,8 +200,8 @@ describe('OrnamentationStyle', () => {
   // ---------------------------------------------------------------
   describe('def management', () => {
     it('should add a def and make it retrievable by name', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
-      const def = OrnamentDef.createDefaultOrnamentDef('arpeggio')!;
+      const style = createStyle('ornamentation', 'orn style');
+      const def = okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio'));
       style.addDef(def);
 
       expect(style.size()).toBe(1);
@@ -180,14 +210,14 @@ describe('OrnamentationStyle', () => {
     });
 
     it('should return undefined for an unknown def name', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
+      const style = createStyle('ornamentation', 'orn style');
       expect(style.getDef('nope')).toBeUndefined();
     });
 
     it('should replace a def that is added under an existing name', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
-      const first = OrnamentDef.createDefaultOrnamentDef('arpeggio')!;
-      const second = OrnamentDef.createOrnamentDef('arpeggio')!;
+      const style = createStyle('ornamentation', 'orn style');
+      const first = okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio'));
+      const second = okValue(OrnamentDef.createOrnamentDef('arpeggio'));
       second.setDynamicsGradientValues(-9.0, 9.0);
 
       style.addDef(first);
@@ -200,8 +230,8 @@ describe('OrnamentationStyle', () => {
     });
 
     it('should remove a def by name', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
-      style.addDef(OrnamentDef.createDefaultOrnamentDef('arpeggio')!);
+      const style = createStyle('ornamentation', 'orn style');
+      style.addDef(okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio')));
       style.removeDef('arpeggio');
 
       expect(style.isEmpty()).toBe(true);
@@ -210,17 +240,17 @@ describe('OrnamentationStyle', () => {
     });
 
     it('should ignore removal of an unknown def name', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
-      style.addDef(OrnamentDef.createDefaultOrnamentDef('arpeggio')!);
+      const style = createStyle('ornamentation', 'orn style');
+      style.addDef(okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio')));
 
       expect(() => style.removeDef('nope')).not.toThrow();
       expect(style.size()).toBe(1);
     });
 
     it('should hold several defs side by side', () => {
-      const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
-      style.addDef(OrnamentDef.createDefaultOrnamentDef('arpeggio')!);
-      style.addDef(OrnamentDef.createOrnamentDef('trill')!);
+      const style = createStyle('ornamentation', 'orn style');
+      style.addDef(okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio')));
+      style.addDef(okValue(OrnamentDef.createOrnamentDef('trill')));
 
       expect(style.size()).toBe(2);
       expect(style.getXml()!.getChildElements('ornamentDef').size()).toBe(2);
@@ -231,10 +261,10 @@ describe('OrnamentationStyle', () => {
   //  Round trip
   // ---------------------------------------------------------------
   it('should survive an XML round trip', () => {
-    const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
-    style.addDef(OrnamentDef.createDefaultOrnamentDef('arpeggio')!);
+    const style = createStyle('ornamentation', 'orn style');
+    style.addDef(okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio')));
 
-    const reparsed = OrnamentationStyle.createOrnamentationStyle(style.getXml()!)!;
+    const reparsed = parsedStyle(style.getXml());
     expect(reparsed.getName()).toBe('orn style');
     expect(reparsed.size()).toBe(1);
 

@@ -25,7 +25,7 @@ describe('MIDI export pipeline', () => {
   describe('exportMidi (raw MIDI)', () => {
     it('should produce a non-null Midi from simple_notes', () => {
       const { msm } = loadMeiAndConvert('simple_notes.mei');
-      const midi = msm.exportMidi();
+      const midi = msm.exportMidi()!;
       expect(midi).not.toBeNull();
     });
 
@@ -75,9 +75,9 @@ describe('MIDI export pipeline', () => {
     it('should round-trip: export then re-import', () => {
       const { msm } = loadMeiAndConvert('simple_notes.mei');
       const midi = msm.exportMidi()!;
-      const bytes = midi.exportMidi()!;
-      const reimported = new Midi(bytes);
-      expect(reimported.isEmpty()).toBe(false);
+      const bytes = midi.exportMidi();
+      const reimported = Midi.fromBytes(bytes);
+      expect(reimported.getSequence().getTracks().length).toBeGreaterThan(0);
       expect(reimported.getSequence().getTracks().length).toBe(
         midi.getSequence().getTracks().length,
       );

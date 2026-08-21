@@ -14,8 +14,8 @@
  * - **Clamping happens here, not at the call site.** Velocities and controller
  *   values are clamped into 0..127 before the message is built, so out-of-range
  *   values from the MPM rendering stage become the boundary value rather than
- *   wrapping when `ShortMessage` masks them to 7 bits. Note the asymmetry:
- *   pitch and program numbers are *not* clamped here — `ShortMessage` masks them —
+ *   wrapping when `channelMessage` masks them to 7 bits. Note the asymmetry:
+ *   pitch and program numbers are *not* clamped here — `channelMessage` masks them —
  *   so a program number of 200 becomes 72, not 127.
  *
  * The constant tables below are the MIDI specification's numbers under meico's
@@ -40,7 +40,7 @@
  * @author Axel Berndt
  */
 
-import { MidiEvent, ShortMessage, MetaMessage } from './MidiTypes.js';
+import { MidiEvent, channelMessage, metaMessage } from './MidiTypes.js';
 import { InstrumentsDictionary } from './InstrumentsDictionary.js';
 
 // use these constants for the event type
@@ -427,25 +427,15 @@ export function shortToByteArray(value: number): Uint8Array {
 /**
  * create a note off event
  *
- * @param chan MIDI channel; masked to 0..15 by `ShortMessage`
+ * @param chan MIDI channel; masked to 0..15 by `channelMessage`
  * @param date absolute tick
  * @param pitch MIDI key number; masked to 0..127, **not** clamped
  * @param vel release velocity, clamped into 0..127
  */
-export function createNoteOff(
-  chan: number,
-  date: number,
-  pitch: number,
-  vel: number,
-): MidiEvent | null {
+export function createNoteOff(chan: number, date: number, pitch: number, vel: number): MidiEvent {
   const velocity = vel > 127 ? 127 : vel < 0 ? 0 : vel;
 
-  try {
-    return new MidiEvent(new ShortMessage(NOTE_OFF, chan, pitch, velocity), date);
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+  return new MidiEvent(channelMessage(NOTE_OFF, chan, pitch, velocity), date);
 }
 
 /**
@@ -454,25 +444,15 @@ export function createNoteOff(
  * A noteOn with velocity 0 is the conventional alternative encoding of a noteOff;
  * `Midi.noteOns2NoteOffs` converts between the two forms.
  *
- * @param chan MIDI channel; masked to 0..15 by `ShortMessage`
+ * @param chan MIDI channel; masked to 0..15 by `channelMessage`
  * @param date absolute tick
  * @param pitch MIDI key number; masked to 0..127, **not** clamped
  * @param vel attack velocity, clamped into 0..127
  */
-export function createNoteOn(
-  chan: number,
-  date: number,
-  pitch: number,
-  vel: number,
-): MidiEvent | null {
+export function createNoteOn(chan: number, date: number, pitch: number, vel: number): MidiEvent {
   const velocity = vel > 127 ? 127 : vel < 0 ? 0 : vel;
 
-  try {
-    return new MidiEvent(new ShortMessage(NOTE_ON, chan, pitch, velocity), date);
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+  return new MidiEvent(channelMessage(NOTE_ON, chan, pitch, velocity), date);
 }
 
 /**
@@ -488,18 +468,14 @@ export function createNoteOn(
  * @param date absolute tick
  * @param name an instrument name in any language the dictionary covers
  */
-export function createProgramChangeByName(
-  chan: number,
-  date: number,
-  name: string,
-): MidiEvent | null {
-  let dict: InstrumentsDictionary;
-  try {
-    dict = new InstrumentsDictionary(); // initialize instruments dictionary
-  } catch {
-    // if there were problems initializing the instruments dictionary
-    return createProgramChange(chan, date, PC_Acoustic_Grand_Piano); // use Acoustic Grand Piano as default instrument
-  }
+export function createProgramChangeByName(chan: number, date: number, name: string): MidiEvent {
+  // Java wraps the line below in `catch (Exception)` and falls back to Acoustic Grand
+  // Piano, because its dictionary is read from a resource file and the read can fail.
+  // This port embeds the data in the source, so `buildDictionary` parses a string literal
+  // and the constructor is total — the fallback could not fire. `getProgramChange` on the
+  // next line is where a name that matches nothing lands, and it has its own answer for
+  // that (0, Acoustic Grand Piano), reached by returning rather than by throwing.
+  const dict = new InstrumentsDictionary(); // initialize instruments dictionary
 
   return createProgramChange(chan, date, dict.getProgramChange(name)); // search the instrument's name in the dictionary and use the program change number it returns
 }
@@ -507,19 +483,10 @@ export function createProgramChangeByName(
 /**
  * create a program change event with the program change number
  *
- * @param programNumber masked to 0..127 by `ShortMessage`, not clamped, so 200 → 72
+ * @param programNumber masked to 0..127 by `channelMessage`, not clamped, so 200 → 72
  */
-export function createProgramChange(
-  chan: number,
-  date: number,
-  programNumber: number,
-): MidiEvent | null {
-  try {
-    return new MidiEvent(new ShortMessage(PROGRAM_CHANGE, chan, programNumber, 0), date);
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+export function createProgramChange(chan: number, date: number, programNumber: number): MidiEvent {
+  return new MidiEvent(channelMessage(PROGRAM_CHANGE, chan, programNumber, 0), date);
 }
 
 /**
@@ -532,15 +499,10 @@ export function createControlChange(
   date: number,
   controllerNumber: number,
   controllerValue: number,
-): MidiEvent | null {
+): MidiEvent {
   const value = controllerValue > 127 ? 127 : controllerValue < 0 ? 0 : controllerValue;
 
-  try {
-    return new MidiEvent(new ShortMessage(CONTROL_CHANGE, chan, controllerNumber, value), date);
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+  return new MidiEvent(channelMessage(CONTROL_CHANGE, chan, controllerNumber, value), date);
 }
 
 /**
@@ -553,16 +515,8 @@ export function createControlChange(
  * @param accids number of accidentals, negative for flats; the sign survives the
  *   `& 0xff` as a two's-complement byte, which is what the format wants
  */
-export function createKeySignature(date: number, accids: number): MidiEvent | null {
-  try {
-    return new MidiEvent(
-      new MetaMessage(META_Key_Signature, new Uint8Array([accids & 0xff, 0]), 2),
-      date,
-    );
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+export function createKeySignature(date: number, accids: number): MidiEvent {
+  return new MidiEvent(metaMessage(META_Key_Signature, new Uint8Array([accids & 0xff, 0])), date);
 }
 
 /**
@@ -580,28 +534,22 @@ export function createTimeSignature(
   date: number,
   numerator: number,
   denominator: number,
-): MidiEvent | null {
+): MidiEvent {
   let denom = 1;
   while (Math.pow(2, denom) < denominator) ++denom;
 
-  try {
-    return new MidiEvent(
-      new MetaMessage(
-        META_Time_Signature,
-        new Uint8Array([
-          numerator & 0xff,
-          denom & 0xff,
-          TICKS_PER_METER_CLICK,
-          THIRTY_SECOND_NOTES_PER_QUARTER,
-        ]),
-        4,
-      ),
-      date,
-    );
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+  return new MidiEvent(
+    metaMessage(
+      META_Time_Signature,
+      new Uint8Array([
+        numerator & 0xff,
+        denom & 0xff,
+        TICKS_PER_METER_CLICK,
+        THIRTY_SECOND_NOTES_PER_QUARTER,
+      ]),
+    ),
+    date,
+  );
 }
 
 /**
@@ -613,56 +561,44 @@ export function createTimeSignature(
  * its low three bytes are written, which is the format's 24-bit field —
  * `intToByteArray` produces four and bytes 1..3 are the ones taken.
  *
+ * "Bytes 1..3" is `subarray(1)` rather than `[tempo[1], tempo[2], tempo[3]]`: the
+ * slice says *drop the high byte* in one move, where three subscripts say it three
+ * times and leave the reader counting. It is also the cheaper spelling —
+ * {@link metaMessage} copies its payload, so the view never outlives this call and
+ * the intermediate four-element literal disappears.
+ *
  * @param bpm beats per minute, where a "beat" is `beatlength` long
  * @param beatlength length of one beat in floating point format (e.g. quarter=0.25, whole=1; eight=0.125)
  */
-export function createTempo(date: number, bpm: number, beatlength: number): MidiEvent | null {
+export function createTempo(date: number, bpm: number, beatlength: number): MidiEvent {
   const mpq = Math.round(60000000 / (bpm * beatlength * 4)); // compute microseconds per quarter note from bpm
   const tempo = intToByteArray(mpq, false); // generate byte array (little endian) from mpq
 
-  try {
-    return new MidiEvent(
-      new MetaMessage(META_Set_Tempo, new Uint8Array([tempo[1], tempo[2], tempo[3]]), 3),
-      date,
-    ); // create the event; only the 2nd, 3rd and 4th byte of the tempo byte array are needed
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+  return new MidiEvent(metaMessage(META_Set_Tempo, tempo.subarray(1)), date); // create the event; only the 2nd, 3rd and 4th byte of the tempo byte array are needed
 }
 
 /**
  * create a track name event
  *
  * The four text-carrying factories below (`createTrackName`, `createInstrumentName`,
- * `createTextEvent`, `createMarker`) all encode as **UTF-8** and pass the encoded
- * byte length, not the string length — so a name with non-ASCII characters produces
- * a longer payload than it has characters. Java uses `String.getBytes()`, i.e. the
+ * `createTextEvent`, `createMarker`) all encode as **UTF-8**, so the payload is as
+ * long as the encoded bytes, not as the string — a name with non-ASCII characters
+ * produces a longer payload than it has characters. Java uses `String.getBytes()`, i.e. the
  * platform default charset, which is UTF-8 on the reference machine; on a machine
  * with a different default the two would disagree on non-ASCII names.
  */
-export function createTrackName(date: number, name: string): MidiEvent | null {
+export function createTrackName(date: number, name: string): MidiEvent {
   const text = new TextEncoder().encode(name);
-  try {
-    return new MidiEvent(new MetaMessage(META_Track_Name, text, text.length), date);
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+  return new MidiEvent(metaMessage(META_Track_Name, text), date);
 }
 
 /**
  * create a instrument name event
  * @param name the instrument's display name; encoded UTF-8, see `createTrackName`
  */
-export function createInstrumentName(date: number, name: string): MidiEvent | null {
+export function createInstrumentName(date: number, name: string): MidiEvent {
   const text = new TextEncoder().encode(name);
-  try {
-    return new MidiEvent(new MetaMessage(META_Instrument_Name, text, text.length), date);
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+  return new MidiEvent(metaMessage(META_Instrument_Name, text), date);
 }
 
 /**
@@ -673,44 +609,26 @@ export function createInstrumentName(date: number, name: string): MidiEvent | nu
  * it is why text events appear in the reference files at the same ticks as notes —
  * their relative order comes from `Track.add`'s stable sort.
  */
-export function createTextEvent(date: number, plainText: string): MidiEvent | null {
+export function createTextEvent(date: number, plainText: string): MidiEvent {
   const text = new TextEncoder().encode(plainText);
-  try {
-    return new MidiEvent(new MetaMessage(META_Text_Event, text, text.length), date);
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+  return new MidiEvent(metaMessage(META_Text_Event, text), date);
 }
 
 /**
  * create a marker event
  * @param markerText a rehearsal mark or section label; encoded UTF-8
  */
-export function createMarker(date: number, markerText: string): MidiEvent | null {
+export function createMarker(date: number, markerText: string): MidiEvent {
   const text = new TextEncoder().encode(markerText);
-  try {
-    return new MidiEvent(new MetaMessage(META_Marker, text, text.length), date);
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+  return new MidiEvent(metaMessage(META_Marker, text), date);
 }
 
 /**
  * this creates a channel prefix event, it indicates that all subsequent meta messages go to this channel
  * @param channel truncated to one byte by `shortToByteArray`, not masked to 0..15
  */
-export function createChannelPrefix(date: number, channel: number): MidiEvent | null {
-  try {
-    return new MidiEvent(
-      new MetaMessage(META_Midi_Channel_Prefix, shortToByteArray(channel), 1),
-      date,
-    );
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+export function createChannelPrefix(date: number, channel: number): MidiEvent {
+  return new MidiEvent(metaMessage(META_Midi_Channel_Prefix, shortToByteArray(channel)), date);
 }
 
 /**
@@ -719,13 +637,8 @@ export function createChannelPrefix(date: number, channel: number): MidiEvent | 
  * A track's port plus its channel prefix is how `Msm.exportMidi` addresses more
  * than 16 parts: parts beyond channel 15 continue on the next port.
  */
-export function createMidiPortEvent(date: number, port: number): MidiEvent | null {
-  try {
-    return new MidiEvent(new MetaMessage(META_Midi_Port, shortToByteArray(port), 1), date);
-  } catch (e) {
-    console.error(e);
-    return null;
-  }
+export function createMidiPortEvent(date: number, port: number): MidiEvent {
+  return new MidiEvent(metaMessage(META_Midi_Port, shortToByteArray(port)), date);
 }
 
 /**

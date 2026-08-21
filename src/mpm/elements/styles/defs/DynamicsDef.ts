@@ -2,47 +2,64 @@ import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
-import { AbstractDef } from './AbstractDef.js';
+import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
+import { MissingNodeError } from '../../../../xml/errors.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
+import { ok, type Result } from '../../../../prelude/index.js';
+import { type MpmParseError } from '../../parseError.js';
 
 /**
  * A `dynamicsDef`: it gives a dynamics name ("forte", "pp", …) a numeric MIDI-velocity
  * value.
  * Port of meico.mpm.elements.styles.defs.DynamicsDef
  */
-export class DynamicsDef extends AbstractDef {
-  private value = 0.0;
+export class DynamicsDef extends AbstractXmlSubtree {
+  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  readonly kind = 'dynamics';
+  private value: number;
 
-  private constructor() {
+  /** Both required attributes are held, not looked up; see {@link TempoDef}'s constructor. */
+  private constructor(
+    private readonly nameAttr: Attribute,
+    private readonly valueAttr: Attribute,
+  ) {
     super();
-  }
-
-  private static fromNameValue(name: string, value: number): DynamicsDef {
-    const dd = new DynamicsDef();
-    const e = new Element('dynamicsDef', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('name', name));
-    e.addAttribute(new Attribute('value', String(value)));
-    dd.parseDataInternal(e);
-    return dd;
-  }
-
-  private static fromXml(xml: Element): DynamicsDef {
-    const dd = new DynamicsDef();
-    dd.parseDataInternal(xml);
-    return dd;
-  }
-
-  private parseDataInternal(xml: Element): void {
-    super.parseData(xml);
-    const valueAttr = attribute('value', xml);
-    if (valueAttr === null)
-      throw new Error('Cannot generate DynamicsDef object. Missing value attribute.');
     // Malformed value => throw => createDynamicsDef returns null => the style skips the def,
     // as in Java (DynamicsDef.java:88). PARITY.md, "Fixed bugs", P1.
     this.value = parseJavaDouble(valueAttr.getValue(), 'dynamicsDef/@value');
   }
 
+  getName(): string {
+    return this.nameAttr.getValue();
+  }
+
+  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  setName(name: string): void {
+    this.nameAttr.setValue(name);
+  }
+
+  private static fromNameValue(name: string, value: number): DynamicsDef {
+    const e = new Element('dynamicsDef', MPM_NAMESPACE);
+    e.addAttribute(new Attribute('name', name));
+    e.addAttribute(new Attribute('value', String(value)));
+    return DynamicsDef.fromXml(e);
+  }
+
+  private static fromXml(xml: Element): DynamicsDef {
+    const nameAttr = requireDefName(xml, 'DynamicsDef');
+    const valueAttr = attribute('value', xml);
+    if (valueAttr === null)
+      throw new MissingNodeError('Cannot generate DynamicsDef object. Missing value attribute.');
+
+    const dd = new DynamicsDef(nameAttr, valueAttr);
+    dd.parseData(xml);
+    return dd;
+  }
+
+  /** What is left once the constructor has the two required attributes. See {@link TempoDef}. */
   protected parseData(xml: Element): void {
-    this.parseDataInternal(xml);
+    this.setXml(xml);
+    this.id = attribute('id', xml);
   }
 
   /**
@@ -50,18 +67,22 @@ export class DynamicsDef extends AbstractDef {
    * element. Returns null — after logging — instead of throwing, e.g. when `value` is
    * missing.
    */
-  static createDynamicsDef(name: string, value: number): DynamicsDef | null;
-  static createDynamicsDef(xml: Element): DynamicsDef | null;
-  static createDynamicsDef(nameOrXml: string | Element, value?: number): DynamicsDef | null {
+  static createDynamicsDef(name: string, value: number): Result<DynamicsDef, MpmParseError>;
+  static createDynamicsDef(xml: Element): Result<DynamicsDef, MpmParseError>;
+  static createDynamicsDef(
+    nameOrXml: string | Element,
+    value?: number,
+  ): Result<DynamicsDef, MpmParseError> {
     try {
       if (typeof nameOrXml === 'string') {
-        return DynamicsDef.fromNameValue(nameOrXml, value!);
+        // Required by the (name, value) overload; optional only in the implementation
+        // signature. See the same note on `TempoDef.createTempoDef`.
+        return ok(DynamicsDef.fromNameValue(nameOrXml, value as number));
       } else {
-        return DynamicsDef.fromXml(nameOrXml);
+        return ok(DynamicsDef.fromXml(nameOrXml));
       }
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e, 'DynamicsDef');
     }
   }
 
@@ -71,10 +92,10 @@ export class DynamicsDef extends AbstractDef {
 
   setValue(value: number): void {
     this.value = value;
-    this.getXml().getAttribute('value')!.setValue(String(value));
+    this.valueAttr.setValue(String(value));
   }
 
-  static createDefaultDynamicsDef(name: string): DynamicsDef | null {
+  static createDefaultDynamicsDef(name: string): Result<DynamicsDef, MpmParseError> {
     return DynamicsDef.createDynamicsDef(name, DynamicsDef.getDefaultVolumeLevel(name));
   }
 

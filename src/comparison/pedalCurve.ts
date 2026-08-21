@@ -76,6 +76,17 @@
  * the domain test). Since the smoothstep's value fraction stays in [0,1], clamping the two
  * endpoints clamps the whole curve.
  */
+import {
+  elementAtOrNull,
+  filterMap,
+  findLast,
+  head,
+  isNonEmpty,
+  upperBoundBy,
+  withNext,
+  type NonEmptyArray,
+} from '../prelude/index.js';
+import { coveringSegmentAt } from './segments.js';
 import type { Element } from '../xml/XomTypes.js';
 import { innerControlPointsXPositions } from '../mpm/elements/maps/data/bezier.js';
 import { readAttributeValue } from '../expression/attributes.js';
@@ -88,15 +99,15 @@ import { entryTicksAt, type OrderedMapView } from './document.js';
 /** No controller event has been sent yet: the pedal is up (MIDI's CC default). */
 export const PEDAL_NEUTRAL_POSITION = 0;
 
-/** `MovementData.ts:28` — **0.4**, and deliberately not `<dynamics>`'s 0.0 (§5.8/AD-13). */
+/** `data/movement.ts` — **0.4**, and deliberately not `<dynamics>`'s 0.0 (§5.8/AD-13). */
 export const DEFAULT_MOVEMENT_CURVATURE = 0.4;
-/** `MovementData.ts:29`. */
+/** `data/movement.ts`. */
 export const DEFAULT_MOVEMENT_PROTRACTION = 0;
 
 /** The renderer's own `getEndDate` sentinel for "no next movement" (`MovementMap.ts:158`). */
 export const UNBOUNDED_END_TICKS = Number.MAX_VALUE;
 
-/** `'sustain'` — `MovementData.ts:26`, and the only value the MIDI export maps to CC 64. */
+/** `'sustain'` — `data/movement.ts`, and the only value the MIDI export maps to CC 64. */
 export const DEFAULT_CONTROLLER = 'sustain';
 
 /** The two controller names `Msm.parsePositionMap:1445-1449` knows; everything else is CC 0. */
@@ -208,21 +219,49 @@ interface RawMovement {
  *   which makes `getMovementDataOf` log and return null and drops the movement entirely.
  */
 function inheritedPosition(entries: OrderedMapView['entries'], index: number): number | null {
-  for (let j = index - 1; j > 0; --j) {
-    const element = entries[j].element;
-    if (element.getLocalName() !== 'movement') continue;
-    const transitionTo = readAttributeValue(element, 'transition.to');
-    return transitionTo === null ? null : parseFloat(transitionTo);
-  }
-  return 0;
+  // Entries `1 … index-1`, latest first — the `j > 0` bound is the rule's own (entry 0 has no
+  // predecessor to inherit from), and the slice says it where the loop bound only implied it.
+  // `findLast` IS the backwards walk, and it drops the `.reverse()` copy the loop needed: the
+  // slice already isolates the range, so nothing here ever mutated the view's own array.
+  const previous = findLast(
+    entries.slice(1, index),
+    (entry) => entry.element.getLocalName() === 'movement',
+  );
+  if (previous === null) return 0;
+  const transitionTo = readAttributeValue(previous.element, 'transition.to');
+  return transitionTo === null ? null : parseFloat(transitionTo);
+}
+
+/**
+ * The positions of the entries named `movement`, ascending — `getEndDate:153-159`'s look-ahead
+ * for the whole map, computed once.
+ *
+ * That scan runs **once per movement**, unconditionally, so spelling it `entries.slice(index +
+ * 1).find(...)` made the reader quadratic in time and in allocation together. Nor is the obvious
+ * repair a repair: `findIndex((entry, at) => at > index && …)` removes the copy but pays a JS
+ * predicate call for every entry it skips over, and measured on the isolated shape at 16 000
+ * entries that is 529 ms against the tail-slice's 167 ms — a memcpy of element references is far
+ * cheaper per element than a call. One `filterMap` and a binary search is 0.07 ms.
+ */
+function movementPositions(entries: OrderedMapView['entries']): readonly number[] {
+  return filterMap(entries, (entry, index) =>
+    entry.element.getLocalName() === 'movement' ? index : null,
+  );
 }
 
 /** `MovementMap.getEndDate:153-159` — the next entry named `movement`, else `MAX_VALUE`. */
-function endTicksOf(view: OrderedMapView, index: number, scaleFactor: number): number {
-  const entries = view.entries;
-  for (let j = index + 1; j < entries.length; ++j)
-    if (entries[j].element.getLocalName() === 'movement') return entryTicksAt(view, j, scaleFactor);
-  return UNBOUNDED_END_TICKS;
+function endTicksOf(
+  view: OrderedMapView,
+  movements: readonly number[],
+  index: number,
+  scaleFactor: number,
+): number {
+  // `movements` ascends, so "the first movement entry strictly after `index`" is `upperBoundBy`.
+  const next = elementAtOrNull(
+    movements,
+    upperBoundBy(movements, (at) => at, index),
+  );
+  return next === null ? UNBOUNDED_END_TICKS : entryTicksAt(view, next, scaleFactor);
 }
 
 /**
@@ -243,6 +282,7 @@ export function readMovementSegments(view: OrderedMapView | null, scaleFactor: n
   if (view === null) return neutralPedalCurve();
 
   const entries = view.entries;
+  const movements = movementPositions(entries);
   const notes: PedalCurveNote[] = [];
   const controllers: string[] = [];
   const raws: RawMovement[] = [];
@@ -339,7 +379,7 @@ export function readMovementSegments(view: OrderedMapView | null, scaleFactor: n
 
     raws.push({
       dateTicks,
-      endTicks: endTicksOf(view, index, scaleFactor),
+      endTicks: endTicksOf(view, movements, index, scaleFactor),
       position: clampedPosition,
       transitionTo: clampedTransitionTo,
       curvature: readNumericOr(element, 'curvature', DEFAULT_MOVEMENT_CURVATURE),
@@ -348,7 +388,7 @@ export function readMovementSegments(view: OrderedMapView | null, scaleFactor: n
     });
   }
 
-  if (raws.length === 0) return { ...neutralPedalCurve(), notes, controllers };
+  if (!isNonEmpty(raws)) return { ...neutralPedalCurve(), notes, controllers };
 
   return assembleTimeline(raws, notes, controllers);
 }
@@ -368,23 +408,33 @@ function readNumericOr(element: Element, name: string, fallback: number): number
  * that span emitted are the ones whose dates cannot be trusted.
  */
 function assembleTimeline(
-  raws: readonly RawMovement[],
+  // NON-EMPTY, which is the caller's own guard promoted to the signature: the lead-in below
+  // reads the first movement three times, and every one of those reads is now total.
+  raws: NonEmptyArray<RawMovement>,
   notes: PedalCurveNote[],
   controllers: readonly string[],
 ): PedalCurve {
   const segments: PedalSegment[] = [];
   const breakpoints = new Set<number>([0]);
 
-  if (raws[0].dateTicks > 0)
+  const lead = head(raws);
+  if (lead.dateTicks > 0)
     segments.push({
       startTicks: 0,
-      endTicks: raws[0].dateTicks,
-      controller: raws[0].controller,
+      endTicks: lead.dateTicks,
+      controller: lead.controller,
       source: 'lead-in',
       shape: valued({ kind: 'constant', position: PEDAL_NEUTRAL_POSITION }),
     });
 
-  for (const [index, raw] of raws.entries()) {
+  // The neighbour is PAIRED with its own movement rather than read at `index + 1`. "There is
+  // no next one" is then a value — `null` — instead of an out-of-range read that the type
+  // system had to be told about with `as RawMovement | undefined`.
+  // `withNext` IS this pair of lines: every entry with its successor, and `null` for the
+  // last. The `[...xs.slice(1), null]` array and the zip that consumed it were one shape
+  // spelled out, and it is the shape `pairwise` cannot serve — `pairwise` drops the last
+  // entry, and the last instruction is a span too.
+  for (const [raw, next] of withNext(raws)) {
     breakpoints.add(raw.dateTicks);
     const shape = shapeOf(raw, notes);
     segments.push({
@@ -414,7 +464,6 @@ function assembleTimeline(
     // The hold between this span's end and the next rendered span's start. `raws` is in entry
     // order and entries are date-ordered, so `next.dateTicks >= raw.endTicks` always; the two
     // are equal for consecutive movements, and the hold is then zero-width and not emitted.
-    const next = raws[index + 1] as RawMovement | undefined;
     const holdEnd = next?.dateTicks ?? Number.POSITIVE_INFINITY;
     if (holdEnd > raw.endTicks) {
       breakpoints.add(raw.endTicks);
@@ -457,7 +506,7 @@ function shapeOf(raw: RawMovement, notes: PedalCurveNote[]): Valued<PedalShape> 
       dateTicks: raw.dateTicks,
       detail:
         'an unparseable @transition.to: the movement is NOT constant — isConstantMovement ' +
-        'tests for null, not for NaN (MovementData.ts:84-86) — so it transitions towards NaN ' +
+        'tests for null, not for NaN (data/movement.ts) — so it transitions towards NaN ' +
         'and every sampled value after the first is NaN. The span reads ⊥.',
     });
     return bottom('renderer-error');
@@ -500,14 +549,16 @@ function endValueOf(shape: Valued<PedalShape>): Valued<PedalShape> {
   });
 }
 
-/** The segment governing `ticks`, right-continuous (A-B1), or null where none does. */
+/**
+ * The segment governing `ticks`, right-continuous (A-B1), or null where none does.
+ *
+ * The scan this replaces took the LAST covering segment where accentuation and rubato take the
+ * first; on a timeline whose spans and holds abut, those are the same segment, and
+ * {@link coveringSegmentAt} carries that argument along with the `NaN`/`Infinity` cases. Called
+ * once per Gauss-Legendre node, which is what made the scan quadratic in the map's size.
+ */
 export function pedalSegmentAt(curve: PedalCurve, ticks: number): PedalSegment | null {
-  let found: PedalSegment | null = null;
-  for (const segment of curve.segments) {
-    if (segment.startTicks > ticks) break;
-    if (ticks < segment.endTicks) found = segment;
-  }
-  return found;
+  return coveringSegmentAt(curve.segments, ticks);
 }
 
 /**

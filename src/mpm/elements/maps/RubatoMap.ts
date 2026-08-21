@@ -1,10 +1,13 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute } from '../../../xml/tree.js';
-import { MPM_NAMESPACE, RUBATO_STYLE } from '../../names.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import { RubatoData } from './data/RubatoData.js';
-import { RubatoStyle } from '../styles/RubatoStyle.js';
+import { resolveRubato, type Rubato } from './data/rubato.js';
+import { elementAt, mapPresent } from '../../../prelude/index.js';
 
 /**
  * An MPM `rubatoMap`: expressive push and pull of the timing, applied as a repeating
@@ -19,17 +22,24 @@ import { RubatoStyle } from '../styles/RubatoStyle.js';
  * Port of meico.mpm.elements.maps.RubatoMap
  */
 export class RubatoMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createRubatoMap(xml?: Element): RubatoMap | null {
-    try {
-      return xml !== undefined ? new RubatoMap(xml) : new RubatoMap('rubatoMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<rubatoMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createRubatoMap(): RubatoMap;
+  static createRubatoMap(xml: Element): Result<RubatoMap, MpmParseError>;
+  static createRubatoMap(xml?: Element | null): RubatoMap | Result<RubatoMap, MpmParseError> {
+    return xml === undefined
+      ? new RubatoMap(GenericMap.emptyMapElement('rubatoMap'))
+      : GenericMap.makeMap(xml, 'RubatoMap', (elt) => new RubatoMap(elt));
   }
 
   addRubato(
@@ -85,68 +95,48 @@ export class RubatoMap extends GenericMap {
   }
 
   /**
-   * Read the rubato instruction at `index` into a {@link RubatoData}. Returns null if
-   * the entry is not a `<rubato>`, or if no `frameLength` can be determined — without a
-   * frame there is nothing to warp, so that case is a hard reject rather than a default.
+   * Read the rubato instruction at `index` into a {@link Rubato}. Returns null if the
+   * entry is not a `<rubato>`, or if no `frameLength` can be determined — without a frame
+   * there is nothing to warp, so that case is a hard reject rather than a default.
    *
-   * Each of `frameLength`, `intensity`, `lateStart` and `earlyEnd` is taken from the
-   * element if present and otherwise inherited from the referenced `rubatoDef`; see the
-   * note in {@link RubatoData}'s constructor on why the parsed nulls are load-bearing.
+   * This method's whole job is to say which of the five parameters the *element* declares;
+   * {@link resolveRubato} owns what to do about the rest — inherit from the `rubatoDef`,
+   * fall back to the identity warp, clamp the window, or reject. Note that "declares" means
+   * carries the attribute, not carries a usable value: `parseFloat` of a malformed value is
+   * `NaN`, which is not nullish and therefore still beats the def. That is the incumbent's
+   * behaviour and `tests/comparison/malformedValues.test.ts` pins it.
    *
-   * The final clamps keep the warp window valid: `lateStart` is floored at 0,
-   * `earlyEnd` capped at 1, and a window that is inverted or empty
-   * (`lateStart >= earlyEnd`) is reset to the full frame rather than producing a
-   * degenerate transformation.
+   * The `rubatoDef` is resolved only through a style in scope; a `@name.ref` with no style
+   * switched on resolves to nothing, and the instruction then stands on its own attributes.
    */
-  getRubatoDataOf(index: number): RubatoData | null {
+  getRubatoDataOf(index: number): Rubato | null {
     const i = this.resolveEntryIndex(index, 'rubato');
     if (i < 0) return null;
-    const e = this.elements[i].getValue();
-    const rd = new RubatoData();
-    rd.startDate = this.elements[i].getKey();
-    rd.endDate = this.getEndDate(i);
-    rd.xml = e;
-    const att = attribute('id', e);
-    if (att !== null) rd.xmlId = att.getValue();
-    rd.styleName = this.findStyleNameAt(i) ?? rd.styleName;
-    rd.style = this.getStyle(RUBATO_STYLE, rd.styleName) as RubatoStyle | null;
-    if (rd.style !== null) {
-      const nrAtt = attribute('name.ref', e);
-      if (nrAtt !== null) {
-        rd.rubatoDefString = nrAtt.getValue();
-        rd.rubatoDef = rd.style.getDef(rd.rubatoDefString) ?? null;
-      }
-    }
-    const flAtt = attribute('frameLength', e);
-    if (flAtt !== null) rd.frameLength = parseFloat(flAtt.getValue());
-    else if (rd.rubatoDef !== null) rd.frameLength = rd.rubatoDef.getFrameLength();
-    else return null;
-    const loopAtt = attribute('loop', e);
-    if (loopAtt !== null) rd.loop = loopAtt.getValue() === 'true';
-    const intAtt = attribute('intensity', e);
-    if (intAtt !== null) rd.intensity = parseFloat(intAtt.getValue());
-    else if (rd.rubatoDef !== null) rd.intensity = rd.rubatoDef.getIntensity();
-    const lsAtt = attribute('lateStart', e);
-    if (lsAtt !== null) rd.lateStart = parseFloat(lsAtt.getValue());
-    else if (rd.rubatoDef !== null) rd.lateStart = rd.rubatoDef.getLateStart();
-    const eeAtt = attribute('earlyEnd', e);
-    if (eeAtt !== null) rd.earlyEnd = parseFloat(eeAtt.getValue());
-    else if (rd.rubatoDef !== null) rd.earlyEnd = rd.rubatoDef.getEarlyEnd();
-    // ensure boundaries
-    if (rd.lateStart !== null && rd.lateStart < 0.0) rd.lateStart = 0.0;
-    if (rd.earlyEnd !== null && rd.earlyEnd > 1.0) rd.earlyEnd = 1.0;
-    if (rd.lateStart !== null && rd.earlyEnd !== null && rd.lateStart >= rd.earlyEnd) {
-      rd.lateStart = 0.0;
-      rd.earlyEnd = 1.0;
-    }
-    return rd;
-  }
+    const entry = this.entryAt(i);
+    const e = entry.getValue();
 
-  private getEndDate(index: number): number {
-    for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === 'rubato') return this.elements[j].getKey();
-    }
-    return Number.MAX_VALUE;
+    const style = this.getStyle('rubato', this.findStyleNameAt(i));
+    const nameRef = attribute('name.ref', e);
+    const def =
+      style === null || nameRef === null ? null : (style.getDef(nameRef.getValue()) ?? null);
+
+    const declaredFloat = (name: string): number | null =>
+      mapPresent(attribute(name, e), (a) => parseFloat(a.getValue()));
+
+    return resolveRubato(
+      {
+        startDate: entry.getKey(),
+        endDate: this.nextDateOfType(i, 'rubato'),
+      },
+      {
+        frameLength: declaredFloat('frameLength'),
+        intensity: declaredFloat('intensity'),
+        lateStart: declaredFloat('lateStart'),
+        earlyEnd: declaredFloat('earlyEnd'),
+        loop: mapPresent(attribute('loop', e), (a) => a.getValue() === 'true'),
+      },
+      def,
+    );
   }
 
   /**
@@ -163,12 +153,12 @@ export class RubatoMap extends GenericMap {
    * final `date + d - localDate` must not be regrouped: every performed onset in the
    * output depends on the exact bits this returns.
    */
-  private static computeRubatoTransformation(date: number, rd: RubatoData): number {
-    const localDate = (date - rd.startDate) % rd.frameLength!;
+  private static computeRubatoTransformation(date: number, rd: Rubato): number {
+    const localDate = (date - rd.startDate) % rd.frameLength;
     const d =
-      (Math.pow(localDate / rd.frameLength!, rd.intensity!) * (rd.earlyEnd! - rd.lateStart!) +
-        rd.lateStart!) *
-      rd.frameLength!;
+      (Math.pow(localDate / rd.frameLength, rd.intensity) * (rd.earlyEnd - rd.lateStart) +
+        rd.lateStart) *
+      rd.frameLength;
     return date + d - localDate;
   }
 
@@ -194,11 +184,11 @@ export class RubatoMap extends GenericMap {
       const rd = this.getRubatoDataOf(rubIndex);
       if (rd === null) continue;
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = map.elements[mapIndex];
+        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
         if (mapEntry.getKey() < rd.startDate) continue;
         if (
-          mapEntry.getKey() >= rd.endDate! ||
-          (!rd.loop && mapEntry.getKey() >= rd.startDate + rd.frameLength!)
+          mapEntry.getKey() >= rd.endDate ||
+          (!rd.loop && mapEntry.getKey() >= rd.startDate + rd.frameLength)
         )
           break;
 
@@ -223,16 +213,19 @@ export class RubatoMap extends GenericMap {
         }
       }
 
-      for (let i = 0; i < pendingDurations.length; ++i) {
-        const pd = pendingDurations[i];
+      // A prefix drain, and it always was: the loop this replaces spliced entry `i` out and
+      // stepped `i` back on every pass that did not `break`, so `i` never left 0. Counting
+      // the run and splicing it once is the same removal without the shift-the-whole-array
+      // cost per entry — the same rewrite `ImprecisionMap`'s pending durations already had.
+      let drained = 0;
+      for (const pd of pendingDurations) {
         const dateEnd = pd.getKey();
-        if (dateEnd >= rd.endDate! || (!rd.loop && dateEnd >= rd.startDate + rd.frameLength!))
-          break;
+        if (dateEnd >= rd.endDate || (!rd.loop && dateEnd >= rd.startDate + rd.frameLength)) break;
         if (dateEnd >= rd.startDate)
           pd.getValue().setValue(String(RubatoMap.computeRubatoTransformation(dateEnd, rd)));
-        pendingDurations.splice(i, 1);
-        --i;
+        ++drained;
       }
+      if (drained > 0) pendingDurations.splice(0, drained);
     }
   }
 
@@ -240,5 +233,3 @@ export class RubatoMap extends GenericMap {
     if (rubatoMap !== null) rubatoMap.renderRubatoToMap(map);
   }
 }
-
-GenericMap.registerMapFactory('rubatoMap', (xml) => RubatoMap.createRubatoMap(xml));

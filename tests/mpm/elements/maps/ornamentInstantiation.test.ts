@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { okValue } from '../../../support/result.js';
 import { OrnamentationMap } from '../../../../src/mpm/elements/maps/OrnamentationMap.js';
 import { GenericMap } from '../../../../src/mpm/elements/maps/GenericMap.js';
 import { OrnamentData } from '../../../../src/mpm/elements/maps/data/OrnamentData.js';
@@ -10,7 +11,7 @@ import {
 import { Element, Attribute } from '../../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../../src/mpm/Mpm.js';
 import { Header } from '../../../../src/mpm/elements/Header.js';
-import { OrnamentationStyle } from '../../../../src/mpm/elements/styles/OrnamentationStyle.js';
+import { createStyle } from '../../../../src/mpm/elements/styles/style.js';
 import { OrnamentDef } from '../../../../src/mpm/elements/styles/defs/OrnamentDef.js';
 import {
   FrameDomain,
@@ -53,7 +54,7 @@ function makeNote(id: string, date: number, pitch: number, duration = 1440, velo
 }
 
 function makeScore(notes: Element[]): GenericMap {
-  const score = GenericMap.createGenericMap('score')!;
+  const score = okValue(GenericMap.createGenericMap('score'));
   for (const note of notes) score.addElement(note);
   return score;
 }
@@ -72,7 +73,7 @@ interface DefOptions {
 }
 
 function makeDef(name: string, options: DefOptions = {}): OrnamentDef {
-  const def = OrnamentDef.createOrnamentDef(name)!;
+  const def = okValue(OrnamentDef.createOrnamentDef(name));
   if (options.gradient !== undefined)
     def.setDynamicsGradientValues(options.gradient[0], options.gradient[1]);
   if (options.noSpread !== true) {
@@ -94,11 +95,11 @@ function makeDef(name: string, options: DefOptions = {}): OrnamentDef {
 }
 
 function makeMap(defs: OrnamentDef[]): OrnamentationMap {
-  const header = Header.createHeader()!;
-  const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
+  const header = okValue(Header.createHeader());
+  const style = createStyle('ornamentation', 'orn style');
   for (const def of defs) style.addDef(def);
   header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
-  const map = OrnamentationMap.createOrnamentationMap()!;
+  const map = OrnamentationMap.createOrnamentationMap();
   map.setHeaders(null, header);
   map.addStyleSwitch(0, 'orn style');
   return map;
@@ -934,6 +935,58 @@ describe('MPM v3 ornament instantiation', () => {
       map.renderOrnamentationToMap(score);
       expect(notesOf(score)).toHaveLength(1);
     });
+
+    it('lays out every principal group BEFORE any principal-less ornament', () => {
+      /**
+       * A closed oracle gap.
+       *
+       * `instantiateOrnaments` runs in two phases — the ornaments that share a principal
+       * first, then the ones that have none — and the order is byte-visible, because layout
+       * appends generated notes to the score and `GenericMap.addElement` puts a new element
+       * after the last one already at its date.
+       *
+       * Measured: swapping the two phases left all 2788 tests in tests/mpm, tests/ornamentation
+       * and tests/integration green. A probe then showed why — the mixed case never occurs in
+       * the suite. Orphans appear in exactly two tests, and in both of them there is no
+       * parented ornament to be ordered against.
+       */
+      const score = makeScore([makeNote('a', 0, 60)]);
+      const map = makeMap([
+        makeDef('fig', {
+          frameOffset: { value: 0, domain: 'ticks' },
+          frameLength: { value: 480, domain: 'ticks' },
+        }),
+      ]);
+      // The principal-less one is added FIRST, so document order alone would put it first —
+      // which is exactly what makes the assertion below about the phases rather than about
+      // the order the ornaments were encountered in.
+      map.addOrnament({
+        date: 0,
+        nameRef: 'fig',
+        noteOrder: '#n1',
+        notes: [new OrnamentNote('n1', { kind: 'midi', value: 72 })],
+        id: 'ornOrphan',
+      });
+      map.addOrnament({
+        date: 0,
+        nameRef: 'fig',
+        noteid: '#a',
+        noteOrder: '[ #n2 ]',
+        notes: [new OrnamentNote('n2', chromatic(1))],
+        id: 'ornParented',
+      });
+      map.renderOrnamentationToMap(score);
+
+      const refs = notesOf(score).map((note) => note.ref);
+      const parented = refs.indexOf('ornParented');
+      const orphan = refs.indexOf('ornOrphan');
+      // Non-vacuous: both really did generate a note.
+      expect({ parented: parented >= 0, orphan: orphan >= 0 }).toEqual({
+        parented: true,
+        orphan: true,
+      });
+      expect({ parentedBeforeOrphan: parented < orphan }).toEqual({ parentedBeforeOrphan: true });
+    });
   });
 
   // -------------------------------------------------------------------------------------
@@ -1525,7 +1578,7 @@ describe('MPM v3 ornament instantiation', () => {
       const scoreXml = new Element('score');
       dated.appendChild(scoreXml);
       part.appendChild(dated);
-      return GenericMap.createGenericMap(scoreXml)!;
+      return okValue(GenericMap.createGenericMap(scoreXml));
     };
 
     it('counts sharps positive and flats negative', () => {
@@ -1591,11 +1644,11 @@ describe('MPM v3 ornament instantiation', () => {
 
     /** A global map: its style comes from the GLOBAL header, so `apply` takes that branch. */
     function makeGlobalMap(defs: OrnamentDef[]): OrnamentationMap {
-      const header = Header.createHeader()!;
-      const style = OrnamentationStyle.createOrnamentationStyle('orn style')!;
+      const header = okValue(Header.createHeader());
+      const style = createStyle('ornamentation', 'orn style');
       for (const def of defs) style.addDef(def);
       header.addStyleDef(Mpm.ORNAMENTATION_STYLE, style);
-      const map = OrnamentationMap.createOrnamentationMap()!;
+      const map = OrnamentationMap.createOrnamentationMap();
       map.setHeaders(header, null);
       map.addStyleSwitch(0, 'orn style');
       return map;

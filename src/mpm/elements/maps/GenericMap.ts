@@ -3,9 +3,22 @@ import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
 import { Header } from '../Header.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
-import { GenericStyle } from '../styles/GenericStyle.js';
+import {
+  collectionNameOfKind,
+  styleOfKind,
+  type StyleKind,
+  type StyleOfKind,
+} from '../styles/style.js';
+import { elementAt, lowerBoundBy, upperBoundBy } from '../../../prelude/seq.js';
+import { err, isErr, mapPresent, ok, orCompute, type Result } from '../../../prelude/index.js';
+import { attemptParse, type MpmParseError } from '../parseError.js';
 
 const MPM_NAMESPACE = 'http://www.cemfi.de/mpm/ns/1.0';
+
+/** The date an entry of {@link GenericMap.elements} is sorted by. */
+function entryDate(entry: KeyValue<number, Element>): number {
+  return entry.getKey();
+}
 
 /** Map/element names that belong to the MPM namespace */
 const MPM_NAMES = new Set([
@@ -51,66 +64,151 @@ const MPM_NAMES = new Set([
  * {@link sort} — updates both, in that order. Writing to one alone corrupts the map:
  * lookups would disagree with the document that gets serialized.
  *
- * Subclasses are registered rather than switched on. Each map module ends with a
- * `GenericMap.registerMapFactory(localName, factory)` call, and
- * {@link createTypedMap} dispatches on the element's local name, falling back to a
- * plain GenericMap for unknown ones. That is what lets `Dated` parse a map it has
- * never heard of without a central dependency on all the subclasses — but it also means
- * **importing a map module is what registers it**, so the import side effects in the
- * MPM barrel are load-bearing.
+ * Which class a given `<dated>` child is read into is decided by the one exhaustive table
+ * in `maps/map.ts`, which this class does not — and must not — know about: the nine
+ * subclasses import *it*, so a table here would be a nine-way cycle. See that module for
+ * what the table replaced (a static mutable factory registry filled by import side
+ * effects) and why the direction of the edge is the whole point.
  *
  * Port of meico.mpm.elements.maps.GenericMap
  */
 export class GenericMap extends AbstractXmlSubtree {
-  private static readonly _factories = new Map<string, (xml: Element) => GenericMap | null>();
-
-  static registerMapFactory(type: string, factory: (xml: Element) => GenericMap | null): void {
-    GenericMap._factories.set(type, factory);
-  }
-
-  static createTypedMap(type: string, xml: Element): GenericMap | null {
-    const factory = GenericMap._factories.get(type);
-    if (factory) return factory(xml);
-    return GenericMap.createGenericMap(xml);
-  }
-
   elements: KeyValue<number, Element>[] = [];
   private globalHeader: Header | null = null;
   private localHeader: Header | null = null;
 
-  protected constructor(typeOrXml: string | Element) {
+  /**
+   * Build a map from an element that {@link sourceElement} has already accepted.
+   *
+   * **No virtual call here.** This used to end in `this.parseData(…)`, and `ImprecisionMap`
+   * overrode `parseData` to append its own name check — a base constructor dispatching into
+   * a subclass method whose own field initialisers have not run yet, which is the one real
+   * dispatch edge the map cluster had and the kind of edge that is worth removing rather
+   * than preserving. {@link indexElements} below is `private`, so this call is static; the
+   * subclass check now runs in `ImprecisionMap`'s own factory, *after* construction, which
+   * keeps the order of the two validations (generic name shape first, `imprecisionMap`
+   * prefix second) and of their side effects exactly as it was.
+   *
+   * **And no throw here either.** The `string | Element` union and the two name checks moved
+   * out to {@link sourceElement}, which answers with a `Result` instead. A constructor that
+   * can fail is a constructor whose failure has to be caught somewhere, and "somewhere" was
+   * the eleven `catch (e) { console.error(e); return null }` factories this replaced.
+   */
+  protected constructor(xml: Element) {
     super();
-    if (typeof typeOrXml === 'string') {
-      const type = typeOrXml;
-      if (!type.includes('Map') && type !== 'score')
-        throw new Error(
-          `Cannot generate GenericMap object. Local name "${type}" must contain "Map" or equal "score".`,
-        );
-      if (MPM_NAMES.has(type)) this.parseData(new Element(type, MPM_NAMESPACE));
-      else this.parseData(new Element(type));
-    } else {
-      this.parseData(typeOrXml);
-    }
+    this.indexElements(xml);
+  }
+
+  /**
+   * The element a map will be built from, or why the name it was given is not a map's.
+   *
+   * Two jobs the incumbent did in two places and in two ways: `elementForType` threw for a
+   * bad *name* before creating the element, and `indexElements` threw for a null or badly
+   * named *element* after. Both are one question — "is this a map?" — asked before anything
+   * is built, so they are one function, answering with a value.
+   *
+   * Only names MPM itself defines get the MPM namespace: an unrecognised `<xyzMap>` is
+   * namespace-less, which is what makes a foreign map round-trip as it arrived.
+   */
+  protected static sourceElement(
+    typeOrXml: string | Element | null,
+    what: string,
+  ): Result<Element, MpmParseError> {
+    if (typeOrXml === null) return err({ kind: 'noElement', what });
+    const localName = typeof typeOrXml === 'string' ? typeOrXml : typeOrXml.getLocalName();
+    if (!localName.includes('Map') && localName !== 'score')
+      return err({
+        kind: 'wrongLocalName',
+        what,
+        localName,
+        requirement: 'must contain "Map" or equal "score"',
+      });
+    if (typeof typeOrXml !== 'string') return ok(typeOrXml);
+    return ok(
+      MPM_NAMES.has(typeOrXml) ? new Element(typeOrXml, MPM_NAMESPACE) : new Element(typeOrXml),
+    );
+  }
+
+  /**
+   * The eleven map factories, as one function.
+   *
+   * Every one of them was `try { return new XMap(…) } catch (e) { console.error(e); return
+   * null }` over the same two checks, so the checks live in {@link sourceElement} and the
+   * only thing a subclass supplies is which constructor to call. `build` is a closure rather
+   * than a `new (…) => M` field because every one of those constructors is `private`, which
+   * is exactly what such a field may not hold — the same reason `maps/map.ts` spells its
+   * `is` predicates out per row.
+   *
+   * `what` is the subclass's name and reaches only the {@link attemptParse} residue; the two
+   * name checks report as `GenericMap`, because it is `GenericMap`'s rule they enforce and
+   * that is the object the incumbent's message named.
+   */
+  protected static makeMap<M extends GenericMap>(
+    typeOrXml: string | Element | null,
+    what: string,
+    build: (xml: Element) => M,
+  ): Result<M, MpmParseError> {
+    const source = GenericMap.sourceElement(typeOrXml, 'GenericMap');
+    if (isErr(source)) return source;
+    return attemptParse(what, () => build(source.value));
+  }
+
+  /**
+   * The empty element a map of this class starts life as — **and the reason the no-argument
+   * factories are total** where the parsing ones are not.
+   *
+   * {@link sourceElement} can refuse exactly two things: a null element, and a name that is
+   * not a map name. The no-argument form supplies neither — the class passes its own
+   * `names.ts` constant, which the thirteen-row table in `maps/map.ts` already establishes is
+   * a map name — so there is nothing left for it to refuse and nothing for the caller to
+   * check. `indexElements` on a childless element cannot fail either: it reads no children
+   * and reorders none.
+   *
+   * This is the move `styles/style.ts` made for `createStyle`, and it is worth its own
+   * function rather than a `!` on `makeMap`'s result: the totality is a property of *not
+   * consulting the caller*, which the signature can then state, and an assertion would only
+   * have hidden the same fact behind a claim.
+   */
+  protected static emptyMapElement(type: string): Element {
+    return MPM_NAMES.has(type) ? new Element(type, MPM_NAMESPACE) : new Element(type);
+  }
+
+  /**
+   * Required by {@link AbstractXmlSubtree}, which declares it to state the invariant "an XML
+   * subtree is constructed by parsing an element" — and which says in as many words that it
+   * is a shape constraint, not a dispatch point.
+   *
+   * This class meets that invariant in its constructor instead. Re-parsing a *different*
+   * element into a live map was never a supported operation — `Dated` indexes maps by the
+   * type of the element they were built from — so this throws rather than silently doing
+   * nothing. `styles/style.ts` states the same thing the same way.
+   */
+  protected parseData(): never {
+    throw new Error('GenericMap is constructed by its factories; parseData is not an entry point.');
   }
 
   /**
    * Create a map either from a local name (a fresh, empty map) or from an existing
-   * element (parsed). The two overloads are kept separate rather than merged into
-   * `string | Element` because they are genuinely different construction modes, and the
-   * signature is the only place that says so.
+   * element (parsed).
    *
-   * Returns null instead of throwing when the input is not a valid map — the whole MPM
-   * parse is best-effort, and a malformed map must not abort the surrounding document.
+   * The two used to be two overloads, kept apart on the argument that they are "genuinely
+   * different construction modes, and the signature is the only place that says so". The
+   * signature was not saying it: both arms go to {@link makeMap}, whose own parameter is
+   * this union, and `string` and `Element` are disjoint — so unlike `Header.addStyleType`,
+   * where the two modes really do have different bodies and different return types, there is
+   * nothing here for two signatures to state that one does not. What the pair DID do was
+   * hide the third case the implementation has always accepted and reported on, `null`,
+   * which a test was reaching by casting past the compiler.
+   *
+   * 90 call sites, split roughly evenly between the two forms and almost all in tests; none
+   * of them moves.
+   *
+   * Reports the reason instead of printing it — the whole MPM parse stays best-effort, and
+   * a malformed map still must not abort the surrounding document, but "which map, and why"
+   * is now something the surrounding document's reader can find out.
    */
-  static createGenericMap(name: string): GenericMap | null;
-  static createGenericMap(xml: Element): GenericMap | null;
-  static createGenericMap(nameOrXml: string | Element): GenericMap | null {
-    try {
-      return new GenericMap(nameOrXml);
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  static createGenericMap(nameOrXml: string | Element | null): Result<GenericMap, MpmParseError> {
+    return GenericMap.makeMap(nameOrXml, 'GenericMap', (xml) => new GenericMap(xml));
   }
 
   /**
@@ -126,33 +224,24 @@ export class GenericMap extends AbstractXmlSubtree {
    * The insertion is a backwards linear scan rather than an append, so children that
    * were already out of order in the source document are indexed in date order. It
    * finds the *last* position whose date is `<=` the new one, which makes the pass
-   * stable: same-dated children keep their document order.
+   * stable: same-dated children keep their document order. That scan is
+   * {@link insertionIndexFor}, shared with {@link insertElement}.
+   *
+   * Private, and that is load-bearing: it is called from the constructor, where a virtual
+   * call would reach a subclass before that subclass's own initialisation had run.
    */
-  protected parseData(xml: Element): void {
-    if (xml === null) throw new Error('Cannot generate GenericMap object. XML Element is null.');
-    if (!xml.getLocalName().includes('Map') && xml.getLocalName() !== 'score')
-      throw new Error(
-        `Cannot generate GenericMap object. Local name "${xml.getLocalName()}" must contain "Map" or equal "score".`,
-      );
-
+  private indexElements(xml: Element): void {
     this.elements = [];
     this.setXml(xml);
 
-    const es = this.getXml().getChildElements();
-    for (let i = 0; i < es.size(); ++i) {
-      const e = es.get(i);
+    // The child list is a fixed snapshot, so the splice below — which rewrites `elements`,
+    // not the XML — cannot disturb the walk.
+    for (const e of this.getXml().getChildElements()) {
       const d = attribute('date', e);
       if (d === null) continue;
       if (e.getLocalName() === 'style' && attribute('name.ref', e) === null) continue;
       const date = parseFloat(d.getValue());
-      let index = 0;
-      for (let j = this.elements.length - 1; j >= 0; --j) {
-        if (date >= this.elements[j].getKey()) {
-          index = j + 1;
-          break;
-        }
-      }
-      this.elements.splice(index, 0, new KeyValue(date, e));
+      this.elements.splice(this.insertionIndexFor(date), 0, new KeyValue(date, e));
     }
     this.sortXml();
     this.id = attribute('id', this.getXml());
@@ -174,15 +263,47 @@ export class GenericMap extends AbstractXmlSubtree {
   }
 
   /**
-   * Re-sort the map after its elements' `date` attributes have been edited underneath
-   * it — which is exactly what happens when articulation or rubato shifts a note's
-   * timing. The cached keys are refreshed from the XML first, then an insertion sort
-   * runs over the array, and finally the XML children are brought back in line.
+   * Refresh the cached keys from the XML, run a pass that is *meant* to re-order the array,
+   * and bring the XML children back in line.
    *
-   * The insertion sort is deliberate and must not become `Array.prototype.sort`: it is
-   * stable, and it is near-linear on the almost-sorted input this always receives,
-   * whereas swapping in a different algorithm would reorder equal-date elements and
-   * change which of several simultaneous instructions wins.
+   * **This method does not sort, and the previous version of this comment was wrong about it
+   * in every particular.** It claimed a deliberate, stable insertion sort that must not become
+   * `Array.prototype.sort`. What the loop below actually does is find the leftmost index the
+   * element should move to and then **swap** the two positions, where an insertion sort shifts
+   * the intervening elements right. Run against the code as written:
+   *
+   *     [2, 3, 1]       ->  [1, 3, 2]
+   *     [1, 3, 2, 0]    ->  [0, 2, 3, 1]
+   *     [5, 4, 3, 2, 1] ->  [1, 5, 4, 3, 2]
+   *
+   * So it is not a sort, and it is not stable either. Java is identical —
+   * `GenericMap.java`'s `Collections.swap(this.elements, i, moveToIndex)` — so this is an
+   * inherited defect, not a port defect, and it is left alone under the parity rule.
+   *
+   * (It does get simple cases right, which is why it has never looked broken: an arrangement
+   * with a single displaced element that belongs at the end comes out sorted.)
+   *
+   * **Why it never fires.** Not because it reads the wrong attribute — it reads the right
+   * one. {@link elements} is keyed on `@date`, the SYMBOLIC date: `parseData` builds every
+   * key from `attribute('date', …)`, every lookup on it is symbolic
+   * ({@link getElementIndexBeforeAt}, {@link getAllElementsAt}), and `ArticulationMap` itself
+   * checks `getKey() !== ad.date` against an articulation's symbolic date. Re-reading `@date`
+   * is the only thing this method could correctly do; keying the index on `date.perf` would
+   * break every symbolic lookup in the renderer.
+   *
+   * It never fires because its one caller cannot perturb what it re-checks. `ArticulationMap`
+   * runs `if (mapTimingChanged) map.sort()` after articulating notes, and articulation writes
+   * `@date.perf`, `@duration.perf` and `@velocity` — never `@date`. So the keys really are
+   * unchanged, the array really is already ordered, and the pass finds nothing to swap. The
+   * call is a no-op by construction, in this port and in Java, where `ArticulationMap.java:479`
+   * is likewise the only `sort()` call in the whole `mpm` package.
+   *
+   * The defect would surface only if `sort()` were called after `@date` itself had been edited
+   * on elements already in the map. Nothing does that today. Recorded in PARITY.md §3.
+   *
+   * Note that the unit test covering this passes: its case moves one element to the end, which
+   * is one of the arrangements the swap happens to get right. `GenericMap.test.ts` now also
+   * pins an arrangement it gets wrong, so the behaviour is visible rather than latent.
    */
   sort(): void {
     for (const e of this.elements) {
@@ -190,13 +311,15 @@ export class GenericMap extends AbstractXmlSubtree {
       if (e.getKey() !== date) e.setKey(date);
     }
     for (let i = 1; i < this.size(); ++i) {
-      const e = this.elements[i];
+      const e = elementAt(this.elements, i, 'GenericMap.sort');
       let moveToIndex = i;
-      for (let j = i - 1; j >= 0 && e.getKey() < this.elements[j].getKey(); --j) moveToIndex = j;
+      for (let j = i - 1; j >= 0 && e.getKey() < elementAt(this.elements, j, 'sort').getKey(); --j)
+        moveToIndex = j;
+      // `e` is still what `this.elements[i]` holds — the scan above only reads — so it is
+      // the `tmp` the swap used to take a second time.
       if (moveToIndex !== i) {
-        const tmp = this.elements[i];
-        this.elements[i] = this.elements[moveToIndex];
-        this.elements[moveToIndex] = tmp;
+        this.elements[i] = elementAt(this.elements, moveToIndex, 'sort');
+        this.elements[moveToIndex] = e;
       }
     }
     this.sortXml();
@@ -240,133 +363,111 @@ export class GenericMap extends AbstractXmlSubtree {
   getAllElementsOfType(type: string): readonly KeyValue<number, Element>[] {
     return this.elements.filter((e) => e.getValue().getLocalName() === type);
   }
+  /**
+   * The entries dated exactly `date` — plus, when there is none, the first entry after it.
+   *
+   * That asymmetry is the loop this replaces: it pushed the at-or-after entry *before*
+   * testing anything and only then walked on while the date still matched. So a lookup at a
+   * date the map does not carry answers with the next entry rather than with nothing, and
+   * that is Java's answer too (`GenericMap.getAllElementsAt`).
+   *
+   * As a range: the run of matching entries on a date-sorted index ends at the upper bound
+   * for `date`, which is where the walk stopped. When the first entry is dated after `date`
+   * that bound sits at or before `start`, and the `max` is what keeps the unconditional
+   * first push — one entry, and no more.
+   */
   getAllElementsAt(date: number): readonly KeyValue<number, Element>[] {
-    const results: KeyValue<number, Element>[] = [];
-    let index = this.getElementIndexAtAfter(date);
-    if (index >= 0) {
-      results.push(this.elements[index]);
-      for (++index; index < this.size() && this.elements[index].getKey() === date; ++index)
-        results.push(this.elements[index]);
-    }
-    return results;
+    const start = this.getElementIndexAtAfter(date);
+    if (start < 0) return [];
+    const end = upperBoundBy(this.elements, entryDate, date);
+    return this.elements.slice(start, Math.max(end, start + 1));
   }
 
   getFirstElement(): Element | null {
-    return this.elements.length === 0 ? null : this.elements[0].getValue();
+    return this.elements.at(0)?.getValue() ?? null;
   }
   getLastElement(): Element | null {
-    return this.elements.length === 0 ? null : this.elements[this.size() - 1].getValue();
+    return this.elements.at(-1)?.getValue() ?? null;
   }
+  /**
+   * The entry at `index`, or null when there is none — including for a negative index, which
+   * is why the explicit test stays: `Array.prototype.at` reads a negative index from the END,
+   * so `getElement(-1)` would start answering with the last entry rather than with null.
+   */
   getElement(index: number): Element | null {
-    return index >= this.elements.length || index < 0 ? null : this.elements[index].getValue();
+    return index < 0 ? null : (this.elements.at(index)?.getValue() ?? null);
   }
 
   getElementByID(id: string): Element | null {
-    const i = this.getElementIndexByID(id);
-    return i < 0 ? null : this.elements[i].getValue();
+    return this.getElement(this.getElementIndexByID(id));
   }
   getElementIndexByID(id: string): number {
-    for (let i = 0; i < this.size(); ++i) {
-      const a = attribute('id', this.elements[i].getValue());
-      if (a !== null && a.getValue() === id) return i;
-    }
-    return -1;
+    return this.elements.findIndex((e) => attribute('id', e.getValue())?.getValue() === id);
   }
 
   getElementBeforeAt(date: number): Element | null {
-    const i = this.getElementIndexBeforeAt(date);
-    return i < 0 ? null : this.elements[i].getValue();
+    return this.getElement(this.getElementIndexBeforeAt(date));
   }
   getElementAfter(date: number): Element | null {
-    const i = this.getElementIndexAfter(date);
-    return i < 0 ? null : this.elements[i].getValue();
+    return this.getElement(this.getElementIndexAfter(date));
   }
 
   /**
-   * The four `getElementIndex{BeforeAt,Before,After,AtAfter}` searches below are
-   * near-identical binary searches that differ only in which comparisons are strict.
-   * They are **not** interchangeable and they are not duplication to be factored out:
-   * picking "the last element at or before this date" versus "strictly before it"
-   * decides whether an instruction dated exactly on a note applies to that note, and
-   * different callers need different answers. Each returns -1 for "no such element".
+   * The four `getElementIndex{BeforeAt,Before,After,AtAfter}` searches.
    *
-   * Reading them: the two guards at the top handle the out-of-range cases so the loop
-   * can assume a hit exists, and the loop then probes `mid` and `mid + 1` together,
-   * which is what lets it return a boundary rather than an exact match. `mid + 1` is
-   * safe precisely because the guards excluded the case where the answer is the last
-   * element. Every comparison here is load-bearing; verify against the unit tests
-   * before touching any of them.
+   * They are **not** interchangeable: picking "the last element at or before this date"
+   * versus "strictly before it" decides whether an instruction dated exactly on a note
+   * applies to that note, and different callers need different answers. Each returns -1
+   * for "no such element".
+   *
+   * What they no longer are is four separately-debugged binary searches. Each was six
+   * lines of `first`/`last`/`mid` that probed `mid` and `mid + 1` together, guarded by two
+   * range checks that existed so `mid + 1` could not run off the end — carrying a comment
+   * saying every comparison was load-bearing and to verify against the unit tests before
+   * touching any of them. That comment was true, and it is the definition of code that
+   * should be written once.
+   *
+   * All four are the same two questions asked of a sorted sequence, which
+   * `src/prelude/seq.ts` names after their standard meanings:
+   *
+   *   lowerBoundBy  first index whose date is >= the target   (std::lower_bound)
+   *   upperBoundBy  first index whose date is >  the target   (std::upper_bound)
+   *
+   * from which: *last at-or-before* is `upperBound - 1`, *last strictly before* is
+   * `lowerBound - 1`, *first after* is `upperBound`, and *first at-or-after* is
+   * `lowerBound` — with `length` meaning "none", which is what the `-1` conversion below
+   * expresses. `tests/prelude/seq.test.ts` checks that derivation against a brute-force
+   * linear scan over 2000 pseudo-random cases with a deliberately small date range, so
+   * ties and misses dominate.
    */
   getElementIndexBeforeAt(date: number): number {
-    if (this.elements.length === 0 || this.elements[0].getKey() > date) return -1;
-    if (this.elements[this.elements.length - 1].getKey() <= date) return this.elements.length - 1;
-    let first = 0,
-      last = this.elements.length - 1,
-      mid = Math.floor(last / 2);
-    while (first <= last) {
-      if (this.elements[mid + 1].getKey() <= date) first = mid + 1;
-      else if (this.elements[mid].getKey() <= date) return mid;
-      else last = mid - 1;
-      mid = Math.floor((first + last) / 2);
-    }
-    return -1;
+    return upperBoundBy(this.elements, entryDate, date) - 1;
   }
 
   getElementIndexBefore(date: number): number {
-    if (this.elements.length === 0 || this.elements[0].getKey() >= date) return -1;
-    if (this.elements[this.elements.length - 1].getKey() < date) return this.elements.length - 1;
-    let first = 0,
-      last = this.elements.length - 1,
-      mid = Math.floor(last / 2);
-    while (first <= last) {
-      if (this.elements[mid].getKey() >= date) last = mid;
-      else if (this.elements[mid + 1].getKey() >= date) return mid;
-      else first = mid + 1;
-      mid = Math.floor((first + last) / 2);
-    }
-    return -1;
+    return lowerBoundBy(this.elements, entryDate, date) - 1;
   }
 
   getElementIndexAfter(date: number): number {
-    if (this.elements.length === 0 || this.elements[this.elements.length - 1].getKey() <= date)
-      return -1;
-    if (this.elements[0].getKey() > date) return 0;
-    let first = 0,
-      last = this.elements.length - 1,
-      mid = Math.floor(last / 2);
-    while (first <= last) {
-      if (this.elements[mid].getKey() > date) last = mid - 1;
-      else if (this.elements[mid + 1].getKey() > date) return mid + 1;
-      else first = mid + 1;
-      mid = Math.floor((first + last) / 2);
-    }
-    return -1;
+    return this.orNone(upperBoundBy(this.elements, entryDate, date));
   }
 
   getElementIndexAtAfter(date: number): number {
-    if (this.elements.length === 0 || this.elements[this.elements.length - 1].getKey() < date)
-      return -1;
-    if (this.elements[0].getKey() >= date) return 0;
-    let first = 0,
-      last = this.elements.length - 1,
-      mid = Math.floor(last / 2);
-    while (first <= last) {
-      if (this.elements[mid].getKey() >= date) last = mid - 1;
-      else if (this.elements[mid + 1].getKey() >= date) return mid + 1;
-      else first = mid + 1;
-      mid = Math.floor((first + last) / 2);
-    }
-    return -1;
+    return this.orNone(lowerBoundBy(this.elements, entryDate, date));
+  }
+
+  /** A bound of `length` means the sequence has no such element; these searches spell that -1. */
+  private orNone(index: number): number {
+    return index === this.elements.length ? -1 : index;
   }
 
   getElementIndexOf(element: Element | null): number {
     if (element === null) return -1;
-    for (let i = 0; i < this.elements.length; ++i)
-      if (this.elements[i].getValue() === element) return i;
-    return -1;
+    return this.elements.findIndex((e) => e.getValue() === element);
   }
 
-  addElement(xml: Element): number {
+  /** Null is accepted and refused with a reason on stderr, as `GenericMap.java` does. */
+  addElement(xml: Element | null): number {
     if (xml === null) {
       console.error('Cannot add the Element to GenericMap. XML Element is null.');
       return -1;
@@ -394,45 +495,68 @@ export class GenericMap extends AbstractXmlSubtree {
    * ordinary instructions use false so they queue up in insertion order.
    */
   protected insertElement(element: KeyValue<number, Element>, firstAtDate = false): number {
-    if (firstAtDate) {
-      for (let i = 0; i < this.elements.length; ++i) {
-        if (this.elements[i].getKey() >= element.getKey()) {
-          this.elements.splice(i, 0, element);
-          this.getXml().insertChild(element.getValue(), i);
-          return i;
-        }
-      }
-    } else {
-      for (let i = this.elements.length - 1; i >= 0; --i) {
-        if (this.elements[i].getKey() <= element.getKey()) {
-          const index = i + 1;
-          this.elements.splice(index, 0, element);
-          this.getXml().insertChild(element.getValue(), index);
-          return index;
-        }
-      }
+    const index = firstAtDate
+      ? this.elements.findIndex((e) => e.getKey() >= element.getKey())
+      : this.insertionIndexFor(element.getKey());
+    // `findIndex` says -1 for "every existing entry is earlier", and the loop this replaces
+    // said the same thing by falling out of the bottom into the insert-at-0 below. That is
+    // a quirk rather than a rounding of it: a `firstAtDate` insert whose date is past every
+    // entry lands at the FRONT of the map, not at the back. Java does the same, and the one
+    // caller — `addStyleSwitch` — is why a style switch after the last instruction takes
+    // effect from the top of the map. Kept exactly.
+    const at = index < 0 ? 0 : index;
+    this.elements.splice(at, 0, element);
+    this.getXml().insertChild(element.getValue(), at);
+    return at;
+  }
+
+  /**
+   * The position a new entry dated `date` takes: one past the last entry at or before it, or
+   * 0 when there is none. The backwards scan {@link indexElements} and {@link insertElement}
+   * both used, written once.
+   *
+   * Linear from the end and not {@link upperBoundBy}, although this class binary-searches the
+   * same array in four other places. Those four only READ an index that is already ordered;
+   * this one decides what the order will be, and it is reached with a date straight out of
+   * `parseFloat`, which answers NaN for a malformed `@date`. Every comparison against NaN is
+   * false, so the scan puts such an entry at 0 and walks past it when placing later ones —
+   * where a binary search would probe it as a partition point and split the array on an
+   * answer that is false on both sides. The two agree on every ordered input; they do not
+   * agree on that one, and the ordering is serialized (`sortXml`), so it is byte-visible.
+   */
+  private insertionIndexFor(date: number): number {
+    for (let j = this.elements.length - 1; j >= 0; --j) {
+      if (elementAt(this.elements, j, 'GenericMap entry').getKey() <= date) return j + 1;
     }
-    this.elements.splice(0, 0, element);
-    this.getXml().insertChild(element.getValue(), 0);
     return 0;
   }
 
-  removeElement(index: number): void;
-  removeElement(xml: Element): void;
-  removeElement(indexOrXml: number | Element): void {
-    if (typeof indexOrXml === 'number') {
-      if (indexOrXml >= this.elements.length) return;
-      this.getXml().removeChild(this.elements[indexOrXml].getValue());
-      this.elements.splice(indexOrXml, 1);
-    } else {
-      for (let i = 0; i < this.elements.length; i++) {
-        if (this.elements[i].getValue() === indexOrXml) {
-          this.getXml().removeChild(indexOrXml);
-          this.elements.splice(i, 1);
-          return;
-        }
-      }
-    }
+  /**
+   * Remove the entry at `index`.
+   *
+   * An index past the end is a no-op; a NEGATIVE one throws, as it always has — the read
+   * used to produce undefined and fail on `.getValue()`, and now says which index and
+   * which bound. Only the message changed. There is no `< 0` guard because adding one
+   * would turn that throw into a silent no-op, which is a different contract.
+   *
+   * This and {@link removeElement} were one overload set (`removeElement(index)` /
+   * `removeElement(xml)`) picked apart by a `typeof` in the body. They remove different
+   * things — a position in the sequence, and a particular element — so they are two methods
+   * with two names, which is the same information the overload pair carried and the only
+   * form of it the compiler agrees is not one signature written twice.
+   */
+  removeElementAt(index: number): void {
+    if (index >= this.elements.length) return;
+    this.getXml().removeChild(elementAt(this.elements, index, 'removeElement').getValue());
+    this.elements.splice(index, 1);
+  }
+
+  /** Remove this very element, if it is in the map; an element it does not hold is a no-op. */
+  removeElement(xml: Element): void {
+    const at = this.getElementIndexOf(xml);
+    if (at < 0) return;
+    this.getXml().removeChild(xml);
+    this.elements.splice(at, 1);
   }
 
   addStyleSwitch(date: number, styleName: string, id?: string | null): number {
@@ -469,7 +593,51 @@ export class GenericMap extends AbstractXmlSubtree {
   protected resolveEntryIndex(index: number, localName: string): number {
     const i = this.clampEntryIndex(index);
     if (i < 0) return -1;
-    return this.elements[i].getValue().getLocalName() === localName ? i : -1;
+    return this.getElement(i)?.getLocalName() === localName ? i : -1;
+  }
+
+  /**
+   * The entry an already-resolved index names — both halves of it, the element to read
+   * attributes off and the key that is the instruction's start date.
+   *
+   * The eight `get*DataOf` accessors reach for both after {@link resolveEntryIndex} or
+   * {@link clampEntryIndex} has put the index in range, and each used to re-read
+   * `this.elements[i]` twice to get them. This is that read, written once so the bound is
+   * proved in one place rather than in sixteen. An index rather than the entry comes back out
+   * of the resolvers because the accessors need it for {@link nextDateOfType} and
+   * {@link findStyleNameAt} as well, and returning a pair would allocate per instruction.
+   */
+  protected entryAt(index: number): KeyValue<number, Element> {
+    return elementAt(this.elements, index, 'map entry');
+  }
+
+  /**
+   * Where the instruction at `index` stops being in force: the date of the next entry named
+   * `localName`, or `Number.MAX_VALUE` when there is none.
+   *
+   * This was five private `getEndDate(index)` methods — in `TempoMap`, `DynamicsMap`,
+   * `RubatoMap`, `MetricalAccentuationMap` and `MovementMap` (a reader arriving from a
+   * `…Map.getEndDate:NNN` citation elsewhere in the tree wants this method). Five copies,
+   * not five overrides: none was ever reached through a base-class reference, and they
+   * differed in exactly one token, the local name they scan for — `tempo`, `dynamics`,
+   * `rubato`, `accentuationPattern`, `movement`. Naming that token is the whole of the
+   * unification.
+   *
+   * `MAX_VALUE` and not null because it is what the callers do with it: `endDate` is the
+   * open end of a span they compare dates against, and "there is no next one" means the span
+   * runs to the end of time. Four of the five spelled that as an early `return`, `TempoMap`
+   * as a `break` out of an initialised local; the two are the same function.
+   *
+   * `ImprecisionMap` deliberately does not use this. Its spans end at the next entry of
+   * *any* name, style switches included, which is a different rule and stays written out
+   * where it is (see `DistributionSpan.endDate`).
+   */
+  protected nextDateOfType(index: number, localName: string): number {
+    for (let j = index + 1; j < this.elements.length; ++j) {
+      const entry = elementAt(this.elements, j, 'nextDateOfType');
+      if (entry.getValue().getLocalName() === localName) return entry.getKey();
+    }
+    return Number.MAX_VALUE;
   }
 
   /**
@@ -479,7 +647,7 @@ export class GenericMap extends AbstractXmlSubtree {
    */
   protected findStyleSwitchAt(index: number): Element | null {
     for (let j = index; j >= 0; --j) {
-      const s = this.elements[j].getValue();
+      const s = elementAt(this.elements, j, 'findStyleSwitchAt').getValue();
       if (s.getLocalName() === 'style') return s;
     }
     return null;
@@ -495,26 +663,54 @@ export class GenericMap extends AbstractXmlSubtree {
     return s === null ? null : getAttributeValue('name.ref', s);
   }
 
+  /**
+   * The style name in force at `date` by DATE — the date-based sibling of the positional
+   * {@link findStyleNameAt}, and not the same lookup (see `expression/datedView.ts`'s
+   * `styleSwitchAt`, which documents where the two diverge and why the renderer wants the
+   * positional one).
+   *
+   * A forward pass keeping the last qualifying switch, where this was a backwards scan with
+   * a break: both answer with the highest-positioned switch dated at or before `date`, and
+   * the forward one needs no index to say so. The early exit it gives up is worth nothing
+   * here — `list` is already a filtered copy holding only the `<style>` children, of which a
+   * map carries a handful.
+   */
   getStyleNameAt(date: number): string | null {
-    const list = this.getAllElementsOfType('style');
-    for (let i = list.length - 1; i >= 0; --i) {
-      if (list[i].getKey() <= date) return getAttributeValue('name.ref', list[i].getValue());
+    let inForce: KeyValue<number, Element> | null = null;
+    for (const entry of this.getAllElementsOfType('style')) {
+      if (entry.getKey() <= date) inForce = entry;
     }
-    return null;
+    return inForce === null ? null : getAttributeValue('name.ref', inForce.getValue());
   }
 
-  getStyle(styleType: string, styleName: string | null): GenericStyle | null {
+  /**
+   * The style of a given kind named `styleName` — the part's own header first, then the
+   * global one.
+   *
+   * Takes the {@link StyleKind} rather than the `…Styles` collection name, although the two
+   * are the same fact ({@link collectionNameOfKind} is the bijection). That is what lets the
+   * return type be one arm of {@link AnyStyle} instead of the whole union, and it is what
+   * removed the six `as TempoStyle | null` casts the six typed maps each carried: a cast
+   * asserts the kind, this checks it. `generic` resolves nothing, because it names no
+   * collection to look in.
+   */
+  getStyle<K extends StyleKind>(kind: K, styleName: string | null): StyleOfKind<K> | null {
     if (styleName === null || styleName === '') return null;
-    let style: GenericStyle | null = null;
-    if (this.getLocalHeader() !== null)
-      style = this.getLocalHeader()!.getStyleDef(styleType, styleName);
-    if (style === null && this.getGlobalHeader() !== null)
-      style = this.getGlobalHeader()!.getStyleDef(styleType, styleName);
-    return style;
+    const styleType = collectionNameOfKind(kind);
+    if (styleType === null) return null;
+
+    // `orCompute` and not `firstPresent`: the global lookup must stay lazy. It is a pure map
+    // read, so evaluating it eagerly would be observationally identical — but this runs once
+    // per styled instruction, and `980ae7e` bought that path its linearity.
+    const found = orCompute(
+      mapPresent(this.getLocalHeader(), (h) => h.getStyleDef(styleType, styleName)),
+      () => mapPresent(this.getGlobalHeader(), (h) => h.getStyleDef(styleType, styleName)),
+    );
+    return styleOfKind(found, kind);
   }
 
-  getStyleAt(date: number, styleType: string): GenericStyle | null {
-    return this.getStyle(styleType, this.getStyleNameAt(date));
+  getStyleAt<K extends StyleKind>(date: number, kind: K): StyleOfKind<K> | null {
+    return this.getStyle(kind, this.getStyleNameAt(date));
   }
 
   size(): number {

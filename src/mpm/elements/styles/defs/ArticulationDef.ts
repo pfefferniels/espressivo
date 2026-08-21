@@ -2,7 +2,10 @@ import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
-import { AbstractDef } from './AbstractDef.js';
+import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
+import { isErr, ok, type Result } from '../../../../prelude/index.js';
+import { type MpmParseError } from '../../parseError.js';
 
 /**
  * An `articulationDef`: the bundle of duration, timing, velocity and detuning changes that
@@ -15,7 +18,9 @@ import { AbstractDef } from './AbstractDef.js';
  * {@link articulateNote} writes them onto the note as `articulation.*` attributes for the
  * millisecond-domain pass to pick up later.
  */
-export class ArticulationDef extends AbstractDef {
+export class ArticulationDef extends AbstractXmlSubtree {
+  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  readonly kind = 'articulation';
   private absoluteDuration: number | null = null;
   private absoluteDurationChange = 0.0;
   private absoluteDurationMs: number | null = null;
@@ -29,8 +34,17 @@ export class ArticulationDef extends AbstractDef {
   private detuneCents = 0.0;
   private detuneHz = 0.0;
 
-  private constructor() {
+  private constructor(private readonly nameAttr: Attribute) {
     super();
+  }
+
+  getName(): string {
+    return this.nameAttr.getValue();
+  }
+
+  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  setName(name: string): void {
+    this.nameAttr.setValue(name);
   }
 
   /**
@@ -44,8 +58,9 @@ export class ArticulationDef extends AbstractDef {
    * Java also renames a foreign element to `articulationDef` via `setLocalName()`, which
    * XomTypes cannot do; see the same note on `TempoDef`.
    */
-  private parseDataInternal(xml: Element): void {
-    super.parseData(xml);
+  protected parseData(xml: Element): void {
+    this.setXml(xml);
+    this.id = attribute('id', xml);
 
     // null = attribute absent, so the field keeps its default. Present but unparsable is not
     // a third outcome: it throws, createArticulationDef returns null and the style skips the
@@ -72,30 +87,32 @@ export class ArticulationDef extends AbstractDef {
     this.detuneHz = numeric('detuneHz') ?? this.detuneHz;
   }
 
-  protected parseData(xml: Element): void {
-    this.parseDataInternal(xml);
-  }
-
   /**
    * Create a def either from a name — with every effect at its neutral default — or by
-   * parsing an existing element. Returns null after logging instead of throwing.
+   * parsing an existing element. Returns the reason instead of throwing.
+   *
+   * One signature where there were two overloads, for the same reason as
+   * `GenericMap.createGenericMap`: both arms produce one `xml` and then run one code path
+   * over it, and `string` and `Element` are disjoint, so the pair said nothing the union
+   * does not. Contrast `Header.addStyleType`, which really is two operations with two
+   * bodies and two return types, and is now two methods.
    */
-  static createArticulationDef(name: string): ArticulationDef | null;
-  static createArticulationDef(xml: Element): ArticulationDef | null;
-  static createArticulationDef(nameOrXml: string | Element): ArticulationDef | null {
+  static createArticulationDef(
+    nameOrXml: string | Element,
+  ): Result<ArticulationDef, MpmParseError> {
     try {
-      const ad = new ArticulationDef();
+      let xml: Element;
       if (typeof nameOrXml === 'string') {
-        const e = new Element('articulationDef', MPM_NAMESPACE);
-        e.addAttribute(new Attribute('name', nameOrXml));
-        ad.parseDataInternal(e);
+        xml = new Element('articulationDef', MPM_NAMESPACE);
+        xml.addAttribute(new Attribute('name', nameOrXml));
       } else {
-        ad.parseDataInternal(nameOrXml);
+        xml = nameOrXml;
       }
-      return ad;
+      const ad = new ArticulationDef(requireDefName(xml, 'ArticulationDef'));
+      ad.parseData(xml);
+      return ok(ad);
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e, 'ArticulationDef');
     }
   }
 
@@ -243,9 +260,10 @@ export class ArticulationDef extends AbstractDef {
    * Build a def pre-filled with meico's default meaning for a known articulation name.
    * An unknown name yields an empty (no-op) def rather than null.
    */
-  static createDefaultArticulationDef(name: string): ArticulationDef | null {
-    const d = ArticulationDef.createArticulationDef(name);
-    if (d === null) return null;
+  static createDefaultArticulationDef(name: string): Result<ArticulationDef, MpmParseError> {
+    const created = ArticulationDef.createArticulationDef(name);
+    if (isErr(created)) return created;
+    const d = created.value;
     switch (name.trim().toLowerCase()) {
       case 'accent':
       case 'acc':
@@ -322,7 +340,7 @@ export class ArticulationDef extends AbstractDef {
         d.setAbsoluteVelocityChange(12.0);
         break;
     }
-    return d;
+    return created;
   }
 
   /**

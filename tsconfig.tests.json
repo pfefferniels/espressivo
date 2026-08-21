@@ -4,6 +4,16 @@
   // a vitest runtime failure — see the `typecheck:tests` step of `npm run verify`.
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    // `noUncheckedIndexedAccess` is ON for `src/` and deliberately OFF here, for now. It cost
+    // 885 errors in `src/` and 1047 in `tests/`, and the two are separate jobs: the source
+    // side was cleared by REMOVING the indexing — the algorithms in `src/prelude/seq.ts` —
+    // whereas a test that reads `notes[3]` after asserting a length of four is usually saying
+    // exactly what it means.
+    //
+    // Not written off. `scripts/strict-ratchet.mjs` now measures THIS project and `npm run
+    // verify` fails if any `tests/` directory gets worse, so the count is monotonic here as it
+    // was there. Delete this line, and the ratchet, when it reaches zero.
+    "noUncheckedIndexedAccess": false,
     "noEmit": true,
     "declaration": false,
     "declarationMap": false,

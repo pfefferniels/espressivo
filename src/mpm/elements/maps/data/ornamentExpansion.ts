@@ -8,7 +8,8 @@
  * brief §1.3): no XML, no classes, no state, no logging. Every diagnostic is *returned*
  * — warnings on the value, and a fatal reason instead of it — so the caller (W5) decides
  * what reaches the console, per RULE E1's log-and-skip. All types here are plain and
- * `readonly`; nothing in this file imports anything but W2's AST types.
+ * `readonly`; nothing in this file imports anything but W2's AST types and the prelude, which
+ * is a leaf every layer may reach.
  *
  * WHAT A SLOT IS. One slot is one *onset* — one position in the temporal spread the
  * `temporalSpread` transformer lays out over the ornament's frame. A slot holds one note
@@ -45,6 +46,7 @@
  */
 
 import type { NoteOrder, RepeatGroup } from './noteOrder.js';
+import { elementAt } from '../../../../prelude/index.js';
 
 /** The `list` variant of W2's AST — the only `note.order` shape this module expands. */
 export type NoteOrderList = Extract<NoteOrder, { kind: 'list' }>;
@@ -386,13 +388,21 @@ export function resolveDiatonicPitch(
     if (scalePitchClass <= pitchClass) degree = index;
 
   const anchorDegree = degree < 0 ? scale.length - 1 : degree;
-  const anchor = floorPitch - pitchClass + scale[anchorDegree] - (degree < 0 ? 12 : 0);
+  const anchor =
+    floorPitch -
+    pitchClass +
+    elementAt(scale, anchorDegree, 'scale degree') -
+    (degree < 0 ? 12 : 0);
   const chromaticDelta = principalPitch - anchor;
 
   const target = anchorDegree + Math.round(steps);
   const octave = Math.floor(target / scale.length);
   const stepped =
-    anchor - mod12(anchor) + 12 * octave + scale[target - octave * scale.length] + chromaticDelta;
+    anchor -
+    mod12(anchor) +
+    12 * octave +
+    elementAt(scale, target - octave * scale.length, 'scale degree') +
+    chromaticDelta;
   return stepped;
 }
 
@@ -548,15 +558,15 @@ function expand(
   for (let index = 0; index < slots.length; index += 1) {
     const group = groupsByStart.get(index);
     if (group === undefined) {
-      expanded.push(slots[index]);
+      expanded.push(elementAt(slots, index, 'slot'));
       continue;
     }
 
     for (let pass = 0; pass <= passes; pass += 1)
       for (let inner = group.start; inner <= group.end; inner += 1)
-        expanded.push({ notes: slots[inner].notes, repetitionPass: pass });
+        expanded.push({ notes: elementAt(slots, inner, 'slot').notes, repetitionPass: pass });
 
-    const landing = landingSlot(slots[group.start], principal);
+    const landing = landingSlot(elementAt(slots, group.start, 'slot'), principal);
     if (landing !== null) expanded.push(landing);
 
     // Skip the slots just emitted; `group.end >= index`, so the loop always advances.
@@ -568,17 +578,30 @@ function expand(
 
 /** Rule 4's trigger: a group opening on a single note at the principal's pitch. */
 function landingSlot(first: Slot, principal: Principal | null): Slot | null {
-  if (principal === null || first.notes.length !== 1) return null;
-  const note = first.notes[0];
+  const note = soleNote(first);
+  if (principal === null || note === null) return null;
   if (note.midiPitch !== principal.midiPitch) return null;
   return { notes: [{ ...note, landing: true }] };
 }
 
+/**
+ * The one note of a single-note slot, or null for a chord — the test three of rules 4 and 5's
+ * steps make, and the read each of them made straight afterwards.
+ */
+function soleNote(slot: Slot): ResolvedNote | null {
+  return slot.notes.length === 1 ? (slot.notes.at(0) ?? null) : null;
+}
+
 /** Rule 5: collapse consecutive equal single notes, unless the whole sequence is one pitch. */
 function dedupe(expanded: readonly Slot[]): readonly Slot[] {
-  const first = expanded[0].notes;
+  const first = elementAt(expanded, 0, 'slot').notes;
+  // `first[0]` stays inside the callback rather than being hoisted: on a first slot that holds
+  // no notes at all it is the thing that fails, and it only fails once some other slot has
+  // exactly one note — which is the order the `&&` already had.
   const isTremolo = expanded.every(
-    (slot) => slot.notes.length === 1 && slot.notes[0].midiPitch === first[0].midiPitch,
+    (slot) =>
+      slot.notes.length === 1 &&
+      elementAt(slot.notes, 0, 'note').midiPitch === elementAt(first, 0, 'note').midiPitch,
   );
   if (isTremolo) return expanded;
 
@@ -588,7 +611,7 @@ function dedupe(expanded: readonly Slot[]): readonly Slot[] {
   let previousPitch: number | null = null;
 
   for (const slot of expanded) {
-    const pitch = slot.notes.length === 1 ? slot.notes[0].midiPitch : null;
+    const pitch = soleNote(slot)?.midiPitch ?? null;
     if (pitch !== null && pitch === previousPitch) continue;
     kept.push(slot);
     previousPitch = pitch;

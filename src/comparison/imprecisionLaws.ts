@@ -82,6 +82,7 @@
  * All three are render-path artifacts of the same kind: they depend on where a note falls,
  * not on what the document declares.
  */
+import { filterMap, withNext } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { readAttributeValue } from '../expression/attributes.js';
 import { bottom, valued, type Valued } from './values.js';
@@ -135,7 +136,7 @@ const SEED_POISONED_FAMILIES: readonly string[] = [BROWNIAN, COMPENSATING, LIST]
 
 /**
  * The renderer's fallback timing basis, and the value every non-timing domain uses
- * (`ImprecisionMap.ts:378-379`).
+ * (`ImprecisionMap.ts:235`, `resolveTimingBasis`).
  */
 export const DEFAULT_TIMING_BASIS_MS = 100.0;
 
@@ -282,13 +283,20 @@ export function readImprecisionSpans(
   const notes: ImprecisionNote[] = [];
   const breakpoints = new Set<number>([0]);
 
-  for (const [index, entry] of entries.entries()) {
+  // ANY next entry ends the span (AD-14ii/R12) — the imprecision maps and asynchronyMap are
+  // the only two with this rule, and `spanEnds.ts` is asserted above so the two cannot drift.
+  // The end is PAIRED with its entry rather than read at `index + 1`. "There is no next
+  // entry" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
+  // system had to be told about with `as (typeof xs)[number] | undefined`.
+  // Each entry with its successor, or `null` for the last — `withNext`. The span it opens
+  // then runs to `next?.ticks ?? Infinity`, which says at the point of use that the last
+  // entry runs to the end of time. The `[...xs.slice(1).map(…), Infinity]` array this
+  // replaces built that sentinel where it could not be read as one, and built a whole array
+  // to be zipped away.
+  for (const [entry, next] of withNext(entries)) {
+    const endTicks = next?.ticks ?? Number.POSITIVE_INFINITY;
     const element: Element = entry.element;
     const startTicks = entry.ticks;
-    // ANY next entry ends the span (AD-14ii/R12) — the imprecision maps and asynchronyMap are
-    // the only two with this rule, and `spanEnds.ts` is asserted above so the two cannot drift.
-    const next = entries[index + 1] as (typeof entries)[number] | undefined;
-    const endTicks = next === undefined ? Number.POSITIVE_INFINITY : next.ticks;
 
     breakpoints.add(startTicks);
 
@@ -338,22 +346,29 @@ interface DistributionReading {
  * `absent` is NOT `unusable`, and keeping them apart is the whole content of AD-47: an absent
  * attribute reaches the provider as `null` and coerces to 0, while an unusable one reaches it
  * as `NaN` and destroys every note in the span.
+ *
+ * **Deliberately not a `Result`.** That sentence is the reason. A `Result<number, …>` has one
+ * failure arm, and folding two of these three into it would put the distinction AD-47 exists
+ * to preserve inside the error payload — where the combinators would then treat both the same,
+ * since `mapOk` and `andThen` short-circuit on any failure alike. This is a genuine three-way
+ * sum and it stays one; the only thing the prelude gives it is the discriminant name, `kind`,
+ * which is what makes `matchKind` applicable here as everywhere else.
  */
 type NumericReading =
-  | { readonly state: 'present'; readonly value: number }
-  | { readonly state: 'absent' }
-  | { readonly state: 'unusable'; readonly raw: string };
+  | { readonly kind: 'present'; readonly value: number }
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'unusable'; readonly raw: string };
 
 function readNumeric(element: Element, name: string): NumericReading {
   const raw = readAttributeValue(element, name);
-  if (raw === null) return { state: 'absent' };
+  if (raw === null) return { kind: 'absent' };
   const value = parseFloat(raw);
-  return Number.isFinite(value) ? { state: 'present', value } : { state: 'unusable', raw };
+  return Number.isFinite(value) ? { kind: 'present', value } : { kind: 'unusable', raw };
 }
 
 /** The renderer's coercion: absent means the number 0. */
 function coerced(reading: NumericReading): number {
-  return reading.state === 'present' ? reading.value : 0;
+  return reading.kind === 'present' ? reading.value : 0;
 }
 
 /**
@@ -364,7 +379,7 @@ function coerced(reading: NumericReading): number {
  * and **clears `series`** — and `series` is not a cache:
  *
  * - For the two CORRELATED families it holds the walk's current value.
- *   `ImprecisionMap.ts:319-354` calls `doHandover` (which seeds it) and only THEN calls
+ *   `ImprecisionMap.ts:123-145` calls `applyHandover` (which seeds it) and only THEN calls
  *   `setSeed`, so the next draw reads `series[series.length − 1]` on an empty array.
  * - For `distribution.list` it holds the LIST ITSELF
  *   (`createRandomNumberProvider_distributionList` assigns `series = [...list]`), so clearing
@@ -413,7 +428,7 @@ function readDistribution(
 
   // 1. An unusable numeric attribute is `NaN` all the way to `milliseconds.date="NaN"`.
   for (const [name, reading] of unusable)
-    if (reading.state === 'unusable')
+    if (reading.kind === 'unusable')
       return bottomReading(
         'unusable-parameter',
         `@${name}="${reading.raw}" parses to NaN, which reaches every draw and makes every note in the span vanish from the MIDI export (R24)`,
@@ -429,12 +444,12 @@ function readDistribution(
   //    negative, `getValue` clamps it to 0, and every note draws `series[0]` — one draw from
   //    the law, repeated. The marginal is unchanged, so it is the same kind of render artifact
   //    as the basis's ordinary effect (AD-14iii) and costs nothing.
-  if (basis.state === 'unusable')
+  if (basis.kind === 'unusable')
     return bottomReading(
       'unusable-timing-basis',
       `@milliseconds.timingBasis="${basis.raw}" makes the provider index NaN, and RandomNumberProvider.requireUsableIndex throws rather than returning a value — the render aborts (R21)`,
     );
-  if (basis.state === 'present' && basis.value === 0)
+  if (basis.kind === 'present' && basis.value === 0)
     return bottomReading(
       'unusable-timing-basis',
       '@milliseconds.timingBasis="0" divides the millisecond date by zero, so the provider index is ±∞ and requireUsableIndex throws — the render aborts (R21). The renderer’s own ≤ 0 fallback repairs only an ABSENT basis, never a written zero',
@@ -486,7 +501,7 @@ function readDistribution(
     }
 
     case BROWNIAN: {
-      if (stepWidth.state === 'present')
+      if (stepWidth.kind === 'present')
         processParameters.push({ attribute: 'stepWidth.max', value: stepWidth.value });
       // AD-14iii: for a correlated family the basis sets the step rate per unit time, which
       // is a property of the PROCESS, so it joins the component rather than being reported
@@ -583,19 +598,18 @@ function bottomReading(cause: ImprecisionBottomCause, detail: string): Distribut
 
 /** The `<measurement value="…">` children, in document order — `DistributionData`'s own read. */
 function listValues(element: Element): readonly number[] {
-  const values: number[] = [];
-  const children = element.getChildElements('measurement');
-  for (let i = 0; i < children.size(); ++i) {
-    const raw = readAttributeValue(children.get(i), 'value');
-    if (raw === null) continue;
+  // Read `@value` off each child, drop the ones that are absent or unparseable, keep the
+  // rest — `filterMap`, with the two rejections as the two `null` returns.
+  return filterMap(element.getChildElements('measurement'), (child) => {
+    const raw = readAttributeValue(child, 'value');
+    if (raw === null) return null;
     const value = parseFloat(raw);
-    if (Number.isFinite(value)) values.push(value);
-  }
-  return values;
+    return Number.isFinite(value) ? value : null;
+  });
 }
 
 /**
- * §5.9's timing-basis derivation, which is `ImprecisionMap.ts:356-380` verbatim.
+ * §5.9's timing-basis derivation, which is `ImprecisionMap.ts:218-236` (`resolveTimingBasis`) verbatim.
  *
  * Derived ONLY in the timing domain and only when the attribute is absent — from
  * `upper − lower` for uniform / gaussian / brownian, `upperClip − lowerClip` for both
@@ -616,7 +630,7 @@ function deriveTimingBasis(
     values: readonly number[];
   },
 ): { value: number; derived: boolean } {
-  if (parts.basis.state === 'present') return { value: parts.basis.value, derived: false };
+  if (parts.basis.kind === 'present') return { value: parts.basis.value, derived: false };
 
   let derived: number | null = null;
   if (domain === 'imprecisionTiming')

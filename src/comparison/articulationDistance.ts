@@ -62,6 +62,7 @@
  * the alignment's optimum as atoms, the step function as cells — which is what §5.0's
  * "absolutely continuous part **plus** atoms" already provides for.
  */
+import { groupBy, head, pairwise } from '../prelude/index.js';
 import {
   comparisonRowWith,
   localDistance,
@@ -69,6 +70,7 @@ import {
   type ComparisonRegistryRow,
   type JndOverrides,
 } from './registry.js';
+import { elementAt } from '../prelude/seq.js';
 import { CompensatedSum } from './quadrature.js';
 import {
   alignEvents,
@@ -219,34 +221,34 @@ export function composeModifiers(
  * order is the map's, which is the order the renderer applies them in.
  */
 export function anchorsOf(read: ArticulationAtoms): readonly ArticulationAnchor[] {
-  // A plain array with a key lookup rather than a Map of records: the insertion order IS the
-  // map order the composition depends on, and an array keeps that visible instead of relying
-  // on a second structure to remember it.
-  const anchors: { key: string; anchor: ArticulationAnchor }[] = [];
-
-  for (const atom of read.atoms) {
-    const key = atom.noteid === null ? `date:${String(atom.dateTicks)}` : `id:${atom.noteid}`;
-    const modifier = modifierOf(atom);
-    const existing = anchors.find((candidate) => candidate.key === key);
-    if (existing === undefined) {
-      anchors.push({
-        key,
-        anchor: {
-          dateTicks: atom.dateTicks,
-          id: atom.noteid,
-          datePositionKnown: atom.datePositionKnown,
-          modifier,
-          atomCount: 1,
-        },
-      });
-      continue;
-    }
-    existing.anchor = {
-      ...existing.anchor,
-      modifier: composeModifiers(existing.anchor.modifier, modifier),
-      atomCount: existing.anchor.atomCount + 1,
-    };
-  }
+  // `groupBy`, and the comment that used to stand here was an argument against it built on a
+  // false premise: "a plain array with a key lookup rather than a Map of records: the insertion
+  // order IS the map order the composition depends on, and an array keeps that visible instead
+  // of relying on a second structure to remember it". A `Map` does not have to be relied on to
+  // remember insertion order — it preserves it by SPECIFICATION, across buckets by
+  // first-encounter and, in `groupBy`, within a bucket by encounter. So the array bought
+  // nothing, and it cost a linear `find` per atom: quadratic in the atom count of a scope.
+  //
+  // The fold is `reduce` with NO seed, which is the same left-association the loop had —
+  // `compose(compose(a, b), c)` — so no arithmetic moves. `composeModifiers` is not commutative
+  // (a later replacement wipes what precedes it), which is exactly why that matters.
+  //
+  // `head` needs no guard: `groupBy` hands back a `NonEmptyArray`, because a bucket is created
+  // as `[x]` and only ever grown. The first atom is where `dateTicks`, `id` and
+  // `datePositionKnown` came from before, too — the loop read them off whichever atom created
+  // the entry, which is the first one met.
+  const anchors = [...groupBy(read.atoms, anchorKeyOf).values()].map(
+    (group): ArticulationAnchor => {
+      const first = head(group);
+      return {
+        dateTicks: first.dateTicks,
+        id: first.noteid,
+        datePositionKnown: first.datePositionKnown,
+        modifier: group.map(modifierOf).reduce(composeModifiers),
+        atomCount: group.length,
+      };
+    },
+  );
 
   // Date order, then id, so the aligner sees two monotone lists and the ordering is a function
   // of the documents rather than of which atom happened to arrive first.
@@ -259,13 +261,22 @@ export function anchorsOf(read: ArticulationAtoms): readonly ArticulationAnchor[
   // ('a' vs 'B', 'x_1' vs 'x-1'), and so do small-icu builds and ICU/CLDR upgrades. The vendored
   // corpus never caught it because every `@noteid` in it is a lowercase `meico_<uuid>`, where
   // collation and code-unit order coincide.
-  return anchors
-    .map((entry) => entry.anchor)
-    .sort((x, y) => {
-      const left = x.id ?? '';
-      const right = y.id ?? '';
-      return x.dateTicks - y.dateTicks || (left < right ? -1 : left > right ? 1 : 0);
-    });
+  return anchors.sort((x, y) => {
+    const left = x.id ?? '';
+    const right = y.id ?? '';
+    return x.dateTicks - y.dateTicks || (left < right ? -1 : left > right ? 1 : 0);
+  });
+}
+
+/**
+ * The anchor an atom belongs to: its DATE when it names no note, its `@noteid` when it does.
+ *
+ * Prefixed so the two namespaces cannot collide — a note whose id is literally `0` must not
+ * be grouped with the atoms anchored at tick 0. The module note explains why the two kinds
+ * are kept apart at all.
+ */
+function anchorKeyOf(atom: ArticulationAtom): string {
+  return atom.noteid === null ? `date:${String(atom.dateTicks)}` : `id:${atom.noteid}`;
 }
 
 /** A row and the pair of values it prices, with `⊥` where one side has no value at all. */
@@ -470,19 +481,20 @@ export function articulationDistance(
 
   const inertFindings: InertFinding[] = [];
   for (const pair of alignment.pairs) {
-    const x = anchorsA[pair.a].modifier;
-    const y = anchorsB[pair.b].modifier;
+    const anchorA = elementAt(anchorsA, pair.a, A_ANCHORS);
+    const x = anchorA.modifier;
+    const y = elementAt(anchorsB, pair.b, B_ANCHORS).modifier;
     if (x.detuneCents !== y.detuneCents)
       inertFindings.push({
         attribute: 'detuneCents',
-        dateTicks: anchorsA[pair.a].dateTicks,
+        dateTicks: anchorA.dateTicks,
         a: x.detuneCents,
         b: y.detuneCents,
       });
     if (x.detuneHz !== y.detuneHz)
       inertFindings.push({
         attribute: 'detuneHz',
-        dateTicks: anchorsA[pair.a].dateTicks,
+        dateTicks: anchorA.dateTicks,
         a: x.detuneHz,
         b: y.detuneHz,
       });
@@ -568,9 +580,7 @@ export function defaultArticulationDistance(
   const cells: DefaultArticulationCell[] = [];
   let cappedCells = 0;
 
-  for (let i = 0; i < grid.length - 1; ++i) {
-    const lowTicks = grid[i];
-    const highTicks = grid[i + 1];
+  for (const [lowTicks, highTicks] of pairwise(grid)) {
     const lengthQuarters = (highTicks - lowTicks) / ticksPerQuarter;
     if (!(lengthQuarters > 0)) continue;
 
@@ -600,6 +610,10 @@ export function defaultArticulationDistance(
 }
 
 /** AD-2's cap events, counted over the chosen alignment (see {@link ArticulationDistance}). */
+/** What an out-of-range read into an anchor list is called (`indexing.ts`). */
+const A_ANCHORS = 'the a-side articulation anchors';
+const B_ANCHORS = 'the b-side articulation anchors';
+
 function cappedAnchorsOf(
   alignment: EventAlignment,
   a: readonly ArticulationAnchor[],
@@ -610,8 +624,8 @@ function cappedAnchorsOf(
   let count = 0;
   for (const charge of alignment.charges) {
     const flag = { capped: false };
-    const left = charge.a === null ? NEUTRAL_MODIFIER : a[charge.a].modifier;
-    const right = charge.b === null ? NEUTRAL_MODIFIER : b[charge.b].modifier;
+    const left = charge.a === null ? NEUTRAL_MODIFIER : elementAt(a, charge.a, A_ANCHORS).modifier;
+    const right = charge.b === null ? NEUTRAL_MODIFIER : elementAt(b, charge.b, B_ANCHORS).modifier;
     modifierDistance(left, right, ticksPerQuarter, jnd, flag);
     if (flag.capped) count += 1;
   }

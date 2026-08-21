@@ -1,0 +1,16 @@
+{
+  "--noUncheckedIndexedAccess": {
+    "tests/integration": 189,
+    "tests/mei": 12,
+    "tests/midi": 45,
+    "tests/mpm/elements": 71,
+    "tests/mpm/elements/maps": 33,
+    "tests/mpm/elements/maps/data": 14,
+    "tests/mpm/elements/metadata": 6,
+    "tests/mpm/elements/styles/defs": 1,
+    "tests/msm": 12,
+    "tests/prelude": 3,
+    "tests/supplementary": 2,
+    "tests/xml": 9
+  }
+}

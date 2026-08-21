@@ -3,6 +3,9 @@ dist/
 coverage/
 package-lock.json
 
+# Agent worktrees: nested checkouts of this repo, formatted on their own branch.
+.claude/worktrees/
+
 # Java-generated ground truth + MEI inputs. Immutable (charter invariant 2).
 tests/integration/fixtures/
 

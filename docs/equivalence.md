@@ -36,6 +36,59 @@ produces"**. That is enforced mechanically:
   which is why that fix shipped only once the Java fork had been patched and the affected ground
   truth regenerated from it.
 
+## Running the gate
+
+The whole byte surface is four suites, and they run in **about 2.5 seconds**:
+
+```sh
+npm run gate
+```
+
+That is `cross-validation` (MEI ⇒ MSM/MPM), `full-xml-equivalence` (the augmented MSM),
+`midi-byte-equivalence` (event by event, `tickTolerance = 0`) and `all-maps-equivalence` (the 40
+programmatic per-map fixtures) — 121 tests covering MSM+MPM text, augmented MSM, raw MIDI and
+expressive MIDI, from both MEI input and programmatic MSM+MPM input. Their comparison strengths
+differ and the difference matters: **`cross-validation` is the only strict string-equality
+suite**, so it is the one that catches numeric formatting; the others compare per-attribute
+with a tolerance, or event by event.
+
+**Attribute order and extra attributes are checked on all four** as of 2026-08-20. They were
+not before: `full-xml-equivalence` and `all-maps-equivalence` loaded each side's attributes
+into a `Map` keyed on name and iterated the reference's, so reversing the attribute order on
+every `<note>` of a reference file left both green, and so did adding an attribute Java does
+not have — `full-xml-equivalence` had an extra-attribute loop with an empty body. Closing it
+cost nothing: 24 fixtures, 0 mismatches. It matters because on this corpus **attribute order
+encodes which render passes touched a note** — `RubatoMap` adds `date.end.perf` before tempo
+runs, so a note under a rubato instruction carries it earlier in the list than one that is
+not, and seven distinct note attribute orders appear across the rendered corpus.
+
+Use it to iterate. It is not a substitute for `npm run verify` (clean build, typecheck of the
+test sources, all 6141 tests), which stays the gate before every commit — and note that
+`verify` does **not** run the formatter, so `npx prettier --check .` is a separate step.
+
+There is deliberately no separate pipeline-probe script in the repo: the byte gate _is_ the
+suite, which is why the suites auto-discover their fixtures and treat a missing reference as a
+failure rather than a skip.
+
+## The one accepted difference in generated output
+
+Java's `Double.toString` writes `720.0` where JavaScript's `String(number)` writes `720`, so
+every numeric attribute this port generates differs from the reference by a trailing `.0` —
+1488 occurrences across the corpus, mostly `@date`, `@midi.pitch`, `@duration`, `@octave` and
+`@accidentals`.
+
+**This is accepted, not outstanding.** The two spellings parse to the same double, nothing
+downstream distinguishes them, and the shorter one is better; reproducing Java's would mean a
+formatting layer over the whole output path. The equivalence suite normalises it, and that is
+the _only_ normaliser in `cross-validation` that forgives a real difference — the other two
+cover generated UUIDs and file paths, which are genuinely incomparable. Three further
+normalisers were deleted in August 2026 once it turned out they were hiding defects rather than
+forgiving differences: a repeated `xmlns`, a hardcoded `encoding="UTF-8"`, and a metadata
+comment that did not actually differ.
+
+So "produces what meico produces" means, precisely: **byte-identical apart from the trailing
+`.0` on whole numbers, generated identifiers, and file paths.**
+
 ## What this does not claim
 
 Imprecision output is nondeterministic by design and is never byte-compared (see
@@ -73,7 +126,13 @@ any reference fixture:
    `NullPointerException` and the port used to render it at position 0.
 7. **The random-number provider rejects an unusable index** — `NaN`, infinite, or absurdly large —
    instead of overflowing the stack or allocating without bound, as both Java and the port did.
-8. **`AccentuationPatternDef.getAccentuationAt` ramps each segment to the next accentuation**,
+8. **The default namespace is declared once, not on every element.** `Element.toXML` emitted
+   `xmlns` for every namespaced element where Java emits it only where the namespace changes,
+   inflating a 2185-byte MPM to 3527. The equivalence suite had a normaliser that hid it, so
+   this fix also **deleted the normaliser** — the suite now compares raw bytes on that
+   question, and reinstating the defect turns 80 tests red.
+
+9. **`AccentuationPatternDef.getAccentuationAt` ramps each segment to the next accentuation**,
    where a guard that can never hold (`i > size - 1`) made every segment ramp to the end of the
    whole pattern. This is the one fix that moves fixture bytes, so it shipped the way entry 2 did:
    the fork was patched first and the affected ground truth regenerated from it.

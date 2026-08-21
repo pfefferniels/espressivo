@@ -1,4 +1,5 @@
 import { OutOfRangeError } from '../xml/errors.js';
+import { elementAt } from '../prelude/seq.js';
 
 /**
  * Random numbers drawn from one of the distributions MPM's imprecision maps use.
@@ -233,7 +234,13 @@ export class RandomNumberProvider {
       case RandomNumberProvider.DISTRIBUTION_CORRELATED_COMPENSATING_TRIANGLE:
         initialValue = this.clip(value);
         break;
-      default:
+      // The uncorrelated distributions have no series to restart, which is what the
+      // docstring's "No-op for the others" means. Enumerated so that "the others" is a
+      // closed list the compiler checks rather than a phrase.
+      case RandomNumberProvider.DISTRIBUTION_UNIFORM:
+      case RandomNumberProvider.DISTRIBUTION_GAUSSIAN:
+      case RandomNumberProvider.DISTRIBUTION_TRIANGULAR:
+      case RandomNumberProvider.DISTRIBUTION_LIST:
         return;
     }
     this.series = [initialValue];
@@ -277,10 +284,22 @@ export class RandomNumberProvider {
     const wholeIndex = Math.floor(clampedIndex);
 
     if (this.distributionType === RandomNumberProvider.DISTRIBUTION_LIST)
-      return this.series[wholeIndex % this.series.length];
+      // An EMPTY list makes this `index % 0`, i.e. NaN, and the read is out of range. The
+      // `?? NaN` is behaviour-preserving, NOT a repair: the incumbent returned `undefined`
+      // wearing the type `number`, and NaN is what every caller's arithmetic and every
+      // comparison already made of it.
+      //
+      // It is deliberately not a throw, though Java's `index % series.size()` on an `int`
+      // throws ArithmeticException here. The NaN is a DOCUMENTED bottom route that the
+      // comparison module models and pins — `imprecisionLaws.test.ts` asserts that an empty
+      // `<distribution.list>` makes every note's date NaN, and `isBottomAt` reports it as
+      // bottom. Refusing instead would delete a modelled degeneracy, not fix a defect.
+      return this.series[wholeIndex % this.series.length] ?? Number.NaN;
 
+    // In range by construction — the loop fills the series up to `wholeIndex` — but the
+    // construction is a loop condition, which a type cannot follow.
     while (this.series.length <= wholeIndex) this.nextDouble();
-    return this.series[wholeIndex];
+    return elementAt(this.series, wholeIndex, 'random series draw');
   }
 
   /**
@@ -326,6 +345,13 @@ export class RandomNumberProvider {
       case RandomNumberProvider.DISTRIBUTION_CORRELATED_COMPENSATING_TRIANGLE:
         d = this.clip(this.compensatingTriangleDistribution());
         break;
+      case RandomNumberProvider.DISTRIBUTION_LIST:
+        // Unreachable, and now provably so rather than by argument: a list distribution
+        // draws from `series` directly in `getValue`, which returns before it can reach the
+        // loop that calls this method, and `getValue` is the only caller. Naming the case
+        // leaves `d` at 0.0 exactly as falling out of the switch did, and lets
+        // `switch-exhaustiveness-check` vouch for the other five.
+        break;
     }
 
     this.series.push(d);
@@ -353,7 +379,11 @@ export class RandomNumberProvider {
   }
 
   private compensatingTriangleDistribution(): number {
-    const prevRandomNum = this.series[this.series.length - 1];
+    // NOT non-empty by construction, though the factories do push a first value: `setSeed`
+    // clears `series` — its own doc says so — so any document that puts a `@seed` on a
+    // correlated distribution reaches this with an empty series. NaN then propagates through
+    // the whole performance, which `imprecisionLaws.test.ts` pins as a bottom route.
+    const prevRandomNum = this.series[this.series.length - 1] ?? Number.NaN;
     const newLowerLimit =
       prevRandomNum - (prevRandomNum - this.lowerLimit) / this.degreeOfCorrelation;
     const newUpperLimit =
@@ -371,7 +401,8 @@ export class RandomNumberProvider {
     let attempts = 0;
     do {
       result =
-        this.series[this.series.length - 1] + (this.nextRandom() - 0.5) * 2.0 * this.maxStepWidth;
+        (this.series[this.series.length - 1] ?? Number.NaN) +
+        (this.nextRandom() - 0.5) * 2.0 * this.maxStepWidth;
       if (++attempts > 10000) {
         result = Math.max(this.lowerLimit, Math.min(this.upperLimit, result));
         break;

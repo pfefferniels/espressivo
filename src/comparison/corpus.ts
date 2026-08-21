@@ -27,6 +27,8 @@
  * for the same two documents under the same window are the same number, and the matrix cannot
  * drift from the product it is assembled out of.
  */
+import { fromEntriesExact, groupBy } from '../prelude/index.js';
+import { elementAt, elementAtOrNull, numberAt, upperBoundBy } from '../prelude/seq.js';
 import { agglomerate, pam, silhouette, SILHOUETTE_RELIABLE_MINIMUM } from './clustering.js';
 import type { Linkage } from './clustering.js';
 import { classicalMds, seriationOrder } from './embedding.js';
@@ -110,10 +112,13 @@ function expand(items: readonly InteriorCorpusItem[]): readonly ExpandedItem[] {
     const performances = readPerformances(item.root);
 
     if (item.performance !== undefined) {
+      // A caller's `performance: 7` is a question about the document, so a miss is an ANSWER
+      // — the label falls back to the selector as written — rather than a defect. That is what
+      // `elementAtOrNull` is for, and it is why the old `as … | undefined` was here at all.
       const named =
         typeof item.performance === 'number'
-          ? (performances[item.performance] as (typeof performances)[number] | undefined)
-          : performances.find((candidate) => candidate.name === item.performance);
+          ? elementAtOrNull(performances, item.performance)
+          : (performances.find((candidate) => candidate.name === item.performance) ?? null);
       expanded.push({
         root: item.root,
         itemIndex,
@@ -149,14 +154,18 @@ function expand(items: readonly InteriorCorpusItem[]): readonly ExpandedItem[] {
 
 /** Every label that appears more than once, with the item indices that produced it (A8). */
 function collisions(items: readonly ExpandedItem[]): ReadonlyMap<string, readonly number[]> {
-  const byLabel = new Map<string, number[]>();
-  for (const item of items) {
-    const seen = byLabel.get(item.label);
-    if (seen === undefined) byLabel.set(item.label, [item.itemIndex]);
-    else seen.push(item.itemIndex);
-  }
+  // `groupBy`, whose body this loop was: the get-or-create on a Map of arrays, keyed on a
+  // derived value, preserving encounter order inside each bucket — which is what makes the
+  // reported index list read in item order. The projection to `itemIndex` moves to the far
+  // side of the filter, so it now runs only for the labels that actually collided.
+  const byLabel = groupBy(items, (item) => item.label);
   const bad = new Map<string, readonly number[]>();
-  for (const [label, indices] of byLabel) if (indices.length > 1) bad.set(label, indices);
+  for (const [label, group] of byLabel)
+    if (group.length > 1)
+      bad.set(
+        label,
+        group.map((item) => item.itemIndex),
+      );
   return bad;
 }
 
@@ -165,17 +174,26 @@ function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((x, y) => x - y);
   const middle = sorted.length >> 1;
-  return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  const upper = elementAt(sorted, middle, SAMPLE);
+  return sorted.length % 2 === 1 ? upper : (elementAt(sorted, middle - 1, SAMPLE) + upper) / 2;
 }
+
+/** What an out-of-range read into a sorted sample is called (`indexing.ts`). */
+const SAMPLE = 'the sorted sample';
+/** …and into the corpus's own per-item sequences. */
+const LABELS = 'the corpus label list';
+const ITEMS = 'the expanded item list';
+const MATRIX = 'a corpus N x N matrix';
 
 /** The `p`-th percentile of a sorted list by linear interpolation, or 0 for an empty one. */
 function percentileOf(sorted: readonly number[], fraction: number): number {
   if (sorted.length === 0) return 0;
-  if (sorted.length === 1) return sorted[0];
+  if (sorted.length === 1) return elementAt(sorted, 0, SAMPLE);
   const position = fraction * (sorted.length - 1);
   const low = Math.floor(position);
   const high = Math.min(sorted.length - 1, low + 1);
-  return sorted[low] + (sorted[high] - sorted[low]) * (position - low);
+  const below = elementAt(sorted, low, SAMPLE);
+  return below + (elementAt(sorted, high, SAMPLE) - below) * (position - low);
 }
 
 export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusReport {
@@ -212,7 +230,20 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
       readonly pairs: Set<string>;
     }
   >();
-  const key0 = (i: number, j: number) => `${String(i)},${String(j)}`;
+  /**
+   * A pair's identity in a note's `pairs` set — the two LABELS, canonically ordered.
+   *
+   * Keyed on labels rather than on `"i,j"` because the emitted sentence needs the labels and
+   * nothing else: §8 rejects duplicate labels before this runs, so the two keyings are in
+   * bijection and `pairs.size` counts the same pairs either way. What it buys is that the
+   * sentence is assembled where the two indices are in hand, instead of being parsed back out
+   * of a string at emission time.
+   */
+  const key0 = (i: number, j: number) => {
+    const left = elementAt(labels, i, LABELS);
+    const right = elementAt(labels, j, LABELS);
+    return left < right ? `${left} | ${right}` : `${right} | ${left}`;
+  };
 
   // ONE window for the whole matrix (R3). Derived from the corpus rather than from a pair: the
   // maximum last date across every item, which every pairwise call is then handed as
@@ -228,26 +259,32 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
    * SET of numbers — and every published corpus figure has to be a function of the corpus rather
    * than of how it was listed.
    */
-  const labelOrder = Array.from({ length: n }, (_unused, index) => index).sort(
+  const labelOrder = labels
+    .map((label, index) => ({ label, index }))
     // Total: the index fallback is what stops two equal labels from being ordered by whatever
     // the sort received (MINOR-R5). Unreachable here — §8 rejects duplicate labels before this
-    // runs — and written correctly anyway, because the next caller may not be this one.
-    (x, y) => (labels[x] < labels[y] ? -1 : labels[y] < labels[x] ? 1 : x - y),
-  );
+    // runs — and written correctly anyway, because the next caller may not be this one. The
+    // label travels WITH its index rather than being looked back up, so the comparator states
+    // the rule instead of indexing a sequence it does not own.
+    .sort((x, y) => (x.label < y.label ? -1 : y.label < x.label ? 1 : x.index - y.index))
+    .map((entry) => entry.index);
 
   const pairwise = new Map<string, ComparisonReport>();
   const aggregate = new Array<number>(n * n).fill(0);
-  const byDimension = {} as Record<ComparisonDimension, number[]>;
-  for (const dimension of COMPARISON_DIMENSIONS) byDimension[dimension] = new Array(n * n).fill(0);
+  const byDimension = fromEntriesExact(COMPARISON_DIMENSIONS, () =>
+    (new Array(n * n) as number[]).fill(0),
+  );
   const signed = new Array<Record<ComparisonDimension, number | null>>(n * n);
 
-  for (let i = 0; i < n; ++i)
+  for (let i = 0; i < n; ++i) {
+    const itemA = elementAt(items, i, ITEMS);
     for (let j = i + 1; j < n; ++j) {
+      const itemB = elementAt(items, j, ITEMS);
       const report = compareInterior({
-        a: items[i].root,
-        b: items[j].root,
-        performanceA: items[i].selector,
-        performanceB: items[j].selector,
+        a: itemA.root,
+        b: itemB.root,
+        performanceA: itemA.selector,
+        performanceB: itemB.selector,
         msm: options.msm,
         window: options.window,
         corpusEndQuarters: corpusEnd,
@@ -268,18 +305,17 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
         byDimension[dimension][i * n + j] = value;
         byDimension[dimension][j * n + i] = value;
       }
-      const meanSigned = {} as Record<ComparisonDimension, number | null>;
-      for (const dimension of COMPARISON_DIMENSIONS)
-        meanSigned[dimension] = report.dimensions[dimension].meanSigned;
+      const meanSigned = fromEntriesExact(
+        COMPARISON_DIMENSIONS,
+        (dimension) => report.dimensions[dimension].meanSigned,
+      );
       signed[i * n + j] = meanSigned;
       // The descriptor is antisymmetric where the distance is symmetric: "A is faster than B"
       // read the other way round is "B is slower than A" (§7.5).
-      const flipped = {} as Record<ComparisonDimension, number | null>;
-      for (const dimension of COMPARISON_DIMENSIONS) {
+      signed[j * n + i] = fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) => {
         const value = meanSigned[dimension];
-        flipped[dimension] = value === null ? null : -value;
-      }
-      signed[j * n + i] = flipped;
+        return value === null ? null : -value;
+      });
 
       // EVERY kind, not just `length-mismatch` (W4 MAJOR-9). Filtering to one kind made
       // `capped`, `plausibility`, `renderer-*`, `grid-truncated`, `invariance-space` and
@@ -326,6 +362,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
         else seen.pairs.add(key0(i, j));
       }
     }
+  }
 
   // The collected per-pair notes, one per distinct FACT (W4 MAJOR-9).
   //
@@ -350,18 +387,11 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
     //
     // Sorted by label within each pair and then between pairs, so the sentence is a function of
     // the corpus and not of how it was listed.
-    const named = [...pairs]
-      .map((pair) => {
-        const [left, right] = pair.split(',').map(Number);
-        return labels[left] < labels[right]
-          ? `${labels[left]} | ${labels[right]}`
-          : `${labels[right]} | ${labels[left]}`;
-      })
-      .sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
+    const named = [...pairs].sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
 
     const prefix =
       itemIndex !== null
-        ? `${labels[itemIndex]}: `
+        ? `${elementAt(labels, itemIndex, LABELS)}: `
         : pairs.size === totalPairs && totalPairs > 1
           ? ''
           : `${named.join('; ')}: `;
@@ -376,17 +406,18 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
 
   // AD-25.5's normalization, written out as a formula rather than stamped as a constant.
   const normalizationConstants =
-    options.normalization === 'corpus' ? ({} as Record<ComparisonDimension, number | null>) : null;
+    options.normalization === 'corpus'
+      ? fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) => {
+          const nonzero: number[] = [];
+          for (let i = 0; i < n; ++i)
+            for (let j = i + 1; j < n; ++j) {
+              const value = numberAt(byDimension[dimension], i * n + j, MATRIX);
+              if (value !== 0) nonzero.push(value);
+            }
+          return median(nonzero);
+        })
+      : null;
   if (normalizationConstants !== null) {
-    for (const dimension of COMPARISON_DIMENSIONS) {
-      const nonzero: number[] = [];
-      for (let i = 0; i < n; ++i)
-        for (let j = i + 1; j < n; ++j) {
-          const value = byDimension[dimension][i * n + j];
-          if (value !== 0) nonzero.push(value);
-        }
-      normalizationConstants[dimension] = median(nonzero);
-    }
     // The aggregate is REBUILT from the derived weights, so `aggregate` and `byDimension` stay
     // one function of one weight vector. A dimension with an empty nonzero set keeps the fixed
     // default `ω_k` and its constant is null — stamped, per A3d.
@@ -398,7 +429,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
           const constant = normalizationConstants[dimension];
           const omega =
             constant === null || constant === 0 ? options.weights[dimension] : 1 / constant;
-          total += omega * byDimension[dimension][i * n + j];
+          total += omega * numberAt(byDimension[dimension], i * n + j, MATRIX);
         }
         aggregate[i * n + j] = total;
       }
@@ -533,13 +564,15 @@ function corpusScape(
 
   const rows = new Map<number, readonly number[]>();
   let width = 0;
+  const central = elementAt(items, medoid, ITEMS);
   for (let index = 0; index < n; ++index) {
     if (index === medoid) continue;
+    const item = elementAt(items, index, ITEMS);
     const report = compareInterior({
-      a: items[index].root,
-      b: items[medoid].root,
-      performanceA: items[index].selector,
-      performanceB: items[medoid].selector,
+      a: item.root,
+      b: central.root,
+      performanceA: item.selector,
+      performanceB: central.selector,
       msm: options.msm,
       window: options.window,
       corpusEndQuarters: corpusEnd,
@@ -562,7 +595,7 @@ function corpusScape(
     let best = -1;
     let bestValue = Number.POSITIVE_INFINITY;
     for (const [index, values] of rows) {
-      const value = values[cell];
+      const value = numberAt(values, cell, "a scape row's cells");
       if (
         value < bestValue ||
         (value === bestValue && best >= 0 && lowerLabel(items, index, best))
@@ -579,7 +612,7 @@ function corpusScape(
 
 /** Code-unit order on labels — AD-25.2's tie rule, reaching the scape. */
 function lowerLabel(items: readonly ExpandedItem[], x: number, y: number): boolean {
-  return items[x].label < items[y].label;
+  return elementAt(items, x, ITEMS).label < elementAt(items, y, ITEMS).label;
 }
 
 /**
@@ -645,20 +678,22 @@ function profileOf(
   /** Item indices in label order — one canonical summation sequence (AD-72.1's form). */
   order: readonly number[],
 ): CorpusReport['profiles'][number] {
-  const toMedoid = {} as Record<ComparisonDimension, number>;
-  const toMedoidSigned = {} as Record<ComparisonDimension, number | null>;
-  for (const dimension of COMPARISON_DIMENSIONS) {
-    toMedoid[dimension] = medoid === null ? 0 : byDimension[dimension][index * n + medoid];
-    toMedoidSigned[dimension] =
-      medoid === null || index === medoid ? null : (signed[index * n + medoid][dimension] ?? null);
-  }
+  const toMedoid = fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) =>
+    medoid === null ? 0 : numberAt(byDimension[dimension], index * n + medoid, MATRIX),
+  );
+  const toMedoidSigned = fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) =>
+    medoid === null || index === medoid
+      ? null
+      : (elementAt(signed, index * n + medoid, MATRIX)[dimension] ?? null),
+  );
   // Summed in LABEL order, the sibling AD-72.2 sent me looking for. `toMeanDistance` is a
   // published per-item number and the mean of the SAME set of distances under any permutation —
   // but accumulated in the caller's item order it is not the same double: measured, it differs
   // bit-wise in 4 of 24 permutation cases on the six-item vendored corpus. Same disease as
   // `partitionCost`'s (AD-72.1), same exact repair rather than an epsilon.
   let total = 0;
-  for (const other of order) if (other !== index) total += aggregate[index * n + other];
+  for (const other of order)
+    if (other !== index) total += numberAt(aggregate, index * n + other, MATRIX);
   return { toMedoid, toMedoidSigned, toMeanDistance: n > 1 ? total / (n - 1) : 0 };
 }
 
@@ -674,17 +709,28 @@ function profileOf(
 function contextOf(aggregate: readonly number[], n: number): CorpusReport['context'] {
   const offDiagonal: number[] = [];
   for (let i = 0; i < n; ++i)
-    for (let j = i + 1; j < n; ++j) offDiagonal.push(aggregate[i * n + j]);
+    for (let j = i + 1; j < n; ++j) offDiagonal.push(numberAt(aggregate, i * n + j, MATRIX));
   const sorted = [...offDiagonal].sort((x, y) => x - y);
 
   const percentile = new Array<number>(n * n).fill(0);
   for (let i = 0; i < n; ++i)
     for (let j = 0; j < n; ++j) {
       if (i === j) continue;
-      const value = aggregate[i * n + j];
+      const value = numberAt(aggregate, i * n + j, MATRIX);
       // The fraction of pairs at or below this one — a rank, so equal distances share a rank.
-      let below = 0;
-      for (const other of sorted) if (other <= value) below += 1;
+      //
+      // `sorted` is sorted, and "how many are at or below `value`" in a sorted sequence IS its
+      // upper bound: `upperBoundBy` returns the first index whose key is GREATER than the
+      // target, which is the count of those that are not. The same integer the count produced,
+      // `O(log n)` instead of `O(n)` — and it sits inside an n² sweep, so the block goes from
+      // cubic in the corpus size to n² log n. `lowerBoundBy` would be the wrong one and is the
+      // control this was measured against: the matrix is symmetric, so every off-diagonal
+      // value is IN `sorted`, and the two therefore differ in every single cell.
+      //
+      // They could only part company on a `sorted` that is not really ordered, which means a
+      // NaN in it. §9.6's finiteness discipline forbids that, and P-C11 walks every number of
+      // every corpus result to check — these distances are published, so they are among them.
+      const below = upperBoundBy(sorted, (x) => x, value);
       percentile[i * n + j] = sorted.length === 0 ? 0 : below / sorted.length;
     }
 

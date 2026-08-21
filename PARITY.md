@@ -357,6 +357,35 @@ not either: it showed the guard as a dead branch, which proves only that the _bu
 never fires, not that no fixture reaches the _fixed_ one. What does the work is the unit tests: the
 same reverted tree fails four of them, in both the direct and the parse path.
 
+### `Element.toXML` declared the default namespace on every element instead of once
+
+`src/xml/XomTypes.ts`. The serializer emitted `xmlns="…"` for every element carrying a
+namespace URI, where Java XOM emits it only where the namespace changes — in practice once, on
+the root. A 2185-byte reference MPM came back out at 3527 bytes with the declaration repeated
+32 times.
+
+**It was invisible because the gate was laundering it.** `cross-validation.test.ts` carried a
+normaliser that collapsed the repeats on both sides before comparing, so the suite compared a
+cleaned-up version of our output rather than our output. The normaliser has been deleted and
+the suite now compares the raw bytes; with the defect deliberately reinstated, 80 tests across
+the round-trip and cross-validation suites go red, where before it went entirely unnoticed.
+
+The rule now applied is the one XML specifies: a default-namespace declaration is emitted only
+when an element's namespace differs from the one it inherits. Three consequences, the third of
+which means the old behaviour was not merely verbose but wrong:
+
+- the root of a namespaced document still declares, having inherited nothing;
+- a child in its parent's namespace declares nothing;
+- a child with **no** namespace inside a namespaced parent emits `xmlns=""`, undeclaring it.
+  Without that the child would silently inherit its parent's namespace on reparse.
+
+A prefixed element declares its own prefix and leaves the default namespace in scope untouched.
+
+**One normaliser in that suite remains, and is load-bearing:** Java writes `720.0` where this
+port writes `720`. Measured — removing it turns 24 of cross-validation's 48 tests red. It is
+the same kind of divergence, with a blast radius across every numeric attribute in the tree
+rather than one line in the serializer, and is left for its own change.
+
 ### `Attribute.detach()` was a silent no-op on everything that came out of the parser
 
 |                           |                                                                                                                                                         |
@@ -562,12 +591,14 @@ _is_ the fixture bytes — and is commented as such at the site.
 
 ## 2. Frozen divergences
 
-Known, journaled, and deliberately **not** repaired. None is reachable from the MEI/MSM ⇒ MIDI
-pipeline **on a well-formed document** — the one exception is `IMP1` below, which is reachable
-only from defective imprecision input and where both sides destroy the performance by different
-means. The first three come from capability gaps in the XML layer rather than from choices; the
-fourth is a choice, and is the one place where this port returns something Java's own code
-computes and then throws away.
+Known, journaled, and deliberately **not** repaired. Three are reachable on input a caller can
+supply: `IMP1`, from defective imprecision input, where both sides destroy the performance by
+different means; `TS1`, from a well-formed MEI with a directional work-level tempo, which is
+the one plain defect here; and `XB1`, from any source text that is not well-formed XML, where
+this port throws and Java hands back an empty document. The first
+three bullets come from capability gaps in the XML layer rather than from choices; the fourth is
+a choice, and is the one place where this port returns something Java's own code computes and
+then throws away.
 
 - **The `setLocalName` family.** Java renames an element in place when parsing a foreign one
   (`GenericMap.setType`, `ImprecisionMap.setDomain`, and the `tempoDef` / `rubatoDef` /
@@ -604,6 +635,73 @@ computes and then throws away.
   `tests/mpm/elements/OrnamentationMap.test.ts` pin the returned shape, including the v3 fields.
   Flagged by the ornamentation programme's v2 semantics survey (ORN-1 §3.2/§5.3) as the last
   ornamentation divergence this ledger had not recorded; recorded now.
+
+### `XB1` — malformed XML throws here and yields an empty document there
+
+| Item                      | `XB1` (functional-core campaign, `src/xml` sweep)                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Java                      | `XmlBase`'s string constructor: `try { data = builder.build(xml); } catch (ParsingException e) { print; data = null; }` |
+| TypeScript                | `src/xml/XmlBase.ts` `parseXmlString`, and `Builder.build` in `src/xml/XomTypes.ts`                                     |
+| Guard tests               | `tests/xml/XmlBase.test.ts` — "malformed XML throws, and only a `<parsererror>` yields an empty document"               |
+| Reachable from a fixture? | No fixture is malformed. Reachable from any caller who hands a document type text that is not well-formed XML           |
+
+**The catch arm and the rethrow arm have swapped roles, and both halves were measured.**
+Java's XOM `Builder` throws `ParsingException` for malformed XML, `XmlBase` catches it, and
+the caller gets a document whose `isEmpty()` is true. This port's `Builder.build` also throws
+`ParsingException` — twice, for a `parsererror` node and for a missing root element — but
+under `@xmldom/xmldom` neither throw is reached for malformed input: `DOMParser.parseFromString`
+raises **its own** `ParseError` first. Probed across seven categories (plain text, empty source,
+comment-only, two roots, invalid element name, undeclared prefix, unterminated CDATA); all seven
+throw out of the constructor, where Java answers all seven with an empty document.
+
+The `parsererror` probe is browser-`DOMParser` semantics — a browser signals a parse failure by
+_returning_ a document containing that element — so under xmldom it fires only as a **false
+positive**: a perfectly well-formed document containing an element named `parsererror`, at any
+depth and in any namespace, is reported as a failed parse. That is the one and only way a `Mei`,
+`Msm` or `Mpm` can leave a constructor with `isEmpty()` true, and four tests in
+`tests/mei/Mei.test.ts` now use it instead of forging the state with `Object.create`.
+
+Frozen deliberately. The throwing behaviour is the one `src/api/parse.ts` is built on — its
+`parseOrThrow` exists precisely because "a fatal parser error escapes as `@xmldom/xmldom`'s
+`ParseError`" — so restoring Java's silent-empty-document would change the facade's contract,
+not just an internal. The `parsererror` false positive cannot bite a real document: no MEI, MSM
+or MPM schema has such an element. What is worth correcting is the _comment_ in
+`src/api/pipeline.ts`'s `checkParsed`, which states the Java behaviour ("`XmlBase` swallows the
+`ParsingException` and leaves `data` null") as though it were this port's; that file is outside
+the charter that found this.
+
+### `TS1` — the work-level tempo's style switch is written even with no style to point at
+
+| Item                      | `TS1` (functional-core campaign, `src/mei` sweep)                                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Java                      | `Mei2MsmMpmConverter.convert`'s per-`mdiv` epilogue: `if (…getAllStyleTypes().get(Mpm.TEMPO_STYLE) != null) tempoMap.addStyleSwitch(0.0, "MEI export");` |
+| TypeScript                | `src/mei/Mei2MsmMpmConverter.ts`, `finishMdiv`'s "finalize the tempoMap" block                                                                           |
+| Guard tests               | `tests/mei/Mei2MsmMpmConverter.test.ts` — "the work-level tempo style switch (Java divergence)"                                                          |
+| Reachable from a fixture? | No. Reachable from any MEI whose only tempo is a **directional** `meiHead/workList/work/tempo`                                                           |
+
+**A transcription slip, found by lint and pinned rather than repaired.** Java's guard means
+"switch to the MEI-export tempo style only if one was actually defined". The port kept the
+literal `!= null` while the collection it queries became a JavaScript `Map`, whose `get`
+answers **`undefined`** for an absent key — so the test was true whatever the header held and
+`no-unnecessary-condition` flagged it as a comparison whose types have no overlap. The same
+Java line appears a second time in `parseTempo` and is transcribed `!== undefined` there,
+correctly, which is what identifies this one as a slip and not a decision.
+
+What it produces is a dangling reference. A work-level tempo that is a purely directional
+descriptor — `ritardando`, `accelerando`, `calando`, and the other words `parseTempo` routes to
+its `transitionTo` arm — defines no style at all, so the MPM is written with
+`<style … name.ref="MEI export"/>` in a document that carries no `<tempoStyles>` element. A
+named tempo (`Allegro`) takes the other arm, defines the style, and the two spellings agree.
+
+Measured, both directions: instrumenting the branch shows it is entered **exactly once** in the
+whole 6208-test suite, and on that one input the style is present — so aligning the condition
+with Java leaves every test green. Four tests now pin the behaviour, three of them on the
+directional descriptors; aligning the condition reds all three.
+
+Frozen rather than fixed because the repair changes output bytes on a path no Java-generated
+reference in this repo covers, so nothing here can adjudicate it. It is the one entry in this
+section that is a **defect** rather than a capability gap or a choice: if a reference MEI with a
+directional work-level tempo is ever generated, this should move to §1.
 
 ### `IMP1` — an imprecision map the reference CRASHES on renders NaN-poisoned output here
 
@@ -646,6 +744,36 @@ is correct against both codebases.
 
 ---
 
+### Numbers are written `720`, not `720.0` — accepted, not a defect
+
+Java's `Double.toString` keeps the fractional zero on a whole number; JavaScript's
+`String(number)` does not. Every numeric attribute this port writes therefore differs from the
+reference by a trailing `.0` — **1488 occurrences** across the reference corpus, concentrated
+in `@date` (397), `@midi.pitch` (242), `@duration` (238), `@octave` (227) and `@accidentals`
+(227).
+
+**This is a deliberate, permanent divergence, decided by the repository owner (2026-08-20).**
+The two spellings parse to the same double, nothing downstream distinguishes them, and the
+shorter form is the better one. A Java-double formatter at every numeric write was considered
+and rejected: it would add a formatting layer to the whole output path to reproduce a
+difference nobody wants.
+
+`tests/integration/cross-validation.test.ts` keeps one normaliser for it. That normaliser is
+therefore _not_ the blind-spot kind — it forgives a difference that has been examined and
+accepted, which is exactly what a normaliser is for. Removing it reds 24 of that suite's 48
+tests, and should not be removed.
+
+**One latent case this does not cover, recorded because no fixture reaches it.** Java switches
+`Double.toString` to scientific notation at `>= 1e7` (and `< 1e-3`), where JavaScript does not
+until `1e21`. So a `date` of 12345678 would be `1.2345678E7` in Java and `12345678` here — a
+difference the `="N.0"` normaliser does not match, which would surface as a red test rather
+than as silent drift. At 720 ppq that threshold is about **3472 bars of 4/4**, so it is
+reachable by a long score even though the corpus tops out at `date="23040"`. If it ever fires,
+this entry is the explanation; the fix would be to accept the JavaScript spelling there too and
+widen the normaliser.
+
+---
+
 ## 3. Bug-for-bug preservations
 
 Behaviours that look like defects and are reproduced anyway. Unlike §1's entries these are not
@@ -667,6 +795,25 @@ guard tests the hoisted local, and the attribute is deliberately not re-read) an
 pins it: `relativeDuration=0.5` plus `absoluteDurationChange=-70` on `duration.perf=200` yields
 **130**, computed from the original 200, not from the 100 that `relativeDuration` just wrote.
 
+### A `…Styles` collection can be indexed and then not found again
+
+`src/mpm/elements/Header.ts`. `Header.parseData` discovers style-type collections by **local
+name in any namespace** — `descendantElements(…, e => e.getLocalName().includes('Styles'))` —
+which is what lets a vendor-specific or future style type be read at all. But `addStyleDef` and
+`removeStyleDef` reach for the collection again with a namespace-**exact**
+`getFirstChildElement(type, MPM_NAMESPACE)`. A `<header>` carrying, say, a foreign-namespace
+`<tempoStyles>` therefore gets `tempoStyles` into the index while that lookup answers null for
+it, and both writers abort.
+
+`Header.java:141,163` dereference the same lookup unguarded, so the reference does the same
+thing with a NullPointerException. Not repaired here: making the lookup match on local name
+would change **which element a def is written into** for any document with two same-named
+collections in different namespaces, and the exact lookup is deliberate — the comment that used
+to sit at the call site said so. The two `!`s that spelled it are gone; the throw is now a
+`MissingNodeError` naming the missing collection, and `tests/mpm/elements/Header.test.ts`
+builds such a header and pins both aborts, so neither half can be "tidied" into agreement with
+the other by accident.
+
 ### Off-by-one loop bounds, both kept
 
 - `MovementMap.getPreviousPosition` runs `j > 0`, not `j >= 0`, so **entry 0 is never
@@ -677,6 +824,94 @@ pins it: `relativeDuration=0.5` plus `absoluteDurationChange=-70` on `duration.p
 - `TempoMap.getTempoDataAt` runs down to `-1`, not to `0` (`TempoMap.java:181`). The extra round
   calls `getTempoDataOf(-1)`, which returns null immediately — one wasted call rather than a
   bug, kept for parity.
+
+### `attribute()` matched qualified names, and it reached the MIDI bytes — FIXED
+
+`src/xml/tree.ts`. Java's `Helper.getAttribute` (`Helper.java:346-359`) tries three lookups,
+the first being XOM's `Element.getAttribute(String)` — which matches a **local** name in no
+namespace. This port's one-argument `Element.getAttribute` also matches the _qualified_ name,
+so step one hit where Java's missed, and `getAttributeValue('xml:id', n)` returned an id where
+`Helper.getAttributeValue("xml:id", n)` returns `""`.
+
+**Two call sites depended on it and both were byte-visible.** `Msm.ts` writes that value into
+the raw-MIDI text event, and `AsynchronyMap.ts:93` appends it to `@modified`.
+
+Java's own references settle which side is right, and they are unambiguous: **all 105
+`modified` attributes under `all-maps-reference/` are `modified=""`**, and
+`articulations_raw.mid` carries **twelve `FF 01 00`** — twelve text events of length zero,
+where this port emitted `n1`, `n2` and so on. Measured across the corpus: **524 text events in
+22 fixtures**.
+
+It was invisible because `midi-byte-equivalence.test.ts` compared a meta event's type byte and
+nothing else. Two people found that gap independently on the same day, from opposite ends.
+
+**Fixed in `attribute()`, deliberately not in `Element.getAttribute`.** Removing the qualified
+match from the XOM emulation also passes the byte gate, which is what makes it a tempting
+one-liner — and it reds 30 tests, `Mei2MsmMpmConverter`'s failures being _counts_ rather than
+ids, because the converter reads qualified names structurally. `attribute()` is the
+transcription of `Helper.getAttribute`, so that is where the fidelity belongs; the XOM
+emulation keeps its convenience for every other caller.
+
+Consequences recorded where they land: `tests/msm/navigationEquivalence.test.ts` now scopes its
+agreement claim to unqualified names and pins the intended disagreement, and the 24 `@modified`
+values in `fixtures-multi-instruction/asynchrony_augmented.msm` were rewritten to `""` — only
+those, so every other byte of that snapshot is still the pre-rewrite build's.
+
+**One judgement call left open for the repository owner.** This makes the port emit _less_
+information than it did: `@modified` no longer says which asynchrony instructions touched a
+note, and the raw MIDI text events no longer carry note ids. Both are strictly more useful
+full than empty. The decision here was that an accidental, undocumented divergence hidden by
+an oracle gap should be closed rather than kept — but this is the same class of call as
+`720.0` versus `720`, where the shorter, non-Java spelling was deliberately kept. If the
+richer output is wanted, reverting is one line in `attribute()` plus this entry rewritten as a
+preserved divergence.
+
+### `GenericMap.sort()` is not a sort
+
+`src/mpm/elements/maps/GenericMap.ts`. The pass computes the leftmost index an element should
+move to and then **swaps** the two positions; an insertion sort shifts the intervening elements
+right instead. Run against the code as written, `[2,3,1]` becomes `[1,3,2]`, `[1,3,2,0]` becomes
+`[0,2,3,1]`, and `[5,4,3,2,1]` becomes `[1,5,4,3,2]` — none of them sorted, and not stable
+either. Java does the same thing (`GenericMap.java`,
+`Collections.swap(this.elements, i, moveToIndex)`), so this is inherited rather than a port
+defect. It does get simple cases right, which is why it has never looked broken: an arrangement
+with a single displaced element belonging at the end comes out sorted, and that is exactly the
+case the existing unit test covers.
+
+**Why it never fires.** Not for the reason an earlier draft of this entry gave. The index is
+keyed on `@date`, the _symbolic_ date, and that is correct: `parseData` builds every key from
+`@date`, every lookup on the index is symbolic, and `ArticulationMap` compares `getKey()`
+against an articulation's symbolic `@date`. Keying it on `@date.perf` would break every
+symbolic lookup in the renderer. There is no attribute mismatch to repair.
+
+It never fires because its one caller cannot perturb what it re-checks. `ArticulationMap`'s
+`if (mapTimingChanged) map.sort()` runs after articulating notes, and articulation writes
+`@date.perf`, `@duration.perf` and `@velocity` — never `@date`. The keys really are unchanged
+and the array really is already ordered, so the pass finds nothing to swap. The call is a no-op
+by construction, here and in Java, where `ArticulationMap.java:479` is likewise the only
+`sort()` call in the entire `mpm` package.
+
+The defect would surface only if `sort()` were called after `@date` itself had been edited on
+elements already in the map. Nothing does that. Preserved on the same grounds as the rest of
+this section, and now pinned by a unit test that asserts the unsorted result on purpose, so
+that anyone repairing it has to do so deliberately.
+
+**Measured, 2026-08-20, rather than only argued.** The paragraphs above reason that the call is
+a no-op by construction; that reasoning had never been checked against the corpus. Instrumenting
+`sort()` to compare the key sequence before and after itself, and running the whole of
+`tests/integration` and `tests/mpm`: **28 calls, 26 of them no-ops.** The two that reorder
+anything are both in `tests/mpm/elements/GenericMap.test.ts` — the test that edits `@date` by
+hand, and the test that pins this very defect — and the second produces `100,200,300 -> 1,3,2`,
+i.e. a sort whose output is not sorted, exactly as described above. Across every MEI fixture,
+every all-maps fixture and every render in the suite, `sort()` never once changes an order.
+
+Two consequences worth stating plainly. First, deleting `if (mapTimingChanged) map.sort()`
+outright leaves the entire suite green (2796 tests in `tests/mpm` + `tests/integration`) — so
+**the suite cannot protect this call**, and it belongs on the fixture-coverage gap list next to
+`<pedal>` and `subNoteDynamics`. Second, the call is not merely unnecessary here, it is a
+loaded gun: if a future change ever did write `@date` mid-render, this would fire and produce a
+_wrongly_ ordered map rather than a correctly ordered one. Anyone adding such a write must fix
+the sort first.
 
 ### `TempoData.clone` omits `startDateMilliseconds`
 

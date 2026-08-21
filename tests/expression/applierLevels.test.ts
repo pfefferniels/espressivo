@@ -17,6 +17,7 @@ import {
   numberAt,
   textAt,
 } from './applierFixtures.js';
+import { elementAt } from '../../src/prelude/index.js';
 
 /** The engine's own accumulation order: `exp(Σ ln xᵢ / n)`, summed in population order. */
 function geomean(...values: readonly number[]): number {
@@ -315,6 +316,43 @@ describe('applyExaggeration — gesture scope (§1.3, A7, D-I)', () => {
     expect(noteKinds(performance)).toContain('end-marker-moved');
   });
 
+  it('CHARACTERIZES: it steps over a <dynamics> the renderer treats as a span boundary', () => {
+    /**
+     * A pinned divergence, not a ratified rule — see `markEndMarkerDuplicates`' docstring.
+     *
+     * "The next instruction" is the next CLASSIFIED one, and an element carrying neither
+     * `@volume` nor `@transition.to` classifies away. The renderer does not ignore it: it
+     * ENDS the previous span with it (AD-33.4). Measured through `performMsm` on five notes,
+     * the same map with and without a bare `<dynamics/>` in the middle performs
+     *
+     *     without:  60, 67.49…, 75, 82.51…, 90     (one ramp)
+     *     with:     60, 75, 100.0, 100.0, 90
+     *
+     * so the later constant is separated from the transition endpoint by a discontinuity the
+     * document already contains. It is nevertheless still detected and moved, which this pins.
+     *
+     * The test is written to FAIL if that is ever changed, deliberately: the change is a §7.2
+     * ruling (tempo must keep stepping over a `<tempo>` without `@beatLength`, which the
+     * renderer really does ignore), and it should be made with this test going red rather than
+     * discovered afterwards.
+     */
+    const bareBetween = globalDocument(
+      '',
+      '<dynamicsMap>' +
+        '<dynamics id="g1" date="0.0" volume="60" transition.to="90"/>' +
+        '<dynamics id="gx" date="2.0"/>' +
+        '<dynamics id="g2" date="4.0" volume="90"/>' +
+        '</dynamicsMap>',
+    );
+    const { root, performance } = exaggerate(bareBetween, { dynamics: 0.5 }, { scope: 'gesture' });
+
+    expect(noteKinds(performance)).toContain('end-marker-moved');
+    expect(numberAt(root, 'g2', 'volume')).toBe(logAroundCenter(90, 0.5, PAIR_CENTER));
+    // Non-vacuous: `g2` really did move, and it moved to the transition endpoint's new value.
+    expect(numberAt(root, 'g2', 'volume')).not.toBe(90);
+    expect(numberAt(root, 'g2', 'volume')).toBe(numberAt(root, 'g1', 'transition.to'));
+  });
+
   it('leaves an unrelated constant instruction alone and reports it inert', () => {
     const { root, performance } = exaggerate(
       WITH_END_MARKER,
@@ -412,7 +450,9 @@ describe('applyExaggeration — performance selection (A11)', () => {
 
   it('narrows by index', () => {
     const { report } = exaggerate(TWO, { dynamics: 2 }, { performance: 0 });
-    expect(report.performances[0].performance.name).toBe('A');
+    expect(elementAt(report.performances, 0, 'the report’s performances').performance.name).toBe(
+      'A',
+    );
   });
 
   it('produces an empty, zero-write run for a selector that matches nothing', () => {

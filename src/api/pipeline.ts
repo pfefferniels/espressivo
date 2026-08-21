@@ -36,6 +36,7 @@ import {
   PerformanceNotFoundError,
 } from './errors.js';
 import { parseOrThrow, requireXmlText, type DocumentKind } from './parse.js';
+import { accepted, allOf, orInvalidOption, rejected, type Checked } from './validate.js';
 import type {
   ControlChangePoint,
   ControlChangeStream,
@@ -49,6 +50,7 @@ import type {
   PerformedPart,
   XmlText,
 } from './types.js';
+import { groupBy, zipWith } from '../prelude/seq.js';
 
 /** The library version. It is serialization-visible — the converter writes it into MPM metadata. */
 export { VERSION } from '../version.js';
@@ -104,52 +106,51 @@ function serialize(doc: XmlBase, kind: DocumentKind): XmlText {
 // Option validation (RULE E2's InvalidOptionError)
 // ---------------------------------------------------------------------------
 
-function checkConvertOptions(options: ConvertOptions | undefined): void {
-  if (options === undefined) return;
-
-  if (options.ppq !== undefined && !(Number.isInteger(options.ppq) && options.ppq > 0))
-    throw new InvalidOptionError(`ppq must be a positive integer, got ${String(options.ppq)}`);
-
-  if (options.sourceName !== undefined && options.sourceName.trim() === '')
-    throw new InvalidOptionError(
-      'sourceName must be a non-empty name; omit it for the file-less variant',
-    );
-
-  // Checked rather than coerced, for the same reason as the render-side flag next door: a
-  // falsy-but-not-false value from an untyped caller would read as "expand" and silently author
-  // ornaments the caller meant to suppress.
-  if (options.expandOrnaments !== undefined && typeof options.expandOrnaments !== 'boolean')
-    throw new InvalidOptionError(
-      `expandOrnaments must be a boolean, got ${String(options.expandOrnaments)}`,
-    );
+function checkConvertOptions(options: ConvertOptions | undefined): Checked {
+  if (options === undefined) return accepted;
+  return allOf(
+    options.ppq === undefined || (Number.isInteger(options.ppq) && options.ppq > 0)
+      ? accepted
+      : rejected(`ppq must be a positive integer, got ${String(options.ppq)}`),
+    options.sourceName === undefined || options.sourceName.trim() !== ''
+      ? accepted
+      : rejected('sourceName must be a non-empty name; omit it for the file-less variant'),
+    // Checked rather than coerced, for the same reason as the render-side flag next door: a
+    // falsy-but-not-false value from an untyped caller would read as "expand" and silently
+    // author ornaments the caller meant to suppress.
+    checkOrnamentFlag(options.expandOrnaments),
+  );
 }
 
-function checkPerformOptions(options: PerformOptions | undefined): void {
-  if (options === undefined) return;
+function checkPerformOptions(options: PerformOptions | undefined): Checked {
+  if (options === undefined) return accepted;
+  return allOf(
+    options.seed === undefined || Number.isFinite(options.seed)
+      ? accepted
+      : rejected(`seed must be a finite number, got ${String(options.seed)}`),
+    options.movementSampleMaxStep === undefined ||
+      (Number.isFinite(options.movementSampleMaxStep) && options.movementSampleMaxStep > 0)
+      ? accepted
+      : rejected(
+          `movementSampleMaxStep must be a positive finite number, got ${String(options.movementSampleMaxStep)}` +
+            ' — the movement subdivision compares against it and never terminates at zero',
+        ),
+    // Checked rather than coerced: `expandOrnaments: 0` from an untyped caller would otherwise
+    // read as "expand", the opposite of what was meant, and silently render the ornaments.
+    checkOrnamentFlag(options.expandOrnaments),
+  );
+}
 
-  if (options.seed !== undefined && !Number.isFinite(options.seed))
-    throw new InvalidOptionError(`seed must be a finite number, got ${String(options.seed)}`);
-
-  if (
-    options.movementSampleMaxStep !== undefined &&
-    !(Number.isFinite(options.movementSampleMaxStep) && options.movementSampleMaxStep > 0)
-  )
-    throw new InvalidOptionError(
-      `movementSampleMaxStep must be a positive finite number, got ${String(options.movementSampleMaxStep)}` +
-        ' — the movement subdivision compares against it and never terminates at zero',
-    );
-
-  // Checked rather than coerced: `expandOrnaments: 0` from an untyped caller would otherwise
-  // read as "expand", the opposite of what was meant, and silently render the ornaments.
-  if (options.expandOrnaments !== undefined && typeof options.expandOrnaments !== 'boolean')
-    throw new InvalidOptionError(
-      `expandOrnaments must be a boolean, got ${String(options.expandOrnaments)}`,
-    );
+/** The one rule both option surfaces share, and the reason they can now share its spelling. */
+function checkOrnamentFlag(expandOrnaments: boolean | undefined): Checked {
+  return expandOrnaments === undefined || typeof expandOrnaments === 'boolean'
+    ? accepted
+    : rejected(`expandOrnaments must be a boolean, got ${String(expandOrnaments)}`);
 }
 
 /** The interior's own options object (§2.4). Defaults are resolved inside `src/mpm/`, not here. */
 function toRenderOptions(options: PerformOptions | undefined): RenderOptions {
-  checkPerformOptions(options);
+  orInvalidOption(checkPerformOptions(options));
   return {
     seed: options?.seed,
     movementSampleMaxStep: options?.movementSampleMaxStep,
@@ -173,7 +174,7 @@ function selectPerformance(mpm: Mpm, which: string | number | undefined): Perfor
     return byIndex;
   }
 
-  const byName = mpm.getPerformance(selector);
+  const byName = mpm.getPerformanceByName(selector);
   if (byName === null)
     throw new PerformanceNotFoundError(`MPM: no performance named '${selector}'`);
   return byName;
@@ -351,17 +352,31 @@ function readControlChanges(part: Element): ControlChangeStream[] {
 
   const positionMap = firstChildElement('positionMap', dated);
   if (positionMap !== null) {
-    const byController = new Map<string | null, ControlChangePoint[]>();
-    for (const position of allChildElements(positionMap, 'position')) {
-      const controllerAttribute = attribute('controller', position);
-      const controller = controllerAttribute === null ? null : controllerAttribute.getValue();
-      const point = readControlChangePoint(position);
-      const points = byController.get(controller);
-      if (points === undefined) byController.set(controller, [point]);
-      else points.push(point);
-    }
-    for (const [controller, points] of byController)
-      streams.push({ kind: 'position', controller, ccNumber: ccNumberOf(controller), points });
+    // Read every position FIRST, in document order, and only then bucket by controller.
+    //
+    // The obvious spelling — `groupBy(positions, controllerOf)` and `readControlChangePoint`
+    // inside a `.map` per bucket — is wrong here, and not for a performance reason.
+    // `readControlChangePoint` goes through `requiredNumber`, which THROWS a `ParseError`
+    // naming the offending attribute; so on a `<positionMap>` with two malformed positions
+    // under different controllers, the order the positions are read in decides which error the
+    // caller sees. RULE E2 makes that message part of the contract. Reading first keeps it in
+    // document order, exactly as the single fused loop did.
+    //
+    // The bucketing itself is `groupBy`: the get-or-create triple this replaces was its body,
+    // and both orders it guarantees are load-bearing here — points within a stream stay in
+    // document order, and the streams come out in first-appearance order of their controller,
+    // which is what the docstring above pins.
+    const positions = allChildElements(positionMap, 'position').map((position) => ({
+      controller: attribute('controller', position)?.getValue() ?? null,
+      point: readControlChangePoint(position),
+    }));
+    for (const [controller, group] of groupBy(positions, (entry) => entry.controller))
+      streams.push({
+        kind: 'position',
+        controller,
+        ccNumber: ccNumberOf(controller),
+        points: group.map((entry) => entry.point),
+      });
   }
 
   return streams;
@@ -420,7 +435,7 @@ export function convertMeiToMsmMpm(
   mei: XmlText,
   options?: ConvertOptions,
 ): readonly MovementDocuments[] {
-  checkConvertOptions(options);
+  orInvalidOption(checkConvertOptions(options));
 
   const document = parseMei(mei);
   // `sourceName` is the file name the class API would have derived from a path: it drives the
@@ -456,11 +471,14 @@ export function convertMeiToMsmMpm(
       `MEI: the conversion produced ${msms.length} MSM(s) but ${mpms.length} MPM(s); see the log for the movement it failed on`,
     );
 
-  return msms.map((msm, index) => ({
+  // `zipWith` rather than `map` plus `mpms[index]`: the equal-length check above is what makes
+  // that index safe, and a check three statements away is not something a type can follow.
+  // Walking the two together says it structurally instead.
+  return zipWith(msms, mpms, (msm, mpm, index) => ({
     index,
     title: msm.getTitle(),
     msm: serialize(msm, 'MSM'),
-    mpm: serialize(mpms[index], 'MPM'),
+    mpm: serialize(mpm, 'MPM'),
   }));
 }
 
@@ -548,18 +566,22 @@ export function renderMidi(
   input: { readonly msm: XmlText },
   options?: MidiOptions & { readonly bpm?: number },
 ): Uint8Array {
-  if (options?.bpm !== undefined && !(Number.isFinite(options.bpm) && options.bpm > 0))
-    throw new InvalidOptionError(
-      `bpm must be a positive finite number, got ${String(options.bpm)}`,
-    );
+  orInvalidOption(
+    options?.bpm === undefined || (Number.isFinite(options.bpm) && options.bpm > 0)
+      ? accepted
+      : rejected(`bpm must be a positive finite number, got ${String(options.bpm)}`),
+  );
 
   const msm = parseMsm(input.msm);
   const midi = msm.exportMidi(options?.bpm ?? 120, options?.generateProgramChanges ?? true);
   if (midi === null) throw new EmptyDocumentError('MSM: nothing to render');
 
-  const bytes = midi.exportMidi();
-  if (bytes === null) throw new EmptyDocumentError('MSM: the rendered MIDI sequence is empty');
-  return bytes;
+  // No `bytes === null` guard: `Midi.exportMidi` is total. It used to return
+  // `Uint8Array | null` with one null route — a null sequence, which the class no longer
+  // allows — so this threw an `EmptyDocumentError` that nothing could reach and no test
+  // named. The `midi === null` check above is a different matter and stays: `Msm.exportMidi`
+  // really can decline.
+  return midi.exportMidi();
 }
 
 /**
@@ -588,16 +610,18 @@ export function renderExpressiveMidi(
 
   let midi;
   if (input.mpm === undefined) {
-    for (const field of [
-      'performance',
-      'seed',
-      'movementSampleMaxStep',
-      'expandOrnaments',
-    ] as const)
-      if (options?.[field] !== undefined)
-        throw new InvalidOptionError(
-          `${field} has no effect without an MPM: with no performance to apply, the MSM is rendered as it stands`,
-        );
+    orInvalidOption(
+      allOf(
+        ...(['performance', 'seed', 'movementSampleMaxStep', 'expandOrnaments'] as const).map(
+          (field) =>
+            options?.[field] === undefined
+              ? accepted
+              : rejected(
+                  `${field} has no effect without an MPM: with no performance to apply, the MSM is rendered as it stands`,
+                ),
+        ),
+      ),
+    );
 
     if (!isPerformed(msm))
       throw new EmptyDocumentError(
@@ -615,7 +639,10 @@ export function renderExpressiveMidi(
 
   if (midi === null) throw new EmptyDocumentError('MSM: nothing to render');
 
-  const bytes = midi.exportMidi();
-  if (bytes === null) throw new EmptyDocumentError('MSM: the rendered MIDI sequence is empty');
-  return bytes;
+  // No `bytes === null` guard: `Midi.exportMidi` is total. It used to return
+  // `Uint8Array | null` with one null route — a null sequence, which the class no longer
+  // allows — so this threw an `EmptyDocumentError` that nothing could reach and no test
+  // named. The `midi === null` check above is a different matter and stays: `Msm.exportMidi`
+  // really can decline.
+  return midi.exportMidi();
 }

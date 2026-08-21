@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { errOf, okValue } from '../../../../support/result.js';
 import { OrnamentDef } from '../../../../../src/mpm/elements/styles/defs/OrnamentDef.js';
 import { DynamicsGradient } from '../../../../../src/mpm/elements/styles/defs/DynamicsGradient.js';
 import {
@@ -658,7 +659,7 @@ describe('TemporalSpread', () => {
 describe('OrnamentDef', () => {
   describe('createOrnamentDef', () => {
     it('should create a named def without transformers', () => {
-      const def = OrnamentDef.createOrnamentDef('trill')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('trill'));
 
       expect(def).not.toBeNull();
       expect(def.getName()).toBe('trill');
@@ -668,13 +669,15 @@ describe('OrnamentDef', () => {
     });
 
     it('should parse both transformers from XML', () => {
-      const def = OrnamentDef.createOrnamentDef(
-        ornamentDefXml(
-          'arpeggio',
-          { 'transition.from': '-1.0', 'transition.to': '1.0' },
-          { 'frame.start': '-22.0', frameLength: '44.0' },
+      const def = okValue(
+        OrnamentDef.createOrnamentDef(
+          ornamentDefXml(
+            'arpeggio',
+            { 'transition.from': '-1.0', 'transition.to': '1.0' },
+            { 'frame.start': '-22.0', frameLength: '44.0' },
+          ),
         ),
-      )!;
+      );
 
       expect(def.getName()).toBe('arpeggio');
       expect(def.getDynamicsGradient()!.transitionFrom).toBe(-1.0);
@@ -684,9 +687,11 @@ describe('OrnamentDef', () => {
     });
 
     it('should parse a def that only has a dynamicsGradient', () => {
-      const def = OrnamentDef.createOrnamentDef(
-        ornamentDefXml('swell', { 'transition.from': '-3.0', 'transition.to': '3.0' }),
-      )!;
+      const def = okValue(
+        OrnamentDef.createOrnamentDef(
+          ornamentDefXml('swell', { 'transition.from': '-3.0', 'transition.to': '3.0' }),
+        ),
+      );
 
       expect(def.getDynamicsGradient()).not.toBeNull();
       expect(def.getTemporalSpread()).toBeNull();
@@ -696,20 +701,23 @@ describe('OrnamentDef', () => {
       const xml = ornamentDefXml('weird', null, { frameLength: '10.0' });
       xml.appendChild(new Element('somethingElse', Mpm.MPM_NAMESPACE));
 
-      const def = OrnamentDef.createOrnamentDef(xml)!;
+      const def = okValue(OrnamentDef.createOrnamentDef(xml));
       expect(def.getTemporalSpread()).not.toBeNull();
       expect(def.getDynamicsGradient()).toBeNull();
     });
 
-    it('should return null when the name attribute is missing', () => {
+    it('reports a missing name attribute rather than printing it', () => {
       const xml = new Element('ornamentDef', Mpm.MPM_NAMESPACE);
-      expect(OrnamentDef.createOrnamentDef(xml)).toBeNull();
+      expect(errOf(OrnamentDef.createOrnamentDef(xml))).toMatchObject({
+        kind: 'malformedDef',
+        what: 'OrnamentDef',
+      });
     });
   });
 
   describe('setTemporalSpread', () => {
     it('should set the transformer and add it to the XML', () => {
-      const def = OrnamentDef.createOrnamentDef('arp')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('arp'));
       def.setTemporalSpreadValues(-22.0, 44.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
 
       const ts = def.getTemporalSpread()!;
@@ -722,14 +730,14 @@ describe('OrnamentDef', () => {
     });
 
     it('should clamp a negative frame length', () => {
-      const def = OrnamentDef.createOrnamentDef('arp')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('arp'));
       def.setTemporalSpreadValues(0.0, -5.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
 
       expect(def.getTemporalSpread()!.getFrameLength()).toBe(0.0);
     });
 
     it('should keep only one temporalSpread element when set twice', () => {
-      const def = OrnamentDef.createOrnamentDef('arp')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('arp'));
       def.setTemporalSpreadValues(-22.0, 44.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
       def.setTemporalSpreadValues(-30.0, 60.0, FrameDomain.Milliseconds, 2.0, NoteOffShift.True);
 
@@ -739,7 +747,7 @@ describe('OrnamentDef', () => {
     });
 
     it('should remove the transformer and its XML when set to null', () => {
-      const def = OrnamentDef.createOrnamentDef('arp')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('arp'));
       def.setTemporalSpreadValues(-22.0, 44.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
       def.setTemporalSpread(null);
 
@@ -750,7 +758,7 @@ describe('OrnamentDef', () => {
 
   describe('setDynamicsGradient', () => {
     it('should set the transformer and add it to the XML', () => {
-      const def = OrnamentDef.createOrnamentDef('arp')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('arp'));
       def.setDynamicsGradientValues(-1.0, 1.0);
 
       expect(def.getDynamicsGradient()!.transitionFrom).toBe(-1.0);
@@ -759,7 +767,7 @@ describe('OrnamentDef', () => {
     });
 
     it('should keep only one dynamicsGradient element when set twice', () => {
-      const def = OrnamentDef.createOrnamentDef('arp')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('arp'));
       def.setDynamicsGradientValues(-1.0, 1.0);
       def.setDynamicsGradientValues(-0.5, 0.5);
 
@@ -768,7 +776,7 @@ describe('OrnamentDef', () => {
     });
 
     it('should remove the transformer and its XML when set to null', () => {
-      const def = OrnamentDef.createOrnamentDef('arp')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('arp'));
       def.setDynamicsGradientValues(-1.0, 1.0);
       def.setDynamicsGradient(null);
 
@@ -777,7 +785,7 @@ describe('OrnamentDef', () => {
     });
 
     it('should keep both transformers side by side', () => {
-      const def = OrnamentDef.createOrnamentDef('arp')!;
+      const def = okValue(OrnamentDef.createOrnamentDef('arp'));
       def.setDynamicsGradientValues(-1.0, 1.0);
       def.setTemporalSpreadValues(-22.0, 44.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
 
@@ -790,7 +798,7 @@ describe('OrnamentDef', () => {
     it('should build the arpeggio default', () => {
       // Java OrnamentDef.createDefaultOrnamentDef: dynamicsGradient(-1, 1) plus
       // temporalSpread(-22, 44, ticks, 1, false) - as in the reference fixture
-      const def = OrnamentDef.createDefaultOrnamentDef('arpeggio')!;
+      const def = okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio'));
 
       expect(def.getName()).toBe('arpeggio');
       expect(def.getDynamicsGradient()!.transitionFrom).toBe(-1.0);
@@ -805,12 +813,12 @@ describe('OrnamentDef', () => {
     });
 
     it('should accept the "arpeg" alias', () => {
-      const def = OrnamentDef.createDefaultOrnamentDef('arpeg')!;
+      const def = okValue(OrnamentDef.createDefaultOrnamentDef('arpeg'));
       expect(def.getTemporalSpread()!.getFrameLength()).toBe(44.0);
     });
 
     it('should match the name case-insensitively and trimmed', () => {
-      const def = OrnamentDef.createDefaultOrnamentDef('  Arpeggio ')!;
+      const def = okValue(OrnamentDef.createDefaultOrnamentDef('  Arpeggio '));
 
       expect(def.getName()).toBe('  Arpeggio '); // the name is kept verbatim
       expect(def.getDynamicsGradient()).not.toBeNull();
@@ -818,7 +826,7 @@ describe('OrnamentDef', () => {
     });
 
     it('should leave an unknown ornament name without transformers', () => {
-      const def = OrnamentDef.createDefaultOrnamentDef('trill')!;
+      const def = okValue(OrnamentDef.createDefaultOrnamentDef('trill'));
 
       expect(def.getName()).toBe('trill');
       expect(def.getDynamicsGradient()).toBeNull();
@@ -827,8 +835,8 @@ describe('OrnamentDef', () => {
   });
 
   it('should survive an XML round trip through createOrnamentDef', () => {
-    const def = OrnamentDef.createDefaultOrnamentDef('arpeggio')!;
-    const reparsed = OrnamentDef.createOrnamentDef(def.getXml()!)!;
+    const def = okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio'));
+    const reparsed = okValue(OrnamentDef.createOrnamentDef(def.getXml()!));
 
     expect(reparsed.getName()).toBe('arpeggio');
     expect(reparsed.getDynamicsGradient()!.transitionFrom).toBe(-1.0);
@@ -885,7 +893,7 @@ describe('setId(null) on parsed transformers', () => {
         `<temporalSpread xml:id="ts-1" frame.start="-22.0" frameLength="44.0"/>` +
         `</ornamentDef>`,
     );
-    const def = OrnamentDef.createOrnamentDef(xml)!;
+    const def = okValue(OrnamentDef.createOrnamentDef(xml));
 
     def.getDynamicsGradient()!.setId(null);
     def.getTemporalSpread()!.setId(null);
@@ -935,7 +943,14 @@ function spread(attributes: string): TemporalSpread {
   return new TemporalSpread(parseElement(`<temporalSpread xmlns="${MPM_NS}" ${attributes}/>`));
 }
 
-/** silence and capture console.error for one call */
+/**
+ * Silence and capture console.error for one call.
+ *
+ * Still needed, and that is a finding in itself: `OrnamentDef.parseData` and
+ * `TemporalSpread` warn about out-of-range and unparseable v3 values and then *repair* them,
+ * which is a different species from the factory's "this def is unreadable, skip it". Those
+ * are still `console.error` and are named in this work's report as scope not taken.
+ */
 function captureErrors(run: () => void): string[] {
   const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   try {
@@ -1303,13 +1318,15 @@ describe('TemporalSpread — the v3 API (DESIGN.md D12)', () => {
 describe('OrnamentDef — alignment (DESIGN.md D2)', () => {
   /** parse an `<ornamentDef>` given as source text */
   function def(body: string): OrnamentDef {
-    return OrnamentDef.createOrnamentDef(
-      parseElement(`<ornamentDef xmlns="${MPM_NS}" name="turn" ${body}</ornamentDef>`),
-    )!;
+    return okValue(
+      OrnamentDef.createOrnamentDef(
+        parseElement(`<ornamentDef xmlns="${MPM_NS}" name="turn" ${body}</ornamentDef>`),
+      ),
+    );
   }
 
   it('should default to "at start" and to the v2 source format', () => {
-    const d = OrnamentDef.createOrnamentDef('trill')!;
+    const d = okValue(OrnamentDef.createOrnamentDef('trill'));
     expect(d.getAlignment()).toBe('at start');
     expect(d.getSourceFormat()).toBe('v2');
   });
@@ -1365,7 +1382,7 @@ describe('OrnamentDef — alignment (DESIGN.md D2)', () => {
   });
 
   it('should write alignment onto the ornamentDef element and only for "at end"', () => {
-    const d = OrnamentDef.createOrnamentDef('turn')!;
+    const d = okValue(OrnamentDef.createOrnamentDef('turn'));
     d.setAlignment('at end');
 
     expect(d.getSourceFormat()).toBe('v3');
@@ -1385,7 +1402,7 @@ describe('OrnamentDef — alignment (DESIGN.md D2)', () => {
   });
 
   it('should never put alignment on the temporalSpread', () => {
-    const d = OrnamentDef.createOrnamentDef('turn')!;
+    const d = okValue(OrnamentDef.createOrnamentDef('turn'));
     d.setTemporalSpreadValues(0.0, 44.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
     d.setAlignment('at end');
 
@@ -1418,13 +1435,13 @@ describe('OrnamentDef — alignment (DESIGN.md D2)', () => {
     // reference-style document keeps its attribute on the spread until setAlignment
     // canonicalises it. The model value is right either way.
     const source = `<ornamentDef xmlns="${MPM_NS}" name="turn"><temporalSpread alignment="at end"/></ornamentDef>`;
-    const d = OrnamentDef.createOrnamentDef(parseElement(source))!;
+    const d = okValue(OrnamentDef.createOrnamentDef(parseElement(source)));
     expect(d.getAlignment()).toBe('at end');
     // untouched: the child keeps the attribute, and the def element has none of its own.
     // (The serializer restates the namespace on the child and writes ` />`; that shape is
     // this port's, not this wave's.)
     expect(d.getXml()!.toXML()).toBe(
-      `<ornamentDef xmlns="${MPM_NS}" name="turn"><temporalSpread xmlns="${MPM_NS}" alignment="at end" /></ornamentDef>`,
+      `<ornamentDef xmlns="${MPM_NS}" name="turn"><temporalSpread alignment="at end" /></ornamentDef>`,
     );
     expect(d.getXml()!.getAttribute('alignment')).toBeNull();
 

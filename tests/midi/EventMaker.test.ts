@@ -1,7 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventMaker } from '../../src/midi/EventMaker.js';
 import * as EventMakerModule from '../../src/midi/EventMaker.js';
-import { ShortMessage, MetaMessage, MidiEvent } from '../../src/midi/MidiTypes.js';
+import {
+  messageBytes,
+  metaPayload,
+  shortChannel,
+  shortCommand,
+  shortData1,
+  shortData2,
+  MidiEvent,
+  type MetaMessage,
+  type ShortMessage,
+} from '../../src/midi/MidiTypes.js';
 
 describe('EventMaker', () => {
   // ---------------------------------------------------------------
@@ -91,31 +101,31 @@ describe('EventMaker', () => {
       expect(event!.getTick()).toBe(480);
 
       const msg = event!.getMessage() as ShortMessage;
-      expect(msg.getCommand()).toBe(EventMaker.NOTE_ON);
-      expect(msg.getChannel()).toBe(0);
-      expect(msg.getData1()).toBe(60);
-      expect(msg.getData2()).toBe(100);
+      expect(shortCommand(msg)).toBe(EventMaker.NOTE_ON);
+      expect(shortChannel(msg)).toBe(0);
+      expect(shortData1(msg)).toBe(60);
+      expect(shortData2(msg)).toBe(100);
     });
 
     it('should clamp velocity above 127 to 127', () => {
       const event = EventMaker.createNoteOn(0, 0, 60, 200);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as ShortMessage;
-      expect(msg.getData2()).toBe(127);
+      expect(shortData2(msg)).toBe(127);
     });
 
     it('should clamp velocity below 0 to 0', () => {
       const event = EventMaker.createNoteOn(0, 0, 60, -10);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as ShortMessage;
-      expect(msg.getData2()).toBe(0);
+      expect(shortData2(msg)).toBe(0);
     });
 
     it('should set the correct MIDI channel', () => {
       const event = EventMaker.createNoteOn(5, 0, 72, 80);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as ShortMessage;
-      expect(msg.getChannel()).toBe(5);
+      expect(shortChannel(msg)).toBe(5);
     });
   });
 
@@ -126,24 +136,24 @@ describe('EventMaker', () => {
       expect(event!.getTick()).toBe(960);
 
       const msg = event!.getMessage() as ShortMessage;
-      expect(msg.getCommand()).toBe(EventMaker.NOTE_OFF);
-      expect(msg.getChannel()).toBe(0);
-      expect(msg.getData1()).toBe(60);
-      expect(msg.getData2()).toBe(64);
+      expect(shortCommand(msg)).toBe(EventMaker.NOTE_OFF);
+      expect(shortChannel(msg)).toBe(0);
+      expect(shortData1(msg)).toBe(60);
+      expect(shortData2(msg)).toBe(64);
     });
 
     it('should clamp velocity above 127', () => {
       const event = EventMaker.createNoteOff(0, 0, 60, 300);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as ShortMessage;
-      expect(msg.getData2()).toBe(127);
+      expect(shortData2(msg)).toBe(127);
     });
 
     it('should clamp velocity below 0', () => {
       const event = EventMaker.createNoteOff(0, 0, 60, -5);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as ShortMessage;
-      expect(msg.getData2()).toBe(0);
+      expect(shortData2(msg)).toBe(0);
     });
   });
 
@@ -157,16 +167,16 @@ describe('EventMaker', () => {
       expect(event!.getTick()).toBe(0);
 
       const msg = event!.getMessage() as ShortMessage;
-      expect(msg.getCommand()).toBe(EventMaker.PROGRAM_CHANGE);
-      expect(msg.getData1()).toBe(EventMaker.PC_Violin);
+      expect(shortCommand(msg)).toBe(EventMaker.PROGRAM_CHANGE);
+      expect(shortData1(msg)).toBe(EventMaker.PC_Violin);
     });
 
     it('should set the correct channel', () => {
       const event = EventMaker.createProgramChange(3, 100, EventMaker.PC_Flute);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as ShortMessage;
-      expect(msg.getChannel()).toBe(3);
-      expect(msg.getData1()).toBe(EventMaker.PC_Flute);
+      expect(shortChannel(msg)).toBe(3);
+      expect(shortData1(msg)).toBe(EventMaker.PC_Flute);
     });
   });
 
@@ -180,10 +190,10 @@ describe('EventMaker', () => {
       expect(event!.getTick()).toBe(0);
 
       const msg = event!.getMessage() as MetaMessage;
-      expect(msg.getType()).toBe(EventMaker.META_Set_Tempo);
+      expect(msg.type).toBe(EventMaker.META_Set_Tempo);
 
       // 120 BPM with beat length 0.25 => mpq = 60000000 / (120 * 0.25 * 4) = 500000
-      const data = msg.getData();
+      const data = metaPayload(msg);
       expect(data.length).toBe(3);
       const mpq = (data[0] << 16) | (data[1] << 8) | data[2];
       expect(mpq).toBe(500000);
@@ -193,7 +203,7 @@ describe('EventMaker', () => {
       const event = EventMaker.createTempo(0, 60, 0.25);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as MetaMessage;
-      const data = msg.getData();
+      const data = metaPayload(msg);
       const mpq = (data[0] << 16) | (data[1] << 8) | data[2];
       // 60 BPM => mpq = 60000000 / (60 * 0.25 * 4) = 1000000
       expect(mpq).toBe(1000000);
@@ -204,7 +214,7 @@ describe('EventMaker', () => {
       const event = EventMaker.createTempo(0, 120, 0.5);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as MetaMessage;
-      const data = msg.getData();
+      const data = metaPayload(msg);
       const mpq = (data[0] << 16) | (data[1] << 8) | data[2];
       // mpq = 60000000 / (120 * 0.5 * 4) = 250000
       expect(mpq).toBe(250000);
@@ -221,9 +231,9 @@ describe('EventMaker', () => {
       expect(event!.getTick()).toBe(0);
 
       const msg = event!.getMessage() as MetaMessage;
-      expect(msg.getType()).toBe(EventMaker.META_Time_Signature);
+      expect(msg.type).toBe(EventMaker.META_Time_Signature);
 
-      const data = msg.getData();
+      const data = metaPayload(msg);
       expect(data.length).toBe(4);
       expect(data[0]).toBe(4); // numerator
       expect(data[1]).toBe(2); // denominator as power of 2 (2^2 = 4)
@@ -233,7 +243,7 @@ describe('EventMaker', () => {
       const event = EventMaker.createTimeSignature(0, 3, 8);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as MetaMessage;
-      const data = msg.getData();
+      const data = metaPayload(msg);
       expect(data[0]).toBe(3); // numerator
       expect(data[1]).toBe(3); // 2^3 = 8
     });
@@ -242,7 +252,7 @@ describe('EventMaker', () => {
       const event = EventMaker.createTimeSignature(0, 6, 8);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as MetaMessage;
-      const data = msg.getData();
+      const data = metaPayload(msg);
       expect(data[0]).toBe(6);
       expect(data[1]).toBe(3); // 2^3 = 8
     });
@@ -256,8 +266,8 @@ describe('EventMaker', () => {
       const event = EventMaker.createKeySignature(0, 0);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as MetaMessage;
-      expect(msg.getType()).toBe(EventMaker.META_Key_Signature);
-      const data = msg.getData();
+      expect(msg.type).toBe(EventMaker.META_Key_Signature);
+      const data = metaPayload(msg);
       expect(data.length).toBe(2);
       expect(data[0]).toBe(0); // 0 accidentals
       expect(data[1]).toBe(0); // major mode
@@ -267,7 +277,7 @@ describe('EventMaker', () => {
       const event = EventMaker.createKeySignature(0, 2);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as MetaMessage;
-      const data = msg.getData();
+      const data = metaPayload(msg);
       expect(data[0]).toBe(2); // 2 sharps (D major)
     });
 
@@ -276,7 +286,7 @@ describe('EventMaker', () => {
       const event = EventMaker.createKeySignature(0, -3);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as MetaMessage;
-      const data = msg.getData();
+      const data = metaPayload(msg);
       expect(data[0]).toBe(-3 & 0xff); // 253
     });
   });
@@ -358,22 +368,22 @@ describe('EventMaker', () => {
   // ---------------------------------------------------------------
   describe('createControlChange', () => {
     it('should create a control change event', () => {
-      const event = EventMaker.createControlChange(3, 480, EventMaker.CC_Channel_Volume, 100)!;
+      const event = EventMaker.createControlChange(3, 480, EventMaker.CC_Channel_Volume, 100);
       const msg = event.getMessage() as ShortMessage;
 
       expect(event.getTick()).toBe(480);
-      expect(msg.getCommand()).toBe(EventMaker.CONTROL_CHANGE);
-      expect(msg.getChannel()).toBe(3);
-      expect(msg.getData1()).toBe(EventMaker.CC_Channel_Volume);
-      expect(msg.getData2()).toBe(100);
+      expect(shortCommand(msg)).toBe(EventMaker.CONTROL_CHANGE);
+      expect(shortChannel(msg)).toBe(3);
+      expect(shortData1(msg)).toBe(EventMaker.CC_Channel_Volume);
+      expect(shortData2(msg)).toBe(100);
     });
 
     it('should clamp the controller value into 0..127', () => {
-      const high = EventMaker.createControlChange(0, 0, EventMaker.CC_Pan, 200)!;
-      const low = EventMaker.createControlChange(0, 0, EventMaker.CC_Pan, -20)!;
+      const high = EventMaker.createControlChange(0, 0, EventMaker.CC_Pan, 200);
+      const low = EventMaker.createControlChange(0, 0, EventMaker.CC_Pan, -20);
 
-      expect((high.getMessage() as ShortMessage).getData2()).toBe(127);
-      expect((low.getMessage() as ShortMessage).getData2()).toBe(0);
+      expect(shortData2(high.getMessage() as ShortMessage)).toBe(127);
+      expect(shortData2(low.getMessage() as ShortMessage)).toBe(0);
     });
   });
 
@@ -382,36 +392,24 @@ describe('EventMaker', () => {
   // ---------------------------------------------------------------
   describe('createProgramChangeByName', () => {
     it('should look the instrument name up in the dictionary', () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-      const event = EventMaker.createProgramChangeByName(0, 0, 'Violin')!;
+      const event = EventMaker.createProgramChangeByName(0, 0, 'Violin');
       const msg = event.getMessage() as ShortMessage;
-      expect(msg.getCommand()).toBe(EventMaker.PROGRAM_CHANGE);
-      expect(msg.getData1()).toBe(EventMaker.PC_Violin);
-
-      logSpy.mockRestore();
+      expect(shortCommand(msg)).toBe(EventMaker.PROGRAM_CHANGE);
+      expect(shortData1(msg)).toBe(EventMaker.PC_Violin);
     });
 
     it('should resolve a German instrument name too', () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-      const event = EventMaker.createProgramChangeByName(5, 240, 'Cembalo')!;
+      const event = EventMaker.createProgramChangeByName(5, 240, 'Cembalo');
       expect(event.getTick()).toBe(240);
-      expect((event.getMessage() as ShortMessage).getChannel()).toBe(5);
-      expect((event.getMessage() as ShortMessage).getData1()).toBe(EventMaker.PC_Harpsichord);
-
-      logSpy.mockRestore();
+      expect(shortChannel(event.getMessage() as ShortMessage)).toBe(5);
+      expect(shortData1(event.getMessage() as ShortMessage)).toBe(EventMaker.PC_Harpsichord);
     });
 
     it('should fall back to Acoustic Grand Piano for an empty name', () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-      const event = EventMaker.createProgramChangeByName(0, 0, '')!;
-      expect((event.getMessage() as ShortMessage).getData1()).toBe(
+      const event = EventMaker.createProgramChangeByName(0, 0, '');
+      expect(shortData1(event.getMessage() as ShortMessage)).toBe(
         EventMaker.PC_Acoustic_Grand_Piano,
       );
-
-      logSpy.mockRestore();
     });
   });
 
@@ -420,46 +418,46 @@ describe('EventMaker', () => {
   // ---------------------------------------------------------------
   describe('text meta events', () => {
     const decode = (event: MidiEvent) =>
-      new TextDecoder().decode((event.getMessage() as MetaMessage).getData());
+      new TextDecoder().decode(metaPayload(event.getMessage() as MetaMessage));
 
     it('createTrackName should carry the name as META_Track_Name', () => {
-      const event = EventMaker.createTrackName(0, 'Violino I')!;
-      expect((event.getMessage() as MetaMessage).getType()).toBe(EventMaker.META_Track_Name);
+      const event = EventMaker.createTrackName(0, 'Violino I');
+      expect((event.getMessage() as MetaMessage).type).toBe(EventMaker.META_Track_Name);
       expect(decode(event)).toBe('Violino I');
       expect(event.getTick()).toBe(0);
     });
 
     it('createInstrumentName should carry the name as META_Instrument_Name', () => {
-      const event = EventMaker.createInstrumentName(480, 'Harpsichord')!;
-      expect((event.getMessage() as MetaMessage).getType()).toBe(EventMaker.META_Instrument_Name);
+      const event = EventMaker.createInstrumentName(480, 'Harpsichord');
+      expect((event.getMessage() as MetaMessage).type).toBe(EventMaker.META_Instrument_Name);
       expect(decode(event)).toBe('Harpsichord');
       expect(event.getTick()).toBe(480);
     });
 
     it('createTextEvent should carry the text as META_Text_Event', () => {
-      const event = EventMaker.createTextEvent(96, 'dolce')!;
-      expect((event.getMessage() as MetaMessage).getType()).toBe(EventMaker.META_Text_Event);
+      const event = EventMaker.createTextEvent(96, 'dolce');
+      expect((event.getMessage() as MetaMessage).type).toBe(EventMaker.META_Text_Event);
       expect(decode(event)).toBe('dolce');
     });
 
     it('createMarker should carry the text as META_Marker', () => {
-      const event = EventMaker.createMarker(1920, 'repetition start')!;
-      expect((event.getMessage() as MetaMessage).getType()).toBe(EventMaker.META_Marker);
+      const event = EventMaker.createMarker(1920, 'repetition start');
+      expect((event.getMessage() as MetaMessage).type).toBe(EventMaker.META_Marker);
       expect(decode(event)).toBe('repetition start');
       expect(event.getTick()).toBe(1920);
     });
 
     it('should encode text as UTF-8', () => {
-      const event = EventMaker.createTrackName(0, 'Flöte')!;
-      const data = (event.getMessage() as MetaMessage).getData();
+      const event = EventMaker.createTrackName(0, 'Flöte');
+      const data = metaPayload(event.getMessage() as MetaMessage);
       expect(data.length).toBe(6); // ö takes two bytes
       expect(decode(event)).toBe('Flöte');
     });
 
     it('should accept an empty text', () => {
-      const event = EventMaker.createTextEvent(0, '')!;
-      expect((event.getMessage() as MetaMessage).getData().length).toBe(0);
-      expect(Array.from((event.getMessage() as MetaMessage).getMessage())).toEqual([
+      const event = EventMaker.createTextEvent(0, '');
+      expect(metaPayload(event.getMessage() as MetaMessage).length).toBe(0);
+      expect(Array.from(messageBytes(event.getMessage() as MetaMessage))).toEqual([
         0xff, 0x01, 0x00,
       ]);
     });
@@ -470,21 +468,21 @@ describe('EventMaker', () => {
   // ---------------------------------------------------------------
   describe('createChannelPrefix and createMidiPortEvent', () => {
     it('createChannelPrefix should hold the channel in a single data byte', () => {
-      const event = EventMaker.createChannelPrefix(0, 9)!;
+      const event = EventMaker.createChannelPrefix(0, 9);
       const msg = event.getMessage() as MetaMessage;
 
-      expect(msg.getType()).toBe(EventMaker.META_Midi_Channel_Prefix);
-      expect(Array.from(msg.getData())).toEqual([9]);
-      expect(Array.from(msg.getMessage())).toEqual([0xff, 0x20, 0x01, 9]);
+      expect(msg.type).toBe(EventMaker.META_Midi_Channel_Prefix);
+      expect(Array.from(metaPayload(msg))).toEqual([9]);
+      expect(Array.from(messageBytes(msg))).toEqual([0xff, 0x20, 0x01, 9]);
     });
 
     it('createMidiPortEvent should hold the port in a single data byte', () => {
-      const event = EventMaker.createMidiPortEvent(240, 1)!;
+      const event = EventMaker.createMidiPortEvent(240, 1);
       const msg = event.getMessage() as MetaMessage;
 
-      expect(msg.getType()).toBe(EventMaker.META_Midi_Port);
-      expect(Array.from(msg.getData())).toEqual([1]);
-      expect(Array.from(msg.getMessage())).toEqual([0xff, 0x21, 0x01, 1]);
+      expect(msg.type).toBe(EventMaker.META_Midi_Port);
+      expect(Array.from(metaPayload(msg))).toEqual([1]);
+      expect(Array.from(messageBytes(msg))).toEqual([0xff, 0x21, 0x01, 1]);
       expect(event.getTick()).toBe(240);
     });
   });

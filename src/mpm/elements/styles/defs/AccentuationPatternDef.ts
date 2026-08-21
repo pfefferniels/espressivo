@@ -3,7 +3,24 @@ import { allChildElements, attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
 import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
-import { AbstractDef } from './AbstractDef.js';
+import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
+import { ok, type Result } from '../../../../prelude/index.js';
+import { type MpmParseError } from '../../parseError.js';
+import { elementAt, head, isNonEmpty, last } from '../../../../prelude/index.js';
+
+/**
+ * One accentuation's four numbers, in Java's order: `[beat, value, transition.from,
+ * transition.to]`.
+ *
+ * A tuple and not a `number[]`, because the length is the whole contract — every read in this
+ * file is one of exactly four slots, and `double[4]` is what Java stores. Written as
+ * `number[]` the compiler cannot tell `[1]` from `[97]`, which under
+ * `noUncheckedIndexedAccess` made every one of those reads `number | undefined` and every
+ * write to `[2]` a type error. Naming the shape answers all of them at once, and it is the
+ * reason `getAccentuationAt` no longer needs the four non-null assertions it carried.
+ */
+export type AccentuationTuple = [beat: number, value: number, from: number, to: number];
 
 /**
  * An `accentuationPatternDef`: a metrical accentuation pattern over one bar of `length`
@@ -22,22 +39,48 @@ import { AbstractDef } from './AbstractDef.js';
  * Parsing is not read-only: a missing `length` attribute is ADDED to the element with the
  * default 4.0.
  */
-export class AccentuationPatternDef extends AbstractDef {
+export class AccentuationPatternDef extends AbstractXmlSubtree {
+  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  readonly kind = 'accentuationPattern';
   private length = 4.0;
-  private readonly accentuations: KeyValue<number[], Element>[] = [];
+  private readonly accentuations: KeyValue<AccentuationTuple, Element>[] = [];
+  /**
+   * The `@length` node, held so {@link setLength} writes where {@link parseData} read.
+   *
+   * Assigned in `parseData` rather than the constructor because — unlike a `tempoDef`'s
+   * `@value` — this attribute may be *created* there: a pattern that declares no length gets
+   * the default 4.0 written onto its element. The `!` that this would otherwise need is
+   * avoided by initialising it to the same attribute node the default path builds.
+   */
+  private lengthAttr: Attribute;
 
-  private constructor() {
+  private constructor(private readonly nameAttr: Attribute) {
     super();
+    this.lengthAttr = new Attribute('length', String(this.length));
   }
 
-  private parseDataInternal(xml: Element): void {
-    super.parseData(xml);
+  getName(): string {
+    return this.nameAttr.getValue();
+  }
 
-    let lengthAttr = attribute('length', xml);
-    if (lengthAttr === null) {
-      lengthAttr = new Attribute('length', String(this.length));
-      xml.addAttribute(lengthAttr);
+  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  setName(name: string): void {
+    this.nameAttr.setValue(name);
+  }
+
+  protected parseData(xml: Element): void {
+    this.setXml(xml);
+    this.id = attribute('id', xml);
+
+    const declaredLength = attribute('length', xml);
+    if (declaredLength === null) {
+      // The constructor's placeholder becomes the element's real attribute: same node, so a
+      // later `setLength` writes through to the document exactly as it did before.
+      xml.addAttribute(this.lengthAttr);
+    } else {
+      this.lengthAttr = declaredLength;
     }
+    const lengthAttr = this.lengthAttr;
     // Every read below throws on a malformed value, so createAccentuationPatternDef returns
     // null and the style skips the pattern — Java's behaviour at AccentuationPatternDef.java:
     // 113,122-136, where each is a bare Double.parseDouble in the throwing constructor.
@@ -47,7 +90,12 @@ export class AccentuationPatternDef extends AbstractDef {
     for (const ac of allChildElements(xml, 'accentuation')) {
       const att = attribute('beat', ac);
       if (att === null) continue;
-      const accentuation = [parseJavaDouble(att.getValue(), 'accentuation/@beat'), 0.0, 0.0, 0.0];
+      const accentuation: AccentuationTuple = [
+        parseJavaDouble(att.getValue(), 'accentuation/@beat'),
+        0.0,
+        0.0,
+        0.0,
+      ];
 
       const valAtt = attribute('value', ac);
       if (valAtt !== null)
@@ -64,12 +112,23 @@ export class AccentuationPatternDef extends AbstractDef {
       else accentuation[3] = accentuation[2];
 
       this.addAccentuationToArrayList(accentuation, ac);
-      this.sortXml();
     }
-  }
-
-  protected parseData(xml: Element): void {
-    this.parseDataInternal(xml);
+    // ONCE, after the loop — it used to run after every parsed accentuation.
+    //
+    // `sortXml` is a full re-layout: it walks the whole list and puts element j at child
+    // index j, so its result depends only on the list and not on the arrangement it starts
+    // from. Running it n times therefore ends where running it once ends, and the first n-1
+    // runs were pure work. That is a whole factor of n: with `removeChild` and `insertChild`
+    // each linear in the child count, the incumbent was CUBIC in the number of accentuations
+    // — measured at ×7-8 per doubling (n=100 1.1 ms, 200 6.9 ms, 400 56 ms, 800 380 ms).
+    //
+    // The non-accentuation children a hand-written pattern may carry are unaffected by the
+    // change: nothing here moves them relative to each other, and each removal-and-reinsert
+    // shifts them the same way whenever it runs. `tests/…/AccentuationPatternDef.test.ts`
+    // pins document order for interleaved foreign children, duplicate beats and a
+    // `beat`-less child, which are the three shapes where "sorted repeatedly" and "sorted
+    // once" could conceivably have parted company.
+    this.sortXml();
   }
 
   /**
@@ -80,28 +139,28 @@ export class AccentuationPatternDef extends AbstractDef {
     name: string,
     length: number,
     id?: string,
-  ): AccentuationPatternDef | null;
-  static createAccentuationPatternDef(xml: Element): AccentuationPatternDef | null;
+  ): Result<AccentuationPatternDef, MpmParseError>;
+  static createAccentuationPatternDef(xml: Element): Result<AccentuationPatternDef, MpmParseError>;
   static createAccentuationPatternDef(
     nameOrXml: string | Element,
     length?: number,
     id?: string,
-  ): AccentuationPatternDef | null {
+  ): Result<AccentuationPatternDef, MpmParseError> {
     try {
-      const apd = new AccentuationPatternDef();
+      let xml: Element;
       if (typeof nameOrXml === 'string') {
-        const e = new Element('accentuationPatternDef', MPM_NAMESPACE);
-        e.addAttribute(new Attribute('name', nameOrXml));
-        e.addAttribute(new Attribute('length', String(length)));
-        apd.parseDataInternal(e);
-        if (id !== undefined) apd.setId(id);
+        xml = new Element('accentuationPatternDef', MPM_NAMESPACE);
+        xml.addAttribute(new Attribute('name', nameOrXml));
+        xml.addAttribute(new Attribute('length', String(length)));
       } else {
-        apd.parseDataInternal(nameOrXml);
+        xml = nameOrXml;
       }
-      return apd;
+      const apd = new AccentuationPatternDef(requireDefName(xml, 'AccentuationPatternDef'));
+      apd.parseData(xml);
+      if (typeof nameOrXml === 'string' && id !== undefined) apd.setId(id);
+      return ok(apd);
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e, 'AccentuationPatternDef');
     }
   }
 
@@ -146,7 +205,12 @@ export class AccentuationPatternDef extends AbstractDef {
   addAccentuationFromXml(xml: Element): number {
     const att = xml.getAttribute('beat');
     if (att === null) return -1;
-    const accentuation = [parseJavaDouble(att.getValue(), 'accentuation/@beat'), 0.0, 0.0, 0.0];
+    const accentuation: AccentuationTuple = [
+      parseJavaDouble(att.getValue(), 'accentuation/@beat'),
+      0.0,
+      0.0,
+      0.0,
+    ];
 
     const valAtt = xml.getAttribute('value');
     if (valAtt !== null)
@@ -170,11 +234,22 @@ export class AccentuationPatternDef extends AbstractDef {
   /**
    * Insertion-sort the tuple into {@link accentuations} by beat, scanning from the back so
    * that equal beats keep insertion order (the new one lands after its equals).
+   *
+   * That sentence is {@link insertionIndexBy}'s contract word for word, and the scan is
+   * still written out anyway — for the reason `GenericMap.insertionIndexFor` records at
+   * length. `@beat` reaches here through {@link parseJavaDouble}, which accepts the literal
+   * `NaN` exactly as `Double.parseDouble` does. One NaN in the array leaves it unordered,
+   * and on an unordered array a linear backwards scan and a binary upper bound do not agree:
+   * the scan walks past the NaN (`x >= NaN` is false) and keeps going left, where
+   * `partitionPoint` reads it as a boundary and splits on an answer that is false on both
+   * sides. The two agree on every ordered input. The resulting order is serialized —
+   * {@link addAccentuation} uses the returned index as the XML child index — so the
+   * disagreement would be byte-visible, and parity beats the shorter spelling.
    * @returns the index it was inserted at, which is also the XML child index to use
    */
-  private addAccentuationToArrayList(accentuation: number[], xml: Element): number {
+  private addAccentuationToArrayList(accentuation: AccentuationTuple, xml: Element): number {
     for (let j = this.accentuations.length - 1; j >= 0; --j) {
-      if (accentuation[0] >= this.accentuations[j].getKey()[0]) {
+      if (accentuation[0] >= elementAt(this.accentuations, j, 'accentuation').getKey()[0]) {
         this.accentuations.splice(j + 1, 0, new KeyValue(accentuation, xml));
         return j + 1;
       }
@@ -191,8 +266,8 @@ export class AccentuationPatternDef extends AbstractDef {
    */
   private sortXml(): void {
     const xml = this.getXml();
-    for (let i = 0; i < this.accentuations.length; ++i) {
-      const accentuation = this.accentuations[i].getValue();
+    for (const [i, entry] of this.accentuations.entries()) {
+      const accentuation = entry.getValue();
       xml.removeChild(accentuation);
       xml.insertChild(accentuation, i);
     }
@@ -205,24 +280,34 @@ export class AccentuationPatternDef extends AbstractDef {
    * the upper bound — as Java does. A negative index falls through the guard and throws.
    */
   removeAccentuation(index: number): void {
-    if (index >= this.accentuations.length) return;
-    this.getXml().removeChild(this.accentuations[index].getValue());
+    const entry = this.entryAt(index);
+    if (entry === null) return;
+    this.getXml().removeChild(entry.getValue());
     this.accentuations.splice(index, 1);
   }
 
+  /**
+   * The entry at `index` under Java's asymmetric bound rule, stated once for the three
+   * accessors that share it: past the end is "no such accentuation", and a NEGATIVE index
+   * throws rather than answering — as it did when the read produced `undefined` and failed on
+   * the property access, only now naming the index and the bound.
+   */
+  private entryAt(index: number): KeyValue<AccentuationTuple, Element> | null {
+    if (index >= this.accentuations.length) return null;
+    return elementAt(this.accentuations, index, 'accentuation');
+  }
+
   /** The live list, not a copy — mutating it desynchronises the def from its XML. */
-  getAllAccentuations(): KeyValue<number[], Element>[] {
+  getAllAccentuations(): KeyValue<AccentuationTuple, Element>[] {
     return this.accentuations;
   }
 
-  getAccentuationAttributes(index: number): number[] | null {
-    if (index >= this.accentuations.length) return null;
-    return this.accentuations[index].getKey();
+  getAccentuationAttributes(index: number): AccentuationTuple | null {
+    return this.entryAt(index)?.getKey() ?? null;
   }
 
   getAccentuationXml(index: number): Element | null {
-    if (index >= this.accentuations.length) return null;
-    return this.accentuations[index].getValue();
+    return this.entryAt(index)?.getValue() ?? null;
   }
 
   /**
@@ -259,25 +344,33 @@ export class AccentuationPatternDef extends AbstractDef {
    * `MetricalAccentuationMap` only reach it through parsed patterns that have some.
    */
   getAccentuationAt(beatPosition: number): number {
-    if (beatPosition < this.accentuations[0].getKey()[0]) return 0.0;
-    if (beatPosition >= this.length + 1.0)
-      return this.accentuations[this.accentuations.length - 1].getKey()[3];
+    const all = this.accentuations;
+    if (!isNonEmpty(all))
+      throw new RangeError('accentuationPatternDef has no accentuation to read a beat position at');
+    if (beatPosition < head(all).getKey()[0]) return 0.0;
+    if (beatPosition >= this.length + 1.0) return last(all).getKey()[3];
 
-    let accentuation: number[] | null = null;
+    // Seeded with the FIRST accentuation instead of null, which is where the four non-null
+    // assertions went. It is not a fallback: the loop's last possible iteration is `i === 0`,
+    // and it assigns exactly this. The guard above has already established
+    // `beatPosition >= all[0].beat`, so that iteration either returns (equal) or breaks
+    // (greater) — it cannot fall out of the bottom leaving the seed in place, and if it
+    // somehow did, the seed is still the value the loop would have left.
+    let accentuation: AccentuationTuple = head(all).getKey();
     let segmentEnd = this.length + 1.0;
-    for (let i = this.accentuations.length - 1; i >= 0; --i) {
-      accentuation = this.accentuations[i].getKey();
+    for (let i = all.length - 1; i >= 0; --i) {
+      accentuation = elementAt(all, i, 'accentuation').getKey();
       if (beatPosition === accentuation[0]) return accentuation[1];
       if (beatPosition > accentuation[0]) {
-        if (i < this.accentuations.length - 1) segmentEnd = this.accentuations[i + 1].getKey()[0];
+        if (i < all.length - 1) segmentEnd = elementAt(all, i + 1, 'accentuation').getKey()[0];
         break;
       }
     }
 
     return (
-      ((beatPosition - accentuation![0]) * (accentuation![3] - accentuation![2])) /
-        (segmentEnd - accentuation![0]) +
-      accentuation![2]
+      ((beatPosition - accentuation[0]) * (accentuation[3] - accentuation[2])) /
+        (segmentEnd - accentuation[0]) +
+      accentuation[2]
     );
   }
 
@@ -291,6 +384,6 @@ export class AccentuationPatternDef extends AbstractDef {
 
   setLength(length: number): void {
     this.length = length;
-    this.getXml().getAttribute('length')!.setValue(String(length));
+    this.lengthAttr.setValue(String(length));
   }
 }

@@ -27,6 +27,7 @@
  * `innerControlPointsXPositions` and the same smoothstep value fraction, differing only in
  * their defaults and their output range.
  */
+import { pairwise } from '../prelude/index.js';
 import { comparisonRowFor, localDistance } from './registry.js';
 import { CompensatedSum, integrateCappedAbsolute } from './quadrature.js';
 import { BEZIER_PAIR_SUBDIVISIONS } from './dynamicsDistance.js';
@@ -129,9 +130,7 @@ export function pedalDistance(
   const total = new CompensatedSum();
   let anyCapped = false;
 
-  for (let i = 0; i < grid.length - 1; ++i) {
-    const cellStart = grid[i];
-    const cellEnd = grid[i + 1];
+  for (const [cellStart, cellEnd] of pairwise(grid)) {
     const lengthQuarters = (cellEnd - cellStart) / ticksPerQuarter;
 
     const left = positionAt(a, cellStart);

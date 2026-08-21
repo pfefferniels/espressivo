@@ -1,10 +1,12 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { ARTICULATION_STYLE, MPM_NAMESPACE } from '../../names.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
+import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import { ArticulationData } from './data/ArticulationData.js';
-import { ArticulationStyle } from '../styles/ArticulationStyle.js';
 import { ArticulationDef } from '../styles/defs/ArticulationDef.js';
 
 /**
@@ -27,17 +29,26 @@ import { ArticulationDef } from '../styles/defs/ArticulationDef.js';
  * Port of meico.mpm.elements.maps.ArticulationMap
  */
 export class ArticulationMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createArticulationMap(xml?: Element): ArticulationMap | null {
-    try {
-      return xml !== undefined ? new ArticulationMap(xml) : new ArticulationMap('articulationMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<articulationMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createArticulationMap(): ArticulationMap;
+  static createArticulationMap(xml: Element): Result<ArticulationMap, MpmParseError>;
+  static createArticulationMap(
+    xml?: Element | null,
+  ): ArticulationMap | Result<ArticulationMap, MpmParseError> {
+    return xml === undefined
+      ? new ArticulationMap(GenericMap.emptyMapElement('articulationMap'))
+      : GenericMap.makeMap(xml, 'ArticulationMap', (elt) => new ArticulationMap(elt));
   }
 
   addArticulation(
@@ -108,10 +119,11 @@ export class ArticulationMap extends GenericMap {
   getArticulationDataOf(index: number): ArticulationData | null {
     const i = this.resolveEntryIndex(index, 'articulation');
     if (i < 0) return null;
-    const e = this.elements[i].getValue();
+    const entry = this.entryAt(i);
+    const e = entry.getValue();
     const ad = new ArticulationData();
     ad.xml = e;
-    ad.date = this.elements[i].getKey();
+    ad.date = entry.getKey();
     const att = attribute('xml:id', e);
     if (att !== null) ad.xmlId = att.getValue();
     const nidAtt = attribute('noteid', e);
@@ -124,7 +136,7 @@ export class ArticulationMap extends GenericMap {
     }
 
     // null = attribute absent, so the field keeps its default. Same twelve names and the
-    // same shape as ArticulationDef.parseDataInternal, but reading through `parseFloat`
+    // same shape as ArticulationDef.parseData, but reading through `parseFloat`
     // rather than `parseJavaDouble`: a def can be skipped by the factory above it, an
     // articulation entry cannot, so there is nowhere for a NumberFormatError to go. That
     // makes this one of the map-level reads PARITY.md's P1 entry names as still open.
@@ -158,7 +170,7 @@ export class ArticulationMap extends GenericMap {
     const s = this.findStyleSwitchAt(index);
     if (s === null) return;
     ad.styleName = getAttributeValue('name.ref', s);
-    ad.style = this.getStyle(ARTICULATION_STYLE, ad.styleName) as ArticulationStyle | null;
+    ad.style = this.getStyle('articulation', ad.styleName);
     const att = attribute('defaultArticulation', s);
     if (att !== null) {
       ad.defaultArticulation = att.getValue();
@@ -189,6 +201,20 @@ export class ArticulationMap extends GenericMap {
 
     // make a hashmap (note element, articulation data list) for all notes with a specific (i.e. non-default) articulation
     const noteArtics = new Map<Element, ArticulationData[]>();
+    /**
+     * Append to the note's list, starting one where there is none — the get-or-create the
+     * two branches below each wrote out, character for character, fifteen lines apart.
+     *
+     * Not {@link groupBy}: that groups ONE sequence by a key derived from its elements, and
+     * this is the mirror image — one datum filed under several notes, from two different
+     * loops with two different ways of finding them. A multimap append is the shape here,
+     * and the prelude does not have one because this is the only place that wants it.
+     */
+    const fileUnder = (note: Element, ad: ArticulationData): void => {
+      const adList = noteArtics.get(note);
+      if (adList === undefined) noteArtics.set(note, [ad]);
+      else adList.push(ad);
+    };
     let mapTimingChanged = false;
 
     for (let articIndex = 0; articIndex < this.size(); ++articIndex) {
@@ -198,17 +224,20 @@ export class ArticulationMap extends GenericMap {
       if (ad.noteid !== null) {
         const index = map.getElementIndexByID(ad.noteid);
         if (index < 0) continue;
-        if (map.getAllElements()[index].getKey() !== ad.date)
+        // One lookup where there were three. `getAllElements()` hands back the map's own
+        // array, so the three reads always named the same entry.
+        const referee = elementAt(map.getAllElements(), index, 'articulation referee');
+        if (referee.getKey() !== ad.date)
           console.error(
-            `Warning: articulation date and referee date do not match!\n    ${ad.xml!.toXML()}\n    ${map.getAllElements()[index].getValue().toXML()}`,
+            // `this.entryAt(articIndex)` and not `ad.xml!`: `getArticulationDataOf` sets
+            // `xml` from exactly this entry (`resolveEntryIndex` returns its argument
+            // unchanged for an in-range index, and the loop bound guarantees one), so the
+            // two are the same Element — but only one of them is typed `Element | null`.
+            // The field stays nullable for the write half, where
+            // `addArticulationFromData` is handed a datum that has no element yet.
+            `Warning: articulation date and referee date do not match!\n    ${this.entryAt(articIndex).getValue().toXML()}\n    ${referee.getValue().toXML()}`,
           );
-        const note = map.getAllElements()[index].getValue();
-        let adList = noteArtics.get(note);
-        if (adList === undefined) {
-          adList = [];
-          noteArtics.set(note, adList);
-        }
-        adList.push(ad);
+        fileUnder(referee.getValue(), ad);
         continue;
       }
 
@@ -216,12 +245,7 @@ export class ArticulationMap extends GenericMap {
       const elements = map.getAllElementsAt(ad.date);
       for (const element of elements) {
         if (element.getValue().getLocalName() !== 'note') continue;
-        let adList = noteArtics.get(element.getValue());
-        if (adList === undefined) {
-          adList = [];
-          noteArtics.set(element.getValue(), adList);
-        }
-        adList.push(ad);
+        fileUnder(element.getValue(), ad);
       }
     }
 
@@ -230,9 +254,9 @@ export class ArticulationMap extends GenericMap {
     const styleSwitchList = this.getAllElementsOfType('style');
     for (const styleEntry of styleSwitchList) {
       const aStyle = this.getStyle(
-        ARTICULATION_STYLE,
+        'articulation',
         getAttributeValue('name.ref', styleEntry.getValue()),
-      ) as ArticulationStyle | null;
+      );
       if (aStyle === null) continue;
 
       const defaultArticulationAtt = attribute('defaultArticulation', styleEntry.getValue());
@@ -246,7 +270,9 @@ export class ArticulationMap extends GenericMap {
       const aDef = aStyle.getDef(defaultArticulationAtt.getValue()) ?? null;
       if (aDef === null)
         console.error(
-          `Warning: attribute ${attribute('defaultArticulation', styleEntry.getValue())!.toXML()} in style element refers to an unknown articulationDef.`,
+          // The attribute node is the one already in hand; the incumbent looked it up a
+          // second time and asserted the result non-null, which is the same node.
+          `Warning: attribute ${defaultArticulationAtt.toXML()} in style element refers to an unknown articulationDef.`,
         );
       defaultArticulations.push(
         new KeyValue<number, ArticulationDef | null>(styleEntry.getKey(), aDef),
@@ -255,8 +281,11 @@ export class ArticulationMap extends GenericMap {
 
     // articulate the map elements
     let defaultArticulationIndex = 0;
-    for (let mapIndex = 0; mapIndex < map.size(); ++mapIndex) {
-      const mapEntry = map.elements[mapIndex];
+    // A plain walk, start to end: unlike the span-driven renderers, this one has no cursor to
+    // preserve across an outer loop and never breaks early, so it iterates rather than
+    // indexes. `defaultArticulationIndex` is the only cursor here, and it indexes a different
+    // list.
+    for (const mapEntry of map.getAllElements()) {
       if (mapEntry.getValue().getLocalName() !== 'note') continue;
 
       const artics = noteArtics.get(mapEntry.getValue());
@@ -271,13 +300,19 @@ export class ArticulationMap extends GenericMap {
       if (defaultArticulations.length === 0) continue;
 
       // make sure we use the latest default articulation
+      // `at(…) ?? Infinity` says the same thing as the length test it replaces: no successor
+      // means no later switch to advance to, and a date past every note never compares less.
       while (
-        defaultArticulationIndex + 1 < defaultArticulations.length &&
-        defaultArticulations[defaultArticulationIndex + 1].getKey() <= mapEntry.getKey()
+        (defaultArticulations.at(defaultArticulationIndex + 1)?.getKey() ?? Infinity) <=
+        mapEntry.getKey()
       )
         defaultArticulationIndex++;
 
-      const defaultArticulationDef = defaultArticulations[defaultArticulationIndex].getValue();
+      const defaultArticulationDef = elementAt(
+        defaultArticulations,
+        defaultArticulationIndex,
+        'default articulation',
+      ).getValue();
       if (defaultArticulationDef === null) continue;
 
       mapTimingChanged =
@@ -347,7 +382,3 @@ export class ArticulationMap extends GenericMap {
     if (articulationMap !== null) articulationMap.renderArticulationToMap_millisecondModifiers(map);
   }
 }
-
-GenericMap.registerMapFactory('articulationMap', (xml) =>
-  ArticulationMap.createArticulationMap(xml),
-);

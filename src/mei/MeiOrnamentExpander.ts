@@ -49,6 +49,8 @@
 import { OrnamentData } from '../mpm/elements/maps/data/OrnamentData.js';
 import { OrnamentNote } from '../mpm/elements/maps/data/OrnamentNote.js';
 import { OrnamentDef } from '../mpm/elements/styles/defs/OrnamentDef.js';
+import { isErr, type Result } from '../prelude/index.js';
+import { type MpmParseError } from '../mpm/elements/parseError.js';
 import { NoteOffShift, TemporalSpread } from '../mpm/elements/styles/defs/TemporalSpread.js';
 import { Element } from '../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../xml/tree.js';
@@ -112,9 +114,10 @@ export function ornamentDefName(sign: Element): string {
  * they write `frame.offset`/`frameLength` with unit suffixes and carry `alignment` when delayed.
  * No v2 document produces a def this way, so no v2 byte moves.
  */
-export function createMeiOrnamentDef(name: string): OrnamentDef | null {
-  const def = OrnamentDef.createOrnamentDef(name);
-  if (def === null) return null;
+export function createMeiOrnamentDef(name: string): Result<OrnamentDef, MpmParseError> {
+  const created = OrnamentDef.createOrnamentDef(name);
+  if (isErr(created)) return created;
+  const def = created.value;
 
   // Gradient before spread: `OrnamentDef` appends each transformer as it is set, so this call
   // order is what fixes the serialized child order to `dynamicsGradient` then `temporalSpread`.
@@ -153,7 +156,7 @@ export function createMeiOrnamentDef(name: string): OrnamentDef | null {
   // After the spread, not before: `setTemporalSpread` regenerates the element and re-asserts a
   // non-default alignment, so setting it first would work by that fallback rather than directly.
   if (isDelayed(name)) def.setAlignment('at end');
-  return def;
+  return created;
 }
 
 /** The def-table lookup key: trimmed and lowercased, as the reference's `switch` does it. */

@@ -39,6 +39,7 @@ import type {
   ScaleSpaceTag,
   TransformResult,
 } from '../../src/expression/transforms.js';
+import { numberAt, pairwise } from '../../src/prelude/index.js';
 
 /**
  * A3 contracts P2 as exact "only on the clamp-free subdomain and only to ~1 ULP". Measured
@@ -258,11 +259,11 @@ describe('s-domains are data (DESIGN §1, A3)', () => {
       if (SCALE_SPACE_FACTOR_DOMAINS[space.kind] !== 'non-negative') continue;
       const result = transformInSpace(space, 0.5, -1);
       expect(result.ok, name).toBe(false);
-      if (!result.ok) expect(result.reason).toBe('out-of-domain-input');
+      if (!result.ok) expect(result.error).toBe('out-of-domain-input');
     }
     const trim = jointTrimWindow({ lateStart: 0.2, earlyEnd: 0.9 }, -1, MIN_RUBATO_WINDOW);
     expect(trim.ok).toBe(false);
-    if (!trim.ok) expect(trim.reason).toBe('out-of-domain-input');
+    if (!trim.ok) expect(trim.error).toBe('out-of-domain-input');
   });
 });
 
@@ -469,7 +470,7 @@ describe('P4 — the neutral is a fixed point for every admissible s (DESIGN §1
     // attenuation. The result is on a bound the input did not start on, so it is refused.
     const flipped = logit(1, -1, -1, 1);
     expect(flipped.ok).toBe(false);
-    if (!flipped.ok) expect(flipped.reason).toBe('saturation-to-boundary');
+    if (!flipped.ok) expect(flipped.error).toBe('saturation-to-boundary');
   });
 
   it('the untrimmed rubato window is the joint trim fixed point', () => {
@@ -519,7 +520,7 @@ describe('saturation is refused, not written (DESIGN §1, A3)', () => {
     expect(1 / (1 + Math.pow((1 - 0.99) / 0.99, 8))).toBe(1);
     const at99 = logit(0.99, 8, 0, 1);
     expect(at99.ok).toBe(false);
-    if (!at99.ok) expect(at99.reason).toBe('saturation-to-boundary');
+    if (!at99.ok) expect(at99.error).toBe('saturation-to-boundary');
     // The step below the cliff is still a value, and still interior.
     expect(expectOk(logit(0.99, 7, 0, 1))).toBeLessThan(1);
 
@@ -527,7 +528,7 @@ describe('saturation is refused, not written (DESIGN §1, A3)', () => {
     expect(logit(0.9, 16, 0, 1).ok).toBe(true);
     const at9 = logit(0.9, 17, 0, 1);
     expect(at9.ok).toBe(false);
-    if (!at9.ok) expect(at9.reason).toBe('saturation-to-boundary');
+    if (!at9.ok) expect(at9.error).toBe('saturation-to-boundary');
 
     // At the lower bound the cliff is real but arrives far later, and only where the bound
     // is not 0. `a + (b−a)/(1+w^s)` reaches `a` as soon as the quotient falls below half an
@@ -540,11 +541,11 @@ describe('saturation is refused, not written (DESIGN §1, A3)', () => {
     expect(expectOk(towardZero)).toBeGreaterThan(0);
     const underflowed = logit(0.01, 160, 0, 1);
     expect(underflowed.ok).toBe(false);
-    if (!underflowed.ok) expect(underflowed.reason).toBe('saturation-to-boundary');
+    if (!underflowed.ok) expect(underflowed.error).toBe('saturation-to-boundary');
 
     const towardMinusOne = logit(-0.99, 8, -1, 1);
     expect(towardMinusOne.ok).toBe(false);
-    if (!towardMinusOne.ok) expect(towardMinusOne.reason).toBe('saturation-to-boundary');
+    if (!towardMinusOne.ok) expect(towardMinusOne.error).toBe('saturation-to-boundary');
   });
 
   it('refuses boundary-power reaching an exact bound (A6 IEEE analysis)', () => {
@@ -553,34 +554,34 @@ describe('saturation is refused, not written (DESIGN §1, A3)', () => {
     expect(1 - Math.pow(1 - 0.9, 17)).toBe(1);
     const saturated = boundaryPowerLow(0.9, 17);
     expect(saturated.ok).toBe(false);
-    if (!saturated.ok) expect(saturated.reason).toBe('saturation-to-boundary');
+    if (!saturated.ok) expect(saturated.error).toBe('saturation-to-boundary');
     expect(expectOk(boundaryPowerLow(0.9, 16))).toBeLessThan(1);
 
     const collapsed = boundaryPowerHigh(0.9, 1e5);
     expect(collapsed.ok).toBe(false);
-    if (!collapsed.ok) expect(collapsed.reason).toBe('saturation-to-boundary');
+    if (!collapsed.ok) expect(collapsed.error).toBe('saturation-to-boundary');
   });
 
   it('refuses a log-space result that underflows out of R>0', () => {
     const underflowed = logAroundOne(0.5, 5000);
     expect(Math.pow(0.5, 5000)).toBe(0);
     expect(underflowed.ok).toBe(false);
-    if (!underflowed.ok) expect(underflowed.reason).toBe('saturation-to-boundary');
+    if (!underflowed.ok) expect(underflowed.error).toBe('saturation-to-boundary');
 
     const centered = logAroundCenter(1e-3, 200, 72);
     expect(centered.ok).toBe(false);
-    if (!centered.ok) expect(centered.reason).toBe('saturation-to-boundary');
+    if (!centered.ok) expect(centered.error).toBe('saturation-to-boundary');
   });
 
   it('refuses a result that overflows rather than returning it', () => {
     const overflowed = logAroundOne(10, 400);
     expect(Math.pow(10, 400)).toBe(Infinity);
     expect(overflowed.ok).toBe(false);
-    if (!overflowed.ok) expect(overflowed.reason).toBe('non-finite-result');
+    if (!overflowed.ok) expect(overflowed.error).toBe('non-finite-result');
 
     const huge = gain(1e300, 1e300);
     expect(huge.ok).toBe(false);
-    if (!huge.ok) expect(huge.reason).toBe('non-finite-result');
+    if (!huge.ok) expect(huge.error).toBe('non-finite-result');
   });
 
   it('does not refuse a gain result of 0, whose 0 is an interior neutral', () => {
@@ -598,11 +599,15 @@ describe('the validation gate refuses non-finite inputs (DESIGN §1.2)', () => {
       for (const bad of NON_FINITE) {
         const byValue = transformInSpace(space, bad, 2);
         expect(byValue.ok).toBe(false);
-        if (!byValue.ok) expect(byValue.reason).toBe('out-of-domain-input');
+        if (!byValue.ok) expect(byValue.error).toBe('out-of-domain-input');
 
-        const byFactor = transformInSpace(space, values[0], bad);
+        const byFactor = transformInSpace(
+          space,
+          numberAt(values, 0, `the ${space.kind} probe values`),
+          bad,
+        );
         expect(byFactor.ok).toBe(false);
-        if (!byFactor.ok) expect(byFactor.reason).toBe('out-of-domain-input');
+        if (!byFactor.ok) expect(byFactor.error).toBe('out-of-domain-input');
       }
     },
   );
@@ -631,7 +636,7 @@ describe('the validation gate refuses non-finite inputs (DESIGN §1.2)', () => {
       [0, 0],
       [NaN, 1],
       [0, Infinity],
-    ]) {
+    ] as const) {
       expect(logit(0.5, 2, lower, upper).ok).toBe(false);
     }
   });
@@ -648,7 +653,7 @@ describe('the validation gate refuses non-finite inputs (DESIGN §1.2)', () => {
     for (const window of bad) {
       const result = jointTrimWindow(window, 2, MIN_RUBATO_WINDOW);
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.reason).toBe('out-of-domain-input');
+      if (!result.ok) expect(result.error).toBe('out-of-domain-input');
     }
     for (const minWindow of [0, 1, -1e-6, NaN, Infinity]) {
       expect(jointTrimWindow({ lateStart: 0.2, earlyEnd: 0.9 }, 2, minWindow).ok).toBe(false);
@@ -758,7 +763,7 @@ describe('geometricMean — the center population (DESIGN §7.1, A5)', () => {
     for (const population of [[], [0], [-1], [60, 0], [60, -20], [NaN], [60, Infinity]]) {
       const result = geometricMean(population);
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.reason).toBe('out-of-domain-input');
+      if (!result.ok) expect(result.error).toBe('out-of-domain-input');
     }
   });
 
@@ -812,7 +817,11 @@ describe('metric anchors — the numbers DESIGN chose, not merely a valid T', ()
     expect(expectOk(logAroundCenter(36, 2, center))).toBeCloseTo(center / 4, 12);
     // And the log-difference of a transition pair scales by s regardless of the center (§1.3).
     const pair = [60, 120].map((x) => expectOk(logAroundCenter(x, 2, center)));
-    expect(Math.log(pair[1] / pair[0])).toBeCloseTo(2 * Math.log(120 / 60), 12);
+    const what = 'the transformed transition pair';
+    expect(Math.log(numberAt(pair, 1, what) / numberAt(pair, 0, what))).toBeCloseTo(
+      2 * Math.log(120 / 60),
+      12,
+    );
   });
 
   it('ratio gains and signed offsets (§7.6, §7.10, §7.12)', () => {
@@ -856,7 +865,7 @@ describe('dispatch', () => {
     expect(gain(10, -2)).toEqual({ ok: true, value: -20 });
     const ordered = orderedGain(10, -2);
     expect(ordered.ok).toBe(false);
-    if (!ordered.ok) expect(ordered.reason).toBe('out-of-domain-input');
+    if (!ordered.ok) expect(ordered.error).toBe('out-of-domain-input');
     expect(orderedGain(10, 2)).toEqual(gain(10, 2));
   });
 
@@ -921,12 +930,14 @@ describe('forward maps — `T` itself (comparison/DESIGN.md §4)', () => {
   it('is strictly monotone on each domain, which is what makes |T(x) - T(y)| a metric', () => {
     for (const { name, space, values } of SPACES) {
       const forwards = values.map((x) => forwardInSpace(space, x));
+      const image = `the forward image of ${name}`;
       // Direction is per space and carries no meaning for a distance: boundary-power(low)'s
       // `ln(1 - x)` decreases, every other space here increases.
-      const ascending = forwards[1] > forwards[0];
-      for (let i = 1; i < forwards.length; i += 1) {
-        const ordered = ascending ? forwards[i] > forwards[i - 1] : forwards[i] < forwards[i - 1];
-        expect(`${name} @ ${values[i]}: ${ordered}`).toBe(`${name} @ ${values[i]}: true`);
+      const ascending = numberAt(forwards, 1, image) > numberAt(forwards, 0, image);
+      for (const [i, [previous, current]] of pairwise(forwards).entries()) {
+        const ordered = ascending ? current > previous : current < previous;
+        const at = numberAt(values, i + 1, `the ${name} probe values`);
+        expect(`${name} @ ${at}: ${ordered}`).toBe(`${name} @ ${at}: true`);
       }
     }
   });

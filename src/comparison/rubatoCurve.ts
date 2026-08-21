@@ -41,6 +41,8 @@
  * `@frameLength` is tick-valued and therefore ppq-sensitive; `@intensity` and the window
  * bounds are dimensionless and are not rescaled.
  */
+import { filterMap, withNext } from '../prelude/index.js';
+import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { RUBATO_MAP, RUBATO_STYLE } from '../mpm/names.js';
@@ -49,6 +51,7 @@ import { findStyleDef } from '../expression/styleScope.js';
 import type { MpmEnvironment } from '../expression/mpmTree.js';
 import { assertSpanEndRule } from './spanEnds.js';
 import { resolutionAt, type OrderedMapView } from './document.js';
+import { coveringSegmentAt } from './segments.js';
 
 /**
  * The `<rubatoDef name="…">` a `<rubato name.ref="…">` inherits from, or null.
@@ -71,7 +74,7 @@ function findRubatoDef(
   const style = findStyleDef(RUBATO_STYLE, styleName, environment, globalEnvironment);
   if (style === null) return null;
   let found: Element | null = null;
-  for (const candidate of style.styleDef.getChildElements('rubatoDef').toArray())
+  for (const candidate of style.styleDef.getChildElements('rubatoDef'))
     if (attribute('name', candidate)?.getValue() === nameRef) found = candidate;
   return found;
 }
@@ -256,40 +259,42 @@ export function readRubatoSegments(
 
   if (view === null) return neutralRubatoCurve();
 
-  const raws: {
-    dateTicks: number;
-    element: Element;
-    styleName: string | null;
-    environment: MpmEnvironment;
-    globalEnvironment: MpmEnvironment;
-    /** This instruction's own tick scale, which its tick-VALUED `@frameLength` is read in. */
-    scaleFactor: number;
-  }[] = [];
-  for (const [index, entry] of view.entries.entries()) {
-    if (entry.element.getLocalName() !== 'rubato') continue;
-    if (!Number.isFinite(entry.date)) continue;
+  // Read each entry, skip what is not a dated `<rubato>`, keep the rest — `filterMap`, with
+  // the two `continue`s as the two `null` returns. The element type is inferred from the
+  // returned object literal, which is why the eight-line annotation the accumulator needed
+  // is gone; the one field a reader would not guess keeps its comment.
+  const raws = filterMap(view.entries, (entry, index) => {
+    if (entry.element.getLocalName() !== 'rubato') return null;
+    if (!Number.isFinite(entry.date)) return null;
     const resolution = resolutionAt(view, index, scaleFactor, environment, globalEnvironment);
-    raws.push({
+    return {
       dateTicks: entry.date * resolution.scaleFactor,
       element: entry.element,
-      styleName: view.styleNames[index],
+      styleName: optionAt(view.styleNames, index, 'a map view style-name list'),
       environment: resolution.environment,
       globalEnvironment: resolution.globalEnvironment,
+      /** This instruction's own tick scale, which its tick-VALUED `@frameLength` is read in. */
       scaleFactor: resolution.scaleFactor,
-    });
-  }
+    };
+  });
   if (raws.length === 0) return neutralRubatoCurve();
 
   const segments: RubatoSegment[] = [];
   const notes: RubatoCurveNote[] = [];
   const breakpoints = new Set<number>([0]);
 
-  for (const [index, raw] of raws.entries()) {
-    // getEndDate scans for the next <rubato> regardless of whether it parses, so a skipped
-    // instruction still ends this span.
-    const next = raws[index + 1] as (typeof raws)[number] | undefined;
+  // getEndDate scans for the next <rubato> regardless of whether it parses, so a skipped
+  // instruction still ends this span.
+  // The end is PAIRED with its entry rather than read at `index + 1`. "There is no next
+  // entry" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
+  // system had to be told about with `as (typeof xs)[number] | undefined`.
+  // Each entry with its successor, or `null` for the last — `withNext`. The span it opens
+  // then runs to `next?.dateTicks ?? Infinity`, which says at the point of use that the last
+  // entry runs to the end of time. The `[...xs.slice(1).map(…), Infinity]` array this
+  // replaces built that sentinel where it could not be read as one, and built a whole array
+  // to be zipped away.
+  for (const [raw, next] of withNext(raws)) {
     const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
-
     const parsed = readRawRubato(
       raw.element,
       raw.styleName,
@@ -395,13 +400,15 @@ export function readRubatoSegments(
   };
 }
 
-/** The segment governing `ticks`, right-continuous, or null where nothing warps. */
+/**
+ * The segment governing `ticks`, right-continuous, or null where nothing warps.
+ *
+ * Called once per Gauss-Legendre node, so the linear scan this replaces made one dimension's
+ * integral quadratic in the size of the map it integrates. {@link coveringSegmentAt} carries the
+ * proof that the bound answers identically here — including at `NaN` and `Infinity`.
+ */
 export function rubatoSegmentAt(curve: RubatoCurve, ticks: number): RubatoSegment | null {
-  for (const segment of curve.segments) {
-    if (ticks < segment.startTicks) break;
-    if (ticks < segment.endTicks) return segment;
-  }
-  return null;
+  return coveringSegmentAt(curve.segments, ticks);
 }
 
 /**
@@ -440,12 +447,14 @@ export function displacementQuartersAt(
 export function rubatoBottomSpans(
   curve: RubatoCurve,
 ): readonly { readonly startTicks: number; readonly endTicks: number }[] {
-  return curve.segments
-    .filter((segment) => segment.poisonedEndTicks !== null)
-    .map((segment) => ({
-      startTicks: segment.startTicks,
-      endTicks: segment.poisonedEndTicks as number,
-    }));
+  // One pass, and the `as number` goes with the two-pass spelling: the `=== null` test that
+  // used to be a `filter` the type system could not follow now narrows `poisonedEndTicks` in
+  // the branch that reads it.
+  return filterMap(curve.segments, (segment) =>
+    segment.poisonedEndTicks === null
+      ? null
+      : { startTicks: segment.startTicks, endTicks: segment.poisonedEndTicks },
+  );
 }
 
 /** Whether `t` falls in a `⊥` interval — the probe the distance takes at each cell's edge. */

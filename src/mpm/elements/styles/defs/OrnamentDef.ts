@@ -1,7 +1,10 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { allChildElements, attribute, firstChildElement } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
-import { AbstractDef } from './AbstractDef.js';
+import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
+import { requireDefName, skipMalformedDef } from './defName.js';
+import { isErr, ok, type Result } from '../../../../prelude/index.js';
+import { type MpmParseError } from '../../parseError.js';
 import { DynamicsGradient } from './DynamicsGradient.js';
 import {
   TemporalSpread,
@@ -21,14 +24,25 @@ import type { MpmSourceFormat, OrnamentAlignment } from './TemporalSpread.js';
  * the start of its principal note or at its end (`ornamentDef.xml:25-33`). Everything else
  * v3 changed about ornament definitions lives inside {@link TemporalSpread}.
  */
-export class OrnamentDef extends AbstractDef {
+export class OrnamentDef extends AbstractXmlSubtree {
+  /** This def's arm of {@link Def}. See {@link requireDefName} on why there is no base class. */
+  readonly kind = 'ornament';
   private temporalSpread: TemporalSpread | null = null;
   private dynamicsGradient: DynamicsGradient | null = null;
   private alignment: OrnamentAlignment = DEFAULT_ORNAMENT_ALIGNMENT;
   private sourceFormat: MpmSourceFormat = 'v2';
 
-  private constructor() {
+  private constructor(private readonly nameAttr: Attribute) {
     super();
+  }
+
+  getName(): string {
+    return this.nameAttr.getValue();
+  }
+
+  /** Rename the def, in the object and in the element. Was `AbstractDef.setName`. */
+  setName(name: string): void {
+    this.nameAttr.setValue(name);
   }
 
   /**
@@ -42,8 +56,10 @@ export class OrnamentDef extends AbstractDef {
    * treated as absent, so a malformed attribute here still lets a well-formed one on the
    * spread through rather than silently forcing the default.
    */
-  private parseDataInternal(xml: Element): void {
-    super.parseData(xml);
+  protected parseData(xml: Element): void {
+    this.setXml(xml);
+    this.id = attribute('id', xml);
+
     for (const transformer of allChildElements(xml)) {
       switch (transformer.getLocalName()) {
         case 'dynamicsGradient':
@@ -76,30 +92,28 @@ export class OrnamentDef extends AbstractDef {
     }
   }
 
-  protected parseData(xml: Element): void {
-    this.parseDataInternal(xml);
-  }
-
   /**
    * Create a def either from a name — with no transformers yet — or by parsing an existing
-   * element. Returns null after logging instead of throwing.
+   * element. Returns the reason instead of throwing.
+   *
+   * One signature where there were two overloads; see
+   * {@link ArticulationDef.createArticulationDef} for why the pair said nothing the union
+   * does not.
    */
-  static createOrnamentDef(name: string): OrnamentDef | null;
-  static createOrnamentDef(xml: Element): OrnamentDef | null;
-  static createOrnamentDef(nameOrXml: string | Element): OrnamentDef | null {
+  static createOrnamentDef(nameOrXml: string | Element): Result<OrnamentDef, MpmParseError> {
     try {
-      const od = new OrnamentDef();
+      let xml: Element;
       if (typeof nameOrXml === 'string') {
-        const e = new Element('ornamentDef', MPM_NAMESPACE);
-        e.addAttribute(new Attribute('name', nameOrXml));
-        od.parseDataInternal(e);
+        xml = new Element('ornamentDef', MPM_NAMESPACE);
+        xml.addAttribute(new Attribute('name', nameOrXml));
       } else {
-        od.parseDataInternal(nameOrXml);
+        xml = nameOrXml;
       }
-      return od;
+      const od = new OrnamentDef(requireDefName(xml, 'OrnamentDef'));
+      od.parseData(xml);
+      return ok(od);
     } catch (e) {
-      console.error(e);
-      return null;
+      return skipMalformedDef(e, 'OrnamentDef');
     }
   }
 
@@ -219,15 +233,16 @@ export class OrnamentDef extends AbstractDef {
    * The gradient is set BEFORE the spread, which fixes the child order of the serialized
    * element (`dynamicsGradient` then `temporalSpread`). Do not swap the two calls.
    */
-  static createDefaultOrnamentDef(name: string): OrnamentDef | null {
-    const def = OrnamentDef.createOrnamentDef(name);
-    if (def === null) return null;
+  static createDefaultOrnamentDef(name: string): Result<OrnamentDef, MpmParseError> {
+    const created = OrnamentDef.createOrnamentDef(name);
+    if (isErr(created)) return created;
+    const def = created.value;
     switch (name.trim().toLowerCase()) {
       case 'arpeg':
       case 'arpeggio':
         def.setDynamicsGradientValues(-1.0, 1.0);
         def.setTemporalSpreadValues(-22.0, 44.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
     }
-    return def;
+    return created;
   }
 }

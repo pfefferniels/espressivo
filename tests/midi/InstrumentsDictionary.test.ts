@@ -180,6 +180,35 @@ describe('InstrumentsDictionary.getProgramChange – distance methods', () => {
     // "vioiln" is "violin" with the last two characters swapped
     expect(dict.getProgramChange('vioiln', InstrumentsDictionary.Damerau)).toBe(40);
     expect(dict.getProgramChange('vioiln', InstrumentsDictionary.Levenshtein)).toBe(40);
+
+    // …and here the two metrics actually part company, which is what the title claims and
+    // what "vioiln" alone does not show: both of the assertions above stay green with the
+    // transposition rule deleted from `damerauLevenshteinDistance` entirely — measured, as
+    // a control, 236 of 236 passing. "vioal" is "viola" with its last two characters
+    // swapped: one edit for Damerau, which lands on Viola (41), and two for plain
+    // Levenshtein, which prefers Cello (42) at the same cost and earlier in the table.
+    expect(dict.getProgramChange('vioal', InstrumentsDictionary.Damerau)).toBe(41);
+    expect(dict.getProgramChange('vioal', InstrumentsDictionary.Levenshtein)).toBe(42);
+  });
+
+  // The two LCS metrics share one `lcsLength` helper, and nothing here was testing the
+  // recurrence inside it: replacing its `Math.max` with `Math.min` — which is no longer the
+  // longest common subsequence of anything — also passed 236 of 236, because every other
+  // assertion about these metrics is either an exact dictionary hit (distance 0, which
+  // returns before the recurrence matters) or a range check. A transposed tail is the
+  // cheapest input that makes the subsequence length decide the answer.
+  it('should match on the longest common subsequence, not merely on a common one', () => {
+    expect(
+      dict.getProgramChange('acoustic grand piaon', InstrumentsDictionary.LongestCommonSubsequence),
+    ).toBe(0);
+    expect(dict.getProgramChange('acoustic grand piaon', InstrumentsDictionary.MetricLCS)).toBe(0);
+
+    // A prefix of a key, where the metric has to see the ten shared characters rather than
+    // stop at the first mismatch.
+    expect(
+      dict.getProgramChange('acoustic g', InstrumentsDictionary.LongestCommonSubsequence),
+    ).toBe(0);
+    expect(dict.getProgramChange('acoustic g', InstrumentsDictionary.MetricLCS)).toBe(0);
   });
 });
 
@@ -216,5 +245,16 @@ describe('InstrumentsDictionary.getInstrumentName', () => {
 
   it('should return an empty string for a number that is not in the dictionary', () => {
     expect(InstrumentsDictionary.getInstrumentName(200)).toBe('');
+  });
+
+  // The GM path had no such answer: `DefaultNames[200]` is `undefined`, which the `string`
+  // return type flatly denied, so a caller that interpolated the result got the word
+  // "undefined" where the method's own `@return` promises an empty string. The two paths
+  // now agree, which is also what the dictionary-less fallback needs — it returns the GM
+  // name for a program number that may be anything.
+  it('should return an empty string for an out-of-range number under GM names too', () => {
+    expect(InstrumentsDictionary.getInstrumentName(200, true)).toBe('');
+    expect(InstrumentsDictionary.getInstrumentName(-1, true)).toBe('');
+    expect(InstrumentsDictionary.getInstrumentName(127, true)).toBe('Gunshot');
   });
 });

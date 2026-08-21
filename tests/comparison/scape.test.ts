@@ -19,6 +19,11 @@ import { InvalidOptionError } from '../../src/api/errors.js';
 import { scapeIndex, scapeOf, SCAPE_MAX_BINS } from '../../src/comparison/scape.js';
 import { defaultWeights } from '../../src/comparison/aggregate.js';
 import type { XmlText } from '../../src/api/types.js';
+import { elementAt, numberAt } from '../../src/prelude/index.js';
+
+/** `cells[scapeIndex(bins, size, start)]`, checked — the triangle is stored flat. */
+const cellAt = (cells: readonly number[], bins: number, size: number, start: number) =>
+  numberAt(cells, scapeIndex(bins, size, start), `a ${String(bins)}-bin scape’s cells`);
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const fixture = (name: string) => readFileSync(join(FIXTURES, `${name}.mpm`), 'utf-8') as XmlText;
@@ -54,10 +59,10 @@ describe('the pairwise scape', () => {
     const cells = report.scape?.cells ?? [];
     for (let size = 2; size <= 8; ++size)
       for (let start = 0; start + size <= 8; ++start) {
-        const whole = cells[scapeIndex(8, size, start)];
+        const whole = cellAt(cells, 8, size, start);
         for (let split = 1; split < size; ++split) {
-          const left = cells[scapeIndex(8, split, start)];
-          const right = cells[scapeIndex(8, size - split, start + split)];
+          const left = cellAt(cells, 8, split, start);
+          const right = cellAt(cells, 8, size - split, start + split);
           // Relative, because a cell is a DIFFERENCE of two running totals and two such
           // differences do not recombine bit for bit — the cancellation, not the binning, which
           // conserves mass exactly. Measured slack on this pair is at the last few ulps.
@@ -89,7 +94,7 @@ describe('the pairwise scape', () => {
       // documents and rebuilds every dimension's own refinement grid for that window, while the
       // scape apportions the full-window cells across bins. The worst divergence over these four
       // sub-windows is asserted separately below, so the band cannot absorb a regression.
-      const cell = cells[scapeIndex(8, size, start)];
+      const cell = cellAt(cells, 8, size, start);
       worst = Math.max(
         worst,
         Math.abs(cell - narrowed.aggregate.distance) / narrowed.aggregate.distance,
@@ -197,7 +202,7 @@ describe('the corpus scape (Sapp’s variant)', () => {
     const rows = new Map<number, readonly number[]>();
     for (const [index, item] of report.items.entries()) {
       if (index === medoid) continue;
-      const other = report.items[medoid];
+      const other = elementAt(report.items, medoid, 'the corpus items');
       const pair = compareMpm({
         a: documentOf(item.itemIndex),
         b: documentOf(other.itemIndex),
@@ -210,7 +215,9 @@ describe('the corpus scape (Sapp’s variant)', () => {
     }
 
     for (const [cell, chosen] of (report.scape?.cells ?? []).entries()) {
-      const values = [...rows].map(([, cells]) => cells[cell]);
+      const values = [...rows].map(([, cells]) =>
+        numberAt(cells, cell, 'a pairwise scape’s cells'),
+      );
       expect({ cell, value: rows.get(chosen)?.[cell] }).toEqual({
         cell,
         value: Math.min(...values),

@@ -38,6 +38,7 @@
  * could fire on. It is a screening estimate and it is stated as one — §7.9's own words are
  * "the report carries the frame magnitude and flags cliff risk rather than a bound".
  */
+import { filterMap, head, isNonEmpty, last } from '../prelude/index.js';
 import { readAttributeValue } from './attributes.js';
 import {
   FRAME_LENGTH_ATTRIBUTE,
@@ -191,17 +192,19 @@ function unreachableLevels(performance: PerformanceView, facts: MsmFacts): numbe
               readAttributeValue(entry.element, 'volume') !== null,
           );
 
-    if (instructions.length === 0) {
+    // `isNonEmpty` rather than `length === 0`: the two say the same thing to the reader, but
+    // only the type guard says it to the compiler, so `head`/`last` below need no bound check.
+    if (!isNonEmpty(instructions)) {
       count += dated.length;
       continue;
     }
 
-    const first = instructions[0].date;
-    const last = instructions[instructions.length - 1];
-    const unterminated = readAttributeValue(last.element, TRANSITION_TO_ATTRIBUTE) !== null;
+    const firstDate = head(instructions).date;
+    const lastEntry = last(instructions);
+    const unterminated = readAttributeValue(lastEntry.element, TRANSITION_TO_ATTRIBUTE) !== null;
     for (const note of dated) {
-      if (note.date < first) count += 1;
-      else if (unterminated && note.date >= last.date) count += 1;
+      if (note.date < firstDate) count += 1;
+      else if (unterminated && note.date >= lastEntry.date) count += 1;
     }
   }
   return count;
@@ -350,36 +353,37 @@ interface FrameBound {
  * at all (§7.15 correction 4), so there is no transformed value here to judge either.
  */
 function frameBounds(spread: Element): readonly FrameBound[] {
-  const bounds: FrameBound[] = [];
+  // Both branches read a fixed list of attribute names, keep the ones that parse and drop the
+  // rest — `filterMap` twice, where the accumulator made the two look like one shared walk
+  // that they never were: the v2 branch returns before the v3 one starts.
   if (detectFrameFormat(spread) === 'v2') {
     const domain = resolveTemporalDomain('', spread);
-    for (const name of [FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE]) {
+    return filterMap([FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE], (name) => {
       const value = numberOrNull(spread, name);
-      if (value !== null) bounds.push({ magnitude: Math.abs(value), domain });
-    }
-    return bounds;
+      return value === null ? null : { magnitude: Math.abs(value), domain };
+    });
   }
 
   const offsetAttribute = v3FrameOffsetAttribute(spread);
-  for (const name of offsetAttribute === null
-    ? [FRAME_LENGTH_ATTRIBUTE]
-    : [offsetAttribute, FRAME_LENGTH_ATTRIBUTE]) {
+  const names =
+    offsetAttribute === null ? [FRAME_LENGTH_ATTRIBUTE] : [offsetAttribute, FRAME_LENGTH_ATTRIBUTE];
+  return filterMap(names, (name) => {
     const text = readAttributeValue(spread, name);
     const temporal = text === null ? null : parseTemporalText(text);
-    if (temporal === null) continue;
-    bounds.push({
-      magnitude: Math.abs(temporal.value),
-      domain: resolveTemporalDomain(temporal.suffix, spread),
-    });
-  }
-  return bounds;
+    return temporal === null
+      ? null
+      : {
+          magnitude: Math.abs(temporal.value),
+          domain: resolveTemporalDomain(temporal.suffix, spread),
+        };
+  });
 }
 
 function temporalSpreads(performance: PerformanceView): readonly Element[] {
   const spreads: Element[] = [];
   for (const environment of environmentsOf(performance)) {
     for (const styleDef of styleDefsOf(environment, ORNAMENT_STYLE_COLLECTION)) {
-      for (const ornamentDef of styleDef.getChildElements(ORNAMENT_DEF_ELEMENT).toArray()) {
+      for (const ornamentDef of styleDef.getChildElements(ORNAMENT_DEF_ELEMENT)) {
         spreads.push(...ornamentDef.getChildElements(TEMPORAL_SPREAD_ELEMENT).toArray());
       }
     }
@@ -406,7 +410,7 @@ function scaleOrNull(value: number | null, factor: number): number | null {
  * Toneduration distributions whose offsets can put a note's end before its start.
  *
  * The domain applies its offset to `@milliseconds.date.end` and to nothing else
- * (ImprecisionMap.ts:416-425), so the guard is reached when the widest value a distribution
+ * (ImprecisionMap.ts:587-597), so the guard is reached when the widest value a distribution
  * can draw reaches a note's rendered length — and the same code path skips any note carrying
  * no `@milliseconds.date.end`, which is the second reason a raw score cannot answer this.
  *
@@ -424,7 +428,7 @@ function imprecisionDurationCliffs(
   for (const environment of environmentsOf(performance)) {
     const map = environment.maps.get(mapName);
     if (map === undefined) continue;
-    for (const distribution of map.getChildElements().toArray()) {
+    for (const distribution of map.getChildElements()) {
       if (!DISTRIBUTION_ELEMENTS.includes(distribution.getLocalName())) continue;
       const widest = widestDrawableValue(distribution);
       if (widest === null) continue;
@@ -447,7 +451,7 @@ function widestDrawableValue(distribution: Element): number | null {
     if (value !== null) magnitudes.push(Math.abs(value));
   }
   if (localName === DISTRIBUTION_LIST_ELEMENT) {
-    for (const measurement of distribution.getChildElements(MEASUREMENT_ELEMENT).toArray()) {
+    for (const measurement of distribution.getChildElements(MEASUREMENT_ELEMENT)) {
       for (const name of imprecisionGroupAttributes('imprecisionDuration', MEASUREMENT_ELEMENT)) {
         const value = numberOrNull(measurement, name);
         if (value !== null) magnitudes.push(Math.abs(value));

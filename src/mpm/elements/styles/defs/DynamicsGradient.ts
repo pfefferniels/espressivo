@@ -1,6 +1,7 @@
 import { Attribute, Element } from '../../../../xml/XomTypes.js';
 import { attribute } from '../../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../../names.js';
+import { head, isNonEmpty } from '../../../../prelude/index.js';
 
 /**
  * The `dynamicsGradient` transformer of an `OrnamentDef`: it ramps velocity linearly
@@ -36,16 +37,19 @@ export class DynamicsGradient {
    * Floating-point operation order feeds rendered velocity; item T19 owns this math.
    */
   apply(chordSequence: Element[][], scale: number): void {
+    // The `length > 0` arm of the chain this replaces, hoisted: with nothing to write to,
+    // neither branch did anything.
+    if (!isNonEmpty(chordSequence)) return;
     if (chordSequence.length > 1) {
       const constFac =
         (scale * (this.transitionTo - this.transitionFrom)) / (chordSequence.length - 1);
       const fromVelocity = this.transitionFrom * scale;
-      for (let n = 0; n < chordSequence.length; ++n) {
+      for (const [n, chord] of chordSequence.entries()) {
         const ornamentDynamics = constFac * n + fromVelocity;
-        this.setOrnamentDynamicsAtt(ornamentDynamics, chordSequence[n]);
+        this.setOrnamentDynamicsAtt(ornamentDynamics, chord);
       }
-    } else if (chordSequence.length > 0) {
-      this.setOrnamentDynamicsAtt(this.transitionTo * scale, chordSequence[0]);
+    } else {
+      this.setOrnamentDynamicsAtt(this.transitionTo * scale, head(chordSequence));
     }
   }
 
@@ -88,7 +92,9 @@ export class DynamicsGradient {
     if (this.id !== null && this.id !== '')
       dg.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', this.id));
     this.setXml(dg);
-    return this.xml!;
+    // The very element `setXml` just stored. The `this.xml!` this replaces asserted that
+    // the assignment two characters earlier had happened.
+    return dg;
   }
 
   toXml(): string {

@@ -21,6 +21,7 @@ import {
   resolveOptions,
   type ExaggerateOptions,
 } from '../../src/expression/options.js';
+import type { Result } from '../../src/prelude/index.js';
 import { EXPRESSION_DIMENSIONS, type ExaggerationFactors } from '../../src/expression/registry.js';
 import { globalDocument } from './applierFixtures.js';
 
@@ -34,9 +35,29 @@ function run(factors: ExaggerationFactors, options?: ExaggerateOptions): void {
   applyExaggeration(parseMpmRoot(DOCUMENT), factors, options);
 }
 
+/**
+ * The refusal a resolver answered with, having asserted that it refused at all.
+ *
+ * Stricter than the `expect(() => …).toThrow(/…/)` these assertions used to be: `toThrow`
+ * accepts ANY throw, so a `TypeError` from a bug inside the resolver would have satisfied it.
+ * Here the value has to be a refusal, and the message has to match.
+ */
+function refusal(result: Result<unknown, string>): string {
+  expect(result.ok).toBe(false);
+  if (result.ok) throw new Error('expected a refusal, got a resolved value');
+  return result.error;
+}
+
+/** The value a resolver answered with, having asserted that it resolved at all. */
+function resolved<T>(result: Result<T, string>): T {
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw new Error(`expected a resolved value, got the refusal: ${result.error}`);
+  return result.value;
+}
+
 describe('resolveOptions — defaults (§4)', () => {
   it('fills in every option', () => {
-    expect(resolveOptions()).toEqual({
+    expect(resolved(resolveOptions())).toEqual({
       performance: null,
       scope: DEFAULT_SCOPE,
       center: {},
@@ -60,45 +81,45 @@ describe('resolveOptions — defaults (§4)', () => {
 
 describe('resolveOptions — rejections (A11)', () => {
   it('rejects an inverted velocity range', () => {
-    expect(() => resolveOptions({ velocityRange: { min: 100, max: 10 } })).toThrow(
+    expect(refusal(resolveOptions({ velocityRange: { min: 100, max: 10 } }))).toMatch(
       /velocityRange\.min must be below/,
     );
   });
 
   it('rejects a velocity floor of 0, which the log space cannot write back', () => {
-    expect(() => resolveOptions({ velocityRange: { min: 0, max: 127 } })).toThrow(/note-off/);
+    expect(refusal(resolveOptions({ velocityRange: { min: 0, max: 127 } }))).toMatch(/note-off/);
   });
 
   it('rejects a non-finite velocity range', () => {
-    expect(() => resolveOptions({ velocityRange: { min: 1, max: NaN } })).toThrow(/finite/);
+    expect(refusal(resolveOptions({ velocityRange: { min: 1, max: NaN } }))).toMatch(/finite/);
   });
 
   it('rejects a rubato guard outside (0,1)', () => {
-    expect(() => resolveOptions({ minRubatoWindow: 0 })).toThrow(/\(0,1\)/);
-    expect(() => resolveOptions({ minRubatoWindow: 1 })).toThrow(/\(0,1\)/);
+    expect(refusal(resolveOptions({ minRubatoWindow: 0 }))).toMatch(/\(0,1\)/);
+    expect(refusal(resolveOptions({ minRubatoWindow: 1 }))).toMatch(/\(0,1\)/);
   });
 
   it('rejects a center outside its dimension’s own domain, naming the key', () => {
-    expect(() => resolveOptions({ center: { tempo: 0 } })).toThrow(/center\.tempo/);
-    expect(() => resolveOptions({ center: { dynamics: -5 } })).toThrow(/center\.dynamics/);
+    expect(refusal(resolveOptions({ center: { tempo: 0 } }))).toMatch(/center\.tempo/);
+    expect(refusal(resolveOptions({ center: { dynamics: -5 } }))).toMatch(/center\.dynamics/);
   });
 
   it('keeps a valid center and drops nothing else', () => {
-    expect(resolveOptions({ center: { tempo: 96 } }).center).toEqual({ tempo: 96 });
+    expect(resolved(resolveOptions({ center: { tempo: 96 } })).center).toEqual({ tempo: 96 });
   });
 
   it('rejects a non-integer performance index', () => {
-    expect(() => resolveOptions({ performance: 1.5 })).toThrow(/integer index/);
+    expect(refusal(resolveOptions({ performance: 1.5 }))).toMatch(/integer index/);
   });
 });
 
 describe('resolveFactors — R3 and A11', () => {
   it('defaults every missing key to the identity', () => {
-    const resolved = resolveFactors({ tempo: 2 });
-    expect(resolved.tempo).toBe(2);
+    const factors = resolved(resolveFactors({ tempo: 2 }));
+    expect(factors.tempo).toBe(2);
     for (const dimension of EXPRESSION_DIMENSIONS) {
       if (dimension === 'tempo') continue;
-      expect(resolved[dimension]).toBe(1);
+      expect(factors[dimension]).toBe(1);
     }
   });
 

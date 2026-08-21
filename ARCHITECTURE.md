@@ -1,5 +1,74 @@
 # meico-ts — Target Architecture (T12)
 
+> ## ⚠ Superseded in part by the functional-core campaign (2026-08-19/20)
+>
+> **Read this box before applying any RULE below.**
+>
+> This document is the design ruling of the T12–T21 campaign, whose job was to make an
+> idiomatic TypeScript port that is provably equivalent to Java meico. It succeeded, and most
+> of what is here still governs. But several of its rules were written to *protect* a port
+> under a byte-equivalence gate, and they now forbid the direction the codebase is being taken
+> in. Those rules are listed here so that nobody applies one in good faith and undoes current
+> work — the same failure mode as a comment that describes what code used to do.
+>
+> The new direction, decided by the project owner: move the architecture toward a functional
+> one with a strong type system — Sean Parent's axes of *no incidental data structures*, *no
+> inheritance*, *no raw loops*, and *regular types with no invalid states* — down to the level
+> of individual expressions. **The only hard gate is byte-equivalence and the test suite.**
+> Public API may break freely.
+>
+> | rule | status |
+> | --- | --- |
+> | **C1** — a type stays class-based if it wraps a live XML subtree | **superseded.** The live XOM tree being the domain model is the *root cause* this campaign exists to remove. `DistributionData` has already become a six-armed sum type; the `*Def` and `*Style` hierarchies are next. |
+> | **C3** — the `*Data` holders stay classes | **superseded**, and already amended in place at its own site. Seven of the eight had a *dead* XML constructor that was a second, divergent reader of every instruction element; all seven are deleted. |
+> | **C5** — no mass `getX()`/`setX()` conversion | **superseded in principle**, but its *reasoning* is still worth reading: (ii) named a real collision hazard, and (iii) correctly observed that a thousand mechanical edits is the worst diff shape for an equivalence review. The conclusion changes; the caution does not. Convert incrementally, per module, gated. |
+> | **E1** — the interior keeps Java's logs-and-returns-null behaviour, bug-for-bug | **narrowed.** Parity of *output* still binds absolutely. What no longer binds is the *mechanism*: returning a `Result` instead of logging to the console and returning `null` skips exactly the same elements and produces exactly the same bytes, while keeping the reason as a value. Behaviour-preserving by construction. |
+> | **I6** — no allocation-heavy immutability in hot loops | **still binding, and now measurable.** `npm run bench` exists; `scripts/bench-baseline.json` pins it. Do not trade a measured win for elegance. |
+> | **N6 / the lint scope** | **extended.** More compiler flags and lint rules are on; see `tsconfig.json`, which documents each one's measured cost and why the two expensive ones are still off. |
+>
+> Two instruments this document names **do not exist** and should not be looked for: the
+> `scratchpad/` pipeline byte-probes and token-stream tools belonged to agent scratchpads and
+> were never in the tree. The byte gate *is* the suite — `npm run gate` runs its four suites,
+> 121 tests, in about two seconds. `npm run bench` is the performance gate.
+>
+> **Where the campaign got to**, so the numbers above are read against something:
+>
+> | | before | now |
+> | --- | --- | --- |
+> | ESLint findings in `src/` | 1053 | 259 |
+> | `no-non-null-assertion` | 841 | 160 |
+> | `noUncheckedIndexedAccess` in `src/` | 885 | 0 — the flag is **on** |
+> | `for (let …)` loops | 337 | 201 |
+> | converter ambient cursors | 8 | 0 |
+> | `console.*` in `src/` | 167 | 143 |
+> | tests | 5480 | 6141 |
+>
+> **Where the remaining findings are is the more useful number.** Seven of `src/`'s ten
+> directories are at zero: `api`, `comparison`, `expression`, `midi`, `music`, `prelude`,
+> `supplementary`. What is left is `msm` 147, `mpm` 87, `xml` 14, `mei` 11 — and `src/msm` is
+> the last layer nobody had touched, which is why it is now the worst one. That distribution
+> is the same evidence the campaign opened with, read the other way round: the findings track
+> the Java-idiom layers, not taste.
+>
+> One figure deliberately *not* in that table: `tests/` is at 1047 under
+> `noUncheckedIndexedAccess` and opted out in `tsconfig.tests.json`; it is a separate job and
+> `scripts/strict-ratchet.mjs` keeps it monotonic.
+>
+> **A pattern worth naming, because it recurred and will again.** Three times now the fix has
+> been the same shape: *the port kept Java's exception handlers after replacing Java's
+> throwing constructors with total ones.* `Midi.cloneSequence` caught an
+> `InvalidMidiDataException` that cannot exist here because our `Sequence` constructor is two
+> assignments; all fourteen `EventMaker.createX` functions did the same, because Java's
+> `new ShortMessage(...)` validates where ours masks (`data1 & 0x7f`). Between them that was
+> 15 unreachable `| null` returns and **143 call sites paying a `!` for a value no test in the
+> suite had ever observed**. Before converting a `catch (e) { console.error(e); return null; }`
+> into a `Result`, check whether anything inside it can throw *in this language* — sometimes
+> the honest fix is to delete the branch, not to model it.
+>
+> Everything not named above still applies, in particular the unit and type discipline of §7
+> and the parity ledger of §6.3.
+
+
 Status: **design ruling**, produced by the T12 architect on 2026-08-08 against the tree at
 `304e90a` (last green, post-T20b). No code was changed to produce it.
 
@@ -164,11 +233,36 @@ become a one-directional edge. The deep-import hazard documented in `GenericStyl
 the charter then disappears, and the "import `Mpm` first" workaround in every probe script
 becomes unnecessary (leave the probes alone anyway — they still work).
 
-**RULE M4 (registration stays, and stays explicit).** `GenericMap.registerMapFactory` is the
-right pattern and does not change. `Mpm.ts` keeps its nine side-effect imports; T18 replaces
-them with one `import './elements/maps/index.js'` barrel whose only job is to run the
-registrations, with a comment saying so. A worker must not convert the registry to a
-`switch` — that would re-create the cycle in a different shape.
+**RULE M4 (SUPERSEDED — the registry is gone; the table lives in its own module).** As
+written, this rule said that `GenericMap.registerMapFactory` was the right pattern, that
+`Mpm.ts` keeps a bare `import './elements/maps/index.js'` barrel to run the thirteen
+registrations, and that a worker must not convert the registry to a `switch` because that
+would re-create the `Mpm` ⇄ maps cycle in a different shape.
+
+The last clause was the load-bearing one and it was **true only of a table placed inside
+`GenericMap.ts`**: the nine map classes extend `GenericMap`, so a table there imports its own
+subclasses. A table in a *separate* module has the edges the other way round —
+`maps/map.ts` → the nine → `GenericMap` — and is acyclic, which `import/no-cycle` confirms on
+every lint run. That is the same move `styles/style.ts` had already made for the six style
+subclasses.
+
+What the registry cost, measured rather than argued: the registrations ran as import side
+effects, so `package.json` carried
+`"sideEffects": ["./dist/mpm/Mpm.js", "./dist/mpm/elements/maps/*.js"]` to stop a bundler
+eliding the bare barrel import. Bundling the facade with rollup's
+`treeshake.moduleSideEffects: false` — exactly the licence an absent `sideEffects` field
+grants — produced a build in which **all thirteen map names parsed into a plain
+`GenericMap`**, with the whole vitest suite green throughout, because vitest does not
+tree-shake. `Mei2MsmMpmConverter` value-imports four of the nine map modules, so the same
+hazard was already live in a partial form for anyone reaching it without going through
+`Mpm.ts`.
+
+So: **the dispatch table is `MAP_SHAPE` in `src/mpm/elements/maps/map.ts`**, a
+`Record<MapKind, MapShape>` declared total over the thirteen `<dated>` child names
+`mpm/names.ts` publishes; a fourteenth is a compile error there rather than a silent
+fallback. `GenericMap` knows nothing of it, and must not — a table in `GenericMap.ts` is
+still the cycle this rule was written to forbid. `package.json` has no `sideEffects` field
+and must not regain one; the barrel and `Mpm.ts`'s bare import of it are deleted.
 
 **RULE M5 (no directory renames beyond those listed).** `src/supplementary/` keeps its name
 (a Java package name, but renaming it rewrites every import in the tree for zero benefit and
@@ -490,16 +584,17 @@ reference down. Nothing is stored on a class, a module, or `globalThis`.
 `render*ToMap` entry points and so could not actually deliver a seed to the facade's headline
 MIDI function. `Performance.perform` has exactly **one** `src/` caller:
 
-Line numbers below are **as implemented**, re-derived from the committed T19a tree
-(`f947836`); the first draft's were pre-implementation guesses and matched neither the
-baseline nor the work tree.
+Line numbers below are **as implemented**, re-derived from the tree at `b217f36`. They were
+last anchored to `f947836` and had gone stale by roughly 180 lines when `perform` became a
+fold over named stages; re-derive them again rather than trusting them, and prefer the symbol
+names, which have not moved.
 
 | # | hop | file:line |
 |---|---|---|
-| 1 | `Msm.exportExpressiveMidi(performance?, generateProgramChanges?, options?)` → `performance.perform(this, options)` | `src/msm/Msm.ts:1033` (the pass-through; the method signature is a few lines above) |
-| 2 | `Performance.perform(msm, options?)` builds the `RenderContext` | `src/mpm/elements/Performance.ts:354` (signature) |
-| 3 | → `MovementMap.renderMovementToMap(ctx)` | called at `Performance.ts:553` |
-| 4 | → `ImprecisionMap.renderImprecisionToMap(map, shakePolyphonicPart, ctx)` | called at `Performance.ts:457` (global) and `578, 596, 598, 600, 602` (per part) |
+| 1 | `Msm.exportExpressiveMidi(performance?, generateProgramChanges?, options?)` → `performance.perform(this, options)` | `src/msm/Msm.ts:1041` (the pass-through; the method signature is a few lines above) |
+| 2 | `Performance.perform(msm, options?)` builds the `RenderContext` | `src/mpm/elements/Performance.ts:537` (signature) |
+| 3 | → `MovementMap.renderMovementToMap(ctx)` | called at `Performance.ts:885` |
+| 4 | → `ImprecisionMap.renderImprecisionToMap(map, shakePolyphonicPart, ctx)` | called at `Performance.ts:735` and `1011` (pedal maps) and `1030, 1032, 1034, 1036` (the four per-part domains) |
 
 Hop 1 is the one that matters and the one that was missing: without it,
 `renderExpressiveMidi` — the facade function the downstream consumer actually calls — cannot
@@ -580,10 +675,31 @@ today.
 
 ## 3. Null-vs-undefined policy
 
-The tree carries **1080** `no-non-null-assertion` violations. They are a symptom: the port
-maps Java's implicitly-nullable returns to honest `T | null` types and then asserts `!` at
-every call site. The cure is narrowing *return types*, never bulk-deleting `!` and never
-bulk-adding guards.
+> **Figures updated 2026-08-20.** This section opened by saying the tree carried **1080**
+> `no-non-null-assertion` violations. It carries **170**. The diagnosis below was right and is
+> left standing because it is what the cure was built on; only the count has moved.
+
+The port maps Java's implicitly-nullable returns to honest `T | null` types and then asserts
+`!` at every call site. That is the symptom. **The cure is narrowing *return types*, never
+bulk-deleting `!` and never bulk-adding guards** — and that instruction turned out to be the
+load-bearing one. `src/mei` alone went from 532 to zero without a single `!` becoming an `as`:
+roughly 290 collapsed into a named path or accessor, 110 were restructured to read once and
+branch instead of test-then-assert, 75 became a `require*` call that throws a typed
+`MissingNodeError` naming what was missing, and 57 were fixed at the *type* rather than the
+call site — `addStyleDef`'s spurious `| null` alone accounted for 15.
+
+Two things that made it mechanical rather than risky, worth knowing before the next 170:
+
+- `src/xml/tree.ts` gained `requireAttributeValue`, whose docstring carries the proof that it
+  is **exactly** `element.getAttributeValue(name)!` — this port's `Element.getAttribute`
+  already matches on local name, so `attribute()`'s namespaced fallbacks are unreachable when
+  the plain lookup misses. That proof is what let ~150 sites convert without a behaviour
+  question.
+- Java's behaviour on a missing value is the spec. Java NPEs where a reference is unresolved,
+  so a `require*` throw is usually the parity-correct answer and a `continue` is not. Where
+  Java would *not* throw, converting is a behaviour change and needs a control — and there was
+  exactly one such site (`makeTimeSignature`'s `sym` block, reached by either `@sym` or
+  `@meter.sym`, where the assertion was already false and harmlessly so).
 
 **RULE N1 (the meaning split, everywhere).** `null` means *"the domain says there is nothing
 here"*. `undefined` means *"the caller did not supply this"*. They are never
@@ -730,7 +846,7 @@ and a gate that cannot fail is not a gate.
 | **T16** | N3's `getXml()` narrowing and the `!` deletions it enables across `mpm/elements/**`; N1 to every signature it rewrites |
 | **T13** | N4 |
 | **T15** | N1/N2 opportunistically inside the converter — but never as part of a dispatch-table hunk |
-| **T21** | audits: `no-non-null-assertion` count must be strictly below 1080 and journaled |
+| **T21** | audits: `no-non-null-assertion` count must be strictly below 1080 and journaled *(historical threshold; the count is now 170 — see §3)* |
 
 > **EQ-RISK (N2a).** Replacing `f(...)!` with `requireF(...)` moves the failure from "the
 > next property access throws `TypeError`" to "the accessor throws `MissingNodeError`". On
@@ -788,6 +904,17 @@ of this rule.
 lazily-computed private memos (`MovementData.x1`/`x2`), and their methods hold
 parity-critical arithmetic. What changes (T16) is that the *duplicated* arithmetic moves into
 one pure module:
+
+> **AMENDED — `DistributionData` is no longer one of them.** The functional-core campaign
+> replaced it with `src/mpm/elements/maps/data/distribution.ts`: a six-armed discriminated
+> union, one arm per `distribution.*` family, parsed by a free `parseDistribution` returning
+> a `Result`. It met none of the three tests this rule states. It carried no memo; its only
+> arithmetic was a min/max scan over the measurement list, which is now a free function
+> beside the type; and it was the *reason* the rule's parenthetical about parsing from XML
+> was worth honouring least — one class covering six families with ten `| null` fields, all
+> parsed unconditionally, cost thirty non-null assertions at the single read site. The
+> other seven `*Data` classes are untouched by that reasoning, and this rule still governs
+> them.
 
 ```ts
 // src/mpm/elements/maps/data/bezier.ts — pure functions, no classes, no XML
@@ -1450,13 +1577,26 @@ Mechanical translation rules — apply these, do not improvise:
 4. **Negative control:** move one case from `DESCEND` to `IGNORE` and prove the integration
    suite goes red. If it does not, that element is not covered by any fixture and the change
    is *unproven* — journal it as such.
-5. **Do not split the cursor.** `currentMdiv`/`currentPart`/`currentLayer`/`currentMeasure`/
-   `currentChord`/`currentMsmMovement`/`currentWork`/`currentPerformance` and the deferred
-   lists (`accid`, `endids`, `tstamp2s`, `lyrics`, `arpeggiosToSort`, `allNotesAndChords`)
-   may be *renamed* into a `ConversionContext` type only if every field moves verbatim.
-   Changing a field's lifetime or a drain point is out of scope: `reset()` semantics and the
-   drain points are subtle (documented in the class comment T10 wrote) and the fixture suite
-   cannot prove lifetime changes.
+5. ~~**Do not split the cursor.**~~ **Superseded 2026-08-20 by the functional-core campaign's
+   milestone 7, which did split it.** The eight `current*` fields are now two records:
+   `WalkContext` (`part`, `layer`, `measure`, `chord`), threaded down `convertElement` as a
+   parameter because each of the four was a hand-written save/restore around the recursive
+   call, i.e. dynamic scoping; and `MovementContext` (`msm`, `work`, `performance`), built
+   once per `mdiv` and reached through `WalkContext.movement`, because those were set once and
+   never restored, i.e. a Reader. `currentMdiv` is a local in `makeMovement`, which was its
+   only reader. The deferred lists (`accid`, `endids`, `tstamp2s`, `lyrics`,
+   `arpeggiosToSort`, `allNotesAndChords`) and `endingCounter` **stay fields**, unchanged and
+   undrained differently: they are accumulators, not positions, and `reset()` is now about
+   exactly them.
+
+   **The hazard this rule named was real and is why the milestone opened with tests.** All
+   sixteen MEI fixtures hold exactly one `mdiv`, so `reset()` runs once per conversion with an
+   empty converter in front of it and the byte suites cannot see a lifetime at all — measured,
+   not assumed. `tests/mei/Mei2MsmMpmConverter.test.ts` now carries a multi-movement section
+   that pins each surviving field's lifetime, written *before* anything moved, and it found a
+   real defect on the way: `arpeggiosToSort` was drained at the end of `makeMovement` and
+   never emptied, so a second `mdiv` overwrote the first one's `note.order` with the empty
+   string. Anyone touching this state again should keep that section as the gate.
 6. Keep `convert(mei: Mei)` as the public entry point with its current name — 10 integration
    test call sites use it. Drop only the `convert(root: Element)` overload, making the walker
    the private `convertElement`. Then **zero** integration test edits are needed.
@@ -1583,7 +1723,7 @@ enablement *first*, then audits:
 6. `no-unnecessary-condition` — every finding is either fixed or journaled; this is the rule
    that catches leftover `?? []` guards from N2b and redundant `!` from N3;
 7. `import/no-cycle` clean;
-8. `no-non-null-assertion` strictly below 1080 with the delta journaled;
+8. `no-non-null-assertion` strictly below 1080 with the delta journaled *(historical; now 170)*;
 9. coverage per charter invariant 7;
 10. `vitest.config.ts`'s include list updated for the moved paths (mechanical only — note that
     `src/api/**`, `src/music/**`, `src/xml/**`, `src/units.ts` must be **in** scope, and

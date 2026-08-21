@@ -37,6 +37,7 @@
  * option feeding `estimates` only, so `applyExaggeration` does not take it (A10's R1
  * carve-out).
  */
+import { fromEntriesExact } from '../prelude/index.js';
 import type { ExpressionDimension } from './registry.js';
 import { EXPRESSION_DIMENSIONS } from './registry.js';
 import type { SiteRef } from './siteRef.js';
@@ -437,9 +438,7 @@ export function estimatesWithoutMsm(accentuationRan: boolean): MsmDependentEstim
 
 /** A fresh accumulator per dimension — the full fifteen-key record RULE N4 requires. */
 export function newAccumulators(): Record<ExpressionDimension, DimensionAccumulator> {
-  return Object.fromEntries(
-    EXPRESSION_DIMENSIONS.map((dimension) => [dimension, new DimensionAccumulator()]),
-  ) as Record<ExpressionDimension, DimensionAccumulator>;
+  return fromEntriesExact(EXPRESSION_DIMENSIONS, () => new DimensionAccumulator());
 }
 
 /**

@@ -27,6 +27,7 @@
  * derives it from `opCounts` in a cookbook recipe WITH the non-equivalence caveat, because
  * mpmify's matcher is greedy-nearest with a tolerance while this one is a cost-minimizing DP.
  */
+import { filterMap } from '../prelude/index.js';
 import { attribute } from '../xml/tree.js';
 import { readAttributeValue, readNumericAttributeValue } from '../expression/attributes.js';
 import { serializeMpmRoot, parseMpmRoot } from '../expression/mpmDocument.js';
@@ -430,32 +431,34 @@ function attributeDeltas(
   const elementB = step.b?.entry.element ?? null;
   const localName = (elementA ?? elementB)?.getLocalName() ?? '';
 
-  const deltas: EditOpAttribute[] = [];
-  for (const row of rows) {
-    // An op's two elements can differ in local name — a `<style>` substituted for an
-    // `<articulation>` is a legal DP move — so a row applies where it names EITHER side's
-    // element, and the absent side reads `⊥` exactly as an absent attribute does.
-    if (
-      row.element !== localName &&
-      row.element !== elementA?.getLocalName() &&
-      row.element !== elementB?.getLocalName()
-    )
-      continue;
-    const rawA = elementA === null ? null : readAttributeValue(elementA, row.attribute);
-    const rawB = elementB === null ? null : readAttributeValue(elementB, row.attribute);
-    if (rawA === null && rawB === null) continue;
-    if (rawA === rawB) continue;
+  // Three `continue`s and one push: `filterMap`, with each guard as a `null` return. The
+  // guards keep their order, so `localDistance` — the only arithmetic here — still runs exactly
+  // once per row that reaches it and never for a row that does not.
+  return [
+    ...filterMap(rows, (row) => {
+      // An op's two elements can differ in local name — a `<style>` substituted for an
+      // `<articulation>` is a legal DP move — so a row applies where it names EITHER side's
+      // element, and the absent side reads `⊥` exactly as an absent attribute does.
+      if (
+        row.element !== localName &&
+        row.element !== elementA?.getLocalName() &&
+        row.element !== elementB?.getLocalName()
+      )
+        return null;
+      const rawA = elementA === null ? null : readAttributeValue(elementA, row.attribute);
+      const rawB = elementB === null ? null : readAttributeValue(elementB, row.attribute);
+      if (rawA === null && rawB === null) return null;
+      if (rawA === rawB) return null;
 
-    deltas.push({
-      key: row.key,
-      name: row.attribute,
-      valueA: rawA === null ? null : (readValue(elementA, row) ?? rawA),
-      valueB: rawB === null ? null : (readValue(elementB, row) ?? rawB),
-      deltaJnd: localDistance(row, readValued(elementA, row), readValued(elementB, row)).distance,
-    });
-  }
-
-  return deltas.sort((x, y) => y.deltaJnd - x.deltaJnd);
+      return {
+        key: row.key,
+        name: row.attribute,
+        valueA: rawA === null ? null : (readValue(elementA, row) ?? rawA),
+        valueB: rawB === null ? null : (readValue(elementB, row) ?? rawB),
+        deltaJnd: localDistance(row, readValued(elementA, row), readValued(elementB, row)).distance,
+      };
+    }),
+  ].sort((x, y) => y.deltaJnd - x.deltaJnd);
 }
 
 /** The row's value as a number, or null where the attribute is absent or not numeric. */
@@ -581,8 +584,12 @@ function invertScript(script: EditScript): EditScript {
     };
   });
 
-  const ranking = ops.map((_op, index) => index);
-  ranking.sort((x, y) => ops[y].cost - ops[x].cost || x - y);
+  // Decorated before sorting, `editScript.rankByCostDescending`'s shape: the cost travels with
+  // its delivery index, so the comparator states the rule rather than indexing `ops` twice.
+  const ranking = ops
+    .map((op, index) => ({ cost: op.cost, index }))
+    .sort((x, y) => y.cost - x.cost || x.index - y.index)
+    .map((entry) => entry.index);
 
   return {
     ...script,
@@ -603,5 +610,5 @@ function invertScript(script: EditScript): EditScript {
 
 /** A key that survives the mirror: an op is identified by where it sits in the forward order. */
 function identityOf(op: EditOp): string {
-  return `${String(op.applicationIndex)}`;
+  return String(op.applicationIndex);
 }

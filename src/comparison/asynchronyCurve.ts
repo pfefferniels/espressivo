@@ -36,6 +36,7 @@
  * on very short notes. Both need note data, which this dimension does not have — §5.7's
  * enumerated non-goals say so explicitly.
  */
+import { withNext } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { readAttributeValue } from '../expression/attributes.js';
 import { bottom, valued, type Valued } from './values.js';
@@ -98,12 +99,19 @@ export function readAsynchronySegments(
   const notes: AsynchronyCurveNote[] = [];
   const breakpoints = new Set<number>([0]);
 
-  for (const [index, entry] of entries.entries()) {
+  // ANY next entry ends the span — the whole point of behaviour 1.
+  // The end is PAIRED with its entry rather than read at `index + 1`. "There is no next
+  // entry" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
+  // system had to be told about with `as (typeof xs)[number] | undefined`.
+  // Each entry with its successor, or `null` for the last — `withNext`. The span it opens
+  // then runs to `next?.ticks ?? Infinity`, which says at the point of use that the last
+  // entry runs to the end of time. The `[...xs.slice(1).map(…), Infinity]` array this
+  // replaces built that sentinel where it could not be read as one, and built a whole array
+  // to be zipped away.
+  for (const [entry, next] of withNext(entries)) {
+    const endTicks = next?.ticks ?? Number.POSITIVE_INFINITY;
     const element: Element = entry.element;
     const startTicks = entry.ticks;
-    // ANY next entry ends the span — the whole point of behaviour 1.
-    const next = entries[index + 1] as (typeof entries)[number] | undefined;
-    const endTicks = next === undefined ? Number.POSITIVE_INFINITY : next.ticks;
 
     breakpoints.add(startTicks);
 

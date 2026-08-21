@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../support/result.js';
 import { AbstractXmlSubtree } from '../../src/xml/AbstractXmlSubtree.js';
+import { MissingNodeError } from '../../src/xml/errors.js';
 import { Builder, Element } from '../../src/xml/XomTypes.js';
 import { GenericMap } from '../../src/mpm/elements/maps/GenericMap.js';
 
@@ -36,6 +38,11 @@ describe('AbstractXmlSubtree', () => {
     expect(probe.getXmlOrNull()).toBeNull();
   });
 
+  it('getXml names the un-parsed state instead of handing back a null typed as Element', () => {
+    const probe = new Probe();
+    expect(() => probe.getXml()).toThrow(MissingNodeError);
+  });
+
   it('getXml and getXmlOrNull return the very element parseData was given', () => {
     const probe = new Probe();
     const element = new Element('tempoMap');
@@ -52,7 +59,7 @@ describe('AbstractXmlSubtree', () => {
   });
 
   it('a subtree reached through a factory always has its element (RULE N3)', () => {
-    const map = GenericMap.createGenericMap('tempoMap')!;
+    const map = okValue(GenericMap.createGenericMap('tempoMap'));
     expect(map.getXmlOrNull()).not.toBeNull();
     expect(map.getXml()).toBe(map.getXmlOrNull());
   });

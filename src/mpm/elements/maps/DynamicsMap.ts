@@ -1,10 +1,19 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { DYNAMICS_STYLE, MPM_NAMESPACE } from '../../names.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import { DynamicsData } from './data/DynamicsData.js';
-import { DynamicsStyle } from '../styles/DynamicsStyle.js';
+import {
+  resolveDynamics,
+  dynamicsAt,
+  subNoteDynamicsSegment,
+  type Dynamics,
+} from './data/dynamics.js';
+import { numericDynamicsValue } from '../styles/style.js';
+import { elementAt, mapPresent, unwrapOr } from '../../../prelude/index.js';
 
 /**
  * An MPM `dynamicsMap`: loudness over the timeline, as constant levels and as
@@ -21,17 +30,24 @@ import { DynamicsStyle } from '../styles/DynamicsStyle.js';
  * Port of meico.mpm.elements.maps.DynamicsMap
  */
 export class DynamicsMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createDynamicsMap(xml?: Element): DynamicsMap | null {
-    try {
-      return xml !== undefined ? new DynamicsMap(xml) : new DynamicsMap('dynamicsMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<dynamicsMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createDynamicsMap(): DynamicsMap;
+  static createDynamicsMap(xml: Element): Result<DynamicsMap, MpmParseError>;
+  static createDynamicsMap(xml?: Element | null): DynamicsMap | Result<DynamicsMap, MpmParseError> {
+    return xml === undefined
+      ? new DynamicsMap(GenericMap.emptyMapElement('dynamicsMap'))
+      : GenericMap.makeMap(xml, 'DynamicsMap', (elt) => new DynamicsMap(elt));
   }
 
   addDynamics(
@@ -124,7 +140,7 @@ export class DynamicsMap extends GenericMap {
     return protraction;
   }
 
-  getDynamicsDataAt(date: number): DynamicsData | null {
+  getDynamicsDataAt(date: number): Dynamics | null {
     for (let i = this.getElementIndexBeforeAt(date); i >= 0; --i) {
       const dd = this.getDynamicsDataOf(i);
       if (dd !== null) return dd;
@@ -133,7 +149,7 @@ export class DynamicsMap extends GenericMap {
   }
 
   /**
-   * Read the dynamics instruction at `index` into a {@link DynamicsData}, resolving
+   * Read the dynamics instruction at `index` into a {@link Dynamics}, resolving
    * style-relative names such as `"forte"` through the style in scope (found by scanning
    * backwards for the nearest preceding `<style>`). Returns null if the entry is not a
    * usable `<dynamics>`.
@@ -142,54 +158,52 @@ export class DynamicsMap extends GenericMap {
    * instruction has no curve for them to shape. Each is clamped to its valid range on the
    * way in (see {@link DynamicsMap.clampCurvature}).
    *
-   * When there is no `transition.to`, the instruction is made explicitly constant —
-   * `transitionTo` is set equal to `volume` and both curve parameters are zeroed —
-   * rather than left null. That keeps {@link DynamicsData.getDynamicsAt} on a single
-   * code path instead of having it branch on null.
+   * What the declared shape leaves out, {@link resolveDynamics} fills in — an absent
+   * `transition.to` becomes a target equal to `volume`, and absent curve parameters become
+   * 0.0. That is the incumbent's behaviour with the substitutions gathered into one place:
+   * the constant branch used to spell all four out here, while an absent `@curvature` on a
+   * *transition* was left null and defaulted to 0.0 much later, in place, by the method
+   * that computed the control points.
    */
-  getDynamicsDataOf(index: number): DynamicsData | null {
+  getDynamicsDataOf(index: number): Dynamics | null {
     const i = this.resolveEntryIndex(index, 'dynamics');
     if (i < 0) return null;
-    const e = this.elements[i].getValue();
-    const dd = new DynamicsData();
-    dd.startDate = this.elements[i].getKey();
-    dd.endDate = this.getEndDate(i);
-    dd.xml = e;
-    const att = attribute('id', e);
-    if (att !== null) dd.xmlId = att.getValue();
-    dd.styleName = this.findStyleNameAt(i) ?? dd.styleName;
-    dd.style = this.getStyle(DYNAMICS_STYLE, dd.styleName) as DynamicsStyle | null;
+    const entry = this.entryAt(i);
+    const e = entry.getValue();
+
     const volAtt = attribute('volume', e);
     if (volAtt === null) return null;
-    dd.volumeString = volAtt.getValue();
-    dd.volume = DynamicsStyle.getNumericValueStatic(dd.volumeString, dd.style);
-    const ttAtt = attribute('transition.to', e);
-    if (ttAtt !== null) {
-      dd.transitionToString = ttAtt.getValue();
-      dd.transitionTo = DynamicsStyle.getNumericValueStatic(dd.transitionToString, dd.style);
-      const curvAtt = attribute('curvature', e);
-      if (curvAtt !== null)
-        dd.curvature = DynamicsMap.clampCurvature(parseFloat(curvAtt.getValue()));
-      const protAtt = attribute('protraction', e);
-      if (protAtt !== null)
-        dd.protraction = DynamicsMap.clampProtraction(parseFloat(protAtt.getValue()));
-    } else {
-      dd.transitionToString = dd.volumeString;
-      dd.transitionTo = dd.volume;
-      dd.curvature = 0.0;
-      dd.protraction = 0.0;
-    }
-    const sndAtt = attribute('subNoteDynamics', e);
-    if (sndAtt !== null) dd.subNoteDynamics = sndAtt.getValue() === 'true';
-    return dd;
-  }
+    const volumeString = volAtt.getValue();
+    const style = this.getStyle('dynamics', this.findStyleNameAt(i));
 
-  private getEndDate(index: number): number {
-    for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === 'dynamics')
-        return this.elements[j].getKey();
-    }
-    return Number.MAX_VALUE;
+    const ttAtt = attribute('transition.to', e);
+    const transitionToString = ttAtt === null ? null : ttAtt.getValue();
+    const sndAtt = attribute('subNoteDynamics', e);
+
+    return resolveDynamics({
+      startDate: entry.getKey(),
+      endDate: this.nextDateOfType(i, 'dynamics'),
+      volumeString,
+      volume: numericDynamicsValue(volumeString, style),
+      transitionToString,
+      transitionTo:
+        transitionToString === null ? null : numericDynamicsValue(transitionToString, style),
+      // Read only in the transition branch, exactly as before: a constant instruction's
+      // curve parameters are 0.0 whatever the element says.
+      curvature:
+        transitionToString === null
+          ? null
+          : mapPresent(attribute('curvature', e), (a) =>
+              DynamicsMap.clampCurvature(parseFloat(a.getValue())),
+            ),
+      protraction:
+        transitionToString === null
+          ? null
+          : mapPresent(attribute('protraction', e), (a) =>
+              DynamicsMap.clampProtraction(parseFloat(a.getValue())),
+            ),
+      subNoteDynamics: sndAtt !== null && sndAtt.getValue() === 'true',
+    });
   }
 
   /**
@@ -213,7 +227,9 @@ export class DynamicsMap extends GenericMap {
    */
   renderDynamicsToMap(map: GenericMap | null): GenericMap | null {
     if (map === null || this.elements.length === 0) return null;
-    const chanVolMap = GenericMap.createGenericMap('channelVolumeMap');
+    // `'channelVolumeMap'` contains "Map", so this cannot fail; `unwrapOr` keeps the `null`
+    // the guards below already test for rather than asserting the fact with a `!`.
+    const chanVolMap = unwrapOr(GenericMap.createGenericMap('channelVolumeMap'), null);
     let mapIndex = 0;
     for (let dynamicsIndex = 0; dynamicsIndex < this.size(); ++dynamicsIndex) {
       const dd = this.getDynamicsDataOf(dynamicsIndex);
@@ -224,10 +240,10 @@ export class DynamicsMap extends GenericMap {
           // sub-note dynamics: generate volume curve events
           DynamicsMap.generateSubNoteDynamics(dd, chanVolMap);
           for (; mapIndex < map.size(); ++mapIndex) {
-            const mapEntry = map.elements[mapIndex];
+            const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
             if (mapEntry.getKey() < dd.startDate || mapEntry.getValue().getLocalName() !== 'note')
               continue;
-            if (mapEntry.getKey() >= dd.endDate!) break;
+            if (mapEntry.getKey() >= dd.endDate) break;
             mapEntry.getValue().addAttribute(new Attribute('velocity', '100.0'));
           }
           continue;
@@ -246,35 +262,38 @@ export class DynamicsMap extends GenericMap {
       }
 
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = map.elements[mapIndex];
+        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
         if (mapEntry.getValue().getLocalName() !== 'note') continue;
         if (mapEntry.getKey() < dd.startDate) {
           mapEntry.getValue().addAttribute(new Attribute('velocity', '100.0'));
           continue;
         }
-        if (mapEntry.getKey() >= dd.endDate!) break;
+        if (mapEntry.getKey() >= dd.endDate) break;
         mapEntry
           .getValue()
-          .addAttribute(new Attribute('velocity', String(dd.getDynamicsAt(mapEntry.getKey()))));
+          .addAttribute(new Attribute('velocity', String(dynamicsAt(dd, mapEntry.getKey()))));
       }
     }
     return chanVolMap;
   }
 
   private static generateSubNoteDynamics(
-    dynamicsData: DynamicsData,
+    dynamicsData: Dynamics,
     channelVolumeMap: GenericMap,
   ): void {
-    const subNoteDynamicsSegment = dynamicsData.getSubNoteDynamicsSegment(2.0);
-    const es: Element[] = [];
-    for (const event of subNoteDynamicsSegment) {
+    const segment = subNoteDynamicsSegment(dynamicsData, 2.0);
+    // Only the first event is ever read back, so it is remembered rather than the whole array
+    // being kept to index `[0]` out of once — which is also what removes the second
+    // allocation this method used to make per sub-note transition.
+    let first: Element | null = null;
+    for (const event of segment) {
       const e = new Element('volume', channelVolumeMap.getXml().getNamespaceURI());
       e.addAttribute(new Attribute('date', String(event[0])));
       e.addAttribute(new Attribute('value', String(event[1])));
       channelVolumeMap.addElement(e);
-      es.push(e);
+      first ??= e;
     }
-    if (es.length > 0) es[0].addAttribute(new Attribute('mandatory', 'true'));
+    first?.addAttribute(new Attribute('mandatory', 'true'));
   }
 
   static renderDynamicsToMap(
@@ -283,12 +302,13 @@ export class DynamicsMap extends GenericMap {
   ): GenericMap | null {
     if (dynamicsMap !== null) return dynamicsMap.renderDynamicsToMap(map);
     if (map === null) return null;
-    for (let i = 0; i < map.size(); ++i) {
-      const e = map.getElement(i)!;
+    // Walking the index directly rather than `map.getElement(i)!` over `0 ..< map.size()`:
+    // same entries in the same order, and the map's own accessor stops having to be
+    // contradicted about the range its caller just established.
+    for (const entry of map.getAllElements()) {
+      const e = entry.getValue();
       if (e.getLocalName() === 'note') e.addAttribute(new Attribute('velocity', '100.0'));
     }
     return null;
   }
 }
-
-GenericMap.registerMapFactory('dynamicsMap', (xml) => DynamicsMap.createDynamicsMap(xml));

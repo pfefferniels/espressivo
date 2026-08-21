@@ -28,9 +28,20 @@ import {
   timingBasisIsInert,
   type ImprecisionDomain,
   type ImprecisionReading,
+  type ImprecisionSpan,
 } from '../../src/comparison/imprecisionLaws.js';
-import { DELTA_ZERO, lawsEqual, type ImprecisionLaw } from '../../src/comparison/distributions.js';
+import {
+  DELTA_ZERO,
+  deltaLaw,
+  lawsEqual,
+  type ImprecisionLaw,
+} from '../../src/comparison/distributions.js';
 import { isBottom } from '../../src/comparison/values.js';
+import { elementAt, filterMap } from '../../src/prelude/index.js';
+
+/** Span `index` of an imprecision reading, checked. */
+const spanAt = (reading: ImprecisionReading, index = 0): ImprecisionSpan =>
+  elementAt(reading.spans, index, 'the spans this imprecision map read');
 
 // --- the pipeline harness -----------------------------------------------------------------
 
@@ -63,14 +74,14 @@ const mpmFor = (body: string, domain = 'timing'): string =>
 </mpm>`;
 
 /** The performed onsets, in milliseconds — what the imprecision map moves. */
-const performedDates = (body: string, domain = 'timing'): string[] => {
+const performedDates = (body: string, domain = 'timing'): readonly string[] => {
   const out = performMsm({ msm: MSM, mpm: mpmFor(body, domain) });
-  return [...out.matchAll(/milliseconds\.date="([^"]+)"/g)].map((match) => match[1]);
+  return filterMap([...out.matchAll(/milliseconds\.date="([^"]+)"/g)], (match) => match[1] ?? null);
 };
 
-const performedVelocities = (body: string): string[] => {
+const performedVelocities = (body: string): readonly string[] => {
   const out = performMsm({ msm: MSM, mpm: mpmFor(body, 'dynamics') });
-  return [...out.matchAll(/ velocity="([^"]+)"/g)].map((match) => match[1]);
+  return filterMap([...out.matchAll(/ velocity="([^"]+)"/g)], (match) => match[1] ?? null);
 };
 
 // --- the reader harness -------------------------------------------------------------------
@@ -80,30 +91,32 @@ const readerDoc = (body: string, domain = 'timing'): string =>
   `<global><header/><dated><imprecisionMap.${domain}>${body}</imprecisionMap.${domain}></dated></global>` +
   '</performance></mpm>';
 
-const readerDomain: Record<string, ImprecisionDomain> = {
+const READER_DOMAINS = {
   timing: 'imprecisionTiming',
   dynamics: 'imprecisionDynamics',
   toneduration: 'imprecisionDuration',
-};
+} as const satisfies Record<string, ImprecisionDomain>;
 
-const readFor = (body: string, domain = 'timing'): ImprecisionReading => {
+type ReaderDomainName = keyof typeof READER_DOMAINS;
+
+const readFor = (body: string, domain: ReaderDomainName = 'timing'): ImprecisionReading => {
   const pair = readComparisonPair({ a: readerDoc(body, domain) });
   const scope = pair.a.scopes.find((candidate) => candidate.scope === 'global');
   if (scope === undefined) throw new Error('no global scope');
   return readImprecisionSpans(
     readScopeMapViews(scope).get(`imprecisionMap.${domain}`) ?? null,
-    readerDomain[domain],
+    READER_DOMAINS[domain],
     pair.a.scaleFactor,
   );
 };
 
-const lawOf = (body: string, domain = 'timing', ticks = 0): ImprecisionLaw => {
+const lawOf = (body: string, domain: ReaderDomainName = 'timing', ticks = 0): ImprecisionLaw => {
   const law = lawAt(readFor(body, domain), ticks);
   if (isBottom(law)) throw new Error('unexpected ⊥');
   return law.value;
 };
 
-const isBottomAt = (body: string, domain = 'timing', ticks = 0): boolean =>
+const isBottomAt = (body: string, domain: ReaderDomainName = 'timing', ticks = 0): boolean =>
   isBottom(lawAt(readFor(body, domain), ticks));
 
 const UNIFORM = (attributes: string): string =>
@@ -307,6 +320,45 @@ describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () 
     expect(isBottomAt(plain)).toBe(false);
   });
 
+  it('reads the list’s @value attributes themselves, dropping only what will not parse', () => {
+    /**
+     * A closed oracle gap.
+     *
+     * Nothing in the tree read a VALUE back out of a `<distribution.list>`. The two tests
+     * around this one ask whether the law is ⊥ and whether the performed dates are finite;
+     * `an EMPTY distribution.list` asks about the empty case. Measured: making the reader
+     * return `value * 7 + 3` for every measurement left all 6064 tests in the repository
+     * green — the list is the one law whose whole content is the numbers written in the
+     * document, and the numbers were not checked anywhere.
+     *
+     * So: the parseable `@value`s, ascending (`listLaw` sorts), and the three ways a
+     * measurement contributes nothing — no attribute at all, text that is not a number, and
+     * a non-finite literal. `parseFloat`'s prefix rule is pinned too, because it is what the
+     * reader uses and it is the half of the behaviour a reader would not guess.
+     */
+    const law = lawOf(
+      '<distribution.list date="0.0" milliseconds.timingBasis="300">' +
+        '<measurement value="40"/>' +
+        '<measurement value="-40"/>' +
+        '<measurement value="0"/>' +
+        '<measurement/>' +
+        '<measurement value="not-a-number"/>' +
+        '<measurement value="Infinity"/>' +
+        '<measurement value="12abc"/>' +
+        '</distribution.list>',
+    );
+    expect(law).toEqual({ kind: 'list', values: [-40, 0, 12, 40] });
+
+    // …and a list whose values all coincide is not a list at all: `listLaw` collapses it.
+    expect(
+      lawOf(
+        '<distribution.list date="0.0" milliseconds.timingBasis="300">' +
+          '<measurement value="17"/><measurement value="17"/>' +
+          '</distribution.list>',
+      ),
+    ).toEqual(deltaLaw(17));
+  });
+
   it('an inverted-limit triangular has no monotone quantile, so it reads ⊥', () => {
     expect(
       isBottomAt(
@@ -325,8 +377,9 @@ describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () 
     const reading = readFor('<distribution.list date="0.0"/>');
     const errors = reading.notes.filter((note) => note.kind === 'renderer-error');
     expect(errors).toHaveLength(1);
-    expect(errors[0].detail).toContain('empty-list');
-    expect(errors[0].detail).toContain('R24');
+    const only = elementAt(errors, 0, 'the renderer-error notes');
+    expect(only.detail).toContain('empty-list');
+    expect(only.detail).toContain('R24');
   });
 });
 
@@ -351,10 +404,8 @@ describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
     // The reader agrees: one span, no gap.
     expect(readFor(`${body}<style date="720.0"/>`).spans).toHaveLength(1);
     expect(readFor(`${body}<style date="720.0" name.ref="none"/>`).spans).toHaveLength(1);
-    expect(readFor(`${body}<style date="720.0" name.ref="none"/>`).spans[0].endTicks).toBe(720);
-    expect(readFor(`${body}<style date="720.0"/>`).spans[0].endTicks).toBe(
-      Number.POSITIVE_INFINITY,
-    );
+    expect(spanAt(readFor(`${body}<style date="720.0" name.ref="none"/>`)).endTicks).toBe(720);
+    expect(spanAt(readFor(`${body}<style date="720.0"/>`)).endTicks).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('a gap between two distributions performs δ₀ and the second resumes', () => {
@@ -420,39 +471,43 @@ describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
 
 describe('milliseconds.timingBasis: derivation and family-dependence (AD-14iii)', () => {
   it('is derived from the limits for uniform / gaussian / brownian, in the timing domain', () => {
-    const span = readFor('<distribution.uniform date="0.0" limit.lower="-30" limit.upper="30"/>')
-      .spans[0];
+    const span = spanAt(
+      readFor('<distribution.uniform date="0.0" limit.lower="-30" limit.upper="30"/>'),
+    );
     expect(span.timingBasisMs).toBe(60);
     expect(span.timingBasisDerived).toBe(true);
   });
 
   it('is derived from the CLIPS for both triangles', () => {
-    const span = readFor(
-      '<distribution.triangular date="0.0" limit.lower="-30" limit.upper="30" mode="0" clip.lower="-20" clip.upper="20"/>',
-    ).spans[0];
+    const span = spanAt(
+      readFor(
+        '<distribution.triangular date="0.0" limit.lower="-30" limit.upper="30" mode="0" clip.lower="-20" clip.upper="20"/>',
+      ),
+    );
     expect(span.timingBasisMs).toBe(40);
     expect(span.timingBasisDerived).toBe(true);
   });
 
   it('falls back to 100 outside the timing domain, whatever the limits say', () => {
-    const span = readFor(
-      '<distribution.uniform date="0.0" limit.lower="-30" limit.upper="30"/>',
-      'dynamics',
-    ).spans[0];
+    const span = spanAt(
+      readFor('<distribution.uniform date="0.0" limit.lower="-30" limit.upper="30"/>', 'dynamics'),
+    );
     expect(span.timingBasisMs).toBe(DEFAULT_TIMING_BASIS_MS);
     expect(span.timingBasisDerived).toBe(false);
   });
 
   it('falls back to 100 when the derivation is ≤ 0 — which absent limits guarantee', () => {
-    const span = readFor('<distribution.uniform date="0.0"/>').spans[0];
+    const span = spanAt(readFor('<distribution.uniform date="0.0"/>'));
     expect(span.timingBasisMs).toBe(DEFAULT_TIMING_BASIS_MS);
     expect(span.timingBasisDerived).toBe(false);
   });
 
   it('an explicit basis wins and is not marked derived', () => {
-    const span = readFor(
-      '<distribution.uniform date="0.0" limit.lower="-30" limit.upper="30" milliseconds.timingBasis="250"/>',
-    ).spans[0];
+    const span = spanAt(
+      readFor(
+        '<distribution.uniform date="0.0" limit.lower="-30" limit.upper="30" milliseconds.timingBasis="250"/>',
+      ),
+    );
     expect(span.timingBasisMs).toBe(250);
     expect(span.timingBasisDerived).toBe(false);
   });
@@ -537,8 +592,9 @@ describe('correlated families: processParameters and the index-dependent margina
     );
     const declared = reading.notes.filter((note) => note.kind === 'declared-law');
     expect(declared).toHaveLength(1);
-    expect(declared[0].detail).toBe(CORRELATED_MARGINAL_NOTE);
-    expect(declared[0].detail).toContain('index-dependent');
+    const note = elementAt(declared, 0, 'the declared-law notes');
+    expect(note.detail).toBe(CORRELATED_MARGINAL_NOTE);
+    expect(note.detail).toContain('index-dependent');
   });
 
   it('an i.i.d. span carries no process parameters and no declared-law note', () => {
@@ -566,9 +622,9 @@ describe('the dynamics and toneduration domains read the same laws', () => {
   });
 
   it('the reader reaches all three domains through one code path', () => {
-    for (const domain of ['timing', 'dynamics', 'toneduration']) {
+    for (const domain of ['timing', 'dynamics', 'toneduration'] as const) {
       const reading = readFor(UNIFORM('limit.lower="-30" limit.upper="30"'), domain);
-      expect(reading.domain).toBe(readerDomain[domain]);
+      expect(reading.domain).toBe(READER_DOMAINS[domain]);
       expect(reading.spans).toHaveLength(1);
     }
   });

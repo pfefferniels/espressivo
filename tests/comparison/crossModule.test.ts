@@ -28,6 +28,7 @@ import { describe, it, expect } from 'vitest';
 import { compareMpm, exaggerateMpm } from '../../src/api/index.js';
 import type { ComparisonDimension } from '../../src/api/index.js';
 import type { ExpressionDimension } from '../../src/api/index.js';
+import { numberAt, pairwise } from '../../src/prelude/index.js';
 
 const NS = 'http://www.cemfi.de/mpm/ns/1.0';
 const WINDOW = { start: 0, end: 8 };
@@ -278,8 +279,8 @@ describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
             ),
           }))
           .sort((x, y) => x.spread - y.spread);
-        for (let i = 1; i < measured.length; ++i)
-          expect(measured[i].value).toBeGreaterThanOrEqual(measured[i - 1].value * (1 - 1e-9));
+        for (const [previous, current] of pairwise(measured))
+          expect(current.value).toBeGreaterThanOrEqual(previous.value * (1 - 1e-9));
       });
     });
   }
@@ -410,9 +411,12 @@ describe('P-C5 (ii): the BREAKPOINT-level law on a transition-bearing fixture', 
     for (const s of [0.5, 1.5, 2]) {
       const scaled = tempoRowValues(exaggerate(TRANSITION, ['tempo'], s));
       expect(scaled).toHaveLength(original.length);
+      const firstOriginal = numberAt(original, 0, 'the original tempo row');
+      const firstScaled = numberAt(scaled, 0, 'the scaled tempo row');
       for (let i = 1; i < original.length; ++i) {
-        const before = Math.log(original[i]) - Math.log(original[0]);
-        const after = Math.log(scaled[i]) - Math.log(scaled[0]);
+        const before =
+          Math.log(numberAt(original, i, 'the original tempo row')) - Math.log(firstOriginal);
+        const after = Math.log(numberAt(scaled, i, 'the scaled tempo row')) - Math.log(firstScaled);
         expect(after / before).toBeCloseTo(s, 9);
       }
     }

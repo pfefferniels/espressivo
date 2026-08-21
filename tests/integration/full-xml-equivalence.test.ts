@@ -168,13 +168,43 @@ function compareElements(
     }
   }
 
-  // Check TS doesn't have unexpected extra attributes (warn only)
-  for (const [name] of tsAttrMap) {
+  // An attribute the reference does not have is a difference from the reference. This loop
+  // used to have an EMPTY BODY — it iterated, found the extras, and dropped them, under a
+  // comment saying they were "not necessarily an error". Measured: adding a bogus attribute
+  // to every <note> of a reference file leaves this comparator green. It is an error now.
+  for (const [name, tsValue] of tsAttrMap) {
     if (SKIP_ATTRS.has(name) || RANDOM_ATTRS.has(name)) continue;
-    if (!refAttrMap.has(name)) {
-      // Not necessarily an error, but worth noting
-      // Some implementation-specific attrs are OK
-    }
+    if (refAttrMap.has(name)) continue;
+    if (name === 'xml:id' || name === 'id') continue; // handled by the alias rule above
+    diffs.push(`${fullPath}: extra attribute "${name}"="${tsValue}" (Java has none)`);
+  }
+
+  // ...and the ORDER of the attributes, which nothing checked either. Reversing the
+  // attribute order on every <note> of a reference file also left this comparator green,
+  // because both sides go into a `Map` keyed on name and only the reference's is iterated.
+  // Order is byte-visible in the output and, on this corpus, it encodes which render passes
+  // touched a note: a note under a rubato instruction gets `date.end.perf` earlier than one
+  // that is not. Measured green across all 16 fixtures at the time of writing.
+  const orderOf = (attrs: readonly { name: string; value: string }[]): string[] =>
+    attrs.map((a) => a.name).filter((n) => !SKIP_ATTRS.has(n) && !RANDOM_ATTRS.has(n));
+  const tsOrder = orderOf(tsEl.attrs);
+  const refOrder = orderOf(refEl.attrs);
+  if (tsOrder.length === refOrder.length && tsOrder.join(',') !== refOrder.join(',')) {
+    diffs.push(
+      `${fullPath}: attribute order TS=[${tsOrder.join(',')}] vs Java=[${refOrder.join(',')}]`,
+    );
+  }
+
+  // Text content. The parser has always filled `ParsedElement.text` and nothing ever read it
+  // — parsed data that no assertion depended on. Measured: not one of the 16
+  // performance-reference documents carries any element text, because an augmented MSM is all
+  // attributes, so this cannot fire on today's corpus and is insurance rather than a fix. It
+  // is worth the three lines because the failure it guards is silent: a serializer that began
+  // emitting text where Java emits none would otherwise pass this suite unchanged.
+  // (`cross-validation` does check text, by string equality, and its MPM fixtures do carry
+  // `<author>` and `<comment>` content.)
+  if (tsEl.text.trim() !== refEl.text.trim()) {
+    diffs.push(`${fullPath}: text "${tsEl.text.trim()}" vs Java "${refEl.text.trim()}"`);
   }
 
   // Compare children count

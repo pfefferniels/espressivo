@@ -1,4 +1,5 @@
 import { Document, Element, Attribute, Builder, ParsingException } from './XomTypes.js';
+import { MissingNodeError } from './errors.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -53,6 +54,36 @@ export class XmlBase {
     }
   }
 
+  /**
+   * Parse XML source into {@link data}, or leave it null and report why on `console.error`.
+   *
+   * **The `ParsingException` arm is not the malformed-XML arm, and the `throw e` is not the
+   * exceptional one.** Measured, against the pinned `@xmldom/xmldom`: for every category of
+   * malformed input probed — plain text, empty source, a comment or PI with no root, two
+   * root elements, an invalid element name, an undeclared prefix, an unterminated CDATA —
+   * `DOMParser.parseFromString` throws **its own** `ParseError` before `Builder.build` can
+   * reach either of its `ParsingException` throws, so control takes the `else` and leaves
+   * this method by throwing. Java's `XmlBase` catches XOM's `ParsingException` here and
+   * leaves `data` null, i.e. malformed MEI yields an *empty document* there and an
+   * *exception* here. That divergence is recorded in PARITY.md as `XB1`; `src/api/parse.ts`
+   * already compensates for it at the facade, and its sibling comment in
+   * `src/api/pipeline.ts` — "`XmlBase` swallows the `ParsingException` and leaves `data`
+   * null" — describes something that does not happen.
+   *
+   * What *does* reach the `ParsingException` arm is `Builder.build`'s `parsererror` probe,
+   * which is browser-`DOMParser` semantics: browsers report a parse failure by returning a
+   * document containing a `<parsererror>` element, and xmldom never does. So the probe
+   * fires only as a **false positive**, on a well-formed document that happens to contain an
+   * element named `parsererror` — which is the one and only way a `Mei`, `Msm` or `Mpm` can
+   * come out of a constructor with `isEmpty()` true. `tests/xml/XmlBase.test.ts` pins both
+   * halves.
+   *
+   * The `console.error` **stays**, and it is the only one left in this class. Unlike
+   * `exportXml`'s, it carries something no caller can recover: *why* the parse failed.
+   * Giving `src/api/pipeline.ts` that reason means adding a channel to this class, and the
+   * cheap version of that (a stored error plus an accessor) has exactly one consumer, in a
+   * directory outside this charter. Left deliberately, and reported rather than smuggled.
+   */
   protected parseXmlString(xml: string): void {
     const builder = new Builder();
     this.isValidFlag = false;
@@ -100,8 +131,8 @@ export class XmlBase {
   }
 
   toXML(): string {
-    if (this.isEmpty()) return '';
-    return this.data!.toXML();
+    if (this.data === null) return '';
+    return this.data.toXML();
   }
 
   getDocument(): Document | null {
@@ -114,8 +145,35 @@ export class XmlBase {
   }
 
   getRootElement(): Element | null {
-    if (this.isEmpty()) return null;
-    return this.data!.getRootElement();
+    if (this.data === null) return null;
+    return this.data.getRootElement();
+  }
+
+  /**
+   * The root element, or a {@link MissingNodeError} naming the document that has none.
+   *
+   * {@link getRootElement} answers `null` for exactly one reason — there is no parsed
+   * document at all — because a {@link Document} always has a root. Most callers have
+   * already established that (`isEmpty()` is false, or they built the document themselves
+   * two lines earlier) and used to say so with `getRootElement()!`, which is a claim the
+   * type system cannot check and which arrives, when wrong, as "cannot read property of
+   * null" somewhere inside XOM. This is that claim, checked.
+   *
+   * It replaces an assertion and not a guard: every site that had the `!` threw on an empty
+   * document before this existed too. Where absence is a real answer rather than a broken
+   * invariant, call {@link getRootElement} and branch on the null.
+   *
+   * Lifted here from `AbstractMsm`, where the same method and the same argument were
+   * written for `Msm`/`Mpm` — the three methods below wanted it too, and it belongs to
+   * every `XmlBase` descendant rather than to one branch of them. `Mei`'s private copy is
+   * gone; `AbstractMsm`'s is now a byte-identical override and could go the same way, but
+   * that file is outside this charter and is being edited concurrently.
+   */
+  protected requireRootElement(): Element {
+    const root = this.getRootElement();
+    if (root === null)
+      throw new MissingNodeError('this document is empty and therefore has no root element');
+    return root;
   }
 
   /**
@@ -126,7 +184,7 @@ export class XmlBase {
    */
   removeAllElements(localName: string): number {
     let deletions = 0;
-    const matches = this.getRootElement()!.query(`descendant::*[local-name()='${localName}']`);
+    const matches = this.requireRootElement().query(`descendant::*[local-name()='${localName}']`);
 
     for (const node of matches.toArray()) {
       const parent = node.getParent();
@@ -146,7 +204,7 @@ export class XmlBase {
    * {@link removeAllElements}, the return value is the number of elements *matched*.
    */
   removeAllAttributes(attributeName: string): number {
-    const matches = this.getRootElement()!.query(`descendant::*[@${attributeName}]`);
+    const matches = this.requireRootElement().query(`descendant::*[@${attributeName}]`);
 
     for (const node of matches.toArray()) {
       const element = node as unknown as Element;
@@ -175,9 +233,14 @@ export class XmlBase {
     let duplicates = 0;
     const uniqueIds = new Set<string>();
 
-    const attributes = this.getRootElement()!.query('descendant-or-self::node()/attribute::xml:id');
-    for (let i = 0; i < attributes.size(); ++i) {
-      const attribute = attributes.get(i) as unknown as Attribute;
+    const attributes = this.requireRootElement().query(
+      'descendant-or-self::node()/attribute::xml:id',
+    );
+    // A walk in document order, which is the whole of the "first occurrence keeps it" rule
+    // above; the index was never read for anything else. Not a fold, because the pass is
+    // effects — it rewrites the attributes it visits and feeds the set it tests against.
+    for (const node of attributes) {
+      const attribute = node as unknown as Attribute;
       let duplicate = false;
       while (uniqueIds.has(attribute.getValue())) {
         duplicate = true;
@@ -187,19 +250,27 @@ export class XmlBase {
       duplicates += duplicate ? 1 : 0;
     }
 
-    console.log(`Duplicate IDs found and fixed: ${duplicates}`);
+    // The count this used to print is the value it returns; the line said nothing the caller
+    // did not already have, on a channel the caller did not choose.
 
     return duplicates;
   }
 
   /**
-   * Export the XML as a string (browser-compatible replacement for writeFile)
+   * Export the XML as a string (browser-compatible replacement for writeFile), or null
+   * when there is no document to export.
+   *
+   * The `console.error` that used to accompany the null is deleted, on the reasoning the
+   * `console.log` sweep applied to `Header.renameStyleDef`: `null` has exactly one cause
+   * here — `isEmpty()` — and the caller can ask that question itself, so the line said
+   * nothing the caller did not already have, on a channel the caller did not choose. All
+   * five call sites (`Mei.exportMei`, `Mpm.exportMpm` ×2, `Msm.exportMsm` ×2) are a bare
+   * `return this.exportXml()`, so nothing downstream changes shape.
+   *
+   * `parseXmlString`'s `console.error` is a different case and stays — see there.
    */
   exportXml(): string | null {
-    if (this.isEmpty()) {
-      console.error('Empty document, cannot export.');
-      return null;
-    }
+    if (this.isEmpty()) return null;
     return this.toXML();
   }
 }

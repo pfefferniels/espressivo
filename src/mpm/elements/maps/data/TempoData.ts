@@ -1,87 +1,75 @@
-import { Attribute, Element } from '../../../../xml/XomTypes.js';
-import type { TempoStyle } from '../../styles/TempoStyle.js';
-
 /**
- * All data needed to compute the tempo in force over one span of the timeline —
- * the flattened form of a single MPM `<tempo>` element plus the context that only
- * the surrounding {@link TempoMap} knows (its `endDate`, the style in scope).
+ * A tempo instruction on its way *into* a `tempoMap` — the argument
+ * {@link TempoMap.addTempo} serializes, and nothing else.
  *
- * `bpm` and `transitionTo` each exist twice, as a string and as a number. The
- * string is what the XML said; it may be a literal number *or* a style-relative
- * name such as `"Allegro"`, which only a {@link TempoStyle} can resolve. The
- * numeric field holds the resolved value, or `null` while it is still unknown.
- * Serialization prefers the string, so round-tripping keeps the original wording.
+ * ## Why this is not {@link ../data/tempo.ts Tempo}
  *
- * Port of meico.mpm.elements.maps.data.TempoData
+ * Reading a `<tempo>` and writing one are not the same job, and the Java class that does
+ * both (meico.mpm.elements.maps.data.TempoData) pays for it with eleven nullable fields
+ * that no single caller fills in. This half is the *unresolved* one, and unresolved is not
+ * a defect here: `Mei2MsmMpmConverter.parseTempo` builds tempo instructions whose `@bpm` is
+ * the literal string `"?"` and whose `@transition.to` is `"-"` or `"+"` — placeholders that
+ * a later pass rewrites once the neighbouring instruction is known. There is no number to
+ * put in a `bpm: number`, and demanding one would mean inventing one. The other half, the
+ * one the renderer reads back out, resolved every name to a number before it ever reached
+ * arithmetic, so it is a two-armed sum with no nulls at all; it lives in `tempo.ts`.
+ *
+ * ## Why it is still a mutable class
+ *
+ * `parseTempo` assembles it across some sixty lines of branching — `@mm`, then
+ * `@midi.bpm`, then `@midi.mspb`, then the element's text, then `@label`, each overwriting
+ * the last — and `addTempoToMpm` then rewrites `bpmString` again from the *preceding*
+ * instruction's `@transition.to`. That is field-at-a-time construction, and turning it into
+ * a `readonly` record means rewriting the MEI converter, which belongs to a different pass.
+ * The nulls that remain are therefore genuine optionality on the write side: `addTempo`
+ * branches on every one of them and omits the attribute it cannot fill.
+ *
+ * ## What was dropped
+ *
+ * `xml`, `style`, `styleName`, `exponent`, `startDateMilliseconds` and `isConstantTempo()`
+ * were all read-side apparatus that no writer touched. Java's `clone()` deliberately omits
+ * `startDateMilliseconds` (it is per-render scratch space, so a clone is expected to start
+ * without it); with the field gone from this half entirely, so is the hazard the note
+ * warned about.
+ *
+ * Port of the write half of meico.mpm.elements.maps.data.TempoData.
  */
 export class TempoData {
-  xml: Element | null = null;
+  /** `xml:id` to stamp on the emitted element, or null to emit none. */
   xmlId: string | null = null;
 
-  styleName = '';
-  style: TempoStyle | null = null;
-
+  /** `@date`, in ticks. */
   startDate = 0.0;
-  startDateMilliseconds: number | null = null;
+  /**
+   * Where the instruction stops. Not serialized by `addTempo` — the MEI converter reads it
+   * back and writes `@date.end` itself, falling through to `@tstamp2` or `@endid` when it
+   * is null, which is why null has to stay expressible.
+   */
   endDate: number | null = null;
 
+  /**
+   * `@bpm` as it should be written: a number, a style-relative name, or one of MEI
+   * export's placeholders. Preferred over {@link bpm} on the way out, so the original
+   * wording round-trips.
+   */
   bpmString: string | null = null;
+  /** A numeric `@bpm`, used only when {@link bpmString} is null. Both null is an error. */
   bpm: number | null = null;
 
+  /** `@transition.to` as it should be written; null emits no transition at all. */
   transitionToString: string | null = null;
+  /** A numeric `@transition.to`, used only when {@link transitionToString} is null. */
   transitionTo: number | null = null;
 
+  /** `@beatLength` as a fraction of a whole note. Always written. */
   beatLength = 0.25;
 
+  /** `@meanTempoAt`; null emits no attribute, which the reader takes as a linear ramp. */
   meanTempoAt: number | null = null;
-  exponent: number | null = null;
 
-  constructor(xml?: Element) {
-    if (xml === undefined) return;
-
-    this.xml = xml;
-    this.startDate = parseFloat(xml.getAttributeValue('date')!);
-    this.beatLength = parseFloat(xml.getAttributeValue('beatLength')!);
-
-    const bpmAtt = xml.getAttribute('bpm');
-    if (bpmAtt !== null) {
-      const val = parseFloat(bpmAtt.getValue());
-      if (!isNaN(val)) {
-        this.bpm = val;
-      } else {
-        this.bpmString = bpmAtt.getValue();
-      }
-    }
-
-    const transitionToAtt = xml.getAttribute('transition.to');
-    if (transitionToAtt !== null) {
-      const val = parseFloat(transitionToAtt.getValue());
-      if (!isNaN(val)) {
-        this.transitionTo = val;
-      } else {
-        this.transitionToString = transitionToAtt.getValue();
-      }
-    }
-
-    const meanTempoAtAtt = xml.getAttribute('meanTempoAt');
-    if (meanTempoAtAtt !== null) this.meanTempoAt = parseFloat(meanTempoAtAtt.getValue());
-
-    const id = xml.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
-    if (id !== null) this.xmlId = id.getValue();
-  }
-
-  /**
-   * PARITY NOTE: `startDateMilliseconds` is deliberately **not** copied — the Java
-   * reference omits it too (TempoData.java `clone()`). It is scratch space that
-   * {@link TempoMap.renderTempoToMap} fills in per rendering pass, so a clone is
-   * expected to start out without it. Adding it here would diverge from the reference.
-   */
   clone(): TempoData {
     const c = new TempoData();
-    c.xml = this.xml === null ? null : this.xml.copy();
     c.xmlId = this.xmlId;
-    c.styleName = this.styleName;
-    c.style = this.style;
     c.startDate = this.startDate;
     c.endDate = this.endDate;
     c.bpmString = this.bpmString;
@@ -90,11 +78,6 @@ export class TempoData {
     c.transitionTo = this.transitionTo;
     c.beatLength = this.beatLength;
     c.meanTempoAt = this.meanTempoAt;
-    c.exponent = this.exponent;
     return c;
-  }
-
-  isConstantTempo(): boolean {
-    return this.transitionTo === null || this.bpm === null || this.transitionTo === this.bpm;
   }
 }

@@ -30,6 +30,8 @@
  * this module, not about the quadrature itself.
  */
 
+import { pairwise, zipWith } from '../prelude/index.js';
+
 /**
  * Neumaier summation — Kahan's compensated sum with the branch that also handles the case
  * where the running total is *smaller* than the addend.
@@ -114,6 +116,21 @@ export const GAUSS_LEGENDRE_10_WEIGHTS: readonly number[] = [
 ];
 
 /**
+ * The same ten pairs, zipped once at module load.
+ *
+ * The two arrays above stay exported separately because the test re-derives each by Newton
+ * iteration and checks them apart; what the quadrature loop wants is the pairing, and taking it
+ * here means the innermost loop of every distance in this module indexes nothing. The zip is
+ * also the alignment check the doc comment above can only assert: two tables of different length
+ * would silently produce a shorter rule.
+ */
+const GAUSS_LEGENDRE_10_TABLE: readonly (readonly [node: number, weight: number])[] = zipWith(
+  GAUSS_LEGENDRE_10_NODES,
+  GAUSS_LEGENDRE_10_WEIGHTS,
+  (node, weight) => [node, weight] as const,
+);
+
+/**
  * `∫ₐᵇ f` by the ten-point rule.
  *
  * Exact for polynomials of degree ≤ 19, which is what makes it exact on a step cell and
@@ -130,8 +147,8 @@ export function gaussLegendre10(f: (x: number) => number, a: number, b: number):
   const halfWidth = (b - a) / 2;
   const midpoint = (a + b) / 2;
   const sum = new CompensatedSum();
-  for (let i = 0; i < GAUSS_LEGENDRE_10_NODES.length; ++i)
-    sum.add(GAUSS_LEGENDRE_10_WEIGHTS[i] * f(midpoint + halfWidth * GAUSS_LEGENDRE_10_NODES[i]));
+  for (const [node, weight] of GAUSS_LEGENDRE_10_TABLE)
+    sum.add(weight * f(midpoint + halfWidth * node));
   return halfWidth * sum.total;
 }
 
@@ -223,8 +240,7 @@ export function gradedPanelCount(e: number): number {
 export function integrateGradedPower(f: (u: number) => number, e: number): number {
   const bounds = gradedPanelBounds(e);
   const total = new CompensatedSum();
-  for (let k = 0; k < bounds.length - 1; ++k)
-    total.add(gaussLegendre10(f, bounds[k], bounds[k + 1]));
+  for (const [low, high] of pairwise(bounds)) total.add(gaussLegendre10(f, low, high));
   return total.total;
 }
 
@@ -455,9 +471,7 @@ function signConstantPieces(
   const bounds = [a, ...interior, b];
 
   const pieces: (readonly [number, number])[] = [];
-  for (let i = 0; i < bounds.length - 1; ++i) {
-    const low = bounds[i];
-    const high = bounds[i + 1];
+  for (const [low, high] of pairwise(bounds)) {
     const root = bisectSignChange(f, low, high);
     // A root exactly at a bound is not an interior split: the sign is constant on the rest
     // of the sub-interval and splitting there would add a zero-width piece.

@@ -26,6 +26,13 @@ import {
   renderMidi,
 } from '../../src/api/index.js';
 
+import { elementAt } from '../../src/prelude/index.js';
+import type { MovementDocuments } from '../../src/api/index.js';
+
+/** Movement `index` of a conversion, checked — as `pipeline.test.ts` reads it. */
+const movementAt = (movements: readonly MovementDocuments[], index = 0): MovementDocuments =>
+  elementAt(movements, index, 'the converted movement list');
+
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'integration', 'fixtures');
 const MEI_DIR = join(FIXTURES, 'mei');
 const MAPS_DIR = join(FIXTURES, 'all-maps-reference');
@@ -105,30 +112,31 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
       // `true` is also what makes composite_advanced's trill — a v3 ornament with a note pool and
       // a repeat group in note.order — actually travel through this round trip.
       const converted = new Mei2MsmMpmConverter(720, true, false, true, true).convert(mei);
-      const classicMsm = converted.getKey()[0];
-      const classicMpm = converted.getValue()[0];
-      const classicPerformance = classicMpm.getAllPerformances()[0];
+      const classicMsm = elementAt(converted.getKey(), 0, 'the classic converter’s MSMs');
+      const classicMpm = elementAt(converted.getValue(), 0, 'the classic converter’s MPMs');
+      const classicPerformance = elementAt(
+        classicMpm.getAllPerformances(),
+        0,
+        'the classic MPM’s performances',
+      );
 
       // --- facade: XML text at every boundary
       const movements = convertMeiToMsmMpm(meiText, { sourceName: `${fixture}.mei` });
 
       expect(movements).toHaveLength(converted.getKey().length);
-      expect(canonicalise(movements[0].msm)).toBe(
-        canonicalise(classicMsm.getRootElement()!.toXML()),
-      );
-      expect(canonicalise(movements[0].mpm)).toBe(
-        canonicalise(classicMpm.getRootElement()!.toXML()),
-      );
+      const first = movementAt(movements);
+      expect(canonicalise(first.msm)).toBe(canonicalise(classicMsm.getRootElement()!.toXML()));
+      expect(canonicalise(first.mpm)).toBe(canonicalise(classicMpm.getRootElement()!.toXML()));
       expect(movements.map((m) => m.title)).toEqual(converted.getKey().map((m) => m.getTitle()));
 
-      expect(canonicalise(performMsm(movements[0]))).toBe(
+      expect(canonicalise(performMsm(first))).toBe(
         canonicalise(classicPerformance.perform(classicMsm).getRootElement()!.toXML()),
       );
-      expect(hex(renderExpressiveMidi(movements[0]))).toBe(
-        hex(classicMsm.exportExpressiveMidi(classicPerformance, true)!.exportMidi()!),
+      expect(hex(renderExpressiveMidi(first))).toBe(
+        hex(classicMsm.exportExpressiveMidi(classicPerformance, true)!.exportMidi()),
       );
-      expect(hex(renderMidi({ msm: movements[0].msm }))).toBe(
-        hex(classicMsm.exportMidi(120, true)!.exportMidi()!),
+      expect(hex(renderMidi({ msm: first.msm }))).toBe(
+        hex(classicMsm.exportMidi(120, true)!.exportMidi()),
       );
     });
   }
@@ -139,9 +147,11 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
     // file pass for the wrong reason.
     const expressiveMidiOf = (fixture: string) =>
       renderExpressiveMidi(
-        convertMeiToMsmMpm(readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8'), {
-          sourceName: `${fixture}.mei`,
-        })[0],
+        movementAt(
+          convertMeiToMsmMpm(readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8'), {
+            sourceName: `${fixture}.mei`,
+          }),
+        ),
       );
     const raw = (bytes: Uint8Array) => Buffer.from(bytes).toString('hex');
 
@@ -165,8 +175,10 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
       Mei.fromXml(meiText),
     );
 
-    expect(canonicalise(convertMeiToMsmMpm(meiText)[0].mpm)).toBe(
-      canonicalise(classic.getValue()[0].getRootElement()!.toXML()),
+    expect(canonicalise(movementAt(convertMeiToMsmMpm(meiText)).mpm)).toBe(
+      canonicalise(
+        elementAt(classic.getValue(), 0, 'the classic converter’s MPMs').getRootElement()!.toXML(),
+      ),
     );
   });
 
@@ -197,10 +209,15 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
 
       expect(
         canonicalise(
-          convertMeiToMsmMpm(meiText, { ...options, sourceName: 'repeats_endings.mei' })[0].msm,
+          movementAt(convertMeiToMsmMpm(meiText, { ...options, sourceName: 'repeats_endings.mei' }))
+            .msm,
         ),
         `option ${JSON.stringify(options)}`,
-      ).toBe(canonicalise(classic.getKey()[0].getRootElement()!.toXML()));
+      ).toBe(
+        canonicalise(
+          elementAt(classic.getKey(), 0, 'the classic converter’s MSMs').getRootElement()!.toXML(),
+        ),
+      );
     }
   });
 
@@ -211,8 +228,11 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
       const msmText = readFileSync(join(MAPS_DIR, `${fixture}.msm`), 'utf-8');
       const mpmText = readFileSync(join(MAPS_DIR, `${fixture}.mpm`), 'utf-8');
 
-      const classic = new Mpm(mpmText)
-        .getAllPerformances()[0]
+      const classic = elementAt(
+        new Mpm(mpmText).getAllPerformances(),
+        0,
+        'the classic MPM’s performances',
+      )
         .perform(new Msm(msmText))
         .getRootElement()!
         .toXML();
@@ -226,7 +246,7 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
           hex(
             new Msm(msmText)
               .exportExpressiveMidi(new Mpm(mpmText).getAllPerformances()[0], true)!
-              .exportMidi()!,
+              .exportMidi(),
           ),
         );
       }

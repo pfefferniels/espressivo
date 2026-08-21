@@ -120,6 +120,7 @@
  * shape gate, the pool bound, the finite guards and the two style-carrying branches replace
  * what that draft and 404fd57 had.
  */
+import { elementAtOrNull } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 import { ORNAMENTATION_MAP, ORNAMENTATION_STYLE } from '../mpm/names.js';
@@ -233,8 +234,13 @@ export function parseFrameValue(
   text: string,
 ): { value: number; domain: FrameDomain | null } | null {
   const suffixed = SUFFIXED.exec(text);
-  if (suffixed !== null)
-    return { value: Number(suffixed[1]), domain: DOMAIN_BY_SUFFIX[suffixed[2]] };
+  if (suffixed !== null) {
+    // Both groups are mandatory in the pattern, so a match has both — but a capture read is a
+    // `string | undefined` whatever the pattern says. The defaults reach the same answers the
+    // old reads did: `Number('')` is 0, and no key of the suffix table is the empty string.
+    const [, digits = '', suffix = ''] = suffixed;
+    return { value: Number(digits), domain: DOMAIN_BY_SUFFIX[suffix] ?? null };
+  }
   if (!UNSUFFIXED.test(text)) return null;
   return { value: Number(text), domain: null };
 }
@@ -261,6 +267,9 @@ function legacyFallbackDomain(spread: Element): FrameDomain {
       return 'milliseconds';
     case 'relative':
       return 'relative';
+    // Absent, and anything unrecognised, mean ticks. `null` is spelled out so that "the
+    // attribute is missing" reads as a decision rather than as the bottom of a fallthrough.
+    case null:
     default:
       return 'ticks';
   }
@@ -298,7 +307,8 @@ function classifyNoteOrder(
  * which no corpus document has.
  */
 function shapeOf(element: Element, noteOrderKind: NoteOrderKind | null): OrnamentShape {
-  if (element.getChildElements('note').toArray().length > 0) return 'v3';
+  // `size()` is the question being asked; `toArray().length` copied the snapshot to ask it.
+  if (element.getChildElements('note').size() > 0) return 'v3';
   if (readAttributeValue(element, 'noteid') !== null) return 'v3';
   if (readAttributeValue(element, 'repetitions') !== null) return 'v3';
   return noteOrderKind === 'v3-grammar' ? 'v3' : 'v2';
@@ -306,8 +316,8 @@ function shapeOf(element: Element, noteOrderKind: NoteOrderKind | null): Ornamen
 
 /** Read a def's `<dynamicsGradient>` into the pair the renderer performs. */
 function gradientOf(def: Element, scale: number | null): Valued<PerformedGradient> | null {
-  const element = def.getChildElements('dynamicsGradient').toArray()[0] as Element | undefined;
-  if (element === undefined) return null;
+  const element = elementAtOrNull(def.getChildElements('dynamicsGradient').toArray(), 0);
+  if (element === null) return null;
   // `scale` is unusable: every endpoint becomes NaN and the fold writes velocity NaN.
   if (scale === null) return bottom('renderer-error');
 
@@ -322,8 +332,8 @@ function gradientOf(def: Element, scale: number | null): Valued<PerformedGradien
 
 /** Read a def's `<temporalSpread>` into the frame the renderer performs for THIS shape. */
 function spreadOf(def: Element, shape: OrnamentShape): Valued<PerformedSpread> | null {
-  const element = def.getChildElements('temporalSpread').toArray()[0] as Element | undefined;
-  if (element === undefined) return null;
+  const element = elementAtOrNull(def.getChildElements('temporalSpread').toArray(), 0);
+  if (element === null) return null;
 
   const source = spreadSourceFormat(element);
   // The dead cell: a v3 frame on a v2-shaped ornament performs exactly the neutral frame.
@@ -483,7 +493,7 @@ export function readOrnamentAtoms(
     const nameRef = readAttributeValue(element, 'name.ref');
     let def: Element | null = null;
     if (nameRef !== null)
-      for (const candidate of carried.getChildElements('ornamentDef').toArray())
+      for (const candidate of carried.getChildElements('ornamentDef'))
         if (attribute('name', candidate)?.getValue() === nameRef) def = candidate;
 
     if (def === null) {

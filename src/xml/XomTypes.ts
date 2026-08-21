@@ -40,6 +40,7 @@
 
 import { DOMParser, XMLSerializer, type Document as DomDocument } from '@xmldom/xmldom';
 import xpath from 'xpath';
+import { elementAt } from '../prelude/seq.js';
 
 // Re-export for convenience
 export { DOMParser, XMLSerializer };
@@ -87,11 +88,19 @@ export class Nodes {
   }
 
   get(index: number): XomNode {
-    return this.nodes[index];
+    return elementAt(this.nodes, index, 'Nodes.get');
   }
 
   toArray(): XomNode[] {
     return [...this.nodes];
+  }
+
+  /**
+   * Iterate the snapshot — see {@link Elements}`[Symbol.iterator]` for why this exists
+   * and what it costs.
+   */
+  [Symbol.iterator](): IterableIterator<XomNode> {
+    return this.nodes[Symbol.iterator]();
   }
 }
 
@@ -195,9 +204,9 @@ export class Attribute extends XomNode {
     // `prefix:local` splits on the first colon, and a name carrying more than one
     // colon loses everything after the second segment. Well-formed XML has at most
     // one colon, so this only ever bites on malformed input; kept as-is for parity.
-    const parts = name.split(':');
-    this._namespacePrefix = parts.length > 1 ? parts[0] : '';
-    this._localName = parts.length > 1 ? parts[1] : name;
+    const split = splitQualifiedName(name);
+    this._namespacePrefix = split.prefix;
+    this._localName = split.localName;
 
     if (value !== undefined) {
       // 3-arg constructor: name, namespace, value
@@ -272,7 +281,7 @@ export class Attribute extends XomNode {
    * for constructed attributes and {@link Element.wrap} for parsed ones. An attribute
    * without it is one no element holds, and detaching it is a no-op by definition.
    */
-  detach(): void {
+  override detach(): void {
     if (this._xomParent) {
       this._xomParent.removeAttribute(this);
     }
@@ -327,11 +336,32 @@ export class Elements {
   }
 
   get(index: number): Element {
-    return this.elements[index];
+    return elementAt(this.elements, index, 'Elements.get');
   }
 
   toArray(): Element[] {
     return [...this.elements];
+  }
+
+  /**
+   * Iterate the snapshot directly — no copy, no index.
+   *
+   * XOM's `Elements` has no iterator (it predates `Iterable`), and the port inherited the
+   * `for (let i = 0; i < es.size(); ++i) es.get(i)` shape at forty-odd call sites. Every one
+   * of those is a walk, not a random access: the index is born at 0, dies at `size()` and is
+   * never read for anything but `get`. Making the collection iterable is what lets those call
+   * sites say what they are — `for..of` where the body has effects, `filterMap` where it
+   * parses-and-skips, which is most of them.
+   *
+   * `toArray()` was already an escape hatch to the same place, but it copies, and the copy is
+   * per call on paths that run per element of a score. This does not: the collection is
+   * already a *fixed* snapshot (the constructor takes the array by reference and nothing
+   * mutates it), so handing out its iterator exposes no more than `get` does. Removing a
+   * child from the parent element mid-walk therefore does not disturb the walk — the same
+   * property the index loops were already relying on.
+   */
+  [Symbol.iterator](): IterableIterator<Element> {
+    return this.elements[Symbol.iterator]();
   }
 }
 
@@ -386,9 +416,7 @@ export class Element extends XomNode {
     const doc = placeholderDom();
     let elem: globalThis.Element;
 
-    const parts = name.split(':');
-    const localName = parts.length > 1 ? parts[1] : name;
-    const prefix = parts.length > 1 ? parts[0] : '';
+    const { prefix, localName } = splitQualifiedName(name);
 
     if (namespaceURI) {
       elem = doc.createElementNS(namespaceURI, name) as unknown as globalThis.Element;
@@ -429,22 +457,23 @@ export class Element extends XomNode {
 
     // Sync attributes. Array.from snapshots the live NamedNodeMap in index order;
     // nothing below mutates domElement, so the snapshot and the map agree.
+    // `domElement.attributes` needs no guard: every DOM element has a NamedNodeMap, empty
+    // when it carries no attributes, so the truthiness test this used to open with could
+    // only ever be true.
     elem._attributes = [];
-    if (domElement.attributes) {
-      for (const attr of Array.from(domElement.attributes)) {
-        const attrNs = attr.namespaceURI || '';
-        const attrName = attr.name;
-        if (attrName.startsWith('xmlns')) continue; // skip namespace declarations
-        const wrapped = attrNs
-          ? new Attribute(attrName, attrNs, attr.value)
-          : new Attribute(attrName, attr.value);
-        // Parented like the child nodes below, and for the same reason: `_xomParent` is
-        // the only route {@link Attribute.detach} has back to the list it must remove
-        // itself from. Assigned directly rather than via `addAttribute`, which would
-        // additionally dedupe by local name and could drop a parsed attribute.
-        wrapped._xomParent = elem;
-        elem._attributes.push(wrapped);
-      }
+    for (const attr of Array.from(domElement.attributes)) {
+      const attrNs = attr.namespaceURI || '';
+      const attrName = attr.name;
+      if (attrName.startsWith('xmlns')) continue; // skip namespace declarations
+      const wrapped = attrNs
+        ? new Attribute(attrName, attrNs, attr.value)
+        : new Attribute(attrName, attr.value);
+      // Parented like the child nodes below, and for the same reason: `_xomParent` is
+      // the only route {@link Attribute.detach} has back to the list it must remove
+      // itself from. Assigned directly rather than via `addAttribute`, which would
+      // additionally dedupe by local name and could drop a parsed attribute.
+      wrapped._xomParent = elem;
+      elem._attributes.push(wrapped);
     }
 
     // Sync children
@@ -622,10 +651,14 @@ export class Element extends XomNode {
   }
 
   removeChildAt(index: number): XomNode {
-    const removed = this._children.splice(index, 1);
+    // Read before splicing, so the bounds check is the reader's rather than a test on the
+    // splice result — `[removed] = splice(...)` is `XomNode` until noUncheckedIndexedAccess is
+    // on, which makes the `undefined` test read as impossible to `no-unnecessary-condition`.
+    const removed = elementAt(this._children, index, 'Element.removeChildAt');
+    this._children.splice(index, 1);
     this.invalidateChildIndex();
-    if (removed[0]) removed[0]._xomParent = null;
-    return removed[0];
+    removed._xomParent = null;
+    return removed;
   }
 
   /**
@@ -649,9 +682,9 @@ export class Element extends XomNode {
     const ordered = new Set(order);
     if (ordered.size !== order.length) {
       // Duplicate entries: fall back to the literal loop this replaces.
-      for (let i = 0; i < order.length; ++i) {
-        this.removeChild(order[i]);
-        this.insertChild(order[i], i);
+      for (const [i, node] of order.entries()) {
+        this.removeChild(node);
+        this.insertChild(node, i);
       }
       return;
     }
@@ -683,7 +716,7 @@ export class Element extends XomNode {
   }
 
   getChild(index: number): XomNode {
-    return this._children[index];
+    return elementAt(this._children, index, 'Element.getChild');
   }
 
   getChildCount(): number {
@@ -730,9 +763,8 @@ export class Element extends XomNode {
     let index = this._childIndex;
     if (index === null) {
       index = new Map();
-      const children = this._children;
-      for (let i = 0; i < children.length; ++i) {
-        if (!index.has(children[i])) index.set(children[i], i);
+      for (const [i, child] of this._children.entries()) {
+        if (!index.has(child)) index.set(child, i);
       }
       this._childIndex = index;
     }
@@ -764,7 +796,12 @@ export class Element extends XomNode {
     // We need to serialize and re-parse to use xpath properly
     const xmlStr = this.toXML();
     const doc = new DOMParser().parseFromString(xmlStr, 'text/xml');
-    const contextNode = doc.documentElement!;
+    const contextNode = doc.documentElement;
+    // `toXML()` always writes at least this element, so the re-parse always has a root and
+    // this branch is not reachable from any document this port can build. It replaces a `!`
+    // with the answer the rest of the method already gives for input it cannot handle —
+    // an empty node set, not a `TypeError` from inside the xpath library.
+    if (contextNode === null) return new Nodes([]);
 
     const select = xpath.useNamespaces(this.collectNamespaces());
 
@@ -842,10 +879,12 @@ export class Element extends XomNode {
    * keeps the DOM indices and `getChildElements()` indices in step.
    */
   private findCorrespondingElement(domNode: globalThis.Element): Element | null {
-    // Build the path from root to the target node
+    // Build the path from root to the target node. `current` starts at a node and is only
+    // ever reassigned to a parent the loop has already tested, so it is never null — the
+    // walk stops at the parent, not at the node.
     const path: number[] = [];
-    let current: globalThis.Node | null = domNode;
-    while (current && current.parentNode && current.parentNode.nodeType === 1) {
+    let current: globalThis.Node = domNode;
+    while (current.parentNode && current.parentNode.nodeType === 1) {
       const parent: globalThis.Node = current.parentNode;
       let index = 0;
       // Array.from snapshots the live NodeList in index order; the copy is not being
@@ -865,20 +904,43 @@ export class Element extends XomNode {
    * Serialize this element and everything under it.
    *
    * This method IS the byte-compatibility contract documented at the top of the file —
-   * emission order, the ` />` spelling of empty elements, and the placement of `xmlns`
-   * declarations are all fixed by the Java reference output that the integration suite
-   * compares against. Treat it as frozen.
+   * emission order and the ` />` spelling of empty elements are fixed by the Java reference
+   * output the integration suite compares against.
+   *
+   * **The `xmlns` placement was not.** Until this commit the default-namespace declaration
+   * was emitted on *every* namespaced element rather than only where it changes, so a 2185-
+   * byte reference MPM came back out at 3527 bytes with `xmlns` repeated 32 times where Java
+   * writes it once, on the root. The integration suite did not catch it because
+   * `cross-validation.test.ts` normalised the repeats away before comparing — so the gate was
+   * comparing a laundered version of our output rather than our output.
+   *
+   * The rule now is the one XML actually specifies: a default-namespace declaration is
+   * emitted only when this element's namespace differs from the one it inherits, and children
+   * are serialized against whatever this element leaves in scope. Three consequences worth
+   * stating, because each is a case the old code could not express:
+   *
+   * - the root of a namespaced document still declares, since it inherits nothing;
+   * - a child in its parent's namespace declares nothing, which is the fix;
+   * - a child with *no* namespace inside a namespaced parent emits `xmlns=""`, undeclaring
+   *   it. That is required — without it the child would silently inherit the parent's
+   *   namespace on reparse, so the old code was not merely verbose there but wrong.
+   *
+   * A prefixed element declares its own prefix and leaves the default namespace in scope
+   * untouched, so its children inherit what it inherited.
+   *
+   * @param inheritedDefault the default namespace in scope at this element, `''` at the root
    */
-  toXML(): string {
+  toXML(inheritedDefault = ''): string {
     let xml = `<${this.getQualifiedName()}`;
+    let defaultForChildren = inheritedDefault;
 
-    // Add namespace declaration if present
-    if (this._namespaceURI) {
-      if (this._namespacePrefix) {
+    if (this._namespacePrefix) {
+      if (this._namespaceURI) {
         xml += ` xmlns:${this._namespacePrefix}="${this._namespaceURI}"`;
-      } else {
-        xml += ` xmlns="${this._namespaceURI}"`;
       }
+    } else if (this._namespaceURI !== inheritedDefault) {
+      xml += ` xmlns="${this._namespaceURI}"`;
+      defaultForChildren = this._namespaceURI;
     }
 
     // Add attributes
@@ -900,7 +962,7 @@ export class Element extends XomNode {
     } else {
       xml += '>';
       for (const child of this._children) {
-        xml += child.toXML();
+        xml += child instanceof Element ? child.toXML(defaultForChildren) : child.toXML();
       }
       xml += `</${this.getQualifiedName()}>`;
     }
@@ -931,8 +993,9 @@ export class Element extends XomNode {
 export class Document {
   private _rootElement: Element;
 
-  constructor(rootElement: Element) {
+  constructor(rootElement: Element, declaration = XML_DECLARATION) {
     this._rootElement = rootElement;
+    this._declaration = declaration;
   }
 
   getRootElement(): Element {
@@ -943,12 +1006,35 @@ export class Document {
     this._rootElement = element;
   }
 
+  /**
+   * The declaration this document was parsed with, or XOM's own default.
+   *
+   * Java's XOM writes `<?xml version="1.0"?>` — every Java-generated reference under
+   * `tests/integration/fixtures/` begins with exactly that, and none carries an encoding. This
+   * port hardcoded `<?xml version="1.0" encoding="UTF-8"?>`, which is a real divergence and
+   * was invisible because `cross-validation.test.ts` strips the declaration from both sides
+   * before comparing. Same shape as the `xmlns` defect fixed earlier: a normaliser hiding an
+   * output difference rather than a normalisation of something genuinely incomparable.
+   *
+   * A parsed document round-trips the declaration it arrived with, so
+   * `serialize ∘ parse = id` gains one of the three exceptions it had. A constructed document
+   * gets XOM's default, which is what makes generated MSM and MPM match the reference.
+   */
+  private readonly _declaration: string;
+
   toXML(): string {
-    return `<?xml version="1.0" encoding="UTF-8"?>\n${this._rootElement.toXML()}`;
+    // The trailing newline is Java's: XOM's `Serializer` ends the document with one, all 32
+    // reference fixtures carry exactly one, and this port emitted none. It was invisible
+    // because `cross-validation.test.ts` ended its normaliser chain with a `.trim()` that its
+    // own audit of what it forgives did not mention. Note that the byte-compared public API
+    // path serialises through `getRootElement().toXML()` (RULE F2a) and is unaffected — this
+    // is the whole-document spelling, which is what `XmlBase.toXML` and the reference
+    // comparison use.
+    return `${this._declaration}\n${this._rootElement.toXML()}\n`;
   }
 
   copy(): Document {
-    return new Document(this._rootElement.copy());
+    return new Document(this._rootElement.copy(), this._declaration);
   }
 }
 
@@ -958,6 +1044,39 @@ export class Document {
  * Only a LEADING one is a signature. Anywhere else U+FEFF is ZERO WIDTH NO-BREAK SPACE and
  * is ordinary content, so exactly one occurrence, at position 0, is removed.
  */
+/**
+ * Split a qualified name into its prefix and local part, exactly as `name.split(':')` and
+ * taking elements 0 and 1 did.
+ *
+ * The truncation is deliberate and is preserved: `a:b:c` yields prefix `a` and local name
+ * `b`, losing `:c`, because the incumbent read `parts[1]` and nothing else. Well-formed XML
+ * has at most one colon so it only bites on malformed input, and it is kept for parity.
+ *
+ * Written with `indexOf`/`slice` rather than `split` plus indices for a specific reason: under
+ * `noUncheckedIndexedAccess` `parts[1]` is `string | undefined`, and the obvious repair —
+ * destructuring and testing for `undefined` — reads as an impossible comparison to
+ * `no-unnecessary-condition` while that flag is still off. Not indexing at all is clean under
+ * both, and is the only formulation that is.
+ */
+function splitQualifiedName(name: string): { readonly prefix: string; readonly localName: string } {
+  const firstColon = name.indexOf(':');
+  if (firstColon < 0) return { prefix: '', localName: name };
+  const secondColon = name.indexOf(':', firstColon + 1);
+  return {
+    prefix: name.slice(0, firstColon),
+    localName: name.slice(firstColon + 1, secondColon < 0 ? undefined : secondColon),
+  };
+}
+
+/**
+ * What XOM writes when a document has no declaration of its own — and what every
+ * Java-generated reference fixture begins with. Notably NOT `encoding="UTF-8"`.
+ */
+const XML_DECLARATION = '<?xml version="1.0"?>';
+
+/** Captures a leading declaration so a parsed document can be written back as it arrived. */
+const XML_DECLARATION_PATTERN = /^\s*<\?xml[^?]*\?>/;
+
 const BYTE_ORDER_MARK = '﻿';
 
 /**
@@ -1001,10 +1120,11 @@ export class Builder {
 
     // Check for parse errors
     const errorNode = dom.getElementsByTagName('parsererror');
-    if (errorNode.length > 0) {
-      throw new ParsingException(
-        `XML parsing error: ${errorNode[0].textContent || 'Unknown error'}`,
-      );
+    // `.item(0)` is typed `Element | null` whichever way the index flags are set; `[0]` is
+    // not, so the null test here is honest under both.
+    const firstError = errorNode.item(0);
+    if (firstError !== null) {
+      throw new ParsingException(`XML parsing error: ${firstError.textContent || 'Unknown error'}`);
     }
 
     const rootElement = dom.documentElement;
@@ -1012,7 +1132,13 @@ export class Builder {
       throw new ParsingException('No root element found');
     }
 
-    return new Document(Element.wrap(rootElement as unknown as globalThis.Element));
+    // Carry the source's own declaration so the document writes back as it arrived. A source
+    // with no declaration gets XOM's default, which is also what a constructed document gets.
+    const declared = XML_DECLARATION_PATTERN.exec(stripByteOrderMark(xml));
+    return new Document(
+      Element.wrap(rootElement as unknown as globalThis.Element),
+      declared === null ? XML_DECLARATION : declared[0].trimStart(),
+    );
   }
 }
 

@@ -33,6 +33,9 @@
  * the construction that makes the alignment a metric. It holds because every gap cost here is
  * the same row-wise functional evaluated against the neutral ornament, and not a constant.
  */
+import { filterMap, groupBy, head, isNonEmpty } from '../prelude/index.js';
+
+import { elementAt } from '../prelude/seq.js';
 import {
   comparisonRowWith,
   localDistance,
@@ -125,8 +128,10 @@ function noteOrderValue(atom: OrnamentAtom): number | null {
     case null:
       return 0;
     // An id list and the v3 grammar NAME notes; that is an identity claim, not a magnitude,
-    // and it goes to the finding channel on §5.8's @controller precedent.
-    default:
+    // and it goes to the finding channel on §5.8's @controller precedent. Named rather than
+    // defaulted, so a fourth note-order kind has to choose a side explicitly.
+    case 'id-list':
+    case 'v3-grammar':
       return null;
   }
 }
@@ -314,9 +319,13 @@ function composedSpread(
   spreads: readonly Valued<PerformedSpread>[],
 ): Valued<PerformedSpread> | null {
   if (spreads.some(isBottom)) return bottom('renderer-error');
-  const frames = spreads.filter((spread) => !isBottom(spread)).map((spread) => spread.value);
-  if (frames.length === 0) return null;
-  const first = frames[0];
+  // One pass where there were two, and the `isBottom` test is the NARROWING rather than a
+  // filter: the line above has already returned if any spread is `⊥`, so this drops nothing.
+  // It is here because `some` narrows the predicate, not the array, and there is no way to
+  // tell the type system what that early return established.
+  const frames = filterMap(spreads, (spread) => (isBottom(spread) ? null : spread.value));
+  if (!isNonEmpty(frames)) return null;
+  const first = head(frames);
   const uniform = frames.every(
     (frame) => frame.intensity === first.intensity && frame.domain === first.domain,
   );
@@ -329,11 +338,16 @@ function composedSpread(
 }
 
 export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly OrnamentAtom[] {
-  const groups = new Map<string, number[]>();
-  atoms.forEach((atom, index) => {
-    const key = poolKey(atom, index);
-    groups.set(key, [...(groups.get(key) ?? []), index]);
-  });
+  // `groups.set(key, [...(groups.get(key) ?? []), index])` REBUILT the whole bucket on every
+  // append, so a pool of m members cost O(m²) copies to assemble — and it was written by hand
+  // because `groupBy`'s key function takes only the element, where `poolKey` needs the index.
+  //
+  // It does not need a new signature: `groupBy` takes an `Iterable<A>` and `atoms.entries()` is
+  // one, so the tuple carries both. That is better than an index parameter would have been here,
+  // because the body wants the index too — to write back into `composed` — and now has it
+  // without a second lookup. Five checked reads into `atoms` and `members` go with it, and the
+  // head needs no guard at all: `groupBy` buckets are `NonEmptyArray`, so `head` is total.
+  const groups = groupBy(atoms.entries(), ([index, atom]) => poolKey(atom, index));
 
   const composed = [...atoms];
   for (const members of groups.values()) {
@@ -341,40 +355,52 @@ export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly Ornamen
     let from = 0;
     let to = 0;
     let poisoned = false;
-    for (const index of members) {
-      const gradient = gradientOf(atoms[index]);
+    for (const [, member] of members) {
+      const gradient = gradientOf(member);
       if (isBottom(gradient)) {
         poisoned = true;
         continue;
       }
       // A descending ornament walks the same pool from the other end.
-      const reversed = atoms[index].noteOrderKind === 'descending';
+      const reversed = member.noteOrderKind === 'descending';
       from += reversed ? gradient.value.to : gradient.value.from;
       to += reversed ? gradient.value.from : gradient.value.to;
     }
-    const [head, ...rest] = members;
-    const frame = composedSpread(members.map((index) => spreadOf(atoms[index])));
+    const [headIndex, headAtom] = head(members);
+    const rest = members.slice(1);
+    const frame = composedSpread(members.map(([, member]) => spreadOf(member)));
     // One poisoned member makes the whole anchor's velocity NaN, which is the anchor's effect.
-    composed[head] = {
-      ...atoms[head],
+    composed[headIndex] = {
+      ...headAtom,
       // The composed ramp is stated in the head's own direction, so a group whose head is
       // descending carries it back the way that head reads it.
       gradient: poisoned
         ? bottom('renderer-error')
-        : valued(
-            atoms[head].noteOrderKind === 'descending' ? { from: to, to: from } : { from, to },
-          ),
-      spread: frame ?? atoms[head].spread,
+        : valued(headAtom.noteOrderKind === 'descending' ? { from: to, to: from } : { from, to }),
+      spread: frame ?? headAtom.spread,
     };
-    for (const index of rest)
+    for (const [index, member] of rest) {
       composed[index] = {
-        ...atoms[index],
+        ...member,
         gradient: valued(NEUTRAL_GRADIENT),
-        spread: frame === null ? atoms[index].spread : valued(NEUTRAL_SPREAD),
+        spread: frame === null ? member.spread : valued(NEUTRAL_SPREAD),
       };
+    }
   }
   return composed;
 }
+
+/**
+ * What an out-of-range read into one of this module's atom lists is called.
+ *
+ * `ATOMS` and `POOL_MEMBERS` used to sit here too, naming the whole-list and pool-member reads
+ * that {@link composeAnchors} made. Grouping over `atoms.entries()` carries each atom with its
+ * index, so those five reads have no index left to be out of range — and the two names went with
+ * them rather than being kept for a caller that no longer exists. The a/b pair below is a
+ * different shape: those indices come from the assignment solver, not from an enumeration.
+ */
+const ATOMS_A = 'the a-side ornament atoms';
+const ATOMS_B = 'the b-side ornament atoms';
 
 /** The structural differences a matched pair reports without pricing (§5.6). */
 function findingsFor(x: OrnamentAtom, y: OrnamentAtom): OrnamentFinding[] {
@@ -438,7 +464,10 @@ export function ornamentationDistance(
   );
 
   const findings: OrnamentFinding[] = [];
-  for (const pair of alignment.pairs) findings.push(...findingsFor(atomsA[pair.a], atomsB[pair.b]));
+  for (const pair of alignment.pairs)
+    findings.push(
+      ...findingsFor(elementAt(atomsA, pair.a, ATOMS_A), elementAt(atomsB, pair.b, ATOMS_B)),
+    );
 
   return {
     distance: alignment.cost,
@@ -464,9 +493,19 @@ function cappedAnchorsOf(
   for (const charge of alignment.charges) {
     const flag = { capped: false };
     if (charge.a !== null && charge.b !== null)
-      ornamentDistance(a[charge.a], b[charge.b], ticksPerQuarter, jnd, flag);
+      ornamentDistance(
+        elementAt(a, charge.a, ATOMS_A),
+        elementAt(b, charge.b, ATOMS_B),
+        ticksPerQuarter,
+        jnd,
+        flag,
+      );
     else {
-      const only = charge.a === null ? b[charge.b as number] : a[charge.a];
+      // One of the two is non-null — a charge with neither side is not a charge — and reading
+      // the other side through `elementAt` is what retires the `as number` that used to assert
+      // it. `null` on both would now be a named `RangeError` rather than a silent `undefined`.
+      const only =
+        charge.a === null ? elementAt(b, charge.b ?? -1, ATOMS_B) : elementAt(a, charge.a, ATOMS_A);
       deviationFromNeutral(only, ticksPerQuarter, jnd, flag);
     }
     if (flag.capped) count += 1;

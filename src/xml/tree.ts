@@ -10,9 +10,15 @@ import { MissingNodeError } from './errors.js';
  * and ignores the namespace, which is the single most load-bearing property of this module.**
  *
  * Moved verbatim out of `mei/Helper` by T14 (ARCHITECTURE.md §8.2). Two other copies of some
- * of these functions exist — `src/msm/Msm.ts` has eight module-local ones and `src/mpm/Mpm.ts`
- * two — and they have behaviourally drifted from these (T9). RULE M2a forbids merging them
- * without a per-method behavioural probe; that is item T16b's, not this module's.
+ * of these functions used to exist — `src/msm/Msm.ts` had eight module-local ones and
+ * `src/mpm/Mpm.ts` has two — believed to have behaviourally drifted from these (T9). RULE M2a
+ * forbids merging them without a per-method behavioural probe. `Msm.ts`'s eight now have one:
+ * `tests/msm/navigationEquivalence.test.ts` restates each and feeds both sides the MSM/MPM
+ * fixture corpus plus namespaced attributes, same-local-name children in three namespaces,
+ * text-separated siblings and the empty name. Seven agreed everywhere and their `Msm.ts`
+ * copies are gone; the eighth, `getFilenameWithoutExtension`, does NOT agree with
+ * `music/text.ts`'s on a dotless filename, and stays duplicated with the difference pinned.
+ * `src/mpm/Mpm.ts`'s two are still unprobed.
  *
  * Port of the navigation half of `meico.mei.Helper`.
  * @author Axel Berndt
@@ -23,25 +29,28 @@ import { MissingNodeError } from './errors.js';
  * `getFirstChildElement(Element)` and `getFirstChildElement(String, Element)`, and the
  * port added `(Element, String)` on top. TypeScript dispatches them at runtime by
  * inspecting `typeof arg1`, which is why the implementation signature is widened to
- * `Element | string | null`. The `unified-signatures` lint entries this produces are
- * knowingly left standing — collapsing name-first and name-last into one signature is an
- * API change and belongs to T16.
+ * `Element | string | null`.
+ *
+ * Two of the four overloads were `(Element)` and `(Element, String)`, which differ only by
+ * a trailing argument and are therefore one signature with an optional parameter —
+ * `unified-signatures` said so, and it was right: the collapsed form accepts exactly the
+ * call shapes the pair accepted. What stays split is name-first against name-last, because
+ * those select **different implementations** (see below), and collapsing them would be an
+ * API change rather than a spelling one.
  */
 
 /**
- * Get the first child element of an xml element (no name filter).
+ * Get the first child element of an xml element, optionally filtered by local name.
+ *
+ * XOM's `getFirstChild(String)` sometimes doesn't seem to work even though an XPath query
+ * finds something. For those situations this method can be used as a workaround.
+ *
  * @param ofThis
- * @return the first child element or null
+ * @param localname restrict to the first child with this local name; omit for the first
+ *   child element of any name
+ * @return the first matching child element or null
  */
-export function firstChildElement(ofThis: Element): Element | null;
-/**
- * XOM's method getFirstChild(String) sometimes doesn't seem to work even though an XPath query finds something.
- * For these situations this method can be used as workaround.
- * @param ofThis
- * @param localname
- * @return the first child element with the given localname or null
- */
-export function firstChildElement(ofThis: Element, localname: string): Element | null;
+export function firstChildElement(ofThis: Element, localname?: string): Element | null;
 /**
  * this function became necessary because the XOM methods sometimes do not seem to work for whatever reason
  * @param name
@@ -64,7 +73,7 @@ export function firstChildElement(
   arg2?: Element | string | null,
 ): Element | null {
   // Determine which overload was called
-  if (arg1 === null || arg1 === undefined) return null;
+  if (arg1 == null) return null;
 
   if (typeof arg1 === 'string') {
     // firstChildElement(name: string, ofThis: Element)
@@ -72,11 +81,12 @@ export function firstChildElement(
     const ofThis = arg2 as Element | null;
     if (ofThis == null) return null;
 
-    const children = ofThis.getChildElements();
-    for (let i = 0; i < children.size(); ++i) {
-      if (children.get(i).getLocalName() === name) {
-        return children.get(i);
-      }
+    // A walk, and now spelled as one. Still `getChildElements()` and not
+    // `getFirstChildElement(name)`, which would be the same answer by the same comparison —
+    // RULE M2a forbids merging the two navigation implementations without a behavioural
+    // probe, and the block comment above says so at length. Only the index is gone.
+    for (const child of ofThis.getChildElements()) {
+      if (child.getLocalName() === name) return child;
     }
     return null;
   } else {
@@ -108,15 +118,11 @@ export function firstChildElement(
  * earlier in the same function, or the shape of a document this port itself built. On a
  * path where absence is possible, keep {@link firstChildElement} and handle the null.
  * @param ofThis
+ * @param localname restrict to the first child with this local name; omit for the first
+ *   child element of any name
  * @return the first child element
  */
-export function requireFirstChildElement(ofThis: Element): Element;
-/**
- * @param ofThis
- * @param localname
- * @return the first child element with the given localname
- */
-export function requireFirstChildElement(ofThis: Element, localname: string): Element;
+export function requireFirstChildElement(ofThis: Element, localname?: string): Element;
 /**
  * @param name
  * @param ofThis
@@ -153,12 +159,10 @@ export function allChildElements(parent: Element, name?: string): Element[] {
   // document order, and returns the live nodes rather than mapped-back ones. This was the
   // single most-called function on the render path, and the subtree it copied was often
   // the whole score.
-  const children = parent.getChildElements(name);
-  const es: Element[] = [];
-  for (let i = 0; i < children.size(); ++i) {
-    es.push(children.get(i));
-  }
-  return es;
+  // `toArray()` is the copy this loop was making by hand — same elements, same order, one
+  // allocation instead of two (the `Elements` snapshot, then the array). The copy itself is
+  // not optional: the return type is a mutable `Element[]` and callers splice it.
+  return parent.getChildElements(name).toArray();
 }
 
 /**
@@ -204,6 +208,68 @@ export function descendantElements(
   }
 
   return found;
+}
+
+/**
+ * Exactly the elements {@link descendantElements} would return, in the opposite order,
+ * produced one at a time.
+ *
+ * This exists for the callers that scan **backwards and stop at the first hit** —
+ * `dateMap.addToMap`, which looks for the last entry not later than the one being
+ * inserted, and the converter's tie handling, which looks for the note a tie continues.
+ * Both used to build the whole array and then read one element off the end of it. That is
+ * a linear pass per insertion, so filling a score of n notes was Θ(n²) even after the
+ * XPath round trip was gone — with a much smaller constant, but the same shape. Here the
+ * walk is lazy: it descends the rightmost spine, yields, and only goes further if the
+ * caller keeps asking. For a map whose entries are childless and whose dates arrive in
+ * order — which is the case on essentially every insertion the converter makes — the
+ * caller stops after one element and the whole call is O(depth).
+ *
+ * Reverse document order is right-to-left post-order: for a node with children c1…ck it is
+ * the reverse of ck's subtree, then of c(k-1)'s, …, then the node itself. `ofThis` is the
+ * bottom frame and is popped without being yielded, which is what makes this `descendant::`
+ * rather than `descendant-or-self::`.
+ *
+ * The traversal keeps a cursor per open frame rather than pushing whole child lists, so a
+ * flat map of n children costs nothing until the caller walks past them, and — as in
+ * {@link descendantElements} — the stack is explicit, so depth cannot overflow.
+ *
+ * The tree must not be mutated while a caller is iterating: the frames hold live indices
+ * into the child lists. Both call sites mutate only after they have stopped.
+ */
+export function* reverseDescendantElements(
+  ofThis: Element,
+  matches: (element: Element) => boolean,
+): Generator<Element> {
+  /** `i` is the next child to descend into, counted downwards from the last. */
+  const stack: { readonly element: Element; i: number }[] = [
+    { element: ofThis, i: ofThis.getChildCount() - 1 },
+  ];
+
+  // The loop peeks at the top frame and only sometimes pops it, so it cannot be written as
+  // `while ((frame = stack.pop()) !== undefined)`. Taking the peek in the for-header instead
+  // is what lets the compiler see that the body runs only on a frame that exists —
+  // `stack[stack.length - 1]` is `T | undefined` under `noUncheckedIndexedAccess`, and the
+  // invariant that makes it safe lives in the loop condition, where a type cannot follow it.
+  // `continue` runs the update expression, so the re-peek happens on every path.
+  for (let frame = stack.at(-1); frame !== undefined; frame = stack.at(-1)) {
+    let child: Element | null = null;
+    while (frame.i >= 0) {
+      const candidate = frame.element.getChild(frame.i--);
+      if (candidate instanceof Element) {
+        child = candidate;
+        break;
+      }
+    }
+
+    if (child !== null) {
+      stack.push({ element: child, i: child.getChildCount() - 1 });
+      continue;
+    }
+
+    stack.pop();
+    if (stack.length > 0 && matches(frame.element)) yield frame.element;
+  }
 }
 
 /**
@@ -415,9 +481,19 @@ export function getAllPreviousSiblingElements(name: string, ofThis: Element): El
  * clones does. (The same divergence and the same reasoning appear at `Msm.cloneElement`,
  * documented there under T9.)
  *
+ * The `null` in the return type comes **only** from the `null` in the argument type, and the
+ * two overloads say so — `cloneElement(someElement)` is an `Element`, which is what lets the
+ * three call sites that wrote `cloneElement(x)!` drop the assertion. This is RULE N2b's
+ * narrowing expressed as an overload rather than performed as a deletion: the guard stays,
+ * because the nullable form is still wanted (`addToMap(cloneElement(scoreDef), …)` lets a
+ * null flow straight through), so nothing gains the unguarded `TypeError` that rule's
+ * EQ-RISK warns about.
+ *
  * @param e
  * @return
  */
+export function cloneElement(e: Element): Element;
+export function cloneElement(e: Element | null): Element | null;
 export function cloneElement(e: Element | null): Element | null {
   if (e == null) return null;
 
@@ -442,7 +518,34 @@ export function cloneElement(e: Element | null): Element | null {
 export function attribute(name: string, ofThis: Element | null): Attribute | null {
   if (ofThis == null) return null;
 
-  let a = ofThis.getAttribute(name);
+  // `getAttribute(name, '')` rather than `getAttribute(name)`: XOM's one-argument form matches
+  // a local name in NO namespace, and this port's also matches the qualified name. That
+  // difference is invisible until something asks for `'xml:id'`, whose local name is `id` —
+  // Java's three lookups all miss and `Helper.getAttributeValue` answers `""`, where step one
+  // here used to hit. Two call sites depend on it and both are byte-visible: `Msm.ts`'s
+  // raw-MIDI text event and `AsynchronyMap`'s `@modified` id. Java's own references settle
+  // which side is right — all 105 `modified` attributes in `all-maps-reference/` are
+  // `modified=""`, and `articulations_raw.mid` carries twelve `FF 01 00`, twelve text events
+  // of length zero.
+  //
+  // The fix is here rather than in `Element.getAttribute` deliberately. Removing the qualified
+  // match there also passes the gate, and reds 30 tests elsewhere — `Mei2MsmMpmConverter`'s
+  // failures being counts, not ids, because it reads qualified names structurally. This
+  // function is the transcription of `Helper.getAttribute`, so this is where the fidelity
+  // belongs; the XOM emulation keeps its convenience for everyone else.
+  //
+  // **Second consequence, narrower than the first and worth stating so nobody rediscovers it
+  // as a surprise.** The old step one matched a local name in ANY namespace; this one matches
+  // it in none. An attribute in a namespace that is neither empty nor the element's own is
+  // therefore no longer found here — steps two and three do not cover that case either. It is
+  // unreachable from any document in this repository: `xml:id` is the ONLY namespaced
+  // attribute in the whole fixture corpus (1725 of them, all covered by step three), and the
+  // only prefix declaration anywhere is `xmlns:xml` itself. Attributes without a prefix are in
+  // no namespace by XML's own rule, unlike elements, which is why every `@date`, `@number`
+  // and `@name` in MSM and MPM still resolves at step one. Checked end to end after this
+  // change: `comparison/parts.ts`'s `readPartNumber`, which would silently unmatch parts if it
+  // regressed, still reads `1` off a real reference MSM.
+  let a = ofThis.getAttribute(name, '');
   if (a != null) return a;
 
   a = ofThis.getAttribute(name, ofThis.getNamespaceURI());
@@ -478,6 +581,34 @@ export function getAttributeValue(name: string, ofThis: Element | null): string 
   const a = attribute(name, ofThis);
   if (a == null) return '';
   return a.getValue();
+}
+
+/**
+ * The throwing sibling of {@link getAttributeValue} (ARCHITECTURE.md RULE N2a), completing the
+ * pair for the accessor that dominates the converter's call sites.
+ *
+ * The non-throwing form answers a missing attribute with `''`, which is the *value* an empty
+ * attribute would have carried — so a caller that needs to tell "absent" from "present and
+ * empty" cannot use it, and 150-odd sites in `mei/` therefore read
+ * `element.getAttributeValue(name)!` (XOM's own accessor, which returns `null`) and assert.
+ * This is that read, with the assertion replaced by an error that names the attribute.
+ *
+ * **Exactly equivalent to `ofThis.getAttributeValue(name)!`**, which is what makes converting
+ * those sites mechanical rather than a behaviour change. That is not obvious, because
+ * {@link attribute} adds two namespaced lookups on top of the plain one — but in this port
+ * they are unreachable: `Element.getAttribute(name)` with no namespace already matches on
+ * `getLocalName() === name` (or the qualified name), i.e. it is namespace-agnostic, so if it
+ * finds nothing then no attribute carries that local name and neither namespaced retry can
+ * find one either. The fallbacks earn their keep against Java XOM, whose one-argument
+ * `getAttribute` matches unnamespaced attributes only; they are kept for that documentary
+ * value rather than deleted under RULE N2b.
+ *
+ * @param name
+ * @param ofThis
+ * @return the attribute's value
+ */
+export function requireAttributeValue(name: string, ofThis: Element | null): string {
+  return requireAttribute(name, ofThis).getValue();
 }
 
 /**
@@ -532,8 +663,10 @@ export function getClosest(name: string, ofThis: Element): Element | null {
 export function getClosestByAttr(attrName: string, ofThis: Element): Element | null {
   let parent = parentElement(ofThis);
   while (parent != null) {
+    // `getAttributeValue` answers `''` for an absent attribute rather than null, so the
+    // empty-string test is the whole of "carries this attribute" here.
     const attr = getAttributeValue(attrName, parent);
-    if (attr != null && attr !== '') return parent;
+    if (attr !== '') return parent;
     parent = parentElement(parent);
   }
   return null;

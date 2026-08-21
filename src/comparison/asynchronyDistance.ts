@@ -16,6 +16,7 @@
  * curve dimensions integrate and consume only the row's `jnd`; step and event rows use the
  * capped attribute metric.
  */
+import { pairwise } from '../prelude/index.js';
 import { comparisonRowFor } from './registry.js';
 import { CompensatedSum } from './quadrature.js';
 import { canonicalLocalDistance } from './registry.js';
@@ -94,10 +95,7 @@ export function asynchronyDistance(
   const total = new CompensatedSum();
   let anyCapped = false;
 
-  for (let i = 0; i < grid.length - 1; ++i) {
-    const cellStart = grid[i];
-    const cellEnd = grid[i + 1];
-
+  for (const [cellStart, cellEnd] of pairwise(grid)) {
     const local = canonicalLocalDistance(
       row,
       offsetAt(a, cellStart),

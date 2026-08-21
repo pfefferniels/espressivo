@@ -68,6 +68,7 @@ import type {
   DiffReport,
   DiffResult,
 } from '../comparison/report.js';
+import { andThen, fromEntriesExact, mapOk, traverse } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import {
   ComparisonEngineError,
@@ -77,6 +78,15 @@ import {
 } from './errors.js';
 import { parseOrThrow, requireXmlText } from './parse.js';
 import type { XmlText } from './types.js';
+import {
+  accepted,
+  allOf,
+  checkKeyedRecord,
+  orInvalidOption,
+  rejected,
+  requireOptionBag,
+  type Checked,
+} from './validate.js';
 
 // ---------------------------------------------------------------------------
 // Vocabulary (§9.1)
@@ -294,7 +304,7 @@ export interface CompareCorpusOptions extends ComparisonSettings {
  * @throws {ComparisonEngineError} the engine broke one of its own invariants
  */
 export function compareMpm(options: CompareMpmOptions): ComparisonResult {
-  checkCompareOptions(options);
+  orInvalidOption(checkCompareOptions(options));
 
   // §9.4's parse order: `a`, then `b`, then `msm`, so the first failure reported is the
   // earliest one — and each carries its own role, which a single interior parse could not say.
@@ -350,7 +360,7 @@ export function compareMpm(options: CompareMpmOptions): ComparisonResult {
  * @throws the same errors {@link compareMpm} throws, on the same inputs
  */
 export function diffMpm(options: DiffMpmOptions): DiffResult {
-  checkDiffOptions(options);
+  orInvalidOption(checkDiffOptions(options));
 
   const rootA = parseDocument('MPM a', options.a, parseMpmRoot, 'mpm');
   const rootB =
@@ -404,7 +414,7 @@ export function diffMpm(options: DiffMpmOptions): DiffResult {
  * @throws {PerformanceNotFoundError} an item's selector names or indexes nothing
  */
 export function compareMpmCorpus(options: CompareCorpusOptions): CorpusResult {
-  checkCorpusOptions(options);
+  orInvalidOption(checkCorpusOptions(options));
 
   const items = options.items.map((item, index) => ({
     root: parseDocument(`MPM items[${String(index)}]`, item.mpm, parseMpmRoot, 'mpm'),
@@ -543,23 +553,20 @@ const INVARIANCE_MODES = new Set<string>(['none', 'level', 'level-gain']);
 /** AD-20: an event dimension has no curve to centre, so a mode on one is a caller error. */
 const EVENT_DIMENSIONS = new Set<ComparisonDimension>(['articulation', 'ornamentation']);
 
-function checkCompareOptions(options: CompareMpmOptions): void {
-  // Read as `unknown` deliberately: this guard exists for callers arriving from JavaScript,
-  // where the parameter type guarantees nothing, and comparing against the declared type would
-  // let the compiler prove it dead and the linter delete it.
-  const bag: unknown = options;
-  if (typeof bag !== 'object' || bag === null)
-    throw new InvalidOptionError('options must be an object carrying at least `a`');
-
-  checkWindow(options.window);
-  checkWeights(options.weights);
-  checkJnd(options.jnd);
-  checkPlausibleRange(options.plausibleRange);
-  checkInvariance(options.invariance);
-  checkSelector('performanceA', options.performanceA);
-  checkSelector('performanceB', options.performanceB);
-  checkProfile(options.profile);
-  checkScape(options.scape);
+function checkCompareOptions(options: CompareMpmOptions): Checked {
+  return andThen(requireOptionBag(options, 'options must be an object carrying at least `a`'), () =>
+    allOf(
+      checkWindow(options.window),
+      checkWeights(options.weights),
+      checkJnd(options.jnd),
+      checkPlausibleRange(options.plausibleRange),
+      checkInvariance(options.invariance),
+      checkSelector('performanceA', options.performanceA),
+      checkSelector('performanceB', options.performanceB),
+      checkProfile(options.profile),
+      checkScape(options.scape),
+    ),
+  );
 }
 
 /**
@@ -574,20 +581,17 @@ function checkCompareOptions(options: CompareMpmOptions): void {
  *
  * So this validates exactly what the diff surface offers, and `moves` with it.
  */
-function checkDiffOptions(options: DiffMpmOptions): void {
-  const bag: unknown = options;
-  if (typeof bag !== 'object' || bag === null)
-    throw new InvalidOptionError('options must be an object carrying at least `a`');
-
-  checkWindow(options.window);
-  checkJnd(options.jnd);
-  checkPlausibleRange(options.plausibleRange);
-  checkSelector('performanceA', options.performanceA);
-  checkSelector('performanceB', options.performanceB);
-
-  const moves: unknown = options.moves;
-  if (moves !== undefined && typeof moves !== 'boolean')
-    throw new InvalidOptionError('moves must be a boolean');
+function checkDiffOptions(options: DiffMpmOptions): Checked {
+  return andThen(requireOptionBag(options, 'options must be an object carrying at least `a`'), () =>
+    allOf(
+      checkWindow(options.window),
+      checkJnd(options.jnd),
+      checkPlausibleRange(options.plausibleRange),
+      checkSelector('performanceA', options.performanceA),
+      checkSelector('performanceB', options.performanceB),
+      checkBoolean('moves', options.moves),
+    ),
+  );
 }
 
 /**
@@ -598,178 +602,198 @@ function checkDiffOptions(options: DiffMpmOptions): void {
  * is in the same bag — so the caller could have known, and a full plausible-looking report with
  * a silently clamped `k` would hide the typo the option exists to express.
  */
-function checkCorpusOptions(options: CompareCorpusOptions): void {
-  const bag: unknown = options;
-  if (typeof bag !== 'object' || bag === null)
-    throw new InvalidOptionError('options must be an object carrying at least `items`');
-  const list: unknown = options.items;
-  if (!Array.isArray(list))
-    throw new InvalidOptionError('items must be an array of { mpm, performance?, label? }');
+function checkCorpusOptions(options: CompareCorpusOptions): Checked {
+  // Two guards in sequence rather than two members of one `allOf`, because everything below
+  // reads `items` as an array. `andThen` is how a check whose success is another check's
+  // precondition gets sequenced; `allOf`, whose arguments are all evaluated, is not.
+  return andThen(
+    andThen(requireOptionBag(options, 'options must be an object carrying at least `items`'), () =>
+      Array.isArray(options.items)
+        ? accepted
+        : rejected('items must be an array of { mpm, performance?, label? }'),
+    ),
+    () =>
+      allOf(
+        checkWindow(options.window),
+        checkWeights(options.weights),
+        checkJnd(options.jnd),
+        checkPlausibleRange(options.plausibleRange),
+        checkInvariance(options.invariance),
+        checkEach(options.items, (item, index) =>
+          checkSelector(`items[${String(index)}].performance`, item.performance),
+        ),
+        checkScape(options.scape),
+        checkNonNegativeInteger('maxItems', options.maxItems),
+        // Checked against the UNEXPANDED count, which is a lower bound on the expanded one: the
+        // exact bound needs the documents, and this branch is the one a caller can act on
+        // without them.
+        checkPositiveInteger('k', options.k),
+        checkPositiveInteger('embeddingAxes', options.embeddingAxes),
+        checkEnum(
+          options.linkage,
+          ['average', 'single', 'complete', 'weighted', 'ward.D2'],
+          (value) =>
+            `unknown linkage "${value}"; expected average, single, complete, ` +
+            'weighted or ward.D2',
+        ),
+        checkEnum(
+          options.normalization,
+          ['fixed', 'corpus'],
+          (value) => `unknown normalization "${value}"; expected fixed or corpus`,
+        ),
+      ),
+  );
+}
 
-  checkWindow(options.window);
-  checkWeights(options.weights);
-  checkJnd(options.jnd);
-  checkPlausibleRange(options.plausibleRange);
-  checkInvariance(options.invariance);
-  for (const [index, item] of options.items.entries())
-    checkSelector(`items[${String(index)}].performance`, item.performance);
-  checkScape(options.scape);
+/** Every element must pass, and the first that does not is the one reported. */
+function checkEach<T>(items: readonly T[], check: (item: T, index: number) => Checked): Checked {
+  return mapOk(traverse(items, check), () => undefined);
+}
 
-  if (
-    options.maxItems !== undefined &&
-    (!Number.isInteger(options.maxItems) || options.maxItems < 0)
-  )
-    throw new InvalidOptionError(
-      `maxItems must be a non-negative integer, got ${String(options.maxItems)}`,
-    );
-  // Checked against the UNEXPANDED count, which is a lower bound on the expanded one: the exact
-  // bound needs the documents, and this branch is the one a caller can act on without them.
-  if (options.k !== undefined && (!Number.isInteger(options.k) || options.k < 1))
-    throw new InvalidOptionError(`k must be an integer >= 1, got ${String(options.k)}`);
-  if (
-    options.embeddingAxes !== undefined &&
-    (!Number.isInteger(options.embeddingAxes) || options.embeddingAxes < 1)
-  )
-    throw new InvalidOptionError(
-      `embeddingAxes must be an integer >= 1, got ${String(options.embeddingAxes)}`,
-    );
-  if (
-    options.linkage !== undefined &&
-    !['average', 'single', 'complete', 'weighted', 'ward.D2'].includes(options.linkage)
-  )
-    throw new InvalidOptionError(
-      `unknown linkage "${String(options.linkage)}"; expected average, single, complete, ` +
-        'weighted or ward.D2',
-    );
-  if (options.normalization !== undefined && !['fixed', 'corpus'].includes(options.normalization))
-    throw new InvalidOptionError(
-      `unknown normalization "${String(options.normalization)}"; expected fixed or corpus`,
-    );
+/** A boolean-or-absent option. */
+function checkBoolean(name: string, value: unknown): Checked {
+  return value === undefined || typeof value === 'boolean'
+    ? accepted
+    : rejected(`${name} must be a boolean`);
+}
+
+/** §9.4's `maxItems`: a count, so zero is meaningful and negative is not. */
+function checkNonNegativeInteger(name: string, value: number | undefined): Checked {
+  return value === undefined || (Number.isInteger(value) && value >= 0)
+    ? accepted
+    : rejected(`${name} must be a non-negative integer, got ${String(value)}`);
+}
+
+/**
+ * §9.4's `k` and `embeddingAxes`: the live cases of the knowability split's first branch
+ * (AD-25.1). A value outside the range is unusable given the OTHER OPTIONS alone — `items.length`
+ * is in the same bag — so the caller could have known, and a full plausible-looking report with a
+ * silently clamped `k` would hide the typo the option exists to express.
+ */
+function checkPositiveInteger(name: string, value: number | undefined): Checked {
+  return value === undefined || (Number.isInteger(value) && value >= 1)
+    ? accepted
+    : rejected(`${name} must be an integer >= 1, got ${String(value)}`);
+}
+
+/** A string option drawn from a closed set. */
+function checkEnum(
+  value: string | undefined,
+  vocabulary: readonly string[],
+  problem: (value: string) => string,
+): Checked {
+  return value === undefined || vocabulary.includes(value) ? accepted : rejected(problem(value));
 }
 
 /** §9.4's row: `scape.bins` is an integer in `[1, 256]`, and out of range is a caller error. */
-function checkScape(scape: { readonly bins: number } | undefined): void {
-  if (scape === undefined) return;
+function checkScape(scape: { readonly bins: number } | undefined): Checked {
+  if (scape === undefined) return accepted;
   const bins: unknown = scape.bins;
-  if (typeof bins !== 'number' || !Number.isInteger(bins) || bins < 1 || bins > SCAPE_MAX_BINS)
-    throw new InvalidOptionError(
-      `scape.bins must be an integer in [1, ${String(SCAPE_MAX_BINS)}], got ${String(bins)}`,
-    );
+  return typeof bins === 'number' && Number.isInteger(bins) && bins >= 1 && bins <= SCAPE_MAX_BINS
+    ? accepted
+    : rejected(
+        `scape.bins must be an integer in [1, ${String(SCAPE_MAX_BINS)}], got ${String(bins)}`,
+      );
 }
 
-function checkWindow(window: ComparisonSettings['window']): void {
-  if (window === undefined) return;
+function checkWindow(window: ComparisonSettings['window']): Checked {
+  if (window === undefined) return accepted;
   const { start, end } = window;
   if (!Number.isFinite(start) || !Number.isFinite(end))
-    throw new InvalidOptionError(
+    return rejected(
       `window.start and window.end must be finite, got ${String(start)} and ${String(end)}`,
     );
-  if (start < 0) throw new InvalidOptionError(`window.start must be >= 0, got ${String(start)}`);
-  if (!(start < end))
-    throw new InvalidOptionError(
-      `window.start must be < window.end, got ${String(start)} and ${String(end)}`,
-    );
+  if (start < 0) return rejected(`window.start must be >= 0, got ${String(start)}`);
+  return start < end
+    ? accepted
+    : rejected(`window.start must be < window.end, got ${String(start)} and ${String(end)}`);
 }
 
-function checkWeights(weights: ComparisonSettings['weights']): void {
-  if (weights === undefined) return;
-  const unknown = Object.keys(weights).filter((key) => !DIMENSION_SET.has(key));
-  if (unknown.length > 0)
-    throw new InvalidOptionError(
-      `unknown weight dimension(s): ${unknown.join(', ')}; expected one of ${COMPARISON_DIMENSIONS.join(', ')}`,
-    );
-  // Values read as `unknown`, the way `expression.ts` widens its own guards: a JS caller can
-  // pass anything, and comparing against the declared type would let the compiler prove the
-  // check dead and the linter delete it.
-  for (const [key, value] of Object.entries(weights) as readonly [string, unknown][]) {
-    if (value === undefined) continue;
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0)
-      throw new InvalidOptionError(
-        `weight for '${key}' must be a finite number >= 0, got ${String(value)}`,
-      );
-  }
+function checkWeights(weights: ComparisonSettings['weights']): Checked {
+  return checkKeyedRecord(
+    weights,
+    DIMENSION_SET,
+    (keys) =>
+      `unknown weight dimension(s): ${keys.join(', ')}; expected one of ${COMPARISON_DIMENSIONS.join(', ')}`,
+    (key, value) =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0
+        ? accepted
+        : rejected(`weight for '${key}' must be a finite number >= 0, got ${String(value)}`),
+  );
 }
 
-function checkJnd(jnd: ComparisonSettings['jnd']): void {
-  if (jnd === undefined) return;
-  const unknown = Object.keys(jnd).filter((key) => !JND_KEY_SET.has(key));
-  if (unknown.length > 0)
-    throw new InvalidOptionError(
-      `unknown jnd key(s): ${unknown.join(', ')}; the vocabulary is COMPARISON_JND_KEYS`,
-    );
-  for (const [key, value] of Object.entries(jnd) as readonly [string, unknown][]) {
-    if (value === undefined) continue;
+function checkJnd(jnd: ComparisonSettings['jnd']): Checked {
+  return checkKeyedRecord(
+    jnd,
+    JND_KEY_SET,
+    (keys) => `unknown jnd key(s): ${keys.join(', ')}; the vocabulary is COMPARISON_JND_KEYS`,
     // Not merely non-negative: a zero JND is a division, and the row's whole content is the
     // scale it divides by.
-    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
-      throw new InvalidOptionError(
-        `jnd for '${key}' must be a finite number > 0, got ${String(value)}`,
-      );
-  }
+    (key, value) =>
+      typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? accepted
+        : rejected(`jnd for '${key}' must be a finite number > 0, got ${String(value)}`),
+  );
 }
 
-function checkPlausibleRange(ranges: ComparisonSettings['plausibleRange']): void {
-  if (ranges === undefined) return;
-  const unknown = Object.keys(ranges).filter((key) => !JND_KEY_SET.has(key));
-  if (unknown.length > 0)
-    throw new InvalidOptionError(
-      `unknown plausibleRange key(s): ${unknown.join(', ')}; the vocabulary is COMPARISON_JND_KEYS`,
-    );
-  for (const [key, band] of Object.entries(ranges) as readonly [string, unknown][]) {
-    if (band === undefined) continue;
+function checkPlausibleRange(ranges: ComparisonSettings['plausibleRange']): Checked {
+  return checkKeyedRecord(
+    ranges,
+    JND_KEY_SET,
+    (keys) =>
+      `unknown plausibleRange key(s): ${keys.join(', ')}; the vocabulary is COMPARISON_JND_KEYS`,
     // §9.4's table does not state the band's own domain; it is stated here rather than left to
     // produce a note that never fires, since a band with `low > high` excludes every value.
-    if (
-      !Array.isArray(band) ||
-      band.length !== 2 ||
-      !band.every((value) => typeof value === 'number' && Number.isFinite(value)) ||
-      !((band[0] as number) <= (band[1] as number))
-    )
-      throw new InvalidOptionError(
-        `plausibleRange for '${key}' must be [low, high] with two finite numbers and low <= high`,
-      );
-  }
+    (key, band) =>
+      Array.isArray(band) &&
+      band.length === 2 &&
+      band.every((value) => typeof value === 'number' && Number.isFinite(value)) &&
+      (band[0] as number) <= (band[1] as number)
+        ? accepted
+        : rejected(
+            `plausibleRange for '${key}' must be [low, high] with two finite numbers and low <= high`,
+          ),
+  );
 }
 
-function checkInvariance(invariance: ComparisonSettings['invariance']): void {
-  if (invariance === undefined) return;
-  const unknown = Object.keys(invariance).filter((key) => !DIMENSION_SET.has(key));
-  if (unknown.length > 0)
-    throw new InvalidOptionError(`unknown invariance dimension(s): ${unknown.join(', ')}`);
-  for (const [key, mode] of Object.entries(invariance) as readonly [string, unknown][]) {
-    if (mode === undefined) continue;
-    if (typeof mode !== 'string' || !INVARIANCE_MODES.has(mode))
-      throw new InvalidOptionError(
-        `invariance for '${key}' must be 'none', 'level' or 'level-gain', got '${String(mode)}'`,
-      );
-    if (mode !== 'none' && EVENT_DIMENSIONS.has(key as ComparisonDimension))
-      throw new InvalidOptionError(
-        `invariance '${mode}' is not defined for '${key}': an event dimension has no curve to ` +
-          'centre (AD-20). Use weights to exclude it instead.',
-      );
-  }
+function checkInvariance(invariance: ComparisonSettings['invariance']): Checked {
+  return checkKeyedRecord(
+    invariance,
+    DIMENSION_SET,
+    (keys) => `unknown invariance dimension(s): ${keys.join(', ')}`,
+    (key, mode) => {
+      if (typeof mode !== 'string' || !INVARIANCE_MODES.has(mode))
+        return rejected(
+          `invariance for '${key}' must be 'none', 'level' or 'level-gain', got '${String(mode)}'`,
+        );
+      return mode === 'none' || !EVENT_DIMENSIONS.has(key as ComparisonDimension)
+        ? accepted
+        : rejected(
+            `invariance '${mode}' is not defined for '${key}': an event dimension has no curve to ` +
+              'centre (AD-20). Use weights to exclude it instead.',
+          );
+    },
+  );
 }
 
 /** Spelled exactly as the interior's `selectPerformance` spells it, so the two agree (A17). */
-function checkSelector(name: string, selector: string | number | undefined): void {
-  if (typeof selector !== 'number') return;
-  if (!Number.isInteger(selector) || selector < 0)
-    throw new InvalidOptionError(
-      `${name} index must be a non-negative integer, got ${String(selector)}`,
-    );
+function checkSelector(name: string, selector: string | number | undefined): Checked {
+  if (typeof selector !== 'number') return accepted;
+  return Number.isInteger(selector) && selector >= 0
+    ? accepted
+    : rejected(`${name} index must be a non-negative integer, got ${String(selector)}`);
 }
 
-function checkProfile(profile: CompareMpmOptions['profile']): void {
-  if (profile === undefined) return;
-  const unknown = (profile.dimensions ?? []).filter((key) => !DIMENSION_SET.has(key));
-  if (unknown.length > 0)
-    throw new InvalidOptionError(`unknown profile dimension(s): ${unknown.join(', ')}`);
+function checkProfile(profile: CompareMpmOptions['profile']): Checked {
+  if (profile === undefined) return accepted;
+  const unrecognized = (profile.dimensions ?? []).filter((key) => !DIMENSION_SET.has(key));
+  if (unrecognized.length > 0)
+    return rejected(`unknown profile dimension(s): ${unrecognized.join(', ')}`);
   const grid = profile.grid;
-  if (grid === undefined || grid === 'refinement') return;
-  if (!Number.isFinite(grid.step) || grid.step <= 0)
-    throw new InvalidOptionError(
-      `profile.grid.step must be a finite number > 0, got ${String(grid.step)}`,
-    );
+  if (grid === undefined || grid === 'refinement') return accepted;
+  return Number.isFinite(grid.step) && grid.step > 0
+    ? accepted
+    : rejected(`profile.grid.step must be a finite number > 0, got ${String(grid.step)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -779,21 +803,17 @@ function checkProfile(profile: CompareMpmOptions['profile']): void {
 function resolveWeights(
   weights: ComparisonSettings['weights'],
 ): Record<ComparisonDimension, number> {
-  const resolved = defaultWeights() as Record<ComparisonDimension, number>;
-  const result = { ...resolved };
-  for (const dimension of COMPARISON_DIMENSIONS) {
-    const value = weights?.[dimension];
-    if (value !== undefined) result[dimension] = value;
-  }
-  return result;
+  const defaults = defaultWeights();
+  return fromEntriesExact(
+    COMPARISON_DIMENSIONS,
+    (dimension) => weights?.[dimension] ?? defaults[dimension],
+  );
 }
 
 function resolveInvariance(
   invariance: ComparisonSettings['invariance'],
 ): Record<ComparisonDimension, InvarianceMode> {
-  return Object.fromEntries(
-    COMPARISON_DIMENSIONS.map((dimension) => [dimension, invariance?.[dimension] ?? 'none']),
-  ) as Record<ComparisonDimension, InvarianceMode>;
+  return fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) => invariance?.[dimension] ?? 'none');
 }
 
 /**

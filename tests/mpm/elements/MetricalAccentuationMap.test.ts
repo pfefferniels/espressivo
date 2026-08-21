@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { okValue } from '../../support/result.js';
 import { MetricalAccentuationMap } from '../../../src/mpm/elements/maps/MetricalAccentuationMap.js';
-import { MetricalAccentuationData } from '../../../src/mpm/elements/maps/data/MetricalAccentuationData.js';
-import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
+import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
+import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 
 describe('MetricalAccentuationMap', () => {
   // ---------------------------------------------------------------
@@ -16,13 +17,13 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should start with size 0', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       expect(map.size()).toBe(0);
       expect(map.isEmpty()).toBe(true);
     });
 
     it('should have an XML element', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       expect(map.getXml()).not.toBeNull();
       expect(map.getXml()!.getLocalName()).toBe('metricalAccentuationMap');
     });
@@ -33,14 +34,14 @@ describe('MetricalAccentuationMap', () => {
   // ---------------------------------------------------------------
   describe('addAccentuationPattern', () => {
     it('should add an accentuation pattern with required parameters', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addAccentuationPattern(0, 'myPattern', 1.0);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store attributes correctly', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addAccentuationPattern(0, 'myPattern', 1.5);
       const elem = map.getElement(index)!;
 
@@ -50,7 +51,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should store optional loop parameter', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addAccentuationPattern(0, 'myPattern', 1.0, true);
       const elem = map.getElement(index)!;
 
@@ -58,7 +59,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should store optional stickToMeasures parameter', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addAccentuationPattern(0, 'myPattern', 1.0, true, false);
       const elem = map.getElement(index)!;
 
@@ -67,7 +68,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should maintain sorted order when adding out of order', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(960, 'p3', 1.0);
       map.addAccentuationPattern(0, 'p1', 1.0);
       map.addAccentuationPattern(480, 'p2', 1.0);
@@ -79,7 +80,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should not add loop/stickToMeasures if not provided', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addAccentuationPattern(0, 'myPattern', 1.0);
       const elem = map.getElement(index)!;
 
@@ -94,12 +95,12 @@ describe('MetricalAccentuationMap', () => {
   // ---------------------------------------------------------------
   describe('getMetricalAccentuationDataOf', () => {
     it('should return null for an empty map', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       expect(map.getMetricalAccentuationDataOf(0)).toBeNull();
     });
 
     it('should return null for negative index', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'myPattern', 1.0);
       expect(map.getMetricalAccentuationDataOf(-1)).toBeNull();
     });
@@ -107,7 +108,7 @@ describe('MetricalAccentuationMap', () => {
     it('should return null when no style is configured (style lookup fails)', () => {
       // Without a proper header/style configured, getMetricalAccentuationDataOf
       // returns null because it cannot find the style definition
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'myPattern', 1.0);
 
       const result = map.getMetricalAccentuationDataOf(0);
@@ -116,7 +117,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should handle out-of-bounds index by clamping', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'myPattern', 1.0);
 
       // Even with clamping, it will return null because no style is configured
@@ -126,95 +127,139 @@ describe('MetricalAccentuationMap', () => {
   });
 
   // ---------------------------------------------------------------
-  // MetricalAccentuationData
+  // getMetricalAccentuationDataOf reads the instruction's own attributes
   // ---------------------------------------------------------------
-  describe('MetricalAccentuationData', () => {
-    it('should have correct default values', () => {
-      const md = new MetricalAccentuationData();
-      expect(md.startDate).toBe(0.0);
-      expect(md.endDate).toBeNull();
-      expect(md.scale).toBe(1.0);
-      expect(md.loop).toBe(false);
-      expect(md.stickToMeasures).toBe(true);
-      expect(md.styleName).toBe('');
-      expect(md.style).toBeNull();
-      expect(md.accentuationPatternDefName).toBeNull();
-      expect(md.accentuationPatternDef).toBeNull();
-      expect(md.xml).toBeNull();
-      expect(md.xmlId).toBeNull();
-    });
+  // These three used to run against a `new MetricalAccentuationData(xml)` constructor
+  // that nothing in `src/` ever called; they are the same five assertions pointed at the
+  // reader the renderer actually uses. The move is not cosmetic — the dead constructor
+  // agreed with `getMetricalAccentuationDataOf` on `@loop` and `@stickToMeasures` only.
+  // It took `startDate` from `parseFloat(@date)` where the live reader takes the map's
+  // own key, and it produced a datum with a NaN `scale` and a null `style` where the
+  // live reader rejects the instruction outright. Asserting the parse through the map
+  // therefore pins strictly more than the old spelling did: the same five values, plus
+  // the style and def resolution that makes the datum renderable at all.
+  describe('getMetricalAccentuationDataOf reads the instruction', () => {
+    // A `<style>` switch and a resolvable styleDef are both required: the reader returns
+    // null when `getStyle` finds nothing, which the describe above already pins.
+    const mapWith = (instructions: string): MetricalAccentuationMap => {
+      const mpm = new Mpm(
+        `<mpm xmlns="${Mpm.MPM_NAMESPACE}"><performance name="p" pulsesPerQuarter="720">` +
+          '<global><header><metricalAccentuationStyles><styleDef name="s">' +
+          '<accentuationPatternDef name="waltzPattern" length="3.0">' +
+          '<accentuation beat="1.0" value="1.0" transitionTo="1.0" />' +
+          '</accentuationPatternDef>' +
+          '<accentuationPatternDef name="pattern" length="4.0">' +
+          '<accentuation beat="1.0" value="1.0" transitionTo="1.0" />' +
+          '</accentuationPatternDef>' +
+          '</styleDef></metricalAccentuationStyles></header><dated>' +
+          `<metricalAccentuationMap><style date="0.0" name.ref="s" />${instructions}` +
+          '</metricalAccentuationMap></dated></global></performance></mpm>',
+      );
+      // `getMap` is declared to return the base `GenericMap`; the downcast is the same one
+      // ArticulationMap.test.ts makes, and it names a PUBLIC reader — not a way in to a
+      // private path.
+      return mpm
+        .getAllPerformances()[0]
+        .getGlobal()!
+        .getDated()!
+        .getMap('metricalAccentuationMap') as MetricalAccentuationMap;
+    };
 
-    it('should clone correctly', () => {
-      const md = new MetricalAccentuationData();
-      md.startDate = 100;
-      md.endDate = 500;
-      md.scale = 2.5;
-      md.loop = true;
-      md.stickToMeasures = false;
-      md.styleName = 'testStyle';
-      md.accentuationPatternDefName = 'myPattern';
-      md.xmlId = 'acc-1';
+    // Entry 0 is the <style> switch, so the first instruction is entry 1.
+    it('reads date, name.ref, scale, loop and stickToMeasures off the instruction', () => {
+      const md = mapWith(
+        '<accentuationPattern date="240.0" name.ref="waltzPattern" scale="1.5"' +
+          ' loop="true" stickToMeasures="false" />',
+      ).getMetricalAccentuationDataOf(1)!;
 
-      const clone = md.clone();
-      expect(clone.startDate).toBe(100);
-      expect(clone.endDate).toBe(500);
-      expect(clone.scale).toBe(2.5);
-      expect(clone.loop).toBe(true);
-      expect(clone.stickToMeasures).toBe(false);
-      expect(clone.styleName).toBe('testStyle');
-      expect(clone.accentuationPatternDefName).toBe('myPattern');
-      expect(clone.xmlId).toBe('acc-1');
-    });
-
-    it('clone should be independent of original', () => {
-      const md = new MetricalAccentuationData();
-      md.scale = 2.0;
-      md.loop = true;
-
-      const clone = md.clone();
-      clone.scale = 0.5;
-      clone.loop = false;
-
-      expect(md.scale).toBe(2.0);
-      expect(md.loop).toBe(true);
-    });
-
-    it('should parse from XML element', () => {
-      const xml = new Element('accentuationPattern', Mpm.MPM_NAMESPACE);
-      xml.addAttribute(new Attribute('date', '240'));
-      xml.addAttribute(new Attribute('name.ref', 'waltzPattern'));
-      xml.addAttribute(new Attribute('scale', '1.5'));
-      xml.addAttribute(new Attribute('loop', 'true'));
-      xml.addAttribute(new Attribute('stickToMeasures', 'false'));
-
-      const md = new MetricalAccentuationData(xml);
       expect(md.startDate).toBe(240);
       expect(md.accentuationPatternDefName).toBe('waltzPattern');
       expect(md.scale).toBe(1.5);
       expect(md.loop).toBe(true);
       expect(md.stickToMeasures).toBe(false);
+      // The half the dead constructor could not do at all. Asserting the resolved def's
+      // own name rather than the `styleName` field the datum used to carry: it pins the
+      // same resolution (style `s` was in scope) plus the fact that it landed on the RIGHT
+      // def, where a `styleName` of `'s'` and a merely non-null def did not.
+      expect(md.accentuationPatternDef).not.toBeNull();
+      expect(md.accentuationPatternDef?.getName()).toBe('waltzPattern');
     });
 
-    it('should parse loop=false from XML', () => {
-      const xml = new Element('accentuationPattern', Mpm.MPM_NAMESPACE);
-      xml.addAttribute(new Attribute('date', '0'));
-      xml.addAttribute(new Attribute('name.ref', 'pattern'));
-      xml.addAttribute(new Attribute('scale', '1'));
-      xml.addAttribute(new Attribute('loop', 'false'));
-
-      const md = new MetricalAccentuationData(xml);
+    it('reads loop=false when the attribute says so', () => {
+      const md = mapWith(
+        '<accentuationPattern date="0.0" name.ref="pattern" scale="1.0" loop="false" />',
+      ).getMetricalAccentuationDataOf(1)!;
       expect(md.loop).toBe(false);
     });
 
-    it('should default loop and stickToMeasures when not in XML', () => {
-      const xml = new Element('accentuationPattern', Mpm.MPM_NAMESPACE);
-      xml.addAttribute(new Attribute('date', '0'));
-      xml.addAttribute(new Attribute('name.ref', 'pattern'));
-      xml.addAttribute(new Attribute('scale', '1'));
-
-      const md = new MetricalAccentuationData(xml);
+    it('defaults loop to false and stickToMeasures to true when neither is present', () => {
+      const md = mapWith(
+        '<accentuationPattern date="0.0" name.ref="pattern" scale="1.0" />',
+      ).getMetricalAccentuationDataOf(1)!;
       expect(md.loop).toBe(false);
       expect(md.stickToMeasures).toBe(true);
+    });
+
+    // The one assertion added rather than migrated, and it was added because a control
+    // measured the hole: with only the `stickToMeasures="false"` and absent cases above,
+    // rewriting the read as `md.stickToMeasures = stmAtt === null` leaves the suite green
+    // — the default and the two tested values coincide. An explicit `"true"` is the case
+    // that tells reading the VALUE apart from noticing the attribute's PRESENCE.
+    it('reads stickToMeasures=true when the attribute says so, not merely by its absence', () => {
+      const md = mapWith(
+        '<accentuationPattern date="0.0" name.ref="pattern" scale="1.0" stickToMeasures="true" />',
+      ).getMetricalAccentuationDataOf(1)!;
+      expect(md.stickToMeasures).toBe(true);
+    });
+
+    /**
+     * The reader does NOT require the def to resolve — and that is the parity-carrying
+     * half of its contract, not an oversight.
+     *
+     * Java returns a datum with a null `accentuationPatternDef` here and
+     * `renderMetricalAccentuationToMap` dereferences it unguarded, so the whole render
+     * dies with a NullPointerException; `src/comparison/accentuationCurve.ts` reports the
+     * case as `⊥` (R21) and distinguishes it from the silent skip an instruction with no
+     * `<style>` in scope gets. Nothing pinned either half of that here before: the render
+     * method had no test at all, so a `return null` added to this reader — turning the
+     * abort into a skip and rendering documents the reference refuses — left the whole
+     * suite and `npm run gate` green. These two tests are that control, discharged.
+     */
+    it('returns a datum with a NULL def when the name does not resolve, rather than skipping', () => {
+      const md = mapWith(
+        '<accentuationPattern date="0.0" name.ref="nosuch" scale="1.0" />',
+      ).getMetricalAccentuationDataOf(1);
+      expect(md).not.toBeNull();
+      expect(md!.accentuationPatternDefName).toBe('nosuch');
+      expect(md!.accentuationPatternDef).toBeNull();
+    });
+
+    it('and the render then ABORTS on it, naming getLength, exactly as Java NPEs', () => {
+      const map = mapWith('<accentuationPattern date="0.0" name.ref="nosuch" scale="1.0" />');
+      const score = okValue(GenericMap.createGenericMap('score'));
+      const note = new Element('note', Mpm.MPM_NAMESPACE);
+      note.addAttribute(new Attribute('date', '0.0'));
+      note.addAttribute(new Attribute('velocity', '64.0'));
+      score.addElement(note);
+
+      expect(() => map.renderMetricalAccentuationToMap(score, null, 720)).toThrow(/getLength/);
+      // and the velocity is untouched, because the abort happens before any note is reached
+      expect(note.getAttributeValue('velocity')).toBe('64.0');
+    });
+
+    it('renders velocity + accentuation * scale where the def DOES resolve', () => {
+      const map = mapWith(
+        '<accentuationPattern date="0.0" name.ref="pattern" scale="2.5" loop="true" />',
+      );
+      const score = okValue(GenericMap.createGenericMap('score'));
+      const note = new Element('note', Mpm.MPM_NAMESPACE);
+      note.addAttribute(new Attribute('date', '0.0'));
+      note.addAttribute(new Attribute('velocity', '64.0'));
+      score.addElement(note);
+
+      map.renderMetricalAccentuationToMap(score, null, 720);
+      // beat 1 of `pattern` accentuates by 1.0, scaled by 2.5
+      expect(note.getAttributeValue('velocity')).toBe('66.5');
     });
   });
 
@@ -437,17 +482,17 @@ describe('MetricalAccentuationMap', () => {
   // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'p1', 1.0);
       map.addAccentuationPattern(960, 'p2', 2.0);
 
-      map.removeElement(0);
+      map.removeElementAt(0);
       expect(map.size()).toBe(1);
       expect(map.getElement(0)!.getAttributeValue('name.ref')).toBe('p2');
     });
 
     it('should support setId and getId', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       expect(map.getId()).toBeNull();
 
       map.setId('maMap-1');
@@ -455,7 +500,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should support addStyleSwitch', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       const index = map.addStyleSwitch(0, 'myAccentuationStyle');
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
@@ -466,7 +511,7 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should support getElementBeforeAt', () => {
-      const map = MetricalAccentuationMap.createMetricalAccentuationMap()!;
+      const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'p1', 1.0);
       map.addAccentuationPattern(480, 'p2', 1.0);
       map.addAccentuationPattern(960, 'p3', 1.0);

@@ -1,0 +1,257 @@
+/**
+ * Rendering benchmark, with a superlinearity detector.
+ *
+ * Commit 980ae7e won 3.1x on real fixtures and 71x on a 32 000-note score by removing five
+ * superlinear shapes from the rendering path, and measured all of it ad hoc. The functional
+ * rewrite moves that same path onto immutable data, which is exactly the kind of change that
+ * can hand those wins back one allocation at a time. This script is the net.
+ *
+ * The per-fixture wall times are the coarse signal. The real one is **microseconds per note
+ * across four sizes**: a linear stage holds that roughly flat, and anything quadratic shows up
+ * as a rising column long before it becomes a timeout.
+ *
+ * The two stages are timed apart, which is the whole reason this file exists in this shape.
+ * Measured on the tree at the time of writing:
+ *
+ *      notes   convert us/note   render us/note
+ *        250               627               35
+ *        500               863               13
+ *       1000              1750               15
+ *       2000              3901               29
+ *       4000              8025               15
+ *
+ * That table is **historical**: the converter was quadratic because every structural lookup
+ * went through `Element.query`, which serialises the subtree to XML text, re-parses it, and
+ * then pays XPath's node-set ordering — `compareDocumentPosition` over a flat `<score>` is
+ * O(n) per comparison. Replacing those with tree walks made it linear. Current figures are in
+ * `bench-baseline.json`; the same 4000-note score now takes about 235 ms.
+ *
+ * **Where the next win is, measured and not yet taken.** A `--cpu-prof` of the full pipeline
+ * at 16 000 notes now attributes **46.8% of self time to `descendantElements`** — the walk
+ * that replaced `query` — plus 16% to the garbage collector, while `Element.query` does not
+ * appear in the top twelve at all. Timing shows the residual shape: 4000 → 8000 → 16 000 notes
+ * costs 235 → 346 → 621 ms (roughly linear), but 16 000 → 32 000 costs 621 → 1926 ms, which is
+ * 3.1x for 2x the notes. So a Θ(n)-per-call walk is still being made O(n) times somewhere, with
+ * a constant small enough that it only shows past 16 000 notes. Two candidates worth measuring
+ * before optimising: the generator allocation per call (16% GC is a lot), and whichever caller
+ * runs it per note. Not chased here — the absolute numbers are fine and the remaining shape is
+ * beyond the size of a real score — but it is the next thing, and this is where it is written
+ * down.
+ *
+ * Keep the two columns separate regardless, or one stage's curve hides inside a total.
+ *
+ *   node scripts/bench.mjs                 measure and print
+ *   node scripts/bench.mjs --save          write scripts/bench-baseline.json
+ *   node scripts/bench.mjs --check         compare against the baseline, exit 1 on regression
+ *
+ * Timing is not a unit test and deliberately does not run in `vitest`: a CI box under load
+ * would make it flap. `--check` is for running by hand either side of a change.
+ */
+import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const MEI_DIR = join(ROOT, 'tests/integration/fixtures/mei');
+const BASELINE = join(ROOT, 'scripts/bench-baseline.json');
+
+/** How much slower than baseline is tolerated before --check fails. */
+const TOLERANCE = 1.25;
+/** Repeats per measurement; the median is reported, which is stabler than a mean under GC. */
+const REPEATS = 3;
+// Kept small deliberately: the converter is quadratic, so 8000 notes alone is ~2 minutes.
+const SYNTHETIC_SIZES = [250, 500, 1000, 2000];
+
+const api = await import(join(ROOT, 'dist/api/index.js'));
+
+/** The library logs to the console on every conversion; a benchmark must not pay for that. */
+function silenced(f) {
+  const { log, error, warn } = console;
+  const discard = () => undefined;
+  console.log = discard;
+  console.error = discard;
+  console.warn = discard;
+  try {
+    return f();
+  } finally {
+    Object.assign(console, { log, error, warn });
+  }
+}
+
+function median(xs) {
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)];
+}
+
+function timeMs(f, repeats = REPEATS) {
+  const runs = [];
+  for (let i = 0; i < repeats; ++i) {
+    const t0 = process.hrtime.bigint();
+    f();
+    runs.push(Number(process.hrtime.bigint() - t0) / 1e6);
+  }
+  return median(runs);
+}
+
+/** MEI text with `notes` quarter notes, four to a measure, one staff. */
+function syntheticMei(notes) {
+  const pitches = ['c', 'd', 'e', 'f', 'g', 'a', 'b'];
+  const measures = [];
+  for (let m = 0; m * 4 < notes; ++m) {
+    const inMeasure = Math.min(4, notes - m * 4);
+    const noteTags = [];
+    for (let i = 0; i < inMeasure; ++i) {
+      const n = m * 4 + i;
+      noteTags.push(`<note xml:id="n${n}" pname="${pitches[n % 7]}" oct="4" dur="4"/>`);
+    }
+    measures.push(
+      `<measure n="${m + 1}" xml:id="m${m}"><staff n="1"><layer n="1">${noteTags.join('')}</layer></staff></measure>`,
+    );
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0" xml:id="mei-bench">
+<meiHead><fileDesc><titleStmt><title>bench</title></titleStmt><pubStmt/></fileDesc></meiHead>
+<music><body><mdiv xml:id="mdiv1"><score>
+<scoreDef><staffGrp><staffDef n="1" lines="5" clef.shape="G" clef.line="2" key.sig="0" meter.count="4" meter.unit="4"/></staffGrp></scoreDef>
+<section xml:id="section1">${measures.join('')}</section>
+</score></mdiv></body></music></mei>`;
+}
+
+function renderAll(meiText) {
+  let bytes = 0;
+  for (const movement of api.convertMeiToMsmMpm(meiText)) {
+    bytes += api.renderExpressiveMidi({ msm: movement.msm, mpm: movement.mpm }).length;
+  }
+  return bytes;
+}
+
+/**
+ * The two stages timed apart, because only one of them was ever the problem.
+ *
+ * **Median of {@link REPEATS}, not one sample.** This took a single measurement per size until
+ * an agent noticed the same commit reporting "x2.7 SUPERLINEAR" and "x1.2 linear enough" ten
+ * minutes apart. One unlucky sample at the smallest size is enough to invert the verdict,
+ * because the drift is a ratio and the smallest size is its noisiest term. The fixture block
+ * had always taken a median; the synthetic block, which is the one the verdict is computed
+ * from, had not.
+ */
+function timeStages(meiText) {
+  let movements = [];
+  const convertMs = timeMs(() => (movements = api.convertMeiToMsmMpm(meiText)));
+  const renderMs = timeMs(() => {
+    for (const m of movements) api.renderExpressiveMidi({ msm: m.msm, mpm: m.mpm });
+  });
+  return { convertMs, renderMs };
+}
+
+function measure() {
+  const fixtures = {};
+  let total = 0;
+  for (const file of readdirSync(MEI_DIR)
+    .sort()
+    .filter((f) => f.endsWith('.mei'))) {
+    const text = readFileSync(join(MEI_DIR, file), 'utf8');
+    let bytes = 0;
+    const ms = silenced(() => timeMs(() => (bytes = renderAll(text))));
+    fixtures[file] = { ms: +ms.toFixed(2), midiBytes: bytes };
+    total += ms;
+  }
+
+  const synthetic = {};
+  for (const notes of SYNTHETIC_SIZES) {
+    const text = syntheticMei(notes);
+    const { convertMs, renderMs } = silenced(() => timeStages(text));
+    synthetic[notes] = {
+      convertMs: +convertMs.toFixed(1),
+      renderMs: +renderMs.toFixed(1),
+      convertUsPerNote: +((convertMs * 1000) / notes).toFixed(0),
+      renderUsPerNote: +((renderMs * 1000) / notes).toFixed(0),
+    };
+  }
+
+  return { fixtures, fixtureTotalMs: +total.toFixed(1), synthetic };
+}
+
+function report(now, base) {
+  const cmp = (label, cur, prev) => {
+    const ratio = prev === undefined ? null : cur / prev;
+    const flag = ratio === null ? '' : ratio > TOLERANCE ? '  REGRESSED' : '';
+    const delta =
+      ratio === null ? '' : ` (${ratio >= 1 ? '+' : ''}${((ratio - 1) * 100).toFixed(0)}%)`;
+    console.log(`  ${label.padEnd(30)} ${String(cur).padStart(9)}${delta}${flag}`);
+    return flag !== '';
+  };
+
+  let regressed = false;
+  console.log('\nReal fixtures — MEI to expressive MIDI, median of ' + REPEATS + '\n');
+  for (const [file, m] of Object.entries(now.fixtures)) {
+    regressed = cmp(file, m.ms, base?.fixtures?.[file]?.ms) || regressed;
+    const prevBytes = base?.fixtures?.[file]?.midiBytes;
+    if (prevBytes !== undefined && prevBytes !== m.midiBytes) {
+      console.log(`      ! MIDI bytes moved: ${prevBytes} -> ${m.midiBytes}`);
+      regressed = true;
+    }
+  }
+  regressed = cmp('TOTAL', now.fixtureTotalMs, base?.fixtureTotalMs) || regressed;
+
+  console.log('\nSynthetic scores — the shape of each column is the point\n');
+  console.log('    notes    convert ms   us/note      render ms   us/note');
+  for (const [notes, m] of Object.entries(now.synthetic)) {
+    console.log(
+      `  ${notes.padStart(7)} ${String(m.convertMs).padStart(13)} ${String(m.convertUsPerNote).padStart(9)} ` +
+        `${String(m.renderMs).padStart(14)} ${String(m.renderUsPerNote).padStart(9)}`,
+    );
+    const prev = base?.synthetic?.[notes];
+    if (prev !== undefined) {
+      if (m.convertMs / prev.convertMs > TOLERANCE) {
+        console.log(`      ! convert regressed ${prev.convertMs} -> ${m.convertMs} ms`);
+        regressed = true;
+      }
+      if (m.renderMs / prev.renderMs > TOLERANCE) {
+        console.log(`      ! render regressed ${prev.renderMs} -> ${m.renderMs} ms`);
+        regressed = true;
+      }
+    }
+  }
+
+  const drift = (pick) => {
+    const xs = Object.values(now.synthetic).map(pick);
+    return xs[xs.length - 1] / xs[0];
+  };
+  // Advisory, not a gate. It is a ratio of two medians and the smallest size is its noisiest
+  // term, so on a loaded machine it can flip. `--check` gates on the per-size TIMES against a
+  // committed baseline — a comparison of like with like — and not on this. Read a SUPERLINEAR
+  // verdict as "go measure properly", never as a failure.
+  const verdict = (x) =>
+    x > 2
+      ? `x${x.toFixed(1)}  SUPERLINEAR (advisory — re-run on a quiet machine)`
+      : `x${x.toFixed(1)}  linear enough`;
+  const lo = SYNTHETIC_SIZES[0];
+  const hi = SYNTHETIC_SIZES[SYNTHETIC_SIZES.length - 1];
+  console.log(`\n  us/note drift ${lo}..${hi} notes`);
+  console.log(`    convert   ${verdict(drift((m) => m.convertUsPerNote))}`);
+  console.log(`    render    ${verdict(drift((m) => m.renderUsPerNote))}`);
+  return regressed;
+}
+
+const now = measure();
+
+if (process.argv.includes('--save')) {
+  writeFileSync(BASELINE, JSON.stringify(now, null, 2) + '\n');
+  console.log(`baseline written to scripts/bench-baseline.json`);
+  report(now, null);
+} else {
+  const base = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : null;
+  const regressed = report(now, base);
+  if (process.argv.includes('--check')) {
+    if (base === null) {
+      console.error('\nno baseline; run `npm run bench:save` first');
+      process.exit(1);
+    }
+    if (regressed) {
+      console.error(`\nregression beyond ${TOLERANCE}x, or MIDI output moved`);
+      process.exit(1);
+    }
+    console.log('\nno regression');
+  }
+}

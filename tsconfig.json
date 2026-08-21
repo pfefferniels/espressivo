@@ -7,6 +7,39 @@
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
+
+    // Beyond `strict`. Each of these was measured against the tree before being turned on;
+    // the four zero-cost ones say the codebase already had the discipline and now cannot
+    // lose it.
+    //
+    //   useUnknownInCatchVariables   0 errors — a catch binding really is unknown
+    //   noImplicitReturns            0 errors — every path of a value-returning function returns
+    //   verbatimModuleSyntax         0 errors — type-only imports stay erasable and explicit
+    //   noFallthroughCasesInSwitch   1 error  — Midi.ts's one intentional fallthrough is now
+    //                                           written out, so accidental ones are catchable
+    //   noImplicitOverride          15 errors — an override must say so, which is what stops a
+    //                                           base-class rename from silently orphaning one
+    //
+    // Deliberately still off, with reasons:
+    //   exactOptionalPropertyTypes  26 errors, all of them option bags forwarded field by
+    //                               field (`{ seed: options?.seed }`). Turning it on today
+    //                               means adding `| undefined` to ~26 declarations — which
+    //                               loosens the very types this change exists to tighten. The
+    //                               option plumbing is rewritten in the model stage; the flag
+    //                               goes on with it.
+    // `noUncheckedIndexedAccess` is now ON, below. It began at 885 errors in `src/` and was
+    // cleared directory by directory over the campaign, by five agents and me, against a
+    // one-way ratchet that refused to let any directory get worse. What matters is that it was
+    // cleared by REMOVING THE INDEXING rather than by silencing it: across the whole of it,
+    // zero `!` and zero `as T` were added, and the repo's non-null-assertion count fell from
+    // 841 to 705 in the same period.
+    "useUnknownInCatchVariables": true,
+    "noImplicitReturns": true,
+    "verbatimModuleSyntax": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+
     "esModuleInterop": true,
     "declaration": true,
     "declarationMap": true,

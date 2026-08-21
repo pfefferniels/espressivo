@@ -36,6 +36,20 @@
  * does and D-A exists to avoid it, and "repairing" `curvature="1.5"` edits a value the caller
  * never asked to change.
  */
+import {
+  andThen,
+  err,
+  filterMap,
+  fromEntriesExact,
+  head,
+  isNonEmpty,
+  mapErr,
+  mapOk,
+  ok,
+  traverse,
+  unwrapOrElse,
+  type Result,
+} from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
 import { readAttributeValue, readNumericAttributeValue } from './attributes.js';
 import { orderedEntries, styleNameAt, type DatedEntry } from './datedView.js';
@@ -49,11 +63,10 @@ import {
 } from './mpmTree.js';
 import {
   IDENTITY_FACTOR,
-  requestedFactors,
-  resolveFactors,
-  resolveOptions,
+  resolveRun,
   type ExaggerateOptions,
   type ResolvedOptions,
+  type ResolvedRun,
 } from './options.js';
 import {
   ACCENTUATION_ANCHOR_ELEMENT,
@@ -101,7 +114,6 @@ import {
   ReportSink,
   estimatesWithoutMsm,
   finishDimension,
-  type DimensionReport,
   type ExaggerationReport,
   type PerformanceBounds,
   type PerformanceReport,
@@ -165,17 +177,34 @@ export function applyExaggeration(
   factors: ExaggerationFactors,
   options: ExaggerateOptions = {},
 ): ExaggerationReport {
-  const resolvedOptions = resolveOptions(options);
-  const appliedFactors = resolveFactors(factors);
-  const requested = requestedFactors(factors);
+  return applyResolvedExaggeration(
+    root,
+    unwrapOrElse(resolveRun(factors, options), (refusal): never => {
+      throw new Error(refusal);
+    }),
+  );
+}
 
-  const performances = selectPerformances(readPerformances(root), resolvedOptions);
+/**
+ * {@link applyExaggeration} on options the caller has ALREADY resolved.
+ *
+ * This is the entry point the facade uses, and it exists so that the option bag is validated
+ * once. The facade has to resolve it anyway — §4 makes it validate before a byte is parsed, and
+ * `options.ts` owns the one definition of what a legal factor record is — and before this split
+ * it threw both resolved objects away and let this function build them again from the same
+ * input. Both resolutions were pure, so nothing was ever *wrong*; it was simply the second
+ * answer to a question already asked.
+ *
+ * @param run everything DESIGN §4 defines, filled in — see {@link resolveRun}
+ */
+export function applyResolvedExaggeration(root: Element, run: ResolvedRun): ExaggerationReport {
+  const performances = selectPerformances(readPerformances(root), run.options);
   const reports = performances.map((performance) =>
-    new PerformancePass(performance, appliedFactors, requested, resolvedOptions).run(),
+    new PerformancePass(performance, run.factors, run.requested, run.options).run(),
   );
 
   return {
-    appliedFactors,
+    appliedFactors: run.factors,
     performances: reports,
     totalWrites: reports.reduce((sum, report) => sum + report.totalWrites, 0),
   };
@@ -261,12 +290,9 @@ class PerformancePass {
     this.reportInertTuningDomain();
     this.reportSubNoteDynamics();
 
-    const dimensions = Object.fromEntries(
-      EXPRESSION_DIMENSIONS.map((dimension) => [
-        dimension,
-        finishDimension(this.sink.dimensions[dimension], this.requested[dimension]),
-      ]),
-    ) as Record<ExpressionDimension, DimensionReport>;
+    const dimensions = fromEntriesExact(EXPRESSION_DIMENSIONS, (dimension) =>
+      finishDimension(this.sink.dimensions[dimension], this.requested[dimension]),
+    );
 
     return {
       performance: { index: this.performance.index, name: this.performance.name },
@@ -322,7 +348,7 @@ class PerformancePass {
     for (const environment of environmentsOf(this.performance)) {
       const collection = environment.styleCollections.get(collectionName);
       if (collection === undefined) continue;
-      for (const styleDef of collection.getChildElements('styleDef').toArray()) {
+      for (const styleDef of collection.getChildElements('styleDef')) {
         visit(environment, styleDef);
       }
     }
@@ -335,7 +361,7 @@ class PerformancePass {
     visit: (context: DefContext) => void,
   ): void {
     this.eachStyleDef(collectionName, (environment, styleDef) => {
-      for (const def of styleDef.getChildElements(defElement).toArray()) {
+      for (const def of styleDef.getChildElements(defElement)) {
         visit({
           environment,
           collectionName,
@@ -366,7 +392,7 @@ class PerformancePass {
     const space = unparameterizedSpaceOf(row);
     const transformed = gateAndTransform(row, space, value, factor);
     if (!transformed.ok) {
-      this.sink.note(transformed.kind, row.dimension, site, transformed.detail);
+      this.sink.note(transformed.error.kind, row.dimension, site, transformed.error.detail);
       return { present: true, value: null, writes: 0 };
     }
     const outcome = writeNumber(element, row.attribute, transformed.value);
@@ -708,7 +734,7 @@ class PerformancePass {
     };
     const trimmed = jointTrimWindow(effective, factor, this.options.minRubatoWindow);
     if (!trimmed.ok) {
-      if (trimmed.reason === 'saturation-to-boundary') {
+      if (trimmed.error === 'saturation-to-boundary') {
         // A6: the guard clamps `t'` below 1, so an ordered pair is guaranteed by construction.
         // Reaching this means the split's own rounding broke that guarantee, and the renderer's
         // answer to a crossed pair is a silent total reset to (0,1) — an engine invariant
@@ -1019,7 +1045,7 @@ class PerformancePass {
     if (def === null) return 0;
 
     let amplitude = 0;
-    for (const anchor of def.getChildElements(ACCENTUATION_ANCHOR_ELEMENT).toArray()) {
+    for (const anchor of def.getChildElements(ACCENTUATION_ANCHOR_ELEMENT)) {
       const value = presentNumber(anchor, 'value') ?? 0;
       const from = presentNumber(anchor, 'transition.from') ?? value;
       const to = presentNumber(anchor, 'transition.to') ?? from;
@@ -1064,41 +1090,45 @@ class PerformancePass {
     this.eachTemporalSpread((spread, siteFor) => {
       const format = detectFrameFormat(spread);
       const reading = format === 'v2' ? readV2Frame(spread) : readV3Frame(spread);
-      if (reading.ok && reading.bounds.length === 0) return;
+      if (reading.ok && reading.value.length === 0) return;
       accumulator.markPresent();
-      if (!reading.ok) {
+
+      // Read and gate are one chain because they refuse the same way: whichever step turns the
+      // pair down, the frame is atomic and neither bound is written. `traverse` is the
+      // short-circuit the hand-written loop was — it stops at the first refused bound and
+      // discards the ones already planned, which is what "the frame is one geometric pair"
+      // means operationally.
+      const planned = andThen(reading, (bounds) =>
+        traverse(bounds, (bound) =>
+          mapOk(
+            mapErr(
+              gateAndTransform(bound.row, unparameterizedSpaceOf(bound.row), bound.value, factor),
+              (refusal): FrameRefusal => ({
+                attribute: bound.attribute,
+                detail: `${refusal.detail} — the frame is one geometric pair, so neither bound is written`,
+              }),
+            ),
+            (value) => ({ ...bound, value }),
+          ),
+        ),
+      );
+      if (!planned.ok) {
         accumulator.countSkipped();
         this.sink.note(
           'atomic-group-skipped',
           'ornamentSpread',
-          siteFor(reading.attribute),
-          reading.detail,
+          siteFor(planned.error.attribute),
+          planned.error.detail,
         );
         return;
       }
 
-      const planned: FrameBound[] = [];
-      for (const bound of reading.bounds) {
-        const space = unparameterizedSpaceOf(bound.row);
-        const transformed = gateAndTransform(bound.row, space, bound.value, factor);
-        if (!transformed.ok) {
-          accumulator.countSkipped();
-          this.sink.note(
-            'atomic-group-skipped',
-            'ornamentSpread',
-            siteFor(bound.attribute),
-            `${transformed.detail} — the frame is one geometric pair, so neither bound is written`,
-          );
-          return;
-        }
-        planned.push({ ...bound, value: transformed.value });
-      }
       let writes = 0;
-      for (const { attribute, value, suffix } of planned) {
+      for (const { attribute, value, suffix } of planned.value) {
         writes += writeSuffixedNumber(spread, attribute, value, suffix) === 'written' ? 1 : 0;
       }
       accumulator.countTransformed(writes);
-      this.reportFrameRegime(spread, siteFor, format, planned);
+      this.reportFrameRegime(spread, siteFor, format, planned.value);
     });
   }
 
@@ -1173,12 +1203,12 @@ class PerformancePass {
     siteFor: (attribute: string) => SiteRef,
     bounds: readonly FrameBound[],
   ): void {
-    if (bounds.length === 0) return;
+    if (!isNonEmpty(bounds)) return;
     const units = bounds.map((bound) => frameDomainPhrase(spread, bound)).join(', ');
     this.sink.note(
       'frame-time-unit',
       'ornamentSpread',
-      siteFor(bounds[0].attribute),
+      siteFor(head(bounds).attribute),
       `v3 per-value units — ${units}: §8’s ornamentSpread range is stated for the tick domain, ` +
         'so a millisecond frame wants a smaller s for the same audible width',
     );
@@ -1239,13 +1269,13 @@ class PerformancePass {
       ORNAMENT_DEF_ELEMENT,
       ({ environment, container, def: ornamentDef }) => {
         const label = `${container}/${readAttributeValue(ornamentDef, 'name') ?? ''}`;
-        for (const gradient of ornamentDef.getChildElements(DYNAMICS_GRADIENT_ELEMENT).toArray()) {
+        for (const gradient of ornamentDef.getChildElements(DYNAMICS_GRADIENT_ELEMENT)) {
           const siteFor = (attribute: string): SiteRef =>
             siteRefOf(environment, label, ornamentDef, gradient, attribute);
           const present = rows.filter(
             (row) => readAttributeValue(gradient, row.attribute) !== null,
           );
-          if (present.length === 0) continue;
+          if (!isNonEmpty(present)) continue;
           accumulator.markPresent();
 
           // F9: fire only when `@transition.to` is the endpoint that is actually missing. A
@@ -1268,7 +1298,7 @@ class PerformancePass {
             this.sink.note(
               'ornament-scale-zero',
               'ornamentDynamics',
-              siteFor(present[0].attribute),
+              siteFor(head(present).attribute),
               'every referencing <ornament> has @scale absent or 0, and every term of the ' +
                 'rendered contribution carries it, so this gradient is dead whatever s is',
             );
@@ -1302,7 +1332,7 @@ class PerformancePass {
             this.sink.note(
               'non-finite-result',
               'ornamentDynamics',
-              siteFor(present[0].attribute),
+              siteFor(head(present).attribute),
               `the R6(b) estimate ${magnitude} × ${scale} overflows, so no coefficient is ` +
                 'reported for this site — the written endpoints are unaffected',
             );
@@ -1321,7 +1351,7 @@ class PerformancePass {
       ORNAMENT_DEF_ELEMENT,
       ({ environment, container, def: ornamentDef }) => {
         const label = `${container}/${readAttributeValue(ornamentDef, 'name') ?? ''}`;
-        for (const spread of ornamentDef.getChildElements(TEMPORAL_SPREAD_ELEMENT).toArray()) {
+        for (const spread of ornamentDef.getChildElements(TEMPORAL_SPREAD_ELEMENT)) {
           visit(spread, (attribute) =>
             siteRefOf(environment, label, ornamentDef, spread, attribute),
           );
@@ -1435,7 +1465,7 @@ class PerformancePass {
             const value = readNumericAttributeValue(target, attribute);
             const transformed = gateAndTransform(row, unparameterizedSpaceOf(row), value, factor);
             if (!transformed.ok) {
-              failed = `@${attribute}: ${transformed.detail}`;
+              failed = `@${attribute}: ${transformed.error.detail}`;
               break;
             }
             planned.push({ element: target, attribute, value: transformed.value });
@@ -1655,7 +1685,7 @@ function presentNumber(element: Element, attribute: string): number | null {
  */
 function findNamedDef(styleDef: Element, defElement: string, name: string): Element | null {
   let found: Element | null = null;
-  for (const def of styleDef.getChildElements(defElement).toArray()) {
+  for (const def of styleDef.getChildElements(defElement)) {
     if (readAttributeValue(def, 'name') === name) found = def;
   }
   return found;
@@ -1679,15 +1709,27 @@ interface FrameBound {
 }
 
 /**
+ * Why a frame cannot be scaled at all.
+ *
+ * A refusal here is a property of the PAIR rather than of one value — an unreadable v3 value, a
+ * v3 length whose absence is not neutral, or a bound the gate turned down — so it carries the
+ * attribute that caused it and the whole explanation, and the caller turns it into one
+ * `atomic-group-skipped` note.
+ */
+interface FrameRefusal {
+  readonly attribute: string;
+  readonly detail: string;
+}
+
+/**
  * A frame read off one `<temporalSpread>`, or the reason it cannot be scaled at all.
  *
- * A refusal here is a property of the PAIR rather than of one value — an unreadable v3 value,
- * or a v3 length whose absence is not neutral — so it carries the attribute that caused it and
- * the whole explanation, and the caller turns it into one `atomic-group-skipped` note.
+ * This is also the type of the frame after the gate has run over it, which is the point of
+ * spelling it as a `Result` rather than as the anonymous module-private union it used to be:
+ * reading and transforming produce the same shape, so `andThen` chains them and the two
+ * refusal paths that used to be two near-identical blocks at the call site are one.
  */
-type FrameReading =
-  | { readonly ok: true; readonly bounds: readonly FrameBound[] }
-  | { readonly ok: false; readonly attribute: string; readonly detail: string };
+type FrameReading = Result<readonly FrameBound[], FrameRefusal>;
 
 /**
  * The v2 frame: bare doubles under `parseFloat`, exactly as before.
@@ -1697,17 +1739,21 @@ type FrameReading =
  * neutral — both v2 defaults are 0.0 — so it is simply not a site.
  */
 function readV2Frame(spread: Element): FrameReading {
-  const bounds: FrameBound[] = [];
-  for (const attribute of [FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE]) {
-    if (readAttributeValue(spread, attribute) === null) continue;
-    bounds.push({
-      row: requireRow(TEMPORAL_SPREAD_ELEMENT, attribute),
-      attribute,
-      value: readNumericAttributeValue(spread, attribute),
-      suffix: '',
-    });
-  }
-  return { ok: true, bounds };
+  // `filterMap`, not a fold: this reader cannot fail, so nothing short-circuits and the
+  // `Result` is always `ok`. Its v3 sibling below is deliberately NOT written this way — it
+  // returns `err` from inside the walk, which `filterMap` has no way to express.
+  return ok(
+    filterMap([FRAME_START_ATTRIBUTE, FRAME_LENGTH_ATTRIBUTE], (attribute) =>
+      readAttributeValue(spread, attribute) === null
+        ? null
+        : {
+            row: requireRow(TEMPORAL_SPREAD_ELEMENT, attribute),
+            attribute,
+            value: readNumericAttributeValue(spread, attribute),
+            suffix: '',
+          },
+    ),
+  );
 }
 
 /**
@@ -1734,14 +1780,13 @@ function readV3Frame(spread: Element): FrameReading {
     if (raw === null) continue;
     const temporal = parseTemporalText(raw);
     if (temporal === null) {
-      return {
-        ok: false,
+      return err({
         attribute,
         detail:
           `@${attribute} = ${JSON.stringify(raw)} is no MPM v3 temporal value (a decimal ` +
           'number, optionally suffixed ms, % or ticks), so the renderer ignores it and applies ' +
           'its default — the frame is one geometric pair, so neither bound is written',
-      };
+      });
     }
     bounds.push({
       row: requireRow(TEMPORAL_SPREAD_ELEMENT, attribute),
@@ -1751,17 +1796,16 @@ function readV3Frame(spread: Element): FrameReading {
     });
   }
   if (bounds.length > 0 && readAttributeValue(spread, FRAME_LENGTH_ATTRIBUTE) === null) {
-    return {
-      ok: false,
+    return err({
       attribute: FRAME_LENGTH_ATTRIBUTE,
       detail:
         '@frameLength is absent, and in v3 an absent @frameLength is 100% of the principal ' +
         'note rather than v2’s 0.0 — so the missing bound is not at its neutral, and scaling ' +
         'the offset alone would move the figure without resizing it. Nothing is created and ' +
         'neither bound is written',
-    };
+    });
   }
-  return { ok: true, bounds };
+  return ok(bounds);
 }
 
 /** One bound's domain and where that domain came from, for the v3 `frame-time-unit` note. */

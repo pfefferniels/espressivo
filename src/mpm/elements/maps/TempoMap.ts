@@ -1,10 +1,18 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { MPM_NAMESPACE, TEMPO_STYLE } from '../../names.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
+import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
 import { TempoData } from './data/TempoData.js';
-import { TempoStyle } from '../styles/TempoStyle.js';
+import {
+  resolveTempo,
+  type ConstantTempo,
+  type Tempo,
+  type TransitioningTempo,
+} from './data/tempo.js';
 
 /**
  * An MPM `tempoMap`: the tempo in force across the timeline, and the map that converts
@@ -25,17 +33,24 @@ import { TempoStyle } from '../styles/TempoStyle.js';
  * Port of meico.mpm.elements.maps.TempoMap
  */
 export class TempoMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createTempoMap(xml?: Element): TempoMap | null {
-    try {
-      return xml !== undefined ? new TempoMap(xml) : new TempoMap('tempoMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<tempoMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createTempoMap(): TempoMap;
+  static createTempoMap(xml: Element): Result<TempoMap, MpmParseError>;
+  static createTempoMap(xml?: Element | null): TempoMap | Result<TempoMap, MpmParseError> {
+    return xml === undefined
+      ? new TempoMap(GenericMap.emptyMapElement('tempoMap'))
+      : GenericMap.makeMap(xml, 'TempoMap', (elt) => new TempoMap(elt));
   }
 
   addTempo(date: number, bpm: string, beatLength: number): number;
@@ -80,7 +95,10 @@ export class TempoMap extends GenericMap {
     const date = dateOrData;
     const e = new Element('tempo', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
-    e.addAttribute(new Attribute('bpm', bpm!));
+    // `String(bpm)` and not `bpm!`: both numeric overloads declare `bpm` required, so it is
+    // present on every reachable call, and the three sibling lines below already spell the
+    // same fact as `String(beatLength)` / `String(meanTempoAt)` / `String(...)`.
+    e.addAttribute(new Attribute('bpm', String(bpm)));
     if (typeof transitionToOrBeatLength === 'string') {
       e.addAttribute(new Attribute('transition.to', transitionToOrBeatLength));
       e.addAttribute(new Attribute('beatLength', String(beatLength)));
@@ -94,88 +112,42 @@ export class TempoMap extends GenericMap {
   }
 
   /**
-   * Read the tempo instruction at `index` into a {@link TempoData}, resolving its
-   * style-relative names and normalising away the transitions that are not really
+   * Read the tempo instruction at `index` into the {@link Tempo} arm it names, resolving
+   * its style-relative names and normalising away the transitions that are not really
    * transitions. Returns null if the entry is not a usable `<tempo>`.
    *
    * The style in scope is found by scanning *backwards* from `index` for the nearest
    * preceding `<style>` — style switches are ordinary dated entries in the same map.
    *
-   * Three normalisations collapse a declared transition back to a constant tempo, and
-   * they matter because {@link TempoData.isConstantTempo} then selects a completely
-   * different (and much cheaper) millisecond computation: a `transition.to` equal to
-   * `bpm`; a `meanTempoAt` of 0 or less, which additionally promotes `transition.to` to
-   * be the tempo; and a `meanTempoAt` of 1 or more. Only a `meanTempoAt` strictly
-   * between them yields a real transition, and it is turned into the power-curve
-   * exponent right here. A transition with no `meanTempoAt` at all defaults to a linear
-   * ramp (0.5 / exponent 1.0).
+   * All this method does is pull the four attributes out of the element and hand them to
+   * {@link resolveTempo}, which owns the three normalisations and the choice of arm; the
+   * commentary that used to sit here now sits there, next to the code it describes.
    */
-  getTempoDataOf(index: number): TempoData | null {
+  getTempoDataOf(index: number): Tempo | null {
     const i = this.resolveEntryIndex(index, 'tempo');
-    if (i >= 0) {
-      const e = this.elements[i].getValue();
-      const td = new TempoData();
-      const bpmAtt = attribute('bpm', e);
-      if (bpmAtt === null) return null;
-      const beatLengthAtt = attribute('beatLength', e);
-      if (beatLengthAtt === null) return null;
-      td.startDate = this.elements[i].getKey();
-      td.endDate = this.getEndDate(i);
-      td.xml = e;
-      td.beatLength = parseFloat(beatLengthAtt.getValue());
-      const att = attribute('id', e);
-      if (att !== null) td.xmlId = att.getValue();
-      td.styleName = this.findStyleNameAt(i) ?? td.styleName;
-      const gStyle = this.getStyle(TEMPO_STYLE, td.styleName) as TempoStyle | null;
-      if (gStyle !== null) td.style = gStyle;
-      td.bpmString = bpmAtt.getValue();
-      td.bpm = TempoStyle.getNumericBpmValueStatic(td.bpmString, td.style);
-      const ttAtt = attribute('transition.to', e);
-      if (ttAtt !== null) {
-        td.transitionToString = ttAtt.getValue();
-        td.transitionTo = TempoStyle.getNumericBpmValueStatic(td.transitionToString, td.style);
-        if (td.transitionTo === td.bpm) {
-          td.transitionToString = null;
-          td.transitionTo = null;
-        } else {
-          const mtaAtt = attribute('meanTempoAt', e);
-          if (mtaAtt !== null) {
-            td.meanTempoAt = parseFloat(mtaAtt.getValue());
-            if (td.meanTempoAt <= 0.0) {
-              td.bpmString = td.transitionToString;
-              td.bpm = td.transitionTo;
-              td.transitionToString = null;
-              td.transitionTo = null;
-            } else if (td.meanTempoAt >= 1.0) {
-              td.transitionToString = null;
-              td.transitionTo = null;
-            } else {
-              td.exponent = TempoMap.computeExponent(td.meanTempoAt);
-            }
-          } else {
-            td.meanTempoAt = 0.5;
-            td.exponent = 1.0;
-          }
-        }
-      }
-      return td;
-    }
-    return null;
-  }
+    if (i < 0) return null;
 
-  private getEndDate(index: number): number {
-    let endDate = Number.MAX_VALUE;
-    for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === 'tempo') {
-        endDate = this.elements[j].getKey();
-        break;
-      }
-    }
-    return endDate;
-  }
+    const entry = this.entryAt(i);
+    const e = entry.getValue();
+    const bpmAtt = attribute('bpm', e);
+    if (bpmAtt === null) return null;
+    const beatLengthAtt = attribute('beatLength', e);
+    if (beatLengthAtt === null) return null;
 
-  private static computeExponent(meanTempoAt: number): number {
-    return Math.log(0.5) / Math.log(meanTempoAt);
+    const transitionToAtt = attribute('transition.to', e);
+    const meanTempoAtAtt = attribute('meanTempoAt', e);
+
+    return resolveTempo(
+      {
+        startDate: entry.getKey(),
+        endDate: this.nextDateOfType(i, 'tempo'),
+        beatLength: parseFloat(beatLengthAtt.getValue()),
+      },
+      bpmAtt.getValue(),
+      transitionToAtt === null ? null : transitionToAtt.getValue(),
+      meanTempoAtAtt === null ? null : meanTempoAtAtt.getValue(),
+      this.getStyle('tempo', this.findStyleNameAt(i)),
+    );
   }
 
   getTempoAt(date: number): number {
@@ -191,7 +163,7 @@ export class TempoMap extends GenericMap {
    * round calls {@link getTempoDataOf} with -1, which returns null immediately, so it is
    * one wasted call rather than a bug. Kept as-is for parity.
    */
-  private getTempoDataAt(date: number): TempoData | null {
+  private getTempoDataAt(date: number): Tempo | null {
     for (let i = this.getElementIndexBefore(date); i >= -1; --i) {
       const td = this.getTempoDataOf(i);
       if (td !== null) return td;
@@ -206,20 +178,22 @@ export class TempoMap extends GenericMap {
    * RENDERING MATH — do not reorder. The position within the span is raised to
    * `exponent` and the result interpolates between `bpm` and `transitionTo`; the
    * `result * (to - bpm) + bpm` form is not interchangeable with the algebraically equal
-   * `bpm * (1 - result) + to * result` in floating point. The lazy `exponent` fill-in
-   * mutates the passed {@link TempoData}, which is intentional: this is called once per
-   * Simpson sample point and recomputing a logarithm each time would be wasteful.
+   * `bpm * (1 - result) + to * result` in floating point.
+   *
+   * The lazy `exponent` fill-in that used to sit between those two lines — "if the
+   * exponent is still null, derive it from `meanTempoAt`, or take 1.0" — is gone, and with
+   * it the mutation of the argument it performed. It was dead: {@link resolveTempo} puts an
+   * exponent on every {@link TransitioningTempo} it builds, and a `TransitioningTempo` is
+   * the only thing that reaches this line. Its stated purpose, not recomputing a logarithm
+   * at each of Simpson's sample points, is served better by computing it once at read time.
    */
-  private static getTempoAtStatic(date: number, tempoData: TempoData | null): number {
-    if (tempoData === null) return 100.0;
-    if (tempoData.isConstantTempo()) return tempoData.bpm!;
-    if (date === tempoData.endDate) return tempoData.transitionTo!;
-    let result = (date - tempoData.startDate) / (tempoData.endDate! - tempoData.startDate);
-    if (tempoData.exponent === null)
-      tempoData.exponent =
-        tempoData.meanTempoAt === null ? 1.0 : TempoMap.computeExponent(tempoData.meanTempoAt);
-    result = Math.pow(result, tempoData.exponent);
-    return result * (tempoData.transitionTo! - tempoData.bpm!) + tempoData.bpm!;
+  private static getTempoAtStatic(date: number, tempo: Tempo | null): number {
+    if (tempo === null) return 100.0;
+    if (tempo.kind === 'constant') return tempo.bpm;
+    if (date === tempo.endDate) return tempo.transitionTo;
+    let result = (date - tempo.startDate) / (tempo.endDate - tempo.startDate);
+    result = Math.pow(result, tempo.exponent);
+    return result * (tempo.transitionTo - tempo.bpm) + tempo.bpm;
   }
 
   /**
@@ -237,6 +211,12 @@ export class TempoMap extends GenericMap {
    * the name), so the running sum in `startDateMilliseconds` is what keeps successive
    * tempi continuous. Do not restructure this into two independent passes.
    *
+   * That running sum used to be written into a `startDateMilliseconds` field on the datum
+   * and pushed onto a `tempi` array whose only ever-read element was its last. It is a
+   * `previous` local now: the same two values, held for the same one iteration, but no
+   * longer a nullable field on a type that has nothing else to do with rendering. Java's
+   * own `clone()` refused to copy it for exactly this reason.
+   *
    * `pendingDurations` exists because a note can start under one tempo and end under a
    * later one. Such notes are parked and retried against each subsequent instruction;
    * entries are removed as they resolve, which is why that loop decrements `i` after
@@ -250,7 +230,7 @@ export class TempoMap extends GenericMap {
 
     if (this.elements.length === 0) {
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = map.elements[mapIndex];
+        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
         const date = parseFloat(getAttributeValue('date.perf', mapEntry.getValue()));
         const ms = TempoMap.computeMillisecondsForNoTempo(date, ppq);
         mapEntry.getValue().addAttribute(new Attribute('milliseconds.date', String(ms)));
@@ -270,33 +250,33 @@ export class TempoMap extends GenericMap {
     }
 
     // process the map elements on the basis of this non-empty tempoMap
-    const tempi: TempoData[] = [];
+    let previous: { readonly tempo: Tempo; readonly startDateMilliseconds: number } | null = null;
     const pendingDurations: KeyValue<number, number>[] = [];
 
     for (let tempoIndex = 0; tempoIndex < this.size(); ++tempoIndex) {
       const td = this.getTempoDataOf(tempoIndex);
       if (td === null) continue;
 
-      // compute the milliseconds date of the tempo instruction
-      if (tempi.length === 0) {
-        td.startDateMilliseconds = TempoMap.computeDiffTiming(td.startDate, ppq, null);
-      } else {
-        const prevTd = tempi[tempi.length - 1];
-        td.startDateMilliseconds = TempoMap.computeDiffTiming(td.startDate, ppq, prevTd);
-        td.startDateMilliseconds += tempi[tempi.length - 1].startDateMilliseconds!;
-      }
-      tempi.push(td);
+      // compute the milliseconds date of the tempo instruction. The `: number` is load
+      // bearing for the compiler, not for the reader: `previous` is reassigned from this
+      // very value one line down, so inferring the type here would be circular.
+      const startDateMilliseconds: number =
+        previous === null
+          ? TempoMap.computeDiffTiming(td.startDate, ppq, null)
+          : TempoMap.computeDiffTiming(td.startDate, ppq, previous.tempo) +
+            previous.startDateMilliseconds;
+      previous = { tempo: td, startDateMilliseconds };
 
       // compute the milliseconds dates of all map elements that fall under this tempo instruction
       let milliseconds: number;
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = map.elements[mapIndex];
-        if (mapEntry.getKey() > td.endDate!) break;
+        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
+        if (mapEntry.getKey() > td.endDate) break;
 
         const date = parseFloat(getAttributeValue('date.perf', mapEntry.getValue()));
         if (mapEntry.getKey() <= td.startDate)
           milliseconds = TempoMap.computeDiffTiming(date, ppq, null);
-        else milliseconds = TempoMap.computeDiffTiming(date, ppq, td) + td.startDateMilliseconds;
+        else milliseconds = TempoMap.computeDiffTiming(date, ppq, td) + startDateMilliseconds;
         mapEntry.getValue().addAttribute(new Attribute('milliseconds.date', String(milliseconds)));
 
         const dateEndAtt = attribute('date.end.perf', mapEntry.getValue());
@@ -313,19 +293,31 @@ export class TempoMap extends GenericMap {
         }
       }
 
-      // check pending durations to fall under this tempo instruction
-      for (let i = 0; i < pendingDurations.length; ++i) {
-        const pd = pendingDurations[i];
+      // Check pending durations to fall under this tempo instruction, resolving the ones
+      // that do and leaving the rest pending.
+      //
+      // A remove-if, written as a compaction: every entry is examined, the unresolved ones
+      // are packed back down to the front in their old order and the length is cut to what
+      // survived. The loop this replaces spliced each resolved entry out and stepped `i`
+      // back — the same removals, but each shifting the whole remainder, which is quadratic
+      // in the number of notes still waiting on a later tempo. Note that this one is NOT a
+      // prefix drain like `RubatoMap`'s: `continue` leaves an entry pending and goes on to
+      // the ones behind it, because a note ending past this span may sit in front of one
+      // ending inside it.
+      let kept = 0;
+      for (const pd of pendingDurations) {
         const endDate = pd.getKey();
-        if (endDate > td.endDate!) continue;
+        if (endDate > td.endDate) {
+          pendingDurations[kept++] = pd;
+          continue;
+        }
         if (endDate <= td.startDate) milliseconds = TempoMap.computeDiffTiming(endDate, ppq, null);
-        else milliseconds = TempoMap.computeDiffTiming(endDate, ppq, td) + td.startDateMilliseconds;
-        map.elements[pd.getValue()]
+        else milliseconds = TempoMap.computeDiffTiming(endDate, ppq, td) + startDateMilliseconds;
+        elementAt(map.elements, pd.getValue(), 'target entry')
           .getValue()
           .addAttribute(new Attribute('milliseconds.date.end', String(milliseconds)));
-        pendingDurations.splice(i, 1);
-        --i;
       }
+      pendingDurations.length = kept;
 
       if (mapIndex >= map.size() && pendingDurations.length === 0) break;
     }
@@ -337,8 +329,11 @@ export class TempoMap extends GenericMap {
       return;
     }
     if (map === null) return;
-    for (let i = 0; i < map.size(); ++i) {
-      const e = map.getElement(i)!;
+    // Walking the index directly rather than `map.getElement(i)!` over `0 ..< map.size()`:
+    // same entries in the same order, and no assertion contradicting an accessor about a
+    // range the loop itself established.
+    for (const entry of map.getAllElements()) {
+      const e = entry.getValue();
       const dateAtt = attribute('date.perf', e);
       if (dateAtt !== null) e.addAttribute(new Attribute('milliseconds.date', dateAtt.getValue()));
       const endAtt = attribute('date.end.perf', e);
@@ -355,11 +350,21 @@ export class TempoMap extends GenericMap {
     }
   }
 
-  static computeDiffTiming(date: number, ppq: number, tempoData: TempoData | null): number {
-    if (tempoData === null) return TempoMap.computeMillisecondsForNoTempo(date, ppq);
-    if (tempoData.isConstantTempo())
-      return TempoMap.computeMillisecondsForConstantTempo(date, ppq, tempoData);
-    return TempoMap.computeMillisecondsForTempoTransition(date, ppq, tempoData);
+  /**
+   * The elapsed milliseconds from the start of `tempo`'s span to `date` — a *difference*,
+   * not an absolute position on the timeline.
+   *
+   * The three-way split is the whole reason {@link Tempo} is a sum: a constant tempo is one
+   * division, a transition is Simpson's rule over the span, and no tempo at all is MPM's
+   * default 100 quarter-bpm. Dispatching on the arm rather than on an `isConstantTempo()`
+   * predicate also closes the hole that predicate left open — it answered *true* for a
+   * datum whose `bpm` was null, which sent a null into the divisor below.
+   */
+  static computeDiffTiming(date: number, ppq: number, tempo: Tempo | null): number {
+    if (tempo === null) return TempoMap.computeMillisecondsForNoTempo(date, ppq);
+    return tempo.kind === 'constant'
+      ? TempoMap.computeMillisecondsForConstantTempo(date, ppq, tempo)
+      : TempoMap.computeMillisecondsForTempoTransition(date, ppq, tempo);
   }
 
   private static computeMillisecondsForNoTempo(date: number, ppq: number): number {
@@ -368,9 +373,9 @@ export class TempoMap extends GenericMap {
   private static computeMillisecondsForConstantTempo(
     date: number,
     ppq: number,
-    tempoData: TempoData,
+    tempo: ConstantTempo,
   ): number {
-    return (15000.0 * (date - tempoData.startDate)) / (tempoData.bpm! * tempoData.beatLength * ppq);
+    return (15000.0 * (date - tempo.startDate)) / (tempo.bpm * tempo.beatLength * ppq);
   }
   /**
    * The elapsed milliseconds from the start of a *transitioning* tempo instruction to
@@ -392,21 +397,18 @@ export class TempoMap extends GenericMap {
   private static computeMillisecondsForTempoTransition(
     date: number,
     ppq: number,
-    tempoData: TempoData,
+    tempo: TransitioningTempo,
   ): number {
-    let N = 2.0 * Math.floor((date - tempoData.startDate) / (ppq / 4));
+    let N = 2.0 * Math.floor((date - tempo.startDate) / (ppq / 4));
     if (N === 0.0) N = 2.0;
     const n = N / 2.0;
-    const x = (date - tempoData.startDate) / N;
-    const resultConst = ((date - tempoData.startDate) * 5000.0) / (N * tempoData.beatLength * ppq);
-    let resultSum = 1.0 / tempoData.bpm! + 1.0 / TempoMap.getTempoAtStatic(date, tempoData);
+    const x = (date - tempo.startDate) / N;
+    const resultConst = ((date - tempo.startDate) * 5000.0) / (N * tempo.beatLength * ppq);
+    let resultSum = 1.0 / tempo.bpm + 1.0 / TempoMap.getTempoAtStatic(date, tempo);
     for (let k = 1; k < n; ++k)
-      resultSum += 2.0 / TempoMap.getTempoAtStatic(tempoData.startDate + 2 * k * x, tempoData);
+      resultSum += 2.0 / TempoMap.getTempoAtStatic(tempo.startDate + 2 * k * x, tempo);
     for (let k = 1; k <= n; ++k)
-      resultSum +=
-        4.0 / TempoMap.getTempoAtStatic(tempoData.startDate + (2 * k - 1) * x, tempoData);
+      resultSum += 4.0 / TempoMap.getTempoAtStatic(tempo.startDate + (2 * k - 1) * x, tempo);
     return resultConst * resultSum;
   }
 }
-
-GenericMap.registerMapFactory('tempoMap', (xml) => TempoMap.createTempoMap(xml));

@@ -34,6 +34,9 @@
  * math it will be compared against (`RubatoMap.computeRubatoTransformation`).
  */
 
+import { err, ok, type Err, type Ok, type Result } from '../prelude/result.js';
+import { head, isNonEmpty } from '../prelude/seq.js';
+
 /**
  * Why a transform declined to produce a value. Three reasons, closed:
  *
@@ -48,26 +51,29 @@
 export type TransformRefusalReason =
   'out-of-domain-input' | 'saturation-to-boundary' | 'non-finite-result';
 
-export interface Transformed<T> {
-  readonly ok: true;
-  readonly value: T;
-}
+/**
+ * A transformed value, or a refusal carrying its reason. Never a thrown exception.
+ *
+ * This module arrived at `{ ok: true, value } | { ok: false, … }` independently, before
+ * `src/prelude/result.ts` existed, and the prelude then adopted that shape wholesale. These
+ * three names are now aliases over it rather than a parallel type — so `mapOk`, `andThen`,
+ * `traverse` and `collect` work on a `TransformResult`, and a refusal can be threaded through
+ * a pipeline instead of being unpacked by hand at every step.
+ *
+ * The one spelling that changed is the failure field: `reason` became `error`, because the
+ * prelude has to name it something that reads correctly for a parse failure and a validation
+ * failure too. `TransformRefusalReason` still says what it is.
+ */
+export type Transformed<T> = Ok<T>;
+export type Refused = Err<TransformRefusalReason>;
+export type TransformResult<T = number> = Result<T, TransformRefusalReason>;
 
-export interface Refused {
-  readonly ok: false;
-  readonly reason: TransformRefusalReason;
-}
-
-/** A transformed value, or a refusal carrying its reason. Never a thrown exception. */
-export type TransformResult<T = number> = Transformed<T> | Refused;
-
-function transformed<T>(value: T): Transformed<T> {
-  return { ok: true, value };
-}
-
-function refused(reason: TransformRefusalReason): Refused {
-  return { ok: false, reason };
-}
+/**
+ * Local names for the prelude's constructors, kept because this file says `refused(...)`
+ * sixteen times and `refused` is the word its documentation uses throughout.
+ */
+const transformed = ok;
+const refused = err;
 
 /**
  * `s = 1` is the identity **by contract**, not by arithmetic (DESIGN §1.1, A2). The
@@ -680,11 +686,11 @@ export function jointTrimWindow(
  * is its own center, and an all-equal population is that value.
  */
 export function geometricMean(values: readonly number[]): TransformResult {
-  if (values.length === 0) return refused('out-of-domain-input');
+  if (!isNonEmpty(values)) return refused('out-of-domain-input');
 
   let logSum = 0;
   let allEqual = true;
-  const first = values[0];
+  const first = head(values);
   for (const value of values) {
     if (!Number.isFinite(value) || value <= POSITIVE_DOMAIN_INFIMUM) {
       return refused('out-of-domain-input');

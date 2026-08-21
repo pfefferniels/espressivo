@@ -1,10 +1,12 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
-import { METRICAL_ACCENTUATION_STYLE, MPM_NAMESPACE } from '../../names.js';
+import { MPM_NAMESPACE } from '../../names.js';
 import { KeyValue } from '../../../supplementary/KeyValue.js';
+import { elementAt } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
-import { MetricalAccentuationData } from './data/MetricalAccentuationData.js';
-import { MetricalAccentuationStyle } from '../styles/MetricalAccentuationStyle.js';
+import { type Result } from '../../../prelude/index.js';
+import { type MpmParseError } from '../parseError.js';
+import type { MetricalAccentuation } from './data/metricalAccentuation.js';
 
 /**
  * An MPM `metricalAccentuationMap`: the emphasis pattern of the metre — the reason a
@@ -18,19 +20,32 @@ import { MetricalAccentuationStyle } from '../styles/MetricalAccentuationStyle.j
  * Port of meico.mpm.elements.maps.MetricalAccentuationMap
  */
 export class MetricalAccentuationMap extends GenericMap {
-  private constructor(typeOrXml: string | Element) {
-    super(typeOrXml);
+  private constructor(xml: Element) {
+    super(xml);
   }
 
-  static createMetricalAccentuationMap(xml?: Element): MetricalAccentuationMap | null {
-    try {
-      return xml !== undefined
-        ? new MetricalAccentuationMap(xml)
-        : new MetricalAccentuationMap('metricalAccentuationMap');
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  /**
+   * A fresh, empty `<metricalAccentuationMap>`, or one read from an existing element.
+   *
+   * The two overloads return different things and that is the point. Building an empty
+   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
+   * element can, and returns the reason instead of printing it. See
+   * {@link GenericMap.emptyMapElement}.
+   */
+  static createMetricalAccentuationMap(): MetricalAccentuationMap;
+  static createMetricalAccentuationMap(
+    xml: Element,
+  ): Result<MetricalAccentuationMap, MpmParseError>;
+  static createMetricalAccentuationMap(
+    xml?: Element | null,
+  ): MetricalAccentuationMap | Result<MetricalAccentuationMap, MpmParseError> {
+    return xml === undefined
+      ? new MetricalAccentuationMap(GenericMap.emptyMapElement('metricalAccentuationMap'))
+      : GenericMap.makeMap(
+          xml,
+          'MetricalAccentuationMap',
+          (elt) => new MetricalAccentuationMap(elt),
+        );
   }
 
   addAccentuationPattern(
@@ -51,50 +66,41 @@ export class MetricalAccentuationMap extends GenericMap {
   }
 
   /**
-   * Read the accentuation instruction at `index` into a
-   * {@link MetricalAccentuationData}. Returns null unless everything needed to render is
-   * present: a `<accentuationPattern>` entry with both `name.ref` and `scale`, a style
-   * in scope, and — implicitly — a def that the style can resolve.
+   * Read the accentuation instruction at `index` into a {@link MetricalAccentuation}.
+   * Returns null unless the entry is an `<accentuationPattern>` with both `name.ref` and
+   * `scale`, and a metrical-accentuation style is in scope.
+   *
+   * Note what is NOT required: a def the style can actually resolve. An instruction naming
+   * a def that does not exist comes back with `accentuationPatternDef` null and aborts the
+   * render on first use, which is Java's behaviour and is measured as such — see the header
+   * of {@link MetricalAccentuation}. The no-style case above it is the skip.
    */
-  getMetricalAccentuationDataOf(index: number): MetricalAccentuationData | null {
+  getMetricalAccentuationDataOf(index: number): MetricalAccentuation | null {
     const i = this.resolveEntryIndex(index, 'accentuationPattern');
     if (i < 0) return null;
-    const e = this.elements[i].getValue();
-    const md = new MetricalAccentuationData();
+    const entry = this.entryAt(i);
+    const e = entry.getValue();
+
     const nameRefAtt = attribute('name.ref', e);
     if (nameRefAtt === null) return null;
-    md.accentuationPatternDefName = nameRefAtt.getValue();
     const scaleAtt = attribute('scale', e);
     if (scaleAtt === null) return null;
-    md.scale = parseFloat(scaleAtt.getValue());
-    md.startDate = this.elements[i].getKey();
-    md.endDate = this.getEndDate(i);
-    md.xml = e;
-    const att = attribute('id', e);
-    if (att !== null) md.xmlId = att.getValue();
-    const loopAtt = attribute('loop', e);
-    if (loopAtt !== null) md.loop = loopAtt.getValue() === 'true';
-    const stmAtt = attribute('stickToMeasures', e);
-    if (stmAtt !== null) md.stickToMeasures = stmAtt.getValue() === 'true';
-    md.styleName = this.findStyleNameAt(i) ?? '';
-    const gStyle = this.getStyle(
-      METRICAL_ACCENTUATION_STYLE,
-      md.styleName,
-    ) as MetricalAccentuationStyle | null;
-    if (gStyle !== null) {
-      md.style = gStyle;
-      md.accentuationPatternDef = md.style.getDef(md.accentuationPatternDefName) ?? null;
-      return md;
-    }
-    return null;
-  }
+    const style = this.getStyle('metricalAccentuation', this.findStyleNameAt(i));
+    if (style === null) return null;
 
-  private getEndDate(index: number): number {
-    for (let j = index + 1; j < this.elements.length; ++j) {
-      if (this.elements[j].getValue().getLocalName() === 'accentuationPattern')
-        return this.elements[j].getKey();
-    }
-    return Number.MAX_VALUE;
+    const accentuationPatternDefName = nameRefAtt.getValue();
+    const loopAtt = attribute('loop', e);
+    const stmAtt = attribute('stickToMeasures', e);
+
+    return {
+      startDate: entry.getKey(),
+      endDate: this.nextDateOfType(i, 'accentuationPattern'),
+      accentuationPatternDefName,
+      accentuationPatternDef: style.getDef(accentuationPatternDefName) ?? null,
+      scale: parseFloat(scaleAtt.getValue()),
+      loop: loopAtt !== null && loopAtt.getValue() === 'true',
+      stickToMeasures: stmAtt === null || stmAtt.getValue() === 'true',
+    };
   }
 
   /**
@@ -131,31 +137,47 @@ export class MetricalAccentuationMap extends GenericMap {
     for (let accIndex = 0; accIndex < this.size(); ++accIndex) {
       const md = this.getMetricalAccentuationDataOf(accIndex);
       if (md === null) continue;
-      let patternLengthTicks = (md.accentuationPatternDef!.getLength() * ppq4) / tsDenominator;
+      // PARITY — the abort, and it is deliberate. Java reads a datum whose
+      // `accentuationPatternDef` is null when the style is in scope but names no def by this
+      // name, and then dereferences it unguarded: the render dies with a
+      // NullPointerException. Skipping the instruction instead would render a document the
+      // reference refuses, and `src/comparison/accentuationCurve.ts` (R21) measures the
+      // difference between the two.
+      //
+      // This used to be `md.accentuationPatternDef!` — the one assertion in the file, whose
+      // whole job was to let the very next line throw. The branch says the same thing and
+      // raises the same error: same class, same message, same line, so R21's quoted
+      // `TypeError: Cannot read properties of null (reading 'getLength')` is still literally
+      // what a caller sees. Do not "improve" the message without reading that module first.
+      const def = md.accentuationPatternDef;
+      if (def === null) throw new TypeError("Cannot read properties of null (reading 'getLength')");
+      let patternLengthTicks = (def.getLength() * ppq4) / tsDenominator;
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = map.elements[mapIndex];
+        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
         if (mapEntry.getKey() < md.startDate) continue;
         const velocityAtt = attribute('velocity', mapEntry.getValue());
         if (velocityAtt === null) continue;
         if (timeSignatureMap !== null) {
+          const timeSignatures = timeSignatureMap.getAllElements();
           let update = false;
-          for (let tsIndex = timeSignIndex + 1; tsIndex < timeSignatureMap.size(); ++tsIndex) {
-            if (timeSignatureMap.getAllElements()[tsIndex].getKey() > mapEntry.getKey()) break;
+          for (let tsIndex = timeSignIndex + 1; tsIndex < timeSignatures.length; ++tsIndex) {
+            if (elementAt(timeSignatures, tsIndex, 'time signature').getKey() > mapEntry.getKey())
+              break;
             timeSignIndex = tsIndex;
             update = true;
           }
           if (update) {
-            const timeSign = timeSignatureMap.getAllElements()[timeSignIndex];
+            const timeSign = elementAt(timeSignatures, timeSignIndex, 'time signature');
             tsDate = timeSign.getKey();
             tsNumerator = parseFloat(getAttributeValue('numerator', timeSign.getValue()));
             tsDenominator = parseInt(getAttributeValue('denominator', timeSign.getValue()));
             ticksPerBeat = ppq4 / tsDenominator;
             tickLengthOfOneMeasure = ticksPerBeat * tsNumerator;
-            patternLengthTicks = (md.accentuationPatternDef!.getLength() * ppq4) / tsDenominator;
+            patternLengthTicks = (def.getLength() * ppq4) / tsDenominator;
           }
         }
         if (
-          mapEntry.getKey() >= md.endDate! ||
+          mapEntry.getKey() >= md.endDate ||
           (!md.loop && mapEntry.getKey() >= md.startDate + patternLengthTicks)
         )
           break;
@@ -164,7 +186,7 @@ export class MetricalAccentuationMap extends GenericMap {
           beat = 1.0 + ((mapEntry.getKey() - tsDate) % tickLengthOfOneMeasure) / ticksPerBeat;
         else beat = 1.0 + ((mapEntry.getKey() - tsDate) % patternLengthTicks) / ticksPerBeat;
         const velocity = parseFloat(velocityAtt.getValue());
-        const accentuation = md.accentuationPatternDef!.getAccentuationAt(beat);
+        const accentuation = def.getAccentuationAt(beat);
         velocityAtt.setValue(String(velocity + accentuation * md.scale));
       }
     }
@@ -180,7 +202,3 @@ export class MetricalAccentuationMap extends GenericMap {
       metricalAccentuationMap.renderMetricalAccentuationToMap(map, timeSignatureMap, ppq);
   }
 }
-
-GenericMap.registerMapFactory('metricalAccentuationMap', (xml) =>
-  MetricalAccentuationMap.createMetricalAccentuationMap(xml),
-);
