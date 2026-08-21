@@ -248,14 +248,13 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
    * @returns the index it was inserted at, which is also the XML child index to use
    */
   private addAccentuationToArrayList(accentuation: AccentuationTuple, xml: Element): number {
-    for (let j = this.accentuations.length - 1; j >= 0; --j) {
-      if (accentuation[0] >= elementAt(this.accentuations, j, 'accentuation').getKey()[0]) {
-        this.accentuations.splice(j + 1, 0, new KeyValue(accentuation, xml));
-        return j + 1;
-      }
-    }
-    this.accentuations.splice(0, 0, new KeyValue(accentuation, xml));
-    return 0;
+    // `findLastIndex` (ES2023) is the backwards scan, and its `-1` for "nothing qualifies"
+    // becomes the front insertion under the same `+ 1`. That collapses what were two splices
+    // and two returns — the loop body and the fall-through — into one of each, which is what
+    // makes it evident that both always agreed on the index.
+    const index = this.accentuations.findLastIndex((kv) => accentuation[0] >= kv.getKey()[0]) + 1;
+    this.accentuations.splice(index, 0, new KeyValue(accentuation, xml));
+    return index;
   }
 
   /**

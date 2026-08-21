@@ -72,13 +72,9 @@ export function orderedEntries(map: Element): readonly DatedEntry[] {
     // against everything, and this scan therefore puts such an entry at 0 and steps over it —
     // where a bisection would split on a partition point that is false on both sides. The two
     // agree on every ordered input; this module exists to agree with `GenericMap` on all of them.
-    let index = 0;
-    for (let j = entries.length - 1; j >= 0; --j) {
-      if (date >= elementAt(entries, j, 'dated entry').date) {
-        index = j + 1;
-        break;
-      }
-    }
+    // As `GenericMap.insertionIndexFor`, and for the same NaN reason: `findLastIndex` is the
+    // backwards linear scan, and its `-1` miss maps to index 0 under the same `+ 1`.
+    const index = entries.findLastIndex((entry) => date >= entry.date) + 1;
     entries.splice(index, 0, { element, date, documentIndex });
   }
   return entries;

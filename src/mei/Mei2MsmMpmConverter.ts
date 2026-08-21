@@ -4113,26 +4113,32 @@ export class Mei2MsmMpmConverter {
         // {@link reverseDescendantElements} yields the same elements in the same
         // back-to-front order this loop already read them in, and stops when the loop does
         // — which for a tie whose partner is the note just before it is immediately.
-        const ps = reverseDescendantElements(
+        // `.find` on the generator, not a `for..of` with a `break`. The iterator helpers
+        // (ES2025) are what make that legal: before them, every array method meant
+        // materialising the sequence first, which is the exact cost the generator above
+        // exists to avoid — so a lazy walk had to be consumed by a hand-written loop. `find`
+        // pulls one element at a time and stops pulling at the first hit, so the walk is as
+        // short as the `break` made it, and "which note is the tie partner" is now separate
+        // from "what to do with it".
+        const partner = reverseDescendantElements(
           requirePartDatedMap(ctx, 'score'),
           (element) => element.getLocalName() === 'note' && element.getAttribute('tie') !== null,
-        );
-        for (const p of ps) {
-          if (
+        ).find(
+          (p) =>
             p.getAttributeValue('midi.pitch') === s.getAttributeValue('midi.pitch') &&
             parseFloat(requireAttributeValue('date', p)) +
               parseFloat(requireAttributeValue('duration', p)) ===
-              date
-          ) {
-            p.addAttribute(
-              new Attribute(
-                'duration',
-                String(parseFloat(requireAttributeValue('duration', p)) + dur),
-              ),
-            );
-            if (tie === 't') p.removeAttribute(requireAttribute('tie', p));
-            return;
-          }
+              date,
+        );
+        if (partner !== undefined) {
+          partner.addAttribute(
+            new Attribute(
+              'duration',
+              String(parseFloat(requireAttributeValue('duration', partner)) + dur),
+            ),
+          );
+          if (tie === 't') partner.removeAttribute(requireAttribute('tie', partner));
+          return;
         }
       }
     }

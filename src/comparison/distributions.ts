@@ -270,7 +270,7 @@ export function gaussianLaw(
 
 /** The empirical law of `values`; null for an empty list, which the renderer cannot draw. */
 export function listLaw(values: readonly number[]): DeltaLaw | ListLaw | null {
-  const sorted = [...values].sort((a, b) => a - b);
+  const sorted = values.toSorted((a, b) => a - b);
   // The emptiness test and the non-emptiness the rest of the module relies on are the same
   // fact, so it is established once, here, in the form the type can carry.
   if (!isNonEmpty(sorted)) return null;

@@ -1,43 +1,81 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ES2022",
-    "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM"],
+    // ES2025 is the newest ECMAScript edition TypeScript ships a `lib` for, and the whole of
+    // it is native on the `engines` floor (Node 22). Nothing here is downlevelled: `target`
+    // and `lib` name the same edition on purpose, so a feature that type-checks is a feature
+    // the runtime has. The step from ES2022 bought four things the tree now uses —
+    // `Array.prototype.toSorted`/`toReversed`/`with` and `findLast` (ES2023), `Map.groupBy`
+    // and `Object.groupBy` (ES2024), the `Set` algebra methods and the iterator helpers
+    // (ES2025). `docs/history/es2025/README.md` records what changed, what was measured, and — as usefully — every ES2023–2025 feature that was looked for and has no site here.
+    "target": "ES2025",
+    "lib": ["ES2025", "DOM"],
+
+    // `nodenext`, not `bundler`: this package ships as ESM to Node and every relative import
+    // already carries its `.js`, so `nodenext` is what CHECKS that — it resolves the way Node
+    // will at runtime, where `bundler` resolved the way a bundler would and no bundler is
+    // involved. It also turns `package.json` `exports` into something the compiler verifies
+    // rather than something only `npm publish` finds out about.
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
 
+    // TypeScript 7 defaults `types` to `[]`; this states it, because it is a real fact about
+    // this library rather than a default worth inheriting silently. `src/` reaches for no
+    // ambient global — no `process`, no `Buffer`, no `__dirname` — so nothing here should be
+    // able to acquire one by having `@types/node` merely present in `node_modules`. The test
+    // project, which does use them, adds `"node"` back.
+    "types": [],
+
     // Beyond `strict`. Each of these was measured against the tree before being turned on;
-    // the four zero-cost ones say the codebase already had the discipline and now cannot
-    // lose it.
+    // the zero-cost ones say the codebase already had the discipline and now cannot lose it.
     //
-    //   useUnknownInCatchVariables   0 errors — a catch binding really is unknown
-    //   noImplicitReturns            0 errors — every path of a value-returning function returns
-    //   verbatimModuleSyntax         0 errors — type-only imports stay erasable and explicit
-    //   noFallthroughCasesInSwitch   1 error  — Midi.ts's one intentional fallthrough is now
-    //                                           written out, so accidental ones are catchable
-    //   noImplicitOverride          15 errors — an override must say so, which is what stops a
-    //                                           base-class rename from silently orphaning one
+    //   useUnknownInCatchVariables        0 errors — a catch binding really is unknown
+    //   noImplicitReturns                 0 errors — every path of a value-returning function returns
+    //   verbatimModuleSyntax              0 errors — type-only imports stay erasable and explicit
+    //   noUnusedParameters                0 errors — an ignored parameter says so with a `_`
+    //   noPropertyAccessFromIndexSignature 0 errors — `x.foo` means a declared `foo`, `x['foo']` a looked-up one
+    //   noUncheckedSideEffectImports      0 errors — a bare `import './x.js'` must still resolve
+    //   noFallthroughCasesInSwitch        1 error  — Midi.ts's one intentional fallthrough is now
+    //                                                written out, so accidental ones are catchable
+    //   noImplicitOverride               15 errors — an override must say so, which is what stops a
+    //                                                base-class rename from silently orphaning one
     //
     // Deliberately still off, with reasons:
-    //   exactOptionalPropertyTypes  26 errors, all of them option bags forwarded field by
-    //                               field (`{ seed: options?.seed }`). Turning it on today
-    //                               means adding `| undefined` to ~26 declarations — which
-    //                               loosens the very types this change exists to tighten. The
-    //                               option plumbing is rewritten in the model stage; the flag
-    //                               goes on with it.
-    // `noUncheckedIndexedAccess` is now ON, below. It began at 885 errors in `src/` and was
-    // cleared directory by directory over the campaign, by five agents and me, against a
-    // one-way ratchet that refused to let any directory get worse. What matters is that it was
-    // cleared by REMOVING THE INDEXING rather than by silencing it: across the whole of it,
-    // zero `!` and zero `as T` were added, and the repo's non-null-assertion count fell from
-    // 841 to 705 in the same period.
+    //   exactOptionalPropertyTypes  15 errors (was 26), all of them still the same shape: option
+    //                               bags forwarded field by field (`{ seed: options?.seed }`).
+    //                               Turning it on today means adding `| undefined` to ~15
+    //                               declarations — which loosens the very types it exists to
+    //                               tighten. The count halved on its own as the option plumbing
+    //                               was rewritten; the flag goes on when it reaches zero.
+    //   erasableSyntaxOnly          45 errors, and all 45 are the same construct: a `constructor(
+    //                               readonly role: Role, ...)` parameter property, in 14 files.
+    //                               Clearing them means writing out a field declaration and an
+    //                               assignment for each — strictly more code, to buy the ability
+    //                               to run `src/` through a type-stripper. This package ships
+    //                               compiled `dist`, so it would buy nothing and cost 45 sites.
+    //   noUnusedLocals              1 error, and it is load-bearing:
+    //                               `Msm.computeSemicircleCompression` is unused HERE because it
+    //                               is unused in `Msm.java:846` too, and it is retained with that
+    //                               note so the two trees stay comparable. A flag that forces its
+    //                               deletion is a flag that costs parity evidence.
+    //   isolatedDeclarations        385 errors. Every exported signature would need writing out;
+    //                               `declaration` already emits them correctly today.
     "useUnknownInCatchVariables": true,
     "noImplicitReturns": true,
     "verbatimModuleSyntax": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedSideEffectImports": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
+    // `noUncheckedIndexedAccess` began at 885 errors in `src/` and was cleared directory by
+    // directory over the functional-core campaign, against a one-way ratchet that refused to
+    // let any directory get worse. What matters is that it was cleared by REMOVING THE INDEXING
+    // rather than by silencing it: across the whole of it, zero `!` and zero `as T` were added,
+    // and the repo's non-null-assertion count fell from 841 to 705 in the same period.
     "noUncheckedIndexedAccess": true,
 
     "esModuleInterop": true,

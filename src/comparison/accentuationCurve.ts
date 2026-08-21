@@ -155,8 +155,9 @@ export function readAccentuationPattern(def: Element): AccentuationPattern {
   // On `@beat` alone: two `<accentuation>` children of one def sharing a beat keep their
   // document order, which is the order the renderer applies them in. Stable, single-document,
   // and therefore invisible to the a/b swap — stated because it was implicit (W3 MINOR-7).
-  const points: readonly PatternPoint[] = [
-    ...filterMap(def.getChildElements('accentuation'), (child) => {
+  const points: readonly PatternPoint[] = filterMap(
+    def.getChildElements('accentuation'),
+    (child) => {
       const beat = readNumericAttributeValue(child, 'beat');
       if (Number.isNaN(beat)) return null;
       const value = readNumericAttributeValue(child, 'value');
@@ -170,8 +171,8 @@ export function readAccentuationPattern(def: Element): AccentuationPattern {
         transitionFrom: resolvedFrom,
         transitionTo: Number.isNaN(to) ? resolvedFrom : to,
       };
-    }),
-  ].sort((a, b) => a.beat - b.beat);
+    },
+  ).toSorted((a, b) => a.beat - b.beat);
 
   return {
     length: Number.isFinite(rawLength) ? rawLength : DEFAULT_PATTERN_LENGTH,
