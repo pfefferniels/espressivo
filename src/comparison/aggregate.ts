@@ -568,12 +568,10 @@ export function maximalScoringRuns(
       //    at every element and takes the last that qualifies. Ruzzo-Tompa is where cell scores
       //    arrive from an integral, and this module's own `remainderUnderflow` field exists
       //    because those integrals are not assumed to be well-behaved.
-      let j = -1;
-      for (let k = runs.length - 1; k >= 0; --k)
-        if (elementAt(runs, k, RUNS).leftTotal < candidate.leftTotal) {
-          j = k;
-          break;
-        }
+      // "looks at every element and takes the last that qualifies" is `findLastIndex`
+      // (ES2023) exactly, including its `-1` for none — which is the sentinel this scan was
+      // already seeding by hand.
+      const j = runs.findLastIndex((run) => run.leftTotal < candidate.leftTotal);
       if (j < 0) break;
       const absorbed = elementAt(runs, j, RUNS);
       if (absorbed.rightTotal >= candidate.rightTotal) break;
