@@ -107,6 +107,11 @@ channel 1 with 4 — and a first note of:
 alongside the notes as `part.controlChanges` — a `channelVolume` stream (CC 7) and a `position`
 stream (CC 64/67) with one point per sampled value.
 
+Each note carries six more fields than are shown above — `ornamented`, `ornamentRef`,
+`ornamentSource`, `ornamentSlot`, `ornamentPass` and `ornamentAnchor` — which say whether an
+ornament produced this note and which one, and are `false`/`null` on an unornamented note. They
+are the subject of [`docs/ornamentation.md`](docs/ornamentation.md).
+
 ### Choosing a performance, and the pipeline stage by stage
 
 An MPM can carry several performances. The stages are separately callable, and every document
@@ -217,8 +222,8 @@ The transforms' and the comparison's options are documented with the features th
 ### The class API underneath
 
 The port's interior — `Mei`, `Msm`, `Mpm`, `Performance`, `Midi` and the whole MPM element tree —
-is exported too, and is what you want if you need to _build_ or _edit_ MPM rather than just apply
-it. It mirrors meico's Java classes closely enough that the Java documentation applies:
+is exported too, and is what you want when you need to _read_, _build_ or _edit_ MPM rather than
+just apply it. It mirrors meico's Java classes closely enough that the Java documentation applies:
 
 ```ts
 import { readFileSync } from 'node:fs';
@@ -228,8 +233,8 @@ const mei = Mei.fromXml(readFileSync('sonata.mei', 'utf-8'));
 mei.setFile('sonata.mei');
 
 const converted = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
-const msm = converted.getKey()[0];
-const mpm = converted.getValue()[0];
+const msm = converted.key[0]; // KeyValue<Msm[], Mpm[]> — a plain { key, value } pair
+const mpm = converted.value[0];
 
 const performance = mpm.getPerformance(0);
 if (performance === null) throw new Error('this MPM has no performance');
@@ -243,6 +248,16 @@ and returns `null`** instead of throwing, and its XML tree is mutable. The facad
 keeps that inside — meico has no such boundary, and the plain-data guarantee, the typed errors and
 the text-in/text-out staging are espressivo's own. Mixing the two is fine: the facade is additive,
 and both were proven to produce identical bytes.
+
+**Reading an MPM for display is the other job this layer does**, and the one the facade
+deliberately does not: drawing a performance's instructions on a timeline, charting what one
+`<tempo>` does across its span, telling a user what they just clicked on. `getTempoDataOf` and
+friends resolve an instruction the way the renderer resolves it — style-relative names already
+numbers, absent attributes already defaulted, spans already closed — so a chart drawn from them
+cannot disagree with the audio. That is a different object from the ideal curves `compareMpm`
+integrates, and the distinction matters more than it looks.
+
+→ [`docs/reading.md`](docs/reading.md)
 
 ## What espressivo adds to meico
 
