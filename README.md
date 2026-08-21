@@ -359,10 +359,19 @@ full; [PARITY.md](PARITY.md) for the complete ledger, with Java line citations.
   reproduce from commit **`1d662105`** ("Fix getAccentuationAt segment-end selection (dead
   condition)"); the 24 `_raw.mid` files under `performance-reference/` and `all-maps-reference/`
   were regenerated from **`68ccd3b8`** ("Fix xml:id lookup"), which is `1d662105` plus the
-  one-line repair described under _Two deviations from standard meico_ below. The `reference/` and `performance-reference/` sets were
+  one-line repair described under _Two deviations from standard meico_ below. Eight further
+  `performance-reference/` MIDI files — `keys_accidentals`, `comprehensive`, `composite_advanced`
+  and `tuplets`, each `_raw` and `_expressive` — reproduce from **`db83c7c5`** ("Fix key signature
+  accidental count"), where a sharp key signature stopped reaching MIDI as no accidentals at all
+  (PARITY.md §1). The `reference/` and `performance-reference/` sets were
   generated at its parent **`1b3711f0`** ("Fix movementMap XML round-trip and rendering fidelity")
   and are unaffected by the segment-end fix — no MEI fixture reaches an accentuation pattern, which
   the pipeline probe confirms by moving only the two all-maps entries.
+
+  The fork's current head is **`a1bdf254`** ("Fix GenericMap.sort"), which moves no reference byte:
+  every one of the 120 files regenerates identically from it, `db83c7c5` and their predecessors
+  alike, save the two nondeterministic imprecision outputs that are never byte-compared.
+
 - **`VERSION`** (exported, and written into MPM metadata by the converter) is `0.11.2` and tracks
   the _meico_ version whose behaviour is reproduced. It is deliberately **not** the npm package
   version: it is serialization-visible, so changing it changes fixture bytes.

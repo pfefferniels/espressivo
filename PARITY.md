@@ -589,6 +589,96 @@ and §8's sixteen-fixture equivalence suite goes green, which is the direct meas
 behaviour the fix restores. Attribute append order in both branches follows Java's exactly — it
 _is_ the fixture bytes — and is commented as such at the site.
 
+### A sharp key signature reached MIDI as no accidentals
+
+|            |                                                                     |
+| ---------- | ------------------------------------------------------------------- |
+| Item       | ground-truth regeneration approved 2026-08-21                       |
+| Java       | `pfefferniels/meico@db83c7c5`, "Fix key signature accidental count" |
+| TypeScript | `src/msm/Msm.ts`, `parseKeySignatureMap`                            |
+
+`parseKeySignatureMap` reduces a `<keySignature>`'s `<accidental>` children to the signed count
+MIDI wants, and its thresholds were `value > 1.0` and `value < 1.0` (`Msm.java:1151,1155`).
+`value` is a semitone offset, so a sharp is exactly `1.0` and a flat is `-1.0`. A sharp is
+neither greater than nor less than `1.0` — it fell through both branches and was **not counted
+at all**, while flats counted correctly. That asymmetry is why it never read as an off-by-one:
+key signatures were simply right in flats and empty in sharps.
+
+This was previously preserved under the bug-for-bug rule, on the grounds that the reference MIDI
+was generated with it. That reasoning does not survive the lesson recorded under `attribute()`
+below: the byte gate compares against a fork, and a fork can be wrong. The thresholds should be
+`> 0` / `< 0`, and now are.
+
+**Fixed in the fork first, then here**, with the reference MIDI regenerated from the fixed fork,
+so byte equivalence still holds — it is now equivalence with a Java that counts sharps. Verified
+in the fork with a probe on `keys_accidentals.msm`, whose outer key signatures are D major and
+whose middle one is E-flat major: `sf=0, -3, 0` before, `sf=2, -3, 2` after, i.e. the flats were
+already right and the sharps went from silently absent to correct.
+
+**Ground-truth provenance.** Eight files moved, all under
+`tests/integration/fixtures/performance-reference/`: `keys_accidentals`, `comprehensive`,
+`composite_advanced` and `tuplets`, each in `_raw` and `_expressive`. The total change is six
+distinct bytes, every one an `sf` byte of `0` becoming the sharp count it always should have
+been. All 120 reference files were regenerated and compared; the other 112 are unchanged
+(barring the two nondeterministic imprecision outputs of §4).
+
+Note that `readKeyFifths` (`src/mpm/elements/maps/ornamentInstantiation.ts`) had already declined
+to reproduce this bug — as new v3 code bound by no fixture, it counted with `> 0` from the start
+so that a trill would not be put in the wrong key. The two readings now agree rather than
+diverging deliberately.
+
+### `GenericMap.sort()` swapped where it must shift, so it was not a sort
+
+|            |                                                      |
+| ---------- | ---------------------------------------------------- |
+| Item       | fixed 2026-08-21, alongside the key signature repair |
+| Java       | `pfefferniels/meico@a1bdf254`, "Fix GenericMap.sort" |
+| TypeScript | `src/mpm/elements/maps/GenericMap.ts`, `sort`        |
+
+The pass computes the leftmost index an element should move to and then **swapped** the two
+positions, where an insertion sort shifts the intervening elements right. A swap strands
+everything between the two ends, so the pass left the array unsorted and was not stable either:
+`[2,3,1]` became `[1,3,2]`, `[1,3,2,0]` became `[0,2,3,1]`, `[5,4,3,2,1]` became `[1,5,4,3,2]`.
+Java did the same (`GenericMap.java`, `Collections.swap(this.elements, i, moveToIndex)`), so it
+was inherited rather than a port defect. It got simple cases right, which is why it never looked
+broken: an arrangement with a single displaced element belonging at the end comes out sorted,
+and that is exactly the case the pre-existing unit test covered.
+
+**Why no output moved, and why that was expected.** The index is keyed on `@date`, the _symbolic_
+date, and that is correct: `parseData` builds every key from `@date`, every lookup on the index is
+symbolic, and `ArticulationMap` compares `getKey()` against an articulation's symbolic `@date`.
+Keying it on `@date.perf` would break every symbolic lookup in the renderer. There was no
+attribute mismatch to repair.
+
+It never fired because its one caller cannot perturb what it re-checks. `ArticulationMap`'s
+`if (mapTimingChanged) map.sort()` runs after articulating notes, and articulation writes
+`@date.perf`, `@duration.perf` and `@velocity` — never `@date`. The keys really are unchanged and
+the array really is already ordered, so the pass finds nothing to move. The call is a no-op by
+construction, here and in Java, where `ArticulationMap.java:479` is likewise the only `sort()`
+call in the entire `mpm` package.
+
+**Fixed** because the defect was reachable by any future caller that edits `@date` on elements
+already in the map and then sorts — a loaded gun rather than an active one. The regeneration
+confirmed it moves nothing: all 120 reference files are unchanged by this half of the work. The
+unit test that used to assert the unsorted result on purpose now asserts the sorted one, and
+carries the three arrangements the swap got wrong plus a stability case.
+
+**Measured before the repair, 2026-08-20, rather than only argued.** The no-op-by-construction
+reasoning above had never been checked against the corpus. Instrumenting `sort()` to compare the
+key sequence before and after itself, and running the whole of `tests/integration` and
+`tests/mpm`: **28 calls, 26 of them no-ops.** The two that reordered anything were both in
+`tests/mpm/elements/GenericMap.test.ts` — the test that edits `@date` by hand, and the test that
+pinned this very defect, which produced `100,200,300 -> 1,3,2`, a sort whose output is not
+sorted. Across every MEI fixture, every all-maps fixture and every render in the suite, `sort()`
+never once changed an order.
+
+That measurement survives the fix as a **fixture-coverage gap**, and is the reason this entry
+still matters: deleting `if (mapTimingChanged) map.sort()` outright left the entire suite green
+(2796 tests in `tests/mpm` + `tests/integration`), so the suite cannot protect this call. It
+belongs on the gap list next to `<pedal>` and `subNoteDynamics`. What the repair changes is the
+consequence of that gap — a future change that writes `@date` mid-render now gets a correctly
+ordered map instead of a scrambled one.
+
 ## 2. Frozen divergences
 
 Known, journaled, and deliberately **not** repaired. Three are reachable on input a caller can
@@ -869,53 +959,6 @@ alone; it belongs upstream and needs its own regeneration.
 a divergence sits on a feature the fork _added_, "Java does X" is not an argument — it is the thing
 to check.
 
-### `GenericMap.sort()` is not a sort
-
-`src/mpm/elements/maps/GenericMap.ts`. The pass computes the leftmost index an element should
-move to and then **swaps** the two positions; an insertion sort shifts the intervening elements
-right instead. Run against the code as written, `[2,3,1]` becomes `[1,3,2]`, `[1,3,2,0]` becomes
-`[0,2,3,1]`, and `[5,4,3,2,1]` becomes `[1,5,4,3,2]` — none of them sorted, and not stable
-either. Java does the same thing (`GenericMap.java`,
-`Collections.swap(this.elements, i, moveToIndex)`), so this is inherited rather than a port
-defect. It does get simple cases right, which is why it has never looked broken: an arrangement
-with a single displaced element belonging at the end comes out sorted, and that is exactly the
-case the existing unit test covers.
-
-**Why it never fires.** Not for the reason an earlier draft of this entry gave. The index is
-keyed on `@date`, the _symbolic_ date, and that is correct: `parseData` builds every key from
-`@date`, every lookup on the index is symbolic, and `ArticulationMap` compares `getKey()`
-against an articulation's symbolic `@date`. Keying it on `@date.perf` would break every
-symbolic lookup in the renderer. There is no attribute mismatch to repair.
-
-It never fires because its one caller cannot perturb what it re-checks. `ArticulationMap`'s
-`if (mapTimingChanged) map.sort()` runs after articulating notes, and articulation writes
-`@date.perf`, `@duration.perf` and `@velocity` — never `@date`. The keys really are unchanged
-and the array really is already ordered, so the pass finds nothing to swap. The call is a no-op
-by construction, here and in Java, where `ArticulationMap.java:479` is likewise the only
-`sort()` call in the entire `mpm` package.
-
-The defect would surface only if `sort()` were called after `@date` itself had been edited on
-elements already in the map. Nothing does that. Preserved on the same grounds as the rest of
-this section, and now pinned by a unit test that asserts the unsorted result on purpose, so
-that anyone repairing it has to do so deliberately.
-
-**Measured, 2026-08-20, rather than only argued.** The paragraphs above reason that the call is
-a no-op by construction; that reasoning had never been checked against the corpus. Instrumenting
-`sort()` to compare the key sequence before and after itself, and running the whole of
-`tests/integration` and `tests/mpm`: **28 calls, 26 of them no-ops.** The two that reorder
-anything are both in `tests/mpm/elements/GenericMap.test.ts` — the test that edits `@date` by
-hand, and the test that pins this very defect — and the second produces `100,200,300 -> 1,3,2`,
-i.e. a sort whose output is not sorted, exactly as described above. Across every MEI fixture,
-every all-maps fixture and every render in the suite, `sort()` never once changes an order.
-
-Two consequences worth stating plainly. First, deleting `if (mapTimingChanged) map.sort()`
-outright leaves the entire suite green (2796 tests in `tests/mpm` + `tests/integration`) — so
-**the suite cannot protect this call**, and it belongs on the fixture-coverage gap list next to
-`<pedal>` and `subNoteDynamics`. Second, the call is not merely unnecessary here, it is a
-loaded gun: if a future change ever did write `@date` mid-render, this would fire and produce a
-_wrongly_ ordered map rather than a correctly ordered one. Anyone adding such a write must fix
-the sort first.
-
 ### `TempoData.clone` omits `startDateMilliseconds`
 
 Java's `TempoData.clone()` omits it too. It is scratch space that `TempoMap.renderTempoToMap`
@@ -1084,11 +1127,11 @@ pinned by tests. They are divergences from an unreviewed pull request, not from 
   and the renderer resolves them against the part's own `keySignatureMap`, falling back to the
   global one and then to C major. _Pinned:_ `fixtures-v3/diatonic-key` (two sharps ⇒ D major:
   74 − 1 ⇒ 73, 74 + 2 ⇒ 78, 74 + 7 ⇒ 86; a key-blind reading gives 77 for the middle one).
-  **PARITY NOTE at the site:** this reading counts sharps with `> 0`, not the `> 1.0` of
-  `Msm.parseKeySignatureMap`, whose comparison is a Java-inherited bug that counts no sharp at
-  all (`Msm.java:1148-1157`). That bug is preserved where it is, because the reference MIDI was
-  generated with it; reproducing it here would put a trill in the wrong key, and no fixture and
-  no Java output binds this new code.
+  **PARITY NOTE at the site:** this reading counts sharps with `> 0`. It always did — as new
+  code bound by no fixture and no Java output, reproducing `Msm.parseKeySignatureMap`'s inherited
+  `> 1.0`, which counted no sharp at all, would have put a trill in the wrong key. That bug has
+  since been fixed at the source and in the port (§1), so the two readings now agree rather than
+  diverging deliberately.
 - **D12 — serialization is generation-preserving**, and the two writer divergences below follow
   from it. A document parsed as v2 (or built through the v2 API) serializes exactly as it does
   today — that is what keeps the all-maps fixtures byte-green — while anything v3 serializes

@@ -679,25 +679,40 @@ describe('GenericMap', () => {
       expect(dates).toEqual([100, 200, 300]);
     });
 
-    // PARITY.md §3. `sort()` swaps where an insertion sort would shift, so it is not a sort
-    // and not stable. Java does the same (`Collections.swap`), so it is preserved — and pinned
-    // here, on purpose, asserting the WRONG result. The test above passes only because its
-    // arrangement (one element displaced to the end) is one the swap happens to get right.
+    // PARITY.md §3. `sort()` used to swap where an insertion sort must shift, so it was not
+    // a sort and not stable; Java did the same (`Collections.swap`). This test used to pin
+    // that defect on purpose, asserting the WRONG result. Both are now repaired — the fork
+    // at `meico@a1bdf254`, the port to match — so it asserts the right one.
     //
-    // If this test fails, someone has repaired `sort()`. That is a deliberate act with
-    // consequences: read the PARITY entry before updating the expectation.
-    it('does NOT sort a general arrangement — the inherited swap defect, pinned', () => {
+    // The arrangements below are exactly the ones the swap got wrong. The test above passes
+    // either way: its arrangement (one element displaced to the end) is one of the cases the
+    // swap happened to get right, which is why the defect stayed invisible for so long.
+    it('sorts a general arrangement, not just the easy one', () => {
+      function sorted(keys: number[]): number[] {
+        const map = makeMap(keys.map((_, i) => (i + 1) * 100));
+        keys.forEach((k, i) => map.getElement(i)!.addAttribute(new Attribute('date', `${k}`)));
+        map.sort();
+        return map.getAllElements().map((kv) => kv.getKey());
+      }
+
+      expect(sorted([2, 3, 1])).toEqual([1, 2, 3]); // the swap gave [1, 3, 2]
+      expect(sorted([1, 3, 2, 0])).toEqual([0, 1, 2, 3]); // the swap gave [0, 2, 3, 1]
+      expect(sorted([5, 4, 3, 2, 1])).toEqual([1, 2, 3, 4, 5]); // the swap gave [1, 5, 4, 3, 2]
+      expect(sorted([0, 1, 2])).toEqual([0, 1, 2]); // already ordered, left alone
+    });
+
+    it('sort is stable across equal dates', () => {
       const map = makeMap([100, 200, 300]);
-      // Rewrite the dates so the keys read 2, 3, 1 once refreshed.
-      map.getElement(0)!.addAttribute(new Attribute('date', '2'));
-      map.getElement(1)!.addAttribute(new Attribute('date', '3'));
-      map.getElement(2)!.addAttribute(new Attribute('date', '1'));
+      const ids = ['a', 'b', 'c'];
+      ids.forEach((id, i) => {
+        map.getElement(i)!.addAttribute(new Attribute('date', '7'));
+        map.getElement(i)!.addAttribute(new Attribute('tag', id));
+      });
 
       map.sort();
 
-      const dates = map.getAllElements().map((kv) => kv.getKey());
-      expect(dates).toEqual([1, 3, 2]); // a real sort would give [1, 2, 3]
-      expect(dates).not.toEqual([1, 2, 3]);
+      // every key is equal, so nothing may move
+      expect(map.getAllElements().map((kv) => kv.getValue().getAttributeValue('tag'))).toEqual(ids);
     });
 
     it('sort on an empty map does not throw', () => {

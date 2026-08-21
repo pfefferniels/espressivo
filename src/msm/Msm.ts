@@ -1404,17 +1404,22 @@ export class Msm extends AbstractMsm {
    * and once per part, so `part` here is whichever environment is being scanned.
    *
    * MIDI states a key as a signed count of accidentals, so the MSM's list of
-   * `<accidental>` children is reduced to one number: `value > 1` adds, `value < 1`
-   * subtracts, exactly `1` does neither. `value` is a semitone offset, so a sharp is
-   * `1.0` and a flat is `-1.0` (`Mei2MsmMpmConverter` writes exactly those two, and the
-   * reference fixtures contain nothing else).
+   * `<accidental>` children is reduced to one number: a positive `value` adds, a negative
+   * one subtracts. `value` is a semitone offset, so a sharp is `1.0` and a flat is `-1.0`
+   * (`Mei2MsmMpmConverter` writes exactly those two, and the reference fixtures contain
+   * nothing else).
    *
-   * **Ported bug — do not "fix".** Those thresholds should be `> 0` / `< 0`. As written,
-   * a sharp (`1.0`) is not counted at all, so a sharp key signature reaches MIDI as zero
-   * accidentals while a flat one is counted correctly. It is Java's arithmetic verbatim
-   * (`Msm.java:1148-1157`), the reference MIDI files were generated with it, and
-   * correcting it here would break byte equivalence rather than restore it. Charter rule:
-   * behaviour parity beats correctness.
+   * **Fixed upstream, then here.** The thresholds used to be `> 1.0` / `< 1.0`, which a
+   * sharp — exactly `1.0` — passed neither, so a sharp key signature reached MIDI as zero
+   * accidentals while a flat one was counted correctly. That asymmetry is why it never
+   * looked like an off-by-one. It was Java's arithmetic verbatim, and it was simply wrong:
+   * `keys_accidentals` is D major and Java wrote `sf=0`.
+   *
+   * Repaired in the fork first (`meico@db83c7c5`, `Msm.java:1151,1155`) and the reference
+   * MIDI regenerated from it, so byte equivalence still holds — it is now equivalence with
+   * a Java that counts sharps. Four fixtures moved, by six bytes in all: `keys_accidentals`,
+   * `comprehensive`, `composite_advanced` and `tuplets`, each an `sf` byte of `0` becoming
+   * the sharp count it always should have been. Recorded in PARITY.md §3.
    */
   private parseKeySignatureMap(part: Element, track: Track, exportExpressive: boolean): void {
     const dated = part.getFirstChildElement('dated');
@@ -1443,11 +1448,11 @@ export class Msm extends AbstractMsm {
         const valueAttribute = a.getAttribute('value');
         if (valueAttribute !== null) {
           const value = parseFloat(valueAttribute.getValue());
-          if (value > 1.0) {
+          if (value > 0) {
             accids++;
             continue;
           }
-          if (value < 1.0) {
+          if (value < 0) {
             accids--;
           }
         }

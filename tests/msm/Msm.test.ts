@@ -1004,13 +1004,14 @@ describe('Msm', () => {
     });
 
     /**
-     * The accidental count uses `value > 1.0` / `value < 1.0` where it should use `> 0` /
-     * `< 0`, so a sharp — which `Mei2MsmMpmConverter` writes as exactly `1.0` — is not
-     * counted at all while a flat (`-1.0`) is. The docstring on `parseKeySignatureMap` calls
-     * this a ported bug and says not to fix it; nothing pinned that, and changing `>` to
-     * `>=` left 1138 tests green.
+     * The accidental count used `value > 1.0` / `value < 1.0` where it should have used
+     * `> 0` / `< 0`, so a sharp — which `Mei2MsmMpmConverter` writes as exactly `1.0` —
+     * was not counted at all while a flat (`-1.0`) was. This test used to pin that defect
+     * on purpose. It is now fixed in the fork (`meico@db83c7c5`) and here, the reference
+     * MIDI has been regenerated from the fixed fork, and the assertions below are the
+     * counts a key signature should always have produced.
      */
-    it('PORTED BUG: sharps at value 1.0 count as zero accidentals, flats at -1.0 count', () => {
+    it('counts sharps and flats symmetrically by sign', () => {
       function accidentalCount(values: string[]): number {
         const msm = msmWithNotes(720, [[0, 720, 60]]);
         const keySignature = new Element('keySignature');
@@ -1031,9 +1032,11 @@ describe('Msm', () => {
         return byte > 127 ? byte - 256 : byte;
       }
 
-      expect(accidentalCount(['1.0', '1.0', '1.0'])).toBe(0); // three sharps read as none
-      expect(accidentalCount(['-1.0', '-1.0'])).toBe(-2); // two flats read correctly
-      expect(accidentalCount(['1.5', '1.5'])).toBe(2); // strictly above 1.0 does count
+      expect(accidentalCount(['1.0', '1.0', '1.0'])).toBe(3); // three sharps
+      expect(accidentalCount(['-1.0', '-1.0'])).toBe(-2); // two flats
+      expect(accidentalCount(['1.5', '1.5'])).toBe(2); // any positive offset is a sharp
+      expect(accidentalCount(['0.0', '0.0'])).toBe(0); // a natural is neither
+      expect(accidentalCount(['1.0', '-1.0'])).toBe(0); // and they cancel
     });
   });
 

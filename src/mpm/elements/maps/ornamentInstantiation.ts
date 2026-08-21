@@ -1299,11 +1299,11 @@ function readGeometry(principal: Element | null, ornamentDate: number): Principa
  * fallback; no signature anywhere means C major, which is also what a document that never
  * states a key means.
  *
- * PARITY NOTE — the thresholds here are `> 0` / `< 0`, not the `> 1.0` / `< 1.0` of
- * `Msm.parseKeySignatureMap`, whose comparison is a Java-inherited bug that counts no sharp at
- * all (`Msm.java:1148-1157`) and is preserved there because the reference MIDI files were
- * generated with it. Nothing binds *this* reading: it is new v3 code with no Java counterpart,
- * it feeds no fixture, and reproducing the bug would put a trill in the wrong key.
+ * PARITY NOTE — the thresholds here are `> 0` / `< 0`. They always were: this is new v3 code
+ * with no Java counterpart, and reproducing the inherited `> 1.0` / `< 1.0` of
+ * `Msm.parseKeySignatureMap` — which counted no sharp at all — would have put a trill in the
+ * wrong key. That bug has since been fixed at the source (`meico@db83c7c5`) and in the port,
+ * so the two readings now agree rather than diverging deliberately.
  */
 export function readKeyFifths(map: GenericMap | null, date: number): number {
   if (map === null) return 0;
