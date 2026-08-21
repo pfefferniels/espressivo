@@ -7,11 +7,14 @@
  * as a rising column long before it becomes a timeout. Convert and render are timed apart, or
  * one stage's curve hides inside the total. Current figures are in `bench-baseline.json`.
  *
- * A residual nonlinearity is known and not chased: 4000 → 8000 → 16 000 notes costs
- * 235 → 346 → 621 ms, but 16 000 → 32 000 costs 621 → 1926 ms — 3.1x for twice the notes. A
- * `--cpu-prof` at 16 000 notes attributes 46.8 % of self time to `descendantElements` and 16 %
- * to the garbage collector, so a Θ(n) walk is being run O(n) times somewhere. Worth measuring
- * before optimising: the generator allocation per call, and whichever caller runs it per note.
+ * The "residual nonlinearity" once recorded here (4000 → 32 000 notes, 3.1x for 2x the notes)
+ * did not survive re-measurement: it was read off the synthetic block back when that block took
+ * one sample per size rather than a median (fixed by 38f3886, one commit later), and a single
+ * sample's drift ratio is exactly the noise 38f3886's own commit message caught red-handed — the
+ * same code reporting "x2.7 SUPERLINEAR" and "x1.2 linear enough" ten minutes apart. Re-run at
+ * 4000/8000/16000/32000 under the current median-of-`REPEATS` methodology: x1.0, both stages,
+ * `descendantElements`'s own call/visit counts scale exactly linearly with note count too. No
+ * open nonlinearity is known on this path.
  *
  *   node scripts/bench.mjs                 measure and print
  *   node scripts/bench.mjs --save          write scripts/bench-baseline.json
