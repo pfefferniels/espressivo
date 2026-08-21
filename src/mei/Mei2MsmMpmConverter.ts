@@ -553,31 +553,27 @@ export class Mei2MsmMpmConverter {
   }
 
   /**
-   * constructor with default settings
-   */
-  constructor(ppq: number);
-  /**
-   * constructor with fully specified settings
+   * The settings other than `ppq` all have a default, and the defaults are the field
+   * initialisers above spelled a second time — which is what lets this be one signature.
+   *
+   * Java overloads the name (`(ppq)` for defaults, `(ppq, ...)` for the full set) and the port
+   * followed, but the "default settings" arm was declared and never called: every caller in
+   * `src/` and `tests/` passes at least four arguments. Default parameters express the same
+   * thing without a second declaration or a `??` chain, and additionally make the partial
+   * forms — `(ppq, dontUseChannel10)` — legal, which the two overloads refused for no reason.
    */
   constructor(
     ppq: number,
-    dontUseChannel10: boolean,
-    ignoreExpansions: boolean,
-    cleanup: boolean,
-    expandOrnaments?: boolean,
-  );
-  constructor(
-    ppq: number,
-    dontUseChannel10?: boolean,
-    ignoreExpansions?: boolean,
-    cleanup?: boolean,
-    expandOrnaments?: boolean,
+    dontUseChannel10 = true,
+    ignoreExpansions = false,
+    cleanup = true,
+    expandOrnaments = false,
   ) {
     this.ppq = ppq;
-    this.dontUseChannel10 = dontUseChannel10 ?? true;
-    this.ignoreExpansions = ignoreExpansions ?? false;
-    this.cleanup = cleanup ?? true;
-    this.expandOrnaments = expandOrnaments ?? false;
+    this.dontUseChannel10 = dontUseChannel10;
+    this.ignoreExpansions = ignoreExpansions;
+    this.cleanup = cleanup;
+    this.expandOrnaments = expandOrnaments;
   }
 
   /**

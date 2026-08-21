@@ -351,39 +351,21 @@ export class Mpm extends AbstractMsm {
    * in this mpm, accessing it via getPerformance(name) will return only the first in the list
    * @param performance
    * @returns success
-   */
-  addPerformance(performance: Performance | null): boolean;
-  /**
-   * generate a performance and add it to this mpm
-   * @param name
-   * @returns the created Performance or null
-   */
-  addPerformance(name: string): Performance | null;
-  addPerformance(performanceOrName: Performance | string | null): boolean | Performance | null {
-    if (typeof performanceOrName === 'string') {
-      // addPerformance(name: string)
-      const performance = Performance.createPerformance(performanceOrName);
-      if (isErr(performance)) return null;
-      this.addPerformanceObject(performance.value);
-      return performance.value;
-    } else {
-      // addPerformance(performance: Performance)
-      return this.addPerformanceObject(performanceOrName);
-    }
-  }
-
-  /**
-   * Internal method to add a Performance object
    *
-   * Java guards `performance.getXml() != null` before appending. Here it cannot be: a
-   * `Performance` only escapes its factory after `readFrom` has called `setXml`, and
-   * `getXml()`'s return type says so. The guard is dropped rather than kept as an
-   * unreachable branch; `addPerformance`'s own null check, which Java also has and which an
-   * untyped caller CAN reach, stays and is now in the parameter type.
-   * @param performance
-   * @returns success
+   * Java also overloads this name with `addPerformance(String)`, which builds a performance
+   * from a name and returns it, and the port carried that arm over. It was declared and never
+   * called — not once in `src/`, not once in `tests/` — so it is gone, together with the
+   * `typeof` dispatch and the `boolean | Performance | null` implementation return type it
+   * forced on the arm that IS used. A caller wanting the other behaviour already has it as
+   * two readable lines: `Performance.createPerformance(name)`, then this method.
+   *
+   * Java additionally guards `performance.getXml() != null` before appending. Here it cannot
+   * be null: a `Performance` only escapes its factory after `readFrom` has called `setXml`,
+   * and `getXml()`'s return type says so. That guard is dropped rather than kept as an
+   * unreachable branch; the null check below, which Java also has and which an untyped caller
+   * CAN reach, stays and is now in the parameter type.
    */
-  private addPerformanceObject(performance: Performance | null): boolean {
+  addPerformance(performance: Performance | null): boolean {
     if (performance === null) return false;
     this.requireRootElement().appendChild(performance.getXml());
     this.performances.push(performance);
@@ -399,7 +381,7 @@ export class Mpm extends AbstractMsm {
       const p = elementAt(this.performances, i, 'performance');
       if (p.getName() === name) {
         this.performances.splice(i, 1);
-        // As {@link addPerformanceObject}: Java's `getXml() != null` guard is unreachable
+        // As {@link addPerformance}: Java's `getXml() != null` guard is unreachable
         // here, because a `Performance` a caller can hold has been through `setXml`.
         this.requireRootElement().removeChild(p.getXml());
       }
