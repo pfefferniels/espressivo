@@ -143,4 +143,4 @@ export function assertSpanEndRule(mapLocalName: string, expected: SpanEndRule): 
 }
 
 /** Every map local name this module has a rule for, in declaration order. */
-export const MAPS_WITH_SPAN_RULES: readonly string[] = [...RULES.keys()];
+export const MAPS_WITH_SPAN_RULES: readonly string[] = RULES.keys().toArray();

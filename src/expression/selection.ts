@@ -81,7 +81,7 @@ const DISTRIBUTION_TYPES = new Set<string>(DISTRIBUTION_ELEMENTS);
  * and spares dimensions it does not govern. A mutation adding `'styleDef'` to the table passed
  * the entire suite before this export existed.
  */
-export const SELECTABLE_TYPES: readonly string[] = [...TYPE_DIMENSIONS.keys()];
+export const SELECTABLE_TYPES: readonly string[] = TYPE_DIMENSIONS.keys().toArray();
 
 /** The other half of the vocabulary: the imprecision maps a `distribution.*` may be spared in. */
 export const SELECTABLE_IMPRECISION_MAPS: readonly string[] = [
@@ -195,8 +195,8 @@ function unmappableDetail(id: string, located: Located): string {
   const where = located.imprecisionMap === null ? '' : ` inside <${located.imprecisionMap}>`;
   return (
     `xml:id ${JSON.stringify(id)} is on <${localName}>${where}, which governs no exaggeration ` +
-    `dimension; selectable types are ${[...TYPE_DIMENSIONS.keys()].join(', ')} and a ` +
-    `distribution under ${[...IMPRECISION_MAP_DIMENSIONS.keys()].join(', ')}`
+    `dimension; selectable types are ${TYPE_DIMENSIONS.keys().toArray().join(', ')} and a ` +
+    `distribution under ${IMPRECISION_MAP_DIMENSIONS.keys().toArray().join(', ')}`
   );
 }
 
