@@ -6,7 +6,7 @@
     // the runtime has. The step from ES2022 bought four things the tree now uses —
     // `Array.prototype.toSorted`/`toReversed`/`with` and `findLast` (ES2023), `Map.groupBy`
     // and `Object.groupBy` (ES2024), the `Set` algebra methods and the iterator helpers
-    // (ES2025). `docs/history/es2025.md` records what changed and what was measured.
+    // (ES2025). `docs/history/es2025/README.md` records what changed, what was measured, and — as usefully — every ES2023–2025 feature that was looked for and has no site here.
     "target": "ES2025",
     "lib": ["ES2025", "DOM"],
 

@@ -30,7 +30,17 @@ npm install espressivo
 ```
 
 ESM only, no file I/O, no Node-specific APIs in the library itself — it runs in Node and in the
-browser. Requires Node ≥ 18.18 if you use it on the server.
+browser. **Requires Node ≥ 22 on the server**; in the browser, Chrome 122, Firefox 131 or
+Safari 18.4 and up.
+
+That floor is ECMAScript, not Node: the package is compiled to **ES2025** and is not
+downlevelled, so the runtime has to supply what it uses. The binding feature is the iterator
+helpers — `Iterator.prototype.find`, in the converter's tie walk — which reached all three
+engines on 31 March 2025 and are [Baseline Newly
+available](https://web.dev/blog/baseline-iterator-helpers) from that date. `Map.groupBy` is
+the other ES2024/25 method used and is older than that in every engine. On the server the
+floor is Node 22 for the same reason, and Node 20 went end-of-life in April 2026, so it is
+also the oldest maintained line.
 
 One TypeScript caveat: the XML layer's declarations refer to the DOM's `Node` and `Element`
 types, so a consumer that compiles with `skipLibCheck: false` **and** without `"DOM"` in `lib`
