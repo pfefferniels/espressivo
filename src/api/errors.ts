@@ -6,11 +6,10 @@
  * {@link module:api/pipeline} converts an interior `null`-meaning-failure into one of these
  * and never returns `null` itself.
  *
- * `MeicoError` and `MissingNodeError` are **re-exported**, not redeclared: `MissingNodeError`
- * is thrown from `src/xml/tree.ts` (RULE N2a) and a layer-1 module may not import from layer
- * 6, so both live in `src/xml/errors.ts`. Declaring a second `MeicoError` here would give the
- * facade a root that `instanceof` cannot see from the interior — which is exactly what
- * `src/xml/errors.ts`'s own comment warns T13 about.
+ * `MeicoError` and `MissingNodeError` are re-exported, not redeclared: `MissingNodeError` is
+ * thrown from `src/xml/tree.ts` (RULE N2a) and a layer-1 module may not import from layer 6,
+ * so both live in `src/xml/errors.ts`. Declaring a second `MeicoError` here would give the
+ * facade a root that `instanceof` cannot see from the interior.
  */
 export { MeicoError, MissingNodeError } from '../xml/errors.js';
 
@@ -45,17 +44,14 @@ export class InvalidOptionError extends MeicoError {}
  * `xml:id` names nothing in the document, or names an element type that governs no
  * exaggeration dimension.
  *
- * The message lists **every** offender with its kind, `unresolved` or `unmappable`, and the run
- * does not happen (DESIGN.md D-I/A8). Both halves of that are deliberate. Reporting only the
- * first offender would make fixing a stale selection an iteration; running anyway on the ids
- * that did resolve would be the prototype's worst defect, which discarded unresolvable ids with
- * a bare `continue` and, for a selection of nothing but `<style>` switches, quietly attenuated
- * **every** dimension — a flattened performance returned as a successful spotlight.
+ * The message lists every offender with its kind, `unresolved` or `unmappable`, and the run
+ * does not happen (DESIGN.md D-I/A8). Reporting only the first would make fixing a stale
+ * selection an iteration; running on the ids that did resolve would silently attenuate
+ * dimensions the caller meant to spare.
  *
  * It is a caller error rather than a document condition: an id the caller holds no longer
- * points where they think it does, which is worth knowing before it becomes a rendered result.
- * `spotlightMpm(mpm, { ids: [], … })` is the way to ask for no selection, and it returns the
- * canonical document rather than raising this.
+ * points where they think it does. `spotlightMpm(mpm, { ids: [], … })` is the way to ask for
+ * no selection, and it returns the canonical document rather than raising this.
  */
 export class SelectionNotFoundError extends MeicoError {}
 
@@ -63,24 +59,17 @@ export class SelectionNotFoundError extends MeicoError {}
  * The expression engine broke one of its own invariants — a guard that should have held did
  * not, so the run was abandoned rather than allowed to write a document nobody intends.
  *
- * It is a distinct type because it says something different from every other error here:
- * neither "your document is malformed" nor "your option is out of domain", but "an internal
- * guarantee failed". **No document can provoke it**, at any factor. Exactly one input can, and
- * naming it is the honest form of this contract:
+ * No document can provoke it, at any factor. Exactly one input can:
+ * `ExaggerateOptions.minRubatoWindow` below about 2⁻⁵³. DESIGN.md A6's guard clamps the rubato
+ * joint trim to `1 − minRubatoWindow`, then asserts the resulting window is still ordered
+ * (`lateStart < earlyEnd`) before writing it. Below the double epsilon, `1 − minRubatoWindow`
+ * rounds to exactly 1, the clamp stops clamping, and a saturating trim collapses the window
+ * onto a point. The option's *validated* domain is the whole of (0,1), so such a value is
+ * accepted and then cannot be honoured.
  *
- * - **`ExaggerateOptions.minRubatoWindow` below about 2⁻⁵³.** DESIGN.md A6's guard clamps the
- *   rubato joint trim to `1 − minRubatoWindow`, then asserts the resulting window is still
- *   ordered (`lateStart < earlyEnd`) before writing it. Below the double epsilon,
- *   `1 − minRubatoWindow` rounds to exactly 1, the clamp stops clamping, and a saturating trim
- *   collapses the window onto a point. The option's own documentation (`options.ts`) states
- *   the range this falls out of — the default `1e-6` is chosen "far above the ~2⁻⁵³ at which
- *   the split's own rounding would decide the answer" — but its *validated* domain is the
- *   whole of (0,1), so such a value is accepted and then cannot be honoured.
- *
- * At the documented default, and anywhere inside the guard's working range, no combination of
- * document and factors reaches this class. Interior failures throw a plain `Error` by design —
- * `src/expression/**` has no typed-error vocabulary of its own, because the hierarchy lives
- * here — and this is where they become catchable.
+ * Interior failures throw a plain `Error` by design — `src/expression/**` has no typed-error
+ * vocabulary of its own, because the hierarchy lives here — and this is where they become
+ * catchable.
  */
 export class EngineInvariantError extends MeicoError {}
 
@@ -88,11 +77,9 @@ export class EngineInvariantError extends MeicoError {}
  * The comparison engine broke one of its own invariants — the attribution table failed to close,
  * a scope had no global environment, a dimension returned something the aggregation cannot use.
  *
- * It is a distinct class rather than a reuse of {@link EngineInvariantError}, and the reason is
- * that the neighbouring class documents itself as one **no document can provoke**, naming
- * `minRubatoWindow` as the only input that can. Under comparison a pathological PAIR absolutely
- * can, so reusing it would ship two false sentences in the file consumers read to decide what to
- * catch (DESIGN.md §9.4, A15). P-C5 also runs both engines inside one expression, where a caught
- * error has to say which engine broke without anyone parsing a message.
+ * Distinct from {@link EngineInvariantError} rather than a reuse of it, because that class
+ * documents itself as one no document can provoke and under comparison a pathological pair
+ * can (DESIGN.md §9.4, A15). Both engines can also run inside one expression, where a caught
+ * error has to say which of them broke without anyone parsing a message.
  */
 export class ComparisonEngineError extends MeicoError {}

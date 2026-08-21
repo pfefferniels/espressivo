@@ -5,7 +5,7 @@ import { attribute } from './tree.js';
 /**
  * `xml:id` handling and the space-separated list-attribute helper.
  *
- * Moved verbatim out of `mei/Helper` by T14 (ARCHITECTURE.md §8.2). See the warning on
+ * Moved verbatim out of `mei/Helper` (ARCHITECTURE.md §8.2). See the warning on
  * {@link addUUID} about generation order — it is the one thing in this module that can
  * change serialized output without changing any logic.
  *
@@ -17,32 +17,24 @@ import { attribute } from './tree.js';
  * Add a UUID-based xml:id to the specified element.
  * Caution: If the element has already an xml:id, it will be overwritten!
  *
- * **Order-sensitive.** The `meico_<uuid>` ids this mints end up in the MSM and MPM
- * output, where the equivalence tests canonicalise them by first occurrence. Anything
- * that changes *how many* of these are drawn, or *in what order*, changes the
- * canonicalised output even though every individual id is random. So: do not reorder,
- * hoist, memoise or short-circuit calls to this along the conversion path.
+ * Order-sensitive. The `meico_<uuid>` ids this mints end up in the MSM and MPM output, where
+ * the equivalence tests canonicalise them by first occurrence. Anything that changes *how
+ * many* of these are drawn, or *in what order*, changes the canonicalised output even though
+ * every individual id is random. So: do not reorder, hoist, memoise or short-circuit calls to
+ * this along the conversion path.
  *
- * `src/msm/Msm.ts` used to carry its own local copy of this function, kept separate by RULE
- * M2a; `tests/msm/navigationEquivalence.test.ts` is the probe that rule asked for, the two
- * agreed, and `Msm.addIds` now calls this one. The `meico_` ids in the reference MSM files
- * always came from here.
- *
- * @param toThis
  * @return the generated uuid string
  */
 export function addUUID(toThis: Element): string {
-  const uuid = `meico_${uuidv4()}`; // generate new id
-  const a = new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', uuid); // create an attribute with xml namespace
-  toThis.addAttribute(a); // add attribute to the element
+  const uuid = `meico_${uuidv4()}`;
+  const a = new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', uuid);
+  toThis.addAttribute(a);
   return uuid;
 }
 
 /**
- * copies the id attribute ofThis into toThis
- * @param ofThis
- * @param toThis
- * @return the newly created attribute
+ * copies the id attribute of ofThis into toThis, retaining its namespace
+ * @return the newly created attribute, or null if ofThis carries no id
  */
 export function copyId(ofThis: Element, toThis: Element): Attribute | null {
   return copyIdNs(ofThis, toThis);
@@ -50,9 +42,7 @@ export function copyId(ofThis: Element, toThis: Element): Attribute | null {
 
 /**
  * copies the id attribute from ofThis (if present) into toThis, without namespace binding
- * @param ofThis
- * @param toThis
- * @return the newly created attribute
+ * @return the newly created attribute, or null if ofThis carries no id
  */
 export function copyIdNoNs(ofThis: Element, toThis: Element): Attribute | null {
   const id = attribute('id', ofThis);
@@ -66,9 +56,7 @@ export function copyIdNoNs(ofThis: Element, toThis: Element): Attribute | null {
 
 /**
  * copies the id attribute from ofThis (if present) into toThis, retaining its namespace
- * @param ofThis
- * @param toThis
- * @return the newly created attribute
+ * @return the newly created attribute, or null if ofThis carries no id
  */
 function copyIdNs(ofThis: Element, toThis: Element): Attribute | null {
   const id = attribute('id', ofThis);
@@ -81,10 +69,8 @@ function copyIdNs(ofThis: Element, toThis: Element): Attribute | null {
 }
 
 /**
- * Adds a value to a space-separated string list in an attribute, but only if that value does not yet exist in that list.
- * @param element the element containing the attribute
- * @param attrName the name of the attribute
- * @param value the value to add
+ * Adds a value to a space-separated string list in an attribute, but only if that value does
+ * not yet exist in that list. A null or empty element, name or value is a no-op.
  */
 export function addToListAttribute(
   element: Element | null,
@@ -98,13 +84,11 @@ export function addToListAttribute(
   const attr = attribute(attrName, element);
   const currentValue = attr != null ? attr.getValue() : '';
 
-  // Split the current value into a list of values
   const values = currentValue
     .trim()
     .split(/\s+/)
     .filter((s) => s !== '');
 
-  // Add the new value only if it doesn't exist
   if (!values.includes(value)) {
     values.push(value);
     const newValue = values.join(' ');

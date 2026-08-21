@@ -82,13 +82,13 @@ export { EXPRESSION_DIMENSIONS } from '../expression/registry.js';
 /**
  * Parse to a raw XOM tree and check the root, the expression engine's way.
  *
- * D-A/A1 forbids `new Mpm(text)` here and it is not a preference: the `Mpm` constructor runs
- * the def parsers eagerly, so merely *parsing* a document rewrites it — `rubatoDef` gains
- * three attributes and has present values respelled, `GenericMap.parseData` re-sorts every
- * map's children and hoists them in front of the whitespace, duplicate maps are deleted. A
- * transform that inherited those edits could not tell a caller which bytes it changed. So
- * this path never touches the `Mpm` class, and `checkParsed`'s `isEmpty()` test next door has
- * no equivalent: `Builder` either yields a tree or throws.
+ * D-A/A1 forbids `new Mpm(text)` here: the `Mpm` constructor runs the def parsers eagerly, so
+ * merely *parsing* a document rewrites it — `rubatoDef` gains three attributes and has present
+ * values respelled, `GenericMap.parseData` re-sorts every map's children and hoists them in
+ * front of the whitespace, duplicate maps are deleted. A transform that inherited those edits
+ * could not tell a caller which bytes it changed. So this path never touches the `Mpm` class,
+ * and `checkParsed`'s `isEmpty()` test next door has no equivalent here: `Builder` either
+ * yields a tree or throws.
  */
 function parseRoot(kind: DocumentKind, text: XmlText, parse: (text: string) => Element): Element {
   requireXmlText(kind, text);
@@ -105,19 +105,16 @@ function parseRoot(kind: DocumentKind, text: XmlText, parse: (text: string) => E
  * The canonical form of an MPM: what an untouched document serializes to once it has been
  * through this package's parser.
  *
- * It exists because it is the only thing an identity claim can be *tested* against.
+ * It exists because it is the only thing an identity claim can be *tested* against:
  * `exaggerateMpm(mpm, {factors: {}}).mpm === mpm` is false for every MPM whatever the engine
- * does — `Element.wrap` drops `xmlns` at parse and `Element.toXML` re-emits it on every
- * namespaced element, which inflates a real fixture from 2444 to 3972 bytes — so §1.1's P1
- * is contracted against this instead (A2).
+ * does, since parsing and re-serializing normalizes the `xmlns` declarations. §1.1's P1 is
+ * contracted against this instead (A2).
  *
- * It is a function here rather than a re-export of the interior `canonicalBaseline`, and that
- * is the whole point of it: a caller compares this against `exaggerateMpm`'s output on the
- * SAME text, so the two have to agree on the failure path as exactly as they agree on the
- * success path. The interior parses with a bare `Builder`, which throws `@xmldom/xmldom`'s own
- * `ParseError` — a foreign class that is not a `MeicoError`, which a consumer catching this
- * package's `ParseError` by identity would miss entirely, and which is precisely the trap
- * `parse.ts` exists to close.
+ * It is a function here rather than a re-export of the interior `canonicalBaseline` because a
+ * caller compares it against `exaggerateMpm`'s output on the SAME text, so the two must agree
+ * on the failure path as exactly as on the success path. The interior parses with a bare
+ * `Builder`, which throws `@xmldom/xmldom`'s own `ParseError` — a foreign class that is not a
+ * `MeicoError`, and precisely the trap `parse.ts` exists to close.
  *
  * @throws {ParseError} the input is not XML text, is not well-formed, or has a root element
  *   other than `<mpm>` — the same three rejections, with the same messages, as
@@ -158,13 +155,9 @@ function toEngineOptions(options: ExaggerateOptions): EngineOptions {
  * they can act on and the other one may not even be theirs.
  *
  * The engine's own resolvers are the checkers — there is exactly one definition of "a legal
- * factor record", and it is `options.ts`'s. This function returns what they resolved rather
- * than discarding it, which is the whole difference from the `check…(options): void` it
- * replaces. That version called them purely for their throws and threw both resolved objects
- * away, so `applyExaggeration` resolved the identical bag a second time three lines later; the
- * comment where this one stands used to explain why that was acceptable. It is now unnecessary
- * rather than acceptable: {@link resolveRun} answers with a value, the value goes straight to
- * {@link applyResolvedExaggeration}, and the engine resolves nothing.
+ * factor record", and it is `options.ts`'s. This returns what they resolved rather than
+ * discarding it: {@link resolveRun}'s value goes straight to
+ * {@link applyResolvedExaggeration}, so the engine resolves nothing a second time.
  */
 function resolveExaggerateOptions(options: ExaggerateOptions): Result<ResolvedRun, string> {
   // The two bag guards exist for callers arriving from JavaScript, where the parameter type
@@ -224,11 +217,11 @@ function checkPerformanceIndex(selector: string | number | undefined): Checked {
  * control changes move. Notes that a v3 ornament *generates* match by position and date, never
  * by id: the renderer draws a fresh random `meico_<uuid>` for each of them on every render, so
  * two renders of the *same untransformed* document already disagree on those ids. That holds
- * for every MPM v2 document and
- * for every v3 document whose ornament frames are measured in milliseconds. It does **not**
- * hold for `ornamentSpread` or `ornamentSpacing` on an MPM **v3 ornament that generates
- * notes** into a tick-resolved frame (a `ticks` suffix, a `%` of the principal, or no suffix
- * at all): the v3 renderer derives those notes' symbolic dates and durations from the frame,
+ * for every MPM v2 document and for every v3 document whose ornament frames are measured in
+ * milliseconds. It does not hold for `ornamentSpread` or `ornamentSpacing` on an MPM v3
+ * ornament that generates notes into a tick-resolved frame (a `ticks` suffix, a `%` of the
+ * principal, or no suffix at all): the v3 renderer derives those notes' symbolic dates and
+ * durations from the frame,
  * so widening or reshaping it necessarily relocates them, and past §7.9's cliff it can carve
  * a surviving principal down to a zero-length note. There is no way to both widen the window
  * an ornament's notes occupy and leave those notes where they were; a caller that needs the
@@ -477,9 +470,10 @@ function spotlightFactors(
 /**
  * §4's pre-parse validation for spotlight, returning the attenuation it accepted.
  *
- * `ids` and `attenuation` are read as `unknown` for the same reason `checkExaggerateOptions`
- * reads its bag that way: the guards exist for callers arriving from JavaScript, and comparing
- * against the declared type would let the compiler prove them dead and the linter delete them.
+ * `ids` and `attenuation` are read as `unknown` for the same reason
+ * {@link resolveExaggerateOptions} reads its bag that way: the guards exist for callers
+ * arriving from JavaScript, and comparing against the declared type would let the compiler
+ * prove them dead and the linter delete them.
  */
 function checkSpotlightOptions(options: SpotlightOptions): Result<number, string> {
   return andThen(
@@ -512,12 +506,8 @@ function checkSpotlightOptions(options: SpotlightOptions): Result<number, string
  * to naming them all is a caller fixing a stale selection one id per exception.
  */
 function requireResolvedSelection(selection: Selection): void {
-  // `collect` and not `traverse`: A8 is the accumulating applicative, which is the one place in
-  // this facade where every offender at once is the contract rather than a nicety. The
-  // hand-written version formatted the same list by hand — a `.map` into lines and a count
-  // reconstructed by adding the two arrays' lengths — which is `collect`'s error arm written
-  // out. Here the checked thing is each id's disposition, so the count is the length of the
-  // arm and there is nothing to add up.
+  // `collect` and not `traverse`: A8 is the accumulating applicative, and this is the one place
+  // in the facade where every offender at once is the contract rather than a nicety.
   const checked = collect(selection.offenders, (offender) =>
     err(`  - ${offender.kind}: ${offender.detail}`),
   );
@@ -560,12 +550,10 @@ function requireResolvedSelection(selection: Selection): void {
  *   not one of `EXPRESSION_DIMENSIONS`
  */
 export function weightedFactors(s: number, weights: ExaggerationWeights): ExaggerationFactors {
-  // Still a `try`, and deliberately the last one here. `computeWeightedFactors` is total
-  // arithmetic over a record whose only failures are programmer errors at a leaf with no
-  // pipeline around them, and its result flows straight into `exaggerateMpm`; a `Result` return
-  // would make a dozen interior call sites unwrap a value that cannot be recovered from, which
-  // is precisely the "using an algorithm must not make the call site worse" case. So the throw
-  // stays interior and this is its typed-error boundary (RULE E2).
+  // `computeWeightedFactors` is total arithmetic whose only failures are programmer errors at
+  // a leaf with no pipeline around it, so it throws rather than returning a `Result` that a
+  // dozen call sites would unwrap without being able to recover. This is its typed-error
+  // boundary (RULE E2).
   try {
     return computeWeightedFactors(s, weights);
   } catch (cause) {
@@ -576,7 +564,7 @@ export function weightedFactors(s: number, weights: ExaggerationWeights): Exagge
 /**
  * The mpm-renderer prototype's tuned weight profile, preserved as data (D-H).
  *
- * A **heuristic**, not a recommendation: the numbers are one person's taste, nothing in DESIGN
+ * A heuristic, not a recommendation: the numbers are one person's taste, nothing in DESIGN
  * derives them, and no test here validates them musically. They ship because the prototype
  * applied them to every render invisibly, and a documented constant is the difference between a
  * reproducible baseline and a lost one. The default is no weighting.

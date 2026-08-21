@@ -31,42 +31,38 @@
  * document tree itself.
  *
  * The public API mirrors XOM's Java names on purpose, because the call sites across
- * `mei/`, `msm/` and `mpm/` are transliterated Java. T17 considered reworking that
- * surface — wrapping it behind a slim interface, or renaming the module to `dom.ts` —
- * and ruled against both (ARCHITECTURE.md §8.7): the attribute ordering and namespace
- * handling above are load-bearing, and the XOM names are what makes a side-by-side
- * comparison with the Java original readable. This file stays internals-only.
+ * `mei/`, `msm/` and `mpm/` are transliterated Java. ARCHITECTURE.md §8.7 rules against
+ * wrapping that surface behind a slim interface or renaming the module: the attribute
+ * ordering and namespace handling above are load-bearing, and the XOM names are what makes a
+ * side-by-side comparison with the Java original readable. This file stays internals-only.
  */
 
 import { DOMParser, XMLSerializer, type Document as DomDocument } from '@xmldom/xmldom';
 import xpath from 'xpath';
 import { elementAt } from '../prelude/seq.js';
 
-// Re-export for convenience
 export { DOMParser, XMLSerializer };
 
 /**
  * The document that every constructed node's placeholder DOM node is created from.
  *
  * A placeholder is never read by serialization, but creating one still needs an owner
- * document. Until T17 each `Element`, `Attribute` and `Text` constructor built its own
- * by parsing `<dummy/>`, so constructing a document cost one full XML parse *per node* —
- * 48 037 parses to convert the 16 MEI fixtures. One shared document removes all but the
- * first, which is worth ~30 % of the end-to-end conversion pipeline and makes node
- * construction 9–33× cheaper (measured; docs/history/refactor/log.md's T17 entry).
+ * document. A per-node document costs one full XML parse per node; sharing one removes all
+ * but the first, worth ~30 % of the end-to-end conversion pipeline and 9–33× cheaper node
+ * construction (measured; docs/history/refactor/log.md).
  *
  * Sharing is unobservable. `createElement`, `createElementNS`, `createAttribute` and
  * `createTextNode` return unattached nodes and leave the document itself at `<dummy/>`,
  * so no node can see another's existence through it; each still gets its own distinct
- * placeholder, with the same `nodeName`/`localName`/`prefix`/`namespaceURI` and the same
- * `parentNode === null` as before. Malformed names still throw the same `DOMException`
- * from the same call, which is why the placeholder is still created eagerly rather than
- * on demand: the throw is part of the constructors' observable behavior.
+ * placeholder, with the same `nodeName`/`localName`/`prefix`/`namespaceURI` and
+ * `parentNode === null`. Malformed names still throw the same `DOMException` from the same
+ * call, which is why the placeholder is created eagerly rather than on demand: the throw is
+ * part of the constructors' observable behavior.
  *
- * The one thing this *is* — a module-level mutable binding, which docs/history/refactor/CHARTER.md's
- * immutable-friendly direction otherwise rules out — is a memo of a constant, assigned
- * once and never reassigned. It is built on first use rather than at module load so that
- * importing this module stays side-effect-free (T18's load-order work depends on that).
+ * The module-level mutable binding, which docs/history/refactor/CHARTER.md's
+ * immutable-friendly direction otherwise rules out, is a memo of a constant: assigned once
+ * and never reassigned. It is built on first use rather than at module load so that importing
+ * this module stays side-effect-free.
  */
 let placeholderDocument: DomDocument | null = null;
 
@@ -132,10 +128,8 @@ export abstract class XomNode {
    * Only {@link Element.wrap} calls it, and only on nodes it has just built: a node that
    * came out of the parser keeps a live DOM node, which is what lets {@link getParent}
    * and {@link detach} fall back to the DOM for tree positions this layer never wired.
-   * It exists because `_domNode` is protected, so `Element` cannot assign it on an
-   * instance of its sibling subclass `Text` — the previous workaround was a bracket
-   * access (`text['_domNode'] = child`) that documented the missing seam instead of
-   * providing it.
+   * It exists because `_domNode` is protected, so `Element` cannot otherwise assign it on an
+   * instance of its sibling subclass `Text`.
    */
   adoptDomNode(domNode: Node): void {
     this._domNode = domNode;
@@ -182,38 +176,29 @@ export class Attribute extends XomNode {
   private readonly _namespaceURI: string;
   private readonly _namespacePrefix: string;
   /**
-   * `prefix:local`, or just `local` when there is no prefix. Computed once because all
-   * three inputs are readonly, and because {@link Element.getAttribute} compares against
-   * it on every miss — building the string there allocated once per attribute per lookup
-   * and was a measurable share of the render's garbage.
+   * `prefix:local`, or just `local` when there is no prefix. Stored rather than built per
+   * call because {@link Element.getAttribute} compares against it on every miss, where the
+   * template literal was a measurable share of the render's garbage.
    */
   private readonly _qualifiedName: string;
 
   /**
-   * Two call forms, both XOM's: `(name, value)` and `(name, namespaceURI, value)`.
-   *
-   * They were two overloads until T17. One signature accepts exactly the same calls —
-   * every parameter is a `string`, so the overloads differed in arity alone — and the
-   * form is selected at runtime by whether the third argument is present.
+   * Two call forms, both XOM's: `(name, value)` and `(name, namespaceURI, value)`, selected
+   * at runtime by whether the third argument is present.
    */
   constructor(name: string, valueOrNs: string, value?: string) {
     // Create a placeholder node - attributes are attached to elements later
     const attr = placeholderDom().createAttribute(name);
     super(attr as unknown as Node);
 
-    // `prefix:local` splits on the first colon, and a name carrying more than one
-    // colon loses everything after the second segment. Well-formed XML has at most
-    // one colon, so this only ever bites on malformed input; kept as-is for parity.
     const split = splitQualifiedName(name);
     this._namespacePrefix = split.prefix;
     this._localName = split.localName;
 
     if (value !== undefined) {
-      // 3-arg constructor: name, namespace, value
       this._namespaceURI = valueOrNs;
       this._value = value;
     } else {
-      // 2-arg constructor: name, value
       this._namespaceURI = '';
       this._value = valueOrNs;
     }
@@ -272,14 +257,14 @@ export class Attribute extends XomNode {
   }
 
   /**
-   * XOM parity: detaching an attribute must remove it from its parent
-   * element's attribute list (the base implementation only searches child
-   * nodes, which left detached attributes in the serialized XML).
+   * XOM parity: detaching an attribute removes it from its parent element's attribute list,
+   * where the base implementation searches child nodes only and would leave it in the
+   * serialized XML.
    *
-   * There is deliberately no DOM fallback for the parentless case, because an attribute
-   * that sits on an element always has `_xomParent`: {@link Element.addAttribute} sets it
-   * for constructed attributes and {@link Element.wrap} for parsed ones. An attribute
-   * without it is one no element holds, and detaching it is a no-op by definition.
+   * There is deliberately no DOM fallback for the parentless case: an attribute that sits on
+   * an element always has `_xomParent` ({@link Element.addAttribute} sets it for constructed
+   * attributes, {@link Element.wrap} for parsed ones), so one without it is held by no
+   * element and detaching it is a no-op by definition.
    */
   override detach(): void {
     if (this._xomParent) {
@@ -344,21 +329,12 @@ export class Elements {
   }
 
   /**
-   * Iterate the snapshot directly — no copy, no index.
+   * Iterate the snapshot directly — no copy, unlike `toArray()`, which copies per call on
+   * paths that run per element of a score.
    *
-   * XOM's `Elements` has no iterator (it predates `Iterable`), and the port inherited the
-   * `for (let i = 0; i < es.size(); ++i) es.get(i)` shape at forty-odd call sites. Every one
-   * of those is a walk, not a random access: the index is born at 0, dies at `size()` and is
-   * never read for anything but `get`. Making the collection iterable is what lets those call
-   * sites say what they are — `for..of` where the body has effects, `filterMap` where it
-   * parses-and-skips, which is most of them.
-   *
-   * `toArray()` was already an escape hatch to the same place, but it copies, and the copy is
-   * per call on paths that run per element of a score. This does not: the collection is
-   * already a *fixed* snapshot (the constructor takes the array by reference and nothing
-   * mutates it), so handing out its iterator exposes no more than `get` does. Removing a
-   * child from the parent element mid-walk therefore does not disturb the walk — the same
-   * property the index loops were already relying on.
+   * The collection is already a *fixed* snapshot (the constructor takes the array by
+   * reference and nothing mutates it), so handing out its iterator exposes no more than `get`
+   * does, and removing a child from the parent element mid-walk does not disturb the walk.
    */
   [Symbol.iterator](): IterableIterator<Element> {
     return this.elements[Symbol.iterator]();
@@ -366,11 +342,8 @@ export class Elements {
 }
 
 /**
- * Walk a path of child-element indices down from `root`.
- *
- * Split out of {@link Element.findCorrespondingElement}, whose own job is building the
- * path. Indices count element children only, exactly as `getChildElements()` reports
- * them; a path that leaves the tree yields null.
+ * Walk a path of child-element indices down from `root`. Indices count element children only,
+ * exactly as `getChildElements()` reports them; a path that leaves the tree yields null.
  */
 function descendChildElementPath(root: Element, path: readonly number[]): Element | null {
   let result = root;
@@ -398,17 +371,15 @@ export class Element extends XomNode {
 
   /**
    * Memoised node → position map for {@link indexOf}, built lazily and dropped on any
-   * structural change (see {@link invalidateChildIndex}).
-   *
-   * Why it exists: the sibling walkers in `xml/tree.ts` and `msm/Msm.ts` step through a
-   * child list one element at a time and ask for the current node's position on every
-   * step, so a linear `Array.indexOf` turned every full-score walk into an O(n²) one.
+   * structural change (see {@link invalidateChildIndex}). It exists because the sibling
+   * walkers in `xml/tree.ts` and `msm/Msm.ts` ask for the current node's position on every
+   * step, so a linear `Array.indexOf` made every full-score walk O(n²).
    *
    * Equivalence with `Array.prototype.indexOf`, which this must not drift from: the map is
    * filled front-to-back and an already-present key is never overwritten, so a node that
-   * (illegally) appears twice in `_children` still reports its **first** position, exactly
-   * as `indexOf` does. `appendChild` extends the map in place for the same reason —
-   * appending can only ever create a *later* duplicate, which `indexOf` would ignore too.
+   * (illegally) appears twice in `_children` still reports its *first* position, exactly as
+   * `indexOf` does. `appendChild` extends the map in place for the same reason — appending
+   * can only ever create a later duplicate, which `indexOf` would ignore too.
    */
   private _childIndex: Map<XomNode, number> | null = null;
 
@@ -448,35 +419,31 @@ export class Element extends XomNode {
     const qualifiedName = prefix ? `${prefix}:${localName}` : localName;
     const elem = new Element(qualifiedName, ns || undefined);
     elem.adoptDomNode(domElement);
-    // Restate what the constructor derived from `qualifiedName`: its own parse splits
-    // on the first colon and drops any further segment, whereas the DOM has already
-    // told us the authoritative prefix/local-name split.
+    // Overwrite what the constructor derived from `qualifiedName`: its own parse splits on
+    // the first colon and drops any further segment, whereas the DOM has already told us the
+    // authoritative prefix/local-name split.
     elem._localName = localName;
     elem._namespaceURI = ns;
     elem._namespacePrefix = prefix;
 
-    // Sync attributes. Array.from snapshots the live NamedNodeMap in index order;
-    // nothing below mutates domElement, so the snapshot and the map agree.
-    // `domElement.attributes` needs no guard: every DOM element has a NamedNodeMap, empty
-    // when it carries no attributes, so the truthiness test this used to open with could
-    // only ever be true.
+    // Array.from snapshots the live NamedNodeMap in index order; nothing below mutates
+    // domElement, so the snapshot and the map agree.
     elem._attributes = [];
     for (const attr of Array.from(domElement.attributes)) {
       const attrNs = attr.namespaceURI || '';
       const attrName = attr.name;
-      if (attrName.startsWith('xmlns')) continue; // skip namespace declarations
+      if (attrName.startsWith('xmlns')) continue;
       const wrapped = attrNs
         ? new Attribute(attrName, attrNs, attr.value)
         : new Attribute(attrName, attr.value);
-      // Parented like the child nodes below, and for the same reason: `_xomParent` is
-      // the only route {@link Attribute.detach} has back to the list it must remove
-      // itself from. Assigned directly rather than via `addAttribute`, which would
-      // additionally dedupe by local name and could drop a parsed attribute.
+      // Parented like the child nodes below, and for the same reason: `_xomParent` is the
+      // only route {@link Attribute.detach} has back to the list it must remove itself from.
+      // Assigned directly rather than via `addAttribute`, which would additionally dedupe by
+      // local name and could drop a parsed attribute.
       wrapped._xomParent = elem;
       elem._attributes.push(wrapped);
     }
 
-    // Sync children
     elem._children = [];
     for (const child of Array.from(domElement.childNodes)) {
       if (child.nodeType === 1) {
@@ -520,12 +487,9 @@ export class Element extends XomNode {
   // --- Attribute operations ---
 
   getAttribute(name: string, namespaceURI?: string): Attribute | null {
-    // Split on the namespace rather than testing it per attribute. The win is not the
-    // branch — it is that the unnamespaced arm can compare against
-    // {@link Attribute.getQualifiedName}, which is now a stored string rather than one
-    // built per comparison; this is the most-called method in the port and that template
-    // literal was a real share of its garbage. (An indexed loop measures the same as this
-    // one, so the readable form stays.)
+    // Split on the namespace rather than testing it per attribute, so that the unnamespaced
+    // arm can compare against the stored {@link Attribute.getQualifiedName}. This is the
+    // most-called method in the port.
     const attributes = this._attributes;
     if (namespaceURI !== undefined) {
       for (const attr of attributes)
@@ -554,7 +518,6 @@ export class Element extends XomNode {
    * depend on the resulting order matching the Java reference output.
    */
   addAttribute(attr: Attribute): void {
-    // Remove existing attribute with same name
     const existing = this.getAttribute(attr.getLocalName(), attr.getNamespaceURI() || undefined);
     if (existing) {
       this.removeAttribute(existing);
@@ -597,7 +560,6 @@ export class Element extends XomNode {
       this._children.push(text);
       this.noteAppended(text);
     } else {
-      // Detach from previous parent if it's an Element
       if (child instanceof Element || child instanceof Text) {
         const parent = child._xomParent;
         if (parent) {
@@ -617,10 +579,9 @@ export class Element extends XomNode {
   }
 
   insertChild(child: XomNode | string, position: number): void {
-    // An insert at (or past) the end is an append, and appends leave every existing
-    // position untouched — so the memo survives, extended by one. That is the case
-    // `dateMap.addToMap` hits on almost every call, where dropping the memo would have
-    // made the very next `indexOf` rebuild it from scratch.
+    // An insert at (or past) the end is an append, and appends leave every existing position
+    // untouched — so the memo survives, extended by one. That is the case `dateMap.addToMap`
+    // hits on almost every call, where dropping it would make the next `indexOf` rebuild it.
     const isAppend = position >= this._children.length;
     if (typeof child === 'string') {
       const text = new Text(child);
@@ -652,8 +613,7 @@ export class Element extends XomNode {
 
   removeChildAt(index: number): XomNode {
     // Read before splicing, so the bounds check is the reader's rather than a test on the
-    // splice result — `[removed] = splice(...)` is `XomNode` until noUncheckedIndexedAccess is
-    // on, which makes the `undefined` test read as impossible to `no-unnecessary-condition`.
+    // splice result, which is typed `XomNode` while `noUncheckedIndexedAccess` is off.
     const removed = elementAt(this._children, index, 'Element.removeChildAt');
     this._children.splice(index, 1);
     this.invalidateChildIndex();
@@ -665,16 +625,14 @@ export class Element extends XomNode {
    * Move `order`'s nodes to the front of the child list, in that order, leaving every
    * other child after them in its existing relative order.
    *
-   * This is exactly what a remove-then-insert-at-`i` loop over `order` produces, and it
-   * exists because that loop is quadratic: each `removeChild` scans the child list and
-   * each `insertChild` splices it, so re-ordering a `<score>` of a few thousand notes —
-   * which `GenericMap` does on every parse and after every re-sort — cost more than the
-   * rest of the render put together.
+   * This is exactly what a remove-then-insert-at-`i` loop over `order` produces, without that
+   * loop's quadratic cost — `GenericMap` re-orders a whole `<score>` on every parse and after
+   * every re-sort.
    *
    * The two boundary cases the loop had are kept:
    *
-   * - a node in `order` that is **not** currently a child is adopted, exactly as the
-   *   loop's no-op `removeChild` followed by a real `insertChild` adopted it;
+   * - a node in `order` that is not currently a child is adopted, exactly as the loop's
+   *   no-op `removeChild` followed by a real `insertChild` adopted it;
    * - if `order` names the same node twice the loop's result is not a permutation of the
    *   child list at all, so that case is handed back to the loop rather than guessed at.
    */
@@ -793,14 +751,13 @@ export class Element extends XomNode {
    * result instead of throwing.
    */
   query(xpathExpr: string): Nodes {
-    // We need to serialize and re-parse to use xpath properly
     const xmlStr = this.toXML();
     const doc = new DOMParser().parseFromString(xmlStr, 'text/xml');
     const contextNode = doc.documentElement;
     // `toXML()` always writes at least this element, so the re-parse always has a root and
-    // this branch is not reachable from any document this port can build. It replaces a `!`
-    // with the answer the rest of the method already gives for input it cannot handle —
-    // an empty node set, not a `TypeError` from inside the xpath library.
+    // this branch is unreachable from any document this port can build. It answers what the
+    // rest of the method answers for input it cannot handle — an empty node set, rather than
+    // a `TypeError` from inside the xpath library.
     if (contextNode === null) return new Nodes([]);
 
     const select = xpath.useNamespaces(this.collectNamespaces());
@@ -812,7 +769,6 @@ export class Element extends XomNode {
       if (Array.isArray(result)) {
         for (const node of result) {
           if (xpath.isElement(node)) {
-            // Map back to our tree
             const mapped = this.findCorrespondingElement(node);
             if (mapped) xomNodes.push(mapped);
           } else if (xpath.isAttribute(node)) {
@@ -848,7 +804,6 @@ export class Element extends XomNode {
    */
   private collectNamespaces(): Record<string, string> {
     const nsMap: Record<string, string> = {};
-    // xml namespace is always available
     nsMap['xml'] = 'http://www.w3.org/XML/1998/namespace';
     this.collectNamespacesInto(this, nsMap);
     return nsMap;
@@ -879,9 +834,8 @@ export class Element extends XomNode {
    * keeps the DOM indices and `getChildElements()` indices in step.
    */
   private findCorrespondingElement(domNode: globalThis.Element): Element | null {
-    // Build the path from root to the target node. `current` starts at a node and is only
-    // ever reassigned to a parent the loop has already tested, so it is never null — the
-    // walk stops at the parent, not at the node.
+    // `current` starts at a node and is only ever reassigned to a parent the loop has already
+    // tested, so it is never null — the walk stops at the parent, not at the node.
     const path: number[] = [];
     let current: globalThis.Node = domNode;
     while (current.parentNode && current.parentNode.nodeType === 1) {
@@ -907,23 +861,15 @@ export class Element extends XomNode {
    * emission order and the ` />` spelling of empty elements are fixed by the Java reference
    * output the integration suite compares against.
    *
-   * **The `xmlns` placement was not.** Until this commit the default-namespace declaration
-   * was emitted on *every* namespaced element rather than only where it changes, so a 2185-
-   * byte reference MPM came back out at 3527 bytes with `xmlns` repeated 32 times where Java
-   * writes it once, on the root. The integration suite did not catch it because
-   * `cross-validation.test.ts` normalised the repeats away before comparing — so the gate was
-   * comparing a laundered version of our output rather than our output.
+   * The `xmlns` rule is the one XML specifies: a default-namespace declaration is emitted only
+   * when this element's namespace differs from the one it inherits, and children are
+   * serialized against whatever this element leaves in scope. Three consequences:
    *
-   * The rule now is the one XML actually specifies: a default-namespace declaration is
-   * emitted only when this element's namespace differs from the one it inherits, and children
-   * are serialized against whatever this element leaves in scope. Three consequences worth
-   * stating, because each is a case the old code could not express:
-   *
-   * - the root of a namespaced document still declares, since it inherits nothing;
-   * - a child in its parent's namespace declares nothing, which is the fix;
+   * - the root of a namespaced document declares, since it inherits nothing;
+   * - a child in its parent's namespace declares nothing;
    * - a child with *no* namespace inside a namespaced parent emits `xmlns=""`, undeclaring
-   *   it. That is required — without it the child would silently inherit the parent's
-   *   namespace on reparse, so the old code was not merely verbose there but wrong.
+   *   it. That is required: without it the child would silently inherit the parent's
+   *   namespace on reparse.
    *
    * A prefixed element declares its own prefix and leaves the default namespace in scope
    * untouched, so its children inherit what it inherited.
@@ -943,10 +889,9 @@ export class Element extends XomNode {
       defaultForChildren = this._namespaceURI;
     }
 
-    // Add attributes
     for (const attr of this._attributes) {
       xml += ` ${attr.toXML()}`;
-      // Add namespace declaration for prefixed attributes
+      // A prefixed attribute carries its own namespace declaration.
       if (
         attr.getNamespacePrefix() &&
         attr.getNamespaceURI() &&
@@ -1009,27 +954,18 @@ export class Document {
   /**
    * The declaration this document was parsed with, or XOM's own default.
    *
-   * Java's XOM writes `<?xml version="1.0"?>` — every Java-generated reference under
-   * `tests/integration/fixtures/` begins with exactly that, and none carries an encoding. This
-   * port hardcoded `<?xml version="1.0" encoding="UTF-8"?>`, which is a real divergence and
-   * was invisible because `cross-validation.test.ts` strips the declaration from both sides
-   * before comparing. Same shape as the `xmlns` defect fixed earlier: a normaliser hiding an
-   * output difference rather than a normalisation of something genuinely incomparable.
-   *
-   * A parsed document round-trips the declaration it arrived with, so
-   * `serialize ∘ parse = id` gains one of the three exceptions it had. A constructed document
-   * gets XOM's default, which is what makes generated MSM and MPM match the reference.
+   * Java's XOM writes `<?xml version="1.0"?>` with no encoding — every Java-generated
+   * reference under `tests/integration/fixtures/` begins with exactly that. A parsed document
+   * round-trips the declaration it arrived with; a constructed one gets XOM's default, which
+   * is what makes generated MSM and MPM match the reference.
    */
   private readonly _declaration: string;
 
   toXML(): string {
-    // The trailing newline is Java's: XOM's `Serializer` ends the document with one, all 32
-    // reference fixtures carry exactly one, and this port emitted none. It was invisible
-    // because `cross-validation.test.ts` ended its normaliser chain with a `.trim()` that its
-    // own audit of what it forgives did not mention. Note that the byte-compared public API
-    // path serialises through `getRootElement().toXML()` (RULE F2a) and is unaffected — this
-    // is the whole-document spelling, which is what `XmlBase.toXML` and the reference
-    // comparison use.
+    // The trailing newline is Java's: XOM's `Serializer` ends the document with one, and all
+    // 32 reference fixtures carry exactly one. This is the whole-document spelling, which is
+    // what `XmlBase.toXML` and the reference comparison use; the byte-compared public API path
+    // serialises through `getRootElement().toXML()` (RULE F2a) and is unaffected.
     return `${this._declaration}\n${this._rootElement.toXML()}\n`;
   }
 
@@ -1039,24 +975,17 @@ export class Document {
 }
 
 /**
- * U+FEFF, the character a UTF-8 byte-order mark (`EF BB BF`) decodes to.
+ * Split a qualified name into its prefix and local part, as `name.split(':')` taking elements
+ * 0 and 1 does.
  *
- * Only a LEADING one is a signature. Anywhere else U+FEFF is ZERO WIDTH NO-BREAK SPACE and
- * is ordinary content, so exactly one occurrence, at position 0, is removed.
- */
-/**
- * Split a qualified name into its prefix and local part, exactly as `name.split(':')` and
- * taking elements 0 and 1 did.
+ * The truncation is deliberate: `a:b:c` yields prefix `a` and local name `b`, losing `:c`.
+ * Well-formed XML has at most one colon so it only bites on malformed input, and it is kept
+ * for parity.
  *
- * The truncation is deliberate and is preserved: `a:b:c` yields prefix `a` and local name
- * `b`, losing `:c`, because the incumbent read `parts[1]` and nothing else. Well-formed XML
- * has at most one colon so it only bites on malformed input, and it is kept for parity.
- *
- * Written with `indexOf`/`slice` rather than `split` plus indices for a specific reason: under
- * `noUncheckedIndexedAccess` `parts[1]` is `string | undefined`, and the obvious repair —
- * destructuring and testing for `undefined` — reads as an impossible comparison to
- * `no-unnecessary-condition` while that flag is still off. Not indexing at all is clean under
- * both, and is the only formulation that is.
+ * Written with `indexOf`/`slice` rather than `split` plus indices because `parts[1]` is
+ * `string | undefined` under `noUncheckedIndexedAccess` while testing it for `undefined` is an
+ * impossible comparison to `no-unnecessary-condition` with that flag off. Not indexing at all
+ * is the only formulation clean under both.
  */
 function splitQualifiedName(name: string): { readonly prefix: string; readonly localName: string } {
   const firstColon = name.indexOf(':');
@@ -1077,12 +1006,16 @@ const XML_DECLARATION = '<?xml version="1.0"?>';
 /** Captures a leading declaration so a parsed document can be written back as it arrived. */
 const XML_DECLARATION_PATTERN = /^\s*<\?xml[^?]*\?>/;
 
+/**
+ * U+FEFF, the character a UTF-8 byte-order mark (`EF BB BF`) decodes to. Only a LEADING one is
+ * a signature: anywhere else U+FEFF is ZERO WIDTH NO-BREAK SPACE and is ordinary content.
+ */
 const BYTE_ORDER_MARK = '﻿';
 
 /**
  * Drop a leading byte-order mark, so that a BOM'd document parses instead of throwing.
  *
- * **This restores Java parity rather than diverging from it.** Every Java entry point hands
+ * This restores Java parity rather than diverging from it. Every Java entry point hands
  * XOM *bytes* — `builder.build(new ByteArrayInputStream(xml.getBytes(UTF_8)))`
  * (`meico/xml/XmlBase.java:99`, `meico/mei/Helper.java:1042,1061`) or `builder.build(file)`
  * (`XmlBase.java:162`) — and XOM parses those through a SAX/Xerces `XMLReader`, for which a
@@ -1091,13 +1024,10 @@ const BYTE_ORDER_MARK = '﻿';
  *
  * This port parses a *decoded string* instead (`DOMParser.parseFromString`), by which point
  * the signature has already become a U+FEFF character sitting in front of the XML
- * declaration — and `@xmldom/xmldom` rejects it outright with "processing instruction at
- * position 1 is an xml declaration which is only at the start of the document". The
- * divergence is an artefact of parsing characters where Java parses bytes, so stripping the
- * mark here is what makes the two agree.
- *
- * It is not a hypothetical: 3 of the 6 encodings in the MPM format's own sample corpus carry
- * a BOM, including both multi-performance documents.
+ * declaration, which `@xmldom/xmldom` rejects outright. The divergence is an artefact of
+ * parsing characters where Java parses bytes, so stripping the mark here is what makes the
+ * two agree. Not a hypothetical: 3 of the 6 encodings in the MPM format's own sample corpus
+ * carry a BOM, including both multi-performance documents.
  */
 function stripByteOrderMark(xml: string): string {
   return xml.startsWith(BYTE_ORDER_MARK) ? xml.slice(BYTE_ORDER_MARK.length) : xml;
@@ -1118,7 +1048,6 @@ export class Builder {
     const parser = new DOMParser();
     const dom = parser.parseFromString(stripByteOrderMark(xml), 'text/xml');
 
-    // Check for parse errors
     const errorNode = dom.getElementsByTagName('parsererror');
     // `.item(0)` is typed `Element | null` whichever way the index flags are set; `[0]` is
     // not, so the null test here is honest under both.
@@ -1142,9 +1071,7 @@ export class Builder {
   }
 }
 
-/**
- * Exception thrown during XML parsing
- */
+/** Exception thrown during XML parsing */
 export class ParsingException extends Error {
   constructor(message: string) {
     super(message);
@@ -1152,9 +1079,7 @@ export class ParsingException extends Error {
   }
 }
 
-/**
- * Exception for XML validity errors (non-fatal - document still produced)
- */
+/** Exception for XML validity errors (non-fatal - document still produced) */
 export class ValidityException extends ParsingException {
   private readonly _document: Document | null;
 

@@ -199,35 +199,29 @@ export interface CompareMpmOptions extends ComparisonSettings {
  * - `weights` — weights exist to combine the eleven dimensions into ONE aggregate, and a
  *   `DiffReport` has no aggregate: every figure in `dimensions` is per-dimension and raw.
  *   Measured while it was still inherited: `weights: { tempo: 0 }` left every `scriptCost`
- *   bit-identical while the echo dutifully reported `0` (W4 MAJOR-1).
+ *   bit-identical while the echo dutifully reported `0`.
  * - `scape` — AD-27.8's scape is of the AGGREGATE density, which the diff path also has none
  *   of. Measured: `JSON.stringify(diffMpm({…, scape: { bins: 8 }}))` was byte-identical to the
  *   same call without it, and `checkCompareOptions` validated the `bins` on the way past.
  *
- * `plausibleRange` stays, and it stays because it is CONSUMED rather than because it is harmless
- * (AD-70.3). `plausibilityFindings` reads the two documents and nothing else — not the
- * aggregate, not the weights, not the comparison — so the diff produces those notes from the
- * same parse, and an implausible `@bpm` is exactly the site the script prices a large op at. It
- * WAS inert here until W4 MAJOR-5 gave `DiffReport` its notes; keeping it meant making it work,
- * which is the only honest way to keep it.
+ * `plausibleRange` stays because it is CONSUMED, not because it is harmless (AD-70.3).
+ * `plausibilityFindings` reads the two documents and nothing else — not the aggregate, not the
+ * weights, not the comparison — so the diff produces those notes from the same parse, and an
+ * implausible `@bpm` is exactly the site the script prices a large op at.
  */
 export interface DiffMpmOptions extends Omit<
   CompareMpmOptions,
   'invariance' | 'profile' | 'weights' | 'scape'
 > {
   /**
-   * The four are re-declared `?: never` rather than merely omitted (W4 MINOR-R3).
+   * The four are re-declared `?: never` rather than merely omitted.
    *
-   * Omitting them relies on excess-property checking, which reaches OBJECT LITERALS only — so
-   * `diffMpm({ a, ...sharedSettings })` and `diffMpm(wideOptionsVariable)` compiled clean and
-   * dropped `weights`/`scape`/`invariance`/`profile` in silence. That is the very
-   * accepted-and-ignored behaviour AD-25.1 forbids, arriving through the one door the type could
-   * not see — and §9.2's own rationale for `ComparisonSettings`, "so a corpus and a pair can be
-   * configured identically", makes the shared bag the INTENDED usage rather than an edge case.
-   *
-   * `?: never` is checked on every assignment, spread or not: a bag carrying any of the four
-   * fails to compile against this type. The runtime half (`checkDiffOptions`) was already right;
-   * this closes the half that only looked right.
+   * Omitting them would rely on excess-property checking, which reaches OBJECT LITERALS only,
+   * so `diffMpm({ a, ...sharedSettings })` and `diffMpm(wideOptionsVariable)` would compile
+   * clean and drop the four in silence — the accepted-and-ignored behaviour AD-25.1 forbids,
+   * through the one door the type cannot see. And §9.2's rationale for `ComparisonSettings`,
+   * "so a corpus and a pair can be configured identically", makes the shared bag intended
+   * usage rather than an edge case. `?: never` is checked on every assignment, spread or not.
    */
   readonly weights?: never;
   readonly scape?: never;
@@ -570,16 +564,13 @@ function checkCompareOptions(options: CompareMpmOptions): Checked {
 }
 
 /**
- * §9.4's rows for the DIFF surface — which is a strict subset, and has to be (W4 MAJOR-1).
+ * §9.4's rows for the DIFF surface — a strict subset, and it has to be.
  *
- * A validator wider than its surface is the same defect as a surface wider than its product,
- * pointed the other way: `checkCompareOptions` would reject `scape: { bins: 0 }` here, throwing
- * `InvalidOptionError` about a key `DiffMpmOptions` does not declare, while AD-54.3 says an
- * unrecognized top-level key is IGNORED. A JavaScript caller passing the four omitted fields
- * must get the same silence they would get for `{ nonsense: 1 }`, and a TypeScript caller cannot
- * reach any of this because the type already refused.
- *
- * So this validates exactly what the diff surface offers, and `moves` with it.
+ * `checkCompareOptions` would reject `scape: { bins: 0 }` here, throwing `InvalidOptionError`
+ * about a key `DiffMpmOptions` does not declare, while AD-54.3 says an unrecognized top-level
+ * key is IGNORED: a JavaScript caller passing one of the four omitted fields must get the same
+ * silence as for `{ nonsense: 1 }`. So this validates exactly what the diff surface offers,
+ * and `moves` with it.
  */
 function checkDiffOptions(options: DiffMpmOptions): Checked {
   return andThen(requireOptionBag(options, 'options must be an object carrying at least `a`'), () =>
@@ -596,11 +587,6 @@ function checkDiffOptions(options: DiffMpmOptions): Checked {
 
 /**
  * §9.4's corpus rows, checked BEFORE any document is parsed (A23).
- *
- * `k` and `embeddingAxes` are §9.4's live cases of the knowability split's first branch
- * (AD-25.1): a `k` outside `[1, N]` is unusable given the OTHER OPTIONS alone — `items.length`
- * is in the same bag — so the caller could have known, and a full plausible-looking report with
- * a silently clamped `k` would hide the typo the option exists to express.
  */
 function checkCorpusOptions(options: CompareCorpusOptions): Checked {
   // Two guards in sequence rather than two members of one `allOf`, because everything below
@@ -817,7 +803,7 @@ function resolveInvariance(
 }
 
 /**
- * `-0 ↦ +0` at the report boundary (MINOR-2, A20, §9.5).
+ * `-0 ↦ +0` at the report boundary (A20, §9.5).
  *
  * A signed descriptor is a difference, and a difference of equals is `-0` as often as `+0`
  * depending on which side was subtracted — so `Object.is(compare(a,b).x, compare(b,a).x)` and

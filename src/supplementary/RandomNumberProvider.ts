@@ -5,13 +5,12 @@ import { elementAt } from '../prelude/seq.js';
  * Random numbers drawn from one of the distributions MPM's imprecision maps use.
  * Port of `meico.supplementary.RandomNumberProvider`.
  *
- * **The numerics here are load-bearing, not incidental.** `getValue(i)` memoises into
- * `series`, so every consumer reading an imprecision map sees one fixed sequence per
- * provider, and `setSeed()` makes that sequence reproducible. Changing an expression, the
- * order of operations, or how many times `nextRandom()` is called per value changes the
- * numbers a performance renders. That goes double for the two correlated distributions,
- * where each value is derived from its predecessor and a single extra draw shifts
- * everything after it. Treat this file as numerics rather than as style.
+ * The numerics here are load-bearing. `getValue(i)` memoises into `series`, so every consumer
+ * reading an imprecision map sees one fixed sequence per provider, and `setSeed()` makes that
+ * sequence reproducible. Changing an expression, the order of operations, or how many times
+ * `nextRandom()` is called per value changes the numbers a performance renders — doubly so for
+ * the two correlated distributions, where each value is derived from its predecessor and a
+ * single extra draw shifts everything after it.
  */
 export class RandomNumberProvider {
   /**
@@ -59,7 +58,6 @@ export class RandomNumberProvider {
   }
 
   private nextRandom(): number {
-    // Mulberry32 PRNG for reproducibility with seed
     let t = (this.seed += 0x6d2b79f5);
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
@@ -234,9 +232,8 @@ export class RandomNumberProvider {
       case RandomNumberProvider.DISTRIBUTION_CORRELATED_COMPENSATING_TRIANGLE:
         initialValue = this.clip(value);
         break;
-      // The uncorrelated distributions have no series to restart, which is what the
-      // docstring's "No-op for the others" means. Enumerated so that "the others" is a
-      // closed list the compiler checks rather than a phrase.
+      // The uncorrelated distributions have no series to restart. Enumerated so that "the
+      // others" is a closed list the compiler checks rather than a phrase.
       case RandomNumberProvider.DISTRIBUTION_UNIFORM:
       case RandomNumberProvider.DISTRIBUTION_GAUSSIAN:
       case RandomNumberProvider.DISTRIBUTION_TRIANGULAR:
@@ -249,9 +246,8 @@ export class RandomNumberProvider {
   /**
    * Reject an index no series can have, before it is used for anything.
    *
-   * A **pure precondition**: it draws nothing, memoises nothing and touches no field, so the
-   * sequence a valid caller sees is bit-for-bit what it was without the guard. That property
-   * is the point — see this class's opening note on the numerics being load-bearing.
+   * A pure precondition: it draws nothing, memoises nothing and touches no field, so the
+   * sequence a valid caller sees is bit-for-bit what it would be without the guard.
    *
    * @throws {OutOfRangeError} for `NaN`, `±Infinity` or an index above {@link MAX_INDEX}
    */
@@ -266,15 +262,14 @@ export class RandomNumberProvider {
    * The value at `index`, drawing and memoising as far as needed to reach it. A fractional
    * index is interpolated by {@link getValueDouble}; a negative one is clamped to 0.
    *
-   * @throws {OutOfRangeError} for a non-finite or absurdly large index. The unguarded
-   *   behaviour differs by class, all measured on Node 23.8: `NaN` recursed with
+   * @throws {OutOfRangeError} for a non-finite or absurdly large index. Unguarded, those fail
+   *   in three different ways, all measured on Node 23.8: `NaN` recursed through
    *   {@link getValueDouble} until the stack overflowed; `Infinity` and huge finite indices
    *   allocated for seconds and then died with a bare `RangeError: Invalid array length`
-   *   naming neither method nor index; and `-Infinity` was **not** pathological at all — it
-   *   clamped to 0 and quietly returned `series[0]`, while `getValueDouble(-Infinity)`
-   *   returned `NaN`. That last class is rejected anyway, and deliberately: an index that
-   *   silently means "the first value" is a wrong answer dressed as a right one, which is
-   *   worse than an error. See PARITY.md, "Fixed bugs", P4.
+   *   naming neither method nor index; and `-Infinity` clamped to 0 and quietly returned
+   *   `series[0]`, while `getValueDouble(-Infinity)` returned `NaN`. That last class is
+   *   rejected deliberately: an index that silently means "the first value" is a wrong answer
+   *   dressed as a right one. See PARITY.md, "Fixed bugs", P4.
    */
   getValue(index: number): number {
     RandomNumberProvider.requireUsableIndex(index, 'getValue');
@@ -284,16 +279,15 @@ export class RandomNumberProvider {
     const wholeIndex = Math.floor(clampedIndex);
 
     if (this.distributionType === RandomNumberProvider.DISTRIBUTION_LIST)
-      // An EMPTY list makes this `index % 0`, i.e. NaN, and the read is out of range. The
-      // `?? NaN` is behaviour-preserving, NOT a repair: the incumbent returned `undefined`
-      // wearing the type `number`, and NaN is what every caller's arithmetic and every
-      // comparison already made of it.
+      // An EMPTY list makes this `index % 0`, i.e. NaN, so the read is out of range and the
+      // `?? NaN` supplies what every caller's arithmetic and every comparison would have made
+      // of the resulting `undefined` anyway.
       //
-      // It is deliberately not a throw, though Java's `index % series.size()` on an `int`
-      // throws ArithmeticException here. The NaN is a DOCUMENTED bottom route that the
-      // comparison module models and pins — `imprecisionLaws.test.ts` asserts that an empty
+      // Deliberately not a throw, though Java's `index % series.size()` on an `int` throws
+      // ArithmeticException here. The NaN is a documented bottom route that the comparison
+      // module models and pins — `imprecisionLaws.test.ts` asserts that an empty
       // `<distribution.list>` makes every note's date NaN, and `isBottomAt` reports it as
-      // bottom. Refusing instead would delete a modelled degeneracy, not fix a defect.
+      // bottom.
       return this.series[wholeIndex % this.series.length] ?? Number.NaN;
 
     // In range by construction — the loop fills the series up to `wholeIndex` — but the
@@ -346,11 +340,10 @@ export class RandomNumberProvider {
         d = this.clip(this.compensatingTriangleDistribution());
         break;
       case RandomNumberProvider.DISTRIBUTION_LIST:
-        // Unreachable, and now provably so rather than by argument: a list distribution
-        // draws from `series` directly in `getValue`, which returns before it can reach the
-        // loop that calls this method, and `getValue` is the only caller. Naming the case
-        // leaves `d` at 0.0 exactly as falling out of the switch did, and lets
-        // `switch-exhaustiveness-check` vouch for the other five.
+        // Unreachable: a list distribution draws from `series` directly in `getValue`, which
+        // returns before it can reach the loop that calls this method, and `getValue` is the
+        // only caller. Naming the case leaves `d` at 0.0, as falling out of the switch does,
+        // and lets `switch-exhaustiveness-check` vouch for the other five.
         break;
     }
 
@@ -380,9 +373,9 @@ export class RandomNumberProvider {
 
   private compensatingTriangleDistribution(): number {
     // NOT non-empty by construction, though the factories do push a first value: `setSeed`
-    // clears `series` — its own doc says so — so any document that puts a `@seed` on a
-    // correlated distribution reaches this with an empty series. NaN then propagates through
-    // the whole performance, which `imprecisionLaws.test.ts` pins as a bottom route.
+    // clears `series`, so any document that puts a `@seed` on a correlated distribution
+    // reaches this with an empty series. NaN then propagates through the whole performance,
+    // which `imprecisionLaws.test.ts` pins as a bottom route.
     const prevRandomNum = this.series[this.series.length - 1] ?? Number.NaN;
     const newLowerLimit =
       prevRandomNum - (prevRandomNum - this.lowerLimit) / this.degreeOfCorrelation;

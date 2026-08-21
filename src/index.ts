@@ -1,8 +1,8 @@
 // meico - MEI Converter (TypeScript port)
 //
 // Scope: MEI / MSM+MPM => expressive MIDI. Format conversions (MusicXML,
-// MIDI->MSM, MEI->MusicXML), audio, playback, chroma/pitches and SVG were
-// removed in T3 as out of scope; see docs/history/refactor/log.md.
+// MIDI->MSM, MEI->MusicXML), audio, playback, chroma/pitches and SVG are out
+// of scope; see docs/history/refactor/log.md.
 
 import type { Element } from './xml/XomTypes.js';
 import {
@@ -43,10 +43,9 @@ import { addToMap } from './msm/dateMap.js';
 import { updateMpmNoteidsAfterResolvingRepetitions } from './mei/mpmNoteIds.js';
 import { VERSION } from './version.js';
 
-// The public facade (T13, ARCHITECTURE.md §2): plain data in, plain data out.
+// The public facade (ARCHITECTURE.md §2): plain data in, plain data out.
 //
-// Additive — everything below this block is exactly what it was. The facade is listed
-// member by member rather than star-exported because `./api/index.js` re-exports
+// Listed member by member rather than star-exported because `./api/index.js` re-exports
 // `MeicoError`/`MissingNodeError`, which this file already exports from `./xml/errors.js`,
 // and two star exports of one name are ambiguous. `src/api/index.ts` is the one-import
 // entry point for consumers who only want the facade.
@@ -77,9 +76,7 @@ export {
   ComparisonEngineError,
 } from './api/errors.js';
 // The comparison facade (comparison/DESIGN.md §9.7). Member by member for the reason the two
-// above are: a star export of a module that re-exports `MeicoError` would be ambiguous against
-// this file's own, and naming the members is what keeps the public surface a decision rather
-// than a consequence.
+// above are.
 export {
   compareMpm,
   compareMpmCorpus,
@@ -184,7 +181,7 @@ export type { ValidationResult } from './xml/XmlBase.js';
 export { AbstractXmlSubtree } from './xml/AbstractXmlSubtree.js';
 export { MeicoError, MissingNodeError } from './xml/errors.js';
 
-// The modules T14 split `mei/Helper` into (ARCHITECTURE.md §8.2). These are the API;
+// The modules `mei/Helper` was split into (ARCHITECTURE.md §8.2). These are the API;
 // the `Helper` object at the bottom of this file is the compatibility shim.
 export * from './xml/tree.js';
 export * from './xml/ids.js';
@@ -217,15 +214,15 @@ export { InstrumentsDictionary } from './midi/InstrumentsDictionary.js';
 export { KeyValue } from './supplementary/KeyValue.js';
 export { RandomNumberProvider } from './supplementary/RandomNumberProvider.js';
 
-// Version. `Meico` was a class carrying a single static; RULE M6 turned it into the constant
-// `VERSION` and keeps this object so `Meico.version` still resolves for existing callers.
+// Version. RULE M6 makes `VERSION` the API; the `Meico` object keeps `Meico.version`
+// resolving for existing callers.
 export { VERSION } from './version.js';
 export const Meico = { version: VERSION } as const;
 
 /**
- * `Helper.getAllChildElements` as it was before RULE N2b narrowed the module function:
- * name-first overload, `Element[] | null` return, both guards. The narrowing is real and
- * deliberate — this wrapper exists so it is not also an API break for callers of the
+ * `Helper.getAllChildElements` as the shim promises it: name-first overload,
+ * `Element[] | null` return, both guards. The module function it delegates to is narrower
+ * (RULE N2b); this wrapper keeps that narrowing from being an API break for callers of the
  * {@link Helper} shim.
  */
 function helperGetAllChildElements(name: string, ofThis: Element): Element[] | null;
@@ -234,8 +231,7 @@ function helperGetAllChildElements(
   // `undefined` belongs in the IMPLEMENTATION signature and in neither overload: an untyped
   // caller reaching the shim can pass it, and the guard below is what turns that into `null`
   // rather than a `TypeError` from `allChildElements`. Declaring it is what makes the guard
-  // legal rather than a condition "the types have no overlap" with — the one lint error in
-  // `src/`, pre-existing and only shifted by the comparison wave (W3 MINOR-6).
+  // legal rather than a condition "the types have no overlap" with.
   arg1: string | Element | null | undefined,
   arg2?: Element | null,
 ): Element[] | null {
@@ -252,17 +248,11 @@ function helperGetAllChildElements(
 /**
  * Compatibility shim for the dissolved `mei/Helper` class (ARCHITECTURE.md RULE M2, §8.2).
  *
- * 34 of `Helper`'s 41 public statics are here under their original name, delegating to
- * the module function they moved to, so code written against the published API keeps working.
- * New code should import from `xml/tree.js`, `xml/ids.js`, `music/*.js` and friends directly
- * — T22 marks this object deprecated.
- *
- * The missing 7 are the XSLT / schema-validation / file-write members that lived in
- * `compat/unsupported.js`. T21 deleted them per ARCHITECTURE.md §8.10: every one was a stub
- * that logged and returned `null`/`false`/nothing, and the file-write path additionally used
- * `require()`, which is not defined in this ESM build. They could not do their job in any
- * environment this package ships to, so keeping their names was a promise the port could not
- * keep.
+ * Deprecated. 34 of `Helper`'s 41 public statics are here under their original name,
+ * delegating to the module function they moved to, so code written against the published API
+ * keeps working; new code imports from `xml/tree.js`, `xml/ids.js`, `music/*.js` and friends
+ * directly. The missing 7 are the XSLT / schema-validation / file-write members, which could
+ * not do their job in any environment this package ships to (ARCHITECTURE.md §8.10).
  *
  * Four members changed shape in the move and the shim absorbs the difference:
  * `getFirstChildElement`, `getAttribute` and `getParentElement` were renamed

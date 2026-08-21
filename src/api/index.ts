@@ -13,8 +13,8 @@
  * ```
  *
  * Everything here is plain data in and plain data out — see `types.ts` for what that means
- * and why. The class surface (`Mei`, `Msm`, `Mpm`, `Midi`, `Performance`) is unchanged and
- * still exported from `src/index.ts`; this layer is additive.
+ * and why. The class surface (`Mei`, `Msm`, `Mpm`, `Midi`, `Performance`) is exported from
+ * `src/index.ts` instead.
  */
 export * from './comparison.js';
 export * from './errors.js';

@@ -172,11 +172,11 @@ export interface ExaggerateOptions {
   /**
    * Which performance to transform. Name or 0-based index; **omitted means all of them**.
    *
-   * This is the one place the expression facade diverges from {@link PerformOptions}, and the
-   * divergence is the difference between the two operations (A11): `performMsm` renders, and
-   * a render needs one performance, so it defaults to index 0. This one edits a document, and
-   * editing one performance while silently leaving its siblings behind produces a document
-   * that means something different from either input.
+   * The one place the expression facade diverges from {@link PerformOptions}, because the two
+   * operations differ (A11): `performMsm` renders, and a render needs one performance, so it
+   * defaults to index 0. This one edits a document, and editing one performance while silently
+   * leaving its siblings behind produces a document that means something different from either
+   * input.
    */
   readonly performance?: string | number;
   /**
@@ -203,8 +203,8 @@ export interface ExaggerateOptions {
   /**
    * A score, read **only** to fill in the report's `estimates` (A10's carve-out to R1).
    *
-   * It never reaches the transform: the interior's option object is built field by field
-   * below this one, so there is no path by which an MSM could influence a written byte. Its
+   * It never reaches the transform: `api/expression.ts` builds the interior's option object
+   * field by field, so there is no path by which an MSM could influence a written byte. Its
    * fields stay `null` when this is omitted, and stay `null` per field where the MSM does not
    * determine the answer — the millisecond cliffs need a note's *rendered* length, which only
    * an MSM that has already been performed carries.

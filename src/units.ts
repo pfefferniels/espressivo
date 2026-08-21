@@ -3,24 +3,20 @@
  *
  * The failure these prevent happened: {@link MovementData.getMovementSegment} takes its
  * sampling threshold in a normalized 0..1 domain and returns values scaled ×127, so
- * `maxStepSize` meant one thing going in and another coming out. Fixtures generated
- * against a 0..127 input subdivided ~1270× too often and stored 16129 = 127 × 127 —
- * double-scaled. It cost a ground-truth regeneration (T20b) to find.
+ * `maxStepSize` meant one thing going in and another coming out. Fixtures generated against a
+ * 0..127 input subdivided ~1270× too often and stored 16129 = 127 × 127, double-scaled.
  *
- * A branded type is `number` plus a phantom property, so it is a `number` everywhere
- * arithmetic is concerned but not interchangeable with a differently-branded one. There
- * are deliberately **no** `asTicks(n)`-style converters (RULE U2): a converter emits
- * JavaScript, and then "type-level only" can no longer be proven by a zero-line
- * emitted-JS diff. A raw number becomes a branded one through an `as` cast at the few
- * construction sites — normally where an XML attribute is parsed — and `as` erases
- * completely.
+ * A branded type is `number` plus a phantom property: a `number` everywhere arithmetic is
+ * concerned, but not interchangeable with a differently-branded one. There are no
+ * `asTicks(n)`-style converters, because RULE U2 requires this module to emit no JavaScript at
+ * all — so a raw number becomes a branded one through an `as` cast at the few construction
+ * sites, normally where an XML attribute is parsed. This module compiles to `export {};` and
+ * nothing else; do not add a value to it.
  *
- * This module compiles to `export {};` and nothing else. Do not add a value to it.
- *
- * Where brands apply is fixed by RULE U3 and is deliberately narrow: the facade's output
- * types (T13) and three interior declarations. RULE U4 keeps them out of the
- * parity-frozen arithmetic, where an `as` at every operator would bury exactly the
- * changes a reviewer must be able to see.
+ * Where brands apply is fixed by RULE U3 and is deliberately narrow: the facade's output types
+ * and three interior declarations. RULE U4 keeps them out of the parity-frozen arithmetic,
+ * where an `as` at every operator would bury exactly the changes a reviewer must be able to
+ * see.
  */
 
 declare const brand: unique symbol;

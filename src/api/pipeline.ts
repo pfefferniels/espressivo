@@ -1,14 +1,12 @@
 /**
  * The public facade: MEI ⇒ MSM+MPM ⇒ performed data / MIDI (ARCHITECTURE.md §2).
  *
- * It is **additive** — every existing entry point keeps working exactly as before, and
- * nothing in `src/` calls anything here. What it adds is a boundary:
+ * Nothing in `src/` calls anything here; what this layer adds is a boundary:
  *
  * - **documents cross it as XML text** (RULE F2), which is what makes every other guarantee
  *   free: text is plain data, so inputs cannot be mutated (RULE I3a) and outputs are
- *   `structuredClone`-safe (RULE F1). The XML interior stays genuinely interior — no
- *   XomTypes type appears in any exported signature here, only in the module-private
- *   readers below, which never escape into a return type;
+ *   `structuredClone`-safe (RULE F1). No XomTypes type appears in any exported signature
+ *   here, only in the module-private readers below;
  * - **document text is produced by `getRootElement().toXML()`** (RULE F2a), never
  *   `Document.toXML()`: the declaration-free form is the exact byte sequence the equivalence
  *   suite compares against the Java fixtures;
@@ -61,8 +59,8 @@ export { VERSION } from '../version.js';
 
 /**
  * Parse-and-check, shared by the three entry types. A document that did not parse is
- * indistinguishable from an empty one at the class API (`XmlBase` swallows the
- * `ParsingException` and leaves `data` null), so both land on the same error here.
+ * indistinguishable from an empty one at the class API — `XmlBase` reports both as
+ * `isEmpty()` — so both land on the same error here.
  */
 function checkParsed(doc: XmlBase, kind: DocumentKind, rootName: string): void {
   if (doc.isEmpty()) throw new ParseError(`${kind}: the input is not well-formed XML`);
@@ -218,8 +216,8 @@ function optionalString(name: string, e: Element): string | null {
  * complete evidence behind {@link PerformedNote.ornamented}.
  *
  * Enumerated rather than matched by prefix because `Element` offers no way to iterate an
- * element's attributes, and a closed list is the better bargain here anyway: it is what a
- * reader can check against the writers, which are exactly five.
+ * element's attributes, and because a closed list is what a reader can check against the
+ * five writers.
  *
  * - `ornament.dynamics` — `DynamicsGradient.apply`, the velocity offset.
  * - `ornament.date.offset` / `ornament.duration` — `TemporalSpread.apply` in the tick domain,
@@ -230,16 +228,14 @@ function optionalString(name: string, e: Element): string | null {
  *   note-off travels with their onset.
  * - `ornament.milliseconds.fromend.offset` — the v3 renderer's end-anchored millisecond
  *   marker, the one branch MPM v3 adds to the third pass.
- * - `ornament.carved` — the v3 renderer's `carve`, on the **head leftover**: the surviving
+ * - `ornament.carved` — the v3 renderer's `carve`, on the head leftover: the surviving
  *   principal of an end-aligned ornament, shortened so the generated notes fit after it. It is
- *   the one alteration v3 makes to a note the score already had, and the only reason this list
- *   is not simply "the markers a *generated* note carries". Ruled in (D10/D15, LOG.md
- *   2026-08-09) because without it a demonstrably shortened note reported `ornamented: false`
- *   while this module's own type promised the opposite.
+ *   the one alteration v3 makes to a note the score already had, which is why this list is not
+ *   simply "the markers a *generated* note carries" (D10/D15).
  * - the last six — the v3 renderer's provenance stamp on a generated note.
  *
- * Reading them here rather than in an ornament-shaped mirror of the notes is deliberate: §2's
- * rule against a second representation applies to ornaments as much as to notes.
+ * Read here rather than into an ornament-shaped mirror of the notes: §2's rule against a
+ * second representation applies to ornaments as much as to notes.
  */
 const ORNAMENT_MARKER_ATTRIBUTES: readonly string[] = [
   'ornament.dynamics',
@@ -353,17 +349,12 @@ function readControlChanges(part: Element): ControlChangeStream[] {
   const positionMap = firstChildElement('positionMap', dated);
   if (positionMap !== null) {
     // Read every position FIRST, in document order, and only then bucket by controller.
-    //
-    // The obvious spelling — `groupBy(positions, controllerOf)` and `readControlChangePoint`
-    // inside a `.map` per bucket — is wrong here, and not for a performance reason.
     // `readControlChangePoint` goes through `requiredNumber`, which THROWS a `ParseError`
     // naming the offending attribute; so on a `<positionMap>` with two malformed positions
     // under different controllers, the order the positions are read in decides which error the
-    // caller sees. RULE E2 makes that message part of the contract. Reading first keeps it in
-    // document order, exactly as the single fused loop did.
+    // caller sees, and RULE E2 makes that message part of the contract.
     //
-    // The bucketing itself is `groupBy`: the get-or-create triple this replaces was its body,
-    // and both orders it guarantees are load-bearing here — points within a stream stay in
+    // Both orders `groupBy` guarantees are load-bearing here: points within a stream stay in
     // document order, and the streams come out in first-appearance order of their controller,
     // which is what the docstring above pins.
     const positions = allChildElements(positionMap, 'position').map((position) => ({
@@ -471,9 +462,8 @@ export function convertMeiToMsmMpm(
       `MEI: the conversion produced ${msms.length} MSM(s) but ${mpms.length} MPM(s); see the log for the movement it failed on`,
     );
 
-  // `zipWith` rather than `map` plus `mpms[index]`: the equal-length check above is what makes
-  // that index safe, and a check three statements away is not something a type can follow.
-  // Walking the two together says it structurally instead.
+  // `zipWith` rather than `map` plus `mpms[index]`: what makes that index safe is the
+  // equal-length check three statements up, which a type cannot follow.
   return zipWith(msms, mpms, (msm, mpm, index) => ({
     index,
     title: msm.getTitle(),
@@ -576,11 +566,8 @@ export function renderMidi(
   const midi = msm.exportMidi(options?.bpm ?? 120, options?.generateProgramChanges ?? true);
   if (midi === null) throw new EmptyDocumentError('MSM: nothing to render');
 
-  // No `bytes === null` guard: `Midi.exportMidi` is total. It used to return
-  // `Uint8Array | null` with one null route — a null sequence, which the class no longer
-  // allows — so this threw an `EmptyDocumentError` that nothing could reach and no test
-  // named. The `midi === null` check above is a different matter and stays: `Msm.exportMidi`
-  // really can decline.
+  // No guard on the bytes: `Midi.exportMidi` is total. The `midi === null` check above is a
+  // different matter — `Msm.exportMidi` really can decline.
   return midi.exportMidi();
 }
 
@@ -639,10 +626,7 @@ export function renderExpressiveMidi(
 
   if (midi === null) throw new EmptyDocumentError('MSM: nothing to render');
 
-  // No `bytes === null` guard: `Midi.exportMidi` is total. It used to return
-  // `Uint8Array | null` with one null route — a null sequence, which the class no longer
-  // allows — so this threw an `EmptyDocumentError` that nothing could reach and no test
-  // named. The `midi === null` check above is a different matter and stays: `Msm.exportMidi`
-  // really can decline.
+  // No guard on the bytes: `Midi.exportMidi` is total. The `midi === null` check above is a
+  // different matter — `Msm.exportMidi` really can decline.
   return midi.exportMidi();
 }

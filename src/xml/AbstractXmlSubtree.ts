@@ -13,11 +13,8 @@ const XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace';
  * {@link parseData} and write straight back to it, so a subtree object and the XML it
  * came from can never drift apart.
  *
- * The `xml:id` accessors live here rather than being restated per subclass: seven of them
- * carried byte-identical copies (T6's finding, re-measured in T16 and found to be seven
- * rather than the two the scouting report named). Every element in the tree may carry an
- * `xml:id`, so the ones that previously had no such accessor gain a working one rather
- * than a stub.
+ * The `xml:id` accessors live here rather than being restated per subclass, because every
+ * element in the tree may carry an `xml:id`.
  */
 export abstract class AbstractXmlSubtree {
   private xml: Element | null = null;
@@ -34,16 +31,11 @@ export abstract class AbstractXmlSubtree {
    * `try` and return null if it throws. `setXml` cannot be handed a null either (see its
    * signature), so an instance that a caller can observe always has its element.
    *
-   * Use {@link getXmlOrNull} in the one situation this does not cover: code holding a
-   * subtree whose `parseData` has not run yet.
-   *
-   * The argument above is a real invariant but not one the type system can see — the field
-   * has to start at null because the base class has no constructor that takes an element,
-   * and giving it one would rewrite the twenty subclasses in `src/mpm`. So the claim is
-   * checked rather than asserted: what used to be `this.xml!` is a
-   * {@link MissingNodeError} naming the un-parsed state, instead of a `TypeError` from
-   * whichever `Element` member the caller reached for next. No call site can reach it;
-   * `tests/xml/AbstractXmlSubtree.test.ts` reaches it through a local subclass.
+   * The field still has to start at null, because the base class has no constructor that
+   * takes an element, so the invariant is checked rather than asserted: an un-parsed subtree
+   * raises a {@link MissingNodeError} naming that state instead of a `TypeError` from
+   * whichever `Element` member the caller reached for next. Use {@link getXmlOrNull} in the
+   * one situation this does not cover: code holding a subtree whose `parseData` has not run.
    */
   getXml(): Element {
     const xml = this.xml;
@@ -68,27 +60,22 @@ export abstract class AbstractXmlSubtree {
   /**
    * Read `xml` into this subtree's typed state, and {@link setXml} it.
    *
-   * A **shape constraint, not a dispatch point**: nothing in the tree ever calls this
-   * through a base-class reference. Every call is either a subclass's own static factory
-   * calling it on the instance it just made, or a subclass's implementation delegating up
-   * with `super.parseData(xml)`. What the abstract declaration buys is the invariant that
-   * an `AbstractXmlSubtree` is *constructed by parsing an element* — which is what
-   * {@link getXml}'s non-nullable return rests on — stated in one place rather than
-   * repeated in twenty doc comments.
-   *
-   * It is worth knowing that it buys only that, because it is easy to mistake for
-   * polymorphism and then to preserve a forwarding override that nothing can reach. Six
-   * such overrides lived in the `*Def` classes until the functional-core campaign folded
-   * each one back into the private parser it forwarded to.
+   * A shape constraint, not a dispatch point: nothing in the tree ever calls this through a
+   * base-class reference. Every call is either a subclass's own static factory calling it on
+   * the instance it just made, or a subclass's implementation delegating up with
+   * `super.parseData(xml)`. What the abstract declaration buys — and all it buys, so a
+   * forwarding override here would be unreachable — is the invariant that an
+   * `AbstractXmlSubtree` is *constructed by parsing an element*, which is what
+   * {@link getXml}'s non-nullable return rests on.
    */
   protected abstract parseData(xml: Element): void;
 
   /**
    * Set, replace or (with null) remove the `xml:id`, in the object and in the element.
    *
-   * Removal detaches the attribute but does not touch its value, so a caller still
-   * holding the {@link Attribute} keeps reading the old id from a node that is no longer
-   * in the document — the behaviour every copy of this method had, preserved verbatim.
+   * Removal detaches the attribute but does not touch its value, so a caller still holding
+   * the {@link Attribute} keeps reading the old id from a node that is no longer in the
+   * document.
    */
   setId(id: string | null): void {
     if (id === null) {
